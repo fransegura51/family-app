@@ -255,6 +255,27 @@ sugerencia calculada (cada 12 días) tras simular una segunda compra, y
 Sigue pendiente de Fase 4: OCR de tickets (Skill 10) — necesita una IA
 con visión, de pago.
 
+## Despliegue web (para instalar en el móvil)
+
+Publicada como PWA real en GitHub Pages (gratis, HTTPS):
+`https://fransegura51.github.io/family-app/`. Repo público
+`github.com/fransegura51/family-app` (sin secretos: las claves en
+`.env`/GitHub Secrets son del tipo "publicable", protegidas por RLS, no
+sirven de nada sin pasar por las políticas de Supabase).
+
+- `vite.config.ts`: `base: '/family-app/'` solo en build (dev sigue en
+  `/`), para que las rutas de assets/manifest/service worker funcionen
+  bajo la subruta de GitHub Pages.
+- Iconos reales generados con Jimp (`scripts/generate-icons.mjs`, uso
+  único) — antes el manifest apuntaba a iconos que nunca se habían creado.
+  `apple-touch-icon.png` añadido para instalación en iOS.
+- `.github/workflows/deploy.yml`: build + deploy automático a GitHub
+  Pages en cada push a `master`, con las variables `VITE_*` como GitHub
+  Secrets.
+- Para instalarla en el móvil: abrir la URL en el navegador del teléfono
+  y usar "Añadir a pantalla de inicio" (Android/Chrome) o "Compartir →
+  Añadir a inicio" (iOS/Safari) — queda como una app con icono propio.
+
 ## Estado general
 
 Todo lo que se podía hacer gratis está hecho: Fases 1, 2, 3, 5, 6 y 8

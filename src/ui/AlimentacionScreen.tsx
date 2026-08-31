@@ -1,0 +1,466 @@
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import {
+  addFoodLog,
+  addRecipeIngredientsToShoppingList,
+  createRecipe,
+  deleteFoodLog,
+  deleteMenuEntry,
+  deleteRecipe,
+  listFoodLogs,
+  listMenuEntries,
+  listRecipes,
+  setMenuEntry,
+} from '@/data/food'
+import { listFamilyMembers } from '@/data/family'
+import type { FamilyMember, FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
+
+const SUB_TABS = ['Menú', 'Recetas', 'Registro'] as const
+type SubTab = (typeof SUB_TABS)[number]
+
+const MEAL_TYPES: { value: MealType; label: string }[] = [
+  { value: 'desayuno', label: 'Desayuno' },
+  { value: 'comida', label: 'Comida' },
+  { value: 'merienda', label: 'Merienda' },
+  { value: 'cena', label: 'Cena' },
+  { value: 'snack', label: 'Snack' },
+]
+
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function weekDates(): string[] {
+  const today = new Date()
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today)
+    d.setDate(today.getDate() + i)
+    return toDateStr(d)
+  })
+}
+
+export function AlimentacionScreen() {
+  const [tab, setTab] = useState<SubTab>('Menú')
+
+  return (
+    <div className="screen">
+      <h1>Alimentación</h1>
+      <div className="filter-row">
+        {SUB_TABS.map((t) => (
+          <button key={t} className={'chip' + (tab === t ? ' chip-active' : '')} onClick={() => setTab(t)}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'Menú' && <MenuTab />}
+      {tab === 'Recetas' && <RecipesTab />}
+      {tab === 'Registro' && <FoodLogTab />}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Menú semanal (Skill 15)
+// ---------------------------------------------------------------------
+
+function MenuTab() {
+  const dates = useMemo(weekDates, [])
+  const [entries, setEntries] = useState<MenuEntry[]>([])
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [addingFor, setAddingFor] = useState<{ date: string; meal: MealType } | null>(null)
+
+  function reload() {
+    setLoading(true)
+    Promise.all([listMenuEntries(dates[0], dates[6]), listRecipes()])
+      .then(([e, r]) => {
+        setEntries(e)
+        setRecipes(r)
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <p className="muted">Cargando menú…</p>
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+      {dates.map((date) => (
+        <div key={date} className="card menu-day">
+          <strong>
+            {new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
+          </strong>
+          {MEAL_TYPES.filter((m) => m.value !== 'snack').map((meal) => {
+            const entry = entries.find((e) => e.entryDate === date && e.mealType === meal.value)
+            const recipe = entry?.recipeId ? recipes.find((r) => r.id === entry.recipeId) : null
+            const isAdding = addingFor?.date === date && addingFor.meal === meal.value
+            return (
+              <div key={meal.value} className="menu-row">
+                <span className="muted menu-meal-label">{meal.label}</span>
+                {entry ? (
+                  <>
+                    <span>{recipe?.title ?? entry.freeText}</span>
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => deleteMenuEntry(entry.id).then(reload)}
+                    >
+                      Quitar
+                    </button>
+                  </>
+                ) : isAdding ? (
+                  <MenuEntryPicker
+                    recipes={recipes}
+                    onPick={async (pick) => {
+                      await setMenuEntry({ entryDate: date, mealType: meal.value, ...pick })
+                      setAddingFor(null)
+                      reload()
+                    }}
+                    onCancel={() => setAddingFor(null)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => setAddingFor({ date, meal: meal.value })}
+                  >
+                    + Añadir
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MenuEntryPicker({
+  recipes,
+  onPick,
+  onCancel,
+}: {
+  recipes: Recipe[]
+  onPick: (input: { recipeId: string | null; freeText: string | null }) => void
+  onCancel: () => void
+}) {
+  const [recipeId, setRecipeId] = useState('')
+  const [freeText, setFreeText] = useState('')
+
+  return (
+    <span className="menu-picker">
+      <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
+        <option value="">— receta —</option>
+        {recipes.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.title}
+          </option>
+        ))}
+      </select>
+      <input
+        type="text"
+        placeholder="o texto libre"
+        value={freeText}
+        onChange={(e) => setFreeText(e.target.value)}
+      />
+      <button
+        type="button"
+        className="link-button"
+        onClick={() => onPick({ recipeId: recipeId || null, freeText: recipeId ? null : freeText || null })}
+      >
+        OK
+      </button>
+      <button type="button" className="link-button" onClick={onCancel}>
+        ✕
+      </button>
+    </span>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Recetas (Skill 15)
+// ---------------------------------------------------------------------
+
+function RecipesTab() {
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+
+  function reload() {
+    setLoading(true)
+    listRecipes()
+      .then(setRecipes)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(reload, [])
+
+  async function handleGenerateList(recipe: Recipe) {
+    try {
+      await addRecipeIngredientsToShoppingList(recipe)
+      setInfo(`Ingredientes de "${recipe.title}" añadidos a la lista de la compra.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar la lista')
+    }
+  }
+
+  if (loading) return <p className="muted">Cargando recetas…</p>
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+      {info && <p className="muted">{info}</p>}
+      <div className="event-list">
+        {recipes.map((recipe) => (
+          <div key={recipe.id} className="card recipe-card">
+            <strong>{recipe.title}</strong>
+            {recipe.notes && <p className="muted">{recipe.notes}</p>}
+            <ul className="ingredient-list">
+              {recipe.ingredients.map((i) => (
+                <li key={i.id}>
+                  {i.name}
+                  {i.quantity && ` — ${i.quantity}${i.unit ? ' ' + i.unit : ''}`}
+                </li>
+              ))}
+            </ul>
+            <div className="task-card-actions">
+              <button type="button" className="link-button" onClick={() => handleGenerateList(recipe)}>
+                Generar lista de la compra
+              </button>
+              <button type="button" className="link-button" onClick={() => deleteRecipe(recipe.id).then(reload)}>
+                Borrar
+              </button>
+            </div>
+          </div>
+        ))}
+        {recipes.length === 0 && <p className="muted">Todavía no hay recetas.</p>}
+      </div>
+      <AddRecipeForm onAdded={reload} />
+    </div>
+  )
+}
+
+function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
+  const [title, setTitle] = useState('')
+  const [notes, setNotes] = useState('')
+  const [ingredients, setIngredients] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await createRecipe({ title, notes, ingredientLines: ingredients.split('\n') })
+      setTitle('')
+      setNotes('')
+      setIngredients('')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear la receta')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <h2>Nueva receta</h2>
+      <label>
+        Título
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      </label>
+      <label>
+        Ingredientes (uno por línea: nombre, cantidad, unidad)
+        <textarea
+          rows={4}
+          value={ingredients}
+          onChange={(e) => setIngredients(e.target.value)}
+          placeholder={'Tomate, 4, unidades\nAceite, 2, cucharadas'}
+        />
+      </label>
+      <label>
+        Notas
+        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : 'Crear receta'}
+      </button>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Registro de alimentación (Skill 14/16)
+// ---------------------------------------------------------------------
+
+function FoodLogTab() {
+  const [members, setMembers] = useState<FamilyMember[]>([])
+  const [activeMemberId, setActiveMemberId] = useState<string>('')
+  const [logs, setLogs] = useState<FoodLog[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const today = useMemo(() => toDateStr(new Date()), [])
+
+  useEffect(() => {
+    listFamilyMembers()
+      .then((m) => {
+        setMembers(m)
+        if (m.length > 0) setActiveMemberId(m[0].id)
+      })
+      .catch((e: Error) => setError(e.message))
+  }, [])
+
+  function reload() {
+    if (!activeMemberId) return
+    setLoading(true)
+    listFoodLogs(activeMemberId, today)
+      .then(setLogs)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(reload, [activeMemberId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeMember = members.find((m) => m.id === activeMemberId)
+  const showDetail = activeMember?.memberType === 'admin' || activeMember?.memberType === 'adult'
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+      <div className="filter-row">
+        {members.map((m) => (
+          <button
+            key={m.id}
+            className={'chip' + (activeMemberId === m.id ? ' chip-active' : '')}
+            style={{ borderColor: m.color }}
+            onClick={() => setActiveMemberId(m.id)}
+          >
+            {m.name}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <p className="muted">Cargando…</p>
+      ) : (
+        <div className="event-list">
+          {logs.map((log) => (
+            <div key={log.id} className="card task-card">
+              <div className="task-card-main">
+                <strong>{log.description}</strong>
+                <p className="muted">
+                  {MEAL_TYPES.find((m) => m.value === log.mealType)?.label}
+                  {showDetail && log.calories != null && ` · ${log.calories} kcal`}
+                  {showDetail && ` · ${log.isEstimated ? 'estimado' : 'exacto'}`}
+                </p>
+              </div>
+              <button type="button" className="link-button" onClick={() => deleteFoodLog(log.id).then(reload)}>
+                Eliminar
+              </button>
+            </div>
+          ))}
+          {logs.length === 0 && <p className="muted">Nada registrado hoy.</p>}
+        </div>
+      )}
+
+      {activeMemberId && (
+        <AddFoodLogForm memberId={activeMemberId} date={today} showDetail={showDetail} onAdded={reload} />
+      )}
+    </div>
+  )
+}
+
+function AddFoodLogForm({
+  memberId,
+  date,
+  showDetail,
+  onAdded,
+}: {
+  memberId: string
+  date: string
+  showDetail: boolean
+  onAdded: () => void
+}) {
+  const [mealType, setMealType] = useState<MealType>('comida')
+  const [description, setDescription] = useState('')
+  const [calories, setCalories] = useState('')
+  const [isEstimated, setIsEstimated] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await addFoodLog({
+        memberId,
+        date,
+        mealType,
+        description,
+        calories: calories ? Number(calories) : null,
+        proteinG: null,
+        carbsG: null,
+        fatG: null,
+        isEstimated,
+      })
+      setDescription('')
+      setCalories('')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <h2>Registrar comida</h2>
+      <label>
+        Momento
+        <select value={mealType} onChange={(e) => setMealType(e.target.value as MealType)}>
+          {MEAL_TYPES.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Qué comió
+        <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} required />
+      </label>
+      {showDetail && (
+        <>
+          <label>
+            Calorías (opcional)
+            <input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} />
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={!isEstimated}
+              onChange={(e) => setIsEstimated(!e.target.checked)}
+            />
+            Dato exacto (no estimado)
+          </label>
+        </>
+      )}
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : 'Registrar'}
+      </button>
+    </form>
+  )
+}

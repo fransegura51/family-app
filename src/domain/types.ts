@@ -245,6 +245,17 @@ export interface ProductPrice {
   recordedDate: string
 }
 
+export interface Receipt {
+  id: string
+  familyId: string
+  storagePath: string
+  store: string | null
+  receiptDate: string
+  totalAmount: number | null
+  expenseId: string | null
+  notes: string | null
+}
+
 export interface CalendarEvent {
   id: string
   familyId: string

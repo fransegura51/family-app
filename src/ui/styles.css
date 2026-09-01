@@ -381,6 +381,77 @@ textarea {
   display: block;
 }
 
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+.month-nav strong {
+  min-width: 140px;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.month-grid-weekday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+.month-grid-day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  color: var(--text);
+  padding: 2px;
+}
+
+.month-grid-day-out {
+  color: #c7cad1;
+  background: #fafafb;
+}
+
+.month-grid-day-today {
+  border-color: var(--primary);
+  font-weight: 700;
+}
+
+.month-grid-day-selected {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.month-grid-dots {
+  display: flex;
+  gap: 2px;
+  min-height: 6px;
+}
+
+.month-grid-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
 .progress-bar {
   width: 100%;
   height: 8px;

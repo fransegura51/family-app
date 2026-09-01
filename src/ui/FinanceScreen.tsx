@@ -13,6 +13,7 @@ import {
   listWalletTransactions,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
+import { deleteReceipt, getReceiptUrl, listReceipts, uploadReceipt } from '@/data/receipts'
 import { budgetSpent, walletBalance } from '@/domain/finance'
 import type {
   Budget,
@@ -22,10 +23,11 @@ import type {
   FamilyMember,
   KidGoal,
   KidWalletTransaction,
+  Receipt,
   WalletTransactionType,
 } from '@/domain/types'
 
-const SUB_TABS = ['Gastos', 'Presupuestos', 'Educación financiera'] as const
+const SUB_TABS = ['Gastos', 'Tickets', 'Presupuestos', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 const EXPENSE_KINDS: { value: ExpenseKind; label: string }[] = [
@@ -53,6 +55,7 @@ export function FinanceScreen() {
       </div>
 
       {tab === 'Gastos' && <ExpensesTab />}
+      {tab === 'Tickets' && <ReceiptsTab />}
       {tab === 'Presupuestos' && <BudgetsTab />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
     </div>
@@ -193,6 +196,152 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Añadir'}
+      </button>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Tickets (Skill 10, sin OCR — eso necesita IA de pago, pendiente)
+// ---------------------------------------------------------------------
+
+function ReceiptsTab() {
+  const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    setLoading(true)
+    listReceipts()
+      .then(setReceipts)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(reload, [])
+
+  async function handleDelete(receipt: Receipt) {
+    try {
+      await deleteReceipt(receipt)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo borrar')
+    }
+  }
+
+  if (loading) return <p className="muted">Cargando tickets…</p>
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+      <p className="muted">
+        Sube la foto y anota establecimiento/fecha/importe a mano — la lectura automática del
+        ticket necesita una IA de pago, pendiente de que elijas proveedor.
+      </p>
+      <div className="event-list">
+        {receipts.map((r) => (
+          <ReceiptRow key={r.id} receipt={r} onDelete={() => handleDelete(r)} />
+        ))}
+        {receipts.length === 0 && <p className="muted">No hay tickets guardados.</p>}
+      </div>
+      <AddReceiptForm onAdded={reload} />
+    </div>
+  )
+}
+
+function ReceiptRow({ receipt, onDelete }: { receipt: Receipt; onDelete: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  return (
+    <div className="card task-card">
+      <div className="task-card-main">
+        <strong>{receipt.store || 'Sin establecimiento'}</strong>
+        <p className="muted">
+          {receipt.receiptDate}
+          {receipt.totalAmount != null && ` · ${receipt.totalAmount.toFixed(2)} €`}
+        </p>
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer">
+            Ver ticket
+          </a>
+        ) : (
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => getReceiptUrl(receipt.storagePath).then(setUrl)}
+          >
+            Ver ticket
+          </button>
+        )}
+      </div>
+      <button type="button" className="link-button" onClick={onDelete}>
+        Eliminar
+      </button>
+    </div>
+  )
+}
+
+function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [store, setStore] = useState('')
+  const [receiptDate, setReceiptDate] = useState(toDateStr(new Date()))
+  const [totalAmount, setTotalAmount] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!file) {
+      setError('Elige una foto o archivo del ticket')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await uploadReceipt({
+        file,
+        store,
+        receiptDate,
+        totalAmount: totalAmount ? Number(totalAmount) : null,
+      })
+      setFile(null)
+      setStore('')
+      setTotalAmount('')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo subir el ticket')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <h2>Subir ticket</h2>
+      <label>
+        Foto o archivo
+        <input
+          type="file"
+          accept="image/*,.pdf"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          required
+        />
+      </label>
+      <label>
+        Establecimiento
+        <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+      </label>
+      <label>
+        Fecha
+        <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} required />
+      </label>
+      <label>
+        Importe total (€)
+        <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Subiendo…' : 'Guardar ticket'}
       </button>
     </form>
   )

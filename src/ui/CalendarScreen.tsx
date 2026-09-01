@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { createEvent, deleteEvent, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
+import { expandOccurrences, getMonthGridDays, MONTH_LABELS, WEEKDAY_LABELS } from '@/domain/calendar'
 import type { CalendarEvent, FamilyMember } from '@/domain/types'
 
 const RECURRENCE_OPTIONS = [
@@ -18,6 +19,13 @@ const REMINDER_OPTIONS = [
   { value: '1440', label: '1 día antes' },
 ]
 
+const VIEWS = ['Mes', 'Lista'] as const
+type ViewMode = (typeof VIEWS)[number]
+
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function CalendarScreen() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
@@ -25,6 +33,11 @@ export function CalendarScreen() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [view, setView] = useState<ViewMode>('Mes')
+  const today = useMemo(() => new Date(), [])
+  const [visibleYear, setVisibleYear] = useState(today.getFullYear())
+  const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
+  const [selectedDate, setSelectedDate] = useState(toDateStr(today))
 
   function reload() {
     setLoading(true)
@@ -49,6 +62,37 @@ export function CalendarScreen() {
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
 
+  const monthDays = useMemo(() => getMonthGridDays(visibleYear, visibleMonth), [visibleYear, visibleMonth])
+
+  // Un evento recurrente puede caer varias veces dentro de la cuadrícula
+  // visible (42 días) — se calcula una vez por render del mes, no por celda.
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>()
+    if (monthDays.length === 0) return map
+    const rangeStart = monthDays[0].dateStr
+    const rangeEnd = monthDays[monthDays.length - 1].dateStr
+    for (const ev of filteredEvents) {
+      for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd)) {
+        const list = map.get(dateStr) ?? []
+        list.push(ev)
+        map.set(dateStr, list)
+      }
+    }
+    return map
+  }, [filteredEvents, monthDays])
+
+  function goToMonth(delta: number) {
+    const d = new Date(visibleYear, visibleMonth + delta, 1)
+    setVisibleYear(d.getFullYear())
+    setVisibleMonth(d.getMonth())
+  }
+
+  function goToToday() {
+    setVisibleYear(today.getFullYear())
+    setVisibleMonth(today.getMonth())
+    setSelectedDate(toDateStr(today))
+  }
+
   async function handleDelete(id: string) {
     try {
       await deleteEvent(id)
@@ -60,10 +104,20 @@ export function CalendarScreen() {
 
   if (loading) return <div className="screen">Cargando calendario…</div>
 
+  const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
+
   return (
     <div className="screen">
       <h1>Calendario</h1>
       {error && <p className="error">{error}</p>}
+
+      <div className="filter-row">
+        {VIEWS.map((v) => (
+          <button key={v} className={'chip' + (view === v ? ' chip-active' : '')} onClick={() => setView(v)}>
+            {v}
+          </button>
+        ))}
+      </div>
 
       <div className="filter-row">
         <button
@@ -84,56 +138,166 @@ export function CalendarScreen() {
         ))}
       </div>
 
-      <div className="event-list">
-        {filteredEvents.map((ev) =>
-          editingId === ev.id ? (
-            <EditEventForm
-              key={ev.id}
-              event={ev}
-              members={members}
-              onDone={() => {
-                setEditingId(null)
-                reload()
-              }}
-              onCancel={() => setEditingId(null)}
-            />
-          ) : (
-            <div key={ev.id} className="card event-card" style={{ borderColor: ev.color ?? undefined }}>
-              <strong>{ev.title}</strong>
-              <p className="muted">
-                {new Date(ev.startAt).toLocaleString('es-ES', {
-                  dateStyle: 'medium',
-                  timeStyle: ev.allDay ? undefined : 'short',
-                })}
-                {ev.recurrenceRule && ' · se repite'}
-                {ev.reminderMinutes != null && ` · 🔔 ${ev.reminderMinutes} min antes`}
-              </p>
-              <div className="member-chips">
-                {ev.memberIds.map((id) => {
-                  const m = memberById.get(id)
-                  if (!m) return null
-                  return (
-                    <span key={id} className="avatar avatar-sm" style={{ background: m.color }}>
-                      {m.name.charAt(0)}
-                    </span>
-                  )
-                })}
-              </div>
-              <div className="member-card-actions">
-                <button type="button" className="link-button" onClick={() => setEditingId(ev.id)}>
-                  Editar
-                </button>
-                <button type="button" className="link-button" onClick={() => handleDelete(ev.id)}>
-                  Borrar
-                </button>
-              </div>
-            </div>
-          ),
-        )}
-        {filteredEvents.length === 0 && <p className="muted">No hay eventos todavía.</p>}
-      </div>
+      {view === 'Mes' ? (
+        <>
+          <div className="month-nav">
+            <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
+              ‹
+            </button>
+            <strong>
+              {MONTH_LABELS[visibleMonth]} {visibleYear}
+            </strong>
+            <button type="button" className="link-button" onClick={() => goToMonth(1)}>
+              ›
+            </button>
+            <button type="button" className="link-button" onClick={goToToday}>
+              Hoy
+            </button>
+          </div>
 
-      <AddEventForm members={members} onAdded={reload} />
+          <div className="month-grid">
+            {WEEKDAY_LABELS.map((w) => (
+              <div key={w} className="month-grid-weekday">
+                {w}
+              </div>
+            ))}
+            {monthDays.map((day) => {
+              const dayEvents = eventsByDate.get(day.dateStr) ?? []
+              const dots = [...new Set(dayEvents.map((e) => e.color ?? memberById.get(e.memberIds[0])?.color ?? '#9ca3af'))]
+              return (
+                <button
+                  type="button"
+                  key={day.dateStr}
+                  className={
+                    'month-grid-day' +
+                    (day.inMonth ? '' : ' month-grid-day-out') +
+                    (day.isToday ? ' month-grid-day-today' : '') +
+                    (selectedDate === day.dateStr ? ' month-grid-day-selected' : '')
+                  }
+                  onClick={() => setSelectedDate(day.dateStr)}
+                >
+                  <span>{day.day}</span>
+                  <span className="month-grid-dots">
+                    {dots.slice(0, 4).map((c, i) => (
+                      <span key={i} className="month-grid-dot" style={{ background: c }} />
+                    ))}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <h2 className="section-title">
+            {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+            })}
+          </h2>
+          <div className="event-list">
+            {selectedDayEvents.map((ev) =>
+              editingId === ev.id ? (
+                <EditEventForm
+                  key={ev.id}
+                  event={ev}
+                  members={members}
+                  onDone={() => {
+                    setEditingId(null)
+                    reload()
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <EventCard
+                  key={ev.id}
+                  event={ev}
+                  memberById={memberById}
+                  onEdit={() => setEditingId(ev.id)}
+                  onDelete={() => handleDelete(ev.id)}
+                />
+              ),
+            )}
+            {selectedDayEvents.length === 0 && <p className="muted">Nada este día.</p>}
+          </div>
+
+          <AddEventForm key={selectedDate} members={members} onAdded={reload} defaultDate={selectedDate} />
+        </>
+      ) : (
+        <>
+          <div className="event-list">
+            {filteredEvents.map((ev) =>
+              editingId === ev.id ? (
+                <EditEventForm
+                  key={ev.id}
+                  event={ev}
+                  members={members}
+                  onDone={() => {
+                    setEditingId(null)
+                    reload()
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <EventCard
+                  key={ev.id}
+                  event={ev}
+                  memberById={memberById}
+                  onEdit={() => setEditingId(ev.id)}
+                  onDelete={() => handleDelete(ev.id)}
+                />
+              ),
+            )}
+            {filteredEvents.length === 0 && <p className="muted">No hay eventos todavía.</p>}
+          </div>
+
+          <AddEventForm members={members} onAdded={reload} />
+        </>
+      )}
+    </div>
+  )
+}
+
+function EventCard({
+  event: ev,
+  memberById,
+  onEdit,
+  onDelete,
+}: {
+  event: CalendarEvent
+  memberById: Map<string, FamilyMember>
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="card event-card" style={{ borderColor: ev.color ?? undefined }}>
+      <strong>{ev.title}</strong>
+      <p className="muted">
+        {new Date(ev.startAt).toLocaleString('es-ES', {
+          dateStyle: 'medium',
+          timeStyle: ev.allDay ? undefined : 'short',
+        })}
+        {ev.recurrenceRule && ' · se repite'}
+        {ev.reminderMinutes != null && ` · 🔔 ${ev.reminderMinutes} min antes`}
+      </p>
+      <div className="member-chips">
+        {ev.memberIds.map((id) => {
+          const m = memberById.get(id)
+          if (!m) return null
+          return (
+            <span key={id} className="avatar avatar-sm" style={{ background: m.color }}>
+              {m.name.charAt(0)}
+            </span>
+          )
+        })}
+      </div>
+      <div className="member-card-actions">
+        <button type="button" className="link-button" onClick={onEdit}>
+          Editar
+        </button>
+        <button type="button" className="link-button" onClick={onDelete}>
+          Borrar
+        </button>
+      </div>
     </div>
   )
 }
@@ -278,9 +442,17 @@ function EditEventForm({
   )
 }
 
-function AddEventForm({ members, onAdded }: { members: FamilyMember[]; onAdded: () => void }) {
+function AddEventForm({
+  members,
+  onAdded,
+  defaultDate,
+}: {
+  members: FamilyMember[]
+  onAdded: () => void
+  defaultDate?: string
+}) {
   const [title, setTitle] = useState('')
-  const [date, setDate] = useState('')
+  const [date, setDate] = useState(defaultDate ?? '')
   const [time, setTime] = useState('')
   const [allDay, setAllDay] = useState(false)
   const [recurrenceRule, setRecurrenceRule] = useState('')
@@ -309,7 +481,7 @@ function AddEventForm({ members, onAdded }: { members: FamilyMember[]; onAdded: 
         memberIds: selectedMembers,
       })
       setTitle('')
-      setDate('')
+      setDate(defaultDate ?? '')
       setTime('')
       setReminderMinutes('')
       setSelectedMembers([])

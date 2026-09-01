@@ -289,6 +289,36 @@ añadió un `ErrorBoundary` + captura de promesas sin gestionar
 producción, ahora se ve el error en pantalla en vez de una página en
 blanco sin pistas.
 
+## Tickets sin OCR (Skill 10, parte gratuita)
+
+Completo. Pestaña "Tickets" dentro de Dinero: subir foto/PDF del ticket a
+Storage privado (bucket `receipts`, aislado por familia igual que las
+tablas), anotar establecimiento/fecha/importe a mano, y se crea
+automáticamente el gasto REAL correspondiente en Gastos. "Ver ticket"
+genera una URL firmada temporal (1h) para ver el archivo. La lectura
+automática (OCR) sigue pendiente de un proveedor de IA de pago.
+Verificado: subida real a Storage + registro en `receipts`, RLS aislando
+correctamente por familia, URL firmada funcionando.
+
+## Calendario en cuadrícula (vista de mes)
+
+Completo. `CalendarScreen` con selector Mes/Lista (Mes por defecto):
+cuadrícula de semanas completas (lunes-domingo), navegación mes anterior/
+siguiente/hoy, un punto de color por evento en cada día, y al tocar un
+día se ve su detalle debajo (con editar/borrar) y el formulario de
+"Nuevo evento" ya con esa fecha puesta. `src/domain/calendar.ts` genera
+la cuadrícula y expande recurrencias simples (diaria/semanal/mensual)
+dentro del rango visible, para que un evento repetido aparezca en todos
+los días que le tocan, no solo en el primero.
+
+Bug real encontrado y corregido al probarlo: la expansión de recurrencias
+usaba `startAt.slice(0, 10)` (fecha en UTC) para saber el día del evento,
+así que un evento guardado a medianoche local aparecía un día antes en la
+cuadrícula. Corregido leyendo los componentes de fecha en hora LOCAL
+(mismo patrón que ya se había corregido antes en la edición de eventos y
+en ReminderWatcher) — verificado con un evento semanal real que ahora
+aparece en el día correcto en varios meses seguidos.
+
 ## Estado general
 
 Todo lo que se podía hacer gratis está hecho: Fases 1, 2, 3, 5, 6 y 8

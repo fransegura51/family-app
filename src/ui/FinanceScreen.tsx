@@ -425,7 +425,8 @@ function EditReceiptForm({
 
 interface DraftLine {
   name: string
-  price: string
+  quantity: string
+  price: string // importe TOTAL de la línea (cantidad × precio unitario), no el precio por unidad
 }
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
@@ -449,7 +450,7 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
       if (parsed.store) setStore(parsed.store)
       if (parsed.date) setReceiptDate(parsed.date)
       if (parsed.total != null) setTotalAmount(String(parsed.total))
-      setLines(parsed.items.map((l) => ({ name: l.name, price: l.price.toFixed(2) })))
+      setLines(parsed.items.map((l) => ({ name: l.name, quantity: String(l.quantity), price: l.price.toFixed(2) })))
       setOcrStatus('done')
     } catch (err) {
       setOcrStatus('error')
@@ -466,7 +467,7 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
   }
 
   function addBlankLine() {
-    setLines((prev) => [...prev, { name: '', price: '' }])
+    setLines((prev) => [...prev, { name: '', quantity: '1', price: '' }])
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -496,7 +497,7 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
             recordProductPurchase({
               name: line.name.trim(),
               price: Number(line.price),
-              quantity: '',
+              quantity: line.quantity || '1',
               unit: '',
               store,
               date: receiptDate,
@@ -551,7 +552,10 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
 
       {(ocrStatus === 'done' || lines.length > 0) && (
         <div className="day-modal-group">
-          <p className="muted">Productos leídos — revisa y corrige antes de guardar:</p>
+          <p className="muted">
+            Productos leídos — revisa y corrige antes de guardar. "Cant." es cuántas unidades se compraron
+            (p. ej. 2 bolsas) y "Precio" el importe total de esa línea, no el precio de una sola unidad.
+          </p>
           {lines.map((line, i) => (
             <div key={i} className="receipt-line-row">
               <input
@@ -562,10 +566,20 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
               />
               <input
                 type="number"
+                className="receipt-line-qty"
+                min={1}
+                step={1}
+                value={line.quantity}
+                onChange={(e) => updateLine(i, { quantity: e.target.value })}
+                placeholder="Cant."
+                title="Cantidad comprada"
+              />
+              <input
+                type="number"
                 step="0.01"
                 value={line.price}
                 onChange={(e) => updateLine(i, { price: e.target.value })}
-                placeholder="Precio"
+                placeholder="Precio total"
               />
               <button type="button" className="link-button" onClick={() => removeLine(i)}>
                 ✕
@@ -640,7 +654,16 @@ function PriceTrendsTab() {
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
 
   const purchases = useMemo(
-    () => prices.map((p) => ({ productId: p.productId, price: p.price, recordedDate: p.recordedDate })),
+    () =>
+      prices.map((p) => {
+        const qty = Number(p.quantity)
+        return {
+          productId: p.productId,
+          price: p.price,
+          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          recordedDate: p.recordedDate,
+        }
+      }),
     [prices],
   )
 
@@ -690,8 +713,9 @@ function PriceTrendsTab() {
       </div>
 
       <p className="muted">
-        Precio medio pagado por producto este mes frente al mes anterior — 🔺 rojo si ha subido, 🔻 verde si ha
-        bajado.
+        Precio medio por unidad este mes frente al mes anterior — 🔺 rojo si ha subido, 🔻 verde si ha bajado.
+        Si compraste varias unidades de golpe (p. ej. 2 bolsas de patatas), se tiene en cuenta para no confundir
+        "comprar más" con "subir de precio".
       </p>
 
       <div className="event-list">
@@ -699,10 +723,10 @@ function PriceTrendsTab() {
           <div key={c.productId} className="card event-card">
             <strong>{c.name}</strong>
             <p>
-              {c.currentPrice!.toFixed(2)} €
+              {c.currentPrice!.toFixed(2)} €/ud
               <PriceDelta percent={c.deltaPercent} />
             </p>
-            {c.previousPrice != null && <p className="muted">Mes anterior: {c.previousPrice.toFixed(2)} €</p>}
+            {c.previousPrice != null && <p className="muted">Mes anterior: {c.previousPrice.toFixed(2)} €/ud</p>}
             {c.previousPrice == null && <p className="muted">Sin compra el mes anterior para comparar</p>}
           </div>
         ))}

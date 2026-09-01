@@ -2,21 +2,27 @@
 // mismo historial de precios que ya alimentan los tickets y la Memoria
 // de la lista de la compra (Skill 09). Sin IA: agrupa por producto y
 // por mes, promedia si se compró varias veces, y calcula la subida o
-// bajada en % frente al mes anterior. No normaliza por cantidad (1L vs
-// 1,5L cuentan igual) — compara lo que se pagó cada vez, que es lo que
-// hay disponible sin pedir al usuario que rellene cantidades exactas
-// cada vez.
+// bajada en % frente al mes anterior.
+//
+// "price" es siempre el importe TOTAL pagado en esa línea (p. ej. 2
+// bolsas de patatas a 3€ = 6€), no el precio por unidad — por eso para
+// comparar el precio del producto en sí se divide entre "quantity"
+// antes de promediar (bug real detectado: sin esto, comprar el doble
+// un mes parecía una subida de precio del 100%, no un cambio de
+// cantidad). El total de la cesta (basketTotal) sí usa el importe total
+// tal cual, porque ahí interesa lo realmente pagado.
 
 export interface RawPurchase {
   productId: string
-  price: number
+  price: number // importe TOTAL de la línea
+  quantity: number // unidades compradas en esa línea (1 si no se sabe)
   recordedDate: string // YYYY-MM-DD
 }
 
 export interface ProductMonthPrice {
   productId: string
   month: string // YYYY-MM
-  avgPrice: number
+  avgPrice: number // precio medio POR UNIDAD ese mes
 }
 
 export function averagePricesByMonth(purchases: RawPurchase[]): ProductMonthPrice[] {
@@ -24,8 +30,10 @@ export function averagePricesByMonth(purchases: RawPurchase[]): ProductMonthPric
   for (const p of purchases) {
     const month = p.recordedDate.slice(0, 7)
     const key = `${p.productId}|${month}`
+    const qty = p.quantity > 0 ? p.quantity : 1
+    const unitPrice = p.price / qty
     const entry = sums.get(key) ?? { sum: 0, count: 0 }
-    entry.sum += p.price
+    entry.sum += unitPrice
     entry.count += 1
     sums.set(key, entry)
   }

@@ -9,7 +9,10 @@ export interface ReceiptScanResult {
   store: string | null
   date: string | null // YYYY-MM-DD
   total: number | null
-  items: { name: string; price: number }[]
+  // price es el importe TOTAL de la línea (cantidad × precio unitario),
+  // no el precio por unidad — así "2 bolsas de patatas, 6,00€" se lee
+  // como quantity=2, price=6.00, no como una sola bolsa a 6€.
+  items: { name: string; quantity: number; price: number }[]
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -49,6 +52,12 @@ export async function analyzeReceiptPhoto(file: File): Promise<ReceiptScanResult
     store: typeof json.store === 'string' ? json.store : null,
     date: typeof json.date === 'string' ? json.date : null,
     total: typeof json.total === 'number' ? json.total : null,
-    items: Array.isArray(json.items) ? json.items : [],
+    items: Array.isArray(json.items)
+      ? json.items.map((it: { name: string; quantity?: number; price: number }) => ({
+          name: it.name,
+          quantity: typeof it.quantity === 'number' && it.quantity > 0 ? it.quantity : 1,
+          price: it.price,
+        }))
+      : [],
   }
 }

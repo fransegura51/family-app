@@ -656,3 +656,7 @@ textarea {
 .receipt-line-row input[type='number'] {
   flex: 1;
 }
+
+.receipt-line-row input.receipt-line-qty {
+  flex: 0 0 56px;
+}

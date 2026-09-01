@@ -66,11 +66,20 @@ Deno.serve(async (req) => {
                     '"total": numero_o_null, "items": [{"name": "producto", "quantity": numero, "price": numero}]}\n' +
                     "Incluye en items TODAS las líneas de producto que veas, una por cada producto comprado " +
                     "(no líneas de total, subtotal, IVA, cambio o forma de pago). " +
-                    "Si una línea indica varias unidades del mismo producto (por ejemplo '2 Bolsa patatas 3,00 6,00' " +
-                    "o cualquier formato donde se vea cantidad x precio unitario = importe), interpreta 'quantity' " +
-                    "como el número de unidades compradas (2 en ese ejemplo) y 'price' como el importe TOTAL de esa " +
-                    "línea (6.00 en ese ejemplo), NO el precio por unidad. Si la línea no indica cantidad, usa " +
-                    "quantity=1 y price=el importe de la línea. Los precios en euros, como número con punto decimal.",
+                    "IMPORTANTE — nunca calcules ni multipliques tú los números: usa siempre el importe en euros " +
+                    "que aparece IMPRESO como el pagado por esa línea (normalmente el último número de la línea, " +
+                    "el más a la derecha). Hay tres formatos típicos, y 'quantity' significa cosas distintas en cada uno:\n" +
+                    "1) Línea simple, un solo precio (p. ej. 'Pan 1,80'): quantity=1, price=el precio impreso.\n" +
+                    "2) Varias unidades del mismo producto, con cantidad ENTERA al principio (p. ej. " +
+                    "'2 Bolsa patatas 3,00 6,00'): quantity=2 (el número entero de unidades), price=6.00 " +
+                    "(el importe TOTAL de la línea, el último número), NUNCA el precio unitario (3,00).\n" +
+                    "3) Producto vendido por PESO, con un peso en kg y un precio por kg (p. ej. " +
+                    "'Solomillo cerdo — 0,495 kg x 10,25 €/kg — 5,07'): esto NO es una cantidad de unidades — " +
+                    "usa quantity=1 y price=el importe final en euros realmente cobrado (5,07 en ese ejemplo), " +
+                    "IGNORA el peso en kg y el precio por kg, no los uses para calcular nada.\n" +
+                    "Si tienes cualquier duda sobre una línea, usa quantity=1 y el último número en euros de la " +
+                    "línea como price — es preferible eso a inventar una cantidad. Los precios en euros, como " +
+                    "número con punto decimal.",
                 },
                 { inline_data: { mime_type: mimeType, data: imageBase64 } },
               ],

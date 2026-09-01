@@ -28,7 +28,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listShoppingItems(): Promise<ShoppingItem[]> {
   const { data, error } = await supabase
     .from('shopping_items')
-    .select('id, family_id, trip_id, name, quantity, unit, priority, status')
+    .select('id, family_id, trip_id, name, quantity, unit, priority, status, store')
     .order('created_at', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -40,6 +40,7 @@ export async function listShoppingItems(): Promise<ShoppingItem[]> {
     unit: r.unit,
     priority: r.priority as ShoppingItemPriority,
     status: r.status as ShoppingItemStatus,
+    store: r.store,
   }))
 }
 
@@ -49,6 +50,7 @@ export async function addShoppingItem(input: {
   unit: string
   priority: ShoppingItemPriority
   tripId: string | null
+  store?: string | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('shopping_items').insert({
@@ -58,7 +60,16 @@ export async function addShoppingItem(input: {
     quantity: input.quantity || null,
     unit: input.unit || null,
     priority: input.priority,
+    store: input.store || null,
   })
+  if (error) throw error
+}
+
+export async function updateShoppingItemStore(id: string, store: string): Promise<void> {
+  const { error } = await supabase
+    .from('shopping_items')
+    .update({ store: store || null, updated_at: new Date().toISOString() })
+    .eq('id', id)
   if (error) throw error
 }
 

@@ -100,6 +100,7 @@ export interface ShoppingItem {
   unit: string | null
   priority: ShoppingItemPriority
   status: ShoppingItemStatus
+  store: string | null
 }
 
 export interface InventoryItem {

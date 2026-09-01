@@ -105,10 +105,15 @@ function ShoppingListTab() {
   const [items, setItems] = useState<ShoppingItem[]>([])
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [loading, setLoading] = useState(true)
+  const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shoppingMode, setShoppingMode] = useState(false)
   const [showOthers, setShowOthers] = useState(false)
 
+  // Solo se enseña "Cargando…" (que desmonta el formulario de abajo) la
+  // primera vez — si no, cada "reload" tras añadir un producto borraba
+  // lo que llevaras escrito en el formulario, incluida la tienda que se
+  // deja puesta a propósito entre productos seguidos.
   function reload() {
     setLoading(true)
     Promise.all([listShoppingItems(), listProducts(), listAllProductPrices()])
@@ -117,7 +122,10 @@ function ShoppingListTab() {
         setSuggestions(buildSuggestions(products, prices))
       })
       .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        setLoading(false)
+        setInitialized(true)
+      })
   }
 
   useEffect(reload, [])
@@ -126,6 +134,22 @@ function ShoppingListTab() {
   const bought = items.filter((i) => i.status === 'comprado')
   const others = items.filter((i) => i.status === 'omitido' || i.status === 'trasladado')
   const total = pending.length + bought.length
+
+  // Agrupa "detallado por tienda" — en Mercadona esto, en la pescadería
+  // lo otro — para verlo separado al programar/hacer la compra. Los
+  // productos sin tienda asignada caen en un grupo aparte, al final.
+  const pendingByStore = new Map<string, ShoppingItem[]>()
+  for (const item of pending) {
+    const key = item.store || 'Sin tienda'
+    const list = pendingByStore.get(key) ?? []
+    list.push(item)
+    pendingByStore.set(key, list)
+  }
+  const storeGroups = [...pendingByStore.entries()].sort((a, b) => {
+    if (a[0] === 'Sin tienda') return 1
+    if (b[0] === 'Sin tienda') return -1
+    return a[0].localeCompare(b[0])
+  })
 
   async function setStatus(id: string, status: ShoppingItemStatus) {
     try {
@@ -136,7 +160,7 @@ function ShoppingListTab() {
     }
   }
 
-  if (loading) return <p className="muted">Cargando lista…</p>
+  if (loading && !initialized) return <p className="muted">Cargando lista…</p>
 
   return (
     <div>
@@ -151,40 +175,45 @@ function ShoppingListTab() {
       </div>
 
       <h2 className="section-title">Pendientes</h2>
-      <div className="event-list">
-        {pending.map((item) => (
-          <div key={item.id} className="card task-card">
-            <div className="task-card-main">
-              <strong>{item.name}</strong>
-              <p className="muted">
-                {[item.quantity, item.unit].filter(Boolean).join(' ')}
-                {!shoppingMode && item.priority !== 'normal' && ` · prioridad ${item.priority}`}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="task-toggle"
-              onClick={() => setStatus(item.id, 'comprado')}
-            >
-              ✓ Comprado
-            </button>
-            {!shoppingMode && (
-              <>
-                <button type="button" className="link-button" onClick={() => setStatus(item.id, 'trasladado')}>
-                  Próxima compra
+      {storeGroups.map(([store, storeItems]) => (
+        <div key={store}>
+          {storeGroups.length > 1 && <h3 className="shopping-store-heading">🏬 {store}</h3>}
+          <div className="event-list">
+            {storeItems.map((item) => (
+              <div key={item.id} className="card task-card">
+                <div className="task-card-main">
+                  <strong>{item.name}</strong>
+                  <p className="muted">
+                    {[item.quantity, item.unit].filter(Boolean).join(' ')}
+                    {!shoppingMode && item.priority !== 'normal' && ` · prioridad ${item.priority}`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="task-toggle"
+                  onClick={() => setStatus(item.id, 'comprado')}
+                >
+                  ✓ Comprado
                 </button>
-                <button type="button" className="link-button" onClick={() => setStatus(item.id, 'omitido')}>
-                  Ya tengo
-                </button>
-                <button type="button" className="link-button" onClick={() => deleteShoppingItem(item.id).then(reload)}>
-                  Eliminar
-                </button>
-              </>
-            )}
+                {!shoppingMode && (
+                  <>
+                    <button type="button" className="link-button" onClick={() => setStatus(item.id, 'trasladado')}>
+                      Próxima compra
+                    </button>
+                    <button type="button" className="link-button" onClick={() => setStatus(item.id, 'omitido')}>
+                      Ya tengo
+                    </button>
+                    <button type="button" className="link-button" onClick={() => deleteShoppingItem(item.id).then(reload)}>
+                      Eliminar
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-        {pending.length === 0 && <p className="muted">Nada pendiente.</p>}
-      </div>
+        </div>
+      ))}
+      {pending.length === 0 && <p className="muted">Nada pendiente.</p>}
 
       <h2 className="section-title">Comprados</h2>
       <div className="event-list">
@@ -199,7 +228,13 @@ function ShoppingListTab() {
         {bought.length === 0 && <p className="muted">Todavía ninguno.</p>}
       </div>
 
-      {!shoppingMode && <AddShoppingItemForm suggestions={suggestions} onAdded={reload} />}
+      {!shoppingMode && (
+        <AddShoppingItemForm
+          suggestions={suggestions}
+          knownStores={[...new Set(items.map((i) => i.store).filter((s): s is string => !!s))]}
+          onAdded={reload}
+        />
+      )}
 
       {others.length > 0 && (
         <>
@@ -295,14 +330,17 @@ function BoughtItemRow({
 
 function AddShoppingItemForm({
   suggestions,
+  knownStores,
   onAdded,
 }: {
   suggestions: ProductSuggestion[]
+  knownStores: string[]
   onAdded: () => void
 }) {
   const [name, setName] = useState('')
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('')
+  const [store, setStore] = useState('')
   const [priority, setPriority] = useState<ShoppingItemPriority>('normal')
   const [matchedPrice, setMatchedPrice] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -330,11 +368,14 @@ function AddShoppingItemForm({
     setSaving(true)
     setError(null)
     try {
-      await addShoppingItem({ name, quantity, unit, priority, tripId: null })
+      await addShoppingItem({ name, quantity, unit, priority, tripId: null, store: store || null })
       setName('')
       setQuantity('')
       setUnit('')
       setMatchedPrice(null)
+      // La tienda NO se limpia adrede: al añadir varios productos seguidos
+      // de la misma tienda ("en Mercadona: patatas, huevos, leche") no
+      // hace falta volver a escribirla cada vez.
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo añadir')
@@ -372,6 +413,15 @@ function AddShoppingItemForm({
           <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="kg" />
         </label>
       </div>
+      <label>
+        Tienda (opcional)
+        <input type="text" list="known-stores" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+        <datalist id="known-stores">
+          {knownStores.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </label>
       <label>
         Prioridad
         <select value={priority} onChange={(e) => setPriority(e.target.value as ShoppingItemPriority)}>

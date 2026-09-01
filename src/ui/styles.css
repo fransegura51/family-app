@@ -608,3 +608,30 @@ textarea {
 .voice-mic-listening {
   background: #dc2626;
 }
+
+.voice-text-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.voice-text-form input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+}
+
+.voice-text-form button {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: none;
+  background: var(--primary);
+  color: white;
+  cursor: pointer;
+}
+
+.voice-text-form button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

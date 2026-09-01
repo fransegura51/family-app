@@ -1,6 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { createEvent, deleteEvent, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
+import {
+  addFeed,
+  deleteFeed,
+  listExternalEvents,
+  listFeeds,
+  syncFeed,
+  type ExternalCalendarEvent,
+  type ExternalCalendarFeed,
+} from '@/data/externalCalendarFeeds'
 import { eventDotColors, expandOccurrences, getMonthGridDays, MONTH_LABELS, WEEKDAY_LABELS } from '@/domain/calendar'
 import {
   REMINDER_PRESETS,
@@ -16,7 +25,7 @@ import { setSelectedCalendarDate } from '@/state/calendarSelection'
 import { buildRecurrenceRule, FREQ_OPTIONS, parseRecurrenceRule, recurrenceLabel } from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
 
-const VIEWS = ['Mes', 'Lista'] as const
+const VIEWS = ['Mes', 'Lista', 'Externos'] as const
 type ViewMode = (typeof VIEWS)[number]
 
 function toDateStr(d: Date): string {
@@ -150,26 +159,30 @@ export function CalendarScreen() {
         ))}
       </div>
 
-      <div className="filter-row">
-        <button
-          className={'chip' + (filterMemberId === 'all' ? ' chip-active' : '')}
-          onClick={() => setFilterMemberId('all')}
-        >
-          Todos
-        </button>
-        {members.map((m) => (
+      {view !== 'Externos' && (
+        <div className="filter-row">
           <button
-            key={m.id}
-            className={'chip' + (filterMemberId === m.id ? ' chip-active' : '')}
-            style={{ borderColor: m.color }}
-            onClick={() => setFilterMemberId(m.id)}
+            className={'chip' + (filterMemberId === 'all' ? ' chip-active' : '')}
+            onClick={() => setFilterMemberId('all')}
           >
-            {m.name}
+            Todos
           </button>
-        ))}
-      </div>
+          {members.map((m) => (
+            <button
+              key={m.id}
+              className={'chip' + (filterMemberId === m.id ? ' chip-active' : '')}
+              style={{ borderColor: m.color }}
+              onClick={() => setFilterMemberId(m.id)}
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {view === 'Mes' ? (
+      {view === 'Externos' ? (
+        <ExternalCalendarTab members={members} />
+      ) : view === 'Mes' ? (
         <>
           <div className="month-nav">
             <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
@@ -786,6 +799,286 @@ function AddEventForm({
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Crear evento'}
+      </button>
+    </form>
+  )
+}
+
+// "Enlazar calendario del móvil": importa citas de Google Calendar,
+// Outlook, Apple/iPhone o cualquier otro proveedor vía su URL .ics
+// (misma pestaña que pidió la usuaria — mes propio, separado de los
+// eventos nativos para no mezclarlos). RRULE no se expande todavía: un
+// evento recurrente del calendario externo solo aparece en su primera
+// ocurrencia importada.
+function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
+  const [feeds, setFeeds] = useState<ExternalCalendarFeed[]>([])
+  const [extEvents, setExtEvents] = useState<ExternalCalendarEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const today = useMemo(() => new Date(), [])
+  const [visibleYear, setVisibleYear] = useState(today.getFullYear())
+  const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+
+  function reload() {
+    setLoading(true)
+    Promise.all([listFeeds(), listExternalEvents()])
+      .then(([f, e]) => {
+        setFeeds(f)
+        setExtEvents(e)
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(reload, [])
+
+  async function handleSync(feedId: string) {
+    setSyncingId(feedId)
+    setError(null)
+    try {
+      await syncFeed(feedId)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo sincronizar')
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  async function handleDeleteFeed(id: string) {
+    try {
+      await deleteFeed(id)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo borrar el calendario')
+    }
+  }
+
+  const feedById = useMemo(() => new Map(feeds.map((f) => [f.id, f])), [feeds])
+  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
+
+  function localDateStr(iso: string): string {
+    const d = new Date(iso)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  const monthDays = useMemo(() => getMonthGridDays(visibleYear, visibleMonth), [visibleYear, visibleMonth])
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, ExternalCalendarEvent[]>()
+    for (const ev of extEvents) {
+      const dateStr = localDateStr(ev.startAt)
+      const list = map.get(dateStr) ?? []
+      list.push(ev)
+      map.set(dateStr, list)
+    }
+    return map
+  }, [extEvents])
+
+  function dotColorForFeed(feedId: string): string {
+    const feed = feedById.get(feedId)
+    const member = feed?.memberId ? memberById.get(feed.memberId) : null
+    return member?.color ?? '#6b7280'
+  }
+
+  function goToMonth(delta: number) {
+    const d = new Date(visibleYear, visibleMonth + delta, 1)
+    setVisibleYear(d.getFullYear())
+    setVisibleMonth(d.getMonth())
+  }
+
+  const selectedDayEvents = selectedDate ? (eventsByDate.get(selectedDate) ?? []) : []
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+
+      <div className="card member-form">
+        <h2>Calendarios enlazados</h2>
+        <p className="muted">
+          Copia la "dirección secreta en formato iCal" de tu calendario (Google, Outlook, Apple/iPhone o Android) y
+          pégala aquí. Solo se importan las citas — no se puede escribir en tu calendario original.
+        </p>
+        {feeds.length === 0 && !loading && <p className="muted">Todavía no has enlazado ningún calendario.</p>}
+        {feeds.map((f) => (
+          <div key={f.id} className="card event-card">
+            <strong>{f.name}</strong>
+            {f.memberId && memberById.get(f.memberId) && (
+              <span className="avatar avatar-sm" style={{ background: memberById.get(f.memberId)!.color }}>
+                {memberById.get(f.memberId)!.name.charAt(0)}
+              </span>
+            )}
+            <p className="muted">
+              {f.lastSyncedAt
+                ? `Última sincronización: ${new Date(f.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`
+                : 'Todavía no sincronizado'}
+            </p>
+            {f.lastSyncError && <p className="error">{f.lastSyncError}</p>}
+            <div className="member-card-actions">
+              <button type="button" className="link-button" disabled={syncingId === f.id} onClick={() => handleSync(f.id)}>
+                {syncingId === f.id ? 'Sincronizando…' : 'Sincronizar ahora'}
+              </button>
+              <button type="button" className="link-button" onClick={() => handleDeleteFeed(f.id)}>
+                Quitar
+              </button>
+            </div>
+          </div>
+        ))}
+
+        <AddFeedForm members={members} onAdded={reload} />
+      </div>
+
+      <div className="month-nav">
+        <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
+          ‹
+        </button>
+        <strong>
+          {MONTH_LABELS[visibleMonth]} {visibleYear}
+        </strong>
+        <button type="button" className="link-button" onClick={() => goToMonth(1)}>
+          ›
+        </button>
+      </div>
+
+      <div className="month-grid">
+        {WEEKDAY_LABELS.map((w) => (
+          <div key={w} className="month-grid-weekday">
+            {w}
+          </div>
+        ))}
+        {monthDays.map((day) => {
+          const dayEvents = eventsByDate.get(day.dateStr) ?? []
+          const dots = [...new Set(dayEvents.map((e) => dotColorForFeed(e.feedId)))]
+          return (
+            <button
+              type="button"
+              key={day.dateStr}
+              className={
+                'month-grid-day' +
+                (day.inMonth ? '' : ' month-grid-day-out') +
+                (day.isToday ? ' month-grid-day-today' : '') +
+                (selectedDate === day.dateStr ? ' month-grid-day-selected' : '')
+              }
+              onClick={() => setSelectedDate(day.dateStr)}
+            >
+              <span>{day.day}</span>
+              <span className="month-grid-dots">
+                {dots.slice(0, 4).map((c, i) => (
+                  <span key={i} className="month-grid-dot" style={{ background: c }} />
+                ))}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {selectedDate && (
+        <div className="modal-overlay" onClick={() => setSelectedDate(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                })}
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setSelectedDate(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            {selectedDayEvents.length === 0 && <p className="muted">Nada este día.</p>}
+            <div className="event-list">
+              {selectedDayEvents.map((ev) => (
+                <div key={ev.id} className="card event-card">
+                  <strong>{ev.title}</strong>
+                  <p className="muted">
+                    {feedById.get(ev.feedId)?.name}
+                    {' · '}
+                    {ev.allDay
+                      ? 'Todo el día'
+                      : new Date(ev.startAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                    {!ev.allDay &&
+                      ev.endAt &&
+                      ` – ${new Date(ev.endAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AddFeedForm({ members, onAdded }: { members: FamilyMember[]; onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [icsUrl, setIcsUrl] = useState('')
+  const [memberId, setMemberId] = useState<string>('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      const id = await addFeed({ name, icsUrl, memberId: memberId || null })
+      setName('')
+      setIcsUrl('')
+      setMemberId('')
+      onAdded()
+      // Sincroniza en cuanto se añade, para que "vamos a probarlo" se
+      // vea de inmediato sin tener que pulsar "Sincronizar ahora" aparte.
+      await syncFeed(id).catch(() => {})
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo enlazar el calendario')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <h3>Enlazar calendario</h3>
+      <label>
+        Nombre
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Google Calendar de Jennifer"
+          required
+        />
+      </label>
+      <label>
+        URL .ics
+        <input
+          type="url"
+          value={icsUrl}
+          onChange={(e) => setIcsUrl(e.target.value)}
+          placeholder="https://calendar.google.com/calendar/ical/..."
+          required
+        />
+      </label>
+      <label>
+        ¿De quién es? (opcional)
+        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+          <option value="">Toda la familia</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Enlazando…' : 'Enlazar calendario'}
       </button>
     </form>
   )

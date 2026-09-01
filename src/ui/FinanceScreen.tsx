@@ -16,8 +16,7 @@ import { listFamilyMembers } from '@/data/family'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { recordProductPurchase } from '@/data/products'
 import { budgetSpent, walletBalance } from '@/domain/finance'
-import { parseReceiptText } from '@/domain/receiptParser'
-import { recognizeReceiptText } from '@/services/ocr'
+import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import type {
   Budget,
   BudgetPeriod,
@@ -205,10 +204,12 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
 }
 
 // ---------------------------------------------------------------------
-// Tickets (Skill 10) — lectura automática con Tesseract.js (OCR local,
-// gratis) en vez de una IA de pago: basta para sacar líneas de
-// "producto ... precio", que alimentan el mismo historial de precios
-// que ya usa la Memoria de la lista de la compra.
+// Tickets (Skill 10) — lectura automática con Gemini (nivel gratuito,
+// la misma IA que reconoce alimentos en la foto de la nevera) en vez de
+// OCR carácter-a-carácter: entiende el ticket como una foto completa,
+// así que se le escapan muchos menos productos que a un OCR local en
+// tickets arrugados o con letra pequeña. Alimenta el mismo historial de
+// precios que ya usa la Memoria de la lista de la compra.
 // ---------------------------------------------------------------------
 
 function ReceiptsTab() {
@@ -243,8 +244,8 @@ function ReceiptsTab() {
       {error && <p className="error">{error}</p>}
       <p className="muted">
         Sube la foto y pulsa "Leer ticket" para rellenar productos y precios automáticamente
-        (lectura local en el móvil, sin IA de pago) — revisa el resultado antes de guardar, la
-        lectura no siempre acierta.
+        (con IA, nivel gratuito) — revisa el resultado antes de guardar, la lectura no siempre
+        acierta.
       </p>
       <div className="event-list">
         {receipts.map((r) =>
@@ -401,11 +402,11 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
     setOcrStatus('reading')
     setError(null)
     try {
-      const text = await recognizeReceiptText(file)
-      const parsed = parseReceiptText(text)
+      const parsed = await analyzeReceiptPhoto(file)
+      if (parsed.store) setStore(parsed.store)
       if (parsed.date) setReceiptDate(parsed.date)
       if (parsed.total != null) setTotalAmount(String(parsed.total))
-      setLines(parsed.lines.map((l) => ({ name: l.name, price: l.price.toFixed(2) })))
+      setLines(parsed.items.map((l) => ({ name: l.name, price: l.price.toFixed(2) })))
       setOcrStatus('done')
     } catch (err) {
       setOcrStatus('error')

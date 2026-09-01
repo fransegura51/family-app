@@ -635,3 +635,18 @@ textarea {
   opacity: 0.5;
   cursor: default;
 }
+
+.receipt-line-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.receipt-line-row input[type='text'] {
+  flex: 2;
+}
+
+.receipt-line-row input[type='number'] {
+  flex: 1;
+}

@@ -1,8 +1,13 @@
 import { FormEvent, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { createTask } from '@/data/tasks'
-import { addShoppingItem } from '@/data/shopping'
+import { createTask, listCompletions, listTasks } from '@/data/tasks'
+import { addShoppingItem, listShoppingItems } from '@/data/shopping'
+import { listFamilyMembers } from '@/data/family'
+import { createEvent } from '@/data/calendar'
 import { splitEntries } from '@/domain/quickCapture'
+import { isTaskDueOn } from '@/domain/tasks'
+import { detectIntent, matchMemberByHint } from '@/domain/voiceQuery'
+import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenOnce, speak } from '@/services/voice'
 
 type ResponseMode = 'voice' | 'text'
@@ -30,19 +35,20 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-type TargetKey = 'compras' | 'tareas'
+type TargetKey = 'compras' | 'tareas' | 'calendario'
 
-// A qué lista se apunta depende de en qué pantalla estás — "si le hablo
-// en tareas, quiero que me apunte en tareas; si le hablo en lista de la
-// compra, quiero que me apunte en lista de la compra". Fuera de esas dos
-// pantallas no hay una lista obvia, así que cae en Tareas (el sitio
-// genérico para "cosas que hay que hacer").
+// A qué lista se apunta (o qué acción se hace) depende de en qué
+// pantalla estás — "si le hablo en tareas, quiero que me apunte en
+// tareas; si le hablo en lista de la compra, en lista de la compra".
+// Fuera de esas pantallas cae en Tareas, el sitio genérico para "cosas
+// que hay que hacer".
 function getTarget(pathname: string): { key: TargetKey; label: string } {
   if (pathname.startsWith('/compras')) return { key: 'compras', label: '🛒 Lista de la compra' }
+  if (pathname.startsWith('/calendario')) return { key: 'calendario', label: '📅 Calendario' }
   return { key: 'tareas', label: '✅ Tareas' }
 }
 
-async function saveEntries(targetKey: TargetKey, entries: string[]): Promise<void> {
+async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[]): Promise<void> {
   for (const entry of entries) {
     if (targetKey === 'compras') {
       await addShoppingItem({ name: entry, quantity: '', unit: '', priority: 'normal', tripId: null })
@@ -60,11 +66,63 @@ async function saveEntries(targetKey: TargetKey, entries: string[]): Promise<voi
   }
 }
 
+async function answerTasksQuery(memberHint: string | null): Promise<string> {
+  const [tasks, members, completions] = await Promise.all([listTasks(), listFamilyMembers(), listCompletions()])
+  const today = todayIso()
+  let due = tasks.filter((t) => isTaskDueOn(t, today))
+  let who = ''
+
+  if (memberHint) {
+    const member = matchMemberByHint(memberHint, members)
+    if (member) {
+      due = due.filter((t) => t.memberId === null || t.memberId === member.id)
+      const doneToday = new Set(
+        completions.filter((c) => c.memberId === member.id && c.completedDate === today).map((c) => c.taskId),
+      )
+      due = due.filter((t) => !doneToday.has(t.id))
+      who = ` para ${member.name}`
+    }
+  }
+
+  if (due.length === 0) return `No tienes tareas pendientes${who} hoy.`
+  return `Tareas de hoy${who}: ${due.map((t) => t.title).join(', ')}.`
+}
+
+async function answerShoppingQuery(): Promise<string> {
+  const items = await listShoppingItems()
+  const pending = items.filter((i) => i.status === 'pendiente')
+  if (pending.length === 0) return 'No tienes nada pendiente en la lista de la compra.'
+  return `En la lista de la compra: ${pending.map((i) => i.name).join(', ')}.`
+}
+
+async function handleCalendarEntry(text: string): Promise<string> {
+  const parsed = parseCalendarEntry(text, new Date())
+  const members = await listFamilyMembers()
+  const member = parsed.memberHint ? matchMemberByHint(parsed.memberHint, members) : null
+
+  await createEvent({
+    title: parsed.title,
+    startAt: new Date(`${parsed.date}T${parsed.time ?? '09:00'}`).toISOString(),
+    allDay: parsed.time === null,
+    recurrenceRule: null,
+    reminderMinutes: parsed.reminderMinutes,
+    memberIds: member ? [member.id] : [],
+  })
+
+  const dateLabel = new Date(parsed.date + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+  const timeLabel = parsed.time ? ` a las ${parsed.time}` : ''
+  const memberLabel = member ? ` · para ${member.name}` : ''
+  const reminderLabel =
+    parsed.reminderMinutes === 1440 ? ' · 🔔 1 día antes' : parsed.reminderMinutes === 60 ? ' · 🔔 1 hora antes' : ''
+  return `Apuntado en el calendario: ${parsed.title} — ${dateLabel}${timeLabel}${memberLabel}${reminderLabel}`
+}
+
 type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'
 
-// Botón flotante disponible en toda la app (Skill: dictado por voz). Apunta
-// lo dicho o escrito en la lista de la pantalla donde estés — compras o
-// tareas — y responde hablando o por texto según lo que el usuario elija.
+// Botón flotante disponible en toda la app (Skill: dictado por voz).
+// Apunta lo dicho o escrito en la lista/calendario de la pantalla donde
+// estés, responde preguntas sencillas sobre tareas y compra de hoy, y
+// contesta hablando o por texto según lo que el usuario elija.
 export function VoiceCapture() {
   const location = useLocation()
   const target = getTarget(location.pathname)
@@ -81,16 +139,40 @@ export function VoiceCapture() {
   }
 
   async function processText(text: string) {
-    const entries = splitEntries(text)
-    if (entries.length === 0) return
     setStatus('saving')
     try {
-      await saveEntries(target.key, entries)
+      if (target.key === 'calendario') {
+        const confirmation = await handleCalendarEntry(text)
+        setStatus('done')
+        respond(confirmation)
+        return
+      }
+
+      const intent = detectIntent(text)
+      if (intent.type === 'tasks_today') {
+        const answer = await answerTasksQuery(intent.memberHint)
+        setStatus('done')
+        respond(answer)
+        return
+      }
+      if (intent.type === 'shopping_list') {
+        const answer = await answerShoppingQuery()
+        setStatus('done')
+        respond(answer)
+        return
+      }
+
+      const entries = splitEntries(text)
+      if (entries.length === 0) {
+        setStatus('idle')
+        return
+      }
+      await saveEntries(target.key as 'compras' | 'tareas', entries)
       setStatus('done')
       respond(`Apuntado en ${target.label}: ${entries.join(', ')}`)
     } catch {
       setStatus('error')
-      respond('No he podido guardarlo, inténtalo de nuevo.')
+      respond('No he podido hacerlo, inténtalo de nuevo.')
     }
   }
 
@@ -153,7 +235,13 @@ export function VoiceCapture() {
 
             <p className="muted">
               Se apunta en: <strong>{target.label}</strong>
+              {target.key !== 'calendario' && ' — o pregúntame "qué tareas tengo hoy" / "qué hay en la lista de la compra"'}
             </p>
+            {target.key === 'calendario' && (
+              <p className="muted">
+                Ej.: "el 3 de septiembre, cita con el dentista a las 19 horas para Eric, aviso un día antes"
+              </p>
+            )}
 
             {dictationOk && (
               <button
@@ -176,7 +264,7 @@ export function VoiceCapture() {
                 type="text"
                 value={typedText}
                 onChange={(e) => setTypedText(e.target.value)}
-                placeholder="O escribe aquí: leche, patatas, huevos…"
+                placeholder="O escribe aquí…"
               />
               <button type="submit" disabled={status === 'saving' || !typedText.trim()}>
                 Apuntar

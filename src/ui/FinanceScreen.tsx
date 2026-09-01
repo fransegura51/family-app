@@ -14,7 +14,10 @@ import {
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
 import { deleteReceipt, getReceiptUrl, listReceipts, uploadReceipt } from '@/data/receipts'
+import { recordProductPurchase } from '@/data/products'
 import { budgetSpent, walletBalance } from '@/domain/finance'
+import { parseReceiptText } from '@/domain/receiptParser'
+import { recognizeReceiptText } from '@/services/ocr'
 import type {
   Budget,
   BudgetPeriod,
@@ -202,7 +205,10 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
 }
 
 // ---------------------------------------------------------------------
-// Tickets (Skill 10, sin OCR — eso necesita IA de pago, pendiente)
+// Tickets (Skill 10) — lectura automática con Tesseract.js (OCR local,
+// gratis) en vez de una IA de pago: basta para sacar líneas de
+// "producto ... precio", que alimentan el mismo historial de precios
+// que ya usa la Memoria de la lista de la compra.
 // ---------------------------------------------------------------------
 
 function ReceiptsTab() {
@@ -235,8 +241,9 @@ function ReceiptsTab() {
     <div>
       {error && <p className="error">{error}</p>}
       <p className="muted">
-        Sube la foto y anota establecimiento/fecha/importe a mano — la lectura automática del
-        ticket necesita una IA de pago, pendiente de que elijas proveedor.
+        Sube la foto y pulsa "Leer ticket" para rellenar productos y precios automáticamente
+        (lectura local en el móvil, sin IA de pago) — revisa el resultado antes de guardar, la
+        lectura no siempre acierta.
       </p>
       <div className="event-list">
         {receipts.map((r) => (
@@ -281,13 +288,51 @@ function ReceiptRow({ receipt, onDelete }: { receipt: Receipt; onDelete: () => v
   )
 }
 
+interface DraftLine {
+  name: string
+  price: string
+}
+
+type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
+
 function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [store, setStore] = useState('')
   const [receiptDate, setReceiptDate] = useState(toDateStr(new Date()))
   const [totalAmount, setTotalAmount] = useState('')
+  const [lines, setLines] = useState<DraftLine[]>([])
+  const [ocrStatus, setOcrStatus] = useState<OcrStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  async function handleReadTicket() {
+    if (!file) return
+    setOcrStatus('reading')
+    setError(null)
+    try {
+      const text = await recognizeReceiptText(file)
+      const parsed = parseReceiptText(text)
+      if (parsed.date) setReceiptDate(parsed.date)
+      if (parsed.total != null) setTotalAmount(String(parsed.total))
+      setLines(parsed.lines.map((l) => ({ name: l.name, price: l.price.toFixed(2) })))
+      setOcrStatus('done')
+    } catch (err) {
+      setOcrStatus('error')
+      setError(err instanceof Error ? err.message : 'No se pudo leer el ticket')
+    }
+  }
+
+  function updateLine(index: number, patch: Partial<DraftLine>) {
+    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
+  }
+
+  function removeLine(index: number) {
+    setLines((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function addBlankLine() {
+    setLines((prev) => [...prev, { name: '', price: '' }])
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -304,9 +349,25 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
         receiptDate,
         totalAmount: totalAmount ? Number(totalAmount) : null,
       })
+
+      for (const line of lines) {
+        const price = Number(line.price)
+        if (!line.name.trim() || Number.isNaN(price)) continue
+        await recordProductPurchase({
+          name: line.name.trim(),
+          price,
+          quantity: '',
+          unit: '',
+          store,
+          date: receiptDate,
+        })
+      }
+
       setFile(null)
       setStore('')
       setTotalAmount('')
+      setLines([])
+      setOcrStatus('idle')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo subir el ticket')
@@ -323,10 +384,21 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
         <input
           type="file"
           accept="image/*,.pdf"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null)
+            setLines([])
+            setOcrStatus('idle')
+          }}
           required
         />
       </label>
+
+      {file && (
+        <button type="button" className="voice-mic-button" onClick={handleReadTicket} disabled={ocrStatus === 'reading'}>
+          {ocrStatus === 'reading' ? 'Leyendo ticket… puede tardar unos segundos' : '📷 Leer ticket'}
+        </button>
+      )}
+
       <label>
         Establecimiento
         <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
@@ -339,6 +411,37 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
         Importe total (€)
         <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
       </label>
+
+      {(ocrStatus === 'done' || lines.length > 0) && (
+        <div className="day-modal-group">
+          <p className="muted">Productos leídos — revisa y corrige antes de guardar:</p>
+          {lines.map((line, i) => (
+            <div key={i} className="receipt-line-row">
+              <input
+                type="text"
+                value={line.name}
+                onChange={(e) => updateLine(i, { name: e.target.value })}
+                placeholder="Producto"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={line.price}
+                onChange={(e) => updateLine(i, { price: e.target.value })}
+                placeholder="Precio"
+              />
+              <button type="button" className="link-button" onClick={() => removeLine(i)}>
+                ✕
+              </button>
+            </div>
+          ))}
+          {lines.length === 0 && <p className="muted">No se ha reconocido ningún producto.</p>}
+          <button type="button" className="link-button" onClick={addBlankLine}>
+            + Añadir línea
+          </button>
+        </div>
+      )}
+
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Subiendo…' : 'Guardar ticket'}

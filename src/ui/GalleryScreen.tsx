@@ -47,6 +47,9 @@ export function GalleryScreen() {
               ✕
             </button>
             {p.caption && <p className="muted">{p.caption}</p>}
+            <p className="muted gallery-item-date">
+              {new Date(p.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
           </div>
         ))}
         {photos.length === 0 && <p className="muted">No hay fotos todavía.</p>}

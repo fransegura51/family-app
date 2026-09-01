@@ -7,6 +7,7 @@ import {
   deleteBudget,
   deleteExpense,
   deleteGoal,
+  deleteWalletTransaction,
   listBudgets,
   listExpenses,
   listGoals,
@@ -937,6 +938,13 @@ function KidsFinanceTab() {
                 {t.amount.toFixed(2)} € — {t.description}
               </strong>
             </div>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => deleteWalletTransaction(t.id).then(reload)}
+            >
+              Eliminar
+            </button>
           </div>
         ))}
         {memberTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}

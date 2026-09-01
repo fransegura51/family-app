@@ -147,6 +147,11 @@ export async function addWalletTransaction(input: {
   if (error) throw error
 }
 
+export async function deleteWalletTransaction(id: string): Promise<void> {
+  const { error } = await supabase.from('kid_wallet_transactions').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function listGoals(): Promise<KidGoal[]> {
   const { data, error } = await supabase
     .from('kid_goals')

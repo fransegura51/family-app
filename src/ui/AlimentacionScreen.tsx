@@ -12,6 +12,8 @@ import {
   setMenuEntry,
 } from '@/data/food'
 import { listFamilyMembers } from '@/data/family'
+import { searchRecipe } from '@/services/recipeSearch'
+import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
 import type { FamilyMember, FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
 
 const SUB_TABS = ['Menú', 'Recetas', 'Registro'] as const
@@ -247,12 +249,45 @@ function RecipesTab() {
   )
 }
 
+type SearchStatus = 'idle' | 'searching' | 'not-found' | 'error'
+
 function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
   const [ingredients, setIngredients] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
+  const [found, setFound] = useState<ParsedRecipe | null>(null)
+
+  async function handleSearch() {
+    if (!title.trim()) return
+    setSearchStatus('searching')
+    setFound(null)
+    try {
+      const page = await searchRecipe(title.trim())
+      if (!page) {
+        setSearchStatus('not-found')
+        return
+      }
+      const parsed = parseWikibooksRecipe(page.title, page.wikitext)
+      if (parsed.ingredients.length === 0 && parsed.steps.length === 0) {
+        setSearchStatus('not-found')
+        return
+      }
+      setFound(parsed)
+      setSearchStatus('idle')
+    } catch {
+      setSearchStatus('error')
+    }
+  }
+
+  function useFoundRecipe() {
+    if (!found) return
+    setIngredients(found.ingredients.map((i) => `${i}, ,`).join('\n'))
+    setNotes(found.steps.map((s, i) => `${i + 1}. ${s}`).join('\n'))
+    setFound(null)
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -263,6 +298,7 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
       setTitle('')
       setNotes('')
       setIngredients('')
+      setSearchStatus('idle')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear la receta')
@@ -276,8 +312,16 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
       <h2>Nueva receta</h2>
       <label>
         Título
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Tortilla de patatas" />
       </label>
+      <button type="button" className="link-button" onClick={handleSearch} disabled={!title.trim() || searchStatus === 'searching'}>
+        {searchStatus === 'searching' ? 'Buscando en Internet…' : '🔍 Buscar receta en Internet'}
+      </button>
+      {searchStatus === 'not-found' && (
+        <p className="muted">No he encontrado "{title}" en el recetario de Wikibooks — escríbela a mano abajo.</p>
+      )}
+      {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
+
       <label>
         Ingredientes (uno por línea: nombre, cantidad, unidad)
         <textarea
@@ -288,13 +332,55 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
         />
       </label>
       <label>
-        Notas
-        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        Preparación / notas
+        <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Crear receta'}
       </button>
+
+      {found && (
+        <div className="modal-overlay" onClick={() => setFound(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {found.title}
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setFound(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <p className="muted">Encontrada en el recetario abierto de Wikibooks.</p>
+
+            {found.ingredients.length > 0 && (
+              <div className="day-modal-group">
+                <h3>Ingredientes</h3>
+                <ul className="ingredient-list">
+                  {found.ingredients.map((ing, i) => (
+                    <li key={i}>{ing}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {found.steps.length > 0 && (
+              <div className="day-modal-group">
+                <h3>Preparación</h3>
+                <ol className="ingredient-list">
+                  {found.steps.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            <button type="button" onClick={useFoundRecipe}>
+              Usar esta receta
+            </button>
+          </div>
+        </div>
+      )}
     </form>
   )
 }

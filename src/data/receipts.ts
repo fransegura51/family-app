@@ -77,6 +77,21 @@ export async function uploadReceipt(input: {
   if (receiptError) throw receiptError
 }
 
+export async function updateReceipt(
+  id: string,
+  input: { store: string; receiptDate: string; totalAmount: number | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('receipts')
+    .update({
+      store: input.store || null,
+      receipt_date: input.receiptDate,
+      total_amount: input.totalAmount,
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function getReceiptUrl(storagePath: string): Promise<string> {
   const { data, error } = await supabase.storage.from('receipts').createSignedUrl(storagePath, 3600)
   if (error) throw error

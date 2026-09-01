@@ -13,7 +13,7 @@ import {
   listWalletTransactions,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
-import { deleteReceipt, getReceiptUrl, listReceipts, uploadReceipt } from '@/data/receipts'
+import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { recordProductPurchase } from '@/data/products'
 import { budgetSpent, walletBalance } from '@/domain/finance'
 import { parseReceiptText } from '@/domain/receiptParser'
@@ -215,6 +215,7 @@ function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
@@ -246,9 +247,26 @@ function ReceiptsTab() {
         lectura no siempre acierta.
       </p>
       <div className="event-list">
-        {receipts.map((r) => (
-          <ReceiptRow key={r.id} receipt={r} onDelete={() => handleDelete(r)} />
-        ))}
+        {receipts.map((r) =>
+          editingId === r.id ? (
+            <EditReceiptForm
+              key={r.id}
+              receipt={r}
+              onDone={() => {
+                setEditingId(null)
+                reload()
+              }}
+              onCancel={() => setEditingId(null)}
+            />
+          ) : (
+            <ReceiptRow
+              key={r.id}
+              receipt={r}
+              onEdit={() => setEditingId(r.id)}
+              onDelete={() => handleDelete(r)}
+            />
+          ),
+        )}
         {receipts.length === 0 && <p className="muted">No hay tickets guardados.</p>}
       </div>
       <AddReceiptForm onAdded={reload} />
@@ -256,7 +274,15 @@ function ReceiptsTab() {
   )
 }
 
-function ReceiptRow({ receipt, onDelete }: { receipt: Receipt; onDelete: () => void }) {
+function ReceiptRow({
+  receipt,
+  onEdit,
+  onDelete,
+}: {
+  receipt: Receipt
+  onEdit: () => void
+  onDelete: () => void
+}) {
   const [url, setUrl] = useState<string | null>(null)
 
   return (
@@ -281,10 +307,75 @@ function ReceiptRow({ receipt, onDelete }: { receipt: Receipt; onDelete: () => v
           </button>
         )}
       </div>
-      <button type="button" className="link-button" onClick={onDelete}>
-        Eliminar
-      </button>
+      <div className="member-card-actions">
+        <button type="button" className="link-button" onClick={onEdit}>
+          Editar
+        </button>
+        <button type="button" className="link-button" onClick={onDelete}>
+          Eliminar
+        </button>
+      </div>
     </div>
+  )
+}
+
+function EditReceiptForm({
+  receipt,
+  onDone,
+  onCancel,
+}: {
+  receipt: Receipt
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [store, setStore] = useState(receipt.store ?? '')
+  const [receiptDate, setReceiptDate] = useState(receipt.receiptDate)
+  const [totalAmount, setTotalAmount] = useState(receipt.totalAmount != null ? String(receipt.totalAmount) : '')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await updateReceipt(receipt.id, {
+        store,
+        receiptDate,
+        totalAmount: totalAmount ? Number(totalAmount) : null,
+      })
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <label>
+        Establecimiento
+        <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+      </label>
+      <label>
+        Fecha
+        <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} required />
+      </label>
+      <label>
+        Importe total (€)
+        <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="form-actions">
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
   )
 }
 

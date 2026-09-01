@@ -632,6 +632,7 @@ function EditEventForm({
   const [freq, setFreq] = useState(initialRecurrence.freq)
   const [byDay, setByDay] = useState<string[]>(initialRecurrence.byDay)
   const [skipHolidays, setSkipHolidays] = useState(initialRecurrence.skipHolidays)
+  const [recurrenceUntil, setRecurrenceUntil] = useState(initialRecurrence.until ?? '')
   const [reminders, setReminders] = useState<EventReminder[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
   const [error, setError] = useState<string | null>(null)
@@ -657,7 +658,7 @@ function EditEventForm({
         startAt,
         endAt,
         allDay,
-        recurrenceRule: buildRecurrenceRule(freq, byDay, skipHolidays),
+        recurrenceRule: buildRecurrenceRule(freq, byDay, skipHolidays, recurrenceUntil || null),
         reminders,
         memberIds: selectedMembers,
       })
@@ -712,10 +713,16 @@ function EditEventForm({
         </div>
       )}
       {freq && (
-        <label className="checkbox-label">
-          <input type="checkbox" checked={skipHolidays} onChange={(e) => setSkipHolidays(e.target.checked)} />
-          Excluir festivos (según el calendario de festivos enlazado en Externos)
-        </label>
+        <>
+          <label>
+            Repetir hasta (opcional)
+            <input type="date" value={recurrenceUntil} onChange={(e) => setRecurrenceUntil(e.target.value)} />
+          </label>
+          <label className="checkbox-label">
+            <input type="checkbox" checked={skipHolidays} onChange={(e) => setSkipHolidays(e.target.checked)} />
+            Excluir festivos (según el calendario de festivos enlazado en Externos)
+          </label>
+        </>
       )}
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
@@ -752,6 +759,7 @@ function AddEventForm({
   const [freq, setFreq] = useState('')
   const [byDay, setByDay] = useState<string[]>([])
   const [skipHolidays, setSkipHolidays] = useState(false)
+  const [recurrenceUntil, setRecurrenceUntil] = useState('')
   const [reminders, setReminders] = useState<EventReminder[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -778,7 +786,7 @@ function AddEventForm({
         startAt,
         endAt,
         allDay,
-        recurrenceRule: buildRecurrenceRule(freq, byDay, skipHolidays),
+        recurrenceRule: buildRecurrenceRule(freq, byDay, skipHolidays, recurrenceUntil || null),
         reminders,
         memberIds: selectedMembers,
       })
@@ -786,6 +794,7 @@ function AddEventForm({
       setDate(defaultDate ?? '')
       setTime('')
       setEndTime('')
+      setRecurrenceUntil('')
       setReminders([])
       setSelectedMembers([])
       onAdded()
@@ -838,6 +847,12 @@ function AddEventForm({
           <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)</p>
           <WeekdayPicker selected={byDay} onToggle={toggleDay} />
         </div>
+      )}
+      {freq && (
+        <label>
+          Repetir hasta (opcional)
+          <input type="date" value={recurrenceUntil} onChange={(e) => setRecurrenceUntil(e.target.value)} />
+        </label>
       )}
       {freq && (
         <label className="checkbox-label">

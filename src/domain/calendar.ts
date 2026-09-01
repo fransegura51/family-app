@@ -39,7 +39,9 @@ export function getMonthGridDays(year: number, month: number): MonthDay[] {
 // valor de Date.getDay() (0=domingo..6=sábado) para poder comparar.
 const BYDAY_TO_JS_DAY: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
 
-function parseRecurrenceRule(rule: string): { freq: string; byDay: number[]; skipHolidays: boolean } {
+function parseRecurrenceRule(
+  rule: string,
+): { freq: string; byDay: number[]; skipHolidays: boolean; until: string | null } {
   const parts = Object.fromEntries(
     rule.split(';').map((p) => p.split('=') as [string, string]),
   )
@@ -47,7 +49,12 @@ function parseRecurrenceRule(rule: string): { freq: string; byDay: number[]; ski
     .split(',')
     .map((code) => BYDAY_TO_JS_DAY[code])
     .filter((n): n is number => n !== undefined)
-  return { freq: parts.FREQ ?? '', byDay, skipHolidays: parts.SKIPHOLIDAYS === '1' }
+  return {
+    freq: parts.FREQ ?? '',
+    byDay,
+    skipHolidays: parts.SKIPHOLIDAYS === '1',
+    until: parts.UNTIL ?? null,
+  }
 }
 
 // Ocurrencias de un evento/tarea dentro de un rango [rangeStartStr, rangeEndStr]
@@ -79,7 +86,7 @@ export function expandOccurrences(
   const rangeEnd = new Date(rangeEndStr + 'T00:00')
   const cursor = new Date(startDate + 'T00:00')
   const results: string[] = []
-  const { freq, byDay, skipHolidays } = parseRecurrenceRule(event.recurrenceRule)
+  const { freq, byDay, skipHolidays, until } = parseRecurrenceRule(event.recurrenceRule)
 
   // Límite de seguridad: nunca iterar más de ~10 años de ocurrencias.
   let guard = 0
@@ -135,6 +142,7 @@ export function expandOccurrences(
   // esa fecha de las ocurrencias generadas.
   const exceptionDates = event.exceptionDates
   return results.filter((d) => {
+    if (until && d > until) return false
     if (skipHolidays && holidayDates?.has(d)) return false
     if (exceptionDates?.includes(d)) return false
     return true

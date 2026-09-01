@@ -12,6 +12,7 @@ export interface ParsedIcsEvent {
   startAt: string // ISO
   endAt: string | null // ISO
   allDay: boolean
+  recurrenceRule: string | null // formato interno (RRULE-lite), no el RRULE crudo del .ics
 }
 
 // Las líneas largas vienen "plegadas" en varias líneas físicas — una
@@ -71,6 +72,36 @@ function parseIcsDate(value: string, isDateOnly: boolean): { iso: string; allDay
   return { iso, allDay: false }
 }
 
+// Solo estos 4 los sabe expandir el calendario propio (domain/calendar.ts
+// expandOccurrences) — cualquier otro FREQ del .ics (p. ej. HOURLY, o
+// reglas con BYMONTHDAY/BYSETPOS complejas) se descarta y el evento se
+// trata como uno suelto, en su primera fecha, en vez de arriesgarse a
+// expandirlo mal o a que no aparezca ninguna ocurrencia.
+const SUPPORTED_FREQ = new Set(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'])
+
+// El RRULE de un .ics real (p. ej. "FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20261231T000000Z")
+// es casi compatible con el RRULE-lite propio — la única diferencia real
+// es el formato de UNTIL (con hora y Z en el .ics, solo fecha aquí). Se
+// ignora deliberadamente COUNT (repetir N veces): no hay equivalente en
+// el modelo propio, así que esas reglas se expanden sin límite de
+// repeticiones (acotado igualmente por el tope de seguridad de
+// expandOccurrences, ~10 años) — mejor de más que no expandir nada.
+function normalizeIcsRRule(raw: string): string | null {
+  const parts = Object.fromEntries(raw.split(';').map((p) => p.split('=') as [string, string]))
+  const freq = parts.FREQ
+  if (!freq || !SUPPORTED_FREQ.has(freq)) return null
+
+  const out = [`FREQ=${freq}`]
+  if (parts.BYDAY) out.push(`BYDAY=${parts.BYDAY}`)
+  const interval = Number(parts.INTERVAL)
+  if (Number.isFinite(interval) && interval > 1) out.push(`INTERVAL=${interval}`)
+  if (parts.UNTIL) {
+    const m = parts.UNTIL.match(/^(\d{4})(\d{2})(\d{2})/)
+    if (m) out.push(`UNTIL=${m[1]}-${m[2]}-${m[3]}`)
+  }
+  return out.join(';')
+}
+
 export function parseIcs(icsText: string): ParsedIcsEvent[] {
   const lines = unfold(icsText)
   const events: ParsedIcsEvent[] = []
@@ -94,12 +125,14 @@ export function parseIcs(icsText: string): ParsedIcsEvent[] {
           if (start) {
             const dtend = current.DTEND
             const end = dtend ? parseIcsDate(dtend.value, dtend.params.VALUE === 'DATE') : null
+            const recurrenceRule = current.RRULE ? normalizeIcsRRule(current.RRULE.value) : null
             events.push({
               uid,
               title: summary,
               startAt: start.iso,
               endAt: end ? end.iso : null,
               allDay: start.allDay,
+              recurrenceRule,
             })
           }
         }

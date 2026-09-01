@@ -997,9 +997,11 @@ function AddEventForm({
 // "Enlazar calendario del móvil": importa citas de Google Calendar,
 // Outlook, Apple/iPhone o cualquier otro proveedor vía su URL .ics
 // (misma pestaña que pidió la usuaria — mes propio, separado de los
-// eventos nativos para no mezclarlos). RRULE no se expande todavía: un
-// evento recurrente del calendario externo solo aparece en su primera
-// ocurrencia importada.
+// eventos nativos para no mezclarlos). Los eventos recurrentes del
+// .ics se expanden con el mismo RRULE-lite que los eventos nativos
+// (ver icsParser.ts) — solo se descarta la recurrencia si el .ics usa
+// un FREQ que no se sabe expandir, y entonces el evento se trata como
+// uno suelto en su primera fecha, no se pierde entero.
 function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
   const [feeds, setFeeds] = useState<ExternalCalendarFeed[]>([])
   const [extEvents, setExtEvents] = useState<ExternalCalendarEvent[]>([])
@@ -1049,23 +1051,28 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
   const feedById = useMemo(() => new Map(feeds.map((f) => [f.id, f])), [feeds])
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
 
-  function localDateStr(iso: string): string {
-    const d = new Date(iso)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
-
   const monthDays = useMemo(() => getMonthGridDays(visibleYear, visibleMonth), [visibleYear, visibleMonth])
 
+  // Un evento recurrente del calendario externo (p. ej. una reunión
+  // semanal real de Google Calendar) se expande igual que los eventos
+  // nativos — antes solo se guardaba su primera fecha, así que la
+  // mayoría de semanas del mes se veían vacías aunque el evento sí
+  // existiera, dando la sensación de que el calendario no se había
+  // enlazado bien.
   const eventsByDate = useMemo(() => {
     const map = new Map<string, ExternalCalendarEvent[]>()
+    if (monthDays.length === 0) return map
+    const rangeStart = monthDays[0].dateStr
+    const rangeEnd = monthDays[monthDays.length - 1].dateStr
     for (const ev of extEvents) {
-      const dateStr = localDateStr(ev.startAt)
-      const list = map.get(dateStr) ?? []
-      list.push(ev)
-      map.set(dateStr, list)
+      for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd)) {
+        const list = map.get(dateStr) ?? []
+        list.push(ev)
+        map.set(dateStr, list)
+      }
     }
     return map
-  }, [extEvents])
+  }, [extEvents, monthDays])
 
   function dotColorForFeed(feedId: string): string {
     const feed = feedById.get(feedId)

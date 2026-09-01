@@ -22,6 +22,7 @@ export interface ExternalCalendarEvent {
   startAt: string
   endAt: string | null
   allDay: boolean
+  recurrenceRule: string | null
 }
 
 interface FeedRow {
@@ -112,19 +113,28 @@ export async function deleteFeed(id: string): Promise<void> {
 export async function listExternalEvents(): Promise<ExternalCalendarEvent[]> {
   const { data, error } = await supabase
     .from('external_calendar_events')
-    .select('id, feed_id, title, start_at, end_at, all_day')
+    .select('id, feed_id, title, start_at, end_at, all_day, recurrence_rule')
     .order('start_at', { ascending: true })
   if (error) throw error
-  return (data as { id: string; feed_id: string; title: string; start_at: string; end_at: string | null; all_day: boolean }[]).map(
-    (row) => ({
-      id: row.id,
-      feedId: row.feed_id,
-      title: row.title,
-      startAt: row.start_at,
-      endAt: row.end_at,
-      allDay: row.all_day,
-    }),
-  )
+  return (
+    data as {
+      id: string
+      feed_id: string
+      title: string
+      start_at: string
+      end_at: string | null
+      all_day: boolean
+      recurrence_rule: string | null
+    }[]
+  ).map((row) => ({
+    id: row.id,
+    feedId: row.feed_id,
+    title: row.title,
+    startAt: row.start_at,
+    endAt: row.end_at,
+    allDay: row.all_day,
+    recurrenceRule: row.recurrence_rule,
+  }))
 }
 
 // Descarga (vía la función de servidor, para saltar CORS), parsea y
@@ -169,6 +179,7 @@ export async function syncFeed(feedId: string): Promise<{ count: number }> {
           start_at: e.startAt,
           end_at: e.endAt,
           all_day: e.allDay,
+          recurrence_rule: e.recurrenceRule,
         })),
       )
       if (insertError) throw insertError

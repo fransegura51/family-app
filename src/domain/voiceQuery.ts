@@ -17,11 +17,21 @@ export function normalize(text: string): string {
     .trim()
 }
 
+// OJO: nunca la frase suelta "lista de la compra" — eso también aparece
+// en frases que NO son una pregunta ("Pepa, vamos a hacer la lista de
+// la compra, leche y pan"), y antes se confundía con "qué hay en la
+// lista de la compra" y respondía con lo que ya había en vez de añadir
+// los productos nuevos (bug real). Solo cuentan como pregunta las
+// formas que de verdad preguntan algo.
 const SHOPPING_PATTERNS = [
-  'lista de la compra',
+  'que hay en la lista de la compra',
+  'que hay en la compra',
   'que hay que comprar',
   'que tengo que comprar',
   'que falta en la compra',
+  'que falta en la lista de la compra',
+  'repasa la lista de la compra',
+  'repasame la lista de la compra',
 ]
 
 // En 1ª persona singular ("qué tengo que hacer"), plural ("qué tenemos

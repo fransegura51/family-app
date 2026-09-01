@@ -14,8 +14,10 @@ import {
   updateShoppingItemStatus,
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
+import { listFamilyMembers } from '@/data/family'
 import { computeProductStats } from '@/domain/products'
 import type {
+  FamilyMember,
   InventoryCategory,
   InventoryItem,
   Product,
@@ -25,6 +27,40 @@ import type {
   ShoppingItemStatus,
   ShoppingTrip,
 } from '@/domain/types'
+
+const REMINDER_OPTIONS = [
+  { value: '', label: 'Sin recordatorio' },
+  { value: '10', label: '10 min antes' },
+  { value: '30', label: '30 min antes' },
+  { value: '60', label: '1 hora antes' },
+  { value: '1440', label: '1 día antes' },
+]
+
+// Memoria de compras (Skill 09) aplicada a la propia lista: nombre
+// habitual (con marca), cantidad/unidad y último precio pagado, para no
+// tener que escribirlo todo de cero cada vez.
+interface ProductSuggestion {
+  displayName: string
+  normalizedName: string
+  quantity: string | null
+  unit: string | null
+  lastPrice: number | null
+}
+
+function buildSuggestions(products: Product[], prices: ProductPrice[]): ProductSuggestion[] {
+  return products.map((p) => {
+    const ownPrices = prices.filter((pr) => pr.productId === p.id)
+    const stats = computeProductStats(ownPrices)
+    const last = [...ownPrices].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))[0]
+    return {
+      displayName: p.displayName,
+      normalizedName: p.normalizedName,
+      quantity: last?.quantity ?? null,
+      unit: last?.unit ?? null,
+      lastPrice: stats?.lastPrice ?? null,
+    }
+  })
+}
 
 const SUB_TABS = ['Lista', 'Programadas', 'Inventario', 'Memoria'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -67,6 +103,7 @@ const PRIORITIES: { value: ShoppingItemPriority; label: string }[] = [
 
 function ShoppingListTab() {
   const [items, setItems] = useState<ShoppingItem[]>([])
+  const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [shoppingMode, setShoppingMode] = useState(false)
@@ -74,8 +111,11 @@ function ShoppingListTab() {
 
   function reload() {
     setLoading(true)
-    listShoppingItems()
-      .then(setItems)
+    Promise.all([listShoppingItems(), listProducts(), listAllProductPrices()])
+      .then(([shoppingItems, products, prices]) => {
+        setItems(shoppingItems)
+        setSuggestions(buildSuggestions(products, prices))
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
@@ -149,12 +189,17 @@ function ShoppingListTab() {
       <h2 className="section-title">Comprados</h2>
       <div className="event-list">
         {bought.map((item) => (
-          <BoughtItemRow key={item.id} item={item} onUndo={() => setStatus(item.id, 'pendiente')} />
+          <BoughtItemRow
+            key={item.id}
+            item={item}
+            suggestions={suggestions}
+            onUndo={() => setStatus(item.id, 'pendiente')}
+          />
         ))}
         {bought.length === 0 && <p className="muted">Todavía ninguno.</p>}
       </div>
 
-      {!shoppingMode && <AddShoppingItemForm onAdded={reload} />}
+      {!shoppingMode && <AddShoppingItemForm suggestions={suggestions} onAdded={reload} />}
 
       {others.length > 0 && (
         <>
@@ -185,8 +230,19 @@ function ShoppingListTab() {
 // Registrar el precio pagado es opcional (Skill 06 no lo exige), pero
 // alimenta la memoria de compras (Skill 09/11) — sin esto no hay
 // historial de precios que ofrecer.
-function BoughtItemRow({ item, onUndo }: { item: ShoppingItem; onUndo: () => void }) {
-  const [price, setPrice] = useState('')
+function BoughtItemRow({
+  item,
+  suggestions,
+  onUndo,
+}: {
+  item: ShoppingItem
+  suggestions: ProductSuggestion[]
+  onUndo: () => void
+}) {
+  const known = suggestions.find((s) => s.normalizedName === item.name.trim().toLowerCase())
+  // Precarga el último precio pagado — el usuario solo confirma o ajusta,
+  // no escribe desde cero (Skill 09).
+  const [price, setPrice] = useState(known?.lastPrice != null ? String(known.lastPrice) : '')
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -237,13 +293,37 @@ function BoughtItemRow({ item, onUndo }: { item: ShoppingItem; onUndo: () => voi
   )
 }
 
-function AddShoppingItemForm({ onAdded }: { onAdded: () => void }) {
+function AddShoppingItemForm({
+  suggestions,
+  onAdded,
+}: {
+  suggestions: ProductSuggestion[]
+  onAdded: () => void
+}) {
   const [name, setName] = useState('')
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('')
   const [priority, setPriority] = useState<ShoppingItemPriority>('normal')
+  const [matchedPrice, setMatchedPrice] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Al escribir "LE" ya aparece "Leche" (con su marca habitual) en el
+  // desplegable nativo del input; al completarlo (a mano o eligiéndolo)
+  // se rellenan cantidad/unidad/precio con lo último comprado (Skill 09)
+  // — el precio no se guarda aquí, solo se muestra como referencia hasta
+  // marcarlo comprado.
+  function handleNameChange(value: string) {
+    setName(value)
+    const match = suggestions.find((s) => s.normalizedName === value.trim().toLowerCase())
+    if (match) {
+      setQuantity(match.quantity ?? '')
+      setUnit(match.unit ?? '')
+      setMatchedPrice(match.lastPrice)
+    } else {
+      setMatchedPrice(null)
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -254,6 +334,7 @@ function AddShoppingItemForm({ onAdded }: { onAdded: () => void }) {
       setName('')
       setQuantity('')
       setUnit('')
+      setMatchedPrice(null)
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo añadir')
@@ -267,8 +348,20 @@ function AddShoppingItemForm({ onAdded }: { onAdded: () => void }) {
       <h2>Añadir producto</h2>
       <label>
         Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input
+          type="text"
+          list="product-suggestions"
+          value={name}
+          onChange={(e) => handleNameChange(e.target.value)}
+          required
+        />
+        <datalist id="product-suggestions">
+          {suggestions.map((s) => (
+            <option key={s.normalizedName} value={s.displayName} />
+          ))}
+        </datalist>
       </label>
+      {matchedPrice != null && <p className="muted">Último precio: {matchedPrice.toFixed(2)} €</p>}
       <div className="inline-fields">
         <label>
           Cantidad
@@ -303,13 +396,17 @@ function AddShoppingItemForm({ onAdded }: { onAdded: () => void }) {
 
 function TripsTab() {
   const [trips, setTrips] = useState<ShoppingTrip[]>([])
+  const [members, setMembers] = useState<FamilyMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
-    listShoppingTrips()
-      .then(setTrips)
+    Promise.all([listShoppingTrips(), listFamilyMembers()])
+      .then(([t, m]) => {
+        setTrips(t)
+        setMembers(m)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
@@ -323,18 +420,27 @@ function TripsTab() {
       {error && <p className="error">{error}</p>}
       <div className="event-list">
         {trips.map((trip) => (
-          <TripCard key={trip.id} trip={trip} onChanged={reload} />
+          <TripCard key={trip.id} trip={trip} members={members} onChanged={reload} />
         ))}
         {trips.length === 0 && <p className="muted">No hay compras programadas.</p>}
       </div>
-      <AddTripForm onAdded={reload} />
+      <AddTripForm members={members} onAdded={reload} />
     </div>
   )
 }
 
-function TripCard({ trip, onChanged }: { trip: ShoppingTrip; onChanged: () => void }) {
+function TripCard({
+  trip,
+  members,
+  onChanged,
+}: {
+  trip: ShoppingTrip
+  members: FamilyMember[]
+  onChanged: () => void
+}) {
   const [amount, setAmount] = useState('')
   const [completing, setCompleting] = useState(false)
+  const assignedMember = members.find((m) => m.id === trip.memberId)
 
   async function handleComplete() {
     if (!amount) return
@@ -351,6 +457,15 @@ function TripCard({ trip, onChanged }: { trip: ShoppingTrip; onChanged: () => vo
           {trip.budget != null && ` · presupuesto ${trip.budget} €`}
           {trip.status === 'completada' && ` · gastado ${trip.actualAmount} €`}
         </p>
+        {assignedMember && (
+          <p className="muted">
+            <span className="avatar avatar-sm" style={{ background: assignedMember.color }}>
+              {assignedMember.name.charAt(0)}
+            </span>{' '}
+            {assignedMember.name}
+            {trip.calendarEventId && ' · 🔔 en su calendario'}
+          </p>
+        )}
       </div>
       {trip.status === 'planificada' && !completing && (
         <button type="button" className="task-toggle" onClick={() => setCompleting(true)}>
@@ -372,17 +487,19 @@ function TripCard({ trip, onChanged }: { trip: ShoppingTrip; onChanged: () => vo
           </button>
         </>
       )}
-      <button type="button" className="link-button" onClick={() => deleteShoppingTrip(trip.id).then(onChanged)}>
+      <button type="button" className="link-button" onClick={() => deleteShoppingTrip(trip).then(onChanged)}>
         Eliminar
       </button>
     </div>
   )
 }
 
-function AddTripForm({ onAdded }: { onAdded: () => void }) {
+function AddTripForm({ members, onAdded }: { members: FamilyMember[]; onAdded: () => void }) {
   const [scheduledDate, setScheduledDate] = useState('')
   const [store, setStore] = useState('')
   const [budget, setBudget] = useState('')
+  const [memberId, setMemberId] = useState('')
+  const [reminderMinutes, setReminderMinutes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -395,9 +512,13 @@ function AddTripForm({ onAdded }: { onAdded: () => void }) {
         scheduledDate: scheduledDate || null,
         store,
         budget: budget ? Number(budget) : null,
+        memberId: memberId || null,
+        reminderMinutes: reminderMinutes ? Number(reminderMinutes) : null,
       })
       setStore('')
       setBudget('')
+      setMemberId('')
+      setReminderMinutes('')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear')
@@ -421,6 +542,29 @@ function AddTripForm({ onAdded }: { onAdded: () => void }) {
         Presupuesto (€)
         <input type="number" step="0.01" value={budget} onChange={(e) => setBudget(e.target.value)} />
       </label>
+      <label>
+        Asignar a
+        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+          <option value="">Nadie en particular</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {memberId && (
+        <label>
+          Recordatorio en su calendario
+          <select value={reminderMinutes} onChange={(e) => setReminderMinutes(e.target.value)}>
+            {REMINDER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Programar'}

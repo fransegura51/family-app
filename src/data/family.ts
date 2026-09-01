@@ -19,6 +19,7 @@ export async function addFamilyMember(input: {
   name: string
   memberType: MemberType
   color: string
+  birthDate: string | null
 }): Promise<void> {
   // family_id no se pasa desde el cliente: la política RLS de INSERT ya
   // exige family_id = current_family_id(), así que lo fijamos igual aquí
@@ -38,17 +39,23 @@ export async function addFamilyMember(input: {
     name: input.name,
     member_type: input.memberType,
     color: input.color,
+    birth_date: input.birthDate,
   })
   if (error) throw error
 }
 
 export async function updateFamilyMember(
   id: string,
-  input: { name: string; memberType: MemberType; color: string },
+  input: { name: string; memberType: MemberType; color: string; birthDate: string | null },
 ): Promise<void> {
   const { error } = await supabase
     .from('family_members')
-    .update({ name: input.name, member_type: input.memberType, color: input.color })
+    .update({
+      name: input.name,
+      member_type: input.memberType,
+      color: input.color,
+      birth_date: input.birthDate,
+    })
     .eq('id', id)
   if (error) throw error
 }

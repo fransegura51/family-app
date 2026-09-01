@@ -85,6 +85,8 @@ export interface ShoppingTrip {
   budget: number | null
   actualAmount: number | null
   status: TripStatus
+  memberId: string | null
+  calendarEventId: string | null
 }
 
 export interface ShoppingItem {
@@ -254,6 +256,33 @@ export interface Receipt {
   totalAmount: number | null
   expenseId: string | null
   notes: string | null
+}
+
+export interface Contact {
+  id: string
+  familyId: string
+  name: string
+  category: string | null
+  phone: string | null
+  email: string | null
+  notes: string | null
+}
+
+export interface GalleryPhoto {
+  id: string
+  familyId: string
+  storagePath: string
+  caption: string | null
+  createdAt: string
+}
+
+export interface MemberDocument {
+  id: string
+  familyId: string
+  memberId: string | null
+  storagePath: string
+  title: string
+  category: string | null
 }
 
 export interface CalendarEvent {

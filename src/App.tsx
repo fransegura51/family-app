@@ -14,6 +14,10 @@ import { NavShell } from '@/ui/NavShell'
 import { ReminderWatcher } from '@/ui/ReminderWatcher'
 import { AutomationWatcher } from '@/ui/AutomationWatcher'
 import { ActivityScreen } from '@/ui/ActivityScreen'
+import { BirthdaysScreen } from '@/ui/BirthdaysScreen'
+import { ContactsScreen } from '@/ui/ContactsScreen'
+import { GalleryScreen } from '@/ui/GalleryScreen'
+import { DocumentsScreen } from '@/ui/DocumentsScreen'
 
 export function App() {
   const { session, profile, loading, refreshProfile } = useSession()
@@ -45,6 +49,10 @@ export function App() {
           <Route path="/dinero" element={<FinanceScreen />} />
           <Route path="/ubicacion" element={<LocationScreen role={profile.role} />} />
           <Route path="/actividad" element={<ActivityScreen />} />
+          <Route path="/cumpleanos" element={<BirthdaysScreen />} />
+          <Route path="/contactos" element={<ContactsScreen />} />
+          <Route path="/galeria" element={<GalleryScreen />} />
+          <Route path="/documentos" element={<DocumentsScreen />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -82,7 +82,7 @@ export async function deleteShoppingItem(id: string): Promise<void> {
 export async function listShoppingTrips(): Promise<ShoppingTrip[]> {
   const { data, error } = await supabase
     .from('shopping_trips')
-    .select('id, family_id, scheduled_date, store, budget, actual_amount, status')
+    .select('id, family_id, scheduled_date, store, budget, actual_amount, status, member_id, calendar_event_id')
     .order('scheduled_date', { ascending: true, nullsFirst: false })
   if (error) throw error
   return data.map((r) => ({
@@ -93,20 +93,54 @@ export async function listShoppingTrips(): Promise<ShoppingTrip[]> {
     budget: r.budget,
     actualAmount: r.actual_amount,
     status: r.status as TripStatus,
+    memberId: r.member_id,
+    calendarEventId: r.calendar_event_id,
   }))
 }
 
+// Si se asigna a un miembro, crea también el evento de calendario (con
+// recordatorio real) para que le suene el aviso — "se lo asignas al
+// calendario de Paco" no puede quedarse en un campo de texto suelto.
 export async function createShoppingTrip(input: {
   scheduledDate: string | null
   store: string
   budget: number | null
+  memberId: string | null
+  reminderMinutes: number | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
+  const { data: userResult } = await supabase.auth.getUser()
+
+  let calendarEventId: string | null = null
+  if (input.memberId && input.scheduledDate) {
+    const { data: event, error: eventError } = await supabase
+      .from('calendar_events')
+      .insert({
+        family_id: familyId,
+        title: `Ir a comprar${input.store ? ` a ${input.store}` : ''}`,
+        start_at: new Date(`${input.scheduledDate}T10:00`).toISOString(),
+        all_day: false,
+        reminder_minutes: input.reminderMinutes,
+        created_by: userResult.user?.id ?? null,
+      })
+      .select('id')
+      .single()
+    if (eventError) throw eventError
+    calendarEventId = event.id
+
+    const { error: linkError } = await supabase
+      .from('calendar_event_members')
+      .insert({ event_id: event.id, member_id: input.memberId })
+    if (linkError) throw linkError
+  }
+
   const { error } = await supabase.from('shopping_trips').insert({
     family_id: familyId,
     scheduled_date: input.scheduledDate,
     store: input.store || null,
     budget: input.budget,
+    member_id: input.memberId,
+    calendar_event_id: calendarEventId,
   })
   if (error) throw error
 }
@@ -119,8 +153,11 @@ export async function completeShoppingTrip(id: string, actualAmount: number): Pr
   if (error) throw error
 }
 
-export async function deleteShoppingTrip(id: string): Promise<void> {
-  const { error } = await supabase.from('shopping_trips').delete().eq('id', id)
+export async function deleteShoppingTrip(trip: ShoppingTrip): Promise<void> {
+  if (trip.calendarEventId) {
+    await supabase.from('calendar_events').delete().eq('id', trip.calendarEventId)
+  }
+  const { error } = await supabase.from('shopping_trips').delete().eq('id', trip.id)
   if (error) throw error
 }
 

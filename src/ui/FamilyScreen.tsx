@@ -98,6 +98,7 @@ function EditMemberForm({
   const [name, setName] = useState(member.name)
   const [memberType, setMemberType] = useState<MemberType>(member.memberType)
   const [color, setColor] = useState(member.color)
+  const [birthDate, setBirthDate] = useState(member.birthDate ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -106,7 +107,7 @@ function EditMemberForm({
     setSaving(true)
     setError(null)
     try {
-      await updateFamilyMember(member.id, { name, memberType, color })
+      await updateFamilyMember(member.id, { name, memberType, color, birthDate: birthDate || null })
       onDone()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar')
@@ -135,6 +136,10 @@ function EditMemberForm({
         Color
         <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
       </label>
+      <label>
+        Fecha de nacimiento (opcional)
+        <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+      </label>
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
         <button type="submit" disabled={saving}>
@@ -152,6 +157,7 @@ function AddMemberForm({ onAdded }: { onAdded: () => void }) {
   const [name, setName] = useState('')
   const [memberType, setMemberType] = useState<MemberType>('child')
   const [color, setColor] = useState('#4C6EF5')
+  const [birthDate, setBirthDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -160,8 +166,9 @@ function AddMemberForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      await addFamilyMember({ name, memberType, color })
+      await addFamilyMember({ name, memberType, color, birthDate: birthDate || null })
       setName('')
+      setBirthDate('')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo añadir el miembro')
@@ -190,6 +197,10 @@ function AddMemberForm({ onAdded }: { onAdded: () => void }) {
       <label>
         Color
         <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
+      </label>
+      <label>
+        Fecha de nacimiento (opcional)
+        <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
       </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>

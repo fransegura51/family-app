@@ -25,6 +25,10 @@ export function HomeScreen({ profile }: { profile: Profile }) {
         <HomeCard title="Alimentación" body="Menú de hoy" to="/alimentacion" />
         <HomeCard title="Dinero" body="Resumen del mes" to="/dinero" />
         <HomeCard title="Ubicación y avisos" body="Opcional, desactivado por defecto" to="/ubicacion" />
+        <HomeCard title="Cumpleaños" body="Próximos en la familia" to="/cumpleanos" />
+        <HomeCard title="Contactos" body="Colegio, médico, emergencias" to="/contactos" />
+        <HomeCard title="Galería" body="Fotos de la familia" to="/galeria" />
+        <HomeCard title="Documentos" body="Por cada miembro" to="/documentos" />
       </div>
     </div>
   )

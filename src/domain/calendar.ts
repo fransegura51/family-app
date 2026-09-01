@@ -130,6 +130,23 @@ export function expandOccurrences(
   return results
 }
 
+// Colores a mostrar como puntitos en la cuadrícula del mes para un
+// evento — uno POR CADA miembro asignado (un evento con varios miembros
+// se ve con el color de cada uno, no solo del primero, bug real
+// detectado probando: un evento de Jennifer y Eric solo pintaba el
+// color de Jennifer). Si el evento tiene un color propio explícito, ese
+// manda; si no tiene miembros ni color, cae en gris.
+export function eventDotColors(
+  event: { color: string | null; memberIds: string[] },
+  memberColorById: Map<string, string>,
+): string[] {
+  if (event.color) return [event.color]
+  if (event.memberIds.length > 0) {
+    return event.memberIds.map((id) => memberColorById.get(id)).filter((c): c is string => !!c)
+  }
+  return ['#9ca3af']
+}
+
 export const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 export const MONTH_LABELS = [

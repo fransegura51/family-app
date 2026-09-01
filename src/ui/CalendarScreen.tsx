@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { createEvent, deleteEvent, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
-import { expandOccurrences, getMonthGridDays, MONTH_LABELS, WEEKDAY_LABELS } from '@/domain/calendar'
+import { eventDotColors, expandOccurrences, getMonthGridDays, MONTH_LABELS, WEEKDAY_LABELS } from '@/domain/calendar'
 import type { CalendarEvent, FamilyMember } from '@/domain/types'
 
 const RECURRENCE_OPTIONS = [
@@ -62,6 +62,7 @@ export function CalendarScreen() {
   )
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
+  const memberColorById = useMemo(() => new Map(members.map((m) => [m.id, m.color])), [members])
 
   const monthDays = useMemo(() => getMonthGridDays(visibleYear, visibleMonth), [visibleYear, visibleMonth])
 
@@ -164,7 +165,7 @@ export function CalendarScreen() {
             ))}
             {monthDays.map((day) => {
               const dayEvents = eventsByDate.get(day.dateStr) ?? []
-              const dots = [...new Set(dayEvents.map((e) => e.color ?? memberById.get(e.memberIds[0])?.color ?? '#9ca3af'))]
+              const dots = [...new Set(dayEvents.flatMap((e) => eventDotColors(e, memberColorById)))]
               return (
                 <button
                   type="button"

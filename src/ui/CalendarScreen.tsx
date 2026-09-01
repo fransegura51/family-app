@@ -7,6 +7,8 @@ import {
   REMINDER_UNIT_OPTIONS,
   reminderLabel,
   reminderMinutesFrom,
+  type EventReminder,
+  type ReminderAnchor,
   type ReminderUnit,
 } from '@/domain/reminders'
 import type { CalendarEvent, FamilyMember } from '@/domain/types'
@@ -51,6 +53,29 @@ export function CalendarScreen() {
   }
 
   useEffect(reload, [])
+
+  // Cuando se apunta un evento por voz (VoiceCapture vive fuera de esta
+  // pantalla, montado en toda la app), esta pantalla no se enteraba —
+  // la cuadrícula se quedaba igual hasta recargar a mano aunque el
+  // evento sí se hubiera guardado. Al recibir el aviso, se recarga y de
+  // paso se salta directamente al día en cuestión con su ventana
+  // abierta, para verlo ahí mismo.
+  useEffect(() => {
+    function handleCalendarChanged(e: Event) {
+      const date = (e as CustomEvent<{ date: string }>).detail?.date
+      reload()
+      if (date) {
+        const [y, m] = date.split('-').map(Number)
+        setVisibleYear(y)
+        setVisibleMonth(m - 1)
+        setSelectedDate(date)
+        setDayModalOpen(true)
+        setView('Mes')
+      }
+    }
+    window.addEventListener('family-app:calendar-changed', handleCalendarChanged)
+    return () => window.removeEventListener('family-app:calendar-changed', handleCalendarChanged)
+  }, [])
 
   const filteredEvents = useMemo(
     () =>
@@ -356,8 +381,12 @@ function EventCard({
           dateStyle: 'medium',
           timeStyle: ev.allDay ? undefined : 'short',
         })}
+        {!ev.allDay &&
+          ev.endAt &&
+          ` – ${new Date(ev.endAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`}
         {ev.recurrenceRule && ' · se repite'}
-        {ev.reminders.length > 0 && ` · 🔔 ${ev.reminders.map(reminderLabel).join(', ')}`}
+        {ev.reminders.length > 0 &&
+          ` · 🔔 ${ev.reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}`}
       </p>
       <div className="member-chips">
         {ev.memberIds.map((id) => {
@@ -409,26 +438,41 @@ function MemberPicker({
 }
 
 // Varios recordatorios por evento, cada uno en la unidad que se quiera
-// (minutos/horas/días/semanas/meses/años) — antes solo se podía elegir
-// uno de una lista fija de 4 opciones.
-function ReminderPicker({ reminders, onChange }: { reminders: number[]; onChange: (next: number[]) => void }) {
+// (minutos/horas/días/semanas/meses/años) y contando desde que EMPIEZA o
+// desde que TERMINA el evento — "que me avise media hora antes de
+// recogerlo" cuenta desde el final, no desde el principio. La opción de
+// "al terminar" solo se ofrece si el evento tiene hora de fin.
+function ReminderPicker({
+  reminders,
+  onChange,
+  hasEnd,
+}: {
+  reminders: EventReminder[]
+  onChange: (next: EventReminder[]) => void
+  hasEnd: boolean
+}) {
   const [amount, setAmount] = useState('1')
   const [unit, setUnit] = useState<ReminderUnit>('horas')
+  const [anchor, setAnchor] = useState<ReminderAnchor>('start')
 
-  function addMinutes(minutes: number) {
-    if (minutes > 0 && !reminders.includes(minutes)) {
-      onChange([...reminders, minutes].sort((a, b) => a - b))
+  const sameReminder = (a: EventReminder, b: EventReminder) =>
+    a.minutesBefore === b.minutesBefore && a.anchor === b.anchor
+
+  function add(minutesBefore: number, addAnchor: ReminderAnchor) {
+    const next = { minutesBefore, anchor: addAnchor }
+    if (minutesBefore > 0 && !reminders.some((r) => sameReminder(r, next))) {
+      onChange([...reminders, next].sort((a, b) => a.minutesBefore - b.minutesBefore))
     }
   }
 
   function addCustom() {
     const n = Number(amount)
     if (!n || n <= 0) return
-    addMinutes(reminderMinutesFrom(n, unit))
+    add(reminderMinutesFrom(n, unit), anchor)
   }
 
-  function remove(minutes: number) {
-    onChange(reminders.filter((m) => m !== minutes))
+  function remove(target: EventReminder) {
+    onChange(reminders.filter((r) => !sameReminder(r, target)))
   }
 
   return (
@@ -436,17 +480,42 @@ function ReminderPicker({ reminders, onChange }: { reminders: number[]; onChange
       <p className="muted">Recordatorios</p>
       {reminders.length > 0 && (
         <div className="filter-row">
-          {reminders.map((m) => (
-            <button type="button" key={m} className="chip chip-active" onClick={() => remove(m)}>
-              🔔 {reminderLabel(m)} ✕
+          {reminders.map((r) => (
+            <button
+              type="button"
+              key={`${r.minutesBefore}-${r.anchor}`}
+              className="chip chip-active"
+              onClick={() => remove(r)}
+            >
+              🔔 {reminderLabel(r.minutesBefore, r.anchor)} ✕
             </button>
           ))}
         </div>
       )}
+
+      {hasEnd && (
+        <div className="filter-row">
+          <button
+            type="button"
+            className={'chip' + (anchor === 'start' ? ' chip-active' : '')}
+            onClick={() => setAnchor('start')}
+          >
+            Antes de empezar
+          </button>
+          <button
+            type="button"
+            className={'chip' + (anchor === 'end' ? ' chip-active' : '')}
+            onClick={() => setAnchor('end')}
+          >
+            Antes de terminar
+          </button>
+        </div>
+      )}
+
       <div className="filter-row">
         {REMINDER_PRESETS.map((m) => (
-          <button type="button" key={m} className="chip" onClick={() => addMinutes(m)}>
-            {reminderLabel(m)}
+          <button type="button" key={m} className="chip" onClick={() => add(m, anchor)}>
+            {reminderLabel(m, anchor)}
           </button>
         ))}
       </div>
@@ -495,9 +564,14 @@ function EditEventForm({
   const [time, setTime] = useState(
     event.allDay ? '' : `${pad(start.getHours())}:${pad(start.getMinutes())}`,
   )
+  const [endTime, setEndTime] = useState(() => {
+    if (event.allDay || !event.endAt) return ''
+    const end = new Date(event.endAt)
+    return `${pad(end.getHours())}:${pad(end.getMinutes())}`
+  })
   const [allDay, setAllDay] = useState(event.allDay)
   const [recurrenceRule, setRecurrenceRule] = useState(event.recurrenceRule ?? '')
-  const [reminders, setReminders] = useState<number[]>(event.reminders)
+  const [reminders, setReminders] = useState<EventReminder[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -512,9 +586,11 @@ function EditEventForm({
     setError(null)
     try {
       const startAt = new Date(`${date}T${allDay ? '00:00' : time || '00:00'}`).toISOString()
+      const endAt = !allDay && endTime ? new Date(`${date}T${endTime}`).toISOString() : null
       await updateEvent(event.id, {
         title,
         startAt,
+        endAt,
         allDay,
         recurrenceRule: recurrenceRule || null,
         reminders,
@@ -539,10 +615,16 @@ function EditEventForm({
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
       {!allDay && (
-        <label>
-          Hora
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-        </label>
+        <div className="inline-fields">
+          <label>
+            Empieza
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </label>
+          <label>
+            Termina (opcional)
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </label>
+        </div>
       )}
       <label className="checkbox-label">
         <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
@@ -558,7 +640,7 @@ function EditEventForm({
           ))}
         </select>
       </label>
-      <ReminderPicker reminders={reminders} onChange={setReminders} />
+      <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
         <p className="muted">¿Para quién?</p>
         <MemberPicker members={members} selected={selectedMembers} onToggle={toggleMember} />
@@ -588,9 +670,10 @@ function AddEventForm({
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(defaultDate ?? '')
   const [time, setTime] = useState('')
+  const [endTime, setEndTime] = useState('')
   const [allDay, setAllDay] = useState(false)
   const [recurrenceRule, setRecurrenceRule] = useState('')
-  const [reminders, setReminders] = useState<number[]>([])
+  const [reminders, setReminders] = useState<EventReminder[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -606,9 +689,11 @@ function AddEventForm({
     setError(null)
     try {
       const startAt = new Date(`${date}T${allDay ? '00:00' : time || '00:00'}`).toISOString()
+      const endAt = !allDay && endTime ? new Date(`${date}T${endTime}`).toISOString() : null
       await createEvent({
         title,
         startAt,
+        endAt,
         allDay,
         recurrenceRule: recurrenceRule || null,
         reminders,
@@ -617,6 +702,7 @@ function AddEventForm({
       setTitle('')
       setDate(defaultDate ?? '')
       setTime('')
+      setEndTime('')
       setReminders([])
       setSelectedMembers([])
       onAdded()
@@ -639,10 +725,16 @@ function AddEventForm({
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
       {!allDay && (
-        <label>
-          Hora
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-        </label>
+        <div className="inline-fields">
+          <label>
+            Empieza
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          </label>
+          <label>
+            Termina (opcional)
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </label>
+        </div>
       )}
       <label className="checkbox-label">
         <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
@@ -658,7 +750,7 @@ function AddEventForm({
           ))}
         </select>
       </label>
-      <ReminderPicker reminders={reminders} onChange={setReminders} />
+      <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
         <p className="muted">¿Para quién?</p>
         <MemberPicker members={members} selected={selectedMembers} onToggle={toggleMember} />

@@ -6,7 +6,7 @@
 // que la app la enseñe antes de guardar — si se equivoca, se nota al
 // momento en vez de crear una cita en el día que no es.
 import { normalize } from '@/domain/voiceQuery'
-import { reminderMinutesFrom, type ReminderUnit } from '@/domain/reminders'
+import { reminderMinutesFrom, type ReminderAnchor, type ReminderUnit } from '@/domain/reminders'
 
 // Formas en singular/plural (ya sin acentos, tras normalize) que puede
 // decir alguien para cada unidad de recordatorio.
@@ -89,12 +89,35 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
+// Interpreta un match de hora ("19", "7" + "de la tarde", "7:30", "y
+// media") y consume del texto tanto la hora como el "de la tarde/noche"
+// que la siga, esté donde esté (no solo al principio del texto — bug
+// real: con cualquier cosa delante de la hora, "de la tarde" se quedaba
+// colgando en el título).
+function extractHour(
+  remaining: string,
+  match: RegExpMatchArray,
+): { time: string | null; remaining: string } {
+  let hour = wordToNumber(match[1])
+  const minutes = match[2] ? Number(match[2]) : /y\s*media/.test(match[0]) ? 30 : 0
+  const afterMatch = remaining.slice((match.index ?? 0) + match[0].length)
+  const dayPartMatch = afterMatch.match(/^\s*de la (tarde|noche|manana)\b/)
+  let time: string | null = null
+  if (!Number.isNaN(hour)) {
+    if (hour < 12 && dayPartMatch && dayPartMatch[1] !== 'manana') hour += 12
+    if (hour >= 0 && hour <= 23) time = `${pad2(hour)}:${pad2(minutes)}`
+  }
+  const fullSpan = match[0] + (dayPartMatch ? dayPartMatch[0] : '')
+  return { time, remaining: remaining.replace(fullSpan, ' ') }
+}
+
 export interface ParsedCalendarEntry {
   title: string
   date: string // YYYY-MM-DD
-  time: string | null // HH:mm
+  time: string | null // HH:mm, hora de inicio
+  endTime: string | null // HH:mm, hora de fin (opcional)
   memberHint: string | null
-  reminderMinutes: number | null
+  reminders: { minutesBefore: number; anchor: ReminderAnchor }[]
 }
 
 // `today` se pasa desde fuera (en vez de usar `new Date()` aquí) para que
@@ -141,26 +164,47 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
     remaining = remaining.replace(memberMatch[0], ' ')
   }
 
-  // El recordatorio se saca ANTES que la hora a propósito: "aviso una
-  // hora antes" tiene la misma forma que una hora del día ("N horas"),
-  // así que si se buscara la hora primero, esa frase de recordatorio se
-  // colaba como si fuera la hora de la cita (bug real: "a las 7 de la
-  // tarde ... aviso una hora antes" ponía la cita a la 1:00, no a las 19:00,
-  // porque "una hora" del recordatorio se detectaba antes que "a las 7").
-  // "aviso 3 días antes", "avísame una semana antes"... cualquier
-  // cantidad y unidad, no solo "hora"/"día" — y se traga el
-  // "aviso"/"avísame" delante y la coma que suele precederlo para que no
-  // se cuele en el título.
-  let reminderMinutes: number | null = 60
-  const reminderRe =
-    /,?\s*(?:aviso|avisame)?\s*(?:(\d+)|un|una)?\s*(minutos?|horas?|dias?|semanas?|meses?|anos?)\s*antes\b/
-  const reminderMatch = remaining.match(reminderRe)
-  if (reminderMatch) {
-    const amount = reminderMatch[1] ? Number(reminderMatch[1]) : 1
-    const unit = UNIT_WORD_TO_UNIT[reminderMatch[2]]
-    if (unit) reminderMinutes = reminderMinutesFrom(amount, unit)
-    remaining = remaining.replace(reminderRe, ' ')
+  // La hora de FIN se saca antes que la de inicio y con un ancla propia
+  // ("termina"/"hasta") para no confundirla con la hora de inicio ni con
+  // la del recordatorio — "entrenamiento fútbol a las 18 horas, termina
+  // a las 19 horas".
+  let endTime: string | null = null
+  const endTimeRe = new RegExp(
+    `,?\\s*\\b(?:termina|hasta)(?:\\s+(?:a\\s+)?las)?\\s+${NUMBER_PATTERN}(?::(\\d{2})|\\s*y\\s*media)?\\s*horas?\\b`,
+  )
+  const endTimeMatch = remaining.match(endTimeRe)
+  if (endTimeMatch) {
+    const result = extractHour(remaining, endTimeMatch)
+    endTime = result.time
+    remaining = result.remaining
   }
+
+  // El recordatorio se saca ANTES que la hora de inicio a propósito:
+  // "aviso una hora antes" tiene la misma forma que una hora del día
+  // ("N horas"), así que si se buscara la hora primero, esa frase de
+  // recordatorio se colaba como si fuera la hora de la cita (bug real:
+  // "a las 7 de la tarde ... aviso una hora antes" ponía la cita a la
+  // 1:00, no a las 19:00). Puede haber más de un recordatorio en la
+  // misma frase ("avisa una hora antes de que empiece y media hora
+  // antes de que termine"), y cada uno puede anclarse al principio o al
+  // final del evento — "recuérdame para recogerlo" cuenta desde que
+  // termina, no desde que empieza.
+  // "media hora antes" (0,5) es tan natural como "una hora antes" — sin
+  // esto, "media" no encajaba en ningún número reconocido y la frase
+  // entera de recordatorio se quedaba sin capturar.
+  const reminderRe =
+    /,?\s*(?:aviso|avisame|avisa)?\s*(?:(\d+)|(un|una|media|medio))?\s*(minutos?|horas?|dias?|semanas?|meses?|anos?)\s*antes(?:\s+de\s+(?:que\s+)?(empiece|empezar|termine|terminar|acabe|acabar))?\b/g
+  const reminderMatches = [...remaining.matchAll(reminderRe)]
+  const reminders: { minutesBefore: number; anchor: ReminderAnchor }[] = []
+  for (const m of reminderMatches) {
+    const amount = m[1] ? Number(m[1]) : m[2] === 'media' || m[2] === 'medio' ? 0.5 : 1
+    const unit = UNIT_WORD_TO_UNIT[m[3]]
+    if (!unit) continue
+    const anchor: ReminderAnchor = m[4] && /^(termine|terminar|acabe|acabar)$/.test(m[4]) ? 'end' : 'start'
+    reminders.push({ minutesBefore: reminderMinutesFrom(amount, unit), anchor })
+  }
+  if (reminders.length === 0) reminders.push({ minutesBefore: 60, anchor: 'start' })
+  remaining = remaining.replace(reminderRe, ' ')
 
   // "a las" es opcional — en habla natural es muy normal decir solo
   // "diecinueve horas" o "19 horas" sin el "a las" delante (bug real:
@@ -179,22 +223,9 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
   const timeMatch =
     !matchHoras ? matchALas : !matchALas ? matchHoras : (matchHoras.index ?? 0) <= (matchALas.index ?? 0) ? matchHoras : matchALas
   if (timeMatch) {
-    let hour = wordToNumber(timeMatch[1])
-    const minutes = timeMatch[2] ? Number(timeMatch[2]) : /y\s*media/.test(timeMatch[0]) ? 30 : 0
-    // "de la tarde/noche/mañana" no está anclado al principio de
-    // `remaining` (va justo después de la hora, en medio de la frase) —
-    // por eso había que buscarlo relativo a dónde cae la hora, no con
-    // un `^` que solo mira el principio del texto entero (bug real: con
-    // cualquier cosa delante de la hora, "de la tarde" se quedaba
-    // colgando en el título en vez de limpiarse).
-    const afterMatch = remaining.slice((timeMatch.index ?? 0) + timeMatch[0].length)
-    const dayPartMatch = afterMatch.match(/^\s*de la (tarde|noche|manana)\b/)
-    if (!Number.isNaN(hour)) {
-      if (hour < 12 && dayPartMatch && dayPartMatch[1] !== 'manana') hour += 12
-      if (hour >= 0 && hour <= 23) time = `${pad2(hour)}:${pad2(minutes)}`
-    }
-    const fullSpan = timeMatch[0] + (dayPartMatch ? dayPartMatch[0] : '')
-    remaining = remaining.replace(fullSpan, ' ')
+    const result = extractHour(remaining, timeMatch)
+    time = result.time
+    remaining = result.remaining
   }
 
   const TRIGGER_WORDS = ['marcame', 'marca', 'apunta', 'apuntame', 'anota', 'pon', 'ponme', 'agenda', 'programa', 'crea', 'anademe', 'anade']
@@ -206,5 +237,5 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
   title = title.replace(/^[,;]\s*/, '').trim()
   title = title.charAt(0).toUpperCase() + title.slice(1)
 
-  return { title: title || 'Cita', date, time, memberHint, reminderMinutes }
+  return { title: title || 'Cita', date, time, endTime, memberHint, reminders }
 }

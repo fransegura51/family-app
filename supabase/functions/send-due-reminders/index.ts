@@ -41,17 +41,21 @@ Deno.serve(async (req) => {
     let expired = 0
 
     for (const r of reminders ?? []) {
-      const time = new Date(r.out_event_start_at).toLocaleTimeString("es-ES", {
+      const time = new Date(r.out_anchor_at).toLocaleTimeString("es-ES", {
         hour: "2-digit",
         minute: "2-digit",
       })
+      // Un recordatorio "de fin" (p. ej. "recógelo") tiene que decir
+      // "Termina", no "Empieza" — si no, el aviso de ir a recoger a
+      // alguien diría la hora de inicio y confundiría más que ayudar.
+      const body = r.out_anchor === "end" ? `Termina a las ${time}` : `Empieza a las ${time}`
       try {
         await webpush.sendNotification(
           {
             endpoint: r.out_endpoint,
             keys: { p256dh: r.out_p256dh, auth: r.out_auth },
           },
-          JSON.stringify({ title: r.out_event_title, body: `Empieza a las ${time}` }),
+          JSON.stringify({ title: r.out_event_title, body }),
         )
         sent++
       } catch (err) {

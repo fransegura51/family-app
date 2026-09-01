@@ -1,5 +1,6 @@
 import { supabase } from '@/data/supabaseClient'
 import type { CalendarEvent } from '@/domain/types'
+import type { EventReminder, ReminderAnchor } from '@/domain/reminders'
 
 interface EventRow {
   id: string
@@ -12,7 +13,7 @@ interface EventRow {
   color: string | null
   recurrence_rule: string | null
   calendar_event_members: { member_id: string }[]
-  calendar_event_reminders: { minutes_before: number }[]
+  calendar_event_reminders: { minutes_before: number; anchor: string }[]
 }
 
 function toEvent(row: EventRow): CalendarEvent {
@@ -26,7 +27,10 @@ function toEvent(row: EventRow): CalendarEvent {
     allDay: row.all_day,
     color: row.color,
     recurrenceRule: row.recurrence_rule,
-    reminders: row.calendar_event_reminders.map((r) => r.minutes_before),
+    reminders: row.calendar_event_reminders.map((r) => ({
+      minutesBefore: r.minutes_before,
+      anchor: r.anchor as ReminderAnchor,
+    })),
     memberIds: row.calendar_event_members.map((m) => m.member_id),
   }
 }
@@ -35,7 +39,7 @@ export async function listUpcomingEvents(): Promise<CalendarEvent[]> {
   const { data, error } = await supabase
     .from('calendar_events')
     .select(
-      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, calendar_event_members(member_id), calendar_event_reminders(minutes_before)',
+      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)',
     )
     .order('start_at', { ascending: true })
 
@@ -43,14 +47,14 @@ export async function listUpcomingEvents(): Promise<CalendarEvent[]> {
   return (data as unknown as EventRow[]).map(toEvent)
 }
 
-async function replaceReminders(eventId: string, reminders: number[]): Promise<void> {
+async function replaceReminders(eventId: string, reminders: EventReminder[]): Promise<void> {
   const { error: deleteError } = await supabase.from('calendar_event_reminders').delete().eq('event_id', eventId)
   if (deleteError) throw deleteError
 
   if (reminders.length > 0) {
-    const { error: insertError } = await supabase
-      .from('calendar_event_reminders')
-      .insert(reminders.map((minutesBefore) => ({ event_id: eventId, minutes_before: minutesBefore })))
+    const { error: insertError } = await supabase.from('calendar_event_reminders').insert(
+      reminders.map((r) => ({ event_id: eventId, minutes_before: r.minutesBefore, anchor: r.anchor })),
+    )
     if (insertError) throw insertError
   }
 }
@@ -58,9 +62,10 @@ async function replaceReminders(eventId: string, reminders: number[]): Promise<v
 export async function createEvent(input: {
   title: string
   startAt: string
+  endAt: string | null
   allDay: boolean
   recurrenceRule: string | null
-  reminders: number[]
+  reminders: EventReminder[]
   memberIds: string[]
 }): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -79,6 +84,7 @@ export async function createEvent(input: {
       family_id: profileRow.family_id,
       title: input.title,
       start_at: input.startAt,
+      end_at: input.endAt,
       all_day: input.allDay,
       recurrence_rule: input.recurrenceRule,
       created_by: userResult.user.id,
@@ -95,9 +101,9 @@ export async function createEvent(input: {
   }
 
   if (input.reminders.length > 0) {
-    const { error: reminderError } = await supabase
-      .from('calendar_event_reminders')
-      .insert(input.reminders.map((minutesBefore) => ({ event_id: event.id, minutes_before: minutesBefore })))
+    const { error: reminderError } = await supabase.from('calendar_event_reminders').insert(
+      input.reminders.map((r) => ({ event_id: event.id, minutes_before: r.minutesBefore, anchor: r.anchor })),
+    )
     if (reminderError) throw reminderError
   }
 
@@ -109,9 +115,10 @@ export async function updateEvent(
   input: {
     title: string
     startAt: string
+    endAt: string | null
     allDay: boolean
     recurrenceRule: string | null
-    reminders: number[]
+    reminders: EventReminder[]
     memberIds: string[]
   },
 ): Promise<void> {
@@ -120,6 +127,7 @@ export async function updateEvent(
     .update({
       title: input.title,
       start_at: input.startAt,
+      end_at: input.endAt,
       all_day: input.allDay,
       recurrence_rule: input.recurrenceRule,
       updated_at: new Date().toISOString(),
@@ -153,26 +161,42 @@ export async function deleteEvent(id: string): Promise<void> {
 export interface ReminderEvent {
   id: string
   title: string
-  startAt: string
+  anchorAt: string // start_at o end_at del evento, según a qué cuente este recordatorio
+  anchor: ReminderAnchor
   reminderMinutes: number
 }
 
-// Eventos futuros con recordatorio activo. Se consulta periódicamente
-// desde ReminderWatcher — no hay tabla de "notificaciones enviadas" en
+// Recordatorios activos (evento futuro, o su fin todavía por llegar si
+// el recordatorio cuenta desde el fin). Se consulta periódicamente desde
+// ReminderWatcher — no hay tabla de "notificaciones enviadas" en
 // servidor porque el disparo es local a cada dispositivo/sesión.
 export async function listActiveReminders(): Promise<ReminderEvent[]> {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('calendar_event_reminders')
-    .select('minutes_before, calendar_events!inner(id, title, start_at)')
-    .gte('calendar_events.start_at', new Date().toISOString())
+    .select('minutes_before, anchor, calendar_events!inner(id, title, start_at, end_at)')
+    .gte('calendar_events.start_at', weekAgo)
 
   if (error) throw error
   return (
-    data as unknown as { minutes_before: number; calendar_events: { id: string; title: string; start_at: string } }[]
-  ).map((row) => ({
-    id: row.calendar_events.id,
-    title: row.calendar_events.title,
-    startAt: row.calendar_events.start_at,
-    reminderMinutes: row.minutes_before,
-  }))
+    data as unknown as {
+      minutes_before: number
+      anchor: string
+      calendar_events: { id: string; title: string; start_at: string; end_at: string | null }
+    }[]
+  )
+    .map((row) => {
+      const anchor = row.anchor as ReminderAnchor
+      const anchorAt = anchor === 'end' ? row.calendar_events.end_at : row.calendar_events.start_at
+      return anchorAt
+        ? {
+            id: row.calendar_events.id,
+            title: row.calendar_events.title,
+            anchorAt,
+            anchor,
+            reminderMinutes: row.minutes_before,
+          }
+        : null
+    })
+    .filter((r): r is ReminderEvent => r !== null)
 }

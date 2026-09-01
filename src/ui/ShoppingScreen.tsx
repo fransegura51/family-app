@@ -131,6 +131,14 @@ function ShoppingListTab() {
 
   useEffect(reload, [])
 
+  // Si se apunta un producto por voz (VoiceCapture está fuera de esta
+  // pantalla, montado en toda la app) estando ya aquí, que aparezca al
+  // momento en vez de tener que recargar a mano.
+  useEffect(() => {
+    window.addEventListener('family-app:compras-changed', reload)
+    return () => window.removeEventListener('family-app:compras-changed', reload)
+  }, [])
+
   const pending = items.filter((i) => i.status === 'pendiente')
   const bought = items.filter((i) => i.status === 'comprado')
   const others = items.filter((i) => i.status === 'omitido' || i.status === 'trasladado')

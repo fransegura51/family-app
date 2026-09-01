@@ -115,6 +115,14 @@ export function TasksScreen() {
 
   useEffect(reload, [])
 
+  // Si se apunta una tarea por voz (VoiceCapture está fuera de esta
+  // pantalla, montado en toda la app) estando ya aquí, que aparezca al
+  // momento en vez de tener que recargar a mano.
+  useEffect(() => {
+    window.addEventListener('family-app:tareas-changed', reload)
+    return () => window.removeEventListener('family-app:tareas-changed', reload)
+  }, [])
+
   const visibleTasks = useMemo(() => {
     const byMember =
       activeMemberId === 'all'

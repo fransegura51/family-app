@@ -5,6 +5,16 @@
 
 export type ReminderUnit = 'minutos' | 'horas' | 'dias' | 'semanas' | 'meses' | 'anos'
 
+// Un recordatorio cuenta hacia atrás desde que EMPIEZA el evento (lo
+// normal) o desde que TERMINA — "que me avise media hora antes de
+// recogerlo" cuenta desde el final, no desde el principio.
+export type ReminderAnchor = 'start' | 'end'
+
+export interface EventReminder {
+  minutesBefore: number
+  anchor: ReminderAnchor
+}
+
 interface UnitInfo {
   unit: ReminderUnit
   perMinutes: number
@@ -39,13 +49,16 @@ export function reminderMinutesFrom(amount: number, unit: ReminderUnit): number 
 
 // Etiqueta legible eligiendo la unidad más grande que divide exacto
 // (600 -> "10 horas", no "600 minutos"); si no encaja en ninguna, cae a
-// minutos sin más.
-export function reminderLabel(minutesBefore: number): string {
+// minutos sin más. Siempre dice explícitamente si cuenta desde el
+// principio o desde el final — con los dos tipos mezclados en el mismo
+// evento, dejarlo implícito confundiría.
+export function reminderLabel(minutesBefore: number, anchor: ReminderAnchor = 'start'): string {
+  const suffix = anchor === 'end' ? 'antes de que termine' : 'antes de que empiece'
   for (const u of UNITS) {
     if (minutesBefore % u.perMinutes === 0) {
       const n = minutesBefore / u.perMinutes
-      return `${n} ${n === 1 ? u.singular : u.plural} antes`
+      return `${n} ${n === 1 ? u.singular : u.plural} ${suffix}`
     }
   }
-  return `${minutesBefore} min antes`
+  return `${minutesBefore} min ${suffix}`
 }

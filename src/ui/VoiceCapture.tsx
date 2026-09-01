@@ -65,6 +65,9 @@ async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[]): 
       })
     }
   }
+  // Mismo aviso que en Calendario: si ya estás en Lista de la compra o
+  // en Tareas, que se vea al momento en vez de tener que recargar.
+  window.dispatchEvent(new CustomEvent(`family-app:${targetKey}-changed`))
 }
 
 async function answerTasksQuery(memberHint: string | null): Promise<string> {
@@ -99,22 +102,61 @@ async function answerShoppingQuery(): Promise<string> {
 async function handleCalendarEntry(text: string): Promise<string> {
   const parsed = parseCalendarEntry(text, new Date())
   const members = await listFamilyMembers()
-  const member = parsed.memberHint ? matchMemberByHint(parsed.memberHint, members) : null
+  let member = parsed.memberHint ? matchMemberByHint(parsed.memberHint, members) : null
+  let title = parsed.title
+
+  // "entrenamiento fútbol, Eric, 14 de septiembre..." — el nombre a
+  // veces se dice suelto, sin "para" delante. Si no se ha encontrado ya
+  // así, se busca el nombre de algún miembro tal cual dentro del título
+  // y se saca de ahí en vez de dejarlo colgando en el texto.
+  if (!member) {
+    for (const m of members) {
+      const nameRe = new RegExp(`\\b${m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+      if (nameRe.test(title)) {
+        member = m
+        title = title
+          .replace(nameRe, '')
+          .replace(/\s+/g, ' ')
+          .replace(/^[,;]\s*/, '')
+          .replace(/[,;]\s*$/, '')
+          .trim()
+        title = title ? title.charAt(0).toUpperCase() + title.slice(1) : parsed.title
+        break
+      }
+    }
+  }
+
+  // Un recordatorio "al terminar" no tiene sentido si no se ha dicho
+  // hora de fin — se degrada a "al empezar" en vez de quedarse mudo.
+  const reminders = parsed.reminders.map((r) => ({
+    ...r,
+    anchor: r.anchor === 'end' && !parsed.endTime ? ('start' as const) : r.anchor,
+  }))
 
   await createEvent({
-    title: parsed.title,
+    title,
     startAt: new Date(`${parsed.date}T${parsed.time ?? '09:00'}`).toISOString(),
+    endAt: parsed.endTime ? new Date(`${parsed.date}T${parsed.endTime}`).toISOString() : null,
     allDay: parsed.time === null,
     recurrenceRule: null,
-    reminders: parsed.reminderMinutes != null ? [parsed.reminderMinutes] : [],
+    reminders,
     memberIds: member ? [member.id] : [],
   })
 
+  // VoiceCapture vive fuera de la pantalla de Calendario (está montado en
+  // NavShell, en toda la app) — sin este aviso, CalendarScreen no se
+  // entera de que hay un evento nuevo y la cuadrícula del mes se queda
+  // igual hasta que recargas a mano (bug real: "no me lo pone en la
+  // casilla" — el evento SÍ se guardaba, solo que no se veía).
+  window.dispatchEvent(new CustomEvent('family-app:calendar-changed', { detail: { date: parsed.date } }))
+
   const dateLabel = new Date(parsed.date + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
   const timeLabel = parsed.time ? ` a las ${parsed.time}` : ''
+  const endTimeLabel = parsed.endTime ? ` – ${parsed.endTime}` : ''
   const memberLabel = member ? ` · para ${member.name}` : ''
-  const reminderText = parsed.reminderMinutes != null ? ` · 🔔 ${reminderLabel(parsed.reminderMinutes)}` : ''
-  return `Apuntado en el calendario: ${parsed.title} — ${dateLabel}${timeLabel}${memberLabel}${reminderText}`
+  const reminderText =
+    reminders.length > 0 ? ` · 🔔 ${reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}` : ''
+  return `Apuntado en el calendario: ${title} — ${dateLabel}${timeLabel}${endTimeLabel}${memberLabel}${reminderText}`
 }
 
 type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'

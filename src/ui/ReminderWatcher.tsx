@@ -41,15 +41,16 @@ export function ReminderWatcher() {
         const now = Date.now()
 
         for (const r of reminders) {
-          const startMs = new Date(r.startAt).getTime()
-          const dueAt = startMs - r.reminderMinutes * 60_000
-          const key = `${r.id}:${r.startAt}`
-          if (now >= dueAt && now < startMs && !shownRef.current.has(key)) {
-            const time = new Date(r.startAt).toLocaleTimeString('es-ES', {
+          const anchorMs = new Date(r.anchorAt).getTime()
+          const dueAt = anchorMs - r.reminderMinutes * 60_000
+          const key = `${r.id}:${r.anchorAt}:${r.anchor}:${r.reminderMinutes}`
+          if (now >= dueAt && now < anchorMs && !shownRef.current.has(key)) {
+            const time = new Date(r.anchorAt).toLocaleTimeString('es-ES', {
               hour: '2-digit',
               minute: '2-digit',
             })
-            showNotification(r.title, `Empieza a las ${time}`)
+            const body = r.anchor === 'end' ? `Termina a las ${time}` : `Empieza a las ${time}`
+            showNotification(r.title, body)
             shownRef.current.add(key)
             saveShown(shownRef.current)
           }

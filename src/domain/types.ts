@@ -1,6 +1,8 @@
 // Tipos de dominio — reflejan el esquema de supabase/migrations, sin
 // depender de ningún framework de UI.
 
+import type { EventReminder } from '@/domain/reminders'
+
 export type MemberType = 'admin' | 'adult' | 'child' | 'baby'
 export type FamilyRole = 'admin' | 'adult'
 
@@ -298,6 +300,6 @@ export interface CalendarEvent {
   allDay: boolean
   color: string | null
   recurrenceRule: string | null
-  reminders: number[] // minutos antes de startAt, uno por recordatorio
+  reminders: EventReminder[]
   memberIds: string[]
 }

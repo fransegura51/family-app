@@ -14,6 +14,7 @@ import {
 import { listFamilyMembers } from '@/data/family'
 import { searchRecipe } from '@/services/recipeSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
+import { searchFoods, getFoodDetail, type FoodSearchResult } from '@/services/fatsecret'
 import type { FamilyMember, FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
 
 const SUB_TABS = ['Menú', 'Recetas', 'Registro'] as const
@@ -447,6 +448,9 @@ function FoodLogTab() {
                 <p className="muted">
                   {MEAL_TYPES.find((m) => m.value === log.mealType)?.label}
                   {showDetail && log.calories != null && ` · ${log.calories} kcal`}
+                  {showDetail &&
+                    (log.proteinG != null || log.carbsG != null || log.fatG != null) &&
+                    ` · P ${log.proteinG ?? '?'}g / HC ${log.carbsG ?? '?'}g / G ${log.fatG ?? '?'}g`}
                   {showDetail && ` · ${log.isEstimated ? 'estimado' : 'exacto'}`}
                 </p>
               </div>
@@ -480,9 +484,51 @@ function AddFoodLogForm({
   const [mealType, setMealType] = useState<MealType>('comida')
   const [description, setDescription] = useState('')
   const [calories, setCalories] = useState('')
+  const [proteinG, setProteinG] = useState('')
+  const [carbsG, setCarbsG] = useState('')
+  const [fatG, setFatG] = useState('')
   const [isEstimated, setIsEstimated] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
+  const [results, setResults] = useState<FoodSearchResult[] | null>(null)
+  const [pickingId, setPickingId] = useState<string | null>(null)
+
+  async function handleSearch() {
+    if (!description.trim()) return
+    setSearchStatus('searching')
+    setResults(null)
+    try {
+      const found = await searchFoods(description.trim())
+      if (found.length === 0) {
+        setSearchStatus('not-found')
+        return
+      }
+      setResults(found)
+      setSearchStatus('idle')
+    } catch {
+      setSearchStatus('error')
+    }
+  }
+
+  async function handlePick(result: FoodSearchResult) {
+    setPickingId(result.id)
+    try {
+      const detail = await getFoodDetail(result.id)
+      setDescription(detail.name)
+      setCalories(detail.calories != null ? String(Math.round(detail.calories)) : '')
+      setProteinG(detail.proteinG != null ? String(detail.proteinG) : '')
+      setCarbsG(detail.carbsG != null ? String(detail.carbsG) : '')
+      setFatG(detail.fatG != null ? String(detail.fatG) : '')
+      setIsEstimated(false)
+      setResults(null)
+    } catch {
+      setError('No se pudo leer el detalle de ese alimento')
+    } finally {
+      setPickingId(null)
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -495,13 +541,18 @@ function AddFoodLogForm({
         mealType,
         description,
         calories: calories ? Number(calories) : null,
-        proteinG: null,
-        carbsG: null,
-        fatG: null,
+        proteinG: proteinG ? Number(proteinG) : null,
+        carbsG: carbsG ? Number(carbsG) : null,
+        fatG: fatG ? Number(fatG) : null,
         isEstimated,
       })
       setDescription('')
       setCalories('')
+      setProteinG('')
+      setCarbsG('')
+      setFatG('')
+      setIsEstimated(true)
+      setSearchStatus('idle')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar')
@@ -529,9 +580,34 @@ function AddFoodLogForm({
       </label>
       {showDetail && (
         <>
+          <button
+            type="button"
+            className="link-button"
+            onClick={handleSearch}
+            disabled={!description.trim() || searchStatus === 'searching'}
+          >
+            {searchStatus === 'searching' ? 'Buscando en FatSecret…' : '🔍 Buscar datos reales en FatSecret'}
+          </button>
+          {searchStatus === 'not-found' && (
+            <p className="muted">No he encontrado "{description}" en FatSecret — pon los datos a mano abajo.</p>
+          )}
+          {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
+
           <label>
             Calorías (opcional)
             <input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} />
+          </label>
+          <label>
+            Proteína (g, opcional)
+            <input type="number" value={proteinG} onChange={(e) => setProteinG(e.target.value)} />
+          </label>
+          <label>
+            Hidratos (g, opcional)
+            <input type="number" value={carbsG} onChange={(e) => setCarbsG(e.target.value)} />
+          </label>
+          <label>
+            Grasa (g, opcional)
+            <input type="number" value={fatG} onChange={(e) => setFatG(e.target.value)} />
           </label>
           <label className="checkbox-label">
             <input
@@ -547,6 +623,36 @@ function AddFoodLogForm({
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Registrar'}
       </button>
+
+      {results && (
+        <div className="modal-overlay" onClick={() => setResults(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Resultados en FatSecret
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setResults(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="event-list">
+              {results.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className="card recipe-card"
+                  style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }}
+                  disabled={pickingId === r.id}
+                  onClick={() => handlePick(r)}
+                >
+                  <strong>{r.name}</strong>
+                  <p className="muted">{pickingId === r.id ? 'Cargando…' : r.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   )
 }

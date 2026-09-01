@@ -3,10 +3,18 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 
 // Proxy hacia la API de FatSecret (módulo Alimentación/menús, Fase 5 de
 // la skill organizador-familiar). Las llamadas SIEMPRE salen desde aquí,
-// nunca desde el cliente — el Client ID/Secret viven en Vault y no se
+// nunca desde el cliente — el Consumer Key/Secret viven en Vault y no se
 // exponen jamás al navegador. Se exige JWT de usuario real (aunque no se
 // use para nada más) para que solo la propia familia autenticada pueda
 // gastar cuota del plan gratuito.
+//
+// FatSecret firma OAuth 2.0 (client_credentials) exige una IP en lista
+// blanca, y las Edge Functions de Supabase no tienen IP fija (bug real
+// detectado en producción: "Invalid IP address detected"). Por eso se
+// usa aquí el método clásico OAuth 1.0a de dos piernas (firma
+// HMAC-SHA1 con Consumer Key/Secret) — CUIDADO: son credenciales
+// DISTINTAS de las de OAuth 2.0 (Client ID/Secret), hay que generarlas
+// aparte en el panel de FatSecret y guardarlas también en Vault.
 //
 // Cachea en food_cache los detalles nutricionales ya consultados (los
 // datos de un alimento no cambian) para no repetir food.get de más y
@@ -16,6 +24,8 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!
+
+const FATSECRET_API_URL = "https://platform.fatsecret.com/rest/server.api"
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -43,19 +53,55 @@ interface FoodDetail {
   fatG: number | null
 }
 
-async function getFatSecretToken(clientId: string, clientSecret: string): Promise<string> {
-  const basic = btoa(`${clientId}:${clientSecret}`)
-  const res = await fetch("https://oauth.fatsecret.com/connect/token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials&scope=basic",
-  })
-  if (!res.ok) throw new Error(`fatsecret_token_error: ${await res.text()}`)
-  const data = await res.json()
-  return data.access_token as string
+// Percent-encoding estricto RFC 3986 que exige OAuth 1.0 — encodeURIComponent
+// por sí solo no escapa !*'(), así que hay que rematarlo a mano.
+function oauthEncode(str: string): string {
+  return encodeURIComponent(str).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase())
+}
+
+function base64FromBuffer(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let binary = ""
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
+}
+
+async function hmacSha1(key: string, data: string): Promise<string> {
+  const enc = new TextEncoder()
+  const cryptoKey = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-1" }, false, [
+    "sign",
+  ])
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(data))
+  return base64FromBuffer(sig)
+}
+
+// Firma en dos piernas (sin token de usuario, solo Consumer Key/Secret) —
+// es lo que FatSecret llama "OAuth 1.0 sin autorización de usuario",
+// pensado justo para acceso de servidor a servidor como este.
+async function fatSecretSignedUrl(
+  params: Record<string, string>,
+  consumerKey: string,
+  consumerSecret: string,
+): Promise<string> {
+  const oauthParams: Record<string, string> = {
+    oauth_consumer_key: consumerKey,
+    oauth_nonce: crypto.randomUUID().replace(/-/g, ""),
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+    oauth_version: "1.0",
+  }
+  const allParams: Record<string, string> = { ...params, ...oauthParams }
+  const sortedKeys = Object.keys(allParams).sort()
+  const paramString = sortedKeys.map((k) => `${oauthEncode(k)}=${oauthEncode(allParams[k])}`).join("&")
+  const baseString = `GET&${oauthEncode(FATSECRET_API_URL)}&${oauthEncode(paramString)}`
+  const signingKey = `${oauthEncode(consumerSecret)}&`
+  const signature = await hmacSha1(signingKey, baseString)
+
+  const finalParams: Record<string, string> = { ...allParams, oauth_signature: signature }
+  const queryString = Object.keys(finalParams)
+    .map((k) => `${oauthEncode(k)}=${oauthEncode(finalParams[k])}`)
+    .join("&")
+  return `${FATSECRET_API_URL}?${queryString}`
 }
 
 // La API de FatSecret (heredada de XML) no envuelve en array una
@@ -97,16 +143,12 @@ Deno.serve(async (req) => {
       const { data: clientSecret, error: secErr } = await adminClient.rpc("get_app_secret", { p_name: "FATSECRET_CLIENT_SECRET" })
       if (idErr || secErr || !clientId || !clientSecret) return json({ error: "service not configured" }, 500)
 
-      const token = await getFatSecretToken(clientId, clientSecret)
-      const params = new URLSearchParams({
-        method: "foods.search",
-        search_expression: query,
-        format: "json",
-        max_results: "15",
-      })
-      const res = await fetch(`https://platform.fatsecret.com/rest/server.api?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const url = await fatSecretSignedUrl(
+        { method: "foods.search", search_expression: query, format: "json", max_results: "15" },
+        clientId,
+        clientSecret,
+      )
+      const res = await fetch(url)
       if (!res.ok) return json({ error: "fatsecret_error", detail: await res.text() }, 502)
       const data = await res.json()
 
@@ -149,11 +191,8 @@ Deno.serve(async (req) => {
       const { data: clientSecret, error: secErr } = await adminClient.rpc("get_app_secret", { p_name: "FATSECRET_CLIENT_SECRET" })
       if (idErr || secErr || !clientId || !clientSecret) return json({ error: "service not configured" }, 500)
 
-      const token = await getFatSecretToken(clientId, clientSecret)
-      const params = new URLSearchParams({ method: "food.get.v2", food_id: foodId, format: "json" })
-      const res = await fetch(`https://platform.fatsecret.com/rest/server.api?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const url = await fatSecretSignedUrl({ method: "food.get.v2", food_id: foodId, format: "json" }, clientId, clientSecret)
+      const res = await fetch(url)
       if (!res.ok) return json({ error: "fatsecret_error", detail: await res.text() }, 502)
       const data = await res.json()
       if (data.error) return json({ error: "fatsecret_error", detail: data.error.message ?? String(data.error) }, 502)

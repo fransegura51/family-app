@@ -13,13 +13,8 @@ import {
 } from '@/domain/reminders'
 import type { CalendarEvent, FamilyMember } from '@/domain/types'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
-
-const RECURRENCE_OPTIONS = [
-  { value: '', label: 'No se repite' },
-  { value: 'FREQ=DAILY', label: 'Cada día' },
-  { value: 'FREQ=WEEKLY', label: 'Cada semana' },
-  { value: 'FREQ=MONTHLY', label: 'Cada mes' },
-]
+import { buildRecurrenceRule, FREQ_OPTIONS, parseRecurrenceRule, recurrenceLabel } from '@/domain/recurrence'
+import { WeekdayPicker } from '@/ui/WeekdayPicker'
 
 const VIEWS = ['Mes', 'Lista'] as const
 type ViewMode = (typeof VIEWS)[number]
@@ -394,7 +389,7 @@ function EventCard({
         {!ev.allDay &&
           ev.endAt &&
           ` – ${new Date(ev.endAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`}
-        {ev.recurrenceRule && ' · se repite'}
+        {ev.recurrenceRule && ` · ${recurrenceLabel(ev.recurrenceRule)}`}
         {ev.reminders.length > 0 &&
           ` · 🔔 ${ev.reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}`}
       </p>
@@ -580,7 +575,9 @@ function EditEventForm({
     return `${pad(end.getHours())}:${pad(end.getMinutes())}`
   })
   const [allDay, setAllDay] = useState(event.allDay)
-  const [recurrenceRule, setRecurrenceRule] = useState(event.recurrenceRule ?? '')
+  const initialRecurrence = parseRecurrenceRule(event.recurrenceRule)
+  const [freq, setFreq] = useState(initialRecurrence.freq)
+  const [byDay, setByDay] = useState<string[]>(initialRecurrence.byDay)
   const [reminders, setReminders] = useState<EventReminder[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
   const [error, setError] = useState<string | null>(null)
@@ -588,6 +585,10 @@ function EditEventForm({
 
   function toggleMember(id: string) {
     setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
+  }
+
+  function toggleDay(code: string) {
+    setByDay((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -602,7 +603,7 @@ function EditEventForm({
         startAt,
         endAt,
         allDay,
-        recurrenceRule: recurrenceRule || null,
+        recurrenceRule: buildRecurrenceRule(freq, byDay),
         reminders,
         memberIds: selectedMembers,
       })
@@ -642,14 +643,20 @@ function EditEventForm({
       </label>
       <label>
         Repetir
-        <select value={recurrenceRule} onChange={(e) => setRecurrenceRule(e.target.value)}>
-          {RECURRENCE_OPTIONS.map((o) => (
+        <select value={freq} onChange={(e) => setFreq(e.target.value)}>
+          {FREQ_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
         </select>
       </label>
+      {freq === 'WEEKLY' && (
+        <div>
+          <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)</p>
+          <WeekdayPicker selected={byDay} onToggle={toggleDay} />
+        </div>
+      )}
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
         <p className="muted">¿Para quién?</p>
@@ -682,7 +689,8 @@ function AddEventForm({
   const [time, setTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [allDay, setAllDay] = useState(false)
-  const [recurrenceRule, setRecurrenceRule] = useState('')
+  const [freq, setFreq] = useState('')
+  const [byDay, setByDay] = useState<string[]>([])
   const [reminders, setReminders] = useState<EventReminder[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -690,6 +698,10 @@ function AddEventForm({
 
   function toggleMember(id: string) {
     setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
+  }
+
+  function toggleDay(code: string) {
+    setByDay((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -705,7 +717,7 @@ function AddEventForm({
         startAt,
         endAt,
         allDay,
-        recurrenceRule: recurrenceRule || null,
+        recurrenceRule: buildRecurrenceRule(freq, byDay),
         reminders,
         memberIds: selectedMembers,
       })
@@ -752,14 +764,20 @@ function AddEventForm({
       </label>
       <label>
         Repetir
-        <select value={recurrenceRule} onChange={(e) => setRecurrenceRule(e.target.value)}>
-          {RECURRENCE_OPTIONS.map((o) => (
+        <select value={freq} onChange={(e) => setFreq(e.target.value)}>
+          {FREQ_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
         </select>
       </label>
+      {freq === 'WEEKLY' && (
+        <div>
+          <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)</p>
+          <WeekdayPicker selected={byDay} onToggle={toggleDay} />
+        </div>
+      )}
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
         <p className="muted">¿Para quién?</p>

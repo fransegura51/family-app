@@ -8,6 +8,17 @@
 import { normalize } from '@/domain/voiceQuery'
 import { reminderMinutesFrom, type ReminderAnchor, type ReminderUnit } from '@/domain/reminders'
 
+const WEEKDAY_NAME_TO_CODE: Record<string, string> = {
+  lunes: 'MO',
+  martes: 'TU',
+  miercoles: 'WE',
+  jueves: 'TH',
+  viernes: 'FR',
+  sabado: 'SA',
+  domingo: 'SU',
+}
+const WEEKDAY_NAMES_PATTERN = Object.keys(WEEKDAY_NAME_TO_CODE).join('|')
+
 // Formas en singular/plural (ya sin acentos, tras normalize) que puede
 // decir alguien para cada unidad de recordatorio.
 const UNIT_WORD_TO_UNIT: Record<string, ReminderUnit> = {
@@ -119,6 +130,7 @@ export interface ParsedCalendarEntry {
   memberHint: string | null
   reminders: { minutesBefore: number; anchor: ReminderAnchor }[]
   dateExplicit: boolean // true si la frase decía una fecha; false si "date" es solo el valor por defecto
+  recurrenceRule: string | null // "FREQ=WEEKLY;BYDAY=TU" si se dijo "todos los martes" (o varios días)
 }
 
 // `today` se pasa desde fuera (en vez de usar `new Date()` aquí) para que
@@ -158,6 +170,22 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
     remaining = remaining.replace(dateMatch[0], ' ')
   }
   const dateExplicit = !!dateMatch
+
+  // "todos los martes", "cada martes y jueves", "todas las semanas el
+  // viernes" — repite en los días de la semana indicados. La fecha
+  // (de hoy o del día que tengas abierto) se usa como ancla desde la
+  // que empieza a repetirse, igual que ya hace "cada semana" a mano.
+  let recurrenceRule: string | null = null
+  const recurrenceRe = new RegExp(
+    `\\b(?:todos los|todas las semanas el|cada)\\s+(${WEEKDAY_NAMES_PATTERN})((?:\\s*(?:,|y)\\s*(?:${WEEKDAY_NAMES_PATTERN}))*)`,
+  )
+  const recurrenceMatch = remaining.match(recurrenceRe)
+  if (recurrenceMatch) {
+    const dayNames = recurrenceMatch[0].match(new RegExp(WEEKDAY_NAMES_PATTERN, 'g')) ?? []
+    const codes = [...new Set(dayNames.map((d) => WEEKDAY_NAME_TO_CODE[d]))]
+    if (codes.length > 0) recurrenceRule = `FREQ=WEEKLY;BYDAY=${codes.join(',')}`
+    remaining = remaining.replace(recurrenceMatch[0], ' ')
+  }
 
   let memberHint: string | null = null
   const memberMatch = remaining.match(/\bpara (\w+)\b/)
@@ -239,5 +267,5 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
   title = title.replace(/^[,;]\s*/, '').trim()
   title = title.charAt(0).toUpperCase() + title.slice(1)
 
-  return { title: title || 'Cita', date, time, endTime, memberHint, reminders, dateExplicit }
+  return { title: title || 'Cita', date, time, endTime, memberHint, reminders, dateExplicit, recurrenceRule }
 }

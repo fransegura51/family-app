@@ -7,6 +7,7 @@ import { createEvent } from '@/data/calendar'
 import { splitEntries } from '@/domain/quickCapture'
 import { isTaskDueOn } from '@/domain/tasks'
 import { reminderLabel } from '@/domain/reminders'
+import { recurrenceLabel } from '@/domain/recurrence'
 import { detectIntent, matchMemberByHint } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenOnce, speak } from '@/services/voice'
@@ -145,7 +146,7 @@ async function handleCalendarEntry(text: string): Promise<string> {
     startAt: new Date(`${date}T${parsed.time ?? '09:00'}`).toISOString(),
     endAt: parsed.endTime ? new Date(`${date}T${parsed.endTime}`).toISOString() : null,
     allDay: parsed.time === null,
-    recurrenceRule: null,
+    recurrenceRule: parsed.recurrenceRule,
     reminders,
     memberIds: member ? [member.id] : [],
   })
@@ -163,7 +164,8 @@ async function handleCalendarEntry(text: string): Promise<string> {
   const memberLabel = member ? ` · para ${member.name}` : ''
   const reminderText =
     reminders.length > 0 ? ` · 🔔 ${reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}` : ''
-  return `Apuntado en el calendario: ${title} — ${dateLabel}${timeLabel}${endTimeLabel}${memberLabel}${reminderText}`
+  const recurrenceText = parsed.recurrenceRule ? ` · ${recurrenceLabel(parsed.recurrenceRule)}` : ''
+  return `Apuntado en el calendario: ${title} — ${dateLabel}${timeLabel}${endTimeLabel}${memberLabel}${recurrenceText}${reminderText}`
 }
 
 type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'

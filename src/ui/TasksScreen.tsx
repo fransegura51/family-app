@@ -13,8 +13,9 @@ import {
   uncompleteTask,
 } from '@/data/tasks'
 import { listFamilyMembers } from '@/data/family'
-import { WEEKDAY_LABELS } from '@/domain/calendar'
 import { calculateStreak, isCompletedToday, isTaskDueOn, memberPointsBalance } from '@/domain/tasks'
+import { buildRecurrenceRule, FREQ_OPTIONS, recurrenceLabel } from '@/domain/recurrence'
+import { WeekdayPicker } from '@/ui/WeekdayPicker'
 import type {
   FamilyMember,
   Reward,
@@ -30,59 +31,6 @@ const TASK_TYPES: { value: TaskType; label: string }[] = [
   { value: 'rutina', label: 'Rutina' },
   { value: 'mision', label: 'Misión' },
 ]
-
-const FREQ_OPTIONS = [
-  { value: '', label: 'No se repite' },
-  { value: 'DAILY', label: 'Cada día' },
-  { value: 'WEEKLY', label: 'Cada semana' },
-  { value: 'MONTHLY', label: 'Cada mes' },
-  { value: 'YEARLY', label: 'Cada año' },
-]
-
-// Mismo orden que WEEKDAY_LABELS (L M X J V S D) pero en código RFC 5545,
-// para poder montar "FREQ=WEEKLY;BYDAY=MO,TU,..." a partir de los chips
-// que el usuario marque (p. ej. "de lunes a viernes").
-const BYDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
-
-function buildRecurrenceRule(freq: string, byDay: string[]): string | null {
-  if (!freq) return null
-  if (freq === 'WEEKLY' && byDay.length > 0) return `FREQ=WEEKLY;BYDAY=${byDay.join(',')}`
-  return `FREQ=${freq}`
-}
-
-function parseRecurrenceRule(rule: string | null): { freq: string; byDay: string[] } {
-  if (!rule) return { freq: '', byDay: [] }
-  const parts = Object.fromEntries(rule.split(';').map((p) => p.split('=')))
-  return { freq: parts.FREQ ?? '', byDay: parts.BYDAY ? parts.BYDAY.split(',') : [] }
-}
-
-function recurrenceLabel(rule: string | null): string {
-  const { freq, byDay } = parseRecurrenceRule(rule)
-  if (!freq) return ''
-  const base = FREQ_OPTIONS.find((f) => f.value === freq)?.label ?? ''
-  if (freq === 'WEEKLY' && byDay.length > 0) {
-    const days = byDay.map((code) => WEEKDAY_LABELS[BYDAY_CODES.indexOf(code)]).join('')
-    return `${base} (${days})`
-  }
-  return base
-}
-
-function WeekdayPicker({ selected, onToggle }: { selected: string[]; onToggle: (code: string) => void }) {
-  return (
-    <div className="filter-row">
-      {BYDAY_CODES.map((code, i) => (
-        <button
-          type="button"
-          key={code}
-          className={'chip' + (selected.includes(code) ? ' chip-active' : '')}
-          onClick={() => onToggle(code)}
-        >
-          {WEEKDAY_LABELS[i]}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 export function TasksScreen() {
   const [tasks, setTasks] = useState<Task[]>([])

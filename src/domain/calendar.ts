@@ -39,7 +39,7 @@ export function getMonthGridDays(year: number, month: number): MonthDay[] {
 // valor de Date.getDay() (0=domingo..6=sábado) para poder comparar.
 const BYDAY_TO_JS_DAY: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
 
-function parseRecurrenceRule(rule: string): { freq: string; byDay: number[] } {
+function parseRecurrenceRule(rule: string): { freq: string; byDay: number[]; skipHolidays: boolean } {
   const parts = Object.fromEntries(
     rule.split(';').map((p) => p.split('=') as [string, string]),
   )
@@ -47,7 +47,7 @@ function parseRecurrenceRule(rule: string): { freq: string; byDay: number[] } {
     .split(',')
     .map((code) => BYDAY_TO_JS_DAY[code])
     .filter((n): n is number => n !== undefined)
-  return { freq: parts.FREQ ?? '', byDay }
+  return { freq: parts.FREQ ?? '', byDay, skipHolidays: parts.SKIPHOLIDAYS === '1' }
 }
 
 // Ocurrencias de un evento/tarea dentro de un rango [rangeStartStr, rangeEndStr]
@@ -58,9 +58,10 @@ function parseRecurrenceRule(rule: string): { freq: string; byDay: number[] } {
 // "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" para "de lunes a viernes"); sin
 // BYDAY cae cada 7 días desde la fecha de inicio, como antes.
 export function expandOccurrences(
-  event: { startAt: string; recurrenceRule: string | null },
+  event: { startAt: string; recurrenceRule: string | null; exceptionDates?: string[] },
   rangeStartStr: string,
   rangeEndStr: string,
+  holidayDates?: Set<string>,
 ): string[] {
   // OJO: nunca event.startAt.slice(0, 10) — startAt es un ISO en UTC, y
   // recortarlo así desplaza un día cuando la hora local cae en las
@@ -78,7 +79,7 @@ export function expandOccurrences(
   const rangeEnd = new Date(rangeEndStr + 'T00:00')
   const cursor = new Date(startDate + 'T00:00')
   const results: string[] = []
-  const { freq, byDay } = parseRecurrenceRule(event.recurrenceRule)
+  const { freq, byDay, skipHolidays } = parseRecurrenceRule(event.recurrenceRule)
 
   // Límite de seguridad: nunca iterar más de ~10 años de ocurrencias.
   let guard = 0
@@ -127,7 +128,17 @@ export function expandOccurrences(
       guard++
     }
   }
-  return results
+
+  // "Excepto festivos" (contra el calendario de festivos enlazado, si lo
+  // hay) y "borrar solo este día" (excepciones propias del evento) son
+  // dos motivos de exclusión distintos, pero se aplican igual: quitar
+  // esa fecha de las ocurrencias generadas.
+  const exceptionDates = event.exceptionDates
+  return results.filter((d) => {
+    if (skipHolidays && holidayDates?.has(d)) return false
+    if (exceptionDates?.includes(d)) return false
+    return true
+  })
 }
 
 // Colores a mostrar como puntitos en la cuadrícula del mes para un

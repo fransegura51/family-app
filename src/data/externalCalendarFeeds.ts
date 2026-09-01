@@ -10,6 +10,7 @@ export interface ExternalCalendarFeed {
   memberId: string | null
   name: string
   icsUrl: string
+  isHolidayCalendar: boolean
   lastSyncedAt: string | null
   lastSyncError: string | null
 }
@@ -28,6 +29,7 @@ interface FeedRow {
   member_id: string | null
   name: string
   ics_url: string
+  is_holiday_calendar: boolean
   last_synced_at: string | null
   last_sync_error: string | null
 }
@@ -38,6 +40,7 @@ function toFeed(row: FeedRow): ExternalCalendarFeed {
     memberId: row.member_id,
     name: row.name,
     icsUrl: row.ics_url,
+    isHolidayCalendar: row.is_holiday_calendar,
     lastSyncedAt: row.last_synced_at,
     lastSyncError: row.last_sync_error,
   }
@@ -46,13 +49,18 @@ function toFeed(row: FeedRow): ExternalCalendarFeed {
 export async function listFeeds(): Promise<ExternalCalendarFeed[]> {
   const { data, error } = await supabase
     .from('external_calendar_feeds')
-    .select('id, member_id, name, ics_url, last_synced_at, last_sync_error')
+    .select('id, member_id, name, ics_url, is_holiday_calendar, last_synced_at, last_sync_error')
     .order('created_at', { ascending: true })
   if (error) throw error
   return (data as FeedRow[]).map(toFeed)
 }
 
-export async function addFeed(input: { name: string; icsUrl: string; memberId: string | null }): Promise<string> {
+export async function addFeed(input: {
+  name: string
+  icsUrl: string
+  memberId: string | null
+  isHolidayCalendar: boolean
+}): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
 
@@ -65,11 +73,35 @@ export async function addFeed(input: { name: string; icsUrl: string; memberId: s
 
   const { data, error } = await supabase
     .from('external_calendar_feeds')
-    .insert({ family_id: profileRow.family_id, member_id: input.memberId, name: input.name, ics_url: input.icsUrl })
+    .insert({
+      family_id: profileRow.family_id,
+      member_id: input.memberId,
+      name: input.name,
+      ics_url: input.icsUrl,
+      is_holiday_calendar: input.isHolidayCalendar,
+    })
     .select('id')
     .single()
   if (error) throw error
   return data.id as string
+}
+
+// Fechas (YYYY-MM-DD) marcadas como festivo en cualquier calendario
+// enlazado que la familia haya señalado como "de festivos" — se usa
+// para saltarlas en las repeticiones que pidan excluirlas.
+export async function listHolidayDates(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('external_calendar_events')
+    .select('start_at, external_calendar_feeds!inner(is_holiday_calendar)')
+    .eq('external_calendar_feeds.is_holiday_calendar', true)
+  if (error) throw error
+
+  const dates = new Set<string>()
+  for (const row of data as unknown as { start_at: string }[]) {
+    const d = new Date(row.start_at)
+    dates.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+  }
+  return dates
 }
 
 export async function deleteFeed(id: string): Promise<void> {

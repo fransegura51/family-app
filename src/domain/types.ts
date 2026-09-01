@@ -300,6 +300,7 @@ export interface CalendarEvent {
   allDay: boolean
   color: string | null
   recurrenceRule: string | null
+  exceptionDates: string[]
   reminders: EventReminder[]
   memberIds: string[]
 }

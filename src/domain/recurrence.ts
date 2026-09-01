@@ -16,25 +16,37 @@ export const FREQ_OPTIONS = [
 // que el usuario marque (p. ej. "los martes", "de lunes a viernes").
 export const BYDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
 
-export function buildRecurrenceRule(freq: string, byDay: string[]): string | null {
+// SKIPHOLIDAYS no es RFC 5545 — es una extensión propia para poder decir
+// "de lunes a viernes, excepto festivos" sin montar un formato de
+// excepciones completo (EXDATE). Los festivos concretos se resuelven
+// aparte, contra el calendario externo de festivos que la familia haya
+// enlazado (ver domain/calendar.ts expandOccurrences).
+export function buildRecurrenceRule(freq: string, byDay: string[], skipHolidays = false): string | null {
   if (!freq) return null
-  if (freq === 'WEEKLY' && byDay.length > 0) return `FREQ=WEEKLY;BYDAY=${byDay.join(',')}`
-  return `FREQ=${freq}`
+  const parts = [`FREQ=${freq}`]
+  if (freq === 'WEEKLY' && byDay.length > 0) parts.push(`BYDAY=${byDay.join(',')}`)
+  if (skipHolidays) parts.push('SKIPHOLIDAYS=1')
+  return parts.join(';')
 }
 
-export function parseRecurrenceRule(rule: string | null): { freq: string; byDay: string[] } {
-  if (!rule) return { freq: '', byDay: [] }
+export function parseRecurrenceRule(rule: string | null): { freq: string; byDay: string[]; skipHolidays: boolean } {
+  if (!rule) return { freq: '', byDay: [], skipHolidays: false }
   const parts = Object.fromEntries(rule.split(';').map((p) => p.split('=')))
-  return { freq: parts.FREQ ?? '', byDay: parts.BYDAY ? parts.BYDAY.split(',') : [] }
+  return {
+    freq: parts.FREQ ?? '',
+    byDay: parts.BYDAY ? parts.BYDAY.split(',') : [],
+    skipHolidays: parts.SKIPHOLIDAYS === '1',
+  }
 }
 
 export function recurrenceLabel(rule: string | null): string {
-  const { freq, byDay } = parseRecurrenceRule(rule)
+  const { freq, byDay, skipHolidays } = parseRecurrenceRule(rule)
   if (!freq) return ''
   const base = FREQ_OPTIONS.find((f) => f.value === freq)?.label ?? ''
+  let label = base
   if (freq === 'WEEKLY' && byDay.length > 0) {
     const days = byDay.map((code) => WEEKDAY_LABELS[BYDAY_CODES.indexOf(code)]).join('')
-    return `${base} (${days})`
+    label = `${base} (${days})`
   }
-  return base
+  return skipHolidays ? `${label}, sin festivos` : label
 }

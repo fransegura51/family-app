@@ -12,6 +12,7 @@ interface EventRow {
   all_day: boolean
   color: string | null
   recurrence_rule: string | null
+  exception_dates: string[]
   calendar_event_members: { member_id: string }[]
   calendar_event_reminders: { minutes_before: number; anchor: string }[]
 }
@@ -27,6 +28,7 @@ function toEvent(row: EventRow): CalendarEvent {
     allDay: row.all_day,
     color: row.color,
     recurrenceRule: row.recurrence_rule,
+    exceptionDates: row.exception_dates ?? [],
     reminders: row.calendar_event_reminders.map((r) => ({
       minutesBefore: r.minutes_before,
       anchor: r.anchor as ReminderAnchor,
@@ -39,7 +41,7 @@ export async function listUpcomingEvents(): Promise<CalendarEvent[]> {
   const { data, error } = await supabase
     .from('calendar_events')
     .select(
-      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)',
+      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, exception_dates, calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)',
     )
     .order('start_at', { ascending: true })
 
@@ -155,6 +157,22 @@ export async function updateEvent(
 
 export async function deleteEvent(id: string): Promise<void> {
   const { error } = await supabase.from('calendar_events').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Borra solo una ocurrencia de un evento recurrente (p. ej. "este
+// martes no hay entrenamiento") sin tocar el resto de la serie — se
+// guarda como excepción (fecha a excluir), no se borra el evento.
+export async function deleteEventOccurrence(id: string, dateStr: string): Promise<void> {
+  const { data, error: fetchError } = await supabase
+    .from('calendar_events')
+    .select('exception_dates')
+    .eq('id', id)
+    .single()
+  if (fetchError) throw fetchError
+
+  const next = Array.from(new Set([...(data.exception_dates ?? []), dateStr]))
+  const { error } = await supabase.from('calendar_events').update({ exception_dates: next }).eq('id', id)
   if (error) throw error
 }
 

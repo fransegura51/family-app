@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { createEvent, deleteEvent, listUpcomingEvents, updateEvent } from '@/data/calendar'
+import { createEvent, deleteEvent, deleteEventOccurrence, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import {
   addFeed,
   deleteFeed,
   listExternalEvents,
   listFeeds,
+  listHolidayDates,
   syncFeed,
   type ExternalCalendarEvent,
   type ExternalCalendarFeed,
@@ -45,6 +46,7 @@ export function CalendarScreen() {
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
   const [selectedDate, setSelectedDate] = useState(toDateStr(today))
   const [dayModalOpen, setDayModalOpen] = useState(false)
+  const [holidayDates, setHolidayDates] = useState<Set<string>>(new Set())
 
   // Publica qué día tienes abierto para que "Apunta por voz" (vive fuera
   // de esta pantalla) lo use como fecha por defecto en vez de caer
@@ -57,10 +59,11 @@ export function CalendarScreen() {
 
   function reload() {
     setLoading(true)
-    Promise.all([listUpcomingEvents(), listFamilyMembers()])
-      .then(([e, m]) => {
+    Promise.all([listUpcomingEvents(), listFamilyMembers(), listHolidayDates()])
+      .then(([e, m, h]) => {
         setEvents(e)
         setMembers(m)
+        setHolidayDates(h)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -112,14 +115,14 @@ export function CalendarScreen() {
     const rangeStart = monthDays[0].dateStr
     const rangeEnd = monthDays[monthDays.length - 1].dateStr
     for (const ev of filteredEvents) {
-      for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd)) {
+      for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd, holidayDates)) {
         const list = map.get(dateStr) ?? []
         list.push(ev)
         map.set(dateStr, list)
       }
     }
     return map
-  }, [filteredEvents, monthDays])
+  }, [filteredEvents, monthDays, holidayDates])
 
   function goToMonth(delta: number) {
     const d = new Date(visibleYear, visibleMonth + delta, 1)
@@ -139,6 +142,15 @@ export function CalendarScreen() {
       reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo borrar el evento')
+    }
+  }
+
+  async function handleDeleteOccurrence(id: string, dateStr: string) {
+    try {
+      await deleteEventOccurrence(id, dateStr)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo borrar ese día')
     }
   }
 
@@ -243,6 +255,7 @@ export function CalendarScreen() {
               onEdit={setEditingId}
               onCancelEdit={() => setEditingId(null)}
               onDelete={handleDelete}
+              onDeleteOccurrence={handleDeleteOccurrence}
               onEventChanged={() => {
                 setEditingId(null)
                 reload()
@@ -276,7 +289,7 @@ export function CalendarScreen() {
                   event={ev}
                   memberById={memberById}
                   onEdit={() => setEditingId(ev.id)}
-                  onDelete={() => handleDelete(ev.id)}
+                  onDeleteSeries={() => handleDelete(ev.id)}
                 />
               ),
             )}
@@ -302,6 +315,7 @@ function DayModal({
   onEdit,
   onCancelEdit,
   onDelete,
+  onDeleteOccurrence,
   onEventChanged,
   onAdded,
   onClose,
@@ -313,6 +327,7 @@ function DayModal({
   onEdit: (id: string) => void
   onCancelEdit: () => void
   onDelete: (id: string) => void
+  onDeleteOccurrence: (id: string, dateStr: string) => void
   onEventChanged: () => void
   onAdded: () => void
   onClose: () => void
@@ -332,7 +347,8 @@ function DayModal({
         event={ev}
         memberById={memberById}
         onEdit={() => onEdit(ev.id)}
-        onDelete={() => onDelete(ev.id)}
+        onDeleteSeries={() => onDelete(ev.id)}
+        onDeleteOccurrence={() => onDeleteOccurrence(ev.id, selectedDate)}
       />
     )
   }
@@ -380,17 +396,24 @@ function DayModal({
   )
 }
 
+// Antes de borrar, pide confirmación — y si el evento es recurrente y
+// se está viendo desde un día concreto (DayModal pasa onDeleteOccurrence),
+// deja elegir entre borrar solo ese día o toda la serie, en vez de
+// borrar siempre la serie entera de un solo toque.
 function EventCard({
   event: ev,
   memberById,
   onEdit,
-  onDelete,
+  onDeleteSeries,
+  onDeleteOccurrence,
 }: {
   event: CalendarEvent
   memberById: Map<string, FamilyMember>
   onEdit: () => void
-  onDelete: () => void
+  onDeleteSeries: () => void
+  onDeleteOccurrence?: () => void
 }) {
+  const [confirming, setConfirming] = useState(false)
   return (
     <div className="card event-card" style={{ borderColor: ev.color ?? undefined }}>
       <strong>{ev.title}</strong>
@@ -421,9 +444,26 @@ function EventCard({
         <button type="button" className="link-button" onClick={onEdit}>
           Editar
         </button>
-        <button type="button" className="link-button" onClick={onDelete}>
-          Borrar
-        </button>
+        {!confirming ? (
+          <button type="button" className="link-button" onClick={() => setConfirming(true)}>
+            Borrar
+          </button>
+        ) : (
+          <>
+            <span className="muted">¿Seguro?</span>
+            {onDeleteOccurrence && ev.recurrenceRule && (
+              <button type="button" className="link-button" onClick={onDeleteOccurrence}>
+                Solo este día
+              </button>
+            )}
+            <button type="button" className="link-button" onClick={onDeleteSeries}>
+              {ev.recurrenceRule ? 'Toda la serie' : 'Borrar'}
+            </button>
+            <button type="button" className="link-button" onClick={() => setConfirming(false)}>
+              Cancelar
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -591,6 +631,7 @@ function EditEventForm({
   const initialRecurrence = parseRecurrenceRule(event.recurrenceRule)
   const [freq, setFreq] = useState(initialRecurrence.freq)
   const [byDay, setByDay] = useState<string[]>(initialRecurrence.byDay)
+  const [skipHolidays, setSkipHolidays] = useState(initialRecurrence.skipHolidays)
   const [reminders, setReminders] = useState<EventReminder[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
   const [error, setError] = useState<string | null>(null)
@@ -616,7 +657,7 @@ function EditEventForm({
         startAt,
         endAt,
         allDay,
-        recurrenceRule: buildRecurrenceRule(freq, byDay),
+        recurrenceRule: buildRecurrenceRule(freq, byDay, skipHolidays),
         reminders,
         memberIds: selectedMembers,
       })
@@ -670,6 +711,12 @@ function EditEventForm({
           <WeekdayPicker selected={byDay} onToggle={toggleDay} />
         </div>
       )}
+      {freq && (
+        <label className="checkbox-label">
+          <input type="checkbox" checked={skipHolidays} onChange={(e) => setSkipHolidays(e.target.checked)} />
+          Excluir festivos (según el calendario de festivos enlazado en Externos)
+        </label>
+      )}
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
         <p className="muted">¿Para quién?</p>
@@ -704,6 +751,7 @@ function AddEventForm({
   const [allDay, setAllDay] = useState(false)
   const [freq, setFreq] = useState('')
   const [byDay, setByDay] = useState<string[]>([])
+  const [skipHolidays, setSkipHolidays] = useState(false)
   const [reminders, setReminders] = useState<EventReminder[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -730,7 +778,7 @@ function AddEventForm({
         startAt,
         endAt,
         allDay,
-        recurrenceRule: buildRecurrenceRule(freq, byDay),
+        recurrenceRule: buildRecurrenceRule(freq, byDay, skipHolidays),
         reminders,
         memberIds: selectedMembers,
       })
@@ -790,6 +838,12 @@ function AddEventForm({
           <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)</p>
           <WeekdayPicker selected={byDay} onToggle={toggleDay} />
         </div>
+      )}
+      {freq && (
+        <label className="checkbox-label">
+          <input type="checkbox" checked={skipHolidays} onChange={(e) => setSkipHolidays(e.target.checked)} />
+          Excluir festivos (según el calendario de festivos enlazado en Externos)
+        </label>
       )}
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
@@ -905,6 +959,7 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
         {feeds.map((f) => (
           <div key={f.id} className="card event-card">
             <strong>{f.name}</strong>
+            {f.isHolidayCalendar && <span className="muted"> · 🎌 festivos</span>}
             {f.memberId && memberById.get(f.memberId) && (
               <span className="avatar avatar-sm" style={{ background: memberById.get(f.memberId)!.color }}>
                 {memberById.get(f.memberId)!.name.charAt(0)}
@@ -1018,6 +1073,7 @@ function AddFeedForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
   const [name, setName] = useState('')
   const [icsUrl, setIcsUrl] = useState('')
   const [memberId, setMemberId] = useState<string>('')
+  const [isHolidayCalendar, setIsHolidayCalendar] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -1026,10 +1082,11 @@ function AddFeedForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
     setSaving(true)
     setError(null)
     try {
-      const id = await addFeed({ name, icsUrl, memberId: memberId || null })
+      const id = await addFeed({ name, icsUrl, memberId: memberId || null, isHolidayCalendar })
       setName('')
       setIcsUrl('')
       setMemberId('')
+      setIsHolidayCalendar(false)
       onAdded()
       // Sincroniza en cuanto se añade, para que "vamos a probarlo" se
       // vea de inmediato sin tener que pulsar "Sincronizar ahora" aparte.
@@ -1075,6 +1132,10 @@ function AddFeedForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
             </option>
           ))}
         </select>
+      </label>
+      <label className="checkbox-label">
+        <input type="checkbox" checked={isHolidayCalendar} onChange={(e) => setIsHolidayCalendar(e.target.checked)} />
+        Es un calendario de festivos (para poder excluirlos de las repeticiones)
       </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>

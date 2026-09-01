@@ -23,7 +23,15 @@ import {
 } from '@/domain/reminders'
 import type { CalendarEvent, FamilyMember } from '@/domain/types'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
-import { buildRecurrenceRule, FREQ_OPTIONS, parseRecurrenceRule, recurrenceLabel } from '@/domain/recurrence'
+import {
+  buildRecurrenceRule,
+  FREQ_OPTIONS,
+  matchRecurrencePreset,
+  parseRecurrenceRule,
+  RECURRENCE_PRESETS,
+  recurrenceLabel,
+  type RecurrencePreset,
+} from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
 
 const VIEWS = ['Mes', 'Lista', 'Externos'] as const
@@ -600,6 +608,98 @@ function ReminderPicker({
   )
 }
 
+export interface RecurrenceValue {
+  freq: string
+  byDay: string[]
+  interval: number
+  skipHolidays: boolean
+  until: string // '' = sin fecha límite
+}
+
+// Preajustes de un toque ("Todos los días laborables", "Cada 2
+// semanas"…) en vez de tener que elegir frecuencia y días de la semana
+// por separado cada vez — cubre lo que se pide casi siempre. "Personalizado"
+// se abre solo si hace falta algo que ningún preajuste cubre (p. ej.
+// "martes y jueves" sueltos), o si el evento ya tenía guardada una
+// combinación así al editarlo.
+function RecurrenceControl({ value, onChange }: { value: RecurrenceValue; onChange: (v: RecurrenceValue) => void }) {
+  const matched = matchRecurrencePreset(value.freq, value.byDay, value.interval)
+  const [customMode, setCustomMode] = useState(!!value.freq && !matched)
+
+  function applyPreset(preset: RecurrencePreset) {
+    setCustomMode(false)
+    onChange({ ...value, freq: preset.freq, byDay: preset.byDay, interval: preset.interval })
+  }
+
+  function toggleDay(code: string) {
+    const next = value.byDay.includes(code) ? value.byDay.filter((c) => c !== code) : [...value.byDay, code]
+    onChange({ ...value, byDay: next })
+  }
+
+  return (
+    <div>
+      <p className="muted">Repetir</p>
+      <div className="recurrence-preset-list">
+        {RECURRENCE_PRESETS.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            className={'chip recurrence-preset' + (!customMode && matched?.key === p.key ? ' chip-active' : '')}
+            onClick={() => applyPreset(p)}
+          >
+            {p.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={'chip recurrence-preset' + (customMode ? ' chip-active' : '')}
+          onClick={() => setCustomMode(true)}
+        >
+          Personalizado…
+        </button>
+      </div>
+
+      {customMode && (
+        <div className="day-modal-group">
+          <label>
+            Frecuencia
+            <select value={value.freq} onChange={(e) => onChange({ ...value, freq: e.target.value, interval: 1 })}>
+              {FREQ_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {value.freq === 'WEEKLY' && (
+            <div>
+              <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)</p>
+              <WeekdayPicker selected={value.byDay} onToggle={toggleDay} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {value.freq && (
+        <>
+          <label>
+            Repetir hasta (opcional)
+            <input type="date" value={value.until} onChange={(e) => onChange({ ...value, until: e.target.value })} />
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={value.skipHolidays}
+              onChange={(e) => onChange({ ...value, skipHolidays: e.target.checked })}
+            />
+            Excluir festivos (según el calendario de festivos enlazado en Externos)
+          </label>
+        </>
+      )}
+    </div>
+  )
+}
+
 function EditEventForm({
   event,
   members,
@@ -629,10 +729,13 @@ function EditEventForm({
   })
   const [allDay, setAllDay] = useState(event.allDay)
   const initialRecurrence = parseRecurrenceRule(event.recurrenceRule)
-  const [freq, setFreq] = useState(initialRecurrence.freq)
-  const [byDay, setByDay] = useState<string[]>(initialRecurrence.byDay)
-  const [skipHolidays, setSkipHolidays] = useState(initialRecurrence.skipHolidays)
-  const [recurrenceUntil, setRecurrenceUntil] = useState(initialRecurrence.until ?? '')
+  const [recurrence, setRecurrence] = useState<RecurrenceValue>({
+    freq: initialRecurrence.freq,
+    byDay: initialRecurrence.byDay,
+    interval: initialRecurrence.interval,
+    skipHolidays: initialRecurrence.skipHolidays,
+    until: initialRecurrence.until ?? '',
+  })
   const [reminders, setReminders] = useState<EventReminder[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
   const [error, setError] = useState<string | null>(null)
@@ -640,10 +743,6 @@ function EditEventForm({
 
   function toggleMember(id: string) {
     setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
-  }
-
-  function toggleDay(code: string) {
-    setByDay((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -658,7 +757,13 @@ function EditEventForm({
         startAt,
         endAt,
         allDay,
-        recurrenceRule: buildRecurrenceRule(freq, byDay, skipHolidays, recurrenceUntil || null),
+        recurrenceRule: buildRecurrenceRule(
+          recurrence.freq,
+          recurrence.byDay,
+          recurrence.skipHolidays,
+          recurrence.until || null,
+          recurrence.interval,
+        ),
         reminders,
         memberIds: selectedMembers,
       })
@@ -696,34 +801,7 @@ function EditEventForm({
         <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
         Todo el día
       </label>
-      <label>
-        Repetir
-        <select value={freq} onChange={(e) => setFreq(e.target.value)}>
-          {FREQ_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {freq === 'WEEKLY' && (
-        <div>
-          <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)</p>
-          <WeekdayPicker selected={byDay} onToggle={toggleDay} />
-        </div>
-      )}
-      {freq && (
-        <>
-          <label>
-            Repetir hasta (opcional)
-            <input type="date" value={recurrenceUntil} onChange={(e) => setRecurrenceUntil(e.target.value)} />
-          </label>
-          <label className="checkbox-label">
-            <input type="checkbox" checked={skipHolidays} onChange={(e) => setSkipHolidays(e.target.checked)} />
-            Excluir festivos (según el calendario de festivos enlazado en Externos)
-          </label>
-        </>
-      )}
+      <RecurrenceControl value={recurrence} onChange={setRecurrence} />
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
         <p className="muted">¿Para quién?</p>
@@ -756,10 +834,13 @@ function AddEventForm({
   const [time, setTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [allDay, setAllDay] = useState(false)
-  const [freq, setFreq] = useState('')
-  const [byDay, setByDay] = useState<string[]>([])
-  const [skipHolidays, setSkipHolidays] = useState(false)
-  const [recurrenceUntil, setRecurrenceUntil] = useState('')
+  const [recurrence, setRecurrence] = useState<RecurrenceValue>({
+    freq: '',
+    byDay: [],
+    interval: 1,
+    skipHolidays: false,
+    until: '',
+  })
   const [reminders, setReminders] = useState<EventReminder[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -767,10 +848,6 @@ function AddEventForm({
 
   function toggleMember(id: string) {
     setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
-  }
-
-  function toggleDay(code: string) {
-    setByDay((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -786,7 +863,13 @@ function AddEventForm({
         startAt,
         endAt,
         allDay,
-        recurrenceRule: buildRecurrenceRule(freq, byDay, skipHolidays, recurrenceUntil || null),
+        recurrenceRule: buildRecurrenceRule(
+          recurrence.freq,
+          recurrence.byDay,
+          recurrence.skipHolidays,
+          recurrence.until || null,
+          recurrence.interval,
+        ),
         reminders,
         memberIds: selectedMembers,
       })
@@ -794,7 +877,7 @@ function AddEventForm({
       setDate(defaultDate ?? '')
       setTime('')
       setEndTime('')
-      setRecurrenceUntil('')
+      setRecurrence({ freq: '', byDay: [], interval: 1, skipHolidays: false, until: '' })
       setReminders([])
       setSelectedMembers([])
       onAdded()
@@ -832,34 +915,7 @@ function AddEventForm({
         <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
         Todo el día
       </label>
-      <label>
-        Repetir
-        <select value={freq} onChange={(e) => setFreq(e.target.value)}>
-          {FREQ_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {freq === 'WEEKLY' && (
-        <div>
-          <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)</p>
-          <WeekdayPicker selected={byDay} onToggle={toggleDay} />
-        </div>
-      )}
-      {freq && (
-        <label>
-          Repetir hasta (opcional)
-          <input type="date" value={recurrenceUntil} onChange={(e) => setRecurrenceUntil(e.target.value)} />
-        </label>
-      )}
-      {freq && (
-        <label className="checkbox-label">
-          <input type="checkbox" checked={skipHolidays} onChange={(e) => setSkipHolidays(e.target.checked)} />
-          Excluir festivos (según el calendario de festivos enlazado en Externos)
-        </label>
-      )}
+      <RecurrenceControl value={recurrence} onChange={setRecurrence} />
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       <div>
         <p className="muted">¿Para quién?</p>

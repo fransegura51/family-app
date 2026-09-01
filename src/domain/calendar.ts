@@ -41,7 +41,7 @@ const BYDAY_TO_JS_DAY: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH
 
 function parseRecurrenceRule(
   rule: string,
-): { freq: string; byDay: number[]; skipHolidays: boolean; until: string | null } {
+): { freq: string; byDay: number[]; skipHolidays: boolean; until: string | null; interval: number } {
   const parts = Object.fromEntries(
     rule.split(';').map((p) => p.split('=') as [string, string]),
   )
@@ -49,11 +49,13 @@ function parseRecurrenceRule(
     .split(',')
     .map((code) => BYDAY_TO_JS_DAY[code])
     .filter((n): n is number => n !== undefined)
+  const interval = Number(parts.INTERVAL)
   return {
     freq: parts.FREQ ?? '',
     byDay,
     skipHolidays: parts.SKIPHOLIDAYS === '1',
     until: parts.UNTIL ?? null,
+    interval: Number.isFinite(interval) && interval > 1 ? interval : 1,
   }
 }
 
@@ -86,14 +88,16 @@ export function expandOccurrences(
   const rangeEnd = new Date(rangeEndStr + 'T00:00')
   const cursor = new Date(startDate + 'T00:00')
   const results: string[] = []
-  const { freq, byDay, skipHolidays, until } = parseRecurrenceRule(event.recurrenceRule)
+  const { freq, byDay, skipHolidays, until, interval } = parseRecurrenceRule(event.recurrenceRule)
 
   // Límite de seguridad: nunca iterar más de ~10 años de ocurrencias.
   let guard = 0
   if (freq === 'WEEKLY' && byDay.length > 0) {
     // No cae cada 7 días desde el inicio, sino en cada día de la semana
     // marcado (p. ej. "de lunes a viernes") a partir de la fecha de
-    // inicio — hay que recorrer día a día, no de 7 en 7.
+    // inicio — hay que recorrer día a día, no de 7 en 7. INTERVAL no se
+    // aplica aquí: los preajustes no combinan "días laborables" con
+    // "cada N semanas".
     const dayCursor = new Date(rangeStart < cursor ? cursor : rangeStart)
     while (dayCursor <= rangeEnd && guard < 5000) {
       const dateStr = toDateStr(dayCursor)
@@ -104,7 +108,7 @@ export function expandOccurrences(
       guard++
     }
   } else if (freq === 'DAILY' || freq === 'WEEKLY') {
-    const stepDays = freq === 'DAILY' ? 1 : 7
+    const stepDays = (freq === 'DAILY' ? 1 : 7) * interval
     while (cursor < rangeStart && guard < 5000) {
       cursor.setDate(cursor.getDate() + stepDays)
       guard++
@@ -116,22 +120,22 @@ export function expandOccurrences(
     }
   } else if (freq === 'MONTHLY') {
     while (cursor < rangeStart && guard < 500) {
-      cursor.setMonth(cursor.getMonth() + 1)
+      cursor.setMonth(cursor.getMonth() + interval)
       guard++
     }
     while (cursor <= rangeEnd && guard < 500) {
       results.push(toDateStr(cursor))
-      cursor.setMonth(cursor.getMonth() + 1)
+      cursor.setMonth(cursor.getMonth() + interval)
       guard++
     }
   } else if (freq === 'YEARLY') {
     while (cursor < rangeStart && guard < 200) {
-      cursor.setFullYear(cursor.getFullYear() + 1)
+      cursor.setFullYear(cursor.getFullYear() + interval)
       guard++
     }
     while (cursor <= rangeEnd && guard < 200) {
       results.push(toDateStr(cursor))
-      cursor.setFullYear(cursor.getFullYear() + 1)
+      cursor.setFullYear(cursor.getFullYear() + interval)
       guard++
     }
   }

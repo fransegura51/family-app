@@ -170,9 +170,10 @@ export function VoiceCapture() {
       await saveEntries(target.key as 'compras' | 'tareas', entries)
       setStatus('done')
       respond(`Apuntado en ${target.label}: ${entries.join(', ')}`)
-    } catch {
+    } catch (err) {
       setStatus('error')
-      respond('No he podido hacerlo, inténtalo de nuevo.')
+      const detail = err instanceof Error ? err.message : String(err)
+      respond(`No he podido hacerlo: ${detail}`)
     }
   }
 

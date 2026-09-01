@@ -117,34 +117,21 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
       // Si esa fecha ya pasó este año, se asume que es el año que viene
       // (igual que con los cumpleaños) — decir "el 3 de enero" en
       // diciembre casi seguro se refiere al enero próximo.
-      const candidate = new Date(year, monthIndex, day)
-      if (candidate < new Date(today.getFullYear(), today.getMonth(), today.getDate())) year += 1
-      date = `${year}-${pad2(monthIndex + 1)}-${pad2(day)}`
+      let candidate = new Date(year, monthIndex, day)
+      if (candidate < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+        year += 1
+        candidate = new Date(year, monthIndex, day)
+      }
+      // El constructor de 3 argumentos "desborda" solo un día que no
+      // existe (p. ej. "31 de abril" -> 1 de mayo) en vez de dejarlo
+      // inválido — hay que leer el día/mes/año YA normalizados de vuelta
+      // del objeto Date, no los que dijo la frase, o la fecha construida
+      // a mano podía no existir de verdad y reventar más adelante al
+      // convertirla a ISO (bug real: un día que no existe en ese mes
+      // hacía fallar todo el apunte con un error genérico).
+      date = `${candidate.getFullYear()}-${pad2(candidate.getMonth() + 1)}-${pad2(candidate.getDate())}`
     }
     remaining = remaining.replace(dateMatch[0], ' ')
-  }
-
-  // "a las" es opcional — en habla natural es muy normal decir solo
-  // "diecinueve horas" o "19 horas" sin el "a las" delante (bug real:
-  // esa frase exacta no apuntaba ninguna hora). Se intenta primero con
-  // "horas" como ancla (con o sin "a las" delante) y, si no hay "horas",
-  // con "a las N" a secas (p. ej. "a las 7 de la tarde").
-  let time: string | null = null
-  const timeWithHorasRe = new RegExp(
-    `,?\\s*\\b(?:a las\\s+)?${NUMBER_PATTERN}(?::(\\d{2})|\\s*y\\s*media)?\\s*horas?\\b`,
-  )
-  const timeWithALasRe = new RegExp(`,?\\s*\\ba las\\s+${NUMBER_PATTERN}(?::(\\d{2})|\\s*y\\s*media)?\\b`)
-  const timeMatch = remaining.match(timeWithHorasRe) ?? remaining.match(timeWithALasRe)
-  if (timeMatch) {
-    let hour = wordToNumber(timeMatch[1])
-    const minutes = timeMatch[2] ? Number(timeMatch[2]) : /y\s*media/.test(timeMatch[0]) ? 30 : 0
-    if (!Number.isNaN(hour)) {
-      const afterMatch = remaining.slice((timeMatch.index ?? 0) + timeMatch[0].length)
-      if (hour < 12 && /^\s*de la tarde|^\s*de la noche/.test(afterMatch)) hour += 12
-      if (hour >= 0 && hour <= 23) time = `${pad2(hour)}:${pad2(minutes)}`
-    }
-    remaining = remaining.replace(timeMatch[0], ' ')
-    remaining = remaining.replace(/^\s*de la (tarde|noche|manana)\b/, ' ')
   }
 
   let memberHint: string | null = null
@@ -154,10 +141,16 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
     remaining = remaining.replace(memberMatch[0], ' ')
   }
 
-  // "aviso 3 días antes", "avísame una semana antes", "aviso un mes
-  // antes"... cualquier cantidad y unidad, no solo "hora"/"día" — y se
-  // traga el "aviso"/"avísame" delante y la coma que suele precederlo
-  // ("..., aviso un día antes") para que no se cuele en el título.
+  // El recordatorio se saca ANTES que la hora a propósito: "aviso una
+  // hora antes" tiene la misma forma que una hora del día ("N horas"),
+  // así que si se buscara la hora primero, esa frase de recordatorio se
+  // colaba como si fuera la hora de la cita (bug real: "a las 7 de la
+  // tarde ... aviso una hora antes" ponía la cita a la 1:00, no a las 19:00,
+  // porque "una hora" del recordatorio se detectaba antes que "a las 7").
+  // "aviso 3 días antes", "avísame una semana antes"... cualquier
+  // cantidad y unidad, no solo "hora"/"día" — y se traga el
+  // "aviso"/"avísame" delante y la coma que suele precederlo para que no
+  // se cuele en el título.
   let reminderMinutes: number | null = 60
   const reminderRe =
     /,?\s*(?:aviso|avisame)?\s*(?:(\d+)|un|una)?\s*(minutos?|horas?|dias?|semanas?|meses?|anos?)\s*antes\b/
@@ -167,6 +160,41 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
     const unit = UNIT_WORD_TO_UNIT[reminderMatch[2]]
     if (unit) reminderMinutes = reminderMinutesFrom(amount, unit)
     remaining = remaining.replace(reminderRe, ' ')
+  }
+
+  // "a las" es opcional — en habla natural es muy normal decir solo
+  // "diecinueve horas" o "19 horas" sin el "a las" delante (bug real:
+  // esa frase exacta no apuntaba ninguna hora). Se intenta primero con
+  // "horas" como ancla (con o sin "a las" delante) y, si no hay "horas",
+  // con "a las N" a secas (p. ej. "a las 7 de la tarde"). Para cuando el
+  // texto tiene ambas formas sueltas se queda con la que aparece antes
+  // en la frase.
+  let time: string | null = null
+  const timeWithHorasRe = new RegExp(
+    `,?\\s*\\b(?:a las\\s+)?${NUMBER_PATTERN}(?::(\\d{2})|\\s*y\\s*media)?\\s*horas?\\b`,
+  )
+  const timeWithALasRe = new RegExp(`,?\\s*\\ba las\\s+${NUMBER_PATTERN}(?::(\\d{2})|\\s*y\\s*media)?\\b`)
+  const matchHoras = remaining.match(timeWithHorasRe)
+  const matchALas = remaining.match(timeWithALasRe)
+  const timeMatch =
+    !matchHoras ? matchALas : !matchALas ? matchHoras : (matchHoras.index ?? 0) <= (matchALas.index ?? 0) ? matchHoras : matchALas
+  if (timeMatch) {
+    let hour = wordToNumber(timeMatch[1])
+    const minutes = timeMatch[2] ? Number(timeMatch[2]) : /y\s*media/.test(timeMatch[0]) ? 30 : 0
+    // "de la tarde/noche/mañana" no está anclado al principio de
+    // `remaining` (va justo después de la hora, en medio de la frase) —
+    // por eso había que buscarlo relativo a dónde cae la hora, no con
+    // un `^` que solo mira el principio del texto entero (bug real: con
+    // cualquier cosa delante de la hora, "de la tarde" se quedaba
+    // colgando en el título en vez de limpiarse).
+    const afterMatch = remaining.slice((timeMatch.index ?? 0) + timeMatch[0].length)
+    const dayPartMatch = afterMatch.match(/^\s*de la (tarde|noche|manana)\b/)
+    if (!Number.isNaN(hour)) {
+      if (hour < 12 && dayPartMatch && dayPartMatch[1] !== 'manana') hour += 12
+      if (hour >= 0 && hour <= 23) time = `${pad2(hour)}:${pad2(minutes)}`
+    }
+    const fullSpan = timeMatch[0] + (dayPartMatch ? dayPartMatch[0] : '')
+    remaining = remaining.replace(fullSpan, ' ')
   }
 
   const TRIGGER_WORDS = ['marcame', 'marca', 'apunta', 'apuntame', 'anota', 'pon', 'ponme', 'agenda', 'programa', 'crea', 'anademe', 'anade']

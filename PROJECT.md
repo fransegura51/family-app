@@ -276,6 +276,19 @@ sirven de nada sin pasar por las políticas de Supabase).
   y usar "Añadir a pantalla de inicio" (Android/Chrome) o "Compartir →
   Añadir a inicio" (iOS/Safari) — queda como una app con icono propio.
 
+**Bug real encontrado y corregido al probar el despliegue**: tras iniciar
+sesión, la pantalla se quedaba completamente en blanco, sin ningún error
+en consola. Causa: `<BrowserRouter>` no tenía `basename`, así que bajo la
+subruta `/family-app/` (GitHub Pages) ninguna ruta coincidía —
+React Router v6 renderiza vacío ante una ruta sin match, sin lanzar
+ningún error. En local funcionaba porque ahí se sirve desde `/`. Corregido
+con `basename={import.meta.env.BASE_URL}` (Vite ya rellena esa variable
+con `/family-app/` en build y `/` en dev, sin config aparte). De paso se
+añadió un `ErrorBoundary` + captura de promesas sin gestionar
+(`src/main.tsx`, `src/ui/ErrorBoundary.tsx`): si algo vuelve a fallar en
+producción, ahora se ve el error en pantalla en vez de una página en
+blanco sin pistas.
+
 ## Estado general
 
 Todo lo que se podía hacer gratis está hecho: Fases 1, 2, 3, 5, 6 y 8

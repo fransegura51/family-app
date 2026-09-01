@@ -561,6 +561,79 @@ textarea {
   background: white;
 }
 
+/* Agenda del día en Calendario (DayModal): "todo el día" como chips
+   arriba, y debajo cada evento/tarea con hora en su propia columna y la
+   tarjeta coloreada al lado — al estilo de otras apps de calendario
+   familiar, en vez de agrupar por persona. */
+.agenda-allday-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 14px;
+}
+
+.agenda-allday-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.agenda-allday-chip-sub {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.agenda-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: stretch;
+}
+
+.agenda-time {
+  flex: 0 0 46px;
+  font-size: 12px;
+  color: var(--muted);
+  padding-top: 10px;
+  text-align: right;
+  line-height: 1.4;
+}
+
+.agenda-card {
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: white;
+}
+
+.agenda-card-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.agenda-card-subtitle {
+  font-size: 12px;
+  opacity: 0.9;
+  margin-top: 2px;
+}
+
+.agenda-card-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 12px;
+}
+
+.agenda-card-actions button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: white;
+  text-decoration: underline;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
 .progress-bar {
   width: 100%;
   height: 8px;

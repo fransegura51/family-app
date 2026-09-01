@@ -362,10 +362,41 @@ export function CalendarScreen() {
   )
 }
 
-// Ventana emergente al pinchar un día: agrupa lo que hay ese día por
-// persona (un evento con varios miembros aparece en cada grupo), para
-// verlo de un vistazo sin tener que abrir cada evento — "lo que tienen
-// que hacer cada uno ese día".
+function eventColor(ev: CalendarEvent, memberById: Map<string, FamilyMember>): string {
+  if (ev.color) return ev.color
+  const first = ev.memberIds[0] ? memberById.get(ev.memberIds[0]) : null
+  return first?.color ?? '#9ca3af'
+}
+
+function hhmm(iso: string): string {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+// Un apunte de la agenda del día, evento o tarea, ya con lo que hace
+// falta para pintarlo en fila: color, hora (o "todo el día") y un
+// subtítulo corto (de quién es, o la repetición).
+interface AgendaEntry {
+  key: string
+  id: string
+  title: string
+  subtitle: string
+  color: string
+  allDay: boolean
+  startTime: string | null
+  endTime: string | null
+  isTask: boolean
+  recurring: boolean
+  onEdit?: () => void
+  onDeleteSeries?: () => void
+  onDeleteOccurrence?: () => void
+}
+
+// Ventana emergente al pinchar un día — agenda cronológica de arriba
+// abajo (todo el día primero, luego por hora), al estilo de otras apps
+// de calendario familiar, en vez de agrupar por persona: cada apunte ya
+// enseña de quién es en su propia tarjeta, así que no hace falta
+// separar en secciones por miembro para verlo de un vistazo.
 function DayModal({
   selectedDate,
   events,
@@ -394,28 +425,55 @@ function DayModal({
   onClose: () => void
 }) {
   const memberById = new Map(members.map((m) => [m.id, m]))
-  const familyEvents = events.filter((ev) => ev.memberIds.length === 0)
-  const groups = members
-    .map((m) => ({
-      member: m,
-      events: events.filter((ev) => ev.memberIds.includes(m.id)),
-      tasks: tasks.filter((t) => t.memberId === m.id),
-    }))
-    .filter((g) => g.events.length > 0 || g.tasks.length > 0)
 
-  function renderEvent(ev: CalendarEvent) {
-    return editingId === ev.id ? (
-      <EditEventForm key={ev.id} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
-    ) : (
-      <EventCard
-        key={ev.id}
-        event={ev}
-        memberById={memberById}
-        onEdit={() => onEdit(ev.id)}
-        onDeleteSeries={() => onDelete(ev.id)}
-        onDeleteOccurrence={() => onDeleteOccurrence(ev.id, selectedDate)}
-      />
-    )
+  const entries: AgendaEntry[] = [
+    ...events.map((ev) => ({
+      key: `ev-${ev.id}`,
+      id: ev.id,
+      title: ev.title,
+      subtitle:
+        ev.memberIds.length > 0
+          ? ev.memberIds
+              .map((id) => memberById.get(id)?.name)
+              .filter((n): n is string => !!n)
+              .join(', ')
+          : recurrenceLabel(ev.recurrenceRule) || 'Toda la familia',
+      color: eventColor(ev, memberById),
+      allDay: ev.allDay,
+      startTime: ev.allDay ? null : hhmm(ev.startAt),
+      endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
+      isTask: false,
+      recurring: !!ev.recurrenceRule,
+      onEdit: () => onEdit(ev.id),
+      onDeleteSeries: () => onDelete(ev.id),
+      onDeleteOccurrence: () => onDeleteOccurrence(ev.id, selectedDate),
+    })),
+    ...tasks.map((t) => ({
+      key: `task-${t.id}`,
+      id: t.id,
+      title: t.title,
+      subtitle: (t.memberId && memberById.get(t.memberId)?.name) || (t.recurrenceRule ? recurrenceLabel(t.recurrenceRule) : 'Tarea'),
+      color: (t.memberId && memberById.get(t.memberId)?.color) || '#9ca3af',
+      allDay: !t.timeOfDay,
+      startTime: t.timeOfDay ? t.timeOfDay.slice(0, 5) : null,
+      endTime: null,
+      isTask: true,
+      recurring: false,
+    })),
+  ].sort((a, b) => {
+    if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
+    return (a.startTime ?? '').localeCompare(b.startTime ?? '')
+  })
+
+  const allDayEntries = entries.filter((e) => e.allDay)
+  const timedEntries = entries.filter((e) => !e.allDay)
+
+  function renderCard(entry: AgendaEntry) {
+    if (!entry.isTask && editingId === entry.id) {
+      const ev = events.find((e) => e.id === entry.id)!
+      return <EditEventForm key={entry.key} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
+    }
+    return <AgendaCard key={entry.key} entry={entry} />
   }
 
   return (
@@ -434,37 +492,92 @@ function DayModal({
           </button>
         </div>
 
-        {events.length === 0 && tasks.length === 0 && <p className="muted">Nada este día.</p>}
+        {entries.length === 0 && <p className="muted">Nada este día.</p>}
 
-        {groups.map(({ member, events: memberEvents, tasks: memberTasks }) => (
-          <div key={member.id} className="day-modal-group">
-            <h3>
-              <span className="avatar avatar-sm" style={{ background: member.color }}>
-                {member.name.charAt(0)}
-              </span>
-              {member.name}
-            </h3>
-            <div className="event-list">
-              {memberEvents.map(renderEvent)}
-              {memberTasks.map((t) => (
-                <div key={t.id} className="card event-card">
-                  <strong>✅ {t.title}</strong>
-                  <p className="muted">{t.timeOfDay ? `Tarea · ${t.timeOfDay.slice(0, 5)}` : 'Tarea'}</p>
-                </div>
-              ))}
+        {allDayEntries.length > 0 && (
+          <>
+            <p className="muted" style={{ margin: '4px 0' }}>
+              Todo el día
+            </p>
+            <div className="agenda-allday-row">
+              {allDayEntries.map((entry) =>
+                editingId === entry.id && !entry.isTask ? (
+                  renderCard(entry)
+                ) : (
+                  <AgendaAllDayChip key={entry.key} entry={entry} />
+                ),
+              )}
             </div>
+          </>
+        )}
+
+        {timedEntries.map((entry) => (
+          <div key={entry.key} className="agenda-row">
+            <div className="agenda-time">
+              <div>{entry.startTime}</div>
+              {entry.endTime && <div>{entry.endTime}</div>}
+            </div>
+            <div style={{ flex: 1 }}>{renderCard(entry)}</div>
           </div>
         ))}
 
-        {familyEvents.length > 0 && (
-          <div className="day-modal-group">
-            <h3>Toda la familia</h3>
-            <div className="event-list">{familyEvents.map(renderEvent)}</div>
-          </div>
-        )}
-
         <AddEventForm key={selectedDate} members={members} onAdded={onAdded} defaultDate={selectedDate} />
       </div>
+    </div>
+  )
+}
+
+// Chip de "todo el día" — solo lectura al vistazo; para editar/borrar se
+// usa la tarjeta normal (AgendaCard), no hace falta duplicar esos
+// controles en un chip tan pequeño.
+function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
+  return (
+    <span className="agenda-allday-chip" style={{ background: entry.color }}>
+      {entry.isTask ? '✅ ' : ''}
+      {entry.title}
+      {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
+    </span>
+  )
+}
+
+function AgendaCard({ entry }: { entry: AgendaEntry }) {
+  const [confirming, setConfirming] = useState(false)
+  const canEdit = !!entry.onEdit
+  return (
+    <div className="agenda-card" style={{ background: entry.color }}>
+      <div className="agenda-card-title">
+        {entry.isTask ? '✅ ' : ''}
+        {entry.title}
+      </div>
+      {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}
+      {canEdit && (
+        <div className="agenda-card-actions">
+          {!confirming ? (
+            <>
+              <button type="button" onClick={entry.onEdit}>
+                Editar
+              </button>
+              <button type="button" onClick={() => setConfirming(true)}>
+                Borrar
+              </button>
+            </>
+          ) : (
+            <>
+              {entry.recurring && entry.onDeleteOccurrence && (
+                <button type="button" onClick={entry.onDeleteOccurrence}>
+                  Solo este día
+                </button>
+              )}
+              <button type="button" onClick={entry.onDeleteSeries}>
+                {entry.recurring ? 'Toda la serie' : 'Borrar'}
+              </button>
+              <button type="button" onClick={() => setConfirming(false)}>
+                Cancelar
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

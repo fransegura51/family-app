@@ -475,7 +475,7 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
         Foto o archivo
         <input
           type="file"
-          accept="image/*,.pdf"
+          accept="image/*,application/pdf"
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null)
             setLines([])

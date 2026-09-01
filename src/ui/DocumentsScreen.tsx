@@ -144,7 +144,7 @@ function AddDocumentForm({
       <h2>Subir a "{folder}"</h2>
       <label>
         Archivo
-        <input type="file" accept="image/*,.pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
+        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
       </label>
       <label>
         Título

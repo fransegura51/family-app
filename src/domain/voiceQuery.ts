@@ -65,6 +65,26 @@ export function stripWakeWord(text: string): string {
     .trim()
 }
 
+// Coletillas naturales al pedirle a Pepa que apunte algo en tareas o en
+// la lista de la compra ("vamos a hacer la lista de la compra, leche y
+// pan") — sin esto, la frase entera se guardaba como un apunte más
+// junto a "leche" y "pan" (bug real: salían tres apuntes en vez de dos,
+// el primero sin sentido). Se prueba cada patrón una vez, el primero
+// que encaje gana.
+const LIST_FILLER_PREFIXES = [
+  /^vamos a hacer\s*(la lista de la compra)?[,.]?\s*/i,
+  /^hagamos\s*(la lista de la compra)?[,.]?\s*/i,
+  /^vamos a apuntar\s*(en (tareas|la lista de la compra))?[,.]?\s*(que)?\s*/i,
+  /^(apunta|apuntame|anota|anotame|ponme|pon)\s*(en (tareas|la lista de la compra))?[,.]?\s*(que)?\s*/i,
+]
+
+export function stripListFillers(text: string): string {
+  for (const re of LIST_FILLER_PREFIXES) {
+    if (re.test(text)) return text.replace(re, '').trim()
+  }
+  return text
+}
+
 const CALENDAR_MONTH_WORDS = [
   'enero',
   'febrero',

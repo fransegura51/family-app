@@ -8,7 +8,14 @@ import { splitEntries } from '@/domain/quickCapture'
 import { isTaskDueOn } from '@/domain/tasks'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
-import { detectIntent, detectTargetFromText, findMemberInText, matchMemberByHint, stripWakeWord } from '@/domain/voiceQuery'
+import {
+  detectIntent,
+  detectTargetFromText,
+  findMemberInText,
+  matchMemberByHint,
+  stripListFillers,
+  stripWakeWord,
+} from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenOnce, speak } from '@/services/voice'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
@@ -276,7 +283,7 @@ export function VoiceCapture() {
         return
       }
 
-      const entries = splitEntries(text)
+      const entries = splitEntries(stripListFillers(text))
       if (entries.length === 0) {
         setStatus('idle')
         return

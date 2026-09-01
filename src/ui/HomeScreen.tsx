@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { Profile } from '@/domain/types'
+import type { GalleryPhoto, Profile } from '@/domain/types'
 import { getPermissionState, requestPermission, subscribeToPush } from '@/services/notifications'
 import { savePushSubscription } from '@/data/push'
+import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -14,6 +15,8 @@ export function HomeScreen({ profile }: { profile: Profile }) {
     <div className="screen">
       <h1>¿Qué tenemos hoy?</h1>
       <p className="muted">Hola, {profile.displayName}</p>
+
+      <PhotoBanner />
 
       <NotificationsBanner />
 
@@ -31,6 +34,76 @@ export function HomeScreen({ profile }: { profile: Profile }) {
         <HomeCard title="Documentos" body="Por cada miembro" to="/documentos" />
       </div>
     </div>
+  )
+}
+
+// "Foto de portada" en la pantalla de inicio, al estilo de otras apps
+// familiares (captura de referencia de la usuaria) — las últimas fotos
+// de la Galería (ya existente, mismo almacenamiento) rotando solas, con
+// puntitos abajo. Toda la tarjeta lleva a la Galería, que es donde ya
+// se puede subir/borrar — no hace falta duplicar ese formulario aquí.
+function PhotoBanner() {
+  const [photos, setPhotos] = useState<GalleryPhoto[]>([])
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [index, setIndex] = useState(0)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    listGalleryPhotos()
+      .then(async (list) => {
+        const recent = list.slice(0, 6)
+        setPhotos(recent)
+        const entries = await Promise.all(
+          recent.map(async (p) => [p.id, await getGalleryPhotoUrl(p.storagePath)] as const),
+        )
+        setUrls(Object.fromEntries(entries))
+      })
+      .catch(() => {
+        // Sin fotos o sin permiso: se enseña el estado vacío, no hace
+        // falta un error visible en la portada por esto.
+      })
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (photos.length < 2) return
+    const timer = setInterval(() => setIndex((i) => (i + 1) % photos.length), 4500)
+    return () => clearInterval(timer)
+  }, [photos.length])
+
+  if (loading) return null
+
+  if (photos.length === 0) {
+    return (
+      <Link to="/galeria" className="home-photo-banner home-photo-banner-empty">
+        <div className="home-photo-banner-overlay">
+          <p className="home-photo-banner-title">📷 Sube fotos de la familia</p>
+          <p className="home-photo-banner-sub">Toca aquí para añadir la primera</p>
+        </div>
+      </Link>
+    )
+  }
+
+  const current = photos[index]
+  const url = urls[current.id]
+
+  return (
+    <Link to="/galeria" className="home-photo-banner">
+      {url && <img src={url} alt={current.caption ?? ''} className="home-photo-banner-img" />}
+      <div className="home-photo-banner-overlay">
+        <p className="home-photo-banner-title">📷 {current.caption || 'Fotos de la familia'}</p>
+      </div>
+      {photos.length > 1 && (
+        <div className="home-photo-banner-dots">
+          {photos.map((p, i) => (
+            <span
+              key={p.id}
+              className={'home-photo-banner-dot' + (i === index ? ' home-photo-banner-dot-active' : '')}
+            />
+          ))}
+        </div>
+      )}
+    </Link>
   )
 }
 

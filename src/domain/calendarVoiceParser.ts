@@ -258,12 +258,22 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
     remaining = result.remaining
   }
 
+  // "Pepa, ponme en el calendario que tengo el cumpleaños de mi mujer" —
+  // ahora que se puede hablar con Pepa desde cualquier pantalla y ella
+  // sola te lleva al calendario, esta forma de pedirlo ("ponme en el
+  // calendario QUE TENGO...") es la más natural — pero antes solo se
+  // quitaba el verbo suelto del principio ("ponme"), dejando "en el
+  // calendario que tengo el" colado dentro del título (bug real:
+  // confirmaba "En el calendario que tengo el cumpleaños..." en vez de
+  // "Cumpleaños..."). Se quita también la coletilla completa, no solo
+  // el verbo.
   const TRIGGER_WORDS = ['marcame', 'marca', 'apunta', 'apuntame', 'anota', 'pon', 'ponme', 'agenda', 'programa', 'crea', 'anademe', 'anade']
   let title = remaining.replace(/\s+/g, ' ').trim()
   title = title.replace(/^[,;]\s*/, '').trim()
   for (const w of TRIGGER_WORDS) {
     title = title.replace(new RegExp(`^${w}\\b`), '').trim()
   }
+  title = title.replace(/^(en el calendario)?\s*(que)?\s*(tengo)?\s*(el|la|los|las|un|una)?\s*/, '').trim()
   title = title.replace(/^[,;]\s*/, '').trim()
   title = title.charAt(0).toUpperCase() + title.slice(1)
 

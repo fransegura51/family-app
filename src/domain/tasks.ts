@@ -1,6 +1,8 @@
 // Lógica de negocio de tareas — sin dependencias de framework ni de
 // Supabase, para que sea trivial de razonar/testear (Skill 01).
 
+import { expandOccurrences } from '@/domain/calendar'
+
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -23,6 +25,17 @@ export function calculateStreak(completedDates: string[]): number {
 
 export function isCompletedToday(completedDates: string[]): boolean {
   return completedDates.includes(toDateStr(new Date()))
+}
+
+// Reutiliza el mismo expandidor de recurrencia (RRULE simplificado) que
+// el calendario — una tarea "de lunes a viernes" y un evento semanal se
+// calculan igual, solo cambia qué fecha/hora se usa como ancla.
+export function isTaskDueOn(
+  task: { startDate: string; timeOfDay: string | null; recurrenceRule: string | null },
+  dateStr: string,
+): boolean {
+  const startAt = `${task.startDate}T${task.timeOfDay ?? '00:00'}`
+  return expandOccurrences({ startAt, recurrenceRule: task.recurrenceRule }, dateStr, dateStr).length > 0
 }
 
 export function memberPointsBalance(

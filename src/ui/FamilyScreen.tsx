@@ -1,20 +1,21 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { addFamilyMember, deleteFamilyMember, listFamilyMembers, updateFamilyMember } from '@/data/family'
-import type { FamilyMember, FamilyRole, MemberType } from '@/domain/types'
+import type { FamilyMember, MemberType, Profile } from '@/domain/types'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
+  { value: 'admin', label: 'Administrador/a' },
   { value: 'adult', label: 'Adulto' },
   { value: 'child', label: 'Niño/a' },
   { value: 'baby', label: 'Bebé' },
 ]
 
-export function FamilyScreen({ role }: { role: FamilyRole }) {
+export function FamilyScreen({ profile }: { profile: Profile }) {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const isAdmin = role === 'admin'
+  const isAdmin = profile.role === 'admin'
 
   function reload() {
     setLoading(true)
@@ -65,14 +66,16 @@ export function FamilyScreen({ role }: { role: FamilyRole }) {
                 <strong>{m.name}</strong>
                 <p className="muted">{m.memberType}</p>
               </div>
-              {isAdmin && m.memberType !== 'admin' && (
+              {isAdmin && (
                 <div className="member-card-actions">
                   <button type="button" className="link-button" onClick={() => setEditingId(m.id)}>
                     Editar
                   </button>
-                  <button type="button" className="link-button" onClick={() => handleDelete(m.id)}>
-                    Borrar
-                  </button>
+                  {m.linkedProfileId !== profile.id && (
+                    <button type="button" className="link-button" onClick={() => handleDelete(m.id)}>
+                      Borrar
+                    </button>
+                  )}
                 </div>
               )}
             </div>

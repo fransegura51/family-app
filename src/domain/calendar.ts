@@ -35,11 +35,28 @@ export function getMonthGridDays(year: number, month: number): MonthDay[] {
   return days
 }
 
-// Ocurrencias de un evento dentro de un rango [rangeStartStr, rangeEndStr]
+// Códigos de día RFC 5545 (BYDAY) — MO=lunes..SU=domingo — mapeados al
+// valor de Date.getDay() (0=domingo..6=sábado) para poder comparar.
+const BYDAY_TO_JS_DAY: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
+
+function parseRecurrenceRule(rule: string): { freq: string; byDay: number[] } {
+  const parts = Object.fromEntries(
+    rule.split(';').map((p) => p.split('=') as [string, string]),
+  )
+  const byDay = (parts.BYDAY ?? '')
+    .split(',')
+    .map((code) => BYDAY_TO_JS_DAY[code])
+    .filter((n): n is number => n !== undefined)
+  return { freq: parts.FREQ ?? '', byDay }
+}
+
+// Ocurrencias de un evento/tarea dentro de un rango [rangeStartStr, rangeEndStr]
 // (YYYY-MM-DD, ambos incluidos). Sin recurrencia, solo su propia fecha si
-// cae en el rango. Con recurrencia simple diaria/semanal/mensual, expande
-// las repeticiones — necesario para que un evento semanal aparezca en
-// más de un día de la cuadrícula del mes.
+// cae en el rango. Con recurrencia diaria/semanal/mensual/anual, expande
+// las repeticiones — necesario para que algo semanal aparezca en más de
+// un día de la cuadrícula del mes. FREQ=WEEKLY admite BYDAY (p. ej.
+// "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" para "de lunes a viernes"); sin
+// BYDAY cae cada 7 días desde la fecha de inicio, como antes.
 export function expandOccurrences(
   event: { startAt: string; recurrenceRule: string | null },
   rangeStartStr: string,
@@ -61,11 +78,25 @@ export function expandOccurrences(
   const rangeEnd = new Date(rangeEndStr + 'T00:00')
   const cursor = new Date(startDate + 'T00:00')
   const results: string[] = []
-  const stepDays = event.recurrenceRule === 'FREQ=DAILY' ? 1 : event.recurrenceRule === 'FREQ=WEEKLY' ? 7 : null
+  const { freq, byDay } = parseRecurrenceRule(event.recurrenceRule)
 
   // Límite de seguridad: nunca iterar más de ~10 años de ocurrencias.
   let guard = 0
-  if (stepDays) {
+  if (freq === 'WEEKLY' && byDay.length > 0) {
+    // No cae cada 7 días desde el inicio, sino en cada día de la semana
+    // marcado (p. ej. "de lunes a viernes") a partir de la fecha de
+    // inicio — hay que recorrer día a día, no de 7 en 7.
+    const dayCursor = new Date(rangeStart < cursor ? cursor : rangeStart)
+    while (dayCursor <= rangeEnd && guard < 5000) {
+      const dateStr = toDateStr(dayCursor)
+      if (dateStr >= startDate && byDay.includes(dayCursor.getDay())) {
+        results.push(dateStr)
+      }
+      dayCursor.setDate(dayCursor.getDate() + 1)
+      guard++
+    }
+  } else if (freq === 'DAILY' || freq === 'WEEKLY') {
+    const stepDays = freq === 'DAILY' ? 1 : 7
     while (cursor < rangeStart && guard < 5000) {
       cursor.setDate(cursor.getDate() + stepDays)
       guard++
@@ -75,7 +106,7 @@ export function expandOccurrences(
       cursor.setDate(cursor.getDate() + stepDays)
       guard++
     }
-  } else if (event.recurrenceRule === 'FREQ=MONTHLY') {
+  } else if (freq === 'MONTHLY') {
     while (cursor < rangeStart && guard < 500) {
       cursor.setMonth(cursor.getMonth() + 1)
       guard++
@@ -83,6 +114,16 @@ export function expandOccurrences(
     while (cursor <= rangeEnd && guard < 500) {
       results.push(toDateStr(cursor))
       cursor.setMonth(cursor.getMonth() + 1)
+      guard++
+    }
+  } else if (freq === 'YEARLY') {
+    while (cursor < rangeStart && guard < 200) {
+      cursor.setFullYear(cursor.getFullYear() + 1)
+      guard++
+    }
+    while (cursor <= rangeEnd && guard < 200) {
+      results.push(toDateStr(cursor))
+      cursor.setFullYear(cursor.getFullYear() + 1)
       guard++
     }
   }

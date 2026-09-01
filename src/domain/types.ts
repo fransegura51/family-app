@@ -38,6 +38,8 @@ export interface Task {
   title: string
   taskType: TaskType
   recurrenceRule: string | null
+  startDate: string
+  timeOfDay: string | null
   points: number
   active: boolean
 }

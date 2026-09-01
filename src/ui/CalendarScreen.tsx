@@ -38,6 +38,7 @@ export function CalendarScreen() {
   const [visibleYear, setVisibleYear] = useState(today.getFullYear())
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
   const [selectedDate, setSelectedDate] = useState(toDateStr(today))
+  const [dayModalOpen, setDayModalOpen] = useState(false)
 
   function reload() {
     setLoading(true)
@@ -174,7 +175,10 @@ export function CalendarScreen() {
                     (day.isToday ? ' month-grid-day-today' : '') +
                     (selectedDate === day.dateStr ? ' month-grid-day-selected' : '')
                   }
-                  onClick={() => setSelectedDate(day.dateStr)}
+                  onClick={() => {
+                    setSelectedDate(day.dateStr)
+                    setDayModalOpen(true)
+                  }}
                 >
                   <span>{day.day}</span>
                   <span className="month-grid-dots">
@@ -187,40 +191,26 @@ export function CalendarScreen() {
             })}
           </div>
 
-          <h2 className="section-title">
-            {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-            })}
-          </h2>
-          <div className="event-list">
-            {selectedDayEvents.map((ev) =>
-              editingId === ev.id ? (
-                <EditEventForm
-                  key={ev.id}
-                  event={ev}
-                  members={members}
-                  onDone={() => {
-                    setEditingId(null)
-                    reload()
-                  }}
-                  onCancel={() => setEditingId(null)}
-                />
-              ) : (
-                <EventCard
-                  key={ev.id}
-                  event={ev}
-                  memberById={memberById}
-                  onEdit={() => setEditingId(ev.id)}
-                  onDelete={() => handleDelete(ev.id)}
-                />
-              ),
-            )}
-            {selectedDayEvents.length === 0 && <p className="muted">Nada este día.</p>}
-          </div>
-
-          <AddEventForm key={selectedDate} members={members} onAdded={reload} defaultDate={selectedDate} />
+          {dayModalOpen && (
+            <DayModal
+              selectedDate={selectedDate}
+              events={selectedDayEvents}
+              members={members}
+              editingId={editingId}
+              onEdit={setEditingId}
+              onCancelEdit={() => setEditingId(null)}
+              onDelete={handleDelete}
+              onEventChanged={() => {
+                setEditingId(null)
+                reload()
+              }}
+              onAdded={reload}
+              onClose={() => {
+                setDayModalOpen(false)
+                setEditingId(null)
+              }}
+            />
+          )}
         </>
       ) : (
         <>
@@ -253,6 +243,96 @@ export function CalendarScreen() {
           <AddEventForm members={members} onAdded={reload} />
         </>
       )}
+    </div>
+  )
+}
+
+// Ventana emergente al pinchar un día: agrupa lo que hay ese día por
+// persona (un evento con varios miembros aparece en cada grupo), para
+// verlo de un vistazo sin tener que abrir cada evento — "lo que tienen
+// que hacer cada uno ese día".
+function DayModal({
+  selectedDate,
+  events,
+  members,
+  editingId,
+  onEdit,
+  onCancelEdit,
+  onDelete,
+  onEventChanged,
+  onAdded,
+  onClose,
+}: {
+  selectedDate: string
+  events: CalendarEvent[]
+  members: FamilyMember[]
+  editingId: string | null
+  onEdit: (id: string) => void
+  onCancelEdit: () => void
+  onDelete: (id: string) => void
+  onEventChanged: () => void
+  onAdded: () => void
+  onClose: () => void
+}) {
+  const memberById = new Map(members.map((m) => [m.id, m]))
+  const familyEvents = events.filter((ev) => ev.memberIds.length === 0)
+  const groups = members
+    .map((m) => ({ member: m, events: events.filter((ev) => ev.memberIds.includes(m.id)) }))
+    .filter((g) => g.events.length > 0)
+
+  function renderEvent(ev: CalendarEvent) {
+    return editingId === ev.id ? (
+      <EditEventForm key={ev.id} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
+    ) : (
+      <EventCard
+        key={ev.id}
+        event={ev}
+        memberById={memberById}
+        onEdit={() => onEdit(ev.id)}
+        onDelete={() => onDelete(ev.id)}
+      />
+    )
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+            })}
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+
+        {events.length === 0 && <p className="muted">Nada este día.</p>}
+
+        {groups.map(({ member, events: memberEvents }) => (
+          <div key={member.id} className="day-modal-group">
+            <h3>
+              <span className="avatar avatar-sm" style={{ background: member.color }}>
+                {member.name.charAt(0)}
+              </span>
+              {member.name}
+            </h3>
+            <div className="event-list">{memberEvents.map(renderEvent)}</div>
+          </div>
+        ))}
+
+        {familyEvents.length > 0 && (
+          <div className="day-modal-group">
+            <h3>Toda la familia</h3>
+            <div className="event-list">{familyEvents.map(renderEvent)}</div>
+          </div>
+        )}
+
+        <AddEventForm key={selectedDate} members={members} onAdded={onAdded} defaultDate={selectedDate} />
+      </div>
     </div>
   )
 }

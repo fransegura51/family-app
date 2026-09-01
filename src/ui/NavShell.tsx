@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { VoiceCapture } from '@/ui/VoiceCapture'
 
 const TABS = [
   { to: '/', label: 'Inicio', end: true },
@@ -15,6 +16,7 @@ export function NavShell() {
       <main className="app-content">
         <Outlet />
       </main>
+      <VoiceCapture />
       <nav className="bottom-nav">
         {TABS.map((tab) => (
           <NavLink

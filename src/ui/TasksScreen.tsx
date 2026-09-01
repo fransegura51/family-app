@@ -13,7 +13,8 @@ import {
   uncompleteTask,
 } from '@/data/tasks'
 import { listFamilyMembers } from '@/data/family'
-import { calculateStreak, isCompletedToday, memberPointsBalance } from '@/domain/tasks'
+import { WEEKDAY_LABELS } from '@/domain/calendar'
+import { calculateStreak, isCompletedToday, isTaskDueOn, memberPointsBalance } from '@/domain/tasks'
 import type {
   FamilyMember,
   Reward,
@@ -30,11 +31,58 @@ const TASK_TYPES: { value: TaskType; label: string }[] = [
   { value: 'mision', label: 'Misión' },
 ]
 
-const RECURRENCE_OPTIONS = [
+const FREQ_OPTIONS = [
   { value: '', label: 'No se repite' },
-  { value: 'FREQ=DAILY', label: 'Cada día' },
-  { value: 'FREQ=WEEKLY', label: 'Cada semana' },
+  { value: 'DAILY', label: 'Cada día' },
+  { value: 'WEEKLY', label: 'Cada semana' },
+  { value: 'MONTHLY', label: 'Cada mes' },
+  { value: 'YEARLY', label: 'Cada año' },
 ]
+
+// Mismo orden que WEEKDAY_LABELS (L M X J V S D) pero en código RFC 5545,
+// para poder montar "FREQ=WEEKLY;BYDAY=MO,TU,..." a partir de los chips
+// que el usuario marque (p. ej. "de lunes a viernes").
+const BYDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+
+function buildRecurrenceRule(freq: string, byDay: string[]): string | null {
+  if (!freq) return null
+  if (freq === 'WEEKLY' && byDay.length > 0) return `FREQ=WEEKLY;BYDAY=${byDay.join(',')}`
+  return `FREQ=${freq}`
+}
+
+function parseRecurrenceRule(rule: string | null): { freq: string; byDay: string[] } {
+  if (!rule) return { freq: '', byDay: [] }
+  const parts = Object.fromEntries(rule.split(';').map((p) => p.split('=')))
+  return { freq: parts.FREQ ?? '', byDay: parts.BYDAY ? parts.BYDAY.split(',') : [] }
+}
+
+function recurrenceLabel(rule: string | null): string {
+  const { freq, byDay } = parseRecurrenceRule(rule)
+  if (!freq) return ''
+  const base = FREQ_OPTIONS.find((f) => f.value === freq)?.label ?? ''
+  if (freq === 'WEEKLY' && byDay.length > 0) {
+    const days = byDay.map((code) => WEEKDAY_LABELS[BYDAY_CODES.indexOf(code)]).join('')
+    return `${base} (${days})`
+  }
+  return base
+}
+
+function WeekdayPicker({ selected, onToggle }: { selected: string[]; onToggle: (code: string) => void }) {
+  return (
+    <div className="filter-row">
+      {BYDAY_CODES.map((code, i) => (
+        <button
+          type="button"
+          key={code}
+          className={'chip' + (selected.includes(code) ? ' chip-active' : '')}
+          onClick={() => onToggle(code)}
+        >
+          {WEEKDAY_LABELS[i]}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 export function TasksScreen() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -43,8 +91,13 @@ export function TasksScreen() {
   const [redemptions, setRedemptions] = useState<RewardRedemption[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('all')
+  const [showAll, setShowAll] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const todayStr = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
 
   function reload() {
     setLoading(true)
@@ -62,13 +115,13 @@ export function TasksScreen() {
 
   useEffect(reload, [])
 
-  const visibleTasks = useMemo(
-    () =>
+  const visibleTasks = useMemo(() => {
+    const byMember =
       activeMemberId === 'all'
         ? tasks
-        : tasks.filter((t) => t.memberId === null || t.memberId === activeMemberId),
-    [tasks, activeMemberId],
-  )
+        : tasks.filter((t) => t.memberId === null || t.memberId === activeMemberId)
+    return showAll ? byMember : byMember.filter((t) => isTaskDueOn(t, todayStr))
+  }, [tasks, activeMemberId, showAll, todayStr])
 
   const balance =
     activeMemberId === 'all' ? null : memberPointsBalance(activeMemberId, completions, redemptions)
@@ -122,6 +175,15 @@ export function TasksScreen() {
         ))}
       </div>
 
+      <div className="filter-row">
+        <button className={'chip' + (!showAll ? ' chip-active' : '')} onClick={() => setShowAll(false)}>
+          Hoy
+        </button>
+        <button className={'chip' + (showAll ? ' chip-active' : '')} onClick={() => setShowAll(true)}>
+          Todas
+        </button>
+      </div>
+
       {activeMemberId === 'all' ? (
         <p className="muted">Selecciona un miembro para marcar tareas y ver sus puntos.</p>
       ) : (
@@ -146,6 +208,8 @@ export function TasksScreen() {
                   {TASK_TYPES.find((t) => t.value === task.taskType)?.label} · {task.points} pts
                   {streak > 0 && ` · 🔥 ${streak}`}
                   {!owner && ' · Familiar'}
+                  {task.timeOfDay && ` · ${task.timeOfDay.slice(0, 5)}`}
+                  {recurrenceLabel(task.recurrenceRule) && ` · ${recurrenceLabel(task.recurrenceRule)}`}
                 </p>
               </div>
               <button
@@ -200,14 +264,26 @@ export function TasksScreen() {
   )
 }
 
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function AddTaskForm({ members, onAdded }: { members: FamilyMember[]; onAdded: () => void }) {
   const [title, setTitle] = useState('')
   const [taskType, setTaskType] = useState<TaskType>('unica')
   const [memberId, setMemberId] = useState<string>('')
   const [points, setPoints] = useState(5)
-  const [recurrenceRule, setRecurrenceRule] = useState('')
+  const [startDate, setStartDate] = useState(todayIso())
+  const [timeOfDay, setTimeOfDay] = useState('')
+  const [freq, setFreq] = useState('')
+  const [byDay, setByDay] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  function toggleDay(code: string) {
+    setByDay((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -219,7 +295,9 @@ function AddTaskForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
         taskType,
         memberId: memberId || null,
         points,
-        recurrenceRule: recurrenceRule || null,
+        recurrenceRule: buildRecurrenceRule(freq, byDay),
+        startDate,
+        timeOfDay: timeOfDay || null,
       })
       setTitle('')
       onAdded()
@@ -268,15 +346,29 @@ function AddTaskForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
         />
       </label>
       <label>
+        Fecha de inicio
+        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+      </label>
+      <label>
+        Hora (opcional)
+        <input type="time" value={timeOfDay} onChange={(e) => setTimeOfDay(e.target.value)} />
+      </label>
+      <label>
         Repetir
-        <select value={recurrenceRule} onChange={(e) => setRecurrenceRule(e.target.value)}>
-          {RECURRENCE_OPTIONS.map((o) => (
+        <select value={freq} onChange={(e) => setFreq(e.target.value)}>
+          {FREQ_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
         </select>
       </label>
+      {freq === 'WEEKLY' && (
+        <div>
+          <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha de inicio)</p>
+          <WeekdayPicker selected={byDay} onToggle={toggleDay} />
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Crear tarea'}

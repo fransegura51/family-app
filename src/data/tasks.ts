@@ -4,7 +4,7 @@ import type { Reward, RewardRedemption, Task, TaskCompletion, TaskType } from '@
 export async function listTasks(): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')
-    .select('id, family_id, member_id, title, task_type, recurrence_rule, points, active')
+    .select('id, family_id, member_id, title, task_type, recurrence_rule, start_date, time_of_day, points, active')
     .eq('active', true)
     .order('created_at', { ascending: true })
   if (error) throw error
@@ -15,6 +15,8 @@ export async function listTasks(): Promise<Task[]> {
     title: r.title,
     taskType: r.task_type as TaskType,
     recurrenceRule: r.recurrence_rule,
+    startDate: r.start_date,
+    timeOfDay: r.time_of_day,
     points: r.points,
     active: r.active,
   }))
@@ -26,6 +28,8 @@ export async function createTask(input: {
   memberId: string | null
   points: number
   recurrenceRule: string | null
+  startDate: string
+  timeOfDay: string | null
 }): Promise<void> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
@@ -43,6 +47,8 @@ export async function createTask(input: {
     task_type: input.taskType,
     points: input.points,
     recurrence_rule: input.recurrenceRule,
+    start_date: input.startDate,
+    time_of_day: input.timeOfDay,
   })
   if (error) throw error
 }

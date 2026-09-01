@@ -77,16 +77,65 @@ export async function uploadReceipt(input: {
   if (receiptError) throw receiptError
 }
 
+// Al editar, mantiene el gasto REAL enlazado al día — lo crea si el
+// ticket no tenía importe al guardarlo la primera vez, lo actualiza si
+// ya existía, y lo borra si se deja el importe en blanco (bug real: al
+// editar el importe de un ticket ya guardado, ese cambio no se
+// reflejaba en Gastos porque antes solo se tocaba la fila del ticket).
 export async function updateReceipt(
   id: string,
   input: { store: string; receiptDate: string; totalAmount: number | null },
 ): Promise<void> {
+  const { data: existing, error: fetchError } = await supabase
+    .from('receipts')
+    .select('expense_id')
+    .eq('id', id)
+    .single()
+  if (fetchError) throw fetchError
+
+  let expenseId: string | null = existing.expense_id
+
+  if (input.totalAmount != null) {
+    if (expenseId) {
+      const { error: updateExpenseError } = await supabase
+        .from('expenses')
+        .update({
+          expense_date: input.receiptDate,
+          amount: input.totalAmount,
+          store: input.store || null,
+        })
+        .eq('id', expenseId)
+      if (updateExpenseError) throw updateExpenseError
+    } else {
+      const familyId = await currentFamilyId()
+      const { data: expense, error: insertExpenseError } = await supabase
+        .from('expenses')
+        .insert({
+          family_id: familyId,
+          expense_date: input.receiptDate,
+          amount: input.totalAmount,
+          category: 'Alimentación',
+          store: input.store || null,
+          kind: 'real',
+        })
+        .select('id')
+        .single()
+      if (insertExpenseError) throw insertExpenseError
+      expenseId = expense.id
+    }
+  } else if (expenseId) {
+    const { error: deleteExpenseError } = await supabase.from('expenses').delete().eq('id', expenseId)
+    if (deleteExpenseError) throw deleteExpenseError
+    expenseId = null
+  }
+
   const { error } = await supabase
     .from('receipts')
     .update({
       store: input.store || null,
       receipt_date: input.receiptDate,
       total_amount: input.totalAmount,
+      expense_id: expenseId,
     })
     .eq('id', id)
   if (error) throw error

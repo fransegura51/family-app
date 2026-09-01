@@ -442,18 +442,24 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
         totalAmount: totalAmount ? Number(totalAmount) : null,
       })
 
-      for (const line of lines) {
-        const price = Number(line.price)
-        if (!line.name.trim() || Number.isNaN(price)) continue
-        await recordProductPurchase({
-          name: line.name.trim(),
-          price,
-          quantity: '',
-          unit: '',
-          store,
-          date: receiptDate,
-        })
-      }
+      // En paralelo, no uno a uno: con muchos productos leídos, guardarlos
+      // en serie tardaba tanto (una llamada de red por línea) que parecía
+      // que se había quedado colgado en "Subiendo…" — bug real detectado
+      // al probar con un ticket de varias líneas.
+      await Promise.all(
+        lines
+          .filter((line) => line.name.trim() && !Number.isNaN(Number(line.price)))
+          .map((line) =>
+            recordProductPurchase({
+              name: line.name.trim(),
+              price: Number(line.price),
+              quantity: '',
+              unit: '',
+              store,
+              date: receiptDate,
+            }),
+          ),
+      )
 
       setFile(null)
       setStore('')

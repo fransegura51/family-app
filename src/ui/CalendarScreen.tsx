@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { createEvent, deleteEvent, deleteEventOccurrence, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
+import { listCompletions, listTasks } from '@/data/tasks'
+import { isTaskDueOn } from '@/domain/tasks'
 import {
   addFeed,
   deleteFeed,
@@ -21,7 +23,7 @@ import {
   type ReminderAnchor,
   type ReminderUnit,
 } from '@/domain/reminders'
-import type { CalendarEvent, FamilyMember } from '@/domain/types'
+import type { CalendarEvent, FamilyMember, Task, TaskCompletion } from '@/domain/types'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
 import {
   buildRecurrenceRule,
@@ -43,6 +45,8 @@ function toDateStr(d: Date): string {
 
 export function CalendarScreen() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [completions, setCompletions] = useState<TaskCompletion[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [filterMemberId, setFilterMemberId] = useState<string>('all')
   const [loading, setLoading] = useState(true)
@@ -67,17 +71,30 @@ export function CalendarScreen() {
 
   function reload() {
     setLoading(true)
-    Promise.all([listUpcomingEvents(), listFamilyMembers(), listHolidayDates()])
-      .then(([e, m, h]) => {
+    Promise.all([listUpcomingEvents(), listFamilyMembers(), listHolidayDates(), listTasks(), listCompletions()])
+      .then(([e, m, h, t, c]) => {
         setEvents(e)
         setMembers(m)
         setHolidayDates(h)
+        setTasks(t)
+        setCompletions(c)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
   }
 
   useEffect(reload, [])
+
+  // Una tarea apuntada por voz (o desde Tareas) para una persona tiene
+  // que verse aquí también, no solo en Tareas — sin este aviso, el
+  // calendario se quedaba igual hasta recargar a mano.
+  useEffect(() => {
+    function handleTasksChanged() {
+      reload()
+    }
+    window.addEventListener('family-app:tareas-changed', handleTasksChanged)
+    return () => window.removeEventListener('family-app:tareas-changed', handleTasksChanged)
+  }, [])
 
   // Cuando se apunta un evento por voz (VoiceCapture vive fuera de esta
   // pantalla, montado en toda la app), esta pantalla no se enteraba —
@@ -132,6 +149,34 @@ export function CalendarScreen() {
     return map
   }, [filteredEvents, monthDays, holidayDates])
 
+  const filteredTasks = useMemo(
+    () =>
+      tasks.filter((t) => {
+        if (!t.memberId) return false // solo tareas asignadas a una persona — "para toda la familia" no aplica aquí
+        return filterMemberId === 'all' || t.memberId === filterMemberId
+      }),
+    [tasks, filterMemberId],
+  )
+
+  // Igual que con los eventos: se calcula una vez por mes visible, no
+  // por celda. Solo entra una tarea si de verdad toca ese día (repetición
+  // incluida) y todavía no está marcada como hecha esa fecha — una tarea
+  // ya completada no debería seguir apareciendo como pendiente.
+  const tasksByDate = useMemo(() => {
+    const map = new Map<string, Task[]>()
+    if (monthDays.length === 0) return map
+    for (const day of monthDays) {
+      const due = filteredTasks.filter((t) => {
+        if (!isTaskDueOn(t, day.dateStr)) return false
+        return !completions.some(
+          (c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === day.dateStr,
+        )
+      })
+      if (due.length > 0) map.set(day.dateStr, due)
+    }
+    return map
+  }, [filteredTasks, completions, monthDays])
+
   function goToMonth(delta: number) {
     const d = new Date(visibleYear, visibleMonth + delta, 1)
     setVisibleYear(d.getFullYear())
@@ -165,6 +210,7 @@ export function CalendarScreen() {
   if (loading) return <div className="screen">Cargando calendario…</div>
 
   const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
+  const selectedDayTasks = tasksByDate.get(selectedDate) ?? []
 
   return (
     <div className="screen">
@@ -227,7 +273,11 @@ export function CalendarScreen() {
             ))}
             {monthDays.map((day) => {
               const dayEvents = eventsByDate.get(day.dateStr) ?? []
-              const dots = [...new Set(dayEvents.flatMap((e) => eventDotColors(e, memberColorById)))]
+              const dayTasks = tasksByDate.get(day.dateStr) ?? []
+              const taskDots = dayTasks
+                .map((t) => memberColorById.get(t.memberId as string))
+                .filter((c): c is string => !!c)
+              const dots = [...new Set([...dayEvents.flatMap((e) => eventDotColors(e, memberColorById)), ...taskDots])]
               return (
                 <button
                   type="button"
@@ -258,6 +308,7 @@ export function CalendarScreen() {
             <DayModal
               selectedDate={selectedDate}
               events={selectedDayEvents}
+              tasks={selectedDayTasks}
               members={members}
               editingId={editingId}
               onEdit={setEditingId}
@@ -318,6 +369,7 @@ export function CalendarScreen() {
 function DayModal({
   selectedDate,
   events,
+  tasks,
   members,
   editingId,
   onEdit,
@@ -330,6 +382,7 @@ function DayModal({
 }: {
   selectedDate: string
   events: CalendarEvent[]
+  tasks: Task[]
   members: FamilyMember[]
   editingId: string | null
   onEdit: (id: string) => void
@@ -343,8 +396,12 @@ function DayModal({
   const memberById = new Map(members.map((m) => [m.id, m]))
   const familyEvents = events.filter((ev) => ev.memberIds.length === 0)
   const groups = members
-    .map((m) => ({ member: m, events: events.filter((ev) => ev.memberIds.includes(m.id)) }))
-    .filter((g) => g.events.length > 0)
+    .map((m) => ({
+      member: m,
+      events: events.filter((ev) => ev.memberIds.includes(m.id)),
+      tasks: tasks.filter((t) => t.memberId === m.id),
+    }))
+    .filter((g) => g.events.length > 0 || g.tasks.length > 0)
 
   function renderEvent(ev: CalendarEvent) {
     return editingId === ev.id ? (
@@ -377,9 +434,9 @@ function DayModal({
           </button>
         </div>
 
-        {events.length === 0 && <p className="muted">Nada este día.</p>}
+        {events.length === 0 && tasks.length === 0 && <p className="muted">Nada este día.</p>}
 
-        {groups.map(({ member, events: memberEvents }) => (
+        {groups.map(({ member, events: memberEvents, tasks: memberTasks }) => (
           <div key={member.id} className="day-modal-group">
             <h3>
               <span className="avatar avatar-sm" style={{ background: member.color }}>
@@ -387,7 +444,15 @@ function DayModal({
               </span>
               {member.name}
             </h3>
-            <div className="event-list">{memberEvents.map(renderEvent)}</div>
+            <div className="event-list">
+              {memberEvents.map(renderEvent)}
+              {memberTasks.map((t) => (
+                <div key={t.id} className="card event-card">
+                  <strong>✅ {t.title}</strong>
+                  <p className="muted">{t.timeOfDay ? `Tarea · ${t.timeOfDay.slice(0, 5)}` : 'Tarea'}</p>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
 

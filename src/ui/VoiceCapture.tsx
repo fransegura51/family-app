@@ -65,7 +65,7 @@ function getTarget(pathname: string): { key: TargetKey; label: string } {
   return { key: 'tareas', label: TARGET_INFO.tareas.label }
 }
 
-async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[]): Promise<void> {
+async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[], memberId: string | null): Promise<void> {
   for (const entry of entries) {
     if (targetKey === 'compras') {
       await addShoppingItem({ name: entry, quantity: '', unit: '', priority: 'normal', tripId: null })
@@ -73,7 +73,7 @@ async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[]): 
       await createTask({
         title: entry,
         taskType: 'unica',
-        memberId: null,
+        memberId,
         points: 0,
         recurrenceRule: null,
         startDate: todayIso(),
@@ -84,6 +84,20 @@ async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[]): 
   // Mismo aviso que en Calendario: si ya estás en Lista de la compra o
   // en Tareas, que se vea al momento en vez de tener que recargar.
   window.dispatchEvent(new CustomEvent(`family-app:${targetKey}-changed`))
+}
+
+// "Pepa, apunta a Eric que saque la basura" — reconoce a quién es la
+// tarea (igual que ya se hace en el calendario) y lo quita del texto
+// junto con el conector que suele ir delante ("a"/"para"), para no
+// dejarlo colgando en el título de la tarea.
+async function extractTaskMember(text: string): Promise<{ memberId: string | null; text: string }> {
+  const members = await listFamilyMembers()
+  const member = findMemberInText(text, members)
+  if (!member) return { memberId: null, text }
+  const escaped = member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const nameRe = new RegExp(`\\b(a|para)?\\s*${escaped}\\b,?`, 'i')
+  const cleaned = text.replace(nameRe, ' ').replace(/\s+/g, ' ').trim()
+  return { memberId: member.id, text: cleaned }
 }
 
 async function answerTasksQuery(memberHint: string | null, rawText: string): Promise<string> {
@@ -283,12 +297,24 @@ export function VoiceCapture() {
         return
       }
 
-      const entries = splitEntries(stripListFillers(text))
+      // En Tareas (no en Compras — la compra no es de una persona en
+      // concreto) se reconoce a quién es, igual que ya se hace en el
+      // calendario — "Pepa, apunta a Eric que saque la basura" la
+      // asigna a Eric en vez de dejarla sin nadie.
+      let memberId: string | null = null
+      let textForEntries = text
+      if (effectiveTargetKey === 'tareas') {
+        const extracted = await extractTaskMember(text)
+        memberId = extracted.memberId
+        textForEntries = extracted.text
+      }
+
+      const entries = splitEntries(stripListFillers(textForEntries))
       if (entries.length === 0) {
         setStatus('idle')
         return
       }
-      await saveEntries(effectiveTargetKey as 'compras' | 'tareas', entries)
+      await saveEntries(effectiveTargetKey as 'compras' | 'tareas', entries, memberId)
       setStatus('done')
       respond(`Apuntado en ${effectiveTarget.label}: ${entries.join(', ')}`)
     } catch (err) {

@@ -21,17 +21,17 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       <NotificationsBanner />
 
       <div className="card-grid">
-        <HomeCard title="Familia" body="Miembros y perfiles" to="/familia" />
-        <HomeCard title="Calendario" body="Eventos de hoy" to="/calendario" />
-        <HomeCard title="Tareas" body="Pendientes de hoy" to="/tareas" />
-        <HomeCard title="Próxima compra" body="Lista actual" to="/compras" />
-        <HomeCard title="Alimentación" body="Menú de hoy" to="/alimentacion" />
-        <HomeCard title="Dinero" body="Resumen del mes" to="/dinero" />
-        <HomeCard title="Ubicación y avisos" body="Opcional, desactivado por defecto" to="/ubicacion" />
-        <HomeCard title="Cumpleaños" body="Próximos en la familia" to="/cumpleanos" />
-        <HomeCard title="Contactos" body="Colegio, médico, emergencias" to="/contactos" />
-        <HomeCard title="Galería" body="Fotos de la familia" to="/galeria" />
-        <HomeCard title="Documentos" body="Por cada miembro" to="/documentos" />
+        <HomeCard title="Familia" body="Miembros y perfiles" to="/familia" icon="👨‍👩‍👧‍👦" color="#ffe3d6" />
+        <HomeCard title="Calendario" body="Eventos de hoy" to="/calendario" icon="📅" color="#dbeafe" />
+        <HomeCard title="Tareas" body="Pendientes de hoy" to="/tareas" icon="✅" color="#dcfce7" />
+        <HomeCard title="Próxima compra" body="Lista actual" to="/compras" icon="🛒" color="#fef3c7" />
+        <HomeCard title="Alimentación" body="Menú de hoy" to="/alimentacion" icon="🍎" color="#d1fae5" />
+        <HomeCard title="Dinero" body="Resumen del mes" to="/dinero" icon="💶" color="#dcfce7" />
+        <HomeCard title="Ubicación y avisos" body="Opcional, desactivado por defecto" to="/ubicacion" icon="📍" color="#e0e7ff" />
+        <HomeCard title="Cumpleaños" body="Próximos en la familia" to="/cumpleanos" icon="🎂" color="#fed7aa" />
+        <HomeCard title="Contactos" body="Colegio, médico, emergencias" to="/contactos" icon="📇" color="#ede9fe" />
+        <HomeCard title="Galería" body="Fotos de la familia" to="/galeria" icon="📷" color="#fef9c3" />
+        <HomeCard title="Documentos" body="Por cada miembro" to="/documentos" icon="📁" color="#dbeafe" />
       </div>
     </div>
   )
@@ -145,11 +145,28 @@ function NotificationsBanner() {
   )
 }
 
-function HomeCard({ title, body, to }: { title: string; body: string; to?: string }) {
+function HomeCard({
+  title,
+  body,
+  to,
+  icon,
+  color,
+}: {
+  title: string
+  body: string
+  to?: string
+  icon: string
+  color: string
+}) {
   const content = (
-    <div className="card">
-      <h2>{title}</h2>
-      <p className="muted">{body}</p>
+    <div className="card home-card">
+      <div>
+        <h2>{title}</h2>
+        <p className="muted">{body}</p>
+      </div>
+      <span className="home-card-icon" style={{ background: color }}>
+        {icon}
+      </span>
     </div>
   )
   return to ? (

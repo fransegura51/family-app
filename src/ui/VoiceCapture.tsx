@@ -8,7 +8,7 @@ import { splitEntries } from '@/domain/quickCapture'
 import { isTaskDueOn } from '@/domain/tasks'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
-import { detectIntent, matchMemberByHint } from '@/domain/voiceQuery'
+import { detectIntent, findMemberInText, matchMemberByHint } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenOnce, speak } from '@/services/voice'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
@@ -72,22 +72,30 @@ async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[]): 
   window.dispatchEvent(new CustomEvent(`family-app:${targetKey}-changed`))
 }
 
-async function answerTasksQuery(memberHint: string | null): Promise<string> {
+async function answerTasksQuery(memberHint: string | null, rawText: string): Promise<string> {
   const [tasks, members, completions] = await Promise.all([listTasks(), listFamilyMembers(), listCompletions()])
   const today = todayIso()
   let due = tasks.filter((t) => isTaskDueOn(t, today))
   let who = ''
 
-  if (memberHint) {
-    const member = matchMemberByHint(memberHint, members)
-    if (member) {
-      due = due.filter((t) => t.memberId === null || t.memberId === member.id)
-      const doneToday = new Set(
-        completions.filter((c) => c.memberId === member.id && c.completedDate === today).map((c) => c.taskId),
-      )
-      due = due.filter((t) => !doneToday.has(t.id))
-      who = ` para ${member.name}`
-    }
+  // El nombre puede venir con "soy X"/"para X" delante, o dicho suelto
+  // ("Jennifer, ¿qué tengo que hacer hoy?") — se prueban las dos formas
+  // antes de rendirse (bug real: preguntar así no filtraba por persona,
+  // y salían también las tareas asignadas a otro miembro de la familia).
+  const member = (memberHint ? matchMemberByHint(memberHint, members) : null) ?? findMemberInText(rawText, members)
+
+  if (member) {
+    due = due.filter((t) => t.memberId === null || t.memberId === member.id)
+    const doneToday = new Set(
+      completions.filter((c) => c.memberId === member.id && c.completedDate === today).map((c) => c.taskId),
+    )
+    due = due.filter((t) => !doneToday.has(t.id))
+    who = ` para ${member.name}`
+  } else {
+    // Sin decir de quién, no se sabe QUIÉN la marcó, pero si alguien ya
+    // la ha hecho hoy no tiene sentido seguir diciéndola como pendiente.
+    const doneToday = new Set(completions.filter((c) => c.completedDate === today).map((c) => c.taskId))
+    due = due.filter((t) => !doneToday.has(t.id))
   }
 
   if (due.length === 0) return `No tienes tareas pendientes${who} hoy.`
@@ -129,19 +137,17 @@ async function handleCalendarEntry(text: string): Promise<string> {
   // así, se busca el nombre de algún miembro tal cual dentro del título
   // y se saca de ahí en vez de dejarlo colgando en el texto.
   if (!member) {
-    for (const m of members) {
-      const nameRe = new RegExp(`\\b${m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
-      if (nameRe.test(title)) {
-        member = m
-        title = title
-          .replace(nameRe, '')
-          .replace(/\s+/g, ' ')
-          .replace(/^[,;]\s*/, '')
-          .replace(/[,;]\s*$/, '')
-          .trim()
-        title = title ? title.charAt(0).toUpperCase() + title.slice(1) : parsed.title
-        break
-      }
+    const found = findMemberInText(title, members)
+    if (found) {
+      member = found
+      const nameRe = new RegExp(`\\b${found.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+      title = title
+        .replace(nameRe, '')
+        .replace(/\s+/g, ' ')
+        .replace(/^[,;]\s*/, '')
+        .replace(/[,;]\s*$/, '')
+        .trim()
+      title = title ? title.charAt(0).toUpperCase() + title.slice(1) : parsed.title
     }
   }
 
@@ -212,7 +218,7 @@ export function VoiceCapture() {
 
       const intent = detectIntent(text)
       if (intent.type === 'tasks_today') {
-        const answer = await answerTasksQuery(intent.memberHint)
+        const answer = await answerTasksQuery(intent.memberHint, text)
         setStatus('done')
         respond(answer)
         return

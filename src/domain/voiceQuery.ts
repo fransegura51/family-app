@@ -24,7 +24,20 @@ const SHOPPING_PATTERNS = [
   'que falta en la compra',
 ]
 
-const TASK_PATTERNS = ['tarea', 'que tengo que hacer', 'que hago ahora', 'que hago hoy', 'que me toca']
+// En 1ª persona ("qué tengo que hacer") y en 3ª ("qué tiene que hacer
+// Paco") — bug real: preguntar por otro miembro en 3ª persona no se
+// reconocía como pregunta y se guardaba como una tarea nueva.
+const TASK_PATTERNS = [
+  'tarea',
+  'que tengo que hacer',
+  'que tiene que hacer',
+  'que hago ahora',
+  'que hace ahora',
+  'que hago hoy',
+  'que hace hoy',
+  'que me toca',
+  'que le toca',
+]
 
 export function detectIntent(text: string): VoiceIntent {
   const n = normalize(text)
@@ -80,4 +93,18 @@ export function matchMemberByHint<T extends { name: string }>(hint: string, memb
   }
   const threshold = n.length <= 4 ? 1 : 2
   return bestDist <= threshold ? best : null
+}
+
+// A veces el nombre no viene con "soy X"/"para X" delante, se dice
+// suelto ("Jennifer, ¿qué tengo que hacer hoy?") — se busca directamente
+// en toda la frase por si algún nombre de la familia aparece tal cual
+// (bug real: preguntar así no filtraba por persona, así que salían
+// también las tareas de otro miembro).
+export function findMemberInText<T extends { name: string }>(text: string, members: T[]): T | null {
+  const n = normalize(text)
+  for (const m of members) {
+    const re = new RegExp(`\\b${normalize(m.name)}\\b`)
+    if (re.test(n)) return m
+  }
+  return null
 }

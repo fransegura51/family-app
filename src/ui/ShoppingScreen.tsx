@@ -16,6 +16,7 @@ import {
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
 import { listFamilyMembers } from '@/data/family'
 import { computeProductStats } from '@/domain/products'
+import { analyzeFridgePhoto } from '@/services/fridgePhoto'
 import type {
   FamilyMember,
   InventoryCategory,
@@ -641,6 +642,7 @@ function InventoryTab() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showFridgePhoto, setShowFridgePhoto] = useState(false)
 
   function reload() {
     setLoading(true)
@@ -678,7 +680,139 @@ function InventoryTab() {
         </div>
       ))}
       {items.length === 0 && <p className="muted">El inventario está vacío.</p>}
+
+      <button type="button" className="voice-mic-button" onClick={() => setShowFridgePhoto(true)}>
+        📷 Reconocer con foto del frigorífico
+      </button>
+
       <AddInventoryForm onAdded={reload} />
+
+      {showFridgePhoto && (
+        <FridgePhotoModal
+          onClose={() => setShowFridgePhoto(false)}
+          onAdded={() => {
+            setShowFridgePhoto(false)
+            reload()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+interface DraftFridgeItem {
+  name: string
+  checked: boolean
+}
+
+// Analiza la foto con Gemini (nivel gratuito, vía función de servidor —
+// la clave nunca toca el cliente) y enseña lo detectado como checklist
+// editable: el reconocimiento por foto puede fallar o confundirse, así
+// que nada se guarda sin que la familia lo confirme antes.
+function FridgePhotoModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [status, setStatus] = useState<'idle' | 'analyzing' | 'done' | 'error'>('idle')
+  const [draftItems, setDraftItems] = useState<DraftFridgeItem[]>([])
+  const [category, setCategory] = useState<InventoryCategory>('frigorifico')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleAnalyze() {
+    if (!file) return
+    setStatus('analyzing')
+    setError(null)
+    try {
+      const items = await analyzeFridgePhoto(file)
+      setDraftItems(items.map((name) => ({ name, checked: true })))
+      setStatus('done')
+    } catch (err) {
+      setStatus('error')
+      setError(err instanceof Error ? err.message : 'No se pudo analizar la foto')
+    }
+  }
+
+  function toggleItem(i: number) {
+    setDraftItems((prev) => prev.map((d, idx) => (idx === i ? { ...d, checked: !d.checked } : d)))
+  }
+
+  function renameItem(i: number, name: string) {
+    setDraftItems((prev) => prev.map((d, idx) => (idx === i ? { ...d, name } : d)))
+  }
+
+  async function handleAddSelected() {
+    setSaving(true)
+    setError(null)
+    try {
+      for (const item of draftItems) {
+        if (!item.checked || !item.name.trim()) continue
+        await addInventoryItem({ name: item.name.trim(), category, quantity: '' })
+      }
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Foto del frigorífico
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+
+        <label>
+          Foto
+          <input type="file" accept="image/*" capture="environment" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        </label>
+
+        {file && status !== 'done' && (
+          <button type="button" className="voice-mic-button" onClick={handleAnalyze} disabled={status === 'analyzing'}>
+            {status === 'analyzing' ? 'Analizando la foto…' : '🔍 Reconocer alimentos'}
+          </button>
+        )}
+
+        {error && <p className="error">{error}</p>}
+
+        {status === 'done' && (
+          <div className="day-modal-group">
+            <p className="muted">
+              {draftItems.length === 0
+                ? 'No he reconocido ningún alimento — prueba con otra foto o añádelos a mano.'
+                : 'Marca los que quieras guardar (puedes corregir el nombre):'}
+            </p>
+            {draftItems.map((item, i) => (
+              <div key={i} className="receipt-line-row">
+                <input type="checkbox" checked={item.checked} onChange={() => toggleItem(i)} />
+                <input type="text" value={item.name} onChange={(e) => renameItem(i, e.target.value)} />
+              </div>
+            ))}
+            {draftItems.length > 0 && (
+              <>
+                <label>
+                  Categoría
+                  <select value={category} onChange={(e) => setCategory(e.target.value as InventoryCategory)}>
+                    {CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" onClick={handleAddSelected} disabled={saving}>
+                  {saving ? 'Guardando…' : 'Añadir seleccionados al inventario'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

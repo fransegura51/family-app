@@ -12,6 +12,7 @@ import {
   type ReminderUnit,
 } from '@/domain/reminders'
 import type { CalendarEvent, FamilyMember } from '@/domain/types'
+import { setSelectedCalendarDate } from '@/state/calendarSelection'
 
 const RECURRENCE_OPTIONS = [
   { value: '', label: 'No se repite' },
@@ -40,6 +41,15 @@ export function CalendarScreen() {
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
   const [selectedDate, setSelectedDate] = useState(toDateStr(today))
   const [dayModalOpen, setDayModalOpen] = useState(false)
+
+  // Publica qué día tienes abierto para que "Apunta por voz" (vive fuera
+  // de esta pantalla) lo use como fecha por defecto en vez de caer
+  // siempre en hoy cuando no dices ninguna fecha — se limpia al cerrar
+  // la ventana del día o al salir de Calendario.
+  useEffect(() => {
+    setSelectedCalendarDate(dayModalOpen ? selectedDate : null)
+    return () => setSelectedCalendarDate(null)
+  }, [dayModalOpen, selectedDate])
 
   function reload() {
     setLoading(true)

@@ -118,6 +118,7 @@ export interface ParsedCalendarEntry {
   endTime: string | null // HH:mm, hora de fin (opcional)
   memberHint: string | null
   reminders: { minutesBefore: number; anchor: ReminderAnchor }[]
+  dateExplicit: boolean // true si la frase decía una fecha; false si "date" es solo el valor por defecto
 }
 
 // `today` se pasa desde fuera (en vez de usar `new Date()` aquí) para que
@@ -156,6 +157,7 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
     }
     remaining = remaining.replace(dateMatch[0], ' ')
   }
+  const dateExplicit = !!dateMatch
 
   let memberHint: string | null = null
   const memberMatch = remaining.match(/\bpara (\w+)\b/)
@@ -237,5 +239,5 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
   title = title.replace(/^[,;]\s*/, '').trim()
   title = title.charAt(0).toUpperCase() + title.slice(1)
 
-  return { title: title || 'Cita', date, time, endTime, memberHint, reminders }
+  return { title: title || 'Cita', date, time, endTime, memberHint, reminders, dateExplicit }
 }

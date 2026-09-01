@@ -10,6 +10,7 @@ import { reminderLabel } from '@/domain/reminders'
 import { detectIntent, matchMemberByHint } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenOnce, speak } from '@/services/voice'
+import { getSelectedCalendarDate } from '@/state/calendarSelection'
 
 type ResponseMode = 'voice' | 'text'
 const STORAGE_KEY = 'familyapp:voice-response-mode'
@@ -105,6 +106,12 @@ async function handleCalendarEntry(text: string): Promise<string> {
   let member = parsed.memberHint ? matchMemberByHint(parsed.memberHint, members) : null
   let title = parsed.title
 
+  // Si la frase no decía ninguna fecha, se usa el día que tengas abierto
+  // en Calendario (su ventana emergente) en vez de caer siempre en hoy —
+  // "marco el 17 y digo 'taller coche' sin fecha" tiene que apuntarlo el
+  // 17, no el día de hoy (bug real reportado).
+  const date = parsed.dateExplicit ? parsed.date : (getSelectedCalendarDate() ?? parsed.date)
+
   // "entrenamiento fútbol, Eric, 14 de septiembre..." — el nombre a
   // veces se dice suelto, sin "para" delante. Si no se ha encontrado ya
   // así, se busca el nombre de algún miembro tal cual dentro del título
@@ -135,8 +142,8 @@ async function handleCalendarEntry(text: string): Promise<string> {
 
   await createEvent({
     title,
-    startAt: new Date(`${parsed.date}T${parsed.time ?? '09:00'}`).toISOString(),
-    endAt: parsed.endTime ? new Date(`${parsed.date}T${parsed.endTime}`).toISOString() : null,
+    startAt: new Date(`${date}T${parsed.time ?? '09:00'}`).toISOString(),
+    endAt: parsed.endTime ? new Date(`${date}T${parsed.endTime}`).toISOString() : null,
     allDay: parsed.time === null,
     recurrenceRule: null,
     reminders,
@@ -148,9 +155,9 @@ async function handleCalendarEntry(text: string): Promise<string> {
   // entera de que hay un evento nuevo y la cuadrícula del mes se queda
   // igual hasta que recargas a mano (bug real: "no me lo pone en la
   // casilla" — el evento SÍ se guardaba, solo que no se veía).
-  window.dispatchEvent(new CustomEvent('family-app:calendar-changed', { detail: { date: parsed.date } }))
+  window.dispatchEvent(new CustomEvent('family-app:calendar-changed', { detail: { date } }))
 
-  const dateLabel = new Date(parsed.date + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+  const dateLabel = new Date(date + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
   const timeLabel = parsed.time ? ` a las ${parsed.time}` : ''
   const endTimeLabel = parsed.endTime ? ` – ${parsed.endTime}` : ''
   const memberLabel = member ? ` · para ${member.name}` : ''

@@ -47,6 +47,8 @@ export function CalendarScreen() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [completions, setCompletions] = useState<TaskCompletion[]>([])
+  const [externalEvents, setExternalEvents] = useState<ExternalCalendarEvent[]>([])
+  const [externalFeeds, setExternalFeeds] = useState<ExternalCalendarFeed[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [filterMemberId, setFilterMemberId] = useState<string>('all')
   const [loading, setLoading] = useState(true)
@@ -71,13 +73,23 @@ export function CalendarScreen() {
 
   function reload() {
     setLoading(true)
-    Promise.all([listUpcomingEvents(), listFamilyMembers(), listHolidayDates(), listTasks(), listCompletions()])
-      .then(([e, m, h, t, c]) => {
+    Promise.all([
+      listUpcomingEvents(),
+      listFamilyMembers(),
+      listHolidayDates(),
+      listTasks(),
+      listCompletions(),
+      listExternalEvents(),
+      listFeeds(),
+    ])
+      .then(([e, m, h, t, c, ee, ef]) => {
         setEvents(e)
         setMembers(m)
         setHolidayDates(h)
         setTasks(t)
         setCompletions(c)
+        setExternalEvents(ee)
+        setExternalFeeds(ef)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -177,6 +189,45 @@ export function CalendarScreen() {
     return map
   }, [filteredTasks, completions, monthDays])
 
+  const feedById = useMemo(() => new Map(externalFeeds.map((f) => [f.id, f])), [externalFeeds])
+
+  function externalEventColor(feedId: string): string {
+    const feed = feedById.get(feedId)
+    const member = feed?.memberId ? memberById.get(feed.memberId) : null
+    return member?.color ?? '#6b7280'
+  }
+
+  const filteredExternalEvents = useMemo(
+    () =>
+      externalEvents.filter((ev) => {
+        const feed = feedById.get(ev.feedId)
+        if (filterMemberId === 'all') return true
+        return feed?.memberId === filterMemberId
+      }),
+    [externalEvents, feedById, filterMemberId],
+  )
+
+  // Una cita del calendario externo (Google/Outlook/...) se ve también
+  // aquí, en el calendario propio de la app — a petición de la usuaria,
+  // solo en este sentido (externo → app, nunca al revés: lo que se crea
+  // en la app no se manda a ningún calendario externo, ni se podría sin
+  // permiso de escritura). Es solo de lectura, no se puede editar ni
+  // borrar desde aquí — para eso está la pestaña Externos.
+  const externalEventsByDate = useMemo(() => {
+    const map = new Map<string, ExternalCalendarEvent[]>()
+    if (monthDays.length === 0) return map
+    const rangeStart = monthDays[0].dateStr
+    const rangeEnd = monthDays[monthDays.length - 1].dateStr
+    for (const ev of filteredExternalEvents) {
+      for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd)) {
+        const list = map.get(dateStr) ?? []
+        list.push(ev)
+        map.set(dateStr, list)
+      }
+    }
+    return map
+  }, [filteredExternalEvents, monthDays])
+
   function goToMonth(delta: number) {
     const d = new Date(visibleYear, visibleMonth + delta, 1)
     setVisibleYear(d.getFullYear())
@@ -223,6 +274,7 @@ export function CalendarScreen() {
 
   const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
   const selectedDayTasks = tasksByDate.get(selectedDate) ?? []
+  const selectedDayExternalEvents = externalEventsByDate.get(selectedDate) ?? []
 
   return (
     <div className="screen">
@@ -286,10 +338,18 @@ export function CalendarScreen() {
             {monthDays.map((day) => {
               const dayEvents = eventsByDate.get(day.dateStr) ?? []
               const dayTasks = tasksByDate.get(day.dateStr) ?? []
+              const dayExternalEvents = externalEventsByDate.get(day.dateStr) ?? []
               const taskDots = dayTasks
                 .map((t) => memberColorById.get(t.memberId as string))
                 .filter((c): c is string => !!c)
-              const dots = [...new Set([...dayEvents.flatMap((e) => eventDotColors(e, memberColorById)), ...taskDots])]
+              const externalDots = dayExternalEvents.map((ev) => externalEventColor(ev.feedId))
+              const dots = [
+                ...new Set([
+                  ...dayEvents.flatMap((e) => eventDotColors(e, memberColorById)),
+                  ...taskDots,
+                  ...externalDots,
+                ]),
+              ]
               return (
                 <button
                   type="button"
@@ -321,6 +381,8 @@ export function CalendarScreen() {
               selectedDate={selectedDate}
               events={selectedDayEvents}
               tasks={selectedDayTasks}
+              externalEvents={selectedDayExternalEvents}
+              feedById={feedById}
               members={members}
               editingId={editingId}
               onEdit={setEditingId}
@@ -399,6 +461,7 @@ interface AgendaEntry {
   startTime: string | null
   endTime: string | null
   isTask: boolean
+  isExternal: boolean
   recurring: boolean
   onEdit?: () => void
   onDeleteSeries?: () => void
@@ -414,6 +477,8 @@ function DayModal({
   selectedDate,
   events,
   tasks,
+  externalEvents,
+  feedById,
   members,
   editingId,
   onEdit,
@@ -428,6 +493,8 @@ function DayModal({
   selectedDate: string
   events: CalendarEvent[]
   tasks: Task[]
+  externalEvents: ExternalCalendarEvent[]
+  feedById: Map<string, ExternalCalendarFeed>
   members: FamilyMember[]
   editingId: string | null
   onEdit: (id: string) => void
@@ -458,6 +525,7 @@ function DayModal({
       startTime: ev.allDay ? null : hhmm(ev.startAt),
       endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
       isTask: false,
+      isExternal: false,
       recurring: !!ev.recurrenceRule,
       onEdit: () => onEdit(ev.id),
       onDeleteSeries: () => onDelete(ev.id),
@@ -473,9 +541,31 @@ function DayModal({
       startTime: t.timeOfDay ? t.timeOfDay.slice(0, 5) : null,
       endTime: null,
       isTask: true,
+      isExternal: false,
       recurring: false,
       onDeleteSeries: () => onDeleteTask(t.id),
     })),
+    // Citas del calendario externo enlazado (Google/Outlook/...) — de
+    // solo lectura aquí, no se editan ni se borran desde el calendario
+    // de la app (para eso está la pestaña Externos). Solo se reflejan
+    // en este sentido: externo → app, nunca al revés.
+    ...externalEvents.map((ev) => {
+      const feed = feedById.get(ev.feedId)
+      const member = feed?.memberId ? memberById.get(feed.memberId) : null
+      return {
+        key: `ext-${ev.id}`,
+        id: ev.id,
+        title: ev.title,
+        subtitle: feed?.name ?? 'Calendario externo',
+        color: member?.color ?? '#6b7280',
+        allDay: ev.allDay,
+        startTime: ev.allDay ? null : hhmm(ev.startAt),
+        endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
+        isTask: false,
+        isExternal: true,
+        recurring: !!ev.recurrenceRule,
+      }
+    }),
   ].sort((a, b) => {
     if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
     return (a.startTime ?? '').localeCompare(b.startTime ?? '')
@@ -549,7 +639,7 @@ function DayModal({
 function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
   return (
     <span className="agenda-allday-chip" style={{ background: entry.color }}>
-      {entry.isTask ? '✅ ' : ''}
+      {entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
       {entry.title}
       {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
     </span>
@@ -575,7 +665,7 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
         </button>
       )}
       <div className="agenda-card-title">
-        {entry.isTask ? '✅ ' : ''}
+        {entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
         {entry.title}
       </div>
       {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}

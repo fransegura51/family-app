@@ -149,6 +149,33 @@ export async function listFoodLogs(memberId: string, date: string): Promise<Food
   }))
 }
 
+// Últimos alimentos registrados por esa persona, sin filtrar por día —
+// para poder repetir "café con leche" con un toque en vez de escribirlo
+// y buscarlo en FatSecret otra vez cada mañana. La deduplicación por
+// nombre se hace en la UI (aquí se trae tal cual, más reciente primero).
+export async function listRecentFoodLogs(memberId: string, limit = 40): Promise<FoodLog[]> {
+  const { data, error } = await supabase
+    .from('food_logs')
+    .select('id, family_id, member_id, log_date, meal_type, description, calories, protein_g, carbs_g, fat_g, is_estimated')
+    .eq('member_id', memberId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    memberId: r.member_id,
+    logDate: r.log_date,
+    mealType: r.meal_type as MealType,
+    description: r.description,
+    calories: r.calories,
+    proteinG: r.protein_g,
+    carbsG: r.carbs_g,
+    fatG: r.fat_g,
+    isEstimated: r.is_estimated,
+  }))
+}
+
 export async function addFoodLog(input: {
   memberId: string
   date: string

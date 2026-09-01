@@ -291,13 +291,21 @@ select {
 
 .day-nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   margin: 12px 0;
 }
 
 .day-nav strong {
   text-transform: capitalize;
+}
+
+.day-nav-date {
+  padding: 6px 4px;
+  font-size: 13px;
+  width: 130px;
 }
 
 .chip {

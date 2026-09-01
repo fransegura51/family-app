@@ -9,6 +9,7 @@ import {
   deleteRecipe,
   listFoodLogs,
   listMenuEntries,
+  listRecentFoodLogs,
   listRecipes,
   setMenuEntry,
 } from '@/data/food'
@@ -461,6 +462,17 @@ function FoodLogTab() {
         >
           Día siguiente →
         </button>
+        {/* Input nativo en vez de un calendario propio — en el móvil abre
+            directamente el selector de fecha del sistema (rápido, con
+            meses navegables), sin tener que construir uno a mano. */}
+        <input
+          type="date"
+          className="day-nav-date"
+          value={date}
+          max={todayStr}
+          aria-label="Ir a una fecha"
+          onChange={(e) => e.target.value && setDate(e.target.value)}
+        />
       </div>
       <div className="filter-row">
         {members.map((m) => (
@@ -502,19 +514,27 @@ function FoodLogTab() {
       )}
 
       {activeMemberId && (
-        <AddFoodLogForm memberId={activeMemberId} date={date} showDetail={showDetail} onAdded={reload} />
+        <AddFoodLogForm
+          members={members}
+          activeMemberId={activeMemberId}
+          date={date}
+          showDetail={showDetail}
+          onAdded={reload}
+        />
       )}
     </div>
   )
 }
 
 function AddFoodLogForm({
-  memberId,
+  members,
+  activeMemberId,
   date,
   showDetail,
   onAdded,
 }: {
-  memberId: string
+  members: FamilyMember[]
+  activeMemberId: string
   date: string
   showDetail: boolean
   onAdded: () => void
@@ -529,6 +549,23 @@ function AddFoodLogForm({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
+  // Comida compartida ("lentejas para los cuatro") frente a individual
+  // ("tortilla francesa solo para Jennifer") — por defecto solo la
+  // persona activa, y se puede marcar a más gente o "Todos" de golpe.
+  const [selectedIds, setSelectedIds] = useState<string[]>([activeMemberId])
+
+  useEffect(() => {
+    setSelectedIds([activeMemberId])
+  }, [activeMemberId])
+
+  function toggleMember(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  function toggleAll() {
+    setSelectedIds((prev) => (prev.length === members.length ? [activeMemberId] : members.map((m) => m.id)))
+  }
+
   const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
   const [results, setResults] = useState<FoodSearchResult[] | null>(null)
   const [pickingId, setPickingId] = useState<string | null>(null)
@@ -538,6 +575,44 @@ function AddFoodLogForm({
   // los gramos que teclee la usuaria ("100g de pechuga de pollo").
   const [perGram, setPerGram] = useState<PerGram | null>(null)
   const [grams, setGrams] = useState('100')
+
+  // Últimos alimentos de esta persona, para repetir "café con leche" con
+  // un toque en vez de escribirlo y buscarlo en FatSecret cada vez —
+  // solo el más reciente de cada nombre, sin importar el día.
+  const [recentFoods, setRecentFoods] = useState<FoodLog[]>([])
+
+  function loadRecent() {
+    listRecentFoodLogs(activeMemberId)
+      .then((logs) => {
+        const seen = new Set<string>()
+        const unique: FoodLog[] = []
+        for (const log of logs) {
+          const key = log.description.trim().toLowerCase()
+          if (seen.has(key)) continue
+          seen.add(key)
+          unique.push(log)
+          if (unique.length >= 8) break
+        }
+        setRecentFoods(unique)
+      })
+      .catch(() => {
+        // Sin recientes no pasa nada, se sigue pudiendo escribir a mano.
+      })
+  }
+
+  useEffect(loadRecent, [activeMemberId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function pickRecent(log: FoodLog) {
+    setDescription(log.description)
+    setMealType(log.mealType)
+    setCalories(log.calories != null ? String(log.calories) : '')
+    setProteinG(log.proteinG != null ? String(log.proteinG) : '')
+    setCarbsG(log.carbsG != null ? String(log.carbsG) : '')
+    setFatG(log.fatG != null ? String(log.fatG) : '')
+    setIsEstimated(log.isEstimated)
+    setPerGram(null)
+    setGrams('100')
+  }
 
   async function handleSearch() {
     if (!description.trim()) return
@@ -596,20 +671,26 @@ function AddFoodLogForm({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (selectedIds.length === 0) {
+      setError('Elige al menos una persona')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
-      await addFoodLog({
-        memberId,
-        date,
-        mealType,
-        description,
-        calories: calories ? Number(calories) : null,
-        proteinG: proteinG ? Number(proteinG) : null,
-        carbsG: carbsG ? Number(carbsG) : null,
-        fatG: fatG ? Number(fatG) : null,
-        isEstimated,
-      })
+      for (const id of selectedIds) {
+        await addFoodLog({
+          memberId: id,
+          date,
+          mealType,
+          description,
+          calories: calories ? Number(calories) : null,
+          proteinG: proteinG ? Number(proteinG) : null,
+          carbsG: carbsG ? Number(carbsG) : null,
+          fatG: fatG ? Number(fatG) : null,
+          isEstimated,
+        })
+      }
       setDescription('')
       setCalories('')
       setProteinG('')
@@ -619,6 +700,7 @@ function AddFoodLogForm({
       setSearchStatus('idle')
       setPerGram(null)
       setGrams('100')
+      setSelectedIds([activeMemberId])
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar')
@@ -630,6 +712,34 @@ function AddFoodLogForm({
   return (
     <form onSubmit={handleSubmit} className="card member-form">
       <h2>Registrar comida</h2>
+      <label>
+        Para quién
+        <span className="muted" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>
+          Marca a más de uno para una comida compartida ("lentejas para los cuatro")
+        </span>
+      </label>
+      <div className="filter-row">
+        {members.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            className={'chip' + (selectedIds.includes(m.id) ? ' chip-active' : '')}
+            style={{ borderColor: m.color }}
+            onClick={() => toggleMember(m.id)}
+          >
+            {m.name}
+          </button>
+        ))}
+        {members.length > 1 && (
+          <button
+            type="button"
+            className={'chip' + (selectedIds.length === members.length ? ' chip-active' : '')}
+            onClick={toggleAll}
+          >
+            Todos
+          </button>
+        )}
+      </div>
       <label>
         Momento
         <select value={mealType} onChange={(e) => setMealType(e.target.value as MealType)}>
@@ -644,6 +754,15 @@ function AddFoodLogForm({
         Qué comió
         <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} required />
       </label>
+      {recentFoods.length > 0 && (
+        <div className="filter-row">
+          {recentFoods.map((log) => (
+            <button key={log.id} type="button" className="chip" onClick={() => pickRecent(log)}>
+              {log.description}
+            </button>
+          ))}
+        </div>
+      )}
       {showDetail && (
         <>
           <label>

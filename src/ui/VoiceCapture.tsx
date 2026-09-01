@@ -91,7 +91,18 @@ async function answerTasksQuery(memberHint: string | null): Promise<string> {
   }
 
   if (due.length === 0) return `No tienes tareas pendientes${who} hoy.`
-  return `Tareas de hoy${who}: ${due.map((t) => t.title).join(', ')}.`
+
+  // Ordenadas por hora (las que la tienen, primero) para que la
+  // respuesta siga el orden real del día — "sacar la basura a las 6:30"
+  // antes que "colegio a las 9:00", no en el orden en que se crearon.
+  const ordered = [...due].sort((a, b) => {
+    if (a.timeOfDay && b.timeOfDay) return a.timeOfDay.localeCompare(b.timeOfDay)
+    if (a.timeOfDay) return -1
+    if (b.timeOfDay) return 1
+    return 0
+  })
+  const labels = ordered.map((t) => (t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title))
+  return `Tareas de hoy${who}: ${labels.join(', ')}.`
 }
 
 async function answerShoppingQuery(): Promise<string> {

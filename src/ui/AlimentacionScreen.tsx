@@ -579,8 +579,7 @@ function AddFoodLogForm({
       setResults(null)
       if (detail.perGram) {
         setPerGram(detail.perGram)
-        setGrams('100')
-        applyGrams(detail.perGram, '100')
+        applyGrams(detail.perGram, grams)
       } else {
         setPerGram(null)
         setCalories(detail.calories != null ? String(Math.round(detail.calories)) : '')
@@ -647,6 +646,10 @@ function AddFoodLogForm({
       </label>
       {showDetail && (
         <>
+          <label>
+            Cantidad (gramos)
+            <input type="number" value={grams} onChange={(e) => handleGramsChange(e.target.value)} min="1" />
+          </label>
           <button
             type="button"
             className="fatsecret-search-button"
@@ -659,17 +662,11 @@ function AddFoodLogForm({
             <p className="muted">No he encontrado "{description}" en FatSecret — pon los datos a mano abajo.</p>
           )}
           {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
-
-          {perGram && (
-            <label>
-              Cantidad (gramos)
-              <input
-                type="number"
-                value={grams}
-                onChange={(e) => handleGramsChange(e.target.value)}
-                min="1"
-              />
-            </label>
+          {!perGram && (
+            <p className="muted">
+              Busca el alimento y elige un resultado para que las calorías y macros se calculen solas según los
+              gramos.
+            </p>
           )}
           <label>
             Calorías (opcional)

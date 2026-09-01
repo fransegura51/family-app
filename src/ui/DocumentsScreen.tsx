@@ -7,6 +7,7 @@ import {
 } from '@/data/documents'
 import { listFamilyMembers } from '@/data/family'
 import type { FamilyMember, MemberDocument } from '@/domain/types'
+import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 
 // Las 4 carpetas pedidas. "Casa" y "Familia" normalmente no son de una
 // persona en concreto — por eso el miembro es opcional en el formulario,
@@ -142,10 +143,8 @@ function AddDocumentForm({
   return (
     <form onSubmit={handleSubmit} className="card member-form">
       <h2>Subir a "{folder}"</h2>
-      <label>
-        Archivo
-        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
-      </label>
+      <label>Archivo</label>
+      <FileOrPdfPicker file={file} onChange={setFile} />
       <label>
         Título
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="DNI" required />

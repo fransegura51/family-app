@@ -14,10 +14,12 @@ import {
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
-import { recordProductPurchase } from '@/data/products'
+import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
 import { budgetSpent, walletBalance } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
+import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
+import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import type {
   Budget,
   BudgetPeriod,
@@ -26,11 +28,13 @@ import type {
   FamilyMember,
   KidGoal,
   KidWalletTransaction,
+  Product,
+  ProductPrice,
   Receipt,
   WalletTransactionType,
 } from '@/domain/types'
 
-const SUB_TABS = ['Gastos', 'Tickets', 'Presupuestos', 'Educación financiera'] as const
+const SUB_TABS = ['Gastos', 'Tickets', 'Precios', 'Presupuestos', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 const EXPENSE_KINDS: { value: ExpenseKind; label: string }[] = [
@@ -59,6 +63,7 @@ export function FinanceScreen() {
 
       {tab === 'Gastos' && <ExpensesTab />}
       {tab === 'Tickets' && <ReceiptsTab />}
+      {tab === 'Precios' && <PriceTrendsTab />}
       {tab === 'Presupuestos' && <BudgetsTab />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
     </div>
@@ -515,19 +520,15 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
   return (
     <form onSubmit={handleSubmit} className="card member-form">
       <h2>Subir ticket</h2>
-      <label>
-        Foto o archivo
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          onChange={(e) => {
-            setFile(e.target.files?.[0] ?? null)
-            setLines([])
-            setOcrStatus('idle')
-          }}
-          required
-        />
-      </label>
+      <label>Foto o archivo</label>
+      <FileOrPdfPicker
+        file={file}
+        onChange={(f) => {
+          setFile(f)
+          setLines([])
+          setOcrStatus('idle')
+        }}
+      />
 
       {file && (
         <button type="button" className="voice-mic-button" onClick={handleReadTicket} disabled={ocrStatus === 'reading'}>
@@ -583,6 +584,133 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
         {saving ? 'Subiendo…' : 'Guardar ticket'}
       </button>
     </form>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Precios — compara lo pagado por cada producto este mes frente al
+// anterior, a partir del mismo historial que alimentan los tickets y la
+// Memoria de la lista de la compra. No normaliza por cantidad (1L vs
+// 1,5L cuentan igual): compara lo que se pagó cada vez, que es el dato
+// que hay sin pedir cantidades exactas en cada compra.
+// ---------------------------------------------------------------------
+
+function PriceDelta({ percent }: { percent: number | null }) {
+  if (percent == null) return null
+  const rounded = Math.round(percent * 10) / 10
+  if (Math.abs(rounded) < 0.5) return <span className="muted"> · sin cambios</span>
+  const up = rounded > 0
+  return (
+    <span style={{ color: up ? '#c0392b' : '#1e8449', fontWeight: 600, marginLeft: 8 }}>
+      {up ? '▲' : '▼'} {Math.abs(rounded)}%
+    </span>
+  )
+}
+
+function PriceTrendsTab() {
+  const [prices, setPrices] = useState<ProductPrice[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([listAllProductPrices(), listProducts()])
+      .then(([p, prod]) => {
+        setPrices(p)
+        setProducts(prod)
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  function shiftMonth(delta: number) {
+    const [y, m] = visibleMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  const previousMonth = useMemo(() => {
+    const [y, m] = visibleMonth.split('-').map(Number)
+    const d = new Date(y, m - 2, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }, [visibleMonth])
+
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
+
+  const purchases = useMemo(
+    () => prices.map((p) => ({ productId: p.productId, price: p.price, recordedDate: p.recordedDate })),
+    [prices],
+  )
+
+  const comparisons = useMemo(() => {
+    const monthly = averagePricesByMonth(purchases)
+    return compareMonths(monthly, visibleMonth, previousMonth)
+      .map((c) => ({ ...c, name: productById.get(c.productId) ?? '?' }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [purchases, visibleMonth, previousMonth, productById])
+
+  const currentBasket = useMemo(() => basketTotal(purchases, visibleMonth), [purchases, visibleMonth])
+  const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
+  const basketDeltaPercent = previousBasket > 0 ? ((currentBasket - previousBasket) / previousBasket) * 100 : null
+
+  if (loading) return <p className="muted">Cargando precios…</p>
+
+  const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+
+      <div className="month-nav">
+        <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
+          ‹
+        </button>
+        <strong>
+          {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
+        </strong>
+        <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
+          ›
+        </button>
+        <input
+          type="month"
+          value={visibleMonth}
+          onChange={(e) => e.target.value && setVisibleMonth(e.target.value)}
+        />
+      </div>
+
+      <div className="card event-card">
+        <strong>Total de la compra</strong>
+        <p>
+          {currentBasket.toFixed(2)} €
+          <PriceDelta percent={basketDeltaPercent} />
+        </p>
+        {previousBasket > 0 && <p className="muted">Mes anterior: {previousBasket.toFixed(2)} €</p>}
+      </div>
+
+      <p className="muted">
+        Precio medio pagado por producto este mes frente al mes anterior — 🔺 rojo si ha subido, 🔻 verde si ha
+        bajado.
+      </p>
+
+      <div className="event-list">
+        {comparisons.map((c) => (
+          <div key={c.productId} className="card event-card">
+            <strong>{c.name}</strong>
+            <p>
+              {c.currentPrice!.toFixed(2)} €
+              <PriceDelta percent={c.deltaPercent} />
+            </p>
+            {c.previousPrice != null && <p className="muted">Mes anterior: {c.previousPrice.toFixed(2)} €</p>}
+            {c.previousPrice == null && <p className="muted">Sin compra el mes anterior para comparar</p>}
+          </div>
+        ))}
+        {comparisons.length === 0 && (
+          <p className="muted">No hay productos con precio registrado este mes (tickets o lista de la compra).</p>
+        )}
+      </div>
+    </div>
   )
 }
 

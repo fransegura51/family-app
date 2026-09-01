@@ -16,6 +16,7 @@ import { listFamilyMembers } from '@/data/family'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { recordProductPurchase } from '@/data/products'
 import { budgetSpent, walletBalance } from '@/domain/finance'
+import { MONTH_LABELS } from '@/domain/calendar'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import type {
   Budget,
@@ -72,6 +73,10 @@ function ExpensesTab() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // "YYYY-MM" del mes que se está viendo — no siempre el actual, para
+  // poder consultar meses anteriores (o cualquier mes suelto, como
+  // febrero) en vez de solo el que corre.
+  const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
 
   function reload() {
     setLoading(true)
@@ -83,28 +88,61 @@ function ExpensesTab() {
 
   useEffect(reload, [])
 
-  const monthTotal = useMemo(() => {
-    const thisMonth = toDateStr(new Date()).slice(0, 7)
-    return expenses
-      .filter((e) => e.kind === 'real' && e.expenseDate.startsWith(thisMonth))
-      .reduce((sum, e) => sum + e.amount, 0)
-  }, [expenses])
+  function shiftMonth(delta: number) {
+    const [y, m] = visibleMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  const monthExpenses = useMemo(
+    () => expenses.filter((e) => e.expenseDate.startsWith(visibleMonth)),
+    [expenses, visibleMonth],
+  )
+
+  const monthTotal = useMemo(
+    () => monthExpenses.filter((e) => e.kind === 'real').reduce((sum, e) => sum + e.amount, 0),
+    [monthExpenses],
+  )
 
   const byCategory = useMemo(() => {
-    const thisMonth = toDateStr(new Date()).slice(0, 7)
     const map = new Map<string, number>()
-    for (const e of expenses.filter((e) => e.kind === 'real' && e.expenseDate.startsWith(thisMonth))) {
+    for (const e of monthExpenses.filter((e) => e.kind === 'real')) {
       map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1])
-  }, [expenses])
+  }, [monthExpenses])
 
   if (loading) return <p className="muted">Cargando gastos…</p>
+
+  const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
 
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <p className="points-badge">Este mes: {monthTotal.toFixed(2)} €</p>
+
+      <div className="month-nav">
+        <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
+          ‹
+        </button>
+        <strong>
+          {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
+        </strong>
+        <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
+          ›
+        </button>
+        <input
+          type="month"
+          value={visibleMonth}
+          onChange={(e) => e.target.value && setVisibleMonth(e.target.value)}
+        />
+        <button type="button" className="link-button" onClick={() => setVisibleMonth(toDateStr(new Date()).slice(0, 7))}>
+          Hoy
+        </button>
+      </div>
+
+      <p className="points-badge">
+        {MONTH_LABELS[visibleMonthIndex - 1]}: {monthTotal.toFixed(2)} €
+      </p>
       {byCategory.length > 0 && (
         <ul className="ingredient-list">
           {byCategory.map(([cat, amount]) => (
@@ -116,7 +154,7 @@ function ExpensesTab() {
       )}
 
       <div className="event-list">
-        {expenses.map((e) => (
+        {monthExpenses.map((e) => (
           <div key={e.id} className="card task-card">
             <div className="task-card-main">
               <strong>
@@ -132,7 +170,7 @@ function ExpensesTab() {
             </button>
           </div>
         ))}
-        {expenses.length === 0 && <p className="muted">No hay gastos registrados.</p>}
+        {monthExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
       </div>
 
       <AddExpenseForm onAdded={reload} />

@@ -228,11 +228,21 @@ export function VoiceCapture() {
     }
   }
 
+  // El reconocimiento de voz no es perfecto (eso no lo controla la app,
+  // es el motor de Google que usa Chrome por debajo) — así que en vez de
+  // guardar directamente lo que ha creído oír, lo deja escrito en el
+  // campo de texto para revisarlo/corregirlo antes de pulsar "Apuntar",
+  // igual que ya se revisan los tickets, las recetas o la foto de la
+  // nevera antes de guardar nada.
   function handleListen() {
     setStatus('listening')
     setMessage('Escuchando…')
     listenOnce(
-      (transcript) => processText(transcript),
+      (transcript) => {
+        setTypedText(transcript)
+        setStatus('idle')
+        setMessage('He oído esto — revísalo y pulsa "Apuntar"')
+      },
       (errorMessage) => {
         setStatus('error')
         setMessage(errorMessage)

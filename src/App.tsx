@@ -27,7 +27,11 @@ export function App() {
   }
 
   return (
-    <BrowserRouter>
+    // BASE_URL es '/' en local y '/family-app/' en el build de GitHub
+    // Pages (vite.config.ts) — sin basename, ninguna ruta coincide bajo
+    // esa subruta y la app se queda en blanco tras el login, sin ningún
+    // error visible (bug real encontrado probando el despliegue).
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <ReminderWatcher />
       <AutomationWatcher />
       <Routes>

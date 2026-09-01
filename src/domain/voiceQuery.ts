@@ -3,11 +3,13 @@
 // ningún servicio de IA de pago — solo coincidencia de palabras clave.
 // Deliberadamente limitado a estas dos preguntas: cubre lo que se ha
 // pedido sin fingir entender cualquier frase libre.
+import { extractSpokenDate, MONTHS } from '@/domain/spokenDate'
 
 export type VoiceIntent =
-  | { type: 'tasks_today'; memberHint: string | null; when: 'today' | 'tomorrow'; nowOnly: boolean }
+  | { type: 'tasks_today'; memberHint: string | null; when: 'today' | 'tomorrow'; explicitDate: string | null; nowOnly: boolean }
   | { type: 'shopping_list' }
   | { type: 'next_calendar_event' }
+  | { type: 'unsupported_delete' }
   | { type: 'none' }
 
 export function normalize(text: string): string {
@@ -82,6 +84,24 @@ const NEXT_EVENT_PATTERNS = [
   'siguiente evento',
 ]
 
+// Pepa todavía no borra nada por voz — sin este aviso, "borra la cita
+// del nueve de septiembre" no se reconocía como nada especial y caía
+// en la creación de un evento nuevo con ese texto literal por título
+// (bug real reportado: se apuntaba "Borra la cita del" como una cita
+// más, justo lo contrario de lo que se pedía).
+const DELETE_PATTERNS = [
+  'borra la cita',
+  'borra el evento',
+  'borrar la cita',
+  'borrar el evento',
+  'elimina la cita',
+  'elimina el evento',
+  'eliminar la cita',
+  'eliminar el evento',
+  'quita la cita',
+  'quitar la cita',
+]
+
 // Quita "Pepa" (con "oye"/"vale" delante si los hay) de lo dictado antes
 // de interpretarlo — si no, "Pepa, apunta leche y pan" se guardaría
 // literalmente con "Pepa" dentro del título. No hace falta que vaya al
@@ -113,21 +133,6 @@ export function stripListFillers(text: string): string {
   return text
 }
 
-const CALENDAR_MONTH_WORDS = [
-  'enero',
-  'febrero',
-  'marzo',
-  'abril',
-  'mayo',
-  'junio',
-  'julio',
-  'agosto',
-  'septiembre',
-  'octubre',
-  'noviembre',
-  'diciembre',
-]
-
 // A qué pantalla se refiere lo dictado, mirando el CONTENIDO en vez de
 // solo la pantalla en la que estés — "Pepa, ponme en el calendario que
 // el 27 de octubre es el cumpleaños de mi mujer" tiene que ir al
@@ -137,14 +142,24 @@ const CALENDAR_MONTH_WORDS = [
 // pantalla actual, como antes.
 export function detectTargetFromText(text: string): 'calendario' | 'compras' | 'tareas' | null {
   const n = normalize(text)
-  if (/\bcalendario\b/.test(n) || CALENDAR_MONTH_WORDS.some((m) => n.includes(` de ${m}`))) return 'calendario'
+  if (/\bcalendario\b/.test(n) || MONTHS.some((m) => n.includes(` de ${m}`))) return 'calendario'
   if (/lista de la compra|\bcomprar\b/.test(n)) return 'compras'
   if (/\btarea\b/.test(n)) return 'tareas'
   return null
 }
 
-export function detectIntent(text: string): VoiceIntent {
+// `today` se recibe desde fuera (no `new Date()` aquí) para poder
+// probar esta función con una fecha fija, igual que el resto del
+// reconocimiento de calendario.
+export function detectIntent(text: string, today: Date): VoiceIntent {
   const n = normalize(text)
+
+  // Antes que nada: si claramente se pide BORRAR algo, no se intenta
+  // interpretar como pregunta ni como cita nueva — Pepa todavía no
+  // borra por voz, así que hay que decirlo en vez de crear basura.
+  if (DELETE_PATTERNS.some((p) => n.includes(p))) {
+    return { type: 'unsupported_delete' }
+  }
 
   // Antes que las tareas: "lo siguiente que tengo en el calendario"
   // también contiene "que tengo", que si no se comprobara esto primero
@@ -157,11 +172,28 @@ export function detectIntent(text: string): VoiceIntent {
     return { type: 'shopping_list' }
   }
 
+  // "¿Qué tengo que hacer el nueve de septiembre?" es tan pregunta como
+  // "¿qué tengo que hacer hoy?" — antes solo se reconocían "hoy"/
+  // "mañana"/"ahora", así que decir una fecha concreta hacía que la
+  // frase entera cayera en la creación de un evento nuevo en vez de
+  // responder (bug real: dos citas basura creadas a partir de la propia
+  // pregunta).
   if (TASK_PATTERNS.some((p) => n.includes(p))) {
-    const match = n.match(/\bsoy (\w+)/) ?? n.match(/\bpara (\w+)/) ?? n.match(/\bde (\w+)\b/)
+    const spokenDate = extractSpokenDate(n, today)
+    // "de septiembre" no puede colarse como nombre de persona a través
+    // del "de X" suelto — solo cuenta si la palabra no es un mes.
+    const deMatch = n.match(/\bde (\w+)\b/)
+    const deFallback = deMatch && !MONTHS.includes(deMatch[1]) ? deMatch : null
+    const match = n.match(/\bsoy (\w+)/) ?? n.match(/\bpara (\w+)/) ?? deFallback
     const when: 'today' | 'tomorrow' = /\bmanana\b/.test(n) ? 'tomorrow' : 'today'
     const nowOnly = /\bahora\b/.test(n)
-    return { type: 'tasks_today', memberHint: match ? match[1] : null, when, nowOnly }
+    return {
+      type: 'tasks_today',
+      memberHint: match ? match[1] : null,
+      when,
+      explicitDate: spokenDate?.date ?? null,
+      nowOnly,
+    }
   }
 
   return { type: 'none' }

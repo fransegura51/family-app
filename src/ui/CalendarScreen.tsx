@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { createEvent, deleteEvent, deleteEventOccurrence, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
-import { listCompletions, listTasks } from '@/data/tasks'
+import { deleteTask, listCompletions, listTasks } from '@/data/tasks'
 import { isTaskDueOn } from '@/domain/tasks'
 import {
   addFeed,
@@ -207,6 +207,18 @@ export function CalendarScreen() {
     }
   }
 
+  // Antes las tareas solo se veían en el calendario, no se podían
+  // quitar desde aquí — había que ir a Tareas para borrar algo que ya
+  // no toca (una tarea puesta por error, o que ya no aplica).
+  async function handleDeleteTask(id: string) {
+    try {
+      await deleteTask(id)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo borrar la tarea')
+    }
+  }
+
   if (loading) return <div className="screen">Cargando calendario…</div>
 
   const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
@@ -315,6 +327,7 @@ export function CalendarScreen() {
               onCancelEdit={() => setEditingId(null)}
               onDelete={handleDelete}
               onDeleteOccurrence={handleDeleteOccurrence}
+              onDeleteTask={handleDeleteTask}
               onEventChanged={() => {
                 setEditingId(null)
                 reload()
@@ -407,6 +420,7 @@ function DayModal({
   onCancelEdit,
   onDelete,
   onDeleteOccurrence,
+  onDeleteTask,
   onEventChanged,
   onAdded,
   onClose,
@@ -420,6 +434,7 @@ function DayModal({
   onCancelEdit: () => void
   onDelete: (id: string) => void
   onDeleteOccurrence: (id: string, dateStr: string) => void
+  onDeleteTask: (id: string) => void
   onEventChanged: () => void
   onAdded: () => void
   onClose: () => void
@@ -459,6 +474,7 @@ function DayModal({
       endTime: null,
       isTask: true,
       recurring: false,
+      onDeleteSeries: () => onDeleteTask(t.id),
     })),
   ].sort((a, b) => {
     if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
@@ -542,40 +558,48 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
 
 function AgendaCard({ entry }: { entry: AgendaEntry }) {
   const [confirming, setConfirming] = useState(false)
-  const canEdit = !!entry.onEdit
+  const canDelete = !!entry.onDeleteSeries
   return (
     <div className="agenda-card" style={{ background: entry.color }}>
+      {/* X siempre visible en la esquina — antes solo había "Borrar" en
+          texto pequeño abajo, junto a "Editar", y no se veía a simple
+          vista dónde quitar algo (bug/petición real: "ponle una X"). */}
+      {canDelete && !confirming && (
+        <button
+          type="button"
+          className="agenda-card-close"
+          onClick={() => setConfirming(true)}
+          aria-label="Borrar"
+        >
+          ✕
+        </button>
+      )}
       <div className="agenda-card-title">
         {entry.isTask ? '✅ ' : ''}
         {entry.title}
       </div>
       {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}
-      {canEdit && (
+      {entry.onEdit && !confirming && (
         <div className="agenda-card-actions">
-          {!confirming ? (
-            <>
-              <button type="button" onClick={entry.onEdit}>
-                Editar
-              </button>
-              <button type="button" onClick={() => setConfirming(true)}>
-                Borrar
-              </button>
-            </>
-          ) : (
-            <>
-              {entry.recurring && entry.onDeleteOccurrence && (
-                <button type="button" onClick={entry.onDeleteOccurrence}>
-                  Solo este día
-                </button>
-              )}
-              <button type="button" onClick={entry.onDeleteSeries}>
-                {entry.recurring ? 'Toda la serie' : 'Borrar'}
-              </button>
-              <button type="button" onClick={() => setConfirming(false)}>
-                Cancelar
-              </button>
-            </>
+          <button type="button" onClick={entry.onEdit}>
+            Editar
+          </button>
+        </div>
+      )}
+      {confirming && (
+        <div className="agenda-card-actions">
+          <span>¿Seguro?</span>
+          {entry.recurring && entry.onDeleteOccurrence && (
+            <button type="button" onClick={entry.onDeleteOccurrence}>
+              Solo este día
+            </button>
           )}
+          <button type="button" onClick={entry.onDeleteSeries}>
+            {entry.recurring ? 'Toda la serie' : 'Borrar'}
+          </button>
+          <button type="button" onClick={() => setConfirming(false)}>
+            Cancelar
+          </button>
         </div>
       )}
     </div>

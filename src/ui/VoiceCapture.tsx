@@ -116,14 +116,22 @@ async function answerTasksQuery(
   rawText: string,
   when: 'today' | 'tomorrow',
   nowOnly: boolean,
+  explicitDate: string | null,
 ): Promise<string> {
   const [tasks, members, completions] = await Promise.all([listTasks(), listFamilyMembers(), listCompletions()])
-  const target = when === 'tomorrow' ? tomorrowIso() : todayIso()
-  const dayWord = when === 'tomorrow' ? 'mañana' : 'hoy'
-  // "Ahora" solo tiene sentido preguntado sobre hoy — "qué toca hacer
-  // ahora mañana" no significa nada, así que se ignora si se pregunta
-  // por mañana.
-  const applyNowFilter = nowOnly && when === 'today'
+  const target = explicitDate ?? (when === 'tomorrow' ? tomorrowIso() : todayIso())
+  const dateLabel = explicitDate
+    ? new Date(explicitDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+    : null
+  const dayWord = dateLabel ? `el ${dateLabel}` : when === 'tomorrow' ? 'mañana' : 'hoy'
+  // "de hoy"/"de mañana", pero "del 9 de septiembre" — el español
+  // contrae "de + el", así que no vale simplemente anteponer "de" a
+  // dayWord para la frase "Tareas de/del X".
+  const dayWordDe = dateLabel ? `del ${dateLabel}` : when === 'tomorrow' ? 'de mañana' : 'de hoy'
+  // "Ahora" solo tiene sentido preguntando por hoy mismo — ni "mañana"
+  // ni una fecha concreta suelta tienen un "ya ha pasado" que valga.
+  const isToday = !explicitDate && when === 'today'
+  const applyNowFilter = nowOnly && isToday
   const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes()
 
   let due = tasks.filter((t) => isTaskDueOn(t, target))
@@ -153,7 +161,7 @@ async function answerTasksQuery(
     if (due.length === 0) return `No tienes tareas pendientes${who} ${dayWord}.`
     const ordered = sortByTime(due)
     const labels = ordered.map((t) => (t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title))
-    return `Tareas de ${dayWord}${who}: ${labels.join(', ')}.`
+    return `Tareas ${dayWordDe}${who}: ${labels.join(', ')}.`
   }
 
   // "Todos" — sin decir de quién, se cuenta la agenda de TODA la familia,
@@ -165,7 +173,7 @@ async function answerTasksQuery(
   // "ya ha pasado".
   const memberById = new Map(members.map((m) => [m.id, m]))
   due = due.filter((t) => {
-    if (when === 'today' && t.timeOfDay) {
+    if (isToday && t.timeOfDay) {
       const [h, m] = t.timeOfDay.split(':').map(Number)
       if (h * 60 + m < nowMinutes) return false
     }
@@ -351,9 +359,14 @@ export function VoiceCapture() {
       // intentaría guardar como una cita nueva en vez de responder (la
       // palabra "calendario" también dispara la navegación a Calendario,
       // bug real detectado al diseñar esta pregunta).
-      const intent = detectIntent(text)
+      const intent = detectIntent(text, new Date())
+      if (intent.type === 'unsupported_delete') {
+        setStatus('done')
+        respond('Todavía no puedo borrar citas hablando — ábrela en el calendario y pulsa "Borrar".')
+        return
+      }
       if (intent.type === 'tasks_today') {
-        const answer = await answerTasksQuery(intent.memberHint, text, intent.when, intent.nowOnly)
+        const answer = await answerTasksQuery(intent.memberHint, text, intent.when, intent.nowOnly, intent.explicitDate)
         setStatus('done')
         respond(answer)
         return

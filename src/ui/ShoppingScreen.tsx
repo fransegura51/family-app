@@ -15,8 +15,11 @@ import {
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
 import { listFamilyMembers } from '@/data/family'
+import { uploadReceipt } from '@/data/receipts'
 import { computeProductStats } from '@/domain/products'
 import { analyzeFridgePhoto } from '@/services/fridgePhoto'
+import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
+import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import type {
   FamilyMember,
   InventoryCategory,
@@ -28,6 +31,33 @@ import type {
   ShoppingItemStatus,
   ShoppingTrip,
 } from '@/domain/types'
+
+function todayStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function normalizeProductName(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+}
+
+// Empareja lo leído del ticket ("hamburguesas") con un producto YA
+// pendiente en la lista ("Hamburguesas mixtas") — por subcadena, en
+// cualquier dirección, igual de tolerante que el resto de coincidencias
+// de la app (nombres de miembro, etc.). Ante duda, no empareja: mejor
+// dejarlo como línea suelta que enlazarlo con el producto equivocado.
+function matchShoppingItem(lineName: string, items: ShoppingItem[]): ShoppingItem | null {
+  const n = normalizeProductName(lineName)
+  if (!n) return null
+  return items.find((i) => {
+    const din = normalizeProductName(i.name)
+    return din.includes(n) || n.includes(din)
+  }) ?? null
+}
 
 const REMINDER_OPTIONS = [
   { value: '', label: 'Sin recordatorio' },
@@ -290,9 +320,17 @@ function BoughtItemRow({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Sin precio también se puede "cerrar" el producto — antes, sin
+  // escribir un precio, el botón "Guardar" no hacía nada (bug real: "no
+  // me deja guardarlo"). El precio sigue siendo opcional de verdad: si
+  // no se pone, simplemente no se guarda nada en la Memoria de precios,
+  // pero el producto se da por resuelto igual.
   async function handleSavePrice() {
-    if (!price) return
     setError(null)
+    if (!price) {
+      setSaved(true)
+      return
+    }
     try {
       await recordProductPurchase({
         name: item.name,
@@ -314,19 +352,19 @@ function BoughtItemRow({
         {error && <p className="error">{error}</p>}
       </div>
       {saved ? (
-        <span className="muted">✓ Precio guardado</span>
+        <span className="muted">{price ? '✓ Precio guardado' : '✓ Sin precio'}</span>
       ) : (
         <>
           <input
             type="number"
             step="0.01"
-            placeholder="Precio €"
+            placeholder="Precio € (opcional)"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             style={{ width: 90 }}
           />
           <button type="button" className="link-button" onClick={handleSavePrice}>
-            Guardar
+            {price ? 'Guardar' : 'Sin precio'}
           </button>
         </>
       )}
@@ -456,21 +494,25 @@ function AddShoppingItemForm({
 function TripsTab() {
   const [trips, setTrips] = useState<ShoppingTrip[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
+  const [items, setItems] = useState<ShoppingItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
-    Promise.all([listShoppingTrips(), listFamilyMembers()])
-      .then(([t, m]) => {
+    Promise.all([listShoppingTrips(), listFamilyMembers(), listShoppingItems()])
+      .then(([t, m, i]) => {
         setTrips(t)
         setMembers(m)
+        setItems(i)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
 
   useEffect(reload, [])
+
+  const pendingItems = useMemo(() => items.filter((i) => i.status === 'pendiente'), [items])
 
   if (loading) return <p className="muted">Cargando…</p>
 
@@ -479,7 +521,7 @@ function TripsTab() {
       {error && <p className="error">{error}</p>}
       <div className="event-list">
         {trips.map((trip) => (
-          <TripCard key={trip.id} trip={trip} members={members} onChanged={reload} />
+          <TripCard key={trip.id} trip={trip} members={members} pendingItems={pendingItems} onChanged={reload} />
         ))}
         {trips.length === 0 && <p className="muted">No hay compras programadas.</p>}
       </div>
@@ -491,14 +533,17 @@ function TripsTab() {
 function TripCard({
   trip,
   members,
+  pendingItems,
   onChanged,
 }: {
   trip: ShoppingTrip
   members: FamilyMember[]
+  pendingItems: ShoppingItem[]
   onChanged: () => void
 }) {
   const [amount, setAmount] = useState('')
   const [completing, setCompleting] = useState(false)
+  const [showReceipt, setShowReceipt] = useState(false)
   const assignedMember = members.find((m) => m.id === trip.memberId)
 
   async function handleComplete() {
@@ -525,11 +570,27 @@ function TripCard({
             {trip.calendarEventId && ' · 🔔 en su calendario'}
           </p>
         )}
+        {showReceipt && (
+          <TripReceiptForm
+            trip={trip}
+            pendingItems={pendingItems}
+            onDone={() => {
+              setShowReceipt(false)
+              onChanged()
+            }}
+            onCancel={() => setShowReceipt(false)}
+          />
+        )}
       </div>
-      {trip.status === 'planificada' && !completing && (
-        <button type="button" className="task-toggle" onClick={() => setCompleting(true)}>
-          Completar
-        </button>
+      {trip.status === 'planificada' && !completing && !showReceipt && (
+        <>
+          <button type="button" className="task-toggle" onClick={() => setShowReceipt(true)}>
+            📷 Subir ticket
+          </button>
+          <button type="button" className="link-button" onClick={() => setCompleting(true)}>
+            Completar a mano
+          </button>
+        </>
       )}
       {trip.status === 'planificada' && completing && (
         <>
@@ -549,6 +610,179 @@ function TripCard({
       <button type="button" className="link-button" onClick={() => deleteShoppingTrip(trip).then(onChanged)}>
         Eliminar
       </button>
+    </div>
+  )
+}
+
+type TripOcrStatus = 'idle' | 'reading' | 'done' | 'error'
+
+interface TripReceiptLine {
+  name: string
+  quantity: string
+  price: string
+  matchedItemId: string | null
+}
+
+// Subir el ticket de una compra programada: lo lee con Gemini, empareja
+// cada línea con lo que ya estaba pendiente en la lista de ese
+// supermercado (si lo hay), y al guardar marca esos productos como
+// comprados con su precio real, sube la foto del ticket y cierra la
+// compra con el importe total — todo de una vez, en vez de tener que
+// tocar cada producto suelto a mano.
+function TripReceiptForm({
+  trip,
+  pendingItems,
+  onDone,
+  onCancel,
+}: {
+  trip: ShoppingTrip
+  pendingItems: ShoppingItem[]
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [file, setFile] = useState<File | null>(null)
+  const [ocrStatus, setOcrStatus] = useState<TripOcrStatus>('idle')
+  const [lines, setLines] = useState<TripReceiptLine[]>([])
+  const [totalAmount, setTotalAmount] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  // Solo se compara contra lo pendiente de ESTA tienda (o sin tienda
+  // asignada) — un ticket del Mercadona no debería emparejar con algo
+  // que se apuntó para el Carrefour.
+  const candidatePool = pendingItems.filter((i) => !i.store || i.store === trip.store)
+
+  async function handleRead() {
+    if (!file) return
+    setOcrStatus('reading')
+    setError(null)
+    try {
+      const parsed = await analyzeReceiptPhoto(file)
+      if (parsed.total != null) setTotalAmount(String(parsed.total))
+      setLines(
+        parsed.items.map((l) => {
+          const match = matchShoppingItem(l.name, candidatePool)
+          return {
+            name: match ? match.name : l.name,
+            quantity: String(l.quantity),
+            price: l.price.toFixed(2),
+            matchedItemId: match?.id ?? null,
+          }
+        }),
+      )
+      setOcrStatus('done')
+    } catch (err) {
+      setOcrStatus('error')
+      setError(err instanceof Error ? err.message : 'No se pudo leer el ticket')
+    }
+  }
+
+  function updateLine(index: number, patch: Partial<TripReceiptLine>) {
+    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
+  }
+
+  function removeLine(index: number) {
+    setLines((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  async function handleSaveTrip() {
+    if (!file) {
+      setError('Sube la foto o el PDF del ticket')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const receiptDate = trip.scheduledDate ?? todayStr()
+      await uploadReceipt({
+        file,
+        store: trip.store ?? '',
+        receiptDate,
+        totalAmount: totalAmount ? Number(totalAmount) : null,
+      })
+
+      await Promise.all(
+        lines
+          .filter((l) => l.name.trim() && !Number.isNaN(Number(l.price)))
+          .map(async (l) => {
+            if (l.matchedItemId) await updateShoppingItemStatus(l.matchedItemId, 'comprado')
+            await recordProductPurchase({
+              name: l.name.trim(),
+              price: Number(l.price),
+              quantity: l.quantity || '1',
+              unit: '',
+              store: trip.store ?? '',
+              date: receiptDate,
+            })
+          }),
+      )
+
+      if (totalAmount) {
+        await completeShoppingTrip(trip.id, Number(totalAmount))
+      }
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar la compra')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card member-form" onClick={(e) => e.stopPropagation()}>
+      <FileOrPdfPicker file={file} onChange={setFile} />
+      {file && (
+        <button type="button" className="voice-mic-button" onClick={handleRead} disabled={ocrStatus === 'reading'}>
+          {ocrStatus === 'reading' ? 'Leyendo ticket…' : '📷 Leer ticket'}
+        </button>
+      )}
+      <label>
+        Importe total (€)
+        <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
+      </label>
+
+      {(ocrStatus === 'done' || lines.length > 0) && (
+        <div className="day-modal-group">
+          <p className="muted">
+            Productos leídos — los que coinciden con la lista se marcarán como comprados automáticamente:
+          </p>
+          {lines.map((line, i) => (
+            <div key={i} className="receipt-line-row">
+              <input type="text" value={line.name} onChange={(e) => updateLine(i, { name: e.target.value })} />
+              <input
+                type="number"
+                className="receipt-line-qty"
+                min={1}
+                step={1}
+                value={line.quantity}
+                onChange={(e) => updateLine(i, { quantity: e.target.value })}
+                placeholder="Cant."
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={line.price}
+                onChange={(e) => updateLine(i, { price: e.target.value })}
+                placeholder="Precio"
+              />
+              <button type="button" className="link-button" onClick={() => removeLine(i)}>
+                ✕
+              </button>
+              {line.matchedItemId && <span className="muted">✓ en la lista</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && <p className="error">{error}</p>}
+      <div className="form-actions">
+        <button type="button" onClick={handleSaveTrip} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar compra'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
     </div>
   )
 }

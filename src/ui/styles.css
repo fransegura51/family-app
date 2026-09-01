@@ -289,6 +289,17 @@ select {
   margin: 12px 0;
 }
 
+.day-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0;
+}
+
+.day-nav strong {
+  text-transform: capitalize;
+}
+
 .chip {
   padding: 8px 14px;
   border-radius: 999px;

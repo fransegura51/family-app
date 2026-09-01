@@ -399,13 +399,24 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
 // Registro de alimentación (Skill 14/16)
 // ---------------------------------------------------------------------
 
+function shiftDate(date: string, days: number): string {
+  const d = new Date(date + 'T00:00')
+  d.setDate(d.getDate() + days)
+  return toDateStr(d)
+}
+
 function FoodLogTab() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
   const [logs, setLogs] = useState<FoodLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const today = useMemo(() => toDateStr(new Date()), [])
+  const todayStr = useMemo(() => toDateStr(new Date()), [])
+  // Antes solo se veía (y por tanto solo se podía borrar) el registro de
+  // HOY — en cuanto pasaba la medianoche, lo comido el día anterior
+  // desaparecía de la vista sin ninguna forma de llegar hasta ahí (bug
+  // real: la usuaria no encontraba cómo eliminar un registro de ayer).
+  const [date, setDate] = useState(todayStr)
 
   useEffect(() => {
     listFamilyMembers()
@@ -419,13 +430,13 @@ function FoodLogTab() {
   function reload() {
     if (!activeMemberId) return
     setLoading(true)
-    listFoodLogs(activeMemberId, today)
+    listFoodLogs(activeMemberId, date)
       .then(setLogs)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [activeMemberId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(reload, [activeMemberId, date]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeMember = members.find((m) => m.id === activeMemberId)
   const showDetail = activeMember?.memberType === 'admin' || activeMember?.memberType === 'adult'
@@ -433,6 +444,24 @@ function FoodLogTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
+      <div className="day-nav">
+        <button type="button" className="link-button" onClick={() => setDate((d) => shiftDate(d, -1))}>
+          ← Día anterior
+        </button>
+        <strong>
+          {date === todayStr
+            ? 'Hoy'
+            : new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
+        </strong>
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => setDate((d) => shiftDate(d, 1))}
+          disabled={date >= todayStr}
+        >
+          Día siguiente →
+        </button>
+      </div>
       <div className="filter-row">
         {members.map((m) => (
           <button
@@ -468,12 +497,12 @@ function FoodLogTab() {
               </button>
             </div>
           ))}
-          {logs.length === 0 && <p className="muted">Nada registrado hoy.</p>}
+          {logs.length === 0 && <p className="muted">{date === todayStr ? 'Nada registrado hoy.' : 'Nada registrado ese día.'}</p>}
         </div>
       )}
 
       {activeMemberId && (
-        <AddFoodLogForm memberId={activeMemberId} date={today} showDetail={showDetail} onAdded={reload} />
+        <AddFoodLogForm memberId={activeMemberId} date={date} showDetail={showDetail} onAdded={reload} />
       )}
     </div>
   )

@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Family App</title>
+    <!--
+      GitHub Pages no tiene fallback de SPA: cualquier ruta que no sea la
+      raíz (p.ej. /family-app/calendario, o recargar estando en /familia)
+      da 404 real del servidor porque no existe ese archivo. Truco
+      estándar (spa-github-pages): este 404.html codifica la ruta en la
+      query string y redirige a index.html, que la descodifica de vuelta
+      (ver el script en index.html) antes de que React Router la lea.
+    -->
+    <script type="text/javascript">
+      var pathSegmentsToKeep = 1 // '/family-app/'
+      var l = window.location
+      l.replace(
+        l.protocol +
+          '//' +
+          l.hostname +
+          (l.port ? ':' + l.port : '') +
+          l.pathname
+            .split('/')
+            .slice(0, 1 + pathSegmentsToKeep)
+            .join('/') +
+          '/?/' +
+          l.pathname
+            .slice(1)
+            .split('/')
+            .slice(pathSegmentsToKeep)
+            .join('/')
+            .replace(/&/g, '~and~') +
+          (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+          l.hash,
+      )
+    </script>
+  </head>
+  <body></body>
+</html>

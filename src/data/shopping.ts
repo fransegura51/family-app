@@ -131,7 +131,6 @@ export async function createShoppingTrip(input: {
         title: `Ir a comprar${input.store ? ` a ${input.store}` : ''}`,
         start_at: new Date(`${input.scheduledDate}T10:00`).toISOString(),
         all_day: false,
-        reminder_minutes: input.reminderMinutes,
         created_by: userResult.user?.id ?? null,
       })
       .select('id')
@@ -143,6 +142,13 @@ export async function createShoppingTrip(input: {
       .from('calendar_event_members')
       .insert({ event_id: event.id, member_id: input.memberId })
     if (linkError) throw linkError
+
+    if (input.reminderMinutes != null) {
+      const { error: reminderError } = await supabase
+        .from('calendar_event_reminders')
+        .insert({ event_id: event.id, minutes_before: input.reminderMinutes })
+      if (reminderError) throw reminderError
+    }
   }
 
   const { error } = await supabase.from('shopping_trips').insert({

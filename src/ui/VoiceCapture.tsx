@@ -6,6 +6,7 @@ import { listFamilyMembers } from '@/data/family'
 import { createEvent } from '@/data/calendar'
 import { splitEntries } from '@/domain/quickCapture'
 import { isTaskDueOn } from '@/domain/tasks'
+import { reminderLabel } from '@/domain/reminders'
 import { detectIntent, matchMemberByHint } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenOnce, speak } from '@/services/voice'
@@ -105,16 +106,15 @@ async function handleCalendarEntry(text: string): Promise<string> {
     startAt: new Date(`${parsed.date}T${parsed.time ?? '09:00'}`).toISOString(),
     allDay: parsed.time === null,
     recurrenceRule: null,
-    reminderMinutes: parsed.reminderMinutes,
+    reminders: parsed.reminderMinutes != null ? [parsed.reminderMinutes] : [],
     memberIds: member ? [member.id] : [],
   })
 
   const dateLabel = new Date(parsed.date + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
   const timeLabel = parsed.time ? ` a las ${parsed.time}` : ''
   const memberLabel = member ? ` · para ${member.name}` : ''
-  const reminderLabel =
-    parsed.reminderMinutes === 1440 ? ' · 🔔 1 día antes' : parsed.reminderMinutes === 60 ? ' · 🔔 1 hora antes' : ''
-  return `Apuntado en el calendario: ${parsed.title} — ${dateLabel}${timeLabel}${memberLabel}${reminderLabel}`
+  const reminderText = parsed.reminderMinutes != null ? ` · 🔔 ${reminderLabel(parsed.reminderMinutes)}` : ''
+  return `Apuntado en el calendario: ${parsed.title} — ${dateLabel}${timeLabel}${memberLabel}${reminderText}`
 }
 
 type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'

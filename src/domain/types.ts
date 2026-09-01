@@ -298,6 +298,6 @@ export interface CalendarEvent {
   allDay: boolean
   color: string | null
   recurrenceRule: string | null
-  reminderMinutes: number | null
+  reminders: number[] // minutos antes de startAt, uno por recordatorio
   memberIds: string[]
 }

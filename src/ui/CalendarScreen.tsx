@@ -2,6 +2,13 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { createEvent, deleteEvent, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { eventDotColors, expandOccurrences, getMonthGridDays, MONTH_LABELS, WEEKDAY_LABELS } from '@/domain/calendar'
+import {
+  REMINDER_PRESETS,
+  REMINDER_UNIT_OPTIONS,
+  reminderLabel,
+  reminderMinutesFrom,
+  type ReminderUnit,
+} from '@/domain/reminders'
 import type { CalendarEvent, FamilyMember } from '@/domain/types'
 
 const RECURRENCE_OPTIONS = [
@@ -9,14 +16,6 @@ const RECURRENCE_OPTIONS = [
   { value: 'FREQ=DAILY', label: 'Cada día' },
   { value: 'FREQ=WEEKLY', label: 'Cada semana' },
   { value: 'FREQ=MONTHLY', label: 'Cada mes' },
-]
-
-const REMINDER_OPTIONS = [
-  { value: '', label: 'Sin recordatorio' },
-  { value: '10', label: '10 min antes' },
-  { value: '30', label: '30 min antes' },
-  { value: '60', label: '1 hora antes' },
-  { value: '1440', label: '1 día antes' },
 ]
 
 const VIEWS = ['Mes', 'Lista'] as const
@@ -358,7 +357,7 @@ function EventCard({
           timeStyle: ev.allDay ? undefined : 'short',
         })}
         {ev.recurrenceRule && ' · se repite'}
-        {ev.reminderMinutes != null && ` · 🔔 ${ev.reminderMinutes} min antes`}
+        {ev.reminders.length > 0 && ` · 🔔 ${ev.reminders.map(reminderLabel).join(', ')}`}
       </p>
       <div className="member-chips">
         {ev.memberIds.map((id) => {
@@ -409,6 +408,71 @@ function MemberPicker({
   )
 }
 
+// Varios recordatorios por evento, cada uno en la unidad que se quiera
+// (minutos/horas/días/semanas/meses/años) — antes solo se podía elegir
+// uno de una lista fija de 4 opciones.
+function ReminderPicker({ reminders, onChange }: { reminders: number[]; onChange: (next: number[]) => void }) {
+  const [amount, setAmount] = useState('1')
+  const [unit, setUnit] = useState<ReminderUnit>('horas')
+
+  function addMinutes(minutes: number) {
+    if (minutes > 0 && !reminders.includes(minutes)) {
+      onChange([...reminders, minutes].sort((a, b) => a - b))
+    }
+  }
+
+  function addCustom() {
+    const n = Number(amount)
+    if (!n || n <= 0) return
+    addMinutes(reminderMinutesFrom(n, unit))
+  }
+
+  function remove(minutes: number) {
+    onChange(reminders.filter((m) => m !== minutes))
+  }
+
+  return (
+    <div>
+      <p className="muted">Recordatorios</p>
+      {reminders.length > 0 && (
+        <div className="filter-row">
+          {reminders.map((m) => (
+            <button type="button" key={m} className="chip chip-active" onClick={() => remove(m)}>
+              🔔 {reminderLabel(m)} ✕
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="filter-row">
+        {REMINDER_PRESETS.map((m) => (
+          <button type="button" key={m} className="chip" onClick={() => addMinutes(m)}>
+            {reminderLabel(m)}
+          </button>
+        ))}
+      </div>
+      <div className="inline-fields">
+        <label>
+          Cantidad
+          <input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </label>
+        <label>
+          Unidad
+          <select value={unit} onChange={(e) => setUnit(e.target.value as ReminderUnit)}>
+            {REMINDER_UNIT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <button type="button" className="link-button" onClick={addCustom}>
+        + Añadir recordatorio
+      </button>
+    </div>
+  )
+}
+
 function EditEventForm({
   event,
   members,
@@ -433,9 +497,7 @@ function EditEventForm({
   )
   const [allDay, setAllDay] = useState(event.allDay)
   const [recurrenceRule, setRecurrenceRule] = useState(event.recurrenceRule ?? '')
-  const [reminderMinutes, setReminderMinutes] = useState(
-    event.reminderMinutes != null ? String(event.reminderMinutes) : '',
-  )
+  const [reminders, setReminders] = useState<number[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -455,7 +517,7 @@ function EditEventForm({
         startAt,
         allDay,
         recurrenceRule: recurrenceRule || null,
-        reminderMinutes: reminderMinutes ? Number(reminderMinutes) : null,
+        reminders,
         memberIds: selectedMembers,
       })
       onDone()
@@ -496,16 +558,7 @@ function EditEventForm({
           ))}
         </select>
       </label>
-      <label>
-        Recordatorio
-        <select value={reminderMinutes} onChange={(e) => setReminderMinutes(e.target.value)}>
-          {REMINDER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ReminderPicker reminders={reminders} onChange={setReminders} />
       <div>
         <p className="muted">¿Para quién?</p>
         <MemberPicker members={members} selected={selectedMembers} onToggle={toggleMember} />
@@ -537,7 +590,7 @@ function AddEventForm({
   const [time, setTime] = useState('')
   const [allDay, setAllDay] = useState(false)
   const [recurrenceRule, setRecurrenceRule] = useState('')
-  const [reminderMinutes, setReminderMinutes] = useState('')
+  const [reminders, setReminders] = useState<number[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -558,13 +611,13 @@ function AddEventForm({
         startAt,
         allDay,
         recurrenceRule: recurrenceRule || null,
-        reminderMinutes: reminderMinutes ? Number(reminderMinutes) : null,
+        reminders,
         memberIds: selectedMembers,
       })
       setTitle('')
       setDate(defaultDate ?? '')
       setTime('')
-      setReminderMinutes('')
+      setReminders([])
       setSelectedMembers([])
       onAdded()
     } catch (err) {
@@ -605,16 +658,7 @@ function AddEventForm({
           ))}
         </select>
       </label>
-      <label>
-        Recordatorio
-        <select value={reminderMinutes} onChange={(e) => setReminderMinutes(e.target.value)}>
-          {REMINDER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ReminderPicker reminders={reminders} onChange={setReminders} />
       <div>
         <p className="muted">¿Para quién?</p>
         <MemberPicker members={members} selected={selectedMembers} onToggle={toggleMember} />

@@ -23,10 +23,11 @@ function saveShown(ids: Set<string>) {
   }
 }
 
-// Componente sin UI: revisa cada 30s si algún evento con recordatorio ha
-// llegado a su ventana (start_at - reminder_minutes) y dispara una
-// notificación real del navegador. Solo activo mientras la app está
-// abierta — ver services/notifications.ts para el porqué.
+// Componente sin UI: revisa cada 30s si algún recordatorio de un evento
+// (puede haber varios por evento) ha llegado a su ventana
+// (start_at - minutes_before) y dispara una notificación real del
+// navegador. Solo activo mientras la app está abierta — ver
+// services/notifications.ts para el porqué.
 export function ReminderWatcher() {
   const shownRef = useRef<Set<string>>(loadShown())
 

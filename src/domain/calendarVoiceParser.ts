@@ -6,6 +6,24 @@
 // que la app la enseñe antes de guardar — si se equivoca, se nota al
 // momento en vez de crear una cita en el día que no es.
 import { normalize } from '@/domain/voiceQuery'
+import { reminderMinutesFrom, type ReminderUnit } from '@/domain/reminders'
+
+// Formas en singular/plural (ya sin acentos, tras normalize) que puede
+// decir alguien para cada unidad de recordatorio.
+const UNIT_WORD_TO_UNIT: Record<string, ReminderUnit> = {
+  minuto: 'minutos',
+  minutos: 'minutos',
+  hora: 'horas',
+  horas: 'horas',
+  dia: 'dias',
+  dias: 'dias',
+  semana: 'semanas',
+  semanas: 'semanas',
+  mes: 'meses',
+  meses: 'meses',
+  ano: 'anos',
+  anos: 'anos',
+}
 
 const NUMBER_WORDS: Record<string, number> = {
   cero: 0,
@@ -85,8 +103,11 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
   const n = normalize(text)
   let remaining = n
 
+  // "el día 27...", "el 27...", "día 27..." — las tres formas son
+  // igual de naturales al hablar (bug real: "día 27 de..." sin "el"
+  // delante dejaba "dia" suelto en el título).
   let date = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`
-  const dateRe = new RegExp(`\\b(?:el )?${NUMBER_PATTERN} de (${MONTHS.join('|')})\\b`)
+  const dateRe = new RegExp(`\\b(?:el d[ií]a |el |d[ií]a )?${NUMBER_PATTERN} de (${MONTHS.join('|')})\\b`)
   const dateMatch = remaining.match(dateRe)
   if (dateMatch) {
     const day = wordToNumber(dateMatch[1])
@@ -103,9 +124,17 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
     remaining = remaining.replace(dateMatch[0], ' ')
   }
 
+  // "a las" es opcional — en habla natural es muy normal decir solo
+  // "diecinueve horas" o "19 horas" sin el "a las" delante (bug real:
+  // esa frase exacta no apuntaba ninguna hora). Se intenta primero con
+  // "horas" como ancla (con o sin "a las" delante) y, si no hay "horas",
+  // con "a las N" a secas (p. ej. "a las 7 de la tarde").
   let time: string | null = null
-  const timeRe = new RegExp(`\\ba las ${NUMBER_PATTERN}(?::(\\d{2})|\\s*y\\s*media)?\\s*(?:horas?)?\\b`)
-  const timeMatch = remaining.match(timeRe)
+  const timeWithHorasRe = new RegExp(
+    `,?\\s*\\b(?:a las\\s+)?${NUMBER_PATTERN}(?::(\\d{2})|\\s*y\\s*media)?\\s*horas?\\b`,
+  )
+  const timeWithALasRe = new RegExp(`,?\\s*\\ba las\\s+${NUMBER_PATTERN}(?::(\\d{2})|\\s*y\\s*media)?\\b`)
+  const timeMatch = remaining.match(timeWithHorasRe) ?? remaining.match(timeWithALasRe)
   if (timeMatch) {
     let hour = wordToNumber(timeMatch[1])
     const minutes = timeMatch[2] ? Number(timeMatch[2]) : /y\s*media/.test(timeMatch[0]) ? 30 : 0
@@ -125,18 +154,19 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
     remaining = remaining.replace(memberMatch[0], ' ')
   }
 
-  // También se traga un "aviso"/"avísame" delante y la coma que suele
-  // precederlo ("..., aviso un día antes") para que no se cuele en el
-  // título de la cita.
+  // "aviso 3 días antes", "avísame una semana antes", "aviso un mes
+  // antes"... cualquier cantidad y unidad, no solo "hora"/"día" — y se
+  // traga el "aviso"/"avísame" delante y la coma que suele precederlo
+  // ("..., aviso un día antes") para que no se cuele en el título.
   let reminderMinutes: number | null = 60
-  const dayReminderRe = /,?\s*(?:aviso|avisame)?\s*(?:un )?dia antes\b/
-  const hourReminderRe = /,?\s*(?:aviso|avisame)?\s*(?:una )?hora antes\b/
-  if (dayReminderRe.test(remaining)) {
-    reminderMinutes = 1440
-    remaining = remaining.replace(dayReminderRe, ' ')
-  } else if (hourReminderRe.test(remaining)) {
-    reminderMinutes = 60
-    remaining = remaining.replace(hourReminderRe, ' ')
+  const reminderRe =
+    /,?\s*(?:aviso|avisame)?\s*(?:(\d+)|un|una)?\s*(minutos?|horas?|dias?|semanas?|meses?|anos?)\s*antes\b/
+  const reminderMatch = remaining.match(reminderRe)
+  if (reminderMatch) {
+    const amount = reminderMatch[1] ? Number(reminderMatch[1]) : 1
+    const unit = UNIT_WORD_TO_UNIT[reminderMatch[2]]
+    if (unit) reminderMinutes = reminderMinutesFrom(amount, unit)
+    remaining = remaining.replace(reminderRe, ' ')
   }
 
   const TRIGGER_WORDS = ['marcame', 'marca', 'apunta', 'apuntame', 'anota', 'pon', 'ponme', 'agenda', 'programa', 'crea', 'anademe', 'anade']

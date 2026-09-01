@@ -11,8 +11,8 @@ interface EventRow {
   all_day: boolean
   color: string | null
   recurrence_rule: string | null
-  reminder_minutes: number | null
   calendar_event_members: { member_id: string }[]
+  calendar_event_reminders: { minutes_before: number }[]
 }
 
 function toEvent(row: EventRow): CalendarEvent {
@@ -26,7 +26,7 @@ function toEvent(row: EventRow): CalendarEvent {
     allDay: row.all_day,
     color: row.color,
     recurrenceRule: row.recurrence_rule,
-    reminderMinutes: row.reminder_minutes,
+    reminders: row.calendar_event_reminders.map((r) => r.minutes_before),
     memberIds: row.calendar_event_members.map((m) => m.member_id),
   }
 }
@@ -35,7 +35,7 @@ export async function listUpcomingEvents(): Promise<CalendarEvent[]> {
   const { data, error } = await supabase
     .from('calendar_events')
     .select(
-      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, reminder_minutes, calendar_event_members(member_id)',
+      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, calendar_event_members(member_id), calendar_event_reminders(minutes_before)',
     )
     .order('start_at', { ascending: true })
 
@@ -43,14 +43,26 @@ export async function listUpcomingEvents(): Promise<CalendarEvent[]> {
   return (data as unknown as EventRow[]).map(toEvent)
 }
 
+async function replaceReminders(eventId: string, reminders: number[]): Promise<void> {
+  const { error: deleteError } = await supabase.from('calendar_event_reminders').delete().eq('event_id', eventId)
+  if (deleteError) throw deleteError
+
+  if (reminders.length > 0) {
+    const { error: insertError } = await supabase
+      .from('calendar_event_reminders')
+      .insert(reminders.map((minutesBefore) => ({ event_id: eventId, minutes_before: minutesBefore })))
+    if (insertError) throw insertError
+  }
+}
+
 export async function createEvent(input: {
   title: string
   startAt: string
   allDay: boolean
   recurrenceRule: string | null
-  reminderMinutes: number | null
+  reminders: number[]
   memberIds: string[]
-}): Promise<void> {
+}): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
 
@@ -69,7 +81,6 @@ export async function createEvent(input: {
       start_at: input.startAt,
       all_day: input.allDay,
       recurrence_rule: input.recurrenceRule,
-      reminder_minutes: input.reminderMinutes,
       created_by: userResult.user.id,
     })
     .select('id')
@@ -82,6 +93,15 @@ export async function createEvent(input: {
       .insert(input.memberIds.map((memberId) => ({ event_id: event.id, member_id: memberId })))
     if (linkError) throw linkError
   }
+
+  if (input.reminders.length > 0) {
+    const { error: reminderError } = await supabase
+      .from('calendar_event_reminders')
+      .insert(input.reminders.map((minutesBefore) => ({ event_id: event.id, minutes_before: minutesBefore })))
+    if (reminderError) throw reminderError
+  }
+
+  return event.id as string
 }
 
 export async function updateEvent(
@@ -91,7 +111,7 @@ export async function updateEvent(
     startAt: string
     allDay: boolean
     recurrenceRule: string | null
-    reminderMinutes: number | null
+    reminders: number[]
     memberIds: string[]
   },
 ): Promise<void> {
@@ -102,7 +122,6 @@ export async function updateEvent(
       start_at: input.startAt,
       all_day: input.allDay,
       recurrence_rule: input.recurrenceRule,
-      reminder_minutes: input.reminderMinutes,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -122,6 +141,8 @@ export async function updateEvent(
       .insert(input.memberIds.map((memberId) => ({ event_id: id, member_id: memberId })))
     if (insertError) throw insertError
   }
+
+  await replaceReminders(id, input.reminders)
 }
 
 export async function deleteEvent(id: string): Promise<void> {
@@ -141,16 +162,17 @@ export interface ReminderEvent {
 // servidor porque el disparo es local a cada dispositivo/sesión.
 export async function listActiveReminders(): Promise<ReminderEvent[]> {
   const { data, error } = await supabase
-    .from('calendar_events')
-    .select('id, title, start_at, reminder_minutes')
-    .not('reminder_minutes', 'is', null)
-    .gte('start_at', new Date().toISOString())
+    .from('calendar_event_reminders')
+    .select('minutes_before, calendar_events!inner(id, title, start_at)')
+    .gte('calendar_events.start_at', new Date().toISOString())
 
   if (error) throw error
-  return data.map((row) => ({
-    id: row.id,
-    title: row.title,
-    startAt: row.start_at,
-    reminderMinutes: row.reminder_minutes as number,
+  return (
+    data as unknown as { minutes_before: number; calendar_events: { id: string; title: string; start_at: string } }[]
+  ).map((row) => ({
+    id: row.calendar_events.id,
+    title: row.calendar_events.title,
+    startAt: row.calendar_events.start_at,
+    reminderMinutes: row.minutes_before,
   }))
 }

@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { createTask, listCompletions, listTasks } from '@/data/tasks'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listFamilyMembers } from '@/data/family'
@@ -8,7 +8,7 @@ import { splitEntries } from '@/domain/quickCapture'
 import { isTaskDueOn } from '@/domain/tasks'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
-import { detectIntent, findMemberInText, matchMemberByHint } from '@/domain/voiceQuery'
+import { detectIntent, detectTargetFromText, findMemberInText, matchMemberByHint, stripWakeWord } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenOnce, speak } from '@/services/voice'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
@@ -40,15 +40,22 @@ function todayIso(): string {
 
 type TargetKey = 'compras' | 'tareas' | 'calendario'
 
+const TARGET_INFO: Record<TargetKey, { label: string; path: string }> = {
+  compras: { label: '🛒 Lista de la compra', path: '/compras' },
+  calendario: { label: '📅 Calendario', path: '/calendario' },
+  tareas: { label: '✅ Tareas', path: '/tareas' },
+}
+
 // A qué lista se apunta (o qué acción se hace) depende de en qué
-// pantalla estás — "si le hablo en tareas, quiero que me apunte en
-// tareas; si le hablo en lista de la compra, en lista de la compra".
-// Fuera de esas pantallas cae en Tareas, el sitio genérico para "cosas
-// que hay que hacer".
+// pantalla estás por defecto — "si le hablo en tareas, quiero que me
+// apunte en tareas; si le hablo en lista de la compra, en lista de la
+// compra". Fuera de esas pantallas cae en Tareas. Esto es solo el punto
+// de partida: si lo que se dice apunta claramente a otro sitio (ver
+// detectTargetFromText), gana el contenido y Pepa te lleva allí.
 function getTarget(pathname: string): { key: TargetKey; label: string } {
-  if (pathname.startsWith('/compras')) return { key: 'compras', label: '🛒 Lista de la compra' }
-  if (pathname.startsWith('/calendario')) return { key: 'calendario', label: '📅 Calendario' }
-  return { key: 'tareas', label: '✅ Tareas' }
+  if (pathname.startsWith('/compras')) return { key: 'compras', label: TARGET_INFO.compras.label }
+  if (pathname.startsWith('/calendario')) return { key: 'calendario', label: TARGET_INFO.calendario.label }
+  return { key: 'tareas', label: TARGET_INFO.tareas.label }
 }
 
 async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[]): Promise<void> {
@@ -216,6 +223,7 @@ type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'
 // contesta hablando o por texto según lo que el usuario elija.
 export function VoiceCapture() {
   const location = useLocation()
+  const navigate = useNavigate()
   const target = getTarget(location.pathname)
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<Status>('idle')
@@ -229,10 +237,25 @@ export function VoiceCapture() {
     setMessage(text)
   }
 
-  async function processText(text: string) {
+  async function processText(rawText: string) {
     setStatus('saving')
     try {
-      if (target.key === 'calendario') {
+      const text = stripWakeWord(rawText)
+
+      // El contenido manda sobre la pantalla en la que estés — "Pepa,
+      // ponme en el calendario que..." tiene que ir al calendario aunque
+      // lo digas estando en Tareas, no guardarse donde estuvieras (eso
+      // era lo que pasaba antes: solo miraba la pantalla actual). Si no
+      // hay ninguna pista clara en lo dicho, se usa la pantalla actual,
+      // como siempre.
+      const contentTargetKey = detectTargetFromText(text)
+      const effectiveTargetKey = contentTargetKey ?? target.key
+      const effectiveTarget = TARGET_INFO[effectiveTargetKey]
+      if (effectiveTargetKey !== target.key) {
+        navigate(effectiveTarget.path)
+      }
+
+      if (effectiveTargetKey === 'calendario') {
         const confirmation = await handleCalendarEntry(text)
         setStatus('done')
         respond(confirmation)
@@ -258,9 +281,9 @@ export function VoiceCapture() {
         setStatus('idle')
         return
       }
-      await saveEntries(target.key as 'compras' | 'tareas', entries)
+      await saveEntries(effectiveTargetKey as 'compras' | 'tareas', entries)
       setStatus('done')
-      respond(`Apuntado en ${target.label}: ${entries.join(', ')}`)
+      respond(`Apuntado en ${effectiveTarget.label}: ${entries.join(', ')}`)
     } catch (err) {
       setStatus('error')
       const detail = err instanceof Error ? err.message : String(err)
@@ -276,12 +299,12 @@ export function VoiceCapture() {
   // nevera antes de guardar nada.
   function handleListen() {
     setStatus('listening')
-    setMessage('Escuchando…')
+    setMessage('Pepa te escucha…')
     listenOnce(
       (transcript) => {
         setTypedText(transcript)
         setStatus('idle')
-        setMessage('He oído esto — revísalo y pulsa "Apuntar"')
+        setMessage('Pepa ha oído esto — revísalo y pulsa "Apuntar"')
       },
       (errorMessage) => {
         setStatus('error')
@@ -317,7 +340,7 @@ export function VoiceCapture() {
       <button
         type="button"
         className="voice-fab"
-        aria-label="Apuntar por voz"
+        aria-label="Hablar con Pepa"
         onClick={() => setOpen(true)}
       >
         🎤
@@ -328,7 +351,7 @@ export function VoiceCapture() {
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
-                Apunta por voz
+                🐣 Pepa
               </h2>
               <button type="button" className="modal-close" onClick={close} aria-label="Cerrar">
                 ✕
@@ -344,6 +367,11 @@ export function VoiceCapture() {
                 Ej.: "el 3 de septiembre, cita con el dentista a las 19 horas para Eric, aviso un día antes"
               </p>
             )}
+            <p className="muted">
+              Di "Pepa" y lo que quieras, y te lleva a la pantalla que toque aunque estés en otra — p. ej. "Pepa,
+              vamos a hacer la lista de la compra" o "Pepa, ponme en el calendario que el 27 de octubre es el
+              cumpleaños de mi mujer".
+            </p>
 
             {dictationOk && (
               <button
@@ -352,7 +380,7 @@ export function VoiceCapture() {
                 onClick={handleListen}
                 disabled={status === 'listening' || status === 'saving'}
               >
-                {status === 'listening' ? '🎙️ Escuchando…' : status === 'saving' ? 'Guardando…' : '🎤 Empezar'}
+                {status === 'listening' ? '🎙️ Pepa te escucha…' : status === 'saving' ? 'Guardando…' : '🎤 Empezar'}
               </button>
             )}
             {!dictationOk && (

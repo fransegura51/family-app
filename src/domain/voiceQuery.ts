@@ -44,6 +44,47 @@ const TASK_PATTERNS = [
   'que nos toca',
 ]
 
+// Quita "Pepa" (con "oye"/"vale" delante si los hay) de lo dictado antes
+// de interpretarlo — si no, "Pepa, apunta leche y pan" se guardaría
+// literalmente con "Pepa" dentro del título. No hace falta que vaya al
+// principio de la frase: "vale Pepa, ponme..." también cuenta.
+export function stripWakeWord(text: string): string {
+  return text
+    .replace(/\b(oye|vale)?\s*pepa\b[,.]?\s*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const CALENDAR_MONTH_WORDS = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+]
+
+// A qué pantalla se refiere lo dictado, mirando el CONTENIDO en vez de
+// solo la pantalla en la que estés — "Pepa, ponme en el calendario que
+// el 27 de octubre es el cumpleaños de mi mujer" tiene que ir al
+// calendario aunque lo digas estando en Tareas, no guardarse donde
+// estuvieras (bug real: antes solo miraba la pantalla actual). Cuando no
+// hay ninguna pista clara, se deja en null y quien llame cae en la
+// pantalla actual, como antes.
+export function detectTargetFromText(text: string): 'calendario' | 'compras' | 'tareas' | null {
+  const n = normalize(text)
+  if (/\bcalendario\b/.test(n) || CALENDAR_MONTH_WORDS.some((m) => n.includes(` de ${m}`))) return 'calendario'
+  if (/lista de la compra|\bcomprar\b/.test(n)) return 'compras'
+  if (/\btarea\b/.test(n)) return 'tareas'
+  return null
+}
+
 export function detectIntent(text: string): VoiceIntent {
   const n = normalize(text)
 

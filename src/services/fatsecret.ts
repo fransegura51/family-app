@@ -11,6 +11,13 @@ export interface FoodSearchResult {
   description: string
 }
 
+export interface PerGram {
+  calories: number
+  proteinG: number
+  carbsG: number
+  fatG: number
+}
+
 export interface FoodDetail {
   id: string
   name: string
@@ -20,6 +27,10 @@ export interface FoodDetail {
   proteinG: number | null
   carbsG: number | null
   fatG: number | null
+  // Cuando FatSecret tiene una ración en gramos/mililitros para este
+  // alimento, aquí van los valores por 1g — permite calcular "100g de
+  // pechuga de pollo" en vez de solo la ración fija por defecto.
+  perGram: PerGram | null
 }
 
 async function callFatSecret(body: Record<string, unknown>): Promise<Record<string, unknown>> {

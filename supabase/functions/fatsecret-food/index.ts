@@ -42,6 +42,13 @@ interface FoodSearchResult {
   description: string
 }
 
+interface PerGram {
+  calories: number
+  proteinG: number
+  carbsG: number
+  fatG: number
+}
+
 interface FoodDetail {
   id: string
   name: string
@@ -51,6 +58,11 @@ interface FoodDetail {
   proteinG: number | null
   carbsG: number | null
   fatG: number | null
+  // Cuando FatSecret ofrece una ración en gramos/mililitros para este
+  // alimento, aquí van los valores por 1g — así el cliente puede
+  // calcular "100g de pechuga de pollo" o los gramos que teclee la
+  // usuaria, no solo la ración fija que devuelve la API por defecto.
+  perGram: PerGram | null
 }
 
 // Percent-encoding estricto RFC 3986 que exige OAuth 1.0 — encodeURIComponent
@@ -117,6 +129,27 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+// Busca entre todas las raciones de un alimento la que esté expresada
+// en gramos o mililitros (FatSecret suele incluir varias: "1 taza",
+// "1 unidad", "100 g"...) para poder derivar el valor por 1 gramo y así
+// escalar a cualquier cantidad que teclee la usuaria.
+function findPerGram(servings: Record<string, unknown>[]): PerGram | null {
+  for (const s of servings) {
+    const unit = String(s.metric_serving_unit ?? "").toLowerCase()
+    if (unit !== "g" && unit !== "ml") continue
+    const amount = numOrNull(s.metric_serving_amount)
+    const calories = numOrNull(s.calories)
+    if (!amount || amount <= 0 || calories == null) continue
+    return {
+      calories: calories / amount,
+      proteinG: (numOrNull(s.protein) ?? 0) / amount,
+      carbsG: (numOrNull(s.carbohydrate) ?? 0) / amount,
+      fatG: (numOrNull(s.fat) ?? 0) / amount,
+    }
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS })
 
@@ -169,7 +202,9 @@ Deno.serve(async (req) => {
 
       const { data: cached } = await adminClient
         .from("food_cache")
-        .select("fatsecret_food_id, name, brand, serving_description, calories, protein_g, carbs_g, fat_g")
+        .select(
+          "fatsecret_food_id, name, brand, serving_description, calories, protein_g, carbs_g, fat_g, calories_per_g, protein_g_per_g, carbs_g_per_g, fat_g_per_g",
+        )
         .eq("fatsecret_food_id", foodId)
         .maybeSingle()
 
@@ -183,6 +218,15 @@ Deno.serve(async (req) => {
           proteinG: cached.protein_g,
           carbsG: cached.carbs_g,
           fatG: cached.fat_g,
+          perGram:
+            cached.calories_per_g != null
+              ? {
+                  calories: cached.calories_per_g,
+                  proteinG: cached.protein_g_per_g,
+                  carbsG: cached.carbs_g_per_g,
+                  fatG: cached.fat_g_per_g,
+                }
+              : null,
         }
         return json({ detail, fromCache: true })
       }
@@ -202,6 +246,7 @@ Deno.serve(async (req) => {
 
       const servings = asArray(food.servings?.serving)
       const serving = servings[0] ?? {}
+      const perGram = findPerGram(servings)
 
       const detail: FoodDetail = {
         id: String(food.food_id ?? foodId),
@@ -212,6 +257,7 @@ Deno.serve(async (req) => {
         proteinG: numOrNull(serving.protein),
         carbsG: numOrNull(serving.carbohydrate),
         fatG: numOrNull(serving.fat),
+        perGram,
       }
 
       await adminClient.from("food_cache").upsert({
@@ -223,6 +269,10 @@ Deno.serve(async (req) => {
         protein_g: detail.proteinG,
         carbs_g: detail.carbsG,
         fat_g: detail.fatG,
+        calories_per_g: perGram?.calories ?? null,
+        protein_g_per_g: perGram?.proteinG ?? null,
+        carbs_g_per_g: perGram?.carbsG ?? null,
+        fat_g_per_g: perGram?.fatG ?? null,
       })
 
       return json({ detail, fromCache: false })

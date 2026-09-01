@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   addFoodLog,
   addRecipeIngredientsToShoppingList,
@@ -14,7 +15,7 @@ import {
 import { listFamilyMembers } from '@/data/family'
 import { searchRecipe } from '@/services/recipeSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
-import { searchFoods, getFoodDetail, type FoodSearchResult } from '@/services/fatsecret'
+import { searchFoods, getFoodDetail, type FoodSearchResult, type PerGram } from '@/services/fatsecret'
 import type { FamilyMember, FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
 
 const SUB_TABS = ['Menú', 'Recetas', 'Registro'] as const
@@ -41,8 +42,16 @@ function weekDates(): string[] {
   })
 }
 
+// Permite entrar directo en una pestaña concreta (p.ej. /alimentacion?tab=registro
+// desde el acceso directo de Inicio) en vez de forzar siempre a pasar por "Menú".
+function initialTabFromParam(param: string | null): SubTab {
+  const found = SUB_TABS.find((t) => t.toLowerCase() === param?.toLowerCase())
+  return found ?? 'Menú'
+}
+
 export function AlimentacionScreen() {
-  const [tab, setTab] = useState<SubTab>('Menú')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<SubTab>(() => initialTabFromParam(searchParams.get('tab')))
 
   return (
     <div className="screen">
@@ -495,6 +504,12 @@ function AddFoodLogForm({
   const [results, setResults] = useState<FoodSearchResult[] | null>(null)
   const [pickingId, setPickingId] = useState<string | null>(null)
 
+  // Cuando FatSecret da datos "por gramo" para el alimento elegido, se
+  // guardan aquí para poder recalcular calorías/macros al vuelo según
+  // los gramos que teclee la usuaria ("100g de pechuga de pollo").
+  const [perGram, setPerGram] = useState<PerGram | null>(null)
+  const [grams, setGrams] = useState('100')
+
   async function handleSearch() {
     if (!description.trim()) return
     setSearchStatus('searching')
@@ -512,17 +527,38 @@ function AddFoodLogForm({
     }
   }
 
+  function applyGrams(pg: PerGram, g: string) {
+    const n = Number(g)
+    const amount = Number.isFinite(n) && n > 0 ? n : 0
+    setCalories(String(Math.round(pg.calories * amount)))
+    setProteinG(String(Math.round(pg.proteinG * amount * 10) / 10))
+    setCarbsG(String(Math.round(pg.carbsG * amount * 10) / 10))
+    setFatG(String(Math.round(pg.fatG * amount * 10) / 10))
+  }
+
+  function handleGramsChange(g: string) {
+    setGrams(g)
+    if (perGram) applyGrams(perGram, g)
+  }
+
   async function handlePick(result: FoodSearchResult) {
     setPickingId(result.id)
     try {
       const detail = await getFoodDetail(result.id)
       setDescription(detail.name)
-      setCalories(detail.calories != null ? String(Math.round(detail.calories)) : '')
-      setProteinG(detail.proteinG != null ? String(detail.proteinG) : '')
-      setCarbsG(detail.carbsG != null ? String(detail.carbsG) : '')
-      setFatG(detail.fatG != null ? String(detail.fatG) : '')
       setIsEstimated(false)
       setResults(null)
+      if (detail.perGram) {
+        setPerGram(detail.perGram)
+        setGrams('100')
+        applyGrams(detail.perGram, '100')
+      } else {
+        setPerGram(null)
+        setCalories(detail.calories != null ? String(Math.round(detail.calories)) : '')
+        setProteinG(detail.proteinG != null ? String(detail.proteinG) : '')
+        setCarbsG(detail.carbsG != null ? String(detail.carbsG) : '')
+        setFatG(detail.fatG != null ? String(detail.fatG) : '')
+      }
     } catch {
       setError('No se pudo leer el detalle de ese alimento')
     } finally {
@@ -553,6 +589,8 @@ function AddFoodLogForm({
       setFatG('')
       setIsEstimated(true)
       setSearchStatus('idle')
+      setPerGram(null)
+      setGrams('100')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar')
@@ -582,7 +620,7 @@ function AddFoodLogForm({
         <>
           <button
             type="button"
-            className="link-button"
+            className="fatsecret-search-button"
             onClick={handleSearch}
             disabled={!description.trim() || searchStatus === 'searching'}
           >
@@ -593,6 +631,17 @@ function AddFoodLogForm({
           )}
           {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
 
+          {perGram && (
+            <label>
+              Cantidad (gramos)
+              <input
+                type="number"
+                value={grams}
+                onChange={(e) => handleGramsChange(e.target.value)}
+                min="1"
+              />
+            </label>
+          )}
           <label>
             Calorías (opcional)
             <input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} />

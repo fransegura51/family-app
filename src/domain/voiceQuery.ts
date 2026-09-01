@@ -5,8 +5,9 @@
 // pedido sin fingir entender cualquier frase libre.
 
 export type VoiceIntent =
-  | { type: 'tasks_today'; memberHint: string | null }
+  | { type: 'tasks_today'; memberHint: string | null; when: 'today' | 'tomorrow'; nowOnly: boolean }
   | { type: 'shopping_list' }
+  | { type: 'next_calendar_event' }
   | { type: 'none' }
 
 export function normalize(text: string): string {
@@ -52,6 +53,33 @@ const TASK_PATTERNS = [
   'que me toca',
   'que le toca',
   'que nos toca',
+  'que toca hacer',
+  // Formas cortas sin "que hacer" — "¿qué tengo mañana?" es tan natural
+  // como "¿qué tengo que hacer mañana?" (bug real: la forma corta no se
+  // reconocía como pregunta).
+  'que tengo hoy',
+  'que tengo manana',
+  'que tengo para hoy',
+  'que tengo para manana',
+  'que tengo ahora',
+  'que tiene hoy',
+  'que tiene manana',
+  'que tenemos hoy',
+  'que tenemos manana',
+]
+
+// "Lo siguiente que tengo en el calendario" — a diferencia de las
+// tareas, esto pregunta por el próximo EVENTO del calendario (cita,
+// cumpleaños...), no por tareas del día.
+const NEXT_EVENT_PATTERNS = [
+  'lo siguiente en el calendario',
+  'lo siguiente que tengo',
+  'que tengo en el calendario',
+  'que tengo apuntado',
+  'proxima cita',
+  'proximo evento',
+  'siguiente cita',
+  'siguiente evento',
 ]
 
 // Quita "Pepa" (con "oye"/"vale" delante si los hay) de lo dictado antes
@@ -118,13 +146,22 @@ export function detectTargetFromText(text: string): 'calendario' | 'compras' | '
 export function detectIntent(text: string): VoiceIntent {
   const n = normalize(text)
 
+  // Antes que las tareas: "lo siguiente que tengo en el calendario"
+  // también contiene "que tengo", que si no se comprobara esto primero
+  // se colaría como pregunta de tareas.
+  if (NEXT_EVENT_PATTERNS.some((p) => n.includes(p))) {
+    return { type: 'next_calendar_event' }
+  }
+
   if (SHOPPING_PATTERNS.some((p) => n.includes(p))) {
     return { type: 'shopping_list' }
   }
 
   if (TASK_PATTERNS.some((p) => n.includes(p))) {
     const match = n.match(/\bsoy (\w+)/) ?? n.match(/\bpara (\w+)/) ?? n.match(/\bde (\w+)\b/)
-    return { type: 'tasks_today', memberHint: match ? match[1] : null }
+    const when: 'today' | 'tomorrow' = /\bmanana\b/.test(n) ? 'tomorrow' : 'today'
+    const nowOnly = /\bahora\b/.test(n)
+    return { type: 'tasks_today', memberHint: match ? match[1] : null, when, nowOnly }
   }
 
   return { type: 'none' }

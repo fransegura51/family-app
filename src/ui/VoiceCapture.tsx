@@ -3,9 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { createTask, listCompletions, listTasks } from '@/data/tasks'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listFamilyMembers } from '@/data/family'
-import { createEvent } from '@/data/calendar'
+import { createEvent, listUpcomingEvents } from '@/data/calendar'
 import { splitEntries } from '@/domain/quickCapture'
 import { isTaskDueOn } from '@/domain/tasks'
+import { expandOccurrences } from '@/domain/calendar'
+import type { CalendarEvent } from '@/domain/types'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
 import {
@@ -40,9 +42,18 @@ function saveResponseMode(mode: ResponseMode) {
   }
 }
 
-function todayIso(): string {
-  const d = new Date()
+function dateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function todayIso(): string {
+  return dateStr(new Date())
+}
+
+function tomorrowIso(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return dateStr(d)
 }
 
 type TargetKey = 'compras' | 'tareas' | 'calendario'
@@ -100,10 +111,22 @@ async function extractTaskMember(text: string): Promise<{ memberId: string | nul
   return { memberId: member.id, text: cleaned }
 }
 
-async function answerTasksQuery(memberHint: string | null, rawText: string): Promise<string> {
+async function answerTasksQuery(
+  memberHint: string | null,
+  rawText: string,
+  when: 'today' | 'tomorrow',
+  nowOnly: boolean,
+): Promise<string> {
   const [tasks, members, completions] = await Promise.all([listTasks(), listFamilyMembers(), listCompletions()])
-  const today = todayIso()
-  let due = tasks.filter((t) => isTaskDueOn(t, today))
+  const target = when === 'tomorrow' ? tomorrowIso() : todayIso()
+  const dayWord = when === 'tomorrow' ? 'mañana' : 'hoy'
+  // "Ahora" solo tiene sentido preguntado sobre hoy — "qué toca hacer
+  // ahora mañana" no significa nada, así que se ignora si se pregunta
+  // por mañana.
+  const applyNowFilter = nowOnly && when === 'today'
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes()
+
+  let due = tasks.filter((t) => isTaskDueOn(t, target))
   let who = ''
 
   // El nombre puede venir con "soy X"/"para X" delante, o dicho suelto
@@ -114,43 +137,52 @@ async function answerTasksQuery(memberHint: string | null, rawText: string): Pro
 
   if (member) {
     due = due.filter((t) => t.memberId === null || t.memberId === member.id)
-    const doneToday = new Set(
-      completions.filter((c) => c.memberId === member.id && c.completedDate === today).map((c) => c.taskId),
+    const doneOnTarget = new Set(
+      completions.filter((c) => c.memberId === member.id && c.completedDate === target).map((c) => c.taskId),
     )
-    due = due.filter((t) => !doneToday.has(t.id))
+    due = due.filter((t) => !doneOnTarget.has(t.id))
+    if (applyNowFilter) {
+      due = due.filter((t) => {
+        if (!t.timeOfDay) return true
+        const [h, m] = t.timeOfDay.split(':').map(Number)
+        return h * 60 + m >= nowMinutes
+      })
+    }
     who = ` para ${member.name}`
 
-    if (due.length === 0) return `No tienes tareas pendientes${who} hoy.`
+    if (due.length === 0) return `No tienes tareas pendientes${who} ${dayWord}.`
     const ordered = sortByTime(due)
     const labels = ordered.map((t) => (t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title))
-    return `Tareas de hoy${who}: ${labels.join(', ')}.`
+    return `Tareas de ${dayWord}${who}: ${labels.join(', ')}.`
   }
 
-  // "Todos" — sin decir de quién, se cuenta la agenda de TODA la familia
-  // a partir de AHORA (no lo que ya pasó), cada tarea con quién tiene
-  // que hacerla — "Fernando tiene que bañarse a las 6, Eric a las 7..."
-  // en vez de un listado plano sin decir de quién es cada una.
+  // "Todos" — sin decir de quién, se cuenta la agenda de TODA la familia,
+  // cada tarea con quién tiene que hacerla — "Fernando tiene que
+  // bañarse a las 6, Eric a las 7..." en vez de un listado plano sin
+  // decir de quién es cada una. Preguntando por HOY, siempre se cuenta
+  // desde la hora actual (no hace falta decir "ahora" — así ya se probó
+  // y confirmó antes); preguntando por MAÑANA no aplica, ahí no hay
+  // "ya ha pasado".
   const memberById = new Map(members.map((m) => [m.id, m]))
-  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes()
   due = due.filter((t) => {
-    if (t.timeOfDay) {
+    if (when === 'today' && t.timeOfDay) {
       const [h, m] = t.timeOfDay.split(':').map(Number)
       if (h * 60 + m < nowMinutes) return false
     }
     const doneBy = t.memberId
-      ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === today)
-      : completions.some((c) => c.taskId === t.id && c.completedDate === today)
+      ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === target)
+      : completions.some((c) => c.taskId === t.id && c.completedDate === target)
     return !doneBy
   })
 
-  if (due.length === 0) return 'No queda ninguna tarea pendiente por hoy.'
+  if (due.length === 0) return `No queda ninguna tarea pendiente por ${dayWord}.`
   const ordered = sortByTime(due)
   const labels = ordered.map((t) => {
     const owner = t.memberId ? (memberById.get(t.memberId)?.name ?? null) : null
     const withTime = t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title
     return owner ? `${owner}: ${withTime}` : withTime
   })
-  return `Lo que queda por hoy: ${labels.join(', ')}.`
+  return `Lo que queda por ${dayWord}: ${labels.join(', ')}.`
 }
 
 // Ordenadas por hora (las que la tienen, primero) para que la respuesta
@@ -162,6 +194,56 @@ function sortByTime<T extends { timeOfDay: string | null }>(list: T[]): T[] {
     if (b.timeOfDay) return 1
     return 0
   })
+}
+
+// "Pepa, lo siguiente que tengo en el calendario" — el próximo EVENTO
+// (no tarea) que toca, mirando los próximos 90 días y expandiendo los
+// recurrentes igual que hace la propia pantalla de Calendario. Si el
+// evento es hoy pero su hora ya pasó, no cuenta — hay que mirar el
+// siguiente de verdad, no repetir uno que ya tocó.
+async function answerNextCalendarEvent(): Promise<string> {
+  const events = await listUpcomingEvents()
+  const now = new Date()
+  const todayStr = todayIso()
+  const rangeEnd = new Date(now)
+  rangeEnd.setDate(rangeEnd.getDate() + 90)
+  const rangeEndStr = dateStr(rangeEnd)
+
+  function minutesOfDay(ev: CalendarEvent): number {
+    if (ev.allDay) return -1
+    const d = new Date(ev.startAt)
+    return d.getHours() * 60 + d.getMinutes()
+  }
+
+  let best: { event: CalendarEvent; occurrenceDate: string } | null = null
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+
+  for (const ev of events) {
+    const occurrences = expandOccurrences(ev, todayStr, rangeEndStr)
+    for (const occurrenceDate of occurrences) {
+      if (occurrenceDate === todayStr && !ev.allDay && minutesOfDay(ev) < nowMinutes) continue
+      if (
+        !best ||
+        occurrenceDate < best.occurrenceDate ||
+        (occurrenceDate === best.occurrenceDate && minutesOfDay(ev) < minutesOfDay(best.event))
+      ) {
+        best = { event: ev, occurrenceDate }
+      }
+      break // dentro de un mismo evento, la primera ocurrencia válida ya es la más próxima
+    }
+  }
+
+  if (!best) return 'No tienes nada apuntado próximamente en el calendario.'
+
+  const dateLabel = new Date(best.occurrenceDate + 'T00:00').toLocaleDateString('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+  const timeLabel = best.event.allDay
+    ? ''
+    : ` a las ${new Date(best.event.startAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+  return `Lo siguiente en el calendario: ${best.event.title} — ${dateLabel}${timeLabel}.`
 }
 
 async function answerShoppingQuery(): Promise<string> {
@@ -263,6 +345,32 @@ export function VoiceCapture() {
     try {
       const text = stripWakeWord(rawText)
 
+      // Las preguntas (qué tengo hoy/mañana, lo siguiente del calendario,
+      // qué hay en la compra) se resuelven ANTES que la navegación/
+      // creación — si no, "lo siguiente que tengo en el CALENDARIO" se
+      // intentaría guardar como una cita nueva en vez de responder (la
+      // palabra "calendario" también dispara la navegación a Calendario,
+      // bug real detectado al diseñar esta pregunta).
+      const intent = detectIntent(text)
+      if (intent.type === 'tasks_today') {
+        const answer = await answerTasksQuery(intent.memberHint, text, intent.when, intent.nowOnly)
+        setStatus('done')
+        respond(answer)
+        return
+      }
+      if (intent.type === 'next_calendar_event') {
+        const answer = await answerNextCalendarEvent()
+        setStatus('done')
+        respond(answer)
+        return
+      }
+      if (intent.type === 'shopping_list') {
+        const answer = await answerShoppingQuery()
+        setStatus('done')
+        respond(answer)
+        return
+      }
+
       // El contenido manda sobre la pantalla en la que estés — "Pepa,
       // ponme en el calendario que..." tiene que ir al calendario aunque
       // lo digas estando en Tareas, no guardarse donde estuvieras (eso
@@ -280,20 +388,6 @@ export function VoiceCapture() {
         const confirmation = await handleCalendarEntry(text)
         setStatus('done')
         respond(confirmation)
-        return
-      }
-
-      const intent = detectIntent(text)
-      if (intent.type === 'tasks_today') {
-        const answer = await answerTasksQuery(intent.memberHint, text)
-        setStatus('done')
-        respond(answer)
-        return
-      }
-      if (intent.type === 'shopping_list') {
-        const answer = await answerShoppingQuery()
-        setStatus('done')
-        respond(answer)
         return
       }
 

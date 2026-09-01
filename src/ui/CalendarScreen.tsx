@@ -1149,6 +1149,12 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
         {monthDays.map((day) => {
           const dayEvents = eventsByDate.get(day.dateStr) ?? []
           const dots = [...new Set(dayEvents.map((e) => dotColorForFeed(e.feedId)))]
+          const isSelected = selectedDate === day.dateStr
+          // A diferencia del calendario nativo (puntitos pequeños), aquí
+          // se pinta el recuadro entero del color — a petición de la
+          // usuaria, para que se note de un vistazo qué días tienen algo
+          // sin tener que fijarse en un puntito diminuto.
+          const fillColor = dots[0]
           return (
             <button
               type="button"
@@ -1157,16 +1163,20 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
                 'month-grid-day' +
                 (day.inMonth ? '' : ' month-grid-day-out') +
                 (day.isToday ? ' month-grid-day-today' : '') +
-                (selectedDate === day.dateStr ? ' month-grid-day-selected' : '')
+                (isSelected ? ' month-grid-day-selected' : '') +
+                (fillColor && !isSelected ? ' month-grid-day-filled' : '')
               }
+              style={fillColor && !isSelected ? { background: fillColor, borderColor: fillColor } : undefined}
               onClick={() => setSelectedDate(day.dateStr)}
             >
               <span>{day.day}</span>
-              <span className="month-grid-dots">
-                {dots.slice(0, 4).map((c, i) => (
-                  <span key={i} className="month-grid-dot" style={{ background: c }} />
-                ))}
-              </span>
+              {dots.length > 1 && (
+                <span className="month-grid-dots">
+                  {dots.slice(1, 4).map((_, i) => (
+                    <span key={i} className="month-grid-dot month-grid-dot-on-fill" />
+                  ))}
+                </span>
+              )}
             </button>
           )
         })}

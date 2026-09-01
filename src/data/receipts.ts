@@ -147,8 +147,15 @@ export async function getReceiptUrl(storagePath: string): Promise<string> {
   return data.signedUrl
 }
 
+// Borra también el gasto real enlazado, si lo hay — si no, borrar un
+// ticket duplicado dejaba un "gasto fantasma" en Gastos que seguía
+// sumando en el resumen del mes (bug real: al borrar un ticket
+// repetido, el importe seguía contando de más).
 export async function deleteReceipt(receipt: Receipt): Promise<void> {
   await supabase.storage.from('receipts').remove([receipt.storagePath])
   const { error } = await supabase.from('receipts').delete().eq('id', receipt.id)
   if (error) throw error
+  if (receipt.expenseId) {
+    await supabase.from('expenses').delete().eq('id', receipt.expenseId)
+  }
 }

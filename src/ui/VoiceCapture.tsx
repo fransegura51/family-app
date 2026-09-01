@@ -91,26 +91,49 @@ async function answerTasksQuery(memberHint: string | null, rawText: string): Pro
     )
     due = due.filter((t) => !doneToday.has(t.id))
     who = ` para ${member.name}`
-  } else {
-    // Sin decir de quién, no se sabe QUIÉN la marcó, pero si alguien ya
-    // la ha hecho hoy no tiene sentido seguir diciéndola como pendiente.
-    const doneToday = new Set(completions.filter((c) => c.completedDate === today).map((c) => c.taskId))
-    due = due.filter((t) => !doneToday.has(t.id))
+
+    if (due.length === 0) return `No tienes tareas pendientes${who} hoy.`
+    const ordered = sortByTime(due)
+    const labels = ordered.map((t) => (t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title))
+    return `Tareas de hoy${who}: ${labels.join(', ')}.`
   }
 
-  if (due.length === 0) return `No tienes tareas pendientes${who} hoy.`
+  // "Todos" — sin decir de quién, se cuenta la agenda de TODA la familia
+  // a partir de AHORA (no lo que ya pasó), cada tarea con quién tiene
+  // que hacerla — "Fernando tiene que bañarse a las 6, Eric a las 7..."
+  // en vez de un listado plano sin decir de quién es cada una.
+  const memberById = new Map(members.map((m) => [m.id, m]))
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes()
+  due = due.filter((t) => {
+    if (t.timeOfDay) {
+      const [h, m] = t.timeOfDay.split(':').map(Number)
+      if (h * 60 + m < nowMinutes) return false
+    }
+    const doneBy = t.memberId
+      ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === today)
+      : completions.some((c) => c.taskId === t.id && c.completedDate === today)
+    return !doneBy
+  })
 
-  // Ordenadas por hora (las que la tienen, primero) para que la
-  // respuesta siga el orden real del día — "sacar la basura a las 6:30"
-  // antes que "colegio a las 9:00", no en el orden en que se crearon.
-  const ordered = [...due].sort((a, b) => {
+  if (due.length === 0) return 'No queda ninguna tarea pendiente por hoy.'
+  const ordered = sortByTime(due)
+  const labels = ordered.map((t) => {
+    const owner = t.memberId ? (memberById.get(t.memberId)?.name ?? null) : null
+    const withTime = t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title
+    return owner ? `${owner}: ${withTime}` : withTime
+  })
+  return `Lo que queda por hoy: ${labels.join(', ')}.`
+}
+
+// Ordenadas por hora (las que la tienen, primero) para que la respuesta
+// siga el orden real del día, no el orden en que se crearon.
+function sortByTime<T extends { timeOfDay: string | null }>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
     if (a.timeOfDay && b.timeOfDay) return a.timeOfDay.localeCompare(b.timeOfDay)
     if (a.timeOfDay) return -1
     if (b.timeOfDay) return 1
     return 0
   })
-  const labels = ordered.map((t) => (t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title))
-  return `Tareas de hoy${who}: ${labels.join(', ')}.`
 }
 
 async function answerShoppingQuery(): Promise<string> {

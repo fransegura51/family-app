@@ -24,19 +24,24 @@ const SHOPPING_PATTERNS = [
   'que falta en la compra',
 ]
 
-// En 1ª persona ("qué tengo que hacer") y en 3ª ("qué tiene que hacer
-// Paco") — bug real: preguntar por otro miembro en 3ª persona no se
-// reconocía como pregunta y se guardaba como una tarea nueva.
+// En 1ª persona singular ("qué tengo que hacer"), plural ("qué tenemos
+// que hacer todos") y en 3ª ("qué tiene que hacer Paco") — bug real:
+// preguntar en plural o por otro miembro en 3ª persona no se reconocía
+// como pregunta y se guardaba como una tarea nueva.
 const TASK_PATTERNS = [
   'tarea',
   'que tengo que hacer',
   'que tiene que hacer',
+  'que tenemos que hacer',
   'que hago ahora',
   'que hace ahora',
+  'que hacemos ahora',
   'que hago hoy',
   'que hace hoy',
+  'que hacemos hoy',
   'que me toca',
   'que le toca',
+  'que nos toca',
 ]
 
 export function detectIntent(text: string): VoiceIntent {

@@ -86,13 +86,43 @@ const MONTHS = [
   'diciembre',
 ]
 
+// Del 21 al 29 (y del 16 al 19, más raro pero igual de válido), un
+// número se puede decir pegado ("veintiséis") o separado ("veinte y
+// seis") — las dos formas son igual de naturales al hablar, y el
+// dictado del móvil no siempre elige la misma (bug real: "el
+// veintiséis de septiembre" dictado como "veinte y seis" no
+// coincidía con nada de NUMBER_WORDS, la fecha se perdía en silencio y
+// la cita se apuntaba en la fecha por defecto — HOY — en vez del día
+// que de verdad se dijo). Se genera aparte, combinando la decena con
+// cada unidad, en vez de tener que acordarse de añadir cada forma
+// suelta a mano.
+const UNIT_WORDS: Record<string, number> = {
+  uno: 1,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+}
+const TEN_BASES: Record<string, number> = { diez: 10, veinte: 20 }
+const COMPOUND_NUMBER_PATTERN = `(?:${Object.keys(TEN_BASES).join('|')})\\s+y\\s+(?:${Object.keys(UNIT_WORDS).join('|')})`
+
 // Un número en la frase puede ser un dígito ("3") o una palabra
-// ("tres" / "treinta y uno"); junta ambas formas en un solo patrón.
-const NUMBER_PATTERN = `(\\d{1,2}|treinta y uno|${Object.keys(NUMBER_WORDS).join('|')})`
+// ("tres" / "treinta y uno" / "veinte y seis"); junta todas las formas
+// en un solo patrón.
+const NUMBER_PATTERN = `(\\d{1,2}|treinta y uno|${COMPOUND_NUMBER_PATTERN}|${Object.keys(NUMBER_WORDS).join('|')})`
 
 function wordToNumber(word: string): number {
   if (/^\d+$/.test(word)) return Number(word)
   if (word === 'treinta y uno') return 31
+  const compound = word.match(/^(diez|veinte)\s+y\s+(\w+)$/)
+  if (compound) {
+    const unit = UNIT_WORDS[compound[2]]
+    if (unit !== undefined) return TEN_BASES[compound[1]] + unit
+  }
   return NUMBER_WORDS[word] ?? NaN
 }
 

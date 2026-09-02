@@ -38,55 +38,17 @@ const SHOPPING_RE =
   /\b(que hay|que tengo|que tenemos|que falta)\b[\s\S]*\b(en (la )?(lista de la )?compra|que comprar|para comprar)\b|\b(repasa|repasame)\b[\s\S]*\bcompra\b/
 
 // En 1ª persona singular ("qué tengo que hacer"), plural ("qué tenemos
-// que hacer todos") y en 3ª ("qué tiene que hacer Paco") — bug real:
-// preguntar en plural o por otro miembro en 3ª persona no se reconocía
-// como pregunta y se guardaba como una tarea nueva.
-const TASK_PATTERNS = [
-  'tarea',
-  'que tengo que hacer',
-  'que tiene que hacer',
-  'que tenemos que hacer',
-  'que hago ahora',
-  'que hace ahora',
-  'que hacemos ahora',
-  'que hago hoy',
-  'que hace hoy',
-  'que hacemos hoy',
-  'que me toca',
-  'que le toca',
-  'que nos toca',
-  'que toca hacer',
-  // Formas cortas sin "que hacer" — "¿qué tengo mañana?" es tan natural
-  // como "¿qué tengo que hacer mañana?" (bug real: la forma corta no se
-  // reconocía como pregunta).
-  'que tengo hoy',
-  'que tengo manana',
-  'que tengo para hoy',
-  'que tengo para manana',
-  'que tengo ahora',
-  'que tiene hoy',
-  'que tiene manana',
-  'que tiene para hoy',
-  'que tiene para manana',
-  'que tenemos hoy',
-  'que tenemos manana',
-  // "Para" en medio ("qué tenemos PARA hoy") no coincidía con ninguna
-  // de las anteriores y la frase entera caía en crear una cita nueva en
-  // vez de responder (bug real reportado: "sigue poniéndome una nota
-  // en el calendario").
-  'que tenemos para hoy',
-  'que tenemos para manana',
-  // "¿Qué tengo el nueve de septiembre?" es tan pregunta como "¿qué
-  // tengo hoy?", pero sin "hoy"/"mañana"/"ahora" no coincidía con nada
-  // de lo anterior y se guardaba como una cita nueva con ese literal
-  // por título (bug real reportado: hacía falta distinguir preguntar
-  // por una fecha de apuntar algo en ella). El guardián SAVE_VERB_RE de
-  // más abajo evita que esto se confunda con un encargo real que
-  // mencione una fecha ("apunta que tengo cita el 9 de septiembre").
-  'que tengo el',
-  'que tiene el',
-  'que tenemos el',
-]
+// que hacer todos") y en 3ª ("qué tiene que hacer Paco") — bug real
+// repetido varias veces: cada vez que faltaba UNA combinación concreta
+// de persona (tengo/tiene/tenemos) y tiempo (hoy/mañana/ahora/una
+// fecha) en la lista de frases exactas, esa combinación se colaba como
+// una tarea nueva en vez de responder (los últimos dos encontrados:
+// "qué TIENE ahora" y "qué TENEMOS ahora" — solo estaba "qué TENGO
+// ahora"). En vez de seguir añadiendo frases sueltas una a una, se
+// junta cualquier persona con cualquier tiempo de una sola vez, para
+// que no pueda volver a faltar ninguna combinación.
+const TASK_RE =
+  /\btareas?\b|\b(que tengo|que tiene|que tenemos)\b[\s\S]*\b(que hacer|hoy|manana|ahora|el)\b|\b(que hago|que hace|que hacemos)\b[\s\S]*\b(ahora|hoy)\b|\bque (me|le|nos) toca\b|\bque toca hacer\b/
 
 // "Lo siguiente que tengo en el calendario" — a diferencia de las
 // tareas, esto pregunta por el próximo EVENTO del calendario (cita,
@@ -102,19 +64,10 @@ const NEXT_EVENT_RE =
 // del nueve de septiembre" no se reconocía como nada especial y caía
 // en la creación de un evento nuevo con ese texto literal por título
 // (bug real reportado: se apuntaba "Borra la cita del" como una cita
-// más, justo lo contrario de lo que se pedía).
-const DELETE_PATTERNS = [
-  'borra la cita',
-  'borra el evento',
-  'borrar la cita',
-  'borrar el evento',
-  'elimina la cita',
-  'elimina el evento',
-  'eliminar la cita',
-  'eliminar el evento',
-  'quita la cita',
-  'quitar la cita',
-]
+// más, justo lo contrario de lo que se pedía). Mismo criterio que el
+// resto: cualquier verbo de borrar con cualquiera de los dos nombres
+// (antes faltaban "quita el evento"/"quitar el evento").
+const DELETE_RE = /\b(borra|borrar|elimina|eliminar|quita|quitar)\b[\s\S]*\b(la cita|el evento)\b/
 
 // Quita "Pepa" (con "oye"/"vale" delante si los hay) de lo dictado antes
 // de interpretarlo — si no, "Pepa, apunta leche y pan" se guardaría
@@ -224,7 +177,7 @@ export function detectIntent(text: string, today: Date): VoiceIntent {
   // Antes que nada: si claramente se pide BORRAR algo, no se intenta
   // interpretar como pregunta ni como cita nueva — Pepa todavía no
   // borra por voz, así que hay que decirlo en vez de crear basura.
-  if (DELETE_PATTERNS.some((p) => n.includes(p))) {
+  if (DELETE_RE.test(n)) {
     return { type: 'unsupported_delete' }
   }
 
@@ -249,7 +202,7 @@ export function detectIntent(text: string, today: Date): VoiceIntent {
   // frase entera cayera en la creación de un evento nuevo en vez de
   // responder (bug real: dos citas basura creadas a partir de la propia
   // pregunta).
-  if (TASK_PATTERNS.some((p) => n.includes(p))) {
+  if (TASK_RE.test(n)) {
     const spokenDate = extractSpokenDate(n, today)
     // "de septiembre" no puede colarse como nombre de persona a través
     // del "de X" suelto — solo cuenta si la palabra no es un mes.

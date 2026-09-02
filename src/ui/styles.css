@@ -27,7 +27,7 @@ body {
 
 .app-content {
   flex: 1;
-  padding-bottom: 72px;
+  padding-bottom: 80px;
 }
 
 .screen {
@@ -223,17 +223,30 @@ button {
   display: flex;
   background: var(--card-bg);
   border-top: 1px solid #e5e7eb;
-  padding: 8px 0;
+  padding: 6px 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .nav-item {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 66px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   text-align: center;
-  padding: 8px 4px;
+  padding: 6px 6px;
   text-decoration: none;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.nav-item-icon {
+  font-size: 20px;
+  line-height: 1;
 }
 
 .nav-item.active {

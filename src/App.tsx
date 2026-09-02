@@ -47,7 +47,7 @@ export function App() {
           <Route path="/familia" element={<FamilyScreen profile={profile} />} />
           <Route path="/alimentacion" element={<AlimentacionScreen />} />
           <Route path="/dinero" element={<FinanceScreen />} />
-          <Route path="/ubicacion" element={<LocationScreen role={profile.role} />} />
+          <Route path="/ubicacion" element={<LocationScreen role={profile.role} profileId={profile.id} />} />
           <Route path="/actividad" element={<ActivityScreen />} />
           <Route path="/cumpleanos" element={<BirthdaysScreen />} />
           <Route path="/contactos" element={<ContactsScreen />} />

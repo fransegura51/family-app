@@ -6,6 +6,7 @@ import {
   deletePlace,
   listAutomationRules,
   listConsents,
+  listMemberLocationHistory,
   listMemberLocations,
   listPlaces,
   muteAutomationRule,
@@ -13,9 +14,10 @@ import {
   toggleAutomationRule,
   updateMemberLocation,
 } from '@/data/location'
-import { listFamilyMembers } from '@/data/family'
+import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
 import { distanceMeters, formatDistance } from '@/domain/geo'
 import { getCurrentPosition, watchPosition } from '@/services/geolocation'
+import { LocationMap } from '@/ui/LocationMap'
 import type {
   AutomationRule,
   AutomationTriggerType,
@@ -24,20 +26,21 @@ import type {
   LocationConsent,
   LocationPlace,
   MemberLocation,
+  MemberLocationPoint,
 } from '@/domain/types'
 
 const SUB_TABS = ['Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
-export function LocationScreen({ role }: { role: FamilyRole }) {
+export function LocationScreen({ role, profileId }: { role: FamilyRole; profileId: string }) {
   const [tab, setTab] = useState<SubTab>('Ubicación')
 
   return (
     <div className="screen">
       <h1>Ubicación y avisos</h1>
       <p className="muted">
-        Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente, y
-        solo se guarda la última posición conocida — nunca un historial.
+        Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El
+        mapa muestra la ruta de las últimas 24h — pasado ese tiempo se borra sola.
       </p>
       <div className="filter-row">
         {SUB_TABS.map((t) => (
@@ -47,7 +50,7 @@ export function LocationScreen({ role }: { role: FamilyRole }) {
         ))}
       </div>
 
-      {tab === 'Ubicación' && <LocationTab isAdmin={role === 'admin'} />}
+      {tab === 'Ubicación' && <LocationTab isAdmin={role === 'admin'} profileId={profileId} />}
       {tab === 'Reglas' && <RulesTab />}
     </div>
   )
@@ -57,11 +60,13 @@ export function LocationScreen({ role }: { role: FamilyRole }) {
 // Ubicación (Skill 23/28)
 // ---------------------------------------------------------------------
 
-function LocationTab({ isAdmin }: { isAdmin: boolean }) {
+function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: string }) {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [consents, setConsents] = useState<LocationConsent[]>([])
   const [locations, setLocations] = useState<MemberLocation[]>([])
   const [places, setPlaces] = useState<LocationPlace[]>([])
+  const [histories, setHistories] = useState<Record<string, MemberLocationPoint[]>>({})
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sharingAs, setSharingAs] = useState<string>('')
@@ -70,11 +75,22 @@ function LocationTab({ isAdmin }: { isAdmin: boolean }) {
   function reload() {
     setLoading(true)
     Promise.all([listFamilyMembers(), listConsents(), listMemberLocations(), listPlaces()])
-      .then(([m, c, l, p]) => {
+      .then(async ([m, c, l, p]) => {
         setMembers(m)
         setConsents(c)
         setLocations(l)
         setPlaces(p)
+
+        const historyEntries = await Promise.all(
+          l.map(async (loc) => [loc.memberId, await listMemberLocationHistory(loc.memberId)] as const),
+        )
+        setHistories(Object.fromEntries(historyEntries))
+
+        const withPhoto = m.filter((mem) => mem.photoPath && l.some((loc) => loc.memberId === mem.id))
+        const photoEntries = await Promise.all(
+          withPhoto.map(async (mem) => [mem.id, await getMemberPhotoUrl(mem.photoPath!)] as const),
+        )
+        setPhotoUrls(Object.fromEntries(photoEntries))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -111,22 +127,35 @@ function LocationTab({ isAdmin }: { isAdmin: boolean }) {
 
   if (loading) return <p className="muted">Cargando…</p>
 
+  const sharedNow = locations.filter((loc) => consents.find((c) => c.memberId === loc.memberId)?.enabled)
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
+
+      {sharedNow.length > 0 && (
+        <>
+          <h2 className="section-title">Mapa</h2>
+          <LocationMap members={members} locations={sharedNow} histories={histories} photoUrls={photoUrls} />
+        </>
+      )}
 
       <h2 className="section-title">Consentimiento</h2>
       <div className="event-list">
         {members.map((m) => {
           const consent = consents.find((c) => c.memberId === m.id)
           const enabled = consent?.enabled ?? false
+          // El admin puede activar/desactivar a cualquiera; cada persona
+          // también puede activar/desactivar la suya propia (los menores
+          // sin cuenta propia dependen del admin).
+          const canToggle = isAdmin || m.linkedProfileId === profileId
           return (
             <div key={m.id} className="card task-card">
               <div className="task-card-main">
                 <strong>{m.name}</strong>
                 <p className="muted">{enabled ? 'Compartir activado' : 'Desactivado'}</p>
               </div>
-              {isAdmin && (
+              {canToggle && (
                 <button
                   type="button"
                   className="task-toggle"

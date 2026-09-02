@@ -5,6 +5,7 @@ import type {
   LocationConsent,
   LocationPlace,
   MemberLocation,
+  MemberLocationPoint,
 } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -70,8 +71,12 @@ export async function listConsents(): Promise<LocationConsent[]> {
   return data.map((r) => ({ memberId: r.member_id, familyId: r.family_id, enabled: r.enabled }))
 }
 
-// Solo el admin puede llamar a esto (RLS lo exige). Al desactivar, borra
-// también la última ubicación conocida — mínima retención (Skill 23).
+// El admin puede activar/desactivar a cualquiera; cada persona también
+// puede activar/desactivar la suya propia (RLS lo permite para ambos
+// casos — ver migración 0029). Al desactivar, borra también la última
+// ubicación conocida y el rastro de las últimas 24h — mínima retención
+// (Skill 23): apagar el compartir borra el dato, no solo deja de
+// actualizarlo.
 export async function setConsent(memberId: string, enabled: boolean): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase
@@ -81,6 +86,7 @@ export async function setConsent(memberId: string, enabled: boolean): Promise<vo
 
   if (!enabled) {
     await supabase.from('member_locations').delete().eq('member_id', memberId)
+    await supabase.from('member_location_history').delete().eq('member_id', memberId)
   }
 }
 
@@ -98,17 +104,47 @@ export async function listMemberLocations(): Promise<MemberLocation[]> {
   }))
 }
 
-// Sustituye (upsert) la posición del miembro — nunca se acumula historial.
+// Sustituye (upsert) la última posición conocida, y ADEMÁS añade un
+// punto al rastro de las últimas 24h (member_location_history, con
+// purga automática — nunca queda más histórico que eso) para poder
+// dibujar la ruta del día en el mapa.
 export async function updateMemberLocation(memberId: string, latitude: number, longitude: number): Promise<void> {
   const familyId = await currentFamilyId()
+  const recordedAt = new Date().toISOString()
   const { error } = await supabase.from('member_locations').upsert({
     member_id: memberId,
     family_id: familyId,
     latitude,
     longitude,
-    recorded_at: new Date().toISOString(),
+    recorded_at: recordedAt,
   })
   if (error) throw error
+
+  const { error: historyError } = await supabase
+    .from('member_location_history')
+    .insert({ member_id: memberId, family_id: familyId, latitude, longitude, recorded_at: recordedAt })
+  if (historyError) throw historyError
+}
+
+// Rastro de las últimas 24h de un miembro, más antiguo primero (para
+// dibujar la ruta en orden).
+export async function listMemberLocationHistory(memberId: string): Promise<MemberLocationPoint[]> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('member_location_history')
+    .select('id, member_id, family_id, latitude, longitude, recorded_at')
+    .eq('member_id', memberId)
+    .gte('recorded_at', since)
+    .order('recorded_at', { ascending: true })
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    memberId: r.member_id,
+    familyId: r.family_id,
+    latitude: r.latitude,
+    longitude: r.longitude,
+    recordedAt: r.recorded_at,
+  }))
 }
 
 // ---------------------------------------------------------------------

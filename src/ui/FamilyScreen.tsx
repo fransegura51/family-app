@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { addFamilyMember, deleteFamilyMember, listFamilyMembers, updateFamilyMember } from '@/data/family'
+import { addFamilyMember, deleteFamilyMember, listFamilyMembers, updateFamilyMember, uploadMemberPhoto } from '@/data/family'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { FamilyMember, MemberType, Profile } from '@/domain/types'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
@@ -59,15 +60,14 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             />
           ) : (
             <div key={m.id} className="card member-card" style={{ borderColor: m.color }}>
-              <span className="avatar" style={{ background: m.color }}>
-                {m.name.charAt(0)}
-              </span>
+              <MemberAvatar member={m} size={40} />
               <div className="member-card-body">
                 <strong>{m.name}</strong>
                 <p className="muted">{m.memberType}</p>
               </div>
               {isAdmin && (
                 <div className="member-card-actions">
+                  <PhotoUploadButton memberId={m.id} onUploaded={reload} />
                   <button type="button" className="link-button" onClick={() => setEditingId(m.id)}>
                     Editar
                   </button>
@@ -86,6 +86,33 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
 
       {isAdmin && <AddMemberForm onAdded={reload} />}
     </div>
+  )
+}
+
+function PhotoUploadButton({ memberId, onUploaded }: { memberId: string; onUploaded: () => void }) {
+  const [uploading, setUploading] = useState(false)
+
+  async function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    try {
+      await uploadMemberPhoto(memberId, file)
+      onUploaded()
+    } catch {
+      // Se queda como estaba: no hay sitio para un error aquí sin
+      // complicar la tarjeta, y reintentar es tan fácil como volver a tocar.
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <label className="link-button" style={{ cursor: 'pointer' }}>
+      {uploading ? 'Subiendo…' : '📷 Foto'}
+      <input type="file" accept="image/*" onChange={handleChange} style={{ display: 'none' }} disabled={uploading} />
+    </label>
   )
 }
 

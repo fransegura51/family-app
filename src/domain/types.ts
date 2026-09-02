@@ -29,6 +29,7 @@ export interface FamilyMember {
   birthDate: string | null
   permissions: Record<string, unknown>
   linkedProfileId: string | null
+  photoPath: string | null
 }
 
 export type TaskType = 'unica' | 'recurrente' | 'rutina' | 'mision'
@@ -235,6 +236,17 @@ export interface LocationConsent {
 }
 
 export interface MemberLocation {
+  memberId: string
+  familyId: string
+  latitude: number
+  longitude: number
+  recordedAt: string
+}
+
+// Rastro de las últimas 24h (ver member_location_history) — cada punto
+// registrado, no solo el último, para poder dibujar la ruta en el mapa.
+export interface MemberLocationPoint {
+  id: string
   memberId: string
   familyId: string
   latitude: number

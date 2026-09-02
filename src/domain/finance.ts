@@ -26,8 +26,21 @@ export function budgetSpent(budget: Budget, expenses: Expense[]): number {
     .reduce((sum, e) => sum + e.amount, 0)
 }
 
+// Lo que el niño/a tiene DISPONIBLE ahora mismo — no lo mismo que lo
+// ingresado en total, porque lo que ha pasado a ahorro o a impuestos ya
+// no está "en el bolsillo" para gastar (educación financiera: se pide
+// explícitamente separar ingresos/ahorro/gastos/impuestos en vez de un
+// único saldo mezclado).
 export function walletBalance(memberId: string, transactions: KidWalletTransaction[]): number {
+  return walletCategoryTotal(memberId, 'ingreso', transactions) - walletCategoryTotal(memberId, 'ahorro', transactions) - walletCategoryTotal(memberId, 'gasto', transactions) - walletCategoryTotal(memberId, 'impuesto', transactions)
+}
+
+export function walletCategoryTotal(
+  memberId: string,
+  type: KidWalletTransaction['type'],
+  transactions: KidWalletTransaction[],
+): number {
   return transactions
-    .filter((t) => t.memberId === memberId)
-    .reduce((sum, t) => sum + (t.type === 'ingreso' ? t.amount : -t.amount), 0)
+    .filter((t) => t.memberId === memberId && t.type === type)
+    .reduce((sum, t) => sum + t.amount, 0)
 }

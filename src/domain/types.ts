@@ -178,7 +178,7 @@ export interface BodyPhoto {
 
 export type ExpenseKind = 'real' | 'estimado' | 'previsto'
 export type BudgetPeriod = 'mensual' | 'semanal'
-export type WalletTransactionType = 'ingreso' | 'gasto'
+export type WalletTransactionType = 'ingreso' | 'ahorro' | 'gasto' | 'impuesto'
 
 export interface Expense {
   id: string

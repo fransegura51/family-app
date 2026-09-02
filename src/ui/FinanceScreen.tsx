@@ -17,7 +17,7 @@ import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
-import { budgetSpent, walletBalance } from '@/domain/finance'
+import { budgetSpent, walletBalance, walletCategoryTotal } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
 import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
@@ -855,9 +855,23 @@ function AddBudgetForm({ onAdded }: { onAdded: () => void }) {
 // Educación financiera infantil (Skill 20)
 // ---------------------------------------------------------------------
 
+// Antes había un único saldo mezclando ingresos y gastos en una sola
+// lista de "Movimientos" — a petición real de la usuaria, para
+// educación financiera se separa en cuatro categorías con su propia
+// pestaña cada una, para poder ver en cualquier momento cuánto tiene
+// disponible, cuánto ha ahorrado, cuánto ha ingresado en total y
+// cuánto ha gastado, todo por separado.
+const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: string }[] = [
+  { key: 'ingreso', label: 'Ingresos', formLabel: 'ingreso' },
+  { key: 'ahorro', label: 'Ahorro', formLabel: 'ahorro' },
+  { key: 'gasto', label: 'Gastos', formLabel: 'gasto' },
+  { key: 'impuesto', label: 'Impuestos', formLabel: 'impuesto' },
+]
+
 function KidsFinanceTab() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
+  const [walletTab, setWalletTab] = useState<WalletTransactionType>('ingreso')
   const [transactions, setTransactions] = useState<KidWalletTransaction[]>([])
   const [goals, setGoals] = useState<KidGoal[]>([])
   const [loading, setLoading] = useState(true)
@@ -880,8 +894,10 @@ function KidsFinanceTab() {
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const balance = activeMemberId ? walletBalance(activeMemberId, transactions) : 0
-  const memberTransactions = transactions.filter((t) => t.memberId === activeMemberId)
   const memberGoals = goals.filter((g) => g.memberId === activeMemberId)
+  const activeTabInfo = WALLET_TABS.find((t) => t.key === walletTab)!
+  const categoryTotal = activeMemberId ? walletCategoryTotal(activeMemberId, walletTab, transactions) : 0
+  const categoryTransactions = transactions.filter((t) => t.memberId === activeMemberId && t.type === walletTab)
 
   if (loading) return <p className="muted">Cargando…</p>
   if (members.length === 0) return <p className="muted">No hay niños/bebés en la familia todavía.</p>
@@ -903,40 +919,61 @@ function KidsFinanceTab() {
         ))}
       </div>
 
-      <p className="points-badge">Saldo: {balance.toFixed(2)} €</p>
+      <p className="points-badge">Disponible: {balance.toFixed(2)} €</p>
+      <p className="muted">
+        {WALLET_TABS.map((t) => `${t.label} ${walletCategoryTotal(activeMemberId, t.key, transactions).toFixed(2)} €`).join(' · ')}
+      </p>
 
-      <h2 className="section-title">Objetivos de ahorro</h2>
-      <div className="event-list">
-        {memberGoals.map((goal) => {
-          const pct = Math.min(100, Math.round((balance / goal.targetAmount) * 100))
-          return (
-            <div key={goal.id} className="card task-card">
-              <div className="task-card-main">
-                <strong>{goal.title}</strong>
-                <p className="muted">
-                  {balance.toFixed(2)} € de {goal.targetAmount.toFixed(2)} € ({pct}%)
-                </p>
-                <div className="progress-bar">
-                  <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-              <button type="button" className="link-button" onClick={() => deleteGoal(goal.id).then(reload)}>
-                Eliminar
-              </button>
-            </div>
-          )
-        })}
-        {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
+      <div className="filter-row">
+        {WALLET_TABS.map((t) => (
+          <button
+            key={t.key}
+            className={'chip' + (walletTab === t.key ? ' chip-active' : '')}
+            onClick={() => setWalletTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-      <AddGoalForm memberId={activeMemberId} onAdded={reload} />
 
-      <h2 className="section-title">Movimientos</h2>
+      <h2 className="section-title">
+        {activeTabInfo.label}: {categoryTotal.toFixed(2)} €
+      </h2>
+
+      {walletTab === 'ahorro' && (
+        <>
+          <h3>Objetivos de ahorro</h3>
+          <div className="event-list">
+            {memberGoals.map((goal) => {
+              const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
+              return (
+                <div key={goal.id} className="card task-card">
+                  <div className="task-card-main">
+                    <strong>{goal.title}</strong>
+                    <p className="muted">
+                      {categoryTotal.toFixed(2)} € de {goal.targetAmount.toFixed(2)} € ({pct}%)
+                    </p>
+                    <div className="progress-bar">
+                      <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <button type="button" className="link-button" onClick={() => deleteGoal(goal.id).then(reload)}>
+                    Eliminar
+                  </button>
+                </div>
+              )
+            })}
+            {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
+          </div>
+          <AddGoalForm memberId={activeMemberId} onAdded={reload} />
+        </>
+      )}
+
       <div className="event-list">
-        {memberTransactions.map((t) => (
+        {categoryTransactions.map((t) => (
           <div key={t.id} className="card task-card">
             <div className="task-card-main">
               <strong>
-                {t.type === 'ingreso' ? '+' : '-'}
                 {t.amount.toFixed(2)} € — {t.description}
               </strong>
             </div>
@@ -949,9 +986,9 @@ function KidsFinanceTab() {
             </button>
           </div>
         ))}
-        {memberTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
+        {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
       </div>
-      <AddTransactionForm memberId={activeMemberId} onAdded={reload} />
+      <AddTransactionForm memberId={activeMemberId} type={walletTab} formLabel={activeTabInfo.formLabel} onAdded={reload} />
     </div>
   )
 }
@@ -997,8 +1034,21 @@ function AddGoalForm({ memberId, onAdded }: { memberId: string; onAdded: () => v
   )
 }
 
-function AddTransactionForm({ memberId, onAdded }: { memberId: string; onAdded: () => void }) {
-  const [type, setType] = useState<WalletTransactionType>('ingreso')
+// El tipo ya no se elige en un desplegable — lo decide la pestaña en la
+// que estés (Ingresos/Ahorro/Gastos/Impuestos), así no hay que elegirlo
+// dos veces ni se puede registrar un ingreso sin querer en la pestaña
+// de gastos.
+function AddTransactionForm({
+  memberId,
+  type,
+  formLabel,
+  onAdded,
+}: {
+  memberId: string
+  type: WalletTransactionType
+  formLabel: string
+  onAdded: () => void
+}) {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -1022,14 +1072,7 @@ function AddTransactionForm({ memberId, onAdded }: { memberId: string; onAdded: 
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Nuevo movimiento</h2>
-      <label>
-        Tipo
-        <select value={type} onChange={(e) => setType(e.target.value as WalletTransactionType)}>
-          <option value="ingreso">Ingreso</option>
-          <option value="gasto">Gasto</option>
-        </select>
-      </label>
+      <h2>Nuevo {formLabel}</h2>
       <label>
         Importe (€)
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />

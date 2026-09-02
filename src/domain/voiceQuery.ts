@@ -66,8 +66,16 @@ const TASK_PATTERNS = [
   'que tengo ahora',
   'que tiene hoy',
   'que tiene manana',
+  'que tiene para hoy',
+  'que tiene para manana',
   'que tenemos hoy',
   'que tenemos manana',
+  // "Para" en medio ("qué tenemos PARA hoy") no coincidía con ninguna
+  // de las anteriores y la frase entera caía en crear una cita nueva en
+  // vez de responder (bug real reportado: "sigue poniéndome una nota
+  // en el calendario").
+  'que tenemos para hoy',
+  'que tenemos para manana',
 ]
 
 // "Lo siguiente que tengo en el calendario" — a diferencia de las

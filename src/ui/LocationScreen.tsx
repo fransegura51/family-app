@@ -104,6 +104,15 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
     try {
       await setConsent(memberId, enabled)
       reload()
+      // Si te activas TÚ mismo/a (no a otro miembro), tiene sentido pedir
+      // ya mismo el permiso de ubicación del teléfono y empezar a
+      // compartir desde aquí — si no, quedaba activado en la base de
+      // datos pero sin que nada pidiera el permiso ni apareciera el
+      // icono (bug real: "lo tengo activado" pero no salía en el mapa).
+      // Para otra persona (p.ej. un menor) no tiene sentido: el admin no
+      // lleva ese teléfono, así que ahí solo se desbloquea el permiso.
+      const member = members.find((m) => m.id === memberId)
+      if (enabled && member?.linkedProfileId === profileId) startSharing(memberId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cambiar el consentimiento')
     }

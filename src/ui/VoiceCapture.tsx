@@ -111,6 +111,21 @@ async function extractTaskMember(text: string): Promise<{ memberId: string | nul
   return { memberId: member.id, text: cleaned }
 }
 
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+function eventMinutes(ev: CalendarEvent): number {
+  if (ev.allDay) return -1
+  const d = new Date(ev.startAt)
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+function eventTimeLabel(ev: CalendarEvent): string {
+  return ev.allDay ? '' : ` a las ${new Date(ev.startAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+}
+
 async function answerTasksQuery(
   memberHint: string | null,
   rawText: string,
@@ -118,21 +133,29 @@ async function answerTasksQuery(
   nowOnly: boolean,
   explicitDate: string | null,
 ): Promise<string> {
-  const [tasks, members, completions] = await Promise.all([listTasks(), listFamilyMembers(), listCompletions()])
+  const [tasks, members, completions, events] = await Promise.all([
+    listTasks(),
+    listFamilyMembers(),
+    listCompletions(),
+    listUpcomingEvents(),
+  ])
   const target = explicitDate ?? (when === 'tomorrow' ? tomorrowIso() : todayIso())
   const dateLabel = explicitDate
     ? new Date(explicitDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
     : null
   const dayWord = dateLabel ? `el ${dateLabel}` : when === 'tomorrow' ? 'mañana' : 'hoy'
-  // "de hoy"/"de mañana", pero "del 9 de septiembre" — el español
-  // contrae "de + el", así que no vale simplemente anteponer "de" a
-  // dayWord para la frase "Tareas de/del X".
-  const dayWordDe = dateLabel ? `del ${dateLabel}` : when === 'tomorrow' ? 'de mañana' : 'de hoy'
   // "Ahora" solo tiene sentido preguntando por hoy mismo — ni "mañana"
   // ni una fecha concreta suelta tienen un "ya ha pasado" que valga.
   const isToday = !explicitDate && when === 'today'
   const applyNowFilter = nowOnly && isToday
   const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes()
+
+  // Antes solo se miraban las TAREAS — si lo de hoy era una cita del
+  // calendario ("ir a trabajar") en vez de una tarea, Pepa decía que no
+  // había nada aunque sí hubiera (bug real reportado). Se expanden los
+  // recurrentes igual que en el resto de la app y se filtra al día
+  // exacto preguntado.
+  const eventsOnTarget = events.filter((ev) => expandOccurrences(ev, target, target).includes(target))
 
   let due = tasks.filter((t) => isTaskDueOn(t, target))
   let who = ''
@@ -149,23 +172,33 @@ async function answerTasksQuery(
       completions.filter((c) => c.memberId === member.id && c.completedDate === target).map((c) => c.taskId),
     )
     due = due.filter((t) => !doneOnTarget.has(t.id))
+
+    let memberEvents = eventsOnTarget.filter((ev) => ev.memberIds.length === 0 || ev.memberIds.includes(member.id))
+
     if (applyNowFilter) {
       due = due.filter((t) => {
         if (!t.timeOfDay) return true
-        const [h, m] = t.timeOfDay.split(':').map(Number)
-        return h * 60 + m >= nowMinutes
+        return toMinutes(t.timeOfDay) >= nowMinutes
       })
+      memberEvents = memberEvents.filter((ev) => ev.allDay || eventMinutes(ev) >= nowMinutes)
     }
     who = ` para ${member.name}`
 
-    if (due.length === 0) return `No tienes tareas pendientes${who} ${dayWord}.`
-    const ordered = sortByTime(due)
-    const labels = ordered.map((t) => (t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title))
-    return `Tareas ${dayWordDe}${who}: ${labels.join(', ')}.`
+    if (due.length === 0 && memberEvents.length === 0) return `No tienes nada pendiente${who} ${dayWord}.`
+
+    const items = [
+      ...due.map((t) => ({
+        minutes: t.timeOfDay ? toMinutes(t.timeOfDay) : -1,
+        label: t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title,
+      })),
+      ...memberEvents.map((ev) => ({ minutes: eventMinutes(ev), label: `${ev.title}${eventTimeLabel(ev)}` })),
+    ].sort((a, b) => a.minutes - b.minutes)
+
+    return `Lo que tienes${who} ${dayWord}: ${items.map((i) => i.label).join(', ')}.`
   }
 
   // "Todos" — sin decir de quién, se cuenta la agenda de TODA la familia,
-  // cada tarea con quién tiene que hacerla — "Fernando tiene que
+  // cada tarea/cita con quién tiene que hacerla — "Fernando tiene que
   // bañarse a las 6, Eric a las 7..." en vez de un listado plano sin
   // decir de quién es cada una. Preguntando por HOY, siempre se cuenta
   // desde la hora actual (no hace falta decir "ahora" — así ya se probó
@@ -173,35 +206,34 @@ async function answerTasksQuery(
   // "ya ha pasado".
   const memberById = new Map(members.map((m) => [m.id, m]))
   due = due.filter((t) => {
-    if (isToday && t.timeOfDay) {
-      const [h, m] = t.timeOfDay.split(':').map(Number)
-      if (h * 60 + m < nowMinutes) return false
-    }
+    if (isToday && t.timeOfDay && toMinutes(t.timeOfDay) < nowMinutes) return false
     const doneBy = t.memberId
       ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === target)
       : completions.some((c) => c.taskId === t.id && c.completedDate === target)
     return !doneBy
   })
 
-  if (due.length === 0) return `No queda ninguna tarea pendiente por ${dayWord}.`
-  const ordered = sortByTime(due)
-  const labels = ordered.map((t) => {
-    const owner = t.memberId ? (memberById.get(t.memberId)?.name ?? null) : null
-    const withTime = t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title
-    return owner ? `${owner}: ${withTime}` : withTime
-  })
-  return `Lo que queda por ${dayWord}: ${labels.join(', ')}.`
-}
+  let allEvents = eventsOnTarget
+  if (isToday) {
+    allEvents = allEvents.filter((ev) => ev.allDay || eventMinutes(ev) >= nowMinutes)
+  }
 
-// Ordenadas por hora (las que la tienen, primero) para que la respuesta
-// siga el orden real del día, no el orden en que se crearon.
-function sortByTime<T extends { timeOfDay: string | null }>(list: T[]): T[] {
-  return [...list].sort((a, b) => {
-    if (a.timeOfDay && b.timeOfDay) return a.timeOfDay.localeCompare(b.timeOfDay)
-    if (a.timeOfDay) return -1
-    if (b.timeOfDay) return 1
-    return 0
-  })
+  if (due.length === 0 && allEvents.length === 0) return `No queda nada pendiente por ${dayWord}.`
+
+  const items = [
+    ...due.map((t) => {
+      const owner = t.memberId ? (memberById.get(t.memberId)?.name ?? null) : null
+      const withTime = t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title
+      return { minutes: t.timeOfDay ? toMinutes(t.timeOfDay) : -1, label: owner ? `${owner}: ${withTime}` : withTime }
+    }),
+    ...allEvents.map((ev) => {
+      const owner = ev.memberIds.length === 1 ? (memberById.get(ev.memberIds[0])?.name ?? null) : null
+      const withTime = `${ev.title}${eventTimeLabel(ev)}`
+      return { minutes: eventMinutes(ev), label: owner ? `${owner}: ${withTime}` : withTime }
+    }),
+  ].sort((a, b) => a.minutes - b.minutes)
+
+  return `Lo que queda por ${dayWord}: ${items.map((i) => i.label).join(', ')}.`
 }
 
 // "Pepa, lo siguiente que tengo en el calendario" — el próximo EVENTO

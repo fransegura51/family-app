@@ -24,6 +24,7 @@ import {
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenContinuous, speakAsync } from '@/services/voice'
 import { classifyQuestionWithAi } from '@/services/pepaIntent'
+import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 
 type ResponseMode = 'voice' | 'text'
@@ -511,7 +512,7 @@ export function VoiceCapture() {
       // ninguna de esas, por heurística.
       const { store: shoppingStore, text: textForEntries } = extractShoppingStore(text, storeNames)
 
-      const entries = splitEntries(stripListFillers(textForEntries))
+      let entries = splitEntries(stripListFillers(textForEntries))
       if (entries.length === 0) {
         // Solo se ha dicho el nombre de la tienda, sin ningún producto
         // detrás ("Pepa, Mercadona") — se entiende como "ábreme la
@@ -527,6 +528,23 @@ export function VoiceCapture() {
         setStatus('idle')
         return
       }
+
+      // Si se ha dictado de un tirón, sin comas ni "y" de por medio
+      // ("patata lechuga lentejas agua vino"), splitEntries deja un
+      // solo trozo largo — se prueba a separarlo con IA antes de
+      // guardarlo así (petición real: "esto me lo sigue poniendo todo
+      // junto... quiero que me lo ponga cada producto en una línea").
+      // Si la IA falla (sin red, etc.) se guarda tal cual, como antes.
+      if (entries.length === 1 && entries[0].trim().includes(' ')) {
+        try {
+          const split = await splitGroceryListWithAi(entries[0])
+          if (split.length > 1) entries = split
+        } catch {
+          // Sin conexión a la IA no pasa nada — se guarda como un solo
+          // producto, igual que se hacía antes de este respaldo.
+        }
+      }
+
       await saveShoppingEntries(entries, shoppingStore)
       setStatus('done')
       const storeSuffix = shoppingStore ? ` (${shoppingStore})` : ''

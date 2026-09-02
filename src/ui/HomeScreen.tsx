@@ -6,20 +6,71 @@ import { savePushSubscription } from '@/data/push'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
-// "¿Qué tenemos hoy?" — punto de entrada de la app (Skill 02). Cada bloque
-// es hoy un placeholder: se conectará a calendario/tareas/compras según
-// avancen las fases 1-6.
+interface HomeCardDef {
+  id: string
+  title: string
+  body: string
+  to: string
+  icon: string
+  color: string
+}
+
+const HOME_CARDS: HomeCardDef[] = [
+  { id: 'familia', title: 'Familia', body: 'Miembros y perfiles', to: '/familia', icon: '👨‍👩‍👧‍👦', color: '#ffe3d6' },
+  { id: 'calendario', title: 'Calendario', body: 'Eventos de hoy', to: '/calendario', icon: '📅', color: '#dbeafe' },
+  { id: 'puntos', title: 'Puntos', body: 'Recompensas de la familia', to: '/puntos', icon: '⭐', color: '#dcfce7' },
+  { id: 'compras', title: 'Próxima compra', body: 'Lista actual', to: '/compras', icon: '🛒', color: '#fef3c7' },
+  { id: 'alimentacion', title: 'Alimentación', body: 'Menú, registro y peso', to: '/alimentacion', icon: '🍎', color: '#d1fae5' },
+  { id: 'dinero', title: 'Dinero', body: 'Resumen del mes', to: '/dinero', icon: '💶', color: '#dcfce7' },
+  { id: 'ubicacion', title: 'Ubicación y avisos', body: 'Opcional, desactivado por defecto', to: '/ubicacion', icon: '📍', color: '#e0e7ff' },
+  { id: 'cumpleanos', title: 'Cumpleaños', body: 'Próximos en la familia', to: '/cumpleanos', icon: '🎂', color: '#fed7aa' },
+  { id: 'contactos', title: 'Contactos', body: 'Colegio, médico, emergencias', to: '/contactos', icon: '📇', color: '#ede9fe' },
+  { id: 'galeria', title: 'Galería', body: 'Fotos de la familia', to: '/galeria', icon: '📷', color: '#fef9c3' },
+  { id: 'documentos', title: 'Documentos', body: 'Por cada miembro', to: '/documentos', icon: '📁', color: '#dbeafe' },
+]
+const HOME_CARDS_BY_ID = new Map(HOME_CARDS.map((c) => [c.id, c]))
+
+// Junta el orden guardado con las tarjetas que existan de verdad hoy —
+// si se guardó un orden antes de añadir/quitar alguna tarjeta, las
+// nuevas se añaden al final y las que ya no existen se ignoran, en vez
+// de romperse.
+function resolveOrder(saved: string[] | null): string[] {
+  const allIds = HOME_CARDS.map((c) => c.id)
+  if (!saved) return allIds
+  const known = saved.filter((id) => HOME_CARDS_BY_ID.has(id))
+  const missing = allIds.filter((id) => !known.includes(id))
+  return [...known, ...missing]
+}
+
+// "¿Qué tenemos hoy?" — punto de entrada de la app (Skill 02).
 export function HomeScreen({ profile }: { profile: Profile }) {
   const [self, setSelf] = useState<FamilyMember | null>(null)
+  const [order, setOrder] = useState<string[]>(() => resolveOrder(loadHomeCardOrder()))
+  const [organizing, setOrganizing] = useState(false)
 
   useEffect(() => {
     listFamilyMembers()
       .then((members) => setSelf(members.find((m) => m.linkedProfileId === profile.id) ?? null))
       .catch(() => {})
   }, [profile.id])
+
+  function moveCard(id: string, direction: -1 | 1) {
+    setOrder((prev) => {
+      const index = prev.indexOf(id)
+      const target = index + direction
+      if (index === -1 || target < 0 || target >= prev.length) return prev
+      const next = [...prev]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      saveHomeCardOrder(next)
+      return next
+    })
+  }
+
+  const orderedCards = order.map((id) => HOME_CARDS_BY_ID.get(id)).filter((c): c is HomeCardDef => !!c)
 
   return (
     <div className="screen">
@@ -33,18 +84,27 @@ export function HomeScreen({ profile }: { profile: Profile }) {
 
       <NotificationsBanner />
 
+      {/* Petición real: "quiero que se puedan organizar como yo quiera,
+          que se puedan mover de sitio" — el orden es solo de este
+          móvil (localStorage), cada uno puede querer el suyo. */}
+      <button type="button" className="link-button" onClick={() => setOrganizing(!organizing)}>
+        {organizing ? '✓ Listo' : '↕️ Organizar'}
+      </button>
+
       <div className="card-grid">
-        <HomeCard title="Familia" body="Miembros y perfiles" to="/familia" icon="👨‍👩‍👧‍👦" color="#ffe3d6" />
-        <HomeCard title="Calendario" body="Eventos de hoy" to="/calendario" icon="📅" color="#dbeafe" />
-        <HomeCard title="Puntos" body="Recompensas de la familia" to="/puntos" icon="⭐" color="#dcfce7" />
-        <HomeCard title="Próxima compra" body="Lista actual" to="/compras" icon="🛒" color="#fef3c7" />
-        <HomeCard title="Alimentación" body="Menú, registro y peso" to="/alimentacion" icon="🍎" color="#d1fae5" />
-        <HomeCard title="Dinero" body="Resumen del mes" to="/dinero" icon="💶" color="#dcfce7" />
-        <HomeCard title="Ubicación y avisos" body="Opcional, desactivado por defecto" to="/ubicacion" icon="📍" color="#e0e7ff" />
-        <HomeCard title="Cumpleaños" body="Próximos en la familia" to="/cumpleanos" icon="🎂" color="#fed7aa" />
-        <HomeCard title="Contactos" body="Colegio, médico, emergencias" to="/contactos" icon="📇" color="#ede9fe" />
-        <HomeCard title="Galería" body="Fotos de la familia" to="/galeria" icon="📷" color="#fef9c3" />
-        <HomeCard title="Documentos" body="Por cada miembro" to="/documentos" icon="📁" color="#dbeafe" />
+        {orderedCards.map((card, i) => (
+          <HomeCard
+            key={card.id}
+            title={card.title}
+            body={card.body}
+            to={organizing ? undefined : card.to}
+            icon={card.icon}
+            color={card.color}
+            organizing={organizing}
+            onMoveUp={i > 0 ? () => moveCard(card.id, -1) : undefined}
+            onMoveDown={i < orderedCards.length - 1 ? () => moveCard(card.id, 1) : undefined}
+          />
+        ))}
       </div>
     </div>
   )
@@ -164,12 +224,18 @@ function HomeCard({
   to,
   icon,
   color,
+  organizing,
+  onMoveUp,
+  onMoveDown,
 }: {
   title: string
   body: string
   to?: string
   icon: string
   color: string
+  organizing?: boolean
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   const content = (
     <div className="card home-card">
@@ -180,6 +246,28 @@ function HomeCard({
       <span className="home-card-icon" style={{ background: color }}>
         {icon}
       </span>
+      {organizing && (
+        <div className="home-card-move">
+          <button
+            type="button"
+            className="link-button"
+            onClick={onMoveUp}
+            disabled={!onMoveUp}
+            aria-label={`Mover ${title} antes`}
+          >
+            ◀
+          </button>
+          <button
+            type="button"
+            className="link-button"
+            onClick={onMoveDown}
+            disabled={!onMoveDown}
+            aria-label={`Mover ${title} después`}
+          >
+            ▶
+          </button>
+        </div>
+      )}
     </div>
   )
   return to ? (

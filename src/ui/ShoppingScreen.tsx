@@ -388,17 +388,31 @@ function ShoppingListTab() {
 // relacionado"). El logo se referencia en vivo desde la web pública del
 // propio favicon del dominio de la cadena — no se guarda ninguna imagen
 // de marca en la aplicación.
+//
+// Tocar el icono lleva directamente a la lista de esa tienda (petición
+// real: "cuando toque el icono de un supermercado, quiero que se abra
+// la lista de ese supermercado") — mismo aviso que ya usa la voz para
+// "Pepa, Mercadona", solo que disparado con un toque. stopPropagation
+// para no arrastrar el toque a lo que tenga alrededor (p. ej. el
+// nombre en Tiendas, que sigue abriendo el renombrado como siempre).
 function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
   const icon = getStoreIcon(name)
   const [broken, setBroken] = useState(false)
+
+  function handleClick(e: { stopPropagation: () => void }) {
+    e.stopPropagation()
+    window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: name } }))
+  }
+
   if (icon.kind === 'logo' && !broken) {
     return (
       <img
         src={`https://www.google.com/s2/favicons?domain=${icon.domain}&sz=${size * 2}`}
-        alt=""
+        alt={`Ir a la lista de ${name}`}
         width={size}
         height={size}
-        style={{ borderRadius: 4, verticalAlign: 'middle' }}
+        style={{ borderRadius: 4, verticalAlign: 'middle', cursor: 'pointer' }}
+        onClick={handleClick}
         // Si el dominio no tiene favicon de verdad (dominio adivinado
         // que resulta no existir o no responder), se cae al icono
         // genérico en vez de dejar un hueco de imagen rota.
@@ -407,7 +421,12 @@ function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
     )
   }
   return (
-    <span style={{ fontSize: size }} aria-hidden="true">
+    <span
+      role="button"
+      aria-label={`Ir a la lista de ${name}`}
+      onClick={handleClick}
+      style={{ fontSize: size, cursor: 'pointer' }}
+    >
       {icon.kind === 'emoji' ? icon.icon : '🏬'}
     </span>
   )

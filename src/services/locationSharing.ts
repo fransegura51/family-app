@@ -32,7 +32,20 @@ let currentMemberId: string | null = null
 let currentStop: (() => void) | null = null
 let lastError: string | null = null
 let lastPosition: LastPosition | null = null
+let lastUpdateAt = 0
 const listeners = new Set<Listener>()
+
+// El navegador (sobre todo en móvil, con la pantalla apagada o la app
+// en segundo plano) a veces mata el watchPosition por dentro SIN avisar
+// — ni onerror ni onend, simplemente deja de llegar nada, y desde fuera
+// parece que "se ha quedado fija" otra vez aunque el código siga
+// pensando que está compartiendo. Dos redes de seguridad: en cuanto la
+// pestaña vuelve a primer plano se reinicia el watch (por si murió
+// mientras estaba en segundo plano), y un latido cada 90s comprueba si
+// hace demasiado que no llega nada y reinicia también si hace falta —
+// "no podemos fallar en ubicación", así que no basta con confiar en que
+// el navegador avise.
+const STALE_THRESHOLD_MS = 90_000
 
 function notify() {
   listeners.forEach((l) => l())
@@ -71,19 +84,27 @@ export function stopSharing() {
   currentMemberId = null
   lastError = null
   lastPosition = null
+  lastUpdateAt = 0
   persist(null)
   notify()
 }
 
-export function startSharing(memberId: string) {
-  if (currentMemberId === memberId && currentStop) return // ya en marcha como esta persona
+// `force`: reinicia el watch aunque ya se esté compartiendo como esa
+// misma persona — hace falta para las redes de seguridad de abajo
+// (volver a primer plano, latido de "no llega nada hace rato"), donde
+// lo normal es que memberId no haya cambiado pero el watch de verdad sí
+// necesite reiniciarse.
+export function startSharing(memberId: string, force = false) {
+  if (currentMemberId === memberId && currentStop && !force) return // ya en marcha como esta persona
   currentStop?.()
   lastError = null
   currentMemberId = memberId
+  lastUpdateAt = Date.now()
   persist(memberId)
   currentStop = watchPosition(
     (coords) => {
       lastError = null
+      lastUpdateAt = Date.now()
       updateMemberLocation(memberId, coords.latitude, coords.longitude)
         .then(() => {
           lastPosition = { memberId, latitude: coords.latitude, longitude: coords.longitude }
@@ -106,6 +127,20 @@ export function startSharing(memberId: string) {
     },
   )
   notify()
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentMemberId) {
+      startSharing(currentMemberId, true)
+    }
+  })
+
+  setInterval(() => {
+    if (currentMemberId && document.visibilityState === 'visible' && Date.now() - lastUpdateAt > STALE_THRESHOLD_MS) {
+      startSharing(currentMemberId, true)
+    }
+  }, 30_000)
 }
 
 // Se llama una sola vez al arrancar la aplicación (ver

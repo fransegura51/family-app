@@ -589,11 +589,18 @@ export function VoiceCapture() {
 
   return (
     <>
+      {/* Rótulo siempre visible, no solo el icono — al confundir los dos
+          botones se llegó a apuntar "qué tengo hoy" como una tarea
+          nueva en vez de preguntarlo (bug real reportado). Con el
+          nombre de la acción escrito al lado no hace falta recordar
+          qué hace cada emoji. */}
       <button type="button" className="voice-fab voice-fab-ask" aria-label="Preguntar a Pepa" onClick={() => openPanel('ask')}>
-        🐣
+        <span className="voice-fab-icon">🐣</span>
+        <span className="voice-fab-label">Preguntar</span>
       </button>
       <button type="button" className="voice-fab voice-fab-create" aria-label="Añadir con voz" onClick={() => openPanel('create')}>
-        🎤
+        <span className="voice-fab-icon">🎤</span>
+        <span className="voice-fab-label">Añadir</span>
       </button>
 
       {open && (

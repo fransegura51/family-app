@@ -948,28 +948,42 @@ textarea {
 .voice-fab {
   position: fixed;
   right: 16px;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 18px 0 14px;
+  border-radius: 24px;
   border: none;
   color: white;
-  font-size: 24px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   z-index: 40;
 }
 
-/* Dos botones separados — uno solo para añadir (micrófono) y otro solo
-   para preguntar (Pepa), apilados para que no se pisen ni se confundan
-   al tacto. */
-.voice-fab-create {
-  bottom: 84px;
-  background: var(--primary);
+.voice-fab-icon {
+  font-size: 22px;
+  line-height: 1;
 }
 
+.voice-fab-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Dos botones separados — uno solo para añadir (micrófono) y otro solo
+   para preguntar (Pepa), apilados para que no se pisen ni se confundan
+   al tacto. Pepa en el sitio de siempre (el más a mano, pegado a la
+   barra de navegación) — es el botón que más se usa y el que la
+   usuaria ya tiene interiorizado ahí; añadir queda justo encima. */
 .voice-fab-ask {
-  bottom: 150px;
+  bottom: 84px;
   background: #7c3aed;
+}
+
+.voice-fab-create {
+  bottom: 150px;
+  background: var(--primary);
 }
 
 .voice-mic-button {

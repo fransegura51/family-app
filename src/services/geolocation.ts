@@ -19,7 +19,7 @@ export function getCurrentPosition(): Promise<Coordinates> {
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
       (err) => reject(new Error(err.message)),
-      { enableHighAccuracy: false, timeout: 10_000 },
+      { enableHighAccuracy: true, timeout: 10_000 },
     )
   })
 }
@@ -50,10 +50,14 @@ export function watchPosition(
     onError?.('Este dispositivo no soporta geolocalización.', -1)
     return () => {}
   }
+  // Precisión real de GPS (no la ubicación aproximada por wifi/antena) y
+  // sin caché: "la ubicación tiene que ser exacta" — con `maximumAge` a
+  // 0 nunca se devuelve una posición vieja guardada, siempre se pide una
+  // nueva de verdad.
   const id = navigator.geolocation.watchPosition(
     (pos) => onUpdate({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
     (err) => onError?.(geolocationErrorMessage(err), err.code),
-    { enableHighAccuracy: false, maximumAge: 60_000, timeout: 15_000 },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 },
   )
   return () => navigator.geolocation.clearWatch(id)
 }

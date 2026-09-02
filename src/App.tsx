@@ -39,7 +39,7 @@ export function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <ReminderWatcher />
       <AutomationWatcher />
-      <LocationSharingWatcher />
+      <LocationSharingWatcher profileId={profile.id} />
       <Routes>
         <Route element={<NavShell />}>
           <Route path="/" element={<HomeScreen profile={profile} />} />

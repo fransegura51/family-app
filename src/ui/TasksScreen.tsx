@@ -13,6 +13,7 @@ import {
   uncompleteTask,
 } from '@/data/tasks'
 import { listFamilyMembers } from '@/data/family'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 import { calculateStreak, isCompletedToday, isTaskDueOn, memberPointsBalance } from '@/domain/tasks'
 import { buildRecurrenceRule, FREQ_OPTIONS, recurrenceLabel } from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
@@ -126,6 +127,7 @@ export function TasksScreen() {
             style={{ borderColor: m.color }}
             onClick={() => setActiveMemberId(m.id)}
           >
+            <MemberAvatar member={m} size={18} />
             {m.name}
           </button>
         ))}

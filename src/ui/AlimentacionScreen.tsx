@@ -14,6 +14,7 @@ import {
   setMenuEntry,
 } from '@/data/food'
 import { listFamilyMembers } from '@/data/family'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 import { searchRecipe } from '@/services/recipeSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
 import { searchFoods, getFoodDetail, type FoodSearchResult, type PerGram } from '@/services/fatsecret'
@@ -492,6 +493,7 @@ function FoodLogTab() {
             style={{ borderColor: m.color }}
             onClick={() => setActiveMemberId(m.id)}
           >
+            <MemberAvatar member={m} size={18} />
             {m.name}
           </button>
         ))}
@@ -737,6 +739,7 @@ function AddFoodLogForm({
             style={{ borderColor: m.color }}
             onClick={() => toggleMember(m.id)}
           >
+            <MemberAvatar member={m} size={18} />
             {m.name}
           </button>
         ))}
@@ -925,6 +928,7 @@ function WeightTab() {
             style={{ borderColor: m.color }}
             onClick={() => setActiveMemberId(m.id)}
           >
+            <MemberAvatar member={m} size={18} />
             {m.name}
           </button>
         ))}

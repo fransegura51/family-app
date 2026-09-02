@@ -14,6 +14,7 @@ import {
   listWalletTransactions,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
 import { budgetSpent, walletBalance } from '@/domain/finance'
@@ -896,6 +897,7 @@ function KidsFinanceTab() {
             style={{ borderColor: m.color }}
             onClick={() => setActiveMemberId(m.id)}
           >
+            <MemberAvatar member={m} size={18} />
             {m.name}
           </button>
         ))}

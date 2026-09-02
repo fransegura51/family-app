@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { listFamilyMembers } from '@/data/family'
 import { nextBirthday, sortByDaysUntil } from '@/domain/birthdays'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { FamilyMember } from '@/domain/types'
 
 export function BirthdaysScreen() {
@@ -40,9 +41,7 @@ export function BirthdaysScreen() {
                 : `En ${b.daysUntil} días`
           return (
             <div key={b.memberId} className="card task-card">
-              <span className="avatar" style={{ background: member.color }}>
-                {member.name.charAt(0)}
-              </span>
+              <MemberAvatar member={member} size={40} />
               <div className="task-card-main">
                 <strong>{member.name}</strong>
                 <p className="muted">

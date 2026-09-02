@@ -15,6 +15,7 @@ import {
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
 import { listFamilyMembers } from '@/data/family'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 import { uploadReceipt } from '@/data/receipts'
 import { computeProductStats } from '@/domain/products'
 import { analyzeFridgePhoto } from '@/services/fridgePhoto'
@@ -563,10 +564,7 @@ function TripCard({
         </p>
         {assignedMember && (
           <p className="muted">
-            <span className="avatar avatar-sm" style={{ background: assignedMember.color }}>
-              {assignedMember.name.charAt(0)}
-            </span>{' '}
-            {assignedMember.name}
+            <MemberAvatar member={assignedMember} size={24} /> {assignedMember.name}
             {trip.calendarEventId && ' · 🔔 en su calendario'}
           </p>
         )}

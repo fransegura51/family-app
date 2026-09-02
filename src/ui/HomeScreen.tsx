@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { GalleryPhoto, Profile } from '@/domain/types'
+import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import { getPermissionState, requestPermission, subscribeToPush } from '@/services/notifications'
 import { savePushSubscription } from '@/data/push'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
+import { listFamilyMembers } from '@/data/family'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -11,10 +13,21 @@ const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undef
 // es hoy un placeholder: se conectará a calendario/tareas/compras según
 // avancen las fases 1-6.
 export function HomeScreen({ profile }: { profile: Profile }) {
+  const [self, setSelf] = useState<FamilyMember | null>(null)
+
+  useEffect(() => {
+    listFamilyMembers()
+      .then((members) => setSelf(members.find((m) => m.linkedProfileId === profile.id) ?? null))
+      .catch(() => {})
+  }, [profile.id])
+
   return (
     <div className="screen">
       <h1>¿Qué tenemos hoy?</h1>
-      <p className="muted">Hola, {profile.displayName}</p>
+      <p className="muted home-greeting">
+        {self && <MemberAvatar member={self} size={28} />}
+        Hola, {profile.displayName}
+      </p>
 
       <PhotoBanner />
 

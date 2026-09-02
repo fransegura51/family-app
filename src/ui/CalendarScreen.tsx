@@ -23,6 +23,7 @@ import {
   type ReminderAnchor,
   type ReminderUnit,
 } from '@/domain/reminders'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { CalendarEvent, FamilyMember, Task, TaskCompletion } from '@/domain/types'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
 import {
@@ -304,6 +305,7 @@ export function CalendarScreen() {
               style={{ borderColor: m.color }}
               onClick={() => setFilterMemberId(m.id)}
             >
+              <MemberAvatar member={m} size={18} />
               {m.name}
             </button>
           ))}
@@ -733,11 +735,7 @@ function EventCard({
         {ev.memberIds.map((id) => {
           const m = memberById.get(id)
           if (!m) return null
-          return (
-            <span key={id} className="avatar avatar-sm" style={{ background: m.color }}>
-              {m.name.charAt(0)}
-            </span>
-          )
+          return <MemberAvatar key={id} member={m} size={24} />
         })}
       </div>
       <div className="member-card-actions">
@@ -788,6 +786,7 @@ function MemberPicker({
           style={{ borderColor: m.color }}
           onClick={() => onToggle(m.id)}
         >
+          <MemberAvatar member={m} size={18} />
           {m.name}
         </button>
       ))}
@@ -1330,11 +1329,7 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
           <div key={f.id} className="card event-card">
             <strong>{f.name}</strong>
             {f.isHolidayCalendar && <span className="muted"> · 🎌 festivos</span>}
-            {f.memberId && memberById.get(f.memberId) && (
-              <span className="avatar avatar-sm" style={{ background: memberById.get(f.memberId)!.color }}>
-                {memberById.get(f.memberId)!.name.charAt(0)}
-              </span>
-            )}
+            {f.memberId && memberById.get(f.memberId) && <MemberAvatar member={memberById.get(f.memberId)!} size={24} />}
             <p className="muted">
               {f.lastSyncedAt
                 ? `Última sincronización: ${new Date(f.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`

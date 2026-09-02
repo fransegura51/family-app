@@ -18,6 +18,7 @@ import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
 import { distanceMeters, formatDistance } from '@/domain/geo'
 import { getCurrentPosition, watchPosition } from '@/services/geolocation'
 import { LocationMap } from '@/ui/LocationMap'
+import { MemberAvatar } from '@/ui/MemberAvatar'
 import type {
   AutomationRule,
   AutomationTriggerType,
@@ -133,11 +134,14 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
     <div>
       {error && <p className="error">{error}</p>}
 
-      {sharedNow.length > 0 && (
-        <>
-          <h2 className="section-title">Mapa</h2>
-          <LocationMap members={members} locations={sharedNow} histories={histories} photoUrls={photoUrls} />
-        </>
+      <h2 className="section-title">Mapa</h2>
+      {sharedNow.length > 0 ? (
+        <LocationMap members={members} locations={sharedNow} histories={histories} photoUrls={photoUrls} />
+      ) : (
+        <p className="muted">
+          Todavía no aparece nadie en el mapa. Activa el consentimiento de alguien más abajo y, desde el móvil de esa
+          persona, entra aquí y toca su nombre en "Este dispositivo" para empezar a compartir.
+        </p>
       )}
 
       <h2 className="section-title">Consentimiento</h2>
@@ -151,6 +155,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           const canToggle = isAdmin || m.linkedProfileId === profileId
           return (
             <div key={m.id} className="card task-card">
+              <MemberAvatar member={m} size={32} />
               <div className="task-card-main">
                 <strong>{m.name}</strong>
                 <p className="muted">{enabled ? 'Compartir activado' : 'Desactivado'}</p>
@@ -185,6 +190,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
               .filter((m) => consents.find((c) => c.memberId === m.id)?.enabled)
               .map((m) => (
                 <button key={m.id} className="chip" onClick={() => startSharing(m.id)}>
+                  <MemberAvatar member={m} size={18} />
                   {m.name}
                 </button>
               ))}

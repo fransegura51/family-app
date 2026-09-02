@@ -36,7 +36,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       <div className="card-grid">
         <HomeCard title="Familia" body="Miembros y perfiles" to="/familia" icon="👨‍👩‍👧‍👦" color="#ffe3d6" />
         <HomeCard title="Calendario" body="Eventos de hoy" to="/calendario" icon="📅" color="#dbeafe" />
-        <HomeCard title="Tareas" body="Pendientes de hoy" to="/tareas" icon="✅" color="#dcfce7" />
+        <HomeCard title="Puntos" body="Recompensas de la familia" to="/puntos" icon="⭐" color="#dcfce7" />
         <HomeCard title="Próxima compra" body="Lista actual" to="/compras" icon="🛒" color="#fef3c7" />
         <HomeCard title="Alimentación" body="Menú, registro y peso" to="/alimentacion" icon="🍎" color="#d1fae5" />
         <HomeCard title="Dinero" body="Resumen del mes" to="/dinero" icon="💶" color="#dcfce7" />

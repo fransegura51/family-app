@@ -1,11 +1,9 @@
 import { FormEvent, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { createTask, listCompletions, listTasks } from '@/data/tasks'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listFamilyMembers } from '@/data/family'
-import { createEvent, listUpcomingEvents } from '@/data/calendar'
+import { createEvent, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
 import { splitEntries } from '@/domain/quickCapture'
-import { isTaskDueOn } from '@/domain/tasks'
 import { expandOccurrences } from '@/domain/calendar'
 import type { CalendarEvent } from '@/domain/types'
 import { reminderLabel } from '@/domain/reminders'
@@ -80,69 +78,33 @@ const CREATE_EXAMPLES = [
   'Apunta a Eric que saque la basura',
 ]
 
-type TargetKey = 'compras' | 'tareas' | 'calendario'
+type TargetKey = 'compras' | 'calendario'
 
 const TARGET_INFO: Record<TargetKey, { label: string; path: string }> = {
   compras: { label: '🛒 Lista de la compra', path: '/compras' },
   calendario: { label: '📅 Calendario', path: '/calendario' },
-  tareas: { label: '✅ Tareas', path: '/tareas' },
 }
 
 // A qué lista se apunta (o qué acción se hace) depende de en qué
-// pantalla estás por defecto — "si le hablo en tareas, quiero que me
-// apunte en tareas; si le hablo en lista de la compra, en lista de la
-// compra". Fuera de esas pantallas cae en Tareas. Esto es solo el punto
-// de partida: si lo que se dice apunta claramente a otro sitio (ver
-// detectTargetFromText), gana el contenido y Pepa te lleva allí.
+// pantalla estás por defecto — "si le hablo en lista de la compra,
+// quiero que me apunte en lista de la compra". Fuera de esa pantalla
+// cae en Calendario — ahí es donde viven ahora también las tareas
+// (petición real: "quitamos la pestaña de tarea... lo dejamos todo
+// como evento"). Esto es solo el punto de partida: si lo que se dice
+// apunta claramente a otro sitio (ver detectTargetFromText), gana el
+// contenido y Pepa te lleva allí.
 function getTarget(pathname: string): { key: TargetKey; label: string } {
   if (pathname.startsWith('/compras')) return { key: 'compras', label: TARGET_INFO.compras.label }
-  if (pathname.startsWith('/calendario')) return { key: 'calendario', label: TARGET_INFO.calendario.label }
-  return { key: 'tareas', label: TARGET_INFO.tareas.label }
+  return { key: 'calendario', label: TARGET_INFO.calendario.label }
 }
 
-async function saveEntries(
-  targetKey: 'compras' | 'tareas',
-  entries: string[],
-  memberId: string | null,
-  store: string | null = null,
-): Promise<void> {
+async function saveShoppingEntries(entries: string[], store: string | null): Promise<void> {
   for (const entry of entries) {
-    if (targetKey === 'compras') {
-      await addShoppingItem({ name: entry, quantity: '', unit: '', priority: 'normal', tripId: null, store })
-    } else {
-      await createTask({
-        title: entry,
-        taskType: 'unica',
-        memberId,
-        points: 0,
-        recurrenceRule: null,
-        startDate: todayIso(),
-        timeOfDay: null,
-      })
-    }
+    await addShoppingItem({ name: entry, quantity: '', unit: '', priority: 'normal', tripId: null, store })
   }
-  // Mismo aviso que en Calendario: si ya estás en Lista de la compra o
-  // en Tareas, que se vea al momento en vez de tener que recargar.
-  window.dispatchEvent(new CustomEvent(`family-app:${targetKey}-changed`))
-}
-
-// "Pepa, apunta a Eric que saque la basura" — reconoce a quién es la
-// tarea (igual que ya se hace en el calendario) y lo quita del texto
-// junto con el conector que suele ir delante ("a"/"para"), para no
-// dejarlo colgando en el título de la tarea.
-async function extractTaskMember(text: string): Promise<{ memberId: string | null; text: string }> {
-  const members = await listFamilyMembers()
-  const member = findMemberInText(text, members)
-  if (!member) return { memberId: null, text }
-  const escaped = member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const nameRe = new RegExp(`\\b(a|para)?\\s*${escaped}\\b,?`, 'i')
-  const cleaned = text.replace(nameRe, ' ').replace(/\s+/g, ' ').trim()
-  return { memberId: member.id, text: cleaned }
-}
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number)
-  return h * 60 + m
+  // Si ya estás en Lista de la compra, que se vea al momento en vez de
+  // tener que recargar.
+  window.dispatchEvent(new CustomEvent('family-app:compras-changed'))
 }
 
 function eventMinutes(ev: CalendarEvent): number {
@@ -155,18 +117,22 @@ function eventTimeLabel(ev: CalendarEvent): string {
   return ev.allDay ? '' : ` a las ${new Date(ev.startAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
 }
 
-async function answerTasksQuery(
+// Antes esto miraba tareas Y eventos por separado (y Pepa a veces
+// confundía cuál era cuál); ahora una tarea ES un evento, así que basta
+// con mirar el calendario — petición real: "quitamos la pestaña de
+// tarea... porque a veces Pepa se confunde las tareas con los
+// eventos". Lo ya marcado "hecho" ese día no cuenta como pendiente.
+async function answerAgendaQuery(
   memberHint: string | null,
   rawText: string,
   when: 'today' | 'tomorrow',
   nowOnly: boolean,
   explicitDate: string | null,
 ): Promise<string> {
-  const [tasks, members, completions, events] = await Promise.all([
-    listTasks(),
+  const [members, events, eventCompletions] = await Promise.all([
     listFamilyMembers(),
-    listCompletions(),
     listUpcomingEvents(),
+    listEventCompletions(),
   ])
   const target = explicitDate ?? (when === 'tomorrow' ? tomorrowIso() : todayIso())
   const dateLabel = explicitDate
@@ -179,92 +145,53 @@ async function answerTasksQuery(
   const applyNowFilter = nowOnly && isToday
   const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes()
 
-  // Antes solo se miraban las TAREAS — si lo de hoy era una cita del
-  // calendario ("ir a trabajar") en vez de una tarea, Pepa decía que no
-  // había nada aunque sí hubiera (bug real reportado). Se expanden los
-  // recurrentes igual que en el resto de la app y se filtra al día
-  // exacto preguntado.
-  const eventsOnTarget = events.filter((ev) => expandOccurrences(ev, target, target).includes(target))
-
-  let due = tasks.filter((t) => isTaskDueOn(t, target))
-  let who = ''
+  let eventsOnTarget = events.filter((ev) => expandOccurrences(ev, target, target).includes(target))
+  eventsOnTarget = eventsOnTarget.filter(
+    (ev) => !eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === target),
+  )
 
   // El nombre puede venir con "soy X"/"para X" delante, o dicho suelto
   // ("Jennifer, ¿qué tengo que hacer hoy?") — se prueban las dos formas
   // antes de rendirse (bug real: preguntar así no filtraba por persona,
-  // y salían también las tareas asignadas a otro miembro de la familia).
+  // y salían también las cosas asignadas a otro miembro de la familia).
   const member = (memberHint ? matchMemberByHint(memberHint, members) : null) ?? findMemberInText(rawText, members)
 
   if (member) {
-    due = due.filter((t) => t.memberId === null || t.memberId === member.id)
-    const doneOnTarget = new Set(
-      completions.filter((c) => c.memberId === member.id && c.completedDate === target).map((c) => c.taskId),
-    )
-    due = due.filter((t) => !doneOnTarget.has(t.id))
-
     let memberEvents = eventsOnTarget.filter((ev) => ev.memberIds.length === 0 || ev.memberIds.includes(member.id))
-
     if (applyNowFilter) {
-      due = due.filter((t) => {
-        if (!t.timeOfDay) return true
-        return toMinutes(t.timeOfDay) >= nowMinutes
-      })
       memberEvents = memberEvents.filter((ev) => ev.allDay || eventMinutes(ev) >= nowMinutes)
     }
-    who = ` para ${member.name}`
-
-    if (due.length === 0 && memberEvents.length === 0) return `No tienes nada pendiente${who} ${dayWord}.`
-
-    const items = [
-      ...due.map((t) => ({
-        minutes: t.timeOfDay ? toMinutes(t.timeOfDay) : -1,
-        label: t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title,
-      })),
-      ...memberEvents.map((ev) => ({ minutes: eventMinutes(ev), label: `${ev.title}${eventTimeLabel(ev)}` })),
-    ].sort((a, b) => a.minutes - b.minutes)
-
+    const who = ` para ${member.name}`
+    if (memberEvents.length === 0) return `No tienes nada pendiente${who} ${dayWord}.`
+    const items = memberEvents
+      .map((ev) => ({ minutes: eventMinutes(ev), label: `${ev.title}${eventTimeLabel(ev)}` }))
+      .sort((a, b) => a.minutes - b.minutes)
     return `Lo que tienes${who} ${dayWord}: ${items.map((i) => i.label).join(', ')}.`
   }
 
-  // "Todos" — sin decir de quién, se cuenta la agenda de TODA la familia,
-  // cada tarea/cita con quién tiene que hacerla — "Fernando tiene que
-  // bañarse a las 6, Eric a las 7..." en vez de un listado plano sin
-  // decir de quién es cada una. Antes, preguntando por HOY, se
-  // descartaba sola cualquier cosa cuya hora ya hubiera pasado, aunque
-  // no se hubiera hecho — bug real reportado: "si tenía bajar la
-  // basura a las cinco y son las seis, Pepa no me dice que tengo que
-  // bajar la basura". Que haya pasado la hora no significa que esté
-  // hecho; solo se quita lo que de verdad está marcado como hecho. El
-  // filtro por hora ("ya ha pasado, no cuenta") solo se aplica si de
-  // verdad se ha preguntado "ahora" explícitamente.
+  // "Todos" — sin decir de quién, se cuenta la agenda de TODA la
+  // familia, cada cosa con quién tiene que hacerla — "Fernando tiene
+  // que bañarse a las 6, Eric a las 7..." en vez de un listado plano
+  // sin decir de quién es cada una. El filtro por hora ("ya ha pasado,
+  // no cuenta") solo se aplica si de verdad se ha preguntado "ahora"
+  // explícitamente — que haya pasado la hora no significa que esté
+  // hecho (bug real reportado: "si tenía bajar la basura a las cinco y
+  // son las seis, Pepa no me dice que tengo que bajar la basura").
   const memberById = new Map(members.map((m) => [m.id, m]))
-  due = due.filter((t) => {
-    if (applyNowFilter && t.timeOfDay && toMinutes(t.timeOfDay) < nowMinutes) return false
-    const doneBy = t.memberId
-      ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === target)
-      : completions.some((c) => c.taskId === t.id && c.completedDate === target)
-    return !doneBy
-  })
-
   let allEvents = eventsOnTarget
   if (applyNowFilter) {
     allEvents = allEvents.filter((ev) => ev.allDay || eventMinutes(ev) >= nowMinutes)
   }
 
-  if (due.length === 0 && allEvents.length === 0) return `No queda nada pendiente por ${dayWord}.`
+  if (allEvents.length === 0) return `No queda nada pendiente por ${dayWord}.`
 
-  const items = [
-    ...due.map((t) => {
-      const owner = t.memberId ? (memberById.get(t.memberId)?.name ?? null) : null
-      const withTime = t.timeOfDay ? `${t.title} a las ${t.timeOfDay.slice(0, 5)}` : t.title
-      return { minutes: t.timeOfDay ? toMinutes(t.timeOfDay) : -1, label: owner ? `${owner}: ${withTime}` : withTime }
-    }),
-    ...allEvents.map((ev) => {
+  const items = allEvents
+    .map((ev) => {
       const owner = ev.memberIds.length === 1 ? (memberById.get(ev.memberIds[0])?.name ?? null) : null
       const withTime = `${ev.title}${eventTimeLabel(ev)}`
       return { minutes: eventMinutes(ev), label: owner ? `${owner}: ${withTime}` : withTime }
-    }),
-  ].sort((a, b) => a.minutes - b.minutes)
+    })
+    .sort((a, b) => a.minutes - b.minutes)
 
   return `Lo que queda por ${dayWord}: ${items.map((i) => i.label).join(', ')}.`
 }
@@ -455,7 +382,7 @@ export function VoiceCapture() {
       // apunte nuevo.
       if (panelMode === 'ask') {
         if (intent.type === 'tasks_today') {
-          const answer = await answerTasksQuery(intent.memberHint, text, intent.when, intent.nowOnly, intent.explicitDate)
+          const answer = await answerAgendaQuery(intent.memberHint, text, intent.when, intent.nowOnly, intent.explicitDate)
           setStatus('done')
           await respond(answer)
           return
@@ -481,7 +408,7 @@ export function VoiceCapture() {
         try {
           const ai = await classifyQuestionWithAi(text, todayIso())
           if (ai.intent === 'tasks_today') {
-            const answer = await answerTasksQuery(ai.memberHint, text, ai.when, ai.nowOnly, ai.explicitDate)
+            const answer = await answerAgendaQuery(ai.memberHint, text, ai.when, ai.nowOnly, ai.explicitDate)
             setStatus('done')
             await respond(answer)
             return
@@ -513,11 +440,15 @@ export function VoiceCapture() {
       // Botón 🎤 Añadir: SOLO guarda, nunca responde una pregunta — para
       // preguntar está el botón de Pepa. El contenido manda sobre la
       // pantalla en la que estés — "Pepa, ponme en el calendario que..."
-      // tiene que ir al calendario aunque
-      // lo digas estando en Tareas, no guardarse donde estuvieras (eso
-      // era lo que pasaba antes: solo miraba la pantalla actual). Si no
-      // hay ninguna pista clara en lo dicho, se usa la pantalla actual,
-      // como siempre.
+      // tiene que ir al calendario aunque lo digas estando en Compras,
+      // no guardarse donde estuvieras (eso era lo que pasaba antes:
+      // solo miraba la pantalla actual). Si no hay ninguna pista clara
+      // en lo dicho, se usa la pantalla actual, como siempre. Ya no hay
+      // un destino aparte de "tareas" — una tarea ES un evento del
+      // calendario (petición real: "quitamos la pestaña de tarea...
+      // porque a veces Pepa se confunde las tareas con los eventos"),
+      // así que "apunta a Eric que saque la basura" va también por
+      // Calendario, que ya reconoce a quién es, la fecha y la hora.
       const contentTargetKey = detectTargetFromText(text)
       const effectiveTargetKey = contentTargetKey ?? target.key
       const effectiveTarget = TARGET_INFO[effectiveTargetKey]
@@ -532,34 +463,19 @@ export function VoiceCapture() {
         return
       }
 
-      // En Tareas (no en Compras — la compra no es de una persona en
-      // concreto) se reconoce a quién es, igual que ya se hace en el
-      // calendario — "Pepa, apunta a Eric que saque la basura" la
-      // asigna a Eric en vez de dejarla sin nadie.
-      let memberId: string | null = null
-      let textForEntries = text
-      let shoppingStore: string | null = null
-      if (effectiveTargetKey === 'tareas') {
-        const extracted = await extractTaskMember(text)
-        memberId = extracted.memberId
-        textForEntries = extracted.text
-      } else if (effectiveTargetKey === 'compras') {
-        // "Mercadona, lista de la compra, patatas" -> tienda "Mercadona",
-        // producto "patatas" — sin esto se guardaba la frase entera como
-        // nombre del producto (petición real: "que no me ponga todo el
-        // texto... que en la lista de la compra de Mercadona me ponga
-        // patatas").
-        const extracted = extractShoppingStore(text)
-        shoppingStore = extracted.store
-        textForEntries = extracted.text
-      }
+      // "Mercadona, lista de la compra, patatas" -> tienda "Mercadona",
+      // producto "patatas" — sin esto se guardaba la frase entera como
+      // nombre del producto (petición real: "que no me ponga todo el
+      // texto... que en la lista de la compra de Mercadona me ponga
+      // patatas").
+      const { store: shoppingStore, text: textForEntries } = extractShoppingStore(text)
 
       const entries = splitEntries(stripListFillers(textForEntries))
       if (entries.length === 0) {
         setStatus('idle')
         return
       }
-      await saveEntries(effectiveTargetKey as 'compras' | 'tareas', entries, memberId, shoppingStore)
+      await saveShoppingEntries(entries, shoppingStore)
       setStatus('done')
       const storeSuffix = shoppingStore ? ` (${shoppingStore})` : ''
       await respond(`Apuntado en ${effectiveTarget.label}${storeSuffix}: ${entries.join(', ')}`)

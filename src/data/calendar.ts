@@ -13,6 +13,7 @@ interface EventRow {
   color: string | null
   recurrence_rule: string | null
   exception_dates: string[]
+  points: number
   calendar_event_members: { member_id: string }[]
   calendar_event_reminders: { minutes_before: number; anchor: string }[]
 }
@@ -34,6 +35,7 @@ function toEvent(row: EventRow): CalendarEvent {
       anchor: r.anchor as ReminderAnchor,
     })),
     memberIds: row.calendar_event_members.map((m) => m.member_id),
+    points: row.points,
   }
 }
 
@@ -41,7 +43,7 @@ export async function listUpcomingEvents(): Promise<CalendarEvent[]> {
   const { data, error } = await supabase
     .from('calendar_events')
     .select(
-      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, exception_dates, calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)',
+      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, exception_dates, points, calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)',
     )
     .order('start_at', { ascending: true })
 
@@ -69,6 +71,7 @@ export async function createEvent(input: {
   recurrenceRule: string | null
   reminders: EventReminder[]
   memberIds: string[]
+  points?: number
 }): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
@@ -89,6 +92,7 @@ export async function createEvent(input: {
       end_at: input.endAt,
       all_day: input.allDay,
       recurrence_rule: input.recurrenceRule,
+      points: input.points ?? 0,
       created_by: userResult.user.id,
     })
     .select('id')
@@ -122,6 +126,7 @@ export async function updateEvent(
     recurrenceRule: string | null
     reminders: EventReminder[]
     memberIds: string[]
+    points?: number
   },
 ): Promise<void> {
   const { error } = await supabase
@@ -132,6 +137,7 @@ export async function updateEvent(
       end_at: input.endAt,
       all_day: input.allDay,
       recurrence_rule: input.recurrenceRule,
+      points: input.points ?? 0,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -179,21 +185,37 @@ export async function deleteEventOccurrence(id: string, dateStr: string): Promis
 export interface EventCompletion {
   eventId: string
   occurrenceDate: string
+  memberId: string | null
+  pointsAwarded: number
 }
 
 // Qué ocurrencias de qué eventos ya se han marcado como hechas — por
 // ocurrencia (event_id + fecha), no por evento entero, así un evento
 // recurrente se puede marcar hecho un día sin afectar a los demás.
+// memberId/pointsAwarded solo se rellenan cuando el evento lleva puntos
+// y está asignado a una sola persona — para el resto queda a null/0.
 export async function listEventCompletions(): Promise<EventCompletion[]> {
-  const { data, error } = await supabase.from('calendar_event_completions').select('event_id, occurrence_date')
+  const { data, error } = await supabase
+    .from('calendar_event_completions')
+    .select('event_id, occurrence_date, member_id, points_awarded')
   if (error) throw error
-  return data.map((r) => ({ eventId: r.event_id, occurrenceDate: r.occurrence_date }))
+  return data.map((r) => ({
+    eventId: r.event_id,
+    occurrenceDate: r.occurrence_date,
+    memberId: r.member_id,
+    pointsAwarded: r.points_awarded,
+  }))
 }
 
-export async function completeEventOccurrence(eventId: string, occurrenceDate: string): Promise<void> {
+export async function completeEventOccurrence(
+  eventId: string,
+  occurrenceDate: string,
+  memberId: string | null = null,
+  pointsAwarded = 0,
+): Promise<void> {
   const { error } = await supabase
     .from('calendar_event_completions')
-    .insert({ event_id: eventId, occurrence_date: occurrenceDate })
+    .insert({ event_id: eventId, occurrence_date: occurrenceDate, member_id: memberId, points_awarded: pointsAwarded })
   if (error) throw new Error(error.message)
 }
 

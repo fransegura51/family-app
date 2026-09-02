@@ -11,7 +11,7 @@ const TABS = [
   { to: '/', label: 'Inicio', icon: '🏠', end: true },
   { to: '/familia', label: 'Familia', icon: '👨‍👩‍👧‍👦' },
   { to: '/calendario', label: 'Calendario', icon: '📅' },
-  { to: '/tareas', label: 'Tareas', icon: '✅' },
+  { to: '/puntos', label: 'Puntos', icon: '⭐' },
   { to: '/compras', label: 'Compras', icon: '🛒' },
   { to: '/alimentacion', label: 'Alimentación', icon: '🍎' },
   { to: '/dinero', label: 'Dinero', icon: '💶' },

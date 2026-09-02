@@ -136,11 +136,11 @@ export function stripListFillers(text: string): string {
 // A qué pantalla se refiere lo dictado, mirando el CONTENIDO en vez de
 // solo la pantalla en la que estés — "Pepa, ponme en el calendario que
 // el 27 de octubre es el cumpleaños de mi mujer" tiene que ir al
-// calendario aunque lo digas estando en Tareas, no guardarse donde
+// calendario aunque lo digas estando en Compras, no guardarse donde
 // estuvieras (bug real: antes solo miraba la pantalla actual). Cuando no
 // hay ninguna pista clara, se deja en null y quien llame cae en la
 // pantalla actual, como antes.
-export function detectTargetFromText(text: string): 'calendario' | 'compras' | 'tareas' | null {
+export function detectTargetFromText(text: string): 'calendario' | 'compras' | null {
   const n = normalize(text)
   if (/\bcalendario\b/.test(n) || MONTHS.some((m) => n.includes(` de ${m}`))) return 'calendario'
   // Cualquier palabra de la familia "compr-" (compra, compras, comprar,
@@ -150,9 +150,11 @@ export function detectTargetFromText(text: string): 'calendario' | 'compras' | '
   // coincidía con nada y se perdía la pista (bug real reportado: se
   // apuntaba en Tareas en vez de en la lista de la compra).
   if (/\bcompr\w*\b/.test(n)) return 'compras'
-  // Sin el límite de palabra al final ("tarea\b"), el plural "tareas" —
-  // la forma más natural de decirlo — no coincidía nunca (mismo bug).
-  if (/\btarea\w*\b/.test(n)) return 'tareas'
+  // Ya no hay una pestaña de "tareas" aparte — una tarea es un evento
+  // del calendario (petición real: "quitamos la pestaña de tarea...
+  // lo dejamos todo como evento"), así que decir "tarea" también apunta
+  // a Calendario, que ya reconoce a quién es, la fecha y la hora.
+  if (/\btarea\w*\b/.test(n)) return 'calendario'
   return null
 }
 

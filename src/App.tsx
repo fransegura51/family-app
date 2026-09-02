@@ -5,7 +5,7 @@ import { OnboardingScreen } from '@/ui/OnboardingScreen'
 import { HomeScreen } from '@/ui/HomeScreen'
 import { FamilyScreen } from '@/ui/FamilyScreen'
 import { CalendarScreen } from '@/ui/CalendarScreen'
-import { TasksScreen } from '@/ui/TasksScreen'
+import { RewardsScreen } from '@/ui/RewardsScreen'
 import { ShoppingScreen } from '@/ui/ShoppingScreen'
 import { AlimentacionScreen } from '@/ui/AlimentacionScreen'
 import { FinanceScreen } from '@/ui/FinanceScreen'
@@ -44,7 +44,7 @@ export function App() {
         <Route element={<NavShell />}>
           <Route path="/" element={<HomeScreen profile={profile} />} />
           <Route path="/calendario" element={<CalendarScreen />} />
-          <Route path="/tareas" element={<TasksScreen />} />
+          <Route path="/puntos" element={<RewardsScreen />} />
           <Route path="/compras" element={<ShoppingScreen />} />
           <Route path="/familia" element={<FamilyScreen profile={profile} />} />
           <Route path="/alimentacion" element={<AlimentacionScreen />} />

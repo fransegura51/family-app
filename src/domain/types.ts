@@ -32,29 +32,6 @@ export interface FamilyMember {
   photoPath: string | null
 }
 
-export type TaskType = 'unica' | 'recurrente' | 'rutina' | 'mision'
-
-export interface Task {
-  id: string
-  familyId: string
-  memberId: string | null // null = tarea familiar, cualquiera la completa
-  title: string
-  taskType: TaskType
-  recurrenceRule: string | null
-  startDate: string
-  timeOfDay: string | null
-  points: number
-  active: boolean
-}
-
-export interface TaskCompletion {
-  id: string
-  taskId: string
-  memberId: string
-  completedDate: string
-  pointsAwarded: number
-}
-
 export interface Reward {
   id: string
   familyId: string
@@ -339,4 +316,5 @@ export interface CalendarEvent {
   exceptionDates: string[]
   reminders: EventReminder[]
   memberIds: string[]
+  points: number
 }

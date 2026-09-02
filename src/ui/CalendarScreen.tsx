@@ -12,8 +12,6 @@ import {
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
-import { completeTask, deleteTask, listCompletions, listTasks, uncompleteTask } from '@/data/tasks'
-import { isTaskDueOn } from '@/domain/tasks'
 import {
   addFeed,
   deleteFeed,
@@ -42,7 +40,7 @@ import {
   type ReminderUnit,
 } from '@/domain/reminders'
 import { MemberAvatar } from '@/ui/MemberAvatar'
-import type { CalendarEvent, Contact, FamilyMember, Task, TaskCompletion } from '@/domain/types'
+import type { CalendarEvent, Contact, FamilyMember } from '@/domain/types'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
 import {
   buildRecurrenceRule,
@@ -91,8 +89,6 @@ function useSwipeHandlers(onSwipeLeft: () => void, onSwipeRight: () => void) {
 
 export function CalendarScreen() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [completions, setCompletions] = useState<TaskCompletion[]>([])
   const [eventCompletions, setEventCompletions] = useState<EventCompletion[]>([])
   const [externalEvents, setExternalEvents] = useState<ExternalCalendarEvent[]>([])
   const [externalFeeds, setExternalFeeds] = useState<ExternalCalendarFeed[]>([])
@@ -125,19 +121,15 @@ export function CalendarScreen() {
       listUpcomingEvents(),
       listFamilyMembers(),
       listHolidayDates(),
-      listTasks(),
-      listCompletions(),
       listExternalEvents(),
       listFeeds(),
       listContacts(),
       listEventCompletions(),
     ])
-      .then(([e, m, h, t, c, ee, ef, ct, evc]) => {
+      .then(([e, m, h, ee, ef, ct, evc]) => {
         setEvents(e)
         setMembers(m)
         setHolidayDates(h)
-        setTasks(t)
-        setCompletions(c)
         setExternalEvents(ee)
         setExternalFeeds(ef)
         setContacts(ct)
@@ -148,17 +140,6 @@ export function CalendarScreen() {
   }
 
   useEffect(reload, [])
-
-  // Una tarea apuntada por voz (o desde Tareas) para una persona tiene
-  // que verse aquí también, no solo en Tareas — sin este aviso, el
-  // calendario se quedaba igual hasta recargar a mano.
-  useEffect(() => {
-    function handleTasksChanged() {
-      reload()
-    }
-    window.addEventListener('family-app:tareas-changed', handleTasksChanged)
-    return () => window.removeEventListener('family-app:tareas-changed', handleTasksChanged)
-  }, [])
 
   // Cuando se apunta un evento por voz (VoiceCapture vive fuera de esta
   // pantalla, montado en toda la app), esta pantalla no se enteraba —
@@ -215,29 +196,6 @@ export function CalendarScreen() {
     }
     return map
   }, [filteredEvents, monthDays, holidayDates])
-
-  const filteredTasks = useMemo(
-    () =>
-      tasks.filter((t) => {
-        if (!t.memberId) return false // solo tareas asignadas a una persona — "para toda la familia" no aplica aquí
-        return filterMemberId === 'all' || t.memberId === filterMemberId
-      }),
-    [tasks, filterMemberId],
-  )
-
-  // Igual que con los eventos: se calcula una vez por mes visible, no
-  // por celda. Entra una tarea si de verdad toca ese día (repetición
-  // incluida), esté hecha o no — marcarla "hecho" ya no la quita de
-  // aquí (petición real: poder ver después qué se hizo y cuándo).
-  const tasksByDate = useMemo(() => {
-    const map = new Map<string, Task[]>()
-    if (monthDays.length === 0) return map
-    for (const day of monthDays) {
-      const due = filteredTasks.filter((t) => isTaskDueOn(t, day.dateStr))
-      if (due.length > 0) map.set(day.dateStr, due)
-    }
-    return map
-  }, [filteredTasks, monthDays])
 
   const feedById = useMemo(() => new Map(externalFeeds.map((f) => [f.id, f])), [externalFeeds])
 
@@ -353,36 +311,16 @@ export function CalendarScreen() {
     }
   }
 
-  // Antes las tareas solo se veían en el calendario, no se podían
-  // quitar desde aquí — había que ir a Tareas para borrar algo que ya
-  // no toca (una tarea puesta por error, o que ya no aplica).
-  async function handleDeleteTask(id: string) {
-    try {
-      await deleteTask(id)
-      reload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar la tarea')
-    }
-  }
-
-  // Botón "Hecho" al lado de cada tarea/evento del día — petición real.
-  // Antes, en el calendario, una tarea o cita sin marcar seguía
-  // apareciendo igual pasada su hora ("Pepa" tampoco avisaba de que
-  // seguía pendiente): con esto se puede marcar como hecha desde aquí
-  // mismo, sin tener que ir a Tareas.
-  async function handleCompleteTask(taskId: string, memberId: string) {
-    try {
-      const task = tasks.find((t) => t.id === taskId)
-      await completeTask(taskId, memberId, task?.points ?? 0)
-      reload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo marcar como hecho')
-    }
-  }
-
+  // Botón "Hecho" al lado de cada evento del día — petición real. Si el
+  // evento lleva puntos y está asignado a una sola persona (niño o
+  // adulto), esa persona se los lleva al marcarlo — "cuando le
+  // asignemos un evento a un niño, solamente para los niños podemos
+  // crear una forma de darle puntos... o a los adultos también".
   async function handleCompleteEvent(eventId: string, dateStr: string) {
     try {
-      await completeEventOccurrence(eventId, dateStr)
+      const ev = events.find((e) => e.id === eventId)
+      const soleMember = ev && ev.memberIds.length === 1 ? ev.memberIds[0] : null
+      await completeEventOccurrence(eventId, dateStr, soleMember, ev?.points ?? 0)
       reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo marcar como hecho')
@@ -393,15 +331,6 @@ export function CalendarScreen() {
   // "quiero poder verlo posteriormente lo que he hecho y cuándo lo he
   // hecho, no quiero que desaparezca") — se queda marcado, y desde aquí
   // se puede deshacer si hizo falta marcarlo sin querer.
-  async function handleUncompleteTask(taskId: string, memberId: string) {
-    try {
-      await uncompleteTask(taskId, memberId)
-      reload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo deshacer')
-    }
-  }
-
   async function handleUncompleteEvent(eventId: string, dateStr: string) {
     try {
       await uncompleteEventOccurrence(eventId, dateStr)
@@ -414,7 +343,6 @@ export function CalendarScreen() {
   if (loading) return <div className="screen">Cargando calendario…</div>
 
   const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
-  const selectedDayTasks = tasksByDate.get(selectedDate) ?? []
   const selectedDayExternalEvents = externalEventsByDate.get(selectedDate) ?? []
   const selectedDayBirthdays = birthdaysByDate.get(selectedDate) ?? []
 
@@ -480,18 +408,13 @@ export function CalendarScreen() {
             ))}
             {monthDays.map((day) => {
               const dayEvents = eventsByDate.get(day.dateStr) ?? []
-              const dayTasks = tasksByDate.get(day.dateStr) ?? []
               const dayExternalEvents = externalEventsByDate.get(day.dateStr) ?? []
               const dayBirthdays = birthdaysByDate.get(day.dateStr) ?? []
-              const taskDots = dayTasks
-                .map((t) => memberColorById.get(t.memberId as string))
-                .filter((c): c is string => !!c)
               const externalDots = dayExternalEvents.map((ev) => externalEventColor(ev.feedId))
               const birthdayDots = dayBirthdays.map((b) => b.color)
               const dots = [
                 ...new Set([
                   ...dayEvents.flatMap((e) => eventDotColors(e, memberColorById)),
-                  ...taskDots,
                   ...externalDots,
                   ...birthdayDots,
                 ]),
@@ -526,7 +449,6 @@ export function CalendarScreen() {
             <DayModal
               selectedDate={selectedDate}
               events={selectedDayEvents}
-              tasks={selectedDayTasks}
               externalEvents={selectedDayExternalEvents}
               birthdays={selectedDayBirthdays}
               feedById={feedById}
@@ -536,12 +458,8 @@ export function CalendarScreen() {
               onCancelEdit={() => setEditingId(null)}
               onDelete={handleDelete}
               onDeleteOccurrence={handleDeleteOccurrence}
-              onDeleteTask={handleDeleteTask}
-              onCompleteTask={handleCompleteTask}
               onCompleteEvent={handleCompleteEvent}
-              onUncompleteTask={handleUncompleteTask}
               onUncompleteEvent={handleUncompleteEvent}
-              completions={completions}
               eventCompletions={eventCompletions}
               onEventChanged={() => {
                 setEditingId(null)
@@ -615,7 +533,6 @@ interface AgendaEntry {
   allDay: boolean
   startTime: string | null
   endTime: string | null
-  isTask: boolean
   isExternal: boolean
   recurring: boolean
   done: boolean
@@ -634,7 +551,6 @@ interface AgendaEntry {
 function DayModal({
   selectedDate,
   events,
-  tasks,
   externalEvents,
   birthdays,
   feedById,
@@ -644,12 +560,8 @@ function DayModal({
   onCancelEdit,
   onDelete,
   onDeleteOccurrence,
-  onDeleteTask,
-  onCompleteTask,
   onCompleteEvent,
-  onUncompleteTask,
   onUncompleteEvent,
-  completions,
   eventCompletions,
   onEventChanged,
   onAdded,
@@ -659,7 +571,6 @@ function DayModal({
 }: {
   selectedDate: string
   events: CalendarEvent[]
-  tasks: Task[]
   externalEvents: ExternalCalendarEvent[]
   birthdays: { name: string; color: string }[]
   feedById: Map<string, ExternalCalendarFeed>
@@ -669,12 +580,8 @@ function DayModal({
   onCancelEdit: () => void
   onDelete: (id: string) => void
   onDeleteOccurrence: (id: string, dateStr: string) => void
-  onDeleteTask: (id: string) => void
-  onCompleteTask: (taskId: string, memberId: string) => void
   onCompleteEvent: (eventId: string, dateStr: string) => void
-  onUncompleteTask: (taskId: string, memberId: string) => void
   onUncompleteEvent: (eventId: string, dateStr: string) => void
-  completions: TaskCompletion[]
   eventCompletions: EventCompletion[]
   onEventChanged: () => void
   onAdded: () => void
@@ -687,22 +594,26 @@ function DayModal({
   const entries: AgendaEntry[] = [
     ...events.map((ev) => {
       const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === selectedDate)
+      const who =
+        ev.memberIds.length > 0
+          ? ev.memberIds
+              .map((id) => memberById.get(id)?.name)
+              .filter((n): n is string => !!n)
+              .join(', ')
+          : recurrenceLabel(ev.recurrenceRule) || 'Toda la familia'
+      // Los puntos solo se otorgan cuando el evento es de una sola
+      // persona (ver handleCompleteEvent) — se avisa aquí de que
+      // marcarlo "Hecho" da puntos, para que no sea una sorpresa.
+      const subtitle = ev.points > 0 && ev.memberIds.length === 1 ? `${who} · ⭐ ${ev.points}` : who
       return {
         key: `ev-${ev.id}`,
         id: ev.id,
         title: ev.title,
-        subtitle:
-          ev.memberIds.length > 0
-            ? ev.memberIds
-                .map((id) => memberById.get(id)?.name)
-                .filter((n): n is string => !!n)
-                .join(', ')
-            : recurrenceLabel(ev.recurrenceRule) || 'Toda la familia',
+        subtitle,
         color: eventColor(ev, memberById),
         allDay: ev.allDay,
         startTime: ev.allDay ? null : hhmm(ev.startAt),
         endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
-        isTask: false,
         isExternal: false,
         recurring: !!ev.recurrenceRule,
         done,
@@ -711,28 +622,6 @@ function DayModal({
         onDeleteOccurrence: () => onDeleteOccurrence(ev.id, selectedDate),
         onComplete: done ? undefined : () => onCompleteEvent(ev.id, selectedDate),
         onUncomplete: done ? () => onUncompleteEvent(ev.id, selectedDate) : undefined,
-      }
-    }),
-    ...tasks.map((t) => {
-      const done = t.memberId
-        ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === selectedDate)
-        : false
-      return {
-        key: `task-${t.id}`,
-        id: t.id,
-        title: t.title,
-        subtitle: (t.memberId && memberById.get(t.memberId)?.name) || (t.recurrenceRule ? recurrenceLabel(t.recurrenceRule) : 'Tarea'),
-        color: (t.memberId && memberById.get(t.memberId)?.color) || '#9ca3af',
-        allDay: !t.timeOfDay,
-        startTime: t.timeOfDay ? t.timeOfDay.slice(0, 5) : null,
-        endTime: null,
-        isTask: true,
-        isExternal: false,
-        recurring: false,
-        done,
-        onDeleteSeries: () => onDeleteTask(t.id),
-        onComplete: !done && t.memberId ? () => onCompleteTask(t.id, t.memberId!) : undefined,
-        onUncomplete: done && t.memberId ? () => onUncompleteTask(t.id, t.memberId!) : undefined,
       }
     }),
     // Citas del calendario externo enlazado (Google/Outlook/...) — de
@@ -751,7 +640,6 @@ function DayModal({
         allDay: ev.allDay,
         startTime: ev.allDay ? null : hhmm(ev.startAt),
         endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
-        isTask: false,
         isExternal: true,
         recurring: !!ev.recurrenceRule,
         done: false,
@@ -769,7 +657,6 @@ function DayModal({
       allDay: true,
       startTime: null,
       endTime: null,
-      isTask: false,
       isExternal: false,
       recurring: true,
       done: false,
@@ -783,7 +670,7 @@ function DayModal({
   const timedEntries = entries.filter((e) => !e.allDay)
 
   function renderCard(entry: AgendaEntry) {
-    if (!entry.isTask && editingId === entry.id) {
+    if (editingId === entry.id) {
       const ev = events.find((e) => e.id === entry.id)!
       return <EditEventForm key={entry.key} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
     }
@@ -831,7 +718,7 @@ function DayModal({
             </p>
             <div className="agenda-allday-row">
               {allDayEntries.map((entry) =>
-                editingId === entry.id && !entry.isTask ? (
+                editingId === entry.id ? (
                   renderCard(entry)
                 ) : (
                   <AgendaAllDayChip key={entry.key} entry={entry} />
@@ -895,7 +782,7 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
         onClick={entry.onEdit}
         style={{ cursor: entry.onEdit ? 'pointer' : 'default' }}
       >
-        {entry.done ? '✔️ ' : entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
+        {entry.done ? '✔️ ' : entry.isExternal ? '🔗 ' : ''}
         {entry.title}
         {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
       </span>
@@ -949,7 +836,7 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
         </button>
       )}
       <div className="agenda-card-title">
-        {entry.done ? '✔️ ' : entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
+        {entry.done ? '✔️ ' : entry.isExternal ? '🔗 ' : ''}
         {entry.title}
       </div>
       {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}
@@ -1328,6 +1215,7 @@ function EditEventForm({
   })
   const [reminders, setReminders] = useState<EventReminder[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
+  const [points, setPoints] = useState(event.points)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -1356,6 +1244,7 @@ function EditEventForm({
         ),
         reminders,
         memberIds: selectedMembers,
+        points: selectedMembers.length === 1 ? points : 0,
       })
       onDone()
     } catch (err) {
@@ -1397,6 +1286,18 @@ function EditEventForm({
         <p className="muted">¿Para quién?</p>
         <MemberPicker members={members} selected={selectedMembers} onToggle={toggleMember} />
       </div>
+      {/* Puntos: solo tiene sentido cuando el evento es de una sola
+          persona — para un niño, o también para un adulto si se quiere
+          (petición real: "cuando le asignemos un evento a un niño...
+          podemos crear una forma de darle puntos o recompensas... o a
+          los adultos también"). Al marcarlo "Hecho" esa persona se los
+          lleva. */}
+      {selectedMembers.length === 1 && (
+        <label>
+          Puntos al marcarlo "Hecho" (opcional)
+          <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
+        </label>
+      )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
         <button type="submit" disabled={saving}>
@@ -1435,6 +1336,7 @@ function AddEventForm({
   })
   const [reminders, setReminders] = useState<EventReminder[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [points, setPoints] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -1467,6 +1369,7 @@ function AddEventForm({
     })
     setReminders(match.reminders)
     setSelectedMembers(match.memberIds)
+    setPoints(match.points)
   }
 
   const uniqueTitles = Array.from(new Set(events.map((e) => e.title)))
@@ -1497,6 +1400,7 @@ function AddEventForm({
         ),
         reminders,
         memberIds: selectedMembers,
+        points: selectedMembers.length === 1 ? points : 0,
       })
       setTitle('')
       setDate(defaultDate ?? '')
@@ -1505,6 +1409,7 @@ function AddEventForm({
       setRecurrence({ freq: '', byDay: [], interval: 1, skipHolidays: false, until: '' })
       setReminders([])
       setSelectedMembers([])
+      setPoints(0)
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear el evento')
@@ -1557,6 +1462,12 @@ function AddEventForm({
         <p className="muted">¿Para quién?</p>
         <MemberPicker members={members} selected={selectedMembers} onToggle={toggleMember} />
       </div>
+      {selectedMembers.length === 1 && (
+        <label>
+          Puntos al marcarlo "Hecho" (opcional)
+          <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
+        </label>
+      )}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Crear evento'}

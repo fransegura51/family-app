@@ -1,7 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { listActiveReminders, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
-import { listCompletions, listTasks } from '@/data/tasks'
-import { isTaskDueOn } from '@/domain/tasks'
 import { expandOccurrences } from '@/domain/calendar'
 import { showNotification } from '@/services/notifications'
 
@@ -54,20 +52,17 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number)
-  return h * 60 + m
-}
-
 // Componente sin UI: revisa cada 30s dos cosas.
 // 1. Recordatorios normales de un evento (start_at - minutes_before),
 //    una sola vez, como antes.
-// 2. Tareas y eventos de HOY con hora ya pasada y todavía sin marcar
-//    como hechos — se avisa cada NAG_INTERVAL_MS mientras sigan sin
+// 2. Eventos de HOY con hora ya pasada y todavía sin marcar como
+//    hechos — se avisa cada NAG_INTERVAL_MS mientras sigan sin
 //    marcarse (petición real: antes, pasada la hora, no se volvía a
 //    avisar nunca más aunque no se hubiera hecho — "si tenía bajar la
 //    basura a las cinco y son las seis, no me dice que tengo que
-//    bajar la basura").
+//    bajar la basura"). Antes esto miraba tareas y eventos por
+//    separado; ahora una tarea es un evento, así que basta con mirar
+//    el calendario.
 // Solo activo mientras la app está abierta — ver services/notifications.ts
 // para el porqué.
 export function ReminderWatcher() {
@@ -105,12 +100,7 @@ export function ReminderWatcher() {
       const nowMinutes = now.getHours() * 60 + now.getMinutes()
       const nowMs = now.getTime()
 
-      const [tasks, completions, events, eventCompletions] = await Promise.all([
-        listTasks(),
-        listCompletions(),
-        listUpcomingEvents(),
-        listEventCompletions(),
-      ])
+      const [events, eventCompletions] = await Promise.all([listUpcomingEvents(), listEventCompletions()])
       if (cancelled) return
 
       function shouldNag(key: string): boolean {
@@ -122,20 +112,6 @@ export function ReminderWatcher() {
       }
 
       let changed = false
-
-      for (const t of tasks) {
-        if (!t.timeOfDay || !isTaskDueOn(t, today)) continue
-        if (toMinutes(t.timeOfDay) >= nowMinutes) continue
-        const done = t.memberId
-          ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === today)
-          : completions.some((c) => c.taskId === t.id && c.completedDate === today)
-        if (done) continue
-        const key = `task:${t.id}:${today}`
-        if (!shouldNag(key)) continue
-        showNotification('Todavía pendiente', `${t.title} — era a las ${t.timeOfDay.slice(0, 5)}`)
-        markNagged(key)
-        changed = true
-      }
 
       for (const ev of events) {
         if (ev.allDay) continue

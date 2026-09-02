@@ -14,7 +14,6 @@ const TABS = [
   { to: '/tareas', label: 'Tareas', icon: '✅' },
   { to: '/compras', label: 'Compras', icon: '🛒' },
   { to: '/alimentacion', label: 'Alimentación', icon: '🍎' },
-  { to: '/salud-fisica', label: 'Salud física', icon: '🏋️' },
   { to: '/dinero', label: 'Dinero', icon: '💶' },
   { to: '/ubicacion', label: 'Ubicación', icon: '📍' },
   { to: '/cumpleanos', label: 'Cumpleaños', icon: '🎂' },

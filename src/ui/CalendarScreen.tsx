@@ -432,7 +432,7 @@ export function CalendarScreen() {
             {filteredEvents.length === 0 && <p className="muted">No hay eventos todavía.</p>}
           </div>
 
-          <AddEventForm members={members} onAdded={reload} />
+          <AddEventForm members={members} events={events} onAdded={reload} />
         </>
       )}
     </div>
@@ -629,7 +629,7 @@ function DayModal({
           </div>
         ))}
 
-        <AddEventForm key={selectedDate} members={members} onAdded={onAdded} defaultDate={selectedDate} />
+        <AddEventForm key={selectedDate} members={members} events={events} onAdded={onAdded} defaultDate={selectedDate} />
       </div>
     </div>
   )
@@ -1113,10 +1113,12 @@ function EditEventForm({
 
 function AddEventForm({
   members,
+  events,
   onAdded,
   defaultDate,
 }: {
   members: FamilyMember[]
+  events: CalendarEvent[]
   onAdded: () => void
   defaultDate?: string
 }) {
@@ -1136,6 +1138,39 @@ function AddEventForm({
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Autocompletado a partir de eventos ya creados con el mismo título
+  // (p. ej. "Cole cerrado" un día suelto distinto cada vez) — copia
+  // hora, duración, recurrencia, avisos y para quién del más reciente
+  // que coincida, dejando la fecha tal cual estuviera y todo editable
+  // antes de guardar (igual que ya se hace al escribir un contacto ya
+  // creado en Contactos).
+  function handleTitleChange(value: string) {
+    setTitle(value)
+    const matches = events.filter((e) => e.title.trim().toLowerCase() === value.trim().toLowerCase())
+    if (matches.length === 0) return
+    const match = matches.reduce((latest, e) => (e.startAt > latest.startAt ? e : latest))
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const start = new Date(match.startAt)
+    setTime(match.allDay ? '' : `${pad(start.getHours())}:${pad(start.getMinutes())}`)
+    setEndTime(match.allDay || !match.endAt ? '' : (() => {
+      const end = new Date(match.endAt!)
+      return `${pad(end.getHours())}:${pad(end.getMinutes())}`
+    })())
+    setAllDay(match.allDay)
+    const parsed = parseRecurrenceRule(match.recurrenceRule)
+    setRecurrence({
+      freq: parsed.freq,
+      byDay: parsed.byDay,
+      interval: parsed.interval,
+      skipHolidays: parsed.skipHolidays,
+      until: parsed.until ?? '',
+    })
+    setReminders(match.reminders)
+    setSelectedMembers(match.memberIds)
+  }
+
+  const uniqueTitles = Array.from(new Set(events.map((e) => e.title)))
 
   function toggleMember(id: string) {
     setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
@@ -1184,7 +1219,18 @@ function AddEventForm({
       <h2>Nuevo evento</h2>
       <label>
         Título
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input
+          type="text"
+          list="event-titles"
+          value={title}
+          onChange={(e) => handleTitleChange(e.target.value)}
+          required
+        />
+        <datalist id="event-titles">
+          {uniqueTitles.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
       </label>
       <label>
         Fecha

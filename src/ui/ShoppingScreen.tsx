@@ -221,6 +221,7 @@ function ShoppingListTab() {
           {storeGroups.length > 1 && <h3 className="shopping-store-heading">🏬 {store}</h3>}
           <DraggableStoreGroup
             items={storeItems}
+            suggestions={suggestions}
             shoppingMode={shoppingMode}
             onSetStatus={setStatus}
             onDeleted={reload}
@@ -286,12 +287,14 @@ function ShoppingListTab() {
 // se mueve el dedo por encima, sin necesitar trucos con preventDefault.
 function DraggableStoreGroup({
   items,
+  suggestions,
   shoppingMode,
   onSetStatus,
   onDeleted,
   onReordered,
 }: {
   items: ShoppingItem[]
+  suggestions: ProductSuggestion[]
   shoppingMode: boolean
   onSetStatus: (id: string, status: ShoppingItemStatus) => void
   onDeleted: () => void
@@ -365,6 +368,13 @@ function DraggableStoreGroup({
             <p className="muted">
               {[item.quantity, item.unit].filter(Boolean).join(' ')}
               {!shoppingMode && item.priority !== 'normal' && ` · prioridad ${item.priority}`}
+              {/* Precio por unidad de la última vez que se compró, si se
+                  conoce — petición real: verlo ya al añadir/ver la lista,
+                  no solo yendo a mirar la Memoria aparte. */}
+              {(() => {
+                const known = suggestions.find((s) => s.normalizedName === normalizeProductName(item.name))
+                return known?.lastPrice != null ? ` · ${known.lastPrice.toFixed(2)} €/ud` : null
+              })()}
             </p>
           </div>
           <button type="button" className="task-toggle" onClick={() => onSetStatus(item.id, 'comprado')}>
@@ -791,9 +801,16 @@ function TripReceiptForm({
           .filter((l) => l.name.trim() && !Number.isNaN(Number(l.price)))
           .map(async (l) => {
             if (l.matchedItemId) await updateShoppingItemStatus(l.matchedItemId, 'comprado')
+            // El ticket trae el importe TOTAL de la línea ("2 botellas de
+            // leche, 2,00€"), no el precio de una — antes se guardaba tal
+            // cual y la Memoria de precios enseñaba 2€ como si fuera el
+            // precio de una botella (bug real reportado). Se divide entre
+            // las unidades para guardar siempre precio por unidad.
+            const units = Number(l.quantity)
+            const unitPrice = Number.isFinite(units) && units > 0 ? Number(l.price) / units : Number(l.price)
             await recordProductPurchase({
               name: l.name.trim(),
-              price: Number(l.price),
+              price: unitPrice,
               quantity: l.quantity || '1',
               unit: '',
               store: trip.store ?? '',
@@ -848,12 +865,18 @@ function TripReceiptForm({
                 step="0.01"
                 value={line.price}
                 onChange={(e) => updateLine(i, { price: e.target.value })}
-                placeholder="Precio"
+                placeholder="Precio total"
               />
               <button type="button" className="link-button" onClick={() => removeLine(i)}>
                 ✕
               </button>
               {line.matchedItemId && <span className="muted">✓ en la lista</span>}
+              {/* El ticket da el importe total de la línea — se enseña a
+                  cuánto sale la unidad para que se vea el cálculo antes
+                  de guardar (petición real: precio por unidad, no total). */}
+              {Number(line.quantity) > 1 && !Number.isNaN(Number(line.price)) && (
+                <span className="muted">= {(Number(line.price) / Number(line.quantity)).toFixed(2)} €/ud</span>
+              )}
             </div>
           ))}
         </div>
@@ -1278,7 +1301,8 @@ function MemoryTab() {
             <div className="task-card-main">
               <strong>{product.displayName}</strong>
               <p className="muted">
-                Sueles comprarlo cada {Math.round(stats!.avgDaysBetween!)} días · última vez {stats!.lastDate}
+                Sueles comprarlo cada {Math.round(stats!.avgDaysBetween!)} días · última vez {stats!.lastDate} ·{' '}
+                {stats!.lastPrice.toFixed(2)} €/ud
               </p>
             </div>
             <button
@@ -1297,13 +1321,25 @@ function MemoryTab() {
       <h2 className="section-title">Historial por producto</h2>
       <div className="event-list">
         {withStats.map(({ product, stats }) => (
-          <div key={product.id} className="card">
-            <strong>{product.displayName}</strong>
-            <p className="muted">
-              {stats!.count} {stats!.count === 1 ? 'compra' : 'compras'} · último {stats!.lastPrice.toFixed(2)} € ·
-              media {stats!.avgPrice.toFixed(2)} € · mín {stats!.minPrice.toFixed(2)} € · máx{' '}
-              {stats!.maxPrice.toFixed(2)} €
-            </p>
+          <div key={product.id} className="card task-card">
+            <div className="task-card-main">
+              <strong>{product.displayName}</strong>
+              <p className="muted">
+                {stats!.count} {stats!.count === 1 ? 'compra' : 'compras'} · último {stats!.lastPrice.toFixed(2)}{' '}
+                €/ud · media {stats!.avgPrice.toFixed(2)} €/ud · mín {stats!.minPrice.toFixed(2)} €/ud · máx{' '}
+                {stats!.maxPrice.toFixed(2)} €/ud
+              </p>
+            </div>
+            {/* Petición real: poder añadirlo a la lista directamente desde
+                el historial, no solo desde las sugerencias de arriba. */}
+            <button
+              type="button"
+              className="link-button"
+              disabled={added.has(product.id)}
+              onClick={() => handleAddSuggestion(product)}
+            >
+              {added.has(product.id) ? '✓ En la lista' : 'Añadir a la lista'}
+            </button>
           </div>
         ))}
         {withStats.length === 0 && (

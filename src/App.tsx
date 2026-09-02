@@ -10,6 +10,7 @@ import { ShoppingScreen } from '@/ui/ShoppingScreen'
 import { AlimentacionScreen } from '@/ui/AlimentacionScreen'
 import { FinanceScreen } from '@/ui/FinanceScreen'
 import { LocationScreen } from '@/ui/LocationScreen'
+import { PhysicalHealthScreen } from '@/ui/PhysicalHealthScreen'
 import { NavShell } from '@/ui/NavShell'
 import { ReminderWatcher } from '@/ui/ReminderWatcher'
 import { AutomationWatcher } from '@/ui/AutomationWatcher'
@@ -50,6 +51,7 @@ export function App() {
           <Route path="/alimentacion" element={<AlimentacionScreen />} />
           <Route path="/dinero" element={<FinanceScreen />} />
           <Route path="/ubicacion" element={<LocationScreen role={profile.role} profileId={profile.id} />} />
+          <Route path="/salud-fisica" element={<PhysicalHealthScreen profile={profile} />} />
           <Route path="/actividad" element={<ActivityScreen />} />
           <Route path="/cumpleanos" element={<BirthdaysScreen />} />
           <Route path="/contactos" element={<ContactsScreen />} />

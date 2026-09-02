@@ -1531,7 +1531,11 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
                 (isSelected ? ' month-grid-day-selected' : '') +
                 (fillColor && !isSelected ? ' month-grid-day-filled' : '')
               }
-              style={fillColor && !isSelected ? { background: fillColor, borderColor: fillColor } : undefined}
+              style={
+                fillColor && !isSelected
+                  ? { background: fillColor, borderColor: fillColor, color: readableTextColor(fillColor) }
+                  : undefined
+              }
               onClick={() => setSelectedDate(day.dateStr)}
             >
               <span>{day.day}</span>

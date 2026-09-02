@@ -11,11 +11,12 @@ import {
   listTasks,
   redeemReward,
   uncompleteTask,
+  updateTask,
 } from '@/data/tasks'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { calculateStreak, isCompletedToday, isTaskDueOn, memberPointsBalance } from '@/domain/tasks'
-import { buildRecurrenceRule, FREQ_OPTIONS, recurrenceLabel } from '@/domain/recurrence'
+import { buildRecurrenceRule, FREQ_OPTIONS, parseRecurrenceRule, recurrenceLabel } from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
 import type {
   FamilyMember,
@@ -43,6 +44,7 @@ export function TasksScreen() {
   const [showAll, setShowAll] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const todayStr = useMemo(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -158,6 +160,21 @@ export function TasksScreen() {
           const streak = memberForStreak ? calculateStreak(taskCompletions) : 0
           const owner = members.find((m) => m.id === task.memberId)
 
+          if (editingId === task.id) {
+            return (
+              <EditTaskForm
+                key={task.id}
+                task={task}
+                members={members}
+                onDone={() => {
+                  setEditingId(null)
+                  reload()
+                }}
+                onCancel={() => setEditingId(null)}
+              />
+            )
+          }
+
           return (
             <div key={task.id} className="card task-card">
               <div className="task-card-main">
@@ -177,6 +194,9 @@ export function TasksScreen() {
                 onClick={() => handleToggle(task, done)}
               >
                 {done ? '✓ Hecho' : 'Marcar hecho'}
+              </button>
+              <button type="button" className="link-button" onClick={() => setEditingId(task.id)}>
+                Editar
               </button>
               <button type="button" className="link-button" onClick={() => deleteTask(task.id).then(reload)}>
                 Borrar
@@ -225,6 +245,128 @@ export function TasksScreen() {
 function todayIso(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Antes una tarea, una vez creada, solo se podía marcar como hecha o
+// borrar — si el horario o el nombre estaban mal, había que borrarla y
+// crearla de nuevo desde cero (bug/petición real: "hay que poder
+// editarla"). Mismos campos que "Nueva tarea", precargados con los
+// datos actuales.
+function EditTaskForm({
+  task,
+  members,
+  onDone,
+  onCancel,
+}: {
+  task: Task
+  members: FamilyMember[]
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const initialRecurrence = parseRecurrenceRule(task.recurrenceRule)
+  const [title, setTitle] = useState(task.title)
+  const [taskType, setTaskType] = useState<TaskType>(task.taskType)
+  const [memberId, setMemberId] = useState<string>(task.memberId ?? '')
+  const [points, setPoints] = useState(task.points)
+  const [startDate, setStartDate] = useState(task.startDate)
+  const [timeOfDay, setTimeOfDay] = useState(task.timeOfDay ?? '')
+  const [freq, setFreq] = useState(initialRecurrence.freq)
+  const [byDay, setByDay] = useState<string[]>(initialRecurrence.byDay)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  function toggleDay(code: string) {
+    setByDay((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await updateTask(task.id, {
+        title,
+        taskType,
+        memberId: memberId || null,
+        points,
+        recurrenceRule: buildRecurrenceRule(freq, byDay),
+        startDate,
+        timeOfDay: timeOfDay || null,
+      })
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <label>
+        Título
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      </label>
+      <label>
+        Tipo
+        <select value={taskType} onChange={(e) => setTaskType(e.target.value as TaskType)}>
+          {TASK_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Para quién
+        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+          <option value="">Toda la familia</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Puntos
+        <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
+      </label>
+      <label>
+        Fecha de inicio
+        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+      </label>
+      <label>
+        Hora (opcional)
+        <input type="time" value={timeOfDay} onChange={(e) => setTimeOfDay(e.target.value)} />
+      </label>
+      <label>
+        Repetir
+        <select value={freq} onChange={(e) => setFreq(e.target.value)}>
+          {FREQ_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {freq === 'WEEKLY' && (
+        <div>
+          <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha de inicio)</p>
+          <WeekdayPicker selected={byDay} onToggle={toggleDay} />
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+      <div className="form-actions">
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  )
 }
 
 function AddTaskForm({ members, onAdded }: { members: FamilyMember[]; onAdded: () => void }) {

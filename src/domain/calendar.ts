@@ -172,17 +172,29 @@ export function eventDotColors(
 
 // El texto de las tarjetas/etiquetas de evento siempre era blanco, fijo
 // en el CSS — con un color de fondo claro (amarillo, verde pastel...)
-// quedaba casi ilegible (bug real reportado). Fórmula estándar de
-// luminosidad percibida: por encima del umbral hace falta texto negro,
-// por debajo, blanco.
+// quedaba casi ilegible (bug real reportado). Un umbral fijo de
+// luminosidad se quedaba corto para tonos intermedios (verde menta,
+// lila claro, etc.), así que en vez de un corte único se calcula el
+// contraste real (fórmula WCAG) contra negro y contra blanco, y se usa
+// el que más resalte sobre ese color exacto.
+function relativeLuminance(r: number, g: number, b: number): number {
+  const toLinear = (channel: number) => {
+    const s = channel / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  }
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
+}
+
 export function readableTextColor(hex: string): string {
   const clean = hex.replace('#', '')
   if (clean.length !== 6) return '#ffffff'
   const r = parseInt(clean.slice(0, 2), 16)
   const g = parseInt(clean.slice(2, 4), 16)
   const b = parseInt(clean.slice(4, 6), 16)
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  return luminance > 0.6 ? '#000000' : '#ffffff'
+  const luminance = relativeLuminance(r, g, b)
+  const contrastWithBlack = (luminance + 0.05) / 0.05
+  const contrastWithWhite = 1.05 / (luminance + 0.05)
+  return contrastWithBlack >= contrastWithWhite ? '#000000' : '#ffffff'
 }
 
 export const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']

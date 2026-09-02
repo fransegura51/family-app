@@ -727,15 +727,14 @@ textarea {
 
 /* Solo en Calendario → Externos: en vez de un puntito, el recuadro
    entero del día se pinta del color del calendario enlazado — el
-   fondo lo pone la propia celda vía estilo en línea (color real del
-   feed/miembro), aquí solo se asegura que el texto se lea bien encima. */
+   fondo y el color de texto (negro o blanco, el que más contraste dé)
+   los pone la propia celda vía estilo en línea. */
 .month-grid-day-filled {
-  color: white;
   font-weight: 700;
 }
 
 .month-grid-dot-on-fill {
-  background: white;
+  background: currentColor;
 }
 
 /* Agenda del día en Calendario (DayModal): "todo el día" como chips

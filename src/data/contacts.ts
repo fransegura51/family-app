@@ -52,6 +52,28 @@ export async function addContact(input: {
   if (error) throw error
 }
 
+// Antes un contacto solo se podía borrar o llamar, nunca editar — si
+// se equivocaba el teléfono o quería cambiar la categoría, había que
+// borrarlo y crearlo de nuevo (bug/petición real: "hay que poder
+// editarla").
+export async function updateContact(
+  id: string,
+  input: { name: string; category: string; phone: string; email: string; notes: string; birthDate: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('contacts')
+    .update({
+      name: input.name,
+      category: input.category || null,
+      phone: input.phone || null,
+      email: input.email || null,
+      notes: input.notes || null,
+      birth_date: input.birthDate,
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
 // Para poder ponerle cumpleaños a un contacto ya guardado (p. ej. uno
 // importado del teléfono, que nunca trae fecha de nacimiento — la
 // Contact Picker API no da esa propiedad) sin tener que borrarlo y

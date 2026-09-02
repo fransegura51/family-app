@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { addContact, deleteContact, listContacts, updateContactBirthDate } from '@/data/contacts'
+import { addContact, deleteContact, listContacts, updateContact, updateContactBirthDate } from '@/data/contacts'
 import { isContactPickerSupported, pickContacts, type PickedContact } from '@/services/contactPicker'
 import type { Contact } from '@/domain/types'
 
@@ -44,6 +44,7 @@ export function ContactsScreen() {
 
 function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: () => void }) {
   const [editingBirthday, setEditingBirthday] = useState(false)
+  const [editingAll, setEditingAll] = useState(false)
   const [birthDate, setBirthDate] = useState(c.birthDate ?? '')
   const [saving, setSaving] = useState(false)
 
@@ -56,6 +57,19 @@ function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: (
     } finally {
       setSaving(false)
     }
+  }
+
+  if (editingAll) {
+    return (
+      <EditContactForm
+        contact={c}
+        onDone={() => {
+          setEditingAll(false)
+          onChanged()
+        }}
+        onCancel={() => setEditingAll(false)}
+      />
+    )
   }
 
   return (
@@ -89,10 +103,93 @@ function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: (
           </a>
         )}
       </div>
+      {/* Antes solo se podía borrar o llamar — si el teléfono estaba mal
+          o quería cambiar la categoría, había que borrar y volver a
+          crear el contacto entero (bug/petición real). */}
+      <button type="button" className="link-button" onClick={() => setEditingAll(true)}>
+        Editar
+      </button>
       <button type="button" className="link-button" onClick={() => deleteContact(c.id).then(onChanged)}>
         Eliminar
       </button>
     </div>
+  )
+}
+
+function EditContactForm({
+  contact,
+  onDone,
+  onCancel,
+}: {
+  contact: Contact
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(contact.name)
+  const [category, setCategory] = useState(contact.category ?? CATEGORIES[0])
+  const [phone, setPhone] = useState(contact.phone ?? '')
+  const [email, setEmail] = useState(contact.email ?? '')
+  const [notes, setNotes] = useState(contact.notes ?? '')
+  const [birthDate, setBirthDate] = useState(contact.birthDate ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await updateContact(contact.id, { name, category, phone, email, notes, birthDate: birthDate || null })
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <label>
+        Nombre
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+      </label>
+      <label>
+        Categoría
+        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Teléfono
+        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </label>
+      <label>
+        Email
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label>
+        Cumpleaños (opcional)
+        <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+      </label>
+      <label>
+        Notas
+        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="form-actions">
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
   )
 }
 

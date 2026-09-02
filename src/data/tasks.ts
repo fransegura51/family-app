@@ -53,6 +53,33 @@ export async function createTask(input: {
   if (error) throw error
 }
 
+export async function updateTask(
+  id: string,
+  input: {
+    title: string
+    taskType: TaskType
+    memberId: string | null
+    points: number
+    recurrenceRule: string | null
+    startDate: string
+    timeOfDay: string | null
+  },
+): Promise<void> {
+  const { error } = await supabase
+    .from('tasks')
+    .update({
+      title: input.title,
+      task_type: input.taskType,
+      member_id: input.memberId,
+      points: input.points,
+      recurrence_rule: input.recurrenceRule,
+      start_date: input.startDate,
+      time_of_day: input.timeOfDay,
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteTask(id: string): Promise<void> {
   const { error } = await supabase.from('tasks').delete().eq('id', id)
   if (error) throw error

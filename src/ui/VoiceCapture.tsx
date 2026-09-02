@@ -615,32 +615,9 @@ export function VoiceCapture() {
               </button>
             </div>
 
-            {panelMode === 'ask' ? (
-              <p className="muted">
-                Pregúntame cosas como "qué tengo hoy", "qué tengo el nueve de septiembre" o "qué tengo que hacer
-                ahora" — este botón solo responde, nunca guarda nada.
-              </p>
-            ) : (
-              <>
-                <p className="muted">
-                  Se apunta en: <strong>{target.label}</strong>
-                </p>
-                {target.key === 'calendario' && (
-                  <p className="muted">
-                    Ej.: "el 3 de septiembre, cita con el dentista a las 19 horas para Eric, aviso un día antes"
-                  </p>
-                )}
-                <p className="muted">
-                  Di lo que quieras y te lleva a la pantalla que toque aunque estés en otra — p. ej. "vamos a hacer
-                  la lista de la compra" o "ponme en el calendario que el 27 de octubre es el cumpleaños de mi
-                  mujer". Este botón solo guarda, nunca responde preguntas — para eso está 🐣 Pepa.
-                </p>
-              </>
-            )}
-            {dictationOk && (
-              <p className="muted">
-                Ya te está escuchando, no hace falta tocar nada — cuando termines de hablar, di "Pepa, activa" o
-                simplemente quédate callado 5 segundos y {panelMode === 'ask' ? 'te responde solo' : 'lo apunta solo'}.
+            {panelMode === 'create' && (
+              <p className="muted" style={{ margin: '0 0 8px' }}>
+                Se apunta en: <strong>{target.label}</strong>
               </p>
             )}
 
@@ -654,10 +631,15 @@ export function VoiceCapture() {
                 {status === 'saving'
                   ? 'Guardando…'
                   : listening
-                    ? '🎙️ Pepa te escucha… (toca para parar)'
-                    : '🎤 Seguir escuchando'}
+                    ? '🎙️ Te escucho… habla ya (toca para parar)'
+                    : '🎤 Toca y habla'}
               </button>
             )}
+            <p className="muted" style={{ fontSize: 13 }}>
+              {panelMode === 'ask'
+                ? 'Solo responde, p. ej. "qué tengo hoy" — nunca guarda nada.'
+                : 'Solo guarda, nunca responde — di "activa" o calla 5s para confirmar.'}
+            </p>
             {!dictationOk && (
               <p className="muted">
                 Este navegador no admite dictado por voz — escribe abajo en su lugar, funciona igual.

@@ -33,7 +33,7 @@ export function MemberAvatar({ member, size = 32 }: { member: FamilyMember; size
   }
   return (
     <span className="member-avatar member-avatar-fallback" style={{ ...style, background: member.color }}>
-      {member.avatar || member.name.charAt(0)}
+      {member.name.charAt(0)}
     </span>
   )
 }

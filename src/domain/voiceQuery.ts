@@ -76,6 +76,16 @@ const TASK_PATTERNS = [
   // en el calendario").
   'que tenemos para hoy',
   'que tenemos para manana',
+  // "¿Qué tengo el nueve de septiembre?" es tan pregunta como "¿qué
+  // tengo hoy?", pero sin "hoy"/"mañana"/"ahora" no coincidía con nada
+  // de lo anterior y se guardaba como una cita nueva con ese literal
+  // por título (bug real reportado: hacía falta distinguir preguntar
+  // por una fecha de apuntar algo en ella). El guardián SAVE_VERB_RE de
+  // más abajo evita que esto se confunda con un encargo real que
+  // mencione una fecha ("apunta que tengo cita el 9 de septiembre").
+  'que tengo el',
+  'que tiene el',
+  'que tenemos el',
 ]
 
 // "Lo siguiente que tengo en el calendario" — a diferencia de las
@@ -176,6 +186,17 @@ export function detectTargetFromText(text: string): 'calendario' | 'compras' | '
   return null
 }
 
+// Un verbo de guardar explícito al principio de la frase ("apunta",
+// "apúntame", "anota", "ponme"...) es una señal mucho más fuerte que
+// cualquier palabra suelta de pregunta que pueda aparecer dentro —
+// "apunta que tengo que comprar leche" es un ENCARGO para la lista de
+// la compra, no la pregunta "¿qué tengo que comprar?" (bug real: se
+// confundían porque una y otra comparten ese trocito de frase). Cuando
+// la frase empieza así, se salta toda la detección de preguntas y se
+// deja caer directo en crear/guardar, tal cual se ha pedido.
+const SAVE_VERB_RE =
+  /^(apunta(me)?|anota(me)?|pon(me)?|anade(me)?|agrega(me)?|crea|guarda(me)?|vamos a apuntar|vamos a hacer|hagamos)\b/
+
 // `today` se recibe desde fuera (no `new Date()` aquí) para poder
 // probar esta función con una fecha fija, igual que el resto del
 // reconocimiento de calendario.
@@ -187,6 +208,10 @@ export function detectIntent(text: string, today: Date): VoiceIntent {
   // borra por voz, así que hay que decirlo en vez de crear basura.
   if (DELETE_PATTERNS.some((p) => n.includes(p))) {
     return { type: 'unsupported_delete' }
+  }
+
+  if (SAVE_VERB_RE.test(n)) {
+    return { type: 'none' }
   }
 
   // Antes que las tareas: "lo siguiente que tengo en el calendario"

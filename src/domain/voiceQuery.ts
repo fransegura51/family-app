@@ -168,24 +168,49 @@ export function detectTargetFromText(text: string): 'calendario' | 'compras' | '
 const SHOPPING_PLACE_PLAIN = '(?:la lista de la compra|lista de la compra|la compra|las compras)'
 
 export function extractShoppingStore(text: string): { store: string | null; text: string } {
-  const beforeRe = new RegExp(
-    `^([a-zà-ÿ][a-zà-ÿ'\\s]{1,30}?)\\s*[,:]?\\s*(?:en\\s+)?${SHOPPING_PLACE_PLAIN}\\b\\s*[,:]?\\s*(.*)$`,
-    'i',
-  )
+  // Delante de la frase, siempre con coma detrás ("Mercadona, lista de
+  // la compra, patatas") — la coma es lo que distingue de verdad un
+  // nombre de tienda de una palabra suelta que venga antes por otro
+  // motivo (p. ej. "mañana en la lista de la compra..."), que sin coma
+  // no debe confundirse con una tienda.
+  // Con coma, la tienda puede tener varias palabras ("Hiper Ber, lista
+  // de la compra, aceite") porque la coma ya marca sin ambigüedad dónde
+  // acaba el nombre.
+  const beforeRe = new RegExp(`^([a-zà-ÿ][a-zà-ÿ' ]{1,30}?)\\s*,\\s*(?:en\\s+)?${SHOPPING_PLACE_PLAIN}\\b\\s*[,:]?\\s*(.*)$`, 'i')
   const before = text.match(beforeRe)
-  if (before && before[1].trim() && !/\b(pepa|apunta\w*|anota\w*|pon\w*|vamos|hagamos|en|de)\b/i.test(before[1])) {
+  if (before && before[1].trim()) {
     return { store: before[1].trim(), text: before[2].trim() }
   }
-  const afterRe = new RegExp(`${SHOPPING_PLACE_PLAIN}\\s+de\\s+([a-zà-ÿ][a-zà-ÿ' ]{1,30})\\s*[,:]?\\s*(.*)$`, 'i')
-  const after = text.match(afterRe)
-  if (after && after[1].trim() && after.index !== undefined) {
-    // Quita la preposición suelta que quedaría colgando delante ("apunta
-    // EN" ya no tiene a qué engancharse una vez fuera "la lista de la
-    // compra de Mercadona").
-    const prefix = text.slice(0, after.index).replace(/\b(en|a)\s*$/i, '').trim()
-    const rest = [prefix, after[2].trim()].filter(Boolean).join(' ')
-    return { store: after[1].trim(), text: rest.trim() }
+
+  // Detrás de la frase con "de" ("lista de la compra de Mercadona,
+  // patatas" / "lista de la compra de Hipervel Leche") — "de" es la
+  // señal inequívoca de que lo que sigue es la tienda. Con coma detrás
+  // puede tener varias palabras (misma razón que arriba); sin coma solo
+  // se coge la primera palabra, porque ahí no hay nada que marque dónde
+  // acaba el nombre de la tienda y empieza el producto.
+  const afterWithDeCommaRe = new RegExp(`${SHOPPING_PLACE_PLAIN}\\s+de\\s+([a-zà-ÿ][a-zà-ÿ' ]{1,30}?)\\s*,\\s*(.*)$`, 'i')
+  const afterWithDeComma = text.match(afterWithDeCommaRe)
+  if (afterWithDeComma && afterWithDeComma[1].trim()) {
+    return { store: afterWithDeComma[1].trim(), text: afterWithDeComma[2].trim() }
   }
+  const afterWithDeRe = new RegExp(`${SHOPPING_PLACE_PLAIN}\\s+de\\s+([a-zà-ÿ']+)\\b\\s*[,:]?\\s*(.*)$`, 'i')
+  const afterWithDe = text.match(afterWithDeRe)
+  if (afterWithDe && afterWithDe[1].trim()) {
+    return { store: afterWithDe[1].trim(), text: afterWithDe[2].trim() }
+  }
+
+  // Detrás de la frase SIN "de" ("lista de la compra Mercadona
+  // patatas") — aquí no hay ninguna palabra que marque dónde empieza la
+  // tienda, así que solo se reconoce si esa primera palabra empieza en
+  // mayúscula (como dicta el móvil los nombres propios/marcas
+  // reconocidos) — si no, "leche" en "lista de la compra leche y pan"
+  // se colaría como si fuera una tienda.
+  const afterNoDeRe = new RegExp(`${SHOPPING_PLACE_PLAIN}\\s+([A-ZÀ-Ÿ][a-zà-ÿ']*)\\b\\s*[,:]?\\s*(.*)$`)
+  const afterNoDe = text.match(afterNoDeRe)
+  if (afterNoDe && afterNoDe[1].trim()) {
+    return { store: afterNoDe[1].trim(), text: afterNoDe[2].trim() }
+  }
+
   return { store: null, text }
 }
 

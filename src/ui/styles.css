@@ -334,6 +334,23 @@ select {
   gap: 6px;
 }
 
+.voice-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.voice-example-chip {
+  text-align: left;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 400;
+  white-space: normal;
+  line-height: 1.35;
+  padding: 8px 10px;
+}
+
 .chip-active {
   background: var(--primary);
   color: white;

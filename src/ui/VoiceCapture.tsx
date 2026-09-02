@@ -60,6 +60,26 @@ function tomorrowIso(): string {
   return dateStr(d)
 }
 
+// Ejemplos fijos para acostumbrar a decirle siempre a Pepa la pregunta o
+// el encargo de la misma forma — no cambian según nada, para que se
+// aprendan de memoria y ya no haga falta ni mirarlos (petición real:
+// "quiero que salgan cuatro opciones... para acostumbrarla a hacerle
+// siempre la pregunta de la misma manera"). Tocar uno lo escribe abajo,
+// listo para enviar tal cual o retocarlo antes.
+const ASK_EXAMPLES = [
+  '¿Qué tengo hoy?',
+  '¿Qué tengo el 9 de septiembre?',
+  '¿Qué tengo en la lista de la compra?',
+  '¿Qué tengo en la lista de la compra de Mercadona?',
+]
+
+const CREATE_EXAMPLES = [
+  'Apunta en el calendario que tengo el dentista el 9 de septiembre a las 10',
+  'Apunta en la lista de la compra leche y pan',
+  'Mercadona, lista de la compra, patatas',
+  'Apunta a Eric que saque la basura',
+]
+
 type TargetKey = 'compras' | 'tareas' | 'calendario'
 
 const TARGET_INFO: Record<TargetKey, { label: string; path: string }> = {
@@ -706,6 +726,24 @@ export function VoiceCapture() {
                 Este navegador no admite dictado por voz — escribe abajo en su lugar, funciona igual.
               </p>
             )}
+
+            <div className="day-modal-group">
+              <p className="muted" style={{ marginBottom: 4 }}>
+                Ejemplos — dilo así siempre y Pepa lo entenderá seguro (toca uno para usarlo):
+              </p>
+              <div className="voice-examples">
+                {(panelMode === 'ask' ? ASK_EXAMPLES : CREATE_EXAMPLES).map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    className="chip voice-example-chip"
+                    onClick={() => setTypedText(example)}
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <form onSubmit={handleTypedSubmit} className="voice-text-form">
               <input

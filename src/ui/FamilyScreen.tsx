@@ -9,9 +9,10 @@ import {
   uploadMemberPhoto,
 } from '@/data/family'
 import { supabase } from '@/data/supabaseClient'
+import { createVoiceWebhookToken, deleteVoiceWebhookToken, listVoiceWebhookTokens } from '@/data/voiceWebhook'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
-import type { FamilyMember, MemberType, Profile } from '@/domain/types'
+import type { FamilyMember, MemberType, Profile, VoiceWebhookToken } from '@/domain/types'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
   { value: 'admin', label: 'Administrador/a' },
@@ -106,6 +107,135 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       </div>
 
       {isAdmin && <AddMemberForm onAdded={reload} />}
+
+      {isAdmin && <VoiceWebhookSection />}
+    </div>
+  )
+}
+
+// Control por voz desde el coche (botón del volante -> Google
+// Assistant/Siri -> IFTTT -> este webhook) — petición real: "poder
+// añadir cosas a la lista de la compra o crear eventos en el
+// calendario sin tocar el móvil". El token se enseña UNA sola vez al
+// crearlo (como una contraseña) — si se pierde, hay que revocarlo y
+// generar uno nuevo.
+function VoiceWebhookSection() {
+  const [tokens, setTokens] = useState<VoiceWebhookToken[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [label, setLabel] = useState('Coche')
+  const [newToken, setNewToken] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  function reload() {
+    setLoading(true)
+    listVoiceWebhookTokens()
+      .then(setTokens)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(reload, [])
+
+  async function handleCreate(e: FormEvent) {
+    e.preventDefault()
+    setCreating(true)
+    setError(null)
+    try {
+      const token = await createVoiceWebhookToken(label)
+      setNewToken(token)
+      setLabel('Coche')
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar el token')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  async function handleRevoke(id: string) {
+    setError(null)
+    try {
+      await deleteVoiceWebhookToken(id)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo revocar')
+    }
+  }
+
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/voice-webhook`
+
+  return (
+    <div className="card" style={{ marginTop: 24 }}>
+      <h2 className="section-title">🚗 Control por voz desde el coche</h2>
+      <p className="muted">
+        Con el botón del volante (Google Assistant o Siri) le puedes decir a IFTTT que apunte algo en la compra o
+        en el calendario, sin tocar el móvil.
+      </p>
+      {error && <p className="error">{error}</p>}
+
+      {newToken ? (
+        <div className="card" style={{ background: '#fef3c7', marginTop: 8 }}>
+          <p>
+            <strong>Cópialo ahora — no se vuelve a enseñar:</strong>
+          </p>
+          <p style={{ fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-all', userSelect: 'all' }}>
+            {newToken}
+          </p>
+          <p className="muted" style={{ marginTop: 12 }}>
+            En IFTTT: crea una receta (Applet) con disparador <strong>Google Assistant</strong> → "Say a phrase
+            with a text ingredient" — por ejemplo "apunta $ en la compra" o "apunta $ en el calendario" (el $ es
+            lo que digas después). Como acción, elige <strong>Webhooks</strong> → "Make a web request", y pon:
+          </p>
+          <ul className="muted" style={{ paddingLeft: 20 }}>
+            <li>
+              URL: <span style={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>{webhookUrl}</span>
+            </li>
+            <li>Method: POST</li>
+            <li>Content Type: application/json</li>
+            <li>
+              Body:{' '}
+              <span style={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>
+                {`{"token":"${newToken}","text":"$"}`}
+              </span>
+            </li>
+          </ul>
+          <button type="button" onClick={() => setNewToken(null)}>
+            Ya lo he copiado
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleCreate} className="inline-fields">
+          <input
+            type="text"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Etiqueta (p. ej. Coche)"
+          />
+          <button type="submit" disabled={creating}>
+            {creating ? 'Generando…' : 'Generar token'}
+          </button>
+        </form>
+      )}
+
+      {!loading && tokens.length > 0 && (
+        <div className="event-list" style={{ marginTop: 12 }}>
+          {tokens.map((t) => (
+            <div key={t.id} className="card task-card">
+              <div className="task-card-main">
+                <strong>{t.label}</strong>
+                <p className="muted">
+                  Creado {new Date(t.createdAt).toLocaleDateString('es-ES')}
+                  {t.lastUsedAt
+                    ? ` · Usado por última vez ${new Date(t.lastUsedAt).toLocaleString('es-ES')}`
+                    : ' · Todavía sin usar'}
+                </p>
+              </div>
+              <ConfirmButton label="Revocar" onConfirm={() => handleRevoke(t.id)} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

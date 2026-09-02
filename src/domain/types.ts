@@ -153,6 +153,28 @@ export interface FoodLog {
   isEstimated: boolean
 }
 
+export interface BodyMeasurement {
+  id: string
+  familyId: string
+  memberId: string
+  measuredDate: string
+  weightKg: number | null
+  waistCm: number | null
+  abdomenCm: number | null
+  armCm: number | null
+  legCm: number | null
+}
+
+export interface BodyPhoto {
+  id: string
+  familyId: string
+  memberId: string
+  photoDate: string
+  storagePath: string
+  caption: string | null
+  createdAt: string
+}
+
 export type ExpenseKind = 'real' | 'estimado' | 'previsto'
 export type BudgetPeriod = 'mensual' | 'semanal'
 export type WalletTransactionType = 'ingreso' | 'gasto'

@@ -25,14 +25,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
         <HomeCard title="Calendario" body="Eventos de hoy" to="/calendario" icon="📅" color="#dbeafe" />
         <HomeCard title="Tareas" body="Pendientes de hoy" to="/tareas" icon="✅" color="#dcfce7" />
         <HomeCard title="Próxima compra" body="Lista actual" to="/compras" icon="🛒" color="#fef3c7" />
-        <HomeCard title="Alimentación" body="Menú de hoy" to="/alimentacion" icon="🍎" color="#d1fae5" />
-        <HomeCard
-          title="Registrar comida"
-          body="Busca en FatSecret y calcula calorías"
-          to="/alimentacion?tab=registro"
-          icon="🥗"
-          color="#ccfbf1"
-        />
+        <HomeCard title="Alimentación" body="Menú, registro y peso" to="/alimentacion" icon="🍎" color="#d1fae5" />
         <HomeCard title="Dinero" body="Resumen del mes" to="/dinero" icon="💶" color="#dcfce7" />
         <HomeCard title="Ubicación y avisos" body="Opcional, desactivado por defecto" to="/ubicacion" icon="📍" color="#e0e7ff" />
         <HomeCard title="Cumpleaños" body="Próximos en la familia" to="/cumpleanos" icon="🎂" color="#fed7aa" />

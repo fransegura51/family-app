@@ -606,6 +606,12 @@ textarea {
   line-height: 1;
 }
 
+.weight-chart {
+  width: 100%;
+  height: auto;
+  margin-top: 8px;
+}
+
 .month-nav {
   display: flex;
   align-items: center;

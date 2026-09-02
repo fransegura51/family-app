@@ -8,6 +8,7 @@ import {
   updateFamilyMember,
   uploadMemberPhoto,
 } from '@/data/family'
+import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { FamilyMember, MemberType, Profile } from '@/domain/types'
 
@@ -52,6 +53,14 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       <Link to="/actividad" className="link-button">
         Ver actividad reciente
       </Link>
+      {/* Hace falta para que cada persona pueda tener su PROPIA cuenta en
+          su propio móvil en vez de compartir el login de otra (p. ej.
+          Paco entrando siempre como Jennifer, lo que confundía su
+          ubicación con la de ella) — cierra esta sesión para poder
+          entrar con la cuenta nueva creada con el código de invitación. */}
+      <button type="button" className="link-button" onClick={() => supabase.auth.signOut()}>
+        Cerrar sesión ({profile.displayName})
+      </button>
       {error && <p className="error">{error}</p>}
       <div className="card-grid">
         {members.map((m) =>

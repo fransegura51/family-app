@@ -881,6 +881,21 @@ textarea {
   opacity: 0.9;
 }
 
+/* Marcado como "hecho" pero sin desaparecer del calendario — se queda
+   ahí, solo que apagado y con el título tachado, para poder ver
+   después qué se hizo y cuándo (petición real). */
+.agenda-card-done {
+  opacity: 0.55;
+}
+
+.agenda-card-done .agenda-card-title {
+  text-decoration: line-through;
+}
+
+.agenda-allday-chip-done {
+  opacity: 0.55;
+}
+
 .progress-bar {
   width: 100%;
   height: 8px;

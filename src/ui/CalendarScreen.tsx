@@ -6,12 +6,13 @@ import {
   deleteEventOccurrence,
   listEventCompletions,
   listUpcomingEvents,
+  uncompleteEventOccurrence,
   updateEvent,
   type EventCompletion,
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
-import { completeTask, deleteTask, listCompletions, listTasks } from '@/data/tasks'
+import { completeTask, deleteTask, listCompletions, listTasks, uncompleteTask } from '@/data/tasks'
 import { isTaskDueOn } from '@/domain/tasks'
 import {
   addFeed,
@@ -197,9 +198,9 @@ export function CalendarScreen() {
 
   // Un evento recurrente puede caer varias veces dentro de la cuadrícula
   // visible (42 días) — se calcula una vez por render del mes, no por celda.
-  // Igual que con las tareas: una ocurrencia ya marcada como hecha no
-  // sigue apareciendo como pendiente ese día (petición real: poder
-  // marcar "hecho" también en los eventos, no solo en las tareas).
+  // Marcar "hecho" NO lo quita de aquí — sigue viéndose en el calendario,
+  // solo que marcado (petición real: "quiero poder verlo posteriormente
+  // lo que he hecho y cuándo lo he hecho, no quiero que desaparezca").
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
     if (monthDays.length === 0) return map
@@ -207,14 +208,13 @@ export function CalendarScreen() {
     const rangeEnd = monthDays[monthDays.length - 1].dateStr
     for (const ev of filteredEvents) {
       for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd, holidayDates)) {
-        if (eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === dateStr)) continue
         const list = map.get(dateStr) ?? []
         list.push(ev)
         map.set(dateStr, list)
       }
     }
     return map
-  }, [filteredEvents, monthDays, holidayDates, eventCompletions])
+  }, [filteredEvents, monthDays, holidayDates])
 
   const filteredTasks = useMemo(
     () =>
@@ -226,23 +226,18 @@ export function CalendarScreen() {
   )
 
   // Igual que con los eventos: se calcula una vez por mes visible, no
-  // por celda. Solo entra una tarea si de verdad toca ese día (repetición
-  // incluida) y todavía no está marcada como hecha esa fecha — una tarea
-  // ya completada no debería seguir apareciendo como pendiente.
+  // por celda. Entra una tarea si de verdad toca ese día (repetición
+  // incluida), esté hecha o no — marcarla "hecho" ya no la quita de
+  // aquí (petición real: poder ver después qué se hizo y cuándo).
   const tasksByDate = useMemo(() => {
     const map = new Map<string, Task[]>()
     if (monthDays.length === 0) return map
     for (const day of monthDays) {
-      const due = filteredTasks.filter((t) => {
-        if (!isTaskDueOn(t, day.dateStr)) return false
-        return !completions.some(
-          (c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === day.dateStr,
-        )
-      })
+      const due = filteredTasks.filter((t) => isTaskDueOn(t, day.dateStr))
       if (due.length > 0) map.set(day.dateStr, due)
     }
     return map
-  }, [filteredTasks, completions, monthDays])
+  }, [filteredTasks, monthDays])
 
   const feedById = useMemo(() => new Map(externalFeeds.map((f) => [f.id, f])), [externalFeeds])
 
@@ -394,6 +389,28 @@ export function CalendarScreen() {
     }
   }
 
+  // "Hecho" ya no hace desaparecer nada del calendario (petición real:
+  // "quiero poder verlo posteriormente lo que he hecho y cuándo lo he
+  // hecho, no quiero que desaparezca") — se queda marcado, y desde aquí
+  // se puede deshacer si hizo falta marcarlo sin querer.
+  async function handleUncompleteTask(taskId: string, memberId: string) {
+    try {
+      await uncompleteTask(taskId, memberId)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo deshacer')
+    }
+  }
+
+  async function handleUncompleteEvent(eventId: string, dateStr: string) {
+    try {
+      await uncompleteEventOccurrence(eventId, dateStr)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo deshacer')
+    }
+  }
+
   if (loading) return <div className="screen">Cargando calendario…</div>
 
   const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
@@ -522,6 +539,10 @@ export function CalendarScreen() {
               onDeleteTask={handleDeleteTask}
               onCompleteTask={handleCompleteTask}
               onCompleteEvent={handleCompleteEvent}
+              onUncompleteTask={handleUncompleteTask}
+              onUncompleteEvent={handleUncompleteEvent}
+              completions={completions}
+              eventCompletions={eventCompletions}
               onEventChanged={() => {
                 setEditingId(null)
                 reload()
@@ -597,10 +618,12 @@ interface AgendaEntry {
   isTask: boolean
   isExternal: boolean
   recurring: boolean
+  done: boolean
   onEdit?: () => void
   onDeleteSeries?: () => void
   onDeleteOccurrence?: () => void
   onComplete?: () => void
+  onUncomplete?: () => void
 }
 
 // Ventana emergente al pinchar un día — agenda cronológica de arriba
@@ -624,6 +647,10 @@ function DayModal({
   onDeleteTask,
   onCompleteTask,
   onCompleteEvent,
+  onUncompleteTask,
+  onUncompleteEvent,
+  completions,
+  eventCompletions,
   onEventChanged,
   onAdded,
   onClose,
@@ -645,6 +672,10 @@ function DayModal({
   onDeleteTask: (id: string) => void
   onCompleteTask: (taskId: string, memberId: string) => void
   onCompleteEvent: (eventId: string, dateStr: string) => void
+  onUncompleteTask: (taskId: string, memberId: string) => void
+  onUncompleteEvent: (eventId: string, dateStr: string) => void
+  completions: TaskCompletion[]
+  eventCompletions: EventCompletion[]
   onEventChanged: () => void
   onAdded: () => void
   onClose: () => void
@@ -654,44 +685,56 @@ function DayModal({
   const memberById = new Map(members.map((m) => [m.id, m]))
 
   const entries: AgendaEntry[] = [
-    ...events.map((ev) => ({
-      key: `ev-${ev.id}`,
-      id: ev.id,
-      title: ev.title,
-      subtitle:
-        ev.memberIds.length > 0
-          ? ev.memberIds
-              .map((id) => memberById.get(id)?.name)
-              .filter((n): n is string => !!n)
-              .join(', ')
-          : recurrenceLabel(ev.recurrenceRule) || 'Toda la familia',
-      color: eventColor(ev, memberById),
-      allDay: ev.allDay,
-      startTime: ev.allDay ? null : hhmm(ev.startAt),
-      endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
-      isTask: false,
-      isExternal: false,
-      recurring: !!ev.recurrenceRule,
-      onEdit: () => onEdit(ev.id),
-      onDeleteSeries: () => onDelete(ev.id),
-      onDeleteOccurrence: () => onDeleteOccurrence(ev.id, selectedDate),
-      onComplete: () => onCompleteEvent(ev.id, selectedDate),
-    })),
-    ...tasks.map((t) => ({
-      key: `task-${t.id}`,
-      id: t.id,
-      title: t.title,
-      subtitle: (t.memberId && memberById.get(t.memberId)?.name) || (t.recurrenceRule ? recurrenceLabel(t.recurrenceRule) : 'Tarea'),
-      color: (t.memberId && memberById.get(t.memberId)?.color) || '#9ca3af',
-      allDay: !t.timeOfDay,
-      startTime: t.timeOfDay ? t.timeOfDay.slice(0, 5) : null,
-      endTime: null,
-      isTask: true,
-      isExternal: false,
-      recurring: false,
-      onDeleteSeries: () => onDeleteTask(t.id),
-      onComplete: t.memberId ? () => onCompleteTask(t.id, t.memberId!) : undefined,
-    })),
+    ...events.map((ev) => {
+      const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === selectedDate)
+      return {
+        key: `ev-${ev.id}`,
+        id: ev.id,
+        title: ev.title,
+        subtitle:
+          ev.memberIds.length > 0
+            ? ev.memberIds
+                .map((id) => memberById.get(id)?.name)
+                .filter((n): n is string => !!n)
+                .join(', ')
+            : recurrenceLabel(ev.recurrenceRule) || 'Toda la familia',
+        color: eventColor(ev, memberById),
+        allDay: ev.allDay,
+        startTime: ev.allDay ? null : hhmm(ev.startAt),
+        endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
+        isTask: false,
+        isExternal: false,
+        recurring: !!ev.recurrenceRule,
+        done,
+        onEdit: () => onEdit(ev.id),
+        onDeleteSeries: () => onDelete(ev.id),
+        onDeleteOccurrence: () => onDeleteOccurrence(ev.id, selectedDate),
+        onComplete: done ? undefined : () => onCompleteEvent(ev.id, selectedDate),
+        onUncomplete: done ? () => onUncompleteEvent(ev.id, selectedDate) : undefined,
+      }
+    }),
+    ...tasks.map((t) => {
+      const done = t.memberId
+        ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === selectedDate)
+        : false
+      return {
+        key: `task-${t.id}`,
+        id: t.id,
+        title: t.title,
+        subtitle: (t.memberId && memberById.get(t.memberId)?.name) || (t.recurrenceRule ? recurrenceLabel(t.recurrenceRule) : 'Tarea'),
+        color: (t.memberId && memberById.get(t.memberId)?.color) || '#9ca3af',
+        allDay: !t.timeOfDay,
+        startTime: t.timeOfDay ? t.timeOfDay.slice(0, 5) : null,
+        endTime: null,
+        isTask: true,
+        isExternal: false,
+        recurring: false,
+        done,
+        onDeleteSeries: () => onDeleteTask(t.id),
+        onComplete: !done && t.memberId ? () => onCompleteTask(t.id, t.memberId!) : undefined,
+        onUncomplete: done && t.memberId ? () => onUncompleteTask(t.id, t.memberId!) : undefined,
+      }
+    }),
     // Citas del calendario externo enlazado (Google/Outlook/...) — de
     // solo lectura aquí, no se editan ni se borran desde el calendario
     // de la app (para eso está la pestaña Externos). Solo se reflejan
@@ -711,6 +754,7 @@ function DayModal({
         isTask: false,
         isExternal: true,
         recurring: !!ev.recurrenceRule,
+        done: false,
       }
     }),
     // Cumpleaños de la familia y de los contactos — de solo lectura
@@ -728,6 +772,7 @@ function DayModal({
       isTask: false,
       isExternal: false,
       recurring: true,
+      done: false,
     })),
   ].sort((a, b) => {
     if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
@@ -842,18 +887,30 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
   }
 
   return (
-    <span className="agenda-allday-chip" style={{ background: entry.color, color: textColor }}>
+    <span
+      className={'agenda-allday-chip' + (entry.done ? ' agenda-allday-chip-done' : '')}
+      style={{ background: entry.color, color: textColor }}
+    >
       <span
         onClick={entry.onEdit}
         style={{ cursor: entry.onEdit ? 'pointer' : 'default' }}
       >
-        {entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
+        {entry.done ? '✔️ ' : entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
         {entry.title}
         {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
       </span>
+      {/* "Hecho" ya no lo quita del calendario — se queda marcado, y se
+          puede deshacer aquí mismo si hizo falta marcarlo sin querer
+          (petición real: "quiero poder verlo posteriormente lo que he
+          hecho y cuándo lo he hecho, no quiero que desaparezca"). */}
       {entry.onComplete && (
         <button type="button" className="agenda-allday-chip-action" onClick={entry.onComplete}>
           ✓ Hecho
+        </button>
+      )}
+      {entry.onUncomplete && (
+        <button type="button" className="agenda-allday-chip-action" onClick={entry.onUncomplete}>
+          ↺ Deshacer
         </button>
       )}
       {canDelete && (
@@ -874,7 +931,10 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
   const [confirming, setConfirming] = useState(false)
   const canDelete = !!entry.onDeleteSeries
   return (
-    <div className="agenda-card" style={{ background: entry.color, color: readableTextColor(entry.color) }}>
+    <div
+      className={'agenda-card' + (entry.done ? ' agenda-card-done' : '')}
+      style={{ background: entry.color, color: readableTextColor(entry.color) }}
+    >
       {/* X siempre visible en la esquina — antes solo había "Borrar" en
           texto pequeño abajo, junto a "Editar", y no se veía a simple
           vista dónde quitar algo (bug/petición real: "ponle una X"). */}
@@ -889,19 +949,25 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
         </button>
       )}
       <div className="agenda-card-title">
-        {entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
+        {entry.done ? '✔️ ' : entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
         {entry.title}
       </div>
       {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}
-      {!confirming && (entry.onEdit || entry.onComplete) && (
+      {!confirming && (entry.onEdit || entry.onComplete || entry.onUncomplete) && (
         <div className="agenda-card-actions">
-          {/* Petición real: poder marcar "hecho" desde el propio
-              calendario, tarea o evento — antes solo se podía editar o
-              borrar. Al marcarlo, la ocurrencia deja de salir como
-              pendiente ese día (igual que ya pasaba con las tareas). */}
+          {/* "Hecho" ya no lo quita del calendario — se queda marcado
+              (con el título tachado) y se puede deshacer aquí mismo si
+              hizo falta marcarlo sin querer (petición real: "quiero
+              poder verlo posteriormente lo que he hecho y cuándo, no
+              quiero que desaparezca"). */}
           {entry.onComplete && (
             <button type="button" onClick={entry.onComplete}>
               ✓ Hecho
+            </button>
+          )}
+          {entry.onUncomplete && (
+            <button type="button" onClick={entry.onUncomplete}>
+              ↺ Deshacer
             </button>
           )}
           {entry.onEdit && (

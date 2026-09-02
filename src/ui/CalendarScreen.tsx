@@ -688,12 +688,50 @@ function DayModal({
 // Chip de "todo el día" — solo lectura al vistazo; para editar/borrar se
 // usa la tarjeta normal (AgendaCard), no hace falta duplicar esos
 // controles en un chip tan pequeño.
+// Antes esta etiqueta era solo de adorno: no se podía pulsar para
+// editar ni tenía botón de borrar, así que un evento "todo el día"
+// (sin hora, como "Cole cerrado") no se podía tocar una vez guardado —
+// bug real reportado, se notó porque el autocompletado de títulos
+// copia "todo el día" del evento anterior, así que de golpe había
+// varios eventos así seguidos, todos igual de intocables.
 function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
+  const [confirming, setConfirming] = useState(false)
+  const canDelete = !!entry.onDeleteSeries
+
+  if (confirming) {
+    return (
+      <span className="agenda-allday-chip" style={{ background: entry.color }}>
+        ¿Seguro?
+        <button type="button" className="agenda-allday-chip-action" onClick={entry.onDeleteSeries}>
+          Borrar
+        </button>
+        <button type="button" className="agenda-allday-chip-action" onClick={() => setConfirming(false)}>
+          Cancelar
+        </button>
+      </span>
+    )
+  }
+
   return (
     <span className="agenda-allday-chip" style={{ background: entry.color }}>
-      {entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
-      {entry.title}
-      {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
+      <span
+        onClick={entry.onEdit}
+        style={{ cursor: entry.onEdit ? 'pointer' : 'default' }}
+      >
+        {entry.isTask ? '✅ ' : entry.isExternal ? '🔗 ' : ''}
+        {entry.title}
+        {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
+      </span>
+      {canDelete && (
+        <button
+          type="button"
+          className="agenda-allday-chip-close"
+          onClick={() => setConfirming(true)}
+          aria-label="Borrar"
+        >
+          ✕
+        </button>
+      )}
     </span>
   )
 }

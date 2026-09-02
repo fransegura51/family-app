@@ -135,9 +135,8 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
       {error && <p className="error">{error}</p>}
 
       <h2 className="section-title">Mapa</h2>
-      {sharedNow.length > 0 ? (
-        <LocationMap members={members} locations={sharedNow} histories={histories} photoUrls={photoUrls} />
-      ) : (
+      <LocationMap members={members} locations={sharedNow} histories={histories} photoUrls={photoUrls} />
+      {sharedNow.length === 0 && (
         <p className="muted">
           Todavía no aparece nadie en el mapa. Activa el consentimiento de alguien más abajo y, desde el móvil de esa
           persona, entra aquí y toca su nombre en "Este dispositivo" para empezar a compartir.

@@ -13,14 +13,17 @@ import { recurrenceLabel } from '@/domain/recurrence'
 import {
   detectIntent,
   detectTargetFromText,
+  extractShoppingStore,
   findMemberInText,
   matchMemberByHint,
+  normalize,
   stripActivateCommand,
   stripListFillers,
   stripWakeWord,
 } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenContinuous, speakAsync } from '@/services/voice'
+import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 
 type ResponseMode = 'voice' | 'text'
@@ -77,10 +80,15 @@ function getTarget(pathname: string): { key: TargetKey; label: string } {
   return { key: 'tareas', label: TARGET_INFO.tareas.label }
 }
 
-async function saveEntries(targetKey: 'compras' | 'tareas', entries: string[], memberId: string | null): Promise<void> {
+async function saveEntries(
+  targetKey: 'compras' | 'tareas',
+  entries: string[],
+  memberId: string | null,
+  store: string | null = null,
+): Promise<void> {
   for (const entry of entries) {
     if (targetKey === 'compras') {
-      await addShoppingItem({ name: entry, quantity: '', unit: '', priority: 'normal', tripId: null })
+      await addShoppingItem({ name: entry, quantity: '', unit: '', priority: 'normal', tripId: null, store })
     } else {
       await createTask({
         title: entry,
@@ -291,11 +299,18 @@ async function answerNextCalendarEvent(): Promise<string> {
   return `Lo siguiente en el calendario: ${best.event.title} — ${dateLabel}${timeLabel}.`
 }
 
-async function answerShoppingQuery(): Promise<string> {
+// "Qué tengo en la lista de la compra de Mercadona" — petición real:
+// poder preguntar por una tienda concreta, no solo por toda la lista.
+async function answerShoppingQuery(storeHint: string | null): Promise<string> {
   const items = await listShoppingItems()
-  const pending = items.filter((i) => i.status === 'pendiente')
-  if (pending.length === 0) return 'No tienes nada pendiente en la lista de la compra.'
-  return `En la lista de la compra: ${pending.map((i) => i.name).join(', ')}.`
+  let pending = items.filter((i) => i.status === 'pendiente')
+  const storeLabel = storeHint ? ` de ${storeHint}` : ''
+  if (storeHint) {
+    const n = normalize(storeHint)
+    pending = pending.filter((i) => i.store && normalize(i.store).includes(n))
+  }
+  if (pending.length === 0) return `No tienes nada pendiente en la lista de la compra${storeLabel}.`
+  return `En la lista de la compra${storeLabel}: ${pending.map((i) => i.name).join(', ')}.`
 }
 
 async function handleCalendarEntry(text: string): Promise<string> {
@@ -432,11 +447,42 @@ export function VoiceCapture() {
           return
         }
         if (intent.type === 'shopping_list') {
-          const answer = await answerShoppingQuery()
+          const answer = await answerShoppingQuery(intent.storeHint)
           setStatus('done')
           await respond(answer)
           return
         }
+
+        // El reconocimiento local por patrones no ha entendido la
+        // pregunta — antes de rendirse, se prueba con la IA (gratuita),
+        // que generaliza mejor las formas de decir lo mismo (petición
+        // real: "que reconozca ese tipo de cosas por si cambia alguna
+        // palabra... que ya es mayorcica").
+        try {
+          const ai = await classifyQuestionWithAi(text, todayIso())
+          if (ai.intent === 'tasks_today') {
+            const answer = await answerTasksQuery(ai.memberHint, text, ai.when, ai.nowOnly, ai.explicitDate)
+            setStatus('done')
+            await respond(answer)
+            return
+          }
+          if (ai.intent === 'next_calendar_event') {
+            const answer = await answerNextCalendarEvent()
+            setStatus('done')
+            await respond(answer)
+            return
+          }
+          if (ai.intent === 'shopping_list') {
+            const answer = await answerShoppingQuery(ai.storeHint)
+            setStatus('done')
+            await respond(answer)
+            return
+          }
+        } catch {
+          // sin conexión a la IA o fallo del servicio — se cae al mensaje
+          // de "no entendido" de más abajo, igual que antes.
+        }
+
         setStatus('done')
         await respond(
           'No he entendido esa pregunta. Prueba con "qué tengo hoy", "qué tengo el nueve de septiembre" o "qué tengo que hacer ahora".',
@@ -472,9 +518,19 @@ export function VoiceCapture() {
       // asigna a Eric en vez de dejarla sin nadie.
       let memberId: string | null = null
       let textForEntries = text
+      let shoppingStore: string | null = null
       if (effectiveTargetKey === 'tareas') {
         const extracted = await extractTaskMember(text)
         memberId = extracted.memberId
+        textForEntries = extracted.text
+      } else if (effectiveTargetKey === 'compras') {
+        // "Mercadona, lista de la compra, patatas" -> tienda "Mercadona",
+        // producto "patatas" — sin esto se guardaba la frase entera como
+        // nombre del producto (petición real: "que no me ponga todo el
+        // texto... que en la lista de la compra de Mercadona me ponga
+        // patatas").
+        const extracted = extractShoppingStore(text)
+        shoppingStore = extracted.store
         textForEntries = extracted.text
       }
 
@@ -483,9 +539,10 @@ export function VoiceCapture() {
         setStatus('idle')
         return
       }
-      await saveEntries(effectiveTargetKey as 'compras' | 'tareas', entries, memberId)
+      await saveEntries(effectiveTargetKey as 'compras' | 'tareas', entries, memberId, shoppingStore)
       setStatus('done')
-      await respond(`Apuntado en ${effectiveTarget.label}: ${entries.join(', ')}`)
+      const storeSuffix = shoppingStore ? ` (${shoppingStore})` : ''
+      await respond(`Apuntado en ${effectiveTarget.label}${storeSuffix}: ${entries.join(', ')}`)
     } catch (err) {
       setStatus('error')
       const detail = err instanceof Error ? err.message : String(err)

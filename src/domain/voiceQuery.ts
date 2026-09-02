@@ -7,7 +7,7 @@ import { extractSpokenDate, MONTHS } from '@/domain/spokenDate'
 
 export type VoiceIntent =
   | { type: 'tasks_today'; memberHint: string | null; when: 'today' | 'tomorrow'; explicitDate: string | null; nowOnly: boolean }
-  | { type: 'shopping_list' }
+  | { type: 'shopping_list'; storeHint: string | null }
   | { type: 'next_calendar_event' }
   | { type: 'unsupported_delete' }
   | { type: 'none' }
@@ -156,6 +156,39 @@ export function detectTargetFromText(text: string): 'calendario' | 'compras' | '
   return null
 }
 
+// "Mercadona, lista de la compra, patatas" -> apunta solo "patatas" en
+// la lista de la compra, con "Mercadona" como tienda, en vez de meter la
+// frase entera en el nombre del producto (petición real: "que no me
+// ponga todo el texto, que reconozca el nombre de la tienda... y en la
+// lista de la compra de Mercadona me ponga patatas"). Solo tiene sentido
+// llamarla cuando ya se sabe que el destino es la compra — reconoce la
+// tienda tanto delante ("Mercadona, lista de la compra, patatas") como
+// detrás ("lista de la compra de Mercadona, patatas") de la frase de la
+// compra.
+const SHOPPING_PLACE_PLAIN = '(?:la lista de la compra|lista de la compra|la compra|las compras)'
+
+export function extractShoppingStore(text: string): { store: string | null; text: string } {
+  const beforeRe = new RegExp(
+    `^([a-zà-ÿ][a-zà-ÿ'\\s]{1,30}?)\\s*[,:]?\\s*(?:en\\s+)?${SHOPPING_PLACE_PLAIN}\\b\\s*[,:]?\\s*(.*)$`,
+    'i',
+  )
+  const before = text.match(beforeRe)
+  if (before && before[1].trim() && !/\b(pepa|apunta\w*|anota\w*|pon\w*|vamos|hagamos|en|de)\b/i.test(before[1])) {
+    return { store: before[1].trim(), text: before[2].trim() }
+  }
+  const afterRe = new RegExp(`${SHOPPING_PLACE_PLAIN}\\s+de\\s+([a-zà-ÿ][a-zà-ÿ' ]{1,30})\\s*[,:]?\\s*(.*)$`, 'i')
+  const after = text.match(afterRe)
+  if (after && after[1].trim() && after.index !== undefined) {
+    // Quita la preposición suelta que quedaría colgando delante ("apunta
+    // EN" ya no tiene a qué engancharse una vez fuera "la lista de la
+    // compra de Mercadona").
+    const prefix = text.slice(0, after.index).replace(/\b(en|a)\s*$/i, '').trim()
+    const rest = [prefix, after[2].trim()].filter(Boolean).join(' ')
+    return { store: after[1].trim(), text: rest.trim() }
+  }
+  return { store: null, text }
+}
+
 // Un verbo de guardar explícito al principio de la frase ("apunta",
 // "apúntame", "anota", "ponme"...) es una señal mucho más fuerte que
 // cualquier palabra suelta de pregunta que pueda aparecer dentro —
@@ -193,7 +226,11 @@ export function detectIntent(text: string, today: Date): VoiceIntent {
   }
 
   if (SHOPPING_RE.test(n)) {
-    return { type: 'shopping_list' }
+    // "Qué tengo en la lista de la compra DE MERCADONA" — si nombra una
+    // tienda concreta, se guarda tal cual se ha dicho (con mayúsculas
+    // originales) para poder filtrar solo esa tienda al responder.
+    const storeMatch = text.match(/(?:lista de la compra|la compra|las compras)\s+de\s+([a-zà-ÿ][a-zà-ÿ' ]{1,30})/i)
+    return { type: 'shopping_list', storeHint: storeMatch ? storeMatch[1].trim() : null }
   }
 
   // "¿Qué tengo que hacer el nueve de septiembre?" es tan pregunta como

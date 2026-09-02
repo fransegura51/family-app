@@ -330,14 +330,3 @@ export interface CalendarEvent {
   points: number
 }
 
-// Token para el control por voz desde el coche (IFTTT -> webhook) —
-// petición real: "usar el botón del volante... para poder añadir cosas
-// a la lista de la compra o crear eventos en el calendario sin tocar
-// el móvil". El valor del token en sí NUNCA se guarda aquí ni se puede
-// volver a leer, solo se ve una vez al crearlo.
-export interface VoiceWebhookToken {
-  id: string
-  label: string
-  createdAt: string
-  lastUsedAt: string | null
-}

@@ -1,6 +1,7 @@
 import { FormEvent, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
+import { listShoppingStores } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
 import { createEvent, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
 import { splitEntries } from '@/domain/quickCapture'
@@ -248,16 +249,38 @@ async function answerNextCalendarEvent(): Promise<string> {
 
 // "Qué tengo en la lista de la compra de Mercadona" — petición real:
 // poder preguntar por una tienda concreta, no solo por toda la lista.
-async function answerShoppingQuery(storeHint: string | null): Promise<string> {
+// Sin nombrar tienda ("¿qué tengo en la lista de la compra?"), se
+// entiende como "general" — de todas a la vez, cada una por separado
+// (petición real: "que vea todas las listas de la compra... Mercadona,
+// patata, Hipervel, huevo, Aldi, leche", sin tener que decir ninguna
+// palabra especial, "ya se entiende que es general").
+async function answerShoppingQuery(storeHint: string | null, general: boolean): Promise<string> {
   const items = await listShoppingItems()
-  let pending = items.filter((i) => i.status === 'pendiente')
-  const storeLabel = storeHint ? ` de ${storeHint}` : ''
-  if (storeHint) {
-    const n = normalize(storeHint)
-    pending = pending.filter((i) => i.store && normalize(i.store).includes(n))
+  const pending = items.filter((i) => i.status === 'pendiente')
+
+  if (general) {
+    if (pending.length === 0) return 'No tienes nada pendiente en ninguna lista de la compra.'
+    const byStore = new Map<string, string[]>()
+    for (const i of pending) {
+      const key = i.store || 'Sin tienda'
+      const list = byStore.get(key) ?? []
+      list.push(i.name)
+      byStore.set(key, list)
+    }
+    const groups = [...byStore.entries()].sort((a, b) => {
+      if (a[0] === 'Sin tienda') return 1
+      if (b[0] === 'Sin tienda') return -1
+      return a[0].localeCompare(b[0])
+    })
+    return groups.map(([store, names]) => `${store}: ${names.join(', ')}`).join('. ') + '.'
   }
-  if (pending.length === 0) return `No tienes nada pendiente en la lista de la compra${storeLabel}.`
-  return `En la lista de la compra${storeLabel}: ${pending.map((i) => i.name).join(', ')}.`
+
+  const storeLabel = storeHint ? ` de ${storeHint}` : ''
+  const filtered = storeHint
+    ? pending.filter((i) => i.store && normalize(i.store).includes(normalize(storeHint)))
+    : pending
+  if (filtered.length === 0) return `No tienes nada pendiente en la lista de la compra${storeLabel}.`
+  return `En la lista de la compra${storeLabel}: ${filtered.map((i) => i.name).join(', ')}.`
 }
 
 async function handleCalendarEntry(text: string): Promise<string> {
@@ -394,7 +417,7 @@ export function VoiceCapture() {
           return
         }
         if (intent.type === 'shopping_list') {
-          const answer = await answerShoppingQuery(intent.storeHint)
+          const answer = await answerShoppingQuery(intent.storeHint, intent.general)
           setStatus('done')
           await respond(answer)
           return
@@ -420,7 +443,7 @@ export function VoiceCapture() {
             return
           }
           if (ai.intent === 'shopping_list') {
-            const answer = await answerShoppingQuery(ai.storeHint)
+            const answer = await answerShoppingQuery(ai.storeHint, ai.storeHint === null)
             setStatus('done')
             await respond(answer)
             return
@@ -467,11 +490,28 @@ export function VoiceCapture() {
       // producto "patatas" — sin esto se guardaba la frase entera como
       // nombre del producto (petición real: "que no me ponga todo el
       // texto... que en la lista de la compra de Mercadona me ponga
-      // patatas").
-      const { store: shoppingStore, text: textForEntries } = extractShoppingStore(text)
+      // patatas"). Se reconoce primero contra las tiendas ya dadas de
+      // alta en Compras (fiable pase lo que pase alrededor) y, si no es
+      // ninguna de esas, por heurística.
+      const knownStores = await listShoppingStores()
+      const { store: shoppingStore, text: textForEntries } = extractShoppingStore(
+        text,
+        knownStores.map((s) => s.name),
+      )
 
       const entries = splitEntries(stripListFillers(textForEntries))
       if (entries.length === 0) {
+        // Solo se ha dicho el nombre de la tienda, sin ningún producto
+        // detrás ("Pepa, Mercadona") — se entiende como "ábreme la
+        // lista de Mercadona", no como un apunte vacío (petición real:
+        // "cuando le diga Aldi, que me abra directamente la lista de
+        // Aldi").
+        if (shoppingStore) {
+          window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: shoppingStore } }))
+          setStatus('done')
+          await respond(`Aquí tienes la lista de la compra de ${shoppingStore}.`)
+          return
+        }
         setStatus('idle')
         return
       }

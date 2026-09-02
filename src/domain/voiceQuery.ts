@@ -7,7 +7,7 @@ import { extractSpokenDate, MONTHS } from '@/domain/spokenDate'
 
 export type VoiceIntent =
   | { type: 'tasks_today'; memberHint: string | null; when: 'today' | 'tomorrow'; explicitDate: string | null; nowOnly: boolean }
-  | { type: 'shopping_list'; storeHint: string | null }
+  | { type: 'shopping_list'; storeHint: string | null; general: boolean }
   | { type: 'next_calendar_event' }
   | { type: 'unsupported_delete' }
   | { type: 'none' }
@@ -218,7 +218,77 @@ function looksLikeStoreCandidate(words: string): boolean {
   })
 }
 
-export function extractShoppingStore(text: string): { store: string | null; text: string } {
+// Quita "lista de la compra" (con "en"/"de" delante si los hay) de lo
+// que quede tras reconocer una tienda CONOCIDA — para que "Mercadona
+// lista de la compra cepillo de dientes" deje solo "cepillo de dientes"
+// como producto, igual que si no se hubiera dicho la frase de la
+// compra en absoluto ("Mercadona cepillo de dientes").
+function stripShoppingPhrase(text: string): string {
+  return text
+    .replace(new RegExp(`\\b(?:en\\s+|de\\s+)?${SHOPPING_PLACE_PLAIN}\\b`, 'i'), ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[,:]\s*/, '')
+    .replace(/[,:]\s*$/, '')
+    .trim()
+}
+
+// Busca una tienda de la lista de tiendas CONOCIDAS de la familia
+// (editable desde Compras — petición real: "que puedas añadir los
+// supermercados que quieras... que yo le diga Mercadona, patata,
+// Hiperve, leche, y no hayan equivocaciones") en cualquier posición de
+// la frase, no solo delante o detrás de "lista de la compra" — así
+// funciona igual de bien con o sin esa frase de por medio. Compara
+// palabra a palabra, ya normalizado (sin acentos/mayúsculas), para que
+// dictados con o sin tilde ("Líder"/"lider") cuenten igual. Se prueban
+// las tiendas más largas primero para que un nombre de dos palabras no
+// quede tapado por una coincidencia parcial de una sola palabra.
+function findKnownStore(text: string, knownStores: string[]): { store: string; text: string } | null {
+  if (knownStores.length === 0) return null
+  const tokens = text.split(/(\s+)/)
+  const wordIndices: number[] = []
+  tokens.forEach((t, i) => {
+    if (t.trim()) wordIndices.push(i)
+  })
+  const normWords = wordIndices.map((i) => normalize(tokens[i]).replace(/[.,;:!?]+$/, ''))
+
+  const candidates = knownStores
+    .filter((s) => s.trim())
+    .map((raw) => ({ raw, words: normalize(raw).split(/\s+/).filter(Boolean) }))
+    .sort((a, b) => b.words.length - a.words.length)
+
+  for (const candidate of candidates) {
+    const len = candidate.words.length
+    if (len === 0) continue
+    for (let start = 0; start + len <= normWords.length; start++) {
+      let matched = true
+      for (let k = 0; k < len; k++) {
+        if (normWords[start + k] !== candidate.words[k]) {
+          matched = false
+          break
+        }
+      }
+      if (!matched) continue
+      const firstTokenIdx = wordIndices[start]
+      const lastTokenIdx = wordIndices[start + len - 1]
+      const remaining = [...tokens.slice(0, firstTokenIdx), ...tokens.slice(lastTokenIdx + 1)].join('')
+      return { store: candidate.raw, text: remaining.replace(/\s+/g, ' ').trim() }
+    }
+  }
+  return null
+}
+
+export function extractShoppingStore(
+  text: string,
+  knownStores: string[] = [],
+): { store: string | null; text: string } {
+  const known = findKnownStore(text, knownStores)
+  if (known) {
+    return { store: known.store, text: stripShoppingPhrase(known.text) }
+  }
+
+  // A partir de aquí, respaldo por heurística para tiendas que todavía
+  // no están en la lista de conocidas.
+
   // Delante de la frase ("Mercadona, lista de la compra, cepillo de
   // dientes" / "Mercadona lista de la compra cepillo de dientes", con o
   // sin coma) — ver NOT_A_STORE_RE arriba para cómo se descartan las
@@ -300,9 +370,16 @@ export function detectIntent(text: string, today: Date): VoiceIntent {
   if (SHOPPING_RE.test(n)) {
     // "Qué tengo en la lista de la compra DE MERCADONA" — si nombra una
     // tienda concreta, se guarda tal cual se ha dicho (con mayúsculas
-    // originales) para poder filtrar solo esa tienda al responder.
+    // originales) para poder filtrar solo esa tienda al responder. Sin
+    // nombrar ninguna ("¿qué tengo en la lista de la compra?"), se
+    // entiende como "general" — de todas las tiendas a la vez, cada una
+    // por separado (petición real: "cuando no diga nombre de
+    // supermercado, que me diga todos los supermercados... ya se
+    // entiende que es general", más simple que obligar a decir la
+    // palabra "general" a propósito).
     const storeMatch = text.match(/(?:lista de la compra|la compra|las compras)\s+de\s+([a-zà-ÿ][a-zà-ÿ' ]{1,30})/i)
-    return { type: 'shopping_list', storeHint: storeMatch ? storeMatch[1].trim() : null }
+    const storeHint = storeMatch ? storeMatch[1].trim() : null
+    return { type: 'shopping_list', storeHint, general: storeHint === null }
   }
 
   // "¿Qué tengo que hacer el nueve de septiembre?" es tan pregunta como

@@ -84,6 +84,17 @@ export interface ShoppingItem {
   sortOrder: number
 }
 
+// Tiendas conocidas de la familia (Mercadona, Aldi...) para que Pepa las
+// reconozca por voz con fiabilidad — editable por la familia, no una
+// lista fija en el código (petición real: "que puedas añadir los
+// supermercados que quieras o quitar los que quieras... si vendo la
+// aplicación y otra persona tiene Carbo Bravo, que pueda cambiarlo").
+export interface ShoppingStoreEntry {
+  id: string
+  familyId: string
+  name: string
+}
+
 export interface InventoryItem {
   id: string
   familyId: string

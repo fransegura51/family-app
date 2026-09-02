@@ -299,12 +299,18 @@ export function parseCalendarEntry(text: string, today: Date): ParsedCalendarEnt
   // el verbo.
   const TRIGGER_WORDS = ['marcame', 'marca', 'apunta', 'apuntame', 'anota', 'pon', 'ponme', 'agenda', 'programa', 'crea', 'anademe', 'anade']
   let title = remaining.replace(/\s+/g, ' ').trim()
-  title = title.replace(/^[,;]\s*/, '').trim()
+  title = title.replace(/^[,;.]\s*/, '').trim()
   for (const w of TRIGGER_WORDS) {
     title = title.replace(new RegExp(`^${w}\\b`), '').trim()
   }
-  title = title.replace(/^(en el calendario)?\s*(que)?\s*(tengo)?\s*(el|la|los|las|un|una)?\s*/, '').trim()
-  title = title.replace(/^[,;]\s*/, '').trim()
+  // "Calendario 29 de septiembre. Cita dentista" — regla mnemotécnica
+  // fija a propósito (petición real: "vamos a marcar otra regla
+  // mnemotécnica... calendario veintinueve de septiembre, cita
+  // dentista") para tener una forma de decirlo que funcione siempre.
+  // Sin quitar "calendario" del título se quedaba dentro ("Calendario
+  // cita dentista" en vez de "Cita dentista").
+  title = title.replace(/^(en el calendario|calendario)?\s*(que)?\s*(tengo)?\s*(el|la|los|las|un|una)?\s*/, '').trim()
+  title = title.replace(/^[,;.]\s*/, '').trim()
   title = title.charAt(0).toUpperCase() + title.slice(1)
 
   return { title: title || 'Cita', date, time, endTime, memberHint, reminders, dateExplicit, recurrenceRule }

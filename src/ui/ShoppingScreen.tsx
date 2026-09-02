@@ -15,6 +15,7 @@ import {
   updateShoppingItemStatus,
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
+import { createShoppingStore, deleteShoppingStore, listShoppingStores, renameShoppingStore } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { uploadReceipt } from '@/data/receipts'
@@ -22,6 +23,7 @@ import { computeProductStats } from '@/domain/products'
 import { analyzeFridgePhoto } from '@/services/fridgePhoto'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
+import { normalize } from '@/domain/voiceQuery'
 import type {
   FamilyMember,
   InventoryCategory,
@@ -31,6 +33,7 @@ import type {
   ShoppingItem,
   ShoppingItemPriority,
   ShoppingItemStatus,
+  ShoppingStoreEntry,
   ShoppingTrip,
 } from '@/domain/types'
 
@@ -137,6 +140,7 @@ const PRIORITIES: { value: ShoppingItemPriority; label: string }[] = [
 function ShoppingListTab() {
   const [items, setItems] = useState<ShoppingItem[]>([])
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
+  const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -149,10 +153,11 @@ function ShoppingListTab() {
   // deja puesta a propósito entre productos seguidos.
   function reload() {
     setLoading(true)
-    Promise.all([listShoppingItems(), listProducts(), listAllProductPrices()])
-      .then(([shoppingItems, products, prices]) => {
+    Promise.all([listShoppingItems(), listProducts(), listAllProductPrices(), listShoppingStores()])
+      .then(([shoppingItems, products, prices, shoppingStores]) => {
         setItems(shoppingItems)
         setSuggestions(buildSuggestions(products, prices))
+        setStores(shoppingStores)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => {
@@ -169,6 +174,30 @@ function ShoppingListTab() {
   useEffect(() => {
     window.addEventListener('family-app:compras-changed', reload)
     return () => window.removeEventListener('family-app:compras-changed', reload)
+  }, [])
+
+  // "Pepa, Mercadona" (sin producto) navega aquí y pide ver esa tienda
+  // directamente — petición real: "cuando le diga Aldi, que me abra
+  // directamente la lista de Aldi". Se hace scroll al grupo en cuanto
+  // aparece en el DOM (puede tardar un tick si la pantalla se acaba de
+  // montar por la propia navegación).
+  useEffect(() => {
+    function handleFocusStore(e: Event) {
+      const store = (e as CustomEvent<{ store: string }>).detail?.store
+      if (!store) return
+      const target = normalize(store)
+      const tryScroll = (attempt: number) => {
+        const el = document.getElementById(`shopping-store-${target}`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        } else if (attempt < 10) {
+          setTimeout(() => tryScroll(attempt + 1), 150)
+        }
+      }
+      tryScroll(0)
+    }
+    window.addEventListener('family-app:focus-store', handleFocusStore)
+    return () => window.removeEventListener('family-app:focus-store', handleFocusStore)
   }, [])
 
   const pending = items.filter((i) => i.status === 'pendiente')
@@ -215,9 +244,11 @@ function ShoppingListTab() {
         </button>
       </div>
 
+      <StoreManager stores={stores} onChanged={reload} />
+
       <h2 className="section-title">Pendientes</h2>
       {storeGroups.map(([store, storeItems]) => (
-        <div key={store}>
+        <div key={store} id={`shopping-store-${normalize(store)}`}>
           {storeGroups.length > 1 && <h3 className="shopping-store-heading">🏬 {store}</h3>}
           <DraggableStoreGroup
             items={storeItems}
@@ -274,6 +305,120 @@ function ShoppingListTab() {
             ))}
         </>
       )}
+    </div>
+  )
+}
+
+// Tiendas que Pepa reconoce por voz al apuntar en la compra — editable
+// desde aquí, no fija en el código, para que cada familia tenga las
+// suyas (petición real: "que puedas añadir los supermercados que
+// quieras o quitar los que quieras... si vendo la aplicación y otra
+// persona tiene Carbo Bravo, que pueda cambiarlo").
+function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onChanged: () => void }) {
+  const [newName, setNewName] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault()
+    if (!newName.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await createShoppingStore(newName.trim())
+      setNewName('')
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir la tienda')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleRename(id: string) {
+    if (!editingName.trim()) return
+    setError(null)
+    try {
+      await renameShoppingStore(id, editingName.trim())
+      setEditingId(null)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo renombrar')
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setError(null)
+    try {
+      await deleteShoppingStore(id)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo quitar')
+    }
+  }
+
+  return (
+    <div className="card">
+      <p className="muted" style={{ marginTop: 0 }}>
+        🏬 Tiendas que Pepa reconoce por voz
+      </p>
+      {error && <p className="error">{error}</p>}
+      <div className="filter-row">
+        {stores.map((s) =>
+          editingId === s.id ? (
+            <span key={s.id} className="chip">
+              <input
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                style={{ width: 100, border: 'none', padding: 0 }}
+                autoFocus
+              />
+              <button type="button" className="link-button" onClick={() => handleRename(s.id)} aria-label="Guardar">
+                ✓
+              </button>
+              <button type="button" className="link-button" onClick={() => setEditingId(null)} aria-label="Cancelar">
+                ✕
+              </button>
+            </span>
+          ) : (
+            <span key={s.id} className="chip">
+              <span
+                onClick={() => {
+                  setEditingId(s.id)
+                  setEditingName(s.name)
+                }}
+                style={{ cursor: 'pointer' }}
+              >
+                {s.name}
+              </span>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => handleDelete(s.id)}
+                aria-label={`Quitar ${s.name}`}
+                style={{ marginLeft: 4 }}
+              >
+                ✕
+              </button>
+            </span>
+          ),
+        )}
+        {stores.length === 0 && <p className="muted">Ninguna todavía.</p>}
+      </div>
+      <form onSubmit={handleAdd} className="inline-fields">
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="Nueva tienda (p. ej. Mercadona)"
+        />
+        <button type="submit" disabled={saving || !newName.trim()}>
+          Añadir
+        </button>
+      </form>
     </div>
   )
 }

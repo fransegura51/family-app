@@ -169,18 +169,63 @@ export function detectTargetFromText(text: string): 'calendario' | 'compras' | n
 // compra.
 const SHOPPING_PLACE_PLAIN = '(?:la lista de la compra|lista de la compra|la compra|las compras)'
 
+// Delante de "lista de la compra", al dictar en voz alta casi nunca hay
+// coma de verdad (el móvil no la pone salvo pausa muy marcada) — exigir
+// coma rompía el caso más habitual ("Mercadona lista de la compra
+// cepillo de dientes", sin comas, bug real reportado). Sin coma no hay
+// forma de saber por la puntuación si lo que va antes es una tienda o
+// una palabra suelta ("mañana en la lista de la compra..."), así que en
+// su lugar se descarta si es una de estas palabras que claramente NO
+// son una tienda — sea lo que sea el resto, se acepta como tienda.
+// Se compara ya normalizada (sin acentos/mayúsculas) para no tener que
+// acordarse de cada variante con tilde ("mañana", "añade"...) a mano.
+const NOT_A_STORE_WORDS = new Set([
+  'pepa',
+  'vamos',
+  'hagamos',
+  'voy',
+  'vale',
+  'oye',
+  'manana',
+  'hoy',
+  'ayer',
+  'ahora',
+  'luego',
+  'despues',
+  'entonces',
+  'bueno',
+  'ademas',
+  'tambien',
+  'en',
+  'de',
+  'para',
+  'el',
+  'la',
+  'los',
+  'las',
+  'y',
+  'que',
+])
+const NOT_A_STORE_PREFIXES = ['apunta', 'anota', 'pon', 'guarda', 'anade', 'anadir', 'registra', 'mete', 'escribe']
+
+function looksLikeStoreCandidate(words: string): boolean {
+  const parts = words.trim().split(/\s+/)
+  if (parts.length === 0 || parts.length > 3) return false
+  return parts.every((w) => {
+    const n = normalize(w)
+    if (NOT_A_STORE_WORDS.has(n)) return false
+    return !NOT_A_STORE_PREFIXES.some((p) => n.startsWith(p))
+  })
+}
+
 export function extractShoppingStore(text: string): { store: string | null; text: string } {
-  // Delante de la frase, siempre con coma detrás ("Mercadona, lista de
-  // la compra, patatas") — la coma es lo que distingue de verdad un
-  // nombre de tienda de una palabra suelta que venga antes por otro
-  // motivo (p. ej. "mañana en la lista de la compra..."), que sin coma
-  // no debe confundirse con una tienda.
-  // Con coma, la tienda puede tener varias palabras ("Hiper Ber, lista
-  // de la compra, aceite") porque la coma ya marca sin ambigüedad dónde
-  // acaba el nombre.
-  const beforeRe = new RegExp(`^([a-zà-ÿ][a-zà-ÿ' ]{1,30}?)\\s*,\\s*(?:en\\s+)?${SHOPPING_PLACE_PLAIN}\\b\\s*[,:]?\\s*(.*)$`, 'i')
+  // Delante de la frase ("Mercadona, lista de la compra, cepillo de
+  // dientes" / "Mercadona lista de la compra cepillo de dientes", con o
+  // sin coma) — ver NOT_A_STORE_RE arriba para cómo se descartan las
+  // palabras sueltas que no son una tienda.
+  const beforeRe = new RegExp(`^([a-zà-ÿ][a-zà-ÿ' ]{1,30}?)\\s*,?\\s*(?:en\\s+)?${SHOPPING_PLACE_PLAIN}\\b\\s*[,:]?\\s*(.*)$`, 'i')
   const before = text.match(beforeRe)
-  if (before && before[1].trim()) {
+  if (before && before[1].trim() && looksLikeStoreCandidate(before[1])) {
     return { store: before[1].trim(), text: before[2].trim() }
   }
 

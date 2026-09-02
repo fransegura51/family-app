@@ -157,11 +157,17 @@ export function stripActivateCommand(text: string): { activated: boolean; text: 
 // junto a "leche" y "pan" (bug real: salían tres apuntes en vez de dos,
 // el primero sin sentido). Se prueba cada patrón una vez, el primero
 // que encaje gana.
+// Formas naturales de referirse a un sitio, no solo la frase exacta
+// "la lista de la compra" — "ponlo en la compra" o "apúntamelo en las
+// compras" son tan habituales como esa (bug real: solo se reconocía la
+// frase larga).
+const TARGET_PLACE = '(?:tareas|la lista de la compra|la compra|las compras)'
+
 const LIST_FILLER_PREFIXES = [
-  /^vamos a hacer\s*(la lista de la compra)?[,.]?\s*/i,
-  /^hagamos\s*(la lista de la compra)?[,.]?\s*/i,
-  /^vamos a apuntar\s*(en (tareas|la lista de la compra))?[,.]?\s*(que)?\s*/i,
-  /^(apunta|apuntame|anota|anotame|ponme|pon)\s*(en (tareas|la lista de la compra))?[,.]?\s*(que)?\s*/i,
+  new RegExp(`^vamos a hacer\\s*(${TARGET_PLACE})?[,.]?\\s*`, 'i'),
+  new RegExp(`^hagamos\\s*(${TARGET_PLACE})?[,.]?\\s*`, 'i'),
+  new RegExp(`^vamos a apuntar\\s*(en ${TARGET_PLACE})?[,.]?\\s*(que)?\\s*`, 'i'),
+  new RegExp(`^(apunta|apuntame|anota|anotame|ponme|pon)\\s*(en ${TARGET_PLACE})?[,.]?\\s*(que)?\\s*`, 'i'),
 ]
 
 export function stripListFillers(text: string): string {
@@ -181,8 +187,16 @@ export function stripListFillers(text: string): string {
 export function detectTargetFromText(text: string): 'calendario' | 'compras' | 'tareas' | null {
   const n = normalize(text)
   if (/\bcalendario\b/.test(n) || MONTHS.some((m) => n.includes(` de ${m}`))) return 'calendario'
-  if (/lista de la compra|\bcomprar\b/.test(n)) return 'compras'
-  if (/\btarea\b/.test(n)) return 'tareas'
+  // Cualquier palabra de la familia "compr-" (compra, compras, comprar,
+  // comprado...) — antes solo contaba el verbo "comprar" o la frase
+  // exacta "lista de la compra", y decir "ponlo en la compra" o
+  // "apúntamelo en las compras" (formas tan naturales como esas) no
+  // coincidía con nada y se perdía la pista (bug real reportado: se
+  // apuntaba en Tareas en vez de en la lista de la compra).
+  if (/\bcompr\w*\b/.test(n)) return 'compras'
+  // Sin el límite de palabra al final ("tarea\b"), el plural "tareas" —
+  // la forma más natural de decirlo — no coincidía nunca (mismo bug).
+  if (/\btarea\w*\b/.test(n)) return 'tareas'
   return null
 }
 

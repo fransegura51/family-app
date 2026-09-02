@@ -53,7 +53,7 @@ async function callHevy(body: Record<string, unknown>): Promise<Record<string, u
 
 export async function hasHevyApiKey(): Promise<boolean> {
   const { data, error } = await supabase.rpc('has_hevy_api_key')
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return !!data
 }
 
@@ -68,12 +68,17 @@ export async function saveHevyApiKey(apiKey: string): Promise<void> {
     .select('family_id')
     .eq('id', userResult.user.id)
     .single()
-  if (profileError) throw profileError
+  if (profileError) throw new Error(profileError.message)
 
   const { error } = await supabase
     .from('hevy_credentials')
     .upsert({ family_id: profileRow.family_id, api_key: apiKey, updated_at: new Date().toISOString() })
-  if (error) throw error
+  // El error de Supabase (PostgrestError) no es una instancia real de
+  // Error — el formulario comprobaba `err instanceof Error` y, al ser
+  // false, se tragaba el mensaje real y mostraba siempre el genérico
+  // "No se pudo guardar" en vez del motivo de verdad (bug real: así no
+  // hay forma de diagnosticar por qué falla).
+  if (error) throw new Error(error.message)
 }
 
 export async function deleteHevyApiKey(): Promise<void> {
@@ -84,10 +89,10 @@ export async function deleteHevyApiKey(): Promise<void> {
     .select('family_id')
     .eq('id', userResult.user.id)
     .single()
-  if (profileError) throw profileError
+  if (profileError) throw new Error(profileError.message)
 
   const { error } = await supabase.from('hevy_credentials').delete().eq('family_id', profileRow.family_id)
-  if (error) throw error
+  if (error) throw new Error(error.message)
 }
 
 export async function testHevyConnection(): Promise<{ ok: boolean; name: string | null }> {

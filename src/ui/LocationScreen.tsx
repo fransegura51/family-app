@@ -73,8 +73,14 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   const [sharingAs, setSharingAs] = useState<string>('')
   const [stopWatch, setStopWatch] = useState<(() => void) | null>(null)
 
-  function reload() {
-    setLoading(true)
+  // `silent` = refresco en segundo plano (la actualización periódica de
+  // cada 30s) sin poner toda la pantalla en "Cargando…" — con `setLoading(true)`
+  // ahí, la pantalla entera se borraba y volvía a montar cada 30 segundos,
+  // incluso en mitad de que alguien tocara "Activar" o eligiera quién
+  // lleva el dispositivo (bug real reportado: "no me funciona", captura
+  // mostrando la pantalla congelada en "Cargando…").
+  function reload(silent = false) {
+    if (!silent) setLoading(true)
     Promise.all([listFamilyMembers(), listConsents(), listMemberLocations(), listPlaces()])
       .then(async ([m, c, l, p]) => {
         setMembers(m)
@@ -94,18 +100,21 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
         setPhotoUrls(Object.fromEntries(photoEntries))
       })
       .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!silent) setLoading(false)
+      })
   }
 
-  useEffect(reload, [])
+  useEffect(() => reload(), []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => stopWatch?.(), [stopWatch])
 
   // Para ver la posición de los DEMÁS sin tener que recargar todo en
   // cada latido GPS propio (ver applyOwnLocationUpdate) — cada 30s es
   // sobrado para "dónde está ahora" y no machaca la base de datos ni el
-  // móvil a peticiones.
+  // móvil a peticiones. Silencioso: no debe interrumpir a quien esté
+  // tocando algo en ese momento.
   useEffect(() => {
-    const interval = setInterval(reload, 30_000)
+    const interval = setInterval(() => reload(true), 30_000)
     return () => clearInterval(interval)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

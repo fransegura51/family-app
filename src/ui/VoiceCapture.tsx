@@ -378,6 +378,15 @@ export function VoiceCapture() {
   const [mode, setMode] = useState<ResponseMode>(loadResponseMode)
   const dictationOk = isDictationSupported()
 
+  // Dos botones, dos usos, sin ambigüedad — antes un solo botón tenía
+  // que ADIVINAR si lo dicho era una pregunta ("¿qué tengo hoy?") o un
+  // encargo para guardar ("apunta que tengo médico"), y aunque se afinó
+  // varias veces seguía fallando alguna vez (petición real: "vamos a
+  // dejar el botón de micrófono para añadir... y creamos otro botón de
+  // Pepa para preguntas... los separamos"). Ahora el botón que se toca
+  // YA dice la intención, así que dentro no hace falta adivinar nada.
+  const [panelMode, setPanelMode] = useState<'create' | 'ask'>('create')
+
   // Devuelve una promesa que no termina hasta que Pepa deja de hablar —
   // así se sabe el momento exacto en que es seguro volver a escuchar sin
   // que el propio móvil se oiga a sí mismo por el altavoz y se lo tome
@@ -392,39 +401,49 @@ export function VoiceCapture() {
     try {
       const text = stripWakeWord(rawText)
 
-      // Las preguntas (qué tengo hoy/mañana, lo siguiente del calendario,
-      // qué hay en la compra) se resuelven ANTES que la navegación/
-      // creación — si no, "lo siguiente que tengo en el CALENDARIO" se
-      // intentaría guardar como una cita nueva en vez de responder (la
-      // palabra "calendario" también dispara la navegación a Calendario,
-      // bug real detectado al diseñar esta pregunta).
+      // Borrar por voz no está soportado en ningún botón todavía — se
+      // comprueba siempre, para no acabar creando una cita nueva con el
+      // literal "borra la cita del nueve de septiembre" por título.
       const intent = detectIntent(text, new Date())
       if (intent.type === 'unsupported_delete') {
         setStatus('done')
         await respond('Todavía no puedo borrar citas hablando — ábrela en el calendario y pulsa "Borrar".')
         return
       }
-      if (intent.type === 'tasks_today') {
-        const answer = await answerTasksQuery(intent.memberHint, text, intent.when, intent.nowOnly, intent.explicitDate)
+
+      // Botón 🐣 Pepa: SOLO preguntas, nunca guarda nada — así no hay
+      // riesgo de que una pregunta mal reconocida se cuele como un
+      // apunte nuevo.
+      if (panelMode === 'ask') {
+        if (intent.type === 'tasks_today') {
+          const answer = await answerTasksQuery(intent.memberHint, text, intent.when, intent.nowOnly, intent.explicitDate)
+          setStatus('done')
+          await respond(answer)
+          return
+        }
+        if (intent.type === 'next_calendar_event') {
+          const answer = await answerNextCalendarEvent()
+          setStatus('done')
+          await respond(answer)
+          return
+        }
+        if (intent.type === 'shopping_list') {
+          const answer = await answerShoppingQuery()
+          setStatus('done')
+          await respond(answer)
+          return
+        }
         setStatus('done')
-        await respond(answer)
-        return
-      }
-      if (intent.type === 'next_calendar_event') {
-        const answer = await answerNextCalendarEvent()
-        setStatus('done')
-        await respond(answer)
-        return
-      }
-      if (intent.type === 'shopping_list') {
-        const answer = await answerShoppingQuery()
-        setStatus('done')
-        await respond(answer)
+        await respond(
+          'No he entendido esa pregunta. Prueba con "qué tengo hoy", "qué tengo el nueve de septiembre" o "qué tengo que hacer ahora".',
+        )
         return
       }
 
-      // El contenido manda sobre la pantalla en la que estés — "Pepa,
-      // ponme en el calendario que..." tiene que ir al calendario aunque
+      // Botón 🎤 Añadir: SOLO guarda, nunca responde una pregunta — para
+      // preguntar está el botón de Pepa. El contenido manda sobre la
+      // pantalla en la que estés — "Pepa, ponme en el calendario que..."
+      // tiene que ir al calendario aunque
       // lo digas estando en Tareas, no guardarse donde estuvieras (eso
       // era lo que pasaba antes: solo miraba la pantalla actual). Si no
       // hay ninguna pista clara en lo dicho, se usa la pantalla actual,
@@ -554,7 +573,8 @@ export function VoiceCapture() {
     saveResponseMode(next)
   }
 
-  function openPanel() {
+  function openPanel(nextMode: 'create' | 'ask') {
+    setPanelMode(nextMode)
     setOpen(true)
     if (dictationOk) startListening()
   }
@@ -569,7 +589,10 @@ export function VoiceCapture() {
 
   return (
     <>
-      <button type="button" className="voice-fab" aria-label="Hablar con Pepa" onClick={openPanel}>
+      <button type="button" className="voice-fab voice-fab-ask" aria-label="Preguntar a Pepa" onClick={() => openPanel('ask')}>
+        🐣
+      </button>
+      <button type="button" className="voice-fab voice-fab-create" aria-label="Añadir con voz" onClick={() => openPanel('create')}>
         🎤
       </button>
 
@@ -578,31 +601,39 @@ export function VoiceCapture() {
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
-                🐣 Pepa
+                {panelMode === 'ask' ? '🐣 Pregúntale a Pepa' : '🎤 Añadir con voz'}
               </h2>
               <button type="button" className="modal-close" onClick={close} aria-label="Cerrar">
                 ✕
               </button>
             </div>
 
-            <p className="muted">
-              Se apunta en: <strong>{target.label}</strong>
-              {target.key !== 'calendario' && ' — o pregúntame "qué tareas tengo hoy" / "qué hay en la lista de la compra"'}
-            </p>
-            {target.key === 'calendario' && (
+            {panelMode === 'ask' ? (
               <p className="muted">
-                Ej.: "el 3 de septiembre, cita con el dentista a las 19 horas para Eric, aviso un día antes"
+                Pregúntame cosas como "qué tengo hoy", "qué tengo el nueve de septiembre" o "qué tengo que hacer
+                ahora" — este botón solo responde, nunca guarda nada.
               </p>
+            ) : (
+              <>
+                <p className="muted">
+                  Se apunta en: <strong>{target.label}</strong>
+                </p>
+                {target.key === 'calendario' && (
+                  <p className="muted">
+                    Ej.: "el 3 de septiembre, cita con el dentista a las 19 horas para Eric, aviso un día antes"
+                  </p>
+                )}
+                <p className="muted">
+                  Di lo que quieras y te lleva a la pantalla que toque aunque estés en otra — p. ej. "vamos a hacer
+                  la lista de la compra" o "ponme en el calendario que el 27 de octubre es el cumpleaños de mi
+                  mujer". Este botón solo guarda, nunca responde preguntas — para eso está 🐣 Pepa.
+                </p>
+              </>
             )}
-            <p className="muted">
-              Di "Pepa" y lo que quieras, y te lleva a la pantalla que toque aunque estés en otra — p. ej. "Pepa,
-              vamos a hacer la lista de la compra" o "Pepa, ponme en el calendario que el 27 de octubre es el
-              cumpleaños de mi mujer".
-            </p>
             {dictationOk && (
               <p className="muted">
                 Ya te está escuchando, no hace falta tocar nada — cuando termines de hablar, di "Pepa, activa" o
-                simplemente quédate callado 5 segundos y lo apunta solo.
+                simplemente quédate callado 5 segundos y {panelMode === 'ask' ? 'te responde solo' : 'lo apunta solo'}.
               </p>
             )}
 
@@ -634,7 +665,7 @@ export function VoiceCapture() {
                 placeholder="O escribe aquí…"
               />
               <button type="submit" disabled={status === 'saving' || !typedText.trim()}>
-                Apuntar
+                {panelMode === 'ask' ? 'Preguntar' : 'Apuntar'}
               </button>
             </form>
 

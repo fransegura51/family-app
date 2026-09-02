@@ -948,17 +948,28 @@ textarea {
 .voice-fab {
   position: fixed;
   right: 16px;
-  bottom: 84px;
   width: 56px;
   height: 56px;
   border-radius: 50%;
   border: none;
-  background: var(--primary);
   color: white;
   font-size: 24px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   z-index: 40;
+}
+
+/* Dos botones separados — uno solo para añadir (micrófono) y otro solo
+   para preguntar (Pepa), apilados para que no se pisen ni se confundan
+   al tacto. */
+.voice-fab-create {
+  bottom: 84px;
+  background: var(--primary);
+}
+
+.voice-fab-ask {
+  bottom: 150px;
+  background: #7c3aed;
 }
 
 .voice-mic-button {

@@ -14,7 +14,14 @@ import {
   type ExternalCalendarEvent,
   type ExternalCalendarFeed,
 } from '@/data/externalCalendarFeeds'
-import { eventDotColors, expandOccurrences, getMonthGridDays, MONTH_LABELS, WEEKDAY_LABELS } from '@/domain/calendar'
+import {
+  eventDotColors,
+  expandOccurrences,
+  getMonthGridDays,
+  MONTH_LABELS,
+  readableTextColor,
+  WEEKDAY_LABELS,
+} from '@/domain/calendar'
 import {
   REMINDER_PRESETS,
   REMINDER_UNIT_OPTIONS,
@@ -698,9 +705,11 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
   const [confirming, setConfirming] = useState(false)
   const canDelete = !!entry.onDeleteSeries
 
+  const textColor = readableTextColor(entry.color)
+
   if (confirming) {
     return (
-      <span className="agenda-allday-chip" style={{ background: entry.color }}>
+      <span className="agenda-allday-chip" style={{ background: entry.color, color: textColor }}>
         ¿Seguro?
         <button type="button" className="agenda-allday-chip-action" onClick={entry.onDeleteSeries}>
           Borrar
@@ -713,7 +722,7 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
   }
 
   return (
-    <span className="agenda-allday-chip" style={{ background: entry.color }}>
+    <span className="agenda-allday-chip" style={{ background: entry.color, color: textColor }}>
       <span
         onClick={entry.onEdit}
         style={{ cursor: entry.onEdit ? 'pointer' : 'default' }}
@@ -740,7 +749,7 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
   const [confirming, setConfirming] = useState(false)
   const canDelete = !!entry.onDeleteSeries
   return (
-    <div className="agenda-card" style={{ background: entry.color }}>
+    <div className="agenda-card" style={{ background: entry.color, color: readableTextColor(entry.color) }}>
       {/* X siempre visible en la esquina — antes solo había "Borrar" en
           texto pequeño abajo, junto a "Editar", y no se veía a simple
           vista dónde quitar algo (bug/petición real: "ponle una X"). */}

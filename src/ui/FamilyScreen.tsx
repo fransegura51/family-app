@@ -1,6 +1,13 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { addFamilyMember, deleteFamilyMember, listFamilyMembers, updateFamilyMember, uploadMemberPhoto } from '@/data/family'
+import {
+  addFamilyMember,
+  deleteFamilyMember,
+  generateMemberInviteCode,
+  listFamilyMembers,
+  updateFamilyMember,
+  uploadMemberPhoto,
+} from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { FamilyMember, MemberType, Profile } from '@/domain/types'
 
@@ -78,6 +85,12 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                   )}
                 </div>
               )}
+              {/* Solo tiene sentido para quien todavía no tiene su
+                  propia cuenta — ligado hoy a la sesión de otro (p. ej.
+                  Paco entrando siempre como Jennifer). El código enlaza
+                  la cuenta nueva a ESTE perfil ya existente, en vez de
+                  crear una familia aparte. */}
+              {isAdmin && !m.linkedProfileId && <InviteCodeButton memberId={m.id} memberName={m.name} />}
             </div>
           ),
         )}
@@ -113,6 +126,49 @@ function PhotoUploadButton({ memberId, onUploaded }: { memberId: string; onUploa
       {uploading ? 'Subiendo…' : '📷 Foto'}
       <input type="file" accept="image/*" onChange={handleChange} style={{ display: 'none' }} disabled={uploading} />
     </label>
+  )
+}
+
+function InviteCodeButton({ memberId, memberName }: { memberId: string; memberName: string }) {
+  const [code, setCode] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+
+  async function handleGenerate() {
+    setGenerating(true)
+    setError(null)
+    try {
+      setCode(await generateMemberInviteCode(memberId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar el código')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  if (code) {
+    return (
+      <div className="card" style={{ marginTop: 8, padding: 12 }}>
+        <p className="muted">
+          Código para que {memberName} se cree su propia cuenta (válido 24h, un solo uso):
+        </p>
+        <p style={{ fontSize: 22, fontWeight: 700, letterSpacing: 2 }}>{code}</p>
+        <p className="muted">
+          Dile que entre en la app, toque "¿No tienes cuenta? Crear una", ponga su propio email y
+          contraseña — y al terminar, en la pantalla siguiente, toque "Ya tengo un código de
+          invitación" y escriba este código.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="member-card-actions">
+      <button type="button" className="link-button" onClick={handleGenerate} disabled={generating}>
+        {generating ? 'Generando…' : '🔑 Generar código de acceso'}
+      </button>
+      {error && <p className="error">{error}</p>}
+    </div>
   )
 }
 

@@ -15,6 +15,28 @@ export async function createFamily(familyName: string, displayName: string): Pro
   return data as string
 }
 
+// Código de invitación de un solo uso (24h) para que un miembro ya
+// existente en la familia (p. ej. Paco, hasta ahora sin cuenta propia)
+// se cree su propio usuario y quede enlazado a su perfil, en vez de
+// crear una familia nueva desde cero. Solo el admin puede generarlo.
+export async function generateMemberInviteCode(memberId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('generate_member_invite_code', { p_member_id: memberId })
+  if (error) throw error
+  return data as string
+}
+
+// Se llama justo después de auth.signUp(), con sesión ya activa pero
+// sin `profiles` row todavía — enlaza esa cuenta nueva al miembro cuyo
+// código coincide, en vez de pasar por create_family().
+export async function joinFamilyWithCode(code: string, displayName: string): Promise<string> {
+  const { data, error } = await supabase.rpc('join_family_with_code', {
+    p_code: code,
+    p_display_name: displayName,
+  })
+  if (error) throw error
+  return data as string
+}
+
 export async function addFamilyMember(input: {
   name: string
   memberType: MemberType

@@ -170,6 +170,21 @@ export function eventDotColors(
   return ['#9ca3af']
 }
 
+// El texto de las tarjetas/etiquetas de evento siempre era blanco, fijo
+// en el CSS — con un color de fondo claro (amarillo, verde pastel...)
+// quedaba casi ilegible (bug real reportado). Fórmula estándar de
+// luminosidad percibida: por encima del umbral hace falta texto negro,
+// por debajo, blanco.
+export function readableTextColor(hex: string): string {
+  const clean = hex.replace('#', '')
+  if (clean.length !== 6) return '#ffffff'
+  const r = parseInt(clean.slice(0, 2), 16)
+  const g = parseInt(clean.slice(2, 4), 16)
+  const b = parseInt(clean.slice(4, 6), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.6 ? '#000000' : '#ffffff'
+}
+
 export const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 export const MONTH_LABELS = [

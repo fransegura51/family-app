@@ -120,11 +120,24 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
 
   function startSharing(memberId: string) {
     setError(null)
-    const stop = watchPosition((coords) => {
-      updateMemberLocation(memberId, coords.latitude, coords.longitude)
-        .then(reload)
-        .catch((err: Error) => setError(err.message))
-    })
+    const stop = watchPosition(
+      (coords) => {
+        setError(null)
+        updateMemberLocation(memberId, coords.latitude, coords.longitude)
+          .then(reload)
+          .catch((err: Error) => setError(err.message))
+      },
+      // Antes un fallo (permiso denegado, GPS apagado, sin respuesta) se
+      // tragaba en silencio y no pasaba nada visible — ahora se muestra
+      // el motivo. Si el permiso está denegado no tiene sentido seguir
+      // "compartiendo" sin poder compartir nada, así que se corta aquí;
+      // el resto de fallos (GPS apagado un momento, tardanza puntual)
+      // pueden arreglarse solos en el siguiente intento del navegador.
+      (message, code) => {
+        setError(message)
+        if (code === 1) stopSharing() // 1 = PERMISSION_DENIED
+      },
+    )
     setSharingAs(memberId)
     setStopWatch(() => stop)
   }

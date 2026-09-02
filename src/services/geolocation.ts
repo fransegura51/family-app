@@ -24,14 +24,36 @@ export function getCurrentPosition(): Promise<Coordinates> {
   })
 }
 
-export function watchPosition(onUpdate: (coords: Coordinates) => void): () => void {
-  if (!isGeolocationSupported()) return () => {}
+// Antes cualquier fallo (permiso denegado, GPS apagado, sin respuesta)
+// se tragaba en silencio — la usuaria pulsaba "Activar" y no pasaba
+// nada, sin ningún aviso de por qué (bug real: "le doy a activar y no
+// me sale el círculo"). Traduce el código de error del navegador a un
+// mensaje que se pueda mostrar.
+export function geolocationErrorMessage(err: GeolocationPositionError): string {
+  switch (err.code) {
+    case err.PERMISSION_DENIED:
+      return 'Has denegado el permiso de ubicación. Actívalo para este sitio en los ajustes del navegador/teléfono e inténtalo de nuevo.'
+    case err.POSITION_UNAVAILABLE:
+      return 'El teléfono no ha podido calcular tu posición ahora mismo (¿GPS apagado?). Inténtalo de nuevo en un momento.'
+    case err.TIMEOUT:
+      return 'Ha tardado demasiado en obtener tu posición. Comprueba que el GPS esté activado e inténtalo de nuevo.'
+    default:
+      return 'No se ha podido obtener tu ubicación.'
+  }
+}
+
+export function watchPosition(
+  onUpdate: (coords: Coordinates) => void,
+  onError?: (message: string, code: number) => void,
+): () => void {
+  if (!isGeolocationSupported()) {
+    onError?.('Este dispositivo no soporta geolocalización.', -1)
+    return () => {}
+  }
   const id = navigator.geolocation.watchPosition(
     (pos) => onUpdate({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-    () => {
-      // Fallo silencioso (permiso revocado, GPS apagado…): no interrumpe la app.
-    },
-    { enableHighAccuracy: false, maximumAge: 60_000 },
+    (err) => onError?.(geolocationErrorMessage(err), err.code),
+    { enableHighAccuracy: false, maximumAge: 60_000, timeout: 15_000 },
   )
   return () => navigator.geolocation.clearWatch(id)
 }

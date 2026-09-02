@@ -476,6 +476,15 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
       <p className="muted" style={{ marginTop: 0 }}>
         🏬 Tiendas que Pepa reconoce por voz
       </p>
+      {/* Petición real: "que explique cómo se mandan productos a la
+          lista de supermercados... Mercadona, patatas, cómo decirlo,
+          igual que están las otras cosas explicadas" — mismo patrón de
+          ejemplos que ya se usa en el panel de Pepa (🎤 Añadir), aquí
+          al lado de donde se dan de alta las tiendas. */}
+      <p className="muted" style={{ fontSize: 13 }}>
+        Para apuntar un producto en la tienda que quieras, di el nombre de la tienda y el producto — por ejemplo,
+        "Mercadona, patatas" o "Hipervel, leche" — y Pepa lo pone en la lista de esa tienda.
+      </p>
       {error && <p className="error">{error}</p>}
       <div className="filter-row">
         {stores.map((s) =>

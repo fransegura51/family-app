@@ -121,6 +121,26 @@ export function stripWakeWord(text: string): string {
     .trim()
 }
 
+// "Pepa, activa" (o variantes parecidas) es la señal explícita para que
+// Pepa deje de escuchar YA y apunte lo dicho — el equivalente hablado de
+// tocar "Apuntar", para no tener que esperar los 5 segundos de silencio
+// si no hace falta.
+const ACTIVATE_PATTERNS = [
+  /pepa,?\s*activa(la)?\b/i,
+  /pepa,?\s*apunta(lo)?\s*ya\b/i,
+  /pepa,?\s*guarda(lo)?\s*ya\b/i,
+  /\bactiva(la)?\s*pepa\b/i,
+]
+
+export function stripActivateCommand(text: string): { activated: boolean; text: string } {
+  for (const re of ACTIVATE_PATTERNS) {
+    if (re.test(text)) {
+      return { activated: true, text: text.replace(re, ' ').replace(/\s+/g, ' ').trim() }
+    }
+  }
+  return { activated: false, text }
+}
+
 // Coletillas naturales al pedirle a Pepa que apunte algo en tareas o en
 // la lista de la compra ("vamos a hacer la lista de la compra, leche y
 // pan") — sin esto, la frase entera se guardaba como un apunte más

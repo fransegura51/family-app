@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { createTask, listCompletions, listTasks } from '@/data/tasks'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
@@ -15,11 +15,12 @@ import {
   detectTargetFromText,
   findMemberInText,
   matchMemberByHint,
+  stripActivateCommand,
   stripListFillers,
   stripWakeWord,
 } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
-import { isDictationSupported, isSpeechSupported, listenOnce, speak } from '@/services/voice'
+import { isDictationSupported, isSpeechSupported, listenContinuous, speakAsync } from '@/services/voice'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 
 type ResponseMode = 'voice' | 'text'
@@ -369,15 +370,21 @@ export function VoiceCapture() {
   const navigate = useNavigate()
   const target = getTarget(location.pathname)
   const [open, setOpen] = useState(false)
+  const openRef = useRef(false)
+  openRef.current = open
   const [status, setStatus] = useState<Status>('idle')
   const [message, setMessage] = useState('')
   const [typedText, setTypedText] = useState('')
   const [mode, setMode] = useState<ResponseMode>(loadResponseMode)
   const dictationOk = isDictationSupported()
 
-  function respond(text: string) {
-    if (mode === 'voice' && isSpeechSupported()) speak(text)
+  // Devuelve una promesa que no termina hasta que Pepa deja de hablar —
+  // así se sabe el momento exacto en que es seguro volver a escuchar sin
+  // que el propio móvil se oiga a sí mismo por el altavoz y se lo tome
+  // como un encargo nuevo.
+  async function respond(text: string) {
     setMessage(text)
+    if (mode === 'voice' && isSpeechSupported()) await speakAsync(text)
   }
 
   async function processText(rawText: string) {
@@ -394,25 +401,25 @@ export function VoiceCapture() {
       const intent = detectIntent(text, new Date())
       if (intent.type === 'unsupported_delete') {
         setStatus('done')
-        respond('Todavía no puedo borrar citas hablando — ábrela en el calendario y pulsa "Borrar".')
+        await respond('Todavía no puedo borrar citas hablando — ábrela en el calendario y pulsa "Borrar".')
         return
       }
       if (intent.type === 'tasks_today') {
         const answer = await answerTasksQuery(intent.memberHint, text, intent.when, intent.nowOnly, intent.explicitDate)
         setStatus('done')
-        respond(answer)
+        await respond(answer)
         return
       }
       if (intent.type === 'next_calendar_event') {
         const answer = await answerNextCalendarEvent()
         setStatus('done')
-        respond(answer)
+        await respond(answer)
         return
       }
       if (intent.type === 'shopping_list') {
         const answer = await answerShoppingQuery()
         setStatus('done')
-        respond(answer)
+        await respond(answer)
         return
       }
 
@@ -432,7 +439,7 @@ export function VoiceCapture() {
       if (effectiveTargetKey === 'calendario') {
         const confirmation = await handleCalendarEntry(text)
         setStatus('done')
-        respond(confirmation)
+        await respond(confirmation)
         return
       }
 
@@ -455,42 +462,89 @@ export function VoiceCapture() {
       }
       await saveEntries(effectiveTargetKey as 'compras' | 'tareas', entries, memberId)
       setStatus('done')
-      respond(`Apuntado en ${effectiveTarget.label}: ${entries.join(', ')}`)
+      await respond(`Apuntado en ${effectiveTarget.label}: ${entries.join(', ')}`)
     } catch (err) {
       setStatus('error')
       const detail = err instanceof Error ? err.message : String(err)
-      respond(`No he podido hacerlo: ${detail}`)
+      await respond(`No he podido hacerlo: ${detail}`)
     }
   }
 
-  // El reconocimiento de voz no es perfecto (eso no lo controla la app,
-  // es el motor de Google que usa Chrome por debajo) — así que en vez de
-  // guardar directamente lo que ha creído oír, lo deja escrito en el
-  // campo de texto para revisarlo/corregirlo antes de pulsar "Apuntar",
-  // igual que ya se revisan los tickets, las recetas o la foto de la
-  // nevera antes de guardar nada.
-  function handleListen() {
+  const sessionRef = useRef<{ stop: () => void } | null>(null)
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastHeardRef = useRef('')
+  const [listening, setListening] = useState(false)
+
+  function clearSilenceTimer() {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = null
+    }
+  }
+
+  function stopListening() {
+    clearSilenceTimer()
+    sessionRef.current?.stop()
+    sessionRef.current = null
+    setListening(false)
+  }
+
+  // Antes había que tocar "Empezar" y luego "Apuntar" para cada frase —
+  // ahora, en cuanto se abre el panel, ya escucha sola: se apunta al
+  // decir "Pepa, activa" (o parecido) o, si no, sola tras 5 segundos de
+  // silencio, exactamente como pedido ("que lo podamos hacer todo con
+  // voz", "es como si le diese a apuntar").
+  function startListening() {
+    if (!dictationOk || sessionRef.current) return
+    lastHeardRef.current = ''
+    setTypedText('')
+    setListening(true)
     setStatus('listening')
-    setMessage('Pepa te escucha…')
-    listenOnce(
-      (transcript) => {
-        setTypedText(transcript)
-        setStatus('idle')
-        setMessage('Pepa ha oído esto — revísalo y pulsa "Apuntar"')
+    setMessage('Pepa te escucha… habla cuando quieras, se apunta sola al quedarte callado')
+    sessionRef.current = listenContinuous({
+      onTranscript: (text) => {
+        const { activated, text: cleaned } = stripActivateCommand(text)
+        setTypedText(activated ? cleaned : text)
+        if (activated) {
+          clearSilenceTimer()
+          submitFromVoice(cleaned)
+          return
+        }
+        if (text && text !== lastHeardRef.current) {
+          lastHeardRef.current = text
+          clearSilenceTimer()
+          silenceTimerRef.current = setTimeout(() => submitFromVoice(text), 5000)
+        }
       },
-      (errorMessage) => {
+      onError: (errorMessage) => {
+        stopListening()
         setStatus('error')
         setMessage(errorMessage)
       },
-      () => {
-        setStatus((s) => (s === 'listening' ? 'idle' : s))
-      },
-    )
+    })
+  }
+
+  async function submitFromVoice(text: string) {
+    stopListening()
+    const trimmed = text.trim()
+    setTypedText('')
+    if (!trimmed) {
+      setStatus('idle')
+      startListening()
+      return
+    }
+    await processText(trimmed)
+    // Sigue escuchando para el siguiente encargo sin tener que volver a
+    // abrir el panel — se reanuda DESPUÉS de que Pepa termine de hablar
+    // (respond ya espera a que acabe la voz) para que no se oiga a sí
+    // misma y se lo tome como un encargo nuevo.
+    if (openRef.current) startListening()
   }
 
   function handleTypedSubmit(e: FormEvent) {
     e.preventDefault()
     if (!typedText.trim()) return
+    stopListening()
     processText(typedText)
     setTypedText('')
   }
@@ -500,7 +554,13 @@ export function VoiceCapture() {
     saveResponseMode(next)
   }
 
+  function openPanel() {
+    setOpen(true)
+    if (dictationOk) startListening()
+  }
+
   function close() {
+    stopListening()
     setOpen(false)
     setStatus('idle')
     setMessage('')
@@ -509,12 +569,7 @@ export function VoiceCapture() {
 
   return (
     <>
-      <button
-        type="button"
-        className="voice-fab"
-        aria-label="Hablar con Pepa"
-        onClick={() => setOpen(true)}
-      >
+      <button type="button" className="voice-fab" aria-label="Hablar con Pepa" onClick={openPanel}>
         🎤
       </button>
 
@@ -544,15 +599,25 @@ export function VoiceCapture() {
               vamos a hacer la lista de la compra" o "Pepa, ponme en el calendario que el 27 de octubre es el
               cumpleaños de mi mujer".
             </p>
+            {dictationOk && (
+              <p className="muted">
+                Ya te está escuchando, no hace falta tocar nada — cuando termines de hablar, di "Pepa, activa" o
+                simplemente quédate callado 5 segundos y lo apunta solo.
+              </p>
+            )}
 
             {dictationOk && (
               <button
                 type="button"
-                className={'voice-mic-button' + (status === 'listening' ? ' voice-mic-listening' : '')}
-                onClick={handleListen}
-                disabled={status === 'listening' || status === 'saving'}
+                className={'voice-mic-button' + (listening ? ' voice-mic-listening' : '')}
+                onClick={() => (listening ? stopListening() : startListening())}
+                disabled={status === 'saving'}
               >
-                {status === 'listening' ? '🎙️ Pepa te escucha…' : status === 'saving' ? 'Guardando…' : '🎤 Empezar'}
+                {status === 'saving'
+                  ? 'Guardando…'
+                  : listening
+                    ? '🎙️ Pepa te escucha… (toca para parar)'
+                    : '🎤 Seguir escuchando'}
               </button>
             )}
             {!dictationOk && (

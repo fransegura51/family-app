@@ -27,6 +27,10 @@ import { getSelectedCalendarDate } from '@/state/calendarSelection'
 
 type ResponseMode = 'voice' | 'text'
 const STORAGE_KEY = 'familyapp:voice-response-mode'
+// Cuánto se espera en silencio antes de apuntar/preguntar sola —
+// petición real: "que espere solamente tres segundos" (antes 5s, se
+// notaba lento).
+const SILENCE_TIMEOUT_MS = 3000
 
 function loadResponseMode(): ResponseMode {
   try {
@@ -547,8 +551,8 @@ export function VoiceCapture() {
 
   // Antes había que tocar "Empezar" y luego "Apuntar" para cada frase —
   // ahora, en cuanto se abre el panel, ya escucha sola: se apunta al
-  // decir "Pepa, activa" (o parecido) o, si no, sola tras 5 segundos de
-  // silencio, exactamente como pedido ("que lo podamos hacer todo con
+  // decir "Pepa, activa" (o parecido) o, si no, sola tras el silencio
+  // de abajo, exactamente como pedido ("que lo podamos hacer todo con
   // voz", "es como si le diese a apuntar").
   function startListening() {
     if (!dictationOk || sessionRef.current) return
@@ -569,7 +573,7 @@ export function VoiceCapture() {
         if (text && text !== lastHeardRef.current) {
           lastHeardRef.current = text
           clearSilenceTimer()
-          silenceTimerRef.current = setTimeout(() => submitFromVoice(text), 5000)
+          silenceTimerRef.current = setTimeout(() => submitFromVoice(text), SILENCE_TIMEOUT_MS)
         }
       },
       onError: (errorMessage) => {
@@ -675,7 +679,7 @@ export function VoiceCapture() {
             <p className="muted" style={{ fontSize: 13 }}>
               {panelMode === 'ask'
                 ? 'Solo responde, p. ej. "qué tengo hoy" — nunca guarda nada.'
-                : 'Solo guarda, nunca responde — di "activa" o calla 5s para confirmar.'}
+                : 'Solo guarda, nunca responde — di "activa" o calla 3s para confirmar.'}
             </p>
             {!dictationOk && (
               <p className="muted">

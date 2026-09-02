@@ -24,6 +24,7 @@ import { analyzeFridgePhoto } from '@/services/fridgePhoto'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { normalize } from '@/domain/voiceQuery'
+import { getStoreIcon } from '@/domain/storeIcons'
 import type {
   FamilyMember,
   InventoryCategory,
@@ -249,7 +250,11 @@ function ShoppingListTab() {
       <h2 className="section-title">Pendientes</h2>
       {storeGroups.map(([store, storeItems]) => (
         <div key={store} id={`shopping-store-${normalize(store)}`}>
-          {storeGroups.length > 1 && <h3 className="shopping-store-heading">🏬 {store}</h3>}
+          {storeGroups.length > 1 && (
+            <h3 className="shopping-store-heading">
+              {store === 'Sin tienda' ? '🏬' : <StoreIconBadge name={store} size={20} />} {store}
+            </h3>
+          )}
           <DraggableStoreGroup
             items={storeItems}
             suggestions={suggestions}
@@ -306,6 +311,38 @@ function ShoppingListTab() {
         </>
       )}
     </div>
+  )
+}
+
+// Logo de verdad para cadenas conocidas (Mercadona, Aldi...) o un icono
+// relacionado para las que no tienen una marca única (petición real: "en
+// vez de ponerme Aldi con la x, me lo pones con el nombre, pero con el
+// logotipo también... el que no tenga logotipo, le pones algo
+// relacionado"). El logo se referencia en vivo desde la web pública del
+// propio favicon del dominio de la cadena — no se guarda ninguna imagen
+// de marca en la aplicación.
+function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
+  const icon = getStoreIcon(name)
+  const [broken, setBroken] = useState(false)
+  if (icon.kind === 'logo' && !broken) {
+    return (
+      <img
+        src={`https://www.google.com/s2/favicons?domain=${icon.domain}&sz=${size * 2}`}
+        alt=""
+        width={size}
+        height={size}
+        style={{ borderRadius: 4, verticalAlign: 'middle' }}
+        // Si el dominio no tiene favicon de verdad (dominio adivinado
+        // que resulta no existir o no responder), se cae al icono
+        // genérico en vez de dejar un hueco de imagen rota.
+        onError={() => setBroken(true)}
+      />
+    )
+  }
+  return (
+    <span style={{ fontSize: size }} aria-hidden="true">
+      {icon.kind === 'emoji' ? icon.icon : '🏬'}
+    </span>
   )
 }
 
@@ -390,8 +427,9 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
                   setEditingId(s.id)
                   setEditingName(s.name)
                 }}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
+                <StoreIconBadge name={s.name} />
                 {s.name}
               </span>
               <button

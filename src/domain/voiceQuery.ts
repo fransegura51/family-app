@@ -142,14 +142,20 @@ export function stripListFillers(text: string): string {
 // pantalla actual, como antes.
 export function detectTargetFromText(text: string): 'calendario' | 'compras' | null {
   const n = normalize(text)
-  if (/\bcalendario\b/.test(n) || MONTHS.some((m) => n.includes(` de ${m}`))) return 'calendario'
-  // Cualquier palabra de la familia "compr-" (compra, compras, comprar,
-  // comprado...) — antes solo contaba el verbo "comprar" o la frase
+  // "Compra"/"comprar" es una palabra clave mucho más específica y
+  // deliberada que un simple nombre de mes suelto — se comprueba
+  // PRIMERO, antes que el calendario, para que un mes que apareciera
+  // por casualidad dentro de una lista de la compra larga (bug real
+  // reportado: "Mercadona, lista de la compra, patata, lechuga, leche"
+  // se apuntó en el calendario en vez de en la compra) nunca pueda
+  // ganarle a una frase que ya dice "compra" bien claro. Cualquier
+  // palabra de la familia "compr-" (compra, compras, comprar,
+  // comprado...) cuenta — antes solo el verbo "comprar" o la frase
   // exacta "lista de la compra", y decir "ponlo en la compra" o
   // "apúntamelo en las compras" (formas tan naturales como esas) no
-  // coincidía con nada y se perdía la pista (bug real reportado: se
-  // apuntaba en Tareas en vez de en la lista de la compra).
+  // coincidía con nada y se perdía la pista.
   if (/\bcompr\w*\b/.test(n)) return 'compras'
+  if (/\bcalendario\b/.test(n) || MONTHS.some((m) => n.includes(` de ${m}`))) return 'calendario'
   // Ya no hay una pestaña de "tareas" aparte — una tarea es un evento
   // del calendario (petición real: "quitamos la pestaña de tarea...
   // lo dejamos todo como evento"), así que decir "tarea" también apunta

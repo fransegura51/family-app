@@ -1,9 +1,9 @@
 // Dictado por voz (Web Speech API) y respuesta hablada — nativos del
 // navegador, sin coste ni servicio externo. Safari/iOS tiene la API bajo
-// el prefijo webkit y con peor soporte que Chrome (no corta sola la
-// escucha al detectar silencio, por ejemplo), así que todo aquí usa
-// modo continuo con reinicio automático propio en vez de fiarse del
-// comportamiento de cada navegador — así funciona igual en los dos.
+// el prefijo webkit. Para escuchar varias frases seguidas sin que la
+// usuaria tenga que tocar nada entre una y otra, se encadenan sesiones
+// de UNA frase cada una (ver listenContinuous) en vez de fiarse del modo
+// "continuo" nativo del navegador, que en móvil corta a media frase.
 
 interface SpeechRecognitionAlternativeLike {
   transcript: string
@@ -62,14 +62,23 @@ export interface ListenSession {
   stop: () => void
 }
 
-// Escucha en modo continuo hasta que se llama a stop() — no una sola
-// frase y para, sino que se queda escuchando de verdad ("activarla por
-// voz... que lo podamos hacer todo con voz", petición real de la
-// usuaria). El navegador (sobre todo en móvil) corta la sesión de vez en
-// cuando aunque se siga hablando, así que al terminar sola (onend, sin
-// haberla parado nosotros) se vuelve a arrancar por dentro sin que se
-// note desde fuera — lo ya dicho en sesiones anteriores no se pierde,
-// se conserva y se añade lo nuevo.
+// Escucha varias frases seguidas hasta que se llama a stop() — no una
+// sola frase y para, sino que se queda escuchando de verdad ("activarla
+// por voz... que lo podamos hacer todo con voz", petición real de la
+// usuaria). OJO con cómo: cada sesión de reconocimiento es de UNA frase
+// (continuous = false) — es el propio motor quien decide cuándo esa
+// frase ha terminado (silencio detectado), y solo ENTONCES se da por
+// buena y se abre una sesión nueva para la siguiente.
+//
+// Se probó primero con continuous = true y reinicio propio en cada
+// onend, pero en Android el navegador corta la sesión sola muchas veces
+// dentro de una misma frase (no espera a que se termine de hablar) — y
+// como el reinicio guardaba lo que hubiera en ese momento aunque
+// todavía no fuera un resultado definitivo, cada corte volvía a oír el
+// mismo trozo y lo dejaba pegado una y otra vez ("Pepa apunta en la
+// Pepa apunta en la Pepa apunta en la...", bug real reportado con
+// captura de pantalla). Encadenando frases COMPLETAS en vez de cortes a
+// medias, cada trozo se añade una sola vez.
 export function listenContinuous(handlers: {
   onTranscript: (text: string) => void
   onError: (message: string) => void
@@ -87,17 +96,17 @@ export function listenContinuous(handlers: {
 
   let stoppedByUser = false
   let recognition: SpeechRecognitionLike | null = null
-  let committedText = ''
-  let sessionText = ''
+  let committedText = '' // frases ya terminadas y confirmadas
+  let interimText = '' // lo que se está oyendo ahora mismo, todavía sin terminar
 
   function fullText(): string {
-    return (committedText + ' ' + sessionText).trim()
+    return (committedText + ' ' + interimText).trim()
   }
 
   function startSession() {
     const r = new RecognitionCtor()
     r.lang = 'es-ES'
-    r.continuous = true
+    r.continuous = false
     r.interimResults = true
 
     r.onresult = (event) => {
@@ -105,22 +114,26 @@ export function listenContinuous(handlers: {
       for (let i = 0; i < event.results.length; i++) {
         text += event.results[i]?.[0]?.transcript ?? ''
       }
-      sessionText = text
+      interimText = text
       handlers.onTranscript(fullText())
     }
 
     r.onerror = (event) => {
-      // 'no-speech'/'aborted' son normales en modo continuo (silencio
-      // entre frases, o el reinicio que hacemos nosotros) — no son un
-      // fallo real, no hay que avisar de nada.
+      // 'no-speech'/'aborted' son normales (silencio entre frases, o el
+      // reinicio que hacemos nosotros) — no son un fallo real.
       if (event.error === 'no-speech' || event.error === 'aborted') return
       handlers.onError(speechErrorMessage(event.error))
     }
 
     r.onend = () => {
       if (stoppedByUser) return
-      committedText = fullText()
-      sessionText = ''
+      // La frase ha terminado de verdad (el motor ha detectado el
+      // silencio de después) — se confirma y se abre sesión nueva para
+      // la siguiente, sin volver a tocar lo ya dicho.
+      if (interimText) {
+        committedText = fullText()
+        interimText = ''
+      }
       try {
         startSession()
       } catch {

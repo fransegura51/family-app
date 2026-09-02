@@ -273,15 +273,6 @@ button {
   outline: 2px solid #fecaca;
 }
 
-/* Antes era un link-button discreto y la usuaria no lo encontraba
-   ("dónde está FatSecret") — con color e icono propios destaca frente
-   al resto de botones del formulario en vez de parecer un enlace más. */
-.fatsecret-search-button {
-  background: #1c9c6d;
-  color: white;
-  width: 100%;
-}
-
 .member-form {
   display: flex;
   flex-direction: column;

@@ -18,7 +18,6 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { searchRecipe } from '@/services/recipeSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
-import { searchFoods, getFoodDetail, type FoodSearchResult, type PerGram } from '@/services/fatsecret'
 import {
   addBodyMeasurement,
   deleteBodyMeasurement,
@@ -569,19 +568,9 @@ function AddFoodLogForm({
     setSelectedIds((prev) => (prev.length === members.length ? [activeMemberId] : members.map((m) => m.id)))
   }
 
-  const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
-  const [results, setResults] = useState<FoodSearchResult[] | null>(null)
-  const [pickingId, setPickingId] = useState<string | null>(null)
-
-  // Cuando FatSecret da datos "por gramo" para el alimento elegido, se
-  // guardan aquí para poder recalcular calorías/macros al vuelo según
-  // los gramos que teclee la usuaria ("100g de pechuga de pollo").
-  const [perGram, setPerGram] = useState<PerGram | null>(null)
-  const [grams, setGrams] = useState('100')
-
   // Últimos alimentos de esta persona, para repetir "café con leche" con
-  // un toque en vez de escribirlo y buscarlo en FatSecret cada vez —
-  // solo el más reciente de cada nombre, sin importar el día.
+  // un toque en vez de escribirlo de cero cada vez — solo el más
+  // reciente de cada nombre, sin importar el día.
   const [recentFoods, setRecentFoods] = useState<FoodLog[]>([])
 
   function loadRecent() {
@@ -613,63 +602,6 @@ function AddFoodLogForm({
     setCarbsG(log.carbsG != null ? String(log.carbsG) : '')
     setFatG(log.fatG != null ? String(log.fatG) : '')
     setIsEstimated(log.isEstimated)
-    setPerGram(null)
-    setGrams('100')
-  }
-
-  async function handleSearch() {
-    if (!description.trim()) return
-    setSearchStatus('searching')
-    setResults(null)
-    try {
-      const found = await searchFoods(description.trim())
-      if (found.length === 0) {
-        setSearchStatus('not-found')
-        return
-      }
-      setResults(found)
-      setSearchStatus('idle')
-    } catch {
-      setSearchStatus('error')
-    }
-  }
-
-  function applyGrams(pg: PerGram, g: string) {
-    const n = Number(g)
-    const amount = Number.isFinite(n) && n > 0 ? n : 0
-    setCalories(String(Math.round(pg.calories * amount)))
-    setProteinG(String(Math.round(pg.proteinG * amount * 10) / 10))
-    setCarbsG(String(Math.round(pg.carbsG * amount * 10) / 10))
-    setFatG(String(Math.round(pg.fatG * amount * 10) / 10))
-  }
-
-  function handleGramsChange(g: string) {
-    setGrams(g)
-    if (perGram) applyGrams(perGram, g)
-  }
-
-  async function handlePick(result: FoodSearchResult) {
-    setPickingId(result.id)
-    try {
-      const detail = await getFoodDetail(result.id)
-      setDescription(detail.name)
-      setIsEstimated(false)
-      setResults(null)
-      if (detail.perGram) {
-        setPerGram(detail.perGram)
-        applyGrams(detail.perGram, grams)
-      } else {
-        setPerGram(null)
-        setCalories(detail.calories != null ? String(Math.round(detail.calories)) : '')
-        setProteinG(detail.proteinG != null ? String(detail.proteinG) : '')
-        setCarbsG(detail.carbsG != null ? String(detail.carbsG) : '')
-        setFatG(detail.fatG != null ? String(detail.fatG) : '')
-      }
-    } catch {
-      setError('No se pudo leer el detalle de ese alimento')
-    } finally {
-      setPickingId(null)
-    }
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -700,9 +632,6 @@ function AddFoodLogForm({
       setCarbsG('')
       setFatG('')
       setIsEstimated(true)
-      setSearchStatus('idle')
-      setPerGram(null)
-      setGrams('100')
       setSelectedIds([activeMemberId])
       onAdded()
     } catch (err) {
@@ -770,28 +699,6 @@ function AddFoodLogForm({
       {showDetail && (
         <>
           <label>
-            Cantidad (gramos)
-            <input type="number" value={grams} onChange={(e) => handleGramsChange(e.target.value)} min="1" />
-          </label>
-          <button
-            type="button"
-            className="fatsecret-search-button"
-            onClick={handleSearch}
-            disabled={!description.trim() || searchStatus === 'searching'}
-          >
-            {searchStatus === 'searching' ? 'Buscando en FatSecret…' : '🔍 Buscar datos reales en FatSecret'}
-          </button>
-          {searchStatus === 'not-found' && (
-            <p className="muted">No he encontrado "{description}" en FatSecret — pon los datos a mano abajo.</p>
-          )}
-          {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
-          {!perGram && (
-            <p className="muted">
-              Busca el alimento y elige un resultado para que las calorías y macros se calculen solas según los
-              gramos.
-            </p>
-          )}
-          <label>
             Calorías (opcional)
             <input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} />
           </label>
@@ -821,36 +728,6 @@ function AddFoodLogForm({
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Registrar'}
       </button>
-
-      {results && (
-        <div className="modal-overlay" onClick={() => setResults(null)}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="section-title" style={{ margin: 0 }}>
-                Resultados en FatSecret
-              </h2>
-              <button type="button" className="modal-close" onClick={() => setResults(null)} aria-label="Cerrar">
-                ✕
-              </button>
-            </div>
-            <div className="event-list">
-              {results.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className="card recipe-card"
-                  style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }}
-                  disabled={pickingId === r.id}
-                  onClick={() => handlePick(r)}
-                >
-                  <strong>{r.name}</strong>
-                  <p className="muted">{pickingId === r.id ? 'Cargando…' : r.description}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </form>
   )
 }

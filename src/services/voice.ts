@@ -103,6 +103,19 @@ export function listenContinuous(handlers: {
     return (committedText + ' ' + interimText).trim()
   }
 
+  // Cada vez que el motor corta por silencio y se encadena una sesión
+  // nueva es, de hecho, la misma señal de pausa que separaría dos
+  // productos al dictar una lista de la compra ("patatas... queso...
+  // pan Bimbo") — bug real reportado: sin comas de verdad (el móvil no
+  // las pone), se unían en un solo apunte larguísimo en vez de guardarse
+  // cada uno por separado. Uniendo cada trozo confirmado con una coma en
+  // vez de un espacio, splitEntries (que ya separa por comas) los separa
+  // solo con reutilizar esa misma pausa que el propio motor ya detecta.
+  function commitInterim() {
+    committedText = committedText ? `${committedText}, ${interimText}` : interimText
+    interimText = ''
+  }
+
   function startSession() {
     const r = new RecognitionCtor()
     r.lang = 'es-ES'
@@ -131,8 +144,7 @@ export function listenContinuous(handlers: {
       // silencio de después) — se confirma y se abre sesión nueva para
       // la siguiente, sin volver a tocar lo ya dicho.
       if (interimText) {
-        committedText = fullText()
-        interimText = ''
+        commitInterim()
       }
       try {
         startSession()

@@ -1,17 +1,13 @@
 import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  addInventoryItem,
   addShoppingItem,
   completeShoppingTrip,
   createShoppingTrip,
-  deleteInventoryItem,
   deleteShoppingItem,
   deleteShoppingTrip,
-  listInventoryItems,
   listShoppingItems,
   listShoppingTrips,
   reorderShoppingItems,
-  updateInventoryQuantity,
   updateShoppingItemStatus,
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
@@ -21,15 +17,12 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { uploadReceipt } from '@/data/receipts'
 import { computeProductStats } from '@/domain/products'
-import { analyzeFridgePhoto } from '@/services/fridgePhoto'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { normalize } from '@/domain/voiceQuery'
 import { getStoreIcon } from '@/domain/storeIcons'
 import type {
   FamilyMember,
-  InventoryCategory,
-  InventoryItem,
   Product,
   ProductPrice,
   ShoppingItem,
@@ -100,7 +93,7 @@ function buildSuggestions(products: Product[], prices: ProductPrice[]): ProductS
   })
 }
 
-const SUB_TABS = ['Lista', 'Programadas', 'Inventario', 'Memoria'] as const
+const SUB_TABS = ['Lista', 'Programadas', 'Memoria'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 export function ShoppingScreen() {
@@ -123,7 +116,6 @@ export function ShoppingScreen() {
 
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Programadas' && <TripsTab />}
-      {tab === 'Inventario' && <InventoryTab />}
       {tab === 'Memoria' && <MemoryTab />}
     </div>
   )
@@ -1246,272 +1238,6 @@ function AddTripForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Programar'}
-      </button>
-    </form>
-  )
-}
-
-// ---------------------------------------------------------------------
-// Inventario (Skill 12)
-// ---------------------------------------------------------------------
-
-const CATEGORIES: { value: InventoryCategory; label: string }[] = [
-  { value: 'frigorifico', label: 'Frigorífico' },
-  { value: 'congelador', label: 'Congelador' },
-  { value: 'despensa', label: 'Despensa' },
-  { value: 'limpieza', label: 'Limpieza' },
-  { value: 'higiene', label: 'Higiene' },
-  { value: 'bebe', label: 'Bebé' },
-  { value: 'otros', label: 'Otros' },
-]
-
-function InventoryTab() {
-  const [items, setItems] = useState<InventoryItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [showFridgePhoto, setShowFridgePhoto] = useState(false)
-
-  function reload() {
-    setLoading(true)
-    listInventoryItems()
-      .then(setItems)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(reload, [])
-
-  const grouped = useMemo(() => {
-    const map = new Map<InventoryCategory, InventoryItem[]>()
-    for (const item of items) {
-      const list = map.get(item.category) ?? []
-      list.push(item)
-      map.set(item.category, list)
-    }
-    return map
-  }, [items])
-
-  if (loading) return <p className="muted">Cargando inventario…</p>
-
-  return (
-    <div>
-      {error && <p className="error">{error}</p>}
-      {CATEGORIES.filter((c) => grouped.has(c.value)).map((c) => (
-        <div key={c.value}>
-          <h2 className="section-title">{c.label}</h2>
-          <div className="event-list">
-            {grouped.get(c.value)!.map((item) => (
-              <InventoryRow key={item.id} item={item} onChanged={reload} />
-            ))}
-          </div>
-        </div>
-      ))}
-      {items.length === 0 && <p className="muted">El inventario está vacío.</p>}
-
-      <button type="button" className="voice-mic-button" onClick={() => setShowFridgePhoto(true)}>
-        📷 Reconocer con foto del frigorífico
-      </button>
-
-      <AddInventoryForm onAdded={reload} />
-
-      {showFridgePhoto && (
-        <FridgePhotoModal
-          onClose={() => setShowFridgePhoto(false)}
-          onAdded={() => {
-            setShowFridgePhoto(false)
-            reload()
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-interface DraftFridgeItem {
-  name: string
-  checked: boolean
-}
-
-// Analiza la foto con Gemini (nivel gratuito, vía función de servidor —
-// la clave nunca toca el cliente) y enseña lo detectado como checklist
-// editable: el reconocimiento por foto puede fallar o confundirse, así
-// que nada se guarda sin que la familia lo confirme antes.
-function FridgePhotoModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [file, setFile] = useState<File | null>(null)
-  const [status, setStatus] = useState<'idle' | 'analyzing' | 'done' | 'error'>('idle')
-  const [draftItems, setDraftItems] = useState<DraftFridgeItem[]>([])
-  const [category, setCategory] = useState<InventoryCategory>('frigorifico')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  async function handleAnalyze() {
-    if (!file) return
-    setStatus('analyzing')
-    setError(null)
-    try {
-      const items = await analyzeFridgePhoto(file)
-      setDraftItems(items.map((name) => ({ name, checked: true })))
-      setStatus('done')
-    } catch (err) {
-      setStatus('error')
-      setError(err instanceof Error ? err.message : 'No se pudo analizar la foto')
-    }
-  }
-
-  function toggleItem(i: number) {
-    setDraftItems((prev) => prev.map((d, idx) => (idx === i ? { ...d, checked: !d.checked } : d)))
-  }
-
-  function renameItem(i: number, name: string) {
-    setDraftItems((prev) => prev.map((d, idx) => (idx === i ? { ...d, name } : d)))
-  }
-
-  async function handleAddSelected() {
-    setSaving(true)
-    setError(null)
-    try {
-      for (const item of draftItems) {
-        if (!item.checked || !item.name.trim()) continue
-        await addInventoryItem({ name: item.name.trim(), category, quantity: '' })
-      }
-      onAdded()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Foto del frigorífico
-          </h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-
-        <label>
-          Foto
-          <input type="file" accept="image/*" capture="environment" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        </label>
-
-        {file && status !== 'done' && (
-          <button type="button" className="voice-mic-button" onClick={handleAnalyze} disabled={status === 'analyzing'}>
-            {status === 'analyzing' ? 'Analizando la foto…' : '🔍 Reconocer alimentos'}
-          </button>
-        )}
-
-        {error && <p className="error">{error}</p>}
-
-        {status === 'done' && (
-          <div className="day-modal-group">
-            <p className="muted">
-              {draftItems.length === 0
-                ? 'No he reconocido ningún alimento — prueba con otra foto o añádelos a mano.'
-                : 'Marca los que quieras guardar (puedes corregir el nombre):'}
-            </p>
-            {draftItems.map((item, i) => (
-              <div key={i} className="receipt-line-row">
-                <input type="checkbox" checked={item.checked} onChange={() => toggleItem(i)} />
-                <input type="text" value={item.name} onChange={(e) => renameItem(i, e.target.value)} />
-              </div>
-            ))}
-            {draftItems.length > 0 && (
-              <>
-                <label>
-                  Categoría
-                  <select value={category} onChange={(e) => setCategory(e.target.value as InventoryCategory)}>
-                    {CATEGORIES.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button type="button" onClick={handleAddSelected} disabled={saving}>
-                  {saving ? 'Guardando…' : 'Añadir seleccionados al inventario'}
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function InventoryRow({ item, onChanged }: { item: InventoryItem; onChanged: () => void }) {
-  const [quantity, setQuantity] = useState(item.quantity ?? '')
-
-  return (
-    <div className="card task-card">
-      <div className="task-card-main">
-        <strong>{item.name}</strong>
-      </div>
-      <input
-        type="text"
-        value={quantity}
-        onChange={(e) => setQuantity(e.target.value)}
-        onBlur={() => updateInventoryQuantity(item.id, quantity).then(onChanged)}
-        placeholder="cantidad"
-        style={{ width: 90 }}
-      />
-      <ConfirmButton label="Eliminar" onConfirm={() => deleteInventoryItem(item.id).then(onChanged)} />
-    </div>
-  )
-}
-
-function AddInventoryForm({ onAdded }: { onAdded: () => void }) {
-  const [name, setName] = useState('')
-  const [category, setCategory] = useState<InventoryCategory>('frigorifico')
-  const [quantity, setQuantity] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      await addInventoryItem({ name, category, quantity })
-      setName('')
-      setQuantity('')
-      onAdded()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Añadir al inventario</h2>
-      <label>
-        Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
-      </label>
-      <label>
-        Categoría
-        <select value={category} onChange={(e) => setCategory(e.target.value as InventoryCategory)}>
-          {CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Cantidad
-        <input type="text" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="2 unidades" />
-      </label>
-      {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Añadiendo…' : 'Añadir'}
       </button>
     </form>
   )

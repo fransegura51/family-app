@@ -163,11 +163,18 @@ export function stripActivateCommand(text: string): { activated: boolean; text: 
 // frase larga).
 const TARGET_PLACE = '(?:tareas|la lista de la compra|la compra|las compras)'
 
+// "Apúntamelo", "ponlo", "apúntala"... los pronombres pegados al verbo
+// ("me", "lo", "la") son tan naturales como decir "apunta" a secas —
+// antes solo se reconocía el verbo suelto o con "me", y con un
+// pronombre pegado detrás la frase entera se colaba en el título en vez
+// de quitarse como coletilla.
+const SAVE_VERB_ALT = '(?:apunta|anota|pon)(?:me)?(?:lo|la)?'
+
 const LIST_FILLER_PREFIXES = [
   new RegExp(`^vamos a hacer\\s*(${TARGET_PLACE})?[,.]?\\s*`, 'i'),
   new RegExp(`^hagamos\\s*(${TARGET_PLACE})?[,.]?\\s*`, 'i'),
   new RegExp(`^vamos a apuntar\\s*(en ${TARGET_PLACE})?[,.]?\\s*(que)?\\s*`, 'i'),
-  new RegExp(`^(apunta|apuntame|anota|anotame|ponme|pon)\\s*(en ${TARGET_PLACE})?[,.]?\\s*(que)?\\s*`, 'i'),
+  new RegExp(`^${SAVE_VERB_ALT}\\s*(en ${TARGET_PLACE})?[,.]?\\s*(que)?\\s*`, 'i'),
 ]
 
 export function stripListFillers(text: string): string {
@@ -208,8 +215,9 @@ export function detectTargetFromText(text: string): 'calendario' | 'compras' | '
 // confundían porque una y otra comparten ese trocito de frase). Cuando
 // la frase empieza así, se salta toda la detección de preguntas y se
 // deja caer directo en crear/guardar, tal cual se ha pedido.
-const SAVE_VERB_RE =
-  /^(apunta(me)?|anota(me)?|pon(me)?|anade(me)?|agrega(me)?|crea|guarda(me)?|vamos a apuntar|vamos a hacer|hagamos)\b/
+const SAVE_VERB_RE = new RegExp(
+  `^(?:${SAVE_VERB_ALT}|anade(?:me)?|agrega(?:me)?|crea|guarda(?:me)?(?:lo|la)?|vamos a apuntar|vamos a hacer|hagamos)\\b`,
+)
 
 // `today` se recibe desde fuera (no `new Date()` aquí) para poder
 // probar esta función con una fecha fija, igual que el resto del

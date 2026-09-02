@@ -1,8 +1,17 @@
 import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { createEvent, deleteEvent, deleteEventOccurrence, listUpcomingEvents, updateEvent } from '@/data/calendar'
+import {
+  completeEventOccurrence,
+  createEvent,
+  deleteEvent,
+  deleteEventOccurrence,
+  listEventCompletions,
+  listUpcomingEvents,
+  updateEvent,
+  type EventCompletion,
+} from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
-import { deleteTask, listCompletions, listTasks } from '@/data/tasks'
+import { completeTask, deleteTask, listCompletions, listTasks } from '@/data/tasks'
 import { isTaskDueOn } from '@/domain/tasks'
 import {
   addFeed,
@@ -83,6 +92,7 @@ export function CalendarScreen() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [completions, setCompletions] = useState<TaskCompletion[]>([])
+  const [eventCompletions, setEventCompletions] = useState<EventCompletion[]>([])
   const [externalEvents, setExternalEvents] = useState<ExternalCalendarEvent[]>([])
   const [externalFeeds, setExternalFeeds] = useState<ExternalCalendarFeed[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
@@ -119,8 +129,9 @@ export function CalendarScreen() {
       listExternalEvents(),
       listFeeds(),
       listContacts(),
+      listEventCompletions(),
     ])
-      .then(([e, m, h, t, c, ee, ef, ct]) => {
+      .then(([e, m, h, t, c, ee, ef, ct, evc]) => {
         setEvents(e)
         setMembers(m)
         setHolidayDates(h)
@@ -129,6 +140,7 @@ export function CalendarScreen() {
         setExternalEvents(ee)
         setExternalFeeds(ef)
         setContacts(ct)
+        setEventCompletions(evc)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -185,6 +197,9 @@ export function CalendarScreen() {
 
   // Un evento recurrente puede caer varias veces dentro de la cuadrícula
   // visible (42 días) — se calcula una vez por render del mes, no por celda.
+  // Igual que con las tareas: una ocurrencia ya marcada como hecha no
+  // sigue apareciendo como pendiente ese día (petición real: poder
+  // marcar "hecho" también en los eventos, no solo en las tareas).
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
     if (monthDays.length === 0) return map
@@ -192,13 +207,14 @@ export function CalendarScreen() {
     const rangeEnd = monthDays[monthDays.length - 1].dateStr
     for (const ev of filteredEvents) {
       for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd, holidayDates)) {
+        if (eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === dateStr)) continue
         const list = map.get(dateStr) ?? []
         list.push(ev)
         map.set(dateStr, list)
       }
     }
     return map
-  }, [filteredEvents, monthDays, holidayDates])
+  }, [filteredEvents, monthDays, holidayDates, eventCompletions])
 
   const filteredTasks = useMemo(
     () =>
@@ -354,6 +370,30 @@ export function CalendarScreen() {
     }
   }
 
+  // Botón "Hecho" al lado de cada tarea/evento del día — petición real.
+  // Antes, en el calendario, una tarea o cita sin marcar seguía
+  // apareciendo igual pasada su hora ("Pepa" tampoco avisaba de que
+  // seguía pendiente): con esto se puede marcar como hecha desde aquí
+  // mismo, sin tener que ir a Tareas.
+  async function handleCompleteTask(taskId: string, memberId: string) {
+    try {
+      const task = tasks.find((t) => t.id === taskId)
+      await completeTask(taskId, memberId, task?.points ?? 0)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo marcar como hecho')
+    }
+  }
+
+  async function handleCompleteEvent(eventId: string, dateStr: string) {
+    try {
+      await completeEventOccurrence(eventId, dateStr)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo marcar como hecho')
+    }
+  }
+
   if (loading) return <div className="screen">Cargando calendario…</div>
 
   const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
@@ -480,6 +520,8 @@ export function CalendarScreen() {
               onDelete={handleDelete}
               onDeleteOccurrence={handleDeleteOccurrence}
               onDeleteTask={handleDeleteTask}
+              onCompleteTask={handleCompleteTask}
+              onCompleteEvent={handleCompleteEvent}
               onEventChanged={() => {
                 setEditingId(null)
                 reload()
@@ -558,6 +600,7 @@ interface AgendaEntry {
   onEdit?: () => void
   onDeleteSeries?: () => void
   onDeleteOccurrence?: () => void
+  onComplete?: () => void
 }
 
 // Ventana emergente al pinchar un día — agenda cronológica de arriba
@@ -579,6 +622,8 @@ function DayModal({
   onDelete,
   onDeleteOccurrence,
   onDeleteTask,
+  onCompleteTask,
+  onCompleteEvent,
   onEventChanged,
   onAdded,
   onClose,
@@ -598,6 +643,8 @@ function DayModal({
   onDelete: (id: string) => void
   onDeleteOccurrence: (id: string, dateStr: string) => void
   onDeleteTask: (id: string) => void
+  onCompleteTask: (taskId: string, memberId: string) => void
+  onCompleteEvent: (eventId: string, dateStr: string) => void
   onEventChanged: () => void
   onAdded: () => void
   onClose: () => void
@@ -628,6 +675,7 @@ function DayModal({
       onEdit: () => onEdit(ev.id),
       onDeleteSeries: () => onDelete(ev.id),
       onDeleteOccurrence: () => onDeleteOccurrence(ev.id, selectedDate),
+      onComplete: () => onCompleteEvent(ev.id, selectedDate),
     })),
     ...tasks.map((t) => ({
       key: `task-${t.id}`,
@@ -642,6 +690,7 @@ function DayModal({
       isExternal: false,
       recurring: false,
       onDeleteSeries: () => onDeleteTask(t.id),
+      onComplete: t.memberId ? () => onCompleteTask(t.id, t.memberId!) : undefined,
     })),
     // Citas del calendario externo enlazado (Google/Outlook/...) — de
     // solo lectura aquí, no se editan ni se borran desde el calendario
@@ -802,6 +851,11 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
         {entry.title}
         {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
       </span>
+      {entry.onComplete && (
+        <button type="button" className="agenda-allday-chip-action" onClick={entry.onComplete}>
+          ✓ Hecho
+        </button>
+      )}
       {canDelete && (
         <button
           type="button"
@@ -839,11 +893,22 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
         {entry.title}
       </div>
       {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}
-      {entry.onEdit && !confirming && (
+      {!confirming && (entry.onEdit || entry.onComplete) && (
         <div className="agenda-card-actions">
-          <button type="button" onClick={entry.onEdit}>
-            Editar
-          </button>
+          {/* Petición real: poder marcar "hecho" desde el propio
+              calendario, tarea o evento — antes solo se podía editar o
+              borrar. Al marcarlo, la ocurrencia deja de salir como
+              pendiente ese día (igual que ya pasaba con las tareas). */}
+          {entry.onComplete && (
+            <button type="button" onClick={entry.onComplete}>
+              ✓ Hecho
+            </button>
+          )}
+          {entry.onEdit && (
+            <button type="button" onClick={entry.onEdit}>
+              Editar
+            </button>
+          )}
         </div>
       )}
       {confirming && (

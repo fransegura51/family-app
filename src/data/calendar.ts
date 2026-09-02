@@ -176,6 +176,36 @@ export async function deleteEventOccurrence(id: string, dateStr: string): Promis
   if (error) throw error
 }
 
+export interface EventCompletion {
+  eventId: string
+  occurrenceDate: string
+}
+
+// Qué ocurrencias de qué eventos ya se han marcado como hechas — por
+// ocurrencia (event_id + fecha), no por evento entero, así un evento
+// recurrente se puede marcar hecho un día sin afectar a los demás.
+export async function listEventCompletions(): Promise<EventCompletion[]> {
+  const { data, error } = await supabase.from('calendar_event_completions').select('event_id, occurrence_date')
+  if (error) throw error
+  return data.map((r) => ({ eventId: r.event_id, occurrenceDate: r.occurrence_date }))
+}
+
+export async function completeEventOccurrence(eventId: string, occurrenceDate: string): Promise<void> {
+  const { error } = await supabase
+    .from('calendar_event_completions')
+    .insert({ event_id: eventId, occurrence_date: occurrenceDate })
+  if (error) throw new Error(error.message)
+}
+
+export async function uncompleteEventOccurrence(eventId: string, occurrenceDate: string): Promise<void> {
+  const { error } = await supabase
+    .from('calendar_event_completions')
+    .delete()
+    .eq('event_id', eventId)
+    .eq('occurrence_date', occurrenceDate)
+  if (error) throw new Error(error.message)
+}
+
 export interface ReminderEvent {
   id: string
   title: string

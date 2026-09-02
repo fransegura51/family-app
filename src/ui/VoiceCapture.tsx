@@ -201,13 +201,17 @@ async function answerTasksQuery(
   // "Todos" — sin decir de quién, se cuenta la agenda de TODA la familia,
   // cada tarea/cita con quién tiene que hacerla — "Fernando tiene que
   // bañarse a las 6, Eric a las 7..." en vez de un listado plano sin
-  // decir de quién es cada una. Preguntando por HOY, siempre se cuenta
-  // desde la hora actual (no hace falta decir "ahora" — así ya se probó
-  // y confirmó antes); preguntando por MAÑANA no aplica, ahí no hay
-  // "ya ha pasado".
+  // decir de quién es cada una. Antes, preguntando por HOY, se
+  // descartaba sola cualquier cosa cuya hora ya hubiera pasado, aunque
+  // no se hubiera hecho — bug real reportado: "si tenía bajar la
+  // basura a las cinco y son las seis, Pepa no me dice que tengo que
+  // bajar la basura". Que haya pasado la hora no significa que esté
+  // hecho; solo se quita lo que de verdad está marcado como hecho. El
+  // filtro por hora ("ya ha pasado, no cuenta") solo se aplica si de
+  // verdad se ha preguntado "ahora" explícitamente.
   const memberById = new Map(members.map((m) => [m.id, m]))
   due = due.filter((t) => {
-    if (isToday && t.timeOfDay && toMinutes(t.timeOfDay) < nowMinutes) return false
+    if (applyNowFilter && t.timeOfDay && toMinutes(t.timeOfDay) < nowMinutes) return false
     const doneBy = t.memberId
       ? completions.some((c) => c.taskId === t.id && c.memberId === t.memberId && c.completedDate === target)
       : completions.some((c) => c.taskId === t.id && c.completedDate === target)
@@ -215,7 +219,7 @@ async function answerTasksQuery(
   })
 
   let allEvents = eventsOnTarget
-  if (isToday) {
+  if (applyNowFilter) {
     allEvents = allEvents.filter((ev) => ev.allDay || eventMinutes(ev) >= nowMinutes)
   }
 

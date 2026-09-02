@@ -24,6 +24,6 @@ export function nextBirthday(memberId: string, birthDate: string): UpcomingBirth
   return { memberId, birthDate, nextDate: toDateStr(next), daysUntil, turningAge }
 }
 
-export function sortByDaysUntil(list: UpcomingBirthday[]): UpcomingBirthday[] {
+export function sortByDaysUntil<T extends UpcomingBirthday>(list: T[]): T[] {
   return [...list].sort((a, b) => a.daysUntil - b.daysUntil)
 }

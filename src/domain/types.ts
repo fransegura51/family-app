@@ -305,6 +305,7 @@ export interface Contact {
   phone: string | null
   email: string | null
   notes: string | null
+  birthDate: string | null
 }
 
 export interface GalleryPhoto {

@@ -1,9 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { addContact, deleteContact, listContacts } from '@/data/contacts'
+import { addContact, deleteContact, listContacts, updateContactBirthDate } from '@/data/contacts'
 import { isContactPickerSupported, pickContacts, type PickedContact } from '@/services/contactPicker'
 import type { Contact } from '@/domain/types'
 
 const CATEGORIES = ['Colegio', 'Médico', 'Emergencia', 'Familia', 'Otros']
+
+function formatBirthDate(d: string): string {
+  return new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+}
 
 export function ContactsScreen() {
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -28,30 +32,66 @@ export function ContactsScreen() {
       {error && <p className="error">{error}</p>}
       <div className="event-list">
         {contacts.map((c) => (
-          <div key={c.id} className="card task-card">
-            <div className="task-card-main">
-              <strong>{c.name}</strong>
-              <p className="muted">
-                {c.category}
-                {c.phone && ` · ${c.phone}`}
-                {c.email && ` · ${c.email}`}
-              </p>
-              {c.notes && <p className="muted">{c.notes}</p>}
-              {c.phone && (
-                <a href={`tel:${c.phone}`} className="link-button">
-                  Llamar
-                </a>
-              )}
-            </div>
-            <button type="button" className="link-button" onClick={() => deleteContact(c.id).then(reload)}>
-              Eliminar
-            </button>
-          </div>
+          <ContactCard key={c.id} contact={c} onChanged={reload} />
         ))}
         {contacts.length === 0 && <p className="muted">No hay contactos guardados.</p>}
       </div>
       <ImportContactsForm onAdded={reload} />
       <AddContactForm existingContacts={contacts} onAdded={reload} />
+    </div>
+  )
+}
+
+function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: () => void }) {
+  const [editingBirthday, setEditingBirthday] = useState(false)
+  const [birthDate, setBirthDate] = useState(c.birthDate ?? '')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSaveBirthday() {
+    setSaving(true)
+    try {
+      await updateContactBirthDate(c.id, birthDate || null)
+      setEditingBirthday(false)
+      onChanged()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card task-card">
+      <div className="task-card-main">
+        <strong>{c.name}</strong>
+        <p className="muted">
+          {c.category}
+          {c.phone && ` · ${c.phone}`}
+          {c.email && ` · ${c.email}`}
+        </p>
+        {c.notes && <p className="muted">{c.notes}</p>}
+        {editingBirthday ? (
+          <div className="inline-fields">
+            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+            <button type="button" className="link-button" onClick={handleSaveBirthday} disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </button>
+            <button type="button" className="link-button" onClick={() => setEditingBirthday(false)}>
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="link-button" onClick={() => setEditingBirthday(true)}>
+            {c.birthDate ? `🎂 ${formatBirthDate(c.birthDate)}` : '🎂 Añadir cumpleaños'}
+          </button>
+        )}
+        {c.phone && (
+          <a href={`tel:${c.phone}`} className="link-button">
+            Llamar
+          </a>
+        )}
+      </div>
+      <button type="button" className="link-button" onClick={() => deleteContact(c.id).then(onChanged)}>
+        Eliminar
+      </button>
     </div>
   )
 }
@@ -63,6 +103,8 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
   const [picked, setPicked] = useState<PickedContact[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [category, setCategory] = useState(CATEGORIES[0])
+  const [picking, setPicking] = useState(false)
+  const [pickedOnce, setPickedOnce] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -70,12 +112,16 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
 
   async function handlePick() {
     setError(null)
+    setPicking(true)
     try {
       const results = await pickContacts()
       setPicked(results)
       setSelected(new Set(results.map((_, i) => i)))
+      setPickedOnce(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo abrir la agenda del teléfono')
+    } finally {
+      setPicking(false)
     }
   }
 
@@ -97,6 +143,7 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
         await addContact({ name: p.name, category, phone: p.phone ?? '', email: p.email ?? '', notes: '' })
       }
       setPicked([])
+      setPickedOnce(false)
       setSelected(new Set())
       onAdded()
     } catch (err) {
@@ -110,9 +157,18 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
     <div className="card member-form">
       <h2>Importar del teléfono</h2>
       {picked.length === 0 ? (
-        <button type="button" onClick={handlePick}>
-          📱 Elegir de mis contactos
-        </button>
+        <>
+          <button type="button" onClick={handlePick} disabled={picking}>
+            {picking ? 'Abriendo tu agenda…' : '📱 Elegir de mis contactos'}
+          </button>
+          {/* Sin esto, si el selector del teléfono se cierra sin traer
+              ningún contacto (se sale atrás, o no se marca ninguno), no
+              pasaba nada visible y parecía que el botón no hacía nada
+              (bug real reportado: "no me pone el contacto"). */}
+          {pickedOnce && picked.length === 0 && !error && (
+            <p className="muted">No se ha compartido ningún contacto. Vuelve a intentarlo y marca al menos uno antes de tocar "Hecho".</p>
+          )}
+        </>
       ) : (
         <>
           <p className="muted">Marca los que quieras guardar en la app:</p>
@@ -120,7 +176,7 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
             {picked.map((p, i) => (
               <label key={i} className="checkbox-label">
                 <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} />
-                {p.name} {p.phone && `· ${p.phone}`}
+                {p.name || '(sin nombre)'} {p.phone && `· ${p.phone}`}
               </label>
             ))}
           </div>
@@ -155,13 +211,14 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [notes, setNotes] = useState('')
+  const [birthDate, setBirthDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   // Autocompletado a partir de contactos ya creados — si el nombre
   // coincide con uno que ya existe, se rellena el resto solo (categoría,
-  // teléfono, email, notas) para no tener que volver a escribirlo,
-  // dejando que se pueda seguir editando antes de guardar.
+  // teléfono, email, notas, cumpleaños) para no tener que volver a
+  // escribirlo, dejando que se pueda seguir editando antes de guardar.
   function handleNameChange(value: string) {
     setName(value)
     const match = existingContacts.find((c) => c.name.trim().toLowerCase() === value.trim().toLowerCase())
@@ -170,6 +227,7 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
       setPhone(match.phone ?? '')
       setEmail(match.email ?? '')
       setNotes(match.notes ?? '')
+      setBirthDate(match.birthDate ?? '')
     }
   }
 
@@ -180,11 +238,12 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
     setSaving(true)
     setError(null)
     try {
-      await addContact({ name, category, phone, email, notes })
+      await addContact({ name, category, phone, email, notes, birthDate: birthDate || null })
       setName('')
       setPhone('')
       setEmail('')
       setNotes('')
+      setBirthDate('')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo añadir')
@@ -229,6 +288,10 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
       <label>
         Email
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label>
+        Cumpleaños (opcional)
+        <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
       </label>
       <label>
         Notas

@@ -100,6 +100,15 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   useEffect(reload, [])
   useEffect(() => () => stopWatch?.(), [stopWatch])
 
+  // Para ver la posición de los DEMÁS sin tener que recargar todo en
+  // cada latido GPS propio (ver applyOwnLocationUpdate) — cada 30s es
+  // sobrado para "dónde está ahora" y no machaca la base de datos ni el
+  // móvil a peticiones.
+  useEffect(() => {
+    const interval = setInterval(reload, 30_000)
+    return () => clearInterval(interval)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleToggleConsent(memberId: string, enabled: boolean) {
     try {
       await setConsent(memberId, enabled)
@@ -118,13 +127,31 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
     }
   }
 
+  // El GPS puede dar una posición nueva varias veces por minuto — antes
+  // cada una disparaba un reload() completo (miembros, consentimientos,
+  // TODO el historial de TODOS, TODAS las fotos firmadas de nuevo), lo
+  // que se notaba como lentitud y como el mapa "parpadeando" al
+  // reconstruirse entero de golpe (bug real reportado desde iPhone).
+  // Aquí solo se actualiza en el sitio la posición y el historial de
+  // ESTA persona, con los datos que ya se acaban de guardar — sin
+  // ninguna consulta adicional.
+  function applyOwnLocationUpdate(memberId: string, latitude: number, longitude: number) {
+    const recordedAt = new Date().toISOString()
+    const familyId = members.find((m) => m.id === memberId)?.familyId ?? ''
+    setLocations((prev) => [...prev.filter((l) => l.memberId !== memberId), { memberId, familyId, latitude, longitude, recordedAt }])
+    setHistories((prev) => ({
+      ...prev,
+      [memberId]: [...(prev[memberId] ?? []), { id: crypto.randomUUID(), memberId, familyId, latitude, longitude, recordedAt }],
+    }))
+  }
+
   function startSharing(memberId: string) {
     setError(null)
     const stop = watchPosition(
       (coords) => {
         setError(null)
         updateMemberLocation(memberId, coords.latitude, coords.longitude)
-          .then(reload)
+          .then(() => applyOwnLocationUpdate(memberId, coords.latitude, coords.longitude))
           .catch((err: Error) => setError(err.message))
       },
       // Antes un fallo (permiso denegado, GPS apagado, sin respuesta) se

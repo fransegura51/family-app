@@ -16,7 +16,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listContacts(): Promise<Contact[]> {
   const { data, error } = await supabase
     .from('contacts')
-    .select('id, family_id, name, category, phone, email, notes')
+    .select('id, family_id, name, category, phone, email, notes, birth_date')
     .order('name', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -27,6 +27,7 @@ export async function listContacts(): Promise<Contact[]> {
     phone: r.phone,
     email: r.email,
     notes: r.notes,
+    birthDate: r.birth_date,
   }))
 }
 
@@ -36,6 +37,7 @@ export async function addContact(input: {
   phone: string
   email: string
   notes: string
+  birthDate?: string | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('contacts').insert({
@@ -45,7 +47,17 @@ export async function addContact(input: {
     phone: input.phone || null,
     email: input.email || null,
     notes: input.notes || null,
+    birth_date: input.birthDate || null,
   })
+  if (error) throw error
+}
+
+// Para poder ponerle cumpleaños a un contacto ya guardado (p. ej. uno
+// importado del teléfono, que nunca trae fecha de nacimiento — la
+// Contact Picker API no da esa propiedad) sin tener que borrarlo y
+// crearlo de nuevo.
+export async function updateContactBirthDate(id: string, birthDate: string | null): Promise<void> {
+  const { error } = await supabase.from('contacts').update({ birth_date: birthDate }).eq('id', id)
   if (error) throw error
 }
 

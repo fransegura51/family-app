@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { createEvent, deleteEvent, deleteEventOccurrence, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
+import { listContacts } from '@/data/contacts'
 import { deleteTask, listCompletions, listTasks } from '@/data/tasks'
 import { isTaskDueOn } from '@/domain/tasks'
 import {
@@ -24,7 +25,7 @@ import {
   type ReminderUnit,
 } from '@/domain/reminders'
 import { MemberAvatar } from '@/ui/MemberAvatar'
-import type { CalendarEvent, FamilyMember, Task, TaskCompletion } from '@/domain/types'
+import type { CalendarEvent, Contact, FamilyMember, Task, TaskCompletion } from '@/domain/types'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
 import {
   buildRecurrenceRule,
@@ -51,6 +52,7 @@ export function CalendarScreen() {
   const [externalEvents, setExternalEvents] = useState<ExternalCalendarEvent[]>([])
   const [externalFeeds, setExternalFeeds] = useState<ExternalCalendarFeed[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
+  const [contacts, setContacts] = useState<Contact[]>([])
   const [filterMemberId, setFilterMemberId] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,8 +84,9 @@ export function CalendarScreen() {
       listCompletions(),
       listExternalEvents(),
       listFeeds(),
+      listContacts(),
     ])
-      .then(([e, m, h, t, c, ee, ef]) => {
+      .then(([e, m, h, t, c, ee, ef, ct]) => {
         setEvents(e)
         setMembers(m)
         setHolidayDates(h)
@@ -91,6 +94,7 @@ export function CalendarScreen() {
         setCompletions(c)
         setExternalEvents(ee)
         setExternalFeeds(ef)
+        setContacts(ct)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -229,6 +233,29 @@ export function CalendarScreen() {
     return map
   }, [filteredExternalEvents, monthDays])
 
+  // Cumpleaños de la familia y de los contactos, en el mes visible —
+  // se pidió que se vean también en el calendario, no solo en la
+  // pestaña Cumpleaños. Se comparan solo mes y día (los dos últimos
+  // trozos de la fecha, "MM-DD"): un cumpleaños es el mismo día todos
+  // los años, a diferencia de un evento normal que solo existe en una
+  // fecha exacta. Son de solo lectura aquí (sin onEdit/onDeleteSeries):
+  // se cambian desde Familia o Contactos, no desde el calendario.
+  const birthdaysByDate = useMemo(() => {
+    const map = new Map<string, { name: string; color: string }[]>()
+    if (monthDays.length === 0) return map
+    for (const day of monthDays) {
+      const list: { name: string; color: string }[] = []
+      for (const m of members) {
+        if (m.birthDate && m.birthDate.slice(5) === day.dateStr.slice(5)) list.push({ name: m.name, color: m.color })
+      }
+      for (const c of contacts) {
+        if (c.birthDate && c.birthDate.slice(5) === day.dateStr.slice(5)) list.push({ name: c.name, color: '#f59e0b' })
+      }
+      if (list.length > 0) map.set(day.dateStr, list)
+    }
+    return map
+  }, [members, contacts, monthDays])
+
   function goToMonth(delta: number) {
     const d = new Date(visibleYear, visibleMonth + delta, 1)
     setVisibleYear(d.getFullYear())
@@ -276,6 +303,7 @@ export function CalendarScreen() {
   const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
   const selectedDayTasks = tasksByDate.get(selectedDate) ?? []
   const selectedDayExternalEvents = externalEventsByDate.get(selectedDate) ?? []
+  const selectedDayBirthdays = birthdaysByDate.get(selectedDate) ?? []
 
   return (
     <div className="screen">
@@ -341,15 +369,18 @@ export function CalendarScreen() {
               const dayEvents = eventsByDate.get(day.dateStr) ?? []
               const dayTasks = tasksByDate.get(day.dateStr) ?? []
               const dayExternalEvents = externalEventsByDate.get(day.dateStr) ?? []
+              const dayBirthdays = birthdaysByDate.get(day.dateStr) ?? []
               const taskDots = dayTasks
                 .map((t) => memberColorById.get(t.memberId as string))
                 .filter((c): c is string => !!c)
               const externalDots = dayExternalEvents.map((ev) => externalEventColor(ev.feedId))
+              const birthdayDots = dayBirthdays.map((b) => b.color)
               const dots = [
                 ...new Set([
                   ...dayEvents.flatMap((e) => eventDotColors(e, memberColorById)),
                   ...taskDots,
                   ...externalDots,
+                  ...birthdayDots,
                 ]),
               ]
               return (
@@ -384,6 +415,7 @@ export function CalendarScreen() {
               events={selectedDayEvents}
               tasks={selectedDayTasks}
               externalEvents={selectedDayExternalEvents}
+              birthdays={selectedDayBirthdays}
               feedById={feedById}
               members={members}
               editingId={editingId}
@@ -480,6 +512,7 @@ function DayModal({
   events,
   tasks,
   externalEvents,
+  birthdays,
   feedById,
   members,
   editingId,
@@ -496,6 +529,7 @@ function DayModal({
   events: CalendarEvent[]
   tasks: Task[]
   externalEvents: ExternalCalendarEvent[]
+  birthdays: { name: string; color: string }[]
   feedById: Map<string, ExternalCalendarFeed>
   members: FamilyMember[]
   editingId: string | null
@@ -568,6 +602,22 @@ function DayModal({
         recurring: !!ev.recurrenceRule,
       }
     }),
+    // Cumpleaños de la familia y de los contactos — de solo lectura
+    // aquí (sin onEdit/onDeleteSeries), se cambian desde Familia o
+    // Contactos, no desde el calendario.
+    ...birthdays.map((b, i) => ({
+      key: `bday-${i}`,
+      id: `bday-${i}`,
+      title: `🎂 Cumpleaños de ${b.name}`,
+      subtitle: '',
+      color: b.color,
+      allDay: true,
+      startTime: null,
+      endTime: null,
+      isTask: false,
+      isExternal: false,
+      recurring: true,
+    })),
   ].sort((a, b) => {
     if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
     return (a.startTime ?? '').localeCompare(b.startTime ?? '')

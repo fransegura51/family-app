@@ -50,14 +50,21 @@ export function watchPosition(
     onError?.('Este dispositivo no soporta geolocalización.', -1)
     return () => {}
   }
-  // Precisión real de GPS (no la ubicación aproximada por wifi/antena) y
-  // sin caché: "la ubicación tiene que ser exacta" — con `maximumAge` a
-  // 0 nunca se devuelve una posición vieja guardada, siempre se pide una
-  // nueva de verdad.
+  // Precisión real de GPS (no la ubicación aproximada por wifi/antena):
+  // enableHighAccuracy. OJO con maximumAge: se probó a 0 (nunca aceptar
+  // nada cacheado, ni un segundo) pensando que así sería "más exacto",
+  // pero es justo lo que hacía que el watch dejara de avisar después
+  // del primer aviso aunque siguiera "activo" por dentro — pedirle al
+  // GPS un cálculo completo desde cero en cada lectura, sin dejarle
+  // fluir en modo continuo, es una causa conocida de que se quede
+  // colgado en Android/iOS (bug real: solo se actualizaba al desactivar
+  // y volver a activar a mano). Con un margen pequeño (5s) sigue siendo
+  // prácticamente al segundo pero deja que el proveedor de ubicación
+  // funcione en su modo normal, continuo y fiable.
   const id = navigator.geolocation.watchPosition(
     (pos) => onUpdate({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
     (err) => onError?.(geolocationErrorMessage(err), err.code),
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 },
+    { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
   )
   return () => navigator.geolocation.clearWatch(id)
 }

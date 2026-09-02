@@ -41,11 +41,14 @@ const listeners = new Set<Listener>()
 // parece que "se ha quedado fija" otra vez aunque el código siga
 // pensando que está compartiendo. Dos redes de seguridad: en cuanto la
 // pestaña vuelve a primer plano se reinicia el watch (por si murió
-// mientras estaba en segundo plano), y un latido cada 90s comprueba si
+// mientras estaba en segundo plano), y un latido cada 15s comprueba si
 // hace demasiado que no llega nada y reinicia también si hace falta —
 // "no podemos fallar en ubicación", así que no basta con confiar en que
-// el navegador avise.
-const STALE_THRESHOLD_MS = 90_000
+// el navegador avise. Umbral corto (45s): con la pantalla encendida y
+// la app abierta tiene que notarse el movimiento enseguida, no al cabo
+// de minutos (bug real reportado: "solo se actualiza si desactivas y
+// vuelves a activar").
+const STALE_THRESHOLD_MS = 45_000
 
 function notify() {
   listeners.forEach((l) => l())
@@ -140,7 +143,7 @@ if (typeof document !== 'undefined') {
     if (currentMemberId && document.visibilityState === 'visible' && Date.now() - lastUpdateAt > STALE_THRESHOLD_MS) {
       startSharing(currentMemberId, true)
     }
-  }, 30_000)
+  }, 15_000)
 }
 
 // Se llama una sola vez al arrancar la aplicación (ver

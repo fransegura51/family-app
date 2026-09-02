@@ -8,6 +8,7 @@ import {
 import { listFamilyMembers } from '@/data/family'
 import type { FamilyMember, MemberDocument } from '@/domain/types'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 
 // Las 4 carpetas pedidas. "Casa" y "Familia" normalmente no son de una
 // persona en concreto — por eso el miembro es opcional en el formulario,
@@ -98,9 +99,7 @@ function DocumentRow({
           </button>
         )}
       </div>
-      <button type="button" className="link-button" onClick={onDelete}>
-        Eliminar
-      </button>
+      <ConfirmButton label="Eliminar" onConfirm={onDelete} />
     </div>
   )
 }

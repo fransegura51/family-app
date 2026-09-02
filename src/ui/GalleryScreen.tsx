@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { deleteGalleryPhoto, getGalleryPhotoUrl, listGalleryPhotos, uploadGalleryPhoto } from '@/data/gallery'
+import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import type { GalleryPhoto } from '@/domain/types'
 
 export function GalleryScreen() {
@@ -43,9 +44,7 @@ export function GalleryScreen() {
         {photos.map((p) => (
           <div key={p.id} className="gallery-item">
             {urls[p.id] && <img src={urls[p.id]} alt={p.caption ?? ''} />}
-            <button type="button" className="gallery-item-delete" onClick={() => handleDelete(p)}>
-              ✕
-            </button>
+            <ConfirmIconButton className="gallery-item-delete" ariaLabel="Borrar foto" onConfirm={() => handleDelete(p)} />
             {p.caption && <p className="muted">{p.caption}</p>}
             <p className="muted gallery-item-date">
               {new Date(p.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}

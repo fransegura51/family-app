@@ -15,6 +15,7 @@ import {
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
 import { budgetSpent, walletBalance, walletCategoryTotal } from '@/domain/finance'
@@ -172,9 +173,7 @@ function ExpensesTab() {
                 {e.store && ` · ${e.store}`}
               </p>
             </div>
-            <button type="button" className="link-button" onClick={() => deleteExpense(e.id).then(reload)}>
-              Eliminar
-            </button>
+            <ConfirmButton label="Eliminar" onConfirm={() => deleteExpense(e.id).then(reload)} />
           </div>
         ))}
         {monthExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
@@ -357,9 +356,7 @@ function ReceiptRow({
         <button type="button" className="link-button" onClick={onEdit}>
           Editar
         </button>
-        <button type="button" className="link-button" onClick={onDelete}>
-          Eliminar
-        </button>
+        <ConfirmButton label="Eliminar" onConfirm={onDelete} />
       </div>
     </div>
   )
@@ -784,9 +781,7 @@ function BudgetsTab() {
                   <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
                 </div>
               </div>
-              <button type="button" className="link-button" onClick={() => deleteBudget(b.id).then(reload)}>
-                Eliminar
-              </button>
+              <ConfirmButton label="Eliminar" onConfirm={() => deleteBudget(b.id).then(reload)} />
             </div>
           )
         })}
@@ -957,9 +952,7 @@ function KidsFinanceTab() {
                       <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
-                  <button type="button" className="link-button" onClick={() => deleteGoal(goal.id).then(reload)}>
-                    Eliminar
-                  </button>
+                  <ConfirmButton label="Eliminar" onConfirm={() => deleteGoal(goal.id).then(reload)} />
                 </div>
               )
             })}
@@ -977,13 +970,7 @@ function KidsFinanceTab() {
                 {t.amount.toFixed(2)} € — {t.description}
               </strong>
             </div>
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => deleteWalletTransaction(t.id).then(reload)}
-            >
-              Eliminar
-            </button>
+            <ConfirmButton label="Eliminar" onConfirm={() => deleteWalletTransaction(t.id).then(reload)} />
           </div>
         ))}
         {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}

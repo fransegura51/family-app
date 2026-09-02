@@ -15,6 +15,7 @@ import {
 } from '@/data/food'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { searchRecipe } from '@/services/recipeSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
 import { searchFoods, getFoodDetail, type FoodSearchResult, type PerGram } from '@/services/fatsecret'
@@ -128,13 +129,7 @@ function MenuTab() {
                 {entry ? (
                   <>
                     <span>{recipe?.title ?? entry.freeText}</span>
-                    <button
-                      type="button"
-                      className="link-button"
-                      onClick={() => deleteMenuEntry(entry.id).then(reload)}
-                    >
-                      Quitar
-                    </button>
+                    <ConfirmButton label="Quitar" onConfirm={() => deleteMenuEntry(entry.id).then(reload)} />
                   </>
                 ) : isAdding ? (
                   <MenuEntryPicker
@@ -258,9 +253,7 @@ function RecipesTab() {
               <button type="button" className="link-button" onClick={() => handleGenerateList(recipe)}>
                 Generar lista de la compra
               </button>
-              <button type="button" className="link-button" onClick={() => deleteRecipe(recipe.id).then(reload)}>
-                Borrar
-              </button>
+              <ConfirmButton onConfirm={() => deleteRecipe(recipe.id).then(reload)} />
             </div>
           </div>
         ))}
@@ -516,9 +509,7 @@ function FoodLogTab() {
                   {showDetail && ` · ${log.isEstimated ? 'estimado' : 'exacto'}`}
                 </p>
               </div>
-              <button type="button" className="link-button" onClick={() => deleteFoodLog(log.id).then(reload)}>
-                Eliminar
-              </button>
+              <ConfirmButton label="Eliminar" onConfirm={() => deleteFoodLog(log.id).then(reload)} />
             </div>
           ))}
           {logs.length === 0 && <p className="muted">{date === todayStr ? 'Nada registrado hoy.' : 'Nada registrado ese día.'}</p>}
@@ -972,9 +963,7 @@ function WeightTab() {
                     {m.legCm != null && ` · Pierna ${m.legCm} cm`}
                   </p>
                 </div>
-                <button type="button" className="link-button" onClick={() => handleDeleteMeasurement(m.id)}>
-                  Eliminar
-                </button>
+                <ConfirmButton label="Eliminar" onConfirm={() => handleDeleteMeasurement(m.id)} />
               </div>
             ))}
             {measurements.length === 0 && <p className="muted">Todavía no hay medidas registradas.</p>}
@@ -987,9 +976,11 @@ function WeightTab() {
             {photos.map((p) => (
               <div key={p.id} className="gallery-item">
                 {photoUrls[p.id] && <img src={photoUrls[p.id]} alt={p.caption ?? ''} />}
-                <button type="button" className="gallery-item-delete" onClick={() => handleDeletePhoto(p)}>
-                  ✕
-                </button>
+                <ConfirmIconButton
+                  className="gallery-item-delete"
+                  ariaLabel="Borrar foto"
+                  onConfirm={() => handleDeletePhoto(p)}
+                />
                 {p.caption && <p className="muted">{p.caption}</p>}
                 <p className="muted gallery-item-date">
                   {new Date(p.photoDate + 'T00:00').toLocaleDateString('es-ES', {

@@ -18,6 +18,7 @@ import { listAllProductPrices, listProducts, recordProductPurchase } from '@/dat
 import { createShoppingStore, deleteShoppingStore, listShoppingStores, renameShoppingStore } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { uploadReceipt } from '@/data/receipts'
 import { computeProductStats } from '@/domain/products'
 import { analyzeFridgePhoto } from '@/services/fridgePhoto'
@@ -147,6 +148,10 @@ function ShoppingListTab() {
   const [error, setError] = useState<string | null>(null)
   const [shoppingMode, setShoppingMode] = useState(false)
   const [showOthers, setShowOthers] = useState(false)
+  const [ticketPrices, setTicketPrices] = useState<Map<string, number>>(new Map())
+  const [ticketBusy, setTicketBusy] = useState(false)
+  const [ticketMessage, setTicketMessage] = useState<string | null>(null)
+  const [ticketError, setTicketError] = useState<string | null>(null)
 
   // Solo se enseña "Cargando…" (que desmonta el formulario de abajo) la
   // primera vez — si no, cada "reload" tras añadir un producto borraba
@@ -231,6 +236,68 @@ function ShoppingListTab() {
     }
   }
 
+  // Sube una foto del ticket y rellena el precio de los productos ya
+  // marcados como comprados directamente del ticket, sin tener que
+  // escribirlos a mano — petición real: "no quiero tener que ponerlos
+  // manualmente, los tienes que sacar de los tickets que yo subo, y
+  // cuando los tengas, los pones automáticamente en el campo de
+  // precio". El ticket trae el importe TOTAL de cada línea ("2 leches,
+  // 2,00€"), no el precio por unidad, así que se divide entre las
+  // unidades antes de guardarlo (mismo cálculo que ya se hace al cerrar
+  // un viaje de compra con ticket).
+  async function handleTicketFile(file: File | null) {
+    if (!file) return
+    setTicketBusy(true)
+    setTicketError(null)
+    setTicketMessage(null)
+    try {
+      const scan = await analyzeReceiptPhoto(file)
+      const boughtNow = items.filter((i) => i.status === 'comprado')
+      const matched: { item: ShoppingItem; unitPrice: number }[] = []
+      const unmatchedLines: string[] = []
+
+      for (const line of scan.items) {
+        const match = matchShoppingItem(line.name, boughtNow)
+        if (!match || matched.some((m) => m.item.id === match.id)) {
+          unmatchedLines.push(line.name)
+          continue
+        }
+        const unitPrice = line.quantity > 0 ? line.price / line.quantity : line.price
+        matched.push({ item: match, unitPrice })
+      }
+
+      await Promise.all(
+        matched.map(({ item, unitPrice }) =>
+          recordProductPurchase({
+            name: item.name,
+            price: unitPrice,
+            quantity: item.quantity ?? '',
+            unit: item.unit ?? '',
+            store: scan.store ?? item.store ?? '',
+            date: scan.date ?? undefined,
+          }),
+        ),
+      )
+
+      setTicketPrices((prev) => {
+        const next = new Map(prev)
+        for (const { item, unitPrice } of matched) next.set(item.id, unitPrice)
+        return next
+      })
+
+      const summary =
+        matched.length === 0
+          ? 'No he encontrado ningún producto comprado que coincida con el ticket.'
+          : `Precio puesto automáticamente en ${matched.length} producto${matched.length === 1 ? '' : 's'} comprado${matched.length === 1 ? '' : 's'}.`
+      setTicketMessage(unmatchedLines.length > 0 ? `${summary} Sin emparejar: ${unmatchedLines.join(', ')}.` : summary)
+      reload()
+    } catch (err) {
+      setTicketError(err instanceof Error ? err.message : 'No se pudo leer el ticket')
+    } finally {
+      setTicketBusy(false)
+    }
+  }
+
   if (loading && !initialized) return <p className="muted">Cargando lista…</p>
 
   return (
@@ -268,12 +335,22 @@ function ShoppingListTab() {
       {pending.length === 0 && <p className="muted">Nada pendiente.</p>}
 
       <h2 className="section-title">Comprados</h2>
+      <div className="card">
+        <p className="muted" style={{ marginTop: 0 }}>
+          📷 Sube la foto del ticket y pongo el precio yo en lo ya comprado
+        </p>
+        {ticketBusy && <p className="muted">Leyendo el ticket…</p>}
+        {ticketMessage && <p className="muted">{ticketMessage}</p>}
+        {ticketError && <p className="error">{ticketError}</p>}
+        <FileOrPdfPicker file={null} onChange={handleTicketFile} />
+      </div>
       <div className="event-list">
         {bought.map((item) => (
           <BoughtItemRow
             key={item.id}
             item={item}
             suggestions={suggestions}
+            autoPrice={ticketPrices.get(item.id) ?? null}
             onUndo={() => setStatus(item.id, 'pendiente')}
           />
         ))}
@@ -303,9 +380,7 @@ function ShoppingListTab() {
                 <button type="button" className="link-button" onClick={() => setStatus(item.id, 'pendiente')}>
                   Volver a pendiente
                 </button>
-                <button type="button" className="link-button" onClick={() => deleteShoppingItem(item.id).then(reload)}>
-                  Eliminar
-                </button>
+                <ConfirmButton label="Eliminar" onConfirm={() => deleteShoppingItem(item.id).then(reload)} />
               </div>
             ))}
         </>
@@ -432,15 +507,7 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
                 <StoreIconBadge name={s.name} />
                 {s.name}
               </span>
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => handleDelete(s.id)}
-                aria-label={`Quitar ${s.name}`}
-                style={{ marginLeft: 4 }}
-              >
-                ✕
-              </button>
+              <ConfirmIconButton className="link-button" ariaLabel={`Quitar ${s.name}`} onConfirm={() => handleDelete(s.id)} />
             </span>
           ),
         )}
@@ -571,9 +638,7 @@ function DraggableStoreGroup({
               <button type="button" className="link-button" onClick={() => onSetStatus(item.id, 'omitido')}>
                 Ya tengo
               </button>
-              <button type="button" className="link-button" onClick={() => deleteShoppingItem(item.id).then(onDeleted)}>
-                Eliminar
-              </button>
+              <ConfirmButton label="Eliminar" onConfirm={() => deleteShoppingItem(item.id).then(onDeleted)} />
             </>
           )}
         </div>
@@ -588,10 +653,12 @@ function DraggableStoreGroup({
 function BoughtItemRow({
   item,
   suggestions,
+  autoPrice,
   onUndo,
 }: {
   item: ShoppingItem
   suggestions: ProductSuggestion[]
+  autoPrice: number | null
   onUndo: () => void
 }) {
   const known = suggestions.find((s) => s.normalizedName === item.name.trim().toLowerCase())
@@ -600,6 +667,19 @@ function BoughtItemRow({
   const [price, setPrice] = useState(known?.lastPrice != null ? String(known.lastPrice) : '')
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // El ticket ya trae el precio de este producto (subido después de
+  // marcarlo como comprado) — se da por guardado directamente, sin
+  // tener que tocar nada (petición real: "no quiero tener que ponerlos
+  // manualmente... cuando los tengas, los pones automáticamente en el
+  // campo de precio"). El precio ya se ha registrado en la Memoria de
+  // compras desde fuera (ShoppingListTab), así que aquí solo se refleja.
+  useEffect(() => {
+    if (autoPrice != null) {
+      setPrice(String(autoPrice))
+      setSaved(true)
+    }
+  }, [autoPrice])
 
   // Sin precio también se puede "cerrar" el producto — antes, sin
   // escribir un precio, el botón "Guardar" no hacía nada (bug real: "no
@@ -633,7 +713,14 @@ function BoughtItemRow({
         {error && <p className="error">{error}</p>}
       </div>
       {saved ? (
-        <span className="muted">{price ? '✓ Precio guardado' : '✓ Sin precio'}</span>
+        <span className="muted">
+          {price ? `✓ Precio guardado: ${price} €` : '✓ Sin precio'}
+          {price && (
+            <button type="button" className="link-button" onClick={() => setSaved(false)} style={{ marginLeft: 6 }}>
+              Editar
+            </button>
+          )}
+        </span>
       ) : (
         <>
           <input
@@ -885,9 +972,7 @@ function TripCard({
           </button>
         </>
       )}
-      <button type="button" className="link-button" onClick={() => deleteShoppingTrip(trip).then(onChanged)}>
-        Eliminar
-      </button>
+      <ConfirmButton label="Eliminar" onConfirm={() => deleteShoppingTrip(trip).then(onChanged)} />
     </div>
   )
 }
@@ -1366,9 +1451,7 @@ function InventoryRow({ item, onChanged }: { item: InventoryItem; onChanged: () 
         placeholder="cantidad"
         style={{ width: 90 }}
       />
-      <button type="button" className="link-button" onClick={() => deleteInventoryItem(item.id).then(onChanged)}>
-        Eliminar
-      </button>
+      <ConfirmButton label="Eliminar" onConfirm={() => deleteInventoryItem(item.id).then(onChanged)} />
     </div>
   )
 }

@@ -12,6 +12,7 @@ import {
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 import {
   addFeed,
   deleteFeed,
@@ -1596,9 +1597,7 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
               <button type="button" className="link-button" disabled={syncingId === f.id} onClick={() => handleSync(f.id)}>
                 {syncingId === f.id ? 'Sincronizando…' : 'Sincronizar ahora'}
               </button>
-              <button type="button" className="link-button" onClick={() => handleDeleteFeed(f.id)}>
-                Quitar
-              </button>
+              <ConfirmButton label="Quitar" onConfirm={() => handleDeleteFeed(f.id)} />
             </div>
           </div>
         ))}

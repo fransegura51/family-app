@@ -262,6 +262,17 @@ button {
   align-self: center;
 }
 
+.confirm-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirm-icon-armed {
+  background: #dc2626 !important;
+  outline: 2px solid #fecaca;
+}
+
 /* Antes era un link-button discreto y la usuaria no lo encontraba
    ("dónde está FatSecret") — con color e icono propios destaca frente
    al resto de botones del formulario en vez de parecer un enlace más. */

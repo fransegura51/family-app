@@ -13,6 +13,7 @@ import {
   detectIntent,
   detectTargetFromText,
   extractShoppingStore,
+  findKnownStore,
   findMemberInText,
   matchMemberByHint,
   normalize,
@@ -476,7 +477,18 @@ export function VoiceCapture() {
       // porque a veces Pepa se confunde las tareas con los eventos"),
       // así que "apunta a Eric que saque la basura" va también por
       // Calendario, que ya reconoce a quién es, la fecha y la hora.
-      const contentTargetKey = detectTargetFromText(text)
+      //
+      // El nombre de una tienda YA DADA DE ALTA ("Mercadona, patatas" o
+      // incluso solo "Mercadona") cuenta como pista de contenido tan
+      // fuerte como decir "compra" — antes detectTargetFromText no sabía
+      // nada de las tiendas, así que decir solo "Mercadona" sin la
+      // palabra "compra" ni "lista de la compra" de por medio se
+      // guardaba en la pantalla en la que estuvieras (bug real: "si
+      // estoy en calendario y digo Mercadona... que me abra la lista de
+      // la compra y no el calendario, aunque esté en otra pestaña").
+      const knownStores = await listShoppingStores()
+      const storeNames = knownStores.map((s) => s.name)
+      const contentTargetKey = detectTargetFromText(text) ?? (findKnownStore(text, storeNames) ? 'compras' : null)
       const effectiveTargetKey = contentTargetKey ?? target.key
       const effectiveTarget = TARGET_INFO[effectiveTargetKey]
       if (effectiveTargetKey !== target.key) {
@@ -497,11 +509,7 @@ export function VoiceCapture() {
       // patatas"). Se reconoce primero contra las tiendas ya dadas de
       // alta en Compras (fiable pase lo que pase alrededor) y, si no es
       // ninguna de esas, por heurística.
-      const knownStores = await listShoppingStores()
-      const { store: shoppingStore, text: textForEntries } = extractShoppingStore(
-        text,
-        knownStores.map((s) => s.name),
-      )
+      const { store: shoppingStore, text: textForEntries } = extractShoppingStore(text, storeNames)
 
       const entries = splitEntries(stripListFillers(textForEntries))
       if (entries.length === 0) {

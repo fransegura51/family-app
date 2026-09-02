@@ -14,6 +14,7 @@ import {
   toggleAutomationRule,
 } from '@/data/location'
 import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 import { distanceMeters, formatDistance } from '@/domain/geo'
 import { getCurrentPosition } from '@/services/geolocation'
 import {
@@ -294,9 +295,7 @@ function PlaceRow({
           )
         })}
       </div>
-      <button type="button" className="link-button" onClick={() => deletePlace(place.id).then(onDeleted)}>
-        Eliminar
-      </button>
+      <ConfirmButton label="Eliminar" onConfirm={() => deletePlace(place.id).then(onDeleted)} />
     </div>
   )
 }
@@ -424,9 +423,7 @@ function RulesTab() {
             >
               Silenciar 1h
             </button>
-            <button type="button" className="link-button" onClick={() => deleteAutomationRule(rule.id).then(reload)}>
-              Eliminar
-            </button>
+            <ConfirmButton label="Eliminar" onConfirm={() => deleteAutomationRule(rule.id).then(reload)} />
           </div>
         ))}
         {rules.length === 0 && <p className="muted">No hay reglas todavía.</p>}

@@ -3,6 +3,7 @@ import { createReward, deleteReward, listRedemptions, listRewards, redeemReward 
 import { listEventCompletions } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 import { memberPointsBalance } from '@/domain/rewards'
 import type { FamilyMember, Reward, RewardRedemption } from '@/domain/types'
 import type { EventCompletion } from '@/data/calendar'
@@ -106,9 +107,7 @@ export function RewardsScreen() {
             >
               Canjear
             </button>
-            <button type="button" className="link-button" onClick={() => deleteReward(reward.id).then(reload)}>
-              Borrar
-            </button>
+            <ConfirmButton onConfirm={() => deleteReward(reward.id).then(reload)} />
           </div>
         ))}
         {rewards.length === 0 && <p className="muted">No hay recompensas todavía.</p>}

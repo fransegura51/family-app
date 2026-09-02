@@ -10,6 +10,7 @@ import {
 } from '@/data/family'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 import type { FamilyMember, MemberType, Profile } from '@/domain/types'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
@@ -88,9 +89,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                     Editar
                   </button>
                   {m.linkedProfileId !== profile.id && (
-                    <button type="button" className="link-button" onClick={() => handleDelete(m.id)}>
-                      Borrar
-                    </button>
+                    <ConfirmButton label="Borrar" onConfirm={() => handleDelete(m.id)} />
                   )}
                 </div>
               )}

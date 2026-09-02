@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { addContact, deleteContact, listContacts, updateContact, updateContactBirthDate } from '@/data/contacts'
 import { isContactPickerSupported, pickContacts, type PickedContact } from '@/services/contactPicker'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 import type { Contact } from '@/domain/types'
 
 const CATEGORIES = ['Colegio', 'Médico', 'Emergencia', 'Familia', 'Otros']
@@ -109,9 +110,7 @@ function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: (
       <button type="button" className="link-button" onClick={() => setEditingAll(true)}>
         Editar
       </button>
-      <button type="button" className="link-button" onClick={() => deleteContact(c.id).then(onChanged)}>
-        Eliminar
-      </button>
+      <ConfirmButton label="Eliminar" onConfirm={() => deleteContact(c.id).then(onChanged)} />
     </div>
   )
 }

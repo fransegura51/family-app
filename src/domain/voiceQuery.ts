@@ -248,7 +248,7 @@ function stripShoppingPhrase(text: string): string {
 // dictados con o sin tilde ("Líder"/"lider") cuenten igual. Se prueban
 // las tiendas más largas primero para que un nombre de dos palabras no
 // quede tapado por una coincidencia parcial de una sola palabra.
-function findKnownStore(text: string, knownStores: string[]): { store: string; text: string } | null {
+export function findKnownStore(text: string, knownStores: string[]): { store: string; text: string } | null {
   if (knownStores.length === 0) return null
   const tokens = text.split(/(\s+)/)
   const wordIndices: number[] = []

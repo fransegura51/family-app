@@ -13,6 +13,7 @@ import { LocationScreen } from '@/ui/LocationScreen'
 import { NavShell } from '@/ui/NavShell'
 import { ReminderWatcher } from '@/ui/ReminderWatcher'
 import { AutomationWatcher } from '@/ui/AutomationWatcher'
+import { LocationSharingWatcher } from '@/ui/LocationSharingWatcher'
 import { ActivityScreen } from '@/ui/ActivityScreen'
 import { BirthdaysScreen } from '@/ui/BirthdaysScreen'
 import { ContactsScreen } from '@/ui/ContactsScreen'
@@ -38,6 +39,7 @@ export function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <ReminderWatcher />
       <AutomationWatcher />
+      <LocationSharingWatcher />
       <Routes>
         <Route element={<NavShell />}>
           <Route path="/" element={<HomeScreen profile={profile} />} />

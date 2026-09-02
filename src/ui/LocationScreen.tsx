@@ -12,11 +12,18 @@ import {
   muteAutomationRule,
   setConsent,
   toggleAutomationRule,
-  updateMemberLocation,
 } from '@/data/location'
 import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
 import { distanceMeters, formatDistance } from '@/domain/geo'
-import { getCurrentPosition, watchPosition } from '@/services/geolocation'
+import { getCurrentPosition } from '@/services/geolocation'
+import {
+  getLastError as getSharingError,
+  getLastPosition,
+  getSharingMemberId,
+  startSharing as startSharingGlobal,
+  stopSharing as stopSharingGlobal,
+  subscribe as subscribeSharing,
+} from '@/services/locationSharing'
 import { LocationMap } from '@/ui/LocationMap'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type {
@@ -70,8 +77,11 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [sharingAs, setSharingAs] = useState<string>('')
-  const [stopWatch, setStopWatch] = useState<(() => void) | null>(null)
+  // El propio compartir (watchPosition) ya no vive aquí — vive en
+  // services/locationSharing.ts, fuera de React, para que no se pare al
+  // salir de esta pantalla (ver comentario en ese archivo). Aquí solo se
+  // refleja su estado.
+  const [sharingAs, setSharingAs] = useState<string>(() => getSharingMemberId() ?? '')
 
   // `silent` = refresco en segundo plano (la actualización periódica de
   // cada 30s) sin poner toda la pantalla en "Cargando…" — con `setLoading(true)`
@@ -106,7 +116,21 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   }
 
   useEffect(() => reload(), []) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => stopWatch?.(), [stopWatch])
+
+  // El watch vive fuera de este componente (services/locationSharing.ts)
+  // precisamente para seguir en marcha aunque se salga de esta pantalla
+  // — aquí solo hace falta enterarse de sus cambios (nueva posición,
+  // error, alguien más empieza/deja de compartir desde su propio móvil)
+  // para reflejarlos en pantalla.
+  useEffect(() => {
+    return subscribeSharing(() => {
+      setSharingAs(getSharingMemberId() ?? '')
+      const sharingError = getSharingError()
+      if (sharingError) setError(sharingError)
+      const pos = getLastPosition()
+      if (pos) applyOwnLocationUpdate(pos.memberId, pos.latitude, pos.longitude)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Para ver la posición de los DEMÁS sin tener que recargar todo en
   // cada latido GPS propio (ver applyOwnLocationUpdate) — cada 30s es
@@ -130,7 +154,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
       // Para otra persona (p.ej. un menor) no tiene sentido: el admin no
       // lleva ese teléfono, así que ahí solo se desbloquea el permiso.
       const member = members.find((m) => m.id === memberId)
-      if (enabled && member?.linkedProfileId === profileId) startSharing(memberId)
+      if (enabled && member?.linkedProfileId === profileId) startSharingGlobal(memberId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cambiar el consentimiento')
     }
@@ -154,35 +178,6 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
     }))
   }
 
-  function startSharing(memberId: string) {
-    setError(null)
-    const stop = watchPosition(
-      (coords) => {
-        setError(null)
-        updateMemberLocation(memberId, coords.latitude, coords.longitude)
-          .then(() => applyOwnLocationUpdate(memberId, coords.latitude, coords.longitude))
-          .catch((err: Error) => setError(err.message))
-      },
-      // Antes un fallo (permiso denegado, GPS apagado, sin respuesta) se
-      // tragaba en silencio y no pasaba nada visible — ahora se muestra
-      // el motivo. Si el permiso está denegado no tiene sentido seguir
-      // "compartiendo" sin poder compartir nada, así que se corta aquí;
-      // el resto de fallos (GPS apagado un momento, tardanza puntual)
-      // pueden arreglarse solos en el siguiente intento del navegador.
-      (message, code) => {
-        setError(message)
-        if (code === 1) stopSharing() // 1 = PERMISSION_DENIED
-      },
-    )
-    setSharingAs(memberId)
-    setStopWatch(() => stop)
-  }
-
-  function stopSharing() {
-    stopWatch?.()
-    setStopWatch(null)
-    setSharingAs('')
-  }
 
   if (loading) return <p className="muted">Cargando…</p>
 
@@ -235,7 +230,8 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
       {sharingAs ? (
         <div className="card banner">
           <p>Compartiendo como {members.find((m) => m.id === sharingAs)?.name}.</p>
-          <button type="button" onClick={stopSharing}>
+          <p className="muted">Sigue actualizándose aunque salgas de esta pantalla, no hace falta dejarla abierta.</p>
+          <button type="button" onClick={stopSharingGlobal}>
             Dejar de compartir
           </button>
         </div>
@@ -246,7 +242,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
             {members
               .filter((m) => consents.find((c) => c.memberId === m.id)?.enabled)
               .map((m) => (
-                <button key={m.id} className="chip" onClick={() => startSharing(m.id)}>
+                <button key={m.id} className="chip" onClick={() => startSharingGlobal(m.id)}>
                   <MemberAvatar member={m} size={18} />
                   {m.name}
                 </button>

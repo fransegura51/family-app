@@ -57,41 +57,23 @@ export async function hasHevyApiKey(): Promise<boolean> {
   return !!data
 }
 
-// Guarda o reemplaza la clave — insert/update, según si ya existe una
-// fila para esta familia (la propia tabla tiene family_id como clave
-// primaria, así que un upsert normal ya hace lo correcto).
+// Guarda o reemplaza la clave — vía función de servidor, no escribiendo
+// directo en la tabla: la función calcula el family_id ella misma en
+// vez de fiarse del que mande el cliente, y comprueba el rol admin por
+// dentro (mismo patrón que los códigos de invitación). El intento
+// anterior (upsert directo con RLS sobre la tabla) daba "new row
+// violates row-level security policy" de forma intermitente — probado
+// a fondo del lado del servidor con el mismo perfil y SÍ funcionaba
+// ahí, así que el fallo estaba en algo del lado del cliente que no se
+// pudo reproducir con certeza; la función de servidor evita depender
+// de eso del todo.
 export async function saveHevyApiKey(apiKey: string): Promise<void> {
-  const { data: userResult } = await supabase.auth.getUser()
-  if (!userResult.user) throw new Error('No autenticado')
-  const { data: profileRow, error: profileError } = await supabase
-    .from('profiles')
-    .select('family_id')
-    .eq('id', userResult.user.id)
-    .single()
-  if (profileError) throw new Error(profileError.message)
-
-  const { error } = await supabase
-    .from('hevy_credentials')
-    .upsert({ family_id: profileRow.family_id, api_key: apiKey, updated_at: new Date().toISOString() })
-  // El error de Supabase (PostgrestError) no es una instancia real de
-  // Error — el formulario comprobaba `err instanceof Error` y, al ser
-  // false, se tragaba el mensaje real y mostraba siempre el genérico
-  // "No se pudo guardar" en vez del motivo de verdad (bug real: así no
-  // hay forma de diagnosticar por qué falla).
+  const { error } = await supabase.rpc('save_hevy_api_key', { p_api_key: apiKey })
   if (error) throw new Error(error.message)
 }
 
 export async function deleteHevyApiKey(): Promise<void> {
-  const { data: userResult } = await supabase.auth.getUser()
-  if (!userResult.user) throw new Error('No autenticado')
-  const { data: profileRow, error: profileError } = await supabase
-    .from('profiles')
-    .select('family_id')
-    .eq('id', userResult.user.id)
-    .single()
-  if (profileError) throw new Error(profileError.message)
-
-  const { error } = await supabase.from('hevy_credentials').delete().eq('family_id', profileRow.family_id)
+  const { error } = await supabase.rpc('delete_hevy_api_key')
   if (error) throw new Error(error.message)
 }
 

@@ -26,16 +26,16 @@ export function normalize(text: string): string {
 // lista de la compra" y respondía con lo que ya había en vez de añadir
 // los productos nuevos (bug real). Solo cuentan como pregunta las
 // formas que de verdad preguntan algo.
-const SHOPPING_PATTERNS = [
-  'que hay en la lista de la compra',
-  'que hay en la compra',
-  'que hay que comprar',
-  'que tengo que comprar',
-  'que falta en la compra',
-  'que falta en la lista de la compra',
-  'repasa la lista de la compra',
-  'repasame la lista de la compra',
-]
+// Antes era una lista de frases EXACTAS ("qué hay en la lista de la
+// compra"...) que se quedaba corta en cuanto se decía de otra forma tan
+// natural como esa — "qué TENEMOS en lista de la compra" no coincidía
+// con nada y Pepa lo guardaba como un apunte nuevo en vez de responder
+// (bug real repetido varias veces). Con una expresión que junta
+// cualquier forma de preguntar (hay/tengo/tenemos/falta) con cualquier
+// forma de decir "la compra" no hace falta seguir añadiendo frases
+// sueltas cada vez que se dice de una manera distinta.
+const SHOPPING_RE =
+  /\b(que hay|que tengo|que tenemos|que falta)\b[\s\S]*\b(en (la )?(lista de la )?compra|que comprar|para comprar)\b|\b(repasa|repasame)\b[\s\S]*\bcompra\b/
 
 // En 1ª persona singular ("qué tengo que hacer"), plural ("qué tenemos
 // que hacer todos") y en 3ª ("qué tiene que hacer Paco") — bug real:
@@ -90,17 +90,13 @@ const TASK_PATTERNS = [
 
 // "Lo siguiente que tengo en el calendario" — a diferencia de las
 // tareas, esto pregunta por el próximo EVENTO del calendario (cita,
-// cumpleaños...), no por tareas del día.
-const NEXT_EVENT_PATTERNS = [
-  'lo siguiente en el calendario',
-  'lo siguiente que tengo',
-  'que tengo en el calendario',
-  'que tengo apuntado',
-  'proxima cita',
-  'proximo evento',
-  'siguiente cita',
-  'siguiente evento',
-]
+// cumpleaños...), no por tareas del día. Como con la compra: en forma
+// de expresión en vez de frases exactas sueltas, porque el plural
+// "qué TENEMOS en el calendario" (tan natural como "qué tengo") no
+// coincidía con nada y se guardaba como una cita nueva en vez de
+// responder (mismo bug repetido, reportado varias veces).
+const NEXT_EVENT_RE =
+  /\blo siguiente\b|\b(que tengo|que tenemos)\b[\s\S]*\b(en el calendario|apuntado)\b|\b(proxim[oa]|siguiente)\b[\s\S]*\b(cita|evento)\b/
 
 // Pepa todavía no borra nada por voz — sin este aviso, "borra la cita
 // del nueve de septiembre" no se reconocía como nada especial y caía
@@ -239,11 +235,11 @@ export function detectIntent(text: string, today: Date): VoiceIntent {
   // Antes que las tareas: "lo siguiente que tengo en el calendario"
   // también contiene "que tengo", que si no se comprobara esto primero
   // se colaría como pregunta de tareas.
-  if (NEXT_EVENT_PATTERNS.some((p) => n.includes(p))) {
+  if (NEXT_EVENT_RE.test(n)) {
     return { type: 'next_calendar_event' }
   }
 
-  if (SHOPPING_PATTERNS.some((p) => n.includes(p))) {
+  if (SHOPPING_RE.test(n)) {
     return { type: 'shopping_list' }
   }
 

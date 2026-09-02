@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createEvent, deleteEvent, deleteEventOccurrence, listUpcomingEvents, updateEvent } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
@@ -50,6 +50,33 @@ type ViewMode = (typeof VIEWS)[number]
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Deslizar con el dedo para pasar de mes (en la cuadrícula) o de día (en
+// la ventana emergente) — petición real: "arrastro hacia la izquierda
+// que pase [el siguiente], arrastro a la derecha que pase [el
+// anterior]". Solo cuenta un gesto claro y sobre todo horizontal — si
+// no, se deja pasar como el toque/scroll normal (no hay que "robarle"
+// el scroll vertical de la pantalla a un gesto casi vertical).
+function useSwipeHandlers(onSwipeLeft: () => void, onSwipeRight: () => void) {
+  const startRef = useRef<{ x: number; y: number } | null>(null)
+  return {
+    onTouchStart: (e: TouchEvent) => {
+      const t = e.touches[0]
+      startRef.current = { x: t.clientX, y: t.clientY }
+    },
+    onTouchEnd: (e: TouchEvent) => {
+      const start = startRef.current
+      startRef.current = null
+      if (!start) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - start.x
+      const dy = t.clientY - start.y
+      if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return
+      if (dx < 0) onSwipeLeft()
+      else onSwipeRight()
+    },
+  }
 }
 
 export function CalendarScreen() {
@@ -269,6 +296,28 @@ export function CalendarScreen() {
     setVisibleMonth(d.getMonth())
   }
 
+  // Para deslizar de un día a otro DENTRO de la ventana emergente sin
+  // cerrarla — si el día cae en otro mes, la cuadrícula de detrás
+  // también se actualiza para que quede en el mismo mes al cerrarla.
+  function changeSelectedDate(deltaDays: number) {
+    const d = new Date(selectedDate + 'T00:00')
+    d.setDate(d.getDate() + deltaDays)
+    setSelectedDate(toDateStr(d))
+    if (d.getFullYear() !== visibleYear || d.getMonth() !== visibleMonth) {
+      setVisibleYear(d.getFullYear())
+      setVisibleMonth(d.getMonth())
+    }
+  }
+
+  const monthSwipe = useSwipeHandlers(
+    () => goToMonth(1),
+    () => goToMonth(-1),
+  )
+  const daySwipe = useSwipeHandlers(
+    () => changeSelectedDate(1),
+    () => changeSelectedDate(-1),
+  )
+
   function goToToday() {
     setVisibleYear(today.getFullYear())
     setVisibleMonth(today.getMonth())
@@ -366,7 +415,7 @@ export function CalendarScreen() {
             </button>
           </div>
 
-          <div className="month-grid">
+          <div className="month-grid" onTouchStart={monthSwipe.onTouchStart} onTouchEnd={monthSwipe.onTouchEnd}>
             {WEEKDAY_LABELS.map((w) => (
               <div key={w} className="month-grid-weekday">
                 {w}
@@ -440,6 +489,8 @@ export function CalendarScreen() {
                 setDayModalOpen(false)
                 setEditingId(null)
               }}
+              onNavigateDay={changeSelectedDate}
+              swipeHandlers={daySwipe}
             />
           )}
         </>
@@ -531,6 +582,8 @@ function DayModal({
   onEventChanged,
   onAdded,
   onClose,
+  onNavigateDay,
+  swipeHandlers,
 }: {
   selectedDate: string
   events: CalendarEvent[]
@@ -548,6 +601,8 @@ function DayModal({
   onEventChanged: () => void
   onAdded: () => void
   onClose: () => void
+  onNavigateDay: (deltaDays: number) => void
+  swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
 }) {
   const memberById = new Map(members.map((m) => [m.id, m]))
 
@@ -643,15 +698,31 @@ function DayModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal-sheet"
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={swipeHandlers.onTouchStart}
+        onTouchEnd={swipeHandlers.onTouchEnd}
+      >
         <div className="modal-header">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-            })}
-          </h2>
+          {/* Arrastrar con el dedo cambia de día (petición real); estas
+              flechas hacen lo mismo con un toque, para quien prefiera
+              tocar en vez de deslizar. */}
+          <div className="month-nav" style={{ margin: 0 }}>
+            <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
+              ‹
+            </button>
+            <h2 className="section-title" style={{ margin: 0 }}>
+              {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+            </h2>
+            <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
+              ›
+            </button>
+          </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
           </button>

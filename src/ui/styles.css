@@ -492,6 +492,26 @@ select {
   min-width: 140px;
 }
 
+/* Asa para arrastrar y reordenar la lista de la compra con el dedo.
+   touch-action: none le dice al propio navegador que no intente hacer
+   scroll de la pantalla mientras el dedo se mueve por encima de esto —
+   sin eso, arrastrar hacia abajo se confunde con desplazar la página. */
+.shopping-drag-handle {
+  touch-action: none;
+  cursor: grab;
+  font-size: 20px;
+  color: var(--muted);
+  padding: 4px 6px;
+  user-select: none;
+}
+
+.shopping-item-dragging {
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  opacity: 0.95;
+}
+
 .task-toggle {
   padding: 10px 16px;
   border-radius: 12px;

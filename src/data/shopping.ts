@@ -28,8 +28,8 @@ async function currentFamilyId(): Promise<string> {
 export async function listShoppingItems(): Promise<ShoppingItem[]> {
   const { data, error } = await supabase
     .from('shopping_items')
-    .select('id, family_id, trip_id, name, quantity, unit, priority, status, store')
-    .order('created_at', { ascending: true })
+    .select('id, family_id, trip_id, name, quantity, unit, priority, status, store, sort_order')
+    .order('sort_order', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
@@ -41,7 +41,21 @@ export async function listShoppingItems(): Promise<ShoppingItem[]> {
     priority: r.priority as ShoppingItemPriority,
     status: r.status as ShoppingItemStatus,
     store: r.store,
+    sortOrder: r.sort_order,
   }))
+}
+
+// Arrastrar con el dedo para cambiar el orden (petición real) — se
+// manda la lista ya en el orden final y aquí se reparten valores de
+// sort_order nuevos y crecientes; como se basan en "ahora", quedan
+// siempre por delante de lo que ya hubiera sin tener que tocar el
+// sort_order de nada más.
+export async function reorderShoppingItems(orderedIds: string[]): Promise<void> {
+  const base = Date.now()
+  const { error } = await supabase
+    .from('shopping_items')
+    .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
+  if (error) throw new Error(error.message)
 }
 
 export async function addShoppingItem(input: {

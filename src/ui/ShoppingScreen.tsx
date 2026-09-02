@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addInventoryItem,
   addShoppingItem,
@@ -10,6 +10,7 @@ import {
   listInventoryItems,
   listShoppingItems,
   listShoppingTrips,
+  reorderShoppingItems,
   updateInventoryQuantity,
   updateShoppingItemStatus,
 } from '@/data/shopping'
@@ -218,39 +219,13 @@ function ShoppingListTab() {
       {storeGroups.map(([store, storeItems]) => (
         <div key={store}>
           {storeGroups.length > 1 && <h3 className="shopping-store-heading">🏬 {store}</h3>}
-          <div className="event-list">
-            {storeItems.map((item) => (
-              <div key={item.id} className="card task-card">
-                <div className="task-card-main">
-                  <strong>{item.name}</strong>
-                  <p className="muted">
-                    {[item.quantity, item.unit].filter(Boolean).join(' ')}
-                    {!shoppingMode && item.priority !== 'normal' && ` · prioridad ${item.priority}`}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="task-toggle"
-                  onClick={() => setStatus(item.id, 'comprado')}
-                >
-                  ✓ Comprado
-                </button>
-                {!shoppingMode && (
-                  <>
-                    <button type="button" className="link-button" onClick={() => setStatus(item.id, 'trasladado')}>
-                      Próxima compra
-                    </button>
-                    <button type="button" className="link-button" onClick={() => setStatus(item.id, 'omitido')}>
-                      Ya tengo
-                    </button>
-                    <button type="button" className="link-button" onClick={() => deleteShoppingItem(item.id).then(reload)}>
-                      Eliminar
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+          <DraggableStoreGroup
+            items={storeItems}
+            shoppingMode={shoppingMode}
+            onSetStatus={setStatus}
+            onDeleted={reload}
+            onReordered={reload}
+          />
         </div>
       ))}
       {pending.length === 0 && <p className="muted">Nada pendiente.</p>}
@@ -298,6 +273,118 @@ function ShoppingListTab() {
             ))}
         </>
       )}
+    </div>
+  )
+}
+
+// Arrastrar un producto con el dedo para subirlo o bajarlo en la lista
+// (petición real: "poder ordenarlos por lugar en la lista de compra").
+// El orden se guarda de verdad (sort_order en la base de datos), no es
+// solo visual — se mantiene igual la próxima vez que se abra la lista.
+// El "asa" para arrastrar tiene `touch-action: none` en el CSS para que
+// el propio navegador no intente hacer scroll de la pantalla mientras
+// se mueve el dedo por encima, sin necesitar trucos con preventDefault.
+function DraggableStoreGroup({
+  items,
+  shoppingMode,
+  onSetStatus,
+  onDeleted,
+  onReordered,
+}: {
+  items: ShoppingItem[]
+  shoppingMode: boolean
+  onSetStatus: (id: string, status: ShoppingItemStatus) => void
+  onDeleted: () => void
+  onReordered: () => void
+}) {
+  const [order, setOrder] = useState(items)
+  const dragRef = useRef<{ id: string; startY: number; startIndex: number; itemHeight: number } | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState(0)
+
+  // La lista de fuera (filtrada/ordenada por la base de datos) manda —
+  // se sincroniza salvo mientras se está arrastrando, para no pelearse
+  // con el propio gesto en marcha.
+  useEffect(() => {
+    if (!dragRef.current) setOrder(items)
+  }, [items])
+
+  function handleTouchStart(e: ReactTouchEvent, id: string, el: HTMLElement) {
+    const index = order.findIndex((i) => i.id === id)
+    dragRef.current = { id, startY: e.touches[0].clientY, startIndex: index, itemHeight: el.offsetHeight + 10 }
+    setDraggingId(id)
+  }
+
+  function handleTouchMove(e: ReactTouchEvent) {
+    const drag = dragRef.current
+    if (!drag) return
+    const dy = e.touches[0].clientY - drag.startY
+    setDragOffset(dy)
+    const shift = Math.round(dy / drag.itemHeight)
+    const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
+    setOrder((prev) => {
+      const currentIndex = prev.findIndex((i) => i.id === drag.id)
+      if (currentIndex === -1 || currentIndex === newIndex) return prev
+      const next = [...prev]
+      const [moved] = next.splice(currentIndex, 1)
+      next.splice(newIndex, 0, moved)
+      return next
+    })
+  }
+
+  function handleTouchEnd() {
+    const drag = dragRef.current
+    dragRef.current = null
+    setDraggingId(null)
+    setDragOffset(0)
+    if (!drag) return
+    reorderShoppingItems(order.map((i) => i.id)).then(onReordered)
+  }
+
+  return (
+    <div className="event-list">
+      {order.map((item) => (
+        <div
+          key={item.id}
+          className={'card task-card' + (draggingId === item.id ? ' shopping-item-dragging' : '')}
+          style={draggingId === item.id ? { transform: `translateY(${dragOffset}px)` } : undefined}
+        >
+          {!shoppingMode && (
+            <span
+              className="shopping-drag-handle"
+              onTouchStart={(e) => handleTouchStart(e, item.id, e.currentTarget.parentElement as HTMLElement)}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              aria-label="Arrastrar para reordenar"
+            >
+              ⠿
+            </span>
+          )}
+          <div className="task-card-main">
+            <strong>{item.name}</strong>
+            <p className="muted">
+              {[item.quantity, item.unit].filter(Boolean).join(' ')}
+              {!shoppingMode && item.priority !== 'normal' && ` · prioridad ${item.priority}`}
+            </p>
+          </div>
+          <button type="button" className="task-toggle" onClick={() => onSetStatus(item.id, 'comprado')}>
+            ✓ Comprado
+          </button>
+          {!shoppingMode && (
+            <>
+              <button type="button" className="link-button" onClick={() => onSetStatus(item.id, 'trasladado')}>
+                Próxima compra
+              </button>
+              <button type="button" className="link-button" onClick={() => onSetStatus(item.id, 'omitido')}>
+                Ya tengo
+              </button>
+              <button type="button" className="link-button" onClick={() => deleteShoppingItem(item.id).then(onDeleted)}>
+                Eliminar
+              </button>
+            </>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

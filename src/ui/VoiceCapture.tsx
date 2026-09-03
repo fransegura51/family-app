@@ -865,9 +865,23 @@ export function VoiceCapture() {
   const [draggingButton, setDraggingButton] = useState<PanelMode | null>(null)
   const [buttonDragOffset, setButtonDragOffset] = useState({ x: 0, y: 0 })
 
+  // Abrir el panel ya no depende de los eventos táctiles/de puntero
+  // (pointerdown/up), que resultaron poco fiables en algunos móviles
+  // (bug real, persistente: "en el móvil no me funciona... se conecta
+  // el micrófono pero no sale la pantalla" — dos intentos previos con
+  // preventDefault y con un margen de medio segundo no lo arreglaron
+  // del todo). Ahora abrir pasa SOLO por onClick, el evento más
+  // simple y fiable que hay en cualquier navegador — pointerdown/
+  // move/up se quedan únicamente para detectar y dibujar el
+  // arrastre (reordenar los 4 botones), y si se detecta un
+  // arrastre de verdad, wasDraggedRef hace que el clic que viene
+  // detrás no abra el panel.
+  const wasDraggedRef = useRef(false)
+
   function handleButtonDragStart(e: ReactPointerEvent, mode: PanelMode, el: HTMLElement) {
     if (e.pointerType === 'mouse' && e.button !== 0) return
     el.setPointerCapture(e.pointerId)
+    wasDraggedRef.current = false
     const index = buttonOrder.indexOf(mode)
     const style = getComputedStyle(el.parentElement as HTMLElement)
     const gap = parseFloat(style.columnGap || style.gap || '0') || 0
@@ -889,6 +903,7 @@ export function VoiceCapture() {
     const dx = e.clientX - drag.startX
     const dy = e.clientY - drag.startY
     drag.moved = Math.max(drag.moved, Math.abs(dx), Math.abs(dy))
+    if (drag.moved >= BUTTON_TAP_THRESHOLD_PX) wasDraggedRef.current = true
     setButtonDragOffset({ x: dx, y: dy })
     const startRow = Math.floor(drag.startIndex / 2)
     const startCol = drag.startIndex % 2
@@ -904,24 +919,25 @@ export function VoiceCapture() {
     })
   }
 
-  function handleButtonDragEnd(e: ReactPointerEvent) {
+  function handleButtonDragEnd() {
     const drag = buttonDragRef.current
     buttonDragRef.current = null
     setDraggingButton(null)
     setButtonDragOffset({ x: 0, y: 0 })
-    if (!drag) return
-    // Sin esto, el móvil dispara además un "click" fantasma justo
-    // después de soltar el dedo — con estos botones eso podía volver a
-    // llamar a abrir el panel/arrancar el micrófono una segunda vez
-    // (bug real: "en el móvil no me funciona... se conecta el
-    // micrófono pero no sale la pantalla" — el micrófono se reiniciaba
-    // en bucle antes de que la pantalla llegara a asentarse).
-    e.preventDefault()
-    if (drag.moved < BUTTON_TAP_THRESHOLD_PX) {
-      openPanel(drag.mode)
+    if (drag && drag.moved >= BUTTON_TAP_THRESHOLD_PX) {
+      saveTabOrder('pepa-buttons', buttonOrder)
+    }
+  }
+
+  function handleButtonClick(mode: PanelMode) {
+    // Si justo antes hubo un arrastre de verdad (para reordenar), este
+    // clic que viene detrás no cuenta como "abrir" — ya se ha hecho lo
+    // que se quería hacer.
+    if (wasDraggedRef.current) {
+      wasDraggedRef.current = false
       return
     }
-    saveTabOrder('pepa-buttons', buttonOrder)
+    openPanel(mode)
   }
 
   function close() {
@@ -953,6 +969,7 @@ export function VoiceCapture() {
               className={'voice-fab-round ' + (kindOf(m) === 'ask' ? 'voice-fab-ask' : 'voice-fab-create') + (isDragging ? ' voice-fab-dragging' : '')}
               style={isDragging ? { transform: `translate(${buttonDragOffset.x}px, ${buttonDragOffset.y}px)` } : undefined}
               aria-label={PANEL_INFO[m].title}
+              onClick={() => handleButtonClick(m)}
               onPointerDown={(e) => handleButtonDragStart(e, m, e.currentTarget)}
               onPointerMove={handleButtonDragMove}
               onPointerUp={handleButtonDragEnd}

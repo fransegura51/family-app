@@ -37,6 +37,11 @@ const TAP_THRESHOLD_PX = 8
 // falta algo que los distinga: un deslizar normal se mueve enseguida,
 // mantener pulsado se queda quieto un momento antes de moverse.
 const LONG_PRESS_MS = 450
+// Margen de "dedo quieto" durante la espera — más ancho que
+// TAP_THRESHOLD_PX (pensado para distinguir toque de arrastre, no
+// para detectar quietud) porque el temblor natural de la mano al
+// mantener pulsado ya supera un margen tan ajustado.
+const LONG_PRESS_CANCEL_PX = 20
 
 function isActivePath(pathname: string, tab: (typeof TABS)[number]): boolean {
   return tab.end ? pathname === tab.to : pathname === tab.to || pathname.startsWith(tab.to + '/')
@@ -100,11 +105,17 @@ export function NavShell() {
     // Todavía esperando a ver si es pulsación mantenida — si el dedo
     // ya se ha movido de verdad, es que se quiere desplazar la barra,
     // no reordenar: se cancela la espera y se deja el gesto nativo de
-    // desplazamiento seguir su curso sin interferir.
+    // desplazamiento seguir su curso sin interferir. El margen es más
+    // ancho que TAP_THRESHOLD_PX a propósito: un dedo "quieto" de
+    // verdad tiembla unos pocos píxeles solo por el pulso de la mano,
+    // y con un margen tan ajustado como el del toque normal, ese
+    // temblor ya cancelaba la espera casi siempre antes de llegar a
+    // los 450ms (bug real: "esto no funciona" — nunca llegaba a
+    // entrar en modo arrastre).
     if (longPressTimerRef.current && pendingRef.current) {
       const dx = e.clientX - pendingRef.current.startX
       const dy = e.clientY - pendingRef.current.startY
-      if (Math.hypot(dx, dy) > TAP_THRESHOLD_PX) {
+      if (Math.hypot(dx, dy) > LONG_PRESS_CANCEL_PX) {
         clearLongPress()
         pendingRef.current = null
       }
@@ -166,7 +177,7 @@ export function NavShell() {
             className={
               'nav-item' + (isActivePath(location.pathname, tab) ? ' active' : '') + (draggingTo === tab.to ? ' nav-item-dragging' : '')
             }
-            style={draggingTo === tab.to ? { transform: `translateX(${dragOffset}px)` } : undefined}
+            style={draggingTo === tab.to ? { transform: `translateX(${dragOffset}px) scale(1.08)` } : undefined}
             onClick={() => handleClick(tab.to)}
             onPointerDown={(e) => handlePointerDown(e, tab.to, e.currentTarget)}
             onPointerMove={handlePointerMove}

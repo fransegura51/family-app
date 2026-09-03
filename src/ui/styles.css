@@ -276,10 +276,15 @@ button {
   border: none;
   background: none;
   cursor: pointer;
-  /* Sin restricción: con el dedo, la barra se desplaza de lado con su
-     gesto normal (el arrastre para reordenar en esta barra es solo de
-     ratón — ver el porqué en NavShell.tsx). Con pan-y aquí, el móvil
-     no dejaba desplazar la barra hacia los lados en absoluto. */
+  /* Sin restricción de touch-action: con el dedo, la barra se
+     desplaza de lado con su gesto normal. Lo que sí hace falta
+     desactivar es el menú/selección de texto que algunos móviles
+     muestran solos al mantener el dedo quieto sobre un botón — eso le
+     robaba el gesto a la espera de "pulsación mantenida" antes de que
+     diera tiempo a entrar en modo arrastre. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Se arrastra con el dedo para cambiar de sitio, igual que el resto
@@ -289,6 +294,7 @@ button {
   z-index: 2;
   background: #f1f3f5;
   border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .link-button {

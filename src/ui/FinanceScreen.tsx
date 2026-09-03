@@ -25,6 +25,7 @@ import { MONTH_LABELS } from '@/domain/calendar'
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
+import { StoreIcon } from '@/ui/StoreIcon'
 import type {
   Budget,
   BudgetPeriod,
@@ -364,7 +365,7 @@ function ReceiptsTab() {
           usa el gráfico de reparto de arriba para esa misma tienda. */}
       <h2 className="section-title">Tickets guardados</h2>
       <div className="store-folder-grid">
-        {grouped.map(({ store, receipts: storeReceipts, total }, i) => {
+        {grouped.map(({ store, receipts: storeReceipts, total }) => {
           const isOpen = expandedStore === store
           return (
             <div key={store} className="store-folder">
@@ -373,8 +374,8 @@ function ReceiptsTab() {
                 className="store-folder-header"
                 onClick={() => setExpandedStore(isOpen ? null : store)}
               >
-                <span className="store-folder-icon" style={{ background: STORE_COLORS[i % STORE_COLORS.length] }}>
-                  {store.charAt(0).toUpperCase()}
+                <span className="store-folder-icon">
+                  <StoreIcon name={store} size={22} />
                 </span>
                 <span className="store-folder-info">
                   <strong>{store}</strong>
@@ -964,18 +965,67 @@ function AddReceiptForm({
 // Presupuestos (Skill 19)
 // ---------------------------------------------------------------------
 
+// Petición real: "un esquema de estadística, pero que sea redondo,
+// como un quesito... la porción que se gasta de Mercadona, la porción
+// de Hiperber... el tanto por ciento con el precio que corresponde" —
+// mismo dato que el reparto por tienda de Tickets, pero como tarta en
+// vez de barras. conic-gradient reparte cada tienda su color según su
+// % del total, sin necesidad de dibujar el SVG a mano.
+function StorePieChart({ groups }: { groups: { store: string; total: number }[] }) {
+  const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
+  let cumulative = 0
+  const stops = groups.map((g, i) => {
+    const pct = grandTotal > 0 ? (g.total / grandTotal) * 100 : 0
+    const start = cumulative
+    cumulative += pct
+    return `${STORE_COLORS[i % STORE_COLORS.length]} ${start}% ${cumulative}%`
+  })
+  const gradient = grandTotal > 0 ? `conic-gradient(${stops.join(', ')})` : '#e9ecef'
+
+  return (
+    <div className="card event-card">
+      <strong>Reparto del gasto por tienda — este mes</strong>
+      {grandTotal === 0 ? (
+        <p className="muted">Todavía no hay tickets guardados este mes.</p>
+      ) : (
+        <div className="store-pie-wrap">
+          <div className="store-pie" style={{ background: gradient }} />
+          <div className="store-pie-legend">
+            {groups.map((g, i) => {
+              const pct = grandTotal > 0 ? (g.total / grandTotal) * 100 : 0
+              return (
+                <div key={g.store} className="store-pie-legend-row">
+                  <span className="store-pie-swatch" style={{ background: STORE_COLORS[i % STORE_COLORS.length] }} />
+                  <span className="store-pie-legend-name">{g.store}</span>
+                  <span className="muted">
+                    {pct.toFixed(0)}% · {g.total.toFixed(2)} €
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function BudgetsTab() {
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [knownStores, setKnownStores] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
-    Promise.all([listBudgets(), listExpenses()])
-      .then(([b, e]) => {
+    Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores()])
+      .then(([b, e, r, stores]) => {
         setBudgets(b)
         setExpenses(e)
+        setReceipts(r)
+        setKnownStores(stores.map((s) => s.name))
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -985,9 +1035,14 @@ function BudgetsTab() {
 
   if (loading) return <p className="muted">Cargando presupuestos…</p>
 
+  const currentMonth = toDateStr(new Date()).slice(0, 7)
+  const monthReceipts = receipts.filter((r) => r.receiptDate.startsWith(currentMonth))
+  const pieGroups = groupReceiptsByStore(monthReceipts, knownStores)
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
+      <StorePieChart groups={pieGroups} />
       <div className="event-list">
         {budgets.map((b) => {
           const spent = budgetSpent(b, expenses)

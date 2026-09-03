@@ -1208,6 +1208,49 @@ textarea {
   color: var(--muted);
 }
 
+/* Quesito de reparto de gasto por tienda (Presupuestos). */
+.store-pie-wrap {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.store-pie {
+  flex: 0 0 auto;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+}
+
+.store-pie-legend {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.store-pie-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.store-pie-legend-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.store-pie-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
 /* Carpetas de tickets por tienda — plegadas por defecto, tocar para
    ver los tickets de esa tienda. */
 .store-folder-grid {
@@ -1240,9 +1283,6 @@ textarea {
   flex: 0 0 auto;
   width: 36px;
   height: 36px;
-  border-radius: 50%;
-  color: white;
-  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;

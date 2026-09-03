@@ -27,7 +27,7 @@ import { computeProductStats } from '@/domain/products'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { normalize } from '@/domain/voiceQuery'
-import { getStoreIcon } from '@/domain/storeIcons'
+import { StoreIcon } from '@/ui/StoreIcon'
 import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
 import { MONTH_LABELS } from '@/domain/calendar'
 import type {
@@ -341,38 +341,14 @@ function ShoppingListTab() {
 // para no arrastrar el toque a lo que tenga alrededor (p. ej. el
 // nombre en Tiendas, que sigue abriendo el renombrado como siempre).
 function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
-  const icon = getStoreIcon(name)
-  const [broken, setBroken] = useState(false)
-
   function handleClick(e: { stopPropagation: () => void }) {
     e.stopPropagation()
     window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: name } }))
   }
 
-  if (icon.kind === 'logo' && !broken) {
-    return (
-      <img
-        src={`https://www.google.com/s2/favicons?domain=${icon.domain}&sz=${size * 2}`}
-        alt={`Ir a la lista de ${name}`}
-        width={size}
-        height={size}
-        style={{ borderRadius: 4, verticalAlign: 'middle', cursor: 'pointer' }}
-        onClick={handleClick}
-        // Si el dominio no tiene favicon de verdad (dominio adivinado
-        // que resulta no existir o no responder), se cae al icono
-        // genérico en vez de dejar un hueco de imagen rota.
-        onError={() => setBroken(true)}
-      />
-    )
-  }
   return (
-    <span
-      role="button"
-      aria-label={`Ir a la lista de ${name}`}
-      onClick={handleClick}
-      style={{ fontSize: size, cursor: 'pointer' }}
-    >
-      {icon.kind === 'emoji' ? icon.icon : '🏬'}
+    <span role="button" aria-label={`Ir a la lista de ${name}`} onClick={handleClick} style={{ cursor: 'pointer' }}>
+      <StoreIcon name={name} size={size} />
     </span>
   )
 }

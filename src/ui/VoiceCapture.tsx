@@ -640,11 +640,22 @@ export function VoiceCapture() {
       return
     }
     await processText(trimmed)
-    // Sigue escuchando para el siguiente encargo sin tener que volver a
-    // abrir el panel — se reanuda DESPUÉS de que Pepa termine de hablar
-    // (respond ya espera a que acabe la voz) para que no se oiga a sí
-    // misma y se lo tome como un encargo nuevo.
-    if (openRef.current) startListening()
+    // Petición real: "cuando termine de decirme... quiero que se cierre
+    // automáticamente Pepa. Y si quiero volver a abrirlo, pues volver a
+    // decirle la frase" — antes se quedaba escuchando para un segundo
+    // encargo sin cerrar, y el aviso de "te escucho" (la línea roja) se
+    // quedaba puesto aunque ya se hubiera contestado. En modo voz la
+    // respuesta ya se ha oído entera en este punto (respond espera a que
+    // acabe de hablar), así que cerrar no se pierde nada — para lo
+    // siguiente, se vuelve a decir la frase de activación. En modo texto
+    // no hay ninguna señal de que ya se ha leído la respuesta, así que
+    // ahí se sigue escuchando como antes, para no hacerla desaparecer
+    // sin darle tiempo a leerla.
+    if (mode === 'voice') {
+      close()
+    } else if (openRef.current) {
+      startListening()
+    }
   }
 
   function handleTypedSubmit(e: FormEvent) {

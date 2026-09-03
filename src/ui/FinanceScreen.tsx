@@ -15,7 +15,7 @@ import {
   listWalletTransactions,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
-import { listShoppingStores } from '@/data/shoppingStores'
+import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
@@ -267,11 +267,18 @@ function canonicalStoreName(raw: string | null, knownStores: string[]): string {
   return findKnownStore(raw, knownStores)?.store ?? raw.trim()
 }
 
+// Petición real: "me creas también, aunque estén vacías, otras
+// carpetas que sean de Aldi, Líder, Superdumbo... y con los
+// supermercados que vayamos añadiendo, ya le vamos añadiendo más" —
+// una carpeta por cada tienda YA DADA DE ALTA en Compras, aunque
+// todavía no tenga ningún ticket guardado, no solo las que ya
+// tuvieran alguno.
 function groupReceiptsByStore(
   receipts: Receipt[],
   knownStores: string[],
 ): { store: string; receipts: Receipt[]; total: number }[] {
   const groups = new Map<string, Receipt[]>()
+  for (const s of knownStores) groups.set(s, [])
   for (const r of receipts) {
     const key = canonicalStoreName(r.store, knownStores)
     const list = groups.get(key) ?? []
@@ -285,6 +292,42 @@ function groupReceiptsByStore(
       total: list.reduce((sum, r) => sum + (r.totalAmount ?? 0), 0),
     }))
     .sort((a, b) => b.total - a.total)
+}
+
+// Petición real: "tienes que poner una pestaña para añadir
+// supermercado, para añadir tienda" — directamente aquí, sin tener que
+// ir a Compras para dar de alta una tienda nueva antes de poder
+// guardarle un ticket.
+function AddStoreInline({ onAdded }: { onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await createShoppingStore(name.trim())
+      setName('')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir la tienda')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="inline-fields" style={{ marginBottom: 12 }}>
+      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nueva tienda (p. ej. Aldi)" />
+      <button type="submit" disabled={saving || !name.trim()}>
+        + Añadir tienda
+      </button>
+      {error && <p className="error">{error}</p>}
+    </form>
+  )
 }
 
 function ReceiptsTab() {
@@ -356,14 +399,15 @@ function ReceiptsTab() {
           Mercadona, se me abran todos los tickets que hay guardados...
           que desaparezcan los tickets de ahí abajo y que ahí pongan
           las carpetas". Una carpeta por tienda, plegada por defecto
-          (solo icono, nombre, nº de tickets y total) — los tickets
+          (logo real, nombre, nº de tickets y total) — los tickets
           sueltos ya no se ven directamente, solo dentro de su carpeta.
-          Sin logotipos reales de cada supermercado (no hay licencia
-          para usarlos ni una fuente fiable de dónde sacarlos): un
-          icono de color con la inicial, igual que ya se hace con el
-          avatar de cada persona de la familia, y el mismo color que
-          usa el gráfico de reparto de arriba para esa misma tienda. */}
+          Una carpeta por cada tienda ya dada de alta, aunque no tenga
+          tickets todavía (petición real: "aunque estén vacías, me
+          creas las carpetas... y con los supermercados que vayamos
+          añadiendo, ya le vamos añadiendo más" — de ahí el formulario
+          de abajo para dar de alta una tienda nueva sin salir de aquí). */}
       <h2 className="section-title">Tickets guardados</h2>
+      <AddStoreInline onAdded={() => listShoppingStores().then((rows) => setKnownStores(rows.map((s) => s.name)))} />
       <div className="store-folder-grid">
         {grouped.map(({ store, receipts: storeReceipts, total }) => {
           const isOpen = expandedStore === store

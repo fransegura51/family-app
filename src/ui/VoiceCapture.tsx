@@ -1,4 +1,4 @@
-import { FormEvent, useRef, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
@@ -102,6 +102,22 @@ function destinationOf(mode: PanelMode): Destination {
 
 function kindOf(mode: PanelMode): 'ask' | 'create' {
   return mode.startsWith('ask') ? 'ask' : 'create'
+}
+
+// "Pepa calendario" / "Pepa compra" / "apunta calendario" / "apunta
+// compra" abren el panel correspondiente con solo decirlas, sin tocar
+// ningún icono — petición real: "que se abran con la voz, igual que
+// hace Siri cuando dices 'oye Siri' o Google cuando dices 'OK Google'".
+// "Apunta" se comprueba antes que "Pepa" para que "Pepa, apunta en el
+// calendario que…" (dicho de un tirón) abra directamente Apuntar
+// Calendario en vez de Preguntar — encargo, no pregunta.
+function detectWakeTrigger(text: string): PanelMode | null {
+  const n = normalize(text)
+  if (/\bapunta\w*\b[\s\S]*\bcalendario\b/.test(n)) return 'create-calendario'
+  if (/\bapunta\w*\b[\s\S]*\b(compra|compras)\b/.test(n)) return 'create-compras'
+  if (/\bpepa\b[\s\S]*\bcalendario\b/.test(n)) return 'ask-calendario'
+  if (/\bpepa\b[\s\S]*\b(compra|compras)\b/.test(n)) return 'ask-compras'
+  return null
 }
 
 const PANEL_INFO: Record<
@@ -414,6 +430,17 @@ export function VoiceCapture() {
   // Ahora el botón que se toca YA dice destino y acción, así que dentro
   // no hace falta adivinar ninguna de las dos cosas.
   const [panelMode, setPanelMode] = useState<PanelMode>('create-calendario')
+  // openPanel cambia panelMode y arranca a escuchar EN EL MISMO
+  // instante — React todavía no ha vuelto a renderizar, así que
+  // processText, si leyera panelMode directamente, seguiría viendo el
+  // botón anterior la primera vez (bug real: tocar "🐣📅 Pepa
+  // Calendario" apuntaba una cita en vez de responder, la primera vez
+  // después de cada cambio de botón; la segunda vez ya iba bien,
+  // porque para entonces sí había repintado). Una ref no tiene ese
+  // problema — se lee siempre el valor más reciente, venga de la
+  // clausura que venga.
+  const panelModeRef = useRef(panelMode)
+  panelModeRef.current = panelMode
 
   // Devuelve una promesa que no termina hasta que Pepa deja de hablar —
   // así se sabe el momento exacto en que es seguro volver a escuchar sin
@@ -428,8 +455,8 @@ export function VoiceCapture() {
     setStatus('saving')
     try {
       const text = stripWakeWord(rawText)
-      const destination = destinationOf(panelMode)
-      const kind = kindOf(panelMode)
+      const destination = destinationOf(panelModeRef.current)
+      const kind = kindOf(panelModeRef.current)
 
       // Borrar por voz no está soportado en ningún botón todavía — se
       // comprueba siempre, para no acabar creando una cita nueva con el
@@ -633,6 +660,7 @@ export function VoiceCapture() {
   }
 
   function openPanel(nextMode: PanelMode) {
+    stopWakeListening()
     setPanelMode(nextMode)
     setOpen(true)
     if (dictationOk) startListening()
@@ -646,51 +674,103 @@ export function VoiceCapture() {
     setTypedText('')
   }
 
+  // Escucha de fondo, con el panel CERRADO, solo para detectar una de
+  // las 4 frases de activación — nunca para guardar ni responder nada
+  // (eso solo pasa dentro del panel ya abierto, con el micrófono
+  // reiniciado desde cero). Un único aviso, no cuatro: cualquiera de
+  // las 4 frases abre YA su panel y arranca la escucha normal ahí, así
+  // que aquí basta con mirar el texto según llega y parar en cuanto
+  // encaje una — sin esperar a que termine la frase entera.
+  const wakeSessionRef = useRef<{ stop: () => void } | null>(null)
+  const wakeTriggeredRef = useRef(false)
+
+  function stopWakeListening() {
+    wakeSessionRef.current?.stop()
+    wakeSessionRef.current = null
+  }
+
+  function startWakeListening() {
+    if (!dictationOk || wakeSessionRef.current || openRef.current) return
+    wakeTriggeredRef.current = false
+    wakeSessionRef.current = listenContinuous({
+      onTranscript: (text) => {
+        if (wakeTriggeredRef.current) return
+        const mode = detectWakeTrigger(text)
+        if (!mode) return
+        wakeTriggeredRef.current = true
+        stopWakeListening()
+        openPanel(mode)
+      },
+      // Fallos de fondo (permiso denegado, sin micrófono...) no se
+      // muestran — esto escucha en silencio de forma continua, no es
+      // una acción que la usuaria haya pedido en este momento como
+      // para interrumpirla con un aviso de error.
+      onError: () => {},
+    })
+  }
+
+  // Arranca/para la escucha de fondo según se abra o cierre el panel —
+  // nunca los dos micrófonos a la vez. Al desmontar (se sale de la app)
+  // se para del todo.
+  useEffect(() => {
+    if (open) {
+      stopWakeListening()
+    } else {
+      startWakeListening()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  useEffect(() => {
+    return () => stopWakeListening()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const panel = PANEL_INFO[panelMode]
 
   return (
     <>
-      {/* Cuatro botones, cada uno con su rótulo — al confundir destino y
-          categoría se llegó a apuntar "Mercadona, patata, huevo" en el
-          calendario en vez de en la compra (bug real reportado). Con el
-          botón diciendo YA destino + acción no hace falta adivinar ni
-          recordar qué hace cada uno. */}
-      <button
-        type="button"
-        className="voice-fab voice-fab-ask-calendario"
-        aria-label="Preguntar a Pepa por el calendario"
-        onClick={() => openPanel('ask-calendario')}
-      >
-        <span className="voice-fab-icon">🐣📅</span>
-        <span className="voice-fab-label">Pepa Calendario</span>
-      </button>
-      <button
-        type="button"
-        className="voice-fab voice-fab-ask-compras"
-        aria-label="Preguntar a Pepa por la lista de la compra"
-        onClick={() => openPanel('ask-compras')}
-      >
-        <span className="voice-fab-icon">🐣🛒</span>
-        <span className="voice-fab-label">Pepa Compra</span>
-      </button>
-      <button
-        type="button"
-        className="voice-fab voice-fab-create-calendario"
-        aria-label="Apuntar en el calendario con voz"
-        onClick={() => openPanel('create-calendario')}
-      >
-        <span className="voice-fab-icon">🎤📅</span>
-        <span className="voice-fab-label">Apuntar Calendario</span>
-      </button>
-      <button
-        type="button"
-        className="voice-fab voice-fab-create-compras"
-        aria-label="Apuntar en la lista de la compra con voz"
-        onClick={() => openPanel('create-compras')}
-      >
-        <span className="voice-fab-icon">🎤🛒</span>
-        <span className="voice-fab-label">Apuntar Compra</span>
-      </button>
+      {/* Cuatro botones redondos, solo icono, agrupados en una esquina —
+          petición real: "ocupan mucho espacio en la pantalla... hazlos
+          más pequeños, redondos... ponlos arriba, donde no tapen la
+          vista". Cada combinación de emoji ya es distinta a simple
+          vista (🐣📅/🐣🛒/🎤📅/🎤🛒); el nombre completo sigue estando
+          disponible al tacto (aria-label) y, ya abierto, en el título
+          del panel. */}
+      <div className="voice-fab-cluster">
+        <button
+          type="button"
+          className="voice-fab-round voice-fab-ask"
+          aria-label="Preguntar a Pepa por el calendario"
+          onClick={() => openPanel('ask-calendario')}
+        >
+          🐣📅
+        </button>
+        <button
+          type="button"
+          className="voice-fab-round voice-fab-ask"
+          aria-label="Preguntar a Pepa por la lista de la compra"
+          onClick={() => openPanel('ask-compras')}
+        >
+          🐣🛒
+        </button>
+        <button
+          type="button"
+          className="voice-fab-round voice-fab-create"
+          aria-label="Apuntar en el calendario con voz"
+          onClick={() => openPanel('create-calendario')}
+        >
+          🎤📅
+        </button>
+        <button
+          type="button"
+          className="voice-fab-round voice-fab-create"
+          aria-label="Apuntar en la lista de la compra con voz"
+          onClick={() => openPanel('create-compras')}
+        >
+          🎤🛒
+        </button>
+      </div>
 
       {open && (
         <div className="modal-overlay" onClick={close}>

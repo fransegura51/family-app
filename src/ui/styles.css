@@ -1018,57 +1018,42 @@ textarea {
   margin-bottom: 8px;
 }
 
-.voice-fab {
+/* Cuatro botones redondos, solo icono, agrupados en una esquina —
+   petición real: "ocupan mucho espacio en la pantalla... hazlos más
+   pequeños, redondos... ponlos arriba, donde no tapen la vista". En
+   una rejilla 2x2 compacta, arriba a la derecha, lejos del contenido y
+   de la barra de navegación de abajo. */
+.voice-fab-cluster {
   position: fixed;
-  right: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 48px;
-  padding: 0 18px 0 14px;
-  border-radius: 24px;
-  border: none;
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  cursor: pointer;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
   z-index: 40;
 }
 
-.voice-fab-icon {
-  font-size: 22px;
+.voice-fab-round {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  color: white;
+  font-size: 16px;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
 }
 
-.voice-fab-label {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-/* Cuatro botones separados — Pepa (preguntar) y Apuntar (guardar), cada
-   uno partido en Calendario / Compra, para que el botón ya diga destino
-   Y acción sin tener que adivinar ninguna de las dos cosas (petición
-   real: "vamos a dejar Pepa calendario y Pepa lista de la compra, dos
-   botones independientes... apuntar calendario, apuntar lista de la
-   compra"). Apilados para que no se pisen ni se confundan al tacto —
-   los dos de Pepa (los más usados) más cerca de la barra de navegación,
-   los dos de Apuntar justo encima. */
-.voice-fab-ask-compras {
-  bottom: 84px;
+.voice-fab-ask {
   background: #7c3aed;
 }
 
-.voice-fab-ask-calendario {
-  bottom: 150px;
-  background: #7c3aed;
-}
-
-.voice-fab-create-compras {
-  bottom: 216px;
-  background: var(--primary);
-}
-
-.voice-fab-create-calendario {
-  bottom: 282px;
+.voice-fab-create {
   background: var(--primary);
 }
 

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
@@ -104,23 +104,6 @@ function kindOf(mode: PanelMode): 'ask' | 'create' {
   return mode.startsWith('ask') ? 'ask' : 'create'
 }
 
-// "Pepa calendario" / "Pepa compra" / "Pepa apunta calendario" / "Pepa
-// apunta compra" abren el panel correspondiente con solo decirlas, sin
-// tocar ningún icono — petición real: "que salte con esas palabras, al
-// principio de la frase". Siempre tiene que empezar por "Pepa" (como
-// mucho con "oye"/"hola" delante) — así una conversación normal que
-// solo MENCIONE esas palabras de pasada ("no sé si Pepa tiene algo en
-// el calendario") no abre nada sola (petición real: "que no esté
-// saltando cada tres por dos").
-function detectWakeTrigger(text: string): PanelMode | null {
-  const n = normalize(text)
-  const m = n.match(/^(?:oye|hola)?[,.\s]*pepa\b[,.\s]*(apunta\w*)?[\s\S]{0,20}?\b(calendario|compras?)\b/)
-  if (!m) return null
-  const isApunta = !!m[1]
-  if (m[2] === 'calendario') return isApunta ? 'create-calendario' : 'ask-calendario'
-  return isApunta ? 'create-compras' : 'ask-compras'
-}
-
 // Petición real: "cada vez que se abra alguna de esas cuatro
 // funciones, que aparezcan las instrucciones de cómo funcionan
 // debajo" — no solo qué hace el botón, sino cómo se usa de principio a
@@ -136,10 +119,8 @@ const PANEL_INFO: Record<
     title: '🐣📅 Pepa · Calendario',
     instructions: [
       'Te dice qué tienes en el calendario — nunca apunta nada.',
-      'Se activa diciendo "Pepa calendario" con la app abierta, o tocando este icono.',
       'En cuanto veas "Te escucho", haz tu pregunta (p. ej. "¿qué tengo hoy?").',
-      'Se cierra sola al contestarte.',
-      'Para volver a preguntar, di "Pepa calendario" otra vez.',
+      'Se cierra sola al contestarte — para volver a preguntar, toca este icono otra vez.',
     ],
     submitLabel: 'Preguntar',
     examples: ASK_CALENDARIO_EXAMPLES,
@@ -149,10 +130,8 @@ const PANEL_INFO: Record<
     title: '🐣🛒 Pepa · Lista de la compra',
     instructions: [
       'Te dice qué tienes pendiente en la lista de la compra — nunca apunta nada.',
-      'Se activa diciendo "Pepa compra" con la app abierta, o tocando este icono.',
       'En cuanto veas "Te escucho", haz tu pregunta (p. ej. "¿qué tengo de Mercadona?").',
-      'Se cierra sola al contestarte.',
-      'Para volver a preguntar, di "Pepa compra" otra vez.',
+      'Se cierra sola al contestarte — para volver a preguntar, toca este icono otra vez.',
     ],
     submitLabel: 'Preguntar',
     examples: ASK_COMPRAS_EXAMPLES,
@@ -162,10 +141,8 @@ const PANEL_INFO: Record<
     title: '🎤📅 Apuntar · Calendario',
     instructions: [
       'Guarda en el calendario lo que digas — nunca responde preguntas.',
-      'Se activa diciendo "Pepa apunta calendario" con la app abierta, o tocando este icono.',
       'En cuanto veas "Te escucho", di lo que quieres apuntar; se guarda sola al quedarte 3s callado.',
-      'Se cierra sola al guardarlo.',
-      'Para apuntar otra cosa, di "Pepa apunta calendario" otra vez.',
+      'Se cierra sola al guardarlo — para apuntar otra cosa, toca este icono otra vez.',
     ],
     submitLabel: 'Apuntar',
     examples: CREATE_CALENDARIO_EXAMPLES,
@@ -175,10 +152,8 @@ const PANEL_INFO: Record<
     title: '🎤🛒 Apuntar · Lista de la compra',
     instructions: [
       'Guarda en la lista de la compra lo que digas — nunca responde preguntas.',
-      'Se activa diciendo "Pepa apunta compra" con la app abierta, o tocando este icono.',
       'En cuanto veas "Te escucho", di lo que quieres apuntar; se guarda sola al quedarte 3s callado.',
-      'Se cierra sola al guardarlo.',
-      'Para apuntar otra cosa, di "Pepa apunta compra" otra vez.',
+      'Se cierra sola al guardarlo — para apuntar otra cosa, toca este icono otra vez.',
     ],
     submitLabel: 'Apuntar',
     examples: CREATE_COMPRAS_EXAMPLES,
@@ -701,8 +676,14 @@ export function VoiceCapture() {
     saveResponseMode(next)
   }
 
+  // Activación por voz sin tocar nada probada y descartada: la propia
+  // app no puede apagar el pitido que el sistema (Android) suena cada
+  // vez que el motor de reconocimiento reinicia sesión — al escuchar
+  // de fondo sin parar, eso eran pitidos constantes ("truru truru
+  // truru", petición real: "no quiero eso... si no se puede, lo dejas
+  // solo con los botones"). Solo botón/frase dicha DENTRO de un panel
+  // ya abierto, nunca escucha en segundo plano.
   function openPanel(nextMode: PanelMode) {
-    stopWakeListening()
     setPanelMode(nextMode)
     setOpen(true)
     if (dictationOk) startListening()
@@ -715,58 +696,6 @@ export function VoiceCapture() {
     setMessage('')
     setTypedText('')
   }
-
-  // Escucha de fondo, con el panel CERRADO, solo para detectar una de
-  // las 4 frases de activación — nunca para guardar ni responder nada
-  // (eso solo pasa dentro del panel ya abierto, con el micrófono
-  // reiniciado desde cero). Un único aviso, no cuatro: cualquiera de
-  // las 4 frases abre YA su panel y arranca la escucha normal ahí, así
-  // que aquí basta con mirar el texto según llega y parar en cuanto
-  // encaje una — sin esperar a que termine la frase entera.
-  const wakeSessionRef = useRef<{ stop: () => void } | null>(null)
-  const wakeTriggeredRef = useRef(false)
-
-  function stopWakeListening() {
-    wakeSessionRef.current?.stop()
-    wakeSessionRef.current = null
-  }
-
-  function startWakeListening() {
-    if (!dictationOk || wakeSessionRef.current || openRef.current) return
-    wakeTriggeredRef.current = false
-    wakeSessionRef.current = listenContinuous({
-      onTranscript: (text) => {
-        if (wakeTriggeredRef.current) return
-        const mode = detectWakeTrigger(text)
-        if (!mode) return
-        wakeTriggeredRef.current = true
-        stopWakeListening()
-        openPanel(mode)
-      },
-      // Fallos de fondo (permiso denegado, sin micrófono...) no se
-      // muestran — esto escucha en silencio de forma continua, no es
-      // una acción que la usuaria haya pedido en este momento como
-      // para interrumpirla con un aviso de error.
-      onError: () => {},
-    })
-  }
-
-  // Arranca/para la escucha de fondo según se abra o cierre el panel —
-  // nunca los dos micrófonos a la vez. Al desmontar (se sale de la app)
-  // se para del todo.
-  useEffect(() => {
-    if (open) {
-      stopWakeListening()
-    } else {
-      startWakeListening()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
-
-  useEffect(() => {
-    return () => stopWakeListening()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const panel = PANEL_INFO[panelMode]
 

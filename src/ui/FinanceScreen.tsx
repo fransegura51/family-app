@@ -20,7 +20,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { recordProductPurchase } from '@/data/products'
-import { budgetSpent, walletBalance, walletCategoryTotal } from '@/domain/finance'
+import { budgetPeriodRange, budgetSpent, walletBalance, walletCategoryTotal } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
@@ -971,7 +971,7 @@ function AddReceiptForm({
 // mismo dato que el reparto por tienda de Tickets, pero como tarta en
 // vez de barras. conic-gradient reparte cada tienda su color según su
 // % del total, sin necesidad de dibujar el SVG a mano.
-function StorePieChart({ groups }: { groups: { store: string; total: number }[] }) {
+function StorePieChart({ groups, monthLabel }: { groups: { store: string; total: number }[]; monthLabel: string }) {
   const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
   let cumulative = 0
   const stops = groups.map((g, i) => {
@@ -984,9 +984,9 @@ function StorePieChart({ groups }: { groups: { store: string; total: number }[] 
 
   return (
     <div className="card event-card">
-      <strong>Reparto del gasto por tienda — este mes</strong>
+      <strong>Reparto del gasto por tienda — {monthLabel}</strong>
       {grandTotal === 0 ? (
-        <p className="muted">Todavía no hay tickets guardados este mes.</p>
+        <p className="muted">No hay tickets guardados ese mes.</p>
       ) : (
         <div className="store-pie-wrap">
           <div className="store-pie" style={{ background: gradient }} />
@@ -1010,6 +1010,14 @@ function StorePieChart({ groups }: { groups: { store: string; total: number }[] 
   )
 }
 
+// Petición real: "cuando termina el mes, guardamos el presupuesto en
+// el mes que corresponda... con lo que hemos gastado, como en un
+// historial para poder consultarlo" — no hace falta "archivar" nada a
+// mano: cada presupuesto ya lleva su propio mes (periodStart) y los
+// gastos/tickets ya guardan su fecha para siempre, así que el
+// historial YA EXISTE, solo hacía falta poder pasar de mes en mes
+// para verlo, en vez de una lista larga con todos los meses
+// mezclados. Mismo patrón de navegación que Gastos.
 function BudgetsTab() {
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
@@ -1017,6 +1025,7 @@ function BudgetsTab() {
   const [knownStores, setKnownStores] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
 
   function reload() {
     setLoading(true)
@@ -1033,18 +1042,46 @@ function BudgetsTab() {
 
   useEffect(reload, [])
 
+  function shiftMonth(delta: number) {
+    const [y, m] = visibleMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
   if (loading) return <p className="muted">Cargando presupuestos…</p>
 
-  const currentMonth = toDateStr(new Date()).slice(0, 7)
-  const monthReceipts = receipts.filter((r) => r.receiptDate.startsWith(currentMonth))
+  const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
+  const monthBudgets = budgets.filter((b) => budgetPeriodRange(b).start.slice(0, 7) === visibleMonth)
+  const monthReceipts = receipts.filter((r) => r.receiptDate.startsWith(visibleMonth))
   const pieGroups = groupReceiptsByStore(monthReceipts, knownStores)
 
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <StorePieChart groups={pieGroups} />
+
+      <div className="month-nav">
+        <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
+          ‹
+        </button>
+        <strong>
+          {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
+        </strong>
+        <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
+          ›
+        </button>
+        <input
+          type="month"
+          value={visibleMonth}
+          onChange={(e) => e.target.value && setVisibleMonth(e.target.value)}
+        />
+        <button type="button" className="link-button" onClick={() => setVisibleMonth(toDateStr(new Date()).slice(0, 7))}>
+          Hoy
+        </button>
+      </div>
+
+      <StorePieChart groups={pieGroups} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
       <div className="event-list">
-        {budgets.map((b) => {
+        {monthBudgets.map((b) => {
           const spent = budgetSpent(b, expenses)
           const pct = Math.min(100, Math.round((spent / b.amount) * 100))
           return (
@@ -1063,16 +1100,16 @@ function BudgetsTab() {
             </div>
           )
         })}
-        {budgets.length === 0 && <p className="muted">No hay presupuestos todavía.</p>}
+        {monthBudgets.length === 0 && <p className="muted">No hay presupuestos guardados en este mes.</p>}
       </div>
-      <AddBudgetForm onAdded={reload} />
+      <AddBudgetForm key={visibleMonth} onAdded={reload} defaultPeriodStart={`${visibleMonth}-01`} />
     </div>
   )
 }
 
-function AddBudgetForm({ onAdded }: { onAdded: () => void }) {
+function AddBudgetForm({ onAdded, defaultPeriodStart }: { onAdded: () => void; defaultPeriodStart: string }) {
   const [periodType, setPeriodType] = useState<BudgetPeriod>('mensual')
-  const [periodStart, setPeriodStart] = useState(toDateStr(new Date()))
+  const [periodStart, setPeriodStart] = useState(defaultPeriodStart)
   const [category, setCategory] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)

@@ -23,6 +23,7 @@ import {
   type ExternalCalendarEvent,
   type ExternalCalendarFeed,
 } from '@/data/externalCalendarFeeds'
+import { getCalendarExportUrl } from '@/data/calendarExport'
 import {
   eventDotColors,
   expandOccurrences,
@@ -1575,6 +1576,8 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
     <div>
       {error && <p className="error">{error}</p>}
 
+      <CalendarExportCard />
+
       <div className="card member-form">
         <h2>Calendarios enlazados</h2>
         <p className="muted">
@@ -1698,6 +1701,72 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// Sentido contrario a "Calendarios enlazados": aquí es el calendario
+// de la app el que se ofrece para que Google Calendar (Android/iPhone)
+// o Apple Calendar se suscriban — petición real: "quiero que todos los
+// datos que hayan en el calendario de la app se pasen al calendario
+// del móvil". OJO con lo que se promete: Google/Apple deciden ELLOS
+// cada cuánto vuelven a mirar una suscripción por URL (normalmente una
+// vez al día), así que "cada hora" no se puede garantizar desde aquí —
+// se dice claramente en vez de callarlo.
+function CalendarExportCard() {
+  const [url, setUrl] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  async function load() {
+    setError('')
+    try {
+      setUrl(await getCalendarExportUrl())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function copy() {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Sin permiso de portapapeles (poco común) — la URL ya está
+      // visible en pantalla para copiarla a mano.
+    }
+  }
+
+  return (
+    <div className="card member-form">
+      <h2>Exportar tu calendario al móvil</h2>
+      <p className="muted">
+        Añade esta dirección como "calendario por URL" en Google Calendar (Android o iPhone) o en Apple Calendar
+        (iPhone) para ver aquí todo lo que apuntes en la app. Google/Apple deciden cada cuánto la vuelven a mirar
+        (normalmente una vez al día) — no se puede forzar a que sea siempre al momento.
+      </p>
+      {error && <p className="error">{error}</p>}
+      {!url && (
+        <button type="button" onClick={load}>
+          Generar mi enlace
+        </button>
+      )}
+      {url && (
+        <>
+          <div className="voice-text-form">
+            <input type="text" value={url} readOnly onFocus={(e) => e.target.select()} />
+            <button type="button" onClick={copy}>
+              {copied ? '✓ Copiado' : 'Copiar'}
+            </button>
+          </div>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Android: Google Calendar → Ajustes → Añadir calendario → Desde URL. iPhone: Ajustes → Calendario →
+            Cuentas → Añadir cuenta → Otra → Añadir calendario suscrito.
+          </p>
+        </>
       )}
     </div>
   )

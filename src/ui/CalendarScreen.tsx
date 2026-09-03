@@ -1,5 +1,6 @@
 import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
+import { findMemberInText } from '@/domain/voiceQuery'
 import {
   completeEventOccurrence,
   createEvent,
@@ -1233,6 +1234,10 @@ function EditEventForm({
     try {
       const startAt = new Date(`${date}T${allDay ? '00:00' : time || '00:00'}`).toISOString()
       const endAt = !allDay && endTime ? new Date(`${date}T${endTime}`).toISOString() : null
+      // Mismo respaldo que al crear: si no hay nadie marcado pero el
+      // título ya dice quién es, se asigna solo en vez de quedarse gris.
+      const detectedMember = selectedMembers.length === 0 ? findMemberInText(title, members) : null
+      const effectiveMembers = selectedMembers.length > 0 ? selectedMembers : detectedMember ? [detectedMember.id] : []
       await updateEvent(event.id, {
         title,
         startAt,
@@ -1246,8 +1251,8 @@ function EditEventForm({
           recurrence.interval,
         ),
         reminders,
-        memberIds: selectedMembers,
-        points: selectedMembers.length === 1 ? points : 0,
+        memberIds: effectiveMembers,
+        points: effectiveMembers.length === 1 ? points : 0,
       })
       onDone()
     } catch (err) {
@@ -1389,6 +1394,12 @@ function AddEventForm({
     try {
       const startAt = new Date(`${date}T${allDay ? '00:00' : time || '00:00'}`).toISOString()
       const endAt = !allDay && endTime ? new Date(`${date}T${endTime}`).toISOString() : null
+      // Si no se ha marcado ninguna casilla de "para quién" pero el
+      // título ya lo dice ("Baja maternidad Jennifer"), se asigna solo
+      // — igual que ya hace Pepa por voz — en vez de guardarlo en gris
+      // sin dueño (bug real: se creó así y no salía con su color).
+      const detectedMember = selectedMembers.length === 0 ? findMemberInText(title, members) : null
+      const effectiveMembers = selectedMembers.length > 0 ? selectedMembers : detectedMember ? [detectedMember.id] : []
       await createEvent({
         title,
         startAt,
@@ -1402,8 +1413,8 @@ function AddEventForm({
           recurrence.interval,
         ),
         reminders,
-        memberIds: selectedMembers,
-        points: selectedMembers.length === 1 ? points : 0,
+        memberIds: effectiveMembers,
+        points: effectiveMembers.length === 1 ? points : 0,
       })
       setTitle('')
       setDate(defaultDate ?? '')

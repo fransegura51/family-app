@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, TouchEvent as ReactTouchEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   addFamilyMember,
@@ -50,16 +50,18 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
 
   useEffect(reload, [])
 
-  function handleDragStart(e: ReactTouchEvent, id: string, el: HTMLElement) {
+  function handleDragStart(e: ReactPointerEvent, id: string, el: HTMLElement) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
     const index = order.findIndex((m) => m.id === id)
-    dragRef.current = { id, startY: e.touches[0].clientY, startIndex: index, itemHeight: el.offsetHeight + 12 }
+    dragRef.current = { id, startY: e.clientY, startIndex: index, itemHeight: el.offsetHeight + 12 }
     setDraggingId(id)
   }
 
-  function handleDragMove(e: ReactTouchEvent) {
+  function handleDragMove(e: ReactPointerEvent) {
     const drag = dragRef.current
     if (!drag) return
-    const dy = e.touches[0].clientY - drag.startY
+    const dy = e.clientY - drag.startY
     setDragOffset(dy)
     const shift = Math.round(dy / drag.itemHeight)
     const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
@@ -128,9 +130,10 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             >
               <span
                 className="shopping-drag-handle"
-                onTouchStart={(e) => handleDragStart(e, m.id, e.currentTarget.parentElement as HTMLElement)}
-                onTouchMove={handleDragMove}
-                onTouchEnd={handleDragEnd}
+                onPointerDown={(e) => handleDragStart(e, m.id, e.currentTarget.parentElement as HTMLElement)}
+                onPointerMove={handleDragMove}
+                onPointerUp={handleDragEnd}
+                onPointerCancel={handleDragEnd}
                 aria-label="Arrastrar para reordenar"
               >
                 ⠿

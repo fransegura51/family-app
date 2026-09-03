@@ -1,4 +1,4 @@
-import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addShoppingItem,
@@ -379,16 +379,18 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
     if (!dragRef.current) setOrder(stores)
   }, [stores])
 
-  function handleDragStart(e: ReactTouchEvent, id: string, el: HTMLElement) {
+  function handleDragStart(e: ReactPointerEvent, id: string, el: HTMLElement) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
     const index = order.findIndex((s) => s.id === id)
-    dragRef.current = { id, startY: e.touches[0].clientY, startIndex: index, itemHeight: el.offsetHeight + 8 }
+    dragRef.current = { id, startY: e.clientY, startIndex: index, itemHeight: el.offsetHeight + 8 }
     setDraggingId(id)
   }
 
-  function handleDragMove(e: ReactTouchEvent) {
+  function handleDragMove(e: ReactPointerEvent) {
     const drag = dragRef.current
     if (!drag) return
-    const dy = e.touches[0].clientY - drag.startY
+    const dy = e.clientY - drag.startY
     setDragOffset(dy)
     const shift = Math.round(dy / drag.itemHeight)
     const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
@@ -490,9 +492,10 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
             >
               <span
                 className="shopping-drag-handle"
-                onTouchStart={(e) => handleDragStart(e, s.id, e.currentTarget.parentElement as HTMLElement)}
-                onTouchMove={handleDragMove}
-                onTouchEnd={handleDragEnd}
+                onPointerDown={(e) => handleDragStart(e, s.id, e.currentTarget.parentElement as HTMLElement)}
+                onPointerMove={handleDragMove}
+                onPointerUp={handleDragEnd}
+                onPointerCancel={handleDragEnd}
                 aria-label="Arrastrar para reordenar"
               >
                 ⠿
@@ -562,16 +565,18 @@ function DraggableStoreGroup({
     if (!dragRef.current) setOrder(items)
   }, [items])
 
-  function handleTouchStart(e: ReactTouchEvent, id: string, el: HTMLElement) {
+  function handleTouchStart(e: ReactPointerEvent, id: string, el: HTMLElement) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
     const index = order.findIndex((i) => i.id === id)
-    dragRef.current = { id, startY: e.touches[0].clientY, startIndex: index, itemHeight: el.offsetHeight + 10 }
+    dragRef.current = { id, startY: e.clientY, startIndex: index, itemHeight: el.offsetHeight + 10 }
     setDraggingId(id)
   }
 
-  function handleTouchMove(e: ReactTouchEvent) {
+  function handleTouchMove(e: ReactPointerEvent) {
     const drag = dragRef.current
     if (!drag) return
-    const dy = e.touches[0].clientY - drag.startY
+    const dy = e.clientY - drag.startY
     setDragOffset(dy)
     const shift = Math.round(dy / drag.itemHeight)
     const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
@@ -605,9 +610,10 @@ function DraggableStoreGroup({
           {!shoppingMode && (
             <span
               className="shopping-drag-handle"
-              onTouchStart={(e) => handleTouchStart(e, item.id, e.currentTarget.parentElement as HTMLElement)}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
+              onPointerDown={(e) => handleTouchStart(e, item.id, e.currentTarget.parentElement as HTMLElement)}
+              onPointerMove={handleTouchMove}
+              onPointerUp={handleTouchEnd}
+              onPointerCancel={handleTouchEnd}
               aria-label="Arrastrar para reordenar"
             >
               ⠿

@@ -1,4 +1,4 @@
-import { FormEvent, TouchEvent as ReactTouchEvent, useRef, useState } from 'react'
+import { FormEvent, PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
@@ -768,14 +768,16 @@ export function VoiceCapture() {
   const [draggingButton, setDraggingButton] = useState<PanelMode | null>(null)
   const [buttonDragOffset, setButtonDragOffset] = useState({ x: 0, y: 0 })
 
-  function handleButtonDragStart(e: ReactTouchEvent, mode: PanelMode, el: HTMLElement) {
+  function handleButtonDragStart(e: ReactPointerEvent, mode: PanelMode, el: HTMLElement) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    el.setPointerCapture(e.pointerId)
     const index = buttonOrder.indexOf(mode)
     const style = getComputedStyle(el.parentElement as HTMLElement)
     const gap = parseFloat(style.columnGap || style.gap || '0') || 0
     buttonDragRef.current = {
       mode,
-      startX: e.touches[0].clientX,
-      startY: e.touches[0].clientY,
+      startX: e.clientX,
+      startY: e.clientY,
       startIndex: index,
       cellW: el.offsetWidth + gap,
       cellH: el.offsetHeight + gap,
@@ -784,11 +786,11 @@ export function VoiceCapture() {
     setDraggingButton(mode)
   }
 
-  function handleButtonDragMove(e: ReactTouchEvent) {
+  function handleButtonDragMove(e: ReactPointerEvent) {
     const drag = buttonDragRef.current
     if (!drag) return
-    const dx = e.touches[0].clientX - drag.startX
-    const dy = e.touches[0].clientY - drag.startY
+    const dx = e.clientX - drag.startX
+    const dy = e.clientY - drag.startY
     drag.moved = Math.max(drag.moved, Math.abs(dx), Math.abs(dy))
     setButtonDragOffset({ x: dx, y: dy })
     const startRow = Math.floor(drag.startIndex / 2)
@@ -805,13 +807,12 @@ export function VoiceCapture() {
     })
   }
 
-  function handleButtonDragEnd(e: ReactTouchEvent) {
+  function handleButtonDragEnd() {
     const drag = buttonDragRef.current
     buttonDragRef.current = null
     setDraggingButton(null)
     setButtonDragOffset({ x: 0, y: 0 })
     if (!drag) return
-    e.preventDefault()
     if (drag.moved < BUTTON_TAP_THRESHOLD_PX) {
       openPanel(drag.mode)
       return
@@ -848,12 +849,10 @@ export function VoiceCapture() {
               className={'voice-fab-round ' + (kindOf(m) === 'ask' ? 'voice-fab-ask' : 'voice-fab-create') + (isDragging ? ' voice-fab-dragging' : '')}
               style={isDragging ? { transform: `translate(${buttonDragOffset.x}px, ${buttonDragOffset.y}px)` } : undefined}
               aria-label={PANEL_INFO[m].title}
-              onClick={() => {
-                if (!buttonDragRef.current) openPanel(m)
-              }}
-              onTouchStart={(e) => handleButtonDragStart(e, m, e.currentTarget)}
-              onTouchMove={handleButtonDragMove}
-              onTouchEnd={handleButtonDragEnd}
+              onPointerDown={(e) => handleButtonDragStart(e, m, e.currentTarget)}
+              onPointerMove={handleButtonDragMove}
+              onPointerUp={handleButtonDragEnd}
+              onPointerCancel={handleButtonDragEnd}
             >
               {PANEL_INFO[m].icon}
             </button>

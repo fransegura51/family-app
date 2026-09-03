@@ -1,4 +1,4 @@
-import { TouchEvent as ReactTouchEvent, useRef, useState } from 'react'
+import { PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
 import { useTabOrder } from '@/ui/ReorderableTabBar'
@@ -34,12 +34,11 @@ function isActivePath(pathname: string, tab: (typeof TABS)[number]): boolean {
 }
 
 // Navegación inferior, mobile-first, fija en toda la app (Skill 02).
-// El orden se cambia arrastrando con el dedo, igual que el resto de
-// listas de la app — petición real: "toda la aplicación quiero que
-// sea móvil... todos los iconos de que todo sea movible", tras
-// rechazar explícitamente la versión anterior con botones de mover
-// ("no me has hecho bien lo de organizar... quiero poder tocarlos con
-// el dedo").
+// El orden se cambia arrastrando con el dedo O CON EL RATÓN — petición
+// real: "toda la aplicación quiero que sea móvil... todos los iconos
+// de que todo sea movible", y luego, al probarlo desde el ordenador:
+// "no pude cambiar las cosas enganchándolas con el puntero del ratón".
+// Pointer Events cubren dedo y ratón con el mismo código.
 export function NavShell() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -50,16 +49,18 @@ export function NavShell() {
   const [draggingTo, setDraggingTo] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState(0)
 
-  function handleTouchStart(e: ReactTouchEvent, to: string, el: HTMLElement) {
+  function handlePointerDown(e: ReactPointerEvent, to: string, el: HTMLElement) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    el.setPointerCapture(e.pointerId)
     const index = order.indexOf(to)
-    dragRef.current = { to, startX: e.touches[0].clientX, startIndex: index, itemWidth: el.offsetWidth + 4, moved: 0 }
+    dragRef.current = { to, startX: e.clientX, startIndex: index, itemWidth: el.offsetWidth + 4, moved: 0 }
     setDraggingTo(to)
   }
 
-  function handleTouchMove(e: ReactTouchEvent) {
+  function handlePointerMove(e: ReactPointerEvent) {
     const drag = dragRef.current
     if (!drag) return
-    const dx = e.touches[0].clientX - drag.startX
+    const dx = e.clientX - drag.startX
     drag.moved = Math.max(drag.moved, Math.abs(dx))
     setDragOffset(dx)
     const shift = Math.round(dx / drag.itemWidth)
@@ -74,13 +75,12 @@ export function NavShell() {
     })
   }
 
-  function handleTouchEnd(e: ReactTouchEvent) {
+  function handlePointerUp() {
     const drag = dragRef.current
     dragRef.current = null
     setDraggingTo(null)
     setDragOffset(0)
     if (!drag) return
-    e.preventDefault()
     if (drag.moved < TAP_THRESHOLD_PX) {
       navigate(drag.to)
       return
@@ -103,12 +103,10 @@ export function NavShell() {
               'nav-item' + (isActivePath(location.pathname, tab) ? ' active' : '') + (draggingTo === tab.to ? ' nav-item-dragging' : '')
             }
             style={draggingTo === tab.to ? { transform: `translateX(${dragOffset}px)` } : undefined}
-            onClick={() => {
-              if (!dragRef.current) navigate(tab.to)
-            }}
-            onTouchStart={(e) => handleTouchStart(e, tab.to, e.currentTarget)}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            onPointerDown={(e) => handlePointerDown(e, tab.to, e.currentTarget)}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
           >
             <span className="nav-item-icon">{tab.icon}</span>
             <span className="nav-item-label">{tab.label}</span>

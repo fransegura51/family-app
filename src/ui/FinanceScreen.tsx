@@ -259,6 +259,8 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
 // coincidencia de texto puede saber eso; para esos casos hay que
 // corregir el ticket a mano una vez (el desplegable de abajo ya
 // ofrece las tiendas dadas de alta para no tener que escribirlo).
+const STORE_COLORS = ['#4C6EF5', '#e8590c', '#2f9e44', '#ae3ec9', '#f08c00', '#1098ad', '#e64980']
+
 function canonicalStoreName(raw: string | null, knownStores: string[]): string {
   if (!raw || !raw.trim()) return 'Sin establecimiento'
   return findKnownStore(raw, knownStores)?.store ?? raw.trim()
@@ -290,6 +292,12 @@ function ReceiptsTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Petición real: "créame una carpeta dentro de ticket por cada
+  // supermercado... que cuando yo le toque la carpeta de Mercadona, se
+  // me abran todos los tickets que hay guardados" — plegado por
+  // defecto, solo el nombre/total a la vista; tocar la carpeta la
+  // abre. Empieza vacío (todas plegadas) hasta que se toque alguna.
+  const [expandedStore, setExpandedStore] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
@@ -331,7 +339,7 @@ function ReceiptsTab() {
 
       {/* Petición real: "el aparato para subir tickets... arriba del
           todo" — antes iba al final de la lista. */}
-      <AddReceiptForm onAdded={reload} knownStores={knownStores} />
+      <AddReceiptForm onAdded={reload} knownStores={knownStores} existingFolders={storeNames} />
 
       <ReceiptSpendSummary receipts={receipts} knownStores={knownStores} storeNames={storeNames} />
 
@@ -342,40 +350,69 @@ function ReceiptsTab() {
         </>
       )}
 
-      {/* Petición real: "todos los de Mercadona juntos, todos los de
-          Aldi juntos... y así con todos los supermercados que
-          tenemos dado de alta y los que demos en un futuro" — un
-          grupo por tienda, el que más se ha gastado primero. */}
+      {/* Petición real: "créame una carpeta dentro de ticket por cada
+          supermercado... que cuando yo le toque la carpeta de
+          Mercadona, se me abran todos los tickets que hay guardados...
+          que desaparezcan los tickets de ahí abajo y que ahí pongan
+          las carpetas". Una carpeta por tienda, plegada por defecto
+          (solo icono, nombre, nº de tickets y total) — los tickets
+          sueltos ya no se ven directamente, solo dentro de su carpeta.
+          Sin logotipos reales de cada supermercado (no hay licencia
+          para usarlos ni una fuente fiable de dónde sacarlos): un
+          icono de color con la inicial, igual que ya se hace con el
+          avatar de cada persona de la familia, y el mismo color que
+          usa el gráfico de reparto de arriba para esa misma tienda. */}
       <h2 className="section-title">Tickets guardados</h2>
-      {grouped.map(({ store, receipts: storeReceipts, total }) => (
-        <div key={store} className="day-modal-group">
-          <h3 className="shopping-store-heading">
-            {store} · {storeReceipts.length} {storeReceipts.length === 1 ? 'ticket' : 'tickets'} · {total.toFixed(2)} €
-          </h3>
-          <div className="event-list">
-            {storeReceipts.map((r) =>
-              editingId === r.id ? (
-                <EditReceiptForm
-                  key={r.id}
-                  receipt={r}
-                  onDone={() => {
-                    setEditingId(null)
-                    reload()
-                  }}
-                  onCancel={() => setEditingId(null)}
-                />
-              ) : (
-                <ReceiptRow
-                  key={r.id}
-                  receipt={r}
-                  onEdit={() => setEditingId(r.id)}
-                  onDelete={() => handleDelete(r)}
-                />
-              ),
-            )}
-          </div>
-        </div>
-      ))}
+      <div className="store-folder-grid">
+        {grouped.map(({ store, receipts: storeReceipts, total }, i) => {
+          const isOpen = expandedStore === store
+          return (
+            <div key={store} className="store-folder">
+              <button
+                type="button"
+                className="store-folder-header"
+                onClick={() => setExpandedStore(isOpen ? null : store)}
+              >
+                <span className="store-folder-icon" style={{ background: STORE_COLORS[i % STORE_COLORS.length] }}>
+                  {store.charAt(0).toUpperCase()}
+                </span>
+                <span className="store-folder-info">
+                  <strong>{store}</strong>
+                  <span className="muted">
+                    {storeReceipts.length} {storeReceipts.length === 1 ? 'ticket' : 'tickets'} · {total.toFixed(2)} €
+                  </span>
+                </span>
+                <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
+              </button>
+              {isOpen && (
+                <div className="event-list store-folder-contents">
+                  {storeReceipts.map((r) =>
+                    editingId === r.id ? (
+                      <EditReceiptForm
+                        key={r.id}
+                        receipt={r}
+                        existingFolders={storeNames}
+                        onDone={() => {
+                          setEditingId(null)
+                          reload()
+                        }}
+                        onCancel={() => setEditingId(null)}
+                      />
+                    ) : (
+                      <ReceiptRow
+                        key={r.id}
+                        receipt={r}
+                        onEdit={() => setEditingId(r.id)}
+                        onDelete={() => handleDelete(r)}
+                      />
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
       {receipts.length === 0 && <p className="muted">No hay tickets guardados.</p>}
     </div>
   )
@@ -487,8 +524,6 @@ function ReceiptSpendSummary({
 function StoreBreakdownChart({ groups }: { groups: { store: string; receipts: Receipt[]; total: number }[] }) {
   const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
   const maxTotal = Math.max(...groups.map((g) => g.total), 1)
-  const BAR_COLORS = ['#4C6EF5', '#e8590c', '#2f9e44', '#ae3ec9', '#f08c00', '#1098ad', '#e64980']
-
   return (
     <div className="card event-card">
       <strong>Reparto del gasto por tienda</strong>
@@ -501,7 +536,7 @@ function StoreBreakdownChart({ groups }: { groups: { store: string; receipts: Re
               <div className="store-bar-track">
                 <div
                   className="store-bar-fill"
-                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: BAR_COLORS[i % BAR_COLORS.length] }}
+                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: STORE_COLORS[i % STORE_COLORS.length] }}
                 />
               </div>
               <span className="store-bar-value">
@@ -627,10 +662,12 @@ function ReceiptRow({
 
 function EditReceiptForm({
   receipt,
+  existingFolders,
   onDone,
   onCancel,
 }: {
   receipt: Receipt
+  existingFolders: string[]
   onDone: () => void
   onCancel: () => void
 }) {
@@ -660,6 +697,28 @@ function EditReceiptForm({
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
+      {/* Petición real: "los tickets, ¿puedo yo decir dónde se meten?
+          porque H Rafal II e Hiperber es lo mismo" — el emparejamiento
+          automático por texto no siempre acierta (son nombres de
+          verdad distintos), así que aquí se puede simplemente tocar la
+          carpeta correcta en vez de fiarse de que el texto coincida. */}
+      {existingFolders.length > 0 && (
+        <label>
+          Mover a esta carpeta
+          <div className="filter-row" style={{ margin: '4px 0' }}>
+            {existingFolders.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={'chip' + (store === f ? ' chip-active' : '')}
+                onClick={() => setStore(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </label>
+      )}
       <label>
         Establecimiento
         <input type="text" list="receipt-known-stores" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
@@ -693,7 +752,15 @@ interface DraftLine {
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
 
-function AddReceiptForm({ onAdded, knownStores }: { onAdded: () => void; knownStores: string[] }) {
+function AddReceiptForm({
+  onAdded,
+  knownStores,
+  existingFolders,
+}: {
+  onAdded: () => void
+  knownStores: string[]
+  existingFolders: string[]
+}) {
   const [file, setFile] = useState<File | null>(null)
   const [store, setStore] = useState('')
   const [receiptDate, setReceiptDate] = useState(toDateStr(new Date()))
@@ -802,6 +869,27 @@ function AddReceiptForm({ onAdded, knownStores }: { onAdded: () => void; knownSt
         </button>
       )}
 
+      {/* Petición real: "el ticket, ¿dónde quiero guardarlo? en
+          Mercadona, en Hiperber, en Aldi, donde yo quiera" — tocar la
+          carpeta de destino en vez de escribirla, para no depender de
+          que el texto coincida exactamente con una ya existente. */}
+      {existingFolders.length > 0 && (
+        <label>
+          ¿Dónde guardo este ticket?
+          <div className="filter-row" style={{ margin: '4px 0' }}>
+            {existingFolders.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={'chip' + (store === f ? ' chip-active' : '')}
+                onClick={() => setStore(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </label>
+      )}
       <label>
         Establecimiento
         <input

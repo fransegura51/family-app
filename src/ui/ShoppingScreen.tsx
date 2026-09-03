@@ -12,7 +12,13 @@ import {
   updateShoppingItemStatus,
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
-import { createShoppingStore, deleteShoppingStore, listShoppingStores, renameShoppingStore } from '@/data/shoppingStores'
+import {
+  createShoppingStore,
+  deleteShoppingStore,
+  listShoppingStores,
+  renameShoppingStore,
+  reorderShoppingStores,
+} from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -376,12 +382,58 @@ function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
 // suyas (petición real: "que puedas añadir los supermercados que
 // quieras o quitar los que quieras... si vendo la aplicación y otra
 // persona tiene Carbo Bravo, que pueda cambiarlo").
+// Lista vertical, arrastrable con el dedo — petición real: "los
+// supermercados quiero poder tocarlos con el dedo, coger Aldi y
+// ponerlo debajo del Líder" (lo piensa como una lista de arriba a
+// abajo, no como chips en fila). Mismo mecanismo, asa y persistencia
+// (sort_order en la base de datos) que DraggableStoreGroup, para que
+// se comporte exactamente igual que la lista de la compra.
 function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onChanged: () => void }) {
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [order, setOrder] = useState(stores)
+  const dragRef = useRef<{ id: string; startY: number; startIndex: number; itemHeight: number } | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState(0)
+
+  useEffect(() => {
+    if (!dragRef.current) setOrder(stores)
+  }, [stores])
+
+  function handleDragStart(e: ReactTouchEvent, id: string, el: HTMLElement) {
+    const index = order.findIndex((s) => s.id === id)
+    dragRef.current = { id, startY: e.touches[0].clientY, startIndex: index, itemHeight: el.offsetHeight + 8 }
+    setDraggingId(id)
+  }
+
+  function handleDragMove(e: ReactTouchEvent) {
+    const drag = dragRef.current
+    if (!drag) return
+    const dy = e.touches[0].clientY - drag.startY
+    setDragOffset(dy)
+    const shift = Math.round(dy / drag.itemHeight)
+    const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
+    setOrder((prev) => {
+      const currentIndex = prev.findIndex((s) => s.id === drag.id)
+      if (currentIndex === -1 || currentIndex === newIndex) return prev
+      const next = [...prev]
+      const [moved] = next.splice(currentIndex, 1)
+      next.splice(newIndex, 0, moved)
+      return next
+    })
+  }
+
+  function handleDragEnd() {
+    const drag = dragRef.current
+    dragRef.current = null
+    setDraggingId(null)
+    setDragOffset(0)
+    if (!drag) return
+    reorderShoppingStores(order.map((s) => s.id)).then(onChanged)
+  }
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault()
@@ -436,15 +488,15 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
         "Mercadona, patatas" o "Hipervel, leche" — y Pepa lo pone en la lista de esa tienda.
       </p>
       {error && <p className="error">{error}</p>}
-      <div className="filter-row">
-        {stores.map((s) =>
+      <div className="event-list">
+        {order.map((s) =>
           editingId === s.id ? (
-            <span key={s.id} className="chip">
+            <div key={s.id} className="card task-card">
               <input
                 type="text"
                 value={editingName}
                 onChange={(e) => setEditingName(e.target.value)}
-                style={{ width: 100, border: 'none', padding: 0 }}
+                style={{ flex: 1 }}
                 autoFocus
               />
               <button type="button" className="link-button" onClick={() => handleRename(s.id)} aria-label="Guardar">
@@ -453,24 +505,37 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
               <button type="button" className="link-button" onClick={() => setEditingId(null)} aria-label="Cancelar">
                 ✕
               </button>
-            </span>
+            </div>
           ) : (
-            <span key={s.id} className="chip">
+            <div
+              key={s.id}
+              className={'card task-card' + (draggingId === s.id ? ' shopping-item-dragging' : '')}
+              style={draggingId === s.id ? { transform: `translateY(${dragOffset}px)` } : undefined}
+            >
+              <span
+                className="shopping-drag-handle"
+                onTouchStart={(e) => handleDragStart(e, s.id, e.currentTarget.parentElement as HTMLElement)}
+                onTouchMove={handleDragMove}
+                onTouchEnd={handleDragEnd}
+                aria-label="Arrastrar para reordenar"
+              >
+                ⠿
+              </span>
               <span
                 onClick={() => {
                   setEditingId(s.id)
                   setEditingName(s.name)
                 }}
-                style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, flex: 1 }}
               >
                 <StoreIconBadge name={s.name} />
                 {s.name}
               </span>
               <ConfirmIconButton className="link-button" ariaLabel={`Quitar ${s.name}`} onConfirm={() => handleDelete(s.id)} />
-            </span>
+            </div>
           ),
         )}
-        {stores.length === 0 && <p className="muted">Ninguna todavía.</p>}
+        {order.length === 0 && <p className="muted">Ninguna todavía.</p>}
       </div>
       <form onSubmit={handleAdd} className="inline-fields">
         <input

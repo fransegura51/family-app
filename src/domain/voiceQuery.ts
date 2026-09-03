@@ -303,18 +303,73 @@ export function looksLikeSaveInstruction(text: string): boolean {
 export type CalendarQuery =
   | { type: 'tasks_today'; memberHint: string | null; when: 'today' | 'tomorrow'; explicitDate: string | null; nowOnly: boolean }
   | { type: 'next_calendar_event' }
+  | { type: 'week_range'; from: string; to: string; label: string }
+
+function weekDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Semana completa de lunes a domingo, desplazada `weekOffset` semanas
+// desde la que contiene `today` (0 = esta semana, 1 = la que viene...)
+// — mismo criterio lunes-domingo que ya usa el resumen de gasto por
+// semana en Dinero.
+function weekRangeFromOffset(today: Date, weekOffset: number): [string, string] {
+  const dow = (today.getDay() + 6) % 7
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - dow + weekOffset * 7)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  return [weekDateStr(monday), weekDateStr(sunday)]
+}
+
+const WEEK_NUMBER_WORDS: Record<string, number> = { un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5 }
+
+// "La semana que viene", "dentro de dos semanas"... — petición real:
+// "que le pueda preguntar qué tengo la próxima semana, qué tengo
+// dentro de dos semanas, o dentro de tres semanas, y que me diga lo
+// que tengo en semanas completas". Se comprueba ANTES que
+// NEXT_EVENT_RE porque "¿qué tengo apuntado la semana que viene?"
+// también encajaría con ese otro patrón (contiene "que tengo" +
+// "apuntado") y se entendería mal como "el próximo evento" en vez de
+// como una semana completa.
+function matchWeekQuery(n: string, today: Date): { from: string; to: string; label: string } | null {
+  if (/\besta semana\b/.test(n)) {
+    const [from, to] = weekRangeFromOffset(today, 0)
+    return { from, to, label: 'esta semana' }
+  }
+  if (/\b(la semana que viene|la proxima semana|proxima semana)\b/.test(n)) {
+    const [from, to] = weekRangeFromOffset(today, 1)
+    return { from, to, label: 'la semana que viene' }
+  }
+  const inNMatch = n.match(/\b(?:dentro de|en)\s+(\d+|un|una|uno|dos|tres|cuatro|cinco)\s+semanas?\b/)
+  if (inNMatch) {
+    const weeks = WEEK_NUMBER_WORDS[inNMatch[1]] ?? Number(inNMatch[1])
+    if (Number.isFinite(weeks) && weeks > 0) {
+      const [from, to] = weekRangeFromOffset(today, weeks)
+      const label = `dentro de ${weeks === 1 ? 'una semana' : weeks + ' semanas'}`
+      return { from, to, label }
+    }
+  }
+  return null
+}
 
 // El botón "🐣📅 Pepa Calendario" ya deja claro que la pregunta es sobre
 // el calendario — no hace falta reconocer palabras clave concretas
 // ("qué tengo", "hoy"...) para saber DE QUÉ trata, solo para sacar el
 // día/persona/hora de lo dicho. Lo único que sigue distinguiéndose
 // dentro de esta categoría es "el próximo evento en general" frente a
-// "lo de un día concreto" — para lo demás, cualquier frase se entiende
-// como una pregunta sobre un día (hoy, salvo que diga otra cosa).
+// "lo de una semana completa" frente a "lo de un día concreto" — para
+// lo demás, cualquier frase se entiende como una pregunta sobre un día
+// (hoy, salvo que diga otra cosa).
 // `today` se recibe desde fuera (no `new Date()` aquí) para poder
 // probar esta función con una fecha fija.
 export function parseCalendarQuery(text: string, today: Date): CalendarQuery {
   const n = normalize(text)
+
+  const week = matchWeekQuery(n, today)
+  if (week) {
+    return { type: 'week_range', ...week }
+  }
 
   if (NEXT_EVENT_RE.test(n)) {
     return { type: 'next_calendar_event' }

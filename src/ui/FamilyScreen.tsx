@@ -1,10 +1,11 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, TouchEvent as ReactTouchEvent, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   addFamilyMember,
   deleteFamilyMember,
   generateMemberInviteCode,
   listFamilyMembers,
+  reorderFamilyMembers,
   updateFamilyMember,
   uploadMemberPhoto,
 } from '@/data/family'
@@ -21,21 +22,65 @@ const MEMBER_TYPES: { value: MemberType; label: string }[] = [
 ]
 
 export function FamilyScreen({ profile }: { profile: Profile }) {
-  const [members, setMembers] = useState<FamilyMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const isAdmin = profile.role === 'admin'
 
+  // Orden arrastrable con el dedo — petición real: "los miembros de la
+  // familia los cojo y los puedo arrastrar y poner primero Jennifer,
+  // luego Paco, luego Eric, luego Fernando, como yo quiera". Se piensa
+  // como una lista de arriba a abajo, así que las tarjetas van en una
+  // sola columna (antes dos) para que el arrastre vertical tenga
+  // sentido — con dos columnas, "más abajo" sería ambiguo.
+  const [order, setOrder] = useState<FamilyMember[]>([])
+  const dragRef = useRef<{ id: string; startY: number; startIndex: number; itemHeight: number } | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState(0)
+
   function reload() {
     setLoading(true)
     listFamilyMembers()
-      .then(setMembers)
+      .then((m) => {
+        if (!dragRef.current) setOrder(m)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
 
   useEffect(reload, [])
+
+  function handleDragStart(e: ReactTouchEvent, id: string, el: HTMLElement) {
+    const index = order.findIndex((m) => m.id === id)
+    dragRef.current = { id, startY: e.touches[0].clientY, startIndex: index, itemHeight: el.offsetHeight + 12 }
+    setDraggingId(id)
+  }
+
+  function handleDragMove(e: ReactTouchEvent) {
+    const drag = dragRef.current
+    if (!drag) return
+    const dy = e.touches[0].clientY - drag.startY
+    setDragOffset(dy)
+    const shift = Math.round(dy / drag.itemHeight)
+    const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
+    setOrder((prev) => {
+      const currentIndex = prev.findIndex((m) => m.id === drag.id)
+      if (currentIndex === -1 || currentIndex === newIndex) return prev
+      const next = [...prev]
+      const [moved] = next.splice(currentIndex, 1)
+      next.splice(newIndex, 0, moved)
+      return next
+    })
+  }
+
+  function handleDragEnd() {
+    const drag = dragRef.current
+    dragRef.current = null
+    setDraggingId(null)
+    setDragOffset(0)
+    if (!drag) return
+    reorderFamilyMembers(order.map((m) => m.id))
+  }
 
   async function handleDelete(id: string) {
     try {
@@ -63,8 +108,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         Cerrar sesión ({profile.displayName})
       </button>
       {error && <p className="error">{error}</p>}
-      <div className="card-grid">
-        {members.map((m) =>
+      <div className="event-list">
+        {order.map((m) =>
           editingId === m.id ? (
             <EditMemberForm
               key={m.id}
@@ -76,7 +121,20 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
               onCancel={() => setEditingId(null)}
             />
           ) : (
-            <div key={m.id} className="card member-card" style={{ borderColor: m.color }}>
+            <div
+              key={m.id}
+              className={'card member-card' + (draggingId === m.id ? ' shopping-item-dragging' : '')}
+              style={{ borderColor: m.color, ...(draggingId === m.id ? { transform: `translateY(${dragOffset}px)` } : {}) }}
+            >
+              <span
+                className="shopping-drag-handle"
+                onTouchStart={(e) => handleDragStart(e, m.id, e.currentTarget.parentElement as HTMLElement)}
+                onTouchMove={handleDragMove}
+                onTouchEnd={handleDragEnd}
+                aria-label="Arrastrar para reordenar"
+              >
+                ⠿
+              </span>
               <MemberAvatar member={m} size={40} />
               <div className="member-card-body">
                 <strong>{m.name}</strong>
@@ -102,7 +160,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             </div>
           ),
         )}
-        {members.length === 0 && <p className="muted">Todavía no hay miembros.</p>}
+        {order.length === 0 && <p className="muted">Todavía no hay miembros.</p>}
       </div>
 
       {isAdmin && <AddMemberForm onAdded={reload} />}

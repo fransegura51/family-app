@@ -87,6 +87,18 @@ export async function deleteFamilyMember(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Arrastrar con el dedo para cambiar el orden de la familia (petición
+// real: "los miembros de la familia los cojo y los puedo arrastrar y
+// poner primero Jennifer, luego Paco...") — mismo patrón que
+// reorderShoppingItems.
+export async function reorderFamilyMembers(orderedIds: string[]): Promise<void> {
+  const base = Date.now()
+  const { error } = await supabase
+    .from('family_members')
+    .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
+  if (error) throw new Error(error.message)
+}
+
 // Foto de perfil por miembro — para identificarlos visualmente en toda
 // la app (chips, mapa de ubicación...) en vez de solo el emoji. Storage
 // privado propio (bucket member-photos), igual patrón que Galería.
@@ -127,7 +139,7 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
   const { data, error } = await supabase
     .from('family_members')
     .select('id, family_id, name, avatar, color, member_type, birth_date, permissions, linked_profile_id, photo_path')
-    .order('created_at', { ascending: true })
+    .order('sort_order', { ascending: true })
 
   if (error) throw error
 

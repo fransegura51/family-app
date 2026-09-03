@@ -1,5 +1,6 @@
-import { FormEvent, useRef, useState } from 'react'
+import { FormEvent, TouchEvent as ReactTouchEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
@@ -76,7 +77,15 @@ function tomorrowIso(): string {
 // "Mercadona, patata, huevo" se apuntaba en el calendario en vez de en
 // la compra). Tocar un ejemplo lo escribe abajo, listo para enviar tal
 // cual o retocarlo antes.
-const ASK_CALENDARIO_EXAMPLES = ['¿Qué tengo hoy?', '¿Qué tengo el 9 de septiembre?', '¿Qué tengo ahora?', 'Lo siguiente que tengo']
+const ASK_CALENDARIO_EXAMPLES = [
+  '¿Qué tengo hoy?',
+  '¿Qué tengo el 9 de septiembre?',
+  '¿Qué tengo ahora?',
+  'Lo siguiente que tengo',
+  '¿Qué tengo la semana que viene?',
+  '¿Qué tengo dentro de dos semanas?',
+  '¿Qué tiene Eric la semana que viene?',
+]
 
 const ASK_COMPRAS_EXAMPLES = ['¿Qué tengo pendiente?', '¿Qué tengo de Mercadona?', '¿Qué tengo de Aldi?']
 
@@ -90,6 +99,8 @@ const CREATE_COMPRAS_EXAMPLES = ['Leche y pan', 'Mercadona, patatas', 'Aldi, are
 
 type Destination = 'calendario' | 'compras'
 type PanelMode = 'ask-calendario' | 'ask-compras' | 'create-calendario' | 'create-compras'
+const PANEL_MODES: PanelMode[] = ['ask-calendario', 'ask-compras', 'create-calendario', 'create-compras']
+const BUTTON_TAP_THRESHOLD_PX = 8
 
 const DESTINATION_INFO: Record<Destination, { label: string; path: string }> = {
   compras: { label: '🛒 Lista de la compra', path: '/compras' },
@@ -120,6 +131,8 @@ const PANEL_INFO: Record<
     instructions: [
       'Te dice qué tienes en el calendario — nunca apunta nada.',
       'En cuanto veas "Te escucho", haz tu pregunta (p. ej. "¿qué tengo hoy?").',
+      'También puedes preguntar por una semana entera: di "la semana que viene", "dentro de dos semanas" o "dentro de tres semanas" — te contesta con lo de todos los días de esa semana.',
+      'Si dices el nombre de alguien de la familia (p. ej. "¿qué tiene Eric la semana que viene?"), te contesta solo con lo suyo.',
       'Se cierra sola al contestarte — para volver a preguntar, toca este icono otra vez.',
     ],
     submitLabel: 'Preguntar',
@@ -256,6 +269,49 @@ async function answerAgendaQuery(
     .sort((a, b) => a.minutes - b.minutes)
 
   return `Lo que queda por ${dayWord}: ${items.map((i) => i.label).join(', ')}.`
+}
+
+// "¿Qué tengo la semana que viene?" / "¿qué tiene Eric dentro de dos
+// semanas?" — petición real: preguntar por una semana completa (de
+// lunes a domingo), de toda la familia o de una persona en concreto.
+// Mismo criterio que answerAgendaQuery para reconocer a quién se
+// refiere y qué cuenta como "ya hecho", pero recorriendo cada día del
+// rango en vez de uno solo, y agrupando la respuesta por día.
+async function answerWeekRangeQuery(memberHint: string | null, rawText: string, from: string, to: string, label: string): Promise<string> {
+  const [members, events, eventCompletions] = await Promise.all([
+    listFamilyMembers(),
+    listUpcomingEvents(),
+    listEventCompletions(),
+  ])
+  const member = (memberHint ? matchMemberByHint(memberHint, members) : null) ?? findMemberInText(rawText, members)
+  const memberById = new Map(members.map((m) => [m.id, m]))
+
+  const occurrences: { date: string; minutes: number; text: string }[] = []
+  for (const ev of events) {
+    if (member && ev.memberIds.length > 0 && !ev.memberIds.includes(member.id)) continue
+    for (const date of expandOccurrences(ev, from, to)) {
+      if (eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === date)) continue
+      const owner = !member && ev.memberIds.length === 1 ? (memberById.get(ev.memberIds[0])?.name ?? null) : null
+      const withTime = `${ev.title}${eventTimeLabel(ev)}`
+      occurrences.push({ date, minutes: eventMinutes(ev), text: owner ? `${owner}: ${withTime}` : withTime })
+    }
+  }
+
+  const who = member ? ` para ${member.name}` : ''
+  if (occurrences.length === 0) return `No tienes nada pendiente${who} ${label}.`
+
+  occurrences.sort((a, b) => (a.date === b.date ? a.minutes - b.minutes : a.date.localeCompare(b.date)))
+  const byDay = new Map<string, string[]>()
+  for (const o of occurrences) {
+    const list = byDay.get(o.date) ?? []
+    list.push(o.text)
+    byDay.set(o.date, list)
+  }
+  const dayParts = [...byDay.entries()].map(([date, items]) => {
+    const dayLabel = new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+    return `${dayLabel}: ${items.join(', ')}`
+  })
+  return `Lo que tienes${who} ${label}: ${dayParts.join('. ')}.`
 }
 
 // "Pepa, lo siguiente que tengo en el calendario" — el próximo EVENTO
@@ -499,7 +555,9 @@ export function VoiceCapture() {
           const answer =
             query.type === 'next_calendar_event'
               ? await answerNextCalendarEvent()
-              : await answerAgendaQuery(query.memberHint, text, query.when, query.nowOnly, query.explicitDate)
+              : query.type === 'week_range'
+                ? await answerWeekRangeQuery(null, text, query.from, query.to, query.label)
+                : await answerAgendaQuery(query.memberHint, text, query.when, query.nowOnly, query.explicitDate)
           setStatus('done')
           await respond(answer)
           return
@@ -689,6 +747,78 @@ export function VoiceCapture() {
     if (dictationOk) startListening()
   }
 
+  // Los 4 botones también se pueden arrastrar de sitio — petición
+  // real: "todos los iconos de Pepa también, que también se pueden
+  // arrastrar". Es una rejilla fija de 2x2, no una lista: arrastrar un
+  // icono sobre otro los intercambia entre sí, en vez de desplazar
+  // toda la fila como en una lista. El orden es solo de este móvil
+  // (localStorage), igual que el resto de pestañas reordenables.
+  const [buttonOrder, setButtonOrder] = useState<PanelMode[]>(() =>
+    resolveTabOrder(PANEL_MODES, loadTabOrder('pepa-buttons')),
+  )
+  const buttonDragRef = useRef<{
+    mode: PanelMode
+    startX: number
+    startY: number
+    startIndex: number
+    cellW: number
+    cellH: number
+    moved: number
+  } | null>(null)
+  const [draggingButton, setDraggingButton] = useState<PanelMode | null>(null)
+  const [buttonDragOffset, setButtonDragOffset] = useState({ x: 0, y: 0 })
+
+  function handleButtonDragStart(e: ReactTouchEvent, mode: PanelMode, el: HTMLElement) {
+    const index = buttonOrder.indexOf(mode)
+    const style = getComputedStyle(el.parentElement as HTMLElement)
+    const gap = parseFloat(style.columnGap || style.gap || '0') || 0
+    buttonDragRef.current = {
+      mode,
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      startIndex: index,
+      cellW: el.offsetWidth + gap,
+      cellH: el.offsetHeight + gap,
+      moved: 0,
+    }
+    setDraggingButton(mode)
+  }
+
+  function handleButtonDragMove(e: ReactTouchEvent) {
+    const drag = buttonDragRef.current
+    if (!drag) return
+    const dx = e.touches[0].clientX - drag.startX
+    const dy = e.touches[0].clientY - drag.startY
+    drag.moved = Math.max(drag.moved, Math.abs(dx), Math.abs(dy))
+    setButtonDragOffset({ x: dx, y: dy })
+    const startRow = Math.floor(drag.startIndex / 2)
+    const startCol = drag.startIndex % 2
+    const newRow = Math.min(1, Math.max(0, startRow + Math.round(dy / drag.cellH)))
+    const newCol = Math.min(1, Math.max(0, startCol + Math.round(dx / drag.cellW)))
+    const newIndex = newRow * 2 + newCol
+    setButtonOrder((prev) => {
+      const currentIndex = prev.indexOf(drag.mode)
+      if (currentIndex === -1 || currentIndex === newIndex) return prev
+      const next = [...prev]
+      ;[next[currentIndex], next[newIndex]] = [next[newIndex], next[currentIndex]]
+      return next
+    })
+  }
+
+  function handleButtonDragEnd(e: ReactTouchEvent) {
+    const drag = buttonDragRef.current
+    buttonDragRef.current = null
+    setDraggingButton(null)
+    setButtonDragOffset({ x: 0, y: 0 })
+    if (!drag) return
+    e.preventDefault()
+    if (drag.moved < BUTTON_TAP_THRESHOLD_PX) {
+      openPanel(drag.mode)
+      return
+    }
+    saveTabOrder('pepa-buttons', buttonOrder)
+  }
+
   function close() {
     stopListening()
     setOpen(false)
@@ -709,38 +839,26 @@ export function VoiceCapture() {
           disponible al tacto (aria-label) y, ya abierto, en el título
           del panel. */}
       <div className="voice-fab-cluster">
-        <button
-          type="button"
-          className="voice-fab-round voice-fab-ask"
-          aria-label="Preguntar a Pepa por el calendario"
-          onClick={() => openPanel('ask-calendario')}
-        >
-          🐣📅
-        </button>
-        <button
-          type="button"
-          className="voice-fab-round voice-fab-ask"
-          aria-label="Preguntar a Pepa por la lista de la compra"
-          onClick={() => openPanel('ask-compras')}
-        >
-          🐣🛒
-        </button>
-        <button
-          type="button"
-          className="voice-fab-round voice-fab-create"
-          aria-label="Apuntar en el calendario con voz"
-          onClick={() => openPanel('create-calendario')}
-        >
-          🎤📅
-        </button>
-        <button
-          type="button"
-          className="voice-fab-round voice-fab-create"
-          aria-label="Apuntar en la lista de la compra con voz"
-          onClick={() => openPanel('create-compras')}
-        >
-          🎤🛒
-        </button>
+        {buttonOrder.map((m) => {
+          const isDragging = draggingButton === m
+          return (
+            <button
+              key={m}
+              type="button"
+              className={'voice-fab-round ' + (kindOf(m) === 'ask' ? 'voice-fab-ask' : 'voice-fab-create') + (isDragging ? ' voice-fab-dragging' : '')}
+              style={isDragging ? { transform: `translate(${buttonDragOffset.x}px, ${buttonDragOffset.y}px)` } : undefined}
+              aria-label={PANEL_INFO[m].title}
+              onClick={() => {
+                if (!buttonDragRef.current) openPanel(m)
+              }}
+              onTouchStart={(e) => handleButtonDragStart(e, m, e.currentTarget)}
+              onTouchMove={handleButtonDragMove}
+              onTouchEnd={handleButtonDragEnd}
+            >
+              {PANEL_INFO[m].icon}
+            </button>
+          )
+        })}
       </div>
 
       {open && (

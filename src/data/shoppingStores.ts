@@ -2,9 +2,24 @@ import { supabase } from '@/data/supabaseClient'
 import type { ShoppingStoreEntry } from '@/domain/types'
 
 export async function listShoppingStores(): Promise<ShoppingStoreEntry[]> {
-  const { data, error } = await supabase.from('shopping_stores').select('id, family_id, name').order('name')
+  const { data, error } = await supabase
+    .from('shopping_stores')
+    .select('id, family_id, name')
+    .order('sort_order', { ascending: true })
   if (error) throw error
   return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name }))
+}
+
+// Arrastrar con el dedo para cambiar el orden de las tiendas (petición
+// real: "los supermercados quiero poder tocarlos con el dedo... coger
+// Aldi y ponerlo debajo del Líder") — mismo patrón que
+// reorderShoppingItems.
+export async function reorderShoppingStores(orderedIds: string[]): Promise<void> {
+  const base = Date.now()
+  const { error } = await supabase
+    .from('shopping_stores')
+    .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
+  if (error) throw new Error(error.message)
 }
 
 export async function createShoppingStore(name: string): Promise<void> {

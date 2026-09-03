@@ -272,33 +272,20 @@ button {
   color: var(--primary);
 }
 
-/* Modo "Mover" de la barra inferior — mismas flechas que el resto de
-   pestañas reordenables de la app. */
-.nav-item-organizing {
+.nav-item {
+  border: none;
+  background: none;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+/* Se arrastra con el dedo para cambiar de sitio, igual que el resto
+   de listas reordenables de la app — petición real: "todos los
+   iconos... que también se puedan arrastrar". */
+.nav-item-dragging {
+  z-index: 2;
   background: #f1f3f5;
   border-radius: 10px;
-}
-
-.nav-item-move {
-  background: none;
-  border: none;
-  color: var(--primary);
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.2;
-  padding: 2px;
-  cursor: pointer;
-}
-
-.nav-item-move:disabled {
-  color: #d1d5db;
-  cursor: default;
-}
-
-.nav-organize-toggle {
-  border: none;
-  background: none;
-  color: var(--muted);
 }
 
 .link-button {
@@ -419,44 +406,24 @@ select {
   border-color: var(--primary);
 }
 
-/* Pestañas reordenables — mismo mecanismo que las tarjetas de Inicio
-   (↕️ Organizar + flechas), reutilizado en cada pantalla con pestañas
-   en vez de repetirlo (petición real: "toda la aplicación quiero que
-   sea móvil, se puedan mover todos los iconos"). */
-.tab-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
+/* Pestañas reordenables — se tocan para seleccionar y se arrastran
+   con el dedo para cambiar de sitio, igual que ya funcionaba la lista
+   de la compra (petición real, tras rechazar la versión con flechas:
+   "quiero poder tocarlas con el dedo y desplazarlas a donde yo
+   quiera... como hemos hecho con la lista de la compra... en todas
+   las pestañas de la aplicación"). */
 .tab-bar-chips {
-  flex: 1;
-  margin-bottom: 0;
+  touch-action: pan-y;
 }
 
-.tab-bar-organize {
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  font-size: 16px;
-}
-
-.tab-chip-label,
-.tab-chip-move {
-  background: none;
-  border: none;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  font-weight: inherit;
+.tab-chip {
   cursor: pointer;
+  touch-action: pan-y;
 }
 
-.tab-chip-move {
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0 2px;
+.tab-chip-dragging {
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 /* Lista vertical de preajustes de repetición ("Todos los días
@@ -1128,6 +1095,15 @@ textarea {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   padding: 0;
+  touch-action: none;
+}
+
+/* Se arrastra con el dedo para cambiar de sitio en la rejilla 2x2
+   (petición real: "todos los iconos de Pepa también, que también se
+   puedan arrastrar"). */
+.voice-fab-dragging {
+  z-index: 3;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
 .voice-fab-ask {
@@ -1230,6 +1206,62 @@ textarea {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+
+/* Carpetas de tickets por tienda — plegadas por defecto, tocar para
+   ver los tickets de esa tienda. */
+.store-folder-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.store-folder {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--card-bg, #fff);
+}
+
+.store-folder-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.store-folder-icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: white;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.store-folder-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.store-folder-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.store-folder-contents {
+  padding: 0 12px 12px;
 }
 
 /* Barras verticales del gasto mensual. */

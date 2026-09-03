@@ -9,6 +9,7 @@ import { listFamilyMembers } from '@/data/family'
 import type { FamilyMember, MemberDocument } from '@/domain/types'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { ConfirmButton } from '@/ui/ConfirmButton'
+import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 
 // Las 4 carpetas pedidas. "Casa" y "Familia" normalmente no son de una
 // persona en concreto — por eso el miembro es opcional en el formulario,
@@ -18,7 +19,7 @@ const FOLDERS = ['Privada', 'Educación', 'Casa', 'Familia'] as const
 export function DocumentsScreen() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [documents, setDocuments] = useState<MemberDocument[]>([])
-  const [folder, setFolder] = useState<string>(FOLDERS[0])
+  const [folder, setFolder] = useState<(typeof FOLDERS)[number]>(FOLDERS[0])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,13 +54,7 @@ export function DocumentsScreen() {
     <div className="screen">
       <h1>Documentos</h1>
       {error && <p className="error">{error}</p>}
-      <div className="filter-row">
-        {FOLDERS.map((f) => (
-          <button key={f} className={'chip' + (folder === f ? ' chip-active' : '')} onClick={() => setFolder(f)}>
-            {f}
-          </button>
-        ))}
-      </div>
+      <ReorderableTabBar storageKey="documentos" tabs={FOLDERS} active={folder} onSelect={setFolder} />
 
       <div className="event-list">
         {folderDocuments.map((doc) => (

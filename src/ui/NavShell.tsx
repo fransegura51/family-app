@@ -28,23 +28,26 @@ const TABS = [
 const TAB_PATHS = TABS.map((t) => t.to)
 const TAB_BY_PATH = new Map(TABS.map((t) => [t.to, t]))
 const TAP_THRESHOLD_PX = 8
+// Cuánto hay que mantener el dedo quieto para que cuente como "quiero
+// arrastrar" en vez de "quiero desplazar la barra" — petición real,
+// tras rechazar la primera versión (arrastre solo de ratón): "también
+// quiero que se puedan mover los iconos desde el móvil, aparte de que
+// se deslicen a la izquierda y la derecha". Ambos gestos empiezan
+// igual (un dedo tocando y moviéndose en horizontal), así que hace
+// falta algo que los distinga: un deslizar normal se mueve enseguida,
+// mantener pulsado se queda quieto un momento antes de moverse.
+const LONG_PRESS_MS = 450
 
 function isActivePath(pathname: string, tab: (typeof TABS)[number]): boolean {
   return tab.end ? pathname === tab.to : pathname === tab.to || pathname.startsWith(tab.to + '/')
 }
 
 // Navegación inferior, mobile-first, fija en toda la app (Skill 02).
-// El orden se puede cambiar arrastrando con el RATÓN (ordenador). Con
-// el dedo (móvil) NO se arrastra para reordenar — con 12 iconos la
-// barra ya se desplaza de lado (overflow-x), y arrastrar con el dedo
-// para reordenar competía con ese mismo gesto de desplazar la barra,
-// impidiendo ver los iconos de la derecha (petición real: "intento
-// desplazar los iconos hacia la izquierda... y no puedo porque se
-// mueven los iconos... pero déjalo que se puedan cambiar, creo que lo
-// pones como en el ordenador"). En el ordenador no hay ese conflicto
-// (no hay gesto de "deslizar" que confundir con arrastrar), así que
-// ahí se queda el arrastre; en el móvil, solo tocar para navegar y
-// deslizar para ver el resto.
+// Con el dedo: un toque corto navega, deslizar desplaza la barra para
+// ver el resto de iconos (gesto nativo, no tocado), y mantener pulsado
+// un instante sin moverse entra en modo arrastre para reordenar. Con
+// el ratón no hay ese conflicto de gestos, así que ahí el arrastre
+// empieza al instante, sin esperar.
 export function NavShell() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -54,23 +57,65 @@ export function NavShell() {
   const dragRef = useRef<{ to: string; startX: number; startIndex: number; itemWidth: number; moved: number } | null>(null)
   const [draggingTo, setDraggingTo] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState(0)
-  // Evita que, tras un arrastre de ratón de verdad, el "click" que el
+  // Evita que, tras un arrastre de verdad, el "click" que el
   // navegador dispara justo después vuelva a navegar por su cuenta —
   // misma protección ya probada en los botones de Pepa.
   const wasDraggedRef = useRef(false)
 
-  function handlePointerDown(e: ReactPointerEvent, to: string, el: HTMLElement) {
-    if (e.pointerType !== 'mouse' || e.button !== 0) return
-    el.setPointerCapture(e.pointerId)
-    wasDraggedRef.current = false
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRef = useRef<{ to: string; el: HTMLElement; pointerId: number; startX: number; startY: number } | null>(null)
+
+  function clearLongPress() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
+  function beginDrag(to: string, el: HTMLElement, pointerId: number, clientX: number) {
+    el.setPointerCapture(pointerId)
     const index = order.indexOf(to)
-    dragRef.current = { to, startX: e.clientX, startIndex: index, itemWidth: el.offsetWidth + 4, moved: 0 }
+    dragRef.current = { to, startX: clientX, startIndex: index, itemWidth: el.offsetWidth + 4, moved: 0 }
     setDraggingTo(to)
   }
 
+  function handlePointerDown(e: ReactPointerEvent, to: string, el: HTMLElement) {
+    wasDraggedRef.current = false
+    if (e.pointerType === 'mouse') {
+      if (e.button !== 0) return
+      beginDrag(to, el, e.pointerId, e.clientX)
+      return
+    }
+    pendingRef.current = { to, el, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY }
+    clearLongPress()
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null
+      const p = pendingRef.current
+      if (!p) return
+      beginDrag(p.to, p.el, p.pointerId, p.startX)
+    }, LONG_PRESS_MS)
+  }
+
   function handlePointerMove(e: ReactPointerEvent) {
+    // Todavía esperando a ver si es pulsación mantenida — si el dedo
+    // ya se ha movido de verdad, es que se quiere desplazar la barra,
+    // no reordenar: se cancela la espera y se deja el gesto nativo de
+    // desplazamiento seguir su curso sin interferir.
+    if (longPressTimerRef.current && pendingRef.current) {
+      const dx = e.clientX - pendingRef.current.startX
+      const dy = e.clientY - pendingRef.current.startY
+      if (Math.hypot(dx, dy) > TAP_THRESHOLD_PX) {
+        clearLongPress()
+        pendingRef.current = null
+      }
+      return
+    }
+
     const drag = dragRef.current
     if (!drag) return
+    // Ya en modo arrastre: evita que el navegador intente además
+    // desplazar la barra mientras se reordena.
+    e.preventDefault()
     const dx = e.clientX - drag.startX
     drag.moved = Math.max(drag.moved, Math.abs(dx))
     if (drag.moved >= TAP_THRESHOLD_PX) wasDraggedRef.current = true
@@ -88,6 +133,8 @@ export function NavShell() {
   }
 
   function handlePointerUp() {
+    clearLongPress()
+    pendingRef.current = null
     const drag = dragRef.current
     dragRef.current = null
     setDraggingTo(null)

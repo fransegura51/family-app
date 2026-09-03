@@ -104,24 +104,21 @@ function kindOf(mode: PanelMode): 'ask' | 'create' {
   return mode.startsWith('ask') ? 'ask' : 'create'
 }
 
-// "Pepa calendario" / "Pepa compra" / "apunta calendario" / "apunta
-// compra" abren el panel correspondiente con solo decirlas, sin tocar
-// ningún icono — petición real: "que se abran con la voz, igual que
-// hace Siri cuando dices 'oye Siri' o Google cuando dices 'OK Google'".
-// Solo cuenta si la frase EMPIEZA por la palabra clave (como mucho con
-// "oye"/"hola" delante) y el destino aparece enseguida después — así
-// una conversación normal que solo MENCIONE esas palabras de pasada
-// ("no sé si Pepa tiene algo en el calendario") no abre nada solo
-// (petición real: "que no esté saltando cada tres por dos").
+// "Pepa calendario" / "Pepa compra" / "Pepa apunta calendario" / "Pepa
+// apunta compra" abren el panel correspondiente con solo decirlas, sin
+// tocar ningún icono — petición real: "que salte con esas palabras, al
+// principio de la frase". Siempre tiene que empezar por "Pepa" (como
+// mucho con "oye"/"hola" delante) — así una conversación normal que
+// solo MENCIONE esas palabras de pasada ("no sé si Pepa tiene algo en
+// el calendario") no abre nada sola (petición real: "que no esté
+// saltando cada tres por dos").
 function detectWakeTrigger(text: string): PanelMode | null {
   const n = normalize(text)
-  const head = n.match(/^(?:oye|hola)?[,.\s]*(pepa|apunta\w*)\b(.{0,25})/)
-  if (!head) return null
-  const isApunta = head[1].startsWith('apunta')
-  const rest = head[2] ?? ''
-  if (/calendario/.test(rest)) return isApunta ? 'create-calendario' : 'ask-calendario'
-  if (/compras?/.test(rest)) return isApunta ? 'create-compras' : 'ask-compras'
-  return null
+  const m = n.match(/^(?:oye|hola)?[,.\s]*pepa\b[,.\s]*(apunta\w*)?[\s\S]{0,20}?\b(calendario|compras?)\b/)
+  if (!m) return null
+  const isApunta = !!m[1]
+  if (m[2] === 'calendario') return isApunta ? 'create-calendario' : 'ask-calendario'
+  return isApunta ? 'create-compras' : 'ask-compras'
 }
 
 const PANEL_INFO: Record<

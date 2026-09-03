@@ -828,7 +828,20 @@ export function VoiceCapture() {
   function openPanel(nextMode: PanelMode) {
     setPanelMode(nextMode)
     setOpen(true)
+    openedAtRef.current = Date.now()
     if (dictationOk) startListening()
+  }
+
+  // Red de seguridad además del preventDefault de más abajo — si por
+  // lo que sea el móvil todavía cuela un toque/clic fantasma justo al
+  // abrir el panel, que caiga sobre el fondo (que cierra al tocarlo),
+  // se ignora en vez de cerrar el panel que se acaba de abrir (bug
+  // real: "se conecta el micrófono pero no sale la pantalla" — se
+  // abría y cerraba en el mismo instante).
+  const openedAtRef = useRef(0)
+  function handleOverlayClick() {
+    if (Date.now() - openedAtRef.current < 500) return
+    close()
   }
 
   // Los 4 botones también se pueden arrastrar de sitio — petición
@@ -952,7 +965,7 @@ export function VoiceCapture() {
       </div>
 
       {open && (
-        <div className="modal-overlay" onClick={close}>
+        <div className="modal-overlay" onClick={handleOverlayClick}>
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>

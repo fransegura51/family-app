@@ -21,6 +21,26 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } })
 }
 
+// gemini-flash-lite-latest da 1500 peticiones/día gratis, pero solo 15 por
+// MINUTO — compartidas entre las 4 funciones que usan IA. Reintentar unos
+// segundos después (el cupo de minuto se resetea solo) evita que un pico
+// puntual de uso familiar se traduzca en un fallo silencioso.
+async function fetchGeminiWithRetry(model: string, key: string, body: unknown): Promise<Response> {
+  const delaysMs = [4000, 8000]
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    )
+    if (res.status !== 429 || attempt >= delaysMs.length) return res
+    await new Promise((r) => setTimeout(r, delaysMs[attempt]))
+  }
+}
+
 interface ReceiptItem {
   name: string
   quantity: number
@@ -49,12 +69,7 @@ Deno.serve(async (req) => {
     })
     if (keyError || !geminiKey) return json({ error: "service not configured" }, 500)
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    const geminiRes = await fetchGeminiWithRetry("gemini-flash-lite-latest", geminiKey, {
           contents: [
             {
               parts: [
@@ -85,9 +100,7 @@ Deno.serve(async (req) => {
               ],
             },
           ],
-        }),
-      },
-    )
+        })
 
     if (!geminiRes.ok) {
       const detail = await geminiRes.text()

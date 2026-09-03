@@ -24,6 +24,26 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } })
 }
 
+// gemini-flash-lite-latest da 1500 peticiones/día gratis, pero solo 15 por
+// MINUTO — compartidas entre las 4 funciones que usan IA. Reintentar unos
+// segundos después (el cupo de minuto se resetea solo) evita que un pico
+// puntual de uso familiar se traduzca en un fallo silencioso.
+async function fetchGeminiWithRetry(model: string, key: string, body: unknown): Promise<Response> {
+  const delaysMs = [4000, 8000]
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    )
+    if (res.status !== 429 || attempt >= delaysMs.length) return res
+    await new Promise((r) => setTimeout(r, delaysMs[attempt]))
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS })
 
@@ -71,14 +91,9 @@ Deno.serve(async (req) => {
       "memberHint: si nombra a alguien en concreto de quién pregunta, su nombre; si no, null.\n" +
       "nowOnly: true SOLO si pregunta explícitamente \"ahora\" (desde este momento en adelante); false en cualquier otro caso."
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      },
-    )
+    const geminiRes = await fetchGeminiWithRetry("gemini-flash-lite-latest", geminiKey, {
+      contents: [{ parts: [{ text: prompt }] }],
+    })
 
     if (!geminiRes.ok) {
       const detail = await geminiRes.text()

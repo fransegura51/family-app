@@ -7,6 +7,7 @@ import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
+import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -74,6 +75,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
 
   return (
     <div className="screen">
+      <CalendarOnboardingModal profileId={profile.id} />
       <h1>¿Qué tenemos hoy?</h1>
       <p className="muted home-greeting">
         {self && <MemberAvatar member={self} size={28} />}

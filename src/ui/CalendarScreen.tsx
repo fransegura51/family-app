@@ -25,6 +25,12 @@ import {
 } from '@/data/externalCalendarFeeds'
 import { getCalendarExportUrl } from '@/data/calendarExport'
 import {
+  disconnectGoogleCalendar,
+  getGoogleCalendarStatus,
+  startGoogleConnect,
+  type GoogleCalendarStatus,
+} from '@/data/googleCalendarSync'
+import {
   eventDotColors,
   expandOccurrences,
   getMonthGridDays,
@@ -1576,6 +1582,8 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
     <div>
       {error && <p className="error">{error}</p>}
 
+      <GoogleCalendarSyncCard />
+
       <CalendarExportCard />
 
       <div className="card member-form">
@@ -1701,6 +1709,94 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// Conexión de verdad, cada hora, vía la API de Google Calendar — a
+// diferencia de CalendarExportCard (más abajo), que depende de que
+// Google decida cuándo mirar la URL. Se recomienda esta primero porque
+// SÍ puede cumplir "cada hora" (petición real); la de abajo queda como
+// alternativa para quien no quiera dar permiso de escritura o use
+// Apple Calendar sin cuenta de Google.
+function GoogleCalendarSyncCard() {
+  const [status, setStatus] = useState<GoogleCalendarStatus | null>(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  function load() {
+    getGoogleCalendarStatus()
+      .then(setStatus)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
+  useEffect(() => {
+    // Google trae de vuelta aquí con ?google=connected|error tras el
+    // consentimiento (ver google-calendar-oauth-callback) — se lee una
+    // vez y se limpia de la URL para que un refresco de página no lo
+    // vuelva a mostrar.
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('google')
+    if (result === 'connected') setNotice('✓ Conectado con Google Calendar.')
+    else if (result === 'error') setNotice(`No se pudo conectar (${params.get('detail') ?? 'error'}).`)
+    if (result) {
+      params.delete('google')
+      params.delete('detail')
+      const qs = params.toString()
+      window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''))
+    }
+    load()
+  }, [])
+
+  async function connect() {
+    setBusy(true)
+    setError('')
+    try {
+      await startGoogleConnect()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setBusy(false)
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true)
+    setError('')
+    try {
+      await disconnectGoogleCalendar()
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card member-form">
+      <h2>Conectar con Google Calendar (recomendado)</h2>
+      <p className="muted">
+        Un solo permiso y la app mantiene un calendario "Family App" dentro de tu Google Calendar siempre al día,
+        cada hora — se ve igual en Android y en iPhone si usas la app de Google Calendar en los dos.
+      </p>
+      {notice && <p className="muted">{notice}</p>}
+      {error && <p className="error">{error}</p>}
+      {status?.connected ? (
+        <>
+          <p className="muted">
+            {status.lastSyncedAt
+              ? `Última sincronización: ${new Date(status.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`
+              : 'Conectado — la primera sincronización llega en la próxima hora en punto.'}
+          </p>
+          {status.lastSyncError && <p className="error">{status.lastSyncError}</p>}
+          <ConfirmButton label="Desconectar" onConfirm={disconnect} />
+        </>
+      ) : (
+        <button type="button" onClick={connect} disabled={busy}>
+          {busy ? 'Abriendo Google…' : 'Conectar con Google'}
+        </button>
       )}
     </div>
   )

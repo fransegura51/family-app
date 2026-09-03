@@ -342,6 +342,9 @@ function ReceiptsTab() {
   // defecto, solo el nombre/total a la vista; tocar la carpeta la
   // abre. Empieza vacío (todas plegadas) hasta que se toque alguna.
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
+  const [rangePreset, setRangePreset] = useState<SpendRangePreset>('mes')
+  const [rangeCustomFrom, setRangeCustomFrom] = useState(toDateStr(new Date()))
+  const [rangeCustomTo, setRangeCustomTo] = useState(toDateStr(new Date()))
 
   function reload() {
     setLoading(true)
@@ -371,6 +374,9 @@ function ReceiptsTab() {
 
   const grouped = groupReceiptsByStore(receipts, knownStores)
   const storeNames = grouped.map((g) => g.store)
+  const [rangeFrom, rangeTo] = rangeForPreset(rangePreset, rangeCustomFrom, rangeCustomTo)
+  const rangeFilteredReceipts = receipts.filter((r) => r.receiptDate >= rangeFrom && r.receiptDate <= rangeTo)
+  const rangeGrouped = groupReceiptsByStore(rangeFilteredReceipts, knownStores)
 
   return (
     <div>
@@ -385,12 +391,28 @@ function ReceiptsTab() {
           todo" — antes iba al final de la lista. */}
       <AddReceiptForm onAdded={reload} knownStores={knownStores} existingFolders={storeNames} />
 
-      <ReceiptSpendSummary receipts={receipts} knownStores={knownStores} storeNames={storeNames} />
+      {/* Petición real: "reparto del gasto por tienda, eso me lo hace
+          del total, y no quiero que me lo haga del total... que las
+          estadísticas se ajusten al selector que tenemos arriba" — un
+          único selector de fecha (arriba del todo) para el total, el
+          reparto por tienda y el gasto mensual, en vez de uno nuevo en
+          cada apartado. */}
+      <ReceiptSpendSummary
+        receipts={receipts}
+        knownStores={knownStores}
+        storeNames={storeNames}
+        preset={rangePreset}
+        onPresetChange={setRangePreset}
+        customFrom={rangeCustomFrom}
+        onCustomFromChange={setRangeCustomFrom}
+        customTo={rangeCustomTo}
+        onCustomToChange={setRangeCustomTo}
+      />
 
       {receipts.length > 0 && (
         <>
-          <StoreBreakdownChart groups={grouped} />
-          <StoreMonthlyChart receipts={receipts} knownStores={knownStores} storeNames={storeNames} />
+          <StoreBreakdownChart groups={rangeGrouped} />
+          <StoreMonthlyChart receipts={rangeFilteredReceipts} knownStores={knownStores} storeNames={storeNames} from={rangeFrom} to={rangeTo} />
         </>
       )}
 
@@ -498,14 +520,23 @@ function ReceiptSpendSummary({
   receipts,
   knownStores,
   storeNames,
+  preset,
+  onPresetChange,
+  customFrom,
+  onCustomFromChange,
+  customTo,
+  onCustomToChange,
 }: {
   receipts: Receipt[]
   knownStores: string[]
   storeNames: string[]
+  preset: SpendRangePreset
+  onPresetChange: (p: SpendRangePreset) => void
+  customFrom: string
+  onCustomFromChange: (d: string) => void
+  customTo: string
+  onCustomToChange: (d: string) => void
 }) {
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
-  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
-  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [selectedStore, setSelectedStore] = useState('Todas')
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo)
@@ -534,7 +565,7 @@ function ReceiptSpendSummary({
             key={p}
             type="button"
             className={'chip' + (preset === p ? ' chip-active' : '')}
-            onClick={() => setPreset(p)}
+            onClick={() => onPresetChange(p)}
           >
             {PRESET_LABELS[p]}
           </button>
@@ -542,9 +573,9 @@ function ReceiptSpendSummary({
       </div>
       {preset === 'rango' && (
         <div className="inline-fields" style={{ marginBottom: 8 }}>
-          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+          <input type="date" value={customFrom} onChange={(e) => onCustomFromChange(e.target.value)} />
           <span>a</span>
-          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+          <input type="date" value={customTo} onChange={(e) => onCustomToChange(e.target.value)} />
         </div>
       )}
       <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} style={{ marginBottom: 8 }}>
@@ -596,26 +627,36 @@ function StoreBreakdownChart({ groups }: { groups: { store: string; receipts: Re
 }
 
 // Petición real: "un gráfico con lo que se va gastando cada mes en ese
-// supermercado" — barras verticales, últimos 6 meses, para la tienda
-// elegida (o todas juntas).
+// supermercado" — barras verticales, para la tienda elegida (o todas
+// juntas), acotado al mismo selector de fecha de arriba (antes eran
+// siempre los últimos 6 meses fijos, sin importar el filtro elegido).
 function StoreMonthlyChart({
   receipts,
   knownStores,
   storeNames,
+  from,
+  to,
 }: {
   receipts: Receipt[]
   knownStores: string[]
   storeNames: string[]
+  from: string
+  to: string
 }) {
   const [selectedStore, setSelectedStore] = useState('Todas')
 
   const months = useMemo(() => {
-    const today = new Date()
-    return Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(today.getFullYear(), today.getMonth() - (5 - i), 1)
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    })
-  }, [])
+    const start = new Date(from + 'T00:00')
+    const end = new Date(to + 'T00:00')
+    const list: string[] = []
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1)
+    const last = new Date(end.getFullYear(), end.getMonth(), 1)
+    while (cursor <= last) {
+      list.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`)
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+    return list
+  }, [from, to])
 
   const totalsByMonth = useMemo(() => {
     const sums = new Map<string, number>()

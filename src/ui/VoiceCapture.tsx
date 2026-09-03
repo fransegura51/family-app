@@ -108,15 +108,19 @@ function kindOf(mode: PanelMode): 'ask' | 'create' {
 // compra" abren el panel correspondiente con solo decirlas, sin tocar
 // ningún icono — petición real: "que se abran con la voz, igual que
 // hace Siri cuando dices 'oye Siri' o Google cuando dices 'OK Google'".
-// "Apunta" se comprueba antes que "Pepa" para que "Pepa, apunta en el
-// calendario que…" (dicho de un tirón) abra directamente Apuntar
-// Calendario en vez de Preguntar — encargo, no pregunta.
+// Solo cuenta si la frase EMPIEZA por la palabra clave (como mucho con
+// "oye"/"hola" delante) y el destino aparece enseguida después — así
+// una conversación normal que solo MENCIONE esas palabras de pasada
+// ("no sé si Pepa tiene algo en el calendario") no abre nada solo
+// (petición real: "que no esté saltando cada tres por dos").
 function detectWakeTrigger(text: string): PanelMode | null {
   const n = normalize(text)
-  if (/\bapunta\w*\b[\s\S]*\bcalendario\b/.test(n)) return 'create-calendario'
-  if (/\bapunta\w*\b[\s\S]*\b(compra|compras)\b/.test(n)) return 'create-compras'
-  if (/\bpepa\b[\s\S]*\bcalendario\b/.test(n)) return 'ask-calendario'
-  if (/\bpepa\b[\s\S]*\b(compra|compras)\b/.test(n)) return 'ask-compras'
+  const head = n.match(/^(?:oye|hola)?[,.\s]*(pepa|apunta\w*)\b(.{0,25})/)
+  if (!head) return null
+  const isApunta = head[1].startsWith('apunta')
+  const rest = head[2] ?? ''
+  if (/calendario/.test(rest)) return isApunta ? 'create-calendario' : 'ask-calendario'
+  if (/compras?/.test(rest)) return isApunta ? 'create-compras' : 'ask-compras'
   return null
 }
 

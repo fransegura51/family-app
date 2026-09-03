@@ -71,7 +71,7 @@ import {
 } from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
 
-const VIEWS = ['Mes', 'Lista', 'Externos'] as const
+const VIEWS = ['Mes', 'Externos'] as const
 type ViewMode = (typeof VIEWS)[number]
 
 function toDateStr(d: Date): string {

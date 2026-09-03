@@ -1276,6 +1276,11 @@ textarea {
   background: none;
   text-align: left;
   font: inherit;
+  /* Sin esto, el nombre de la tienda hereda el color por defecto del
+     navegador para botones — en algunos móviles eso es blanco, e
+     invisible sobre la tarjeta blanca de la carpeta (bug real: "no se
+     ve el nombre" — sí estaba, pero en blanco sobre blanco). */
+  color: var(--text);
   cursor: pointer;
 }
 

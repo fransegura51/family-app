@@ -1,16 +1,13 @@
-// Reconoce un puñado de preguntas frecuentes dentro de lo que se dicta
-// ("¿qué tareas tengo hoy?", "repásame la lista de la compra") sin usar
-// ningún servicio de IA de pago — solo coincidencia de palabras clave.
-// Deliberadamente limitado a estas dos preguntas: cubre lo que se ha
-// pedido sin fingir entender cualquier frase libre.
+// Reconoce preguntas sobre calendario o sobre la compra dentro de lo
+// que se dicta, sin usar ningún servicio de IA de pago — solo
+// coincidencia de palabras clave. Ya no hace falta ADIVINAR de cuál de
+// las dos categorías se trata (bug real, repetido: "Mercadona, patata,
+// huevo" se apuntaba en el calendario; preguntar por la compra de
+// Mercadona a veces contestaba también con la de Aldi) — ahora hay un
+// botón para cada cosa ("🐣📅 Pepa Calendario" / "🐣🛒 Pepa Compra" /
+// "🎤📅 Apuntar Calendario" / "🎤🛒 Apuntar Compra"), así que la
+// categoría ya la da el botón, no hace falta reconocerla en el texto.
 import { extractSpokenDate, MONTHS } from '@/domain/spokenDate'
-
-export type VoiceIntent =
-  | { type: 'tasks_today'; memberHint: string | null; when: 'today' | 'tomorrow'; explicitDate: string | null; nowOnly: boolean }
-  | { type: 'shopping_list'; storeHint: string | null; general: boolean }
-  | { type: 'next_calendar_event' }
-  | { type: 'unsupported_delete' }
-  | { type: 'none' }
 
 export function normalize(text: string): string {
   return text
@@ -19,36 +16,6 @@ export function normalize(text: string): string {
     .replace(/[̀-ͯ]/g, '') // quita acentos: qué -> que
     .trim()
 }
-
-// OJO: nunca la frase suelta "lista de la compra" — eso también aparece
-// en frases que NO son una pregunta ("Pepa, vamos a hacer la lista de
-// la compra, leche y pan"), y antes se confundía con "qué hay en la
-// lista de la compra" y respondía con lo que ya había en vez de añadir
-// los productos nuevos (bug real). Solo cuentan como pregunta las
-// formas que de verdad preguntan algo.
-// Antes era una lista de frases EXACTAS ("qué hay en la lista de la
-// compra"...) que se quedaba corta en cuanto se decía de otra forma tan
-// natural como esa — "qué TENEMOS en lista de la compra" no coincidía
-// con nada y Pepa lo guardaba como un apunte nuevo en vez de responder
-// (bug real repetido varias veces). Con una expresión que junta
-// cualquier forma de preguntar (hay/tengo/tenemos/falta) con cualquier
-// forma de decir "la compra" no hace falta seguir añadiendo frases
-// sueltas cada vez que se dice de una manera distinta.
-const SHOPPING_RE =
-  /\b(que hay|que tengo|que tenemos|que falta)\b[\s\S]*\b(en (la )?(lista de la )?compra|que comprar|para comprar)\b|\b(repasa|repasame)\b[\s\S]*\bcompra\b/
-
-// En 1ª persona singular ("qué tengo que hacer"), plural ("qué tenemos
-// que hacer todos") y en 3ª ("qué tiene que hacer Paco") — bug real
-// repetido varias veces: cada vez que faltaba UNA combinación concreta
-// de persona (tengo/tiene/tenemos) y tiempo (hoy/mañana/ahora/una
-// fecha) en la lista de frases exactas, esa combinación se colaba como
-// una tarea nueva en vez de responder (los últimos dos encontrados:
-// "qué TIENE ahora" y "qué TENEMOS ahora" — solo estaba "qué TENGO
-// ahora"). En vez de seguir añadiendo frases sueltas una a una, se
-// junta cualquier persona con cualquier tiempo de una sola vez, para
-// que no pueda volver a faltar ninguna combinación.
-const TASK_RE =
-  /\btareas?\b|\b(que tengo|que tiene|que tenemos)\b[\s\S]*\b(que hacer|hoy|manana|ahora|el)\b|\b(que hago|que hace|que hacemos)\b[\s\S]*\b(ahora|hoy)\b|\bque (me|le|nos) toca\b|\bque toca hacer\b/
 
 // "Lo siguiente que tengo en el calendario" — a diferencia de las
 // tareas, esto pregunta por el próximo EVENTO del calendario (cita,
@@ -68,6 +35,10 @@ const NEXT_EVENT_RE =
 // resto: cualquier verbo de borrar con cualquiera de los dos nombres
 // (antes faltaban "quita el evento"/"quitar el evento").
 const DELETE_RE = /\b(borra|borrar|elimina|eliminar|quita|quitar)\b[\s\S]*\b(la cita|el evento)\b/
+
+export function isUnsupportedDelete(text: string): boolean {
+  return DELETE_RE.test(normalize(text))
+}
 
 // Quita "Pepa" (con "oye"/"vale" delante si los hay) de lo dictado antes
 // de interpretarlo — si no, "Pepa, apunta leche y pan" se guardaría
@@ -131,37 +102,6 @@ export function stripListFillers(text: string): string {
     if (re.test(text)) return text.replace(re, '').trim()
   }
   return text
-}
-
-// A qué pantalla se refiere lo dictado, mirando el CONTENIDO en vez de
-// solo la pantalla en la que estés — "Pepa, ponme en el calendario que
-// el 27 de octubre es el cumpleaños de mi mujer" tiene que ir al
-// calendario aunque lo digas estando en Compras, no guardarse donde
-// estuvieras (bug real: antes solo miraba la pantalla actual). Cuando no
-// hay ninguna pista clara, se deja en null y quien llame cae en la
-// pantalla actual, como antes.
-export function detectTargetFromText(text: string): 'calendario' | 'compras' | null {
-  const n = normalize(text)
-  // "Compra"/"comprar" es una palabra clave mucho más específica y
-  // deliberada que un simple nombre de mes suelto — se comprueba
-  // PRIMERO, antes que el calendario, para que un mes que apareciera
-  // por casualidad dentro de una lista de la compra larga (bug real
-  // reportado: "Mercadona, lista de la compra, patata, lechuga, leche"
-  // se apuntó en el calendario en vez de en la compra) nunca pueda
-  // ganarle a una frase que ya dice "compra" bien claro. Cualquier
-  // palabra de la familia "compr-" (compra, compras, comprar,
-  // comprado...) cuenta — antes solo el verbo "comprar" o la frase
-  // exacta "lista de la compra", y decir "ponlo en la compra" o
-  // "apúntamelo en las compras" (formas tan naturales como esas) no
-  // coincidía con nada y se perdía la pista.
-  if (/\bcompr\w*\b/.test(n)) return 'compras'
-  if (/\bcalendario\b/.test(n) || MONTHS.some((m) => n.includes(` de ${m}`))) return 'calendario'
-  // Ya no hay una pestaña de "tareas" aparte — una tarea es un evento
-  // del calendario (petición real: "quitamos la pestaña de tarea...
-  // lo dejamos todo como evento"), así que decir "tarea" también apunta
-  // a Calendario, que ya reconoce a quién es, la fecha y la hora.
-  if (/\btarea\w*\b/.test(n)) return 'calendario'
-  return null
 }
 
 // "Mercadona, lista de la compra, patatas" -> apunta solo "patatas" en
@@ -349,70 +289,76 @@ const SAVE_VERB_RE = new RegExp(
   `^(?:${SAVE_VERB_ALT}|anade(?:me)?|agrega(?:me)?|crea|guarda(?:me)?(?:lo|la)?|vamos a apuntar|vamos a hacer|hagamos)\\b`,
 )
 
+// "Apunta que tengo que comprar leche" empieza como un ENCARGO, no como
+// la pregunta "¿qué tengo que comprar?" aunque comparta ese trocito de
+// frase (bug real: se confundían). Ahora que cada botón de Pepa ya deja
+// claro que se trata de una PREGUNTA, esto solo hace falta como último
+// filtro de seguridad: si se pulsa el botón de preguntar pero lo dicho
+// suena claramente a un encargo para guardar, mejor decir que no se ha
+// entendido que contestar con datos viejos como si fuera la respuesta.
+export function looksLikeSaveInstruction(text: string): boolean {
+  return SAVE_VERB_RE.test(normalize(text))
+}
+
+export type CalendarQuery =
+  | { type: 'tasks_today'; memberHint: string | null; when: 'today' | 'tomorrow'; explicitDate: string | null; nowOnly: boolean }
+  | { type: 'next_calendar_event' }
+
+// El botón "🐣📅 Pepa Calendario" ya deja claro que la pregunta es sobre
+// el calendario — no hace falta reconocer palabras clave concretas
+// ("qué tengo", "hoy"...) para saber DE QUÉ trata, solo para sacar el
+// día/persona/hora de lo dicho. Lo único que sigue distinguiéndose
+// dentro de esta categoría es "el próximo evento en general" frente a
+// "lo de un día concreto" — para lo demás, cualquier frase se entiende
+// como una pregunta sobre un día (hoy, salvo que diga otra cosa).
 // `today` se recibe desde fuera (no `new Date()` aquí) para poder
-// probar esta función con una fecha fija, igual que el resto del
-// reconocimiento de calendario.
-export function detectIntent(text: string, today: Date): VoiceIntent {
+// probar esta función con una fecha fija.
+export function parseCalendarQuery(text: string, today: Date): CalendarQuery {
   const n = normalize(text)
 
-  // Antes que nada: si claramente se pide BORRAR algo, no se intenta
-  // interpretar como pregunta ni como cita nueva — Pepa todavía no
-  // borra por voz, así que hay que decirlo en vez de crear basura.
-  if (DELETE_RE.test(n)) {
-    return { type: 'unsupported_delete' }
-  }
-
-  if (SAVE_VERB_RE.test(n)) {
-    return { type: 'none' }
-  }
-
-  // Antes que las tareas: "lo siguiente que tengo en el calendario"
-  // también contiene "que tengo", que si no se comprobara esto primero
-  // se colaría como pregunta de tareas.
   if (NEXT_EVENT_RE.test(n)) {
     return { type: 'next_calendar_event' }
   }
 
-  if (SHOPPING_RE.test(n)) {
-    // "Qué tengo en la lista de la compra DE MERCADONA" — si nombra una
-    // tienda concreta, se guarda tal cual se ha dicho (con mayúsculas
-    // originales) para poder filtrar solo esa tienda al responder. Sin
-    // nombrar ninguna ("¿qué tengo en la lista de la compra?"), se
-    // entiende como "general" — de todas las tiendas a la vez, cada una
-    // por separado (petición real: "cuando no diga nombre de
-    // supermercado, que me diga todos los supermercados... ya se
-    // entiende que es general", más simple que obligar a decir la
-    // palabra "general" a propósito).
-    const storeMatch = text.match(/(?:lista de la compra|la compra|las compras)\s+de\s+([a-zà-ÿ][a-zà-ÿ' ]{1,30})/i)
-    const storeHint = storeMatch ? storeMatch[1].trim() : null
-    return { type: 'shopping_list', storeHint, general: storeHint === null }
+  const spokenDate = extractSpokenDate(n, today)
+  // "de septiembre" no puede colarse como nombre de persona a través
+  // del "de X" suelto — solo cuenta si la palabra no es un mes.
+  const deMatch = n.match(/\bde (\w+)\b/)
+  const deFallback = deMatch && !MONTHS.includes(deMatch[1]) ? deMatch : null
+  const match = n.match(/\bsoy (\w+)/) ?? n.match(/\bpara (\w+)/) ?? deFallback
+  const when: 'today' | 'tomorrow' = /\bmanana\b/.test(n) ? 'tomorrow' : 'today'
+  const nowOnly = /\bahora\b/.test(n)
+  return {
+    type: 'tasks_today',
+    memberHint: match ? match[1] : null,
+    when,
+    explicitDate: spokenDate?.date ?? null,
+    nowOnly,
   }
+}
 
-  // "¿Qué tengo que hacer el nueve de septiembre?" es tan pregunta como
-  // "¿qué tengo que hacer hoy?" — antes solo se reconocían "hoy"/
-  // "mañana"/"ahora", así que decir una fecha concreta hacía que la
-  // frase entera cayera en la creación de un evento nuevo en vez de
-  // responder (bug real: dos citas basura creadas a partir de la propia
-  // pregunta).
-  if (TASK_RE.test(n)) {
-    const spokenDate = extractSpokenDate(n, today)
-    // "de septiembre" no puede colarse como nombre de persona a través
-    // del "de X" suelto — solo cuenta si la palabra no es un mes.
-    const deMatch = n.match(/\bde (\w+)\b/)
-    const deFallback = deMatch && !MONTHS.includes(deMatch[1]) ? deMatch : null
-    const match = n.match(/\bsoy (\w+)/) ?? n.match(/\bpara (\w+)/) ?? deFallback
-    const when: 'today' | 'tomorrow' = /\bmanana\b/.test(n) ? 'tomorrow' : 'today'
-    const nowOnly = /\bahora\b/.test(n)
-    return {
-      type: 'tasks_today',
-      memberHint: match ? match[1] : null,
-      when,
-      explicitDate: spokenDate?.date ?? null,
-      nowOnly,
-    }
-  }
+// El botón "🐣🛒 Pepa Compra" ya deja claro que la pregunta es sobre la
+// lista de la compra — lo único que hace falta sacar de lo dicho es de
+// QUÉ tienda, si se ha nombrado alguna. Antes esto solo miraba si
+// aparecía la palabra "de" justo delante del nombre de la tienda ("lista
+// de la compra DE Mercadona") — el reconocimiento de voz del móvil no
+// siempre transcribe esa palabra suelta (bug real: preguntar por
+// Mercadona a veces contestaba también con lo de Aldi, porque al perderse
+// el "de" se entendía como pregunta general). Ahora se busca primero
+// cualquier tienda YA DADA DE ALTA en cualquier parte de la frase — igual
+// de fiable esté o no la palabra "de" de por medio — y solo si no hay
+// ninguna conocida se cae al truco antiguo del "de X" como respaldo para
+// tiendas que todavía no están en la lista.
+export function parseShoppingQuery(
+  text: string,
+  knownStores: string[] = [],
+): { storeHint: string | null; general: boolean } {
+  const known = findKnownStore(text, knownStores)
+  if (known) return { storeHint: known.store, general: false }
 
-  return { type: 'none' }
+  const storeMatch = text.match(/(?:lista de la compra|la compra|las compras)\s+de\s+([a-zà-ÿ][a-zà-ÿ' ]{1,30})/i)
+  const storeHint = storeMatch ? storeMatch[1].trim() : null
+  return { storeHint, general: storeHint === null }
 }
 
 function levenshtein(a: string, b: string): number {

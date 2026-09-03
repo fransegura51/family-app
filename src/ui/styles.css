@@ -1044,18 +1044,31 @@ textarea {
   font-weight: 600;
 }
 
-/* Dos botones separados — uno solo para añadir (micrófono) y otro solo
-   para preguntar (Pepa), apilados para que no se pisen ni se confundan
-   al tacto. Pepa en el sitio de siempre (el más a mano, pegado a la
-   barra de navegación) — es el botón que más se usa y el que la
-   usuaria ya tiene interiorizado ahí; añadir queda justo encima. */
-.voice-fab-ask {
+/* Cuatro botones separados — Pepa (preguntar) y Apuntar (guardar), cada
+   uno partido en Calendario / Compra, para que el botón ya diga destino
+   Y acción sin tener que adivinar ninguna de las dos cosas (petición
+   real: "vamos a dejar Pepa calendario y Pepa lista de la compra, dos
+   botones independientes... apuntar calendario, apuntar lista de la
+   compra"). Apilados para que no se pisen ni se confundan al tacto —
+   los dos de Pepa (los más usados) más cerca de la barra de navegación,
+   los dos de Apuntar justo encima. */
+.voice-fab-ask-compras {
   bottom: 84px;
   background: #7c3aed;
 }
 
-.voice-fab-create {
+.voice-fab-ask-calendario {
   bottom: 150px;
+  background: #7c3aed;
+}
+
+.voice-fab-create-compras {
+  bottom: 216px;
+  background: var(--primary);
+}
+
+.voice-fab-create-calendario {
+  bottom: 282px;
   background: var(--primary);
 }
 

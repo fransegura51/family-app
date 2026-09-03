@@ -1,5 +1,5 @@
 import { FormEvent, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
@@ -10,20 +10,20 @@ import type { CalendarEvent } from '@/domain/types'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
 import {
-  detectIntent,
-  detectTargetFromText,
   extractShoppingStore,
-  findKnownStore,
   findMemberInText,
+  isUnsupportedDelete,
+  looksLikeSaveInstruction,
   matchMemberByHint,
   normalize,
+  parseCalendarQuery,
+  parseShoppingQuery,
   stripActivateCommand,
   stripListFillers,
   stripWakeWord,
 } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenContinuous, speakAsync } from '@/services/voice'
-import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 
@@ -67,42 +67,75 @@ function tomorrowIso(): string {
 
 // Ejemplos fijos para acostumbrar a decirle siempre a Pepa la pregunta o
 // el encargo de la misma forma — no cambian según nada, para que se
-// aprendan de memoria y ya no haga falta ni mirarlos (petición real:
-// "quiero que salgan cuatro opciones... para acostumbrarla a hacerle
-// siempre la pregunta de la misma manera"). Tocar uno lo escribe abajo,
-// listo para enviar tal cual o retocarlo antes.
-const ASK_EXAMPLES = [
-  '¿Qué tengo hoy?',
-  '¿Qué tengo el 9 de septiembre?',
-  '¿Qué tengo en la lista de la compra?',
-  '¿Qué tengo en la lista de la compra de Mercadona?',
+// aprendan de memoria y ya no haga falta ni mirarlos. Uno por botón, ya
+// que cada botón ahora deja claro de qué trata sin tener que adivinarlo
+// (petición real: "vamos a dejar Pepa calendario y Pepa lista de la
+// compra, dos botones independientes... apuntar calendario, apuntar
+// lista de la compra" — cuatro botones en vez de dos que tenían que
+// adivinar de qué iba lo dicho, origen de varios fallos reales:
+// "Mercadona, patata, huevo" se apuntaba en el calendario en vez de en
+// la compra). Tocar un ejemplo lo escribe abajo, listo para enviar tal
+// cual o retocarlo antes.
+const ASK_CALENDARIO_EXAMPLES = ['¿Qué tengo hoy?', '¿Qué tengo el 9 de septiembre?', '¿Qué tengo ahora?', 'Lo siguiente que tengo']
+
+const ASK_COMPRAS_EXAMPLES = ['¿Qué tengo pendiente?', '¿Qué tengo de Mercadona?', '¿Qué tengo de Aldi?']
+
+const CREATE_CALENDARIO_EXAMPLES = [
+  'El dentista el 9 de septiembre a las 10',
+  'Eric que saque la basura',
+  'Cumpleaños de mamá el 27 de octubre',
 ]
 
-const CREATE_EXAMPLES = [
-  'Apunta en el calendario que tengo el dentista el 9 de septiembre a las 10',
-  'Apunta en la lista de la compra leche y pan',
-  'Mercadona, lista de la compra, patatas',
-  'Apunta a Eric que saque la basura',
-]
+const CREATE_COMPRAS_EXAMPLES = ['Leche y pan', 'Mercadona, patatas', 'Aldi, arenques, queso']
 
-type TargetKey = 'compras' | 'calendario'
+type Destination = 'calendario' | 'compras'
+type PanelMode = 'ask-calendario' | 'ask-compras' | 'create-calendario' | 'create-compras'
 
-const TARGET_INFO: Record<TargetKey, { label: string; path: string }> = {
+const DESTINATION_INFO: Record<Destination, { label: string; path: string }> = {
   compras: { label: '🛒 Lista de la compra', path: '/compras' },
   calendario: { label: '📅 Calendario', path: '/calendario' },
 }
 
-// A qué lista se apunta (o qué acción se hace) depende de en qué
-// pantalla estás por defecto — "si le hablo en lista de la compra,
-// quiero que me apunte en lista de la compra". Fuera de esa pantalla
-// cae en Calendario — ahí es donde viven ahora también las tareas
-// (petición real: "quitamos la pestaña de tarea... lo dejamos todo
-// como evento"). Esto es solo el punto de partida: si lo que se dice
-// apunta claramente a otro sitio (ver detectTargetFromText), gana el
-// contenido y Pepa te lleva allí.
-function getTarget(pathname: string): { key: TargetKey; label: string } {
-  if (pathname.startsWith('/compras')) return { key: 'compras', label: TARGET_INFO.compras.label }
-  return { key: 'calendario', label: TARGET_INFO.calendario.label }
+function destinationOf(mode: PanelMode): Destination {
+  return mode.endsWith('calendario') ? 'calendario' : 'compras'
+}
+
+function kindOf(mode: PanelMode): 'ask' | 'create' {
+  return mode.startsWith('ask') ? 'ask' : 'create'
+}
+
+const PANEL_INFO: Record<
+  PanelMode,
+  { icon: string; title: string; hint: string; submitLabel: string; examples: string[] }
+> = {
+  'ask-calendario': {
+    icon: '🐣📅',
+    title: '🐣📅 Pepa · Calendario',
+    hint: 'Solo responde sobre el calendario, p. ej. "qué tengo hoy" — nunca guarda nada.',
+    submitLabel: 'Preguntar',
+    examples: ASK_CALENDARIO_EXAMPLES,
+  },
+  'ask-compras': {
+    icon: '🐣🛒',
+    title: '🐣🛒 Pepa · Lista de la compra',
+    hint: 'Solo responde sobre la lista de la compra, p. ej. "qué tengo de Mercadona" — nunca guarda nada.',
+    submitLabel: 'Preguntar',
+    examples: ASK_COMPRAS_EXAMPLES,
+  },
+  'create-calendario': {
+    icon: '🎤📅',
+    title: '🎤📅 Apuntar · Calendario',
+    hint: 'Solo guarda en el calendario, nunca responde — di "activa" o calla 3s para confirmar.',
+    submitLabel: 'Apuntar',
+    examples: CREATE_CALENDARIO_EXAMPLES,
+  },
+  'create-compras': {
+    icon: '🎤🛒',
+    title: '🎤🛒 Apuntar · Lista de la compra',
+    hint: 'Solo guarda en la lista de la compra, nunca responde — di "activa" o calla 3s para confirmar.',
+    submitLabel: 'Apuntar',
+    examples: CREATE_COMPRAS_EXAMPLES,
+  },
 }
 
 async function saveShoppingEntries(entries: string[], store: string | null): Promise<void> {
@@ -361,9 +394,7 @@ type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'
 // estés, responde preguntas sencillas sobre tareas y compra de hoy, y
 // contesta hablando o por texto según lo que el usuario elija.
 export function VoiceCapture() {
-  const location = useLocation()
   const navigate = useNavigate()
-  const target = getTarget(location.pathname)
   const [open, setOpen] = useState(false)
   const openRef = useRef(false)
   openRef.current = open
@@ -373,14 +404,16 @@ export function VoiceCapture() {
   const [mode, setMode] = useState<ResponseMode>(loadResponseMode)
   const dictationOk = isDictationSupported()
 
-  // Dos botones, dos usos, sin ambigüedad — antes un solo botón tenía
-  // que ADIVINAR si lo dicho era una pregunta ("¿qué tengo hoy?") o un
-  // encargo para guardar ("apunta que tengo médico"), y aunque se afinó
-  // varias veces seguía fallando alguna vez (petición real: "vamos a
-  // dejar el botón de micrófono para añadir... y creamos otro botón de
-  // Pepa para preguntas... los separamos"). Ahora el botón que se toca
-  // YA dice la intención, así que dentro no hace falta adivinar nada.
-  const [panelMode, setPanelMode] = useState<'create' | 'ask'>('create')
+  // Cuatro botones, cuatro usos, sin ambigüedad — antes dos botones
+  // tenían que ADIVINAR de qué screen/categoría iba lo dicho ("Mercadona,
+  // patata, huevo" se apuntaba en el calendario en vez de en la compra;
+  // preguntar por Mercadona a veces contestaba también con Aldi), y
+  // aunque se afinó varias veces seguía fallando (petición real: "vamos
+  // a dejar Pepa calendario y Pepa lista de la compra, dos botones
+  // independientes... apuntar calendario, apuntar lista de la compra").
+  // Ahora el botón que se toca YA dice destino y acción, así que dentro
+  // no hace falta adivinar ninguna de las dos cosas.
+  const [panelMode, setPanelMode] = useState<PanelMode>('create-calendario')
 
   // Devuelve una promesa que no termina hasta que Pepa deja de hablar —
   // así se sabe el momento exacto en que es seguro volver a escuchar sin
@@ -395,130 +428,89 @@ export function VoiceCapture() {
     setStatus('saving')
     try {
       const text = stripWakeWord(rawText)
+      const destination = destinationOf(panelMode)
+      const kind = kindOf(panelMode)
 
       // Borrar por voz no está soportado en ningún botón todavía — se
       // comprueba siempre, para no acabar creando una cita nueva con el
       // literal "borra la cita del nueve de septiembre" por título.
-      const intent = detectIntent(text, new Date())
-      if (intent.type === 'unsupported_delete') {
+      if (isUnsupportedDelete(text)) {
         setStatus('done')
         await respond('Todavía no puedo borrar citas hablando — ábrela en el calendario y pulsa "Borrar".')
         return
       }
 
-      // Botón 🐣 Pepa: SOLO preguntas, nunca guarda nada — así no hay
+      // Botones 🐣 Pepa: SOLO preguntas, nunca guardan nada — así no hay
       // riesgo de que una pregunta mal reconocida se cuele como un
-      // apunte nuevo.
-      if (panelMode === 'ask') {
-        if (intent.type === 'tasks_today') {
-          const answer = await answerAgendaQuery(intent.memberHint, text, intent.when, intent.nowOnly, intent.explicitDate)
+      // apunte nuevo. El botón pulsado ("Pepa Calendario" / "Pepa
+      // Compra") ya dice de qué trata la pregunta, así que aquí no hay
+      // que adivinar la categoría — solo sacar el día/tienda de lo
+      // dicho dentro de esa categoría.
+      if (kind === 'ask') {
+        // "Apunta que tengo que comprar leche" es un ENCARGO, no una
+        // pregunta, aunque comparta palabras con "¿qué tengo que
+        // comprar?" — mejor decir que no se ha entendido que devolver
+        // una respuesta con datos viejos como si fuera la contestación.
+        if (looksLikeSaveInstruction(text)) {
           setStatus('done')
-          await respond(answer)
+          await respond(
+            destination === 'calendario'
+              ? 'Eso suena a un encargo para guardar, no a una pregunta — usa el botón "🎤 Apuntar Calendario".'
+              : 'Eso suena a un encargo para guardar, no a una pregunta — usa el botón "🎤 Apuntar Compra".',
+          )
           return
         }
-        if (intent.type === 'next_calendar_event') {
-          const answer = await answerNextCalendarEvent()
-          setStatus('done')
-          await respond(answer)
-          return
-        }
-        if (intent.type === 'shopping_list') {
-          const answer = await answerShoppingQuery(intent.storeHint, intent.general)
+
+        if (destination === 'calendario') {
+          const query = parseCalendarQuery(text, new Date())
+          const answer =
+            query.type === 'next_calendar_event'
+              ? await answerNextCalendarEvent()
+              : await answerAgendaQuery(query.memberHint, text, query.when, query.nowOnly, query.explicitDate)
           setStatus('done')
           await respond(answer)
           return
         }
 
-        // El reconocimiento local por patrones no ha entendido la
-        // pregunta — antes de rendirse, se prueba con la IA (gratuita),
-        // que generaliza mejor las formas de decir lo mismo (petición
-        // real: "que reconozca ese tipo de cosas por si cambia alguna
-        // palabra... que ya es mayorcica").
-        try {
-          const ai = await classifyQuestionWithAi(text, todayIso())
-          if (ai.intent === 'tasks_today') {
-            const answer = await answerAgendaQuery(ai.memberHint, text, ai.when, ai.nowOnly, ai.explicitDate)
-            setStatus('done')
-            await respond(answer)
-            return
-          }
-          if (ai.intent === 'next_calendar_event') {
-            const answer = await answerNextCalendarEvent()
-            setStatus('done')
-            await respond(answer)
-            return
-          }
-          if (ai.intent === 'shopping_list') {
-            const answer = await answerShoppingQuery(ai.storeHint, ai.storeHint === null)
-            setStatus('done')
-            await respond(answer)
-            return
-          }
-        } catch {
-          // sin conexión a la IA o fallo del servicio — se cae al mensaje
-          // de "no entendido" de más abajo, igual que antes.
-        }
-
+        const knownStores = await listShoppingStores()
+        const storeNames = knownStores.map((s) => s.name)
+        const { storeHint, general } = parseShoppingQuery(text, storeNames)
+        const answer = await answerShoppingQuery(storeHint, general)
         setStatus('done')
-        await respond(
-          'No he entendido esa pregunta. Prueba con "qué tengo hoy", "qué tengo el nueve de septiembre" o "qué tengo que hacer ahora".',
-        )
+        await respond(answer)
         return
       }
 
-      // Botón 🎤 Añadir: SOLO guarda, nunca responde una pregunta — para
-      // preguntar está el botón de Pepa. El contenido manda sobre la
-      // pantalla en la que estés — "Pepa, ponme en el calendario que..."
-      // tiene que ir al calendario aunque lo digas estando en Compras,
-      // no guardarse donde estuvieras (eso era lo que pasaba antes:
-      // solo miraba la pantalla actual). Si no hay ninguna pista clara
-      // en lo dicho, se usa la pantalla actual, como siempre. Ya no hay
-      // un destino aparte de "tareas" — una tarea ES un evento del
-      // calendario (petición real: "quitamos la pestaña de tarea...
-      // porque a veces Pepa se confunde las tareas con los eventos"),
-      // así que "apunta a Eric que saque la basura" va también por
-      // Calendario, que ya reconoce a quién es, la fecha y la hora.
-      //
-      // El nombre de una tienda YA DADA DE ALTA ("Mercadona, patatas" o
-      // incluso solo "Mercadona") cuenta como pista de contenido tan
-      // fuerte como decir "compra" — antes detectTargetFromText no sabía
-      // nada de las tiendas, así que decir solo "Mercadona" sin la
-      // palabra "compra" ni "lista de la compra" de por medio se
-      // guardaba en la pantalla en la que estuvieras (bug real: "si
-      // estoy en calendario y digo Mercadona... que me abra la lista de
-      // la compra y no el calendario, aunque esté en otra pestaña").
-      const knownStores = await listShoppingStores()
-      const storeNames = knownStores.map((s) => s.name)
-      const contentTargetKey = detectTargetFromText(text) ?? (findKnownStore(text, storeNames) ? 'compras' : null)
-      const effectiveTargetKey = contentTargetKey ?? target.key
-      const effectiveTarget = TARGET_INFO[effectiveTargetKey]
-      if (effectiveTargetKey !== target.key) {
-        navigate(effectiveTarget.path)
-      }
-
-      if (effectiveTargetKey === 'calendario') {
+      // Botones 🎤 Apuntar: SOLO guardan, nunca responden una pregunta —
+      // para preguntar están los botones de Pepa. El destino ya lo dice
+      // el botón pulsado ("Apuntar Calendario" / "Apuntar Compra"), así
+      // que aquí tampoco hay que adivinar nada de contenido.
+      if (destination === 'calendario') {
+        navigate(DESTINATION_INFO.calendario.path)
         const confirmation = await handleCalendarEntry(text)
         setStatus('done')
         await respond(confirmation)
         return
       }
 
-      // "Mercadona, lista de la compra, patatas" -> tienda "Mercadona",
-      // producto "patatas" — sin esto se guardaba la frase entera como
-      // nombre del producto (petición real: "que no me ponga todo el
-      // texto... que en la lista de la compra de Mercadona me ponga
-      // patatas"). Se reconoce primero contra las tiendas ya dadas de
-      // alta en Compras (fiable pase lo que pase alrededor) y, si no es
-      // ninguna de esas, por heurística.
+      navigate(DESTINATION_INFO.compras.path)
+      const knownStores = await listShoppingStores()
+      const storeNames = knownStores.map((s) => s.name)
+
+      // "Mercadona, patatas" -> tienda "Mercadona", producto "patatas"
+      // — sin esto se guardaba la frase entera como nombre del producto
+      // (petición real: "que no me ponga todo el texto... que reconozca
+      // el nombre de la tienda"). Se reconoce primero contra las tiendas
+      // ya dadas de alta en Compras (fiable pase lo que pase alrededor)
+      // y, si no es ninguna de esas, por heurística.
       const { store: shoppingStore, text: textForEntries } = extractShoppingStore(text, storeNames)
 
       let entries = splitEntries(stripListFillers(textForEntries))
       if (entries.length === 0) {
         // Solo se ha dicho el nombre de la tienda, sin ningún producto
-        // detrás ("Pepa, Mercadona") — se entiende como "ábreme la
-        // lista de Mercadona", no como un apunte vacío (petición real:
-        // "cuando le diga Aldi, que me abra directamente la lista de
-        // Aldi").
+        // detrás ("Mercadona") — se entiende como "ábreme la lista de
+        // Mercadona", no como un apunte vacío (petición real: "cuando
+        // le diga Aldi, que me abra directamente la lista de Aldi").
         if (shoppingStore) {
           window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: shoppingStore } }))
           setStatus('done')
@@ -548,7 +540,7 @@ export function VoiceCapture() {
       await saveShoppingEntries(entries, shoppingStore)
       setStatus('done')
       const storeSuffix = shoppingStore ? ` (${shoppingStore})` : ''
-      await respond(`Apuntado en ${effectiveTarget.label}${storeSuffix}: ${entries.join(', ')}`)
+      await respond(`Apuntado en ${DESTINATION_INFO.compras.label}${storeSuffix}: ${entries.join(', ')}`)
     } catch (err) {
       setStatus('error')
       const detail = err instanceof Error ? err.message : String(err)
@@ -640,7 +632,7 @@ export function VoiceCapture() {
     saveResponseMode(next)
   }
 
-  function openPanel(nextMode: 'create' | 'ask') {
+  function openPanel(nextMode: PanelMode) {
     setPanelMode(nextMode)
     setOpen(true)
     if (dictationOk) startListening()
@@ -654,20 +646,50 @@ export function VoiceCapture() {
     setTypedText('')
   }
 
+  const panel = PANEL_INFO[panelMode]
+
   return (
     <>
-      {/* Rótulo siempre visible, no solo el icono — al confundir los dos
-          botones se llegó a apuntar "qué tengo hoy" como una tarea
-          nueva en vez de preguntarlo (bug real reportado). Con el
-          nombre de la acción escrito al lado no hace falta recordar
-          qué hace cada emoji. */}
-      <button type="button" className="voice-fab voice-fab-ask" aria-label="Preguntar a Pepa" onClick={() => openPanel('ask')}>
-        <span className="voice-fab-icon">🐣</span>
-        <span className="voice-fab-label">Preguntar</span>
+      {/* Cuatro botones, cada uno con su rótulo — al confundir destino y
+          categoría se llegó a apuntar "Mercadona, patata, huevo" en el
+          calendario en vez de en la compra (bug real reportado). Con el
+          botón diciendo YA destino + acción no hace falta adivinar ni
+          recordar qué hace cada uno. */}
+      <button
+        type="button"
+        className="voice-fab voice-fab-ask-calendario"
+        aria-label="Preguntar a Pepa por el calendario"
+        onClick={() => openPanel('ask-calendario')}
+      >
+        <span className="voice-fab-icon">🐣📅</span>
+        <span className="voice-fab-label">Pepa Calendario</span>
       </button>
-      <button type="button" className="voice-fab voice-fab-create" aria-label="Añadir con voz" onClick={() => openPanel('create')}>
-        <span className="voice-fab-icon">🎤</span>
-        <span className="voice-fab-label">Añadir</span>
+      <button
+        type="button"
+        className="voice-fab voice-fab-ask-compras"
+        aria-label="Preguntar a Pepa por la lista de la compra"
+        onClick={() => openPanel('ask-compras')}
+      >
+        <span className="voice-fab-icon">🐣🛒</span>
+        <span className="voice-fab-label">Pepa Compra</span>
+      </button>
+      <button
+        type="button"
+        className="voice-fab voice-fab-create-calendario"
+        aria-label="Apuntar en el calendario con voz"
+        onClick={() => openPanel('create-calendario')}
+      >
+        <span className="voice-fab-icon">🎤📅</span>
+        <span className="voice-fab-label">Apuntar Calendario</span>
+      </button>
+      <button
+        type="button"
+        className="voice-fab voice-fab-create-compras"
+        aria-label="Apuntar en la lista de la compra con voz"
+        onClick={() => openPanel('create-compras')}
+      >
+        <span className="voice-fab-icon">🎤🛒</span>
+        <span className="voice-fab-label">Apuntar Compra</span>
       </button>
 
       {open && (
@@ -675,18 +697,12 @@ export function VoiceCapture() {
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
-                {panelMode === 'ask' ? '🐣 Pregúntale a Pepa' : '🎤 Añadir con voz'}
+                {panel.title}
               </h2>
               <button type="button" className="modal-close" onClick={close} aria-label="Cerrar">
                 ✕
               </button>
             </div>
-
-            {panelMode === 'create' && (
-              <p className="muted" style={{ margin: '0 0 8px' }}>
-                Se apunta en: <strong>{target.label}</strong>
-              </p>
-            )}
 
             {dictationOk && (
               <button
@@ -703,9 +719,7 @@ export function VoiceCapture() {
               </button>
             )}
             <p className="muted" style={{ fontSize: 13 }}>
-              {panelMode === 'ask'
-                ? 'Solo responde, p. ej. "qué tengo hoy" — nunca guarda nada.'
-                : 'Solo guarda, nunca responde — di "activa" o calla 3s para confirmar.'}
+              {panel.hint}
             </p>
             {!dictationOk && (
               <p className="muted">
@@ -718,7 +732,7 @@ export function VoiceCapture() {
                 Ejemplos — dilo así siempre y Pepa lo entenderá seguro (toca uno para usarlo):
               </p>
               <div className="voice-examples">
-                {(panelMode === 'ask' ? ASK_EXAMPLES : CREATE_EXAMPLES).map((example) => (
+                {panel.examples.map((example) => (
                   <button
                     key={example}
                     type="button"
@@ -739,7 +753,7 @@ export function VoiceCapture() {
                 placeholder="O escribe aquí…"
               />
               <button type="submit" disabled={status === 'saving' || !typedText.trim()}>
-                {panelMode === 'ask' ? 'Preguntar' : 'Apuntar'}
+                {panel.submitLabel}
               </button>
             </form>
 

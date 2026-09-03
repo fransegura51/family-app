@@ -1129,6 +1129,79 @@ textarea {
   font-size: 14px;
 }
 
+/* Barras horizontales del reparto de gasto por tienda. */
+.store-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.store-bar-row .price-row-name {
+  flex: 0 0 90px;
+}
+
+.store-bar-track {
+  flex: 1;
+  height: 14px;
+  background: #f1f3f5;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.store-bar-fill {
+  height: 100%;
+  border-radius: 7px;
+  transition: width 0.3s ease;
+}
+
+.store-bar-value {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* Barras verticales del gasto mensual. */
+.month-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 120px;
+  margin-top: 8px;
+}
+
+.month-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.month-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.month-bar-fill {
+  width: 100%;
+  min-height: 2px;
+  background: var(--primary);
+  border-radius: 4px 4px 0 0;
+}
+
+.month-bar-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 4px;
+  line-height: 1.3;
+}
+
 .price-row-name {
   flex: 1;
   overflow: hidden;

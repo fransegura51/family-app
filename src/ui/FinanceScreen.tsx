@@ -14,14 +14,14 @@ import {
   listWalletTransactions,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
-import { addShoppingItem } from '@/data/shopping'
+import { listShoppingStores } from '@/data/shoppingStores'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
-import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
+import { recordProductPurchase } from '@/data/products'
 import { budgetSpent, walletBalance, walletCategoryTotal } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
-import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
+import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import type {
@@ -32,13 +32,11 @@ import type {
   FamilyMember,
   KidGoal,
   KidWalletTransaction,
-  Product,
-  ProductPrice,
   Receipt,
   WalletTransactionType,
 } from '@/domain/types'
 
-const SUB_TABS = ['Gastos', 'Tickets', 'Precios', 'Presupuestos', 'Educación financiera'] as const
+const SUB_TABS = ['Gastos', 'Tickets', 'Presupuestos', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 const EXPENSE_KINDS: { value: ExpenseKind; label: string }[] = [
@@ -67,7 +65,6 @@ export function FinanceScreen() {
 
       {tab === 'Gastos' && <ExpensesTab />}
       {tab === 'Tickets' && <ReceiptsTab />}
-      {tab === 'Precios' && <PriceTrendsTab />}
       {tab === 'Presupuestos' && <BudgetsTab />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
     </div>
@@ -257,8 +254,44 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
 // precios que ya usa la Memoria de la lista de la compra.
 // ---------------------------------------------------------------------
 
+// Nombre del ticket ya llevado al nombre de tienda DADO DE ALTA en
+// Compras, si coincide con uno — así "MERCADONA, S.A." y "MERCADONA"
+// se agrupan bajo el mismo "Mercadona" en vez de salir como grupos
+// distintos por una simple diferencia de mayúsculas o de sufijo legal.
+// Mismo truco ya probado que usa el reconocimiento de voz para tiendas
+// (findKnownStore). Ojo: esto NO adivina que "H.Rafal II" es el mismo
+// sitio que "Hiperber" — son palabras distintas de verdad, ninguna
+// coincidencia de texto puede saber eso; para esos casos hay que
+// corregir el ticket a mano una vez (el desplegable de abajo ya
+// ofrece las tiendas dadas de alta para no tener que escribirlo).
+function canonicalStoreName(raw: string | null, knownStores: string[]): string {
+  if (!raw || !raw.trim()) return 'Sin establecimiento'
+  return findKnownStore(raw, knownStores)?.store ?? raw.trim()
+}
+
+function groupReceiptsByStore(
+  receipts: Receipt[],
+  knownStores: string[],
+): { store: string; receipts: Receipt[]; total: number }[] {
+  const groups = new Map<string, Receipt[]>()
+  for (const r of receipts) {
+    const key = canonicalStoreName(r.store, knownStores)
+    const list = groups.get(key) ?? []
+    list.push(r)
+    groups.set(key, list)
+  }
+  return [...groups.entries()]
+    .map(([store, list]) => ({
+      store,
+      receipts: list,
+      total: list.reduce((sum, r) => sum + (r.totalAmount ?? 0), 0),
+    }))
+    .sort((a, b) => b.total - a.total)
+}
+
 function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [knownStores, setKnownStores] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -271,7 +304,12 @@ function ReceiptsTab() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [])
+  useEffect(() => {
+    reload()
+    listShoppingStores()
+      .then((rows) => setKnownStores(rows.map((s) => s.name)))
+      .catch(() => {})
+  }, [])
 
   async function handleDelete(receipt: Receipt) {
     try {
@@ -284,38 +322,267 @@ function ReceiptsTab() {
 
   if (loading) return <p className="muted">Cargando tickets…</p>
 
+  const grouped = groupReceiptsByStore(receipts, knownStores)
+  const storeNames = grouped.map((g) => g.store)
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <p className="muted">
-        Sube la foto y pulsa "Leer ticket" para rellenar productos y precios automáticamente
-        (con IA, nivel gratuito) — revisa el resultado antes de guardar, la lectura no siempre
-        acierta.
-      </p>
-      <div className="event-list">
-        {receipts.map((r) =>
-          editingId === r.id ? (
-            <EditReceiptForm
-              key={r.id}
-              receipt={r}
-              onDone={() => {
-                setEditingId(null)
-                reload()
-              }}
-              onCancel={() => setEditingId(null)}
-            />
-          ) : (
-            <ReceiptRow
-              key={r.id}
-              receipt={r}
-              onEdit={() => setEditingId(r.id)}
-              onDelete={() => handleDelete(r)}
-            />
-          ),
-        )}
-        {receipts.length === 0 && <p className="muted">No hay tickets guardados.</p>}
+      <datalist id="receipt-known-stores">
+        {knownStores.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
+
+      {/* Petición real: "el aparato para subir tickets... arriba del
+          todo" — antes iba al final de la lista. */}
+      <AddReceiptForm onAdded={reload} knownStores={knownStores} />
+
+      <ReceiptSpendSummary receipts={receipts} knownStores={knownStores} storeNames={storeNames} />
+
+      {receipts.length > 0 && (
+        <>
+          <StoreBreakdownChart groups={grouped} />
+          <StoreMonthlyChart receipts={receipts} knownStores={knownStores} storeNames={storeNames} />
+        </>
+      )}
+
+      {/* Petición real: "todos los de Mercadona juntos, todos los de
+          Aldi juntos... y así con todos los supermercados que
+          tenemos dado de alta y los que demos en un futuro" — un
+          grupo por tienda, el que más se ha gastado primero. */}
+      <h2 className="section-title">Tickets guardados</h2>
+      {grouped.map(({ store, receipts: storeReceipts, total }) => (
+        <div key={store} className="day-modal-group">
+          <h3 className="shopping-store-heading">
+            {store} · {storeReceipts.length} {storeReceipts.length === 1 ? 'ticket' : 'tickets'} · {total.toFixed(2)} €
+          </h3>
+          <div className="event-list">
+            {storeReceipts.map((r) =>
+              editingId === r.id ? (
+                <EditReceiptForm
+                  key={r.id}
+                  receipt={r}
+                  onDone={() => {
+                    setEditingId(null)
+                    reload()
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <ReceiptRow
+                  key={r.id}
+                  receipt={r}
+                  onEdit={() => setEditingId(r.id)}
+                  onDelete={() => handleDelete(r)}
+                />
+              ),
+            )}
+          </div>
+        </div>
+      ))}
+      {receipts.length === 0 && <p className="muted">No hay tickets guardados.</p>}
+    </div>
+  )
+}
+
+type SpendRangePreset = 'dia' | 'semana' | 'mes' | 'año' | 'rango'
+
+function rangeForPreset(preset: SpendRangePreset, customFrom: string, customTo: string): [string, string] {
+  const today = new Date()
+  const todayStr = toDateStr(today)
+  if (preset === 'dia') return [todayStr, todayStr]
+  if (preset === 'semana') {
+    // Lunes a domingo de esta semana.
+    const dow = (today.getDay() + 6) % 7
+    const monday = new Date(today)
+    monday.setDate(today.getDate() - dow)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    return [toDateStr(monday), toDateStr(sunday)]
+  }
+  if (preset === 'mes') {
+    const first = new Date(today.getFullYear(), today.getMonth(), 1)
+    const last = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    return [toDateStr(first), toDateStr(last)]
+  }
+  if (preset === 'año') {
+    return [`${today.getFullYear()}-01-01`, `${today.getFullYear()}-12-31`]
+  }
+  return [customFrom || todayStr, customTo || todayStr]
+}
+
+// Petición real: "que se pueda ver por cada mes lo que he gastado...
+// por meses, por años, por día, por semana o por rango de fecha que
+// yo le ponga" — filtro de fecha con presets rápidos más un rango a
+// medida, cruzado con la tienda (o todas), sobre el mismo dato ya
+// cargado (sin ida y vuelta al servidor por cada cambio de filtro).
+function ReceiptSpendSummary({
+  receipts,
+  knownStores,
+  storeNames,
+}: {
+  receipts: Receipt[]
+  knownStores: string[]
+  storeNames: string[]
+}) {
+  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  const [selectedStore, setSelectedStore] = useState('Todas')
+
+  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+
+  const filtered = receipts.filter((r) => {
+    if (r.receiptDate < from || r.receiptDate > to) return false
+    if (selectedStore === 'Todas') return true
+    return canonicalStoreName(r.store, knownStores) === selectedStore
+  })
+  const total = filtered.reduce((sum, r) => sum + (r.totalAmount ?? 0), 0)
+
+  const PRESET_LABELS: Record<SpendRangePreset, string> = {
+    dia: 'Hoy',
+    semana: 'Esta semana',
+    mes: 'Este mes',
+    año: 'Este año',
+    rango: 'Rango',
+  }
+
+  return (
+    <div className="card event-card">
+      <strong>Cuánto he gastado</strong>
+      <div className="filter-row" style={{ marginTop: 8, marginBottom: 8 }}>
+        {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={'chip' + (preset === p ? ' chip-active' : '')}
+            onClick={() => setPreset(p)}
+          >
+            {PRESET_LABELS[p]}
+          </button>
+        ))}
       </div>
-      <AddReceiptForm onAdded={reload} />
+      {preset === 'rango' && (
+        <div className="inline-fields" style={{ marginBottom: 8 }}>
+          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+          <span>a</span>
+          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+        </div>
+      )}
+      <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} style={{ marginBottom: 8 }}>
+        <option value="Todas">Todas las tiendas</option>
+        {storeNames.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+      <p>
+        {total.toFixed(2)} € · {filtered.length} {filtered.length === 1 ? 'ticket' : 'tickets'}
+      </p>
+    </div>
+  )
+}
+
+// Petición real: "un gráfico general con lo que se gasta cada mes en
+// todos los supermercados... Mercadona el setenta por ciento de las
+// compras... Hiperber el treinta por ciento" — barras horizontales,
+// una por tienda, con el importe y el % sobre el total de todas.
+function StoreBreakdownChart({ groups }: { groups: { store: string; receipts: Receipt[]; total: number }[] }) {
+  const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
+  const maxTotal = Math.max(...groups.map((g) => g.total), 1)
+  const BAR_COLORS = ['#4C6EF5', '#e8590c', '#2f9e44', '#ae3ec9', '#f08c00', '#1098ad', '#e64980']
+
+  return (
+    <div className="card event-card">
+      <strong>Reparto del gasto por tienda</strong>
+      <div className="price-row-list" style={{ marginTop: 8 }}>
+        {groups.map((g, i) => {
+          const pct = grandTotal > 0 ? (g.total / grandTotal) * 100 : 0
+          return (
+            <div key={g.store} className="store-bar-row">
+              <span className="price-row-name">{g.store}</span>
+              <div className="store-bar-track">
+                <div
+                  className="store-bar-fill"
+                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: BAR_COLORS[i % BAR_COLORS.length] }}
+                />
+              </div>
+              <span className="store-bar-value">
+                {pct.toFixed(0)}% · {g.total.toFixed(2)} €
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Petición real: "un gráfico con lo que se va gastando cada mes en ese
+// supermercado" — barras verticales, últimos 6 meses, para la tienda
+// elegida (o todas juntas).
+function StoreMonthlyChart({
+  receipts,
+  knownStores,
+  storeNames,
+}: {
+  receipts: Receipt[]
+  knownStores: string[]
+  storeNames: string[]
+}) {
+  const [selectedStore, setSelectedStore] = useState('Todas')
+
+  const months = useMemo(() => {
+    const today = new Date()
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(today.getFullYear(), today.getMonth() - (5 - i), 1)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    })
+  }, [])
+
+  const totalsByMonth = useMemo(() => {
+    const sums = new Map<string, number>()
+    for (const r of receipts) {
+      if (selectedStore !== 'Todas' && canonicalStoreName(r.store, knownStores) !== selectedStore) continue
+      const month = r.receiptDate.slice(0, 7)
+      sums.set(month, (sums.get(month) ?? 0) + (r.totalAmount ?? 0))
+    }
+    return sums
+  }, [receipts, knownStores, selectedStore])
+
+  const maxValue = Math.max(...months.map((m) => totalsByMonth.get(m) ?? 0), 1)
+
+  return (
+    <div className="card event-card">
+      <strong>Gasto mensual</strong>
+      <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} style={{ margin: '8px 0' }}>
+        <option value="Todas">Todas las tiendas</option>
+        {storeNames.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+      <div className="month-bar-chart">
+        {months.map((m) => {
+          const value = totalsByMonth.get(m) ?? 0
+          const mo = Number(m.split('-')[1])
+          return (
+            <div key={m} className="month-bar-col">
+              <div className="month-bar-track">
+                <div className="month-bar-fill" style={{ height: `${(value / maxValue) * 100}%` }} title={`${value.toFixed(2)} €`} />
+              </div>
+              <span className="month-bar-label">
+                {MONTH_LABELS[mo - 1].slice(0, 3)}
+                <br />
+                {value > 0 ? `${value.toFixed(0)}€` : '—'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -400,7 +667,7 @@ function EditReceiptForm({
     <form onSubmit={handleSubmit} className="card member-form">
       <label>
         Establecimiento
-        <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+        <input type="text" list="receipt-known-stores" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
       </label>
       <label>
         Fecha
@@ -431,7 +698,7 @@ interface DraftLine {
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
 
-function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
+function AddReceiptForm({ onAdded, knownStores }: { onAdded: () => void; knownStores: string[] }) {
   const [file, setFile] = useState<File | null>(null)
   const [store, setStore] = useState('')
   const [receiptDate, setReceiptDate] = useState(toDateStr(new Date()))
@@ -447,7 +714,10 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
     setError(null)
     try {
       const parsed = await analyzeReceiptPhoto(file)
-      if (parsed.store) setStore(parsed.store)
+      // Lleva "MERCADONA, S.A." al nombre ya dado de alta en Compras
+      // ("Mercadona") cuando coincide, para no crear un grupo de
+      // tickets distinto por cada variante del mismo nombre.
+      if (parsed.store) setStore(findKnownStore(parsed.store, knownStores)?.store ?? parsed.store)
       if (parsed.date) setReceiptDate(parsed.date)
       if (parsed.total != null) setTotalAmount(String(parsed.total))
       setLines(parsed.items.map((l) => ({ name: l.name, quantity: String(l.quantity), price: l.price.toFixed(2) })))
@@ -539,7 +809,13 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
 
       <label>
         Establecimiento
-        <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+        <input
+          type="text"
+          list="receipt-known-stores"
+          value={store}
+          onChange={(e) => setStore(e.target.value)}
+          placeholder="Mercadona"
+        />
       </label>
       <label>
         Fecha
@@ -598,168 +874,6 @@ function AddReceiptForm({ onAdded }: { onAdded: () => void }) {
         {saving ? 'Subiendo…' : 'Guardar ticket'}
       </button>
     </form>
-  )
-}
-
-// ---------------------------------------------------------------------
-// Precios — compara lo pagado por cada producto este mes frente al
-// anterior, a partir del mismo historial que alimentan los tickets y la
-// Memoria de la lista de la compra. No normaliza por cantidad (1L vs
-// 1,5L cuentan igual): compara lo que se pagó cada vez, que es el dato
-// que hay sin pedir cantidades exactas en cada compra.
-// ---------------------------------------------------------------------
-
-function PriceDelta({ percent }: { percent: number | null }) {
-  if (percent == null) return null
-  const rounded = Math.round(percent * 10) / 10
-  if (Math.abs(rounded) < 0.5) return <span className="muted"> · sin cambios</span>
-  const up = rounded > 0
-  return (
-    <span style={{ color: up ? '#c0392b' : '#1e8449', fontWeight: 600, marginLeft: 8 }}>
-      {up ? '▲' : '▼'} {Math.abs(rounded)}%
-    </span>
-  )
-}
-
-function PriceTrendsTab() {
-  const [prices, setPrices] = useState<ProductPrice[]>([])
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
-  // Petición real: "vamos a añadir un botón... añadir a la lista de la
-  // compra... con el precio que hay marcado" — un solo toque para
-  // apuntarlo, con el último precio ya puesto (igual que ya se precarga
-  // en Comprados al marcarlo, pero desde aquí sin tener que ir a
-  // buscarlo). "added" evita mandarlo dos veces si se toca otra vez.
-  const [added, setAdded] = useState<Set<string>>(new Set())
-
-  async function handleAddToList(productId: string, name: string, price: number | null) {
-    try {
-      await addShoppingItem({ name, quantity: '', unit: '', priority: 'normal', tripId: null, price })
-      setAdded((prev) => new Set(prev).add(productId))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir a la lista')
-    }
-  }
-
-  useEffect(() => {
-    setLoading(true)
-    Promise.all([listAllProductPrices(), listProducts()])
-      .then(([p, prod]) => {
-        setPrices(p)
-        setProducts(prod)
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
-
-  function shiftMonth(delta: number) {
-    const [y, m] = visibleMonth.split('-').map(Number)
-    const d = new Date(y, m - 1 + delta, 1)
-    setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-
-  const previousMonth = useMemo(() => {
-    const [y, m] = visibleMonth.split('-').map(Number)
-    const d = new Date(y, m - 2, 1)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  }, [visibleMonth])
-
-  const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
-
-  const purchases = useMemo(
-    () =>
-      prices.map((p) => {
-        const qty = Number(p.quantity)
-        return {
-          productId: p.productId,
-          price: p.price,
-          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
-          recordedDate: p.recordedDate,
-        }
-      }),
-    [prices],
-  )
-
-  const comparisons = useMemo(() => {
-    const monthly = averagePricesByMonth(purchases)
-    return compareMonths(monthly, visibleMonth, previousMonth)
-      .map((c) => ({ ...c, name: productById.get(c.productId) ?? '?' }))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [purchases, visibleMonth, previousMonth, productById])
-
-  const currentBasket = useMemo(() => basketTotal(purchases, visibleMonth), [purchases, visibleMonth])
-  const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
-  const basketDeltaPercent = previousBasket > 0 ? ((currentBasket - previousBasket) / previousBasket) * 100 : null
-
-  if (loading) return <p className="muted">Cargando precios…</p>
-
-  const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
-
-  return (
-    <div>
-      {error && <p className="error">{error}</p>}
-
-      <div className="month-nav">
-        <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
-          ‹
-        </button>
-        <strong>
-          {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
-        </strong>
-        <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
-          ›
-        </button>
-        <input
-          type="month"
-          value={visibleMonth}
-          onChange={(e) => e.target.value && setVisibleMonth(e.target.value)}
-        />
-      </div>
-
-      <div className="card event-card">
-        <strong>Total de la compra</strong>
-        <p>
-          {currentBasket.toFixed(2)} €
-          <PriceDelta percent={basketDeltaPercent} />
-        </p>
-        {previousBasket > 0 && <p className="muted">Mes anterior: {previousBasket.toFixed(2)} €</p>}
-      </div>
-
-      <p className="muted">
-        Precio medio por unidad este mes frente al mes anterior — 🔺 rojo si ha subido, 🔻 verde si ha bajado.
-        Si compraste varias unidades de golpe (p. ej. 2 bolsas de patatas), se tiene en cuenta para no confundir
-        "comprar más" con "subir de precio".
-      </p>
-
-      {/* Petición real: "en vez de hacer en cada producto tanto
-          espacio, hazlo tipo Excel, una línea por cada producto" — un
-          nombre, un precio con su flecha, y el botón de añadir, todo
-          en una sola fila en vez de una tarjeta de varias líneas. */}
-      <div className="price-row-list">
-        {comparisons.map((c) => (
-          <div key={c.productId} className="price-row">
-            <span className="price-row-name">{c.name}</span>
-            <span className="price-row-price">
-              {c.currentPrice!.toFixed(2)} €<PriceDelta percent={c.deltaPercent} />
-            </span>
-            <button
-              type="button"
-              className="link-button"
-              disabled={added.has(c.productId)}
-              onClick={() => handleAddToList(c.productId, c.name, c.currentPrice)}
-              title="Añadir a la lista de la compra"
-            >
-              {added.has(c.productId) ? '✓' : '🛒'}
-            </button>
-          </div>
-        ))}
-        {comparisons.length === 0 && (
-          <p className="muted">No hay productos con precio registrado este mes (tickets o lista de la compra).</p>
-        )}
-      </div>
-    </div>
   )
 }
 

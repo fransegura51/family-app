@@ -106,14 +106,6 @@ export async function updateShoppingItemStatus(id: string, status: ShoppingItemS
   if (error) throw error
 }
 
-export async function setShoppingItemPrice(id: string, price: number): Promise<void> {
-  const { error } = await supabase
-    .from('shopping_items')
-    .update({ price, updated_at: new Date().toISOString() })
-    .eq('id', id)
-  if (error) throw error
-}
-
 export async function deleteShoppingItem(id: string): Promise<void> {
   const { error } = await supabase.from('shopping_items').delete().eq('id', id)
   if (error) throw error

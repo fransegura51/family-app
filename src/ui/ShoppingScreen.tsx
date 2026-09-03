@@ -8,7 +8,6 @@ import {
   listShoppingItems,
   listShoppingTrips,
   reorderShoppingItems,
-  setShoppingItemPrice,
   updateShoppingItemStatus,
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
@@ -22,6 +21,8 @@ import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { normalize } from '@/domain/voiceQuery'
 import { getStoreIcon } from '@/domain/storeIcons'
+import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
+import { MONTH_LABELS } from '@/domain/calendar'
 import type {
   FamilyMember,
   Product,
@@ -128,7 +129,7 @@ function buildSuggestions(products: Product[], prices: ProductPrice[]): ProductS
   })
 }
 
-const SUB_TABS = ['Lista', 'Programadas', 'Memoria'] as const
+const SUB_TABS = ['Lista', 'Programadas', 'Memoria', 'Historial'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 export function ShoppingScreen() {
@@ -152,6 +153,7 @@ export function ShoppingScreen() {
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Programadas' && <TripsTab />}
       {tab === 'Memoria' && <MemoryTab />}
+      {tab === 'Historial' && <HistoryTab />}
     </div>
   )
 }
@@ -175,10 +177,6 @@ function ShoppingListTab() {
   const [error, setError] = useState<string | null>(null)
   const [shoppingMode, setShoppingMode] = useState(false)
   const [showOthers, setShowOthers] = useState(false)
-  const [ticketPrices, setTicketPrices] = useState<Map<string, number>>(new Map())
-  const [ticketBusy, setTicketBusy] = useState(false)
-  const [ticketMessage, setTicketMessage] = useState<string | null>(null)
-  const [ticketError, setTicketError] = useState<string | null>(null)
 
   // Solo se enseña "Cargando…" (que desmonta el formulario de abajo) la
   // primera vez — si no, cada "reload" tras añadir un producto borraba
@@ -263,71 +261,6 @@ function ShoppingListTab() {
     }
   }
 
-  // Sube una foto del ticket y rellena el precio de los productos ya
-  // marcados como comprados directamente del ticket, sin tener que
-  // escribirlos a mano — petición real: "no quiero tener que ponerlos
-  // manualmente, los tienes que sacar de los tickets que yo subo, y
-  // cuando los tengas, los pones automáticamente en el campo de
-  // precio". El ticket trae el importe TOTAL de cada línea ("2 leches,
-  // 2,00€"), no el precio por unidad, así que se divide entre las
-  // unidades antes de guardarlo (mismo cálculo que ya se hace al cerrar
-  // un viaje de compra con ticket).
-  async function handleTicketFile(file: File | null) {
-    if (!file) return
-    setTicketBusy(true)
-    setTicketError(null)
-    setTicketMessage(null)
-    try {
-      const scan = await analyzeReceiptPhoto(file)
-      const boughtNow = items.filter((i) => i.status === 'comprado')
-      const matched: { item: ShoppingItem; unitPrice: number }[] = []
-      const unmatchedLines: string[] = []
-
-      for (const line of scan.items) {
-        const match = matchShoppingItem(line.name, boughtNow)
-        if (!match || matched.some((m) => m.item.id === match.id)) {
-          unmatchedLines.push(line.name)
-          continue
-        }
-        const unitPrice = line.quantity > 0 ? line.price / line.quantity : line.price
-        matched.push({ item: match, unitPrice })
-      }
-
-      await Promise.all(
-        matched.map(({ item, unitPrice }) =>
-          Promise.all([
-            setShoppingItemPrice(item.id, unitPrice),
-            recordProductPurchase({
-              name: item.name,
-              price: unitPrice,
-              quantity: item.quantity ?? '',
-              unit: item.unit ?? '',
-              store: scan.store ?? item.store ?? '',
-              date: scan.date ?? undefined,
-            }),
-          ]),
-        ),
-      )
-
-      setTicketPrices((prev) => {
-        const next = new Map(prev)
-        for (const { item, unitPrice } of matched) next.set(item.id, unitPrice)
-        return next
-      })
-
-      const summary =
-        matched.length === 0
-          ? 'No he encontrado ningún producto comprado que coincida con el ticket.'
-          : `Precio puesto automáticamente en ${matched.length} producto${matched.length === 1 ? '' : 's'} comprado${matched.length === 1 ? '' : 's'}.`
-      setTicketMessage(unmatchedLines.length > 0 ? `${summary} Sin emparejar: ${unmatchedLines.join(', ')}.` : summary)
-      reload()
-    } catch (err) {
-      setTicketError(err instanceof Error ? err.message : 'No se pudo leer el ticket')
-    } finally {
-      setTicketBusy(false)
-    }
-  }
-
   if (loading && !initialized) return <p className="muted">Cargando lista…</p>
 
   return (
@@ -363,29 +296,6 @@ function ShoppingListTab() {
         </div>
       ))}
       {pending.length === 0 && <p className="muted">Nada pendiente.</p>}
-
-      <h2 className="section-title">Comprados</h2>
-      <div className="card">
-        <p className="muted" style={{ marginTop: 0 }}>
-          📷 Sube la foto del ticket y pongo el precio yo en lo ya comprado
-        </p>
-        {ticketBusy && <p className="muted">Leyendo el ticket…</p>}
-        {ticketMessage && <p className="muted">{ticketMessage}</p>}
-        {ticketError && <p className="error">{ticketError}</p>}
-        <FileOrPdfPicker file={null} onChange={handleTicketFile} />
-      </div>
-      <div className="event-list">
-        {bought.map((item) => (
-          <BoughtItemRow
-            key={item.id}
-            item={item}
-            suggestions={suggestions}
-            autoPrice={ticketPrices.get(item.id) ?? null}
-            onUndo={() => setStatus(item.id, 'pendiente')}
-          />
-        ))}
-        {bought.length === 0 && <p className="muted">Todavía ninguno.</p>}
-      </div>
 
       {!shoppingMode && (
         <AddShoppingItemForm
@@ -701,114 +611,6 @@ function DraggableStoreGroup({
           )}
         </div>
       ))}
-    </div>
-  )
-}
-
-// Registrar el precio pagado es opcional (Skill 06 no lo exige), pero
-// alimenta la memoria de compras (Skill 09/11) — sin esto no hay
-// historial de precios que ofrecer.
-function BoughtItemRow({
-  item,
-  suggestions,
-  autoPrice,
-  onUndo,
-}: {
-  item: ShoppingItem
-  suggestions: ProductSuggestion[]
-  autoPrice: number | null
-  onUndo: () => void
-}) {
-  const known = suggestions.find((s) => s.normalizedName === item.name.trim().toLowerCase())
-  // Precarga el último precio pagado — el usuario solo confirma o ajusta,
-  // no escribe desde cero (Skill 09). Si el propio producto YA tiene un
-  // precio guardado (item.price, persistido en shopping_items), se
-  // parte de ese en vez del histórico general — es el precio real que
-  // se pagó por ESTE, no una sugerencia (bug real: al recargar la app
-  // se perdía y volvía a pedir un precio ya dado).
-  const [price, setPrice] = useState(
-    item.price != null ? String(item.price) : known?.lastPrice != null ? String(known.lastPrice) : '',
-  )
-  const [saved, setSaved] = useState(item.price != null)
-  const [error, setError] = useState<string | null>(null)
-
-  // El ticket ya trae el precio de este producto (subido después de
-  // marcarlo como comprado) — se da por guardado directamente, sin
-  // tener que tocar nada (petición real: "no quiero tener que ponerlos
-  // manualmente... cuando los tengas, los pones automáticamente en el
-  // campo de precio"). El precio ya se ha registrado en la Memoria de
-  // compras desde fuera (ShoppingListTab), así que aquí solo se refleja.
-  useEffect(() => {
-    if (autoPrice != null) {
-      setPrice(String(autoPrice))
-      setSaved(true)
-    }
-  }, [autoPrice])
-
-  // Sin precio también se puede "cerrar" el producto — antes, sin
-  // escribir un precio, el botón "Guardar" no hacía nada (bug real: "no
-  // me deja guardarlo"). El precio sigue siendo opcional de verdad: si
-  // no se pone, simplemente no se guarda nada en la Memoria de precios,
-  // pero el producto se da por resuelto igual. Se guarda en LOS DOS
-  // sitios: en el propio producto (para que no se vuelva a pedir al
-  // recargar) y en la Memoria de precios general (para las sugerencias
-  // de precio de la próxima vez que se apunte este producto).
-  async function handleSavePrice() {
-    setError(null)
-    if (!price) {
-      setSaved(true)
-      return
-    }
-    try {
-      await Promise.all([
-        setShoppingItemPrice(item.id, Number(price)),
-        recordProductPurchase({
-          name: item.name,
-          price: Number(price),
-          quantity: item.quantity ?? '',
-          unit: item.unit ?? '',
-          store: '',
-        }),
-      ])
-      setSaved(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar el precio')
-    }
-  }
-
-  return (
-    <div className="card task-card">
-      <div className="task-card-main">
-        <strong>{item.name}</strong>
-        {error && <p className="error">{error}</p>}
-      </div>
-      {saved ? (
-        <span className="muted">
-          {price ? `✓ Precio guardado: ${price} €` : '✓ Sin precio'}
-          {price && (
-            <button type="button" className="link-button" onClick={() => setSaved(false)} style={{ marginLeft: 6 }}>
-              Editar
-            </button>
-          )}
-        </span>
-      ) : (
-        <>
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Precio € (opcional)"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            style={{ width: 90 }}
-          />
-          <button type="button" className="link-button" onClick={handleSavePrice}>
-            {price ? 'Guardar' : 'Sin precio'}
-          </button>
-        </>
-      )}
-      <button type="button" className="link-button" onClick={onUndo}>
-        ↺ Deshacer
-      </button>
     </div>
   )
 }
@@ -1418,8 +1220,165 @@ function MemoryTab() {
         ))}
         {withStats.length === 0 && (
           <p className="muted">
-            Todavía no hay historial — guarda el precio de algún producto en "Comprados" dentro de la Lista.
+            Todavía no hay historial — se rellena solo al cerrar una compra programada con el ticket, en
+            "Programadas".
           </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Historial (antes "Precios" en Dinero) — compara lo pagado por cada
+// producto este mes frente al anterior, a partir del mismo historial
+// que alimentan los tickets y la Memoria de la lista de la compra. No
+// normaliza por cantidad (1L vs 1,5L cuentan igual): compara lo que se
+// pagó cada vez, que es el dato que hay sin pedir cantidades exactas
+// en cada compra. Petición real: "la sección de precios la vamos a
+// quitar de Dinero y la vamos a poner en Compras, al lado de Memoria...
+// le vamos a poner Historial".
+// ---------------------------------------------------------------------
+
+function PriceDelta({ percent }: { percent: number | null }) {
+  if (percent == null) return null
+  const rounded = Math.round(percent * 10) / 10
+  if (Math.abs(rounded) < 0.5) return <span className="muted"> · sin cambios</span>
+  const up = rounded > 0
+  return (
+    <span style={{ color: up ? '#c0392b' : '#1e8449', fontWeight: 600, marginLeft: 8 }}>
+      {up ? '▲' : '▼'} {Math.abs(rounded)}%
+    </span>
+  )
+}
+
+function HistoryTab() {
+  const [prices, setPrices] = useState<ProductPrice[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [visibleMonth, setVisibleMonth] = useState(todayStr().slice(0, 7))
+  // Petición real: "vamos a añadir un botón... añadir a la lista de la
+  // compra... con el precio que hay marcado" — un solo toque para
+  // apuntarlo, con el último precio ya puesto. "added" evita mandarlo
+  // dos veces si se toca otra vez.
+  const [added, setAdded] = useState<Set<string>>(new Set())
+
+  async function handleAddToList(productId: string, name: string, price: number | null) {
+    try {
+      await addShoppingItem({ name, quantity: '', unit: '', priority: 'normal', tripId: null, price })
+      setAdded((prev) => new Set(prev).add(productId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir a la lista')
+    }
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([listAllProductPrices(), listProducts()])
+      .then(([p, prod]) => {
+        setPrices(p)
+        setProducts(prod)
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  function shiftMonth(delta: number) {
+    const [y, m] = visibleMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  const previousMonth = useMemo(() => {
+    const [y, m] = visibleMonth.split('-').map(Number)
+    const d = new Date(y, m - 2, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }, [visibleMonth])
+
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
+
+  const purchases = useMemo(
+    () =>
+      prices.map((p) => {
+        const qty = Number(p.quantity)
+        return {
+          productId: p.productId,
+          price: p.price,
+          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          recordedDate: p.recordedDate,
+        }
+      }),
+    [prices],
+  )
+
+  const comparisons = useMemo(() => {
+    const monthly = averagePricesByMonth(purchases)
+    return compareMonths(monthly, visibleMonth, previousMonth)
+      .map((c) => ({ ...c, name: productById.get(c.productId) ?? '?' }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [purchases, visibleMonth, previousMonth, productById])
+
+  const currentBasket = useMemo(() => basketTotal(purchases, visibleMonth), [purchases, visibleMonth])
+  const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
+  const basketDeltaPercent = previousBasket > 0 ? ((currentBasket - previousBasket) / previousBasket) * 100 : null
+
+  if (loading) return <p className="muted">Cargando historial…</p>
+
+  const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+
+      <div className="month-nav">
+        <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
+          ‹
+        </button>
+        <strong>
+          {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
+        </strong>
+        <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
+          ›
+        </button>
+        <input type="month" value={visibleMonth} onChange={(e) => e.target.value && setVisibleMonth(e.target.value)} />
+      </div>
+
+      <div className="card event-card">
+        <strong>Total de la compra</strong>
+        <p>
+          {currentBasket.toFixed(2)} €
+          <PriceDelta percent={basketDeltaPercent} />
+        </p>
+        {previousBasket > 0 && <p className="muted">Mes anterior: {previousBasket.toFixed(2)} €</p>}
+      </div>
+
+      <p className="muted">
+        Precio medio por unidad este mes frente al mes anterior — 🔺 rojo si ha subido, 🔻 verde si ha bajado.
+        Si compraste varias unidades de golpe (p. ej. 2 bolsas de patatas), se tiene en cuenta para no confundir
+        "comprar más" con "subir de precio".
+      </p>
+
+      <div className="price-row-list">
+        {comparisons.map((c) => (
+          <div key={c.productId} className="price-row">
+            <span className="price-row-name">{c.name}</span>
+            <span className="price-row-price">
+              {c.currentPrice!.toFixed(2)} €<PriceDelta percent={c.deltaPercent} />
+            </span>
+            <button
+              type="button"
+              className="link-button"
+              disabled={added.has(c.productId)}
+              onClick={() => handleAddToList(c.productId, c.name, c.currentPrice)}
+              title="Añadir a la lista de la compra"
+            >
+              {added.has(c.productId) ? '✓' : '🛒'}
+            </button>
+          </div>
+        ))}
+        {comparisons.length === 0 && (
+          <p className="muted">No hay productos con precio registrado este mes (tickets o lista de la compra).</p>
         )}
       </div>
     </div>

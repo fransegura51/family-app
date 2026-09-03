@@ -501,6 +501,7 @@ export function CalendarScreen() {
                   memberById={memberById}
                   onEdit={() => setEditingId(ev.id)}
                   onDeleteSeries={() => handleDelete(ev.id)}
+                  onDeleteOccurrence={(dateStr) => handleDeleteOccurrence(ev.id, dateStr)}
                 />
               ),
             )}
@@ -903,9 +904,19 @@ function EventCard({
   memberById: Map<string, FamilyMember>
   onEdit: () => void
   onDeleteSeries: () => void
-  onDeleteOccurrence?: () => void
+  // Antes solo la vista Mes (DayModal, que ya sabe qué día se está
+  // mirando) podía ofrecer "solo este día" — desde Lista, un evento
+  // recurrente solo se veía UNA vez (la serie entera, sin ningún día
+  // concreto asociado), así que solo se ofrecía borrar la serie
+  // entera, sin avisar de que no había otra opción (bug real
+  // reportado: "desde el ordenador no me ha dado la opción... se me ha
+  // borrado toda la serie sin decírselo yo"). Ahora también se puede
+  // elegir un día aquí mismo, escribiéndolo.
+  onDeleteOccurrence?: (dateStr: string) => void
 }) {
   const [confirming, setConfirming] = useState(false)
+  const [pickingDay, setPickingDay] = useState(false)
+  const [occurrenceDate, setOccurrenceDate] = useState(() => toDateStr(new Date(ev.startAt)))
   return (
     <div className="card event-card" style={{ borderColor: ev.color ?? undefined }}>
       <strong>{ev.title}</strong>
@@ -936,12 +947,35 @@ function EventCard({
           <button type="button" className="link-button" onClick={() => setConfirming(true)}>
             Borrar
           </button>
+        ) : pickingDay ? (
+          <>
+            <input
+              type="date"
+              value={occurrenceDate}
+              onChange={(e) => setOccurrenceDate(e.target.value)}
+              style={{ width: 140 }}
+            />
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                onDeleteOccurrence?.(occurrenceDate)
+                setPickingDay(false)
+                setConfirming(false)
+              }}
+            >
+              Borrar ese día
+            </button>
+            <button type="button" className="link-button" onClick={() => setPickingDay(false)}>
+              Cancelar
+            </button>
+          </>
         ) : (
           <>
             <span className="muted">¿Seguro?</span>
             {onDeleteOccurrence && ev.recurrenceRule && (
-              <button type="button" className="link-button" onClick={onDeleteOccurrence}>
-                Solo este día
+              <button type="button" className="link-button" onClick={() => setPickingDay(true)}>
+                Solo un día
               </button>
             )}
             <button type="button" className="link-button" onClick={onDeleteSeries}>

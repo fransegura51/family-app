@@ -34,11 +34,17 @@ function isActivePath(pathname: string, tab: (typeof TABS)[number]): boolean {
 }
 
 // Navegación inferior, mobile-first, fija en toda la app (Skill 02).
-// El orden se cambia arrastrando con el dedo O CON EL RATÓN — petición
-// real: "toda la aplicación quiero que sea móvil... todos los iconos
-// de que todo sea movible", y luego, al probarlo desde el ordenador:
-// "no pude cambiar las cosas enganchándolas con el puntero del ratón".
-// Pointer Events cubren dedo y ratón con el mismo código.
+// El orden se puede cambiar arrastrando con el RATÓN (ordenador). Con
+// el dedo (móvil) NO se arrastra para reordenar — con 12 iconos la
+// barra ya se desplaza de lado (overflow-x), y arrastrar con el dedo
+// para reordenar competía con ese mismo gesto de desplazar la barra,
+// impidiendo ver los iconos de la derecha (petición real: "intento
+// desplazar los iconos hacia la izquierda... y no puedo porque se
+// mueven los iconos... pero déjalo que se puedan cambiar, creo que lo
+// pones como en el ordenador"). En el ordenador no hay ese conflicto
+// (no hay gesto de "deslizar" que confundir con arrastrar), así que
+// ahí se queda el arrastre; en el móvil, solo tocar para navegar y
+// deslizar para ver el resto.
 export function NavShell() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -48,10 +54,15 @@ export function NavShell() {
   const dragRef = useRef<{ to: string; startX: number; startIndex: number; itemWidth: number; moved: number } | null>(null)
   const [draggingTo, setDraggingTo] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState(0)
+  // Evita que, tras un arrastre de ratón de verdad, el "click" que el
+  // navegador dispara justo después vuelva a navegar por su cuenta —
+  // misma protección ya probada en los botones de Pepa.
+  const wasDraggedRef = useRef(false)
 
   function handlePointerDown(e: ReactPointerEvent, to: string, el: HTMLElement) {
-    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if (e.pointerType !== 'mouse' || e.button !== 0) return
     el.setPointerCapture(e.pointerId)
+    wasDraggedRef.current = false
     const index = order.indexOf(to)
     dragRef.current = { to, startX: e.clientX, startIndex: index, itemWidth: el.offsetWidth + 4, moved: 0 }
     setDraggingTo(to)
@@ -62,6 +73,7 @@ export function NavShell() {
     if (!drag) return
     const dx = e.clientX - drag.startX
     drag.moved = Math.max(drag.moved, Math.abs(dx))
+    if (drag.moved >= TAP_THRESHOLD_PX) wasDraggedRef.current = true
     setDragOffset(dx)
     const shift = Math.round(dx / drag.itemWidth)
     const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
@@ -80,12 +92,17 @@ export function NavShell() {
     dragRef.current = null
     setDraggingTo(null)
     setDragOffset(0)
-    if (!drag) return
-    if (drag.moved < TAP_THRESHOLD_PX) {
-      navigate(drag.to)
+    if (drag && drag.moved >= TAP_THRESHOLD_PX) {
+      saveTabOrder('bottom-nav', order)
+    }
+  }
+
+  function handleClick(to: string) {
+    if (wasDraggedRef.current) {
+      wasDraggedRef.current = false
       return
     }
-    saveTabOrder('bottom-nav', order)
+    navigate(to)
   }
 
   return (
@@ -103,6 +120,7 @@ export function NavShell() {
               'nav-item' + (isActivePath(location.pathname, tab) ? ' active' : '') + (draggingTo === tab.to ? ' nav-item-dragging' : '')
             }
             style={draggingTo === tab.to ? { transform: `translateX(${dragOffset}px)` } : undefined}
+            onClick={() => handleClick(tab.to)}
             onPointerDown={(e) => handlePointerDown(e, tab.to, e.currentTarget)}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}

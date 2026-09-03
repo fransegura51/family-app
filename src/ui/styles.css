@@ -276,7 +276,10 @@ button {
   border: none;
   background: none;
   cursor: pointer;
-  touch-action: pan-y;
+  /* Sin restricción: con el dedo, la barra se desplaza de lado con su
+     gesto normal (el arrastre para reordenar en esta barra es solo de
+     ratón — ver el porqué en NavShell.tsx). Con pan-y aquí, el móvil
+     no dejaba desplazar la barra hacia los lados en absoluto. */
 }
 
 /* Se arrastra con el dedo para cambiar de sitio, igual que el resto

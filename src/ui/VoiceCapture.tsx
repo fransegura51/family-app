@@ -121,35 +121,65 @@ function detectWakeTrigger(text: string): PanelMode | null {
   return isApunta ? 'create-compras' : 'ask-compras'
 }
 
+// Petición real: "cada vez que se abra alguna de esas cuatro
+// funciones, que aparezcan las instrucciones de cómo funcionan
+// debajo" — no solo qué hace el botón, sino cómo se usa de principio a
+// fin: cómo se activa por voz, qué pasa mientras escucha, y que se
+// cierra sola al terminar (para que "sigue estando la línea roja" deje
+// de sorprender).
 const PANEL_INFO: Record<
   PanelMode,
-  { icon: string; title: string; hint: string; submitLabel: string; examples: string[] }
+  { icon: string; title: string; instructions: string[]; submitLabel: string; examples: string[] }
 > = {
   'ask-calendario': {
     icon: '🐣📅',
     title: '🐣📅 Pepa · Calendario',
-    hint: 'Solo responde sobre el calendario, p. ej. "qué tengo hoy" — nunca guarda nada.',
+    instructions: [
+      'Te dice qué tienes en el calendario — nunca apunta nada.',
+      'Se activa diciendo "Pepa calendario" con la app abierta, o tocando este icono.',
+      'En cuanto veas "Te escucho", haz tu pregunta (p. ej. "¿qué tengo hoy?").',
+      'Se cierra sola al contestarte.',
+      'Para volver a preguntar, di "Pepa calendario" otra vez.',
+    ],
     submitLabel: 'Preguntar',
     examples: ASK_CALENDARIO_EXAMPLES,
   },
   'ask-compras': {
     icon: '🐣🛒',
     title: '🐣🛒 Pepa · Lista de la compra',
-    hint: 'Solo responde sobre la lista de la compra, p. ej. "qué tengo de Mercadona" — nunca guarda nada.',
+    instructions: [
+      'Te dice qué tienes pendiente en la lista de la compra — nunca apunta nada.',
+      'Se activa diciendo "Pepa compra" con la app abierta, o tocando este icono.',
+      'En cuanto veas "Te escucho", haz tu pregunta (p. ej. "¿qué tengo de Mercadona?").',
+      'Se cierra sola al contestarte.',
+      'Para volver a preguntar, di "Pepa compra" otra vez.',
+    ],
     submitLabel: 'Preguntar',
     examples: ASK_COMPRAS_EXAMPLES,
   },
   'create-calendario': {
     icon: '🎤📅',
     title: '🎤📅 Apuntar · Calendario',
-    hint: 'Solo guarda en el calendario, nunca responde — di "activa" o calla 3s para confirmar.',
+    instructions: [
+      'Guarda en el calendario lo que digas — nunca responde preguntas.',
+      'Se activa diciendo "Pepa apunta calendario" con la app abierta, o tocando este icono.',
+      'En cuanto veas "Te escucho", di lo que quieres apuntar; se guarda sola al quedarte 3s callado.',
+      'Se cierra sola al guardarlo.',
+      'Para apuntar otra cosa, di "Pepa apunta calendario" otra vez.',
+    ],
     submitLabel: 'Apuntar',
     examples: CREATE_CALENDARIO_EXAMPLES,
   },
   'create-compras': {
     icon: '🎤🛒',
     title: '🎤🛒 Apuntar · Lista de la compra',
-    hint: 'Solo guarda en la lista de la compra, nunca responde — di "activa" o calla 3s para confirmar.',
+    instructions: [
+      'Guarda en la lista de la compra lo que digas — nunca responde preguntas.',
+      'Se activa diciendo "Pepa apunta compra" con la app abierta, o tocando este icono.',
+      'En cuanto veas "Te escucho", di lo que quieres apuntar; se guarda sola al quedarte 3s callado.',
+      'Se cierra sola al guardarlo.',
+      'Para apuntar otra cosa, di "Pepa apunta compra" otra vez.',
+    ],
     submitLabel: 'Apuntar',
     examples: CREATE_COMPRAS_EXAMPLES,
   },
@@ -810,9 +840,16 @@ export function VoiceCapture() {
                     : '🎤 Toca y habla'}
               </button>
             )}
-            <p className="muted" style={{ fontSize: 13 }}>
-              {panel.hint}
-            </p>
+            <div className="day-modal-group">
+              <p className="muted" style={{ marginBottom: 4 }}>
+                Cómo funciona:
+              </p>
+              <ul className="voice-instructions">
+                {panel.instructions.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
             {!dictationOk && (
               <p className="muted">
                 Este navegador no admite dictado por voz — escribe abajo en su lugar, funciona igual.

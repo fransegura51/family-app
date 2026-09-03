@@ -355,6 +355,18 @@ select {
   gap: 6px;
 }
 
+.voice-instructions {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.voice-instructions li {
+  margin-bottom: 2px;
+}
+
 .voice-examples {
   display: flex;
   flex-direction: column;

@@ -14,6 +14,7 @@ import {
   listWalletTransactions,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
+import { addShoppingItem } from '@/data/shopping'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
@@ -626,6 +627,21 @@ function PriceTrendsTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
+  // Petición real: "vamos a añadir un botón... añadir a la lista de la
+  // compra... con el precio que hay marcado" — un solo toque para
+  // apuntarlo, con el último precio ya puesto (igual que ya se precarga
+  // en Comprados al marcarlo, pero desde aquí sin tener que ir a
+  // buscarlo). "added" evita mandarlo dos veces si se toca otra vez.
+  const [added, setAdded] = useState<Set<string>>(new Set())
+
+  async function handleAddToList(productId: string, name: string, price: number | null) {
+    try {
+      await addShoppingItem({ name, quantity: '', unit: '', priority: 'normal', tripId: null, price })
+      setAdded((prev) => new Set(prev).add(productId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir a la lista')
+    }
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -717,16 +733,26 @@ function PriceTrendsTab() {
         "comprar más" con "subir de precio".
       </p>
 
-      <div className="event-list">
+      {/* Petición real: "en vez de hacer en cada producto tanto
+          espacio, hazlo tipo Excel, una línea por cada producto" — un
+          nombre, un precio con su flecha, y el botón de añadir, todo
+          en una sola fila en vez de una tarjeta de varias líneas. */}
+      <div className="price-row-list">
         {comparisons.map((c) => (
-          <div key={c.productId} className="card event-card">
-            <strong>{c.name}</strong>
-            <p>
-              {c.currentPrice!.toFixed(2)} €/ud
-              <PriceDelta percent={c.deltaPercent} />
-            </p>
-            {c.previousPrice != null && <p className="muted">Mes anterior: {c.previousPrice.toFixed(2)} €/ud</p>}
-            {c.previousPrice == null && <p className="muted">Sin compra el mes anterior para comparar</p>}
+          <div key={c.productId} className="price-row">
+            <span className="price-row-name">{c.name}</span>
+            <span className="price-row-price">
+              {c.currentPrice!.toFixed(2)} €<PriceDelta percent={c.deltaPercent} />
+            </span>
+            <button
+              type="button"
+              className="link-button"
+              disabled={added.has(c.productId)}
+              onClick={() => handleAddToList(c.productId, c.name, c.currentPrice)}
+              title="Añadir a la lista de la compra"
+            >
+              {added.has(c.productId) ? '✓' : '🛒'}
+            </button>
           </div>
         ))}
         {comparisons.length === 0 && (

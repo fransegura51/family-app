@@ -28,7 +28,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listShoppingItems(): Promise<ShoppingItem[]> {
   const { data, error } = await supabase
     .from('shopping_items')
-    .select('id, family_id, trip_id, name, quantity, unit, priority, status, store, sort_order')
+    .select('id, family_id, trip_id, name, quantity, unit, priority, status, store, sort_order, price')
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -42,6 +42,7 @@ export async function listShoppingItems(): Promise<ShoppingItem[]> {
     status: r.status as ShoppingItemStatus,
     store: r.store,
     sortOrder: r.sort_order,
+    price: r.price == null ? null : Number(r.price),
   }))
 }
 
@@ -65,6 +66,7 @@ export async function addShoppingItem(input: {
   priority: ShoppingItemPriority
   tripId: string | null
   store?: string | null
+  price?: number | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('shopping_items').insert({
@@ -75,6 +77,7 @@ export async function addShoppingItem(input: {
     unit: input.unit || null,
     priority: input.priority,
     store: input.store || null,
+    price: input.price ?? null,
   })
   if (error) throw error
 }
@@ -87,10 +90,26 @@ export async function updateShoppingItemStore(id: string, store: string): Promis
   if (error) throw error
 }
 
-export async function updateShoppingItemStatus(id: string, status: ShoppingItemStatus): Promise<void> {
+// El precio opcional se puede fijar en el mismo cambio de estado
+// (ticket que marca comprado y ya trae el precio) — se guarda EN el
+// propio producto, no solo en la Memoria de precios, para que al
+// recargar la app no se vuelva a pedir un precio que ya se dio (bug
+// real: "le doy a guardar, me desaparece, pero si cierro la app y la
+// vuelvo a abrir, me vuelven a aparecer otra vez con el guardar").
+export async function updateShoppingItemStatus(id: string, status: ShoppingItemStatus, price?: number): Promise<void> {
+  const patch: { status: ShoppingItemStatus; updated_at: string; price?: number } = {
+    status,
+    updated_at: new Date().toISOString(),
+  }
+  if (price != null) patch.price = price
+  const { error } = await supabase.from('shopping_items').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function setShoppingItemPrice(id: string, price: number): Promise<void> {
   const { error } = await supabase
     .from('shopping_items')
-    .update({ status, updated_at: new Date().toISOString() })
+    .update({ price, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
 }

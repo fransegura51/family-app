@@ -82,6 +82,7 @@ export interface ShoppingItem {
   status: ShoppingItemStatus
   store: string | null
   sortOrder: number
+  price: number | null
 }
 
 // Tiendas conocidas de la familia (Mercadona, Aldi...) para que Pepa las

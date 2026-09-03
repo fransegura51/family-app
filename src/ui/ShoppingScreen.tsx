@@ -8,6 +8,7 @@ import {
   listShoppingItems,
   listShoppingTrips,
   reorderShoppingItems,
+  setShoppingItemPrice,
   updateShoppingItemStatus,
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
@@ -45,18 +46,52 @@ function normalizeProductName(s: string): string {
     .replace(/[̀-ͯ]/g, '')
 }
 
+const MATCH_STOPWORDS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'o', 'un', 'una', 'para', 'con', 'en'])
+
+// Palabras sueltas y "de peso" (sin tildes, sin plural simple, sin
+// símbolos) — el ticket real abrevia mucho ("GEL LIMPIADOR BAÑO" en vez
+// de "Gel de baño"), así que comparar la frase entera como subcadena se
+// queda corto en cuanto el ticket reordena o recorta alguna palabra.
+function significantTokens(s: string): string[] {
+  return normalizeProductName(s)
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w)) // plural simple: "proteinas" ~ "proteina"
+    .filter((w) => w.length > 1 && !MATCH_STOPWORDS.has(w))
+}
+
 // Empareja lo leído del ticket ("hamburguesas") con un producto YA
-// pendiente en la lista ("Hamburguesas mixtas") — por subcadena, en
-// cualquier dirección, igual de tolerante que el resto de coincidencias
-// de la app (nombres de miembro, etc.). Ante duda, no empareja: mejor
-// dejarlo como línea suelta que enlazarlo con el producto equivocado.
+// pendiente en la lista ("Hamburguesas mixtas"). Primero por subcadena
+// (lo más fiable); si no hay, por palabras compartidas — exige que la
+// MAYORÍA de las palabras del producto de la lista aparezcan en la
+// línea del ticket, para no colar un match dudoso entre dos productos
+// solo parecidos. Ante duda de verdad, no empareja: mejor dejarlo
+// como línea suelta (se puede emparejar a mano) que asignarle el precio
+// al producto equivocado — un ticket real trae líneas tan crípticas
+// ("+PROT NATILLA VAINI") que a veces ni una persona sabría decir con
+// seguridad a qué producto de la lista corresponden.
 function matchShoppingItem(lineName: string, items: ShoppingItem[]): ShoppingItem | null {
   const n = normalizeProductName(lineName)
   if (!n) return null
-  return items.find((i) => {
+
+  const substringMatch = items.find((i) => {
     const din = normalizeProductName(i.name)
     return din.includes(n) || n.includes(din)
-  }) ?? null
+  })
+  if (substringMatch) return substringMatch
+
+  const lineTokens = new Set(significantTokens(lineName))
+  if (lineTokens.size === 0) return null
+
+  let best: { item: ShoppingItem; score: number } | null = null
+  for (const item of items) {
+    const itemTokens = significantTokens(item.name)
+    if (itemTokens.length === 0) continue
+    const shared = itemTokens.filter((t) => lineTokens.has(t)).length
+    const score = shared / itemTokens.length
+    if (score >= 0.6 && (!best || score > best.score)) best = { item, score }
+  }
+  return best?.item ?? null
 }
 
 const REMINDER_OPTIONS = [
@@ -260,14 +295,17 @@ function ShoppingListTab() {
 
       await Promise.all(
         matched.map(({ item, unitPrice }) =>
-          recordProductPurchase({
-            name: item.name,
-            price: unitPrice,
-            quantity: item.quantity ?? '',
-            unit: item.unit ?? '',
-            store: scan.store ?? item.store ?? '',
-            date: scan.date ?? undefined,
-          }),
+          Promise.all([
+            setShoppingItemPrice(item.id, unitPrice),
+            recordProductPurchase({
+              name: item.name,
+              price: unitPrice,
+              quantity: item.quantity ?? '',
+              unit: item.unit ?? '',
+              store: scan.store ?? item.store ?? '',
+              date: scan.date ?? undefined,
+            }),
+          ]),
         ),
       )
 
@@ -683,9 +721,15 @@ function BoughtItemRow({
 }) {
   const known = suggestions.find((s) => s.normalizedName === item.name.trim().toLowerCase())
   // Precarga el último precio pagado — el usuario solo confirma o ajusta,
-  // no escribe desde cero (Skill 09).
-  const [price, setPrice] = useState(known?.lastPrice != null ? String(known.lastPrice) : '')
-  const [saved, setSaved] = useState(false)
+  // no escribe desde cero (Skill 09). Si el propio producto YA tiene un
+  // precio guardado (item.price, persistido en shopping_items), se
+  // parte de ese en vez del histórico general — es el precio real que
+  // se pagó por ESTE, no una sugerencia (bug real: al recargar la app
+  // se perdía y volvía a pedir un precio ya dado).
+  const [price, setPrice] = useState(
+    item.price != null ? String(item.price) : known?.lastPrice != null ? String(known.lastPrice) : '',
+  )
+  const [saved, setSaved] = useState(item.price != null)
   const [error, setError] = useState<string | null>(null)
 
   // El ticket ya trae el precio de este producto (subido después de
@@ -705,7 +749,10 @@ function BoughtItemRow({
   // escribir un precio, el botón "Guardar" no hacía nada (bug real: "no
   // me deja guardarlo"). El precio sigue siendo opcional de verdad: si
   // no se pone, simplemente no se guarda nada en la Memoria de precios,
-  // pero el producto se da por resuelto igual.
+  // pero el producto se da por resuelto igual. Se guarda en LOS DOS
+  // sitios: en el propio producto (para que no se vuelva a pedir al
+  // recargar) y en la Memoria de precios general (para las sugerencias
+  // de precio de la próxima vez que se apunte este producto).
   async function handleSavePrice() {
     setError(null)
     if (!price) {
@@ -713,13 +760,16 @@ function BoughtItemRow({
       return
     }
     try {
-      await recordProductPurchase({
-        name: item.name,
-        price: Number(price),
-        quantity: item.quantity ?? '',
-        unit: item.unit ?? '',
-        store: '',
-      })
+      await Promise.all([
+        setShoppingItemPrice(item.id, Number(price)),
+        recordProductPurchase({
+          name: item.name,
+          price: Number(price),
+          quantity: item.quantity ?? '',
+          unit: item.unit ?? '',
+          store: '',
+        }),
+      ])
       setSaved(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar el precio')
@@ -1088,7 +1138,6 @@ function TripReceiptForm({
         lines
           .filter((l) => l.name.trim() && !Number.isNaN(Number(l.price)))
           .map(async (l) => {
-            if (l.matchedItemId) await updateShoppingItemStatus(l.matchedItemId, 'comprado')
             // El ticket trae el importe TOTAL de la línea ("2 botellas de
             // leche, 2,00€"), no el precio de una — antes se guardaba tal
             // cual y la Memoria de precios enseñaba 2€ como si fuera el
@@ -1096,6 +1145,11 @@ function TripReceiptForm({
             // las unidades para guardar siempre precio por unidad.
             const units = Number(l.quantity)
             const unitPrice = Number.isFinite(units) && units > 0 ? Number(l.price) / units : Number(l.price)
+            // El precio se guarda EN el propio producto al marcarlo
+            // comprado (no solo en la Memoria de precios) — si no, al
+            // recargar la app "Comprados" no sabía que este ya tenía
+            // precio y lo volvía a pedir (bug real reportado).
+            if (l.matchedItemId) await updateShoppingItemStatus(l.matchedItemId, 'comprado', unitPrice)
             await recordProductPurchase({
               name: l.name.trim(),
               price: unitPrice,

@@ -1112,6 +1112,36 @@ textarea {
   cursor: default;
 }
 
+/* Una línea por producto, como una hoja de cálculo — petición real:
+   "en vez de hacer en cada producto tanto espacio, hazlo tipo Excel,
+   una línea por cada producto... ocupa mucho hueco". */
+.price-row-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.price-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
+
+.price-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.price-row-price {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .receipt-line-row {
   display: flex;
   gap: 6px;

@@ -891,12 +891,19 @@ export function VoiceCapture() {
     })
   }
 
-  function handleButtonDragEnd() {
+  function handleButtonDragEnd(e: ReactPointerEvent) {
     const drag = buttonDragRef.current
     buttonDragRef.current = null
     setDraggingButton(null)
     setButtonDragOffset({ x: 0, y: 0 })
     if (!drag) return
+    // Sin esto, el móvil dispara además un "click" fantasma justo
+    // después de soltar el dedo — con estos botones eso podía volver a
+    // llamar a abrir el panel/arrancar el micrófono una segunda vez
+    // (bug real: "en el móvil no me funciona... se conecta el
+    // micrófono pero no sale la pantalla" — el micrófono se reiniciaba
+    // en bucle antes de que la pantalla llegara a asentarse).
+    e.preventDefault()
     if (drag.moved < BUTTON_TAP_THRESHOLD_PX) {
       openPanel(drag.mode)
       return

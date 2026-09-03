@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import { addContact, deleteContact, listContacts, updateContact, updateContactBirthDate } from '@/data/contacts'
 import { isContactPickerSupported, pickContacts, type PickedContact } from '@/services/contactPicker'
+import { parseIcs } from '@/domain/icsParser'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import type { Contact } from '@/domain/types'
 
@@ -38,6 +39,7 @@ export function ContactsScreen() {
         {contacts.length === 0 && <p className="muted">No hay contactos guardados.</p>}
       </div>
       <ImportContactsForm onAdded={reload} />
+      <ImportIcsBirthdaysForm existingContacts={contacts} onAdded={reload} />
       <AddContactForm existingContacts={contacts} onAdded={reload} />
     </div>
   )
@@ -297,6 +299,130 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
         </>
       )}
       {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+// El calendario "Cumpleaños" de Google (el que rellena solo desde tus
+// Contactos) no tiene enlace para compartir por URL, a diferencia de
+// los calendarios normales — solo se puede EXPORTAR a un archivo .ics
+// suelto ("Exportar calendario" en su configuración). Petición real:
+// "son muchos y no quiero tener que añadirlos a mano" — se lee ese
+// archivo y se ofrece darlos de alta todos de golpe como cumpleaños de
+// contactos, en vez de uno a uno.
+function toLocalDateStr(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function cleanBirthdayName(rawTitle: string): string {
+  let s = rawTitle.trim()
+  s = s.replace(/^fiesta\s+/i, '')
+  s = s.replace(/\bcumplea[ñn]os\s+de\s+/gi, '')
+  s = s.replace(/^cumplea[ñn]os\s+/gi, '')
+  s = s.replace(/\s+cumplea[ñn]os\b/gi, '')
+  s = s.replace(/\s+/g, ' ').trim()
+  return s || rawTitle
+}
+
+interface BirthdayCandidate {
+  name: string
+  date: string
+  selected: boolean
+}
+
+function ImportIcsBirthdaysForm({ existingContacts, onAdded }: { existingContacts: Contact[]; onAdded: () => void }) {
+  const [candidates, setCandidates] = useState<BirthdayCandidate[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError(null)
+    try {
+      const text = await file.text()
+      const parsed = parseIcs(text)
+      const existingNames = new Set(existingContacts.map((c) => c.name.trim().toLowerCase()))
+      const seen = new Set<string>()
+      const list: BirthdayCandidate[] = []
+      for (const ev of parsed) {
+        const name = cleanBirthdayName(ev.title)
+        const date = toLocalDateStr(ev.startAt)
+        const key = `${name.toLowerCase()}|${date.slice(5)}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        list.push({ name, date, selected: !existingNames.has(name.trim().toLowerCase()) })
+      }
+      list.sort((a, b) => a.name.localeCompare(b.name))
+      if (list.length === 0) setError('No se ha encontrado ningún cumpleaños en ese archivo.')
+      setCandidates(list)
+    } catch {
+      setError('No se pudo leer ese archivo — asegúrate de que es el .ics exportado de Google Calendar.')
+    }
+  }
+
+  function toggle(i: number) {
+    setCandidates((prev) => prev.map((c, idx) => (idx === i ? { ...c, selected: !c.selected } : c)))
+  }
+
+  async function handleImport() {
+    setSaving(true)
+    setError(null)
+    try {
+      for (const c of candidates) {
+        if (!c.selected) continue
+        const existing = existingContacts.find((ec) => ec.name.trim().toLowerCase() === c.name.trim().toLowerCase())
+        if (existing) {
+          await updateContactBirthDate(existing.id, c.date)
+        } else {
+          await addContact({ name: c.name, category: 'Familia', phone: '', email: '', notes: '', birthDate: c.date })
+        }
+      }
+      setCandidates([])
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron importar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const selectedCount = candidates.filter((c) => c.selected).length
+
+  return (
+    <div className="card member-form">
+      <h2>Importar cumpleaños desde Google (.ics)</h2>
+      <p className="muted" style={{ fontSize: 13 }}>
+        En Google Calendar, en "Otros calendarios" → Cumpleaños → Configuración → "Exportar calendario", descarga el
+        archivo y súbelo aquí. Se añaden todos de golpe, en vez de uno a uno.
+      </p>
+      <input type="file" accept=".ics,text/calendar" onChange={handleFile} />
+      {error && <p className="error">{error}</p>}
+      {candidates.length > 0 && (
+        <>
+          <p className="muted">
+            {candidates.length} cumpleaños encontrados — desmarca los que no quieras añadir:
+          </p>
+          <div className="event-list">
+            {candidates.map((c, i) => (
+              <label key={`${c.name}-${c.date}`} className="checkbox-label">
+                <input type="checkbox" checked={c.selected} onChange={() => toggle(i)} />
+                {c.name} — {formatBirthDate(c.date)}
+              </label>
+            ))}
+          </div>
+          <div className="form-actions">
+            <button type="button" onClick={handleImport} disabled={saving || selectedCount === 0}>
+              {saving ? 'Importando…' : `Importar ${selectedCount}`}
+            </button>
+            <button type="button" className="link-button" onClick={() => setCandidates([])}>
+              Cancelar
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addShoppingItem,
   completeShoppingTrip,
@@ -138,17 +139,7 @@ export function ShoppingScreen() {
   return (
     <div className="screen">
       <h1>Compras</h1>
-      <div className="filter-row">
-        {SUB_TABS.map((t) => (
-          <button
-            key={t}
-            className={'chip' + (tab === t ? ' chip-active' : '')}
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <ReorderableTabBar storageKey="compras" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Programadas' && <TripsTab />}

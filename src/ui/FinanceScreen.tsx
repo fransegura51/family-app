@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addExpense,
   addWalletTransaction,
@@ -55,13 +56,7 @@ export function FinanceScreen() {
   return (
     <div className="screen">
       <h1>Dinero</h1>
-      <div className="filter-row">
-        {SUB_TABS.map((t) => (
-          <button key={t} className={'chip' + (tab === t ? ' chip-active' : '')} onClick={() => setTab(t)}>
-            {t}
-          </button>
-        ))}
-      </div>
+      <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Gastos' && <ExpensesTab />}
       {tab === 'Tickets' && <ReceiptsTab />}

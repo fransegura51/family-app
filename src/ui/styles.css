@@ -272,6 +272,35 @@ button {
   color: var(--primary);
 }
 
+/* Modo "Mover" de la barra inferior — mismas flechas que el resto de
+   pestañas reordenables de la app. */
+.nav-item-organizing {
+  background: #f1f3f5;
+  border-radius: 10px;
+}
+
+.nav-item-move {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.nav-item-move:disabled {
+  color: #d1d5db;
+  cursor: default;
+}
+
+.nav-organize-toggle {
+  border: none;
+  background: none;
+  color: var(--muted);
+}
+
 .link-button {
   background: none;
   color: var(--primary);
@@ -388,6 +417,46 @@ select {
   background: var(--primary);
   color: white;
   border-color: var(--primary);
+}
+
+/* Pestañas reordenables — mismo mecanismo que las tarjetas de Inicio
+   (↕️ Organizar + flechas), reutilizado en cada pantalla con pestañas
+   en vez de repetirlo (petición real: "toda la aplicación quiero que
+   sea móvil, se puedan mover todos los iconos"). */
+.tab-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tab-bar-chips {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.tab-bar-organize {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 16px;
+}
+
+.tab-chip-label,
+.tab-chip-move {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.tab-chip-move {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 2px;
 }
 
 /* Lista vertical de preajustes de repetición ("Todos los días

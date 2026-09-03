@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addFoodLog,
   addRecipeIngredientsToShoppingList,
@@ -67,13 +68,7 @@ export function AlimentacionScreen() {
   return (
     <div className="screen">
       <h1>Alimentación</h1>
-      <div className="filter-row">
-        {SUB_TABS.map((t) => (
-          <button key={t} className={'chip' + (tab === t ? ' chip-active' : '')} onClick={() => setTab(t)}>
-            {t}
-          </button>
-        ))}
-      </div>
+      <ReorderableTabBar storageKey="alimentacion" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Menú' && <MenuTab />}
       {tab === 'Recetas' && <RecipesTab />}

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addPlace,
   createAutomationRule,
@@ -51,13 +52,7 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
         Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El
         mapa muestra la ruta de las últimas 24h — pasado ese tiempo se borra sola.
       </p>
-      <div className="filter-row">
-        {SUB_TABS.map((t) => (
-          <button key={t} className={'chip' + (tab === t ? ' chip-active' : '')} onClick={() => setTab(t)}>
-            {t}
-          </button>
-        ))}
-      </div>
+      <ReorderableTabBar storageKey="ubicacion" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Ubicación' && <LocationTab isAdmin={role === 'admin'} profileId={profileId} />}
       {tab === 'Reglas' && <RulesTab />}

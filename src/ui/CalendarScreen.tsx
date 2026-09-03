@@ -1,4 +1,5 @@
 import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   completeEventOccurrence,
   createEvent,
@@ -359,13 +360,7 @@ export function CalendarScreen() {
       <h1>Calendario</h1>
       {error && <p className="error">{error}</p>}
 
-      <div className="filter-row">
-        {VIEWS.map((v) => (
-          <button key={v} className={'chip' + (view === v ? ' chip-active' : '')} onClick={() => setView(v)}>
-            {v}
-          </button>
-        ))}
-      </div>
+      <ReorderableTabBar storageKey="calendario" tabs={VIEWS} active={view} onSelect={setView} />
 
       {view !== 'Externos' && (
         <div className="filter-row">

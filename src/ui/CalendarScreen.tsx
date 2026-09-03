@@ -17,13 +17,21 @@ import { listContacts } from '@/data/contacts'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import {
   addFeed,
+  completeExternalEventOccurrence,
   deleteFeed,
+  dismissExternalEventOccurrence,
+  dismissExternalEventSeries,
+  listExternalEventCompletions,
+  listExternalEventDismissals,
   listExternalEvents,
   listFeeds,
   listHolidayDates,
   syncFeed,
+  uncompleteExternalEventOccurrence,
   type ExternalCalendarEvent,
   type ExternalCalendarFeed,
+  type ExternalEventCompletion,
+  type ExternalEventDismissal,
 } from '@/data/externalCalendarFeeds'
 import { getCalendarExportUrl } from '@/data/calendarExport'
 import {
@@ -102,6 +110,8 @@ export function CalendarScreen() {
   const [eventCompletions, setEventCompletions] = useState<EventCompletion[]>([])
   const [externalEvents, setExternalEvents] = useState<ExternalCalendarEvent[]>([])
   const [externalFeeds, setExternalFeeds] = useState<ExternalCalendarFeed[]>([])
+  const [externalDismissals, setExternalDismissals] = useState<ExternalEventDismissal[]>([])
+  const [externalCompletions, setExternalCompletions] = useState<ExternalEventCompletion[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [filterMemberId, setFilterMemberId] = useState<string>('all')
@@ -135,8 +145,10 @@ export function CalendarScreen() {
       listFeeds(),
       listContacts(),
       listEventCompletions(),
+      listExternalEventDismissals(),
+      listExternalEventCompletions(),
     ])
-      .then(([e, m, h, ee, ef, ct, evc]) => {
+      .then(([e, m, h, ee, ef, ct, evc, ed, eec]) => {
         setEvents(e)
         setMembers(m)
         setHolidayDates(h)
@@ -144,6 +156,8 @@ export function CalendarScreen() {
         setExternalFeeds(ef)
         setContacts(ct)
         setEventCompletions(evc)
+        setExternalDismissals(ed)
+        setExternalCompletions(eec)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -215,22 +229,44 @@ export function CalendarScreen() {
     return member?.color ?? '#6b7280'
   }
 
+  // Borrada toda la serie (occurrence_date null) -> no se vuelve a ver
+  // en ningún día. Ver el porqué de comparar por (feed_id, uid) y no
+  // por `id` en la migración 0052.
+  const seriesDismissed = useMemo(
+    () => new Set(externalDismissals.filter((d) => d.occurrenceDate === null).map((d) => `${d.feedId}:${d.uid}`)),
+    [externalDismissals],
+  )
+  const occurrenceDismissed = useMemo(
+    () =>
+      new Set(
+        externalDismissals.filter((d) => d.occurrenceDate !== null).map((d) => `${d.feedId}:${d.uid}:${d.occurrenceDate}`),
+      ),
+    [externalDismissals],
+  )
+  const externalCompletedSet = useMemo(
+    () => new Set(externalCompletions.map((c) => `${c.feedId}:${c.uid}:${c.occurrenceDate}`)),
+    [externalCompletions],
+  )
+
   const filteredExternalEvents = useMemo(
     () =>
       externalEvents.filter((ev) => {
+        if (seriesDismissed.has(`${ev.feedId}:${ev.uid}`)) return false
         const feed = feedById.get(ev.feedId)
         if (filterMemberId === 'all') return true
         return feed?.memberId === filterMemberId
       }),
-    [externalEvents, feedById, filterMemberId],
+    [externalEvents, feedById, filterMemberId, seriesDismissed],
   )
 
   // Una cita del calendario externo (Google/Outlook/...) se ve también
-  // aquí, en el calendario propio de la app — a petición de la usuaria,
-  // solo en este sentido (externo → app, nunca al revés: lo que se crea
-  // en la app no se manda a ningún calendario externo, ni se podría sin
-  // permiso de escritura). Es solo de lectura, no se puede editar ni
-  // borrar desde aquí — para eso está la pestaña Externos.
+  // aquí, en el calendario propio de la app — petición real: "que se
+  // pongan en nuestros colores y tengamos la opción de eliminarlas o
+  // marcarlas como hecho, igual que las otras notas" (antes era de
+  // solo lectura). El color ya sale bien en cuanto el calendario
+  // enlazado tiene un miembro asignado (Externos); borrar/hecho se
+  // guardan aparte (ver arriba) porque cada sincronización reemplaza
+  // estas filas enteras.
   const externalEventsByDate = useMemo(() => {
     const map = new Map<string, ExternalCalendarEvent[]>()
     if (monthDays.length === 0) return map
@@ -238,13 +274,14 @@ export function CalendarScreen() {
     const rangeEnd = monthDays[monthDays.length - 1].dateStr
     for (const ev of filteredExternalEvents) {
       for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd)) {
+        if (occurrenceDismissed.has(`${ev.feedId}:${ev.uid}:${dateStr}`)) continue
         const list = map.get(dateStr) ?? []
         list.push(ev)
         map.set(dateStr, list)
       }
     }
     return map
-  }, [filteredExternalEvents, monthDays])
+  }, [filteredExternalEvents, monthDays, occurrenceDismissed])
 
   // Cumpleaños de la familia y de los contactos, en el mes visible —
   // se pidió que se vean también en el calendario, no solo en la
@@ -344,6 +381,42 @@ export function CalendarScreen() {
   async function handleUncompleteEvent(eventId: string, dateStr: string) {
     try {
       await uncompleteEventOccurrence(eventId, dateStr)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo deshacer')
+    }
+  }
+
+  async function handleDismissExternalOccurrence(feedId: string, uid: string, dateStr: string) {
+    try {
+      await dismissExternalEventOccurrence(feedId, uid, dateStr)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo borrar ese día')
+    }
+  }
+
+  async function handleDismissExternalSeries(feedId: string, uid: string) {
+    try {
+      await dismissExternalEventSeries(feedId, uid)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo borrar')
+    }
+  }
+
+  async function handleCompleteExternal(feedId: string, uid: string, dateStr: string) {
+    try {
+      await completeExternalEventOccurrence(feedId, uid, dateStr)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo marcar como hecho')
+    }
+  }
+
+  async function handleUncompleteExternal(feedId: string, uid: string, dateStr: string) {
+    try {
+      await uncompleteExternalEventOccurrence(feedId, uid, dateStr)
       reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo deshacer')
@@ -465,6 +538,11 @@ export function CalendarScreen() {
               onCompleteEvent={handleCompleteEvent}
               onUncompleteEvent={handleUncompleteEvent}
               eventCompletions={eventCompletions}
+              onDismissExternalOccurrence={handleDismissExternalOccurrence}
+              onDismissExternalSeries={handleDismissExternalSeries}
+              onCompleteExternal={handleCompleteExternal}
+              onUncompleteExternal={handleUncompleteExternal}
+              externalCompletedSet={externalCompletedSet}
               onEventChanged={() => {
                 setEditingId(null)
                 reload()
@@ -568,6 +646,11 @@ function DayModal({
   onCompleteEvent,
   onUncompleteEvent,
   eventCompletions,
+  onDismissExternalOccurrence,
+  onDismissExternalSeries,
+  onCompleteExternal,
+  onUncompleteExternal,
+  externalCompletedSet,
   onEventChanged,
   onAdded,
   onClose,
@@ -588,6 +671,11 @@ function DayModal({
   onCompleteEvent: (eventId: string, dateStr: string) => void
   onUncompleteEvent: (eventId: string, dateStr: string) => void
   eventCompletions: EventCompletion[]
+  onDismissExternalOccurrence: (feedId: string, uid: string, dateStr: string) => void
+  onDismissExternalSeries: (feedId: string, uid: string) => void
+  onCompleteExternal: (feedId: string, uid: string, dateStr: string) => void
+  onUncompleteExternal: (feedId: string, uid: string, dateStr: string) => void
+  externalCompletedSet: Set<string>
   onEventChanged: () => void
   onAdded: () => void
   onClose: () => void
@@ -629,13 +717,16 @@ function DayModal({
         onUncomplete: done ? () => onUncompleteEvent(ev.id, selectedDate) : undefined,
       }
     }),
-    // Citas del calendario externo enlazado (Google/Outlook/...) — de
-    // solo lectura aquí, no se editan ni se borran desde el calendario
-    // de la app (para eso está la pestaña Externos). Solo se reflejan
-    // en este sentido: externo → app, nunca al revés.
+    // Citas del calendario externo enlazado (Google/Outlook/...) — no
+    // se editan desde aquí (para eso está la pestaña Externos, donde
+    // se cambia de qué persona es), pero sí se pueden borrar o marcar
+    // "hecho" igual que las propias (petición real: "que se pongan en
+    // nuestros colores y tengamos la opción de eliminarlas o
+    // marcarlas como hecho, igual que las otras notas").
     ...externalEvents.map((ev) => {
       const feed = feedById.get(ev.feedId)
       const member = feed?.memberId ? memberById.get(feed.memberId) : null
+      const done = externalCompletedSet.has(`${ev.feedId}:${ev.uid}:${selectedDate}`)
       return {
         key: `ext-${ev.id}`,
         id: ev.id,
@@ -647,7 +738,11 @@ function DayModal({
         endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
         isExternal: true,
         recurring: !!ev.recurrenceRule,
-        done: false,
+        done,
+        onDeleteSeries: () => onDismissExternalSeries(ev.feedId, ev.uid),
+        onDeleteOccurrence: () => onDismissExternalOccurrence(ev.feedId, ev.uid, selectedDate),
+        onComplete: done ? undefined : () => onCompleteExternal(ev.feedId, ev.uid, selectedDate),
+        onUncomplete: done ? () => onUncompleteExternal(ev.feedId, ev.uid, selectedDate) : undefined,
       }
     }),
     // Cumpleaños de la familia y de los contactos — de solo lectura

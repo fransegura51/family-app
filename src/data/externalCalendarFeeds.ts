@@ -18,11 +18,24 @@ export interface ExternalCalendarFeed {
 export interface ExternalCalendarEvent {
   id: string
   feedId: string
+  uid: string
   title: string
   startAt: string
   endAt: string | null
   allDay: boolean
   recurrenceRule: string | null
+}
+
+export interface ExternalEventDismissal {
+  feedId: string
+  uid: string
+  occurrenceDate: string | null
+}
+
+export interface ExternalEventCompletion {
+  feedId: string
+  uid: string
+  occurrenceDate: string
 }
 
 interface FeedRow {
@@ -113,13 +126,14 @@ export async function deleteFeed(id: string): Promise<void> {
 export async function listExternalEvents(): Promise<ExternalCalendarEvent[]> {
   const { data, error } = await supabase
     .from('external_calendar_events')
-    .select('id, feed_id, title, start_at, end_at, all_day, recurrence_rule')
+    .select('id, feed_id, uid, title, start_at, end_at, all_day, recurrence_rule')
     .order('start_at', { ascending: true })
   if (error) throw error
   return (
     data as {
       id: string
       feed_id: string
+      uid: string
       title: string
       start_at: string
       end_at: string | null
@@ -129,12 +143,74 @@ export async function listExternalEvents(): Promise<ExternalCalendarEvent[]> {
   ).map((row) => ({
     id: row.id,
     feedId: row.feed_id,
+    uid: row.uid,
     title: row.title,
     startAt: row.start_at,
     endAt: row.end_at,
     allDay: row.all_day,
     recurrenceRule: row.recurrence_rule,
   }))
+}
+
+// Borrar o marcar "hecho" una nota importada de un calendario externo,
+// igual que las propias de la app — petición real: "que tengamos la
+// opción de eliminarlas o marcarlas como hecho, igual que las otras
+// notas". Se guarda contra (feed_id, uid[, occurrence_date]) y no
+// contra el `id` de la fila, porque cada sincronización BORRA y vuelve
+// a INSERTAR todos los eventos del feed (el `id` cambia cada vez) —
+// ver el porqué en la migración 0052.
+export async function listExternalEventDismissals(): Promise<ExternalEventDismissal[]> {
+  const { data, error } = await supabase.from('external_calendar_event_dismissals').select('feed_id, uid, occurrence_date')
+  if (error) throw error
+  return (data as { feed_id: string; uid: string; occurrence_date: string | null }[]).map((r) => ({
+    feedId: r.feed_id,
+    uid: r.uid,
+    occurrenceDate: r.occurrence_date,
+  }))
+}
+
+export async function dismissExternalEventOccurrence(feedId: string, uid: string, occurrenceDate: string): Promise<void> {
+  const { error } = await supabase
+    .from('external_calendar_event_dismissals')
+    .upsert({ feed_id: feedId, uid, occurrence_date: occurrenceDate }, { onConflict: 'feed_id,uid,occurrence_date' })
+  if (error) throw error
+}
+
+// `occurrence_date: null` en la unique constraint no colisiona nunca
+// consigo mismo en un upsert normal (NULL nunca es "igual" a NULL en
+// SQL) — por eso primero se borra cualquier fila previa de la serie
+// entera antes de insertar, en vez de upsert directo.
+export async function dismissExternalEventSeries(feedId: string, uid: string): Promise<void> {
+  await supabase.from('external_calendar_event_dismissals').delete().eq('feed_id', feedId).eq('uid', uid).is('occurrence_date', null)
+  const { error } = await supabase.from('external_calendar_event_dismissals').insert({ feed_id: feedId, uid, occurrence_date: null })
+  if (error) throw error
+}
+
+export async function listExternalEventCompletions(): Promise<ExternalEventCompletion[]> {
+  const { data, error } = await supabase.from('external_calendar_event_completions').select('feed_id, uid, occurrence_date')
+  if (error) throw error
+  return (data as { feed_id: string; uid: string; occurrence_date: string }[]).map((r) => ({
+    feedId: r.feed_id,
+    uid: r.uid,
+    occurrenceDate: r.occurrence_date,
+  }))
+}
+
+export async function completeExternalEventOccurrence(feedId: string, uid: string, occurrenceDate: string): Promise<void> {
+  const { error } = await supabase
+    .from('external_calendar_event_completions')
+    .upsert({ feed_id: feedId, uid, occurrence_date: occurrenceDate }, { onConflict: 'feed_id,uid,occurrence_date' })
+  if (error) throw error
+}
+
+export async function uncompleteExternalEventOccurrence(feedId: string, uid: string, occurrenceDate: string): Promise<void> {
+  const { error } = await supabase
+    .from('external_calendar_event_completions')
+    .delete()
+    .eq('feed_id', feedId)
+    .eq('uid', uid)
+    .eq('occurrence_date', occurrenceDate)
+  if (error) throw error
 }
 
 // Descarga (vía la función de servidor, para saltar CORS), parsea y

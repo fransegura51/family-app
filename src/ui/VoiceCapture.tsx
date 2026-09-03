@@ -5,9 +5,14 @@ import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
 import { createEvent, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
+import {
+  listExternalEventCompletions,
+  listExternalEventDismissals,
+  listExternalEvents,
+  listFeeds,
+} from '@/data/externalCalendarFeeds'
 import { splitEntries } from '@/domain/quickCapture'
 import { expandOccurrences } from '@/domain/calendar'
-import type { CalendarEvent } from '@/domain/types'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
 import {
@@ -182,14 +187,56 @@ async function saveShoppingEntries(entries: string[], store: string | null): Pro
   window.dispatchEvent(new CustomEvent('family-app:compras-changed'))
 }
 
-function eventMinutes(ev: CalendarEvent): number {
+function eventMinutes(ev: { allDay: boolean; startAt: string }): number {
   if (ev.allDay) return -1
   const d = new Date(ev.startAt)
   return d.getHours() * 60 + d.getMinutes()
 }
 
-function eventTimeLabel(ev: CalendarEvent): string {
+function eventTimeLabel(ev: { allDay: boolean; startAt: string }): string {
   return ev.allDay ? '' : ` a las ${new Date(ev.startAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+// Pepa también tiene que "ver" las notas importadas de un calendario
+// externo (Google/Outlook/...) al contestar preguntas del calendario —
+// petición real: "que Pepa las pueda detectar". Se cargan aparte de
+// las propias (listUpcomingEvents) porque viven en una tabla distinta
+// y se identifican de otra forma (ver domain de externalCalendarFeeds
+// y la migración 0052) — respeta lo ya borrado/marcado hecho desde el
+// calendario, para no anunciar algo que ya se ha quitado de en medio.
+interface ExternalAgendaOccurrence {
+  date: string
+  title: string
+  allDay: boolean
+  startAt: string
+  memberId: string | null
+}
+
+async function loadExternalAgendaOccurrences(from: string, to: string): Promise<ExternalAgendaOccurrence[]> {
+  const [feeds, events, dismissals, completions] = await Promise.all([
+    listFeeds(),
+    listExternalEvents(),
+    listExternalEventDismissals(),
+    listExternalEventCompletions(),
+  ])
+  const feedById = new Map(feeds.map((f) => [f.id, f]))
+  const seriesDismissed = new Set(dismissals.filter((d) => d.occurrenceDate === null).map((d) => `${d.feedId}:${d.uid}`))
+  const occurrenceDismissed = new Set(
+    dismissals.filter((d) => d.occurrenceDate !== null).map((d) => `${d.feedId}:${d.uid}:${d.occurrenceDate}`),
+  )
+  const completedSet = new Set(completions.map((c) => `${c.feedId}:${c.uid}:${c.occurrenceDate}`))
+
+  const out: ExternalAgendaOccurrence[] = []
+  for (const ev of events) {
+    if (seriesDismissed.has(`${ev.feedId}:${ev.uid}`)) continue
+    const feed = feedById.get(ev.feedId)
+    for (const date of expandOccurrences(ev, from, to)) {
+      const key = `${ev.feedId}:${ev.uid}:${date}`
+      if (occurrenceDismissed.has(key) || completedSet.has(key)) continue
+      out.push({ date, title: ev.title, allDay: ev.allDay, startAt: ev.startAt, memberId: feed?.memberId ?? null })
+    }
+  }
+  return out
 }
 
 // Antes esto miraba tareas Y eventos por separado (y Pepa a veces
@@ -210,6 +257,7 @@ async function answerAgendaQuery(
     listEventCompletions(),
   ])
   const target = explicitDate ?? (when === 'tomorrow' ? tomorrowIso() : todayIso())
+  const externalOnTarget = await loadExternalAgendaOccurrences(target, target)
   const dateLabel = explicitDate
     ? new Date(explicitDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
     : null
@@ -225,6 +273,17 @@ async function answerAgendaQuery(
     (ev) => !eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === target),
   )
 
+  // Notas importadas de un calendario externo — mismo tratamiento que
+  // un evento propio con UN solo miembro asignado (el que tenga
+  // enlazado su calendario en Externos), o "toda la familia" si no
+  // tiene ninguno enlazado.
+  const externalAsEvents = externalOnTarget.map((ev) => ({
+    title: ev.title,
+    allDay: ev.allDay,
+    startAt: ev.startAt,
+    memberIds: ev.memberId ? [ev.memberId] : [],
+  }))
+
   // El nombre puede venir con "soy X"/"para X" delante, o dicho suelto
   // ("Jennifer, ¿qué tengo que hacer hoy?") — se prueban las dos formas
   // antes de rendirse (bug real: preguntar así no filtraba por persona,
@@ -232,7 +291,9 @@ async function answerAgendaQuery(
   const member = (memberHint ? matchMemberByHint(memberHint, members) : null) ?? findMemberInText(rawText, members)
 
   if (member) {
-    let memberEvents = eventsOnTarget.filter((ev) => ev.memberIds.length === 0 || ev.memberIds.includes(member.id))
+    let memberEvents = [...eventsOnTarget, ...externalAsEvents].filter(
+      (ev) => ev.memberIds.length === 0 || ev.memberIds.includes(member.id),
+    )
     if (applyNowFilter) {
       memberEvents = memberEvents.filter((ev) => ev.allDay || eventMinutes(ev) >= nowMinutes)
     }
@@ -253,7 +314,7 @@ async function answerAgendaQuery(
   // hecho (bug real reportado: "si tenía bajar la basura a las cinco y
   // son las seis, Pepa no me dice que tengo que bajar la basura").
   const memberById = new Map(members.map((m) => [m.id, m]))
-  let allEvents = eventsOnTarget
+  let allEvents = [...eventsOnTarget, ...externalAsEvents]
   if (applyNowFilter) {
     allEvents = allEvents.filter((ev) => ev.allDay || eventMinutes(ev) >= nowMinutes)
   }
@@ -278,10 +339,11 @@ async function answerAgendaQuery(
 // refiere y qué cuenta como "ya hecho", pero recorriendo cada día del
 // rango en vez de uno solo, y agrupando la respuesta por día.
 async function answerWeekRangeQuery(memberHint: string | null, rawText: string, from: string, to: string, label: string): Promise<string> {
-  const [members, events, eventCompletions] = await Promise.all([
+  const [members, events, eventCompletions, externalOccurrences] = await Promise.all([
     listFamilyMembers(),
     listUpcomingEvents(),
     listEventCompletions(),
+    loadExternalAgendaOccurrences(from, to),
   ])
   const member = (memberHint ? matchMemberByHint(memberHint, members) : null) ?? findMemberInText(rawText, members)
   const memberById = new Map(members.map((m) => [m.id, m]))
@@ -295,6 +357,14 @@ async function answerWeekRangeQuery(memberHint: string | null, rawText: string, 
       const withTime = `${ev.title}${eventTimeLabel(ev)}`
       occurrences.push({ date, minutes: eventMinutes(ev), text: owner ? `${owner}: ${withTime}` : withTime })
     }
+  }
+  // Notas importadas de un calendario externo, en el mismo rango —
+  // loadExternalAgendaOccurrences ya descarta lo borrado/hecho.
+  for (const ev of externalOccurrences) {
+    if (member && ev.memberId && ev.memberId !== member.id) continue
+    const owner = !member && ev.memberId ? (memberById.get(ev.memberId)?.name ?? null) : null
+    const withTime = `${ev.title}${eventTimeLabel(ev)}`
+    occurrences.push({ date: ev.date, minutes: eventMinutes(ev), text: owner ? `${owner}: ${withTime}` : withTime })
   }
 
   const who = member ? ` para ${member.name}` : ''
@@ -320,20 +390,24 @@ async function answerWeekRangeQuery(memberHint: string | null, rawText: string, 
 // evento es hoy pero su hora ya pasó, no cuenta — hay que mirar el
 // siguiente de verdad, no repetir uno que ya tocó.
 async function answerNextCalendarEvent(): Promise<string> {
-  const events = await listUpcomingEvents()
   const now = new Date()
   const todayStr = todayIso()
   const rangeEnd = new Date(now)
   rangeEnd.setDate(rangeEnd.getDate() + 90)
   const rangeEndStr = dateStr(rangeEnd)
 
-  function minutesOfDay(ev: CalendarEvent): number {
+  const [events, externalOccurrences] = await Promise.all([
+    listUpcomingEvents(),
+    loadExternalAgendaOccurrences(todayStr, rangeEndStr),
+  ])
+
+  function minutesOfDay(ev: { allDay: boolean; startAt: string }): number {
     if (ev.allDay) return -1
     const d = new Date(ev.startAt)
     return d.getHours() * 60 + d.getMinutes()
   }
 
-  let best: { event: CalendarEvent; occurrenceDate: string } | null = null
+  let best: { event: { title: string; allDay: boolean; startAt: string }; occurrenceDate: string } | null = null
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
 
   for (const ev of events) {
@@ -348,6 +422,16 @@ async function answerNextCalendarEvent(): Promise<string> {
         best = { event: ev, occurrenceDate }
       }
       break // dentro de un mismo evento, la primera ocurrencia válida ya es la más próxima
+    }
+  }
+
+  // Notas importadas de un calendario externo — ya vienen expandidas
+  // por loadExternalAgendaOccurrences, así que aquí solo hay que
+  // comparar cada ocurrencia con la mejor encontrada hasta ahora.
+  for (const ev of externalOccurrences) {
+    if (ev.date === todayStr && !ev.allDay && minutesOfDay(ev) < nowMinutes) continue
+    if (!best || ev.date < best.occurrenceDate || (ev.date === best.occurrenceDate && minutesOfDay(ev) < minutesOfDay(best.event))) {
+      best = { event: { title: ev.title, allDay: ev.allDay, startAt: ev.startAt }, occurrenceDate: ev.date }
     }
   }
 

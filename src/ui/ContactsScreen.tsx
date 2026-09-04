@@ -4,9 +4,24 @@ import { isContactPickerSupported, pickContacts, type PickedContact } from '@/se
 import { parseIcs } from '@/domain/icsParser'
 import { parseVcf } from '@/domain/vcardParser'
 import { ConfirmButton } from '@/ui/ConfirmButton'
+import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
 
+// Categorías de partida — ya no es una lista cerrada: cualquier
+// contacto puede llevar una categoría nueva escrita a mano (petición
+// real: "haz que se puedan añadir nuevas categorías de contactos"), y
+// en cuanto se guarda uno con ella, esa categoría nueva ya sale como
+// sugerencia para el resto (ver availableCategories más abajo) —
+// mismo patrón que ya se usa para las tiendas de Compras.
 const CATEGORIES = ['Colegio', 'Médico', 'Emergencia', 'Familia', 'Otros']
+
+function collectCategories(contacts: Contact[]): string[] {
+  const set = new Set(CATEGORIES)
+  for (const c of contacts) {
+    if (c.category?.trim()) set.add(c.category.trim())
+  }
+  return [...set].sort((a, b) => a.localeCompare(b))
+}
 
 function formatBirthDate(d: string): string {
   return new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
@@ -16,9 +31,16 @@ export function ContactsScreen() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('Todas')
 
+  // Solo pone "Cargando…" en la primera carga — si se vuelve a llamar
+  // tras guardar una edición, reemplazar TODA la pantalla por ese
+  // aviso (aunque sea un instante) hacía que el navegador perdiera la
+  // posición del scroll y volviera arriba del todo (bug real:
+  // "cuando se edita un contacto y se guarda no debe volver a saltar
+  // al inicio, sino quedarse a la altura del contacto editado").
   function reload() {
-    setLoading(true)
     listContacts()
       .then(setContacts)
       .catch((e: Error) => setError(e.message))
@@ -29,15 +51,58 @@ export function ContactsScreen() {
 
   if (loading) return <div className="screen">Cargando contactos…</div>
 
+  const availableCategories = collectCategories(contacts)
+  const normalizedSearch = normalize(search)
+  const filteredContacts = contacts.filter((c) => {
+    if (categoryFilter !== 'Todas' && (c.category ?? 'Otros') !== categoryFilter) return false
+    if (normalizedSearch && !normalize(c.name).includes(normalizedSearch)) return false
+    return true
+  })
+
   return (
     <div className="screen">
       <h1>Contactos</h1>
       {error && <p className="error">{error}</p>}
+      <datalist id="contact-categories">
+        {availableCategories.map((cat) => (
+          <option key={cat} value={cat} />
+        ))}
+      </datalist>
+
+      {/* Petición real: "que se pueda filtrar por categorías y poder
+          buscar por nombres". */}
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="🔍 Buscar por nombre…"
+        style={{ marginBottom: 8 }}
+      />
+      <div className="filter-row">
+        <button
+          type="button"
+          className={'chip' + (categoryFilter === 'Todas' ? ' chip-active' : '')}
+          onClick={() => setCategoryFilter('Todas')}
+        >
+          Todas
+        </button>
+        {availableCategories.map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            className={'chip' + (categoryFilter === cat ? ' chip-active' : '')}
+            onClick={() => setCategoryFilter(cat)}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
       <div className="event-list">
-        {contacts.map((c) => (
+        {filteredContacts.map((c) => (
           <ContactCard key={c.id} contact={c} onChanged={reload} />
         ))}
-        {contacts.length === 0 && <p className="muted">No hay contactos guardados.</p>}
+        {filteredContacts.length === 0 && <p className="muted">No hay contactos que coincidan.</p>}
       </div>
       <ImportContactsForm onAdded={reload} />
       <ImportVcfContactsForm existingContacts={contacts} onAdded={reload} />
@@ -159,13 +224,13 @@ function EditContactForm({
       </label>
       <label>
         Categoría
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <input
+          type="text"
+          list="contact-categories"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="Familia"
+        />
       </label>
       <label>
         Teléfono
@@ -408,13 +473,7 @@ function ImportVcfContactsForm({ existingContacts, onAdded }: { existingContacts
           </p>
           <label>
             Categoría (para los nuevos)
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            <input type="text" list="contact-categories" value={category} onChange={(e) => setCategory(e.target.value)} />
           </label>
           <div className="event-list">
             {candidates.map((c, i) => (
@@ -630,13 +689,13 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
       </label>
       <label>
         Categoría
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <input
+          type="text"
+          list="contact-categories"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="Familia"
+        />
       </label>
       <label>
         Teléfono

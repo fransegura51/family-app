@@ -167,6 +167,26 @@ body {
   text-align: center;
 }
 
+.home-photo-banner-info {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 18px 20px;
+  color: white;
+}
+
+.home-photo-banner-info-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .home-photo-banner-dots {
   position: absolute;
   bottom: 8px;

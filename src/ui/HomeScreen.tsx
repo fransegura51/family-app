@@ -5,6 +5,9 @@ import { getPermissionState, requestPermission, subscribeToPush } from '@/servic
 import { savePushSubscription } from '@/data/push'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 import { listFamilyMembers } from '@/data/family'
+import { listUpcomingEvents } from '@/data/calendar'
+import { expandOccurrences } from '@/domain/calendar'
+import { listShoppingItems } from '@/data/shopping'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
@@ -112,14 +115,34 @@ export function HomeScreen({ profile }: { profile: Profile }) {
   )
 }
 
+type Slide =
+  | { kind: 'photo'; id: string; url: string; caption: string }
+  | { kind: 'info'; id: string; to: string; icon: string; title: string; items: string[] }
+
+function todayStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function hhmm(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+}
+
 // "Foto de portada" en la pantalla de inicio, al estilo de otras apps
-// familiares (captura de referencia de la usuaria) — las últimas fotos
-// de la Galería (ya existente, mismo almacenamiento) rotando solas, con
-// puntitos abajo. Toda la tarjeta lleva a la Galería, que es donde ya
-// se puede subir/borrar — no hace falta duplicar ese formulario aquí.
+// familiares (captura de referencia de la usuaria) — rota sola, con
+// puntitos abajo. Empieza con las últimas fotos de la Galería y, si hay
+// algo que contar hoy, añade al final una "diapositiva" más con el
+// mismo aspecto pero de texto en vez de foto: los eventos de hoy y la
+// compra pendiente (petición real: "que pase la foto uno, la foto dos...
+// y luego como si fuera una foto de lo que tenemos en el calendario
+// para ese día" — y después, lo mismo con la lista de la compra). Cada
+// diapositiva de texto lleva a su pantalla (Calendario/Compras), igual
+// que las fotos llevan a Galería.
 function PhotoBanner() {
   const [photos, setPhotos] = useState<GalleryPhoto[]>([])
   const [urls, setUrls] = useState<Record<string, string>>({})
+  const [agendaItems, setAgendaItems] = useState<string[]>([])
+  const [shoppingItems, setShoppingItems] = useState<string[]>([])
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(true)
 
@@ -138,17 +161,52 @@ function PhotoBanner() {
         // falta un error visible en la portada por esto.
       })
       .finally(() => setLoading(false))
+
+    const today = todayStr()
+    listUpcomingEvents()
+      .then((events) => {
+        const items = events
+          .filter((ev) => expandOccurrences(ev, today, today).includes(today))
+          .map((ev) => ({ sortKey: ev.allDay ? '' : hhmm(ev.startAt), label: ev.allDay ? ev.title : `${hhmm(ev.startAt)} ${ev.title}` }))
+          .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+          .map((e) => e.label)
+        setAgendaItems(items)
+      })
+      .catch(() => {})
+
+    listShoppingItems()
+      .then((items) => {
+        const pending = items
+          .filter((i) => i.status === 'pendiente')
+          .map((i) => (i.quantity ? `${i.quantity}${i.unit ? ' ' + i.unit : ''} ${i.name}` : i.name))
+        setShoppingItems(pending)
+      })
+      .catch(() => {})
   }, [])
 
+  const slides: Slide[] = [
+    ...photos.map((p): Slide => ({ kind: 'photo', id: p.id, url: urls[p.id] ?? '', caption: p.caption || 'Fotos de la familia' })),
+    ...(agendaItems.length > 0
+      ? [{ kind: 'info', id: 'agenda', to: '/calendario', icon: '📅', title: 'Hoy en el calendario', items: agendaItems } as const]
+      : []),
+    ...(shoppingItems.length > 0
+      ? [{ kind: 'info', id: 'compra', to: '/compras', icon: '🛒', title: 'Compra pendiente', items: shoppingItems } as const]
+      : []),
+  ]
+
   useEffect(() => {
-    if (photos.length < 2) return
-    const timer = setInterval(() => setIndex((i) => (i + 1) % photos.length), 4500)
+    if (index >= slides.length) setIndex(0)
+  }, [slides.length, index])
+
+  useEffect(() => {
+    if (slides.length < 2) return
+    const timer = setInterval(() => setIndex((i) => (i + 1) % slides.length), 4500)
     return () => clearInterval(timer)
-  }, [photos.length])
+  }, [slides.length])
 
   if (loading) return null
 
-  if (photos.length === 0) {
+  if (slides.length === 0) {
     return (
       <Link to="/galeria" className="home-photo-banner home-photo-banner-empty">
         <div className="home-photo-banner-overlay">
@@ -159,25 +217,41 @@ function PhotoBanner() {
     )
   }
 
-  const current = photos[index]
-  const url = urls[current.id]
+  const current = slides[index] ?? slides[0]
+  const dots = slides.length > 1 && (
+    <div className="home-photo-banner-dots">
+      {slides.map((s, i) => (
+        <span key={s.id} className={'home-photo-banner-dot' + (i === index ? ' home-photo-banner-dot-active' : '')} />
+      ))}
+    </div>
+  )
+
+  if (current.kind === 'info') {
+    return (
+      <Link to={current.to} className="home-photo-banner">
+        <div className="home-photo-banner-info">
+          <p className="home-photo-banner-title">
+            {current.icon} {current.title}
+          </p>
+          <ul className="home-photo-banner-info-list">
+            {current.items.slice(0, 4).map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+          {current.items.length > 4 && <p className="home-photo-banner-sub">+{current.items.length - 4} más</p>}
+        </div>
+        {dots}
+      </Link>
+    )
+  }
 
   return (
     <Link to="/galeria" className="home-photo-banner">
-      {url && <img src={url} alt={current.caption ?? ''} className="home-photo-banner-img" />}
+      {current.url && <img src={current.url} alt={current.caption} className="home-photo-banner-img" />}
       <div className="home-photo-banner-overlay">
-        <p className="home-photo-banner-title">📷 {current.caption || 'Fotos de la familia'}</p>
+        <p className="home-photo-banner-title">📷 {current.caption}</p>
       </div>
-      {photos.length > 1 && (
-        <div className="home-photo-banner-dots">
-          {photos.map((p, i) => (
-            <span
-              key={p.id}
-              className={'home-photo-banner-dot' + (i === index ? ' home-photo-banner-dot-active' : '')}
-            />
-          ))}
-        </div>
-      )}
+      {dots}
     </Link>
   )
 }

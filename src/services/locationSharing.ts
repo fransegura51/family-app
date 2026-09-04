@@ -15,8 +15,10 @@
 // cambia es que, una vez elegido, se recuerda (localStorage) y se
 // retoma solo al volver a abrir la aplicación, en vez de tener que
 // volver a la pantalla de Ubicación y tocarlo cada vez.
-import { updateMemberLocation } from '@/data/location'
+import { closePlaceVisit, listPlaces, recordPlaceVisit, updateMemberLocation } from '@/data/location'
 import { watchPosition } from '@/services/geolocation'
+import { distanceMeters } from '@/domain/geo'
+import { reverseGeocodePlaceName } from '@/services/reverseGeocode'
 
 const STORAGE_KEY = 'familyapp:location-sharing-member-id'
 
@@ -34,6 +36,80 @@ let lastError: string | null = null
 let lastPosition: LastPosition | null = null
 let lastUpdateAt = 0
 const listeners = new Set<Listener>()
+
+// Historial de SITIOS (no de puntos GPS en crudo, ver migración
+// 0058_place_visits) — petición real: "un desplegable con los sitios
+// en los que ha estado cada día... que lo reconozca según las tiendas
+// que haya en los mapas". Detecta una "parada" cuando la posición se
+// queda dentro de STAY_RADIUS_M durante al menos STAY_MIN_MS seguidos
+// — solo entonces se reconoce el sitio (primero contra los lugares ya
+// guardados por la familia, gratis e instantáneo; si no coincide con
+// ninguno, con Nominatim) y se guarda UNA vez por parada, no en cada
+// posición GPS.
+const STAY_RADIUS_M = 120
+const STAY_MIN_MS = 6 * 60 * 1000
+
+interface VisitCandidate {
+  memberId: string
+  centerLat: number
+  centerLon: number
+  startedAt: number
+  lastSeenAt: number
+  loggedVisitId: string | null
+}
+let visitCandidate: VisitCandidate | null = null
+
+async function resolvePlaceName(latitude: number, longitude: number): Promise<string | null> {
+  try {
+    const places = await listPlaces()
+    const known = places.find((p) => distanceMeters(p.latitude, p.longitude, latitude, longitude) <= p.radiusM)
+    if (known) return known.name
+  } catch {
+    // Sin conexión momentánea u otro fallo al leer los lugares
+    // guardados — se sigue intentando con el mapa en su lugar.
+  }
+  return reverseGeocodePlaceName(latitude, longitude)
+}
+
+async function trackVisit(memberId: string, latitude: number, longitude: number) {
+  const now = Date.now()
+  const candidate = visitCandidate
+
+  if (!candidate || candidate.memberId !== memberId) {
+    visitCandidate = { memberId, centerLat: latitude, centerLon: longitude, startedAt: now, lastSeenAt: now, loggedVisitId: null }
+    return
+  }
+
+  const dist = distanceMeters(candidate.centerLat, candidate.centerLon, latitude, longitude)
+  if (dist <= STAY_RADIUS_M) {
+    candidate.lastSeenAt = now
+    if (!candidate.loggedVisitId && now - candidate.startedAt >= STAY_MIN_MS) {
+      const placeName = await resolvePlaceName(candidate.centerLat, candidate.centerLon)
+      // Puede haber cambiado mientras se esperaba la respuesta (otra
+      // parada ya en marcha, o se dejó de compartir) — no guardar algo
+      // que ya no aplica.
+      if (placeName && visitCandidate === candidate && !candidate.loggedVisitId) {
+        try {
+          candidate.loggedVisitId = await recordPlaceVisit({
+            memberId,
+            placeName,
+            latitude: candidate.centerLat,
+            longitude: candidate.centerLon,
+            arrivedAt: new Date(candidate.startedAt).toISOString(),
+          })
+        } catch {
+          // Si falla el guardado, se reintenta solo en la siguiente
+          // posición (loggedVisitId sigue sin fijar).
+        }
+      }
+    }
+  } else {
+    visitCandidate = { memberId, centerLat: latitude, centerLon: longitude, startedAt: now, lastSeenAt: now, loggedVisitId: null }
+    if (candidate.loggedVisitId) {
+      closePlaceVisit(candidate.loggedVisitId, new Date(candidate.lastSeenAt).toISOString()).catch(() => {})
+    }
+  }
+}
 
 // El navegador (sobre todo en móvil, con la pantalla apagada o la app
 // en segundo plano) a veces mata el watchPosition por dentro SIN avisar
@@ -89,6 +165,13 @@ export function stopSharing() {
   lastPosition = null
   lastUpdateAt = 0
   persist(null)
+  // Cierra la parada actual (si llegó a reconocerse) al dejar de
+  // compartir — que "hasta cuándo" quede fijado en vez de abierto para
+  // siempre.
+  if (visitCandidate?.loggedVisitId) {
+    closePlaceVisit(visitCandidate.loggedVisitId, new Date().toISOString()).catch(() => {})
+  }
+  visitCandidate = null
   notify()
 }
 
@@ -117,6 +200,9 @@ export function startSharing(memberId: string, force = false) {
           lastError = err.message
           notify()
         })
+      // Independiente del guardado de arriba: no debe romper el
+      // compartir en sí si falla el reconocimiento del sitio.
+      trackVisit(memberId, coords.latitude, coords.longitude).catch(() => {})
     },
     (message, code) => {
       lastError = message

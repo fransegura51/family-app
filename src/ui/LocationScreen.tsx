@@ -10,6 +10,7 @@ import {
   listMemberLocationHistory,
   listMemberLocations,
   listPlaces,
+  listPlaceVisits,
   muteAutomationRule,
   setConsent,
   toggleAutomationRule,
@@ -35,6 +36,7 @@ import type {
   FamilyRole,
   LocationConsent,
   LocationPlace,
+  LocationPlaceVisit,
   MemberLocation,
   MemberLocationPoint,
 } from '@/domain/types'
@@ -258,7 +260,161 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
         {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
       </div>
       <AddPlaceForm onAdded={reload} />
+
+      <PlaceHistorySection members={members} />
     </div>
+  )
+}
+
+// Petición real: "un desplegable con los sitios en los que ha estado
+// cada día... el supermercado que lo reconozca según las tiendas que
+// haya en los mapas... y el historial que se pueda hacer por día, por
+// semana o por meses". A diferencia del rastro GPS del mapa de arriba
+// (últimas 24h, se borra sola), esto guarda solo el NOMBRE de cada
+// parada real (ver migración 0058_place_visits y
+// services/locationSharing.ts) — se conserva 90 días.
+type PlaceHistoryPreset = 'dia' | 'semana' | 'mes'
+
+const PLACE_HISTORY_LABELS: Record<PlaceHistoryPreset, string> = {
+  dia: 'Hoy',
+  semana: 'Esta semana',
+  mes: 'Este mes',
+}
+
+function placeHistoryRange(preset: PlaceHistoryPreset): [string, string] {
+  const now = new Date()
+  if (preset === 'dia') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const end = new Date(start)
+    end.setDate(end.getDate() + 1)
+    return [start.toISOString(), end.toISOString()]
+  }
+  if (preset === 'semana') {
+    const dow = (now.getDay() + 6) % 7 // lunes = 0
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow)
+    const end = new Date(monday)
+    end.setDate(end.getDate() + 7)
+    return [monday.toISOString(), end.toISOString()]
+  }
+  const first = new Date(now.getFullYear(), now.getMonth(), 1)
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  return [first.toISOString(), next.toISOString()]
+}
+
+function groupVisitsByDay(visits: LocationPlaceVisit[]): [string, LocationPlaceVisit[]][] {
+  const chronological = [...visits].sort((a, b) => a.arrivedAt.localeCompare(b.arrivedAt))
+  const byDay = new Map<string, LocationPlaceVisit[]>()
+  for (const v of chronological) {
+    const day = v.arrivedAt.slice(0, 10)
+    const list = byDay.get(day) ?? []
+    list.push(v)
+    byDay.set(day, list)
+  }
+  return [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+}
+
+function placeHhmm(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+}
+
+function placeDayLabel(day: string): string {
+  return new Date(`${day}T00:00`).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+function PlaceHistorySection({ members }: { members: FamilyMember[] }) {
+  const [preset, setPreset] = useState<PlaceHistoryPreset>('dia')
+  const [visits, setVisits] = useState<LocationPlaceVisit[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [expandedMember, setExpandedMember] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    const [from, to] = placeHistoryRange(preset)
+    listPlaceVisits(from, to)
+      .then(setVisits)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [preset])
+
+  const byMember = new Map<string, LocationPlaceVisit[]>()
+  for (const v of visits) {
+    const list = byMember.get(v.memberId) ?? []
+    list.push(v)
+    byMember.set(v.memberId, list)
+  }
+
+  return (
+    <>
+      <h2 className="section-title">Historial de sitios</h2>
+      <p className="muted">
+        Dónde ha estado cada uno — se reconoce solo (lugares guardados arriba, o buscado en el mapa) cuando alguien
+        se queda parado un rato en un sitio nuevo mientras comparte ubicación.
+      </p>
+      <div className="filter-row" style={{ marginBottom: 8 }}>
+        {(['dia', 'semana', 'mes'] as PlaceHistoryPreset[]).map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={'chip' + (preset === p ? ' chip-active' : '')}
+            onClick={() => setPreset(p)}
+          >
+            {PLACE_HISTORY_LABELS[p]}
+          </button>
+        ))}
+      </div>
+      {error && <p className="error">{error}</p>}
+      {loading ? (
+        <p className="muted">Cargando…</p>
+      ) : (
+        <div className="store-folder-grid">
+          {members.map((m) => {
+            const memberVisits = byMember.get(m.id) ?? []
+            if (memberVisits.length === 0) return null
+            const isOpen = expandedMember === m.id
+            return (
+              <div key={m.id} className="store-folder">
+                <button
+                  type="button"
+                  className="store-folder-header"
+                  onClick={() => setExpandedMember(isOpen ? null : m.id)}
+                >
+                  <span className="store-folder-icon">
+                    <MemberAvatar member={m} size={22} />
+                  </span>
+                  <span className="store-folder-info">
+                    <strong>{m.name}</strong>
+                    <span className="muted">
+                      {memberVisits.length} {memberVisits.length === 1 ? 'sitio' : 'sitios'}
+                    </span>
+                  </span>
+                  <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
+                </button>
+                {isOpen && (
+                  <div className="event-list store-folder-contents">
+                    {groupVisitsByDay(memberVisits).map(([day, dayVisits]) => (
+                      <div key={day} className="card task-card" style={{ display: 'block' }}>
+                        <strong>{placeDayLabel(day)}</strong>
+                        <p className="muted">
+                          {dayVisits.map((v, i) => (
+                            <span key={v.id}>
+                              {i > 0 && ' → '}
+                              {v.placeName} ({placeHhmm(v.arrivedAt)}
+                              {v.leftAt ? `–${placeHhmm(v.leftAt)}` : ''})
+                            </span>
+                          ))}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {visits.length === 0 && <p className="muted">Nada por aquí todavía en este periodo.</p>}
+        </div>
+      )}
+    </>
   )
 }
 

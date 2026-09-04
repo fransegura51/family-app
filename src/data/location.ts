@@ -4,6 +4,7 @@ import type {
   AutomationTriggerType,
   LocationConsent,
   LocationPlace,
+  LocationPlaceVisit,
   MemberLocation,
   MemberLocationPoint,
 } from '@/domain/types'
@@ -144,6 +145,64 @@ export async function listMemberLocationHistory(memberId: string): Promise<Membe
     latitude: r.latitude,
     longitude: r.longitude,
     recordedAt: r.recorded_at,
+  }))
+}
+
+// ---------------------------------------------------------------------
+// Historial de sitios visitados (Skill 23/28) — ver migración
+// 0058_place_visits: a diferencia del rastro GPS en crudo (24h), esto
+// se conserva 90 días porque es mucho menos sensible (una fila por
+// parada real, no coordenadas cada pocos segundos).
+// ---------------------------------------------------------------------
+
+export async function recordPlaceVisit(input: {
+  memberId: string
+  placeName: string
+  latitude: number
+  longitude: number
+  arrivedAt: string
+}): Promise<string> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase
+    .from('member_place_visits')
+    .insert({
+      family_id: familyId,
+      member_id: input.memberId,
+      place_name: input.placeName,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      arrived_at: input.arrivedAt,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function closePlaceVisit(id: string, leftAt: string): Promise<void> {
+  const { error } = await supabase.from('member_place_visits').update({ left_at: leftAt }).eq('id', id)
+  if (error) throw error
+}
+
+// Historial de todos los miembros de la familia entre dos fechas (para
+// filtrar por día/semana/mes) — más reciente primero.
+export async function listPlaceVisits(from: string, to: string): Promise<LocationPlaceVisit[]> {
+  const { data, error } = await supabase
+    .from('member_place_visits')
+    .select('id, family_id, member_id, place_name, latitude, longitude, arrived_at, left_at')
+    .gte('arrived_at', from)
+    .lte('arrived_at', to)
+    .order('arrived_at', { ascending: false })
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    memberId: r.member_id,
+    placeName: r.place_name,
+    latitude: r.latitude,
+    longitude: r.longitude,
+    arrivedAt: r.arrived_at,
+    leftAt: r.left_at,
   }))
 }
 

@@ -245,6 +245,23 @@ export interface MemberLocationPoint {
   recordedAt: string
 }
 
+// Historial de SITIOS visitados (no el rastro GPS en crudo, que se
+// purga a las 24h por privacidad — ver MemberLocationPoint) — una fila
+// por parada real, con el nombre del sitio ya reconocido (lugar
+// guardado por la familia, o buscado automáticamente en el mapa).
+// Petición real: "un desplegable con los sitios en los que ha estado
+// cada día... el historial por día, semana o mes".
+export interface LocationPlaceVisit {
+  id: string
+  familyId: string
+  memberId: string
+  placeName: string
+  latitude: number
+  longitude: number
+  arrivedAt: string
+  leftAt: string | null
+}
+
 export interface AutomationRule {
   id: string
   familyId: string

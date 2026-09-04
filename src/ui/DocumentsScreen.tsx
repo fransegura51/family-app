@@ -33,6 +33,7 @@ export function DocumentsScreen() {
   const [expandedMember, setExpandedMember] = useState<string | null>(null)
   const [addingCategory, setAddingCategory] = useState(false)
   const [addingMember, setAddingMember] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   function reload() {
     setLoading(true)
@@ -102,7 +103,6 @@ export function DocumentsScreen() {
                   documents={catDocs}
                   expandedMember={expandedMember}
                   onSelectMember={setExpandedMember}
-                  category={catName}
                   addingMember={addingMember}
                   onToggleAddingMember={() => setAddingMember((v) => !v)}
                   onDelete={handleDelete}
@@ -128,7 +128,6 @@ export function DocumentsScreen() {
                 documents={documents.filter((d) => !d.category?.trim())}
                 expandedMember={expandedMember}
                 onSelectMember={setExpandedMember}
-                category=""
                 addingMember={addingMember}
                 onToggleAddingMember={() => setAddingMember((v) => !v)}
                 onDelete={handleDelete}
@@ -158,6 +157,41 @@ export function DocumentsScreen() {
           )}
         </div>
       </div>
+
+      {/* Antes había que entrar en la carpeta de la persona para
+          subirle algo — petición real: "que se pueda elegir desde el
+          botón flotante a dónde se sube, a Casa Jennifer, a Casa Eric,
+          a Familia Paco o donde sea", en vez de tener un formulario
+          repetido dentro de cada carpeta. Un único botón, y el destino
+          (categoría + persona) se elige en el propio formulario. */}
+      <button type="button" className="screen-fab" onClick={() => setUploading(true)}>
+        + Subir foto
+      </button>
+
+      {uploading && (
+        <div className="modal-overlay" onClick={() => setUploading(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Subir documento
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setUploading(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <AddDocumentForm
+              members={members}
+              categories={sortedCategoryNames}
+              defaultCategory={expandedCategory && expandedCategory !== UNCATEGORIZED ? expandedCategory : ''}
+              defaultMemberId={expandedMember && expandedMember !== UNSPECIFIED ? expandedMember : ''}
+              onAdded={() => {
+                setUploading(false)
+                reload()
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -167,7 +201,6 @@ function MemberFolders({
   documents,
   expandedMember,
   onSelectMember,
-  category,
   addingMember,
   onToggleAddingMember,
   onDelete,
@@ -177,7 +210,6 @@ function MemberFolders({
   documents: MemberDocument[]
   expandedMember: string | null
   onSelectMember: (id: string | null) => void
-  category: string
   addingMember: boolean
   onToggleAddingMember: () => void
   onDelete: (doc: MemberDocument) => void
@@ -218,11 +250,6 @@ function MemberFolders({
                     <DocumentRow key={doc.id} doc={doc} onDelete={() => onDelete(doc)} />
                   ))}
                   {memberDocs.length === 0 && <p className="muted">Sin documentos todavía.</p>}
-                  <AddDocumentForm
-                    memberId={f.id === UNSPECIFIED ? null : f.id}
-                    category={category}
-                    onAdded={onReload}
-                  />
                 </div>
               )}
             </div>
@@ -303,16 +330,22 @@ function AddCategoryInline({ onAdded }: { onAdded: () => void }) {
 }
 
 function AddDocumentForm({
-  memberId,
-  category,
+  members,
+  categories,
+  defaultCategory,
+  defaultMemberId,
   onAdded,
 }: {
-  memberId: string | null
-  category: string
+  members: FamilyMember[]
+  categories: string[]
+  defaultCategory: string
+  defaultMemberId: string
   onAdded: () => void
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [title, setTitle] = useState('')
+  const [category, setCategory] = useState(defaultCategory)
+  const [memberId, setMemberId] = useState(defaultMemberId)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -325,7 +358,7 @@ function AddDocumentForm({
     setSaving(true)
     setError(null)
     try {
-      await uploadMemberDocument({ memberId, file, title, category })
+      await uploadMemberDocument({ memberId: memberId || null, file, title, category })
       setFile(null)
       setTitle('')
       onAdded()
@@ -337,13 +370,34 @@ function AddDocumentForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Subir documento</h2>
+    <form onSubmit={handleSubmit} className="member-form">
       <label>Archivo</label>
       <FileOrPdfPicker file={file} onChange={setFile} />
       <label>
         Título
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="DNI" required />
+      </label>
+      <label>
+        A qué carpeta (categoría)
+        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">Sin categoría</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        A quién
+        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+          <option value="">Sin especificar</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
       </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>

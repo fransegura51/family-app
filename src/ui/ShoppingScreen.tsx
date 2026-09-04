@@ -1259,24 +1259,30 @@ function MemoryTab() {
         Se construye sola: cada vez que guardas el precio de un producto comprado, queda aquí.
       </p>
 
+      {/* Filas estrechas, todo en una línea — mismo estilo que la
+          pestaña Historial (petición real: "que se vea igual que en la
+          pestaña de historial... que se vea todo en una línea"). El
+          detalle que antes iba en una segunda línea (cada cuántos días,
+          media/mín/máx…) se mueve al title (tooltip al mantener
+          pulsado/pasar el ratón) para no ensanchar la fila. */}
       <h2 className="section-title">Sugerencias para la próxima compra</h2>
-      <div className="event-list">
+      <div className="price-row-list">
         {suggestions.map(({ product, stats }) => (
-          <div key={product.id} className="card task-card">
-            <div className="task-card-main">
-              <strong>{product.displayName}</strong>
-              <p className="muted">
-                Sueles comprarlo cada {Math.round(stats!.avgDaysBetween!)} días · última vez {stats!.lastDate} ·{' '}
-                {stats!.lastPrice.toFixed(2)} €/ud
-              </p>
-            </div>
+          <div
+            key={product.id}
+            className="price-row"
+            title={`Sueles comprarlo cada ${Math.round(stats!.avgDaysBetween!)} días · última vez ${stats!.lastDate}`}
+          >
+            <span className="price-row-name">{product.displayName}</span>
+            <span className="price-row-price">{stats!.lastPrice.toFixed(2)} €/ud</span>
             <button
               type="button"
-              className="task-toggle"
+              className="link-button"
               disabled={added.has(product.id)}
               onClick={() => handleAddSuggestion(product)}
+              title="Añadir a la lista de la compra"
             >
-              {added.has(product.id) ? '✓ En la lista' : 'Añadir a la lista'}
+              {added.has(product.id) ? '✓' : '🛒'}
             </button>
           </div>
         ))}
@@ -1284,17 +1290,15 @@ function MemoryTab() {
       </div>
 
       <h2 className="section-title">Historial por producto</h2>
-      <div className="event-list">
+      <div className="price-row-list">
         {withStats.map(({ product, stats }) => (
-          <div key={product.id} className="card task-card">
-            <div className="task-card-main">
-              <strong>{product.displayName}</strong>
-              <p className="muted">
-                {stats!.count} {stats!.count === 1 ? 'compra' : 'compras'} · último {stats!.lastPrice.toFixed(2)}{' '}
-                €/ud · media {stats!.avgPrice.toFixed(2)} €/ud · mín {stats!.minPrice.toFixed(2)} €/ud · máx{' '}
-                {stats!.maxPrice.toFixed(2)} €/ud
-              </p>
-            </div>
+          <div
+            key={product.id}
+            className="price-row"
+            title={`${stats!.count} ${stats!.count === 1 ? 'compra' : 'compras'} · media ${stats!.avgPrice.toFixed(2)} €/ud · mín ${stats!.minPrice.toFixed(2)} €/ud · máx ${stats!.maxPrice.toFixed(2)} €/ud`}
+          >
+            <span className="price-row-name">{product.displayName}</span>
+            <span className="price-row-price">{stats!.lastPrice.toFixed(2)} €/ud</span>
             {/* Petición real: poder añadirlo a la lista directamente desde
                 el historial, no solo desde las sugerencias de arriba. */}
             <button
@@ -1302,8 +1306,9 @@ function MemoryTab() {
               className="link-button"
               disabled={added.has(product.id)}
               onClick={() => handleAddSuggestion(product)}
+              title="Añadir a la lista de la compra"
             >
-              {added.has(product.id) ? '✓ En la lista' : 'Añadir a la lista'}
+              {added.has(product.id) ? '✓' : '🛒'}
             </button>
           </div>
         ))}

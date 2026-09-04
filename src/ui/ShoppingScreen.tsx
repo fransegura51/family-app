@@ -5,6 +5,7 @@ import {
   completeShoppingTrip,
   createShoppingTrip,
   deleteShoppingItem,
+  deleteShoppingItems,
   deleteShoppingTrip,
   listShoppingItems,
   listShoppingTrips,
@@ -236,17 +237,22 @@ function ShoppingListTab() {
   const bought = items.filter((i) => i.status === 'comprado')
   const total = pending.length + bought.length
 
+  // Los marcados con ✓ ya NO desaparecen de aquí — se quedan tachados
+  // en su sitio hasta "Finalizar compra" (petición real: poder seguir
+  // viendo lo que ya se cogió mientras se sigue comprando lo demás).
+  const visible = items.filter((i) => i.status === 'pendiente' || i.status === 'comprado')
+
   // Agrupa "detallado por tienda" — en Mercadona esto, en la pescadería
   // lo otro — para verlo separado al programar/hacer la compra. Los
   // productos sin tienda asignada caen en un grupo aparte, al final.
-  const pendingByStore = new Map<string, ShoppingItem[]>()
-  for (const item of pending) {
+  const itemsByStore = new Map<string, ShoppingItem[]>()
+  for (const item of visible) {
     const key = item.store || 'Sin tienda'
-    const list = pendingByStore.get(key) ?? []
+    const list = itemsByStore.get(key) ?? []
     list.push(item)
-    pendingByStore.set(key, list)
+    itemsByStore.set(key, list)
   }
-  const storeGroups = [...pendingByStore.entries()].sort((a, b) => {
+  const storeGroups = [...itemsByStore.entries()].sort((a, b) => {
     if (a[0] === 'Sin tienda') return 1
     if (b[0] === 'Sin tienda') return -1
     return a[0].localeCompare(b[0])
@@ -258,6 +264,17 @@ function ShoppingListTab() {
       reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo actualizar')
+    }
+  }
+
+  // Vacía de golpe una tienda entera (comprados y sin comprar) al
+  // terminar de hacer la compra allí.
+  async function finalizePurchase(storeItems: ShoppingItem[]) {
+    try {
+      await deleteShoppingItems(storeItems.map((i) => i.id))
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo finalizar la compra')
     }
   }
 
@@ -291,9 +308,17 @@ function ShoppingListTab() {
             onDeleted={reload}
             onReordered={reload}
           />
+          {/* Los comprados se quedan tachados a la vista; solo se
+              limpia la tienda entera al terminar de comprar allí. */}
+          <ConfirmButton
+            className="link-button shopping-finish-button"
+            label="✅ Finalizar compra"
+            confirmLabel="Sí, finalizar"
+            onConfirm={() => finalizePurchase(storeItems)}
+          />
         </div>
       ))}
-      {pending.length === 0 && <p className="muted">Nada pendiente.</p>}
+      {visible.length === 0 && <p className="muted">Nada pendiente.</p>}
 
       {/* Petición real: "pondría las tiendas que Pepa reconoce por voz
           debajo de la lista de pendientes" — antes iba justo encima,
@@ -611,10 +636,16 @@ function DraggableStoreGroup({
 
   return (
     <div className="event-list">
-      {order.map((item) => (
+      {order.map((item) => {
+        const done = item.status === 'comprado'
+        return (
         <div
           key={item.id}
-          className={'card task-card' + (draggingId === item.id ? ' shopping-item-dragging' : '')}
+          className={
+            'card task-card' +
+            (draggingId === item.id ? ' shopping-item-dragging' : '') +
+            (done ? ' shopping-item-done' : '')
+          }
           style={draggingId === item.id ? { transform: `translateY(${dragOffset}px)` } : undefined}
         >
           {!shoppingMode && (
@@ -643,7 +674,15 @@ function DraggableStoreGroup({
               })()}
             </p>
           </div>
-          <button type="button" className="task-toggle" onClick={() => onSetStatus(item.id, 'comprado')} aria-label="Comprado">
+          {/* Marcar/desmarcar comprado — ya NO borra el producto de la
+              lista, solo lo tacha (petición real: seguir viéndolo
+              mientras se sigue comprando el resto). */}
+          <button
+            type="button"
+            className={'task-toggle' + (done ? ' task-toggle-done' : '')}
+            onClick={() => onSetStatus(item.id, done ? 'pendiente' : 'comprado')}
+            aria-label={done ? 'Marcar como pendiente' : 'Comprado'}
+          >
             ✓
           </button>
           {!shoppingMode && (
@@ -655,7 +694,8 @@ function DraggableStoreGroup({
             />
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

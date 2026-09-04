@@ -776,6 +776,21 @@ select {
   opacity: 0.95;
 }
 
+/* Producto marcado con ✓ durante la compra: se queda a la vista, solo
+   apagado y tachado, hasta que se "Finalice" la tienda entera. */
+.shopping-item-done {
+  opacity: 0.55;
+}
+
+.shopping-item-done .task-card-main strong {
+  text-decoration: line-through;
+}
+
+.shopping-finish-button {
+  display: block;
+  margin: 8px 0 20px;
+}
+
 .task-toggle {
   padding: 10px 16px;
   border-radius: 12px;

@@ -111,6 +111,16 @@ export async function deleteShoppingItem(id: string): Promise<void> {
   if (error) throw error
 }
 
+// "Finalizar compra": vacía de golpe todos los productos de una tienda
+// (comprados y sin comprar) — petición real: mientras se compra, los
+// marcados con ✓ se quedan tachados en la lista en vez de desaparecer,
+// y solo se limpian todos a la vez al terminar.
+export async function deleteShoppingItems(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const { error } = await supabase.from('shopping_items').delete().in('id', ids)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------
 // Compras programadas (Skill 08)
 // ---------------------------------------------------------------------

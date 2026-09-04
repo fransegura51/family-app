@@ -877,6 +877,24 @@ textarea {
   gap: 12px;
 }
 
+/* Ficha de contacto más compacta, con el cumpleaños pegado al resto
+   de datos en vez de con el hueco de los márgenes por defecto de un
+   <p> — y sin que un email largo (sin espacios donde partir) se salga
+   de su hueco y quede tapado por los botones de al lado (bug real,
+   captura de la usuaria). */
+.contact-card {
+  align-items: flex-start;
+}
+
+.contact-card-detail {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.contact-card-birthday {
+  padding: 4px 0;
+}
+
 .inline-form-row {
   display: flex;
   align-items: center;

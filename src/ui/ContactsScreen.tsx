@@ -3,7 +3,7 @@ import { addContact, deleteContact, listContacts, updateContact, updateContactBi
 import { isContactPickerSupported, pickContacts, type PickedContact } from '@/services/contactPicker'
 import { parseIcs } from '@/domain/icsParser'
 import { parseVcf } from '@/domain/vcardParser'
-import { ConfirmButton } from '@/ui/ConfirmButton'
+import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
 
@@ -174,15 +174,15 @@ function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: (
   }
 
   return (
-    <div className="card task-card">
+    <div className="card task-card contact-card">
       <div className="task-card-main">
         <strong>{c.name}</strong>
-        <p className="muted">
+        <p className="muted contact-card-detail">
           {c.category}
           {c.phone && ` · ${c.phone}`}
           {c.email && ` · ${c.email}`}
         </p>
-        {c.notes && <p className="muted">{c.notes}</p>}
+        {c.notes && <p className="muted contact-card-detail">{c.notes}</p>}
         {editingBirthday ? (
           <div className="inline-fields">
             <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
@@ -194,23 +194,28 @@ function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: (
             </button>
           </div>
         ) : (
-          <button type="button" className="link-button" onClick={() => setEditingBirthday(true)}>
+          <button type="button" className="link-button contact-card-birthday" onClick={() => setEditingBirthday(true)}>
             {c.birthDate ? `🎂 ${formatBirthDate(c.birthDate)}` : '🎂 Añadir cumpleaños'}
           </button>
-        )}
-        {c.phone && (
-          <a href={`tel:${c.phone}`} className="link-button">
-            Llamar
-          </a>
         )}
       </div>
       {/* Antes solo se podía borrar o llamar — si el teléfono estaba mal
           o quería cambiar la categoría, había que borrar y volver a
-          crear el contacto entero (bug/petición real). */}
-      <button type="button" className="link-button" onClick={() => setEditingAll(true)}>
-        Editar
-      </button>
-      <ConfirmButton label="Eliminar" onConfirm={() => deleteContact(c.id).then(onChanged)} />
+          crear el contacto entero (bug/petición real). Los tres juntos
+          como iconos, en vez de repartidos en texto (petición real:
+          "los tres botones de comandos que sustituiría el texto por
+          los símbolos habituales"). */}
+      <div className="task-card-actions">
+        {c.phone && (
+          <a href={`tel:${c.phone}`} className="link-button" aria-label="Llamar">
+            📞
+          </a>
+        )}
+        <button type="button" className="link-button" onClick={() => setEditingAll(true)} aria-label="Editar">
+          ✏️
+        </button>
+        <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar" onConfirm={() => deleteContact(c.id).then(onChanged)} />
+      </div>
     </div>
   )
 }

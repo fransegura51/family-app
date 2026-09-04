@@ -1046,6 +1046,19 @@ textarea {
   }
 }
 
+/* Petición real: "en vez de abrir una ventana, quiero que se abra
+   debajo y se siga viendo el calendario de arriba, para poder ir
+   rápidamente a cambiar de día tocando arriba" — el día ya no es una
+   ventana emergente sobre el mes, es una tarjeta fija justo debajo de
+   la cuadrícula, que cambia de contenido al tocar otro día sin taparlo. */
+.day-panel {
+  background: var(--card-bg, white);
+  border: 1px solid #eee;
+  border-radius: 16px;
+  padding: 20px;
+  margin-top: 12px;
+}
+
 .modal-header {
   display: flex;
   align-items: center;

@@ -143,17 +143,17 @@ export function CalendarScreen() {
   const [visibleYear, setVisibleYear] = useState(today.getFullYear())
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
   const [selectedDate, setSelectedDate] = useState(toDateStr(today))
-  const [dayModalOpen, setDayModalOpen] = useState(false)
   const [holidayDates, setHolidayDates] = useState<Set<string>>(new Set())
 
   // Publica qué día tienes abierto para que "Apunta por voz" (vive fuera
   // de esta pantalla) lo use como fecha por defecto en vez de caer
-  // siempre en hoy cuando no dices ninguna fecha — se limpia al cerrar
-  // la ventana del día o al salir de Calendario.
+  // siempre en hoy cuando no dices ninguna fecha — se limpia al salir
+  // de Calendario. El día ya no es una ventana que se pueda cerrar (es
+  // una tarjeta fija bajo el mes), así que se publica siempre.
   useEffect(() => {
-    setSelectedCalendarDate(dayModalOpen ? selectedDate : null)
+    setSelectedCalendarDate(selectedDate)
     return () => setSelectedCalendarDate(null)
-  }, [dayModalOpen, selectedDate])
+  }, [selectedDate])
 
   function reload() {
     setLoading(true)
@@ -200,7 +200,6 @@ export function CalendarScreen() {
         setVisibleYear(y)
         setVisibleMonth(m - 1)
         setSelectedDate(date)
-        setDayModalOpen(true)
         setView('Mes')
       }
     }
@@ -526,10 +525,7 @@ export function CalendarScreen() {
                     (day.isToday ? ' month-grid-day-today' : '') +
                     (selectedDate === day.dateStr ? ' month-grid-day-selected' : '')
                   }
-                  onClick={() => {
-                    setSelectedDate(day.dateStr)
-                    setDayModalOpen(true)
-                  }}
+                  onClick={() => setSelectedDate(day.dateStr)}
                 >
                   <span>{day.day}</span>
                   <span className="month-grid-dots">
@@ -542,41 +538,39 @@ export function CalendarScreen() {
             })}
           </div>
 
-          {dayModalOpen && (
-            <DayModal
-              selectedDate={selectedDate}
-              events={selectedDayEvents}
-              allEvents={events}
-              externalEvents={selectedDayExternalEvents}
-              birthdays={selectedDayBirthdays}
-              feedById={feedById}
-              members={members}
-              editingId={editingId}
-              onEdit={setEditingId}
-              onCancelEdit={() => setEditingId(null)}
-              onDelete={handleDelete}
-              onDeleteOccurrence={handleDeleteOccurrence}
-              onCompleteEvent={handleCompleteEvent}
-              onUncompleteEvent={handleUncompleteEvent}
-              eventCompletions={eventCompletions}
-              onDismissExternalOccurrence={handleDismissExternalOccurrence}
-              onDismissExternalSeries={handleDismissExternalSeries}
-              onCompleteExternal={handleCompleteExternal}
-              onUncompleteExternal={handleUncompleteExternal}
-              externalCompletedSet={externalCompletedSet}
-              onEventChanged={() => {
-                setEditingId(null)
-                reload()
-              }}
-              onAdded={reload}
-              onClose={() => {
-                setDayModalOpen(false)
-                setEditingId(null)
-              }}
-              onNavigateDay={changeSelectedDate}
-              swipeHandlers={daySwipe}
-            />
-          )}
+          {/* Ya no es una ventana emergente — se queda fija debajo del
+              mes, cambiando de contenido al tocar otro día, para poder
+              ir de un día a otro sin que nada tape la cuadrícula
+              (petición real). */}
+          <DayModal
+            selectedDate={selectedDate}
+            events={selectedDayEvents}
+            allEvents={events}
+            externalEvents={selectedDayExternalEvents}
+            birthdays={selectedDayBirthdays}
+            feedById={feedById}
+            members={members}
+            editingId={editingId}
+            onEdit={setEditingId}
+            onCancelEdit={() => setEditingId(null)}
+            onDelete={handleDelete}
+            onDeleteOccurrence={handleDeleteOccurrence}
+            onCompleteEvent={handleCompleteEvent}
+            onUncompleteEvent={handleUncompleteEvent}
+            eventCompletions={eventCompletions}
+            onDismissExternalOccurrence={handleDismissExternalOccurrence}
+            onDismissExternalSeries={handleDismissExternalSeries}
+            onCompleteExternal={handleCompleteExternal}
+            onUncompleteExternal={handleUncompleteExternal}
+            externalCompletedSet={externalCompletedSet}
+            onEventChanged={() => {
+              setEditingId(null)
+              reload()
+            }}
+            onAdded={reload}
+            onNavigateDay={changeSelectedDate}
+            swipeHandlers={daySwipe}
+          />
         </>
       ) : (
         <>
@@ -675,7 +669,6 @@ function DayModal({
   externalCompletedSet,
   onEventChanged,
   onAdded,
-  onClose,
   onNavigateDay,
   swipeHandlers,
 }: {
@@ -701,7 +694,6 @@ function DayModal({
   externalCompletedSet: Set<string>
   onEventChanged: () => void
   onAdded: () => void
-  onClose: () => void
   onNavigateDay: (deltaDays: number) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
 }) {
@@ -801,38 +793,34 @@ function DayModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-sheet"
-        onClick={(e) => e.stopPropagation()}
-        onTouchStart={swipeHandlers.onTouchStart}
-        onTouchEnd={swipeHandlers.onTouchEnd}
-      >
-        <div className="modal-header">
-          {/* Arrastrar con el dedo cambia de día (petición real); estas
-              flechas hacen lo mismo con un toque, para quien prefiera
-              tocar en vez de deslizar. */}
-          <div className="month-nav" style={{ margin: 0 }}>
-            <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
-              ‹
-            </button>
-            <h2 className="section-title" style={{ margin: 0 }}>
-              {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-              })}
-            </h2>
-            <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
-              ›
-            </button>
-          </div>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
-            ✕
+    <div className="day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+      <div className="modal-header">
+        {/* Arrastrar con el dedo cambia de día (petición real); estas
+            flechas hacen lo mismo con un toque, para quien prefiera
+            tocar en vez de deslizar. Ya no hay botón de cerrar — el
+            día ya no es una ventana emergente, es una tarjeta fija
+            debajo del mes (petición real: "en vez de abrir una
+            ventana, que se abra debajo y se siga viendo el
+            calendario de arriba, para poder cambiar de día rápido
+            tocando arriba"). */}
+        <div className="month-nav" style={{ margin: 0 }}>
+          <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
+            ‹
+          </button>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+            })}
+          </h2>
+          <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
+            ›
           </button>
         </div>
+      </div>
 
-        {entries.length === 0 && <p className="muted">Nada este día.</p>}
+      {entries.length === 0 && <p className="muted">Nada este día.</p>}
 
         {allDayEntries.length > 0 && (
           <>
@@ -868,8 +856,7 @@ function DayModal({
             evento (bug real: "al principio estaba hecho... con algún
             arreglo se ha roto" — un cambio anterior reutilizó por error
             el nombre `events` ya usado para el día). */}
-        <AddEventForm key={selectedDate} members={members} events={allEvents} onAdded={onAdded} defaultDate={selectedDate} />
-      </div>
+      <AddEventForm key={selectedDate} members={members} events={allEvents} onAdded={onAdded} defaultDate={selectedDate} />
     </div>
   )
 }

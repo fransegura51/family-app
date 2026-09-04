@@ -691,10 +691,17 @@ select {
   font-size: 12px;
 }
 
+/* Petición real: "el saludo... quiero que sea el doble de grande, del
+   mismo tamaño que donde dice qué tenemos hoy" — mismo font-size
+   explícito en el saludo y en el título para que se vean igual de
+   grandes de verdad, en vez de depender del tamaño de h1 por defecto
+   del navegador. */
 .home-greeting {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 28px;
+  font-weight: 600;
 }
 
 /* Avatar de Pepa junto al saludo de Inicio — petición real: "es la
@@ -706,7 +713,8 @@ select {
 }
 
 .home-header h1 {
-  margin-bottom: 2px;
+  font-size: 28px;
+  margin-bottom: 4px;
 }
 
 .home-pepa-avatar {

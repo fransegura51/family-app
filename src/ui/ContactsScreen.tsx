@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 import { addContact, deleteContact, listContacts, updateContact, updateContactBirthDate } from '@/data/contacts'
 import { isContactPickerSupported, pickContacts, type PickedContact } from '@/services/contactPicker'
 import { parseIcs } from '@/domain/icsParser'
+import { parseVcf } from '@/domain/vcardParser'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import type { Contact } from '@/domain/types'
 
@@ -39,6 +40,7 @@ export function ContactsScreen() {
         {contacts.length === 0 && <p className="muted">No hay contactos guardados.</p>}
       </div>
       <ImportContactsForm onAdded={reload} />
+      <ImportVcfContactsForm existingContacts={contacts} onAdded={reload} />
       <ImportIcsBirthdaysForm existingContacts={contacts} onAdded={reload} />
       <AddContactForm existingContacts={contacts} onAdded={reload} />
     </div>
@@ -299,6 +301,139 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
         </>
       )}
       {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+// La Contact Picker API de arriba (ImportContactsForm) solo la
+// soportan Chrome/Edge en Android — en iPhone no existe ese botón.
+// Petición real: "¿se puede hacer algo similar [al de cumpleaños] para
+// poder importar contactos desde el iPhone?" — mismo mecanismo:
+// exportar un archivo (en Contactos del iPhone, o en icloud.com,
+// seleccionar contactos → Compartir/Exportar vCard) y subirlo aquí,
+// con casillas para marcar cuáles dar de alta de golpe.
+interface ContactCandidate {
+  name: string
+  phone: string
+  email: string
+  birthDate: string | null
+  selected: boolean
+}
+
+function ImportVcfContactsForm({ existingContacts, onAdded }: { existingContacts: Contact[]; onAdded: () => void }) {
+  const [candidates, setCandidates] = useState<ContactCandidate[]>([])
+  const [category, setCategory] = useState(CATEGORIES[0])
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError(null)
+    try {
+      const text = await file.text()
+      const parsed = parseVcf(text)
+      const existingNames = new Set(existingContacts.map((c) => c.name.trim().toLowerCase()))
+      const seen = new Set<string>()
+      const list: ContactCandidate[] = []
+      for (const card of parsed) {
+        const key = card.name.trim().toLowerCase()
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        list.push({
+          name: card.name,
+          phone: card.phone ?? '',
+          email: card.email ?? '',
+          birthDate: card.birthDate,
+          selected: !existingNames.has(key),
+        })
+      }
+      list.sort((a, b) => a.name.localeCompare(b.name))
+      if (list.length === 0) setError('No se ha encontrado ningún contacto en ese archivo.')
+      setCandidates(list)
+    } catch {
+      setError('No se pudo leer ese archivo — asegúrate de que es un .vcf exportado de Contactos.')
+    }
+  }
+
+  function toggle(i: number) {
+    setCandidates((prev) => prev.map((c, idx) => (idx === i ? { ...c, selected: !c.selected } : c)))
+  }
+
+  async function handleImport() {
+    setSaving(true)
+    setError(null)
+    try {
+      for (const c of candidates) {
+        if (!c.selected) continue
+        const existing = existingContacts.find((ec) => ec.name.trim().toLowerCase() === c.name.trim().toLowerCase())
+        if (existing) {
+          await updateContact(existing.id, {
+            name: existing.name,
+            category: existing.category ?? category,
+            phone: existing.phone || c.phone,
+            email: existing.email || c.email,
+            notes: existing.notes ?? '',
+            birthDate: existing.birthDate ?? c.birthDate,
+          })
+        } else {
+          await addContact({ name: c.name, category, phone: c.phone, email: c.email, notes: '', birthDate: c.birthDate })
+        }
+      }
+      setCandidates([])
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron importar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const selectedCount = candidates.filter((c) => c.selected).length
+
+  return (
+    <div className="card member-form">
+      <h2>Importar contactos desde el móvil (.vcf)</h2>
+      <p className="muted" style={{ fontSize: 13 }}>
+        En Contactos del iPhone (o en icloud.com → Contactos), selecciona los que quieras → Compartir/Exportar vCard,
+        y sube aquí el archivo. Se añaden todos de golpe, en vez de uno a uno.
+      </p>
+      <input type="file" accept=".vcf,text/vcard" onChange={handleFile} />
+      {error && <p className="error">{error}</p>}
+      {candidates.length > 0 && (
+        <>
+          <p className="muted">
+            {candidates.length} contactos encontrados — desmarca los que no quieras añadir:
+          </p>
+          <label>
+            Categoría (para los nuevos)
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="event-list">
+            {candidates.map((c, i) => (
+              <label key={`${c.name}-${i}`} className="checkbox-label">
+                <input type="checkbox" checked={c.selected} onChange={() => toggle(i)} />
+                {c.name} {c.phone && `· ${c.phone}`}
+              </label>
+            ))}
+          </div>
+          <div className="form-actions">
+            <button type="button" onClick={handleImport} disabled={saving || selectedCount === 0}>
+              {saving ? 'Importando…' : `Importar ${selectedCount}`}
+            </button>
+            <button type="button" className="link-button" onClick={() => setCandidates([])}>
+              Cancelar
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

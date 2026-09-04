@@ -173,7 +173,6 @@ function ShoppingListTab() {
   const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shoppingMode, setShoppingMode] = useState(false)
-  const [showOthers, setShowOthers] = useState(false)
   // Botón flotante "Añadir producto", tocable desde cualquier parte de
   // la pestaña — misma idea ya aplicada a Contactos y Calendario,
   // petición real: "en compras lo mismo, botón flotante Añadir
@@ -235,7 +234,6 @@ function ShoppingListTab() {
 
   const pending = items.filter((i) => i.status === 'pendiente')
   const bought = items.filter((i) => i.status === 'comprado')
-  const others = items.filter((i) => i.status === 'omitido' || i.status === 'trasladado')
   const total = pending.length + bought.length
 
   // Agrupa "detallado por tienda" — en Mercadona esto, en la pescadería
@@ -333,27 +331,6 @@ function ShoppingListTab() {
             />
           </div>
         </div>
-      )}
-
-      {others.length > 0 && (
-        <>
-          <button type="button" className="link-button section-title" onClick={() => setShowOthers(!showOthers)}>
-            {showOthers ? 'Ocultar' : `Ver trasladados / ya tengo (${others.length})`}
-          </button>
-          {showOthers &&
-            others.map((item) => (
-              <div key={item.id} className="card task-card">
-                <div className="task-card-main">
-                  <strong>{item.name}</strong>
-                  <p className="muted">{item.status}</p>
-                </div>
-                <button type="button" className="link-button" onClick={() => setStatus(item.id, 'pendiente')}>
-                  Volver a pendiente
-                </button>
-                <ConfirmButton label="Eliminar" onConfirm={() => deleteShoppingItem(item.id).then(reload)} />
-              </div>
-            ))}
-        </>
       )}
     </div>
   )
@@ -666,19 +643,16 @@ function DraggableStoreGroup({
               })()}
             </p>
           </div>
-          <button type="button" className="task-toggle" onClick={() => onSetStatus(item.id, 'comprado')}>
-            ✓ Comprado
+          <button type="button" className="task-toggle" onClick={() => onSetStatus(item.id, 'comprado')} aria-label="Comprado">
+            ✓
           </button>
           {!shoppingMode && (
-            <>
-              <button type="button" className="link-button" onClick={() => onSetStatus(item.id, 'trasladado')}>
-                Próxima compra
-              </button>
-              <button type="button" className="link-button" onClick={() => onSetStatus(item.id, 'omitido')}>
-                Ya tengo
-              </button>
-              <ConfirmButton label="Eliminar" onConfirm={() => deleteShoppingItem(item.id).then(onDeleted)} />
-            </>
+            <ConfirmIconButton
+              icon="✕"
+              className="link-button"
+              ariaLabel="Eliminar"
+              onConfirm={() => deleteShoppingItem(item.id).then(onDeleted)}
+            />
           )}
         </div>
       ))}

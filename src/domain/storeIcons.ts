@@ -1,20 +1,28 @@
+import superDumboLogo from '@/assets/store-logos/superdumbo.png'
+
 // Icono por tienda para que se reconozcan de un vistazo en vez de solo
 // el nombre (petición real: "en vez de ponerme Aldi con la x, me lo
 // pones con el nombre, pero con el logotipo también"). Para cadenas con
 // logo real se referencia en vivo el favicon de su propia web (no se
 // descarga ni se guarda ningún logo aquí, solo la URL pública de
-// siempre — como hace el propio navegador). Para tiendas sin una marca
+// siempre — como hace el propio navegador). Para cadenas regionales sin
+// favicon fiable (p. ej. superDumbo) se usa un logo real que el usuario
+// ha dado, empaquetado en la propia app. Para tiendas sin una marca
 // única (el chino de turno, una ferretería...) se usa un icono
 // relacionado en su lugar.
 interface StoreIconLogo {
   kind: 'logo'
   domain: string
 }
+interface StoreIconImage {
+  kind: 'image'
+  src: string
+}
 interface StoreIconEmoji {
   kind: 'emoji'
   icon: string
 }
-export type StoreIcon = StoreIconLogo | StoreIconEmoji
+export type StoreIcon = StoreIconLogo | StoreIconImage | StoreIconEmoji
 
 // Dominio real de cada cadena, normalizado (sin acentos/mayúsculas) para
 // comparar — lista de las principales cadenas españolas, para que
@@ -37,6 +45,15 @@ const STORE_LOGOS: Record<string, string> = {
   alcampo: 'alcampo.es',
   dia: 'dia.es',
   spar: 'spar.es',
+}
+
+// Cadenas regionales cuyo logo real ha dado el usuario directamente
+// (petición real: "este es el logo de Super Dumbo, pónlo también en su
+// tienda") porque no tienen un favicon fiable que se pueda referenciar
+// en vivo.
+const STORE_IMAGE_LOGOS: Record<string, string> = {
+  superdumbo: superDumboLogo,
+  'super dumbo': superDumboLogo,
 }
 
 // Para tiendas sin una marca única reconocible, un icono relacionado en
@@ -67,6 +84,7 @@ function normalizeKey(name: string): string {
 
 export function getStoreIcon(name: string): StoreIcon {
   const key = normalizeKey(name)
+  if (STORE_IMAGE_LOGOS[key]) return { kind: 'image', src: STORE_IMAGE_LOGOS[key] }
   if (STORE_LOGOS[key]) return { kind: 'logo', domain: STORE_LOGOS[key] }
   return { kind: 'emoji', icon: STORE_EMOJIS[key] ?? DEFAULT_EMOJI }
 }

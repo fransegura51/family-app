@@ -684,6 +684,27 @@ select {
   gap: 8px;
 }
 
+/* Avatar de Pepa junto al saludo de Inicio — petición real: "es la
+   protagonista de la aplicación". */
+.home-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.home-header h1 {
+  margin-bottom: 2px;
+}
+
+.home-pepa-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
 .member-avatar {
   border-radius: 50%;
   object-fit: cover;
@@ -1391,6 +1412,7 @@ textarea {
 }
 
 .voice-fab-round {
+  position: relative;
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -1405,6 +1427,36 @@ textarea {
   cursor: pointer;
   padding: 0;
   touch-action: none;
+}
+
+/* Avatar de Pepa en los botones de "preguntar" (petición real:
+   "sustituyas el pollo que has puesto como icono de pepa por este
+   avatar") — llena el círculo, con el destino (📅/🛒) como distintivo
+   pequeño en la esquina. */
+.voice-fab-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+.voice-fab-badge {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* Se arrastra con el dedo para cambiar de sitio en la rejilla 2x2

@@ -1,5 +1,6 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
@@ -1008,7 +1009,18 @@ export function VoiceCapture() {
               onPointerUp={handleButtonDragEnd}
               onPointerCancel={handleButtonDragEnd}
             >
-              {PANEL_INFO[m].icon}
+              {/* Los botones "Pepa" (preguntar) llevan su avatar en vez
+                  del emoji 🐣 — petición real: "sustituyas el pollo que
+                  has puesto como icono de pepa por este avatar" — con
+                  el destino (📅/🛒) como distintivo pequeño encima. */}
+              {kindOf(m) === 'ask' ? (
+                <>
+                  <img src={pepaAvatar} alt="Pepa" className="voice-fab-avatar" />
+                  <span className="voice-fab-badge">{destinationOf(m) === 'calendario' ? '📅' : '🛒'}</span>
+                </>
+              ) : (
+                PANEL_INFO[m].icon
+              )}
             </button>
           )
         })}

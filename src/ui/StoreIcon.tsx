@@ -10,6 +10,17 @@ export function StoreIcon({ name, size = 18 }: { name: string; size?: number }) 
   const icon = getStoreIcon(name)
   const [broken, setBroken] = useState(false)
 
+  if (icon.kind === 'image') {
+    return (
+      <img
+        src={icon.src}
+        alt={name}
+        width={size}
+        height={size}
+        style={{ borderRadius: 4, verticalAlign: 'middle', objectFit: 'cover' }}
+      />
+    )
+  }
   if (icon.kind === 'logo' && !broken) {
     return (
       <img

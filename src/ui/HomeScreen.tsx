@@ -12,6 +12,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ShoppingCartArt, TaskArt } from '@/ui/HomeSlideArt'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
+import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -80,11 +81,19 @@ export function HomeScreen({ profile }: { profile: Profile }) {
   return (
     <div className="screen">
       <CalendarOnboardingModal profileId={profile.id} />
-      <h1>¿Qué tenemos hoy?</h1>
-      <p className="muted home-greeting">
-        {self && <MemberAvatar member={self} size={28} />}
-        Hola, {profile.displayName}
-      </p>
+      {/* Pepa, la protagonista de la app, junto al saludo — petición
+          real: "al lado de qué tenemos hoy y hola Paco, ponme el
+          círculo, el logo de Pepa, la foto de Pepa". */}
+      <div className="home-header">
+        <img src={pepaAvatar} alt="Pepa" className="home-pepa-avatar" />
+        <div>
+          <h1>¿Qué tenemos hoy?</h1>
+          <p className="muted home-greeting">
+            {self && <MemberAvatar member={self} size={28} />}
+            Hola, {profile.displayName}
+          </p>
+        </div>
+      </div>
 
       <PhotoBanner />
 

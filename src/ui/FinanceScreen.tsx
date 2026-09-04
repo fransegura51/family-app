@@ -427,11 +427,19 @@ function ReceiptsTab() {
           tickets todavía (petición real: "aunque estén vacías, me
           creas las carpetas... y con los supermercados que vayamos
           añadiendo, ya le vamos añadiendo más" — de ahí el formulario
-          de abajo para dar de alta una tienda nueva sin salir de aquí). */}
+          de abajo para dar de alta una tienda nueva sin salir de aquí).
+          Se filtran con el mismo selector de arriba (Hoy/Esta
+          semana/Este mes/Este año/Rango) — petición real: "tickets
+          guardados tengo de Mercadona 583, pero son los del mes pasado
+          y los de este... quiero filtrarme solo por los de este mes o
+          por esta semana". */}
       <h2 className="section-title">Tickets guardados</h2>
+      <p className="muted" style={{ marginTop: -8 }}>
+        Se filtran con el selector de arriba ({PRESET_LABELS[rangePreset]}).
+      </p>
       <AddStoreInline onAdded={() => listShoppingStores().then((rows) => setKnownStores(rows.map((s) => s.name)))} />
       <div className="store-folder-grid">
-        {grouped.map(({ store, receipts: storeReceipts, total }) => {
+        {rangeGrouped.map(({ store, receipts: storeReceipts, total }) => {
           const isOpen = expandedStore === store
           return (
             <div key={store} className="store-folder">
@@ -511,6 +519,14 @@ function rangeForPreset(preset: SpendRangePreset, customFrom: string, customTo: 
   return [customFrom || todayStr, customTo || todayStr]
 }
 
+const PRESET_LABELS: Record<SpendRangePreset, string> = {
+  dia: 'Hoy',
+  semana: 'Esta semana',
+  mes: 'Este mes',
+  año: 'Este año',
+  rango: 'Rango',
+}
+
 // Petición real: "que se pueda ver por cada mes lo que he gastado...
 // por meses, por años, por día, por semana o por rango de fecha que
 // yo le ponga" — filtro de fecha con presets rápidos más un rango a
@@ -547,14 +563,6 @@ function ReceiptSpendSummary({
     return canonicalStoreName(r.store, knownStores) === selectedStore
   })
   const total = filtered.reduce((sum, r) => sum + (r.totalAmount ?? 0), 0)
-
-  const PRESET_LABELS: Record<SpendRangePreset, string> = {
-    dia: 'Hoy',
-    semana: 'Esta semana',
-    mes: 'Este mes',
-    año: 'Este año',
-    rango: 'Rango',
-  }
 
   return (
     <div className="card event-card">

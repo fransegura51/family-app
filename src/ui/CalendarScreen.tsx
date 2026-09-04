@@ -526,6 +526,7 @@ export function CalendarScreen() {
             <DayModal
               selectedDate={selectedDate}
               events={selectedDayEvents}
+              allEvents={events}
               externalEvents={selectedDayExternalEvents}
               birthdays={selectedDayBirthdays}
               feedById={feedById}
@@ -634,6 +635,7 @@ interface AgendaEntry {
 function DayModal({
   selectedDate,
   events,
+  allEvents,
   externalEvents,
   birthdays,
   feedById,
@@ -659,6 +661,7 @@ function DayModal({
 }: {
   selectedDate: string
   events: CalendarEvent[]
+  allEvents: CalendarEvent[]
   externalEvents: ExternalCalendarEvent[]
   birthdays: { name: string; color: string }[]
   feedById: Map<string, ExternalCalendarFeed>
@@ -838,7 +841,14 @@ function DayModal({
           </div>
         ))}
 
-        <AddEventForm key={selectedDate} members={members} events={events} onAdded={onAdded} defaultDate={selectedDate} />
+        {/* events={allEvents}, no events={events} — este último es solo
+            el de ESTE día (para la agenda de arriba); el autocompletado
+            de título necesita el histórico completo, si no "Colegio
+            cerrado" solo se sugiere en días que YA tuvieran ese mismo
+            evento (bug real: "al principio estaba hecho... con algún
+            arreglo se ha roto" — un cambio anterior reutilizó por error
+            el nombre `events` ya usado para el día). */}
+        <AddEventForm key={selectedDate} members={members} events={allEvents} onAdded={onAdded} defaultDate={selectedDate} />
       </div>
     </div>
   )

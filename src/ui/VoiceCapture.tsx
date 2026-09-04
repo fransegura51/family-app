@@ -32,6 +32,7 @@ import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenContinuous, speakAsync } from '@/services/voice'
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
+import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
 
 type ResponseMode = 'voice' | 'text'
 const STORAGE_KEY = 'familyapp:voice-response-mode'
@@ -288,7 +289,17 @@ async function answerAgendaQuery(
   // ("Jennifer, ¿qué tengo que hacer hoy?") — se prueban las dos formas
   // antes de rendirse (bug real: preguntar así no filtraba por persona,
   // y salían también las cosas asignadas a otro miembro de la familia).
-  const member = (memberHint ? matchMemberByHint(memberHint, members) : null) ?? findMemberInText(rawText, members)
+  // Si no se ha nombrado a nadie, se usa el filtro de miembros que
+  // tengas activo en la pantalla de Calendario — petición real: "que
+  // puedas filtrar por cada miembro... y que Pepa detecte solamente
+  // las tareas de ese miembro". Nombrar a alguien en la propia
+  // pregunta siempre gana al filtro.
+  const activeFilterIds = getCalendarMemberFilter()
+  const memberByIdForFilter = new Map(members.map((m) => [m.id, m]))
+  const member =
+    (memberHint ? matchMemberByHint(memberHint, members) : null) ??
+    findMemberInText(rawText, members) ??
+    (activeFilterIds.length === 1 ? (memberByIdForFilter.get(activeFilterIds[0]) ?? null) : null)
 
   if (member) {
     let memberEvents = [...eventsOnTarget, ...externalAsEvents].filter(
@@ -345,12 +356,22 @@ async function answerWeekRangeQuery(memberHint: string | null, rawText: string, 
     listEventCompletions(),
     loadExternalAgendaOccurrences(from, to),
   ])
-  const member = (memberHint ? matchMemberByHint(memberHint, members) : null) ?? findMemberInText(rawText, members)
   const memberById = new Map(members.map((m) => [m.id, m]))
+  // Nombrar a alguien en la propia pregunta siempre gana; si no se
+  // nombra a nadie, se usa el filtro de miembros activo en Calendario
+  // (uno solo se trata igual que si se hubiera nombrado; varios a la
+  // vez acotan la lista sin fijar un único "para X").
+  const activeFilterIds = getCalendarMemberFilter()
+  const member =
+    (memberHint ? matchMemberByHint(memberHint, members) : null) ??
+    findMemberInText(rawText, members) ??
+    (activeFilterIds.length === 1 ? (memberById.get(activeFilterIds[0]) ?? null) : null)
+  const multiFilterIds = !member && activeFilterIds.length > 1 ? activeFilterIds : null
 
   const occurrences: { date: string; minutes: number; text: string }[] = []
   for (const ev of events) {
     if (member && ev.memberIds.length > 0 && !ev.memberIds.includes(member.id)) continue
+    if (multiFilterIds && !ev.memberIds.some((id) => multiFilterIds.includes(id))) continue
     for (const date of expandOccurrences(ev, from, to)) {
       if (eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === date)) continue
       const owner = !member && ev.memberIds.length === 1 ? (memberById.get(ev.memberIds[0])?.name ?? null) : null
@@ -362,6 +383,7 @@ async function answerWeekRangeQuery(memberHint: string | null, rawText: string, 
   // loadExternalAgendaOccurrences ya descarta lo borrado/hecho.
   for (const ev of externalOccurrences) {
     if (member && ev.memberId && ev.memberId !== member.id) continue
+    if (multiFilterIds && (!ev.memberId || !multiFilterIds.includes(ev.memberId))) continue
     const owner = !member && ev.memberId ? (memberById.get(ev.memberId)?.name ?? null) : null
     const withTime = `${ev.title}${eventTimeLabel(ev)}`
     occurrences.push({ date: ev.date, minutes: eventMinutes(ev), text: owner ? `${owner}: ${withTime}` : withTime })
@@ -396,10 +418,21 @@ async function answerNextCalendarEvent(): Promise<string> {
   rangeEnd.setDate(rangeEnd.getDate() + 90)
   const rangeEndStr = dateStr(rangeEnd)
 
-  const [events, externalOccurrences] = await Promise.all([
+  const [allEvents, allExternalOccurrences] = await Promise.all([
     listUpcomingEvents(),
     loadExternalAgendaOccurrences(todayStr, rangeEndStr),
   ])
+
+  // Si tienes un filtro de miembros activo en Calendario, "lo
+  // siguiente" se busca solo entre lo suyo — mismo criterio que el
+  // resto de preguntas de Pepa.
+  const activeFilterIds = getCalendarMemberFilter()
+  const events =
+    activeFilterIds.length === 0 ? allEvents : allEvents.filter((ev) => ev.memberIds.some((id) => activeFilterIds.includes(id)))
+  const externalOccurrences =
+    activeFilterIds.length === 0
+      ? allExternalOccurrences
+      : allExternalOccurrences.filter((ev) => !!ev.memberId && activeFilterIds.includes(ev.memberId))
 
   function minutesOfDay(ev: { allDay: boolean; startAt: string }): number {
     if (ev.allDay) return -1

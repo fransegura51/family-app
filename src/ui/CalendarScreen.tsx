@@ -60,6 +60,7 @@ import {
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { CalendarEvent, Contact, FamilyMember } from '@/domain/types'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
+import { setCalendarMemberFilter } from '@/state/calendarMemberFilter'
 import {
   buildRecurrenceRule,
   FREQ_OPTIONS,
@@ -114,7 +115,26 @@ export function CalendarScreen() {
   const [externalCompletions, setExternalCompletions] = useState<ExternalEventCompletion[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
-  const [filterMemberId, setFilterMemberId] = useState<string>('all')
+  // Vacío = sin filtrar (toda la familia) — varios miembros a la vez,
+  // no solo uno, petición real: "quiero que puedas filtrar por cada
+  // miembro... y que Pepa detecte solamente las tareas de ese
+  // miembro" (mostraba una captura de otra app con varias personas
+  // marcables a la vez, con un icono de ojo cada una).
+  const [filterMemberIds, setFilterMemberIds] = useState<string[]>([])
+
+  // Pepa vive fuera de esta pantalla (montada en toda la app) — se
+  // publica aquí el filtro activo para que sus respuestas del
+  // calendario lo tengan en cuenta sin que haga falta nombrar a nadie
+  // en la propia pregunta. Se limpia al salir de Calendario, igual que
+  // ya se hace con el día seleccionado.
+  useEffect(() => {
+    setCalendarMemberFilter(filterMemberIds)
+    return () => setCalendarMemberFilter([])
+  }, [filterMemberIds])
+
+  function toggleFilterMember(id: string) {
+    setFilterMemberIds((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
+  }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -190,10 +210,10 @@ export function CalendarScreen() {
 
   const filteredEvents = useMemo(
     () =>
-      filterMemberId === 'all'
+      filterMemberIds.length === 0
         ? events
-        : events.filter((e) => e.memberIds.includes(filterMemberId)),
-    [events, filterMemberId],
+        : events.filter((e) => e.memberIds.some((id) => filterMemberIds.includes(id))),
+    [events, filterMemberIds],
   )
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
@@ -253,10 +273,10 @@ export function CalendarScreen() {
       externalEvents.filter((ev) => {
         if (seriesDismissed.has(`${ev.feedId}:${ev.uid}`)) return false
         const feed = feedById.get(ev.feedId)
-        if (filterMemberId === 'all') return true
-        return feed?.memberId === filterMemberId
+        if (filterMemberIds.length === 0) return true
+        return !!feed?.memberId && filterMemberIds.includes(feed.memberId)
       }),
-    [externalEvents, feedById, filterMemberId, seriesDismissed],
+    [externalEvents, feedById, filterMemberIds, seriesDismissed],
   )
 
   // Una cita del calendario externo (Google/Outlook/...) se ve también
@@ -439,17 +459,17 @@ export function CalendarScreen() {
       {view !== 'Externos' && (
         <div className="filter-row">
           <button
-            className={'chip' + (filterMemberId === 'all' ? ' chip-active' : '')}
-            onClick={() => setFilterMemberId('all')}
+            className={'chip' + (filterMemberIds.length === 0 ? ' chip-active' : '')}
+            onClick={() => setFilterMemberIds([])}
           >
             Todos
           </button>
           {members.map((m) => (
             <button
               key={m.id}
-              className={'chip' + (filterMemberId === m.id ? ' chip-active' : '')}
+              className={'chip' + (filterMemberIds.includes(m.id) ? ' chip-active' : '')}
               style={{ borderColor: m.color }}
-              onClick={() => setFilterMemberId(m.id)}
+              onClick={() => toggleFilterMember(m.id)}
             >
               <MemberAvatar member={m} size={18} />
               {m.name}

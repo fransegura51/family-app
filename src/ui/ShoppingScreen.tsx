@@ -1211,12 +1211,20 @@ function AddTripForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
 // Memoria de compras (Skill 09/11)
 // ---------------------------------------------------------------------
 
+function formatFullDate(d: string): string {
+  return new Date(`${d}T00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
 function MemoryTab() {
   const [products, setProducts] = useState<Product[]>([])
   const [prices, setPrices] = useState<ProductPrice[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [added, setAdded] = useState<Set<string>>(new Set())
+  // Ventana emergente con el detalle ("sueles comprarlo cada X días...")
+  // al tocar el nombre — petición real: el title (tooltip) no se ve al
+  // tocar en el móvil, así que ese detalle pasa a un modal de verdad.
+  const [detail, setDetail] = useState<{ name: string; lines: string[] } | null>(null)
 
   useEffect(() => {
     Promise.all([listProducts(), listAllProductPrices()])
@@ -1260,20 +1268,28 @@ function MemoryTab() {
       </p>
 
       {/* Filas estrechas, todo en una línea — mismo estilo que la
-          pestaña Historial (petición real: "que se vea igual que en la
-          pestaña de historial... que se vea todo en una línea"). El
-          detalle que antes iba en una segunda línea (cada cuántos días,
-          media/mín/máx…) se mueve al title (tooltip al mantener
-          pulsado/pasar el ratón) para no ensanchar la fila. */}
+          pestaña Historial: nombre, precio visible y botón de añadir.
+          El detalle de "cada cuántos días" no cabe en la fila, así que
+          sale en una ventana emergente al tocar el nombre. */}
       <h2 className="section-title">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">
         {suggestions.map(({ product, stats }) => (
-          <div
-            key={product.id}
-            className="price-row"
-            title={`Sueles comprarlo cada ${Math.round(stats!.avgDaysBetween!)} días · última vez ${stats!.lastDate}`}
-          >
-            <span className="price-row-name">{product.displayName}</span>
+          <div key={product.id} className="price-row">
+            <button
+              type="button"
+              className="price-row-name price-row-name-button"
+              onClick={() =>
+                setDetail({
+                  name: product.displayName,
+                  lines: [
+                    `Sueles comprarlo cada ${Math.round(stats!.avgDaysBetween!)} días.`,
+                    `Última vez comprado: ${formatFullDate(stats!.lastDate)}.`,
+                  ],
+                })
+              }
+            >
+              {product.displayName}
+            </button>
             <span className="price-row-price">{stats!.lastPrice.toFixed(2)} €/ud</span>
             <button
               type="button"
@@ -1292,12 +1308,23 @@ function MemoryTab() {
       <h2 className="section-title">Historial por producto</h2>
       <div className="price-row-list">
         {withStats.map(({ product, stats }) => (
-          <div
-            key={product.id}
-            className="price-row"
-            title={`${stats!.count} ${stats!.count === 1 ? 'compra' : 'compras'} · media ${stats!.avgPrice.toFixed(2)} €/ud · mín ${stats!.minPrice.toFixed(2)} €/ud · máx ${stats!.maxPrice.toFixed(2)} €/ud`}
-          >
-            <span className="price-row-name">{product.displayName}</span>
+          <div key={product.id} className="price-row">
+            <button
+              type="button"
+              className="price-row-name price-row-name-button"
+              onClick={() =>
+                setDetail({
+                  name: product.displayName,
+                  lines: [
+                    `${stats!.count} ${stats!.count === 1 ? 'compra' : 'compras'}.`,
+                    `Media: ${stats!.avgPrice.toFixed(2)} €/ud.`,
+                    `Mínimo: ${stats!.minPrice.toFixed(2)} €/ud · Máximo: ${stats!.maxPrice.toFixed(2)} €/ud.`,
+                  ],
+                })
+              }
+            >
+              {product.displayName}
+            </button>
             <span className="price-row-price">{stats!.lastPrice.toFixed(2)} €/ud</span>
             {/* Petición real: poder añadirlo a la lista directamente desde
                 el historial, no solo desde las sugerencias de arriba. */}
@@ -1319,6 +1346,26 @@ function MemoryTab() {
           </p>
         )}
       </div>
+
+      {detail && (
+        <div className="modal-overlay" onClick={() => setDetail(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {detail.name}
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setDetail(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            {detail.lines.map((line, i) => (
+              <p key={i} className="muted">
+                {line}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

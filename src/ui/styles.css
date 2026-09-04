@@ -261,6 +261,9 @@ button {
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
+  border: none;
+  background: none;
+  cursor: pointer;
 }
 
 .nav-item-icon {
@@ -272,29 +275,82 @@ button {
   color: var(--primary);
 }
 
-.nav-item {
-  border: none;
-  background: none;
-  cursor: pointer;
-  /* Sin restricción de touch-action: con el dedo, la barra se
-     desplaza de lado con su gesto normal. Lo que sí hace falta
-     desactivar es el menú/selección de texto que algunos móviles
-     muestran solos al mantener el dedo quieto sobre un botón — eso le
-     robaba el gesto a la espera de "pulsación mantenida" antes de que
-     diera tiempo a entrar en modo arrastre. */
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
+/* Solo unos pocos iconos fijos ahora (petición real: en iPhone,
+   deslizar los 12 de lado tan pegado al borde inferior competía con
+   los gestos propios de iOS ahí mismo) — sin deslizamiento, repartidos
+   a lo ancho en vez de amontonados a la izquierda. El resto vive
+   detrás del botón "☰ Menú" (ver más abajo) y se reordena en
+   "Organizar menú", no aquí. */
+.bottom-nav-pinned {
+  overflow-x: visible;
+  justify-content: space-around;
 }
 
-/* Se arrastra con el dedo para cambiar de sitio, igual que el resto
-   de listas reordenables de la app — petición real: "todos los
-   iconos... que también se puedan arrastrar". */
-.nav-item-dragging {
-  z-index: 2;
-  background: #f1f3f5;
-  border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+.nav-menu-fab {
+  position: fixed;
+  left: 16px;
+  bottom: 90px;
+  z-index: 45;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-size: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-menu-fab-open {
+  background: #374151;
+}
+
+.nav-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  background: rgba(15, 18, 30, 0.25);
+}
+
+.nav-menu-flyout {
+  position: fixed;
+  left: 16px;
+  bottom: 150px;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.nav-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: none;
+  background: var(--card-bg, white);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nav-menu-item.active {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.nav-menu-settings {
+  color: var(--muted);
 }
 
 .link-button {

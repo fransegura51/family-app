@@ -27,6 +27,12 @@ export function saveTabOrder(key: string, order: string[]): void {
     // localStorage no disponible (privado/bloqueado): se pierde
     // recordar el orden entre visitas, no es crítico.
   }
+  // NavShell vive montado en TODA la app (es la propia estructura, no
+  // una pantalla más) y su orden solo se lee una vez al montar — sin
+  // este aviso, reordenar el menú rápido desde la pantalla de
+  // "Organizar menú" no se reflejaba en la barra de abajo hasta
+  // recargar la app entera.
+  window.dispatchEvent(new CustomEvent('family-app:tab-order-changed', { detail: { key } }))
 }
 
 // Junta el orden guardado con las pestañas que existan de verdad hoy —

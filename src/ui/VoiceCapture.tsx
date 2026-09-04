@@ -1,7 +1,6 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
-import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
@@ -108,6 +107,45 @@ type Destination = 'calendario' | 'compras'
 type PanelMode = 'ask-calendario' | 'ask-compras' | 'create-calendario' | 'create-compras'
 const PANEL_MODES: PanelMode[] = ['ask-calendario', 'ask-compras', 'create-calendario', 'create-compras']
 const BUTTON_TAP_THRESHOLD_PX = 8
+
+// Los 4 botones se pueden arrastrar a cualquier sitio de la pantalla,
+// no solo intercambiar posición entre ellos — petición real: "que se
+// puedan mover de un lado para otro y poner en la posición que
+// queramos". Por defecto salen en una sola fila arriba del todo, fuera
+// del hueco reservado en .app-content para que no tapen ni el título
+// ni el saludo de Inicio (petición real: "en el móvil se tapan").
+const FAB_SIZE = 42
+const FAB_GAP = 7
+const FAB_DEFAULT_TOP = 8
+interface FabPosition {
+  top: number
+  left: number
+}
+const DEFAULT_FAB_POSITIONS: Record<PanelMode, FabPosition> = Object.fromEntries(
+  PANEL_MODES.map((m, i) => [m, { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + i * (FAB_SIZE + FAB_GAP) }]),
+) as Record<PanelMode, FabPosition>
+
+const FAB_POSITIONS_KEY = 'familyapp:pepa-fab-positions'
+
+function loadFabPositions(): Partial<Record<PanelMode, FabPosition>> {
+  try {
+    const raw = localStorage.getItem(FAB_POSITIONS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Partial<Record<PanelMode, FabPosition>>
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveFabPositions(positions: Partial<Record<PanelMode, FabPosition>>) {
+  try {
+    localStorage.setItem(FAB_POSITIONS_KEY, JSON.stringify(positions))
+  } catch {
+    // localStorage puede fallar en privado/incógnito — no es crítico, solo
+    // se pierde recordar dónde se dejaron los botones.
+  }
+}
 
 const DESTINATION_INFO: Record<Destination, { label: string; path: string }> = {
   compras: { label: '🛒 Lista de la compra', path: '/compras' },
@@ -878,24 +916,13 @@ export function VoiceCapture() {
     close()
   }
 
-  // Los 4 botones también se pueden arrastrar de sitio — petición
-  // real: "todos los iconos de Pepa también, que también se pueden
-  // arrastrar". Es una rejilla fija de 2x2, no una lista: arrastrar un
-  // icono sobre otro los intercambia entre sí, en vez de desplazar
-  // toda la fila como en una lista. El orden es solo de este móvil
-  // (localStorage), igual que el resto de pestañas reordenables.
-  const [buttonOrder, setButtonOrder] = useState<PanelMode[]>(() =>
-    resolveTabOrder(PANEL_MODES, loadTabOrder('pepa-buttons')),
-  )
-  const buttonDragRef = useRef<{
-    mode: PanelMode
-    startX: number
-    startY: number
-    startIndex: number
-    cellW: number
-    cellH: number
-    moved: number
-  } | null>(null)
+  // Los 4 botones se pueden arrastrar a CUALQUIER sitio de la pantalla
+  // (petición real: "que se puedan mover de un lado para otro y poner
+  // en la posición que queramos") — cada uno guarda su propia posición
+  // en px, no un orden dentro de una rejilla fija. El que no se haya
+  // tocado nunca sale en su sitio por defecto (fila arriba del todo).
+  const [fabPositions, setFabPositions] = useState<Partial<Record<PanelMode, FabPosition>>>(() => loadFabPositions())
+  const buttonDragRef = useRef<{ mode: PanelMode; startX: number; startY: number; moved: number } | null>(null)
   const [draggingButton, setDraggingButton] = useState<PanelMode | null>(null)
   const [buttonDragOffset, setButtonDragOffset] = useState({ x: 0, y: 0 })
 
@@ -907,27 +934,15 @@ export function VoiceCapture() {
   // del todo). Ahora abrir pasa SOLO por onClick, el evento más
   // simple y fiable que hay en cualquier navegador — pointerdown/
   // move/up se quedan únicamente para detectar y dibujar el
-  // arrastre (reordenar los 4 botones), y si se detecta un
-  // arrastre de verdad, wasDraggedRef hace que el clic que viene
-  // detrás no abra el panel.
+  // arrastre, y si se detecta un arrastre de verdad, wasDraggedRef
+  // hace que el clic que viene detrás no abra el panel.
   const wasDraggedRef = useRef(false)
 
   function handleButtonDragStart(e: ReactPointerEvent, mode: PanelMode, el: HTMLElement) {
     if (e.pointerType === 'mouse' && e.button !== 0) return
     el.setPointerCapture(e.pointerId)
     wasDraggedRef.current = false
-    const index = buttonOrder.indexOf(mode)
-    const style = getComputedStyle(el.parentElement as HTMLElement)
-    const gap = parseFloat(style.columnGap || style.gap || '0') || 0
-    buttonDragRef.current = {
-      mode,
-      startX: e.clientX,
-      startY: e.clientY,
-      startIndex: index,
-      cellW: el.offsetWidth + gap,
-      cellH: el.offsetHeight + gap,
-      moved: 0,
-    }
+    buttonDragRef.current = { mode, startX: e.clientX, startY: e.clientY, moved: 0 }
     setDraggingButton(mode)
   }
 
@@ -939,27 +954,30 @@ export function VoiceCapture() {
     drag.moved = Math.max(drag.moved, Math.abs(dx), Math.abs(dy))
     if (drag.moved >= BUTTON_TAP_THRESHOLD_PX) wasDraggedRef.current = true
     setButtonDragOffset({ x: dx, y: dy })
-    const startRow = Math.floor(drag.startIndex / 2)
-    const startCol = drag.startIndex % 2
-    const newRow = Math.min(1, Math.max(0, startRow + Math.round(dy / drag.cellH)))
-    const newCol = Math.min(1, Math.max(0, startCol + Math.round(dx / drag.cellW)))
-    const newIndex = newRow * 2 + newCol
-    setButtonOrder((prev) => {
-      const currentIndex = prev.indexOf(drag.mode)
-      if (currentIndex === -1 || currentIndex === newIndex) return prev
-      const next = [...prev]
-      ;[next[currentIndex], next[newIndex]] = [next[newIndex], next[currentIndex]]
-      return next
-    })
   }
 
-  function handleButtonDragEnd() {
+  function handleButtonDragEnd(e: ReactPointerEvent) {
     const drag = buttonDragRef.current
     buttonDragRef.current = null
     setDraggingButton(null)
     setButtonDragOffset({ x: 0, y: 0 })
-    if (drag && drag.moved >= BUTTON_TAP_THRESHOLD_PX) {
-      saveTabOrder('pepa-buttons', buttonOrder)
+    if (!drag) return
+    if (drag.moved >= BUTTON_TAP_THRESHOLD_PX) {
+      // Posición final = donde quedó el botón en pantalla, acotada
+      // para que no se pueda soltar tapado fuera de la ventana.
+      const el = e.currentTarget as HTMLElement
+      const maxLeft = Math.max(0, window.innerWidth - FAB_SIZE)
+      const maxTop = Math.max(0, window.innerHeight - FAB_SIZE)
+      const rect = el.getBoundingClientRect()
+      const next = {
+        ...fabPositions,
+        [drag.mode]: {
+          top: Math.min(Math.max(0, rect.top), maxTop),
+          left: Math.min(Math.max(0, rect.left), maxLeft),
+        },
+      }
+      setFabPositions(next)
+      saveFabPositions(next)
     }
   }
 
@@ -986,45 +1004,49 @@ export function VoiceCapture() {
 
   return (
     <>
-      {/* Cuatro botones redondos, solo icono, agrupados en una esquina —
-          petición real: "ocupan mucho espacio en la pantalla... hazlos
-          más pequeños, redondos... ponlos arriba, donde no tapen la
-          vista". Cada combinación de emoji ya es distinta a simple
-          vista (🐣📅/🐣🛒/🎤📅/🎤🛒); el nombre completo sigue estando
-          disponible al tacto (aria-label) y, ya abierto, en el título
-          del panel. */}
-      <div className="voice-fab-cluster">
-        {buttonOrder.map((m) => {
-          const isDragging = draggingButton === m
-          return (
-            <button
-              key={m}
-              type="button"
-              className={'voice-fab-round ' + (kindOf(m) === 'ask' ? 'voice-fab-ask' : 'voice-fab-create') + (isDragging ? ' voice-fab-dragging' : '')}
-              style={isDragging ? { transform: `translate(${buttonDragOffset.x}px, ${buttonDragOffset.y}px)` } : undefined}
-              aria-label={PANEL_INFO[m].title}
-              onClick={() => handleButtonClick(m)}
-              onPointerDown={(e) => handleButtonDragStart(e, m, e.currentTarget)}
-              onPointerMove={handleButtonDragMove}
-              onPointerUp={handleButtonDragEnd}
-              onPointerCancel={handleButtonDragEnd}
-            >
-              {/* Los botones "Pepa" (preguntar) llevan su avatar en vez
-                  del emoji 🐣 — petición real: "sustituyas el pollo que
-                  has puesto como icono de pepa por este avatar" — con
-                  el destino (📅/🛒) como distintivo pequeño encima. */}
-              {kindOf(m) === 'ask' ? (
-                <>
-                  <img src={pepaAvatar} alt="Pepa" className="voice-fab-avatar" />
-                  <span className="voice-fab-badge">{destinationOf(m) === 'calendario' ? '📅' : '🛒'}</span>
-                </>
-              ) : (
-                PANEL_INFO[m].icon
-              )}
-            </button>
-          )
-        })}
-      </div>
+      {/* Cuatro botones redondos, solo icono — petición real: "ocupan
+          mucho espacio en la pantalla... hazlos más pequeños,
+          redondos... ponlos arriba, donde no tapen la vista", y luego
+          "en una línea, en la parte superior, para que no tapen qué
+          tenemos hoy ni hola Paco". Cada uno flota en su propia
+          posición (por defecto, en fila arriba del todo) y se puede
+          arrastrar a cualquier sitio de la pantalla; el nombre
+          completo sigue disponible al tacto (aria-label) y, ya
+          abierto, en el título del panel. */}
+      {PANEL_MODES.map((m) => {
+        const isDragging = draggingButton === m
+        const pos = fabPositions[m] ?? DEFAULT_FAB_POSITIONS[m]
+        return (
+          <button
+            key={m}
+            type="button"
+            className={'voice-fab-round ' + (kindOf(m) === 'ask' ? 'voice-fab-ask' : 'voice-fab-create') + (isDragging ? ' voice-fab-dragging' : '')}
+            style={{
+              top: pos.top + (isDragging ? buttonDragOffset.y : 0),
+              left: pos.left + (isDragging ? buttonDragOffset.x : 0),
+            }}
+            aria-label={PANEL_INFO[m].title}
+            onClick={() => handleButtonClick(m)}
+            onPointerDown={(e) => handleButtonDragStart(e, m, e.currentTarget)}
+            onPointerMove={handleButtonDragMove}
+            onPointerUp={handleButtonDragEnd}
+            onPointerCancel={handleButtonDragEnd}
+          >
+            {/* Los botones "Pepa" (preguntar) llevan su avatar en vez
+                del emoji 🐣 — petición real: "sustituyas el pollo que
+                has puesto como icono de pepa por este avatar" — con
+                el destino (📅/🛒) como distintivo pequeño encima. */}
+            {kindOf(m) === 'ask' ? (
+              <>
+                <img src={pepaAvatar} alt="Pepa" className="voice-fab-avatar" />
+                <span className="voice-fab-badge">{destinationOf(m) === 'calendario' ? '📅' : '🛒'}</span>
+              </>
+            ) : (
+              PANEL_INFO[m].icon
+            )}
+          </button>
+        )
+      })}
 
       {open && (
         <div className="modal-overlay" onClick={handleOverlayClick}>

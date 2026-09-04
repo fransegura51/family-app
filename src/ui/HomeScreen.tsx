@@ -83,15 +83,17 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       <CalendarOnboardingModal profileId={profile.id} />
       {/* Pepa, la protagonista de la app, junto al saludo — petición
           real: "al lado de qué tenemos hoy y hola Paco, ponme el
-          círculo, el logo de Pepa, la foto de Pepa". */}
+          círculo, el logo de Pepa, la foto de Pepa". "¿Qué tenemos
+          hoy?" + "Hola, Paco" se sustituyen por "Hola, Paco" como
+          título y "¿Cómo te puedo ayudar?" debajo (petición real). */}
       <div className="home-header">
         <img src={pepaAvatar} alt="Pepa" className="home-pepa-avatar" />
         <div>
-          <h1>¿Qué tenemos hoy?</h1>
-          <p className="muted home-greeting">
+          <h1 className="home-greeting">
             {self && <MemberAvatar member={self} size={28} />}
             Hola, {profile.displayName}
-          </p>
+          </h1>
+          <p className="muted">¿Cómo te puedo ayudar?</p>
         </div>
       </div>
 

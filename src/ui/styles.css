@@ -25,8 +25,13 @@ body {
   min-height: 100vh;
 }
 
+/* Hueco reservado arriba del todo para la fila de botones de Pepa
+   (position: fixed, ver .voice-fab-round) — petición real: "en el
+   móvil se tapan [con el título]... que se queden justo en la parte
+   superior [sin tapar nada]". */
 .app-content {
   flex: 1;
+  padding-top: 54px;
   padding-bottom: 80px;
 }
 
@@ -691,17 +696,15 @@ select {
   font-size: 12px;
 }
 
-/* Petición real: "el saludo... quiero que sea el doble de grande, del
-   mismo tamaño que donde dice qué tenemos hoy" — mismo font-size
-   explícito en el saludo y en el título para que se vean igual de
-   grandes de verdad, en vez de depender del tamaño de h1 por defecto
-   del navegador. */
+/* "¿Qué tenemos hoy?" + "Hola, Paco" se sustituyeron por "Hola, Paco"
+   como título y "¿Cómo te puedo ayudar?" debajo (petición real) — el
+   saludo ES el título ahora, con el avatar del propio miembro al lado. */
 .home-greeting {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0 0 4px;
   font-size: 28px;
-  font-weight: 600;
 }
 
 /* Avatar de Pepa junto al saludo de Inicio — petición real: "es la
@@ -712,9 +715,8 @@ select {
   gap: 14px;
 }
 
-.home-header h1 {
-  font-size: 28px;
-  margin-bottom: 4px;
+.home-header p {
+  margin: 0;
 }
 
 .home-pepa-avatar {
@@ -1417,23 +1419,18 @@ textarea {
   margin-bottom: 8px;
 }
 
-/* Cuatro botones redondos, solo icono, agrupados en una esquina —
-   petición real: "ocupan mucho espacio en la pantalla... hazlos más
-   pequeños, redondos... ponlos arriba, donde no tapen la vista". En
-   una rejilla 2x2 compacta, arriba a la derecha, lejos del contenido y
-   de la barra de navegación de abajo. */
-.voice-fab-cluster {
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 7px;
-  z-index: 40;
-}
-
+/* Cuatro botones redondos, solo icono — petición real: "ocupan mucho
+   espacio en la pantalla... hazlos más pequeños, redondos... ponlos
+   arriba, donde no tapen la vista", luego "en una línea, en la parte
+   superior" y por último "que se puedan mover... a la posición que
+   queramos". Cada botón flota por su cuenta (position: fixed con
+   top/left en línea, calculados en VoiceCapture) en vez de vivir
+   dentro de una rejilla — así se pueden arrastrar a cualquier sitio de
+   la pantalla, no solo intercambiar posición entre ellos. La fila por
+   defecto (arriba del todo) queda fuera del hueco que .app-content
+   reserva para que no tape ni el título ni el saludo de Inicio. */
 .voice-fab-round {
-  position: relative;
+  position: fixed;
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -1448,6 +1445,7 @@ textarea {
   cursor: pointer;
   padding: 0;
   touch-action: none;
+  z-index: 40;
 }
 
 /* Avatar de Pepa en los botones de "preguntar" (petición real:
@@ -1480,11 +1478,12 @@ textarea {
   pointer-events: none;
 }
 
-/* Se arrastra con el dedo para cambiar de sitio en la rejilla 2x2
-   (petición real: "todos los iconos de Pepa también, que también se
-   puedan arrastrar"). */
+/* Se arrastra con el dedo a cualquier sitio de la pantalla (petición
+   real: "que se puedan mover de un lado para otro y poner en la
+   posición que queramos") — por encima de los demás mientras se
+   arrastra. */
 .voice-fab-dragging {
-  z-index: 3;
+  z-index: 41;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 

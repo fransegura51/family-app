@@ -879,16 +879,25 @@ textarea {
 
 /* Ficha de contacto más compacta, con el cumpleaños pegado al resto
    de datos en vez de con el hueco de los márgenes por defecto de un
-   <p> — y sin que un email largo (sin espacios donde partir) se salga
-   de su hueco y quede tapado por los botones de al lado (bug real,
-   captura de la usuaria). */
+   <p> — los botones (📞✏️✕) van debajo de toda la información, no al
+   lado, y el email no hace salto de línea: si no cabe entero se corta
+   con puntos suspensivos en vez de partirse o desbordar (petición
+   real, con captura de la usuaria del problema anterior). */
 .contact-card {
-  align-items: flex-start;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.contact-card .task-card-actions {
+  justify-content: flex-end;
 }
 
 .contact-card-detail {
   margin: 4px 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .contact-card-birthday {

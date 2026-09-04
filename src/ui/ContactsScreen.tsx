@@ -33,6 +33,12 @@ export function ContactsScreen() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('Todas')
+  // Botón flotante "Nuevo contacto", tocable desde cualquier parte de
+  // la pestaña sin tener que bajar hasta el final de la lista —
+  // petición real: "pon un botón Nuevo contacto... el formulario se
+  // abra en una ventana emergente que se cierra cuando se haya
+  // guardado el contacto".
+  const [addingContact, setAddingContact] = useState(false)
 
   // Solo pone "Cargando…" en la primera carga — si se vuelve a llamar
   // tras guardar una edición, reemplazar TODA la pantalla por ese
@@ -107,7 +113,32 @@ export function ContactsScreen() {
       <ImportContactsForm onAdded={reload} />
       <ImportVcfContactsForm existingContacts={contacts} onAdded={reload} />
       <ImportIcsBirthdaysForm existingContacts={contacts} onAdded={reload} />
-      <AddContactForm existingContacts={contacts} onAdded={reload} />
+
+      <button type="button" className="contacts-fab" onClick={() => setAddingContact(true)}>
+        + Nuevo contacto
+      </button>
+
+      {addingContact && (
+        <div className="modal-overlay" onClick={() => setAddingContact(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Nuevo contacto
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setAddingContact(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <AddContactForm
+              existingContacts={contacts}
+              onAdded={() => {
+                reload()
+                setAddingContact(false)
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -669,8 +700,7 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Nuevo contacto</h2>
+    <form onSubmit={handleSubmit} className="member-form">
       <label>
         Nombre
         <input

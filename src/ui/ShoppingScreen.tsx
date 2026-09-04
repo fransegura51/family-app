@@ -174,6 +174,11 @@ function ShoppingListTab() {
   const [error, setError] = useState<string | null>(null)
   const [shoppingMode, setShoppingMode] = useState(false)
   const [showOthers, setShowOthers] = useState(false)
+  // Botón flotante "Añadir producto", tocable desde cualquier parte de
+  // la pestaña — misma idea ya aplicada a Contactos y Calendario,
+  // petición real: "en compras lo mismo, botón flotante Añadir
+  // producto y formulario emergente".
+  const [addingItem, setAddingItem] = useState(false)
 
   // Solo se enseña "Cargando…" (que desmonta el formulario de abajo) la
   // primera vez — si no, cada "reload" tras añadir un producto borraba
@@ -295,11 +300,36 @@ function ShoppingListTab() {
       {pending.length === 0 && <p className="muted">Nada pendiente.</p>}
 
       {!shoppingMode && (
-        <AddShoppingItemForm
-          suggestions={suggestions}
-          knownStores={[...new Set(items.map((i) => i.store).filter((s): s is string => !!s))]}
-          onAdded={reload}
-        />
+        <button type="button" className="screen-fab" onClick={() => setAddingItem(true)}>
+          + Añadir producto
+        </button>
+      )}
+
+      {addingItem && (
+        <div className="modal-overlay" onClick={() => setAddingItem(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Añadir producto
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setAddingItem(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            {/* A diferencia de Contactos/Calendario, aquí NO se cierra
+                sola al guardar — se pensó para añadir varios productos
+                seguidos sin reabrir el formulario cada vez (la tienda
+                se queda puesta a propósito entre uno y otro, ver
+                AddShoppingItemForm). Se cierra a mano con la ✕ cuando
+                ya no se quiera añadir más. */}
+            <AddShoppingItemForm
+              suggestions={suggestions}
+              knownStores={[...new Set(items.map((i) => i.store).filter((s): s is string => !!s))]}
+              hideHeading
+              onAdded={reload}
+            />
+          </div>
+        </div>
       )}
 
       {others.length > 0 && (
@@ -656,10 +686,12 @@ function DraggableStoreGroup({
 function AddShoppingItemForm({
   suggestions,
   knownStores,
+  hideHeading,
   onAdded,
 }: {
   suggestions: ProductSuggestion[]
   knownStores: string[]
+  hideHeading?: boolean
   onAdded: () => void
 }) {
   const [name, setName] = useState('')
@@ -711,7 +743,7 @@ function AddShoppingItemForm({
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Añadir producto</h2>
+      {!hideHeading && <h2>Añadir producto</h2>}
       <label>
         Nombre
         <input

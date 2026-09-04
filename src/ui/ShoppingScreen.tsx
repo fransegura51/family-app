@@ -277,8 +277,6 @@ function ShoppingListTab() {
         </button>
       </div>
 
-      <StoreManager stores={stores} onChanged={reload} />
-
       <h2 className="section-title">Pendientes</h2>
       {storeGroups.map(([store, storeItems]) => (
         <div key={store} id={`shopping-store-${normalize(store)}`}>
@@ -298,6 +296,11 @@ function ShoppingListTab() {
         </div>
       ))}
       {pending.length === 0 && <p className="muted">Nada pendiente.</p>}
+
+      {/* Petición real: "pondría las tiendas que Pepa reconoce por voz
+          debajo de la lista de pendientes" — antes iba justo encima,
+          delante de lo que de verdad se mira primero al entrar. */}
+      <StoreManager stores={stores} onChanged={reload} />
 
       {!shoppingMode && (
         <button type="button" className="screen-fab" onClick={() => setAddingItem(true)}>

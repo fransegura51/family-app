@@ -550,7 +550,6 @@ export function CalendarScreen() {
           <DayModal
             selectedDate={selectedDate}
             events={selectedDayEvents}
-            allEvents={events}
             externalEvents={selectedDayExternalEvents}
             birthdays={selectedDayBirthdays}
             feedById={feedById}
@@ -572,7 +571,6 @@ export function CalendarScreen() {
               setEditingId(null)
               reload()
             }}
-            onAdded={reload}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
           />
@@ -683,7 +681,6 @@ interface AgendaEntry {
 function DayModal({
   selectedDate,
   events,
-  allEvents,
   externalEvents,
   birthdays,
   feedById,
@@ -702,13 +699,11 @@ function DayModal({
   onUncompleteExternal,
   externalCompletedSet,
   onEventChanged,
-  onAdded,
   onNavigateDay,
   swipeHandlers,
 }: {
   selectedDate: string
   events: CalendarEvent[]
-  allEvents: CalendarEvent[]
   externalEvents: ExternalCalendarEvent[]
   birthdays: { name: string; color: string }[]
   feedById: Map<string, ExternalCalendarFeed>
@@ -727,7 +722,6 @@ function DayModal({
   onUncompleteExternal: (feedId: string, uid: string, dateStr: string) => void
   externalCompletedSet: Set<string>
   onEventChanged: () => void
-  onAdded: () => void
   onNavigateDay: (deltaDays: number) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
 }) {
@@ -882,15 +876,6 @@ function DayModal({
             <div style={{ flex: 1 }}>{renderCard(entry)}</div>
           </div>
         ))}
-
-        {/* events={allEvents}, no events={events} — este último es solo
-            el de ESTE día (para la agenda de arriba); el autocompletado
-            de título necesita el histórico completo, si no "Colegio
-            cerrado" solo se sugiere en días que YA tuvieran ese mismo
-            evento (bug real: "al principio estaba hecho... con algún
-            arreglo se ha roto" — un cambio anterior reutilizó por error
-            el nombre `events` ya usado para el día). */}
-      <AddEventForm key={selectedDate} members={members} events={allEvents} onAdded={onAdded} defaultDate={selectedDate} />
     </div>
   )
 }

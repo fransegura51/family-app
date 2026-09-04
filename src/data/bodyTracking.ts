@@ -1,4 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
 import type { BodyMeasurement, BodyPhoto } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -89,10 +90,11 @@ export async function listBodyPhotos(memberId: string): Promise<BodyPhoto[]> {
 
 export async function uploadBodyPhoto(input: { memberId: string; date: string; file: File; caption: string }): Promise<void> {
   const familyId = await currentFamilyId()
-  const ext = input.file.name.split('.').pop() || 'jpg'
+  const file = await compressImageFile(input.file)
+  const ext = file.name.split('.').pop() || 'jpg'
   const path = `${familyId}/${crypto.randomUUID()}.${ext}`
 
-  const { error: uploadError } = await supabase.storage.from('body-photos').upload(path, input.file)
+  const { error: uploadError } = await supabase.storage.from('body-photos').upload(path, file)
   if (uploadError) throw uploadError
 
   const { error } = await supabase.from('body_photos').insert({

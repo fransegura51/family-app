@@ -1,4 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
 import type { FamilyMember, MemberType } from '@/domain/types'
 
 // Crea la familia + el perfil admin del usuario actual, de forma atómica,
@@ -128,10 +129,11 @@ async function currentFamilyId(): Promise<string> {
 
 export async function uploadMemberPhoto(memberId: string, file: File): Promise<void> {
   const familyId = await currentFamilyId()
-  const ext = file.name.split('.').pop() || 'jpg'
+  const compressed = await compressImageFile(file)
+  const ext = compressed.name.split('.').pop() || 'jpg'
   const path = `${familyId}/${crypto.randomUUID()}.${ext}`
 
-  const { error: uploadError } = await supabase.storage.from('member-photos').upload(path, file)
+  const { error: uploadError } = await supabase.storage.from('member-photos').upload(path, compressed)
   if (uploadError) throw uploadError
 
   const { error } = await supabase.from('family_members').update({ photo_path: path }).eq('id', memberId)

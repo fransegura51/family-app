@@ -1,4 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
 import type { GalleryPhoto } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -32,10 +33,11 @@ export async function uploadGalleryPhoto(file: File, caption: string): Promise<v
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
   const familyId = await currentFamilyId()
-  const ext = file.name.split('.').pop() || 'jpg'
+  const compressed = await compressImageFile(file)
+  const ext = compressed.name.split('.').pop() || 'jpg'
   const path = `${familyId}/${crypto.randomUUID()}.${ext}`
 
-  const { error: uploadError } = await supabase.storage.from('gallery').upload(path, file)
+  const { error: uploadError } = await supabase.storage.from('gallery').upload(path, compressed)
   if (uploadError) throw uploadError
 
   const { error } = await supabase.from('gallery_photos').insert({

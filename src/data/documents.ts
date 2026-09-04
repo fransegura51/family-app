@@ -1,4 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
 import type { MemberDocument } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -36,10 +37,11 @@ export async function uploadMemberDocument(input: {
   category: string
 }): Promise<void> {
   const familyId = await currentFamilyId()
-  const ext = input.file.name.split('.').pop() || 'pdf'
+  const file = await compressImageFile(input.file)
+  const ext = file.name.split('.').pop() || 'pdf'
   const path = `${familyId}/${input.memberId ?? 'general'}/${crypto.randomUUID()}.${ext}`
 
-  const { error: uploadError } = await supabase.storage.from('documents').upload(path, input.file)
+  const { error: uploadError } = await supabase.storage.from('documents').upload(path, file)
   if (uploadError) throw uploadError
 
   const { error } = await supabase.from('member_documents').insert({

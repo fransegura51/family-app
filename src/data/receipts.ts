@@ -1,4 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
 import type { Receipt } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -42,10 +43,11 @@ export async function uploadReceipt(input: {
   totalAmount: number | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
-  const ext = input.file.name.split('.').pop() || 'jpg'
+  const file = await compressImageFile(input.file)
+  const ext = file.name.split('.').pop() || 'jpg'
   const path = `${familyId}/${crypto.randomUUID()}.${ext}`
 
-  const { error: uploadError } = await supabase.storage.from('receipts').upload(path, input.file)
+  const { error: uploadError } = await supabase.storage.from('receipts').upload(path, file)
   if (uploadError) throw uploadError
 
   let expenseId: string | null = null

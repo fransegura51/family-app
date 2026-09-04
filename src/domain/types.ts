@@ -27,6 +27,7 @@ export interface FamilyMember {
   color: string
   memberType: MemberType
   birthDate: string | null
+  birthdayFavorite: boolean
   permissions: Record<string, unknown>
   linkedProfileId: string | null
   photoPath: string | null
@@ -296,6 +297,7 @@ export interface Contact {
   email: string | null
   notes: string | null
   birthDate: string | null
+  birthdayFavorite: boolean
 }
 
 export interface GalleryPhoto {

@@ -82,6 +82,18 @@ export async function updateFamilyMember(
   if (error) throw error
 }
 
+// Edición rápida solo de la fecha, para el botón "Editar" de la
+// pestaña Cumpleaños — sin pasar por el formulario completo de Familia.
+export async function updateFamilyMemberBirthDate(id: string, birthDate: string | null): Promise<void> {
+  const { error } = await supabase.from('family_members').update({ birth_date: birthDate }).eq('id', id)
+  if (error) throw error
+}
+
+export async function setFamilyMemberBirthdayFavorite(id: string, favorite: boolean): Promise<void> {
+  const { error } = await supabase.from('family_members').update({ birthday_favorite: favorite }).eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteFamilyMember(id: string): Promise<void> {
   const { error } = await supabase.from('family_members').delete().eq('id', id)
   if (error) throw error
@@ -138,7 +150,9 @@ export async function getMemberPhotoUrl(photoPath: string): Promise<string> {
 export async function listFamilyMembers(): Promise<FamilyMember[]> {
   const { data, error } = await supabase
     .from('family_members')
-    .select('id, family_id, name, avatar, color, member_type, birth_date, permissions, linked_profile_id, photo_path')
+    .select(
+      'id, family_id, name, avatar, color, member_type, birth_date, birthday_favorite, permissions, linked_profile_id, photo_path',
+    )
     .order('sort_order', { ascending: true })
 
   if (error) throw error
@@ -151,6 +165,7 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
     color: row.color,
     memberType: row.member_type,
     birthDate: row.birth_date,
+    birthdayFavorite: row.birthday_favorite,
     permissions: row.permissions ?? {},
     linkedProfileId: row.linked_profile_id,
     photoPath: row.photo_path,

@@ -16,7 +16,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listContacts(): Promise<Contact[]> {
   const { data, error } = await supabase
     .from('contacts')
-    .select('id, family_id, name, category, phone, email, notes, birth_date')
+    .select('id, family_id, name, category, phone, email, notes, birth_date, birthday_favorite')
     .order('name', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -28,6 +28,7 @@ export async function listContacts(): Promise<Contact[]> {
     email: r.email,
     notes: r.notes,
     birthDate: r.birth_date,
+    birthdayFavorite: r.birthday_favorite,
   }))
 }
 
@@ -80,6 +81,11 @@ export async function updateContact(
 // crearlo de nuevo.
 export async function updateContactBirthDate(id: string, birthDate: string | null): Promise<void> {
   const { error } = await supabase.from('contacts').update({ birth_date: birthDate }).eq('id', id)
+  if (error) throw error
+}
+
+export async function setContactBirthdayFavorite(id: string, favorite: boolean): Promise<void> {
+  const { error } = await supabase.from('contacts').update({ birthday_favorite: favorite }).eq('id', id)
   if (error) throw error
 }
 

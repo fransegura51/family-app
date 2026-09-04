@@ -5,30 +5,42 @@ import {
   listMemberDocuments,
   uploadMemberDocument,
 } from '@/data/documents'
+import { createDocumentCategory, listDocumentCategories, type DocumentCategory } from '@/data/documentCategories'
 import { listFamilyMembers } from '@/data/family'
 import type { FamilyMember, MemberDocument } from '@/domain/types'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { ConfirmButton } from '@/ui/ConfirmButton'
-import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
+import { MemberAvatar } from '@/ui/MemberAvatar'
+import { AddMemberForm } from '@/ui/FamilyScreen'
 
-// Las 4 carpetas pedidas. "Casa" y "Familia" normalmente no son de una
-// persona en concreto — por eso el miembro es opcional en el formulario,
-// no una carpeta más.
-const FOLDERS = ['Privada', 'Educación', 'Casa', 'Familia'] as const
+const UNCATEGORIZED = '__uncategorized__'
+const UNSPECIFIED = '__unspecified__'
 
+// Dos niveles de carpeta, como se pidió: "una carpeta dentro de cada
+// sección... Casa: Paco, Jennifer, Fernando... Familia: Paco, Eric,
+// Jennifer, Fernando, con los documentos de cada uno". Primero la
+// categoría (Privada/Educación/Casa/Familia + las que se añadan),
+// dentro de cada una una carpeta por persona ("Sin especificar" +
+// cada miembro), y dentro de esa ya los documentos — mismo patrón de
+// carpetas plegables que Tickets, anidado un nivel más.
 export function DocumentsScreen() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [documents, setDocuments] = useState<MemberDocument[]>([])
-  const [folder, setFolder] = useState<(typeof FOLDERS)[number]>(FOLDERS[0])
+  const [categories, setCategories] = useState<DocumentCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
+  const [expandedMember, setExpandedMember] = useState<string | null>(null)
+  const [addingCategory, setAddingCategory] = useState(false)
+  const [addingMember, setAddingMember] = useState(false)
 
   function reload() {
     setLoading(true)
-    Promise.all([listFamilyMembers(), listMemberDocuments()])
-      .then(([m, d]) => {
+    Promise.all([listFamilyMembers(), listMemberDocuments(), listDocumentCategories()])
+      .then(([m, d, c]) => {
         setMembers(m)
         setDocuments(d)
+        setCategories(c)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -45,45 +57,204 @@ export function DocumentsScreen() {
     }
   }
 
-  const memberById = new Map(members.map((m) => [m.id, m]))
-  const folderDocuments = documents.filter((d) => d.category === folder)
+  function selectCategory(name: string) {
+    setExpandedMember(null)
+    setExpandedCategory(expandedCategory === name ? null : name)
+  }
 
   if (loading) return <div className="screen">Cargando documentos…</div>
+
+  // Categorías conocidas (persistidas) + cualquier categoría suelta que
+  // ya tuviera algún documento de antes (para no perder documentos
+  // antiguos si su categoría ya no está en la lista persistida) + los
+  // documentos sin categoría, en su propia carpeta.
+  const categoryNames = new Set(categories.map((c) => c.name))
+  for (const d of documents) {
+    if (d.category?.trim()) categoryNames.add(d.category.trim())
+  }
+  const hasUncategorized = documents.some((d) => !d.category?.trim())
+  const sortedCategoryNames = [...categoryNames].sort((a, b) => a.localeCompare(b))
 
   return (
     <div className="screen">
       <h1>Documentos</h1>
       {error && <p className="error">{error}</p>}
-      <ReorderableTabBar storageKey="documentos" tabs={FOLDERS} active={folder} onSelect={setFolder} />
 
-      <div className="event-list">
-        {folderDocuments.map((doc) => (
-          <DocumentRow key={doc.id} doc={doc} member={memberById.get(doc.memberId ?? '')} onDelete={() => handleDelete(doc)} />
-        ))}
-        {folderDocuments.length === 0 && <p className="muted">Sin documentos en "{folder}" todavía.</p>}
+      <div className="store-folder-grid">
+        {sortedCategoryNames.map((catName) => {
+          const catDocs = documents.filter((d) => (d.category?.trim() || null) === catName)
+          const isOpen = expandedCategory === catName
+          return (
+            <div key={catName} className="store-folder">
+              <button type="button" className="store-folder-header" onClick={() => selectCategory(catName)}>
+                <span className="store-folder-icon">🗂️</span>
+                <span className="store-folder-info">
+                  <strong>{catName}</strong>
+                  <span className="muted">
+                    {catDocs.length} {catDocs.length === 1 ? 'documento' : 'documentos'}
+                  </span>
+                </span>
+                <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
+              </button>
+              {isOpen && (
+                <MemberFolders
+                  members={members}
+                  documents={catDocs}
+                  expandedMember={expandedMember}
+                  onSelectMember={setExpandedMember}
+                  category={catName}
+                  addingMember={addingMember}
+                  onToggleAddingMember={() => setAddingMember((v) => !v)}
+                  onDelete={handleDelete}
+                  onReload={reload}
+                />
+              )}
+            </div>
+          )
+        })}
+
+        {hasUncategorized && (
+          <div className="store-folder">
+            <button type="button" className="store-folder-header" onClick={() => selectCategory(UNCATEGORIZED)}>
+              <span className="store-folder-icon">📄</span>
+              <span className="store-folder-info">
+                <strong>Sin categoría</strong>
+              </span>
+              <span className="store-folder-chevron">{expandedCategory === UNCATEGORIZED ? '▾' : '▸'}</span>
+            </button>
+            {expandedCategory === UNCATEGORIZED && (
+              <MemberFolders
+                members={members}
+                documents={documents.filter((d) => !d.category?.trim())}
+                expandedMember={expandedMember}
+                onSelectMember={setExpandedMember}
+                category=""
+                addingMember={addingMember}
+                onToggleAddingMember={() => setAddingMember((v) => !v)}
+                onDelete={handleDelete}
+                onReload={reload}
+              />
+            )}
+          </div>
+        )}
+
+        <div className="store-folder">
+          <button type="button" className="store-folder-header" onClick={() => setAddingCategory((v) => !v)}>
+            <span className="store-folder-icon">➕</span>
+            <span className="store-folder-info">
+              <strong>Añadir categoría</strong>
+            </span>
+            <span className="store-folder-chevron">{addingCategory ? '▾' : '▸'}</span>
+          </button>
+          {addingCategory && (
+            <div className="store-folder-contents">
+              <AddCategoryInline
+                onAdded={() => {
+                  setAddingCategory(false)
+                  reload()
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
-
-      <AddDocumentForm folder={folder} members={members} onAdded={reload} />
     </div>
   )
 }
 
-function DocumentRow({
-  doc,
-  member,
+function MemberFolders({
+  members,
+  documents,
+  expandedMember,
+  onSelectMember,
+  category,
+  addingMember,
+  onToggleAddingMember,
   onDelete,
+  onReload,
 }: {
-  doc: MemberDocument
-  member: FamilyMember | undefined
-  onDelete: () => void
+  members: FamilyMember[]
+  documents: MemberDocument[]
+  expandedMember: string | null
+  onSelectMember: (id: string | null) => void
+  category: string
+  addingMember: boolean
+  onToggleAddingMember: () => void
+  onDelete: (doc: MemberDocument) => void
+  onReload: () => void
 }) {
+  const folders: { id: string; member: FamilyMember | null; name: string }[] = [
+    { id: UNSPECIFIED, member: null, name: 'Sin especificar' },
+    ...members.map((m) => ({ id: m.id, member: m, name: m.name })),
+  ]
+
+  return (
+    <div className="event-list store-folder-contents">
+      <div className="store-folder-grid">
+        {folders.map((f) => {
+          const memberDocs = documents.filter((d) => (d.memberId ?? UNSPECIFIED) === f.id)
+          const isOpen = expandedMember === f.id
+          return (
+            <div key={f.id} className="store-folder">
+              <button
+                type="button"
+                className="store-folder-header"
+                onClick={() => onSelectMember(isOpen ? null : f.id)}
+              >
+                <span className="store-folder-icon">
+                  {f.member ? <MemberAvatar member={f.member} size={22} /> : '📁'}
+                </span>
+                <span className="store-folder-info">
+                  <strong>{f.name}</strong>
+                  <span className="muted">
+                    {memberDocs.length} {memberDocs.length === 1 ? 'documento' : 'documentos'}
+                  </span>
+                </span>
+                <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
+              </button>
+              {isOpen && (
+                <div className="event-list store-folder-contents">
+                  {memberDocs.map((doc) => (
+                    <DocumentRow key={doc.id} doc={doc} onDelete={() => onDelete(doc)} />
+                  ))}
+                  {memberDocs.length === 0 && <p className="muted">Sin documentos todavía.</p>}
+                  <AddDocumentForm
+                    memberId={f.id === UNSPECIFIED ? null : f.id}
+                    category={category}
+                    onAdded={onReload}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        <div className="store-folder">
+          <button type="button" className="store-folder-header" onClick={onToggleAddingMember}>
+            <span className="store-folder-icon">➕</span>
+            <span className="store-folder-info">
+              <strong>Añadir miembro</strong>
+            </span>
+            <span className="store-folder-chevron">{addingMember ? '▾' : '▸'}</span>
+          </button>
+          {addingMember && (
+            <div className="store-folder-contents">
+              <AddMemberForm onAdded={onReload} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DocumentRow({ doc, onDelete }: { doc: MemberDocument; onDelete: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
 
   return (
     <div className="card task-card">
       <div className="task-card-main">
         <strong>{doc.title}</strong>
-        {member && <p className="muted">{member.name}</p>}
         {url ? (
           <a href={url} target="_blank" rel="noreferrer">
             Ver documento
@@ -99,18 +270,49 @@ function DocumentRow({
   )
 }
 
+function AddCategoryInline({ onAdded }: { onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await createDocumentCategory(name.trim())
+      setName('')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir la categoría')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="inline-fields">
+      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nueva categoría (p. ej. Salud)" />
+      <button type="submit" disabled={saving || !name.trim()}>
+        + Añadir categoría
+      </button>
+      {error && <p className="error">{error}</p>}
+    </form>
+  )
+}
+
 function AddDocumentForm({
-  folder,
-  members,
+  memberId,
+  category,
   onAdded,
 }: {
-  folder: string
-  members: FamilyMember[]
+  memberId: string | null
+  category: string
   onAdded: () => void
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [title, setTitle] = useState('')
-  const [memberId, setMemberId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -123,7 +325,7 @@ function AddDocumentForm({
     setSaving(true)
     setError(null)
     try {
-      await uploadMemberDocument({ memberId: memberId || null, file, title, category: folder })
+      await uploadMemberDocument({ memberId, file, title, category })
       setFile(null)
       setTitle('')
       onAdded()
@@ -136,23 +338,12 @@ function AddDocumentForm({
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Subir a "{folder}"</h2>
+      <h2>Subir documento</h2>
       <label>Archivo</label>
       <FileOrPdfPicker file={file} onChange={setFile} />
       <label>
         Título
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="DNI" required />
-      </label>
-      <label>
-        De quién (opcional)
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-          <option value="">Nadie en particular</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
       </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>

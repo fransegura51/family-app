@@ -308,7 +308,7 @@ function EditMemberForm({
   )
 }
 
-function AddMemberForm({ onAdded }: { onAdded: () => void }) {
+export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
   const [name, setName] = useState('')
   const [memberType, setMemberType] = useState<MemberType>('child')
   const [color, setColor] = useState('#4C6EF5')

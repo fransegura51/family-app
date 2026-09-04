@@ -280,7 +280,7 @@ export interface ProductPrice {
 export interface Receipt {
   id: string
   familyId: string
-  storagePath: string
+  storagePath: string | null
   store: string | null
   receiptDate: string
   totalAmount: number | null

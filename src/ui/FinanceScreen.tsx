@@ -722,18 +722,22 @@ function ReceiptRow({
           {receipt.receiptDate}
           {receipt.totalAmount != null && ` · ${receipt.totalAmount.toFixed(2)} €`}
         </p>
-        {url ? (
-          <a href={url} target="_blank" rel="noreferrer">
-            Ver ticket
-          </a>
+        {receipt.storagePath ? (
+          url ? (
+            <a href={url} target="_blank" rel="noreferrer">
+              Ver ticket
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => getReceiptUrl(receipt.storagePath!).then(setUrl)}
+            >
+              Ver ticket
+            </button>
+          )
         ) : (
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => getReceiptUrl(receipt.storagePath).then(setUrl)}
-          >
-            Ver ticket
-          </button>
+          <p className="muted">Foto eliminada (ticket de hace más de 3 meses)</p>
         )}
       </div>
       <div className="member-card-actions">
@@ -939,6 +943,10 @@ function AddReceiptForm({
   return (
     <form onSubmit={handleSubmit} className="card member-form">
       <h2>Subir ticket</h2>
+      <p className="muted">
+        La foto del ticket se guarda solo los últimos 3 meses; pasado ese tiempo se borra la foto
+        (la tienda, la fecha y el importe se quedan igual).
+      </p>
       <label>Foto o archivo</label>
       <FileOrPdfPicker
         file={file}

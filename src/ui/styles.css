@@ -886,7 +886,12 @@ textarea {
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.3);
-  color: white;
+  /* Antes blanco fijo: sobre un color claro de persona (amarillo,
+     verde) quedaba casi invisible — hereda el mismo color con
+     contraste ya calculado que pone el chip por fuera (petición
+     real: "pon las letras de hecho y editar también negras cuando el
+     color de la persona es claro"). */
+  color: inherit;
   font-size: 11px;
   line-height: 1;
   display: flex;
@@ -898,7 +903,7 @@ textarea {
 .agenda-allday-chip-action {
   background: none;
   border: none;
-  color: white;
+  color: inherit;
   text-decoration: underline;
   font-size: 12px;
   font-weight: 600;
@@ -937,7 +942,7 @@ textarea {
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.3);
-  color: white;
+  color: inherit;
   font-size: 12px;
   line-height: 1;
   display: flex;
@@ -970,7 +975,12 @@ textarea {
   background: none;
   border: none;
   padding: 0;
-  color: white;
+  /* Antes blanco fijo: sobre un color claro de persona (amarillo,
+     verde) "Hecho"/"Editar" quedaban casi invisibles — hereda el
+     mismo color con contraste ya calculado que pone la tarjeta
+     (petición real: "pon las letras de hecho y editar también negras
+     cuando el color de la persona es claro"). */
+  color: inherit;
   text-decoration: underline;
   font-size: 12px;
   opacity: 0.9;

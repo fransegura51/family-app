@@ -267,11 +267,13 @@ function ShoppingListTab() {
     }
   }
 
-  // Vacía de golpe una tienda entera (comprados y sin comprar) al
-  // terminar de hacer la compra allí.
+  // Borra solo lo ya tachado (comprado) de esa tienda al terminar la
+  // compra — lo que se quedó sin marcar sigue pendiente en la lista
+  // (petición real: si queda algo sin tachar, que no lo borre).
   async function finalizePurchase(storeItems: ShoppingItem[]) {
     try {
-      await deleteShoppingItems(storeItems.map((i) => i.id))
+      const boughtIds = storeItems.filter((i) => i.status === 'comprado').map((i) => i.id)
+      await deleteShoppingItems(boughtIds)
       reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo finalizar la compra')

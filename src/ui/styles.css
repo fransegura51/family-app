@@ -734,6 +734,24 @@ select {
   color: var(--muted);
 }
 
+/* Cabecera de tienda plegable — petición real: "que la lista de cada
+   supermercado sea extensible y se contraiga si se toca el nombre de
+   la tienda". */
+.shopping-store-heading-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 0;
+}
+
+.shopping-store-chevron {
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
+}
+
 .points-badge {
   display: inline-block;
   background: #fff3cd;
@@ -782,7 +800,8 @@ select {
   opacity: 0.55;
 }
 
-.shopping-item-done .task-card-main strong {
+.shopping-item-done .task-card-main strong,
+.shopping-item-done .price-row-name {
   text-decoration: line-through;
 }
 
@@ -798,6 +817,20 @@ select {
   background: white;
   color: var(--primary);
   font-weight: 600;
+}
+
+/* Mismo botón, versión estrecha para la fila de una sola línea de la
+   Lista de la compra (petición real: "más estrecha, al estilo de
+   Memoria"). */
+.task-toggle-compact {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 2px solid var(--primary);
+  background: white;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 13px;
 }
 
 .task-toggle-done {

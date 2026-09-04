@@ -179,6 +179,18 @@ function ShoppingListTab() {
   // petición real: "en compras lo mismo, botón flotante Añadir
   // producto y formulario emergente".
   const [addingItem, setAddingItem] = useState(false)
+  // Cada tienda se puede plegar tocando su nombre — petición real: "que
+  // la lista de cada supermercado sea extensible y se contraiga si se
+  // toca el nombre de la tienda". Empiezan todas desplegadas.
+  const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set())
+  function toggleStoreCollapsed(store: string) {
+    setCollapsedStores((prev) => {
+      const next = new Set(prev)
+      if (next.has(store)) next.delete(store)
+      else next.add(store)
+      return next
+    })
+  }
 
   // Solo se enseña "Cargando…" (que desmonta el formulario de abajo) la
   // primera vez — si no, cada "reload" tras añadir un producto borraba
@@ -218,6 +230,15 @@ function ShoppingListTab() {
     function handleFocusStore(e: Event) {
       const store = (e as CustomEvent<{ store: string }>).detail?.store
       if (!store) return
+      // Si la tienda a la que Pepa navega está plegada, se despliega
+      // sola — si no, el usuario haría scroll a una cabecera cerrada
+      // sin ver el producto que acaba de apuntar.
+      setCollapsedStores((prev) => {
+        if (!prev.has(store)) return prev
+        const next = new Set(prev)
+        next.delete(store)
+        return next
+      })
       const target = normalize(store)
       const tryScroll = (attempt: number) => {
         const el = document.getElementById(`shopping-store-${target}`)
@@ -295,31 +316,48 @@ function ShoppingListTab() {
       </div>
 
       <h2 className="section-title">Pendientes</h2>
-      {storeGroups.map(([store, storeItems]) => (
+      {storeGroups.map(([store, storeItems]) => {
+        const collapsed = storeGroups.length > 1 && collapsedStores.has(store)
+        return (
         <div key={store} id={`shopping-store-${normalize(store)}`}>
           {storeGroups.length > 1 && (
-            <h3 className="shopping-store-heading">
+            <h3
+              className="shopping-store-heading shopping-store-heading-toggle"
+              role="button"
+              tabIndex={0}
+              onClick={() => toggleStoreCollapsed(store)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') toggleStoreCollapsed(store)
+              }}
+            >
+              <span className="shopping-store-chevron">{collapsed ? '▸' : '▾'}</span>
               {store === 'Sin tienda' ? '🏬' : <StoreIconBadge name={store} size={20} />} {store}
+              <span className="muted"> ({storeItems.length})</span>
             </h3>
           )}
-          <DraggableStoreGroup
-            items={storeItems}
-            suggestions={suggestions}
-            shoppingMode={shoppingMode}
-            onSetStatus={setStatus}
-            onDeleted={reload}
-            onReordered={reload}
-          />
-          {/* Los comprados se quedan tachados a la vista; solo se
-              limpia la tienda entera al terminar de comprar allí. */}
-          <ConfirmButton
-            className="link-button shopping-finish-button"
-            label="✅ Finalizar compra"
-            confirmLabel="Sí, finalizar"
-            onConfirm={() => finalizePurchase(storeItems)}
-          />
+          {!collapsed && (
+            <>
+              <DraggableStoreGroup
+                items={storeItems}
+                suggestions={suggestions}
+                shoppingMode={shoppingMode}
+                onSetStatus={setStatus}
+                onDeleted={reload}
+                onReordered={reload}
+              />
+              {/* Los comprados se quedan tachados a la vista; solo se
+                  limpia la tienda entera al terminar de comprar allí. */}
+              <ConfirmButton
+                className="link-button shopping-finish-button"
+                label="✅ Finalizar compra"
+                confirmLabel="Sí, finalizar"
+                onConfirm={() => finalizePurchase(storeItems)}
+              />
+            </>
+          )}
         </div>
-      ))}
+        )
+      })}
       {visible.length === 0 && <p className="muted">Nada pendiente.</p>}
 
       {/* Petición real: "pondría las tiendas que Pepa reconoce por voz
@@ -637,65 +675,62 @@ function DraggableStoreGroup({
   }
 
   return (
-    <div className="event-list">
+    <div className="price-row-list">
       {order.map((item) => {
         const done = item.status === 'comprado'
+        // Todo el detalle (cantidad/unidad, prioridad, precio) en una
+        // sola línea con el nombre, estilo Memoria — petición real:
+        // "más estrecha, al estilo de Memoria... en una sola línea".
+        const known = suggestions.find((s) => s.normalizedName === normalizeProductName(item.name))
+        const detailParts = [
+          [item.quantity, item.unit].filter(Boolean).join(' '),
+          !shoppingMode && item.priority !== 'normal' ? `prioridad ${item.priority}` : null,
+          known?.lastPrice != null ? `${known.lastPrice.toFixed(2)} €/ud` : null,
+        ].filter(Boolean)
+        const label = item.name + (detailParts.length > 0 ? ` · ${detailParts.join(' · ')}` : '')
         return (
-        <div
-          key={item.id}
-          className={
-            'card task-card' +
-            (draggingId === item.id ? ' shopping-item-dragging' : '') +
-            (done ? ' shopping-item-done' : '')
-          }
-          style={draggingId === item.id ? { transform: `translateY(${dragOffset}px)` } : undefined}
-        >
-          {!shoppingMode && (
-            <span
-              className="shopping-drag-handle"
-              onPointerDown={(e) => handleTouchStart(e, item.id, e.currentTarget.parentElement as HTMLElement)}
-              onPointerMove={handleTouchMove}
-              onPointerUp={handleTouchEnd}
-              onPointerCancel={handleTouchEnd}
-              aria-label="Arrastrar para reordenar"
-            >
-              ⠿
-            </span>
-          )}
-          <div className="task-card-main">
-            <strong>{item.name}</strong>
-            <p className="muted">
-              {[item.quantity, item.unit].filter(Boolean).join(' ')}
-              {!shoppingMode && item.priority !== 'normal' && ` · prioridad ${item.priority}`}
-              {/* Precio por unidad de la última vez que se compró, si se
-                  conoce — petición real: verlo ya al añadir/ver la lista,
-                  no solo yendo a mirar la Memoria aparte. */}
-              {(() => {
-                const known = suggestions.find((s) => s.normalizedName === normalizeProductName(item.name))
-                return known?.lastPrice != null ? ` · ${known.lastPrice.toFixed(2)} €/ud` : null
-              })()}
-            </p>
-          </div>
-          {/* Marcar/desmarcar comprado — ya NO borra el producto de la
-              lista, solo lo tacha (petición real: seguir viéndolo
-              mientras se sigue comprando el resto). */}
-          <button
-            type="button"
-            className={'task-toggle' + (done ? ' task-toggle-done' : '')}
-            onClick={() => onSetStatus(item.id, done ? 'pendiente' : 'comprado')}
-            aria-label={done ? 'Marcar como pendiente' : 'Comprado'}
+          <div
+            key={item.id}
+            className={
+              'price-row' +
+              (draggingId === item.id ? ' shopping-item-dragging' : '') +
+              (done ? ' shopping-item-done' : '')
+            }
+            style={draggingId === item.id ? { transform: `translateY(${dragOffset}px)` } : undefined}
           >
-            ✓
-          </button>
-          {!shoppingMode && (
-            <ConfirmIconButton
-              icon="✕"
-              className="link-button"
-              ariaLabel="Eliminar"
-              onConfirm={() => deleteShoppingItem(item.id).then(onDeleted)}
-            />
-          )}
-        </div>
+            {!shoppingMode && (
+              <span
+                className="shopping-drag-handle"
+                onPointerDown={(e) => handleTouchStart(e, item.id, e.currentTarget.parentElement as HTMLElement)}
+                onPointerMove={handleTouchMove}
+                onPointerUp={handleTouchEnd}
+                onPointerCancel={handleTouchEnd}
+                aria-label="Arrastrar para reordenar"
+              >
+                ⠿
+              </span>
+            )}
+            <span className="price-row-name">{label}</span>
+            {/* Marcar/desmarcar comprado — ya NO borra el producto de la
+                lista, solo lo tacha (petición real: seguir viéndolo
+                mientras se sigue comprando el resto). */}
+            <button
+              type="button"
+              className={'task-toggle-compact' + (done ? ' task-toggle-done' : '')}
+              onClick={() => onSetStatus(item.id, done ? 'pendiente' : 'comprado')}
+              aria-label={done ? 'Marcar como pendiente' : 'Comprado'}
+            >
+              ✓
+            </button>
+            {!shoppingMode && (
+              <ConfirmIconButton
+                icon="✕"
+                className="link-button"
+                ariaLabel="Eliminar"
+                onConfirm={() => deleteShoppingItem(item.id).then(onDeleted)}
+              />
+            )}
+          </div>
         )
       })}
     </div>

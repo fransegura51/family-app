@@ -9,6 +9,7 @@ import { listUpcomingEvents } from '@/data/calendar'
 import { expandOccurrences } from '@/domain/calendar'
 import { listShoppingItems } from '@/data/shopping'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { ShoppingCartArt, TaskArt } from '@/ui/HomeSlideArt'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
 
@@ -117,7 +118,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
 
 type Slide =
   | { kind: 'photo'; id: string; url: string; caption: string }
-  | { kind: 'info'; id: string; to: string; icon: string; title: string; items: string[] }
+  | { kind: 'info'; id: string; to: string; icon: string; title: string; items: string[]; art: 'compra' | 'tarea' }
 
 function todayStr(): string {
   const d = new Date()
@@ -187,10 +188,10 @@ function PhotoBanner() {
   const slides: Slide[] = [
     ...photos.map((p): Slide => ({ kind: 'photo', id: p.id, url: urls[p.id] ?? '', caption: p.caption || 'Fotos de la familia' })),
     ...(agendaItems.length > 0
-      ? [{ kind: 'info', id: 'agenda', to: '/calendario', icon: '📅', title: 'Hoy en el calendario', items: agendaItems } as const]
+      ? [{ kind: 'info', id: 'agenda', to: '/calendario', icon: '📅', title: 'Hoy en el calendario', items: agendaItems, art: 'tarea' } as const]
       : []),
     ...(shoppingItems.length > 0
-      ? [{ kind: 'info', id: 'compra', to: '/compras', icon: '🛒', title: 'Compra pendiente', items: shoppingItems } as const]
+      ? [{ kind: 'info', id: 'compra', to: '/compras', icon: '🛒', title: 'Compra pendiente', items: shoppingItems, art: 'compra' } as const]
       : []),
   ]
 
@@ -230,15 +231,18 @@ function PhotoBanner() {
     return (
       <Link to={current.to} className="home-photo-banner">
         <div className="home-photo-banner-info">
-          <p className="home-photo-banner-title">
-            {current.icon} {current.title}
-          </p>
-          <ul className="home-photo-banner-info-list">
-            {current.items.slice(0, 4).map((item, i) => (
-              <li key={i}>{item}</li>
-            ))}
-          </ul>
-          {current.items.length > 4 && <p className="home-photo-banner-sub">+{current.items.length - 4} más</p>}
+          <div className="home-photo-banner-info-text">
+            <p className="home-photo-banner-title">
+              {current.icon} {current.title}
+            </p>
+            <ul className="home-photo-banner-info-list">
+              {current.items.slice(0, 4).map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+            {current.items.length > 4 && <p className="home-photo-banner-sub">+{current.items.length - 4} más</p>}
+          </div>
+          <div className="home-photo-banner-info-art">{current.art === 'compra' ? <ShoppingCartArt /> : <TaskArt />}</div>
         </div>
         {dots}
       </Link>

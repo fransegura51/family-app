@@ -171,10 +171,15 @@ body {
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 18px 20px;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px;
   color: white;
+}
+
+.home-photo-banner-info-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .home-photo-banner-info-list {
@@ -185,6 +190,93 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.home-photo-banner-info-art {
+  flex-shrink: 0;
+  width: 100px;
+}
+
+/* Ilustraciones animadas de las diapositivas "Compra pendiente" y "Hoy
+   en el calendario" — petición real: "más elaboradas... que no se vea
+   tan soso". Sin librería, keyframes CSS puros. */
+.home-slide-art {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.home-slide-art-walk {
+  animation: home-slide-art-bob 1.1s ease-in-out infinite;
+}
+
+@keyframes home-slide-art-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.home-slide-art-wheel-spin {
+  animation: home-slide-art-spin 0.6s linear infinite;
+}
+
+@keyframes home-slide-art-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.home-slide-art-drill-shake {
+  animation: home-slide-art-shake 0.15s ease-in-out infinite;
+  transform-origin: 44px 54px;
+}
+
+@keyframes home-slide-art-shake {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(0.5px, -0.8px) rotate(1deg);
+  }
+}
+
+.home-slide-art-sparks circle {
+  animation: home-slide-art-spark-fade 0.8s ease-in-out infinite;
+}
+
+.home-slide-art-sparks circle:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.home-slide-art-sparks circle:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes home-slide-art-spark-fade {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-slide-art-walk,
+  .home-slide-art-wheel-spin,
+  .home-slide-art-drill-shake,
+  .home-slide-art-sparks circle {
+    animation: none;
+  }
 }
 
 .home-photo-banner-dots {

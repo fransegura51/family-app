@@ -114,7 +114,7 @@ export function ContactsScreen() {
       <ImportVcfContactsForm existingContacts={contacts} onAdded={reload} />
       <ImportIcsBirthdaysForm existingContacts={contacts} onAdded={reload} />
 
-      <button type="button" className="contacts-fab" onClick={() => setAddingContact(true)}>
+      <button type="button" className="screen-fab" onClick={() => setAddingContact(true)}>
         + Nuevo contacto
       </button>
 

@@ -115,6 +115,11 @@ export function CalendarScreen() {
   const [externalCompletions, setExternalCompletions] = useState<ExternalEventCompletion[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
+  // Botón flotante "Nuevo evento", tocable desde cualquier parte de la
+  // pestaña — petición real: "esa misma idea [la de Contactos] la
+  // vamos a aplicar al calendario: botón flotante Nuevo evento y
+  // formulario en ventana emergente".
+  const [addingEvent, setAddingEvent] = useState(false)
   // Vacío = sin filtrar (toda la familia) — varios miembros a la vez,
   // no solo uno, petición real: "quiero que puedas filtrar por cada
   // miembro... y que Pepa detecte solamente las tareas de ese
@@ -603,6 +608,35 @@ export function CalendarScreen() {
 
           <AddEventForm members={members} events={events} onAdded={reload} />
         </>
+      )}
+
+      <button type="button" className="screen-fab" onClick={() => setAddingEvent(true)}>
+        + Nuevo evento
+      </button>
+
+      {addingEvent && (
+        <div className="modal-overlay" onClick={() => setAddingEvent(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Nuevo evento
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setAddingEvent(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <AddEventForm
+              members={members}
+              events={events}
+              defaultDate={selectedDate}
+              hideHeading
+              onAdded={() => {
+                reload()
+                setAddingEvent(false)
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1470,11 +1504,13 @@ function AddEventForm({
   events,
   onAdded,
   defaultDate,
+  hideHeading,
 }: {
   members: FamilyMember[]
   events: CalendarEvent[]
   onAdded: () => void
   defaultDate?: string
+  hideHeading?: boolean
 }) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(defaultDate ?? '')
@@ -1580,7 +1616,7 @@ function AddEventForm({
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Nuevo evento</h2>
+      {!hideHeading && <h2>Nuevo evento</h2>}
       <label>
         Título
         <input

@@ -1015,10 +1015,10 @@ textarea {
   border-color: var(--primary);
 }
 
-/* Botón flotante "Nuevo contacto" — a la vista siempre, sin tener que
-   bajar hasta el final de la lista para encontrar el formulario
-   (petición real). */
-.contacts-fab {
+/* Botón flotante "Nuevo X" — a la vista siempre, sin tener que buscar
+   el formulario en la pantalla (petición real, primero en Contactos,
+   luego "esa misma idea la vamos a aplicar al calendario"). */
+.screen-fab {
   position: fixed;
   right: 16px;
   bottom: 90px;

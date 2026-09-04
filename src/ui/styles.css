@@ -810,6 +810,13 @@ select {
   margin: 8px 0 20px;
 }
 
+/* Fila de tienda dentro de "¿En qué tienda?" al mandar un producto de
+   Historial a la lista de la compra — petición real: "que pregunte en
+   qué tienda queremos comprarlo". */
+.store-picker-option {
+  cursor: pointer;
+}
+
 .task-toggle {
   padding: 10px 16px;
   border-radius: 12px;

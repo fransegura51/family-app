@@ -137,7 +137,10 @@ function buildSuggestions(products: Product[], prices: ProductPrice[]): ProductS
   })
 }
 
-const SUB_TABS = ['Lista', 'Programadas', 'Memoria', 'Historial'] as const
+// Memoria e Historial se fusionaron en una sola pestaña "Historial"
+// (petición real: "combinar Memoria y Historial para dejarlo en una
+// sola sección que se llame Historial").
+const SUB_TABS = ['Lista', 'Programadas', 'Historial'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 export function ShoppingScreen() {
@@ -150,7 +153,6 @@ export function ShoppingScreen() {
 
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Programadas' && <TripsTab />}
-      {tab === 'Memoria' && <MemoryTab />}
       {tab === 'Historial' && <HistoryTab />}
     </div>
   )
@@ -1243,178 +1245,19 @@ function AddTripForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
 }
 
 // ---------------------------------------------------------------------
-// Memoria de compras (Skill 09/11)
+// Historial (Skill 09/11 + antes "Precios" en Dinero) — fusiona lo que
+// eran dos pestañas separadas, Memoria e Historial, en una sola.
+// Petición real: "combinar Memoria y Historial para dejarlo en una
+// sola sección que se llame Historial... falta que le integres a
+// Memoria el filtro de fechas que hay en Historial, las flechas si el
+// precio ha subido o bajado". Sigue sin normalizar por cantidad (1L vs
+// 1,5L cuentan igual): compara lo que se pagó cada vez, que es el dato
+// que hay sin pedir cantidades exactas en cada compra.
 // ---------------------------------------------------------------------
 
 function formatFullDate(d: string): string {
   return new Date(`${d}T00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
 }
-
-function MemoryTab() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [prices, setPrices] = useState<ProductPrice[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [added, setAdded] = useState<Set<string>>(new Set())
-  // Ventana emergente con el detalle ("sueles comprarlo cada X días...")
-  // al tocar el nombre — petición real: el title (tooltip) no se ve al
-  // tocar en el móvil, así que ese detalle pasa a un modal de verdad.
-  const [detail, setDetail] = useState<{ name: string; lines: string[] } | null>(null)
-
-  useEffect(() => {
-    Promise.all([listProducts(), listAllProductPrices()])
-      .then(([p, pr]) => {
-        setProducts(p)
-        setPrices(pr)
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const withStats = useMemo(
-    () =>
-      products
-        .map((product) => ({
-          product,
-          stats: computeProductStats(prices.filter((p) => p.productId === product.id)),
-        }))
-        .filter((x) => x.stats !== null),
-    [products, prices],
-  )
-
-  const suggestions = withStats.filter((x) => x.stats!.isDue)
-
-  async function handleAddSuggestion(product: Product) {
-    try {
-      await addShoppingItem({ name: product.displayName, quantity: '', unit: '', priority: 'normal', tripId: null })
-      setAdded((prev) => new Set(prev).add(product.id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir')
-    }
-  }
-
-  if (loading) return <p className="muted">Cargando memoria de compras…</p>
-
-  return (
-    <div>
-      {error && <p className="error">{error}</p>}
-      <p className="muted">
-        Se construye sola: cada vez que guardas el precio de un producto comprado, queda aquí.
-      </p>
-
-      {/* Filas estrechas, todo en una línea — mismo estilo que la
-          pestaña Historial: nombre, precio visible y botón de añadir.
-          El detalle de "cada cuántos días" no cabe en la fila, así que
-          sale en una ventana emergente al tocar el nombre. */}
-      <h2 className="section-title">Sugerencias para la próxima compra</h2>
-      <div className="price-row-list">
-        {suggestions.map(({ product, stats }) => (
-          <div key={product.id} className="price-row">
-            <button
-              type="button"
-              className="price-row-name price-row-name-button"
-              onClick={() =>
-                setDetail({
-                  name: product.displayName,
-                  lines: [
-                    `Sueles comprarlo cada ${Math.round(stats!.avgDaysBetween!)} días.`,
-                    `Última vez comprado: ${formatFullDate(stats!.lastDate)}.`,
-                  ],
-                })
-              }
-            >
-              {product.displayName}
-            </button>
-            <span className="price-row-price">{stats!.lastPrice.toFixed(2)} €/ud</span>
-            <button
-              type="button"
-              className="link-button"
-              disabled={added.has(product.id)}
-              onClick={() => handleAddSuggestion(product)}
-              title="Añadir a la lista de la compra"
-            >
-              {added.has(product.id) ? '✓' : '🛒'}
-            </button>
-          </div>
-        ))}
-        {suggestions.length === 0 && <p className="muted">Sin sugerencias todavía.</p>}
-      </div>
-
-      <h2 className="section-title">Historial por producto</h2>
-      <div className="price-row-list">
-        {withStats.map(({ product, stats }) => (
-          <div key={product.id} className="price-row">
-            <button
-              type="button"
-              className="price-row-name price-row-name-button"
-              onClick={() =>
-                setDetail({
-                  name: product.displayName,
-                  lines: [
-                    `${stats!.count} ${stats!.count === 1 ? 'compra' : 'compras'}.`,
-                    `Media: ${stats!.avgPrice.toFixed(2)} €/ud.`,
-                    `Mínimo: ${stats!.minPrice.toFixed(2)} €/ud · Máximo: ${stats!.maxPrice.toFixed(2)} €/ud.`,
-                  ],
-                })
-              }
-            >
-              {product.displayName}
-            </button>
-            <span className="price-row-price">{stats!.lastPrice.toFixed(2)} €/ud</span>
-            {/* Petición real: poder añadirlo a la lista directamente desde
-                el historial, no solo desde las sugerencias de arriba. */}
-            <button
-              type="button"
-              className="link-button"
-              disabled={added.has(product.id)}
-              onClick={() => handleAddSuggestion(product)}
-              title="Añadir a la lista de la compra"
-            >
-              {added.has(product.id) ? '✓' : '🛒'}
-            </button>
-          </div>
-        ))}
-        {withStats.length === 0 && (
-          <p className="muted">
-            Todavía no hay historial — se rellena solo al cerrar una compra programada con el ticket, en
-            "Programadas".
-          </p>
-        )}
-      </div>
-
-      {detail && (
-        <div className="modal-overlay" onClick={() => setDetail(null)}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="section-title" style={{ margin: 0 }}>
-                {detail.name}
-              </h2>
-              <button type="button" className="modal-close" onClick={() => setDetail(null)} aria-label="Cerrar">
-                ✕
-              </button>
-            </div>
-            {detail.lines.map((line, i) => (
-              <p key={i} className="muted">
-                {line}
-              </p>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------
-// Historial (antes "Precios" en Dinero) — compara lo pagado por cada
-// producto este mes frente al anterior, a partir del mismo historial
-// que alimentan los tickets y la Memoria de la lista de la compra. No
-// normaliza por cantidad (1L vs 1,5L cuentan igual): compara lo que se
-// pagó cada vez, que es el dato que hay sin pedir cantidades exactas
-// en cada compra. Petición real: "la sección de precios la vamos a
-// quitar de Dinero y la vamos a poner en Compras, al lado de Memoria...
-// le vamos a poner Historial".
-// ---------------------------------------------------------------------
 
 function PriceDelta({ percent }: { percent: number | null }) {
   if (percent == null) return null
@@ -1428,9 +1271,15 @@ function PriceDelta({ percent }: { percent: number | null }) {
   )
 }
 
+interface ProductDetail {
+  name: string
+  lines: string[]
+}
+
 function HistoryTab() {
   const [prices, setPrices] = useState<ProductPrice[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [visibleMonth, setVisibleMonth] = useState(todayStr().slice(0, 7))
@@ -1439,22 +1288,25 @@ function HistoryTab() {
   // apuntarlo, con el último precio ya puesto. "added" evita mandarlo
   // dos veces si se toca otra vez.
   const [added, setAdded] = useState<Set<string>>(new Set())
-
-  async function handleAddToList(productId: string, name: string, price: number | null) {
-    try {
-      await addShoppingItem({ name, quantity: '', unit: '', priority: 'normal', tripId: null, price })
-      setAdded((prev) => new Set(prev).add(productId))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir a la lista')
-    }
-  }
+  // Ventana emergente con el detalle de un producto — el detalle no
+  // cabe en una fila de una sola línea, así que sale al tocar el
+  // nombre (petición real, y ahora también compara precio entre
+  // tiendas y en el tiempo).
+  const [detail, setDetail] = useState<ProductDetail | null>(null)
+  // Al mandar un producto a la lista se pregunta antes en qué tienda
+  // quiere comprarse — petición real: "que pregunte en qué tienda
+  // queremos comprarlo".
+  const [addingToList, setAddingToList] = useState<{ productId: string; name: string; price: number | null } | null>(
+    null,
+  )
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([listAllProductPrices(), listProducts()])
-      .then(([p, prod]) => {
+    Promise.all([listAllProductPrices(), listProducts(), listShoppingStores()])
+      .then(([p, prod, st]) => {
         setPrices(p)
         setProducts(prod)
+        setStores(st)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -1488,6 +1340,19 @@ function HistoryTab() {
     [prices],
   )
 
+  const withStats = useMemo(
+    () =>
+      products
+        .map((product) => ({
+          product,
+          stats: computeProductStats(prices.filter((p) => p.productId === product.id)),
+        }))
+        .filter((x) => x.stats !== null),
+    [products, prices],
+  )
+
+  const suggestions = withStats.filter((x) => x.stats!.isDue)
+
   const comparisons = useMemo(() => {
     const monthly = averagePricesByMonth(purchases)
     return compareMonths(monthly, visibleMonth, previousMonth)
@@ -1499,6 +1364,62 @@ function HistoryTab() {
   const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
   const basketDeltaPercent = previousBasket > 0 ? ((currentBasket - previousBasket) / previousBasket) * 100 : null
 
+  // Ventana emergente de un producto: cada cuántos días se suele
+  // comprar, estadísticas de siempre, el % de subida/bajada de este
+  // mes frente al anterior (comparación EN EL TIEMPO) y — petición
+  // real — el precio en cada tienda donde se ha comprado, para
+  // comparar ENTRE TIENDAS cuál sale más barata.
+  function openDetail(productId: string, name: string) {
+    const productPrices = prices.filter((p) => p.productId === productId)
+    const stats = computeProductStats(productPrices)
+    const lines: string[] = []
+    if (stats) {
+      if (stats.avgDaysBetween != null) lines.push(`Sueles comprarlo cada ${Math.round(stats.avgDaysBetween)} días.`)
+      lines.push(
+        `${stats.count} ${stats.count === 1 ? 'compra' : 'compras'} · media ${stats.avgPrice.toFixed(2)} €/ud · mínimo ${stats.minPrice.toFixed(2)} €/ud · máximo ${stats.maxPrice.toFixed(2)} €/ud.`,
+      )
+    }
+    const comparison = comparisons.find((c) => c.productId === productId)
+    if (comparison?.deltaPercent != null) {
+      const rounded = Math.round(comparison.deltaPercent * 10) / 10
+      if (Math.abs(rounded) >= 0.5) {
+        lines.push(`Este mes ha ${rounded > 0 ? 'subido' : 'bajado'} un ${Math.abs(rounded)}% frente al mes anterior.`)
+      }
+    }
+
+    // Última vez comprado en cada tienda y a qué precio — si es en más
+    // de una, se marca cuál sale más barata.
+    const byStore = new Map<string, { price: number; date: string }>()
+    for (const p of [...productPrices].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))) {
+      byStore.set(p.store || 'Sin tienda concreta', { price: p.price, date: p.recordedDate })
+    }
+    const storeEntries = [...byStore.entries()].sort((a, b) => a[1].price - b[1].price)
+    if (storeEntries.length > 1) {
+      const cheapest = storeEntries[0][1].price
+      lines.push('Por tienda:')
+      for (const [store, info] of storeEntries) {
+        const flag = info.price === cheapest ? ' — más barata' : ''
+        lines.push(`${store}: ${info.price.toFixed(2)} €/ud (${formatFullDate(info.date)})${flag}`)
+      }
+    } else if (storeEntries.length === 1) {
+      lines.push(`Comprado en ${storeEntries[0][0]}.`)
+    }
+
+    setDetail({ name, lines })
+  }
+
+  async function confirmAddToList(store: string | null) {
+    if (!addingToList) return
+    const { productId, name, price } = addingToList
+    try {
+      await addShoppingItem({ name, quantity: '', unit: '', priority: 'normal', tripId: null, price, store })
+      setAdded((prev) => new Set(prev).add(productId))
+      setAddingToList(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir a la lista')
+    }
+  }
+
   if (loading) return <p className="muted">Cargando historial…</p>
 
   const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
@@ -1506,6 +1427,35 @@ function HistoryTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
+      <p className="muted">Se construye solo: cada vez que guardas el precio de un producto comprado, queda aquí.</p>
+
+      <h2 className="section-title">Sugerencias para la próxima compra</h2>
+      <div className="price-row-list">
+        {suggestions.map(({ product, stats }) => (
+          <div key={product.id} className="price-row">
+            <button
+              type="button"
+              className="price-row-name price-row-name-button"
+              onClick={() => openDetail(product.id, product.displayName)}
+            >
+              {product.displayName}
+            </button>
+            <span className="price-row-price">{stats!.lastPrice.toFixed(2)} €/ud</span>
+            <button
+              type="button"
+              className="link-button"
+              disabled={added.has(product.id)}
+              onClick={() =>
+                setAddingToList({ productId: product.id, name: product.displayName, price: stats!.lastPrice })
+              }
+              title="Añadir a la lista de la compra"
+            >
+              {added.has(product.id) ? '✓' : '🛒'}
+            </button>
+          </div>
+        ))}
+        {suggestions.length === 0 && <p className="muted">Sin sugerencias todavía.</p>}
+      </div>
 
       <div className="month-nav">
         <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
@@ -1530,15 +1480,20 @@ function HistoryTab() {
       </div>
 
       <p className="muted">
-        Precio medio por unidad este mes frente al mes anterior — 🔺 rojo si ha subido, 🔻 verde si ha bajado.
-        Si compraste varias unidades de golpe (p. ej. 2 bolsas de patatas), se tiene en cuenta para no confundir
-        "comprar más" con "subir de precio".
+        Precio medio por unidad este mes frente al mes anterior — 🔺 rojo si ha subido, 🔻 verde si ha bajado. Toca
+        el nombre de un producto para ver cada cuánto lo compras y comparar precio entre tiendas.
       </p>
 
       <div className="price-row-list">
         {comparisons.map((c) => (
           <div key={c.productId} className="price-row">
-            <span className="price-row-name">{c.name}</span>
+            <button
+              type="button"
+              className="price-row-name price-row-name-button"
+              onClick={() => openDetail(c.productId, c.name)}
+            >
+              {c.name}
+            </button>
             <span className="price-row-price">
               {c.currentPrice!.toFixed(2)} €<PriceDelta percent={c.deltaPercent} />
             </span>
@@ -1546,7 +1501,7 @@ function HistoryTab() {
               type="button"
               className="link-button"
               disabled={added.has(c.productId)}
-              onClick={() => handleAddToList(c.productId, c.name, c.currentPrice)}
+              onClick={() => setAddingToList({ productId: c.productId, name: c.name, price: c.currentPrice })}
               title="Añadir a la lista de la compra"
             >
               {added.has(c.productId) ? '✓' : '🛒'}
@@ -1557,6 +1512,77 @@ function HistoryTab() {
           <p className="muted">No hay productos con precio registrado este mes (tickets o lista de la compra).</p>
         )}
       </div>
+
+      {detail && (
+        <div className="modal-overlay" onClick={() => setDetail(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {detail.name}
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setDetail(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            {detail.lines.map((line, i) => (
+              <p key={i} className="muted">
+                {line}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {addingToList && (
+        <div className="modal-overlay" onClick={() => setAddingToList(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                ¿En qué tienda?
+              </h2>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setAddingToList(null)}
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Añadir "{addingToList.name}" a la lista de la compra.
+            </p>
+            <div className="event-list">
+              {stores.map((s) => (
+                <div
+                  key={s.id}
+                  className="card task-card store-picker-option"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => confirmAddToList(s.name)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') confirmAddToList(s.name)
+                  }}
+                >
+                  <StoreIcon name={s.name} size={20} />
+                  <span>{s.name}</span>
+                </div>
+              ))}
+              <div
+                className="card task-card store-picker-option"
+                role="button"
+                tabIndex={0}
+                onClick={() => confirmAddToList(null)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') confirmAddToList(null)
+                }}
+              >
+                🏬 <span>Sin tienda concreta</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -118,7 +118,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
 
 type Slide =
   | { kind: 'photo'; id: string; url: string; caption: string }
-  | { kind: 'info'; id: string; to: string; icon: string; title: string; items: string[]; art: 'compra' | 'tarea' }
+  | { kind: 'info'; id: string; icon: string; title: string; items: string[]; art: 'compra' | 'tarea' }
 
 function todayStr(): string {
   const d = new Date()
@@ -146,6 +146,7 @@ function PhotoBanner() {
   const [shoppingItems, setShoppingItems] = useState<string[]>([])
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [paused, setPaused] = useState(false)
 
   useEffect(() => {
     listGalleryPhotos()
@@ -188,10 +189,10 @@ function PhotoBanner() {
   const slides: Slide[] = [
     ...photos.map((p): Slide => ({ kind: 'photo', id: p.id, url: urls[p.id] ?? '', caption: p.caption || 'Fotos de la familia' })),
     ...(agendaItems.length > 0
-      ? [{ kind: 'info', id: 'agenda', to: '/calendario', icon: '📅', title: 'Hoy en el calendario', items: agendaItems, art: 'tarea' } as const]
+      ? [{ kind: 'info', id: 'agenda', icon: '📅', title: 'Hoy en el calendario', items: agendaItems, art: 'tarea' } as const]
       : []),
     ...(shoppingItems.length > 0
-      ? [{ kind: 'info', id: 'compra', to: '/compras', icon: '🛒', title: 'Compra pendiente', items: shoppingItems, art: 'compra' } as const]
+      ? [{ kind: 'info', id: 'compra', icon: '🛒', title: 'Compra pendiente', items: shoppingItems, art: 'compra' } as const]
       : []),
   ]
 
@@ -200,10 +201,10 @@ function PhotoBanner() {
   }, [slides.length, index])
 
   useEffect(() => {
-    if (slides.length < 2) return
+    if (slides.length < 2 || paused) return
     const timer = setInterval(() => setIndex((i) => (i + 1) % slides.length), 4500)
     return () => clearInterval(timer)
-  }, [slides.length])
+  }, [slides.length, paused])
 
   if (loading) return null
 
@@ -229,7 +230,13 @@ function PhotoBanner() {
 
   if (current.kind === 'info') {
     return (
-      <Link to={current.to} className="home-photo-banner">
+      <div
+        className="home-photo-banner"
+        role="button"
+        tabIndex={0}
+        onClick={() => setPaused((p) => !p)}
+        onKeyDown={(e) => e.key === 'Enter' && setPaused((p) => !p)}
+      >
         <div className="home-photo-banner-info">
           <div className="home-photo-banner-info-text">
             <p className="home-photo-banner-title">
@@ -245,18 +252,30 @@ function PhotoBanner() {
           <div className="home-photo-banner-info-art">{current.art === 'compra' ? <ShoppingCartArt /> : <TaskArt />}</div>
         </div>
         {dots}
-      </Link>
+      </div>
     )
   }
 
+  // Al tocar (dedo en el móvil, ratón en el ordenador) se para el
+  // pase para poder leer o ver la foto entera — antes esto era un
+  // enlace y tocarlo se iba directo a Galería/Calendario/Compras sin
+  // dar tiempo a mirar (petición real: "que no se abra la carpeta...
+  // solamente tiene que pararse cuando lo toque"). Se reanuda al
+  // volver a tocar.
   return (
-    <Link to="/galeria" className="home-photo-banner">
+    <div
+      className="home-photo-banner"
+      role="button"
+      tabIndex={0}
+      onClick={() => setPaused((p) => !p)}
+      onKeyDown={(e) => e.key === 'Enter' && setPaused((p) => !p)}
+    >
       {current.url && <img src={current.url} alt={current.caption} className="home-photo-banner-img" />}
       <div className="home-photo-banner-overlay">
         <p className="home-photo-banner-title">📷 {current.caption}</p>
       </div>
       {dots}
-    </Link>
+    </div>
   )
 }
 

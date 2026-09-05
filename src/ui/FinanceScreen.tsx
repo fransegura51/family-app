@@ -2202,13 +2202,16 @@ function BudgetCategoriesSection({
   )
 }
 
-// Versión de la sección de categorías para Presupuesto Generales:
-// botón flotante "+ Crear categoría" (petición real: "las categorías
-// del presupuesto general las vamos a meter todos en un botón
-// flotante") en vez de la tarjeta "Nueva categoría" dentro de la
-// rejilla, y flechas ↑/↓ para reordenar en vez de arrastrar con el
-// dedo — mismo mecanismo que ya usa "Organizar menú"
-// (MenuSettingsScreen), más fiable que el arrastre en listas largas.
+// Versión de la sección de categorías para Presupuesto Generales: un
+// único botón flotante reúne crear categoría, reordenarlas y añadir un
+// gasto suelto (petición real: "las categorías que se organicen en el
+// mismo menú flotante donde se crean, y haz otro para crear gastos, o
+// si lo ves mejor combina todo en el mismo botón" — un solo botón es
+// más limpio que dos flotando a la vez). La lista de la pantalla queda
+// solo para consultar y apuntar un gasto a una categoría concreta
+// tocándola; crear, reordenar (con flechas, mismo mecanismo que
+// "Organizar menú") y borrar categorías, o apuntar un gasto sin elegir
+// antes una tarjeta, vive dentro de ese botón.
 function GeneralesCategoriesSection({
   categories,
   budgetGroup,
@@ -2220,9 +2223,78 @@ function GeneralesCategoriesSection({
   monthExpenses: Expense[]
   onChanged: () => void
 }) {
-  const [adding, setAdding] = useState(false)
+  const [managing, setManaging] = useState(false)
   const [loggingCategory, setLoggingCategory] = useState<BudgetCategory | null>(null)
+
+  return (
+    <>
+      <h2 className="section-title">Categorías</h2>
+      <p className="muted" style={{ marginTop: -8 }}>Toca una categoría para apuntarle un gasto.</p>
+      <div className="event-list">
+        {categories.map((c) => {
+          const spent = monthExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0)
+          return (
+            <button
+              key={c.id}
+              type="button"
+              className="card task-card"
+              style={{ width: '100%', background: 'var(--card-bg)', border: 'none', textAlign: 'left', cursor: 'pointer' }}
+              onClick={() => setLoggingCategory(c)}
+            >
+              <div className="task-card-main">
+                <strong>
+                  {c.icon} {c.name}
+                </strong>
+                <p className="muted">{spent > 0 ? `${spent.toFixed(2)} €` : 'Sin gastos'}</p>
+              </div>
+            </button>
+          )
+        })}
+        {categories.length === 0 && <p className="muted">Todavía no hay categorías — crea alguna con el botón de abajo.</p>}
+      </div>
+
+      <button type="button" className="screen-fab" onClick={() => setManaging(true)}>
+        + Categorías y gastos
+      </button>
+
+      {managing && (
+        <ManageGeneralCategoriesModal
+          categories={categories}
+          budgetGroup={budgetGroup}
+          onClose={() => setManaging(false)}
+          onChanged={onChanged}
+        />
+      )}
+
+      {loggingCategory && (
+        <LogCategoryExpenseModal
+          category={loggingCategory}
+          expenses={monthExpenses.filter((e) => e.category === loggingCategory.name)}
+          onClose={() => setLoggingCategory(null)}
+          onChanged={onChanged}
+        />
+      )}
+    </>
+  )
+}
+
+// El único botón flotante de Generales: crear categoría, reordenarlas
+// con flechas y añadir un gasto suelto eligiendo la categoría de una
+// lista, todo en el mismo sitio.
+function ManageGeneralCategoriesModal({
+  categories,
+  budgetGroup,
+  onClose,
+  onChanged,
+}: {
+  categories: BudgetCategory[]
+  budgetGroup: string
+  onClose: () => void
+  onChanged: () => void
+}) {
   const [order, setOrder] = useState(categories)
+  const [addingCategory, setAddingCategory] = useState(false)
+  const [addingExpense, setAddingExpense] = useState(false)
 
   useEffect(() => setOrder(categories), [categories])
 
@@ -2236,25 +2308,25 @@ function GeneralesCategoriesSection({
   }
 
   return (
-    <>
-      <h2 className="section-title">Categorías</h2>
-      <p className="muted" style={{ marginTop: -8 }}>Toca una categoría para apuntarle un gasto.</p>
-      <div className="event-list">
-        {order.map((c, i) => {
-          const spent = monthExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0)
-          return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Categorías y gastos
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+
+        <div className="event-list" style={{ marginBottom: 8 }}>
+          {order.map((c, i) => (
             <div key={c.id} className="card task-card">
-              <button
-                type="button"
-                className="task-card-main"
-                style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}
-                onClick={() => setLoggingCategory(c)}
-              >
+              <div className="task-card-main">
                 <strong>
                   {c.icon} {c.name}
                 </strong>
-                <p className="muted">{spent > 0 ? `${spent.toFixed(2)} €` : 'Sin gastos'}</p>
-              </button>
+              </div>
               <button type="button" className="link-button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Subir ${c.name}`}>
                 ↑
               </button>
@@ -2274,46 +2346,110 @@ function GeneralesCategoriesSection({
                 onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
               />
             </div>
-          )
-        })}
-        {order.length === 0 && <p className="muted">Todavía no hay categorías — crea alguna con el botón de abajo.</p>}
-      </div>
-
-      <button type="button" className="screen-fab" onClick={() => setAdding(true)}>
-        + Crear categoría
-      </button>
-
-      {adding && (
-        <div className="modal-overlay" onClick={() => setAdding(false)}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="section-title" style={{ margin: 0 }}>
-                Nueva categoría
-              </h2>
-              <button type="button" className="modal-close" onClick={() => setAdding(false)} aria-label="Cerrar">
-                ✕
-              </button>
-            </div>
-            <AddBudgetCategoryInline
-              budgetGroup={budgetGroup}
-              onAdded={() => {
-                setAdding(false)
-                onChanged()
-              }}
-            />
-          </div>
+          ))}
+          {order.length === 0 && <p className="muted">Todavía no hay categorías.</p>}
         </div>
-      )}
 
-      {loggingCategory && (
-        <LogCategoryExpenseModal
-          category={loggingCategory}
-          expenses={monthExpenses.filter((e) => e.category === loggingCategory.name)}
-          onClose={() => setLoggingCategory(null)}
-          onChanged={onChanged}
-        />
-      )}
-    </>
+        <button type="button" className="link-button" onClick={() => setAddingCategory((v) => !v)}>
+          {addingCategory ? 'Cerrar' : '+ Nueva categoría'}
+        </button>
+        {addingCategory && (
+          <AddBudgetCategoryInline
+            budgetGroup={budgetGroup}
+            onAdded={() => {
+              setAddingCategory(false)
+              onChanged()
+            }}
+          />
+        )}
+
+        <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
+
+        <button type="button" className="link-button" onClick={() => setAddingExpense((v) => !v)}>
+          {addingExpense ? 'Cerrar' : '+ Añadir gasto'}
+        </button>
+        {addingExpense && (
+          <AddExpenseToCategoryInline
+            categories={order}
+            onAdded={() => {
+              setAddingExpense(false)
+              onChanged()
+            }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Apuntar un gasto eligiendo la categoría de una lista, sin tener que
+// tocar antes su tarjeta en la pantalla — petición real: "haz otro
+// [botón] para crear gastos".
+function AddExpenseToCategoryInline({
+  categories,
+  onAdded,
+}: {
+  categories: BudgetCategory[]
+  onAdded: () => void
+}) {
+  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '')
+  const [date, setDate] = useState(toDateStr(new Date()))
+  const [amount, setAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const category = categories.find((c) => c.id === categoryId)
+    if (!category) return
+    setSaving(true)
+    setError(null)
+    try {
+      await addExpense({
+        date,
+        amount: Number(amount),
+        category: category.name,
+        store: '',
+        kind: 'real',
+        isIncome: false,
+        budgetGroup: category.budgetGroup,
+      })
+      setAmount('')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (categories.length === 0) return <p className="muted">Crea antes alguna categoría.</p>
+
+  return (
+    <form onSubmit={handleSubmit} className="member-form">
+      <label>
+        Categoría
+        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.icon} {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Fecha
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+      </label>
+      <label>
+        Importe (€)
+        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : 'Apuntar gasto'}
+      </button>
+    </form>
   )
 }
 

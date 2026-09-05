@@ -4,11 +4,14 @@ import {
   addExpense,
   addWalletTransaction,
   createBudget,
+  createBudgetCategory,
   createGoal,
   deleteBudget,
+  deleteBudgetCategory,
   deleteExpense,
   deleteGoal,
   deleteWalletTransaction,
+  listBudgetCategories,
   listBudgets,
   listExpenses,
   listGoals,
@@ -17,7 +20,7 @@ import {
 import { listFamilyMembers } from '@/data/family'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { MemberAvatar } from '@/ui/MemberAvatar'
-import { ConfirmButton } from '@/ui/ConfirmButton'
+import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { recordProductPurchase } from '@/data/products'
 import { budgetPeriodRange, budgetSpent, walletBalance, walletCategoryTotal } from '@/domain/finance'
@@ -28,6 +31,7 @@ import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { StoreIcon } from '@/ui/StoreIcon'
 import type {
   Budget,
+  BudgetCategory,
   BudgetPeriod,
   Expense,
   ExpenseKind,
@@ -1124,18 +1128,20 @@ function BudgetsTab() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [knownStores, setKnownStores] = useState<string[]>([])
+  const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
 
   function reload() {
     setLoading(true)
-    Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores()])
-      .then(([b, e, r, stores]) => {
+    Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores(), listBudgetCategories()])
+      .then(([b, e, r, stores, cats]) => {
         setBudgets(b)
         setExpenses(e)
         setReceipts(r)
         setKnownStores(stores.map((s) => s.name))
+        setCategories(cats)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -1181,14 +1187,22 @@ function BudgetsTab() {
       </div>
 
       <StorePieChart groups={pieGroups} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
+
+      <BudgetCategoriesSection categories={categories} onChanged={reload} />
+
+      <h2 className="section-title">Presupuestos</h2>
       <div className="event-list">
         {monthBudgets.map((b) => {
           const spent = budgetSpent(b, expenses)
           const pct = Math.min(100, Math.round((spent / b.amount) * 100))
+          const icon = categories.find((c) => c.name === b.category)?.icon
           return (
             <div key={b.id} className="card task-card">
               <div className="task-card-main">
-                <strong>{b.category ?? 'General'}</strong>
+                <strong>
+                  {icon && `${icon} `}
+                  {b.category ?? 'General'}
+                </strong>
                 <p className="muted">
                   {b.periodType} desde {b.periodStart} · gastado {spent.toFixed(2)} € de {b.amount.toFixed(2)} €
                   ({pct}%)
@@ -1203,12 +1217,126 @@ function BudgetsTab() {
         })}
         {monthBudgets.length === 0 && <p className="muted">No hay presupuestos guardados en este mes.</p>}
       </div>
-      <AddBudgetForm key={visibleMonth} onAdded={reload} defaultPeriodStart={`${visibleMonth}-01`} />
+      <AddBudgetForm key={visibleMonth} onAdded={reload} defaultPeriodStart={`${visibleMonth}-01`} categories={categories} />
     </div>
   )
 }
 
-function AddBudgetForm({ onAdded, defaultPeriodStart }: { onAdded: () => void; defaultPeriodStart: string }) {
+// Categorías de presupuesto con icono — petición real: "en la pestaña
+// de presupuestos que se puedan crear categorías, algo como lo de la
+// foto" (captura de referencia: Salario 👔, Comestibles 🛒,
+// Entretenimiento 🍿, Vivienda 🏠, cada una con su icono). Mismas
+// carpetas de colores que en Documentos, pero aquí es solo una lista
+// de referencia para elegir al crear un presupuesto — tocar una no
+// abre nada.
+function BudgetCategoriesSection({ categories, onChanged }: { categories: BudgetCategory[]; onChanged: () => void }) {
+  const [adding, setAdding] = useState(false)
+
+  return (
+    <>
+      <h2 className="section-title">Categorías</h2>
+      <div className="doc-folder-grid">
+        {categories.map((c) => (
+          <div key={c.id} className="doc-folder-card" style={{ position: 'relative' }}>
+            <span className="doc-folder-icon" style={{ background: 'var(--primary)' }}>
+              {c.icon}
+            </span>
+            <strong className="doc-folder-name">{c.name}</strong>
+            <span style={{ position: 'absolute', top: -4, right: 4 }}>
+              <ConfirmIconButton
+                icon="✕"
+                className="link-button"
+                ariaLabel={`Eliminar categoría ${c.name}`}
+                onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
+              />
+            </span>
+          </div>
+        ))}
+        <button
+          type="button"
+          className={'doc-folder-card doc-folder-card-add' + (adding ? ' doc-folder-card-active' : '')}
+          onClick={() => setAdding((v) => !v)}
+        >
+          <span className="doc-folder-icon doc-folder-icon-add">➕</span>
+          <strong className="doc-folder-name">Nueva categoría</strong>
+        </button>
+      </div>
+      {categories.length === 0 && !adding && (
+        <p className="muted">Todavía no hay categorías — crea alguna para elegirla al hacer un presupuesto.</p>
+      )}
+      {adding && (
+        <AddBudgetCategoryInline
+          onAdded={() => {
+            setAdding(false)
+            onChanged()
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+function AddBudgetCategoryInline({ onAdded }: { onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [icon, setIcon] = useState('💰')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await createBudgetCategory({ name, icon })
+      setName('')
+      setIcon('💰')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir la categoría')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <div className="inline-fields">
+        <input
+          type="text"
+          value={icon}
+          onChange={(e) => setIcon(e.target.value)}
+          placeholder="🏠"
+          maxLength={4}
+          style={{ width: 56, textAlign: 'center', fontSize: 20 }}
+          aria-label="Icono (un emoji)"
+        />
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Vivienda"
+          style={{ flex: 1 }}
+          autoFocus
+        />
+      </div>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving || !name.trim()}>
+        {saving ? 'Añadiendo…' : '+ Añadir categoría'}
+      </button>
+    </form>
+  )
+}
+
+function AddBudgetForm({
+  onAdded,
+  defaultPeriodStart,
+  categories,
+}: {
+  onAdded: () => void
+  defaultPeriodStart: string
+  categories: BudgetCategory[]
+}) {
   const [periodType, setPeriodType] = useState<BudgetPeriod>('mensual')
   const [periodStart, setPeriodStart] = useState(defaultPeriodStart)
   const [category, setCategory] = useState('')
@@ -1248,7 +1376,18 @@ function AddBudgetForm({ onAdded, defaultPeriodStart }: { onAdded: () => void; d
       </label>
       <label>
         Categoría (vacío = general)
-        <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Alimentación" />
+        <input
+          type="text"
+          list="budget-category-options"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="Alimentación"
+        />
+        <datalist id="budget-category-options">
+          {categories.map((c) => (
+            <option key={c.id} value={c.name} />
+          ))}
+        </datalist>
       </label>
       <label>
         Importe (€)

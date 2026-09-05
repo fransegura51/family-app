@@ -1,6 +1,7 @@
 import { supabase } from '@/data/supabaseClient'
 import type {
   Budget,
+  BudgetCategory,
   BudgetPeriod,
   Expense,
   ExpenseKind,
@@ -106,6 +107,30 @@ export async function createBudget(input: {
 
 export async function deleteBudget(id: string): Promise<void> {
   const { error } = await supabase.from('budgets').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Categorías de presupuesto con icono (Skill 19) — petición real: "que
+// se puedan crear categorías, algo como lo de la foto".
+export async function listBudgetCategories(): Promise<BudgetCategory[]> {
+  const { data, error } = await supabase
+    .from('budget_categories')
+    .select('id, family_id, name, icon')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, icon: r.icon }))
+}
+
+export async function createBudgetCategory(input: { name: string; icon: string }): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('budget_categories')
+    .insert({ family_id: familyId, name: input.name.trim(), icon: input.icon.trim() || '💰' })
+  if (error) throw error
+}
+
+export async function deleteBudgetCategory(id: string): Promise<void> {
+  const { error } = await supabase.from('budget_categories').delete().eq('id', id)
   if (error) throw error
 }
 

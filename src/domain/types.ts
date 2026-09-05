@@ -191,6 +191,16 @@ export interface Budget {
   amount: number
 }
 
+// Categoría de presupuesto con icono — petición real: "que se puedan
+// crear categorías, algo como lo de la foto" (Salario 👔, Comestibles
+// 🛒, Entretenimiento 🍿, Vivienda 🏠...).
+export interface BudgetCategory {
+  id: string
+  familyId: string
+  name: string
+  icon: string
+}
+
 export interface KidWalletTransaction {
   id: string
   familyId: string

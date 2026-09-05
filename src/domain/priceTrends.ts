@@ -4,17 +4,17 @@
 // por mes, promedia si se compró varias veces, y calcula la subida o
 // bajada en % frente al mes anterior.
 //
-// "price" es siempre el importe TOTAL pagado en esa línea (p. ej. 2
-// bolsas de patatas a 3€ = 6€), no el precio por unidad — por eso para
-// comparar el precio del producto en sí se divide entre "quantity"
-// antes de promediar (bug real detectado: sin esto, comprar el doble
-// un mes parecía una subida de precio del 100%, no un cambio de
-// cantidad). El total de la cesta (basketTotal) sí usa el importe total
-// tal cual, porque ahí interesa lo realmente pagado.
+// "price" es siempre el precio POR UNIDAD (recordProductPurchase ya
+// divide el importe total de la línea entre las unidades antes de
+// guardarlo) — NUNCA hay que volver a dividir aquí entre "quantity".
+// Bug real reportado: se dividía dos veces, y una cerveza a 1,10€/ud
+// aparecía en este listado a 0,73€/ud. El total de la cesta
+// (basketTotal) sí necesita multiplicar por "quantity", porque ahí
+// interesa lo realmente pagado en la línea, no el precio unitario.
 
 export interface RawPurchase {
   productId: string
-  price: number // importe TOTAL de la línea
+  price: number // precio POR UNIDAD de la línea
   quantity: number // unidades compradas en esa línea (1 si no se sabe)
   recordedDate: string // YYYY-MM-DD
 }
@@ -30,10 +30,8 @@ export function averagePricesByMonth(purchases: RawPurchase[]): ProductMonthPric
   for (const p of purchases) {
     const month = p.recordedDate.slice(0, 7)
     const key = `${p.productId}|${month}`
-    const qty = p.quantity > 0 ? p.quantity : 1
-    const unitPrice = p.price / qty
     const entry = sums.get(key) ?? { sum: 0, count: 0 }
-    entry.sum += unitPrice
+    entry.sum += p.price
     entry.count += 1
     sums.set(key, entry)
   }
@@ -74,5 +72,7 @@ export function compareMonths(
 }
 
 export function basketTotal(purchases: RawPurchase[], month: string): number {
-  return purchases.filter((p) => p.recordedDate.startsWith(month)).reduce((sum, p) => sum + p.price, 0)
+  return purchases
+    .filter((p) => p.recordedDate.startsWith(month))
+    .reduce((sum, p) => sum + p.price * (p.quantity > 0 ? p.quantity : 1), 0)
 }

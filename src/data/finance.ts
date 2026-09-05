@@ -143,17 +143,28 @@ export async function deleteBudget(id: string): Promise<void> {
 export async function listBudgetCategories(): Promise<BudgetCategory[]> {
   const { data, error } = await supabase
     .from('budget_categories')
-    .select('id, family_id, name, icon, budget_group')
-    .order('name', { ascending: true })
+    .select('id, family_id, name, icon, budget_group, sort_order')
+    .order('sort_order', { ascending: true })
   if (error) throw error
-  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, icon: r.icon, budgetGroup: r.budget_group }))
+  return data.map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    name: r.name,
+    icon: r.icon,
+    budgetGroup: r.budget_group,
+    sortOrder: r.sort_order,
+  }))
 }
 
 export async function createBudgetCategory(input: { name: string; icon: string; budgetGroup: string }): Promise<void> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase
-    .from('budget_categories')
-    .insert({ family_id: familyId, name: input.name.trim(), icon: input.icon.trim() || '💰', budget_group: input.budgetGroup })
+  const { error } = await supabase.from('budget_categories').insert({
+    family_id: familyId,
+    name: input.name.trim(),
+    icon: input.icon.trim() || '💰',
+    budget_group: input.budgetGroup,
+    sort_order: Date.now(),
+  })
   if (error) throw error
 }
 
@@ -164,12 +175,14 @@ export async function createBudgetCategoriesBulk(
   inputs: { name: string; icon: string; budgetGroup: string }[],
 ): Promise<void> {
   const familyId = await currentFamilyId()
+  const base = Date.now()
   const { error } = await supabase.from('budget_categories').insert(
-    inputs.map((input) => ({
+    inputs.map((input, index) => ({
       family_id: familyId,
       name: input.name,
       icon: input.icon,
       budget_group: input.budgetGroup,
+      sort_order: base + index,
     })),
   )
   if (error) throw error
@@ -178,6 +191,19 @@ export async function createBudgetCategoriesBulk(
 export async function deleteBudgetCategory(id: string): Promise<void> {
   const { error } = await supabase.from('budget_categories').delete().eq('id', id)
   if (error) throw error
+}
+
+// Arrastrar con el dedo para reordenar los iconos de categoría —
+// petición real: "que se puedan mover y organizar como queramos,
+// arrastrándolos con el dedo". Mismo patrón que reorderShoppingItems:
+// se manda la lista ya en el orden final y aquí se reparten sort_order
+// nuevos y crecientes.
+export async function reorderBudgetCategories(orderedIds: string[]): Promise<void> {
+  const base = Date.now()
+  const { error } = await supabase
+    .from('budget_categories')
+    .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
+  if (error) throw new Error(error.message)
 }
 
 // ---------------------------------------------------------------------

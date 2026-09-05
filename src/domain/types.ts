@@ -216,6 +216,7 @@ export interface BudgetCategory {
   name: string
   icon: string
   budgetGroup: BudgetGroup
+  sortOrder: number
 }
 
 export interface KidWalletTransaction {

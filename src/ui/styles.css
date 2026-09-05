@@ -1811,6 +1811,20 @@ textarea {
   color: var(--muted);
 }
 
+/* Arrastrar un icono de categoría para reordenarlo (Dinero) — petición
+   real: "que se puedan mover y organizar como queramos, arrastrándolos
+   con el dedo". touch-action:none solo aquí (no en Documentos, que
+   usa la misma tarjeta pero sin arrastre) para que el navegador no
+   intente hacer scroll de la página mientras se mueve el dedo encima. */
+.doc-folder-card-draggable {
+  touch-action: none;
+}
+
+.doc-folder-card-dragging {
+  z-index: 5;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
 .doc-folder-name {
   font-size: 13px;
   line-height: 1.2;

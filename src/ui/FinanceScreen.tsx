@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addExpense,
@@ -17,6 +17,7 @@ import {
   listExpenses,
   listGoals,
   listWalletTransactions,
+  reorderBudgetCategories,
   updateExpense,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
@@ -1852,6 +1853,10 @@ function openBudgetReport(report: {
 // formulario rápido para apuntarle un gasto — petición real: "quiero
 // poder apuntar en cada categoría los gastos de cada cosa, en agua,
 // en gastos escolares, hipoteca...".
+// Debe coincidir con las columnas de .doc-folder-grid (repeat(3, 1fr)).
+const CATEGORY_GRID_COLS = 3
+const CATEGORY_DRAG_TAP_THRESHOLD_PX = 8
+
 function BudgetCategoriesSection({
   categories,
   budgetGroup,
@@ -1866,24 +1871,113 @@ function BudgetCategoriesSection({
   const [adding, setAdding] = useState(false)
   const [loggingCategory, setLoggingCategory] = useState<BudgetCategory | null>(null)
 
+  // Arrastrar con el dedo para reordenar los iconos — petición real:
+  // "que se puedan mover y organizar como queramos, arrastrándolos con
+  // el dedo". Mismo mecanismo que ya usan la lista de la compra y los
+  // botones de Pepa: la lista local sigue a las props salvo mientras se
+  // arrastra, y solo se guarda de verdad (reorderBudgetCategories) si
+  // el gesto fue un arrastre real, no un toque corto.
+  const [order, setOrder] = useState(categories)
+  const dragRef = useRef<{
+    id: string
+    startX: number
+    startY: number
+    startIndex: number
+    cellW: number
+    cellH: number
+    moved: number
+  } | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const wasDraggedRef = useRef(false)
+
+  useEffect(() => {
+    if (!dragRef.current) setOrder(categories)
+  }, [categories])
+
+  function handleDragStart(e: ReactPointerEvent, id: string, el: HTMLElement) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    el.setPointerCapture(e.pointerId)
+    wasDraggedRef.current = false
+    const index = order.findIndex((c) => c.id === id)
+    const style = getComputedStyle(el.parentElement as HTMLElement)
+    const gap = parseFloat(style.columnGap || style.gap || '0') || 0
+    dragRef.current = { id, startX: e.clientX, startY: e.clientY, startIndex: index, cellW: el.offsetWidth + gap, cellH: el.offsetHeight + gap, moved: 0 }
+    setDraggingId(id)
+  }
+
+  function handleDragMove(e: ReactPointerEvent) {
+    const drag = dragRef.current
+    if (!drag) return
+    const dx = e.clientX - drag.startX
+    const dy = e.clientY - drag.startY
+    drag.moved = Math.max(drag.moved, Math.abs(dx), Math.abs(dy))
+    if (drag.moved >= CATEGORY_DRAG_TAP_THRESHOLD_PX) wasDraggedRef.current = true
+    setDragOffset({ x: dx, y: dy })
+    const startRow = Math.floor(drag.startIndex / CATEGORY_GRID_COLS)
+    const startCol = drag.startIndex % CATEGORY_GRID_COLS
+    const newCol = Math.min(CATEGORY_GRID_COLS - 1, Math.max(0, startCol + Math.round(dx / drag.cellW)))
+    const newRow = Math.max(0, startRow + Math.round(dy / drag.cellH))
+    const newIndex = Math.min(order.length - 1, newRow * CATEGORY_GRID_COLS + newCol)
+    setOrder((prev) => {
+      const currentIndex = prev.findIndex((c) => c.id === drag.id)
+      if (currentIndex === -1 || currentIndex === newIndex) return prev
+      const next = [...prev]
+      const [moved] = next.splice(currentIndex, 1)
+      next.splice(newIndex, 0, moved)
+      return next
+    })
+  }
+
+  function handleDragEnd() {
+    const drag = dragRef.current
+    dragRef.current = null
+    setDraggingId(null)
+    setDragOffset({ x: 0, y: 0 })
+    if (drag && drag.moved >= CATEGORY_DRAG_TAP_THRESHOLD_PX) {
+      reorderBudgetCategories(order.map((c) => c.id)).then(onChanged)
+    }
+  }
+
+  function handleCardClick(c: BudgetCategory) {
+    if (wasDraggedRef.current) {
+      wasDraggedRef.current = false
+      return
+    }
+    setLoggingCategory(c)
+  }
+
   return (
     <>
       <h2 className="section-title">Categorías</h2>
-      <p className="muted" style={{ marginTop: -8 }}>Toca una categoría para apuntarle un gasto.</p>
+      <p className="muted" style={{ marginTop: -8 }}>
+        Toca una categoría para apuntarle un gasto, o arrástrala para moverla.
+      </p>
       <div className="doc-folder-grid">
-        {categories.map((c) => {
+        {order.map((c) => {
           const spent = monthExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0)
+          const isDragging = draggingId === c.id
           return (
             <div
               key={c.id}
-              className="doc-folder-card"
-              style={{ position: 'relative', cursor: 'pointer' }}
+              className={
+                'doc-folder-card doc-folder-card-draggable' + (isDragging ? ' doc-folder-card-dragging' : '')
+              }
+              style={{
+                position: 'relative',
+                cursor: 'pointer',
+                ...(isDragging ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` } : {}),
+              }}
               role="button"
               tabIndex={0}
-              onClick={() => setLoggingCategory(c)}
+              onClick={() => handleCardClick(c)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') setLoggingCategory(c)
+                if (e.key === 'Enter' || e.key === ' ') handleCardClick(c)
               }}
+              onPointerDown={(e) => handleDragStart(e, c.id, e.currentTarget)}
+              onPointerMove={handleDragMove}
+              onPointerUp={handleDragEnd}
+              onPointerCancel={handleDragEnd}
             >
               <span className="doc-folder-icon" style={{ background: 'var(--primary)' }}>
                 {c.icon}

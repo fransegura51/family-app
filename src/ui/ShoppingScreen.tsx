@@ -1055,7 +1055,7 @@ function TripReceiptForm({
     setError(null)
     try {
       const receiptDate = trip.scheduledDate ?? todayStr()
-      await uploadReceipt({
+      const receiptId = await uploadReceipt({
         file,
         store: trip.store ?? '',
         receiptDate,
@@ -1085,6 +1085,7 @@ function TripReceiptForm({
               unit: '',
               store: trip.store ?? '',
               date: receiptDate,
+              receiptId,
             })
           }),
       )

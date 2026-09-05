@@ -41,7 +41,7 @@ export async function uploadReceipt(input: {
   store: string
   receiptDate: string
   totalAmount: number | null
-}): Promise<void> {
+}): Promise<string> {
   const familyId = await currentFamilyId()
   const file = await compressImageFile(input.file)
   const ext = file.name.split('.').pop() || 'jpg'
@@ -68,15 +68,20 @@ export async function uploadReceipt(input: {
     expenseId = expense.id
   }
 
-  const { error: receiptError } = await supabase.from('receipts').insert({
-    family_id: familyId,
-    storage_path: path,
-    store: input.store || null,
-    receipt_date: input.receiptDate,
-    total_amount: input.totalAmount,
-    expense_id: expenseId,
-  })
+  const { data: receiptRow, error: receiptError } = await supabase
+    .from('receipts')
+    .insert({
+      family_id: familyId,
+      storage_path: path,
+      store: input.store || null,
+      receipt_date: input.receiptDate,
+      total_amount: input.totalAmount,
+      expense_id: expenseId,
+    })
+    .select('id')
+    .single()
   if (receiptError) throw receiptError
+  return receiptRow.id
 }
 
 // Al editar, mantiene el gasto REAL enlazado al día — lo crea si el
@@ -152,7 +157,11 @@ export async function getReceiptUrl(storagePath: string): Promise<string> {
 // Borra también el gasto real enlazado, si lo hay — si no, borrar un
 // ticket duplicado dejaba un "gasto fantasma" en Gastos que seguía
 // sumando en el resumen del mes (bug real: al borrar un ticket
-// repetido, el importe seguía contando de más).
+// repetido, el importe seguía contando de más). Los precios del
+// Historial que vinieron de este ticket (product_prices.receipt_id)
+// se borran solos por el ON DELETE CASCADE de la base de datos — así
+// una lectura de OCR equivocada no se queda para siempre en el
+// Historial tras borrar y volver a subir el ticket bien.
 export async function deleteReceipt(receipt: Receipt): Promise<void> {
   if (receipt.storagePath) await supabase.storage.from('receipts').remove([receipt.storagePath])
   const { error } = await supabase.from('receipts').delete().eq('id', receipt.id)

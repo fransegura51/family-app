@@ -943,7 +943,7 @@ function AddReceiptForm({
     setSaving(true)
     setError(null)
     try {
-      await uploadReceipt({
+      const receiptId = await uploadReceipt({
         file,
         store,
         receiptDate,
@@ -973,6 +973,7 @@ function AddReceiptForm({
               unit: '',
               store,
               date: receiptDate,
+              receiptId,
             })
           }),
       )

@@ -71,6 +71,23 @@ export async function deleteExpense(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Corregir un gasto ya apuntado (petición real: "también quiero poder
+// eliminarlo o editarlo por si me he equivocado").
+export async function updateExpense(
+  id: string,
+  patch: { date?: string; amount?: number; category?: string; store?: string; kind?: ExpenseKind; isIncome?: boolean },
+): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.date !== undefined) update.expense_date = patch.date
+  if (patch.amount !== undefined) update.amount = patch.amount
+  if (patch.category !== undefined) update.category = patch.category
+  if (patch.store !== undefined) update.store = patch.store || null
+  if (patch.kind !== undefined) update.kind = patch.kind
+  if (patch.isIncome !== undefined) update.is_income = patch.isIncome
+  const { error } = await supabase.from('expenses').update(update).eq('id', id)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------
 // Presupuestos (Skill 19)
 // ---------------------------------------------------------------------

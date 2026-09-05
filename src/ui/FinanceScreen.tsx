@@ -17,6 +17,7 @@ import {
   listExpenses,
   listGoals,
   listWalletTransactions,
+  updateExpense,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
@@ -1234,10 +1235,20 @@ function BudgetsTab({
   // "Quesito" de lo gastado en cada categoría de Generales, más una
   // porción con el total de Alimentación — petición real: "un esquema
   // redondo con lo que se gasta en cada cosa... que incluya los gastos
-  // totales del presupuesto de alimentación".
+  // totales del presupuesto de alimentación... que vaya cambiando
+  // conforme cambia ese presupuesto". El gasto real de Alimentación
+  // son los tickets (Tickets/Compras), no solo lo que se apunte a mano
+  // en una categoría — se suman los dos para que la porción sea
+  // siempre el total de verdad, se actualice sola en cuanto cambie
+  // cualquiera de los dos.
   const monthRealExpenses = expenses.filter(
     (e) => e.expenseDate.startsWith(visibleMonth) && !e.isIncome && e.kind === 'real',
   )
+  const alimentacionTotal =
+    monthReceipts.reduce((sum, r) => sum + (r.totalAmount ?? 0), 0) +
+    monthRealExpenses
+      .filter((e) => categories.some((c) => c.budgetGroup === 'alimentacion' && c.name === e.category))
+      .reduce((sum, e) => sum + e.amount, 0)
   const categoryPieSlices =
     group === 'generales'
       ? [
@@ -1247,12 +1258,7 @@ function BudgetsTab({
               total: monthRealExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0),
             }))
             .filter((s) => s.total > 0),
-          {
-            store: '🍽️ Alimentación (total)',
-            total: monthRealExpenses
-              .filter((e) => categories.some((c) => c.budgetGroup === 'alimentacion' && c.name === e.category))
-              .reduce((sum, e) => sum + e.amount, 0),
-          },
+          { store: '🍽️ Alimentación (total)', total: alimentacionTotal },
         ].filter((s) => s.total > 0)
       : []
 
@@ -1566,27 +1572,34 @@ function BudgetCategoriesSection({
       {loggingCategory && (
         <LogCategoryExpenseModal
           category={loggingCategory}
+          expenses={monthExpenses.filter((e) => e.category === loggingCategory.name)}
           onClose={() => setLoggingCategory(null)}
-          onAdded={onChanged}
+          onChanged={onChanged}
         />
       )}
     </>
   )
 }
 
+// Además de apuntar, se ven los gastos ya guardados de ESTE mes en la
+// categoría, con editar/eliminar — petición real: "también quiero
+// poder eliminarlo o editarlo por si me he equivocado".
 function LogCategoryExpenseModal({
   category,
+  expenses,
   onClose,
-  onAdded,
+  onChanged,
 }: {
   category: BudgetCategory
+  expenses: Expense[]
   onClose: () => void
-  onAdded: () => void
+  onChanged: () => void
 }) {
   const [date, setDate] = useState(toDateStr(new Date()))
   const [amount, setAmount] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -1594,12 +1607,21 @@ function LogCategoryExpenseModal({
     setError(null)
     try {
       await addExpense({ date, amount: Number(amount), category: category.name, store: '', kind: 'real', isIncome: false })
-      onAdded()
-      onClose()
+      setAmount('')
+      onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo añadir')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteExpense(id)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar')
     }
   }
 
@@ -1608,12 +1630,42 @@ function LogCategoryExpenseModal({
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
-            {category.icon} Apuntar gasto — {category.name}
+            {category.icon} {category.name}
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
           </button>
         </div>
+
+        {expenses.length > 0 && (
+          <div className="event-list" style={{ marginBottom: 12 }}>
+            {expenses.map((exp) =>
+              editingId === exp.id ? (
+                <EditCategoryExpenseRow
+                  key={exp.id}
+                  expense={exp}
+                  onDone={() => {
+                    setEditingId(null)
+                    onChanged()
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <div key={exp.id} className="card task-card">
+                  <div className="task-card-main">
+                    <strong>{exp.amount.toFixed(2)} €</strong>
+                    <p className="muted">{exp.expenseDate}</p>
+                  </div>
+                  <button type="button" className="link-button" onClick={() => setEditingId(exp.id)}>
+                    Editar
+                  </button>
+                  <ConfirmButton label="Eliminar" onConfirm={() => handleDelete(exp.id)} />
+                </div>
+              ),
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="member-form">
           <label>
             Fecha
@@ -1632,9 +1684,55 @@ function LogCategoryExpenseModal({
           </label>
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar gasto'}
+            {saving ? 'Guardando…' : 'Apuntar gasto'}
           </button>
         </form>
+      </div>
+    </div>
+  )
+}
+
+function EditCategoryExpenseRow({
+  expense,
+  onDone,
+  onCancel,
+}: {
+  expense: Expense
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [date, setDate] = useState(expense.expenseDate)
+  const [amount, setAmount] = useState(String(expense.amount))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      await updateExpense(expense.id, { date, amount: Number(amount) })
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card member-form">
+      <div className="inline-fields">
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      </div>
+      {error && <p className="error">{error}</p>}
+      <div className="form-actions">
+        <button type="button" onClick={handleSave} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
       </div>
     </div>
   )

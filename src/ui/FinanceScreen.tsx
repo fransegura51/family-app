@@ -957,16 +957,24 @@ function AddReceiptForm({
       await Promise.all(
         lines
           .filter((line) => line.name.trim() && !Number.isNaN(Number(line.price)))
-          .map((line) =>
-            recordProductPurchase({
+          .map((line) => {
+            // "Precio" es el importe TOTAL de la línea ("3 cervezas,
+            // 3,30€"), no el precio de una — bug real reportado: se
+            // guardaba tal cual y la Memoria de precios enseñaba 3,30€
+            // como si fuera el precio de una unidad. Se divide entre
+            // las unidades para guardar siempre precio por unidad,
+            // igual que ya hace "Subir ticket" en Compras.
+            const units = Number(line.quantity)
+            const unitPrice = Number.isFinite(units) && units > 0 ? Number(line.price) / units : Number(line.price)
+            return recordProductPurchase({
               name: line.name.trim(),
-              price: Number(line.price),
+              price: unitPrice,
               quantity: line.quantity || '1',
               unit: '',
               store,
               date: receiptDate,
-            }),
-          ),
+            })
+          }),
       )
 
       setFile(null)
@@ -1079,6 +1087,11 @@ function AddReceiptForm({
               <button type="button" className="link-button" onClick={() => removeLine(i)}>
                 ✕
               </button>
+              {/* Mismo cálculo que se guarda de verdad — para pillar un
+                  fallo de lectura antes de guardar, no después. */}
+              {Number(line.quantity) > 1 && !Number.isNaN(Number(line.price)) && (
+                <span className="muted">= {(Number(line.price) / Number(line.quantity)).toFixed(2)} €/ud</span>
+              )}
             </div>
           ))}
           {lines.length === 0 && <p className="muted">No se ha reconocido ningún producto.</p>}

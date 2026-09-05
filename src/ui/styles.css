@@ -1077,6 +1077,11 @@ textarea {
    nombres arriba... que el mapa ocupe toda la pantalla". */
 .location-map-hero {
   position: relative;
+  /* z-index (aunque sea 0) crea su propio contexto de apilamiento —
+     así el z-index alto de los chips de abajo (por encima de las capas
+     internas de Leaflet) no se "escapa" por encima de modales o los
+     botones de Pepa, que viven fuera de este bloque. */
+  z-index: 0;
   margin: 0 -16px;
 }
 
@@ -1092,7 +1097,12 @@ textarea {
   top: 10px;
   left: 10px;
   right: 10px;
-  z-index: 5;
+  /* Leaflet usa z-index internos muy altos para sus propias capas
+     (marcadores hasta 600, popups 700, controles 1000) que "se salen"
+     de su contenedor porque .leaflet-container no crea su propio
+     contexto de apilamiento — con un z-index bajo aquí, el mapa se
+     comía los chips por encima (bug real: "los chips desaparecen"). */
+  z-index: 1001;
   display: flex;
   gap: 8px;
   overflow-x: auto;

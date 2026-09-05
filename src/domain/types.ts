@@ -180,7 +180,17 @@ export interface Expense {
   store: string | null
   kind: ExpenseKind
   notes: string | null
+  // Un ingreso (nómina, paga extra...) reutiliza la misma tabla de
+  // gastos con esta marca — petición real: "gráficos de estadísticas
+  // total ingresos".
+  isIncome: boolean
 }
+
+// "alimentacion" | "generales" — separa las dos pestañas de
+// presupuesto (Presupuesto Alimentación / Presupuesto Generales) sin
+// que dejen de sumarse juntas en las estadísticas ("que todos los
+// presupuestos estén conectados").
+export type BudgetGroup = string
 
 export interface Budget {
   id: string
@@ -189,6 +199,7 @@ export interface Budget {
   periodStart: string
   category: string | null
   amount: number
+  budgetGroup: BudgetGroup
 }
 
 // Categoría de presupuesto con icono — petición real: "que se puedan
@@ -199,6 +210,7 @@ export interface BudgetCategory {
   familyId: string
   name: string
   icon: string
+  budgetGroup: BudgetGroup
 }
 
 export interface KidWalletTransaction {

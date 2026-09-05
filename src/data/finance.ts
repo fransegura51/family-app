@@ -29,7 +29,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listExpenses(): Promise<Expense[]> {
   const { data, error } = await supabase
     .from('expenses')
-    .select('id, family_id, expense_date, amount, category, store, kind, notes')
+    .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income')
     .order('expense_date', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -41,6 +41,7 @@ export async function listExpenses(): Promise<Expense[]> {
     store: r.store,
     kind: r.kind as ExpenseKind,
     notes: r.notes,
+    isIncome: r.is_income,
   }))
 }
 
@@ -50,6 +51,7 @@ export async function addExpense(input: {
   category: string
   store: string
   kind: ExpenseKind
+  isIncome?: boolean
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('expenses').insert({
@@ -59,6 +61,7 @@ export async function addExpense(input: {
     category: input.category,
     store: input.store || null,
     kind: input.kind,
+    is_income: input.isIncome ?? false,
   })
   if (error) throw error
 }
@@ -75,7 +78,7 @@ export async function deleteExpense(id: string): Promise<void> {
 export async function listBudgets(): Promise<Budget[]> {
   const { data, error } = await supabase
     .from('budgets')
-    .select('id, family_id, period_type, period_start, category, amount')
+    .select('id, family_id, period_type, period_start, category, amount, budget_group')
     .order('period_start', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -85,6 +88,7 @@ export async function listBudgets(): Promise<Budget[]> {
     periodStart: r.period_start,
     category: r.category,
     amount: Number(r.amount),
+    budgetGroup: r.budget_group,
   }))
 }
 
@@ -93,6 +97,7 @@ export async function createBudget(input: {
   periodStart: string
   category: string
   amount: number
+  budgetGroup: string
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('budgets').insert({
@@ -101,6 +106,7 @@ export async function createBudget(input: {
     period_start: input.periodStart,
     category: input.category || null,
     amount: input.amount,
+    budget_group: input.budgetGroup,
   })
   if (error) throw error
 }
@@ -111,21 +117,41 @@ export async function deleteBudget(id: string): Promise<void> {
 }
 
 // Categorías de presupuesto con icono (Skill 19) — petición real: "que
-// se puedan crear categorías, algo como lo de la foto".
+// se puedan crear categorías, algo como lo de la foto". budgetGroup
+// separa Alimentación de Generales sin dejar de sumarse juntas en las
+// estadísticas (BudgetsOverview lee de las dos).
 export async function listBudgetCategories(): Promise<BudgetCategory[]> {
   const { data, error } = await supabase
     .from('budget_categories')
-    .select('id, family_id, name, icon')
+    .select('id, family_id, name, icon, budget_group')
     .order('name', { ascending: true })
   if (error) throw error
-  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, icon: r.icon }))
+  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, icon: r.icon, budgetGroup: r.budget_group }))
 }
 
-export async function createBudgetCategory(input: { name: string; icon: string }): Promise<void> {
+export async function createBudgetCategory(input: { name: string; icon: string; budgetGroup: string }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase
     .from('budget_categories')
-    .insert({ family_id: familyId, name: input.name.trim(), icon: input.icon.trim() || '💰' })
+    .insert({ family_id: familyId, name: input.name.trim(), icon: input.icon.trim() || '💰', budget_group: input.budgetGroup })
+  if (error) throw error
+}
+
+// Alta de varias categorías de golpe — se usa para sembrar Presupuesto
+// Generales la primera vez (Luz, Agua, Impuestos...) sin que la
+// persona tenga que darlas de alta una a una.
+export async function createBudgetCategoriesBulk(
+  inputs: { name: string; icon: string; budgetGroup: string }[],
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('budget_categories').insert(
+    inputs.map((input) => ({
+      family_id: familyId,
+      name: input.name,
+      icon: input.icon,
+      budget_group: input.budgetGroup,
+    })),
+  )
   if (error) throw error
 }
 

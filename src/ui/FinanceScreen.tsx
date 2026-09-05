@@ -1,9 +1,10 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addExpense,
   addWalletTransaction,
   createBudget,
+  createBudgetCategoriesBulk,
   createBudgetCategory,
   createGoal,
   deleteBudget,
@@ -42,7 +43,7 @@ import type {
   WalletTransactionType,
 } from '@/domain/types'
 
-const SUB_TABS = ['Gastos', 'Tickets', 'Presupuesto Alimentación', 'Educación financiera'] as const
+const SUB_TABS = ['Gastos', 'Tickets', 'Presupuesto Alimentación', 'Presupuesto Generales', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 const EXPENSE_KINDS: { value: ExpenseKind; label: string }[] = [
@@ -65,7 +66,8 @@ export function FinanceScreen() {
 
       {tab === 'Gastos' && <ExpensesTab />}
       {tab === 'Tickets' && <ReceiptsTab />}
-      {tab === 'Presupuesto Alimentación' && <BudgetsTab />}
+      {tab === 'Presupuesto Alimentación' && <BudgetsTab group="alimentacion" seedCategories={[]} />}
+      {tab === 'Presupuesto Generales' && <BudgetsTab group="generales" seedCategories={GENERAL_BUDGET_SEED} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
     </div>
   )
@@ -106,13 +108,21 @@ function ExpensesTab() {
   )
 
   const monthTotal = useMemo(
-    () => monthExpenses.filter((e) => e.kind === 'real').reduce((sum, e) => sum + e.amount, 0),
+    () => monthExpenses.filter((e) => e.kind === 'real' && !e.isIncome).reduce((sum, e) => sum + e.amount, 0),
+    [monthExpenses],
+  )
+
+  // Petición real: "gráficos de estadísticas, total ingresos" — un
+  // ingreso (nómina, paga extra...) es el mismo formulario de gasto,
+  // solo marcado al revés.
+  const monthIncome = useMemo(
+    () => monthExpenses.filter((e) => e.isIncome).reduce((sum, e) => sum + e.amount, 0),
     [monthExpenses],
   )
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>()
-    for (const e of monthExpenses.filter((e) => e.kind === 'real')) {
+    for (const e of monthExpenses.filter((e) => e.kind === 'real' && !e.isIncome)) {
       map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1])
@@ -147,7 +157,8 @@ function ExpensesTab() {
       </div>
 
       <p className="points-badge">
-        {MONTH_LABELS[visibleMonthIndex - 1]}: {monthTotal.toFixed(2)} €
+        {MONTH_LABELS[visibleMonthIndex - 1]}: {monthTotal.toFixed(2)} € gastados
+        {monthIncome > 0 && ` · +${monthIncome.toFixed(2)} € ingresados`}
       </p>
       {byCategory.length > 0 && (
         <ul className="ingredient-list">
@@ -163,11 +174,12 @@ function ExpensesTab() {
         {monthExpenses.map((e) => (
           <div key={e.id} className="card task-card">
             <div className="task-card-main">
-              <strong>
-                {e.category} — {e.amount.toFixed(2)} €
+              <strong style={{ color: e.isIncome ? '#1e8449' : undefined }}>
+                {e.category} — {e.isIncome ? '+' : ''}
+                {e.amount.toFixed(2)} €
               </strong>
               <p className="muted">
-                {e.expenseDate} · {e.kind}
+                {e.expenseDate} · {e.isIncome ? 'ingreso' : e.kind}
                 {e.store && ` · ${e.store}`}
               </p>
             </div>
@@ -188,6 +200,10 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
   const [category, setCategory] = useState('')
   const [store, setStore] = useState('')
   const [kind, setKind] = useState<ExpenseKind>('real')
+  // Petición real: "gráficos de estadísticas, total ingresos" — un
+  // ingreso (nómina, paga extra...) usa el mismo formulario, solo
+  // marcado al revés en vez de una pantalla aparte.
+  const [isIncome, setIsIncome] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -196,7 +212,7 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      await addExpense({ date, amount: Number(amount), category, store, kind })
+      await addExpense({ date, amount: Number(amount), category, store, kind, isIncome })
       setAmount('')
       setCategory('')
       setStore('')
@@ -210,7 +226,19 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Nuevo gasto</h2>
+      <h2>Nuevo movimiento</h2>
+      <div className="filter-row">
+        <button
+          type="button"
+          className={'chip' + (!isIncome ? ' chip-active' : '')}
+          onClick={() => setIsIncome(false)}
+        >
+          Gasto
+        </button>
+        <button type="button" className={'chip' + (isIncome ? ' chip-active' : '')} onClick={() => setIsIncome(true)}>
+          Ingreso
+        </button>
+      </div>
       <label>
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -1123,7 +1151,34 @@ function StorePieChart({ groups, monthLabel }: { groups: { store: string; total:
 // historial YA EXISTE, solo hacía falta poder pasar de mes en mes
 // para verlo, en vez de una lista larga con todos los meses
 // mezclados. Mismo patrón de navegación que Gastos.
-function BudgetsTab() {
+// Categorías con las que se siembra Presupuesto Generales la primera
+// vez que se abre esa pestaña (petición real: "luz, agua, impuestos,
+// taller, imprevistos, hipoteca, préstamos, gastos escolares... con
+// emojis y nombres").
+const GENERAL_BUDGET_SEED: { name: string; icon: string }[] = [
+  { name: 'Luz', icon: '💡' },
+  { name: 'Agua', icon: '💧' },
+  { name: 'Impuestos', icon: '🧾' },
+  { name: 'Taller', icon: '🔧' },
+  { name: 'Imprevistos', icon: '⚠️' },
+  { name: 'Hipoteca', icon: '🏦' },
+  { name: 'Préstamos', icon: '💳' },
+  { name: 'Gastos escolares', icon: '🎒' },
+]
+
+// Presupuesto Alimentación y Presupuesto Generales son la MISMA
+// pantalla, solo cambia el "grupo" de categorías/presupuestos que
+// muestra cada una — petición real: "que todos los presupuestos estén
+// conectados". Por eso BudgetsOverview (abajo) lee de TODOS los
+// grupos a la vez: las estadísticas y el informe salen iguales se
+// entre desde una pestaña o desde la otra.
+function BudgetsTab({
+  group,
+  seedCategories,
+}: {
+  group: string
+  seedCategories: { name: string; icon: string }[]
+}) {
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -1132,11 +1187,22 @@ function BudgetsTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
+  // Evita sembrar las categorías sugeridas más de una vez por sesión
+  // mientras se espera la respuesta del primer alta.
+  const seededRef = useRef(false)
 
   function reload() {
     setLoading(true)
     Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores(), listBudgetCategories()])
-      .then(([b, e, r, stores, cats]) => {
+      .then(async ([b, e, r, stores, cats]) => {
+        // Primera vez que se abre esta pestaña y no tiene categorías
+        // propias todavía — se dan de alta las sugeridas solas, sin
+        // pedirlo (petición real: "me pones todas esas categorías").
+        if (!seededRef.current && seedCategories.length > 0 && !cats.some((c) => c.budgetGroup === group)) {
+          seededRef.current = true
+          await createBudgetCategoriesBulk(seedCategories.map((s) => ({ ...s, budgetGroup: group })))
+          cats = await listBudgetCategories()
+        }
         setBudgets(b)
         setExpenses(e)
         setReceipts(r)
@@ -1147,7 +1213,7 @@ function BudgetsTab() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [])
+  useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function shiftMonth(delta: number) {
     const [y, m] = visibleMonth.split('-').map(Number)
@@ -1158,13 +1224,18 @@ function BudgetsTab() {
   if (loading) return <p className="muted">Cargando presupuestos…</p>
 
   const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
-  const monthBudgets = budgets.filter((b) => budgetPeriodRange(b).start.slice(0, 7) === visibleMonth)
+  const groupCategories = categories.filter((c) => c.budgetGroup === group)
+  const monthBudgets = budgets.filter(
+    (b) => b.budgetGroup === group && budgetPeriodRange(b).start.slice(0, 7) === visibleMonth,
+  )
   const monthReceipts = receipts.filter((r) => r.receiptDate.startsWith(visibleMonth))
   const pieGroups = groupReceiptsByStore(monthReceipts, knownStores)
 
   return (
     <div>
       {error && <p className="error">{error}</p>}
+
+      <BudgetsOverview allExpenses={expenses} allCategories={categories} />
 
       <div className="month-nav">
         <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
@@ -1186,16 +1257,18 @@ function BudgetsTab() {
         </button>
       </div>
 
-      <StorePieChart groups={pieGroups} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
+      {group === 'alimentacion' && (
+        <StorePieChart groups={pieGroups} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
+      )}
 
-      <BudgetCategoriesSection categories={categories} onChanged={reload} />
+      <BudgetCategoriesSection categories={groupCategories} budgetGroup={group} onChanged={reload} />
 
       <h2 className="section-title">Presupuestos</h2>
       <div className="event-list">
         {monthBudgets.map((b) => {
           const spent = budgetSpent(b, expenses)
           const pct = Math.min(100, Math.round((spent / b.amount) * 100))
-          const icon = categories.find((c) => c.name === b.category)?.icon
+          const icon = groupCategories.find((c) => c.name === b.category)?.icon
           return (
             <div key={b.id} className="card task-card">
               <div className="task-card-main">
@@ -1217,9 +1290,166 @@ function BudgetsTab() {
         })}
         {monthBudgets.length === 0 && <p className="muted">No hay presupuestos guardados en este mes.</p>}
       </div>
-      <AddBudgetForm key={visibleMonth} onAdded={reload} defaultPeriodStart={`${visibleMonth}-01`} categories={categories} />
+      <AddBudgetForm
+        key={visibleMonth}
+        onAdded={reload}
+        defaultPeriodStart={`${visibleMonth}-01`}
+        categories={groupCategories}
+        group={group}
+      />
     </div>
   )
+}
+
+// Estadísticas conectadas de TODOS los presupuestos (Alimentación +
+// Generales juntos) — petición real: "que todos los presupuestos
+// estén conectados... gráficos de estadísticas, total ingresos y
+// cuánto se gasta cada mes, semana, año o en rango de fecha... que se
+// puedan generar informes". Mismo selector Hoy/Esta semana/Este
+// mes/Este año/Rango que ya usan los Tickets de esta misma pantalla.
+function BudgetsOverview({
+  allExpenses,
+  allCategories,
+}: {
+  allExpenses: Expense[]
+  allCategories: BudgetCategory[]
+}) {
+  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+
+  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  const inRange = allExpenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
+  const totalIncome = inRange.filter((e) => e.isIncome).reduce((sum, e) => sum + e.amount, 0)
+  const totalSpent = inRange.filter((e) => !e.isIncome && e.kind === 'real').reduce((sum, e) => sum + e.amount, 0)
+
+  const byCategory = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real')) {
+      map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [inRange])
+
+  const rangeLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
+
+  return (
+    <div className="card event-card">
+      <strong>Resumen — todos los presupuestos</strong>
+      <div className="filter-row" style={{ marginTop: 8, marginBottom: 8 }}>
+        {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={'chip' + (preset === p ? ' chip-active' : '')}
+            onClick={() => setPreset(p)}
+          >
+            {PRESET_LABELS[p]}
+          </button>
+        ))}
+      </div>
+      {preset === 'rango' && (
+        <div className="inline-fields" style={{ marginBottom: 8 }}>
+          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+          <span>a</span>
+          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+        </div>
+      )}
+      <p style={{ color: '#1e8449', fontWeight: 600, margin: '4px 0' }}>Ingresos: +{totalIncome.toFixed(2)} €</p>
+      <p style={{ color: '#c0392b', fontWeight: 600, margin: '4px 0' }}>Gastado: -{totalSpent.toFixed(2)} €</p>
+      <p style={{ margin: '4px 0' }}>
+        <strong>Balance: {(totalIncome - totalSpent).toFixed(2)} €</strong>
+      </p>
+
+      {byCategory.length > 0 && (
+        <div className="price-row-list" style={{ marginTop: 8 }}>
+          {byCategory.map(([cat, amount]) => {
+            const icon = allCategories.find((c) => c.name === cat)?.icon
+            return (
+              <div key={cat} className="price-row">
+                <span className="price-row-name">
+                  {icon && `${icon} `}
+                  {cat}
+                </span>
+                <span className="price-row-price">{amount.toFixed(2)} €</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="link-button"
+        style={{ marginTop: 8 }}
+        onClick={() =>
+          openBudgetReport({
+            rangeLabel,
+            totalIncome,
+            totalSpent,
+            byCategory: byCategory.map(([name, amount]) => ({
+              name,
+              icon: allCategories.find((c) => c.name === name)?.icon,
+              amount,
+            })),
+          })
+        }
+      >
+        📄 Generar informe
+      </button>
+    </div>
+  )
+}
+
+// Abre una pestaña aparte con un informe limpio y lanza el diálogo de
+// imprimir del propio navegador (gratis, sin librería — "Guardar como
+// PDF" ya está en ese diálogo en cualquier móvil u ordenador).
+function openBudgetReport(report: {
+  rangeLabel: string
+  totalIncome: number
+  totalSpent: number
+  byCategory: { name: string; icon?: string; amount: number }[]
+}) {
+  const win = window.open('', '_blank')
+  if (!win) return
+  const rows =
+    report.byCategory
+      .map(
+        (c) =>
+          `<tr><td>${c.icon ?? ''} ${c.name}</td><td style="text-align:right">${c.amount.toFixed(2)} €</td></tr>`,
+      )
+      .join('') || '<tr><td colspan="2">Sin movimientos en este periodo</td></tr>'
+  win.document.write(`<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Informe de Dinero</title>
+<style>
+  body { font-family: system-ui, sans-serif; padding: 24px; color: #1c1f26; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .muted { color: #6b7280; margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  td { padding: 6px 4px; border-bottom: 1px solid #eee; }
+  .totals p { margin: 4px 0; font-size: 15px; }
+  .income { color: #1e8449; font-weight: 600; }
+  .expense { color: #c0392b; font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>Informe de Dinero</h1>
+  <p class="muted">${report.rangeLabel}</p>
+  <div class="totals">
+    <p class="income">Ingresos: +${report.totalIncome.toFixed(2)} €</p>
+    <p class="expense">Gastado: -${report.totalSpent.toFixed(2)} €</p>
+    <p><strong>Balance: ${(report.totalIncome - report.totalSpent).toFixed(2)} €</strong></p>
+  </div>
+  <h2>Por categoría</h2>
+  <table>${rows}</table>
+</body>
+</html>`)
+  win.document.close()
+  win.focus()
+  win.print()
 }
 
 // Categorías de presupuesto con icono — petición real: "en la pestaña
@@ -1229,7 +1459,15 @@ function BudgetsTab() {
 // carpetas de colores que en Documentos, pero aquí es solo una lista
 // de referencia para elegir al crear un presupuesto — tocar una no
 // abre nada.
-function BudgetCategoriesSection({ categories, onChanged }: { categories: BudgetCategory[]; onChanged: () => void }) {
+function BudgetCategoriesSection({
+  categories,
+  budgetGroup,
+  onChanged,
+}: {
+  categories: BudgetCategory[]
+  budgetGroup: string
+  onChanged: () => void
+}) {
   const [adding, setAdding] = useState(false)
 
   return (
@@ -1266,6 +1504,7 @@ function BudgetCategoriesSection({ categories, onChanged }: { categories: Budget
       )}
       {adding && (
         <AddBudgetCategoryInline
+          budgetGroup={budgetGroup}
           onAdded={() => {
             setAdding(false)
             onChanged()
@@ -1276,7 +1515,7 @@ function BudgetCategoriesSection({ categories, onChanged }: { categories: Budget
   )
 }
 
-function AddBudgetCategoryInline({ onAdded }: { onAdded: () => void }) {
+function AddBudgetCategoryInline({ budgetGroup, onAdded }: { budgetGroup: string; onAdded: () => void }) {
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('💰')
   const [saving, setSaving] = useState(false)
@@ -1288,7 +1527,7 @@ function AddBudgetCategoryInline({ onAdded }: { onAdded: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      await createBudgetCategory({ name, icon })
+      await createBudgetCategory({ name, icon, budgetGroup })
       setName('')
       setIcon('💰')
       onAdded()
@@ -1332,10 +1571,12 @@ function AddBudgetForm({
   onAdded,
   defaultPeriodStart,
   categories,
+  group,
 }: {
   onAdded: () => void
   defaultPeriodStart: string
   categories: BudgetCategory[]
+  group: string
 }) {
   const [periodType, setPeriodType] = useState<BudgetPeriod>('mensual')
   const [periodStart, setPeriodStart] = useState(defaultPeriodStart)
@@ -1349,7 +1590,7 @@ function AddBudgetForm({
     setSaving(true)
     setError(null)
     try {
-      await createBudget({ periodType, periodStart, category, amount: Number(amount) })
+      await createBudget({ periodType, periodStart, category, amount: Number(amount), budgetGroup: group })
       setCategory('')
       setAmount('')
       onAdded()

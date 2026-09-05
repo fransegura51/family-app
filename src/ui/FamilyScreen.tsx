@@ -4,7 +4,9 @@ import {
   addFamilyMember,
   deleteFamilyMember,
   generateMemberInviteCode,
+  getAmazonWebhookToken,
   listFamilyMembers,
+  regenerateAmazonWebhookToken,
   reorderFamilyMembers,
   updateFamilyMember,
   uploadMemberPhoto,
@@ -167,6 +169,81 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       </div>
 
       {isAdmin && <AddMemberForm onAdded={reload} />}
+      {isAdmin && <AmazonWebhookSettings />}
+    </div>
+  )
+}
+
+// Muestra la URL + token secreto que hay que poner en el workflow de
+// Pipedream (ver conversación con el usuario) para que los pedidos de
+// Amazon reenviados por Outlook lleguen aquí. "Regenerar" invalida el
+// token anterior — útil si se ha compartido por error.
+function AmazonWebhookSettings() {
+  const [token, setToken] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    getAmazonWebhookToken()
+      .then(setToken)
+      .catch((e: Error) => setError(e.message))
+  }, [])
+
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/amazon-order-webhook`
+
+  async function handleRegenerate() {
+    setBusy(true)
+    setError(null)
+    try {
+      setToken(await regenerateAmazonWebhookToken())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo regenerar el token')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCopy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Sin permiso de portapapeles: el texto ya está visible para copiar a mano.
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        Conexión con pedidos de Amazon
+      </h2>
+      <p className="muted">
+        Datos para el workflow de Pipedream que recibe los pedidos de Amazon reenviados desde Outlook.
+      </p>
+      {error && <p className="error">{error}</p>}
+      {token && (
+        <>
+          <label>
+            URL del webhook
+            <input type="text" readOnly value={webhookUrl} onFocus={(e) => e.target.select()} />
+          </label>
+          <button type="button" className="link-button" onClick={() => handleCopy(webhookUrl)}>
+            {copied ? '✓ Copiado' : 'Copiar URL'}
+          </button>
+          <label style={{ marginTop: 8, display: 'block' }}>
+            Token de la familia
+            <input type="text" readOnly value={token} onFocus={(e) => e.target.select()} />
+          </label>
+          <button type="button" className="link-button" onClick={() => handleCopy(token)}>
+            {copied ? '✓ Copiado' : 'Copiar token'}
+          </button>
+          <div style={{ marginTop: 8 }}>
+            <ConfirmButton label={busy ? 'Regenerando…' : 'Regenerar token'} onConfirm={handleRegenerate} />
+          </div>
+        </>
+      )}
     </div>
   )
 }

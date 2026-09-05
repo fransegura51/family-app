@@ -146,6 +146,25 @@ export async function getMemberPhotoUrl(photoPath: string): Promise<string> {
   return data.signedUrl
 }
 
+// Token secreto de la familia para el webhook de pedidos de Amazon
+// (Outlook reenvía el email a Pipedream, que llama a nuestra función
+// con este token en vez de un login) — solo el admin puede verlo o
+// regenerarlo, vía la política ya existente "families: admin update".
+export async function getAmazonWebhookToken(): Promise<string> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase.from('families').select('amazon_webhook_token').eq('id', familyId).single()
+  if (error) throw error
+  return data.amazon_webhook_token
+}
+
+export async function regenerateAmazonWebhookToken(): Promise<string> {
+  const familyId = await currentFamilyId()
+  const token = crypto.randomUUID()
+  const { error } = await supabase.from('families').update({ amazon_webhook_token: token }).eq('id', familyId)
+  if (error) throw error
+  return token
+}
+
 // Toda consulta pasa por aquí en vez de tocar `supabase` desde ui/.
 // RLS ya garantiza el aislamiento por family_id en el backend — este
 // módulo no necesita (ni debe) volver a filtrar por familia en el cliente.

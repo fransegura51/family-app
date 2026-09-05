@@ -261,7 +261,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
       </div>
       <AddPlaceForm onAdded={reload} />
 
-      <PlaceHistorySection members={members} />
+      <PlaceHistorySection members={members} consents={consents} />
     </div>
   )
 }
@@ -321,7 +321,7 @@ function placeDayLabel(day: string): string {
   return new Date(`${day}T00:00`).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-function PlaceHistorySection({ members }: { members: FamilyMember[] }) {
+function PlaceHistorySection({ members, consents }: { members: FamilyMember[]; consents: LocationConsent[] }) {
   const [preset, setPreset] = useState<PlaceHistoryPreset>('dia')
   const [visits, setVisits] = useState<LocationPlaceVisit[]>([])
   const [loading, setLoading] = useState(true)
@@ -343,6 +343,12 @@ function PlaceHistorySection({ members }: { members: FamilyMember[] }) {
     list.push(v)
     byMember.set(v.memberId, list)
   }
+
+  // Un desplegable por cada miembro con el compartir activado (petición
+  // real: "así con todos los miembros que estén conectados"), aunque
+  // todavía no tenga ningún sitio registrado — igual que las carpetas
+  // de tiendas en Compras/Dinero, que también salen vacías.
+  const activeMembers = members.filter((m) => consents.find((c) => c.memberId === m.id)?.enabled)
 
   return (
     <>
@@ -368,9 +374,8 @@ function PlaceHistorySection({ members }: { members: FamilyMember[] }) {
         <p className="muted">Cargando…</p>
       ) : (
         <div className="store-folder-grid">
-          {members.map((m) => {
+          {activeMembers.map((m) => {
             const memberVisits = byMember.get(m.id) ?? []
-            if (memberVisits.length === 0) return null
             const isOpen = expandedMember === m.id
             return (
               <div key={m.id} className="store-folder">
@@ -385,33 +390,46 @@ function PlaceHistorySection({ members }: { members: FamilyMember[] }) {
                   <span className="store-folder-info">
                     <strong>{m.name}</strong>
                     <span className="muted">
-                      {memberVisits.length} {memberVisits.length === 1 ? 'sitio' : 'sitios'}
+                      {memberVisits.length === 0
+                        ? 'Sin sitios registrados'
+                        : `${memberVisits.length} ${memberVisits.length === 1 ? 'sitio' : 'sitios'}`}
                     </span>
                   </span>
                   <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
                 </button>
                 {isOpen && (
                   <div className="event-list store-folder-contents">
-                    {groupVisitsByDay(memberVisits).map(([day, dayVisits]) => (
-                      <div key={day} className="card task-card" style={{ display: 'block' }}>
-                        <strong>{placeDayLabel(day)}</strong>
-                        <p className="muted">
-                          {dayVisits.map((v, i) => (
-                            <span key={v.id}>
-                              {i > 0 && ' → '}
-                              {v.placeName} ({placeHhmm(v.arrivedAt)}
-                              {v.leftAt ? `–${placeHhmm(v.leftAt)}` : ''})
-                            </span>
-                          ))}
-                        </p>
-                      </div>
-                    ))}
+                    {memberVisits.length === 0 ? (
+                      <p className="muted">
+                        Nada todavía en este periodo — hace falta que {m.name} comparta ubicación y se quede un
+                        rato parado en algún sitio para que se reconozca solo.
+                      </p>
+                    ) : (
+                      groupVisitsByDay(memberVisits).map(([day, dayVisits]) => (
+                        <div key={day} className="card task-card" style={{ display: 'block' }}>
+                          <strong>{placeDayLabel(day)}</strong>
+                          <p className="muted">
+                            {dayVisits.map((v, i) => (
+                              <span key={v.id}>
+                                {i > 0 && ' → '}
+                                {v.placeName} ({placeHhmm(v.arrivedAt)}
+                                {v.leftAt ? `–${placeHhmm(v.leftAt)}` : ''})
+                              </span>
+                            ))}
+                          </p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
             )
           })}
-          {visits.length === 0 && <p className="muted">Nada por aquí todavía en este periodo.</p>}
+          {activeMembers.length === 0 && (
+            <p className="muted">
+              Nadie tiene el compartir ubicación activado todavía — actívalo arriba, en "Consentimiento".
+            </p>
+          )}
         </div>
       )}
     </>

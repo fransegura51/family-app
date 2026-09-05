@@ -1327,7 +1327,8 @@ function BudgetsTab({
       <BudgetMonthFolders
         budgets={groupBudgets}
         expenses={expenses}
-        categories={groupCategories}
+        receipts={receipts}
+        categories={categories}
         group={group}
         onChanged={reload}
       />
@@ -1450,12 +1451,14 @@ function OverallBudgetCard({
 function BudgetMonthFolders({
   budgets,
   expenses,
+  receipts,
   categories,
   group,
   onChanged,
 }: {
   budgets: Budget[]
   expenses: Expense[]
+  receipts: Receipt[]
   categories: BudgetCategory[]
   group: string
   onChanged: () => void
@@ -1503,7 +1506,7 @@ function BudgetMonthFolders({
               {isOpen && (
                 <div className="event-list store-folder-contents">
                   {monthBudgets.map((b) => {
-                    const spent = budgetSpent(b, expenses)
+                    const spent = budgetSpent(b, expenses, { receipts, categories })
                     const pct = Math.min(100, Math.round((spent / b.amount) * 100))
                     const icon = categories.find((c) => c.name === b.category)?.icon
                     return (

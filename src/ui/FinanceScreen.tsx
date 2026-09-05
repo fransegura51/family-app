@@ -1226,9 +1226,7 @@ function BudgetsTab({
 
   const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
   const groupCategories = categories.filter((c) => c.budgetGroup === group)
-  const monthBudgets = budgets.filter(
-    (b) => b.budgetGroup === group && budgetPeriodRange(b).start.slice(0, 7) === visibleMonth,
-  )
+  const groupBudgets = budgets.filter((b) => b.budgetGroup === group)
   const monthReceipts = receipts.filter((r) => r.receiptDate.startsWith(visibleMonth))
   const pieGroups = groupReceiptsByStore(monthReceipts, knownStores)
 
@@ -1266,7 +1264,7 @@ function BudgetsTab({
     <div>
       {error && <p className="error">{error}</p>}
 
-      <BudgetsOverview allExpenses={expenses} allCategories={categories} />
+      <BudgetsOverview allExpenses={expenses} allCategories={categories} onChanged={reload} />
 
       <div className="month-nav">
         <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
@@ -1302,41 +1300,199 @@ function BudgetsTab({
         onChanged={reload}
       />
 
+      <BudgetMonthFolders
+        budgets={groupBudgets}
+        expenses={expenses}
+        categories={groupCategories}
+        group={group}
+        onChanged={reload}
+      />
+    </div>
+  )
+}
+
+// Los presupuestos se guardan por mes, en carpetas — petición real:
+// "la parte del nuevo presupuesto la eliminaría, y ahí pondría una
+// carpeta para guardar todos los presupuestos... créame una carpeta
+// por cada mes... para poderlos consultar". Reemplaza el formulario
+// siempre visible de antes: ahora "Nuevo presupuesto" es una carpeta
+// más, al final de la lista, que se despliega para dar de alta uno.
+function BudgetMonthFolders({
+  budgets,
+  expenses,
+  categories,
+  group,
+  onChanged,
+}: {
+  budgets: Budget[]
+  expenses: Expense[]
+  categories: BudgetCategory[]
+  group: string
+  onChanged: () => void
+}) {
+  const [openMonth, setOpenMonth] = useState<string | null>(null)
+  const [addingMonth, setAddingMonth] = useState(false)
+
+  const byMonth = new Map<string, Budget[]>()
+  for (const b of budgets) {
+    const month = budgetPeriodRange(b).start.slice(0, 7)
+    const list = byMonth.get(month) ?? []
+    list.push(b)
+    byMonth.set(month, list)
+  }
+  const months = [...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+
+  return (
+    <>
       <h2 className="section-title">Presupuestos</h2>
-      <div className="event-list">
-        {monthBudgets.map((b) => {
-          const spent = budgetSpent(b, expenses)
-          const pct = Math.min(100, Math.round((spent / b.amount) * 100))
-          const icon = groupCategories.find((c) => c.name === b.category)?.icon
+      <p className="muted" style={{ marginTop: -8 }}>Guardados por mes — toca uno para consultarlo.</p>
+      <div className="store-folder-grid">
+        {months.map(([month, monthBudgets]) => {
+          const [y, m] = month.split('-').map(Number)
+          const isOpen = openMonth === month
+          const totalBudgeted = monthBudgets.reduce((sum, b) => sum + b.amount, 0)
           return (
-            <div key={b.id} className="card task-card">
-              <div className="task-card-main">
-                <strong>
-                  {icon && `${icon} `}
-                  {b.category ?? 'General'}
-                </strong>
-                <p className="muted">
-                  {b.periodType} desde {b.periodStart} · gastado {spent.toFixed(2)} € de {b.amount.toFixed(2)} €
-                  ({pct}%)
-                </p>
-                <div className="progress-bar">
-                  <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+            <div key={month} className="store-folder">
+              <button
+                type="button"
+                className="store-folder-header"
+                onClick={() => setOpenMonth(isOpen ? null : month)}
+              >
+                <span className="store-folder-icon">📅</span>
+                <span className="store-folder-info">
+                  <strong>
+                    {MONTH_LABELS[m - 1]} {y}
+                  </strong>
+                  <span className="muted">
+                    {monthBudgets.length} {monthBudgets.length === 1 ? 'presupuesto' : 'presupuestos'} ·{' '}
+                    {totalBudgeted.toFixed(2)} €
+                  </span>
+                </span>
+                <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
+              </button>
+              {isOpen && (
+                <div className="event-list store-folder-contents">
+                  {monthBudgets.map((b) => {
+                    const spent = budgetSpent(b, expenses)
+                    const pct = Math.min(100, Math.round((spent / b.amount) * 100))
+                    const icon = categories.find((c) => c.name === b.category)?.icon
+                    return (
+                      <div key={b.id} className="card task-card">
+                        <div className="task-card-main">
+                          <strong>
+                            {icon && `${icon} `}
+                            {b.category ?? 'General'}
+                          </strong>
+                          <p className="muted">
+                            {b.periodType} desde {b.periodStart} · gastado {spent.toFixed(2)} € de{' '}
+                            {b.amount.toFixed(2)} € ({pct}%)
+                          </p>
+                          <div className="progress-bar">
+                            <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                        <ConfirmButton label="Eliminar" onConfirm={() => deleteBudget(b.id).then(onChanged)} />
+                      </div>
+                    )
+                  })}
                 </div>
-              </div>
-              <ConfirmButton label="Eliminar" onConfirm={() => deleteBudget(b.id).then(reload)} />
+              )}
             </div>
           )
         })}
-        {monthBudgets.length === 0 && <p className="muted">No hay presupuestos guardados en este mes.</p>}
+
+        <div className="store-folder">
+          <button
+            type="button"
+            className="store-folder-header"
+            onClick={() => setAddingMonth((v) => !v)}
+          >
+            <span className="store-folder-icon">➕</span>
+            <span className="store-folder-info">
+              <strong>Nuevo presupuesto</strong>
+            </span>
+            <span className="store-folder-chevron">{addingMonth ? '▾' : '▸'}</span>
+          </button>
+          {addingMonth && (
+            <div className="store-folder-contents">
+              <AddBudgetForm
+                onAdded={() => {
+                  setAddingMonth(false)
+                  onChanged()
+                }}
+                defaultPeriodStart={`${toDateStr(new Date()).slice(0, 7)}-01`}
+                categories={categories}
+                group={group}
+              />
+            </div>
+          )}
+        </div>
       </div>
-      <AddBudgetForm
-        key={visibleMonth}
-        onAdded={reload}
-        defaultPeriodStart={`${visibleMonth}-01`}
-        categories={groupCategories}
-        group={group}
-      />
-    </div>
+      {months.length === 0 && <p className="muted">No hay presupuestos guardados todavía.</p>}
+    </>
+  )
+}
+
+// Apuntar un ingreso (nómina, paga extra...) según va llegando —
+// petición real: "quiero poder ir poniendo los ingresos que tengo ese
+// mes y cuando los tengo... que se cree el ingreso el día que lo
+// apunte pero que se pueda cambiar con un calendario". La fecha
+// arranca en hoy pero es un <input type="date"> normal — se puede
+// cambiar a cualquier otro día antes de guardar.
+function AddIncomeInline({ onAdded }: { onAdded: () => void }) {
+  const [date, setDate] = useState(toDateStr(new Date()))
+  const [amount, setAmount] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await addExpense({
+        date,
+        amount: Number(amount),
+        category: description.trim() || 'Ingreso',
+        store: '',
+        kind: 'real',
+        isIncome: true,
+      })
+      setAmount('')
+      setDescription('')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form" style={{ marginBottom: 8 }}>
+      <label>
+        Fecha
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+      </label>
+      <label>
+        Importe (€)
+        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
+      </label>
+      <label>
+        Descripción (opcional)
+        <input
+          type="text"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Nómina, paga extra…"
+        />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : 'Guardar ingreso'}
+      </button>
+    </form>
   )
 }
 
@@ -1349,18 +1505,32 @@ function BudgetsTab({
 function BudgetsOverview({
   allExpenses,
   allCategories,
+  onChanged,
 }: {
   allExpenses: Expense[]
   allCategories: BudgetCategory[]
+  onChanged: () => void
 }) {
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  // Petición real: "quiero poder ir poniendo los ingresos que tengo
+  // ese mes y cuando los tengo... que se cree el día que lo apunte
+  // pero que se pueda cambiar con un calendario y que se pueda
+  // eliminar".
+  const [addingIncome, setAddingIncome] = useState(false)
+  const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null)
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo)
   const inRange = allExpenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
-  const totalIncome = inRange.filter((e) => e.isIncome).reduce((sum, e) => sum + e.amount, 0)
+  const incomeEntries = inRange.filter((e) => e.isIncome).sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
+  const totalIncome = incomeEntries.reduce((sum, e) => sum + e.amount, 0)
   const totalSpent = inRange.filter((e) => !e.isIncome && e.kind === 'real').reduce((sum, e) => sum + e.amount, 0)
+
+  async function handleDeleteIncome(id: string) {
+    await deleteExpense(id)
+    onChanged()
+  }
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>()
@@ -1394,7 +1564,47 @@ function BudgetsOverview({
           <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
         </div>
       )}
-      <p style={{ color: '#1e8449', fontWeight: 600, margin: '4px 0' }}>Ingresos: +{totalIncome.toFixed(2)} €</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <p style={{ color: '#1e8449', fontWeight: 600, margin: '4px 0' }}>Ingresos: +{totalIncome.toFixed(2)} €</p>
+        <button type="button" className="link-button" onClick={() => setAddingIncome((v) => !v)}>
+          {addingIncome ? 'Cerrar' : '+ Añadir ingreso'}
+        </button>
+      </div>
+
+      {addingIncome && <AddIncomeInline onAdded={onChanged} />}
+
+      {incomeEntries.length > 0 && (
+        <div className="event-list" style={{ marginBottom: 8 }}>
+          {incomeEntries.map((inc) =>
+            editingIncomeId === inc.id ? (
+              <EditCategoryExpenseRow
+                key={inc.id}
+                expense={inc}
+                onDone={() => {
+                  setEditingIncomeId(null)
+                  onChanged()
+                }}
+                onCancel={() => setEditingIncomeId(null)}
+              />
+            ) : (
+              <div key={inc.id} className="card task-card">
+                <div className="task-card-main">
+                  <strong style={{ color: '#1e8449' }}>+{inc.amount.toFixed(2)} €</strong>
+                  <p className="muted">
+                    {inc.expenseDate}
+                    {inc.category && inc.category !== 'Ingreso' && ` · ${inc.category}`}
+                  </p>
+                </div>
+                <button type="button" className="link-button" onClick={() => setEditingIncomeId(inc.id)}>
+                  Editar
+                </button>
+                <ConfirmButton label="Eliminar" onConfirm={() => handleDeleteIncome(inc.id)} />
+              </div>
+            ),
+          )}
+        </div>
+      )}
+
       <p style={{ color: '#c0392b', fontWeight: 600, margin: '4px 0' }}>Gastado: -{totalSpent.toFixed(2)} €</p>
       <p style={{ margin: '4px 0' }}>
         <strong>Balance: {(totalIncome - totalSpent).toFixed(2)} €</strong>

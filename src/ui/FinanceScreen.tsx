@@ -1247,6 +1247,9 @@ function BudgetsTab({
     monthRealExpenses
       .filter((e) => categories.some((c) => c.budgetGroup === 'alimentacion' && c.name === e.category))
       .reduce((sum, e) => sum + e.amount, 0)
+  const generalesCategoriesTotal = groupCategories
+    .map((c) => monthRealExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0))
+    .reduce((sum, t) => sum + t, 0)
   const categoryPieSlices =
     group === 'generales'
       ? [
@@ -1259,6 +1262,18 @@ function BudgetsTab({
           { store: '🍽️ Alimentación (total)', total: alimentacionTotal },
         ].filter((s) => s.total > 0)
       : []
+
+  // Presupuesto total del mes con su barra de % gastado — petición
+  // real: "si tengo 800€ de presupuesto para comida... voy gastando
+  // 200, 250... qué tanto por ciento voy gastando, cada vez que añado
+  // una compra" y, para Generales, "se tienen 4000€... alimentación
+  // 800, luz 300, agua 100... que vayas calculando hasta los 4000,
+  // qué tanto por ciento voy gastando" — en Generales el gastado suma
+  // TODAS sus categorías MÁS el total de Alimentación (igual que el
+  // quesito de arriba), no solo lo suyo.
+  const groupSpentTotal = group === 'alimentacion' ? alimentacionTotal : generalesCategoriesTotal + alimentacionTotal
+  const overallBudget =
+    groupBudgets.find((b) => !b.category && budgetPeriodRange(b).start.slice(0, 7) === visibleMonth) ?? null
 
   return (
     <div>
@@ -1286,6 +1301,14 @@ function BudgetsTab({
         </button>
       </div>
 
+      <OverallBudgetCard
+        group={group}
+        visibleMonth={visibleMonth}
+        budget={overallBudget}
+        spent={groupSpentTotal}
+        onChanged={reload}
+      />
+
       {group === 'alimentacion' && (
         <StorePieChart groups={pieGroups} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
       )}
@@ -1307,6 +1330,112 @@ function BudgetsTab({
         group={group}
         onChanged={reload}
       />
+    </div>
+  )
+}
+
+// Presupuesto total del mes con su barra de % gastado — petición real:
+// "si tengo 800€ de presupuesto para comida... voy gastando 200,
+// 250... qué tanto por ciento voy gastando, cada vez que añado una
+// compra" (y lo mismo en Generales, con 4000€ sumando todas sus
+// categorías más el total de Alimentación). Sin presupuesto puesto
+// todavía para este mes, pide el importe; una vez puesto, se puede
+// cambiar en cualquier momento.
+function OverallBudgetCard({
+  group,
+  visibleMonth,
+  budget,
+  spent,
+  onChanged,
+}: {
+  group: string
+  visibleMonth: string
+  budget: Budget | null
+  spent: number
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      if (budget) await deleteBudget(budget.id)
+      await createBudget({
+        periodType: 'mensual',
+        periodStart: `${visibleMonth}-01`,
+        category: '',
+        amount: Number(amount),
+        budgetGroup: group,
+      })
+      setEditing(false)
+      setAmount('')
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!budget || editing) {
+    return (
+      <form onSubmit={handleSave} className="card member-form">
+        <label>
+          Presupuesto total del mes (€)
+          <input
+            type="number"
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            required
+            autoFocus
+          />
+        </label>
+        {error && <p className="error">{error}</p>}
+        <div className="form-actions">
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+          {budget && (
+            <button type="button" className="link-button" onClick={() => setEditing(false)}>
+              Cancelar
+            </button>
+          )}
+        </div>
+      </form>
+    )
+  }
+
+  const pct = Math.min(100, Math.round((spent / budget.amount) * 100))
+  const over = spent > budget.amount
+
+  return (
+    <div className="card event-card">
+      <strong>Presupuesto total del mes</strong>
+      <p>
+        {spent.toFixed(2)} € de {budget.amount.toFixed(2)} € ({pct}%)
+      </p>
+      <div className="progress-bar">
+        <div
+          className="progress-bar-fill"
+          style={{ width: `${pct}%`, background: over ? '#c0392b' : undefined }}
+        />
+      </div>
+      <button
+        type="button"
+        className="link-button"
+        onClick={() => {
+          setAmount(String(budget.amount))
+          setEditing(true)
+        }}
+      >
+        Cambiar importe
+      </button>
     </div>
   )
 }

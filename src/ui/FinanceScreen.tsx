@@ -25,7 +25,12 @@ import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
-import { recordProductPurchase } from '@/data/products'
+import {
+  deleteProductPricesByReceipt,
+  listProductPricesByReceipt,
+  recordProductPurchase,
+  type ReceiptLineDetail,
+} from '@/data/products'
 import { budgetPeriodRange, budgetSpent, walletBalance, walletCategoryTotal } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
 import { findKnownStore } from '@/domain/voiceQuery'
@@ -367,6 +372,8 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
 function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [knownStores, setKnownStores] = useState<string[]>([])
+  const [categories, setCategories] = useState<BudgetCategory[]>([])
+  const [members, setMembers] = useState<FamilyMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -393,6 +400,8 @@ function ReceiptsTab() {
     listShoppingStores()
       .then((rows) => setKnownStores(rows.map((s) => s.name)))
       .catch(() => {})
+    listBudgetCategories().then(setCategories).catch(() => {})
+    listFamilyMembers().then(setMembers).catch(() => {})
   }, [])
 
   async function handleDelete(receipt: Receipt) {
@@ -423,7 +432,7 @@ function ReceiptsTab() {
 
       {/* Petición real: "el aparato para subir tickets... arriba del
           todo" — antes iba al final de la lista. */}
-      <AddReceiptForm onAdded={reload} knownStores={knownStores} existingFolders={storeNames} />
+      <ReceiptForm mode="add" onDone={reload} knownStores={knownStores} existingFolders={storeNames} categories={categories} members={members} />
 
       {/* Petición real: "reparto del gasto por tienda, eso me lo hace
           del total, y no quiero que me lo haga del total... que las
@@ -497,10 +506,14 @@ function ReceiptsTab() {
                 <div className="event-list store-folder-contents">
                   {storeReceipts.map((r) =>
                     editingId === r.id ? (
-                      <EditReceiptForm
+                      <ReceiptForm
                         key={r.id}
+                        mode="edit"
                         receipt={r}
                         existingFolders={storeNames}
+                        knownStores={knownStores}
+                        categories={categories}
+                        members={members}
                         onDone={() => {
                           setEditingId(null)
                           reload()
@@ -511,6 +524,7 @@ function ReceiptsTab() {
                       <ReceiptRow
                         key={r.id}
                         receipt={r}
+                        members={members}
                         onEdit={() => setEditingId(r.id)}
                         onDelete={() => handleDelete(r)}
                       />
@@ -745,137 +759,138 @@ function StoreMonthlyChart({
   )
 }
 
+// Desplegable de categoría compartido entre el formulario de tickets y
+// (más adelante) cualquier otro sitio que quiera clasificar un gasto —
+// agrupa las categorías reales de cada presupuesto (Alimentación /
+// Generales) para poder ver de un vistazo a qué grupo pertenece cada
+// una, con "Alimentación" y "Amazon" sueltos arriba como valores
+// genéricos por defecto (el primero ya contaba como el total de
+// tickets de super, Skill 19; el segundo es para pedidos de Amazon
+// mientras no se reclasifiquen a mano).
+function CategorySelect({
+  value,
+  onChange,
+  categories,
+}: {
+  value: string
+  onChange: (v: string) => void
+  categories: BudgetCategory[]
+}) {
+  const alimentacion = categories.filter((c) => c.budgetGroup === 'alimentacion')
+  const generales = categories.filter((c) => c.budgetGroup === 'generales')
+  const known = new Set(['Alimentación', 'Amazon', ...alimentacion.map((c) => c.name), ...generales.map((c) => c.name)])
+
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="Alimentación">Alimentación (general)</option>
+      <option value="Amazon">Amazon (sin clasificar)</option>
+      {alimentacion.length > 0 && (
+        <optgroup label="Alimentación — categorías">
+          {alimentacion.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.icon} {c.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {generales.length > 0 && (
+        <optgroup label="Generales">
+          {generales.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.icon} {c.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {/* Valor ya guardado que no coincide con ninguna categoría de
+          arriba (texto suelto de antes de este cambio) — se muestra tal
+          cual para no perderlo silenciosamente al abrir el formulario. */}
+      {value && !known.has(value) && <option value={value}>{value}</option>}
+    </select>
+  )
+}
+
 function ReceiptRow({
   receipt,
+  members,
   onEdit,
   onDelete,
 }: {
   receipt: Receipt
+  members: FamilyMember[]
   onEdit: () => void
   onDelete: () => void
 }) {
-  const [url, setUrl] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [lines, setLines] = useState<ReceiptLineDetail[] | null>(null)
+  const [loadingLines, setLoadingLines] = useState(false)
+  const [viewing, setViewing] = useState(false)
 
-  return (
-    <div className="card task-card">
-      <div className="task-card-main">
-        <strong>{receipt.store || 'Sin establecimiento'}</strong>
-        <p className="muted">
-          {receipt.receiptDate}
-          {receipt.totalAmount != null && ` · ${receipt.totalAmount.toFixed(2)} €`}
-        </p>
-        {receipt.storagePath ? (
-          url ? (
-            <a href={url} target="_blank" rel="noreferrer">
-              Ver ticket
-            </a>
-          ) : (
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => getReceiptUrl(receipt.storagePath!).then(setUrl)}
-            >
-              Ver ticket
-            </button>
-          )
-        ) : receipt.store === 'Amazon' ? null : (
-          // Bug real: los pedidos de Amazon nunca tienen foto (no hay
-          // ticket físico que fotografiar), así que este aviso de "se
-          // borró a los 3 meses" salía también en pedidos recién creados.
-          <p className="muted">Foto eliminada (ticket de hace más de 3 meses)</p>
-        )}
-      </div>
-      <div className="member-card-actions">
-        <button type="button" className="link-button" onClick={onEdit}>
-          Editar
-        </button>
-        <ConfirmButton label="Eliminar" onConfirm={onDelete} />
-      </div>
-    </div>
-  )
-}
+  const purchaser = receipt.purchasedByMemberId ? members.find((m) => m.id === receipt.purchasedByMemberId) : null
 
-function EditReceiptForm({
-  receipt,
-  existingFolders,
-  onDone,
-  onCancel,
-}: {
-  receipt: Receipt
-  existingFolders: string[]
-  onDone: () => void
-  onCancel: () => void
-}) {
-  const [store, setStore] = useState(receipt.store ?? '')
-  const [receiptDate, setReceiptDate] = useState(receipt.receiptDate)
-  const [totalAmount, setTotalAmount] = useState(receipt.totalAmount != null ? String(receipt.totalAmount) : '')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
+  async function handleToggleExpand() {
+    setExpanded((prev) => !prev)
+    if (lines === null) {
+      setLoadingLines(true)
+      try {
+        setLines(await listProductPricesByReceipt(receipt.id))
+      } catch {
+        setLines([])
+      } finally {
+        setLoadingLines(false)
+      }
+    }
+  }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
+  async function handleViewTicket() {
+    if (!receipt.storagePath || viewing) return
+    setViewing(true)
     try {
-      await updateReceipt(receipt.id, {
-        store,
-        receiptDate,
-        totalAmount: totalAmount ? Number(totalAmount) : null,
-      })
-      onDone()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      const url = await getReceiptUrl(receipt.storagePath)
+      window.open(url, '_blank')
     } finally {
-      setSaving(false)
+      setViewing(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      {/* Petición real: "los tickets, ¿puedo yo decir dónde se meten?
-          porque H Rafal II e Hiperber es lo mismo" — el emparejamiento
-          automático por texto no siempre acierta (son nombres de
-          verdad distintos), así que aquí se puede simplemente tocar la
-          carpeta correcta en vez de fiarse de que el texto coincida. */}
-      {existingFolders.length > 0 && (
-        <label>
-          Mover a esta carpeta
-          <div className="filter-row" style={{ margin: '4px 0' }}>
-            {existingFolders.map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={'chip' + (store === f ? ' chip-active' : '')}
-                onClick={() => setStore(f)}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </label>
-      )}
-      <label>
-        Establecimiento
-        <input type="text" list="receipt-known-stores" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
-      </label>
-      <label>
-        Fecha
-        <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} required />
-      </label>
-      <label>
-        Importe total (€)
-        <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
-      </label>
-      {error && <p className="error">{error}</p>}
-      <div className="form-actions">
-        <button type="submit" disabled={saving}>
-          {saving ? 'Guardando…' : 'Guardar'}
+    <div className="card receipt-row">
+      <div className="receipt-row-main">
+        <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
+          <span>{receipt.receiptDate}</span>
+          {receipt.totalAmount != null && <span> · {receipt.totalAmount.toFixed(2)} €</span>}
+          <span> · {receipt.category}</span>
+          {purchaser && <span className="muted"> · {purchaser.name}</span>}
         </button>
-        <button type="button" className="link-button" onClick={onCancel}>
-          Cancelar
-        </button>
+        <div className="receipt-row-actions">
+          {receipt.storagePath && (
+            <button type="button" className="icon-button" onClick={handleViewTicket} aria-label="Ver ticket" title="Ver ticket">
+              👁
+            </button>
+          )}
+          <button type="button" className="icon-button" onClick={onEdit} aria-label="Editar ticket" title="Editar">
+            ✏️
+          </button>
+          <ConfirmIconButton icon="✕" onConfirm={onDelete} ariaLabel="Borrar ticket" className="icon-button" />
+        </div>
       </div>
-    </form>
+      {expanded && (
+        <div className="receipt-row-detail">
+          {loadingLines && <p className="muted">Cargando detalle…</p>}
+          {!loadingLines && lines && lines.length === 0 && (
+            <p className="muted">No se guardó el detalle de productos de este ticket.</p>
+          )}
+          {!loadingLines &&
+            lines &&
+            lines.map((l) => (
+              <p key={l.id} className="muted receipt-row-detail-line">
+                {l.name}
+                {l.quantity && ` · ${l.quantity} ud`} · {l.price.toFixed(2)} €/ud
+              </p>
+            ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -887,23 +902,59 @@ interface DraftLine {
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
 
-function AddReceiptForm({
-  onAdded,
+// Mismo formulario para subir un ticket nuevo y para editar uno ya
+// guardado (petición real: "cuando se quiera editar el ticket debe
+// abrirse el mismo formulario que para subirlo") — en modo edición se
+// precarga con los datos del ticket y sus líneas ya leídas (reconstruidas
+// desde el Historial, Skill 09), y no hay selector de foto/OCR porque el
+// archivo ya está subido.
+function ReceiptForm({
+  mode,
+  receipt,
+  onDone,
+  onCancel,
   knownStores,
   existingFolders,
+  categories,
+  members,
 }: {
-  onAdded: () => void
+  mode: 'add' | 'edit'
+  receipt?: Receipt
+  onDone: () => void
+  onCancel?: () => void
   knownStores: string[]
   existingFolders: string[]
+  categories: BudgetCategory[]
+  members: FamilyMember[]
 }) {
   const [file, setFile] = useState<File | null>(null)
-  const [store, setStore] = useState('')
-  const [receiptDate, setReceiptDate] = useState(toDateStr(new Date()))
-  const [totalAmount, setTotalAmount] = useState('')
+  const [store, setStore] = useState(receipt?.store ?? '')
+  const [receiptDate, setReceiptDate] = useState(receipt?.receiptDate ?? toDateStr(new Date()))
+  const [totalAmount, setTotalAmount] = useState(receipt?.totalAmount != null ? String(receipt.totalAmount) : '')
+  const [category, setCategory] = useState(receipt?.category ?? 'Alimentación')
+  const [purchasedByMemberId, setPurchasedByMemberId] = useState(receipt?.purchasedByMemberId ?? '')
   const [lines, setLines] = useState<DraftLine[]>([])
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>('idle')
+  const [loadingLines, setLoadingLines] = useState(mode === 'edit')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (mode !== 'edit' || !receipt) return
+    listProductPricesByReceipt(receipt.id)
+      .then((detail) =>
+        setLines(
+          detail.map((l) => {
+            const qty = Number(l.quantity)
+            const totalLinePrice = Number.isFinite(qty) && qty > 0 ? l.price * qty : l.price
+            return { name: l.name, quantity: l.quantity ?? '1', price: totalLinePrice.toFixed(2) }
+          }),
+        ),
+      )
+      .catch(() => {})
+      .finally(() => setLoadingLines(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, receipt?.id])
 
   async function handleReadTicket() {
     if (!file) return
@@ -937,58 +988,77 @@ function AddReceiptForm({
     setLines((prev) => [...prev, { name: '', quantity: '1', price: '' }])
   }
 
+  async function saveLines(receiptId: string) {
+    // En paralelo, no uno a uno: con muchos productos leídos, guardarlos
+    // en serie tardaba tanto (una llamada de red por línea) que parecía
+    // que se había quedado colgado en "Subiendo…" — bug real detectado
+    // al probar con un ticket de varias líneas.
+    await Promise.all(
+      lines
+        .filter((line) => line.name.trim() && !Number.isNaN(Number(line.price)))
+        .map((line) => {
+          // "Precio" es el importe TOTAL de la línea ("3 cervezas,
+          // 3,30€"), no el precio de una — bug real reportado: se
+          // guardaba tal cual y la Memoria de precios enseñaba 3,30€
+          // como si fuera el precio de una unidad. Se divide entre
+          // las unidades para guardar siempre precio por unidad.
+          const units = Number(line.quantity)
+          const unitPrice = Number.isFinite(units) && units > 0 ? Number(line.price) / units : Number(line.price)
+          return recordProductPurchase({
+            name: line.name.trim(),
+            price: unitPrice,
+            quantity: line.quantity || '1',
+            unit: '',
+            store,
+            date: receiptDate,
+            receiptId,
+          })
+        }),
+    )
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!file) {
+    if (mode === 'add' && !file) {
       setError('Elige una foto o archivo del ticket')
       return
     }
     setSaving(true)
     setError(null)
     try {
-      const receiptId = await uploadReceipt({
-        file,
-        store,
-        receiptDate,
-        totalAmount: totalAmount ? Number(totalAmount) : null,
-      })
-
-      // En paralelo, no uno a uno: con muchos productos leídos, guardarlos
-      // en serie tardaba tanto (una llamada de red por línea) que parecía
-      // que se había quedado colgado en "Subiendo…" — bug real detectado
-      // al probar con un ticket de varias líneas.
-      await Promise.all(
-        lines
-          .filter((line) => line.name.trim() && !Number.isNaN(Number(line.price)))
-          .map((line) => {
-            // "Precio" es el importe TOTAL de la línea ("3 cervezas,
-            // 3,30€"), no el precio de una — bug real reportado: se
-            // guardaba tal cual y la Memoria de precios enseñaba 3,30€
-            // como si fuera el precio de una unidad. Se divide entre
-            // las unidades para guardar siempre precio por unidad,
-            // igual que ya hace "Subir ticket" en Compras.
-            const units = Number(line.quantity)
-            const unitPrice = Number.isFinite(units) && units > 0 ? Number(line.price) / units : Number(line.price)
-            return recordProductPurchase({
-              name: line.name.trim(),
-              price: unitPrice,
-              quantity: line.quantity || '1',
-              unit: '',
-              store,
-              date: receiptDate,
-              receiptId,
-            })
-          }),
-      )
-
-      setFile(null)
-      setStore('')
-      setTotalAmount('')
-      setLines([])
-      setOcrStatus('idle')
-      onAdded()
+      if (mode === 'add') {
+        const receiptId = await uploadReceipt({
+          file: file!,
+          store,
+          receiptDate,
+          totalAmount: totalAmount ? Number(totalAmount) : null,
+          category,
+          purchasedByMemberId: purchasedByMemberId || null,
+        })
+        await saveLines(receiptId)
+        setFile(null)
+        setStore('')
+        setTotalAmount('')
+        setCategory('Alimentación')
+        setPurchasedByMemberId('')
+        setLines([])
+        setOcrStatus('idle')
+      } else if (receipt) {
+        await updateReceipt(receipt.id, {
+          store,
+          receiptDate,
+          totalAmount: totalAmount ? Number(totalAmount) : null,
+          category,
+          purchasedByMemberId: purchasedByMemberId || null,
+        })
+        // Se sustituyen todas las líneas por las editadas, en vez de
+        // intentar emparejar una a una con las que ya había.
+        await deleteProductPricesByReceipt(receipt.id)
+        await saveLines(receipt.id)
+      }
+      onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo subir el ticket')
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
     } finally {
       setSaving(false)
     }
@@ -996,34 +1066,38 @@ function AddReceiptForm({
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Subir ticket</h2>
-      <p className="muted">
-        La foto del ticket se guarda solo los últimos 3 meses; pasado ese tiempo se borra la foto
-        (la tienda, la fecha y el importe se quedan igual).
-      </p>
-      <label>Foto o archivo</label>
-      <FileOrPdfPicker
-        file={file}
-        onChange={(f) => {
-          setFile(f)
-          setLines([])
-          setOcrStatus('idle')
-        }}
-      />
+      {mode === 'add' && (
+        <>
+          <h2>Subir ticket</h2>
+          <p className="muted">
+            La foto del ticket se guarda solo los últimos 3 meses; pasado ese tiempo se borra la foto
+            (la tienda, la fecha y el importe se quedan igual).
+          </p>
+          <label>Foto o archivo</label>
+          <FileOrPdfPicker
+            file={file}
+            onChange={(f) => {
+              setFile(f)
+              setLines([])
+              setOcrStatus('idle')
+            }}
+          />
 
-      {file && (
-        <button type="button" className="voice-mic-button" onClick={handleReadTicket} disabled={ocrStatus === 'reading'}>
-          {ocrStatus === 'reading' ? 'Leyendo ticket… puede tardar unos segundos' : '📷 Leer ticket'}
-        </button>
+          {file && (
+            <button type="button" className="voice-mic-button" onClick={handleReadTicket} disabled={ocrStatus === 'reading'}>
+              {ocrStatus === 'reading' ? 'Leyendo ticket… puede tardar unos segundos' : '📷 Leer ticket'}
+            </button>
+          )}
+        </>
       )}
 
       {/* Petición real: "el ticket, ¿dónde quiero guardarlo? en
-          Mercadona, en Hiperber, en Aldi, donde yo quiera" — tocar la
-          carpeta de destino en vez de escribirla, para no depender de
-          que el texto coincida exactamente con una ya existente. */}
+          Mercadona, en Hiperber, en Aldi, donde yo quiera" / "¿puedo yo
+          decir dónde se meten? porque H Rafal II e Hiperber es lo
+          mismo" — tocar la carpeta de destino en vez de escribirla. */}
       {existingFolders.length > 0 && (
         <label>
-          ¿Dónde guardo este ticket?
+          {mode === 'add' ? '¿Dónde guardo este ticket?' : 'Mover a esta carpeta'}
           <div className="filter-row" style={{ margin: '4px 0' }}>
             {existingFolders.map((f) => (
               <button
@@ -1056,8 +1130,24 @@ function AddReceiptForm({
         Importe total (€)
         <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
       </label>
+      <label>
+        Categoría
+        <CategorySelect value={category} onChange={setCategory} categories={categories} />
+      </label>
+      <label>
+        ¿Quién hizo la compra? (opcional)
+        <select value={purchasedByMemberId} onChange={(e) => setPurchasedByMemberId(e.target.value)}>
+          <option value="">—</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
-      {(ocrStatus === 'done' || lines.length > 0) && (
+      {loadingLines && <p className="muted">Cargando productos leídos…</p>}
+      {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0) && (
         <div className="day-modal-group">
           <p className="muted">
             Productos leídos — revisa y corrige antes de guardar. "Cant." es cuántas unidades se compraron
@@ -1106,9 +1196,16 @@ function AddReceiptForm({
       )}
 
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Subiendo…' : 'Guardar ticket'}
-      </button>
+      <div className="form-actions">
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : mode === 'add' ? 'Guardar ticket' : 'Guardar'}
+        </button>
+        {mode === 'edit' && (
+          <button type="button" className="link-button" onClick={onCancel}>
+            Cancelar
+          </button>
+        )}
+      </div>
     </form>
   )
 }

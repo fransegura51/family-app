@@ -331,6 +331,8 @@ export interface Receipt {
   totalAmount: number | null
   expenseId: string | null
   notes: string | null
+  category: string
+  purchasedByMemberId: string | null
 }
 
 export interface Contact {

@@ -17,7 +17,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listReceipts(): Promise<Receipt[]> {
   const { data, error } = await supabase
     .from('receipts')
-    .select('id, family_id, storage_path, store, receipt_date, total_amount, expense_id, notes')
+    .select('id, family_id, storage_path, store, receipt_date, total_amount, expense_id, notes, category, purchased_by_member_id')
     .order('receipt_date', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -29,6 +29,8 @@ export async function listReceipts(): Promise<Receipt[]> {
     totalAmount: r.total_amount != null ? Number(r.total_amount) : null,
     expenseId: r.expense_id,
     notes: r.notes,
+    category: r.category,
+    purchasedByMemberId: r.purchased_by_member_id,
   }))
 }
 
@@ -41,6 +43,8 @@ export async function uploadReceipt(input: {
   store: string
   receiptDate: string
   totalAmount: number | null
+  category: string
+  purchasedByMemberId: string | null
 }): Promise<string> {
   const familyId = await currentFamilyId()
   const file = await compressImageFile(input.file)
@@ -58,7 +62,7 @@ export async function uploadReceipt(input: {
         family_id: familyId,
         expense_date: input.receiptDate,
         amount: input.totalAmount,
-        category: 'Alimentación',
+        category: input.category,
         store: input.store || null,
         kind: 'real',
       })
@@ -77,6 +81,8 @@ export async function uploadReceipt(input: {
       receipt_date: input.receiptDate,
       total_amount: input.totalAmount,
       expense_id: expenseId,
+      category: input.category,
+      purchased_by_member_id: input.purchasedByMemberId,
     })
     .select('id')
     .single()
@@ -91,7 +97,13 @@ export async function uploadReceipt(input: {
 // reflejaba en Gastos porque antes solo se tocaba la fila del ticket).
 export async function updateReceipt(
   id: string,
-  input: { store: string; receiptDate: string; totalAmount: number | null },
+  input: {
+    store: string
+    receiptDate: string
+    totalAmount: number | null
+    category: string
+    purchasedByMemberId: string | null
+  },
 ): Promise<void> {
   const { data: existing, error: fetchError } = await supabase
     .from('receipts')
@@ -109,6 +121,7 @@ export async function updateReceipt(
         .update({
           expense_date: input.receiptDate,
           amount: input.totalAmount,
+          category: input.category,
           store: input.store || null,
         })
         .eq('id', expenseId)
@@ -121,7 +134,7 @@ export async function updateReceipt(
           family_id: familyId,
           expense_date: input.receiptDate,
           amount: input.totalAmount,
-          category: 'Alimentación',
+          category: input.category,
           store: input.store || null,
           kind: 'real',
         })
@@ -143,6 +156,8 @@ export async function updateReceipt(
       receipt_date: input.receiptDate,
       total_amount: input.totalAmount,
       expense_id: expenseId,
+      category: input.category,
+      purchased_by_member_id: input.purchasedByMemberId,
     })
     .eq('id', id)
   if (error) throw error

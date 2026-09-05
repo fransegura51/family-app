@@ -1957,3 +1957,58 @@ textarea {
 .receipt-line-row input.receipt-line-qty {
   flex: 0 0 56px;
 }
+
+/* Fila de un ticket guardado (rediseño): fecha/total/categoría en una
+   sola línea tocable (abre el detalle de productos leídos) con los
+   iconos de ver/editar/borrar aparte, a la derecha — petición real:
+   "arriba la tienda... debajo en una línea Fecha, Total, Categoría, y a
+   la derecha Ver Ticket, editar y borrar". */
+.receipt-row {
+  padding: 10px 12px;
+}
+
+.receipt-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.receipt-row-summary {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.receipt-row-actions {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.receipt-row-detail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+
+.receipt-row-detail-line {
+  margin: 2px 0;
+}

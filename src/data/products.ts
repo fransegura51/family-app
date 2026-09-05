@@ -32,6 +32,39 @@ export async function listProducts(): Promise<Product[]> {
   }))
 }
 
+export interface ReceiptLineDetail {
+  id: string
+  name: string
+  price: number
+  quantity: string | null
+}
+
+// El detalle de líneas leído de un ticket concreto — para el desplegable
+// "ver detalle" de cada ticket guardado, reconstruido a partir de lo que
+// ya se guardó en el Historial (product_prices.receipt_id) en vez de
+// duplicar esa información en otra tabla.
+export async function listProductPricesByReceipt(receiptId: string): Promise<ReceiptLineDetail[]> {
+  const { data, error } = await supabase
+    .from('product_prices')
+    .select('id, price, quantity, products(display_name)')
+    .eq('receipt_id', receiptId)
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    name: (r.products as unknown as { display_name: string } | null)?.display_name ?? '?',
+    price: Number(r.price),
+    quantity: r.quantity,
+  }))
+}
+
+// Al editar un ticket, se sustituyen todas sus líneas por las nuevas en
+// vez de intentar emparejar una a una — más simple y evita arrastrar
+// líneas borradas por el usuario en la edición.
+export async function deleteProductPricesByReceipt(receiptId: string): Promise<void> {
+  const { error } = await supabase.from('product_prices').delete().eq('receipt_id', receiptId)
+  if (error) throw error
+}
+
 export async function listAllProductPrices(): Promise<ProductPrice[]> {
   const { data, error } = await supabase
     .from('product_prices')

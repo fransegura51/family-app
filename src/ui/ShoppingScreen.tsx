@@ -1060,6 +1060,8 @@ function TripReceiptForm({
         store: trip.store ?? '',
         receiptDate,
         totalAmount: totalAmount ? Number(totalAmount) : null,
+        category: 'Alimentación',
+        purchasedByMemberId: null,
       })
 
       await Promise.all(

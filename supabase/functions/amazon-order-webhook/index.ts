@@ -98,6 +98,7 @@ Deno.serve(async (req) => {
         total_amount: total,
         expense_id: expenseId,
         notes: orderNumber ? `Pedido ${orderNumber}` : null,
+        category: "Amazon",
       })
       .select("id")
       .single()

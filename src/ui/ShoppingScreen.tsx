@@ -31,6 +31,7 @@ import { normalize } from '@/domain/voiceQuery'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
 import { MONTH_LABELS } from '@/domain/calendar'
+import { BudgetsTab, ReceiptsTab } from '@/ui/FinanceScreen'
 import type {
   FamilyMember,
   Product,
@@ -139,8 +140,13 @@ function buildSuggestions(products: Product[], prices: ProductPrice[]): ProductS
 
 // Memoria e Historial se fusionaron en una sola pestaña "Historial"
 // (petición real: "combinar Memoria y Historial para dejarlo en una
-// sola sección que se llame Historial").
-const SUB_TABS = ['Lista', 'Programadas', 'Historial'] as const
+// sola sección que se llame Historial"). Tickets y Registro
+// Alimentación se mudan aquí desde Economía (petición real: "pasar
+// registro alimentación y tickets a compra" — tienen más que ver con
+// qué se ha comprado que con el dinero en sí). Sus componentes siguen
+// definidos en FinanceScreen.tsx y se importan desde ahí, en vez de
+// duplicar todo el código de tickets/categorías en dos archivos.
+const SUB_TABS = ['Lista', 'Programadas', 'Historial', 'Tickets', 'Registro Alimentación'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 export function ShoppingScreen() {
@@ -154,6 +160,8 @@ export function ShoppingScreen() {
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Programadas' && <TripsTab />}
       {tab === 'Historial' && <HistoryTab />}
+      {tab === 'Tickets' && <ReceiptsTab />}
+      {tab === 'Registro Alimentación' && <BudgetsTab group="alimentacion" seedCategories={[]} />}
     </div>
   )
 }

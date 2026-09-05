@@ -33,6 +33,7 @@ import {
 } from '@/data/products'
 import { budgetPeriodRange, budgetSpent, isFoodCategory, walletBalance, walletCategoryTotal } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
+import { PRESET_LABELS, rangeForPreset, toDateStr, type SpendRangePreset } from '@/domain/dateRanges'
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
@@ -49,12 +50,15 @@ import type {
   WalletTransactionType,
 } from '@/domain/types'
 
-const SUB_TABS = ['Gastos', 'Tickets', 'Registro Alimentación', 'Presupuesto Generales', 'Educación financiera'] as const
+// Tickets y Registro Alimentación se mudan a Compras (petición real:
+// "estoy pensando si pasar registro alimentación y tickets a compra")
+// — Economía se queda solo con el dinero en sí (Gastos, Presupuesto,
+// Educación financiera). Sus componentes (ReceiptsTab, BudgetsTab)
+// siguen definidos en este archivo y se exportan para que
+// ShoppingScreen los use, en vez de duplicar todo el código de
+// tickets/categorías en dos sitios.
+const SUB_TABS = ['Gastos', 'Presupuesto Generales', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
-
-function toDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 export function FinanceScreen() {
   const [tab, setTab] = useState<SubTab>('Gastos')
@@ -65,8 +69,6 @@ export function FinanceScreen() {
       <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Gastos' && <ExpensesTab />}
-      {tab === 'Tickets' && <ReceiptsTab />}
-      {tab === 'Registro Alimentación' && <BudgetsTab group="alimentacion" seedCategories={[]} />}
       {tab === 'Presupuesto Generales' && <BudgetsTab group="generales" seedCategories={GENERAL_BUDGET_SEED} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
     </div>
@@ -572,7 +574,7 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
   )
 }
 
-function ReceiptsTab() {
+export function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [knownStores, setKnownStores] = useState<string[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
@@ -742,40 +744,6 @@ function ReceiptsTab() {
       {receipts.length === 0 && <p className="muted">No hay tickets guardados.</p>}
     </div>
   )
-}
-
-type SpendRangePreset = 'dia' | 'semana' | 'mes' | 'año' | 'rango'
-
-function rangeForPreset(preset: SpendRangePreset, customFrom: string, customTo: string): [string, string] {
-  const today = new Date()
-  const todayStr = toDateStr(today)
-  if (preset === 'dia') return [todayStr, todayStr]
-  if (preset === 'semana') {
-    // Lunes a domingo de esta semana.
-    const dow = (today.getDay() + 6) % 7
-    const monday = new Date(today)
-    monday.setDate(today.getDate() - dow)
-    const sunday = new Date(monday)
-    sunday.setDate(monday.getDate() + 6)
-    return [toDateStr(monday), toDateStr(sunday)]
-  }
-  if (preset === 'mes') {
-    const first = new Date(today.getFullYear(), today.getMonth(), 1)
-    const last = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-    return [toDateStr(first), toDateStr(last)]
-  }
-  if (preset === 'año') {
-    return [`${today.getFullYear()}-01-01`, `${today.getFullYear()}-12-31`]
-  }
-  return [customFrom || todayStr, customTo || todayStr]
-}
-
-const PRESET_LABELS: Record<SpendRangePreset, string> = {
-  dia: 'Hoy',
-  semana: 'Esta semana',
-  mes: 'Este mes',
-  año: 'Este año',
-  rango: 'Rango',
 }
 
 // Petición real: "que se pueda ver por cada mes lo que he gastado...
@@ -1491,7 +1459,7 @@ const GENERAL_BUDGET_SEED: { name: string; icon: string }[] = [
 // conectados". Por eso BudgetsOverview (abajo) lee de TODOS los
 // grupos a la vez: las estadísticas y el informe salen iguales se
 // entre desde una pestaña o desde la otra.
-function BudgetsTab({
+export function BudgetsTab({
   group,
   seedCategories,
 }: {

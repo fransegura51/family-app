@@ -1260,7 +1260,12 @@ function BudgetsTab({
               total: monthRealExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0),
             }))
             .filter((s) => s.total > 0),
-          { store: '🍽️ Alimentación (total)', total: alimentacionTotal },
+          // 🛒 y no 🍽️ a propósito — petición real: "se ha colado el
+          // emoticono de restaurantes aunque no hay gastos de
+          // restaurantes". Esta porción es TODO el gasto de Alimentación
+          // (tickets de compra, no comer fuera), así que el icono de
+          // carrito es el que no confunde.
+          { store: '🛒 Alimentación (total)', total: alimentacionTotal },
         ].filter((s) => s.total > 0)
       : []
 
@@ -1821,7 +1826,7 @@ function openBudgetReport(report: {
 <meta charset="utf-8" />
 <title>Informe de Dinero</title>
 <style>
-  body { font-family: system-ui, sans-serif; padding: 24px; color: #1c1f26; }
+  body { font-family: system-ui, sans-serif; padding: 24px; padding-top: 64px; color: #1c1f26; }
   h1 { font-size: 20px; margin-bottom: 4px; }
   .muted { color: #6b7280; margin-top: 0; }
   table { width: 100%; border-collapse: collapse; margin-top: 16px; }
@@ -1829,9 +1834,30 @@ function openBudgetReport(report: {
   .totals p { margin: 4px 0; font-size: 15px; }
   .income { color: #1e8449; font-weight: 600; }
   .expense { color: #c0392b; font-weight: 600; }
+  /* Petición real: "no tiene botón de cierre, tuve que salir de la
+     aplicación" — window.open() en una PWA instalada no siempre abre
+     una pestaña de verdad con su propia flecha de volver, así que el
+     informe necesita su propio botón. */
+  .close-btn {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    background: #4c6ef5;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  @media print {
+    .close-btn { display: none; }
+  }
 </style>
 </head>
 <body>
+  <button type="button" class="close-btn" onclick="window.close(); setTimeout(function(){ history.back() }, 150)">✕ Cerrar</button>
   <h1>Informe de Dinero</h1>
   <p class="muted">${report.rangeLabel}</p>
   <div class="totals">

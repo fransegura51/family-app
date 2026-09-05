@@ -174,15 +174,19 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
   )
 }
 
-// Muestra la URL + token secreto que hay que poner en el workflow de
-// Pipedream (ver conversación con el usuario) para que los pedidos de
-// Amazon reenviados por Outlook lleguen aquí. "Regenerar" invalida el
-// token anterior — útil si se ha compartido por error.
+// Muestra las URLs + el token secreto que hay que poner en los
+// workflows de Pipedream (ver conversación con el usuario) para que los
+// pedidos de Amazon y los tickets de Mercadona reenviados por Outlook
+// lleguen aquí solos — mismo token para las dos automatizaciones, es el
+// mismo mecanismo (identificar a la familia sin un login de verdad).
+// "Regenerar" invalida el token anterior — útil si se ha compartido por
+// error (rompe las DOS automatizaciones a la vez, hay que actualizar el
+// token en ambos workflows de Pipedream si se regenera).
 function AmazonWebhookSettings() {
   const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
 
   useEffect(() => {
     getAmazonWebhookToken()
@@ -190,7 +194,9 @@ function AmazonWebhookSettings() {
       .catch((e: Error) => setError(e.message))
   }, [])
 
-  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/amazon-order-webhook`
+  const base = import.meta.env.VITE_SUPABASE_URL as string
+  const amazonUrl = `${base}/functions/v1/amazon-order-webhook`
+  const mercadonaUrl = `${base}/functions/v1/mercadona-ticket-webhook`
 
   async function handleRegenerate() {
     setBusy(true)
@@ -204,11 +210,11 @@ function AmazonWebhookSettings() {
     }
   }
 
-  async function handleCopy(text: string) {
+  async function handleCopy(field: string, text: string) {
     try {
       await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      setCopiedField(field)
+      setTimeout(() => setCopiedField(null), 1500)
     } catch {
       // Sin permiso de portapapeles: el texto ya está visible para copiar a mano.
     }
@@ -217,27 +223,35 @@ function AmazonWebhookSettings() {
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h2 className="section-title" style={{ marginTop: 0 }}>
-        Conexión con pedidos de Amazon
+        Automatizaciones de tickets por email
       </h2>
       <p className="muted">
-        Datos para el workflow de Pipedream que recibe los pedidos de Amazon reenviados desde Outlook.
+        Datos para los workflows de Pipedream que reciben, reenviados desde Outlook, los pedidos de
+        Amazon y los tickets digitales de Mercadona.
       </p>
       {error && <p className="error">{error}</p>}
       {token && (
         <>
           <label>
-            URL del webhook
-            <input type="text" readOnly value={webhookUrl} onFocus={(e) => e.target.select()} />
+            URL del webhook — Amazon
+            <input type="text" readOnly value={amazonUrl} onFocus={(e) => e.target.select()} />
           </label>
-          <button type="button" className="link-button" onClick={() => handleCopy(webhookUrl)}>
-            {copied ? '✓ Copiado' : 'Copiar URL'}
+          <button type="button" className="link-button" onClick={() => handleCopy('amazon', amazonUrl)}>
+            {copiedField === 'amazon' ? '✓ Copiado' : 'Copiar URL'}
           </button>
           <label style={{ marginTop: 8, display: 'block' }}>
-            Token de la familia
+            URL del webhook — Mercadona
+            <input type="text" readOnly value={mercadonaUrl} onFocus={(e) => e.target.select()} />
+          </label>
+          <button type="button" className="link-button" onClick={() => handleCopy('mercadona', mercadonaUrl)}>
+            {copiedField === 'mercadona' ? '✓ Copiado' : 'Copiar URL'}
+          </button>
+          <label style={{ marginTop: 8, display: 'block' }}>
+            Token de la familia (el mismo para las dos)
             <input type="text" readOnly value={token} onFocus={(e) => e.target.select()} />
           </label>
-          <button type="button" className="link-button" onClick={() => handleCopy(token)}>
-            {copied ? '✓ Copiado' : 'Copiar token'}
+          <button type="button" className="link-button" onClick={() => handleCopy('token', token)}>
+            {copiedField === 'token' ? '✓ Copiado' : 'Copiar token'}
           </button>
           <div style={{ marginTop: 8 }}>
             <ConfirmButton label={busy ? 'Regenerando…' : 'Regenerar token'} onConfirm={handleRegenerate} />

@@ -57,18 +57,18 @@ import type {
 // siguen definidos en este archivo y se exportan para que
 // ShoppingScreen los use, en vez de duplicar todo el código de
 // tickets/categorías en dos sitios.
-const SUB_TABS = ['Gastos', 'Presupuesto Generales', 'Educación financiera'] as const
+const SUB_TABS = ['Movimientos', 'Presupuesto Generales', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 export function FinanceScreen() {
-  const [tab, setTab] = useState<SubTab>('Gastos')
+  const [tab, setTab] = useState<SubTab>('Movimientos')
 
   return (
     <div className="screen">
       <h1>Economía</h1>
       <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
-      {tab === 'Gastos' && <ExpensesTab />}
+      {tab === 'Movimientos' && <ExpensesTab />}
       {tab === 'Presupuesto Generales' && <BudgetsTab group="generales" seedCategories={GENERAL_BUDGET_SEED} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
     </div>
@@ -214,7 +214,7 @@ function ExpensesTab() {
       </div>
 
       <button type="button" className="screen-fab" onClick={() => setManaging(true)}>
-        + Categorías y gastos
+        + Categorías y movimientos
       </button>
 
       {managing && (
@@ -330,18 +330,26 @@ function ManageCategoriesModal({
         </p>
         <div className="event-list" style={{ marginBottom: 8 }}>
           {list.map((c, i) => (
-            <div key={c.id} className="card task-card">
+            <div key={c.id} className="card task-card" style={{ padding: '6px 10px', gap: 6, fontSize: 13 }}>
               <div className="task-card-main">
-                <strong>
+                <strong style={{ fontSize: 13 }}>
                   {c.icon} {c.name}
                 </strong>
               </div>
-              <button type="button" className="link-button" disabled={i === 0} onClick={() => move(list, i, -1)} aria-label={`Subir ${c.name}`}>
+              <button
+                type="button"
+                className="link-button"
+                style={{ padding: 4 }}
+                disabled={i === 0}
+                onClick={() => move(list, i, -1)}
+                aria-label={`Subir ${c.name}`}
+              >
                 ↑
               </button>
               <button
                 type="button"
                 className="link-button"
+                style={{ padding: 4 }}
                 disabled={i === list.length - 1}
                 onClick={() => move(list, i, 1)}
                 aria-label={`Bajar ${c.name}`}
@@ -367,15 +375,28 @@ function ManageCategoriesModal({
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
-            Categorías y gastos
+            Categorías y movimientos
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
           </button>
         </div>
 
-        {renderGroupList('Alimentación', alimentacion)}
-        {renderGroupList('Generales', generales)}
+        {/* Petición real: "subiría en ese menú los puntos de crear
+            gasto y crear categoría arriba del todo y debajo la lista
+            de categorías". */}
+        <button type="button" className="link-button" onClick={() => setAddingExpense((v) => !v)}>
+          {addingExpense ? 'Cerrar' : '+ Añadir movimiento'}
+        </button>
+        {addingExpense && (
+          <AddExpenseToAnyCategoryInline
+            categories={categories}
+            onAdded={() => {
+              setAddingExpense(false)
+              onChanged()
+            }}
+          />
+        )}
 
         <button type="button" className="link-button" onClick={() => setAddingCategory((v) => !v)}>
           {addingCategory ? 'Cerrar' : '+ Nueva categoría'}
@@ -410,18 +431,8 @@ function ManageCategoriesModal({
 
         <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
 
-        <button type="button" className="link-button" onClick={() => setAddingExpense((v) => !v)}>
-          {addingExpense ? 'Cerrar' : '+ Añadir gasto'}
-        </button>
-        {addingExpense && (
-          <AddExpenseToAnyCategoryInline
-            categories={categories}
-            onAdded={() => {
-              setAddingExpense(false)
-              onChanged()
-            }}
-          />
-        )}
+        {renderGroupList('Alimentación', alimentacion)}
+        {renderGroupList('Generales', generales)}
       </div>
     </div>
   )
@@ -436,6 +447,12 @@ function AddExpenseToAnyCategoryInline({
   categories: BudgetCategory[]
   onAdded: () => void
 }) {
+  // Petición real: "¿los ingresos dónde se apuntan? Debería ser en
+  // gastos también... en el mismo formulario que se creen también
+  // ingresos con un desplegable más" — mismo formulario, un chip
+  // Gasto/Ingreso; un ingreso no lleva categoría de presupuesto ni
+  // establecimiento, solo fecha e importe.
+  const [isIncome, setIsIncome] = useState(false)
   const [category, setCategory] = useState(categories[0]?.name ?? 'Alimentación')
   const [store, setStore] = useState('')
   const [date, setDate] = useState(toDateStr(new Date()))
@@ -448,7 +465,20 @@ function AddExpenseToAnyCategoryInline({
     setSaving(true)
     setError(null)
     try {
-      await addExpense({ date, amount: Number(amount), category, store, kind: 'real', isIncome: false })
+      if (isIncome) {
+        await addExpense({ date, amount: Number(amount), category: 'Ingreso', store: '', kind: 'real', isIncome: true, budgetGroup: 'generales' })
+      } else {
+        const matched = categories.find((c) => c.name === category)
+        await addExpense({
+          date,
+          amount: Number(amount),
+          category,
+          store,
+          kind: 'real',
+          isIncome: false,
+          budgetGroup: matched?.budgetGroup,
+        })
+      }
       setAmount('')
       setStore('')
       onAdded()
@@ -461,10 +491,20 @@ function AddExpenseToAnyCategoryInline({
 
   return (
     <form onSubmit={handleSubmit} className="member-form">
-      <label>
-        Categoría
-        <CategorySelect value={category} onChange={setCategory} categories={categories} />
-      </label>
+      <div className="filter-row">
+        <button type="button" className={'chip' + (!isIncome ? ' chip-active' : '')} onClick={() => setIsIncome(false)}>
+          Gasto
+        </button>
+        <button type="button" className={'chip' + (isIncome ? ' chip-active' : '')} onClick={() => setIsIncome(true)}>
+          Ingreso
+        </button>
+      </div>
+      {!isIncome && (
+        <label>
+          Categoría
+          <CategorySelect value={category} onChange={setCategory} categories={categories} />
+        </label>
+      )}
       <label>
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -473,13 +513,15 @@ function AddExpenseToAnyCategoryInline({
         Importe (€)
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
       </label>
-      <label>
-        Establecimiento (opcional)
-        <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
-      </label>
+      {!isIncome && (
+        <label>
+          Establecimiento (opcional)
+          <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+        </label>
+      )}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Apuntar gasto'}
+        {saving ? 'Guardando…' : isIncome ? 'Apuntar ingreso' : 'Apuntar gasto'}
       </button>
     </form>
   )

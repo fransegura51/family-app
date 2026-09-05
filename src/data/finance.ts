@@ -29,7 +29,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listExpenses(): Promise<Expense[]> {
   const { data, error } = await supabase
     .from('expenses')
-    .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income')
+    .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group')
     .order('expense_date', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -42,6 +42,7 @@ export async function listExpenses(): Promise<Expense[]> {
     kind: r.kind as ExpenseKind,
     notes: r.notes,
     isIncome: r.is_income,
+    budgetGroup: r.budget_group,
   }))
 }
 
@@ -52,6 +53,7 @@ export async function addExpense(input: {
   store: string
   kind: ExpenseKind
   isIncome?: boolean
+  budgetGroup?: string
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('expenses').insert({
@@ -62,6 +64,7 @@ export async function addExpense(input: {
     store: input.store || null,
     kind: input.kind,
     is_income: input.isIncome ?? false,
+    budget_group: input.budgetGroup ?? 'alimentacion',
   })
   if (error) throw error
 }

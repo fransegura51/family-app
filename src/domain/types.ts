@@ -184,6 +184,11 @@ export interface Expense {
   // gastos con esta marca — petición real: "gráficos de estadísticas
   // total ingresos".
   isIncome: boolean
+  // A qué presupuesto pertenece (solo importa de verdad para los
+  // ingresos) — petición real: "los ingresos tienen que ser
+  // diferentes [entre Alimentación y Generales]... no quiero que se
+  // sumen".
+  budgetGroup: BudgetGroup
 }
 
 // "alimentacion" | "generales" — separa las dos pestañas de

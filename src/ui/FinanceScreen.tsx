@@ -1264,7 +1264,7 @@ function BudgetsTab({
     <div>
       {error && <p className="error">{error}</p>}
 
-      <BudgetsOverview allExpenses={expenses} allCategories={categories} onChanged={reload} />
+      <BudgetsOverview allExpenses={expenses} allCategories={categories} group={group} onChanged={reload} />
 
       <div className="month-nav">
         <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
@@ -1439,7 +1439,7 @@ function BudgetMonthFolders({
 // apunte pero que se pueda cambiar con un calendario". La fecha
 // arranca en hoy pero es un <input type="date"> normal — se puede
 // cambiar a cualquier otro día antes de guardar.
-function AddIncomeInline({ onAdded }: { onAdded: () => void }) {
+function AddIncomeInline({ group, onAdded }: { group: string; onAdded: () => void }) {
   const [date, setDate] = useState(toDateStr(new Date()))
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
@@ -1458,6 +1458,7 @@ function AddIncomeInline({ onAdded }: { onAdded: () => void }) {
         store: '',
         kind: 'real',
         isIncome: true,
+        budgetGroup: group,
       })
       setAmount('')
       setDescription('')
@@ -1496,19 +1497,22 @@ function AddIncomeInline({ onAdded }: { onAdded: () => void }) {
   )
 }
 
-// Estadísticas conectadas de TODOS los presupuestos (Alimentación +
-// Generales juntos) — petición real: "que todos los presupuestos
-// estén conectados... gráficos de estadísticas, total ingresos y
-// cuánto se gasta cada mes, semana, año o en rango de fecha... que se
-// puedan generar informes". Mismo selector Hoy/Esta semana/Este
+// Estadísticas de Dinero — el gasto suma Alimentación + Generales
+// juntos (petición real: "que todos los presupuestos estén
+// conectados"), pero los INGRESOS no: cada pestaña tiene los suyos,
+// sin sumarse con la otra (petición real: "los ingresos tienen que
+// ser diferentes... no quiero que me sumen [los de Generales] en
+// Alimentación"). Mismo selector Hoy/Esta semana/Este
 // mes/Este año/Rango que ya usan los Tickets de esta misma pantalla.
 function BudgetsOverview({
   allExpenses,
   allCategories,
+  group,
   onChanged,
 }: {
   allExpenses: Expense[]
   allCategories: BudgetCategory[]
+  group: string
   onChanged: () => void
 }) {
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
@@ -1523,7 +1527,14 @@ function BudgetsOverview({
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo)
   const inRange = allExpenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
-  const incomeEntries = inRange.filter((e) => e.isIncome).sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
+  // Los ingresos NO se conectan entre pestañas — petición real: "los
+  // ingresos tienen que ser diferentes... presupuesto generales tiene
+  // 4000€... presupuesto de alimentación 800€... no quiero que me
+  // sumen [los de Generales] en Alimentación". El gasto sí se sigue
+  // sumando entre las dos (eso no ha cambiado).
+  const incomeEntries = inRange
+    .filter((e) => e.isIncome && e.budgetGroup === group)
+    .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
   const totalIncome = incomeEntries.reduce((sum, e) => sum + e.amount, 0)
   const totalSpent = inRange.filter((e) => !e.isIncome && e.kind === 'real').reduce((sum, e) => sum + e.amount, 0)
 
@@ -1544,7 +1555,10 @@ function BudgetsOverview({
 
   return (
     <div className="card event-card">
-      <strong>Resumen — todos los presupuestos</strong>
+      <strong>Resumen</strong>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Gastado suma Alimentación + Generales · Ingresos es solo de esta pestaña.
+      </p>
       <div className="filter-row" style={{ marginTop: 8, marginBottom: 8 }}>
         {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
           <button
@@ -1571,7 +1585,7 @@ function BudgetsOverview({
         </button>
       </div>
 
-      {addingIncome && <AddIncomeInline onAdded={onChanged} />}
+      {addingIncome && <AddIncomeInline group={group} onAdded={onChanged} />}
 
       {incomeEntries.length > 0 && (
         <div className="event-list" style={{ marginBottom: 8 }}>
@@ -1816,7 +1830,15 @@ function LogCategoryExpenseModal({
     setSaving(true)
     setError(null)
     try {
-      await addExpense({ date, amount: Number(amount), category: category.name, store: '', kind: 'real', isIncome: false })
+      await addExpense({
+        date,
+        amount: Number(amount),
+        category: category.name,
+        store: '',
+        kind: 'real',
+        isIncome: false,
+        budgetGroup: category.budgetGroup,
+      })
       setAmount('')
       onChanged()
     } catch (err) {

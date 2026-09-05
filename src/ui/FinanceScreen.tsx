@@ -1829,7 +1829,9 @@ function BudgetsOverview({
     <div className="card event-card">
       <strong>Resumen</strong>
       <p className="muted" style={{ marginTop: 0 }}>
-        Gastado suma Alimentación + Generales · Ingresos es solo de esta pestaña.
+        {group === 'alimentacion'
+          ? 'Solo registro — no tiene presupuesto ni ingresos propios.'
+          : 'Gastado suma Alimentación + Generales · Ingresos es solo de esta pestaña.'}
       </p>
       <div className="filter-row" style={{ marginTop: 8, marginBottom: 8 }}>
         {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
@@ -1850,16 +1852,23 @@ function BudgetsOverview({
           <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <p style={{ color: '#1e8449', fontWeight: 600, margin: '4px 0' }}>Ingresos: +{totalIncome.toFixed(2)} €</p>
-        <button type="button" className="link-button" onClick={() => setAddingIncome((v) => !v)}>
-          {addingIncome ? 'Cerrar' : '+ Añadir ingreso'}
-        </button>
-      </div>
+      {/* Alimentación ya no tiene presupuesto ni ingresos propios
+          (petición real: "hay que quitar en Registro alimentación lo
+          de ingreso") — solo se queda con el total gastado. */}
+      {group !== 'alimentacion' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <p style={{ color: '#1e8449', fontWeight: 600, margin: '4px 0' }}>Ingresos: +{totalIncome.toFixed(2)} €</p>
+            <button type="button" className="link-button" onClick={() => setAddingIncome((v) => !v)}>
+              {addingIncome ? 'Cerrar' : '+ Añadir ingreso'}
+            </button>
+          </div>
 
-      {addingIncome && <AddIncomeInline group={group} onAdded={onChanged} />}
+          {addingIncome && <AddIncomeInline group={group} onAdded={onChanged} />}
+        </>
+      )}
 
-      {incomeEntries.length > 0 && (
+      {group !== 'alimentacion' && incomeEntries.length > 0 && (
         <div className="event-list" style={{ marginBottom: 8 }}>
           {incomeEntries.map((inc) =>
             editingIncomeId === inc.id ? (
@@ -1892,9 +1901,11 @@ function BudgetsOverview({
       )}
 
       <p style={{ color: '#c0392b', fontWeight: 600, margin: '4px 0' }}>Gastado: -{totalSpent.toFixed(2)} €</p>
-      <p style={{ margin: '4px 0' }}>
-        <strong>Balance: {(totalIncome - totalSpent).toFixed(2)} €</strong>
-      </p>
+      {group !== 'alimentacion' && (
+        <p style={{ margin: '4px 0' }}>
+          <strong>Balance: {(totalIncome - totalSpent).toFixed(2)} €</strong>
+        </p>
+      )}
 
       {byCategory.length > 0 && (
         <div className="price-row-list" style={{ marginTop: 8 }}>

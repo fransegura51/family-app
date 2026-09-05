@@ -1640,11 +1640,114 @@ function LogCategoryExpenseModal({
   )
 }
 
+// Nombre → emoji, para que al escribir "Farmacia" se ponga sola 💊 y
+// así con las demás — petición real: "que cuando se ponga por ejemplo
+// farmacia se ponga automáticamente el emoji de farmacia y así con
+// todos". Búsqueda por palabra suelta dentro del nombre (normalizada,
+// sin acentos), así "Gastos escolares" encuentra "escolar" aunque no
+// sea la palabra exacta.
+const CATEGORY_ICON_SUGGESTIONS: Record<string, string> = {
+  farmacia: '💊',
+  medicina: '💊',
+  salud: '🏥',
+  medico: '🏥',
+  hospital: '🏥',
+  luz: '💡',
+  electricidad: '💡',
+  agua: '💧',
+  gas: '🔥',
+  internet: '📶',
+  telefono: '📱',
+  movil: '📱',
+  impuesto: '🧾',
+  hacienda: '🧾',
+  factura: '🧾',
+  hipoteca: '🏦',
+  banco: '🏦',
+  alquiler: '🏠',
+  vivienda: '🏠',
+  casa: '🏠',
+  taller: '🔧',
+  coche: '🚗',
+  gasolina: '⛽',
+  combustible: '⛽',
+  transporte: '🚌',
+  seguro: '🛡️',
+  imprevisto: '⚠️',
+  prestamo: '💳',
+  credito: '💳',
+  ahorro: '💰',
+  salario: '👔',
+  sueldo: '👔',
+  nomina: '👔',
+  comestible: '🛒',
+  alimentacion: '🛒',
+  compra: '🛒',
+  supermercado: '🛒',
+  entretenimiento: '🍿',
+  ocio: '🍿',
+  cine: '🎬',
+  restaurante: '🍽️',
+  comida: '🍽️',
+  ropa: '👕',
+  moda: '👕',
+  regalo: '🎁',
+  mascota: '🐾',
+  gimnasio: '🏋️',
+  deporte: '⚽',
+  vacacion: '✈️',
+  viaje: '✈️',
+  escolar: '🎒',
+  colegio: '🎒',
+  escuela: '🎒',
+  educacion: '🎓',
+  universidad: '🎓',
+  belleza: '💇',
+  peluqueria: '💇',
+  suscripcion: '📺',
+  streaming: '📺',
+}
+
+function suggestCategoryIcon(name: string): string | null {
+  const norm = name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+  if (!norm) return null
+  if (CATEGORY_ICON_SUGGESTIONS[norm]) return CATEGORY_ICON_SUGGESTIONS[norm]
+  for (const [keyword, icon] of Object.entries(CATEGORY_ICON_SUGGESTIONS)) {
+    if (norm.includes(keyword)) return icon
+  }
+  return null
+}
+
+// Paleta para elegir el icono a mano — petición real: "ponme que se
+// despliegue una lista de emojis".
+const CATEGORY_ICON_PALETTE = [
+  '💰', '🧾', '💡', '💧', '🔥', '📶', '📱', '🏦', '🏠', '🔧',
+  '🚗', '⛽', '🚌', '🛡️', '⚠️', '💳', '🛒', '🍿', '🍽️', '👕',
+  '🎁', '🐾', '🏋️', '⚽', '✈️', '🎒', '🎓', '💇', '📺', '👔',
+  '💊', '🏥', '🎬', '📚', '🎮', '🧸',
+]
+
 function AddBudgetCategoryInline({ budgetGroup, onAdded }: { budgetGroup: string; onAdded: () => void }) {
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('💰')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Mientras sea true, escribir el nombre puede seguir cambiando el
+  // icono solo — en cuanto la persona elige uno a mano (picker o
+  // escrito), se deja de tocar aunque seguya escribiendo el nombre.
+  const iconTouchedRef = useRef(false)
+
+  function handleNameChange(value: string) {
+    setName(value)
+    if (iconTouchedRef.current) return
+    const suggested = suggestCategoryIcon(value)
+    if (suggested) setIcon(suggested)
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -1655,6 +1758,7 @@ function AddBudgetCategoryInline({ budgetGroup, onAdded }: { budgetGroup: string
       await createBudgetCategory({ name, icon, budgetGroup })
       setName('')
       setIcon('💰')
+      iconTouchedRef.current = false
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo añadir la categoría')
@@ -1665,25 +1769,49 @@ function AddBudgetCategoryInline({ budgetGroup, onAdded }: { budgetGroup: string
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <div className="inline-fields">
-        <input
-          type="text"
-          value={icon}
-          onChange={(e) => setIcon(e.target.value)}
-          placeholder="🏠"
-          maxLength={4}
-          style={{ width: 56, textAlign: 'center', fontSize: 20 }}
-          aria-label="Icono (un emoji)"
-        />
+      <div className="inline-fields" style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => setPickerOpen((v) => !v)}
+          style={{ width: 56, textAlign: 'center', fontSize: 20, padding: '10px 0' }}
+          aria-label="Elegir icono"
+        >
+          {icon}
+        </button>
         <input
           type="text"
           value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Vivienda"
+          onChange={(e) => handleNameChange(e.target.value)}
+          placeholder="Farmacia"
           style={{ flex: 1 }}
           autoFocus
         />
+        {pickerOpen && (
+          <div className="emoji-picker-grid">
+            {CATEGORY_ICON_PALETTE.map((e) => (
+              <button
+                key={e}
+                type="button"
+                className="emoji-picker-option"
+                onClick={() => {
+                  setIcon(e)
+                  iconTouchedRef.current = true
+                  setPickerOpen(false)
+                }}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      {/* Se ha rellenado solo al reconocer el nombre — se puede
+          cambiar tocando el icono de arriba. */}
+      {!iconTouchedRef.current && suggestCategoryIcon(name) && (
+        <p className="muted" style={{ marginTop: -8, fontSize: 12 }}>
+          Icono sugerido para "{name}" — toca el icono para cambiarlo.
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving || !name.trim()}>
         {saving ? 'Añadiendo…' : '+ Añadir categoría'}

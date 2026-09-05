@@ -16,6 +16,27 @@ import { AddMemberForm } from '@/ui/FamilyScreen'
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
 
+// Carpetas grandes de colores con un icono relacionado, en vez de una
+// fila de texto con un emoji pequeño delante — petición real: "las
+// carpetas que sean de este estilo más dinámicas" (captura de
+// referencia con Familia/Privado/Educación/Casa como iconos de colores
+// en una rejilla). Las categorías propias de la familia tienen su
+// icono ya pensado; cualquier categoría nueva que se añada cae en el
+// estilo por defecto.
+const CATEGORY_STYLES: Record<string, { emoji: string; color: string }> = {
+  familia: { emoji: '❤️', color: '#4c6ef5' },
+  privado: { emoji: '🔒', color: '#12b886' },
+  educación: { emoji: '🎓', color: '#f2b705' },
+  educacion: { emoji: '🎓', color: '#f2b705' },
+  casa: { emoji: '🏠', color: '#f08a4b' },
+  salud: { emoji: '➕', color: '#e0495c' },
+}
+const DEFAULT_CATEGORY_STYLE = { emoji: '🗂️', color: '#868e96' }
+
+function categoryStyle(name: string): { emoji: string; color: string } {
+  return CATEGORY_STYLES[name.trim().toLowerCase()] ?? DEFAULT_CATEGORY_STYLE
+}
+
 // Dos niveles de carpeta, como se pidió: "una carpeta dentro de cada
 // sección... Casa: Paco, Jennifer, Fernando... Familia: Paco, Eric,
 // Jennifer, Fernando, con los documentos de cada uno". Primero la
@@ -76,87 +97,101 @@ export function DocumentsScreen() {
   const hasUncategorized = documents.some((d) => !d.category?.trim())
   const sortedCategoryNames = [...categoryNames].sort((a, b) => a.localeCompare(b))
 
+  const docsForCategory = (catName: string) =>
+    catName === UNCATEGORIZED
+      ? documents.filter((d) => !d.category?.trim())
+      : documents.filter((d) => (d.category?.trim() || null) === catName)
+
+  const expandedDocs = expandedCategory ? docsForCategory(expandedCategory) : []
+
   return (
     <div className="screen">
       <h1>Documentos</h1>
       {error && <p className="error">{error}</p>}
 
-      <div className="store-folder-grid">
+      {/* Carpetas grandes de colores en rejilla, con el icono de cada
+          categoría — petición real: "las carpetas que sean de este
+          estilo más dinámicas" (captura de referencia). Tocar una la
+          abre debajo, en vez de navegar a otra pantalla, para no
+          perder de vista el resto de carpetas. */}
+      <div className="doc-folder-grid">
         {sortedCategoryNames.map((catName) => {
-          const catDocs = documents.filter((d) => (d.category?.trim() || null) === catName)
-          const isOpen = expandedCategory === catName
+          const catDocs = docsForCategory(catName)
+          const style = categoryStyle(catName)
           return (
-            <div key={catName} className="store-folder">
-              <button type="button" className="store-folder-header" onClick={() => selectCategory(catName)}>
-                <span className="store-folder-icon">🗂️</span>
-                <span className="store-folder-info">
-                  <strong>{catName}</strong>
-                  <span className="muted">
-                    {catDocs.length} {catDocs.length === 1 ? 'documento' : 'documentos'}
-                  </span>
-                </span>
-                <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
-              </button>
-              {isOpen && (
-                <MemberFolders
-                  members={members}
-                  documents={catDocs}
-                  expandedMember={expandedMember}
-                  onSelectMember={setExpandedMember}
-                  addingMember={addingMember}
-                  onToggleAddingMember={() => setAddingMember((v) => !v)}
-                  onDelete={handleDelete}
-                  onReload={reload}
-                />
-              )}
-            </div>
+            <button
+              key={catName}
+              type="button"
+              className={'doc-folder-card' + (expandedCategory === catName ? ' doc-folder-card-active' : '')}
+              onClick={() => selectCategory(catName)}
+            >
+              <span className="doc-folder-icon" style={{ background: style.color }}>
+                {style.emoji}
+              </span>
+              <strong className="doc-folder-name">{catName}</strong>
+              <span className="muted doc-folder-count">
+                {catDocs.length === 0 ? 'Vacío' : `${catDocs.length} ${catDocs.length === 1 ? 'archivo' : 'archivos'}`}
+              </span>
+            </button>
           )
         })}
 
         {hasUncategorized && (
-          <div className="store-folder">
-            <button type="button" className="store-folder-header" onClick={() => selectCategory(UNCATEGORIZED)}>
-              <span className="store-folder-icon">📄</span>
-              <span className="store-folder-info">
-                <strong>Sin categoría</strong>
-              </span>
-              <span className="store-folder-chevron">{expandedCategory === UNCATEGORIZED ? '▾' : '▸'}</span>
-            </button>
-            {expandedCategory === UNCATEGORIZED && (
-              <MemberFolders
-                members={members}
-                documents={documents.filter((d) => !d.category?.trim())}
-                expandedMember={expandedMember}
-                onSelectMember={setExpandedMember}
-                addingMember={addingMember}
-                onToggleAddingMember={() => setAddingMember((v) => !v)}
-                onDelete={handleDelete}
-                onReload={reload}
-              />
-            )}
-          </div>
+          <button
+            type="button"
+            className={'doc-folder-card' + (expandedCategory === UNCATEGORIZED ? ' doc-folder-card-active' : '')}
+            onClick={() => selectCategory(UNCATEGORIZED)}
+          >
+            <span className="doc-folder-icon" style={{ background: DEFAULT_CATEGORY_STYLE.color }}>
+              📄
+            </span>
+            <strong className="doc-folder-name">Sin categoría</strong>
+            <span className="muted doc-folder-count">
+              {docsForCategory(UNCATEGORIZED).length === 0
+                ? 'Vacío'
+                : `${docsForCategory(UNCATEGORIZED).length} ${docsForCategory(UNCATEGORIZED).length === 1 ? 'archivo' : 'archivos'}`}
+            </span>
+          </button>
         )}
 
-        <div className="store-folder">
-          <button type="button" className="store-folder-header" onClick={() => setAddingCategory((v) => !v)}>
-            <span className="store-folder-icon">➕</span>
-            <span className="store-folder-info">
-              <strong>Añadir categoría</strong>
-            </span>
-            <span className="store-folder-chevron">{addingCategory ? '▾' : '▸'}</span>
-          </button>
-          {addingCategory && (
-            <div className="store-folder-contents">
-              <AddCategoryInline
-                onAdded={() => {
-                  setAddingCategory(false)
-                  reload()
-                }}
-              />
-            </div>
-          )}
-        </div>
+        <button
+          type="button"
+          className={'doc-folder-card doc-folder-card-add' + (addingCategory ? ' doc-folder-card-active' : '')}
+          onClick={() => setAddingCategory((v) => !v)}
+        >
+          <span className="doc-folder-icon doc-folder-icon-add">➕</span>
+          <strong className="doc-folder-name">Nueva carpeta</strong>
+        </button>
       </div>
+
+      {addingCategory && (
+        <div className="card member-form" style={{ marginTop: 12 }}>
+          <AddCategoryInline
+            onAdded={() => {
+              setAddingCategory(false)
+              reload()
+            }}
+          />
+        </div>
+      )}
+
+      {expandedCategory && (
+        <div className="doc-folder-expanded">
+          <h2 className="section-title">
+            {expandedCategory === UNCATEGORIZED ? 'Sin categoría' : expandedCategory}
+          </h2>
+          <MemberFolders
+            members={members}
+            documents={expandedDocs}
+            expandedMember={expandedMember}
+            onSelectMember={setExpandedMember}
+            addingMember={addingMember}
+            onToggleAddingMember={() => setAddingMember((v) => !v)}
+            onDelete={handleDelete}
+            onReload={reload}
+          />
+        </div>
+      )}
 
       {/* Antes había que entrar en la carpeta de la persona para
           subirle algo — petición real: "que se pueda elegir desde el

@@ -1690,6 +1690,74 @@ textarea {
   padding: 0 12px 12px;
 }
 
+/* Carpetas de Documentos, grandes y de colores — petición real: "las
+   carpetas que sean de este estilo más dinámicas" (captura de
+   referencia: icono de color a modo de carpeta, nombre y contador
+   debajo, en rejilla). */
+.doc-folder-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px 12px;
+  margin: 16px 0;
+}
+
+.doc-folder-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 6px 4px;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.doc-folder-card-active {
+  border-color: var(--primary);
+}
+
+.doc-folder-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.doc-folder-icon-add {
+  background: var(--bg);
+  border: 2px dashed #c7cad1;
+  box-shadow: none;
+  color: var(--muted);
+}
+
+.doc-folder-card-add {
+  color: var(--muted);
+}
+
+.doc-folder-name {
+  font-size: 13px;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.doc-folder-count {
+  font-size: 11px;
+}
+
+.doc-folder-expanded {
+  border-top: 1px solid #eee;
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
 /* Barras verticales del gasto mensual. */
 .month-bar-chart {
   display: flex;

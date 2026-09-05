@@ -257,41 +257,11 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
       ) : (
         sharedNow.length === 0 && (
           <p className="muted">
-            Todavía no aparece nadie en el mapa. Activa el consentimiento de alguien más abajo y, desde el móvil de
-            esa persona, entra aquí y toca su nombre en "Este dispositivo" para empezar a compartir.
+            Todavía no aparece nadie en el mapa. Toca el chip de alguien arriba para activar su ubicación y, desde
+            el móvil de esa persona, entra aquí y toca su nombre en "Este dispositivo" para empezar a compartir.
           </p>
         )
       )}
-
-      <h2 className="section-title">Consentimiento</h2>
-      <div className="event-list">
-        {members.map((m) => {
-          const consent = consents.find((c) => c.memberId === m.id)
-          const enabled = consent?.enabled ?? false
-          // El admin puede activar/desactivar a cualquiera; cada persona
-          // también puede activar/desactivar la suya propia (los menores
-          // sin cuenta propia dependen del admin).
-          const canToggle = isAdmin || m.linkedProfileId === profileId
-          return (
-            <div key={m.id} className="card task-card">
-              <MemberAvatar member={m} size={32} />
-              <div className="task-card-main">
-                <strong>{m.name}</strong>
-                <p className="muted">{enabled ? 'Compartir activado' : 'Desactivado'}</p>
-              </div>
-              {canToggle && (
-                <button
-                  type="button"
-                  className="task-toggle"
-                  onClick={() => handleToggleConsent(m.id, !enabled)}
-                >
-                  {enabled ? 'Desactivar' : 'Activar'}
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
 
       <h2 className="section-title">Este dispositivo</h2>
       {sharingAs ? (

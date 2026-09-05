@@ -42,7 +42,7 @@ import type {
   WalletTransactionType,
 } from '@/domain/types'
 
-const SUB_TABS = ['Gastos', 'Tickets', 'Presupuestos', 'Educación financiera'] as const
+const SUB_TABS = ['Gastos', 'Tickets', 'Presupuesto Alimentación', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 const EXPENSE_KINDS: { value: ExpenseKind; label: string }[] = [
@@ -65,7 +65,7 @@ export function FinanceScreen() {
 
       {tab === 'Gastos' && <ExpensesTab />}
       {tab === 'Tickets' && <ReceiptsTab />}
-      {tab === 'Presupuestos' && <BudgetsTab />}
+      {tab === 'Presupuesto Alimentación' && <BudgetsTab />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
     </div>
   )

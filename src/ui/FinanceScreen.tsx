@@ -42,7 +42,6 @@ import type {
   BudgetCategory,
   BudgetPeriod,
   Expense,
-  ExpenseKind,
   FamilyMember,
   KidGoal,
   KidWalletTransaction,
@@ -52,12 +51,6 @@ import type {
 
 const SUB_TABS = ['Gastos', 'Tickets', 'Registro Alimentación', 'Presupuesto Generales', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
-
-const EXPENSE_KINDS: { value: ExpenseKind; label: string }[] = [
-  { value: 'real', label: 'Real' },
-  { value: 'estimado', label: 'Estimado' },
-  { value: 'previsto', label: 'Previsto' },
-]
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -84,20 +77,34 @@ export function FinanceScreen() {
 // Gastos (Skill 17/18)
 // ---------------------------------------------------------------------
 
+// Gastos es ahora el ÚNICO sitio de la app para ver y categorizar
+// cualquier movimiento, y el único con el botón flotante para crear
+// categorías y apuntar gastos (petición real: "en Gastos solo debería
+// haber una lista de los gastos, al estilo de los productos, cada uno
+// en una línea estrecha, ordenados por fecha y donde se puedan
+// categorizar... traslado el botón flotante de Presupuesto General a
+// Gastos"). Presupuesto Generales y Registro Alimentación pasan a leer
+// de esta misma lista, sin su propio sitio para crearlos.
 function ExpensesTab() {
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // "YYYY-MM" del mes que se está viendo — no siempre el actual, para
   // poder consultar meses anteriores (o cualquier mes suelto, como
   // febrero) en vez de solo el que corre.
   const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
+  const [managing, setManaging] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
-    listExpenses()
-      .then(setExpenses)
-      .catch((e: Error) => setError(e.message))
+    Promise.all([listExpenses(), listBudgetCategories()])
+      .then(([e, c]) => {
+        setExpenses(e)
+        setCategories(c)
+      })
+      .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
   }
 
@@ -120,20 +127,14 @@ function ExpensesTab() {
   )
 
   // Petición real: "gráficos de estadísticas, total ingresos" — un
-  // ingreso (nómina, paga extra...) es el mismo formulario de gasto,
-  // solo marcado al revés.
+  // ingreso (nómina, paga extra...) es el mismo movimiento, solo
+  // marcado al revés. Se crean desde el "Resumen" de cada presupuesto
+  // (Skill: ingresos separados por pestaña), pero se ven aquí también
+  // para tener el listado completo por fecha.
   const monthIncome = useMemo(
     () => monthExpenses.filter((e) => e.isIncome).reduce((sum, e) => sum + e.amount, 0),
     [monthExpenses],
   )
-
-  const byCategory = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const e of monthExpenses.filter((e) => e.kind === 'real' && !e.isIncome)) {
-      map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
-    }
-    return [...map.entries()].sort((a, b) => b[1] - a[1])
-  }, [monthExpenses])
 
   if (loading) return <p className="muted">Cargando gastos…</p>
 
@@ -167,61 +168,286 @@ function ExpensesTab() {
         {MONTH_LABELS[visibleMonthIndex - 1]}: {monthTotal.toFixed(2)} € gastados
         {monthIncome > 0 && ` · +${monthIncome.toFixed(2)} € ingresados`}
       </p>
-      {byCategory.length > 0 && (
-        <ul className="ingredient-list">
-          {byCategory.map(([cat, amount]) => (
-            <li key={cat}>
-              {cat}: {amount.toFixed(2)} €
-            </li>
-          ))}
-        </ul>
-      )}
 
-      <div className="event-list">
-        {monthExpenses.map((e) => (
-          <div key={e.id} className="card task-card">
-            <div className="task-card-main">
-              <strong style={{ color: e.isIncome ? '#1e8449' : undefined }}>
-                {e.category} — {e.isIncome ? '+' : ''}
+      <div className="price-row-list">
+        {monthExpenses.map((e) =>
+          editingId === e.id ? (
+            <EditExpenseInline
+              key={e.id}
+              expense={e}
+              categories={categories}
+              onDone={() => {
+                setEditingId(null)
+                reload()
+              }}
+              onCancel={() => setEditingId(null)}
+            />
+          ) : (
+            <div key={e.id} className="price-row" onClick={() => setEditingId(e.id)} style={{ cursor: 'pointer' }}>
+              <span className="price-row-name">
+                {!e.isIncome && categories.find((c) => c.name === e.category)?.icon} {e.category}
+                <span className="muted">
+                  {' '}
+                  · {e.expenseDate}
+                  {e.store && ` · ${e.store}`}
+                  {e.kind !== 'real' && ` · ${e.kind}`}
+                </span>
+              </span>
+              <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
+                {e.isIncome ? '+' : ''}
                 {e.amount.toFixed(2)} €
-              </strong>
-              <p className="muted">
-                {e.expenseDate} · {e.isIncome ? 'ingreso' : e.kind}
-                {e.store && ` · ${e.store}`}
-              </p>
+              </span>
+              <span onClick={(ev) => ev.stopPropagation()}>
+                <ConfirmIconButton
+                  icon="✕"
+                  className="icon-button"
+                  ariaLabel="Borrar movimiento"
+                  onConfirm={() => deleteExpense(e.id).then(reload)}
+                />
+              </span>
             </div>
-            <ConfirmButton label="Eliminar" onConfirm={() => deleteExpense(e.id).then(reload)} />
-          </div>
-        ))}
+          ),
+        )}
         {monthExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
       </div>
 
-      <AddExpenseForm onAdded={reload} />
+      <button type="button" className="screen-fab" onClick={() => setManaging(true)}>
+        + Categorías y gastos
+      </button>
+
+      {managing && (
+        <ManageCategoriesModal categories={categories} onClose={() => setManaging(false)} onChanged={reload} />
+      )}
     </div>
   )
 }
 
-function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
+// Editar cualquier movimiento de la lista de Gastos — categoría
+// (desplegable real, ya no texto libre) para uno normal, o solo
+// fecha/importe si es un ingreso (los ingresos no llevan categoría de
+// presupuesto).
+function EditExpenseInline({
+  expense,
+  categories,
+  onDone,
+  onCancel,
+}: {
+  expense: Expense
+  categories: BudgetCategory[]
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [date, setDate] = useState(expense.expenseDate)
+  const [amount, setAmount] = useState(String(expense.amount))
+  const [category, setCategory] = useState(expense.category)
+  const [store, setStore] = useState(expense.store ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      await updateExpense(expense.id, {
+        date,
+        amount: Number(amount),
+        ...(expense.isIncome ? {} : { category, store }),
+      })
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card member-form" onClick={(e) => e.stopPropagation()}>
+      {!expense.isIncome && (
+        <label>
+          Categoría
+          <CategorySelect value={category} onChange={setCategory} categories={categories} />
+        </label>
+      )}
+      <div className="inline-fields">
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      </div>
+      {!expense.isIncome && (
+        <label>
+          Establecimiento (opcional)
+          <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+        </label>
+      )}
+      {error && <p className="error">{error}</p>}
+      <div className="form-actions">
+        <button type="button" onClick={handleSave} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// El único botón flotante de Gastos (petición real: "traslado el botón
+// flotante de Presupuesto General a Gastos"): crear categorías de
+// cualquiera de los dos grupos, reordenarlas con flechas, y apuntar un
+// gasto eligiendo la categoría de una lista.
+function ManageCategoriesModal({
+  categories,
+  onClose,
+  onChanged,
+}: {
+  categories: BudgetCategory[]
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [newCategoryGroup, setNewCategoryGroup] = useState<'alimentacion' | 'generales'>('alimentacion')
+  const [addingCategory, setAddingCategory] = useState(false)
+  const [addingExpense, setAddingExpense] = useState(false)
+
+  const alimentacion = categories.filter((c) => c.budgetGroup === 'alimentacion')
+  const generales = categories.filter((c) => c.budgetGroup === 'generales')
+
+  function move(group: BudgetCategory[], index: number, direction: -1 | 1) {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= group.length) return
+    const next = [...group]
+    ;[next[index], next[newIndex]] = [next[newIndex], next[index]]
+    reorderBudgetCategories(next.map((c) => c.id)).then(onChanged)
+  }
+
+  function renderGroupList(label: string, list: BudgetCategory[]) {
+    return (
+      <>
+        <p className="muted" style={{ marginBottom: 4, fontWeight: 600 }}>
+          {label}
+        </p>
+        <div className="event-list" style={{ marginBottom: 8 }}>
+          {list.map((c, i) => (
+            <div key={c.id} className="card task-card">
+              <div className="task-card-main">
+                <strong>
+                  {c.icon} {c.name}
+                </strong>
+              </div>
+              <button type="button" className="link-button" disabled={i === 0} onClick={() => move(list, i, -1)} aria-label={`Subir ${c.name}`}>
+                ↑
+              </button>
+              <button
+                type="button"
+                className="link-button"
+                disabled={i === list.length - 1}
+                onClick={() => move(list, i, 1)}
+                aria-label={`Bajar ${c.name}`}
+              >
+                ↓
+              </button>
+              <ConfirmIconButton
+                icon="✕"
+                className="link-button"
+                ariaLabel={`Eliminar categoría ${c.name}`}
+                onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
+              />
+            </div>
+          ))}
+          {list.length === 0 && <p className="muted">Sin categorías todavía.</p>}
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Categorías y gastos
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+
+        {renderGroupList('Alimentación', alimentacion)}
+        {renderGroupList('Generales', generales)}
+
+        <button type="button" className="link-button" onClick={() => setAddingCategory((v) => !v)}>
+          {addingCategory ? 'Cerrar' : '+ Nueva categoría'}
+        </button>
+        {addingCategory && (
+          <>
+            <div className="filter-row" style={{ margin: '8px 0' }}>
+              <button
+                type="button"
+                className={'chip' + (newCategoryGroup === 'alimentacion' ? ' chip-active' : '')}
+                onClick={() => setNewCategoryGroup('alimentacion')}
+              >
+                Alimentación
+              </button>
+              <button
+                type="button"
+                className={'chip' + (newCategoryGroup === 'generales' ? ' chip-active' : '')}
+                onClick={() => setNewCategoryGroup('generales')}
+              >
+                Generales
+              </button>
+            </div>
+            <AddBudgetCategoryInline
+              budgetGroup={newCategoryGroup}
+              onAdded={() => {
+                setAddingCategory(false)
+                onChanged()
+              }}
+            />
+          </>
+        )}
+
+        <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
+
+        <button type="button" className="link-button" onClick={() => setAddingExpense((v) => !v)}>
+          {addingExpense ? 'Cerrar' : '+ Añadir gasto'}
+        </button>
+        {addingExpense && (
+          <AddExpenseToAnyCategoryInline
+            categories={categories}
+            onAdded={() => {
+              setAddingExpense(false)
+              onChanged()
+            }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Apuntar un gasto eligiendo la categoría de una lista (cualquiera de
+// los dos grupos), sin tener que abrir antes su tarjeta.
+function AddExpenseToAnyCategoryInline({
+  categories,
+  onAdded,
+}: {
+  categories: BudgetCategory[]
+  onAdded: () => void
+}) {
+  const [category, setCategory] = useState(categories[0]?.name ?? 'Alimentación')
+  const [store, setStore] = useState('')
   const [date, setDate] = useState(toDateStr(new Date()))
   const [amount, setAmount] = useState('')
-  const [category, setCategory] = useState('')
-  const [store, setStore] = useState('')
-  const [kind, setKind] = useState<ExpenseKind>('real')
-  // Petición real: "gráficos de estadísticas, total ingresos" — un
-  // ingreso (nómina, paga extra...) usa el mismo formulario, solo
-  // marcado al revés en vez de una pantalla aparte.
-  const [isIncome, setIsIncome] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
     setError(null)
     try {
-      await addExpense({ date, amount: Number(amount), category, store, kind, isIncome })
+      await addExpense({ date, amount: Number(amount), category, store, kind: 'real', isIncome: false })
       setAmount('')
-      setCategory('')
       setStore('')
       onAdded()
     } catch (err) {
@@ -232,20 +458,11 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Nuevo movimiento</h2>
-      <div className="filter-row">
-        <button
-          type="button"
-          className={'chip' + (!isIncome ? ' chip-active' : '')}
-          onClick={() => setIsIncome(false)}
-        >
-          Gasto
-        </button>
-        <button type="button" className={'chip' + (isIncome ? ' chip-active' : '')} onClick={() => setIsIncome(true)}>
-          Ingreso
-        </button>
-      </div>
+    <form onSubmit={handleSubmit} className="member-form">
+      <label>
+        Categoría
+        <CategorySelect value={category} onChange={setCategory} categories={categories} />
+      </label>
       <label>
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -255,26 +472,12 @@ function AddExpenseForm({ onAdded }: { onAdded: () => void }) {
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
       </label>
       <label>
-        Categoría
-        <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Alimentación" required />
-      </label>
-      <label>
-        Establecimiento
-        <input type="text" value={store} onChange={(e) => setStore(e.target.value)} />
-      </label>
-      <label>
-        Tipo
-        <select value={kind} onChange={(e) => setKind(e.target.value as ExpenseKind)}>
-          {EXPENSE_KINDS.map((k) => (
-            <option key={k.value} value={k.value}>
-              {k.label}
-            </option>
-          ))}
-        </select>
+        Establecimiento (opcional)
+        <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
       </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Añadir'}
+        {saving ? 'Guardando…' : 'Apuntar gasto'}
       </button>
     </form>
   )
@@ -1456,12 +1659,7 @@ function BudgetsTab({
           onChanged={reload}
         />
       ) : (
-        <GeneralesCategoriesSection
-          categories={groupCategories}
-          budgetGroup={group}
-          monthExpenses={monthRealExpenses}
-          onChanged={reload}
-        />
+        <GeneralesCategoriesSection categories={groupCategories} monthExpenses={monthRealExpenses} />
       )}
 
       {group === 'generales' && (
@@ -2212,244 +2410,40 @@ function BudgetCategoriesSection({
 // tocándola; crear, reordenar (con flechas, mismo mecanismo que
 // "Organizar menú") y borrar categorías, o apuntar un gasto sin elegir
 // antes una tarjeta, vive dentro de ese botón.
+// Presupuesto Generales ya no crea ni edita nada por su cuenta — solo
+// consulta cuánto lleva cada categoría. Crear, reordenar y apuntar
+// gastos vive todo en el botón flotante de Gastos (petición real: "las
+// categorías... en el mismo menú flotante donde se crean").
 function GeneralesCategoriesSection({
   categories,
-  budgetGroup,
   monthExpenses,
-  onChanged,
 }: {
   categories: BudgetCategory[]
-  budgetGroup: string
   monthExpenses: Expense[]
-  onChanged: () => void
 }) {
-  const [managing, setManaging] = useState(false)
-  const [loggingCategory, setLoggingCategory] = useState<BudgetCategory | null>(null)
-
   return (
     <>
       <h2 className="section-title">Categorías</h2>
-      <p className="muted" style={{ marginTop: -8 }}>Toca una categoría para apuntarle un gasto.</p>
+      <p className="muted" style={{ marginTop: -8 }}>
+        Se crean y se apuntan desde el botón flotante de la pestaña Gastos.
+      </p>
       <div className="event-list">
         {categories.map((c) => {
           const spent = monthExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0)
           return (
-            <button
-              key={c.id}
-              type="button"
-              className="card task-card"
-              style={{ width: '100%', background: 'var(--card-bg)', border: 'none', textAlign: 'left', cursor: 'pointer' }}
-              onClick={() => setLoggingCategory(c)}
-            >
+            <div key={c.id} className="card task-card">
               <div className="task-card-main">
                 <strong>
                   {c.icon} {c.name}
                 </strong>
                 <p className="muted">{spent > 0 ? `${spent.toFixed(2)} €` : 'Sin gastos'}</p>
               </div>
-            </button>
+            </div>
           )
         })}
-        {categories.length === 0 && <p className="muted">Todavía no hay categorías — crea alguna con el botón de abajo.</p>}
+        {categories.length === 0 && <p className="muted">Todavía no hay categorías.</p>}
       </div>
-
-      <button type="button" className="screen-fab" onClick={() => setManaging(true)}>
-        + Categorías y gastos
-      </button>
-
-      {managing && (
-        <ManageGeneralCategoriesModal
-          categories={categories}
-          budgetGroup={budgetGroup}
-          onClose={() => setManaging(false)}
-          onChanged={onChanged}
-        />
-      )}
-
-      {loggingCategory && (
-        <LogCategoryExpenseModal
-          category={loggingCategory}
-          expenses={monthExpenses.filter((e) => e.category === loggingCategory.name)}
-          onClose={() => setLoggingCategory(null)}
-          onChanged={onChanged}
-        />
-      )}
     </>
-  )
-}
-
-// El único botón flotante de Generales: crear categoría, reordenarlas
-// con flechas y añadir un gasto suelto eligiendo la categoría de una
-// lista, todo en el mismo sitio.
-function ManageGeneralCategoriesModal({
-  categories,
-  budgetGroup,
-  onClose,
-  onChanged,
-}: {
-  categories: BudgetCategory[]
-  budgetGroup: string
-  onClose: () => void
-  onChanged: () => void
-}) {
-  const [order, setOrder] = useState(categories)
-  const [addingCategory, setAddingCategory] = useState(false)
-  const [addingExpense, setAddingExpense] = useState(false)
-
-  useEffect(() => setOrder(categories), [categories])
-
-  function move(index: number, direction: -1 | 1) {
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= order.length) return
-    const next = [...order]
-    ;[next[index], next[newIndex]] = [next[newIndex], next[index]]
-    setOrder(next)
-    reorderBudgetCategories(next.map((c) => c.id)).then(onChanged)
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Categorías y gastos
-          </h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-
-        <div className="event-list" style={{ marginBottom: 8 }}>
-          {order.map((c, i) => (
-            <div key={c.id} className="card task-card">
-              <div className="task-card-main">
-                <strong>
-                  {c.icon} {c.name}
-                </strong>
-              </div>
-              <button type="button" className="link-button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Subir ${c.name}`}>
-                ↑
-              </button>
-              <button
-                type="button"
-                className="link-button"
-                disabled={i === order.length - 1}
-                onClick={() => move(i, 1)}
-                aria-label={`Bajar ${c.name}`}
-              >
-                ↓
-              </button>
-              <ConfirmIconButton
-                icon="✕"
-                className="link-button"
-                ariaLabel={`Eliminar categoría ${c.name}`}
-                onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
-              />
-            </div>
-          ))}
-          {order.length === 0 && <p className="muted">Todavía no hay categorías.</p>}
-        </div>
-
-        <button type="button" className="link-button" onClick={() => setAddingCategory((v) => !v)}>
-          {addingCategory ? 'Cerrar' : '+ Nueva categoría'}
-        </button>
-        {addingCategory && (
-          <AddBudgetCategoryInline
-            budgetGroup={budgetGroup}
-            onAdded={() => {
-              setAddingCategory(false)
-              onChanged()
-            }}
-          />
-        )}
-
-        <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
-
-        <button type="button" className="link-button" onClick={() => setAddingExpense((v) => !v)}>
-          {addingExpense ? 'Cerrar' : '+ Añadir gasto'}
-        </button>
-        {addingExpense && (
-          <AddExpenseToCategoryInline
-            categories={order}
-            onAdded={() => {
-              setAddingExpense(false)
-              onChanged()
-            }}
-          />
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Apuntar un gasto eligiendo la categoría de una lista, sin tener que
-// tocar antes su tarjeta en la pantalla — petición real: "haz otro
-// [botón] para crear gastos".
-function AddExpenseToCategoryInline({
-  categories,
-  onAdded,
-}: {
-  categories: BudgetCategory[]
-  onAdded: () => void
-}) {
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '')
-  const [date, setDate] = useState(toDateStr(new Date()))
-  const [amount, setAmount] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    const category = categories.find((c) => c.id === categoryId)
-    if (!category) return
-    setSaving(true)
-    setError(null)
-    try {
-      await addExpense({
-        date,
-        amount: Number(amount),
-        category: category.name,
-        store: '',
-        kind: 'real',
-        isIncome: false,
-        budgetGroup: category.budgetGroup,
-      })
-      setAmount('')
-      onAdded()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (categories.length === 0) return <p className="muted">Crea antes alguna categoría.</p>
-
-  return (
-    <form onSubmit={handleSubmit} className="member-form">
-      <label>
-        Categoría
-        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.icon} {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Fecha
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-      </label>
-      <label>
-        Importe (€)
-        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-      </label>
-      {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Apuntar gasto'}
-      </button>
-    </form>
   )
 }
 

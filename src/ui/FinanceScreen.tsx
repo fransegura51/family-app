@@ -778,7 +778,10 @@ function ReceiptRow({
               Ver ticket
             </button>
           )
-        ) : (
+        ) : receipt.store === 'Amazon' ? null : (
+          // Bug real: los pedidos de Amazon nunca tienen foto (no hay
+          // ticket físico que fotografiar), así que este aviso de "se
+          // borró a los 3 meses" salía también en pedidos recién creados.
           <p className="muted">Foto eliminada (ticket de hace más de 3 meses)</p>
         )}
       </div>

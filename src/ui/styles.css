@@ -1997,6 +1997,7 @@ textarea {
 .icon-button {
   background: none;
   border: none;
+  color: var(--text);
   font-size: 18px;
   line-height: 1;
   padding: 4px 6px;

@@ -17,11 +17,13 @@ export function LocationMap({
   locations,
   histories,
   photoUrls,
+  onSelectMember,
 }: {
   members: FamilyMember[]
   locations: MemberLocation[]
   histories: Record<string, MemberLocationPoint[]>
   photoUrls: Record<string, string>
+  onSelectMember?: (memberId: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -34,6 +36,11 @@ export function LocationMap({
   // recentraba y volvía a hacer zoom con cada nuevo punto GPS, muchas
   // veces por minuto — bug real reportado desde iPhone).
   const fittedIdsRef = useRef<string>('')
+  // En un ref para no tener que meter onSelectMember en las dependencias
+  // del efecto de abajo (que recrearía marcadores de más en cada
+  // render solo porque el padre pasó una función nueva).
+  const onSelectMemberRef = useRef(onSelectMember)
+  onSelectMemberRef.current = onSelectMember
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -88,7 +95,7 @@ export function LocationMap({
           }),
         })
           .addTo(layer)
-          .bindPopup(member.name)
+          .on('click', () => onSelectMemberRef.current?.(member.id))
         markersRef.current.set(member.id, marker)
       }
       bounds.push(latLng)

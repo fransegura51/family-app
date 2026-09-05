@@ -75,6 +75,10 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Miembro tocado en el mapa o en su chip de arriba — petición real:
+  // "que al tocar se abra debajo del mapa la información" (captura de
+  // referencia de una app de localización familiar).
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   // El propio compartir (watchPosition) ya no vive aquí — vive en
   // services/locationSharing.ts, fuera de React, para que no se pare al
   // salir de esta pantalla (ver comentario en ese archivo). Aquí solo se
@@ -180,18 +184,83 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   if (loading) return <p className="muted">Cargando…</p>
 
   const sharedNow = locations.filter((loc) => consents.find((c) => c.memberId === loc.memberId)?.enabled)
+  const selectedMember = members.find((m) => m.id === selectedMemberId) ?? null
+  const selectedEnabled = selectedMember ? (consents.find((c) => c.memberId === selectedMember.id)?.enabled ?? false) : false
+  const selectedCanToggle = selectedMember ? isAdmin || selectedMember.linkedProfileId === profileId : false
 
   return (
     <div>
       {error && <p className="error">{error}</p>}
 
-      <h2 className="section-title">Mapa</h2>
-      <LocationMap members={members} locations={sharedNow} histories={histories} photoUrls={photoUrls} />
-      {sharedNow.length === 0 && (
-        <p className="muted">
-          Todavía no aparece nadie en el mapa. Activa el consentimiento de alguien más abajo y, desde el móvil de esa
-          persona, entra aquí y toca su nombre en "Este dispositivo" para empezar a compartir.
-        </p>
+      {/* Mapa grande con los miembros arriba, al estilo de las apps de
+          localización familiar (captura de referencia) — petición
+          real: "que se vea así con los nombres arriba... que el mapa
+          ocupe toda la pantalla". Se sale del margen normal de la
+          pantalla para llegar de borde a borde. */}
+      <div className="location-map-hero">
+        <LocationMap
+          members={members}
+          locations={sharedNow}
+          histories={histories}
+          photoUrls={photoUrls}
+          onSelectMember={setSelectedMemberId}
+        />
+        <div className="location-map-chips">
+          {members.map((m) => {
+            const enabled = consents.find((c) => c.memberId === m.id)?.enabled ?? false
+            return (
+              <button
+                key={m.id}
+                type="button"
+                className={'location-map-chip' + (selectedMemberId === m.id ? ' location-map-chip-active' : '')}
+                onClick={() => setSelectedMemberId(selectedMemberId === m.id ? null : m.id)}
+                aria-label={m.name}
+              >
+                <MemberAvatar member={m} size={46} />
+                {!enabled && (
+                  <span className="location-map-chip-paused" aria-label="Ubicación desactivada">
+                    ⏸
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Tocar un chip o un marcador abre aquí debajo su información —
+          petición real: "que al tocar se abra debajo del mapa la
+          información" — en vez de una ventana emergente encima. */}
+      {selectedMember ? (
+        <div className="card task-card">
+          <MemberAvatar member={selectedMember} size={40} />
+          <div className="task-card-main">
+            <strong>{selectedMember.name}</strong>
+            <p className="muted">
+              {!selectedEnabled
+                ? 'Ubicación no compartida'
+                : sharedNow.some((l) => l.memberId === selectedMember.id)
+                  ? 'Compartiendo ubicación'
+                  : 'Compartir activado, esperando posición…'}
+            </p>
+          </div>
+          {selectedCanToggle && (
+            <button
+              type="button"
+              className="task-toggle"
+              onClick={() => handleToggleConsent(selectedMember.id, !selectedEnabled)}
+            >
+              {selectedEnabled ? 'Desactivar' : 'Activar'}
+            </button>
+          )}
+        </div>
+      ) : (
+        sharedNow.length === 0 && (
+          <p className="muted">
+            Todavía no aparece nadie en el mapa. Activa el consentimiento de alguien más abajo y, desde el móvil de
+            esa persona, entra aquí y toca su nombre en "Este dispositivo" para empezar a compartir.
+          </p>
+        )
       )}
 
       <h2 className="section-title">Consentimiento</h2>

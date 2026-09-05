@@ -1071,6 +1071,65 @@ textarea {
   margin: 12px 0;
 }
 
+/* Mapa a sangre completa (borde a borde, saliéndose del margen normal
+   de .screen) con los miembros flotando arriba, al estilo de las apps
+   de localización familiar — petición real: "que se vea así con los
+   nombres arriba... que el mapa ocupe toda la pantalla". */
+.location-map-hero {
+  position: relative;
+  margin: 0 -16px;
+}
+
+.location-map-hero .location-map {
+  height: 62vh;
+  min-height: 380px;
+  border-radius: 0;
+  margin: 0;
+}
+
+.location-map-chips {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.location-map-chip {
+  position: relative;
+  flex: 0 0 auto;
+  background: none;
+  border: 3px solid transparent;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.location-map-chip-active {
+  border-color: var(--primary);
+}
+
+.location-map-chip-paused {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f08a4b;
+  color: white;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
 .month-nav {
   display: flex;
   align-items: center;

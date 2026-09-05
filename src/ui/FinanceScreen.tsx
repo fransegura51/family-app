@@ -68,7 +68,7 @@ export function FinanceScreen() {
 
   return (
     <div className="screen">
-      <h1>Dinero</h1>
+      <h1>Economía</h1>
       <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Gastos' && <ExpensesTab />}
@@ -1938,7 +1938,7 @@ function openBudgetReport(report: {
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<title>Informe de Dinero</title>
+<title>Informe de Economía</title>
 <style>
   body { font-family: system-ui, sans-serif; padding: 24px; padding-top: 64px; color: #1c1f26; }
   h1 { font-size: 20px; margin-bottom: 4px; }
@@ -1972,7 +1972,7 @@ function openBudgetReport(report: {
 </head>
 <body>
   <button type="button" class="close-btn" onclick="window.close(); setTimeout(function(){ history.back() }, 150)">✕ Cerrar</button>
-  <h1>Informe de Dinero</h1>
+  <h1>Informe de Economía</h1>
   <p class="muted">${report.rangeLabel}</p>
   <div class="totals">
     <p class="income">Ingresos: +${report.totalIncome.toFixed(2)} €</p>

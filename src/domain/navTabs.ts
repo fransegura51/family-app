@@ -16,7 +16,7 @@ export const NAV_TABS: NavTab[] = [
   { to: '/puntos', label: 'Puntos', icon: '⭐' },
   { to: '/compras', label: 'Compras', icon: '🛒' },
   { to: '/alimentacion', label: 'Alimentación', icon: '🍎' },
-  { to: '/dinero', label: 'Dinero', icon: '💶' },
+  { to: '/dinero', label: 'Economía', icon: '💶' },
   { to: '/ubicacion', label: 'Ubicación', icon: '📍' },
   { to: '/cumpleanos', label: 'Cumpleaños', icon: '🎂' },
   { to: '/contactos', label: 'Contactos', icon: '📇' },

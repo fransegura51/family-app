@@ -31,7 +31,7 @@ const HOME_CARDS: HomeCardDef[] = [
   { id: 'puntos', title: 'Puntos', body: 'Recompensas de la familia', to: '/puntos', icon: '⭐', color: '#dcfce7' },
   { id: 'compras', title: 'Próxima compra', body: 'Lista actual', to: '/compras', icon: '🛒', color: '#fef3c7' },
   { id: 'alimentacion', title: 'Alimentación', body: 'Menú, registro y peso', to: '/alimentacion', icon: '🍎', color: '#d1fae5' },
-  { id: 'dinero', title: 'Dinero', body: 'Resumen del mes', to: '/dinero', icon: '💶', color: '#dcfce7' },
+  { id: 'dinero', title: 'Economía', body: 'Resumen del mes', to: '/dinero', icon: '💶', color: '#dcfce7' },
   { id: 'ubicacion', title: 'Ubicación y avisos', body: 'Opcional, desactivado por defecto', to: '/ubicacion', icon: '📍', color: '#e0e7ff' },
   { id: 'cumpleanos', title: 'Cumpleaños', body: 'Próximos en la familia', to: '/cumpleanos', icon: '🎂', color: '#fed7aa' },
   { id: 'contactos', title: 'Contactos', body: 'Colegio, médico, emergencias', to: '/contactos', icon: '📇', color: '#ede9fe' },

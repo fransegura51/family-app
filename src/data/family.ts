@@ -7,10 +7,11 @@ import type { FamilyMember, MemberType } from '@/domain/types'
 // supabase/migrations/0002_create_family_bootstrap.sql). No hay INSERT
 // directo posible en families/profiles desde el cliente — evita que un
 // usuario se una a la familia de otro manipulando family_id (Skill 27).
-export async function createFamily(familyName: string, displayName: string): Promise<string> {
+export async function createFamily(familyName: string, displayName: string, accessCode: string): Promise<string> {
   const { data, error } = await supabase.rpc('create_family', {
     p_family_name: familyName,
     p_display_name: displayName,
+    p_access_code: accessCode,
   })
   if (error) throw error
   return data as string

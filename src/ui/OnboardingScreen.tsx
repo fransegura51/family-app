@@ -38,6 +38,7 @@ export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void>
 function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBack: () => void }) {
   const [familyName, setFamilyName] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [accessCode, setAccessCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -46,7 +47,7 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
     setLoading(true)
     setError(null)
     try {
-      await createFamily(familyName, displayName)
+      await createFamily(familyName, displayName, accessCode)
       await onDone()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear la familia')
@@ -77,6 +78,16 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
             placeholder="Jennifer"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Código de acceso
+          <input
+            type="text"
+            placeholder="Pídeselo a quien te haya invitado a usar la app"
+            value={accessCode}
+            onChange={(e) => setAccessCode(e.target.value)}
             required
           />
         </label>

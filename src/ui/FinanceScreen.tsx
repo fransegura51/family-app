@@ -1231,6 +1231,31 @@ function BudgetsTab({
   const monthReceipts = receipts.filter((r) => r.receiptDate.startsWith(visibleMonth))
   const pieGroups = groupReceiptsByStore(monthReceipts, knownStores)
 
+  // "Quesito" de lo gastado en cada categoría de Generales, más una
+  // porción con el total de Alimentación — petición real: "un esquema
+  // redondo con lo que se gasta en cada cosa... que incluya los gastos
+  // totales del presupuesto de alimentación".
+  const monthRealExpenses = expenses.filter(
+    (e) => e.expenseDate.startsWith(visibleMonth) && !e.isIncome && e.kind === 'real',
+  )
+  const categoryPieSlices =
+    group === 'generales'
+      ? [
+          ...groupCategories
+            .map((c) => ({
+              store: `${c.icon} ${c.name}`,
+              total: monthRealExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0),
+            }))
+            .filter((s) => s.total > 0),
+          {
+            store: '🍽️ Alimentación (total)',
+            total: monthRealExpenses
+              .filter((e) => categories.some((c) => c.budgetGroup === 'alimentacion' && c.name === e.category))
+              .reduce((sum, e) => sum + e.amount, 0),
+          },
+        ].filter((s) => s.total > 0)
+      : []
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
@@ -1260,8 +1285,16 @@ function BudgetsTab({
       {group === 'alimentacion' && (
         <StorePieChart groups={pieGroups} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
       )}
+      {group === 'generales' && categoryPieSlices.length > 0 && (
+        <StorePieChart groups={categoryPieSlices} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
+      )}
 
-      <BudgetCategoriesSection categories={groupCategories} budgetGroup={group} onChanged={reload} />
+      <BudgetCategoriesSection
+        categories={groupCategories}
+        budgetGroup={group}
+        monthExpenses={monthRealExpenses}
+        onChanged={reload}
+      />
 
       <h2 className="section-title">Presupuestos</h2>
       <div className="event-list">
@@ -1456,40 +1489,59 @@ function openBudgetReport(report: {
 // de presupuestos que se puedan crear categorías, algo como lo de la
 // foto" (captura de referencia: Salario 👔, Comestibles 🛒,
 // Entretenimiento 🍿, Vivienda 🏠, cada una con su icono). Mismas
-// carpetas de colores que en Documentos, pero aquí es solo una lista
-// de referencia para elegir al crear un presupuesto — tocar una no
-// abre nada.
+// carpetas de colores que en Documentos. Tocar una categoría abre un
+// formulario rápido para apuntarle un gasto — petición real: "quiero
+// poder apuntar en cada categoría los gastos de cada cosa, en agua,
+// en gastos escolares, hipoteca...".
 function BudgetCategoriesSection({
   categories,
   budgetGroup,
+  monthExpenses,
   onChanged,
 }: {
   categories: BudgetCategory[]
   budgetGroup: string
+  monthExpenses: Expense[]
   onChanged: () => void
 }) {
   const [adding, setAdding] = useState(false)
+  const [loggingCategory, setLoggingCategory] = useState<BudgetCategory | null>(null)
 
   return (
     <>
       <h2 className="section-title">Categorías</h2>
+      <p className="muted" style={{ marginTop: -8 }}>Toca una categoría para apuntarle un gasto.</p>
       <div className="doc-folder-grid">
-        {categories.map((c) => (
-          <div key={c.id} className="doc-folder-card" style={{ position: 'relative' }}>
-            <span className="doc-folder-icon" style={{ background: 'var(--primary)' }}>
-              {c.icon}
-            </span>
-            <strong className="doc-folder-name">{c.name}</strong>
-            <span style={{ position: 'absolute', top: -4, right: 4 }}>
-              <ConfirmIconButton
-                icon="✕"
-                className="link-button"
-                ariaLabel={`Eliminar categoría ${c.name}`}
-                onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
-              />
-            </span>
-          </div>
-        ))}
+        {categories.map((c) => {
+          const spent = monthExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0)
+          return (
+            <div
+              key={c.id}
+              className="doc-folder-card"
+              style={{ position: 'relative', cursor: 'pointer' }}
+              role="button"
+              tabIndex={0}
+              onClick={() => setLoggingCategory(c)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') setLoggingCategory(c)
+              }}
+            >
+              <span className="doc-folder-icon" style={{ background: 'var(--primary)' }}>
+                {c.icon}
+              </span>
+              <strong className="doc-folder-name">{c.name}</strong>
+              <span className="muted doc-folder-count">{spent > 0 ? `${spent.toFixed(2)} €` : 'Sin gastos'}</span>
+              <span style={{ position: 'absolute', top: -4, right: 4 }} onClick={(e) => e.stopPropagation()}>
+                <ConfirmIconButton
+                  icon="✕"
+                  className="link-button"
+                  ariaLabel={`Eliminar categoría ${c.name}`}
+                  onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
+                />
+              </span>
+            </div>
+          )
+        })}
         <button
           type="button"
           className={'doc-folder-card doc-folder-card-add' + (adding ? ' doc-folder-card-active' : '')}
@@ -1511,7 +1563,80 @@ function BudgetCategoriesSection({
           }}
         />
       )}
+      {loggingCategory && (
+        <LogCategoryExpenseModal
+          category={loggingCategory}
+          onClose={() => setLoggingCategory(null)}
+          onAdded={onChanged}
+        />
+      )}
     </>
+  )
+}
+
+function LogCategoryExpenseModal({
+  category,
+  onClose,
+  onAdded,
+}: {
+  category: BudgetCategory
+  onClose: () => void
+  onAdded: () => void
+}) {
+  const [date, setDate] = useState(toDateStr(new Date()))
+  const [amount, setAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await addExpense({ date, amount: Number(amount), category: category.name, store: '', kind: 'real', isIncome: false })
+      onAdded()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            {category.icon} Apuntar gasto — {category.name}
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="member-form">
+          <label>
+            Fecha
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          </label>
+          <label>
+            Importe (€)
+            <input
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+              autoFocus
+            />
+          </label>
+          {error && <p className="error">{error}</p>}
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar gasto'}
+          </button>
+        </form>
+      </div>
+    </div>
   )
 }
 

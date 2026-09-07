@@ -916,49 +916,69 @@ function ManageCategoriesModal({
     reorderBudgetCategories(next.map((c) => c.id)).then(onChanged)
   }
 
+  function renderRow(c: BudgetCategory, list: BudgetCategory[], i: number, indent: boolean) {
+    return (
+      <div
+        key={c.id}
+        className="card task-card"
+        style={{ padding: '6px 10px', gap: 6, fontSize: 13, marginLeft: indent ? 20 : 0 }}
+      >
+        <div className="task-card-main">
+          <strong style={{ fontSize: 13 }}>
+            {c.icon} {c.name}
+          </strong>
+        </div>
+        <button
+          type="button"
+          className="link-button"
+          style={{ padding: 4 }}
+          disabled={i === 0}
+          onClick={() => move(list, i, -1)}
+          aria-label={`Subir ${c.name}`}
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          className="link-button"
+          style={{ padding: 4 }}
+          disabled={i === list.length - 1}
+          onClick={() => move(list, i, 1)}
+          aria-label={`Bajar ${c.name}`}
+        >
+          ↓
+        </button>
+        <ConfirmIconButton
+          icon="✕"
+          className="link-button"
+          ariaLabel={`Eliminar categoría ${c.name}`}
+          onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
+        />
+      </div>
+    )
+  }
+
+  // Skill de Pepa, punto 10: dos niveles — cada categoría principal
+  // muestra debajo sus subcategorías (parent_id), cada nivel se
+  // reordena por separado.
   function renderGroupList(label: string, list: BudgetCategory[]) {
+    const topLevel = list.filter((c) => !c.parentId)
     return (
       <>
         <p className="muted" style={{ marginBottom: 4, fontWeight: 600 }}>
           {label}
         </p>
         <div className="event-list" style={{ marginBottom: 8 }}>
-          {list.map((c, i) => (
-            <div key={c.id} className="card task-card" style={{ padding: '6px 10px', gap: 6, fontSize: 13 }}>
-              <div className="task-card-main">
-                <strong style={{ fontSize: 13 }}>
-                  {c.icon} {c.name}
-                </strong>
+          {topLevel.map((c, i) => {
+            const children = list.filter((x) => x.parentId === c.id)
+            return (
+              <div key={c.id}>
+                {renderRow(c, topLevel, i, false)}
+                {children.map((child, j) => renderRow(child, children, j, true))}
               </div>
-              <button
-                type="button"
-                className="link-button"
-                style={{ padding: 4 }}
-                disabled={i === 0}
-                onClick={() => move(list, i, -1)}
-                aria-label={`Subir ${c.name}`}
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                className="link-button"
-                style={{ padding: 4 }}
-                disabled={i === list.length - 1}
-                onClick={() => move(list, i, 1)}
-                aria-label={`Bajar ${c.name}`}
-              >
-                ↓
-              </button>
-              <ConfirmIconButton
-                icon="✕"
-                className="link-button"
-                ariaLabel={`Eliminar categoría ${c.name}`}
-                onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
-              />
-            </div>
-          ))}
-          {list.length === 0 && <p className="muted">Sin categorías todavía.</p>}
+            )
+          })}
+          {topLevel.length === 0 && <p className="muted">Sin categorías todavía.</p>}
         </div>
       </>
     )
@@ -1022,6 +1042,7 @@ function ManageCategoriesModal({
             </div>
             <AddBudgetCategoryInline
               budgetGroup={newCategoryGroup}
+              parentOptions={categories.filter((c) => c.budgetGroup === newCategoryGroup && !c.parentId)}
               onAdded={() => {
                 setAddingCategory(false)
                 onChanged()
@@ -3432,9 +3453,18 @@ const CATEGORY_ICON_PALETTE = [
   '💊', '🏥', '🎬', '📚', '🎮', '🧸',
 ]
 
-function AddBudgetCategoryInline({ budgetGroup, onAdded }: { budgetGroup: string; onAdded: () => void }) {
+function AddBudgetCategoryInline({
+  budgetGroup,
+  parentOptions,
+  onAdded,
+}: {
+  budgetGroup: string
+  parentOptions?: BudgetCategory[]
+  onAdded: () => void
+}) {
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('💰')
+  const [parentId, setParentId] = useState<string>('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -3456,9 +3486,10 @@ function AddBudgetCategoryInline({ budgetGroup, onAdded }: { budgetGroup: string
     setSaving(true)
     setError(null)
     try {
-      await createBudgetCategory({ name, icon, budgetGroup })
+      await createBudgetCategory({ name, icon, budgetGroup, parentId: parentId || null })
       setName('')
       setIcon('💰')
+      setParentId('')
       iconTouchedRef.current = false
       onAdded()
     } catch (err) {
@@ -3506,8 +3537,18 @@ function AddBudgetCategoryInline({ budgetGroup, onAdded }: { budgetGroup: string
           </div>
         )}
       </div>
-      {/* Se ha rellenado solo al reconocer el nombre — se puede
-          cambiar tocando el icono de arriba. */}
+      {/* Skill de Pepa, punto 10: subcategoría opcional de dos niveles
+          — sin elegir principal, queda como categoría de primer nivel. */}
+      {parentOptions && parentOptions.length > 0 && (
+        <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+          <option value="">Categoría principal (ninguna)</option>
+          {parentOptions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.icon} {p.name}
+            </option>
+          ))}
+        </select>
+      )}
       {!iconTouchedRef.current && suggestCategoryIcon(name) && (
         <p className="muted" style={{ marginTop: -8, fontSize: 12 }}>
           Icono sugerido para "{name}" — toca el icono para cambiarlo.

@@ -13,7 +13,7 @@ interface SessionState {
 async function fetchProfile(session: Session): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, family_id, role, display_name')
+    .select('id, family_id, role, display_name, allowed_sections')
     .eq('id', session.user.id)
     .maybeSingle()
 
@@ -23,6 +23,7 @@ async function fetchProfile(session: Session): Promise<Profile | null> {
     familyId: data.family_id,
     role: data.role,
     displayName: data.display_name,
+    allowedSections: data.allowed_sections,
   }
 }
 

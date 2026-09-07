@@ -30,3 +30,10 @@ export const NAV_TAB_BY_PATH = new Map(NAV_TABS.map((t) => [t.to, t]))
 export function isActiveNavPath(pathname: string, tab: NavTab): boolean {
   return tab.end ? pathname === tab.to : pathname === tab.to || pathname.startsWith(tab.to + '/')
 }
+
+// Identificador de sección para permisos de invitados — el propio
+// segmento de la ruta (sin barra), p. ej. "/galeria" -> "galeria".
+// "/" (Inicio) siempre es visible, así que no necesita id.
+export function navSectionId(tab: NavTab): string {
+  return tab.to.replace(/^\//, '')
+}

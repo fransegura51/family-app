@@ -3,8 +3,12 @@
 
 import type { EventReminder } from '@/domain/reminders'
 
-export type MemberType = 'admin' | 'adult' | 'child' | 'baby'
-export type FamilyRole = 'admin' | 'adult'
+// "guest" = invitado externo a la familia (Skill de invitados): tiene
+// su propia cuenta pero solo ve las secciones marcadas en
+// allowedSections, pensado para preparar la app de cara a compartirla
+// con otras personas/familias en el futuro.
+export type MemberType = 'admin' | 'adult' | 'child' | 'baby' | 'guest'
+export type FamilyRole = 'admin' | 'adult' | 'guest'
 
 export interface Family {
   id: string
@@ -17,6 +21,10 @@ export interface Profile {
   familyId: string
   role: FamilyRole
   displayName: string
+  // null = acceso a todas las secciones (admin/adult de siempre); un
+  // invitado tiene aquí la lista de rutas de NAV_TABS (sin la barra
+  // inicial, p. ej. "galeria") a las que puede entrar.
+  allowedSections: string[] | null
 }
 
 export interface FamilyMember {
@@ -31,6 +39,7 @@ export interface FamilyMember {
   permissions: Record<string, unknown>
   linkedProfileId: string | null
   photoPath: string | null
+  allowedSections: string[] | null
 }
 
 export interface Reward {

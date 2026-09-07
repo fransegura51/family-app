@@ -42,7 +42,7 @@ export function App() {
       <AutomationWatcher />
       <LocationSharingWatcher profileId={profile.id} />
       <Routes>
-        <Route element={<NavShell />}>
+        <Route element={<NavShell profile={profile} />}>
           <Route path="/" element={<HomeScreen profile={profile} />} />
           <Route path="/calendario" element={<CalendarScreen />} />
           <Route path="/puntos" element={<RewardsScreen />} />

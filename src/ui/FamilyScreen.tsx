@@ -15,13 +15,40 @@ import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import type { FamilyMember, MemberType, Profile } from '@/domain/types'
+import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
   { value: 'admin', label: 'Administrador/a' },
   { value: 'adult', label: 'Adulto' },
   { value: 'child', label: 'Niño/a' },
   { value: 'baby', label: 'Bebé' },
+  { value: 'guest', label: 'Invitado/a' },
 ]
+
+// Secciones elegibles para un invitado — todo NAV_TABS salvo "Inicio",
+// que siempre es visible (Skill de invitados).
+const GUEST_SECTIONS = NAV_TABS.filter((t) => t.to !== '/')
+
+function SectionsChecklist({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+  return (
+    <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+      {GUEST_SECTIONS.map((t) => {
+        const id = navSectionId(t)
+        const checked = value.includes(id)
+        return (
+          <button
+            key={id}
+            type="button"
+            className={'chip' + (checked ? ' chip-active' : '')}
+            onClick={() => onChange(checked ? value.filter((s) => s !== id) : [...value, id])}
+          >
+            {t.icon} {t.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export function FamilyScreen({ profile }: { profile: Profile }) {
   const [loading, setLoading] = useState(true)
@@ -345,6 +372,7 @@ function EditMemberForm({
   const [memberType, setMemberType] = useState<MemberType>(member.memberType)
   const [color, setColor] = useState(member.color)
   const [birthDate, setBirthDate] = useState(member.birthDate ?? '')
+  const [allowedSections, setAllowedSections] = useState<string[]>(member.allowedSections ?? [])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -353,7 +381,13 @@ function EditMemberForm({
     setSaving(true)
     setError(null)
     try {
-      await updateFamilyMember(member.id, { name, memberType, color, birthDate: birthDate || null })
+      await updateFamilyMember(member.id, {
+        name,
+        memberType,
+        color,
+        birthDate: birthDate || null,
+        allowedSections: memberType === 'guest' ? allowedSections : null,
+      })
       onDone()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar')
@@ -386,6 +420,12 @@ function EditMemberForm({
         Fecha de nacimiento (opcional)
         <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
       </label>
+      {memberType === 'guest' && (
+        <label>
+          Secciones a las que puede entrar
+          <SectionsChecklist value={allowedSections} onChange={setAllowedSections} />
+        </label>
+      )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
         <button type="submit" disabled={saving}>
@@ -404,6 +444,7 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
   const [memberType, setMemberType] = useState<MemberType>('child')
   const [color, setColor] = useState('#4C6EF5')
   const [birthDate, setBirthDate] = useState('')
+  const [allowedSections, setAllowedSections] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -412,9 +453,16 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      await addFamilyMember({ name, memberType, color, birthDate: birthDate || null })
+      await addFamilyMember({
+        name,
+        memberType,
+        color,
+        birthDate: birthDate || null,
+        allowedSections: memberType === 'guest' ? allowedSections : null,
+      })
       setName('')
       setBirthDate('')
+      setAllowedSections([])
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo añadir el miembro')
@@ -448,6 +496,12 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
         Fecha de nacimiento (opcional)
         <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
       </label>
+      {memberType === 'guest' && (
+        <label>
+          Secciones a las que puede entrar
+          <SectionsChecklist value={allowedSections} onChange={setAllowedSections} />
+        </label>
+      )}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Añadiendo…' : 'Añadir'}

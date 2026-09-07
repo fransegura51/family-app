@@ -44,6 +44,7 @@ export async function addFamilyMember(input: {
   memberType: MemberType
   color: string
   birthDate: string | null
+  allowedSections?: string[] | null
 }): Promise<void> {
   // family_id no se pasa desde el cliente: la política RLS de INSERT ya
   // exige family_id = current_family_id(), así que lo fijamos igual aquí
@@ -64,13 +65,14 @@ export async function addFamilyMember(input: {
     member_type: input.memberType,
     color: input.color,
     birth_date: input.birthDate,
+    allowed_sections: input.allowedSections ?? null,
   })
   if (error) throw error
 }
 
 export async function updateFamilyMember(
   id: string,
-  input: { name: string; memberType: MemberType; color: string; birthDate: string | null },
+  input: { name: string; memberType: MemberType; color: string; birthDate: string | null; allowedSections?: string[] | null },
 ): Promise<void> {
   const { error } = await supabase
     .from('family_members')
@@ -79,6 +81,7 @@ export async function updateFamilyMember(
       member_type: input.memberType,
       color: input.color,
       birth_date: input.birthDate,
+      allowed_sections: input.allowedSections ?? null,
     })
     .eq('id', id)
   if (error) throw error
@@ -173,7 +176,7 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
   const { data, error } = await supabase
     .from('family_members')
     .select(
-      'id, family_id, name, avatar, color, member_type, birth_date, birthday_favorite, permissions, linked_profile_id, photo_path',
+      'id, family_id, name, avatar, color, member_type, birth_date, birthday_favorite, permissions, linked_profile_id, photo_path, allowed_sections',
     )
     .order('sort_order', { ascending: true })
 
@@ -191,5 +194,6 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
     permissions: row.permissions ?? {},
     linkedProfileId: row.linked_profile_id,
     photoPath: row.photo_path,
+    allowedSections: row.allowed_sections,
   }))
 }

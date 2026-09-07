@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
-import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, type NavTab } from '@/domain/navTabs'
+import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
+import type { Profile } from '@/domain/types'
 
 // Cuántos iconos se quedan fijos abajo, siempre a la vista — el resto
 // vive detrás del botón "Menú". Son los primeros N del orden guardado
@@ -19,7 +20,7 @@ const PINNED_COUNT = 4
 // así que no hay gesto que competir) y un botón "Menú" que despliega
 // el resto en vertical — el propio deslizar horizontal desaparece del
 // todo. Reordenar ya no es aquí: ver MenuSettingsScreen.
-export function NavShell() {
+export function NavShell({ profile }: { profile: Profile }) {
   const location = useLocation()
   const navigate = useNavigate()
   const [order, setOrder] = useState(() => resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav')))
@@ -39,9 +40,14 @@ export function NavShell() {
     return () => window.removeEventListener('family-app:tab-order-changed', handleOrderChanged)
   }, [])
 
-  const orderedTabs = order.map((path) => NAV_TAB_BY_PATH.get(path)).filter((t): t is NavTab => !!t)
-  const pinned = orderedTabs.slice(0, PINNED_COUNT)
-  const rest = orderedTabs.slice(PINNED_COUNT)
+  // Un invitado con allowedSections no ve en el menú las secciones que
+  // no le tocan — "Inicio" siempre visible, el resto según permiso.
+  const visibleTabs = order
+    .map((path) => NAV_TAB_BY_PATH.get(path))
+    .filter((t): t is NavTab => !!t)
+    .filter((t) => profile.allowedSections == null || t.to === '/' || profile.allowedSections.includes(navSectionId(t)))
+  const pinned = visibleTabs.slice(0, PINNED_COUNT)
+  const rest = visibleTabs.slice(PINNED_COUNT)
 
   function go(to: string) {
     setMenuOpen(false)

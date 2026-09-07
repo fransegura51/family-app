@@ -41,7 +41,6 @@ import {
   type GoogleCalendarStatus,
 } from '@/data/googleCalendarSync'
 import {
-  eventDotColors,
   expandOccurrences,
   getMonthGridDays,
   MONTH_LABELS,
@@ -228,7 +227,6 @@ export function CalendarScreen() {
   )
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
-  const memberColorById = useMemo(() => new Map(members.map((m) => [m.id, m.color])), [members])
 
   const monthDays = useMemo(() => getMonthGridDays(visibleYear, visibleMonth), [visibleYear, visibleMonth])
 
@@ -253,12 +251,6 @@ export function CalendarScreen() {
   }, [filteredEvents, monthDays, holidayDates])
 
   const feedById = useMemo(() => new Map(externalFeeds.map((f) => [f.id, f])), [externalFeeds])
-
-  function externalEventColor(feedId: string): string {
-    const feed = feedById.get(feedId)
-    const member = feed?.memberId ? memberById.get(feed.memberId) : null
-    return member?.color ?? '#6b7280'
-  }
 
   // Borrada toda la serie (occurrence_date null) -> no se vuelve a ver
   // en ningún día. Ver el porqué de comparar por (feed_id, uid) y no
@@ -619,35 +611,38 @@ export function CalendarScreen() {
               </div>
             ))}
             {monthDays.map((day) => {
-              const dayEvents = eventsByDate.get(day.dateStr) ?? []
-              const dayExternalEvents = externalEventsByDate.get(day.dateStr) ?? []
-              const dayBirthdays = birthdaysByDate.get(day.dateStr) ?? []
-              const externalDots = dayExternalEvents.map((ev) => externalEventColor(ev.feedId))
-              const birthdayDots = dayBirthdays.map((b) => b.color)
-              const dots = [
-                ...new Set([
-                  ...dayEvents.flatMap((e) => eventDotColors(e, memberColorById)),
-                  ...externalDots,
-                  ...birthdayDots,
-                ]),
-              ]
+              // Petición real: la vista Mes tiene que verse como una
+              // franja de color por apunte (con su nombre dentro), apiladas
+              // una debajo de otra, no como puntitos — mismo criterio de
+              // orden (todo el día primero) que ya usa buildEntriesForDate.
+              const dayEntries = buildEntriesForDate(day.dateStr)
+              const MAX_BARS = 6
+              const visibleEntries = dayEntries.slice(0, MAX_BARS)
+              const hiddenCount = dayEntries.length - visibleEntries.length
               return (
                 <button
                   type="button"
                   key={day.dateStr}
                   className={
-                    'month-grid-day' +
+                    'month-grid-day month-grid-day-bars' +
                     (day.inMonth ? '' : ' month-grid-day-out') +
                     (day.isToday ? ' month-grid-day-today' : '') +
                     (selectedDate === day.dateStr ? ' month-grid-day-selected' : '')
                   }
                   onClick={() => setSelectedDate(day.dateStr)}
                 >
-                  <span>{day.day}</span>
-                  <span className="month-grid-dots">
-                    {dots.slice(0, 4).map((c, i) => (
-                      <span key={i} className="month-grid-dot" style={{ background: c }} />
+                  <span className="month-grid-daynum">{day.day}</span>
+                  <span className="month-grid-bars">
+                    {visibleEntries.map((entry) => (
+                      <span
+                        key={entry.key}
+                        className="month-grid-event-bar"
+                        style={{ background: entry.color, color: readableTextColor(entry.color) }}
+                      >
+                        {entry.title}
+                      </span>
                     ))}
+                    {hiddenCount > 0 && <span className="month-grid-event-more">+{hiddenCount} más</span>}
                   </span>
                 </button>
               )

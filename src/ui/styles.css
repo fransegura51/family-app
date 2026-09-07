@@ -1223,6 +1223,66 @@ textarea {
   background: currentColor;
 }
 
+/* Vista Mes con franjas de color por apunte (foto de referencia de la
+   familia) en vez de puntitos — cada celda crece con su contenido, no
+   se queda cuadrada. Solo afecta a esta cuadrícula: la de Externos
+   sigue usando .month-grid-day a secas, con sus puntos de siempre. */
+.month-grid-day-bars {
+  aspect-ratio: auto;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 62px;
+  padding: 4px 3px;
+  gap: 1px;
+}
+
+.month-grid-daynum {
+  font-size: 12px;
+  text-align: left;
+  padding: 0 1px 2px;
+}
+
+.month-grid-day-today .month-grid-daynum {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.month-grid-day-selected .month-grid-daynum {
+  color: white;
+}
+
+.month-grid-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+}
+
+.month-grid-event-bar {
+  display: block;
+  width: 100%;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 0 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.month-grid-event-more {
+  font-size: 9px;
+  color: var(--muted);
+  text-align: left;
+  padding: 0 3px;
+}
+
+.month-grid-day-selected .month-grid-event-more {
+  color: white;
+}
+
 /* Agenda del día en Calendario (DayModal): "todo el día" como chips
    arriba, y debajo cada evento/tarea con hora en su propia columna y la
    tarjeta coloreada al lado — al estilo de otras apps de calendario

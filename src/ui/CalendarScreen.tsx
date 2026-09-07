@@ -75,7 +75,7 @@ import { WeekdayPicker } from '@/ui/WeekdayPicker'
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
 // Mes y Externos que ya había.
-const VIEWS = ['Mes', 'Mes (puntos)', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Externos'] as const
+const VIEWS = ['Mes', 'Vista general', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Externos'] as const
 type ViewMode = (typeof VIEWS)[number]
 
 function toDateStr(d: Date): string {
@@ -676,7 +676,7 @@ export function CalendarScreen() {
             swipeHandlers={daySwipe}
           />
         </>
-      ) : view === 'Mes (puntos)' ? (
+      ) : view === 'Vista general' ? (
         <>
           <div className="month-nav">
             <button type="button" className="link-button" onClick={() => goToMonth(-1)}>

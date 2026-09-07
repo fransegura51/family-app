@@ -72,7 +72,10 @@ import {
 } from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
 
-const VIEWS = ['Mes', 'Externos'] as const
+// Skill: vistas de calendario al estilo de referencia (foto aportada
+// por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
+// Mes y Externos que ya había.
+const VIEWS = ['Mes', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Externos'] as const
 type ViewMode = (typeof VIEWS)[number]
 
 function toDateStr(d: Date): string {
@@ -120,6 +123,10 @@ export function CalendarScreen() {
   // vamos a aplicar al calendario: botón flotante Nuevo evento y
   // formulario en ventana emergente".
   const [addingEvent, setAddingEvent] = useState(false)
+  // Con qué miembro preseleccionado se abrió "+ Añadir" desde la
+  // columna de esa persona en la vista Familiar — null en el resto de
+  // casos (botón flotante normal).
+  const [addingEventMemberId, setAddingEventMemberId] = useState<string | null>(null)
   // Vacío = sin filtrar (toda la familia) — varios miembros a la vez,
   // no solo uno, petición real: "quiero que puedas filtrar por cada
   // miembro... y que Pepa detecte solamente las tareas de ese
@@ -357,6 +364,34 @@ export function CalendarScreen() {
     () => changeSelectedDate(1),
     () => changeSelectedDate(-1),
   )
+  const threeDaySwipe = useSwipeHandlers(
+    () => changeSelectedDate(3),
+    () => changeSelectedDate(-3),
+  )
+  const weekSwipe = useSwipeHandlers(
+    () => changeSelectedDate(7),
+    () => changeSelectedDate(-7),
+  )
+
+  // Días a mostrar en la cuadrícula horaria — Semana empieza en lunes
+  // (mismo criterio que WEEKDAY_LABELS en Mes), 3 días y Día parten
+  // siempre del día seleccionado.
+  const gridDays = useMemo(() => {
+    const base = new Date(selectedDate + 'T00:00')
+    let start = base
+    let count = 1
+    if (view === 'Semana') {
+      const mondayOffset = (base.getDay() + 6) % 7
+      start = new Date(base.getFullYear(), base.getMonth(), base.getDate() - mondayOffset)
+      count = 7
+    } else if (view === '3 días') {
+      count = 3
+    }
+    return Array.from({ length: count }, (_, i) => {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
+      return { dateStr: toDateStr(d), date: d }
+    })
+  }, [view, selectedDate])
 
   function goToToday() {
     setVisibleYear(today.getFullYear())
@@ -447,11 +482,87 @@ export function CalendarScreen() {
     }
   }
 
+  // Sacado de DayModal para poder construir la agenda de CUALQUIER día
+  // (no solo el seleccionado) — lo necesitan las vistas nuevas Agenda,
+  // Semana, 3 días y Día, además de la propia DayModal de Mes.
+  function buildEntriesForDate(dateStr: string): AgendaEntry[] {
+    const dayEvents = eventsByDate.get(dateStr) ?? []
+    const dayExternalEvents = externalEventsByDate.get(dateStr) ?? []
+    const dayBirthdays = birthdaysByDate.get(dateStr) ?? []
+
+    return [
+      ...dayEvents.map((ev) => {
+        const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === dateStr)
+        const who =
+          ev.memberIds.length > 0
+            ? ev.memberIds
+                .map((id) => memberById.get(id)?.name)
+                .filter((n): n is string => !!n)
+                .join(', ')
+            : recurrenceLabel(ev.recurrenceRule) || 'Toda la familia'
+        const subtitle = ev.points > 0 && ev.memberIds.length === 1 ? `${who} · ⭐ ${ev.points}` : who
+        return {
+          key: `ev-${ev.id}`,
+          id: ev.id,
+          title: ev.title,
+          subtitle,
+          color: eventColor(ev, memberById),
+          allDay: ev.allDay,
+          startTime: ev.allDay ? null : hhmm(ev.startAt),
+          endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
+          isExternal: false,
+          recurring: !!ev.recurrenceRule,
+          done,
+          onEdit: () => setEditingId(ev.id),
+          onDeleteSeries: () => handleDelete(ev.id),
+          onDeleteOccurrence: () => handleDeleteOccurrence(ev.id, dateStr),
+          onComplete: done ? undefined : () => handleCompleteEvent(ev.id, dateStr),
+          onUncomplete: done ? () => handleUncompleteEvent(ev.id, dateStr) : undefined,
+        }
+      }),
+      ...dayExternalEvents.map((ev) => {
+        const feed = feedById.get(ev.feedId)
+        const member = feed?.memberId ? memberById.get(feed.memberId) : null
+        const done = externalCompletedSet.has(`${ev.feedId}:${ev.uid}:${dateStr}`)
+        return {
+          key: `ext-${ev.id}`,
+          id: ev.id,
+          title: ev.title,
+          subtitle: feed?.name ?? 'Calendario externo',
+          color: member?.color ?? '#6b7280',
+          allDay: ev.allDay,
+          startTime: ev.allDay ? null : hhmm(ev.startAt),
+          endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
+          isExternal: true,
+          recurring: !!ev.recurrenceRule,
+          done,
+          onDeleteSeries: () => handleDismissExternalSeries(ev.feedId, ev.uid),
+          onDeleteOccurrence: () => handleDismissExternalOccurrence(ev.feedId, ev.uid, dateStr),
+          onComplete: done ? undefined : () => handleCompleteExternal(ev.feedId, ev.uid, dateStr),
+          onUncomplete: done ? () => handleUncompleteExternal(ev.feedId, ev.uid, dateStr) : undefined,
+        }
+      }),
+      ...dayBirthdays.map((b, i) => ({
+        key: `bday-${i}`,
+        id: `bday-${i}`,
+        title: `🎂 Cumpleaños de ${b.name}`,
+        subtitle: '',
+        color: b.color,
+        allDay: true,
+        startTime: null,
+        endTime: null,
+        isExternal: false,
+        recurring: true,
+        done: false,
+      })),
+    ].sort((a, b) => {
+      if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
+      return (a.startTime ?? '').localeCompare(b.startTime ?? '')
+    })
+  }
+
   if (loading) return <div className="screen">Cargando calendario…</div>
 
-  const selectedDayEvents = eventsByDate.get(selectedDate) ?? []
-  const selectedDayExternalEvents = externalEventsByDate.get(selectedDate) ?? []
-  const selectedDayBirthdays = birthdaysByDate.get(selectedDate) ?? []
 
   return (
     <div className="screen">
@@ -549,24 +660,11 @@ export function CalendarScreen() {
               (petición real). */}
           <DayModal
             selectedDate={selectedDate}
-            events={selectedDayEvents}
-            externalEvents={selectedDayExternalEvents}
-            birthdays={selectedDayBirthdays}
-            feedById={feedById}
+            entries={buildEntriesForDate(selectedDate)}
+            events={events}
             members={members}
             editingId={editingId}
-            onEdit={setEditingId}
             onCancelEdit={() => setEditingId(null)}
-            onDelete={handleDelete}
-            onDeleteOccurrence={handleDeleteOccurrence}
-            onCompleteEvent={handleCompleteEvent}
-            onUncompleteEvent={handleUncompleteEvent}
-            eventCompletions={eventCompletions}
-            onDismissExternalOccurrence={handleDismissExternalOccurrence}
-            onDismissExternalSeries={handleDismissExternalSeries}
-            onCompleteExternal={handleCompleteExternal}
-            onUncompleteExternal={handleUncompleteExternal}
-            externalCompletedSet={externalCompletedSet}
             onEventChanged={() => {
               setEditingId(null)
               reload()
@@ -575,51 +673,104 @@ export function CalendarScreen() {
             swipeHandlers={daySwipe}
           />
         </>
+      ) : view === 'Agenda' ? (
+        <AgendaListView
+          today={today}
+          buildEntriesForDate={buildEntriesForDate}
+          events={events}
+          members={members}
+          editingId={editingId}
+          onCancelEdit={() => setEditingId(null)}
+          onEventChanged={() => {
+            setEditingId(null)
+            reload()
+          }}
+        />
+      ) : view === 'Familiar' ? (
+        <FamilyDayView
+          selectedDate={selectedDate}
+          members={members}
+          memberById={memberById}
+          dayEvents={eventsByDate.get(selectedDate) ?? []}
+          editingId={editingId}
+          onEdit={setEditingId}
+          onCancelEdit={() => setEditingId(null)}
+          onDelete={handleDelete}
+          onDeleteOccurrence={handleDeleteOccurrence}
+          onEventChanged={() => {
+            setEditingId(null)
+            reload()
+          }}
+          onNavigateDay={changeSelectedDate}
+          swipeHandlers={daySwipe}
+          onQuickAdd={(memberId) => {
+            setAddingEventMemberId(memberId)
+            setAddingEvent(true)
+          }}
+        />
       ) : (
         <>
-          <div className="event-list">
-            {filteredEvents.map((ev) =>
-              editingId === ev.id ? (
-                <EditEventForm
-                  key={ev.id}
-                  event={ev}
-                  members={members}
-                  onDone={() => {
-                    setEditingId(null)
-                    reload()
-                  }}
-                  onCancel={() => setEditingId(null)}
-                />
-              ) : (
-                <EventCard
-                  key={ev.id}
-                  event={ev}
-                  memberById={memberById}
-                  onEdit={() => setEditingId(ev.id)}
-                  onDeleteSeries={() => handleDelete(ev.id)}
-                  onDeleteOccurrence={(dateStr) => handleDeleteOccurrence(ev.id, dateStr)}
-                />
-              ),
-            )}
-            {filteredEvents.length === 0 && <p className="muted">No hay eventos todavía.</p>}
-          </div>
-
-          <AddEventForm members={members} events={events} onAdded={reload} />
+          <TimeGridView
+            days={gridDays}
+            eventsByDate={eventsByDate}
+            externalEventsByDate={externalEventsByDate}
+            birthdaysByDate={birthdaysByDate}
+            memberById={memberById}
+            feedById={feedById}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            swipeHandlers={view === 'Semana' ? weekSwipe : view === '3 días' ? threeDaySwipe : daySwipe}
+          />
+          <DayModal
+            selectedDate={selectedDate}
+            entries={buildEntriesForDate(selectedDate)}
+            events={events}
+            members={members}
+            editingId={editingId}
+            onCancelEdit={() => setEditingId(null)}
+            onEventChanged={() => {
+              setEditingId(null)
+              reload()
+            }}
+            onNavigateDay={changeSelectedDate}
+            swipeHandlers={daySwipe}
+          />
         </>
       )}
 
-      <button type="button" className="screen-fab" onClick={() => setAddingEvent(true)}>
+      <button
+        type="button"
+        className="screen-fab"
+        onClick={() => {
+          setAddingEventMemberId(null)
+          setAddingEvent(true)
+        }}
+      >
         + Nuevo evento
       </button>
 
       {addingEvent && (
-        <div className="modal-overlay" onClick={() => setAddingEvent(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setAddingEvent(false)
+            setAddingEventMemberId(null)
+          }}
+        >
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
                 Nuevo evento
               </h2>
-              <button type="button" className="modal-close" onClick={() => setAddingEvent(false)} aria-label="Cerrar">
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => {
+                  setAddingEvent(false)
+                  setAddingEventMemberId(null)
+                }}
+                aria-label="Cerrar"
+              >
                 ✕
               </button>
             </div>
@@ -627,10 +778,12 @@ export function CalendarScreen() {
               members={members}
               events={events}
               defaultDate={selectedDate}
+              defaultMemberIds={addingEventMemberId ? [addingEventMemberId] : undefined}
               hideHeading
               onAdded={() => {
                 reload()
                 setAddingEvent(false)
+                setAddingEventMemberId(null)
               }}
             />
           </div>
@@ -680,146 +833,25 @@ interface AgendaEntry {
 // separar en secciones por miembro para verlo de un vistazo.
 function DayModal({
   selectedDate,
+  entries,
   events,
-  externalEvents,
-  birthdays,
-  feedById,
   members,
   editingId,
-  onEdit,
   onCancelEdit,
-  onDelete,
-  onDeleteOccurrence,
-  onCompleteEvent,
-  onUncompleteEvent,
-  eventCompletions,
-  onDismissExternalOccurrence,
-  onDismissExternalSeries,
-  onCompleteExternal,
-  onUncompleteExternal,
-  externalCompletedSet,
   onEventChanged,
   onNavigateDay,
   swipeHandlers,
 }: {
   selectedDate: string
+  entries: AgendaEntry[]
   events: CalendarEvent[]
-  externalEvents: ExternalCalendarEvent[]
-  birthdays: { name: string; color: string }[]
-  feedById: Map<string, ExternalCalendarFeed>
   members: FamilyMember[]
   editingId: string | null
-  onEdit: (id: string) => void
   onCancelEdit: () => void
-  onDelete: (id: string) => void
-  onDeleteOccurrence: (id: string, dateStr: string) => void
-  onCompleteEvent: (eventId: string, dateStr: string) => void
-  onUncompleteEvent: (eventId: string, dateStr: string) => void
-  eventCompletions: EventCompletion[]
-  onDismissExternalOccurrence: (feedId: string, uid: string, dateStr: string) => void
-  onDismissExternalSeries: (feedId: string, uid: string) => void
-  onCompleteExternal: (feedId: string, uid: string, dateStr: string) => void
-  onUncompleteExternal: (feedId: string, uid: string, dateStr: string) => void
-  externalCompletedSet: Set<string>
   onEventChanged: () => void
   onNavigateDay: (deltaDays: number) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
 }) {
-  const memberById = new Map(members.map((m) => [m.id, m]))
-
-  const entries: AgendaEntry[] = [
-    ...events.map((ev) => {
-      const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === selectedDate)
-      const who =
-        ev.memberIds.length > 0
-          ? ev.memberIds
-              .map((id) => memberById.get(id)?.name)
-              .filter((n): n is string => !!n)
-              .join(', ')
-          : recurrenceLabel(ev.recurrenceRule) || 'Toda la familia'
-      // Los puntos solo se otorgan cuando el evento es de una sola
-      // persona (ver handleCompleteEvent) — se avisa aquí de que
-      // marcarlo "Hecho" da puntos, para que no sea una sorpresa.
-      const subtitle = ev.points > 0 && ev.memberIds.length === 1 ? `${who} · ⭐ ${ev.points}` : who
-      return {
-        key: `ev-${ev.id}`,
-        id: ev.id,
-        title: ev.title,
-        subtitle,
-        color: eventColor(ev, memberById),
-        allDay: ev.allDay,
-        startTime: ev.allDay ? null : hhmm(ev.startAt),
-        endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
-        isExternal: false,
-        recurring: !!ev.recurrenceRule,
-        done,
-        onEdit: () => onEdit(ev.id),
-        onDeleteSeries: () => onDelete(ev.id),
-        onDeleteOccurrence: () => onDeleteOccurrence(ev.id, selectedDate),
-        onComplete: done ? undefined : () => onCompleteEvent(ev.id, selectedDate),
-        onUncomplete: done ? () => onUncompleteEvent(ev.id, selectedDate) : undefined,
-      }
-    }),
-    // Citas del calendario externo enlazado (Google/Outlook/...) — no
-    // se editan desde aquí (para eso está la pestaña Externos, donde
-    // se cambia de qué persona es), pero sí se pueden borrar o marcar
-    // "hecho" igual que las propias (petición real: "que se pongan en
-    // nuestros colores y tengamos la opción de eliminarlas o
-    // marcarlas como hecho, igual que las otras notas").
-    ...externalEvents.map((ev) => {
-      const feed = feedById.get(ev.feedId)
-      const member = feed?.memberId ? memberById.get(feed.memberId) : null
-      const done = externalCompletedSet.has(`${ev.feedId}:${ev.uid}:${selectedDate}`)
-      return {
-        key: `ext-${ev.id}`,
-        id: ev.id,
-        title: ev.title,
-        subtitle: feed?.name ?? 'Calendario externo',
-        color: member?.color ?? '#6b7280',
-        allDay: ev.allDay,
-        startTime: ev.allDay ? null : hhmm(ev.startAt),
-        endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
-        isExternal: true,
-        recurring: !!ev.recurrenceRule,
-        done,
-        onDeleteSeries: () => onDismissExternalSeries(ev.feedId, ev.uid),
-        onDeleteOccurrence: () => onDismissExternalOccurrence(ev.feedId, ev.uid, selectedDate),
-        onComplete: done ? undefined : () => onCompleteExternal(ev.feedId, ev.uid, selectedDate),
-        onUncomplete: done ? () => onUncompleteExternal(ev.feedId, ev.uid, selectedDate) : undefined,
-      }
-    }),
-    // Cumpleaños de la familia y de los contactos — de solo lectura
-    // aquí (sin onEdit/onDeleteSeries), se cambian desde Familia o
-    // Contactos, no desde el calendario.
-    ...birthdays.map((b, i) => ({
-      key: `bday-${i}`,
-      id: `bday-${i}`,
-      title: `🎂 Cumpleaños de ${b.name}`,
-      subtitle: '',
-      color: b.color,
-      allDay: true,
-      startTime: null,
-      endTime: null,
-      isExternal: false,
-      recurring: true,
-      done: false,
-    })),
-  ].sort((a, b) => {
-    if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
-    return (a.startTime ?? '').localeCompare(b.startTime ?? '')
-  })
-
-  const allDayEntries = entries.filter((e) => e.allDay)
-  const timedEntries = entries.filter((e) => !e.allDay)
-
-  function renderCard(entry: AgendaEntry) {
-    if (editingId === entry.id) {
-      const ev = events.find((e) => e.id === entry.id)!
-      return <EditEventForm key={entry.key} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
-    }
-    return <AgendaCard key={entry.key} entry={entry} />
-  }
-
   return (
     <div className="day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
       <div className="modal-header">
@@ -848,34 +880,413 @@ function DayModal({
         </div>
       </div>
 
-      {entries.length === 0 && <p className="muted">Nada este día.</p>}
+      <DayEntriesBody
+        entries={entries}
+        editingId={editingId}
+        events={events}
+        members={members}
+        onEventChanged={onEventChanged}
+        onCancelEdit={onCancelEdit}
+      />
+    </div>
+  )
+}
 
-        {allDayEntries.length > 0 && (
-          <>
-            <p className="muted" style={{ margin: '4px 0' }}>
-              Todo el día
-            </p>
-            <div className="agenda-allday-row">
-              {allDayEntries.map((entry) =>
-                editingId === entry.id ? (
-                  renderCard(entry)
-                ) : (
-                  <AgendaAllDayChip key={entry.key} entry={entry} />
-                ),
-              )}
-            </div>
-          </>
-        )}
+// Cuerpo de una agenda de un día (chips "todo el día" + filas por
+// hora) — lo comparten DayModal (Mes) y AgendaListView (vista Agenda),
+// para no duplicar el mismo bloque dos veces.
+function DayEntriesBody({
+  entries,
+  editingId,
+  events,
+  members,
+  onEventChanged,
+  onCancelEdit,
+  emptyLabel = 'Nada este día.',
+}: {
+  entries: AgendaEntry[]
+  editingId: string | null
+  events: CalendarEvent[]
+  members: FamilyMember[]
+  onEventChanged: () => void
+  onCancelEdit: () => void
+  emptyLabel?: string
+}) {
+  const allDayEntries = entries.filter((e) => e.allDay)
+  const timedEntries = entries.filter((e) => !e.allDay)
 
-        {timedEntries.map((entry) => (
-          <div key={entry.key} className="agenda-row">
-            <div className="agenda-time">
-              <div>{entry.startTime}</div>
-              {entry.endTime && <div>{entry.endTime}</div>}
+  function renderCard(entry: AgendaEntry) {
+    if (editingId === entry.id) {
+      const ev = events.find((e) => e.id === entry.id)!
+      return <EditEventForm key={entry.key} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
+    }
+    return <AgendaCard key={entry.key} entry={entry} />
+  }
+
+  return (
+    <>
+      {entries.length === 0 && <p className="muted">{emptyLabel}</p>}
+
+      {allDayEntries.length > 0 && (
+        <>
+          <p className="muted" style={{ margin: '4px 0' }}>
+            Todo el día
+          </p>
+          <div className="agenda-allday-row">
+            {allDayEntries.map((entry) =>
+              editingId === entry.id ? renderCard(entry) : <AgendaAllDayChip key={entry.key} entry={entry} />,
+            )}
+          </div>
+        </>
+      )}
+
+      {timedEntries.map((entry) => (
+        <div key={entry.key} className="agenda-row">
+          <div className="agenda-time">
+            <div>{entry.startTime}</div>
+            {entry.endTime && <div>{entry.endTime}</div>}
+          </div>
+          <div style={{ flex: 1 }}>{renderCard(entry)}</div>
+        </div>
+      ))}
+    </>
+  )
+}
+
+// Vista "Familiar" (foto de referencia): una columna por miembro para
+// el día seleccionado, con su "+" propio y sus eventos — los eventos
+// sin nadie asignado (memberIds vacío, "Toda la familia") se agrupan
+// en una columna aparte, solo si hay alguno ese día.
+function FamilyDayView({
+  selectedDate,
+  members,
+  memberById,
+  dayEvents,
+  editingId,
+  onEdit,
+  onCancelEdit,
+  onDelete,
+  onDeleteOccurrence,
+  onEventChanged,
+  onNavigateDay,
+  onQuickAdd,
+  swipeHandlers,
+}: {
+  selectedDate: string
+  members: FamilyMember[]
+  memberById: Map<string, FamilyMember>
+  dayEvents: CalendarEvent[]
+  editingId: string | null
+  onEdit: (id: string) => void
+  onCancelEdit: () => void
+  onDelete: (id: string) => void
+  onDeleteOccurrence: (id: string, dateStr: string) => void
+  onEventChanged: () => void
+  onNavigateDay: (deltaDays: number) => void
+  onQuickAdd: (memberId: string | null) => void
+  swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
+}) {
+  const unassigned = dayEvents.filter((e) => e.memberIds.length === 0)
+  const columns: { key: string; label: string; member: FamilyMember | null; events: CalendarEvent[] }[] = [
+    ...members.map((m) => ({ key: m.id, label: m.name, member: m, events: dayEvents.filter((e) => e.memberIds.includes(m.id)) })),
+    ...(unassigned.length > 0 ? [{ key: 'familia', label: 'Toda la familia', member: null, events: unassigned }] : []),
+  ]
+
+  function renderEvent(ev: CalendarEvent) {
+    if (editingId === ev.id) {
+      return <EditEventForm key={ev.id} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
+    }
+    return (
+      <EventCard
+        key={ev.id}
+        event={ev}
+        memberById={memberById}
+        onEdit={() => onEdit(ev.id)}
+        onDeleteSeries={() => onDelete(ev.id)}
+        onDeleteOccurrence={(dateStr) => onDeleteOccurrence(ev.id, dateStr)}
+      />
+    )
+  }
+
+  return (
+    <div onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+      <div className="month-nav">
+        <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
+          ‹
+        </button>
+        <strong>
+          {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </strong>
+        <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
+          ›
+        </button>
+      </div>
+      <div className="family-view-columns">
+        {columns.map((col) => (
+          <div key={col.key} className="family-view-column">
+            <div className="family-view-column-header">
+              {col.member && <MemberAvatar member={col.member} size={28} />}
+              <strong>{col.label}</strong>
             </div>
-            <div style={{ flex: 1 }}>{renderCard(entry)}</div>
+            <button type="button" className="link-button family-view-add" onClick={() => onQuickAdd(col.member?.id ?? null)}>
+              + Añadir
+            </button>
+            {col.events.length === 0 ? (
+              <p className="muted">No hay eventos</p>
+            ) : (
+              col.events.map((ev) => renderEvent(ev))
+            )}
           </div>
         ))}
+        {columns.length === 0 && <p className="muted">Añade miembros a la familia para usar esta vista.</p>}
+      </div>
+    </div>
+  )
+}
+
+interface TimeGridBlock {
+  key: string
+  title: string
+  color: string
+  startMin: number
+  endMin: number
+  dateStr: string
+}
+
+// Reparte bloques que se solapan en el mismo día en "carriles" en
+// paralelo (mismo criterio que cualquier agenda por horas: si dos
+// cosas coinciden, se ponen una al lado de otra en vez de tapar una a
+// la otra) — ordena por hora de inicio y usa el primer carril libre.
+function layoutLanes(blocks: TimeGridBlock[]): (TimeGridBlock & { lane: number; laneCount: number })[] {
+  const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin)
+  const laneEnds: number[] = []
+  const placed = sorted.map((b) => {
+    let lane = laneEnds.findIndex((end) => end <= b.startMin)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(b.endMin)
+    } else {
+      laneEnds[lane] = b.endMin
+    }
+    return { ...b, lane }
+  })
+  const laneCount = Math.max(1, laneEnds.length)
+  return placed.map((p) => ({ ...p, laneCount }))
+}
+
+// Vistas "Día" / "3 días" / "Semana" (foto de referencia): cuadrícula
+// horaria con los bloques posicionados por su hora real — solo de
+// vistazo (tocar un bloque o la cabecera de un día selecciona ese día,
+// cuya agenda completa con editar/borrar se ve debajo en DayModal, que
+// ya tenía toda esa lógica hecha para la vista Mes).
+function TimeGridView({
+  days,
+  eventsByDate,
+  externalEventsByDate,
+  birthdaysByDate,
+  memberById,
+  feedById,
+  selectedDate,
+  onSelectDate,
+  swipeHandlers,
+}: {
+  days: { dateStr: string; date: Date }[]
+  eventsByDate: Map<string, CalendarEvent[]>
+  externalEventsByDate: Map<string, ExternalCalendarEvent[]>
+  birthdaysByDate: Map<string, { name: string; color: string }[]>
+  memberById: Map<string, FamilyMember>
+  feedById: Map<string, ExternalCalendarFeed>
+  selectedDate: string
+  onSelectDate: (dateStr: string) => void
+  swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
+}) {
+  const HOUR_HEIGHT = 52
+
+  function timedBlocksForDate(dateStr: string): TimeGridBlock[] {
+    const blocks: TimeGridBlock[] = []
+    for (const ev of eventsByDate.get(dateStr) ?? []) {
+      if (ev.allDay) continue
+      const start = new Date(ev.startAt)
+      const startMin = start.getHours() * 60 + start.getMinutes()
+      const end = ev.endAt ? new Date(ev.endAt) : null
+      const endMin = end ? Math.max(end.getHours() * 60 + end.getMinutes(), startMin + 20) : startMin + 60
+      blocks.push({ key: `ev-${ev.id}`, title: ev.title, color: eventColor(ev, memberById), startMin, endMin, dateStr })
+    }
+    for (const ev of externalEventsByDate.get(dateStr) ?? []) {
+      if (ev.allDay) continue
+      const start = new Date(ev.startAt)
+      const startMin = start.getHours() * 60 + start.getMinutes()
+      const end = ev.endAt ? new Date(ev.endAt) : null
+      const endMin = end ? Math.max(end.getHours() * 60 + end.getMinutes(), startMin + 20) : startMin + 60
+      const feed = feedById.get(ev.feedId)
+      const member = feed?.memberId ? memberById.get(feed.memberId) : null
+      blocks.push({ key: `ext-${ev.id}`, title: ev.title, color: member?.color ?? '#6b7280', startMin, endMin, dateStr })
+    }
+    return blocks
+  }
+
+  function allDayChipsForDate(dateStr: string): { key: string; title: string; color: string }[] {
+    const chips: { key: string; title: string; color: string }[] = []
+    for (const ev of eventsByDate.get(dateStr) ?? []) {
+      if (ev.allDay) chips.push({ key: `ev-${ev.id}`, title: ev.title, color: eventColor(ev, memberById) })
+    }
+    for (const ev of externalEventsByDate.get(dateStr) ?? []) {
+      if (ev.allDay) chips.push({ key: `ext-${ev.id}`, title: ev.title, color: '#6b7280' })
+    }
+    for (const b of birthdaysByDate.get(dateStr) ?? []) {
+      chips.push({ key: `bday-${b.name}`, title: `🎂 ${b.name}`, color: b.color })
+    }
+    return chips
+  }
+
+  let minHour = 8
+  let maxHour = 20
+  for (const d of days) {
+    for (const b of timedBlocksForDate(d.dateStr)) {
+      minHour = Math.min(minHour, Math.floor(b.startMin / 60))
+      maxHour = Math.max(maxHour, Math.ceil(b.endMin / 60))
+    }
+  }
+  const totalHeight = (maxHour - minHour) * HOUR_HEIGHT
+
+  return (
+    <div className="time-grid" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+      <div className="time-grid-header">
+        <div className="time-grid-hour-spacer" />
+        {days.map((d) => (
+          <button
+            type="button"
+            key={d.dateStr}
+            className={'time-grid-day-header' + (d.dateStr === selectedDate ? ' active' : '')}
+            onClick={() => onSelectDate(d.dateStr)}
+          >
+            <span>{d.date.toLocaleDateString('es-ES', { weekday: 'short' })}</span>
+            <strong>{d.date.getDate()}</strong>
+          </button>
+        ))}
+      </div>
+
+      <div className="time-grid-allday-row">
+        <div className="time-grid-hour-spacer" />
+        {days.map((d) => (
+          <div key={d.dateStr} className="time-grid-allday-cell">
+            {allDayChipsForDate(d.dateStr).map((c) => (
+              <span key={c.key} className="time-grid-allday-chip" style={{ background: c.color }}>
+                {c.title}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div className="time-grid-body">
+        <div className="time-grid-hours">
+          {Array.from({ length: maxHour - minHour }, (_, i) => minHour + i).map((h) => (
+            <div key={h} className="time-grid-hour-label" style={{ height: HOUR_HEIGHT }}>
+              {String(h).padStart(2, '0')}:00
+            </div>
+          ))}
+        </div>
+        <div className="time-grid-columns">
+          {days.map((d) => {
+            const blocks = layoutLanes(timedBlocksForDate(d.dateStr))
+            return (
+              <div
+                key={d.dateStr}
+                className="time-grid-column"
+                style={{ height: totalHeight }}
+                onClick={() => onSelectDate(d.dateStr)}
+              >
+                {Array.from({ length: maxHour - minHour }).map((_, i) => (
+                  <div key={i} className="time-grid-hour-line" style={{ top: i * HOUR_HEIGHT }} />
+                ))}
+                {blocks.map((b) => (
+                  <button
+                    type="button"
+                    key={b.key}
+                    className="time-grid-block"
+                    style={{
+                      top: ((b.startMin - minHour * 60) / 60) * HOUR_HEIGHT,
+                      height: Math.max(20, ((b.endMin - b.startMin) / 60) * HOUR_HEIGHT),
+                      left: `${(b.lane / b.laneCount) * 100}%`,
+                      width: `${100 / b.laneCount}%`,
+                      background: b.color,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSelectDate(b.dateStr)
+                    }}
+                  >
+                    {b.title}
+                  </button>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Vista "Agenda" (foto de referencia): lista cronológica continua a
+// partir de hoy, agrupada por día — se saltan los días sin nada, salvo
+// hoy, que siempre aparece aunque esté vacío (para orientarse).
+function AgendaListView({
+  today,
+  buildEntriesForDate,
+  events,
+  members,
+  editingId,
+  onCancelEdit,
+  onEventChanged,
+}: {
+  today: Date
+  buildEntriesForDate: (dateStr: string) => AgendaEntry[]
+  events: CalendarEvent[]
+  members: FamilyMember[]
+  editingId: string | null
+  onCancelEdit: () => void
+  onEventChanged: () => void
+}) {
+  const AGENDA_DAYS = 30
+  const days = useMemo(() => {
+    const list: { dateStr: string; date: Date }[] = []
+    for (let i = 0; i < AGENDA_DAYS; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i)
+      list.push({ dateStr: toDateStr(d), date: d })
+    }
+    return list
+  }, [today])
+
+  function dayLabel(d: Date, i: number): string {
+    const weekdayDate = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+    const capitalized = weekdayDate.charAt(0).toUpperCase() + weekdayDate.slice(1)
+    if (i === 0) return `Hoy - ${capitalized}`
+    if (i === 1) return `Mañana - ${capitalized}`
+    return capitalized
+  }
+
+  const visibleDays = days
+    .map((d, i) => ({ ...d, i, entries: buildEntriesForDate(d.dateStr) }))
+    .filter((d) => d.i === 0 || d.entries.length > 0)
+
+  return (
+    <div className="event-list">
+      {visibleDays.map((d) => (
+        <div key={d.dateStr}>
+          <div className="agenda-day-header">{dayLabel(d.date, d.i)}</div>
+          <DayEntriesBody
+            entries={d.entries}
+            editingId={editingId}
+            events={events}
+            members={members}
+            onEventChanged={onEventChanged}
+            onCancelEdit={onCancelEdit}
+            emptyLabel="Nada hoy."
+          />
+        </div>
+      ))}
     </div>
   )
 }
@@ -1489,12 +1900,14 @@ function AddEventForm({
   events,
   onAdded,
   defaultDate,
+  defaultMemberIds,
   hideHeading,
 }: {
   members: FamilyMember[]
   events: CalendarEvent[]
   onAdded: () => void
   defaultDate?: string
+  defaultMemberIds?: string[]
   hideHeading?: boolean
 }) {
   const [title, setTitle] = useState('')
@@ -1510,7 +1923,7 @@ function AddEventForm({
     until: '',
   })
   const [reminders, setReminders] = useState<EventReminder[]>([])
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [selectedMembers, setSelectedMembers] = useState<string[]>(defaultMemberIds ?? [])
   const [points, setPoints] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)

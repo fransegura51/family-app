@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addPlace,
@@ -91,6 +91,16 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // incluso en mitad de que alguien tocara "Activar" o eligiera quién
   // lleva el dispositivo (bug real reportado: "no me funciona", captura
   // mostrando la pantalla congelada en "Cargando…").
+  //
+  // BUG REAL GRAVE (consumo de egress de Supabase disparado, forzó pasar
+  // a plan de pago): este refresco silencioso de 30s volvía a descargar
+  // el rastro COMPLETO de 24h (miles de puntos por persona, uno cada
+  // pocos segundos de GPS) de cada miembro compartiendo, cada 30
+  // segundos, mientras alguien dejara esta pantalla abierta — sin
+  // límite de tiempo. El historial de ruta no necesita ese refresco tan
+  // frecuente (apenas cambia en 30s); ahora el refresco silencioso solo
+  // trae la posición ACTUAL de cada uno (minúscula), y el rastro
+  // completo se pide solo al entrar en la pantalla.
   function reload(silent = false) {
     if (!silent) setLoading(true)
     Promise.all([listFamilyMembers(), listConsents(), listMemberLocations(), listPlaces()])
@@ -100,10 +110,12 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
         setLocations(l)
         setPlaces(p)
 
-        const historyEntries = await Promise.all(
-          l.map(async (loc) => [loc.memberId, await listMemberLocationHistory(loc.memberId)] as const),
-        )
-        setHistories(Object.fromEntries(historyEntries))
+        if (!silent) {
+          const historyEntries = await Promise.all(
+            l.map(async (loc) => [loc.memberId, await listMemberLocationHistory(loc.memberId)] as const),
+          )
+          setHistories(Object.fromEntries(historyEntries))
+        }
 
         const withPhoto = m.filter((mem) => mem.photoPath && l.some((loc) => loc.memberId === mem.id))
         const photoEntries = await Promise.all(
@@ -138,11 +150,31 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // cada latido GPS propio (ver applyOwnLocationUpdate) — cada 30s es
   // sobrado para "dónde está ahora" y no machaca la base de datos ni el
   // móvil a peticiones. Silencioso: no debe interrumpir a quien esté
-  // tocando algo en ese momento.
+  // tocando algo en ese momento. Ya NO trae el rastro de 24h (ver
+  // comentario grande en `reload` — ese era el bug real del consumo
+  // disparado de Supabase).
   useEffect(() => {
     const interval = setInterval(() => reload(true), 30_000)
     return () => clearInterval(interval)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // El rastro de la ruta sí conviene refrescarlo de vez en cuando (para
+  // ver avanzar el camino si alguien deja la pantalla abierta viendo a
+  // otro moverse), pero mucho más de tarde en tarde que la posición
+  // actual — cada 5 minutos en vez de cada 30s, con un ref para no
+  // reiniciar el temporizador cada vez que `locations` cambia (si no,
+  // nunca llegaría a dispararse).
+  const locationsRef = useRef(locations)
+  locationsRef.current = locations
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const historyEntries = await Promise.all(
+        locationsRef.current.map(async (loc) => [loc.memberId, await listMemberLocationHistory(loc.memberId)] as const),
+      )
+      setHistories(Object.fromEntries(historyEntries))
+    }, 5 * 60_000)
+    return () => clearInterval(interval)
+  }, [])
 
   async function handleToggleConsent(memberId: string, enabled: boolean) {
     try {

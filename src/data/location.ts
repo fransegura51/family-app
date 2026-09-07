@@ -129,6 +129,16 @@ export async function updateMemberLocation(memberId: string, latitude: number, l
 
 // Rastro de las últimas 24h de un miembro, más antiguo primero (para
 // dibujar la ruta en orden).
+//
+// Límite duro de seguridad (2000 puntos, ya de sobra para dibujar una
+// ruta de 24h — un punto cada ~43s): bug real grave reportado, un
+// refresco cada 30s en LocationScreen pedía este histórico completo sin
+// límite y disparó el consumo de Supabase a varios GB (forzó pasar a
+// plan de pago). Ese refresco ya no llama a esto tan seguido, pero este
+// límite se queda de todas formas — para que ningún futuro descuido
+// similar pueda volver a pedir un histórico sin tope.
+const MAX_HISTORY_POINTS = 2000
+
 export async function listMemberLocationHistory(memberId: string): Promise<MemberLocationPoint[]> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
@@ -136,16 +146,19 @@ export async function listMemberLocationHistory(memberId: string): Promise<Membe
     .select('id, member_id, family_id, latitude, longitude, recorded_at')
     .eq('member_id', memberId)
     .gte('recorded_at', since)
-    .order('recorded_at', { ascending: true })
+    .order('recorded_at', { ascending: false })
+    .limit(MAX_HISTORY_POINTS)
   if (error) throw error
-  return data.map((r) => ({
-    id: r.id,
-    memberId: r.member_id,
-    familyId: r.family_id,
-    latitude: r.latitude,
-    longitude: r.longitude,
-    recordedAt: r.recorded_at,
-  }))
+  return data
+    .map((r) => ({
+      id: r.id,
+      memberId: r.member_id,
+      familyId: r.family_id,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      recordedAt: r.recorded_at,
+    }))
+    .reverse()
 }
 
 // ---------------------------------------------------------------------

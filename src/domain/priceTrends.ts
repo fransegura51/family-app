@@ -76,3 +76,66 @@ export function basketTotal(purchases: RawPurchase[], month: string): number {
     .filter((p) => p.recordedDate.startsWith(month))
     .reduce((sum, p) => sum + p.price * (p.quantity > 0 ? p.quantity : 1), 0)
 }
+
+// Skill de Pepa, punto 24 — "¿Por qué ha cambiado mi gasto?": reparte la
+// diferencia entre dos meses en tres causas, por producto (a partir de
+// los tickets, no del banco):
+// - priceEffect: mismo producto, ha subido/bajado el precio.
+// - quantityEffect: mismo producto, se ha comprado más o menos cantidad.
+// - newProductsEffect / droppedProductsEffect: productos que empiezan o
+//   dejan de comprarse ese mes.
+// Es una aproximación (usa el precio medio del mes), por eso el
+// documento exige dejar claro que es un análisis basado en tickets.
+export interface SpendChangeBreakdown {
+  previousTotal: number
+  currentTotal: number
+  priceEffect: number
+  quantityEffect: number
+  newProductsEffect: number
+  droppedProductsEffect: number
+}
+
+export function decomposeSpendChange(
+  purchases: RawPurchase[],
+  currentMonth: string,
+  previousMonth: string,
+): SpendChangeBreakdown {
+  const byProduct = new Map<string, { prevQty: number; prevSpend: number; curQty: number; curSpend: number }>()
+  for (const p of purchases) {
+    const month = p.recordedDate.slice(0, 7)
+    if (month !== currentMonth && month !== previousMonth) continue
+    const entry = byProduct.get(p.productId) ?? { prevQty: 0, prevSpend: 0, curQty: 0, curSpend: 0 }
+    const qty = p.quantity > 0 ? p.quantity : 1
+    const spend = p.price * qty
+    if (month === previousMonth) {
+      entry.prevQty += qty
+      entry.prevSpend += spend
+    } else {
+      entry.curQty += qty
+      entry.curSpend += spend
+    }
+    byProduct.set(p.productId, entry)
+  }
+
+  let priceEffect = 0
+  let quantityEffect = 0
+  let newProductsEffect = 0
+  let droppedProductsEffect = 0
+  let previousTotal = 0
+  let currentTotal = 0
+  for (const { prevQty, prevSpend, curQty, curSpend } of byProduct.values()) {
+    previousTotal += prevSpend
+    currentTotal += curSpend
+    if (prevQty > 0 && curQty > 0) {
+      const prevAvgPrice = prevSpend / prevQty
+      const curAvgPrice = curSpend / curQty
+      priceEffect += (curAvgPrice - prevAvgPrice) * prevQty
+      quantityEffect += (curQty - prevQty) * curAvgPrice
+    } else if (prevQty > 0 && curQty === 0) {
+      droppedProductsEffect -= prevSpend
+    } else if (prevQty === 0 && curQty > 0) {
+      newProductsEffect += curSpend
+    }
+  }
+  return { previousTotal, currentTotal, priceEffect, quantityEffect, newProductsEffect, droppedProductsEffect }
+}

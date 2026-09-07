@@ -30,6 +30,8 @@ import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { listAllProductPrices, listProducts } from '@/data/products'
+import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import {
   deleteProductPricesByReceipt,
   listProductPricesByReceipt,
@@ -335,6 +337,8 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
+  const [purchases, setPurchases] = useState<RawPurchase[]>([])
+  const [productNames, setProductNames] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
@@ -344,11 +348,18 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([listExpenses(), listBudgetCategories(), listTags()])
-      .then(([e, c, t]) => {
+    Promise.all([listExpenses(), listBudgetCategories(), listTags(), listAllProductPrices(), listProducts()])
+      .then(([e, c, t, prices, products]) => {
         setExpenses(e)
         setCategories(c)
         setTags(t)
+        setPurchases(
+          prices.map((p) => {
+            const qty = Number(p.quantity)
+            return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
+          }),
+        )
+        setProductNames(new Map(products.map((pr) => [pr.id, pr.displayName])))
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -518,6 +529,148 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         <p style={{ margin: '4px 0' }}>{totalReal.toFixed(2)} €</p>
         {body}
       </div>
+
+      <EvolucionTemporal expenses={expenses} onViewMovements={onViewMovements} />
+      <PorQueHaCambiadoMiGasto purchases={purchases} productNames={productNames} onViewMovements={onViewMovements} />
+    </div>
+  )
+}
+
+// Skill de Pepa, punto 13: ingresos/gastos/ahorro mes a mes, con acceso
+// directo a los movimientos de cada mes.
+function EvolucionTemporal({ expenses, onViewMovements }: { expenses: Expense[]; onViewMovements: (f: MovementsFilter) => void }) {
+  const months = useMemo(() => {
+    const now = new Date()
+    const list: { key: string; label: string; from: string; to: string }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const from = `${key}-01`
+      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+      const to = `${key}-${String(lastDay).padStart(2, '0')}`
+      list.push({ key, label: `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`, from, to })
+    }
+    return list
+  }, [])
+
+  const rows = months.map((m) => {
+    const inMonth = expenses.filter((e) => e.kind === 'real' && e.expenseDate >= m.from && e.expenseDate <= m.to)
+    const income = inMonth.filter((e) => e.isIncome).reduce((s, e) => s + e.amount, 0)
+    const spent = inMonth.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
+    return { ...m, income, spent, ahorro: income - spent, count: inMonth.length }
+  })
+  const maxAmount = Math.max(1, ...rows.map((r) => Math.max(r.income, r.spent)))
+
+  return (
+    <div className="card event-card">
+      <strong>Evolución temporal — últimos 6 meses</strong>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.map((r) => (
+          <div key={r.key}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+              <span>{r.label}</span>
+              <span className={r.ahorro >= 0 ? 'muted' : 'error'}>Ahorro: {r.ahorro.toFixed(2)} €</span>
+            </div>
+            <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 3 }}>
+              <div style={{ width: `${(r.income / maxAmount) * 100}%`, background: '#2f9e44', borderRadius: 3 }} />
+            </div>
+            <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 2 }}>
+              <div style={{ width: `${(r.spent / maxAmount) * 100}%`, background: '#e64980', borderRadius: 3 }} />
+            </div>
+            <button
+              type="button"
+              className="link-button"
+              style={{ fontSize: 12 }}
+              onClick={() => onViewMovements({ label: `Movimientos — ${r.label}`, from: r.from, to: r.to })}
+            >
+              +{r.income.toFixed(2)} € / -{r.spent.toFixed(2)} € · {r.count} {r.count === 1 ? 'registro' : 'registros'} · Ver →
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Skill de Pepa, punto 14: solo se muestra si hay datos de tickets
+// suficientes en los dos meses a comparar — si no, se explica qué
+// falta en vez de enseñar un desglose vacío o inventado.
+function PorQueHaCambiadoMiGasto({
+  purchases,
+  productNames,
+  onViewMovements,
+}: {
+  purchases: RawPurchase[]
+  productNames: Map<string, string>
+  onViewMovements: (f: MovementsFilter) => void
+}) {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const previousMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
+
+  const hasCurrent = purchases.some((p) => p.recordedDate.startsWith(currentMonth))
+  const hasPrevious = purchases.some((p) => p.recordedDate.startsWith(previousMonth))
+
+  return (
+    <div className="card event-card">
+      <strong>¿Por qué ha cambiado mi gasto?</strong>
+      {!hasCurrent || !hasPrevious ? (
+        <p className="muted" style={{ marginTop: 6 }}>
+          Todavía no hay tickets suficientes este mes y el anterior para desglosar el cambio de gasto — en cuanto haya
+          tickets de ambos meses, Pepa podrá explicar cuánto se debe a precio, a cantidad o a productos nuevos.
+        </p>
+      ) : (
+        (() => {
+          const b = decomposeSpendChange(purchases, currentMonth, previousMonth)
+          const delta = b.currentTotal - b.previousTotal
+          const topMovers = compareMonths(averagePricesByMonth(purchases), currentMonth, previousMonth)
+            .filter((c) => c.previousPrice != null && c.deltaPercent != null)
+            .sort((a, b2) => Math.abs(b2.deltaPercent!) - Math.abs(a.deltaPercent!))
+            .slice(0, 3)
+          return (
+            <>
+              <p className="muted" style={{ margin: '4px 0 10px', fontSize: 12 }}>
+                Análisis basado en los productos leídos de tus tickets — puede no coincidir exactamente con el banco.
+              </p>
+              <p style={{ margin: '2px 0' }}>
+                Cesta de tickets: {b.previousTotal.toFixed(2)} € → {b.currentTotal.toFixed(2)} € ({delta >= 0 ? '+' : ''}
+                {delta.toFixed(2)} €)
+              </p>
+              <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
+                <li>Por cambio de precio: {b.priceEffect >= 0 ? '+' : ''}{b.priceEffect.toFixed(2)} €</li>
+                <li>Por comprar más o menos cantidad: {b.quantityEffect >= 0 ? '+' : ''}{b.quantityEffect.toFixed(2)} €</li>
+                <li>Por productos nuevos: +{b.newProductsEffect.toFixed(2)} €</li>
+                <li>Por productos que ya no se compran: {b.droppedProductsEffect.toFixed(2)} €</li>
+              </ul>
+              {topMovers.length > 0 && (
+                <>
+                  <p className="muted" style={{ margin: '10px 0 2px', fontSize: 12 }}>
+                    Productos que más han cambiado de precio:
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                    {topMovers.map((c) => (
+                      <li key={c.productId}>
+                        {productNames.get(c.productId) ?? '?'}: {c.previousPrice!.toFixed(2)} € → {c.currentPrice!.toFixed(2)} € (
+                        {c.deltaPercent! >= 0 ? '+' : ''}
+                        {c.deltaPercent!.toFixed(0)}%)
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <button
+                type="button"
+                className="link-button"
+                style={{ marginTop: 6 }}
+                onClick={() => onViewMovements({ label: `Tickets — ${currentMonth}`, from: `${currentMonth}-01`, to: `${currentMonth}-31` })}
+              >
+                Ver movimientos de este mes →
+              </button>
+            </>
+          )
+        })()
+      )}
     </div>
   )
 }

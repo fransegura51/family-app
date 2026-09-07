@@ -5,10 +5,26 @@ description: Skill para arrancar y desarrollar la app de organización familiar 
 
 # App de organización familiar (Paco / Jennifer)
 
-Producto interno para uso propio de la familia (no es un SaaS para vender,
-a diferencia de alerfer-seguimiento), inspirado en la app ficticia
-"Conchy" de la serie "Padre no hay más que uno". Referencia de mercado:
-apps tipo Cozi / FamilyWall.
+Ahora mismo en fase de prueba solo con la propia familia, pero el
+objetivo declarado por el usuario es venderla a otras familias en el
+futuro (2026-09-08) — así que toda funcionalidad nueva debe diseñarse
+pensando en varias familias/tenants distintos, aislados entre sí, no
+solo en "nosotros". Inspirado en la app ficticia "Conchy" de la serie
+"Padre no hay más que uno". Referencia de mercado: apps tipo Cozi /
+FamilyWall.
+
+Implicaciones concretas de este enfoque multi-tenant:
+- Cualquier integración por email (ingesta de tickets, pedidos de
+  Amazon...) debe pensarse como "un email de ingesta por familia", no
+  una dirección compartida hardcodeada — evaluar un alias/subdominio
+  propio de la app en vez de reenviar a una dirección de Pipedream larga
+  y poco presentable de cara a un futuro cliente.
+- "Usuarios invitados" (compartir secciones concretas con otras
+  personas) debe construirse con permisos por sección desde el
+  principio, ya que es la base tanto de "compartir con la familia
+  extendida" como de una futura cuenta multi-usuario de pago.
+- Seguir evitando construir nada que asuma que solo existe una familia
+  en la base de datos (RLS por family_id ya lo cubre en gran parte).
 
 ## Principio general: TODO GRATIS
 

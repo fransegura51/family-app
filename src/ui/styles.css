@@ -1232,8 +1232,10 @@ textarea {
   align-items: stretch;
   justify-content: flex-start;
   min-height: 62px;
+  min-width: 0;
   padding: 4px 3px;
   gap: 1px;
+  overflow: hidden;
 }
 
 .month-grid-daynum {
@@ -1256,11 +1258,14 @@ textarea {
   flex-direction: column;
   gap: 1px;
   width: 100%;
+  min-width: 0;
 }
 
 .month-grid-event-bar {
   display: block;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   font-size: 9.5px;
   font-weight: 600;
   line-height: 1.5;

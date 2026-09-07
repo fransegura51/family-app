@@ -98,11 +98,21 @@ function ExpensesTab() {
   const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
   const [managing, setManaging] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Igual que las categorías sugeridas de Presupuesto Generales: se dan
+  // de alta solas la primera vez, sin pedirlo — petición real: "los
+  // ingresos también se deberían poder categorizar, como sueldo,
+  // regalo, ingreso".
+  const seededIncomeRef = useRef(false)
 
   function reload() {
     setLoading(true)
     Promise.all([listExpenses(), listBudgetCategories()])
-      .then(([e, c]) => {
+      .then(async ([e, c]) => {
+        if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
+          seededIncomeRef.current = true
+          await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
+          c = await listBudgetCategories()
+        }
         setExpenses(e)
         setCategories(c)
       })
@@ -242,6 +252,7 @@ function EditExpenseInline({
   const [date, setDate] = useState(expense.expenseDate)
   const [amount, setAmount] = useState(String(expense.amount))
   const [category, setCategory] = useState(expense.category)
+  const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
   const [store, setStore] = useState(expense.store ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -253,7 +264,8 @@ function EditExpenseInline({
       await updateExpense(expense.id, {
         date,
         amount: Number(amount),
-        ...(expense.isIncome ? {} : { category, store }),
+        category,
+        ...(expense.isIncome ? {} : { store }),
       })
       onDone()
     } catch (err) {
@@ -265,7 +277,19 @@ function EditExpenseInline({
 
   return (
     <div className="card member-form" onClick={(e) => e.stopPropagation()}>
-      {!expense.isIncome && (
+      {expense.isIncome ? (
+        <label>
+          Categoría
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {incomeCategories.length === 0 && <option value="Ingreso">Ingreso</option>}
+            {incomeCategories.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.icon} {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
         <label>
           Categoría
           <CategorySelect value={category} onChange={setCategory} categories={categories} />
@@ -307,12 +331,13 @@ function ManageCategoriesModal({
   onClose: () => void
   onChanged: () => void
 }) {
-  const [newCategoryGroup, setNewCategoryGroup] = useState<'alimentacion' | 'generales'>('alimentacion')
+  const [newCategoryGroup, setNewCategoryGroup] = useState<'alimentacion' | 'generales' | 'ingresos'>('alimentacion')
   const [addingCategory, setAddingCategory] = useState(false)
   const [addingExpense, setAddingExpense] = useState(false)
 
   const alimentacion = categories.filter((c) => c.budgetGroup === 'alimentacion')
   const generales = categories.filter((c) => c.budgetGroup === 'generales')
+  const ingresos = categories.filter((c) => c.budgetGroup === 'ingresos')
 
   function move(group: BudgetCategory[], index: number, direction: -1 | 1) {
     const newIndex = index + direction
@@ -418,6 +443,13 @@ function ManageCategoriesModal({
               >
                 Generales
               </button>
+              <button
+                type="button"
+                className={'chip' + (newCategoryGroup === 'ingresos' ? ' chip-active' : '')}
+                onClick={() => setNewCategoryGroup('ingresos')}
+              >
+                Ingresos
+              </button>
             </div>
             <AddBudgetCategoryInline
               budgetGroup={newCategoryGroup}
@@ -433,6 +465,7 @@ function ManageCategoriesModal({
 
         {renderGroupList('Alimentación', alimentacion)}
         {renderGroupList('Generales', generales)}
+        {renderGroupList('Ingresos', ingresos)}
       </div>
     </div>
   )
@@ -453,7 +486,9 @@ function AddExpenseToAnyCategoryInline({
   // Gasto/Ingreso; un ingreso no lleva categoría de presupuesto ni
   // establecimiento, solo fecha e importe.
   const [isIncome, setIsIncome] = useState(false)
+  const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
   const [category, setCategory] = useState(categories[0]?.name ?? 'Alimentación')
+  const [incomeCategory, setIncomeCategory] = useState(incomeCategories[0]?.name ?? 'Ingreso')
   const [store, setStore] = useState('')
   const [date, setDate] = useState(toDateStr(new Date()))
   const [amount, setAmount] = useState('')
@@ -466,7 +501,15 @@ function AddExpenseToAnyCategoryInline({
     setError(null)
     try {
       if (isIncome) {
-        await addExpense({ date, amount: Number(amount), category: 'Ingreso', store: '', kind: 'real', isIncome: true, budgetGroup: 'generales' })
+        await addExpense({
+          date,
+          amount: Number(amount),
+          category: incomeCategory,
+          store: '',
+          kind: 'real',
+          isIncome: true,
+          budgetGroup: 'generales',
+        })
       } else {
         const matched = categories.find((c) => c.name === category)
         await addExpense({
@@ -499,7 +542,19 @@ function AddExpenseToAnyCategoryInline({
           Ingreso
         </button>
       </div>
-      {!isIncome && (
+      {isIncome ? (
+        <label>
+          Categoría
+          <select value={incomeCategory} onChange={(e) => setIncomeCategory(e.target.value)}>
+            {incomeCategories.length === 0 && <option value="Ingreso">Ingreso</option>}
+            {incomeCategories.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.icon} {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
         <label>
           Categoría
           <CategorySelect value={category} onChange={setCategory} categories={categories} />
@@ -1484,6 +1539,17 @@ function StorePieChart({ groups, monthLabel }: { groups: { store: string; total:
 // vez que se abre esa pestaña (petición real: "luz, agua, impuestos,
 // taller, imprevistos, hipoteca, préstamos, gastos escolares... con
 // emojis y nombres").
+// Categorías de INGRESO sugeridas (petición real: "sueldo, regalo,
+// ingreso") — mismo mecanismo que las de gasto, solo que agrupadas
+// bajo 'ingresos' en vez de 'alimentacion'/'generales', así nunca
+// entran por error en ningún cálculo de presupuesto (esos solo miran
+// gastos, nunca ingresos, y solo esos dos grupos).
+const INCOME_CATEGORY_SEED: { name: string; icon: string }[] = [
+  { name: 'Sueldo', icon: '💼' },
+  { name: 'Regalo', icon: '🎁' },
+  { name: 'Ingreso', icon: '💰' },
+]
+
 const GENERAL_BUDGET_SEED: { name: string; icon: string }[] = [
   { name: 'Luz', icon: '💡' },
   { name: 'Agua', icon: '💧' },
@@ -1919,10 +1985,23 @@ function BudgetMonthFolders({
 // apunte pero que se pueda cambiar con un calendario". La fecha
 // arranca en hoy pero es un <input type="date"> normal — se puede
 // cambiar a cualquier otro día antes de guardar.
-function AddIncomeInline({ group, onAdded }: { group: string; onAdded: () => void }) {
+function AddIncomeInline({
+  group,
+  categories,
+  onAdded,
+}: {
+  group: string
+  categories: BudgetCategory[]
+  onAdded: () => void
+}) {
+  const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
   const [date, setDate] = useState(toDateStr(new Date()))
   const [amount, setAmount] = useState('')
-  const [description, setDescription] = useState('')
+  // Petición real: "los ingresos también se deberían poder
+  // categorizar, como sueldo, regalo, ingreso" — antes era un texto
+  // libre de "descripción", ahora la misma categoría estructurada
+  // (con icono) que ya usa el resto de la app.
+  const [category, setCategory] = useState(incomeCategories[0]?.name ?? 'Ingreso')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1934,14 +2013,13 @@ function AddIncomeInline({ group, onAdded }: { group: string; onAdded: () => voi
       await addExpense({
         date,
         amount: Number(amount),
-        category: description.trim() || 'Ingreso',
+        category,
         store: '',
         kind: 'real',
         isIncome: true,
         budgetGroup: group,
       })
       setAmount('')
-      setDescription('')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo añadir')
@@ -1953,21 +2031,23 @@ function AddIncomeInline({ group, onAdded }: { group: string; onAdded: () => voi
   return (
     <form onSubmit={handleSubmit} className="card member-form" style={{ marginBottom: 8 }}>
       <label>
+        Categoría
+        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          {incomeCategories.length === 0 && <option value="Ingreso">Ingreso</option>}
+          {incomeCategories.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.icon} {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
       <label>
         Importe (€)
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
-      </label>
-      <label>
-        Descripción (opcional)
-        <input
-          type="text"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Nómina, paga extra…"
-        />
       </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
@@ -2072,7 +2152,7 @@ function BudgetsOverview({
             </button>
           </div>
 
-          {addingIncome && <AddIncomeInline group={group} onAdded={onChanged} />}
+          {addingIncome && <AddIncomeInline group={group} categories={allCategories} onAdded={onChanged} />}
         </>
       )}
 

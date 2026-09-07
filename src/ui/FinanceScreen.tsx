@@ -7,18 +7,23 @@ import {
   createBudgetCategoriesBulk,
   createBudgetCategory,
   createGoal,
+  createTag,
   deleteBudget,
   deleteBudgetCategory,
   deleteExpense,
   deleteGoal,
+  deleteTag,
   deleteWalletTransaction,
   listBudgetCategories,
   listBudgets,
   listExpenses,
   listGoals,
+  listTags,
   listWalletTransactions,
   reorderBudgetCategories,
+  reorderTags,
   updateExpense,
+  updateTag,
 } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
@@ -47,6 +52,7 @@ import type {
   KidGoal,
   KidWalletTransaction,
   Receipt,
+  Tag,
   WalletTransactionType,
 } from '@/domain/types'
 
@@ -57,20 +63,461 @@ import type {
 // siguen definidos en este archivo y se exportan para que
 // ShoppingScreen los use, en vez de duplicar todo el código de
 // tickets/categorías en dos sitios.
-const SUB_TABS = ['Movimientos', 'Presupuesto Generales', 'Educación financiera'] as const
+//
+// Skill de Pepa, punto 3: "Resumen · Conclusiones de Pepa ·
+// Estadísticas · Movimientos · Presupuesto General · Educación
+// Financiera". Resumen y Conclusiones se combinan en una sola pestaña
+// (van siempre juntas, mismo periodo, misma pantalla) en vez de dos
+// pestañas casi vacías por separado.
+const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
+// Skill de Pepa, punto 24: "Ver X registros →" tiene que abrir
+// Movimientos filtrado EXACTAMENTE con el conjunto que produjo el
+// dato — se comparte este estado entre Estadísticas y Movimientos en
+// vez de duplicar la lógica de filtrado en cada estadística.
+export interface MovementsFilter {
+  label: string
+  from?: string
+  to?: string
+  category?: string
+  tagId?: string
+  necessity?: 'debo' | 'necesito' | 'quiero'
+  isFixed?: boolean
+  isIncome?: boolean
+}
+
 export function FinanceScreen() {
-  const [tab, setTab] = useState<SubTab>('Movimientos')
+  const [tab, setTab] = useState<SubTab>('Resumen')
+  const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
+
+  function viewMovements(filter: MovementsFilter) {
+    setMovementsFilter(filter)
+    setTab('Movimientos')
+  }
 
   return (
     <div className="screen">
       <h1>Economía</h1>
       <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
-      {tab === 'Movimientos' && <ExpensesTab />}
+      {tab === 'Resumen' && <ResumenTab onViewMovements={viewMovements} />}
+      {tab === 'Estadísticas' && <EstadisticasTab onViewMovements={viewMovements} />}
+      {tab === 'Movimientos' && (
+        <ExpensesTab filter={movementsFilter} onClearFilter={() => setMovementsFilter(null)} />
+      )}
       {tab === 'Presupuesto Generales' && <BudgetsTab group="generales" seedCategories={GENERAL_BUDGET_SEED} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Resumen + Conclusiones de Pepa (Skill de Pepa, puntos 4/5)
+// ---------------------------------------------------------------------
+
+const NECESSITY_LABELS: Record<'debo' | 'necesito' | 'quiero', string> = {
+  debo: 'Debo',
+  necesito: 'Necesito',
+  quiero: 'Quiero',
+}
+
+function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+
+  useEffect(() => {
+    listExpenses()
+      .then(setExpenses)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <p className="muted">Cargando resumen…</p>
+
+  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  const inRange = expenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
+  const real = inRange.filter((e) => e.kind === 'real')
+  const totalIncome = real.filter((e) => e.isIncome).reduce((s, e) => s + e.amount, 0)
+  const totalSpent = real.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
+  const ahorro = totalIncome - totalSpent
+  // Skill de Pepa, punto 1: no se inventa una tasa de ahorro sin
+  // ingresos con los que calcularla.
+  const tasaAhorro = totalIncome > 0 ? (ahorro / totalIncome) * 100 : null
+
+  // Periodo anterior EQUIVALENTE (misma duración, justo antes), para las
+  // conclusiones — Skill de Pepa, punto 5: "en comparaciones mostrar
+  // siempre porcentaje + euros, nunca depender solo del porcentaje".
+  const fromMs = new Date(from + 'T00:00').getTime()
+  const toMs = new Date(to + 'T00:00').getTime()
+  const spanMs = Math.max(toMs - fromMs, 86_400_000)
+  const prevTo = toDateStr(new Date(fromMs - 86_400_000))
+  const prevFrom = toDateStr(new Date(fromMs - spanMs))
+  const prevReal = expenses.filter((e) => e.kind === 'real' && e.expenseDate >= prevFrom && e.expenseDate <= prevTo)
+  const prevSpent = prevReal.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
+
+  const conclusions: { text: string; filter?: MovementsFilter }[] = []
+  if (real.length === 0) {
+    conclusions.push({ text: 'Todavía no hay movimientos en este periodo para sacar conclusiones.' })
+  } else if (prevReal.length === 0) {
+    conclusions.push({ text: 'No hay datos del periodo anterior para comparar todavía — con el tiempo Pepa podrá comparar la evolución.' })
+  } else {
+    const deltaPct = prevSpent > 0 ? ((totalSpent - prevSpent) / prevSpent) * 100 : null
+    const deltaEur = totalSpent - prevSpent
+    if (deltaPct === null) {
+      conclusions.push({ text: `Habéis gastado ${totalSpent.toFixed(2)} € — no había gasto en el periodo anterior con el que comparar.` })
+    } else if (Math.abs(deltaPct) < 3) {
+      conclusions.push({ text: `Habéis mantenido prácticamente el mismo ritmo de gasto que el periodo anterior y vuestra economía se mantiene estable.` })
+    } else {
+      const sign = deltaPct > 0 ? '+' : ''
+      conclusions.push({
+        text: `Habéis gastado un ${sign}${deltaPct.toFixed(0)}% (${sign}${deltaEur.toFixed(2)} €) ${deltaPct > 0 ? 'más' : 'menos'} que en el periodo anterior.`,
+        filter: { label: `Gastos — ${PRESET_LABELS[preset]}`, from, to, isIncome: false },
+      })
+    }
+    if (tasaAhorro !== null) {
+      if (tasaAhorro >= 20) conclusions.push({ text: `Vuestra tasa de ahorro es del ${tasaAhorro.toFixed(0)}% — una economía saneada.` })
+      else if (tasaAhorro < 0) conclusions.push({ text: `Este periodo habéis gastado más de lo que habéis ingresado (${ahorro.toFixed(2)} €).` })
+    }
+  }
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+      <div className="filter-row" style={{ marginBottom: 8 }}>
+        {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
+          <button key={p} type="button" className={'chip' + (preset === p ? ' chip-active' : '')} onClick={() => setPreset(p)}>
+            {PRESET_LABELS[p]}
+          </button>
+        ))}
+      </div>
+      {preset === 'rango' && (
+        <div className="inline-fields" style={{ marginBottom: 8 }}>
+          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+          <span>a</span>
+          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+        </div>
+      )}
+
+      <div className="card event-card">
+        <strong>Resumen — {PRESET_LABELS[preset]}</strong>
+        <p style={{ color: '#1e8449', margin: '6px 0 0' }}>
+          Ingresos: +{totalIncome.toFixed(2)} €{' '}
+          <button type="button" className="link-button" onClick={() => onViewMovements({ label: `Ingresos — ${PRESET_LABELS[preset]}`, from, to, isIncome: true })}>
+            Ver registros →
+          </button>
+        </p>
+        <p style={{ color: '#c0392b', margin: '4px 0' }}>
+          Gastos: -{totalSpent.toFixed(2)} €{' '}
+          <button type="button" className="link-button" onClick={() => onViewMovements({ label: `Gastos — ${PRESET_LABELS[preset]}`, from, to, isIncome: false })}>
+            Ver registros →
+          </button>
+        </p>
+        <p style={{ margin: '4px 0' }}>
+          <strong>Ahorro: {ahorro.toFixed(2)} €</strong>
+          {tasaAhorro !== null && <span className="muted"> · Tasa de ahorro {tasaAhorro.toFixed(0)}%</span>}
+        </p>
+      </div>
+
+      <h2 className="section-title">Conclusiones de Pepa</h2>
+      {conclusions.map((c, i) => (
+        <div key={i} className="card event-card">
+          <p style={{ margin: 0 }}>{c.text}</p>
+          {c.filter && (
+            <button type="button" className="link-button" onClick={() => onViewMovements(c.filter!)}>
+              +info →
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Estadísticas (Skill de Pepa, puntos 7-17)
+// ---------------------------------------------------------------------
+
+interface BreakdownSlice {
+  key: string
+  label: string
+  icon?: string
+  total: number
+  count: number
+  hasChildren?: boolean
+}
+
+const DONUT_COLORS = ['#4C6EF5', '#e8590c', '#2f9e44', '#ae3ec9', '#f08c00', '#1098ad', '#e64980', '#748ffc', '#20c997', '#fa5252']
+
+// Donut reutilizable para categorías, subcategorías, etiquetas,
+// Debo/Necesito/Quiero y Fijo/variable — mismo mecanismo de
+// conic-gradient que StorePieChart, generalizado. Cada fila lleva
+// importe + porcentaje + registros + "Ver X registros →" (Skill de
+// Pepa, punto 6: trazabilidad obligatoria).
+function BreakdownDonut({
+  slices,
+  centerLabel,
+  onSelect,
+  onViewRecords,
+}: {
+  slices: BreakdownSlice[]
+  centerLabel: { name: string; total: number }
+  onSelect?: (key: string) => void
+  onViewRecords: (key: string) => void
+}) {
+  const grandTotal = slices.reduce((s, x) => s + x.total, 0)
+  let cumulative = 0
+  const stops = slices.map((s, i) => {
+    const pct = grandTotal > 0 ? (s.total / grandTotal) * 100 : 0
+    const start = cumulative
+    cumulative += pct
+    return `${DONUT_COLORS[i % DONUT_COLORS.length]} ${start}% ${cumulative}%`
+  })
+  const gradient = grandTotal > 0 ? `conic-gradient(${stops.join(', ')})` : '#e9ecef'
+
+  if (slices.length === 0) {
+    return <p className="muted">No hay movimientos en este periodo para esta vista.</p>
+  }
+
+  return (
+    <div className="store-pie-wrap">
+      <div className="store-pie" style={{ background: gradient, position: 'relative' }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: '22%',
+            borderRadius: '50%',
+            background: 'var(--card-bg)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            padding: 4,
+          }}
+        >
+          <span style={{ fontSize: 12 }}>{centerLabel.name}</span>
+          <strong style={{ fontSize: 15 }}>{centerLabel.total.toFixed(2)} €</strong>
+        </div>
+      </div>
+      <div className="store-pie-legend">
+        {slices.map((s, i) => {
+          const pct = grandTotal > 0 ? (s.total / grandTotal) * 100 : 0
+          return (
+            <button
+              key={s.key}
+              type="button"
+              className="store-pie-legend-row"
+              style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: '4px 0' }}
+              onClick={() => (s.hasChildren && onSelect ? onSelect(s.key) : onViewRecords(s.key))}
+            >
+              <span className="store-pie-swatch" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+              <span className="store-pie-legend-name">
+                {s.icon} {s.label}
+                {s.hasChildren ? ' ›' : ''}
+              </span>
+              <span className="muted">
+                {pct.toFixed(0)}% · {s.total.toFixed(2)} € · {s.count} {s.count === 1 ? 'registro' : 'registros'}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [categories, setCategories] = useState<BudgetCategory[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  const [view, setView] = useState<'categorias' | 'etiquetas' | 'dnq' | 'fijo'>('categorias')
+  const [selectedParent, setSelectedParent] = useState<string | null>(null)
+
+  useEffect(() => {
+    Promise.all([listExpenses(), listBudgetCategories(), listTags()])
+      .then(([e, c, t]) => {
+        setExpenses(e)
+        setCategories(c)
+        setTags(t)
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <p className="muted">Cargando estadísticas…</p>
+
+  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  const periodLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
+  const real = expenses.filter((e) => e.kind === 'real' && !e.isIncome && e.expenseDate >= from && e.expenseDate <= to)
+  const totalReal = real.reduce((s, e) => s + e.amount, 0)
+
+  function viewFor(extra: Partial<MovementsFilter>, label: string) {
+    onViewMovements({ label, from, to, isIncome: false, ...extra })
+  }
+
+  let body: JSX.Element
+  if (view === 'categorias') {
+    if (selectedParent) {
+      const parent = categories.find((c) => c.id === selectedParent)
+      const children = categories.filter((c) => c.parentId === selectedParent)
+      const slices: BreakdownSlice[] = children.map((c) => {
+        const matched = real.filter((e) => e.category === c.name)
+        return { key: c.name, label: c.name, icon: c.icon, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+      })
+      const other = real.filter((e) => e.category === parent?.name)
+      if (other.length > 0) slices.push({ key: parent!.name, label: '(sin subcategoría)', total: other.reduce((s, e) => s + e.amount, 0), count: other.length })
+      body = (
+        <>
+          <button type="button" className="link-button" onClick={() => setSelectedParent(null)}>
+            ‹ Volver a categorías
+          </button>
+          <BreakdownDonut
+            slices={slices.filter((s) => s.total > 0)}
+            centerLabel={{ name: parent?.name ?? '', total: slices.reduce((s, x) => s + x.total, 0) }}
+            onViewRecords={(key) => viewFor({ category: key }, `${key} — ${periodLabel}`)}
+          />
+        </>
+      )
+    } else {
+      const topLevel = categories.filter((c) => !c.parentId)
+      const slices: BreakdownSlice[] = topLevel
+        .map((c) => {
+          const childNames = categories.filter((x) => x.parentId === c.id).map((x) => x.name)
+          const matched = real.filter((e) => e.category === c.name || childNames.includes(e.category))
+          return {
+            key: c.id,
+            label: c.name,
+            icon: c.icon,
+            total: matched.reduce((s, e) => s + e.amount, 0),
+            count: matched.length,
+            hasChildren: childNames.length > 0,
+          }
+        })
+        .filter((s) => s.total > 0)
+      body = (
+        <BreakdownDonut
+          slices={slices}
+          centerLabel={{ name: 'Todo', total: totalReal }}
+          onSelect={setSelectedParent}
+          onViewRecords={(key) => {
+            const cat = topLevel.find((c) => c.id === key)
+            if (cat) viewFor({ category: cat.name }, `${cat.name} — ${periodLabel}`)
+          }}
+        />
+      )
+    }
+  } else if (view === 'etiquetas') {
+    const slices: BreakdownSlice[] = tags
+      .map((t) => {
+        const matched = real.filter((e) => e.tagId === t.id)
+        return { key: t.id, label: t.name, icon: '🏷️', total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+      })
+      .filter((s) => s.total > 0)
+    body =
+      tags.length === 0 ? (
+        <p className="muted">Todavía no hay etiquetas — puedes crear la primera desde el botón flotante de Movimientos.</p>
+      ) : (
+        <BreakdownDonut
+          slices={slices}
+          centerLabel={{ name: 'Todo', total: slices.reduce((s, x) => s + x.total, 0) }}
+          onViewRecords={(key) => viewFor({ tagId: key }, `Etiqueta — ${periodLabel}`)}
+        />
+      )
+  } else if (view === 'dnq') {
+    const groups: { key: 'debo' | 'necesito' | 'quiero' | 'sin_clasificar'; label: string }[] = [
+      { key: 'debo', label: 'Debo' },
+      { key: 'necesito', label: 'Necesito' },
+      { key: 'quiero', label: 'Quiero' },
+      { key: 'sin_clasificar', label: 'Sin clasificar' },
+    ]
+    const slices: BreakdownSlice[] = groups
+      .map((g) => {
+        const matched = real.filter((e) => (g.key === 'sin_clasificar' ? !e.necessity : e.necessity === g.key))
+        return { key: g.key, label: g.label, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+      })
+      .filter((s) => s.total > 0)
+    body = (
+      <BreakdownDonut
+        slices={slices}
+        centerLabel={{ name: 'Todo', total: totalReal }}
+        onViewRecords={(key) =>
+          key === 'sin_clasificar'
+            ? viewFor({}, `Sin clasificar — ${periodLabel}`)
+            : viewFor({ necessity: key as 'debo' | 'necesito' | 'quiero' }, `${NECESSITY_LABELS[key as 'debo' | 'necesito' | 'quiero']} — ${periodLabel}`)
+        }
+      />
+    )
+  } else {
+    const groups: { key: 'fijo' | 'variable' | 'sin_clasificar'; label: string }[] = [
+      { key: 'fijo', label: 'Fijo' },
+      { key: 'variable', label: 'Variable' },
+      { key: 'sin_clasificar', label: 'Sin clasificar' },
+    ]
+    const slices: BreakdownSlice[] = groups
+      .map((g) => {
+        const matched = real.filter((e) => (g.key === 'sin_clasificar' ? e.isFixed == null : e.isFixed === (g.key === 'fijo')))
+        return { key: g.key, label: g.label, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+      })
+      .filter((s) => s.total > 0)
+    body = (
+      <BreakdownDonut
+        slices={slices}
+        centerLabel={{ name: 'Todo', total: totalReal }}
+        onViewRecords={(key) => (key === 'sin_clasificar' ? viewFor({}, `Sin clasificar — ${periodLabel}`) : viewFor({ isFixed: key === 'fijo' }, `${key === 'fijo' ? 'Fijo' : 'Variable'} — ${periodLabel}`))}
+      />
+    )
+  }
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+      <div className="filter-row" style={{ marginBottom: 8 }}>
+        {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
+          <button key={p} type="button" className={'chip' + (preset === p ? ' chip-active' : '')} onClick={() => setPreset(p)}>
+            {PRESET_LABELS[p]}
+          </button>
+        ))}
+      </div>
+      {preset === 'rango' && (
+        <div className="inline-fields" style={{ marginBottom: 8 }}>
+          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+          <span>a</span>
+          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+        </div>
+      )}
+
+      {/* Skill de Pepa, punto 8: mismo selector, mismo periodo, mismo
+          total general — solo cambia la dimensión de agrupación. */}
+      <div className="filter-row" style={{ marginBottom: 8 }}>
+        <button type="button" className={'chip' + (view === 'categorias' ? ' chip-active' : '')} onClick={() => { setView('categorias'); setSelectedParent(null) }}>
+          Categorías
+        </button>
+        <button type="button" className={'chip' + (view === 'etiquetas' ? ' chip-active' : '')} onClick={() => setView('etiquetas')}>
+          Etiquetas
+        </button>
+        <button type="button" className={'chip' + (view === 'dnq' ? ' chip-active' : '')} onClick={() => setView('dnq')}>
+          Debo/Necesito/Quiero
+        </button>
+        <button type="button" className={'chip' + (view === 'fijo' ? ' chip-active' : '')} onClick={() => setView('fijo')}>
+          Fijo/variable
+        </button>
+      </div>
+
+      <div className="card event-card">
+        <strong>Gastos — {periodLabel}</strong>
+        <p style={{ margin: '4px 0' }}>{totalReal.toFixed(2)} €</p>
+        {body}
+      </div>
     </div>
   )
 }
@@ -87,14 +534,22 @@ export function FinanceScreen() {
 // categorizar... traslado el botón flotante de Presupuesto General a
 // Gastos"). Presupuesto Generales y Registro Alimentación pasan a leer
 // de esta misma lista, sin su propio sitio para crearlos.
-function ExpensesTab() {
+function ExpensesTab({
+  filter,
+  onClearFilter,
+}: {
+  filter?: MovementsFilter | null
+  onClearFilter?: () => void
+}) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // "YYYY-MM" del mes que se está viendo — no siempre el actual, para
   // poder consultar meses anteriores (o cualquier mes suelto, como
-  // febrero) en vez de solo el que corre.
+  // febrero) en vez de solo el que corre. Se ignora mientras haya un
+  // `filter` activo (viene de "Ver X registros →" en Estadísticas).
   const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
   const [managing, setManaging] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -106,8 +561,8 @@ function ExpensesTab() {
 
   function reload() {
     setLoading(true)
-    Promise.all([listExpenses(), listBudgetCategories()])
-      .then(async ([e, c]) => {
+    Promise.all([listExpenses(), listBudgetCategories(), listTags()])
+      .then(async ([e, c, t]) => {
         if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
           seededIncomeRef.current = true
           await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
@@ -115,6 +570,7 @@ function ExpensesTab() {
         }
         setExpenses(e)
         setCategories(c)
+        setTags(t)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -128,10 +584,24 @@ function ExpensesTab() {
     setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
 
-  const monthExpenses = useMemo(
-    () => expenses.filter((e) => e.expenseDate.startsWith(visibleMonth)),
-    [expenses, visibleMonth],
-  )
+  // Skill de Pepa, punto 24: el filtro que llega de "Ver X registros →"
+  // manda sobre la navegación por mes normal — mismos criterios que
+  // produjeron la cifra, ni uno más ni uno menos.
+  const filteredExpenses = useMemo(() => {
+    if (!filter) return expenses.filter((e) => e.expenseDate.startsWith(visibleMonth))
+    return expenses.filter((e) => {
+      if (filter.from && e.expenseDate < filter.from) return false
+      if (filter.to && e.expenseDate > filter.to) return false
+      if (filter.category !== undefined && e.category !== filter.category) return false
+      if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
+      if (filter.necessity !== undefined && e.necessity !== filter.necessity) return false
+      if (filter.isFixed !== undefined && e.isFixed !== filter.isFixed) return false
+      if (filter.isIncome !== undefined && e.isIncome !== filter.isIncome) return false
+      return true
+    })
+  }, [expenses, filter, visibleMonth])
+
+  const monthExpenses = filteredExpenses
 
   const monthTotal = useMemo(
     () => monthExpenses.filter((e) => e.kind === 'real' && !e.isIncome).reduce((sum, e) => sum + e.amount, 0),
@@ -156,28 +626,40 @@ function ExpensesTab() {
     <div>
       {error && <p className="error">{error}</p>}
 
-      <div className="month-nav">
-        <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
-          ‹
-        </button>
-        <strong>
-          {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
-        </strong>
-        <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
-          ›
-        </button>
-        <input
-          type="month"
-          value={visibleMonth}
-          onChange={(e) => e.target.value && setVisibleMonth(e.target.value)}
-        />
-        <button type="button" className="link-button" onClick={() => setVisibleMonth(toDateStr(new Date()).slice(0, 7))}>
-          Hoy
-        </button>
-      </div>
+      {filter ? (
+        <div className="card event-card">
+          <strong>Filtro: {filter.label}</strong>
+          <p className="muted" style={{ margin: '4px 0' }}>
+            {monthExpenses.length} {monthExpenses.length === 1 ? 'registro' : 'registros'}
+          </p>
+          <button type="button" className="link-button" onClick={onClearFilter}>
+            ✕ Quitar filtro
+          </button>
+        </div>
+      ) : (
+        <div className="month-nav">
+          <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
+            ‹
+          </button>
+          <strong>
+            {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
+          </strong>
+          <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
+            ›
+          </button>
+          <input
+            type="month"
+            value={visibleMonth}
+            onChange={(e) => e.target.value && setVisibleMonth(e.target.value)}
+          />
+          <button type="button" className="link-button" onClick={() => setVisibleMonth(toDateStr(new Date()).slice(0, 7))}>
+            Hoy
+          </button>
+        </div>
+      )}
 
       <p className="points-badge">
-        {MONTH_LABELS[visibleMonthIndex - 1]}: {monthTotal.toFixed(2)} € gastados
+        {monthTotal.toFixed(2)} € gastados
         {monthIncome > 0 && ` · +${monthIncome.toFixed(2)} € ingresados`}
       </p>
 
@@ -188,6 +670,7 @@ function ExpensesTab() {
               key={e.id}
               expense={e}
               categories={categories}
+              tags={tags}
               onDone={() => {
                 setEditingId(null)
                 reload()
@@ -203,6 +686,7 @@ function ExpensesTab() {
                   · {e.expenseDate}
                   {e.store && ` · ${e.store}`}
                   {e.kind !== 'real' && ` · ${e.kind}`}
+                  {e.tagId && ` · 🏷️ ${tags.find((t) => t.id === e.tagId)?.name ?? ''}`}
                 </span>
               </span>
               <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
@@ -228,24 +712,47 @@ function ExpensesTab() {
       </button>
 
       {managing && (
-        <ManageCategoriesModal categories={categories} onClose={() => setManaging(false)} onChanged={reload} />
+        <ManageCategoriesModal
+          categories={categories}
+          tags={tags}
+          onClose={() => setManaging(false)}
+          onChanged={reload}
+        />
       )}
     </div>
+  )
+}
+
+// Desplegable de etiqueta reutilizable — "Sin etiqueta" siempre
+// disponible (Skill de Pepa: una etiqueta por movimiento, opcional).
+function TagSelect({ value, onChange, tags }: { value: string; onChange: (v: string) => void; tags: Tag[] }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Sin etiqueta</option>
+      {tags.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.name}
+        </option>
+      ))}
+    </select>
   )
 }
 
 // Editar cualquier movimiento de la lista de Gastos — categoría
 // (desplegable real, ya no texto libre) para uno normal, o solo
 // fecha/importe si es un ingreso (los ingresos no llevan categoría de
-// presupuesto).
+// presupuesto). Etiqueta, Debo/Necesito/Quiero y Fijo/variable se
+// pueden asignar en los dos casos (Skill de Pepa, puntos 11/15/16).
 function EditExpenseInline({
   expense,
   categories,
+  tags,
   onDone,
   onCancel,
 }: {
   expense: Expense
   categories: BudgetCategory[]
+  tags: Tag[]
   onDone: () => void
   onCancel: () => void
 }) {
@@ -254,6 +761,11 @@ function EditExpenseInline({
   const [category, setCategory] = useState(expense.category)
   const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
   const [store, setStore] = useState(expense.store ?? '')
+  const [tagId, setTagId] = useState(expense.tagId ?? '')
+  const [necessity, setNecessity] = useState<'debo' | 'necesito' | 'quiero' | ''>(expense.necessity ?? '')
+  const [isFixed, setIsFixed] = useState<'' | 'fijo' | 'variable'>(
+    expense.isFixed === true ? 'fijo' : expense.isFixed === false ? 'variable' : '',
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -265,6 +777,9 @@ function EditExpenseInline({
         date,
         amount: Number(amount),
         category,
+        tagId: tagId || null,
+        necessity: necessity || null,
+        isFixed: isFixed === '' ? null : isFixed === 'fijo',
         ...(expense.isIncome ? {} : { store }),
       })
       onDone()
@@ -305,6 +820,31 @@ function EditExpenseInline({
           <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
         </label>
       )}
+      <label>
+        Etiqueta (opcional)
+        <TagSelect value={tagId} onChange={setTagId} tags={tags} />
+      </label>
+      {!expense.isIncome && (
+        <>
+          <label>
+            ¿Debo, necesito o quiero? (opcional)
+            <select value={necessity} onChange={(e) => setNecessity(e.target.value as typeof necessity)}>
+              <option value="">Sin clasificar</option>
+              <option value="debo">Debo</option>
+              <option value="necesito">Necesito</option>
+              <option value="quiero">Quiero</option>
+            </select>
+          </label>
+          <label>
+            ¿Fijo o variable? (opcional)
+            <select value={isFixed} onChange={(e) => setIsFixed(e.target.value as typeof isFixed)}>
+              <option value="">Sin clasificar</option>
+              <option value="fijo">Fijo</option>
+              <option value="variable">Variable</option>
+            </select>
+          </label>
+        </>
+      )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
         <button type="button" onClick={handleSave} disabled={saving}>
@@ -324,16 +864,45 @@ function EditExpenseInline({
 // gasto eligiendo la categoría de una lista.
 function ManageCategoriesModal({
   categories,
+  tags,
   onClose,
   onChanged,
 }: {
   categories: BudgetCategory[]
+  tags: Tag[]
   onClose: () => void
   onChanged: () => void
 }) {
   const [newCategoryGroup, setNewCategoryGroup] = useState<'alimentacion' | 'generales' | 'ingresos'>('alimentacion')
   const [addingCategory, setAddingCategory] = useState(false)
   const [addingExpense, setAddingExpense] = useState(false)
+  const [addingTag, setAddingTag] = useState(false)
+  const [newTagName, setNewTagName] = useState('')
+  const [renamingTagId, setRenamingTagId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  function moveTag(index: number, direction: -1 | 1) {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= tags.length) return
+    const next = [...tags]
+    ;[next[index], next[newIndex]] = [next[newIndex], next[index]]
+    reorderTags(next.map((t) => t.id)).then(onChanged)
+  }
+
+  async function handleAddTag(e: FormEvent) {
+    e.preventDefault()
+    if (!newTagName.trim()) return
+    await createTag({ name: newTagName.trim() })
+    setNewTagName('')
+    setAddingTag(false)
+    onChanged()
+  }
+
+  async function handleRenameTag(id: string) {
+    if (renameValue.trim()) await updateTag(id, { name: renameValue.trim() })
+    setRenamingTagId(null)
+    onChanged()
+  }
 
   const alimentacion = categories.filter((c) => c.budgetGroup === 'alimentacion')
   const generales = categories.filter((c) => c.budgetGroup === 'generales')
@@ -466,6 +1035,76 @@ function ManageCategoriesModal({
         {renderGroupList('Alimentación', alimentacion)}
         {renderGroupList('Generales', generales)}
         {renderGroupList('Ingresos', ingresos)}
+
+        <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
+
+        {/* Skill de Pepa, punto 11: crear/editar/eliminar/reordenar
+            etiquetas — libres, sin lista cerrada. */}
+        <p className="muted" style={{ marginBottom: 4, fontWeight: 600 }}>
+          Etiquetas
+        </p>
+        <div className="event-list" style={{ marginBottom: 8 }}>
+          {tags.map((t, i) =>
+            renamingTagId === t.id ? (
+              <form
+                key={t.id}
+                className="inline-fields"
+                style={{ marginBottom: 6 }}
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleRenameTag(t.id)
+                }}
+              >
+                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus />
+                <button type="submit">Guardar</button>
+              </form>
+            ) : (
+              <div key={t.id} className="card task-card" style={{ padding: '6px 10px', gap: 6, fontSize: 13 }}>
+                <button
+                  type="button"
+                  className="task-card-main"
+                  style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer' }}
+                  onClick={() => {
+                    setRenamingTagId(t.id)
+                    setRenameValue(t.name)
+                  }}
+                >
+                  <strong style={{ fontSize: 13 }}>🏷️ {t.name}</strong>
+                </button>
+                <button type="button" className="link-button" style={{ padding: 4 }} disabled={i === 0} onClick={() => moveTag(i, -1)} aria-label={`Subir ${t.name}`}>
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  style={{ padding: 4 }}
+                  disabled={i === tags.length - 1}
+                  onClick={() => moveTag(i, 1)}
+                  aria-label={`Bajar ${t.name}`}
+                >
+                  ↓
+                </button>
+                <ConfirmIconButton icon="✕" className="link-button" ariaLabel={`Eliminar etiqueta ${t.name}`} onConfirm={() => deleteTag(t.id).then(onChanged)} />
+              </div>
+            ),
+          )}
+          {tags.length === 0 && <p className="muted">Todavía no hay etiquetas.</p>}
+        </div>
+        <button type="button" className="link-button" onClick={() => setAddingTag((v) => !v)}>
+          {addingTag ? 'Cerrar' : '+ Nueva etiqueta'}
+        </button>
+        {addingTag && (
+          <form onSubmit={handleAddTag} className="inline-fields" style={{ marginTop: 8 }}>
+            <input
+              type="text"
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+              placeholder="Eric, Vacaciones…"
+              autoFocus
+            />
+            <button type="submit">Crear</button>
+          </form>
+        )}
       </div>
     </div>
   )

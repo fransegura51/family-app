@@ -81,6 +81,7 @@ Deno.serve(async (req) => {
           store: "Amazon",
           kind: "real",
           notes: orderNumber ? `Pedido ${orderNumber}` : null,
+          source: "ticket",
         })
         .select("id")
         .single()

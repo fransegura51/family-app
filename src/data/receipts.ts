@@ -65,6 +65,7 @@ export async function uploadReceipt(input: {
         category: input.category,
         store: input.store || null,
         kind: 'real',
+        source: 'ticket',
       })
       .select('id')
       .single()
@@ -137,6 +138,7 @@ export async function updateReceipt(
           category: input.category,
           store: input.store || null,
           kind: 'real',
+          source: 'ticket',
         })
         .select('id')
         .single()

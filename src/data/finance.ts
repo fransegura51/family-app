@@ -5,8 +5,10 @@ import type {
   BudgetPeriod,
   Expense,
   ExpenseKind,
+  ExpenseSource,
   KidGoal,
   KidWalletTransaction,
+  Tag,
   WalletTransactionType,
 } from '@/domain/types'
 
@@ -29,7 +31,9 @@ async function currentFamilyId(): Promise<string> {
 export async function listExpenses(): Promise<Expense[]> {
   const { data, error } = await supabase
     .from('expenses')
-    .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group')
+    .select(
+      'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, necessity, is_fixed',
+    )
     .order('expense_date', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -43,6 +47,10 @@ export async function listExpenses(): Promise<Expense[]> {
     notes: r.notes,
     isIncome: r.is_income,
     budgetGroup: r.budget_group,
+    tagId: r.tag_id,
+    source: r.source as ExpenseSource,
+    necessity: r.necessity,
+    isFixed: r.is_fixed,
   }))
 }
 
@@ -54,6 +62,8 @@ export async function addExpense(input: {
   kind: ExpenseKind
   isIncome?: boolean
   budgetGroup?: string
+  tagId?: string | null
+  source?: ExpenseSource
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('expenses').insert({
@@ -65,6 +75,8 @@ export async function addExpense(input: {
     kind: input.kind,
     is_income: input.isIncome ?? false,
     budget_group: input.budgetGroup ?? 'alimentacion',
+    tag_id: input.tagId ?? null,
+    source: input.source ?? 'manual',
   })
   if (error) throw error
 }
@@ -78,7 +90,17 @@ export async function deleteExpense(id: string): Promise<void> {
 // eliminarlo o editarlo por si me he equivocado").
 export async function updateExpense(
   id: string,
-  patch: { date?: string; amount?: number; category?: string; store?: string; kind?: ExpenseKind; isIncome?: boolean },
+  patch: {
+    date?: string
+    amount?: number
+    category?: string
+    store?: string
+    kind?: ExpenseKind
+    isIncome?: boolean
+    tagId?: string | null
+    necessity?: 'debo' | 'necesito' | 'quiero' | null
+    isFixed?: boolean | null
+  },
 ): Promise<void> {
   const update: Record<string, unknown> = {}
   if (patch.date !== undefined) update.expense_date = patch.date
@@ -87,6 +109,9 @@ export async function updateExpense(
   if (patch.store !== undefined) update.store = patch.store || null
   if (patch.kind !== undefined) update.kind = patch.kind
   if (patch.isIncome !== undefined) update.is_income = patch.isIncome
+  if (patch.tagId !== undefined) update.tag_id = patch.tagId
+  if (patch.necessity !== undefined) update.necessity = patch.necessity
+  if (patch.isFixed !== undefined) update.is_fixed = patch.isFixed
   const { error } = await supabase.from('expenses').update(update).eq('id', id)
   if (error) throw error
 }
@@ -143,7 +168,7 @@ export async function deleteBudget(id: string): Promise<void> {
 export async function listBudgetCategories(): Promise<BudgetCategory[]> {
   const { data, error } = await supabase
     .from('budget_categories')
-    .select('id, family_id, name, icon, budget_group, sort_order')
+    .select('id, family_id, name, icon, budget_group, sort_order, parent_id')
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -153,10 +178,16 @@ export async function listBudgetCategories(): Promise<BudgetCategory[]> {
     icon: r.icon,
     budgetGroup: r.budget_group,
     sortOrder: r.sort_order,
+    parentId: r.parent_id,
   }))
 }
 
-export async function createBudgetCategory(input: { name: string; icon: string; budgetGroup: string }): Promise<void> {
+export async function createBudgetCategory(input: {
+  name: string
+  icon: string
+  budgetGroup: string
+  parentId?: string | null
+}): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('budget_categories').insert({
     family_id: familyId,
@@ -164,6 +195,7 @@ export async function createBudgetCategory(input: { name: string; icon: string; 
     icon: input.icon.trim() || '💰',
     budget_group: input.budgetGroup,
     sort_order: Date.now(),
+    parent_id: input.parentId ?? null,
   })
   if (error) throw error
 }
@@ -171,21 +203,29 @@ export async function createBudgetCategory(input: { name: string; icon: string; 
 // Alta de varias categorías de golpe — se usa para sembrar Presupuesto
 // Generales la primera vez (Luz, Agua, Impuestos...) sin que la
 // persona tenga que darlas de alta una a una.
+// Devuelve {name, id} de lo creado — hace falta para sembrar categorías
+// de dos niveles: primero se crean las principales y con sus ids ya
+// reales se crean las subcategorías apuntando a ellas.
 export async function createBudgetCategoriesBulk(
-  inputs: { name: string; icon: string; budgetGroup: string }[],
-): Promise<void> {
+  inputs: { name: string; icon: string; budgetGroup: string; parentId?: string | null }[],
+): Promise<{ id: string; name: string }[]> {
   const familyId = await currentFamilyId()
   const base = Date.now()
-  const { error } = await supabase.from('budget_categories').insert(
-    inputs.map((input, index) => ({
-      family_id: familyId,
-      name: input.name,
-      icon: input.icon,
-      budget_group: input.budgetGroup,
-      sort_order: base + index,
-    })),
-  )
+  const { data, error } = await supabase
+    .from('budget_categories')
+    .insert(
+      inputs.map((input, index) => ({
+        family_id: familyId,
+        name: input.name,
+        icon: input.icon,
+        budget_group: input.budgetGroup,
+        sort_order: base + index,
+        parent_id: input.parentId ?? null,
+      })),
+    )
+    .select('id, name')
   if (error) throw error
+  return data
 }
 
 export async function deleteBudgetCategory(id: string): Promise<void> {
@@ -203,6 +243,56 @@ export async function reorderBudgetCategories(orderedIds: string[]): Promise<voi
   const { error } = await supabase
     .from('budget_categories')
     .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
+  if (error) throw new Error(error.message)
+}
+
+// ---------------------------------------------------------------------
+// Etiquetas (Skill de Pepa, punto 11) — libres, creadas por el
+// usuario, independientes de categoría/subcategoría.
+// ---------------------------------------------------------------------
+
+export async function listTags(): Promise<Tag[]> {
+  const { data, error } = await supabase
+    .from('tags')
+    .select('id, family_id, name, color, sort_order')
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    name: r.name,
+    color: r.color,
+    sortOrder: r.sort_order,
+  }))
+}
+
+export async function createTag(input: { name: string; color?: string }): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('tags').insert({
+    family_id: familyId,
+    name: input.name.trim(),
+    color: input.color ?? '#4C6EF5',
+    sort_order: Date.now(),
+  })
+  if (error) throw error
+}
+
+export async function updateTag(id: string, patch: { name?: string; color?: string }): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.color !== undefined) update.color = patch.color
+  const { error } = await supabase.from('tags').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteTag(id: string): Promise<void> {
+  const { error } = await supabase.from('tags').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function reorderTags(orderedIds: string[]): Promise<void> {
+  const base = Date.now()
+  const { error } = await supabase.from('tags').upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
   if (error) throw new Error(error.message)
 }
 

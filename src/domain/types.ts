@@ -171,6 +171,11 @@ export type ExpenseKind = 'real' | 'estimado' | 'previsto'
 export type BudgetPeriod = 'mensual' | 'semanal'
 export type WalletTransactionType = 'ingreso' | 'ahorro' | 'gasto' | 'impuesto'
 
+// Skill de Pepa, punto 22: de dónde sale el movimiento — "banco" y
+// "ticket_banco" están preparados para cuando se conecte el banco
+// (todavía no hay datos reales de esa fuente).
+export type ExpenseSource = 'manual' | 'ticket' | 'banco' | 'ticket_banco'
+
 export interface Expense {
   id: string
   familyId: string
@@ -189,6 +194,14 @@ export interface Expense {
   // diferentes [entre Alimentación y Generales]... no quiero que se
   // sumen".
   budgetGroup: BudgetGroup
+  // Etiqueta libre del usuario (Eric, Vacaciones...) — Skill de Pepa:
+  // independiente de la categoría, una por movimiento.
+  tagId: string | null
+  source: ExpenseSource
+  // Skill de Pepa, puntos 15/16 — null si nadie lo ha clasificado
+  // todavía (no se inventa una clasificación).
+  necessity: 'debo' | 'necesito' | 'quiero' | null
+  isFixed: boolean | null
 }
 
 // "alimentacion" | "generales" — separa las dos pestañas de
@@ -210,12 +223,25 @@ export interface Budget {
 // Categoría de presupuesto con icono — petición real: "que se puedan
 // crear categorías, algo como lo de la foto" (Salario 👔, Comestibles
 // 🛒, Entretenimiento 🍿, Vivienda 🏠...).
+// Skill de Pepa, punto 10: dos niveles — una categoría con parentId es
+// subcategoría de la que apunta parentId.
 export interface BudgetCategory {
   id: string
   familyId: string
   name: string
   icon: string
   budgetGroup: BudgetGroup
+  sortOrder: number
+  parentId: string | null
+}
+
+// Etiquetas creadas por el usuario (Skill de Pepa, punto 11) —
+// independientes de categoría/subcategoría, sin lista cerrada.
+export interface Tag {
+  id: string
+  familyId: string
+  name: string
+  color: string
   sortOrder: number
 }
 

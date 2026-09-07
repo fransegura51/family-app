@@ -176,6 +176,7 @@ Deno.serve(async (req) => {
           category: "Alimentación",
           store: "Mercadona",
           kind: "real",
+          source: "ticket",
         })
         .select("id")
         .single()

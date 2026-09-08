@@ -65,16 +65,25 @@ export async function deleteRecipe(id: string): Promise<void> {
   if (error) throw error
 }
 
-// Flujo Menú → ingredientes → lista (Skill 15): añade los ingredientes de
-// la receta a la lista de la compra de golpe.
-export async function addRecipeIngredientsToShoppingList(recipe: Recipe): Promise<void> {
-  for (const ingredient of recipe.ingredients) {
+// Flujo Menú → ingredientes → lista (Skill 15): añade a la lista de la
+// compra solo los ingredientes elegidos (no siempre hace falta
+// comprarlos todos — petición real), cada uno en la tienda que se
+// indique.
+export async function addRecipeIngredientsToShoppingList(
+  recipe: Recipe,
+  selections: { ingredientId: string; store: string | null }[],
+): Promise<void> {
+  const byId = new Map(recipe.ingredients.map((i) => [i.id, i]))
+  for (const sel of selections) {
+    const ingredient = byId.get(sel.ingredientId)
+    if (!ingredient) continue
     await addShoppingItem({
       name: ingredient.name,
       quantity: ingredient.quantity ?? '',
       unit: ingredient.unit ?? '',
       priority: 'normal',
       tripId: null,
+      store: sel.store,
     })
   }
 }

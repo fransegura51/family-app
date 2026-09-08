@@ -19,6 +19,9 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { searchRecipe } from '@/services/recipeSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
+import { importRecipeFromUrl } from '@/services/recipeUrlImport'
+import { listShoppingStores } from '@/data/shoppingStores'
+import type { ShoppingStoreEntry } from '@/domain/types'
 import {
   addBodyMeasurement,
   deleteBodyMeasurement,
@@ -201,28 +204,28 @@ function MenuEntryPicker({
 
 function RecipesTab() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  // Petición real: "no siempre hay que comprar todos los ingredientes...
+  // que se pueda elegir qué productos añadir y en qué tienda
+  // comprarlos" — se abre un paso intermedio en vez de mandarlos todos
+  // de golpe.
+  const [pickingFor, setPickingFor] = useState<Recipe | null>(null)
 
   function reload() {
     setLoading(true)
-    listRecipes()
-      .then(setRecipes)
+    Promise.all([listRecipes(), listShoppingStores()])
+      .then(([r, s]) => {
+        setRecipes(r)
+        setStores(s)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
 
   useEffect(reload, [])
-
-  async function handleGenerateList(recipe: Recipe) {
-    try {
-      await addRecipeIngredientsToShoppingList(recipe)
-      setInfo(`Ingredientes de "${recipe.title}" añadidos a la lista de la compra.`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo generar la lista')
-    }
-  }
 
   if (loading) return <p className="muted">Cargando recetas…</p>
 
@@ -244,8 +247,8 @@ function RecipesTab() {
               ))}
             </ul>
             <div className="task-card-actions">
-              <button type="button" className="link-button" onClick={() => handleGenerateList(recipe)}>
-                Generar lista de la compra
+              <button type="button" className="link-button" onClick={() => setPickingFor(recipe)}>
+                Añadir a la lista de la compra
               </button>
               <ConfirmButton onConfirm={() => deleteRecipe(recipe.id).then(reload)} />
             </div>
@@ -254,6 +257,105 @@ function RecipesTab() {
         {recipes.length === 0 && <p className="muted">Todavía no hay recetas.</p>}
       </div>
       <AddRecipeForm onAdded={reload} />
+
+      {pickingFor && (
+        <PickIngredientsModal
+          recipe={pickingFor}
+          stores={stores}
+          onCancel={() => setPickingFor(null)}
+          onDone={(count) => {
+            setPickingFor(null)
+            setInfo(`${count} ${count === 1 ? 'ingrediente añadido' : 'ingredientes añadidos'} de "${pickingFor.title}" a la lista de la compra.`)
+          }}
+          onError={(msg) => setError(msg)}
+        />
+      )}
+    </div>
+  )
+}
+
+function PickIngredientsModal({
+  recipe,
+  stores,
+  onCancel,
+  onDone,
+  onError,
+}: {
+  recipe: Recipe
+  stores: ShoppingStoreEntry[]
+  onCancel: () => void
+  onDone: (count: number) => void
+  onError: (message: string) => void
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set(recipe.ingredients.map((i) => i.id)))
+  const [storeByIngredient, setStoreByIngredient] = useState<Map<string, string>>(new Map())
+  const [saving, setSaving] = useState(false)
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleConfirm() {
+    setSaving(true)
+    try {
+      const selections = [...selected].map((ingredientId) => ({
+        ingredientId,
+        store: storeByIngredient.get(ingredientId) || null,
+      }))
+      await addRecipeIngredientsToShoppingList(recipe, selections)
+      onDone(selections.length)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'No se pudo generar la lista')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Añadir a la lista
+          </h2>
+          <button type="button" className="modal-close" onClick={onCancel} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <p className="muted">Elige qué ingredientes hacen falta y, si quieres, en qué tienda comprar cada uno.</p>
+        <div className="event-list">
+          {recipe.ingredients.map((i) => (
+            <div key={i.id} className="card" style={{ padding: 10 }}>
+              <label className="checkbox-label" style={{ marginBottom: 6 }}>
+                <input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(i.id)} />
+                {i.name}
+                {i.quantity && ` — ${i.quantity}${i.unit ? ' ' + i.unit : ''}`}
+              </label>
+              {selected.has(i.id) && (
+                <select
+                  value={storeByIngredient.get(i.id) ?? ''}
+                  onChange={(e) => setStoreByIngredient((prev) => new Map(prev).set(i.id, e.target.value))}
+                >
+                  <option value="">Sin tienda concreta</option>
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.name}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={handleConfirm} disabled={saving || selected.size === 0}>
+          {saving ? 'Añadiendo…' : `Añadir ${selected.size} a la lista`}
+        </button>
+      </div>
     </div>
   )
 }
@@ -268,6 +370,32 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
   const [saving, setSaving] = useState(false)
   const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
   const [found, setFound] = useState<ParsedRecipe | null>(null)
+  const [foundSource, setFoundSource] = useState<'wikibooks' | 'url' | null>(null)
+  const [recipeUrl, setRecipeUrl] = useState('')
+  const [urlImportStatus, setUrlImportStatus] = useState<'idle' | 'importing' | 'error'>('idle')
+  const [urlImportError, setUrlImportError] = useState<string | null>(null)
+
+  // Petición real: "subir recetas mediante la URL de otras páginas" —
+  // reutiliza el mismo paso de revisión que la búsqueda en Wikibooks
+  // (found/useFoundRecipe), en vez de guardar directamente lo leído.
+  async function handleImportUrl() {
+    if (!recipeUrl.trim()) return
+    setUrlImportStatus('importing')
+    setUrlImportError(null)
+    try {
+      const result = await importRecipeFromUrl(recipeUrl.trim())
+      setFound({
+        title: result.title || title,
+        ingredients: result.ingredients,
+        steps: result.instructions ? result.instructions.split('\n').filter(Boolean) : [],
+      })
+      setFoundSource('url')
+      setUrlImportStatus('idle')
+    } catch (err) {
+      setUrlImportStatus('error')
+      setUrlImportError(err instanceof Error ? err.message : 'No se pudo importar la receta')
+    }
+  }
 
   async function handleSearch() {
     if (!title.trim()) return
@@ -285,6 +413,7 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
         return
       }
       setFound(parsed)
+      setFoundSource('wikibooks')
       setSearchStatus('idle')
     } catch {
       setSearchStatus('error')
@@ -293,6 +422,7 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
 
   function useFoundRecipe() {
     if (!found) return
+    if (found.title && !title.trim()) setTitle(found.title)
     setIngredients(found.ingredients.map((i) => `${i}, ,`).join('\n'))
     setNotes(found.steps.map((s, i) => `${i + 1}. ${s}`).join('\n'))
     setFound(null)
@@ -332,6 +462,25 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
       {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
 
       <label>
+        O importar desde la URL de otra web de recetas
+        <input
+          type="url"
+          value={recipeUrl}
+          onChange={(e) => setRecipeUrl(e.target.value)}
+          placeholder="https://..."
+        />
+      </label>
+      <button
+        type="button"
+        className="link-button"
+        onClick={handleImportUrl}
+        disabled={!recipeUrl.trim() || urlImportStatus === 'importing'}
+      >
+        {urlImportStatus === 'importing' ? 'Leyendo la página…' : '🔗 Importar desde esa URL'}
+      </button>
+      {urlImportStatus === 'error' && <p className="error">{urlImportError}</p>}
+
+      <label>
         Ingredientes (uno por línea: nombre, cantidad, unidad)
         <textarea
           rows={4}
@@ -360,7 +509,9 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
                 ✕
               </button>
             </div>
-            <p className="muted">Encontrada en el recetario abierto de Wikibooks.</p>
+            <p className="muted">
+              {foundSource === 'url' ? 'Importada desde la URL indicada.' : 'Encontrada en el recetario abierto de Wikibooks.'}
+            </p>
 
             {found.ingredients.length > 0 && (
               <div className="day-modal-group">

@@ -113,25 +113,29 @@ function isEconomiaSubTab(key: EconomiaMenuItemKey): key is SubTab {
 // un botón para sacar alguno de ellos... que pica el botón y se sale
 // directamente [a] la pantalla de Economía, donde están situados
 // ahora" — mismo concepto que los 4 iconos fijos del ☰ Menú global
-// (PINNED_COUNT), pero aquí sin límite fijo: ninguna pestaña visible
-// fuera del desplegable por defecto, la familia decide cuáles sacar.
-// Guardado en el dispositivo (como el orden del menú), no por familia.
+// (PINNED_COUNT), pero aquí sin límite fijo: nada visible fuera del
+// desplegable por defecto, la familia decide qué sacar. Luego: "las
+// tres pestañas [Categorías/Etiquetas/Nuevo movimiento] ponle también
+// el botón de sacar y meter" — no solo las 6 pestañas, cualquier
+// acceso del desplegable se puede sacar. Guardado en el dispositivo
+// (como el orden del menú), no por familia.
 const ECONOMIA_PINNED_KEY = 'familyapp:economia-pinned-tabs'
+const ECONOMIA_PINNABLE_KEYS: readonly EconomiaMenuItemKey[] = [...SUB_TABS, 'accion:categorias', 'accion:etiquetas', 'accion:movimiento']
 
-function loadEconomiaPinnedTabs(): SubTab[] {
+function loadEconomiaPinnedItems(): EconomiaMenuItemKey[] {
   try {
     const raw = localStorage.getItem(ECONOMIA_PINNED_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed.filter((t) => (SUB_TABS as readonly string[]).includes(t)) as SubTab[]) : []
+    return Array.isArray(parsed) ? (parsed.filter((k) => (ECONOMIA_PINNABLE_KEYS as string[]).includes(k)) as EconomiaMenuItemKey[]) : []
   } catch {
     return []
   }
 }
 
-function saveEconomiaPinnedTabs(tabs: SubTab[]) {
+function saveEconomiaPinnedItems(items: EconomiaMenuItemKey[]) {
   try {
-    localStorage.setItem(ECONOMIA_PINNED_KEY, JSON.stringify(tabs))
+    localStorage.setItem(ECONOMIA_PINNED_KEY, JSON.stringify(items))
   } catch {
     // Sin localStorage (privado/bloqueado) — se queda todo dentro del
     // desplegable, no rompe nada.
@@ -189,12 +193,12 @@ export function FinanceScreen() {
   // pantalla (Resumen/Estadísticas/Movimientos/...), como forma
   // alternativa de cambiar de pestaña sin tocar la fila de chips.
   const [economiaMenuOpen, setEconomiaMenuOpen] = useState(false)
-  const [pinnedTabs, setPinnedTabs] = useState<SubTab[]>(() => loadEconomiaPinnedTabs())
+  const [pinnedItems, setPinnedItems] = useState<EconomiaMenuItemKey[]>(() => loadEconomiaPinnedItems())
 
-  function togglePinnedTab(t: SubTab) {
-    setPinnedTabs((prev) => {
-      const next = prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-      saveEconomiaPinnedTabs(next)
+  function togglePinnedItem(key: EconomiaMenuItemKey) {
+    setPinnedItems((prev) => {
+      const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
+      saveEconomiaPinnedItems(next)
       return next
     })
   }
@@ -242,8 +246,8 @@ export function FinanceScreen() {
           <EconomiaMenuDropdown
             activeTab={tab}
             onSelectTab={setTab}
-            pinnedTabs={pinnedTabs}
-            onTogglePin={togglePinnedTab}
+            pinnedItems={pinnedItems}
+            onTogglePin={togglePinnedItem}
             onAction={(key) => {
               if (key === 'accion:categorias') setShowCategories(true)
               else if (key === 'accion:etiquetas') setShowTags(true)
@@ -267,14 +271,25 @@ export function FinanceScreen() {
       </div>
 
       {/* Petición real: "quiero que los quites de ahí [debajo de las
-          tarjetas del banco]" — ya no hay una fila fija con las 6
-          pestañas; solo aparecen aquí las que la familia haya sacado
-          del desplegable con "📌 Sacar". */}
-      {pinnedTabs.length > 0 && (
+          tarjetas del banco]" — ya no hay una fila fija; solo aparece
+          aquí lo que la familia haya sacado del desplegable con "📌
+          Sacar" (pestañas o los 3 accesos, "ponle también el botón de
+          sacar y meter"). */}
+      {pinnedItems.length > 0 && (
         <div className="filter-row">
-          {SUB_TABS.filter((t) => pinnedTabs.includes(t)).map((t) => (
-            <button key={t} type="button" className={'chip' + (tab === t ? ' chip-active' : '')} onClick={() => setTab(t)}>
-              {ECONOMIA_MENU_ITEM_META[t].icon} {ECONOMIA_MENU_ITEM_META[t].label}
+          {ECONOMIA_PINNABLE_KEYS.filter((k) => pinnedItems.includes(k)).map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={'chip' + (isEconomiaSubTab(k) && tab === k ? ' chip-active' : '')}
+              onClick={() => {
+                if (k === 'accion:categorias') setShowCategories(true)
+                else if (k === 'accion:etiquetas') setShowTags(true)
+                else if (k === 'accion:movimiento') setShowNewMovement(true)
+                else setTab(k)
+              }}
+            >
+              {ECONOMIA_MENU_ITEM_META[k].icon} {ECONOMIA_MENU_ITEM_META[k].label}
             </button>
           ))}
         </div>
@@ -323,15 +338,15 @@ export function FinanceScreen() {
 function EconomiaMenuDropdown({
   activeTab,
   onSelectTab,
-  pinnedTabs,
+  pinnedItems,
   onTogglePin,
   onAction,
   onClose,
 }: {
   activeTab: SubTab
   onSelectTab: (t: SubTab) => void
-  pinnedTabs: SubTab[]
-  onTogglePin: (t: SubTab) => void
+  pinnedItems: EconomiaMenuItemKey[]
+  onTogglePin: (key: EconomiaMenuItemKey) => void
   onAction: (key: 'accion:categorias' | 'accion:etiquetas' | 'accion:movimiento') => void
   onClose: () => void
 }) {
@@ -497,16 +512,14 @@ function EconomiaMenuDropdown({
                     </select>
                   </span>
                 ) : (
-                  isTab && (
-                    <button
-                      type="button"
-                      className="economia-menu-pin"
-                      onClick={() => onTogglePin(key)}
-                      aria-label={pinnedTabs.includes(key) ? `Quitar ${key} de la pantalla de Economía` : `Sacar ${key} a la pantalla de Economía`}
-                    >
-                      {pinnedTabs.includes(key) ? '📍 Quitar' : '📌 Sacar'}
-                    </button>
-                  )
+                  <button
+                    type="button"
+                    className="economia-menu-pin"
+                    onClick={() => onTogglePin(key)}
+                    aria-label={pinnedItems.includes(key) ? `Quitar ${meta.label} de la pantalla de Economía` : `Sacar ${meta.label} a la pantalla de Economía`}
+                  >
+                    {pinnedItems.includes(key) ? '📍 Quitar' : '📌 Sacar'}
+                  </button>
                 )}
               </div>
             )

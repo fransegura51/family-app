@@ -28,6 +28,14 @@ if ('serviceWorker' in navigator) {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') registration.update()
     })
+    // El aviso de visibilitychange no basta en escritorio: una pestaña
+    // que se queda siempre en primer plano (nunca se cambia de app ni
+    // se minimiza) no dispara nunca ese evento, así que nunca se
+    // comprobaba si había versión nueva — caso real, confirmado: una
+    // familia con la pestaña abierta desde antes del despliegue se
+    // quedó viendo la app vieja indefinidamente. Con esto, como mucho
+    // tarda 5 minutos en enterarse aunque no toque ni cambie de pestaña.
+    setInterval(() => registration.update(), 5 * 60 * 1000)
   })
 }
 

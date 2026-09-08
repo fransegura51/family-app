@@ -207,10 +207,6 @@ export interface Expense {
   // independiente de la categoría, una por movimiento.
   tagId: string | null
   source: ExpenseSource
-  // Skill de Pepa, puntos 15/16 — null si nadie lo ha clasificado
-  // todavía (no se inventa una clasificación).
-  necessity: 'debo' | 'necesito' | 'quiero' | null
-  isFixed: boolean | null
 }
 
 // "alimentacion" | "generales" — separa las dos pestañas de
@@ -242,6 +238,13 @@ export interface BudgetCategory {
   budgetGroup: BudgetGroup
   sortOrder: number
   parentId: string | null
+  // Skill de Pepa, puntos 15/16 — automática de fábrica según
+  // estándares contables habituales, por categoría (no por
+  // movimiento), editable después por la familia. Null cuando no
+  // aplica o no se puede saber sin inventar (Ingresos, Ahorro,
+  // Movimientos internos, Otros).
+  necessity: 'debo' | 'necesito' | 'quiero' | null
+  isFixed: boolean | null
 }
 
 // Etiquetas creadas por el usuario (Skill de Pepa, punto 11) —

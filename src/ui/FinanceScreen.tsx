@@ -22,6 +22,7 @@ import {
   listWalletTransactions,
   reorderBudgetCategories,
   reorderTags,
+  updateBudgetCategory,
   updateExpense,
   updateTag,
 } from '@/data/finance'
@@ -39,7 +40,14 @@ import {
   recordProductPurchase,
   type ReceiptLineDetail,
 } from '@/data/products'
-import { budgetPeriodRange, budgetSpent, isFoodCategory, walletBalance, walletCategoryTotal } from '@/domain/finance'
+import {
+  budgetPeriodRange,
+  budgetSpent,
+  isFoodCategory,
+  resolveCategoryClassification,
+  walletBalance,
+  walletCategoryTotal,
+} from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
 import { PRESET_LABELS, rangeForPreset, toDateStr, type SpendRangePreset } from '@/domain/dateRanges'
 import { findKnownStore } from '@/domain/voiceQuery'
@@ -109,7 +117,7 @@ export function FinanceScreen() {
       {tab === 'Movimientos' && (
         <ExpensesTab filter={movementsFilter} onClearFilter={() => setMovementsFilter(null)} />
       )}
-      {tab === 'Presupuesto Generales' && <BudgetsTab group="generales" seedCategories={GENERAL_BUDGET_SEED} />}
+      {tab === 'Presupuesto Generales' && <BudgetsTab group="generales" seedCategories={MASTER_CATEGORY_SEED} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
     </div>
   )
@@ -334,6 +342,190 @@ function BreakdownDonut({
   )
 }
 
+// Solo el anillo (sin leyenda) — usado por el carrusel jerárquico de
+// categorías, donde la leyenda se muestra una vez por debajo, no
+// repetida dentro de cada tarjeta.
+function DonutRing({
+  slices,
+  centerLabel,
+  highlightedKey,
+}: {
+  slices: BreakdownSlice[]
+  centerLabel: { name: string; total: number }
+  highlightedKey: string | null
+}) {
+  const grandTotal = slices.reduce((s, x) => s + x.total, 0)
+  let cumulative = 0
+  const stops = slices.map((s, i) => {
+    const pct = grandTotal > 0 ? (s.total / grandTotal) * 100 : 0
+    const start = cumulative
+    cumulative += pct
+    const color = !highlightedKey || highlightedKey === s.key ? DONUT_COLORS[i % DONUT_COLORS.length] : '#dfe3ea'
+    return `${color} ${start}% ${cumulative}%`
+  })
+  const gradient = grandTotal > 0 ? `conic-gradient(${stops.join(', ')})` : '#e9ecef'
+
+  return (
+    <div className="donut-ring" style={{ background: gradient }}>
+      <div className="donut-ring-center">
+        <span>{centerLabel.name}</span>
+        <strong>{centerLabel.total.toFixed(2)} €</strong>
+      </div>
+    </div>
+  )
+}
+
+// Skill de Pepa, punto 10: "Donut principal por categorías. Al
+// seleccionar una categoría, segundo donut con subcategorías" —
+// petición real: "si tocas una de las categorías se resalta y ves el
+// importe de esa categoría y a la vez se abre un segundo dónut con el
+// reparto de las subcategorías". Carrusel horizontal de anillos (uno
+// por nivel), cada uno con su propia leyenda trazable (importe + % +
+// registros + "Ver X registros →").
+function CategoryDonutExplorer({
+  categories,
+  expenses,
+  onViewRecords,
+}: {
+  categories: BudgetCategory[]
+  expenses: Expense[]
+  onViewRecords: (category: string, label: string) => void
+}) {
+  const [selectedTopId, setSelectedTopId] = useState<string | null>(null)
+  const [highlightTop, setHighlightTop] = useState<string | null>(null)
+  const [highlightSub, setHighlightSub] = useState<string | null>(null)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const trackRef = useRef<HTMLDivElement>(null)
+
+  const topLevel = categories.filter((c) => !c.parentId)
+  const topSlices: BreakdownSlice[] = topLevel
+    .map((c) => {
+      const childNames = categories.filter((x) => x.parentId === c.id).map((x) => x.name)
+      const matched = expenses.filter((e) => e.category === c.name || childNames.includes(e.category))
+      return {
+        key: c.id,
+        label: c.name,
+        icon: c.icon,
+        total: matched.reduce((s, e) => s + e.amount, 0),
+        count: matched.length,
+        hasChildren: childNames.length > 0,
+      }
+    })
+    .filter((s) => s.total > 0)
+  const topGrandTotal = topSlices.reduce((s, x) => s + x.total, 0)
+  const highlightedTop = topSlices.find((s) => s.key === highlightTop)
+  const topCenter = highlightedTop ? { name: highlightedTop.label, total: highlightedTop.total } : { name: 'Todo', total: topGrandTotal }
+
+  const selectedTop = selectedTopId ? topLevel.find((c) => c.id === selectedTopId) : undefined
+  const subSlices: BreakdownSlice[] = selectedTop
+    ? categories
+        .filter((c) => c.parentId === selectedTop.id)
+        .map((c): BreakdownSlice => {
+          const matched = expenses.filter((e) => e.category === c.name)
+          return { key: c.id, label: c.name, icon: c.icon, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+        })
+        .concat(
+          (() => {
+            const direct = expenses.filter((e) => e.category === selectedTop.name)
+            return direct.length > 0
+              ? [{ key: `directo:${selectedTop.id}`, label: '(sin subcategoría)', total: direct.reduce((s, e) => s + e.amount, 0), count: direct.length } as BreakdownSlice]
+              : []
+          })(),
+        )
+        .filter((s) => s.total > 0)
+    : []
+  const subGrandTotal = subSlices.reduce((s, x) => s + x.total, 0)
+  const highlightedSub = subSlices.find((s) => s.key === highlightSub)
+  const subCenter = highlightedSub ? { name: highlightedSub.label, total: highlightedSub.total } : { name: 'Todo', total: subGrandTotal }
+
+  function scrollToIndex(index: number) {
+    requestAnimationFrame(() => {
+      const track = trackRef.current
+      if (track) track.scrollTo({ left: index * track.clientWidth, behavior: 'smooth' })
+    })
+  }
+
+  function selectTop(key: string) {
+    setHighlightTop(key)
+    const slice = topSlices.find((s) => s.key === key)
+    if (!slice) return
+    if (slice.hasChildren) {
+      setSelectedTopId(key)
+      setHighlightSub(null)
+      scrollToIndex(1)
+    } else {
+      onViewRecords(slice.label, slice.label)
+    }
+  }
+
+  function selectSub(key: string) {
+    setHighlightSub(key)
+    const slice = subSlices.find((s) => s.key === key)
+    if (!slice || !selectedTop) return
+    onViewRecords(key.startsWith('directo:') ? selectedTop.name : slice.label, slice.label)
+  }
+
+  function closeSub() {
+    setSelectedTopId(null)
+    setHighlightSub(null)
+    scrollToIndex(0)
+  }
+
+  function legendRows(slices: BreakdownSlice[], grandTotal: number, onPick: (key: string) => void) {
+    if (slices.length === 0) return <p className="muted">Sin movimientos en este periodo.</p>
+    return (
+      <div className="donut-legend">
+        {slices.map((s, i) => (
+          <button key={s.key} type="button" className="donut-legend-row" onClick={() => onPick(s.key)}>
+            <span className="donut-legend-swatch" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+            <span className="donut-legend-name">
+              {s.icon} {s.label}
+              {s.hasChildren ? ' ›' : ''}
+            </span>
+            <span className="muted">
+              {(grandTotal > 0 ? (s.total / grandTotal) * 100 : 0).toFixed(0)}% · {s.total.toFixed(2)} € · {s.count} {s.count === 1 ? 'registro' : 'registros'}
+            </span>
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  if (topSlices.length === 0) {
+    return <p className="muted">No hay movimientos en este periodo para esta vista.</p>
+  }
+
+  return (
+    <div className="donut-explorer">
+      <div
+        className="donut-track"
+        ref={trackRef}
+        onScroll={(e) => setActiveIndex(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
+      >
+        <div className="donut-card">
+          <DonutRing slices={topSlices} centerLabel={topCenter} highlightedKey={highlightTop} />
+          {legendRows(topSlices, topGrandTotal, selectTop)}
+        </div>
+        {selectedTop && (
+          <div className="donut-card">
+            <button type="button" className="link-button" onClick={closeSub}>
+              ‹ {selectedTop.name}
+            </button>
+            <DonutRing slices={subSlices} centerLabel={subCenter} highlightedKey={highlightSub} />
+            {legendRows(subSlices, subGrandTotal, selectSub)}
+          </div>
+        )}
+      </div>
+      {selectedTop && (
+        <div className="donut-dots">
+          <span className={'donut-dot' + (activeIndex === 0 ? ' donut-dot-active' : '')} />
+          <span className={'donut-dot' + (activeIndex !== 0 ? ' donut-dot-active' : '')} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
@@ -346,7 +538,6 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [view, setView] = useState<'categorias' | 'etiquetas' | 'dnq' | 'fijo'>('categorias')
-  const [selectedParent, setSelectedParent] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([listExpenses(), listBudgetCategories(), listTags(), listAllProductPrices(), listProducts(), listReceipts()])
@@ -385,55 +576,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
 
   let body: JSX.Element
   if (view === 'categorias') {
-    if (selectedParent) {
-      const parent = categories.find((c) => c.id === selectedParent)
-      const children = categories.filter((c) => c.parentId === selectedParent)
-      const slices: BreakdownSlice[] = children.map((c) => {
-        const matched = real.filter((e) => e.category === c.name)
-        return { key: c.name, label: c.name, icon: c.icon, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
-      })
-      const other = real.filter((e) => e.category === parent?.name)
-      if (other.length > 0) slices.push({ key: parent!.name, label: '(sin subcategoría)', total: other.reduce((s, e) => s + e.amount, 0), count: other.length })
-      body = (
-        <>
-          <button type="button" className="link-button" onClick={() => setSelectedParent(null)}>
-            ‹ Volver a categorías
-          </button>
-          <BreakdownDonut
-            slices={slices.filter((s) => s.total > 0)}
-            centerLabel={{ name: parent?.name ?? '', total: slices.reduce((s, x) => s + x.total, 0) }}
-            onViewRecords={(key) => viewFor({ category: key }, `${key} — ${periodLabel}`)}
-          />
-        </>
-      )
-    } else {
-      const topLevel = categories.filter((c) => !c.parentId)
-      const slices: BreakdownSlice[] = topLevel
-        .map((c) => {
-          const childNames = categories.filter((x) => x.parentId === c.id).map((x) => x.name)
-          const matched = real.filter((e) => e.category === c.name || childNames.includes(e.category))
-          return {
-            key: c.id,
-            label: c.name,
-            icon: c.icon,
-            total: matched.reduce((s, e) => s + e.amount, 0),
-            count: matched.length,
-            hasChildren: childNames.length > 0,
-          }
-        })
-        .filter((s) => s.total > 0)
-      body = (
-        <BreakdownDonut
-          slices={slices}
-          centerLabel={{ name: 'Todo', total: totalReal }}
-          onSelect={setSelectedParent}
-          onViewRecords={(key) => {
-            const cat = topLevel.find((c) => c.id === key)
-            if (cat) viewFor({ category: cat.name }, `${cat.name} — ${periodLabel}`)
-          }}
-        />
-      )
-    }
+    body = <CategoryDonutExplorer categories={categories} expenses={real} onViewRecords={(cat, label) => viewFor({ category: cat }, `${label} — ${periodLabel}`)} />
   } else if (view === 'etiquetas') {
     const slices: BreakdownSlice[] = tags
       .map((t) => {
@@ -458,9 +601,10 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
       { key: 'quiero', label: 'Quiero' },
       { key: 'sin_clasificar', label: 'Sin clasificar' },
     ]
+    const necessityByExpense = new Map(real.map((e) => [e.id, resolveCategoryClassification(e.category, categories).necessity]))
     const slices: BreakdownSlice[] = groups
       .map((g) => {
-        const matched = real.filter((e) => (g.key === 'sin_clasificar' ? !e.necessity : e.necessity === g.key))
+        const matched = real.filter((e) => (g.key === 'sin_clasificar' ? !necessityByExpense.get(e.id) : necessityByExpense.get(e.id) === g.key))
         return { key: g.key, label: g.label, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
       })
       .filter((s) => s.total > 0)
@@ -481,9 +625,12 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
       { key: 'variable', label: 'Variable' },
       { key: 'sin_clasificar', label: 'Sin clasificar' },
     ]
+    const isFixedByExpense = new Map(real.map((e) => [e.id, resolveCategoryClassification(e.category, categories).isFixed]))
     const slices: BreakdownSlice[] = groups
       .map((g) => {
-        const matched = real.filter((e) => (g.key === 'sin_clasificar' ? e.isFixed == null : e.isFixed === (g.key === 'fijo')))
+        const matched = real.filter((e) =>
+          g.key === 'sin_clasificar' ? isFixedByExpense.get(e.id) == null : isFixedByExpense.get(e.id) === (g.key === 'fijo'),
+        )
         return { key: g.key, label: g.label, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
       })
       .filter((s) => s.total > 0)
@@ -517,7 +664,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
       {/* Skill de Pepa, punto 8: mismo selector, mismo periodo, mismo
           total general — solo cambia la dimensión de agrupación. */}
       <div className="filter-row" style={{ marginBottom: 8 }}>
-        <button type="button" className={'chip' + (view === 'categorias' ? ' chip-active' : '')} onClick={() => { setView('categorias'); setSelectedParent(null) }}>
+        <button type="button" className={'chip' + (view === 'categorias' ? ' chip-active' : '')} onClick={() => setView('categorias')}>
           Categorías
         </button>
         <button type="button" className={'chip' + (view === 'etiquetas' ? ' chip-active' : '')} onClick={() => setView('etiquetas')}>
@@ -754,8 +901,11 @@ function ExpensesTab({
       if (filter.to && e.expenseDate > filter.to) return false
       if (filter.category !== undefined && e.category !== filter.category) return false
       if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
-      if (filter.necessity !== undefined && e.necessity !== filter.necessity) return false
-      if (filter.isFixed !== undefined && e.isFixed !== filter.isFixed) return false
+      if (filter.necessity !== undefined || filter.isFixed !== undefined) {
+        const classification = resolveCategoryClassification(e.category, categories)
+        if (filter.necessity !== undefined && classification.necessity !== filter.necessity) return false
+        if (filter.isFixed !== undefined && classification.isFixed !== filter.isFixed) return false
+      }
       if (filter.isIncome !== undefined && e.isIncome !== filter.isIncome) return false
       return true
     })
@@ -922,12 +1072,12 @@ function EditExpenseInline({
   const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
   const [store, setStore] = useState(expense.store ?? '')
   const [tagId, setTagId] = useState(expense.tagId ?? '')
-  const [necessity, setNecessity] = useState<'debo' | 'necesito' | 'quiero' | ''>(expense.necessity ?? '')
-  const [isFixed, setIsFixed] = useState<'' | 'fijo' | 'variable'>(
-    expense.isFixed === true ? 'fijo' : expense.isFixed === false ? 'variable' : '',
-  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Skill de Pepa, puntos 15/16 — ya no se elige a mano por movimiento:
+  // se hereda de la categoría (automática, editable en "+ Categorías y
+  // movimientos" si la familia no está de acuerdo con la de fábrica).
+  const classification = resolveCategoryClassification(category, categories)
 
   async function handleSave() {
     setSaving(true)
@@ -938,8 +1088,6 @@ function EditExpenseInline({
         amount: Number(amount),
         category,
         tagId: tagId || null,
-        necessity: necessity || null,
-        isFixed: isFixed === '' ? null : isFixed === 'fijo',
         ...(expense.isIncome ? {} : { store }),
       })
       onDone()
@@ -985,25 +1133,12 @@ function EditExpenseInline({
         <TagSelect value={tagId} onChange={setTagId} tags={tags} />
       </label>
       {!expense.isIncome && (
-        <>
-          <label>
-            ¿Debo, necesito o quiero? (opcional)
-            <select value={necessity} onChange={(e) => setNecessity(e.target.value as typeof necessity)}>
-              <option value="">Sin clasificar</option>
-              <option value="debo">Debo</option>
-              <option value="necesito">Necesito</option>
-              <option value="quiero">Quiero</option>
-            </select>
-          </label>
-          <label>
-            ¿Fijo o variable? (opcional)
-            <select value={isFixed} onChange={(e) => setIsFixed(e.target.value as typeof isFixed)}>
-              <option value="">Sin clasificar</option>
-              <option value="fijo">Fijo</option>
-              <option value="variable">Variable</option>
-            </select>
-          </label>
-        </>
+        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+          {classification.necessity ? NECESSITY_LABELS[classification.necessity] : 'Sin clasificar'}
+          {' · '}
+          {classification.isFixed == null ? 'Sin clasificar' : classification.isFixed ? 'Fijo' : 'Variable'}
+          {' — según la categoría, editable en "+ Categorías y movimientos".'}
+        </p>
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
@@ -1076,44 +1211,69 @@ function ManageCategoriesModal({
     reorderBudgetCategories(next.map((c) => c.id)).then(onChanged)
   }
 
-  function renderRow(c: BudgetCategory, list: BudgetCategory[], i: number, indent: boolean) {
+  function renderRow(c: BudgetCategory, list: BudgetCategory[], i: number, indent: boolean, showClassification: boolean) {
     return (
-      <div
-        key={c.id}
-        className="card task-card"
-        style={{ padding: '6px 10px', gap: 6, fontSize: 13, marginLeft: indent ? 20 : 0 }}
-      >
-        <div className="task-card-main">
-          <strong style={{ fontSize: 13 }}>
-            {c.icon} {c.name}
-          </strong>
+      <div key={c.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4, padding: '6px 10px', marginLeft: indent ? 20 : 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <div className="task-card-main">
+            <strong style={{ fontSize: 13 }}>
+              {c.icon} {c.name}
+            </strong>
+          </div>
+          <button
+            type="button"
+            className="link-button"
+            style={{ padding: 4 }}
+            disabled={i === 0}
+            onClick={() => move(list, i, -1)}
+            aria-label={`Subir ${c.name}`}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="link-button"
+            style={{ padding: 4 }}
+            disabled={i === list.length - 1}
+            onClick={() => move(list, i, 1)}
+            aria-label={`Bajar ${c.name}`}
+          >
+            ↓
+          </button>
+          <ConfirmIconButton
+            icon="✕"
+            className="link-button"
+            ariaLabel={`Eliminar categoría ${c.name}`}
+            onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
+          />
         </div>
-        <button
-          type="button"
-          className="link-button"
-          style={{ padding: 4 }}
-          disabled={i === 0}
-          onClick={() => move(list, i, -1)}
-          aria-label={`Subir ${c.name}`}
-        >
-          ↑
-        </button>
-        <button
-          type="button"
-          className="link-button"
-          style={{ padding: 4 }}
-          disabled={i === list.length - 1}
-          onClick={() => move(list, i, 1)}
-          aria-label={`Bajar ${c.name}`}
-        >
-          ↓
-        </button>
-        <ConfirmIconButton
-          icon="✕"
-          className="link-button"
-          ariaLabel={`Eliminar categoría ${c.name}`}
-          onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
-        />
+        {/* Skill de Pepa, puntos 15/16 — clasificación automática de
+            fábrica, editable aquí por la familia si no está de
+            acuerdo (petición real: "editables si se quiere
+            posteriormente por el usuario"). */}
+        {showClassification && (
+          <div className="inline-fields" style={{ gap: 6 }}>
+            <select
+              value={c.necessity ?? ''}
+              onChange={(e) => updateBudgetCategory(c.id, { necessity: (e.target.value || null) as 'debo' | 'necesito' | 'quiero' | null }).then(onChanged)}
+              style={{ fontSize: 12, padding: '4px 6px' }}
+            >
+              <option value="">Sin clasificar</option>
+              <option value="debo">Debo</option>
+              <option value="necesito">Necesito</option>
+              <option value="quiero">Quiero</option>
+            </select>
+            <select
+              value={c.isFixed == null ? '' : c.isFixed ? 'fijo' : 'variable'}
+              onChange={(e) => updateBudgetCategory(c.id, { isFixed: e.target.value === '' ? null : e.target.value === 'fijo' }).then(onChanged)}
+              style={{ fontSize: 12, padding: '4px 6px' }}
+            >
+              <option value="">Sin clasificar</option>
+              <option value="fijo">Fijo</option>
+              <option value="variable">Variable</option>
+            </select>
+          </div>
+        )}
       </div>
     )
   }
@@ -1121,7 +1281,7 @@ function ManageCategoriesModal({
   // Skill de Pepa, punto 10: dos niveles — cada categoría principal
   // muestra debajo sus subcategorías (parent_id), cada nivel se
   // reordena por separado.
-  function renderGroupList(label: string, list: BudgetCategory[]) {
+  function renderGroupList(label: string, list: BudgetCategory[], showClassification: boolean) {
     const topLevel = list.filter((c) => !c.parentId)
     return (
       <>
@@ -1133,8 +1293,8 @@ function ManageCategoriesModal({
             const children = list.filter((x) => x.parentId === c.id)
             return (
               <div key={c.id}>
-                {renderRow(c, topLevel, i, false)}
-                {children.map((child, j) => renderRow(child, children, j, true))}
+                {renderRow(c, topLevel, i, false, showClassification)}
+                {children.map((child, j) => renderRow(child, children, j, true, showClassification))}
               </div>
             )
           })}
@@ -1213,9 +1373,9 @@ function ManageCategoriesModal({
 
         <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
 
-        {renderGroupList('Alimentación', alimentacion)}
-        {renderGroupList('Generales', generales)}
-        {renderGroupList('Ingresos', ingresos)}
+        {renderGroupList('Alimentación', alimentacion, true)}
+        {renderGroupList('Generales', generales, true)}
+        {renderGroupList('Ingresos', ingresos, false)}
 
         <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
 
@@ -2370,16 +2530,165 @@ const INCOME_CATEGORY_SEED: { name: string; icon: string }[] = [
   { name: 'Ingreso', icon: '💰' },
 ]
 
-const GENERAL_BUDGET_SEED: { name: string; icon: string }[] = [
-  { name: 'Luz', icon: '💡' },
-  { name: 'Agua', icon: '💧' },
-  { name: 'Impuestos', icon: '🧾' },
-  { name: 'Taller', icon: '🔧' },
-  { name: 'Imprevistos', icon: '⚠️' },
-  { name: 'Hipoteca', icon: '🏦' },
-  { name: 'Préstamos', icon: '💳' },
-  { name: 'Gastos escolares', icon: '🎒' },
+interface CategorySeed {
+  name: string
+  icon: string
+  necessity: 'debo' | 'necesito' | 'quiero' | null
+  isFixed: boolean | null
+  children?: CategorySeed[]
+}
+
+// Skill de Pepa, punto 9: taxonomía maestra del documento — 11
+// categorías de gasto con sus subcategorías, clasificadas de fábrica
+// en fijo/variable y debo/necesito/quiero según estándares contables
+// habituales (debo: obligación contractual o legal; necesito: consumo
+// básico; quiero: discrecional. fijo: importe recurrente pactado;
+// variable: fluctúa con el consumo) — petición real: "la adjudicación
+// no debería ser manual sino automática... clasificar cada categoría
+// desde un principio, editable si se quiere después". Reemplaza la
+// lista suelta anterior (Luz, Agua, Impuestos...); las familias que ya
+// tenían esas categorías las conservan (0076_category_necessity_taxonomy.sql
+// las integró en este mismo árbol).
+const MASTER_CATEGORY_SEED: CategorySeed[] = [
+  {
+    name: 'Alimentación',
+    icon: '🛒',
+    necessity: 'necesito',
+    isFixed: false,
+    children: [
+      { name: 'Supermercado, carnicería y tiendas de alimentación', icon: '🛒', necessity: 'necesito', isFixed: false },
+      { name: 'Restaurantes, bares y cafeterías', icon: '🍽️', necessity: 'quiero', isFixed: false },
+    ],
+  },
+  {
+    name: 'Vivienda y hogar',
+    icon: '🏠',
+    necessity: 'necesito',
+    isFixed: true,
+    children: [
+      { name: 'Alquiler / hipoteca', icon: '🏦', necessity: 'debo', isFixed: true },
+      { name: 'Suministros', icon: '💡', necessity: 'necesito', isFixed: true },
+      { name: 'Mantenimiento y hogar', icon: '🔨', necessity: 'necesito', isFixed: false },
+      { name: 'Seguro de hogar', icon: '🛡️', necessity: 'debo', isFixed: true },
+    ],
+  },
+  {
+    name: 'Transporte y vehículo',
+    icon: '🚗',
+    necessity: 'necesito',
+    isFixed: false,
+    children: [
+      { name: 'Combustible', icon: '⛽', necessity: 'necesito', isFixed: false },
+      { name: 'Aparcamiento y peajes', icon: '🅿️', necessity: 'necesito', isFixed: false },
+      { name: 'Transporte público / taxi', icon: '🚕', necessity: 'necesito', isFixed: false },
+      { name: 'Mantenimiento y reparaciones', icon: '🔧', necessity: 'necesito', isFixed: false },
+      { name: 'Seguro / financiación del vehículo', icon: '🚙', necessity: 'debo', isFixed: true },
+    ],
+  },
+  {
+    name: 'Compras y familia',
+    icon: '🛍️',
+    necessity: 'quiero',
+    isFixed: false,
+    children: [
+      { name: 'Ropa y accesorios', icon: '👕', necessity: 'necesito', isFixed: false },
+      { name: 'Niños', icon: '🧸', necessity: 'necesito', isFixed: false },
+      { name: 'Casa y jardín', icon: '🏡', necessity: 'quiero', isFixed: false },
+      { name: 'Tecnología y electrónica', icon: '📺', necessity: 'quiero', isFixed: false },
+      { name: 'Mascotas', icon: '🐾', necessity: 'necesito', isFixed: false },
+      { name: 'Regalos y compras varias', icon: '🎁', necessity: 'quiero', isFixed: false },
+    ],
+  },
+  {
+    name: 'Salud y bienestar',
+    icon: '⚕️',
+    necessity: 'necesito',
+    isFixed: false,
+    children: [
+      { name: 'Salud y farmacia', icon: '💊', necessity: 'necesito', isFixed: false },
+      { name: 'Belleza y cuidado personal', icon: '💅', necessity: 'quiero', isFixed: false },
+      { name: 'Deporte y fitness', icon: '🏋️', necessity: 'quiero', isFixed: false },
+    ],
+  },
+  {
+    name: 'Ocio y viajes',
+    icon: '🌴',
+    necessity: 'quiero',
+    isFixed: false,
+    children: [
+      { name: 'Ocio y cultura', icon: '🎭', necessity: 'quiero', isFixed: false },
+      { name: 'Aficiones', icon: '🎨', necessity: 'quiero', isFixed: false },
+      { name: 'Suscripciones y entretenimiento', icon: '🎬', necessity: 'quiero', isFixed: true },
+      { name: 'Viajes y vacaciones', icon: '✈️', necessity: 'quiero', isFixed: false },
+      { name: 'Eventos y celebraciones', icon: '🎉', necessity: 'quiero', isFixed: false },
+    ],
+  },
+  {
+    name: 'Comunicaciones y servicios',
+    icon: '📱',
+    necessity: 'necesito',
+    isFixed: true,
+    children: [
+      { name: 'Teléfono e Internet', icon: '📶', necessity: 'necesito', isFixed: true },
+      { name: 'Software y aplicaciones', icon: '💻', necessity: 'quiero', isFixed: true },
+      { name: 'Otros servicios', icon: '🔌', necessity: 'necesito', isFixed: false },
+    ],
+  },
+  {
+    name: 'Finanzas y obligaciones',
+    icon: '📑',
+    necessity: 'debo',
+    isFixed: true,
+    children: [
+      { name: 'Impuestos', icon: '🧾', necessity: 'debo', isFixed: true },
+      { name: 'Préstamos e intereses', icon: '💳', necessity: 'debo', isFixed: true },
+      { name: 'Seguros', icon: '🔒', necessity: 'debo', isFixed: true },
+      { name: 'Comisiones y cargos', icon: '💸', necessity: 'debo', isFixed: false },
+      { name: 'Multas / obligaciones', icon: '🚨', necessity: 'debo', isFixed: false },
+      { name: 'Asesoría', icon: '🧑‍💼', necessity: 'debo', isFixed: false },
+    ],
+  },
+  {
+    name: 'Ahorro e inversión',
+    icon: '💰',
+    necessity: null,
+    isFixed: null,
+    children: [
+      { name: 'Ahorro', icon: '🐷', necessity: null, isFixed: true },
+      { name: 'Inversiones', icon: '📈', necessity: null, isFixed: false },
+    ],
+  },
+  {
+    name: 'Movimientos internos',
+    icon: '🔄',
+    necessity: null,
+    isFixed: null,
+    children: [{ name: 'Transferencias entre cuentas propias', icon: '🔁', necessity: null, isFixed: null }],
+  },
+  { name: 'Otros', icon: '📦', necessity: null, isFixed: null },
 ]
+
+// Crea un árbol de dos niveles de golpe: primero las principales, y
+// con sus ids ya reales las subcategorías apuntando a ellas (mismo
+// mecanismo que ya usaba el sembrado plano, ahora con clasificación
+// incluida).
+async function seedCategoryTree(seed: CategorySeed[], budgetGroup: string): Promise<void> {
+  const topInserted = await createBudgetCategoriesBulk(
+    seed.map((s) => ({ name: s.name, icon: s.icon, budgetGroup, necessity: s.necessity, isFixed: s.isFixed })),
+  )
+  const idByName = new Map(topInserted.map((r) => [r.name, r.id]))
+  const childInputs = seed.flatMap((s) =>
+    (s.children ?? []).map((child) => ({
+      name: child.name,
+      icon: child.icon,
+      budgetGroup,
+      parentId: idByName.get(s.name) ?? null,
+      necessity: child.necessity,
+      isFixed: child.isFixed,
+    })),
+  )
+  if (childInputs.length > 0) await createBudgetCategoriesBulk(childInputs)
+}
 
 // Presupuesto Alimentación y Presupuesto Generales son la MISMA
 // pantalla, solo cambia el "grupo" de categorías/presupuestos que
@@ -2392,7 +2701,7 @@ export function BudgetsTab({
   seedCategories,
 }: {
   group: string
-  seedCategories: { name: string; icon: string }[]
+  seedCategories: CategorySeed[]
 }) {
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
@@ -2415,7 +2724,7 @@ export function BudgetsTab({
         // pedirlo (petición real: "me pones todas esas categorías").
         if (!seededRef.current && seedCategories.length > 0 && !cats.some((c) => c.budgetGroup === group)) {
           seededRef.current = true
-          await createBudgetCategoriesBulk(seedCategories.map((s) => ({ ...s, budgetGroup: group })))
+          await seedCategoryTree(seedCategories, group)
           cats = await listBudgetCategories()
         }
         setBudgets(b)
@@ -3625,6 +3934,8 @@ function AddBudgetCategoryInline({
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('💰')
   const [parentId, setParentId] = useState<string>('')
+  const [necessity, setNecessity] = useState<'' | 'debo' | 'necesito' | 'quiero'>('')
+  const [isFixed, setIsFixed] = useState<'' | 'fijo' | 'variable'>('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -3646,10 +3957,19 @@ function AddBudgetCategoryInline({
     setSaving(true)
     setError(null)
     try {
-      await createBudgetCategory({ name, icon, budgetGroup, parentId: parentId || null })
+      await createBudgetCategory({
+        name,
+        icon,
+        budgetGroup,
+        parentId: parentId || null,
+        necessity: necessity || null,
+        isFixed: isFixed === '' ? null : isFixed === 'fijo',
+      })
       setName('')
       setIcon('💰')
       setParentId('')
+      setNecessity('')
+      setIsFixed('')
       iconTouchedRef.current = false
       onAdded()
     } catch (err) {
@@ -3708,6 +4028,26 @@ function AddBudgetCategoryInline({
             </option>
           ))}
         </select>
+      )}
+      {/* Skill de Pepa, puntos 15/16 — petición real: "clasificar cada
+          categoría desde un principio". Aquí es la única clasificación
+          que no puede ser automática (categoría nueva, sin
+          equivalente en la taxonomía de fábrica): la elige la familia,
+          opcional y editable después. No aplica a Ingresos. */}
+      {budgetGroup !== 'ingresos' && (
+        <div className="inline-fields">
+          <select value={necessity} onChange={(e) => setNecessity(e.target.value as typeof necessity)}>
+            <option value="">¿Debo, necesito o quiero? (opcional)</option>
+            <option value="debo">Debo</option>
+            <option value="necesito">Necesito</option>
+            <option value="quiero">Quiero</option>
+          </select>
+          <select value={isFixed} onChange={(e) => setIsFixed(e.target.value as typeof isFixed)}>
+            <option value="">¿Fijo o variable? (opcional)</option>
+            <option value="fijo">Fijo</option>
+            <option value="variable">Variable</option>
+          </select>
+        </div>
       )}
       {!iconTouchedRef.current && suggestCategoryIcon(name) && (
         <p className="muted" style={{ marginTop: -8, fontSize: 12 }}>

@@ -31,9 +31,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listExpenses(): Promise<Expense[]> {
   const { data, error } = await supabase
     .from('expenses')
-    .select(
-      'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, necessity, is_fixed',
-    )
+    .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source')
     .order('expense_date', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -49,8 +47,6 @@ export async function listExpenses(): Promise<Expense[]> {
     budgetGroup: r.budget_group,
     tagId: r.tag_id,
     source: r.source as ExpenseSource,
-    necessity: r.necessity,
-    isFixed: r.is_fixed,
   }))
 }
 
@@ -98,8 +94,6 @@ export async function updateExpense(
     kind?: ExpenseKind
     isIncome?: boolean
     tagId?: string | null
-    necessity?: 'debo' | 'necesito' | 'quiero' | null
-    isFixed?: boolean | null
   },
 ): Promise<void> {
   const update: Record<string, unknown> = {}
@@ -110,8 +104,6 @@ export async function updateExpense(
   if (patch.kind !== undefined) update.kind = patch.kind
   if (patch.isIncome !== undefined) update.is_income = patch.isIncome
   if (patch.tagId !== undefined) update.tag_id = patch.tagId
-  if (patch.necessity !== undefined) update.necessity = patch.necessity
-  if (patch.isFixed !== undefined) update.is_fixed = patch.isFixed
   const { error } = await supabase.from('expenses').update(update).eq('id', id)
   if (error) throw error
 }
@@ -168,7 +160,7 @@ export async function deleteBudget(id: string): Promise<void> {
 export async function listBudgetCategories(): Promise<BudgetCategory[]> {
   const { data, error } = await supabase
     .from('budget_categories')
-    .select('id, family_id, name, icon, budget_group, sort_order, parent_id')
+    .select('id, family_id, name, icon, budget_group, sort_order, parent_id, necessity, is_fixed')
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -179,6 +171,8 @@ export async function listBudgetCategories(): Promise<BudgetCategory[]> {
     budgetGroup: r.budget_group,
     sortOrder: r.sort_order,
     parentId: r.parent_id,
+    necessity: r.necessity,
+    isFixed: r.is_fixed,
   }))
 }
 
@@ -187,6 +181,8 @@ export async function createBudgetCategory(input: {
   icon: string
   budgetGroup: string
   parentId?: string | null
+  necessity?: 'debo' | 'necesito' | 'quiero' | null
+  isFixed?: boolean | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('budget_categories').insert({
@@ -196,7 +192,25 @@ export async function createBudgetCategory(input: {
     budget_group: input.budgetGroup,
     sort_order: Date.now(),
     parent_id: input.parentId ?? null,
+    necessity: input.necessity ?? null,
+    is_fixed: input.isFixed ?? null,
   })
+  if (error) throw error
+}
+
+// Editar la clasificación de una categoría ya creada — petición real:
+// "clasificar cada categoría desde un principio (editables si se
+// quiere posteriormente por el usuario)". La familia puede corregir lo
+// que Pepa clasificó de fábrica, o clasificar una categoría propia que
+// creó sin elegir nada.
+export async function updateBudgetCategory(
+  id: string,
+  patch: { necessity?: 'debo' | 'necesito' | 'quiero' | null; isFixed?: boolean | null },
+): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.necessity !== undefined) update.necessity = patch.necessity
+  if (patch.isFixed !== undefined) update.is_fixed = patch.isFixed
+  const { error } = await supabase.from('budget_categories').update(update).eq('id', id)
   if (error) throw error
 }
 
@@ -207,7 +221,14 @@ export async function createBudgetCategory(input: {
 // de dos niveles: primero se crean las principales y con sus ids ya
 // reales se crean las subcategorías apuntando a ellas.
 export async function createBudgetCategoriesBulk(
-  inputs: { name: string; icon: string; budgetGroup: string; parentId?: string | null }[],
+  inputs: {
+    name: string
+    icon: string
+    budgetGroup: string
+    parentId?: string | null
+    necessity?: 'debo' | 'necesito' | 'quiero' | null
+    isFixed?: boolean | null
+  }[],
 ): Promise<{ id: string; name: string }[]> {
   const familyId = await currentFamilyId()
   const base = Date.now()
@@ -221,6 +242,8 @@ export async function createBudgetCategoriesBulk(
         budget_group: input.budgetGroup,
         sort_order: base + index,
         parent_id: input.parentId ?? null,
+        necessity: input.necessity ?? null,
+        is_fixed: input.isFixed ?? null,
       })),
     )
     .select('id, name')

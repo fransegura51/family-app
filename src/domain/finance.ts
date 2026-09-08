@@ -39,6 +39,27 @@ export function isFoodCategory(category: string, categories: BudgetCategory[]): 
   return category === 'Alimentación' || categories.some((c) => c.budgetGroup === 'alimentacion' && c.name === category)
 }
 
+// Skill de Pepa, puntos 15/16 — petición real: "la adjudicación de
+// Quiero/Necesito/Debo y la de Fijo/Variable no debería ser manual
+// sino automática... clasificar cada categoría desde un principio".
+// La clasificación de un gasto se resuelve SIEMPRE desde su categoría
+// (nunca se guarda en el propio gasto): una subcategoría sin
+// clasificación propia hereda la de su categoría principal.
+export interface CategoryClassification {
+  necessity: 'debo' | 'necesito' | 'quiero' | null
+  isFixed: boolean | null
+}
+
+export function resolveCategoryClassification(categoryName: string, categories: BudgetCategory[]): CategoryClassification {
+  const cat = categories.find((c) => c.name === categoryName)
+  if (!cat) return { necessity: null, isFixed: null }
+  const parent = cat.parentId ? categories.find((c) => c.id === cat.parentId) : undefined
+  return {
+    necessity: cat.necessity ?? parent?.necessity ?? null,
+    isFixed: cat.isFixed ?? parent?.isFixed ?? null,
+  }
+}
+
 export function budgetSpent(
   budget: Budget,
   expenses: Expense[],

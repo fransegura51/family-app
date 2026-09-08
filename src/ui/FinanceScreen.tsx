@@ -36,9 +36,11 @@ import {
 } from '@/data/bank'
 import { listFamilyMembers } from '@/data/family'
 import {
-  ECONOMIA_MENU_ITEM_META,
+  economiaMenuEntryMeta,
+  isCustomEconomiaMenuKey,
   loadEconomiaMenuLayout,
   saveEconomiaMenuLayout,
+  type EconomiaMenuEntry,
   type EconomiaMenuGroup,
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
@@ -120,14 +122,23 @@ function isEconomiaSubTab(key: EconomiaMenuItemKey): key is SubTab {
 // acceso del desplegable se puede sacar. Guardado en el dispositivo
 // (como el orden del menú), no por familia.
 const ECONOMIA_PINNED_KEY = 'familyapp:economia-pinned-tabs'
-const ECONOMIA_PINNABLE_KEYS: readonly EconomiaMenuItemKey[] = [...SUB_TABS, 'accion:categorias', 'accion:etiquetas', 'accion:movimiento']
+const ECONOMIA_FIXED_KEYS: readonly string[] = [...SUB_TABS, 'accion:categorias', 'accion:etiquetas', 'accion:movimiento']
+
+// Los accesos personalizados ("custom:<id>") no están en ninguna lista
+// fija — se validan por forma en vez de por pertenencia, para que
+// también se puedan sacar/meter (petición real: "ponle también el
+// botón de sacar y meter" ya se aplicó a los 3 accesos fijos; los
+// personalizados nuevos siguen la misma regla).
+function isValidEconomiaMenuKey(k: unknown): k is EconomiaMenuItemKey {
+  return typeof k === 'string' && (ECONOMIA_FIXED_KEYS.includes(k) || k.startsWith('custom:'))
+}
 
 function loadEconomiaPinnedItems(): EconomiaMenuItemKey[] {
   try {
     const raw = localStorage.getItem(ECONOMIA_PINNED_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed.filter((k) => (ECONOMIA_PINNABLE_KEYS as string[]).includes(k)) as EconomiaMenuItemKey[]) : []
+    return Array.isArray(parsed) ? parsed.filter(isValidEconomiaMenuKey) : []
   } catch {
     return []
   }
@@ -194,6 +205,19 @@ export function FinanceScreen() {
   // alternativa de cambiar de pestaña sin tocar la fila de chips.
   const [economiaMenuOpen, setEconomiaMenuOpen] = useState(false)
   const [pinnedItems, setPinnedItems] = useState<EconomiaMenuItemKey[]>(() => loadEconomiaPinnedItems())
+  // Petición real: "¿cómo puedo crear un acceso nuevo, con su propio
+  // nombre e icono, no solo una carpeta para agrupar los que ya hay?"
+  // — el layout (grupos + accesos, fijos o personalizados) vive aquí
+  // arriba para que tanto el desplegable como la fila de "sacados"
+  // (que necesita el icono/nombre real de un acceso personalizado)
+  // lean del mismo sitio.
+  const [menuLayout, setMenuLayout] = useState<EconomiaMenuGroup[]>(() => loadEconomiaMenuLayout())
+  const [pinnedPlaceholderNotice, setPinnedPlaceholderNotice] = useState(false)
+
+  function persistMenuLayout(next: EconomiaMenuGroup[]) {
+    setMenuLayout(next)
+    saveEconomiaMenuLayout(next)
+  }
 
   function togglePinnedItem(key: EconomiaMenuItemKey) {
     setPinnedItems((prev) => {
@@ -202,6 +226,18 @@ export function FinanceScreen() {
       return next
     })
   }
+
+  function handleEconomiaAction(key: EconomiaMenuItemKey) {
+    if (key === 'accion:categorias') setShowCategories(true)
+    else if (key === 'accion:etiquetas') setShowTags(true)
+    else if (key === 'accion:movimiento') setShowNewMovement(true)
+    else if (isEconomiaSubTab(key)) setTab(key)
+    // Un acceso personalizado no lleva a ningún sitio todavía — el
+    // propio EconomiaMenuDropdown enseña el aviso "aún no hay nada
+    // aquí" al tocarlo.
+  }
+
+  const flatMenuEntries = menuLayout.flatMap((g) => g.items)
 
   function reloadShared() {
     Promise.all([listBudgetCategories(), listTags()]).then(([c, t]) => {
@@ -245,14 +281,11 @@ export function FinanceScreen() {
         {economiaMenuOpen && (
           <EconomiaMenuDropdown
             activeTab={tab}
-            onSelectTab={setTab}
+            layout={menuLayout}
+            onLayoutChange={persistMenuLayout}
             pinnedItems={pinnedItems}
             onTogglePin={togglePinnedItem}
-            onAction={(key) => {
-              if (key === 'accion:categorias') setShowCategories(true)
-              else if (key === 'accion:etiquetas') setShowTags(true)
-              else setShowNewMovement(true)
-            }}
+            onActivate={handleEconomiaAction}
             onClose={() => setEconomiaMenuOpen(false)}
           />
         )}
@@ -277,22 +310,34 @@ export function FinanceScreen() {
           sacar y meter"). */}
       {pinnedItems.length > 0 && (
         <div className="filter-row">
-          {ECONOMIA_PINNABLE_KEYS.filter((k) => pinnedItems.includes(k)).map((k) => (
-            <button
-              key={k}
-              type="button"
-              className={'chip' + (isEconomiaSubTab(k) && tab === k ? ' chip-active' : '')}
-              onClick={() => {
-                if (k === 'accion:categorias') setShowCategories(true)
-                else if (k === 'accion:etiquetas') setShowTags(true)
-                else if (k === 'accion:movimiento') setShowNewMovement(true)
-                else setTab(k)
-              }}
-            >
-              {ECONOMIA_MENU_ITEM_META[k].icon} {ECONOMIA_MENU_ITEM_META[k].label}
-            </button>
-          ))}
+          {flatMenuEntries
+            .filter((entry) => pinnedItems.includes(entry.key))
+            .map((entry) => {
+              const meta = economiaMenuEntryMeta(entry)
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  className={'chip' + (isEconomiaSubTab(entry.key) && tab === entry.key ? ' chip-active' : '')}
+                  onClick={() => {
+                    if (isCustomEconomiaMenuKey(entry.key)) {
+                      setPinnedPlaceholderNotice(true)
+                      setTimeout(() => setPinnedPlaceholderNotice(false), 2500)
+                    } else {
+                      handleEconomiaAction(entry.key)
+                    }
+                  }}
+                >
+                  {meta.icon} {meta.label}
+                </button>
+              )
+            })}
         </div>
+      )}
+      {pinnedPlaceholderNotice && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
+        </p>
       )}
 
       {tab === 'Resumen' && <ResumenTab key={refreshKey} onViewMovements={viewMovements} />}
@@ -337,30 +382,35 @@ export function FinanceScreen() {
 // (Categorías/Etiquetas/Nuevo movimiento) viven aquí también.
 function EconomiaMenuDropdown({
   activeTab,
-  onSelectTab,
+  layout,
+  onLayoutChange,
   pinnedItems,
   onTogglePin,
-  onAction,
+  onActivate,
   onClose,
 }: {
   activeTab: SubTab
-  onSelectTab: (t: SubTab) => void
+  layout: EconomiaMenuGroup[]
+  onLayoutChange: (next: EconomiaMenuGroup[]) => void
   pinnedItems: EconomiaMenuItemKey[]
   onTogglePin: (key: EconomiaMenuItemKey) => void
-  onAction: (key: 'accion:categorias' | 'accion:etiquetas' | 'accion:movimiento') => void
+  onActivate: (key: EconomiaMenuItemKey) => void
   onClose: () => void
 }) {
-  const [layout, setLayout] = useState<EconomiaMenuGroup[]>(() => loadEconomiaMenuLayout())
   const [editMode, setEditMode] = useState(false)
   const [addingGroup, setAddingGroup] = useState(false)
   const [addingGroupName, setAddingGroupName] = useState('')
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
-
-  function persist(next: EconomiaMenuGroup[]) {
-    setLayout(next)
-    saveEconomiaMenuLayout(next)
-  }
+  // Petición real: "¿cómo puedo crear un acceso nuevo, con su propio
+  // nombre e icono, no solo una carpeta para agrupar los que ya hay?"
+  const [addingCustomItem, setAddingCustomItem] = useState(false)
+  const [newItemIcon, setNewItemIcon] = useState('📌')
+  const [newItemLabel, setNewItemLabel] = useState('')
+  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
+  const [editItemIcon, setEditItemIcon] = useState('')
+  const [editItemLabel, setEditItemLabel] = useState('')
+  const [placeholderNotice, setPlaceholderNotice] = useState(false)
 
   function moveItem(groupId: string, index: number, direction: -1 | 1) {
     const group = layout.find((g) => g.id === groupId)
@@ -369,15 +419,17 @@ function EconomiaMenuDropdown({
     if (newIndex < 0 || newIndex >= group.items.length) return
     const items = [...group.items]
     ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
-    persist(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
+    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
   }
 
   function moveItemToGroup(itemKey: EconomiaMenuItemKey, fromGroupId: string, toGroupId: string) {
     if (fromGroupId === toGroupId) return
-    persist(
+    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
+    if (!moved) return
+    onLayoutChange(
       layout.map((g) => {
-        if (g.id === fromGroupId) return { ...g, items: g.items.filter((k) => k !== itemKey) }
-        if (g.id === toGroupId) return { ...g, items: [...g.items, itemKey] }
+        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
+        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
         return g
       }),
     )
@@ -386,13 +438,13 @@ function EconomiaMenuDropdown({
   function handleAddGroup(e: FormEvent) {
     e.preventDefault()
     if (!addingGroupName.trim()) return
-    persist([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
+    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
     setAddingGroupName('')
     setAddingGroup(false)
   }
 
   function handleRenameGroup(id: string) {
-    persist(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
+    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
     setRenamingGroupId(null)
   }
 
@@ -404,15 +456,44 @@ function EconomiaMenuDropdown({
     const rest = layout.filter((g) => g.id !== id)
     if (!group || rest.length === 0) return
     const [first, ...others] = rest
-    persist([{ ...first, items: [...first.items, ...group.items] }, ...others])
+    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
   }
 
-  function handleItemActivate(key: EconomiaMenuItemKey) {
-    if (key === 'accion:categorias' || key === 'accion:etiquetas' || key === 'accion:movimiento') {
-      onAction(key)
-    } else {
-      onSelectTab(key)
+  function handleAddCustomItem(e: FormEvent) {
+    e.preventDefault()
+    if (!newItemLabel.trim()) return
+    const entry: EconomiaMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
+    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
+    setNewItemIcon('📌')
+    setNewItemLabel('')
+    setAddingCustomItem(false)
+  }
+
+  function handleSaveItem(groupId: string, key: EconomiaMenuItemKey) {
+    onLayoutChange(
+      layout.map((g) =>
+        g.id === groupId
+          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
+          : g,
+      ),
+    )
+    setEditingItemKey(null)
+  }
+
+  function deleteItem(groupId: string, key: EconomiaMenuItemKey) {
+    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
+  }
+
+  function handleItemActivate(entry: EconomiaMenuEntry) {
+    if (isCustomEconomiaMenuKey(entry.key)) {
+      // Petición real (antes, para el ☰ global, ahora aquí): un acceso
+      // personalizado no lleva a ningún sitio todavía — se avisa sin
+      // cerrar el desplegable, en vez de un toque que no hace nada.
+      setPlaceholderNotice(true)
+      setTimeout(() => setPlaceholderNotice(false), 2500)
+      return
     }
+    onActivate(entry.key)
     onClose()
   }
 
@@ -467,18 +548,38 @@ function EconomiaMenuDropdown({
               </div>
             ))}
 
-          {group.items.map((key, i) => {
-            const meta = ECONOMIA_MENU_ITEM_META[key]
-            const isTab = isEconomiaSubTab(key)
+          {group.items.map((entry, i) => {
+            const meta = economiaMenuEntryMeta(entry)
+            const isTab = isEconomiaSubTab(entry.key)
+            const isCustom = isCustomEconomiaMenuKey(entry.key)
+
+            if (editMode && editingItemKey === entry.key) {
+              return (
+                <form
+                  key={entry.key}
+                  className="inline-fields"
+                  style={{ margin: '2px 4px' }}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleSaveItem(group.id, entry.key)
+                  }}
+                >
+                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
+                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
+                  <button type="submit">Guardar</button>
+                </form>
+              )
+            }
+
             return (
-              <div key={key} className={'economia-menu-row' + (isTab && activeTab === key ? ' active' : '')}>
+              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
                 {editMode ? (
                   <span className="economia-menu-item">
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
                   </span>
                 ) : (
-                  <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(key)}>
+                  <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
                   </button>
@@ -501,7 +602,7 @@ function EconomiaMenuDropdown({
                     </button>
                     <select
                       value={group.id}
-                      onChange={(e) => moveItemToGroup(key, group.id, e.target.value)}
+                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
                       aria-label={`Mover ${meta.label} a otra categoría`}
                     >
                       {layout.map((g) => (
@@ -510,15 +611,42 @@ function EconomiaMenuDropdown({
                         </option>
                       ))}
                     </select>
+                    {/* Petición real: "¿cómo la puedo... editar, quitar?"
+                        — solo los accesos personalizados se pueden
+                        renombrar/borrar, los 9 fijos son secciones
+                        reales de la app. */}
+                    {isCustom && (
+                      <>
+                        <button
+                          type="button"
+                          className="link-button"
+                          style={{ padding: '2px 6px' }}
+                          onClick={() => {
+                            setEditingItemKey(entry.key)
+                            setEditItemIcon(meta.icon)
+                            setEditItemLabel(meta.label)
+                          }}
+                          aria-label={`Renombrar ${meta.label}`}
+                        >
+                          ✎
+                        </button>
+                        <ConfirmIconButton
+                          icon="✕"
+                          className="link-button"
+                          ariaLabel={`Eliminar ${meta.label}`}
+                          onConfirm={() => deleteItem(group.id, entry.key)}
+                        />
+                      </>
+                    )}
                   </span>
                 ) : (
                   <button
                     type="button"
                     className="economia-menu-pin"
-                    onClick={() => onTogglePin(key)}
-                    aria-label={pinnedItems.includes(key) ? `Quitar ${meta.label} de la pantalla de Economía` : `Sacar ${meta.label} a la pantalla de Economía`}
+                    onClick={() => onTogglePin(entry.key)}
+                    aria-label={pinnedItems.includes(entry.key) ? `Quitar ${meta.label} de la pantalla de Economía` : `Sacar ${meta.label} a la pantalla de Economía`}
                   >
-                    {pinnedItems.includes(key) ? '📍 Quitar' : '📌 Sacar'}
+                    {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
                   </button>
                 )}
               </div>
@@ -527,25 +655,61 @@ function EconomiaMenuDropdown({
         </div>
       ))}
 
-      {editMode &&
-        (addingGroup ? (
-          <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
-            <input
-              type="text"
-              value={addingGroupName}
-              onChange={(e) => setAddingGroupName(e.target.value)}
-              placeholder="Nombre de la categoría"
-              autoFocus
-              style={{ flex: 1 }}
-            />
-            <button type="submit">Crear</button>
-          </form>
-        ) : (
-          <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
-            <span aria-hidden="true">➕</span>
-            Nueva categoría
-          </button>
-        ))}
+      {placeholderNotice && (
+        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
+          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
+        </p>
+      )}
+
+      {editMode && (
+        <>
+          {addingCustomItem ? (
+            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
+              <input
+                type="text"
+                value={newItemIcon}
+                onChange={(e) => setNewItemIcon(e.target.value)}
+                style={{ width: 48, textAlign: 'center', flex: 'none' }}
+                maxLength={4}
+                aria-label="Icono"
+              />
+              <input
+                type="text"
+                value={newItemLabel}
+                onChange={(e) => setNewItemLabel(e.target.value)}
+                placeholder="Nombre del acceso"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button type="submit">Crear</button>
+            </form>
+          ) : (
+            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
+              <span aria-hidden="true">📌</span>
+              Nuevo acceso
+            </button>
+          )}
+
+          {addingGroup ? (
+            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
+              <input
+                type="text"
+                value={addingGroupName}
+                onChange={(e) => setAddingGroupName(e.target.value)}
+                placeholder="Nombre de la categoría"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button type="submit">Crear</button>
+            </form>
+          ) : (
+            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
+              <span aria-hidden="true">➕</span>
+              Nueva categoría
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -1219,7 +1383,7 @@ function SvgDonut({
   size = 190,
   colors = DONUT_COLORS,
 }: {
-  slices: { key: string; total: number; color?: string }[]
+  slices: { key: string; total: number; color?: string; label?: string }[]
   centerLabel: { name: string; total: number }
   highlightedKey: string | null
   onSliceClick: (key: string) => void
@@ -1235,37 +1399,58 @@ function SvgDonut({
   const rInner = rOuter * 0.52
   const grandTotal = slices.reduce((s, x) => s + x.total, 0)
   let cumulative = 0
+  // Petición real: "dentro del dónut, como hasta ahora, la categoría
+  // que hemos elegido... pero la leyenda me la pone debajo a lo que
+  // pertenece cada color, aplícalo a todos los dónuts" — un intento
+  // anterior (icono dentro de la porción) "se quedaba mal"; en vez de
+  // eso, el centro del dónut se queda igual (nombre + importe de la
+  // porción tocada) y debajo se añade una leyenda de color → nombre,
+  // solo informativa (no se toca, seguimos sin listas que controlen el
+  // dónut — solo se explica qué es cada color).
+  const legendEntries = slices
+    .map((s, i) => ({ key: s.key, label: s.label ?? s.key, color: s.color ?? colors[i % colors.length], total: s.total }))
+    .filter((s) => s.total > 0)
 
   return (
-    <div className="donut-ring" style={{ width: size, height: size }}>
-      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block' }}>
-        {slices.map((s, i) => {
-          const pct = grandTotal > 0 ? (s.total / grandTotal) * 360 : 0
-          if (pct <= 0) return null
-          const start = cumulative
-          cumulative += pct
-          // Petición real: "no quiero que las otras partes desaparezcan,
-          // quiero que se quede el color como más apagado, que se vea
-          // que no está activo" — antes la porción no tocada se
-          // sustituía por un gris plano (perdía del todo su color);
-          // ahora conserva su propio color siempre, solo baja la
-          // opacidad si hay otra porción activa y no es ella.
-          const dimmed = highlightedKey != null && highlightedKey !== s.key
-          return (
-            <path
-              key={s.key}
-              d={donutSlicePath(cx, cy, rOuter, rInner, start, start + pct)}
-              fill={s.color ?? colors[i % colors.length]}
-              fillOpacity={dimmed ? 0.3 : 1}
-              onClick={() => onSliceClick(s.key)}
-              style={{ cursor: 'pointer' }}
-            />
-          )
-        })}
-      </svg>
-      <div className="donut-ring-center">
-        <span>{centerLabel.name}</span>
-        <strong>{centerLabel.total.toFixed(2)} €</strong>
+    <div className="donut-ring-wrap">
+      <div className="donut-ring" style={{ width: size, height: size }}>
+        <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block' }}>
+          {slices.map((s, i) => {
+            const pct = grandTotal > 0 ? (s.total / grandTotal) * 360 : 0
+            if (pct <= 0) return null
+            const start = cumulative
+            cumulative += pct
+            // Petición real: "no quiero que las otras partes
+            // desaparezcan, quiero que se quede el color como más
+            // apagado, que se vea que no está activo" — antes la
+            // porción no tocada se sustituía por un gris plano (perdía
+            // del todo su color); ahora conserva su propio color
+            // siempre, solo baja la opacidad si hay otra activa.
+            const dimmed = highlightedKey != null && highlightedKey !== s.key
+            return (
+              <path
+                key={s.key}
+                d={donutSlicePath(cx, cy, rOuter, rInner, start, start + pct)}
+                fill={s.color ?? colors[i % colors.length]}
+                fillOpacity={dimmed ? 0.3 : 1}
+                onClick={() => onSliceClick(s.key)}
+                style={{ cursor: 'pointer' }}
+              />
+            )
+          })}
+        </svg>
+        <div className="donut-ring-center">
+          <span>{centerLabel.name}</span>
+          <strong>{centerLabel.total.toFixed(2)} €</strong>
+        </div>
+      </div>
+      <div className="donut-legend">
+        {legendEntries.map((s) => (
+          <span key={s.key} className="donut-legend-item">
+            <span className="donut-legend-dot" style={{ background: s.color }} />
+            {s.label}
+          </span>
+        ))}
       </div>
     </div>
   )

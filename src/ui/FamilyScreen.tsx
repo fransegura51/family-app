@@ -203,12 +203,13 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
 
 // Muestra las URLs + el token secreto que hay que poner en los
 // workflows de Pipedream (ver conversación con el usuario) para que los
-// pedidos de Amazon y los tickets de Mercadona reenviados por Outlook
-// lleguen aquí solos — mismo token para las dos automatizaciones, es el
-// mismo mecanismo (identificar a la familia sin un login de verdad).
-// "Regenerar" invalida el token anterior — útil si se ha compartido por
-// error (rompe las DOS automatizaciones a la vez, hay que actualizar el
-// token en ambos workflows de Pipedream si se regenera).
+// pedidos de Amazon, los tickets de Mercadona y los correos con
+// eventos reenviados por Outlook lleguen aquí solos — mismo token para
+// las tres automatizaciones, es el mismo mecanismo (identificar a la
+// familia sin un login de verdad). "Regenerar" invalida el token
+// anterior — útil si se ha compartido por error (rompe las TRES
+// automatizaciones a la vez, hay que actualizar el token en los tres
+// workflows de Pipedream si se regenera).
 function AmazonWebhookSettings() {
   const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -224,6 +225,7 @@ function AmazonWebhookSettings() {
   const base = import.meta.env.VITE_SUPABASE_URL as string
   const amazonUrl = `${base}/functions/v1/amazon-order-webhook`
   const mercadonaUrl = `${base}/functions/v1/mercadona-ticket-webhook`
+  const eventEmailUrl = `${base}/functions/v1/import-event-email-webhook`
 
   async function handleRegenerate() {
     setBusy(true)
@@ -254,7 +256,8 @@ function AmazonWebhookSettings() {
       </h2>
       <p className="muted">
         Datos para los workflows de Pipedream que reciben, reenviados desde Outlook, los pedidos de
-        Amazon y los tickets digitales de Mercadona.
+        Amazon, los tickets digitales de Mercadona y correos con eventos (boletines del colegio,
+        confirmaciones de citas...) para crearlos solos en el Calendario.
       </p>
       {error && <p className="error">{error}</p>}
       {token && (
@@ -274,7 +277,14 @@ function AmazonWebhookSettings() {
             {copiedField === 'mercadona' ? '✓ Copiado' : 'Copiar URL'}
           </button>
           <label style={{ marginTop: 8, display: 'block' }}>
-            Token de la familia (el mismo para las dos)
+            URL del webhook — Eventos por correo (Calendario)
+            <input type="text" readOnly value={eventEmailUrl} onFocus={(e) => e.target.select()} />
+          </label>
+          <button type="button" className="link-button" onClick={() => handleCopy('eventEmail', eventEmailUrl)}>
+            {copiedField === 'eventEmail' ? '✓ Copiado' : 'Copiar URL'}
+          </button>
+          <label style={{ marginTop: 8, display: 'block' }}>
+            Token de la familia (el mismo para las tres)
             <input type="text" readOnly value={token} onFocus={(e) => e.target.select()} />
           </label>
           <button type="button" className="link-button" onClick={() => handleCopy('token', token)}>

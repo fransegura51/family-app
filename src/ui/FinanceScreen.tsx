@@ -1244,12 +1244,19 @@ function SvgDonut({
           if (pct <= 0) return null
           const start = cumulative
           cumulative += pct
+          // Petición real: "no quiero que las otras partes desaparezcan,
+          // quiero que se quede el color como más apagado, que se vea
+          // que no está activo" — antes la porción no tocada se
+          // sustituía por un gris plano (perdía del todo su color);
+          // ahora conserva su propio color siempre, solo baja la
+          // opacidad si hay otra porción activa y no es ella.
           const dimmed = highlightedKey != null && highlightedKey !== s.key
           return (
             <path
               key={s.key}
               d={donutSlicePath(cx, cy, rOuter, rInner, start, start + pct)}
-              fill={dimmed ? '#dfe3ea' : s.color ?? colors[i % colors.length]}
+              fill={s.color ?? colors[i % colors.length]}
+              fillOpacity={dimmed ? 0.3 : 1}
               onClick={() => onSliceClick(s.key)}
               style={{ cursor: 'pointer' }}
             />

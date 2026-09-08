@@ -355,6 +355,7 @@ export interface ProductPrice {
   quantity: string | null
   unit: string | null
   recordedDate: string
+  receiptId: string | null
 }
 
 export interface Receipt {

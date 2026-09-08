@@ -23,8 +23,8 @@ import {
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
-import { uploadReceipt } from '@/data/receipts'
-import { computeProductStats, isLikelyAlcohol } from '@/domain/products'
+import { listReceipts, uploadReceipt } from '@/data/receipts'
+import { computeProductStats, isFoodPurchase, isLikelyAlcohol } from '@/domain/products'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { normalize } from '@/domain/voiceQuery'
@@ -123,11 +123,16 @@ interface ProductSuggestion {
   lastPrice: number | null
 }
 
-function buildSuggestions(products: Product[], prices: ProductPrice[]): ProductSuggestion[] {
+function buildSuggestions(
+  products: Product[],
+  prices: ProductPrice[],
+  receiptCategoryById: Map<string, string | null>,
+): ProductSuggestion[] {
   return products.map((p) => {
-    // Un pedido de Amazon no cuenta como "lo sueles comprar" de la
-    // lista de la compra — mismo criterio que Historial.
-    const ownPrices = prices.filter((pr) => pr.productId === p.id && pr.store !== 'Amazon')
+    // Un pedido de Amazon que no sea de alimentación no cuenta como "lo
+    // sueles comprar" de la lista de la compra — mismo criterio que
+    // Historial (uno que sí sea de alimentación, como un café, sí cuenta).
+    const ownPrices = prices.filter((pr) => pr.productId === p.id && isFoodPurchase(pr, receiptCategoryById))
     const stats = computeProductStats(ownPrices)
     const last = [...ownPrices].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))[0]
     return {
@@ -211,10 +216,11 @@ function ShoppingListTab() {
   // deja puesta a propósito entre productos seguidos.
   function reload() {
     setLoading(true)
-    Promise.all([listShoppingItems(), listProducts(), listAllProductPrices(), listShoppingStores()])
-      .then(([shoppingItems, products, prices, shoppingStores]) => {
+    Promise.all([listShoppingItems(), listProducts(), listAllProductPrices(), listShoppingStores(), listReceipts()])
+      .then(([shoppingItems, products, prices, shoppingStores, receipts]) => {
         setItems(shoppingItems)
-        setSuggestions(buildSuggestions(products, prices))
+        const receiptCategoryById = new Map(receipts.map((r) => [r.id, r.category]))
+        setSuggestions(buildSuggestions(products, prices, receiptCategoryById))
         setStores(shoppingStores)
       })
       .catch((e: Error) => setError(e.message))
@@ -1290,19 +1296,11 @@ interface ProductDetail {
   lines: string[]
 }
 
-// Amazon es la única fuente que mete artículos que no son de
-// alimentación en product_prices (el webhook guarda cada línea del
-// pedido, sea ropa, electrónica o lo que sea) — de ahí que "no es de
-// alimentación" se pueda mirar por la tienda, sin necesitar una
-// columna nueva.
-function isNonFoodSource(store: string | null): boolean {
-  return store === 'Amazon'
-}
-
 function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
   const [prices, setPrices] = useState<ProductPrice[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
+  const [receiptCategoryById, setReceiptCategoryById] = useState<Map<string, string | null>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [visibleMonth, setVisibleMonth] = useState(todayStr().slice(0, 7))
@@ -1325,11 +1323,12 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([listAllProductPrices(), listProducts(), listShoppingStores()])
-      .then(([p, prod, st]) => {
+    Promise.all([listAllProductPrices(), listProducts(), listShoppingStores(), listReceipts()])
+      .then(([p, prod, st, receipts]) => {
         setPrices(p)
         setProducts(prod)
         setStores(st)
+        setReceiptCategoryById(new Map(receipts.map((r) => [r.id, r.category])))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -1350,10 +1349,12 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
 
   // Cada pestaña ve solo lo suyo — Historial nunca mezcla ropa/electrónica
-  // de Amazon, y "No alimentos" no arrastra nada de comida.
+  // de Amazon, y "No alimentos" no arrastra nada de comida. Un pedido
+  // de Amazon marcado como "Alimentación" (p. ej. café) sí cuenta como
+  // comida — no todo lo de Amazon es "no alimentos" por defecto.
   const scopedPrices = useMemo(
-    () => prices.filter((p) => isNonFoodSource(p.store) === (mode === 'no_alimentos')),
-    [prices, mode],
+    () => prices.filter((p) => isFoodPurchase(p, receiptCategoryById) === (mode === 'alimentacion')),
+    [prices, mode, receiptCategoryById],
   )
 
   const purchases = useMemo(

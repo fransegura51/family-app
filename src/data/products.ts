@@ -68,7 +68,7 @@ export async function deleteProductPricesByReceipt(receiptId: string): Promise<v
 export async function listAllProductPrices(): Promise<ProductPrice[]> {
   const { data, error } = await supabase
     .from('product_prices')
-    .select('id, product_id, price, store, quantity, unit, recorded_date')
+    .select('id, product_id, price, store, quantity, unit, recorded_date, receipt_id')
     .order('recorded_date', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -79,6 +79,7 @@ export async function listAllProductPrices(): Promise<ProductPrice[]> {
     quantity: r.quantity,
     unit: r.unit,
     recordedDate: r.recorded_date,
+    receiptId: r.receipt_id,
   }))
 }
 

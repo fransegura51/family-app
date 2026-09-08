@@ -31,6 +31,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts } from '@/data/products'
+import { isFoodPurchase } from '@/domain/products'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import {
   deleteProductPricesByReceipt,
@@ -348,16 +349,18 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   const [selectedParent, setSelectedParent] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([listExpenses(), listBudgetCategories(), listTags(), listAllProductPrices(), listProducts()])
-      .then(([e, c, t, prices, products]) => {
+    Promise.all([listExpenses(), listBudgetCategories(), listTags(), listAllProductPrices(), listProducts(), listReceipts()])
+      .then(([e, c, t, prices, products, receipts]) => {
         setExpenses(e)
         setCategories(c)
         setTags(t)
+        const receiptCategoryById = new Map(receipts.map((r) => [r.id, r.category]))
         setPurchases(
-          // Amazon no es alimentación — no debe entrar en el análisis
-          // de "¿por qué ha cambiado mi gasto?" de la cesta de tickets.
+          // Un pedido de Amazon que no sea de alimentación no debe
+          // entrar en el análisis de "¿por qué ha cambiado mi gasto?"
+          // de la cesta de tickets — uno que sí lo sea (café...) sí cuenta.
           prices
-            .filter((p) => p.store !== 'Amazon')
+            .filter((p) => isFoodPurchase(p, receiptCategoryById))
             .map((p) => {
               const qty = Number(p.quantity)
               return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }

@@ -31,6 +31,21 @@ export function isLikelyAlcohol(displayName: string): boolean {
   return ALCOHOL_KEYWORDS.some((k) => name.includes(k))
 }
 
+// Un artículo de Amazon solo cuenta como alimentación si la propia
+// familia le puso la categoría "Alimentación" al pedido al revisar el
+// ticket (p. ej. un café) — el resto de tiendas (Mercadona, Hiperber...)
+// es siempre compra física, así que cuenta entera como alimentación
+// aunque alguna línea suelta no lo sea del todo (petición real: "al
+// ser todo compra en tienda y no online los dejamos dentro de esa
+// clasificación").
+export function isFoodPurchase(
+  price: { store: string | null; receiptId: string | null },
+  receiptCategoryById: Map<string, string | null>,
+): boolean {
+  if (price.store !== 'Amazon') return true
+  return price.receiptId != null && receiptCategoryById.get(price.receiptId) === 'Alimentación'
+}
+
 export function computeProductStats(prices: ProductPrice[]): ProductStats | null {
   if (prices.length === 0) return null
   const sorted = [...prices].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))

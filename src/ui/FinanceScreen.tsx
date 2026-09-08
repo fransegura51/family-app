@@ -153,10 +153,11 @@ function BankTab() {
   const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [showConnect, setShowConnect] = useState(false)
-  // Petición real: "se pueden importar el último mes por ejemplo?" —
-  // por defecto no se trae el histórico completo del banco, solo el
-  // periodo elegido aquí.
-  const [syncDays, setSyncDays] = useState(30)
+  // Solo importa para la primera sincronización de cada cuenta — a
+  // partir de ahí cada sincronización (manual o del cron 4 veces al
+  // día, ver 0077_schedule_bank_sync.sql) es incremental de verdad,
+  // solo trae lo nuevo desde el último movimiento ya guardado.
+  const [syncDays, setSyncDays] = useState(90)
 
   function reload() {
     setLoading(true)
@@ -242,17 +243,23 @@ function BankTab() {
       )}
 
       {activeConnections.length > 0 && (
-        <div className="inline-fields" style={{ alignItems: 'center' }}>
-          <button type="button" onClick={handleSync} disabled={syncing} style={{ flex: 'none' }}>
-            {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
-          </button>
-          <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))} style={{ flex: 'none' }}>
-            <option value={30}>Último mes</option>
-            <option value={90}>Últimos 3 meses</option>
-            <option value={365}>Último año</option>
-            <option value={0}>Todo el histórico</option>
-          </select>
-        </div>
+        <>
+          <div className="inline-fields" style={{ alignItems: 'center' }}>
+            <button type="button" onClick={handleSync} disabled={syncing} style={{ flex: 'none' }}>
+              {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
+            </button>
+            <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))} style={{ flex: 'none' }}>
+              <option value={30}>Primera vez: último mes</option>
+              <option value={90}>Primera vez: últimos 3 meses</option>
+              <option value={365}>Primera vez: último año</option>
+              <option value={0}>Primera vez: todo el histórico</option>
+            </select>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            Se sincroniza sola 4 veces al día. Este periodo solo se usa la primera vez que se enlaza cada cuenta —
+            después solo se trae lo nuevo desde el último movimiento guardado.
+          </p>
+        </>
       )}
 
       <button type="button" className="link-button" onClick={() => setShowConnect((v) => !v)}>
@@ -270,6 +277,10 @@ function BankTab() {
         <>
           <p className="muted" style={{ marginTop: 16, fontWeight: 600 }}>
             Movimientos del banco ({transactions.length})
+          </p>
+          <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
+            Cada uno se categoriza solo y aparece también en Movimientos, ya editable (categoría, etiqueta...). Si ya
+            existía como ticket con el mismo importe y fecha cercana, se une con él en vez de duplicarse.
           </p>
           <div className="price-row-list">
             {transactions.slice(0, 50).map((t) => (

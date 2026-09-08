@@ -22,6 +22,7 @@ import { DocumentsScreen } from '@/ui/DocumentsScreen'
 import { MenuSettingsScreen } from '@/ui/MenuSettingsScreen'
 import { AyudaScreen } from '@/ui/AyudaScreen'
 import { SuggestionsScreen } from '@/ui/SuggestionsScreen'
+import { AppLockGate } from '@/ui/AppLockGate'
 
 export function App() {
   const { session, profile, loading, refreshProfile } = useSession()
@@ -35,34 +36,36 @@ export function App() {
   }
 
   return (
-    // BASE_URL es '/' en local y '/family-app/' en el build de GitHub
-    // Pages (vite.config.ts) — sin basename, ninguna ruta coincide bajo
-    // esa subruta y la app se queda en blanco tras el login, sin ningún
-    // error visible (bug real encontrado probando el despliegue).
-    <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <ReminderWatcher />
-      <AutomationWatcher />
-      <LocationSharingWatcher profileId={profile.id} />
-      <Routes>
-        <Route element={<NavShell profile={profile} />}>
-          <Route path="/" element={<HomeScreen profile={profile} />} />
-          <Route path="/calendario" element={<CalendarScreen />} />
-          <Route path="/puntos" element={<RewardsScreen />} />
-          <Route path="/compras" element={<ShoppingScreen />} />
-          <Route path="/familia" element={<FamilyScreen profile={profile} />} />
-          <Route path="/alimentacion" element={<AlimentacionScreen />} />
-          <Route path="/dinero" element={<FinanceScreen />} />
-          <Route path="/ubicacion" element={<LocationScreen role={profile.role} profileId={profile.id} />} />
-          <Route path="/actividad" element={<ActivityScreen />} />
-          <Route path="/cumpleanos" element={<BirthdaysScreen />} />
-          <Route path="/contactos" element={<ContactsScreen />} />
-          <Route path="/galeria" element={<GalleryScreen />} />
-          <Route path="/documentos" element={<DocumentsScreen />} />
-          <Route path="/menu-organizar" element={<MenuSettingsScreen />} />
-          <Route path="/ayuda" element={<AyudaScreen />} />
-          <Route path="/sugerencias" element={<SuggestionsScreen />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <AppLockGate profileId={profile.id}>
+      {/* BASE_URL es '/' en local y '/family-app/' en el build de GitHub
+          Pages (vite.config.ts) — sin basename, ninguna ruta coincide bajo
+          esa subruta y la app se queda en blanco tras el login, sin ningún
+          error visible (bug real encontrado probando el despliegue). */}
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
+        <ReminderWatcher />
+        <AutomationWatcher />
+        <LocationSharingWatcher profileId={profile.id} />
+        <Routes>
+          <Route element={<NavShell profile={profile} />}>
+            <Route path="/" element={<HomeScreen profile={profile} />} />
+            <Route path="/calendario" element={<CalendarScreen />} />
+            <Route path="/puntos" element={<RewardsScreen />} />
+            <Route path="/compras" element={<ShoppingScreen />} />
+            <Route path="/familia" element={<FamilyScreen profile={profile} />} />
+            <Route path="/alimentacion" element={<AlimentacionScreen />} />
+            <Route path="/dinero" element={<FinanceScreen />} />
+            <Route path="/ubicacion" element={<LocationScreen role={profile.role} profileId={profile.id} />} />
+            <Route path="/actividad" element={<ActivityScreen />} />
+            <Route path="/cumpleanos" element={<BirthdaysScreen />} />
+            <Route path="/contactos" element={<ContactsScreen />} />
+            <Route path="/galeria" element={<GalleryScreen />} />
+            <Route path="/documentos" element={<DocumentsScreen />} />
+            <Route path="/menu-organizar" element={<MenuSettingsScreen />} />
+            <Route path="/ayuda" element={<AyudaScreen />} />
+            <Route path="/sugerencias" element={<SuggestionsScreen />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AppLockGate>
   )
 }

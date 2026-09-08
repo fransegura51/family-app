@@ -11,6 +11,7 @@ import {
   updateFamilyMember,
   uploadMemberPhoto,
 } from '@/data/family'
+import { adminResetProfilePin } from '@/data/appLock'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
@@ -178,6 +179,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                   <button type="button" className="link-button" onClick={() => setEditingId(m.id)}>
                     Editar
                   </button>
+                  {m.linkedProfileId && <ResetPinButton profileId={m.linkedProfileId} />}
                   {m.linkedProfileId !== profile.id && (
                     <ConfirmButton label="Borrar" onConfirm={() => handleDelete(m.id)} />
                   )}
@@ -323,6 +325,34 @@ function PhotoUploadButton({ memberId, onUploaded }: { memberId: string; onUploa
       {uploading ? 'Subiendo…' : '📷 Foto'}
       <input type="file" accept="image/*" onChange={handleChange} style={{ display: 'none' }} disabled={uploading} />
     </label>
+  )
+}
+
+// Solo admin — "reiniciar" (nunca ver ni mandar) el PIN de bloqueo de
+// otra persona cuando se le olvida: la próxima vez que abra el
+// bloqueo tendrá que crear uno nuevo (ver 0083_profile_app_lock.sql).
+// Solo tiene sentido para quien tiene su propia cuenta (linkedProfileId).
+function ResetPinButton({ profileId }: { profileId: string }) {
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleReset() {
+    setError(null)
+    try {
+      await adminResetProfilePin(profileId)
+      setDone(true)
+      setTimeout(() => setDone(false), 2500)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo reiniciar el PIN')
+    }
+  }
+
+  if (done) return <span className="muted">✓ PIN reiniciado</span>
+  return (
+    <>
+      <ConfirmButton label="🔓 Reiniciar PIN" confirmLabel="Reiniciar" onConfirm={handleReset} />
+      {error && <p className="error">{error}</p>}
+    </>
   )
 }
 

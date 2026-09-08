@@ -70,6 +70,25 @@ body {
   border: 2px solid transparent;
 }
 
+.app-lock-card {
+  max-width: 320px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.app-lock-input {
+  width: 100%;
+  font-size: 28px;
+  letter-spacing: 10px;
+  text-align: center;
+  padding: 10px;
+}
+
+.app-lock-hint {
+  font-size: 13px;
+  margin-top: 16px;
+}
+
 /* Tarjetas de Inicio con icono de color, al estilo de otras apps
    familiares (captura de referencia) — un badge redondo con un emoji
    por sección, para que se distinga de un vistazo y "se vea más viva". */

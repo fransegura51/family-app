@@ -1776,6 +1776,8 @@ textarea {
   align-items: center;
   gap: 8px;
   font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
 }
 
 .store-pie-legend-name {
@@ -1873,7 +1875,9 @@ textarea {
   cursor: pointer;
   padding: 6px 4px;
   font-size: 13px;
+  font-weight: 400;
   border-radius: 8px;
+  color: var(--text);
 }
 
 .donut-legend-row:active {

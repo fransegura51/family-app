@@ -24,7 +24,7 @@ import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { uploadReceipt } from '@/data/receipts'
-import { computeProductStats } from '@/domain/products'
+import { computeProductStats, isLikelyAlcohol } from '@/domain/products'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { normalize } from '@/domain/voiceQuery'
@@ -1381,7 +1381,16 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
     [products, scopedPrices],
   )
 
-  const suggestions = withStats.filter((x) => x.stats!.isDue)
+  // Petición real: limitar a los 10 más comprados — a igual número de
+  // compras, se prioriza lo no alcohólico, pero nunca por delante de
+  // algo comprado de verdad más veces.
+  const suggestions = withStats
+    .filter((x) => x.stats!.isDue)
+    .sort((a, b) => {
+      if (b.stats!.count !== a.stats!.count) return b.stats!.count - a.stats!.count
+      return Number(isLikelyAlcohol(a.product.displayName)) - Number(isLikelyAlcohol(b.product.displayName))
+    })
+    .slice(0, 10)
 
   const comparisons = useMemo(() => {
     const monthly = averagePricesByMonth(purchases)

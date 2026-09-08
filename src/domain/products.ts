@@ -19,6 +19,18 @@ function daysBetween(a: string, b: string): number {
   return Math.round((new Date(b + 'T00:00').getTime() - new Date(a + 'T00:00').getTime()) / 86_400_000)
 }
 
+// Solo para desempatar sugerencias con el mismo número de compras
+// (petición real: "si tienes que elegir entre cerveza... y pan porque
+// se han comprado la misma cantidad de veces sugiere pan, pero si
+// realmente se han comprado más cervezas se respeta") — nunca cambia
+// el recuento real, solo el orden cuando empatan.
+const ALCOHOL_KEYWORDS = ['cerveza', 'vino', 'vodka', 'whisky', 'whiskey', 'ron ', 'ginebra', 'licor', 'cava', 'champan', 'champán', 'sidra']
+
+export function isLikelyAlcohol(displayName: string): boolean {
+  const name = ` ${displayName.trim().toLowerCase()} `
+  return ALCOHOL_KEYWORDS.some((k) => name.includes(k))
+}
+
 export function computeProductStats(prices: ProductPrice[]): ProductStats | null {
   if (prices.length === 0) return null
   const sorted = [...prices].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))

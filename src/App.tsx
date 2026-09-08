@@ -20,6 +20,7 @@ import { ContactsScreen } from '@/ui/ContactsScreen'
 import { GalleryScreen } from '@/ui/GalleryScreen'
 import { DocumentsScreen } from '@/ui/DocumentsScreen'
 import { MenuSettingsScreen } from '@/ui/MenuSettingsScreen'
+import { AyudaScreen } from '@/ui/AyudaScreen'
 
 export function App() {
   const { session, profile, loading, refreshProfile } = useSession()
@@ -57,6 +58,7 @@ export function App() {
           <Route path="/galeria" element={<GalleryScreen />} />
           <Route path="/documentos" element={<DocumentsScreen />} />
           <Route path="/menu-organizar" element={<MenuSettingsScreen />} />
+          <Route path="/ayuda" element={<AyudaScreen />} />
         </Route>
       </Routes>
     </BrowserRouter>

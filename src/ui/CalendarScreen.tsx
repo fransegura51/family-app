@@ -794,7 +794,6 @@ export function CalendarScreen() {
             reload()
           }}
           onNavigateDay={changeSelectedDate}
-          swipeHandlers={daySwipe}
           onQuickAdd={(memberId) => {
             setAddingEventMemberId(memberId)
             setAddingEvent(true)
@@ -1074,7 +1073,6 @@ function FamilyDayView({
   onEventChanged,
   onNavigateDay,
   onQuickAdd,
-  swipeHandlers,
 }: {
   selectedDate: string
   members: FamilyMember[]
@@ -1088,7 +1086,6 @@ function FamilyDayView({
   onEventChanged: () => void
   onNavigateDay: (deltaDays: number) => void
   onQuickAdd: (memberId: string | null) => void
-  swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
 }) {
   const unassigned = dayEvents.filter((e) => e.memberIds.length === 0)
   const columns: { key: string; label: string; member: FamilyMember | null; events: CalendarEvent[] }[] = [
@@ -1113,7 +1110,11 @@ function FamilyDayView({
   }
 
   return (
-    <div onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+    // Sin gesto de deslizar para cambiar de día aquí — bug real: las
+    // columnas se desplazan de lado para ver a cada persona, y ese
+    // mismo gesto se confundía con "cambiar de día" a mitad de
+    // deslizar. Solo las flechas cambian de día en esta vista.
+    <div>
       <div className="month-nav">
         <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
           ‹

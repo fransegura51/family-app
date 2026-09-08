@@ -80,6 +80,10 @@ export function NavShell({ profile }: { profile: Profile }) {
             <span className="nav-item-icon">❓</span>
             Ayuda
           </button>
+          <button type="button" className="nav-menu-item nav-menu-settings" onClick={() => go('/sugerencias')}>
+            <span className="nav-item-icon">💡</span>
+            Sugerencias
+          </button>
           <button type="button" className="nav-menu-item nav-menu-settings" onClick={() => go('/menu-organizar')}>
             <span className="nav-item-icon">⚙️</span>
             Organizar menú

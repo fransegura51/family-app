@@ -21,6 +21,7 @@ import { GalleryScreen } from '@/ui/GalleryScreen'
 import { DocumentsScreen } from '@/ui/DocumentsScreen'
 import { MenuSettingsScreen } from '@/ui/MenuSettingsScreen'
 import { AyudaScreen } from '@/ui/AyudaScreen'
+import { SuggestionsScreen } from '@/ui/SuggestionsScreen'
 
 export function App() {
   const { session, profile, loading, refreshProfile } = useSession()
@@ -59,6 +60,7 @@ export function App() {
           <Route path="/documentos" element={<DocumentsScreen />} />
           <Route path="/menu-organizar" element={<MenuSettingsScreen />} />
           <Route path="/ayuda" element={<AyudaScreen />} />
+          <Route path="/sugerencias" element={<SuggestionsScreen />} />
         </Route>
       </Routes>
     </BrowserRouter>

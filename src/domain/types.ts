@@ -468,3 +468,15 @@ export interface BankTransaction {
   matchedExpenseId: string | null
 }
 
+// Buzón de sugerencias — cualquier familia deja las suyas; la familia
+// dueña de la app las ve todas (ver migración 0078) para aplicarlas.
+export interface Suggestion {
+  id: string
+  familyId: string
+  profileId: string | null
+  message: string
+  status: 'pendiente' | 'aplicada' | 'descartada'
+  adminNote: string | null
+  createdAt: string
+}
+

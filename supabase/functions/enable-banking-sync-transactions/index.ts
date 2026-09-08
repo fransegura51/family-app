@@ -151,12 +151,22 @@ async function syncAccount(
   admin: ReturnType<typeof createClient>,
   jwt: string,
   account: BankAccountRow,
-  defaultDays: number,
+  requestedDays: number | null,
 ): Promise<{ synced: number; error?: string }> {
-  // Incremental de verdad: si la cuenta ya tiene movimientos, se pide
-  // desde el último guardado (3 días de margen por si el banco liquida
-  // tarde) en vez del periodo pedido — así una sincronización 4 veces
-  // al día no vuelve a traer el mes entero cada vez.
+  // Incremental de verdad: si la cuenta ya tiene movimientos, por
+  // defecto se pide desde el último guardado (3 días de margen por si
+  // el banco liquida tarde) en vez de repetir el periodo pedido cada
+  // vez — así el cron 4 veces al día no vuelve a traer el mes entero.
+  //
+  // Pero si la familia pide explícitamente un periodo más amplio desde
+  // el botón "Sincronizar movimientos" (petición real: "he intentado
+  // importar los últimos 3 meses pero no he podido" — antes el
+  // desplegable de periodo solo servía la primerísima vez que se
+  // enlazaba la cuenta, luego se ignoraba siempre), se amplía el
+  // histórico hacia atrás hasta cubrir también ese periodo, sin perder
+  // el margen incremental hacia delante. requestedDays === 0 ("todo el
+  // histórico") siempre fuerza a pedir sin límite de fecha, aunque ya
+  // haya movimientos guardados.
   const { data: latest } = await admin
     .from("bank_transactions")
     .select("transaction_date")
@@ -165,13 +175,23 @@ async function syncAccount(
     .limit(1)
     .maybeSingle()
 
-  let dateFrom: string | null = null
+  let incrementalFrom: string | null = null
   if (latest?.transaction_date) {
     const d = new Date(latest.transaction_date as string)
     d.setDate(d.getDate() - 3)
-    dateFrom = d.toISOString().slice(0, 10)
-  } else if (defaultDays > 0) {
-    dateFrom = new Date(Date.now() - defaultDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    incrementalFrom = d.toISOString().slice(0, 10)
+  }
+
+  let dateFrom: string | null
+  if (requestedDays === 0) {
+    dateFrom = null
+  } else if (requestedDays != null && requestedDays > 0) {
+    const requestedFrom = new Date(Date.now() - requestedDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    dateFrom = incrementalFrom && incrementalFrom < requestedFrom ? incrementalFrom : requestedFrom
+  } else if (incrementalFrom) {
+    dateFrom = incrementalFrom
+  } else {
+    dateFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   }
 
   let continuationKey: string | null = null
@@ -327,17 +347,16 @@ Deno.serve(async (req) => {
     ])
     if (!applicationId || !privateKey) return json({ error: "not_configured" }, 500)
 
-    // "days": solo importa para la primera sincronización de cada
-    // cuenta (a partir de ahí es incremental, ver syncAccount) — por
-    // defecto los últimos 3 meses (petición real: "el histórico
-    // completo podría ser mucho... que tal si se importan los últimos
-    // 3 meses"). 0 = todo el histórico disponible.
-    let defaultDays = 90
+    // "days": el periodo que pide EXPLÍCITAMENTE el botón "Sincronizar
+    // movimientos" (ver syncAccount) — null si no viene body (p. ej. la
+    // llamada de cron), que entonces es puramente incremental. 0 =
+    // todo el histórico disponible, sin límite de fecha.
+    let requestedDays: number | null = null
     try {
       const body = await req.json()
-      if (typeof body?.days === "number" && body.days >= 0) defaultDays = body.days
+      if (typeof body?.days === "number" && body.days >= 0) requestedDays = body.days
     } catch {
-      // Sin body (p. ej. llamada de cron) → se queda el valor por defecto.
+      // Sin body (p. ej. llamada de cron) → null.
     }
 
     let accountsQuery = admin
@@ -354,7 +373,7 @@ Deno.serve(async (req) => {
 
     for (const account of (accounts ?? []) as unknown as BankAccountRow[]) {
       try {
-        const { synced } = await syncAccount(admin, jwt, account, defaultDays)
+        const { synced } = await syncAccount(admin, jwt, account, requestedDays)
         results.push({ accountId: account.id, synced })
         totalSynced += synced
       } catch (err) {

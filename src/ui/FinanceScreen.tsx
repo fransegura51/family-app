@@ -323,15 +323,16 @@ function BankTab() {
               {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
             </button>
             <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))} style={{ flex: 'none' }}>
-              <option value={30}>Primera vez: último mes</option>
-              <option value={90}>Primera vez: últimos 3 meses</option>
-              <option value={365}>Primera vez: último año</option>
-              <option value={0}>Primera vez: todo el histórico</option>
+              <option value={30}>Traer al menos: último mes</option>
+              <option value={90}>Traer al menos: últimos 3 meses</option>
+              <option value={365}>Traer al menos: último año</option>
+              <option value={0}>Traer al menos: todo el histórico</option>
             </select>
           </div>
           <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-            Se sincroniza sola 4 veces al día. Este periodo solo se usa la primera vez que se enlaza cada cuenta —
-            después solo se trae lo nuevo desde el último movimiento guardado.
+            Se sincroniza sola 4 veces al día trayendo solo lo nuevo. Para ampliar hacia atrás elige aquí un periodo
+            más largo y pulsa "Sincronizar" — pero el banco solo entrega el histórico que él mismo tenga disponible
+            para consultar, aunque se pida más.
           </p>
         </>
       )}

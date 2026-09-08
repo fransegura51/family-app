@@ -1604,30 +1604,60 @@ textarea {
   border-color: var(--primary);
 }
 
-/* Tarjetas de saldo por cuenta bancaria, debajo del título Economía
-   (petición real: "que se puedan poner más o menos, que se puedan
-   añadir o quitar, como está en la foto" — una tarjeta por cuenta
-   enlazada, carrusel horizontal para que quepan las que hagan falta). */
-.account-cards-row {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  margin: 10px 0;
-  padding-bottom: 4px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+/* Cabecera propia de Economía + tarjetas de saldo por cuenta bancaria
+   — petición real, con captura de referencia exacta (app Wallet,
+   pantalla "Mis cuentas en Wallet"): "quiero un aspecto idéntico a
+   este". Barra de color a sangre (compensando el padding de .screen)
+   con el título y las tarjetas dentro, rejilla de 2 columnas con un
+   color sólido distinto por cuenta — no una tira que se desliza de
+   lado, ni todas del mismo azul degradado. Las pestañas de abajo (ver
+   ReorderableTabBar) se quedan fuera, con su estilo de chip normal,
+   compartido con Calendario/Compras. */
+.economia-header {
+  margin: -20px -16px 16px;
+  padding: 16px 16px 16px;
+  background: var(--primary);
+  border-radius: 0 0 20px 20px;
 }
 
-.account-cards-row::-webkit-scrollbar {
-  display: none;
+.economia-header h1 {
+  color: white;
+  margin: 0 0 14px;
+  font-size: 22px;
+}
+
+.account-cards-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: white;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.account-cards-view-all {
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.account-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
 .account-card {
-  flex: 0 0 auto;
-  width: 152px;
   border-radius: 14px;
   padding: 12px 14px;
-  background: linear-gradient(135deg, var(--primary), #748ffc);
+  min-height: 74px;
   color: white;
   text-align: left;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
@@ -1637,22 +1667,21 @@ textarea {
 .account-card-bank {
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.02em;
-  opacity: 0.85;
+  opacity: 0.9;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .account-card-name {
-  font-size: 12px;
-  opacity: 0.8;
-  margin: 2px 0 10px;
+  font-size: 11px;
+  opacity: 0.75;
+  margin: 2px 0 8px;
 }
 
 .account-card-balance {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
 }
 
@@ -1662,9 +1691,9 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  background: transparent;
-  border: 2px dashed #c3cbe0;
-  color: var(--muted);
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px dashed rgba(255, 255, 255, 0.55);
+  color: white;
   font-size: 12px;
   font-weight: 600;
 }

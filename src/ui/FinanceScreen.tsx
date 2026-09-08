@@ -159,18 +159,27 @@ export function FinanceScreen() {
 
   return (
     <div className="screen">
-      <h1>Economía</h1>
-      <AccountBalanceCards
-        key={`${tab}-${refreshKey}`}
-        onAddAccount={() => {
-          setOpenConnectSignal((n) => n + 1)
-          setTab('Banco')
-        }}
-        onSelectAccount={(accountId) => {
-          setFocusAccountId(accountId)
-          setTab('Banco')
-        }}
-      />
+      {/* Petición real, con captura de referencia exacta (app Wallet):
+          "quiero un aspecto idéntico a este" — cabecera de color propio
+          para Economía, con las tarjetas de cuenta dentro, como en la
+          referencia. Las pestañas de abajo se quedan con el mismo estilo
+          de chip que el resto de la app (se comparte con Calendario,
+          Compras...) para no romper esas pantallas. */}
+      <div className="economia-header">
+        <h1>Economía</h1>
+        <AccountBalanceCards
+          key={`${tab}-${refreshKey}`}
+          onAddAccount={() => {
+            setOpenConnectSignal((n) => n + 1)
+            setTab('Banco')
+          }}
+          onSelectAccount={(accountId) => {
+            setFocusAccountId(accountId)
+            setTab('Banco')
+          }}
+          onViewAll={() => setTab('Banco')}
+        />
+      </div>
       <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Resumen' && <ResumenTab key={refreshKey} onViewMovements={viewMovements} />}
@@ -230,12 +239,20 @@ export function FinanceScreen() {
 // lo trae la propia sincronización (enable-banking-sync-transactions →
 // syncBalance) — si una cuenta todavía no se ha sincronizado nunca, se
 // avisa en vez de inventar un 0.
+// Petición real, con captura de referencia exacta (app Wallet, pantalla
+// "Mis cuentas en Wallet"): rejilla de 2 columnas, cada cuenta en un
+// color sólido distinto (no una tira que se desliza de lado, ni todas
+// del mismo azul degradado como antes).
+const ACCOUNT_CARD_COLORS = ['#2f6e6e', '#4a5568', '#0f6b4c', '#4a90d9', '#8854d0', '#c0392b']
+
 function AccountBalanceCards({
   onAddAccount,
   onSelectAccount,
+  onViewAll,
 }: {
   onAddAccount: () => void
   onSelectAccount: (accountId: string) => void
+  onViewAll: () => void
 }) {
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [connections, setConnections] = useState<BankConnection[]>([])
@@ -250,24 +267,38 @@ function AccountBalanceCards({
   }, [])
 
   return (
-    <div className="account-cards-row">
-      {accounts.map((a) => {
-        const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Banco'
-        return (
-          <button key={a.id} type="button" className="account-card" onClick={() => onSelectAccount(a.id)}>
-            <div className="account-card-bank">{bankName}</div>
-            <div className="account-card-name">{a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'}</div>
-            <div className="account-card-balance">{a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}</div>
-          </button>
-        )
-      })}
-      {/* Petición real: "no me has puesto para poder agregar cuentas a
-          esa pantalla" — entrada directa al formulario de conectar
-          banco (ya en Banco), sin tener que saber que vive ahí. */}
-      <button type="button" className="account-card account-card-add" onClick={onAddAccount}>
-        <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
-        <span>Añadir cuenta</span>
-      </button>
+    <div className="account-cards-block">
+      <div className="account-cards-heading">
+        <strong>Mis cuentas</strong>
+        <button type="button" className="account-cards-view-all" onClick={onViewAll} aria-label="Ver todas las cuentas">
+          ›
+        </button>
+      </div>
+      <div className="account-cards-grid">
+        {accounts.map((a, i) => {
+          const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Banco'
+          return (
+            <button
+              key={a.id}
+              type="button"
+              className="account-card"
+              style={{ background: ACCOUNT_CARD_COLORS[i % ACCOUNT_CARD_COLORS.length] }}
+              onClick={() => onSelectAccount(a.id)}
+            >
+              <div className="account-card-bank">🏦 {bankName}</div>
+              <div className="account-card-name">{a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'}</div>
+              <div className="account-card-balance">{a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}</div>
+            </button>
+          )
+        })}
+        {/* Petición real: "no me has puesto para poder agregar cuentas
+            a esa pantalla" — entrada directa al formulario de conectar
+            banco (ya en Banco), sin tener que saber que vive ahí. */}
+        <button type="button" className="account-card account-card-add" onClick={onAddAccount}>
+          <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
+          <span>Añadir cuenta</span>
+        </button>
+      </div>
     </div>
   )
 }

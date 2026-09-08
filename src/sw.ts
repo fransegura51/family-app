@@ -1,10 +1,30 @@
 /// <reference lib="webworker" />
 import { precacheAndRoute } from 'workbox-precaching'
+import { registerRoute } from 'workbox-routing'
+import { NetworkFirst } from 'workbox-strategies'
 
 declare const self: ServiceWorkerGlobalScope
 
+// Cargar la página (navegación) siempre intenta la red primero, antes
+// que el índice precacheado — causa real, confirmada varias veces hoy
+// ("no me aparecen los datos/el diseño", "esto es una puta mierda"):
+// cada build de Vite genera archivos con hash nuevo (index-XXXX.js/css)
+// y el despliegue de GitHub Pages BORRA los antiguos; si el service
+// worker seguía sirviendo un index.html viejo desde caché, ese HTML
+// apuntaba a un archivo que ya no existía en el servidor → página sin
+// estilos y a medio cargar. Tiene que registrarse ANTES de
+// precacheAndRoute para que gane esta ruta (workbox usa la primera que
+// haga match) — el índice sigue precacheado como reserva solo para sin
+// conexión (networkTimeoutSeconds).
+registerRoute(
+  ({ request }) => request.mode === 'navigate',
+  new NetworkFirst({ cacheName: 'navigations', networkTimeoutSeconds: 3 }),
+)
+
 // Precacheo offline estándar de vite-plugin-pwa (injectManifest rellena
-// self.__WB_MANIFEST en build).
+// self.__WB_MANIFEST en build) — cubre JS/CSS/imágenes con nombre de
+// archivo ya único por contenido (hash), esos sí son seguros de servir
+// siempre desde caché primero.
 precacheAndRoute(self.__WB_MANIFEST)
 
 self.addEventListener('install', () => {

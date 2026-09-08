@@ -1232,7 +1232,11 @@ function TimeGridView({
   function allDayChipsForDate(dateStr: string): { key: string; title: string; color: string }[] {
     const chips: { key: string; title: string; color: string }[] = []
     for (const ev of eventsByDate.get(dateStr) ?? []) {
-      if (ev.allDay) chips.push({ key: `ev-${ev.id}`, title: ev.title, color: eventColor(ev, memberById) })
+      if (!ev.allDay) continue
+      const hasPhoto = ev.attachmentKind === 'foto'
+      const hasLocation = !!ev.locationLabel || (ev.locationLatitude != null && ev.locationLongitude != null)
+      const prefix = (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
+      chips.push({ key: `ev-${ev.id}`, title: prefix ? `${prefix} ${ev.title}` : ev.title, color: eventColor(ev, memberById) })
     }
     for (const ev of externalEventsByDate.get(dateStr) ?? []) {
       if (ev.allDay) chips.push({ key: `ext-${ev.id}`, title: ev.title, color: '#6b7280' })

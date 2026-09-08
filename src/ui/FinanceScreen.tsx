@@ -1,5 +1,4 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addExpense,
   addWalletTransaction,
@@ -36,6 +35,13 @@ import {
   type Aspsp,
 } from '@/data/bank'
 import { listFamilyMembers } from '@/data/family'
+import {
+  ECONOMIA_MENU_ITEM_META,
+  loadEconomiaMenuLayout,
+  saveEconomiaMenuLayout,
+  type EconomiaMenuGroup,
+  type EconomiaMenuItemKey,
+} from '@/state/economiaMenu'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -94,6 +100,44 @@ import type {
 const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Banco', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
+// El desplegable de Economía mezcla pestañas (SubTab) con accesos
+// sueltos ("accion:categorias"...) en la misma lista — este guard
+// distingue cuáles de sus claves son de verdad una pestaña (para el
+// "📌 Sacar/📍 Quitar" y resaltar la activa, ver EconomiaMenuDropdown).
+function isEconomiaSubTab(key: EconomiaMenuItemKey): key is SubTab {
+  return (SUB_TABS as readonly string[]).includes(key)
+}
+
+// Petición real: "quiero que los quites de ahí [debajo de las
+// tarjetas del banco]... lo metes dentro del desplegable, y le pones
+// un botón para sacar alguno de ellos... que pica el botón y se sale
+// directamente [a] la pantalla de Economía, donde están situados
+// ahora" — mismo concepto que los 4 iconos fijos del ☰ Menú global
+// (PINNED_COUNT), pero aquí sin límite fijo: ninguna pestaña visible
+// fuera del desplegable por defecto, la familia decide cuáles sacar.
+// Guardado en el dispositivo (como el orden del menú), no por familia.
+const ECONOMIA_PINNED_KEY = 'familyapp:economia-pinned-tabs'
+
+function loadEconomiaPinnedTabs(): SubTab[] {
+  try {
+    const raw = localStorage.getItem(ECONOMIA_PINNED_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed.filter((t) => (SUB_TABS as readonly string[]).includes(t)) as SubTab[]) : []
+  } catch {
+    return []
+  }
+}
+
+function saveEconomiaPinnedTabs(tabs: SubTab[]) {
+  try {
+    localStorage.setItem(ECONOMIA_PINNED_KEY, JSON.stringify(tabs))
+  } catch {
+    // Sin localStorage (privado/bloqueado) — se queda todo dentro del
+    // desplegable, no rompe nada.
+  }
+}
+
 // Skill de Pepa, punto 24: "Ver X registros →" tiene que abrir
 // Movimientos filtrado EXACTAMENTE con el conjunto que produjo el
 // dato — se comparte este estado entre Estadísticas y Movimientos en
@@ -145,6 +189,15 @@ export function FinanceScreen() {
   // pantalla (Resumen/Estadísticas/Movimientos/...), como forma
   // alternativa de cambiar de pestaña sin tocar la fila de chips.
   const [economiaMenuOpen, setEconomiaMenuOpen] = useState(false)
+  const [pinnedTabs, setPinnedTabs] = useState<SubTab[]>(() => loadEconomiaPinnedTabs())
+
+  function togglePinnedTab(t: SubTab) {
+    setPinnedTabs((prev) => {
+      const next = prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+      saveEconomiaPinnedTabs(next)
+      return next
+    })
+  }
 
   function reloadShared() {
     Promise.all([listBudgetCategories(), listTags()]).then(([c, t]) => {
@@ -186,26 +239,18 @@ export function FinanceScreen() {
           <h1>Economía</h1>
         </div>
         {economiaMenuOpen && (
-          <div className="economia-menu-dropdown">
-            {SUB_TABS.map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={'economia-menu-item' + (tab === t ? ' active' : '')}
-                onClick={() => {
-                  setTab(t)
-                  setEconomiaMenuOpen(false)
-                }}
-              >
-                {/* Petición real: "a ese desplegable le pones Inicio de
-                    nombre" — Resumen es la pantalla de inicio de
-                    Economía, igual que "Inicio" en la referencia de
-                    Wallet; solo cambia la etiqueta aquí, la pestaña
-                    sigue siendo "Resumen" en el resto de la app. */}
-                {t === 'Resumen' ? 'Inicio' : t}
-              </button>
-            ))}
-          </div>
+          <EconomiaMenuDropdown
+            activeTab={tab}
+            onSelectTab={setTab}
+            pinnedTabs={pinnedTabs}
+            onTogglePin={togglePinnedTab}
+            onAction={(key) => {
+              if (key === 'accion:categorias') setShowCategories(true)
+              else if (key === 'accion:etiquetas') setShowTags(true)
+              else setShowNewMovement(true)
+            }}
+            onClose={() => setEconomiaMenuOpen(false)}
+          />
         )}
         <AccountBalanceCards
           key={`${tab}-${refreshKey}`}
@@ -220,7 +265,20 @@ export function FinanceScreen() {
           onViewAll={() => setTab('Banco')}
         />
       </div>
-      <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
+
+      {/* Petición real: "quiero que los quites de ahí [debajo de las
+          tarjetas del banco]" — ya no hay una fila fija con las 6
+          pestañas; solo aparecen aquí las que la familia haya sacado
+          del desplegable con "📌 Sacar". */}
+      {pinnedTabs.length > 0 && (
+        <div className="filter-row">
+          {SUB_TABS.filter((t) => pinnedTabs.includes(t)).map((t) => (
+            <button key={t} type="button" className={'chip' + (tab === t ? ' chip-active' : '')} onClick={() => setTab(t)}>
+              {ECONOMIA_MENU_ITEM_META[t].icon} {ECONOMIA_MENU_ITEM_META[t].label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'Resumen' && <ResumenTab key={refreshKey} onViewMovements={viewMovements} />}
       {tab === 'Estadísticas' && <EstadisticasTab key={refreshKey} onViewMovements={viewMovements} />}
@@ -232,25 +290,6 @@ export function FinanceScreen() {
       )}
       {tab === 'Banco' && <BankTab key={refreshKey} openConnectSignal={openConnectSignal} focusAccountId={focusAccountId} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
-
-      {/* Petición real: "vamos a hacer 3 botones flotantes
-          individuales... arriba a la derecha así no tapan el texto de
-          lo demás" — visibles en cualquier pestaña de Economía, no solo
-          en Movimientos. */}
-      <div className="finance-fab-group">
-        <button type="button" className="finance-fab" onClick={() => setShowCategories(true)}>
-          <span aria-hidden="true">🗂️</span>
-          Categorías
-        </button>
-        <button type="button" className="finance-fab" onClick={() => setShowTags(true)}>
-          <span aria-hidden="true">🏷️</span>
-          Etiquetas
-        </button>
-        <button type="button" className="finance-fab" onClick={() => setShowNewMovement(true)}>
-          <span aria-hidden="true">➕</span>
-          Movimiento
-        </button>
-      </div>
 
       {showCategories && (
         <CategoriesModal categories={categories} onClose={() => setShowCategories(false)} onChanged={handleChanged} />
@@ -266,6 +305,234 @@ export function FinanceScreen() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+// Petición real: "esa pestaña dentro de Inicio del desplegable quiero
+// que se puedan editar y que se puedan cambiar de posición... más
+// arriba, más abajo, agruparla como quiera... por categoría" — y
+// después: "me tienes que poner en el desplegable un botón para añadir
+// categorías, que yo pueda añadir categorías y editarlas". Modo normal
+// (toca = cambia de pestaña o abre la acción) vs modo edición (✏️
+// arriba): ↑/↓ para reordenar dentro de su categoría, un desplegable
+// para moverlo a otra, y "+ Nueva categoría" para crear encabezados con
+// nombre propio (ver src/state/economiaMenu.ts, guardado en el
+// dispositivo). Los 3 accesos que antes eran botones flotantes
+// (Categorías/Etiquetas/Nuevo movimiento) viven aquí también.
+function EconomiaMenuDropdown({
+  activeTab,
+  onSelectTab,
+  pinnedTabs,
+  onTogglePin,
+  onAction,
+  onClose,
+}: {
+  activeTab: SubTab
+  onSelectTab: (t: SubTab) => void
+  pinnedTabs: SubTab[]
+  onTogglePin: (t: SubTab) => void
+  onAction: (key: 'accion:categorias' | 'accion:etiquetas' | 'accion:movimiento') => void
+  onClose: () => void
+}) {
+  const [layout, setLayout] = useState<EconomiaMenuGroup[]>(() => loadEconomiaMenuLayout())
+  const [editMode, setEditMode] = useState(false)
+  const [addingGroup, setAddingGroup] = useState(false)
+  const [addingGroupName, setAddingGroupName] = useState('')
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  function persist(next: EconomiaMenuGroup[]) {
+    setLayout(next)
+    saveEconomiaMenuLayout(next)
+  }
+
+  function moveItem(groupId: string, index: number, direction: -1 | 1) {
+    const group = layout.find((g) => g.id === groupId)
+    if (!group) return
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= group.items.length) return
+    const items = [...group.items]
+    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
+    persist(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
+  }
+
+  function moveItemToGroup(itemKey: EconomiaMenuItemKey, fromGroupId: string, toGroupId: string) {
+    if (fromGroupId === toGroupId) return
+    persist(
+      layout.map((g) => {
+        if (g.id === fromGroupId) return { ...g, items: g.items.filter((k) => k !== itemKey) }
+        if (g.id === toGroupId) return { ...g, items: [...g.items, itemKey] }
+        return g
+      }),
+    )
+  }
+
+  function handleAddGroup(e: FormEvent) {
+    e.preventDefault()
+    if (!addingGroupName.trim()) return
+    persist([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
+    setAddingGroupName('')
+    setAddingGroup(false)
+  }
+
+  function handleRenameGroup(id: string) {
+    persist(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
+    setRenamingGroupId(null)
+  }
+
+  // El primer grupo nunca desaparece (es el que recoge los accesos de
+  // cualquier categoría que se borre), así que siempre queda un sitio
+  // donde vivir para todos los accesos.
+  function deleteGroup(id: string) {
+    const group = layout.find((g) => g.id === id)
+    const rest = layout.filter((g) => g.id !== id)
+    if (!group || rest.length === 0) return
+    const [first, ...others] = rest
+    persist([{ ...first, items: [...first.items, ...group.items] }, ...others])
+  }
+
+  function handleItemActivate(key: EconomiaMenuItemKey) {
+    if (key === 'accion:categorias' || key === 'accion:etiquetas' || key === 'accion:movimiento') {
+      onAction(key)
+    } else {
+      onSelectTab(key)
+    }
+    onClose()
+  }
+
+  return (
+    <div className="economia-menu-dropdown">
+      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
+        {editMode ? '✓ Listo' : '✏️ Editar'}
+      </button>
+
+      {layout.map((group) => (
+        <div key={group.id} className="economia-menu-group">
+          {(group.name || editMode) &&
+            (renamingGroupId === group.id ? (
+              <form
+                className="inline-fields"
+                style={{ margin: '4px 4px 6px' }}
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleRenameGroup(group.id)
+                }}
+              >
+                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
+                <button type="submit">Guardar</button>
+              </form>
+            ) : (
+              <div className="economia-menu-group-title">
+                <span>{group.name ?? 'Sin categoría'}</span>
+                {editMode && (
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ padding: '2px 6px' }}
+                      onClick={() => {
+                        setRenamingGroupId(group.id)
+                        setRenameValue(group.name ?? '')
+                      }}
+                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
+                    >
+                      ✎
+                    </button>
+                    {layout.length > 1 && (
+                      <ConfirmIconButton
+                        icon="✕"
+                        className="link-button"
+                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
+                        onConfirm={() => deleteGroup(group.id)}
+                      />
+                    )}
+                  </span>
+                )}
+              </div>
+            ))}
+
+          {group.items.map((key, i) => {
+            const meta = ECONOMIA_MENU_ITEM_META[key]
+            const isTab = isEconomiaSubTab(key)
+            return (
+              <div key={key} className={'economia-menu-row' + (isTab && activeTab === key ? ' active' : '')}>
+                {editMode ? (
+                  <span className="economia-menu-item">
+                    <span aria-hidden="true">{meta.icon}</span>
+                    {meta.label}
+                  </span>
+                ) : (
+                  <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(key)}>
+                    <span aria-hidden="true">{meta.icon}</span>
+                    {meta.label}
+                  </button>
+                )}
+
+                {editMode ? (
+                  <span className="economia-menu-edit-controls">
+                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ padding: '2px 6px' }}
+                      disabled={i === group.items.length - 1}
+                      onClick={() => moveItem(group.id, i, 1)}
+                      aria-label={`Bajar ${meta.label}`}
+                    >
+                      ↓
+                    </button>
+                    <select
+                      value={group.id}
+                      onChange={(e) => moveItemToGroup(key, group.id, e.target.value)}
+                      aria-label={`Mover ${meta.label} a otra categoría`}
+                    >
+                      {layout.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name ?? 'Sin categoría'}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                ) : (
+                  isTab && (
+                    <button
+                      type="button"
+                      className="economia-menu-pin"
+                      onClick={() => onTogglePin(key)}
+                      aria-label={pinnedTabs.includes(key) ? `Quitar ${key} de la pantalla de Economía` : `Sacar ${key} a la pantalla de Economía`}
+                    >
+                      {pinnedTabs.includes(key) ? '📍 Quitar' : '📌 Sacar'}
+                    </button>
+                  )
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
+
+      {editMode &&
+        (addingGroup ? (
+          <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
+            <input
+              type="text"
+              value={addingGroupName}
+              onChange={(e) => setAddingGroupName(e.target.value)}
+              placeholder="Nombre de la categoría"
+              autoFocus
+              style={{ flex: 1 }}
+            />
+            <button type="submit">Crear</button>
+          </form>
+        ) : (
+          <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
+            <span aria-hidden="true">➕</span>
+            Nueva categoría
+          </button>
+        ))}
     </div>
   )
 }

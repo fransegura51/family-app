@@ -435,29 +435,6 @@ button {
   justify-content: space-around;
 }
 
-.nav-menu-fab {
-  position: fixed;
-  left: 16px;
-  bottom: 90px;
-  z-index: 45;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  border: none;
-  background: var(--primary);
-  color: white;
-  font-size: 20px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.nav-menu-fab-open {
-  background: #374151;
-}
-
 .nav-menu-overlay {
   position: fixed;
   inset: 0;
@@ -1652,15 +1629,58 @@ textarea {
 .economia-menu-dropdown {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   background: white;
   border-radius: 12px;
   padding: 8px;
   margin: -6px 0 14px;
+  max-height: 60vh;
+  overflow-y: auto;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
+.economia-menu-edit-toggle {
+  align-self: flex-end;
+  padding: 4px 8px;
+}
+
+/* Petición real: "esa pestaña... quiero que se puedan editar y
+   cambiar de posición... agruparla como quiera, por categoría"; luego
+   "un botón para añadir categorías, que yo pueda añadir categorías y
+   editarlas" — encabezado con nombre propio, editable, más los
+   controles de reordenar/mover cuando el desplegable está en modo
+   edición (ver EconomiaMenuDropdown). */
+.economia-menu-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.economia-menu-edit-controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.economia-menu-edit-controls select {
+  padding: 4px 6px;
+  font-size: 11px;
+  border-radius: 6px;
+  max-width: 96px;
+}
+
 .economia-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
   text-align: left;
   background: none;
   border: none;
@@ -1671,10 +1691,41 @@ textarea {
   font-weight: 500;
 }
 
-.economia-menu-item.active {
+/* Fila de una pestaña dentro del desplegable: el nombre (cambia de
+   pestaña y cierra) + un botón aparte para sacarla/quitarla de la
+   pantalla de Economía sin cambiar de pestaña — petición real: "le
+   pones un botón para sacar alguno de ellos... que pica el botón y se
+   sale directamente [a] la pantalla de Economía". */
+.economia-menu-row {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+
+.economia-menu-row.active {
   background: #eef1ff;
+}
+
+.economia-menu-row.active .economia-menu-item {
   color: var(--primary);
   font-weight: 700;
+}
+
+.economia-menu-pin {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.economia-menu-divider {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 4px 4px;
 }
 
 .account-cards-heading {

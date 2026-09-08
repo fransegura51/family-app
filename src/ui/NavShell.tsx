@@ -91,16 +91,23 @@ export function NavShell({ profile }: { profile: Profile }) {
         </div>
       )}
 
-      <button
-        type="button"
-        className={'nav-menu-fab' + (menuOpen ? ' nav-menu-fab-open' : '')}
-        onClick={() => setMenuOpen((v) => !v)}
-        aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
-      >
-        {menuOpen ? '✕' : '☰'}
-      </button>
-
+      {/* Petición real: "el botón de las tres rayas que hay abajo a la
+          izquierda... quiero que me lo metas en la barra de abajo,
+          donde está la casa, compras, economía y calendario... antes
+          de la casa, y repartes el espacio entre los cinco" — ya no
+          flota aparte (position: fixed), es un icono más de
+          bottom-nav-pinned (justify-content: space-around ya reparte
+          el hueco solo entre los que haya). */}
       <nav className="bottom-nav bottom-nav-pinned">
+        <button
+          type="button"
+          className={'nav-item' + (menuOpen ? ' active' : '')}
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
+        >
+          <span className="nav-item-icon">{menuOpen ? '✕' : '☰'}</span>
+          <span className="nav-item-label">Menú</span>
+        </button>
         {pinned.map((tab) => (
           <button
             key={tab.to}

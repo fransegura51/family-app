@@ -397,7 +397,7 @@ function BankTab() {
                       {' '}
                       · {e.expenseDate}
                       {e.store && ` · ${e.store}`}
-                      {e.tagId && ` · 🏷️ ${tags.find((t) => t.id === e.tagId)?.name ?? ''}`}
+                      <TagBadge tag={tags.find((t) => t.id === e.tagId)} />
                     </span>
                     {e.notes && (
                       <span className="muted" style={{ display: 'block', fontSize: 11 }}>
@@ -691,6 +691,7 @@ interface BreakdownSlice {
   key: string
   label: string
   icon?: string
+  color?: string
   total: number
   count: number
   hasChildren?: boolean
@@ -737,7 +738,7 @@ function SvgDonut({
   size = 190,
   colors = DONUT_COLORS,
 }: {
-  slices: { key: string; total: number }[]
+  slices: { key: string; total: number; color?: string }[]
   centerLabel: { name: string; total: number }
   highlightedKey: string | null
   onSliceClick: (key: string) => void
@@ -767,7 +768,7 @@ function SvgDonut({
             <path
               key={s.key}
               d={donutSlicePath(cx, cy, rOuter, rInner, start, start + pct)}
-              fill={dimmed ? '#dfe3ea' : colors[i % colors.length]}
+              fill={dimmed ? '#dfe3ea' : s.color ?? colors[i % colors.length]}
               onClick={() => onSliceClick(s.key)}
               style={{ cursor: 'pointer' }}
             />
@@ -980,7 +981,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
     const slices: BreakdownSlice[] = tags
       .map((t) => {
         const matched = real.filter((e) => e.tagId === t.id)
-        return { key: t.id, label: t.name, icon: '🏷️', total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+        return { key: t.id, label: t.name, icon: '🏷️', color: t.color, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
       })
       .filter((s) => s.total > 0)
     body =
@@ -1388,7 +1389,7 @@ function ExpensesTab({
                   · {e.expenseDate}
                   {e.store && ` · ${e.store}`}
                   {e.kind !== 'real' && ` · ${e.kind}`}
-                  {e.tagId && ` · 🏷️ ${tags.find((t) => t.id === e.tagId)?.name ?? ''}`}
+                  <TagBadge tag={tags.find((t) => t.id === e.tagId)} />
                 </span>
               </span>
               <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
@@ -1409,6 +1410,24 @@ function ExpensesTab({
         {monthExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
       </div>
     </div>
+  )
+}
+
+// Petición real: "quiero que les pongas también para elegir color
+// para cada etiqueta, ese color luego se debe ver en los movimientos
+// y en el dónut de gastos de etiquetas" — mismo puntito de color que
+// TagsModal, reutilizado donde sea que se muestre una etiqueta ya
+// asignada (Movimientos, Banco).
+function TagBadge({ tag }: { tag: Tag | undefined }) {
+  if (!tag) return null
+  return (
+    <>
+      {' · '}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: tag.color, display: 'inline-block', flex: 'none' }} />
+        {tag.name}
+      </span>
+    </>
   )
 }
 
@@ -1707,21 +1726,24 @@ function CategoriesModal({
 function TagsModal({ tags, onClose, onChanged }: { tags: Tag[]; onClose: () => void; onChanged: () => void }) {
   const [addingTag, setAddingTag] = useState(false)
   const [newTagName, setNewTagName] = useState('')
-  const [renamingTagId, setRenamingTagId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
+  const [newTagColor, setNewTagColor] = useState(DONUT_COLORS[0])
+  const [editingTagId, setEditingTagId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editColor, setEditColor] = useState('')
 
   async function handleAddTag(e: FormEvent) {
     e.preventDefault()
     if (!newTagName.trim()) return
-    await createTag({ name: newTagName.trim() })
+    await createTag({ name: newTagName.trim(), color: newTagColor })
     setNewTagName('')
+    setNewTagColor(DONUT_COLORS[0])
     setAddingTag(false)
     onChanged()
   }
 
-  async function handleRenameTag(id: string) {
-    if (renameValue.trim()) await updateTag(id, { name: renameValue.trim() })
-    setRenamingTagId(null)
+  async function handleSaveTag(id: string) {
+    if (editName.trim()) await updateTag(id, { name: editName.trim(), color: editColor })
+    setEditingTagId(null)
     onChanged()
   }
 
@@ -1743,14 +1765,24 @@ function TagsModal({ tags, onClose, onChanged }: { tags: Tag[]; onClose: () => v
           {addingTag ? 'Cerrar' : '+ Crear nueva etiqueta'}
         </button>
         {addingTag && (
-          <form onSubmit={handleAddTag} className="inline-fields" style={{ margin: '8px 0' }}>
-            <input
-              type="text"
-              value={newTagName}
-              onChange={(e) => setNewTagName(e.target.value)}
-              placeholder="Eric, Vacaciones…"
-              autoFocus
-            />
+          <form onSubmit={handleAddTag} className="member-form" style={{ margin: '8px 0' }}>
+            <div className="inline-fields">
+              <input
+                type="text"
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                placeholder="Eric, Vacaciones…"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <input
+                type="color"
+                value={newTagColor}
+                onChange={(e) => setNewTagColor(e.target.value)}
+                style={{ flex: 'none', width: 44, padding: 4 }}
+                aria-label="Color de la etiqueta"
+              />
+            </div>
             <button type="submit">Crear</button>
           </form>
         )}
@@ -1759,17 +1791,24 @@ function TagsModal({ tags, onClose, onChanged }: { tags: Tag[]; onClose: () => v
 
         <div className="event-list">
           {sorted.map((t) =>
-            renamingTagId === t.id ? (
+            editingTagId === t.id ? (
               <form
                 key={t.id}
                 className="inline-fields"
                 style={{ marginBottom: 6 }}
                 onSubmit={(e) => {
                   e.preventDefault()
-                  handleRenameTag(t.id)
+                  handleSaveTag(t.id)
                 }}
               >
-                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus />
+                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus style={{ flex: 1 }} />
+                <input
+                  type="color"
+                  value={editColor}
+                  onChange={(e) => setEditColor(e.target.value)}
+                  style={{ flex: 'none', width: 44, padding: 4 }}
+                  aria-label="Color de la etiqueta"
+                />
                 <button type="submit">Guardar</button>
               </form>
             ) : (
@@ -1777,13 +1816,17 @@ function TagsModal({ tags, onClose, onChanged }: { tags: Tag[]; onClose: () => v
                 <button
                   type="button"
                   className="task-card-main"
-                  style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer' }}
+                  style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: 'var(--text)', fontWeight: 400 }}
                   onClick={() => {
-                    setRenamingTagId(t.id)
-                    setRenameValue(t.name)
+                    setEditingTagId(t.id)
+                    setEditName(t.name)
+                    setEditColor(t.color)
                   }}
                 >
-                  <strong style={{ fontSize: 13 }}>🏷️ {t.name}</strong>
+                  <strong style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: t.color, display: 'inline-block' }} />
+                    {t.name}
+                  </strong>
                 </button>
                 <ConfirmIconButton icon="✕" className="link-button" ariaLabel={`Eliminar etiqueta ${t.name}`} onConfirm={() => deleteTag(t.id).then(onChanged)} />
               </div>

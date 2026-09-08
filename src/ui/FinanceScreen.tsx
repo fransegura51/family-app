@@ -21,7 +21,6 @@ import {
   listTags,
   listWalletTransactions,
   reorderBudgetCategories,
-  reorderTags,
   updateBudgetCategory,
   updateExpense,
   updateTag,
@@ -113,6 +112,34 @@ export interface MovementsFilter {
 export function FinanceScreen() {
   const [tab, setTab] = useState<SubTab>('Resumen')
   const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
+  // Categorías y etiquetas se cargan aquí, una vez, para que los 3
+  // botones flotantes (Categorías / Etiquetas / Nuevo movimiento) estén
+  // disponibles en cualquier pestaña de Economía — petición real: "cada
+  // vez que quiero hacer una de esas 3 cosas no me acuerdo en qué
+  // página está el botón". Cada pestaña sigue cargando sus propios
+  // gastos/categorías para sus cálculos; `refreshKey` solo fuerza a la
+  // pestaña activa a remontarse (y recargar sus datos) cuando algo
+  // cambia desde uno de estos 3 modales.
+  const [categories, setCategories] = useState<BudgetCategory[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [showCategories, setShowCategories] = useState(false)
+  const [showTags, setShowTags] = useState(false)
+  const [showNewMovement, setShowNewMovement] = useState(false)
+
+  function reloadShared() {
+    Promise.all([listBudgetCategories(), listTags()]).then(([c, t]) => {
+      setCategories(c)
+      setTags(t)
+    })
+  }
+
+  useEffect(reloadShared, [])
+
+  function handleChanged() {
+    reloadShared()
+    setRefreshKey((k) => k + 1)
+  }
 
   function viewMovements(filter: MovementsFilter) {
     setMovementsFilter(filter)
@@ -124,14 +151,50 @@ export function FinanceScreen() {
       <h1>Economía</h1>
       <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
-      {tab === 'Resumen' && <ResumenTab onViewMovements={viewMovements} />}
-      {tab === 'Estadísticas' && <EstadisticasTab onViewMovements={viewMovements} />}
+      {tab === 'Resumen' && <ResumenTab key={refreshKey} onViewMovements={viewMovements} />}
+      {tab === 'Estadísticas' && <EstadisticasTab key={refreshKey} onViewMovements={viewMovements} />}
       {tab === 'Movimientos' && (
-        <ExpensesTab filter={movementsFilter} onClearFilter={() => setMovementsFilter(null)} />
+        <ExpensesTab key={refreshKey} filter={movementsFilter} onClearFilter={() => setMovementsFilter(null)} />
       )}
-      {tab === 'Presupuesto Generales' && <BudgetsTab group="generales" seedCategories={MASTER_CATEGORY_SEED} />}
-      {tab === 'Banco' && <BankTab />}
+      {tab === 'Presupuesto Generales' && (
+        <BudgetsTab key={refreshKey} group="generales" seedCategories={MASTER_CATEGORY_SEED} />
+      )}
+      {tab === 'Banco' && <BankTab key={refreshKey} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
+
+      {/* Petición real: "vamos a hacer 3 botones flotantes
+          individuales... arriba a la derecha así no tapan el texto de
+          lo demás" — visibles en cualquier pestaña de Economía, no solo
+          en Movimientos. */}
+      <div className="finance-fab-group">
+        <button type="button" className="finance-fab" onClick={() => setShowCategories(true)}>
+          <span aria-hidden="true">🗂️</span>
+          Categorías
+        </button>
+        <button type="button" className="finance-fab" onClick={() => setShowTags(true)}>
+          <span aria-hidden="true">🏷️</span>
+          Etiquetas
+        </button>
+        <button type="button" className="finance-fab" onClick={() => setShowNewMovement(true)}>
+          <span aria-hidden="true">➕</span>
+          Movimiento
+        </button>
+      </div>
+
+      {showCategories && (
+        <CategoriesModal categories={categories} onClose={() => setShowCategories(false)} onChanged={handleChanged} />
+      )}
+      {showTags && <TagsModal tags={tags} onClose={() => setShowTags(false)} onChanged={handleChanged} />}
+      {showNewMovement && (
+        <NewMovementModal
+          categories={categories}
+          onClose={() => setShowNewMovement(false)}
+          onAdded={() => {
+            setShowNewMovement(false)
+            handleChanged()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -1117,7 +1180,6 @@ function ExpensesTab({
   // febrero) en vez de solo el que corre. Se ignora mientras haya un
   // `filter` activo (viene de "Ver X registros →" en Estadísticas).
   const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
-  const [managing, setManaging] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   // Igual que las categorías sugeridas de Presupuesto Generales: se dan
   // de alta solas la primera vez, sin pedirlo — petición real: "los
@@ -1275,19 +1337,6 @@ function ExpensesTab({
         )}
         {monthExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
       </div>
-
-      <button type="button" className="screen-fab" onClick={() => setManaging(true)}>
-        + Categorías y movimientos
-      </button>
-
-      {managing && (
-        <ManageCategoriesModal
-          categories={categories}
-          tags={tags}
-          onClose={() => setManaging(false)}
-          onChanged={reload}
-        />
-      )}
     </div>
   )
 }
@@ -1396,7 +1445,7 @@ function EditExpenseInline({
           {classification.necessity ? NECESSITY_LABELS[classification.necessity] : 'Sin clasificar'}
           {' · '}
           {classification.isFixed == null ? 'Sin clasificar' : classification.isFixed ? 'Fijo' : 'Variable'}
-          {' — según la categoría, editable en "+ Categorías y movimientos".'}
+          {' — según la categoría, editable en el botón flotante "🗂️ Categorías".'}
         </p>
       )}
       {error && <p className="error">{error}</p>}
@@ -1416,14 +1465,20 @@ function EditExpenseInline({
 // flotante de Presupuesto General a Gastos"): crear categorías de
 // cualquiera de los dos grupos, reordenarlas con flechas, y apuntar un
 // gasto eligiendo la categoría de una lista.
-function ManageCategoriesModal({
+// Gestión de categorías — petición real: "Categorías contiene las
+// Categorías (por orden alfabético) y Subcategorías y arriba lo
+// primero debe tener un botón Crear nueva Categoría... quiero que aquí
+// adaptes el mismo sistema que las subcategorías se desplieguen
+// dándole a su categoría principal" (mismo patrón de disclosure que
+// CategorySelect). El orden manual (↑/↓) se sustituye por alfabético
+// aquí — más fácil de encontrar una categoría concreta que recordar en
+// qué orden se fueron creando.
+function CategoriesModal({
   categories,
-  tags,
   onClose,
   onChanged,
 }: {
   categories: BudgetCategory[]
-  tags: Tag[]
   onClose: () => void
   onChanged: () => void
 }) {
@@ -1433,136 +1488,93 @@ function ManageCategoriesModal({
   // vive dentro del árbol de 'generales', ver migración 0076).
   const [newCategoryGroup, setNewCategoryGroup] = useState<'generales' | 'ingresos'>('generales')
   const [addingCategory, setAddingCategory] = useState(false)
-  const [addingExpense, setAddingExpense] = useState(false)
-  const [addingTag, setAddingTag] = useState(false)
-  const [newTagName, setNewTagName] = useState('')
-  const [renamingTagId, setRenamingTagId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-
-  function moveTag(index: number, direction: -1 | 1) {
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= tags.length) return
-    const next = [...tags]
-    ;[next[index], next[newIndex]] = [next[newIndex], next[index]]
-    reorderTags(next.map((t) => t.id)).then(onChanged)
-  }
-
-  async function handleAddTag(e: FormEvent) {
-    e.preventDefault()
-    if (!newTagName.trim()) return
-    await createTag({ name: newTagName.trim() })
-    setNewTagName('')
-    setAddingTag(false)
-    onChanged()
-  }
-
-  async function handleRenameTag(id: string) {
-    if (renameValue.trim()) await updateTag(id, { name: renameValue.trim() })
-    setRenamingTagId(null)
-    onChanged()
-  }
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const generales = categories.filter((c) => c.budgetGroup === 'generales')
   const ingresos = categories.filter((c) => c.budgetGroup === 'ingresos')
 
-  function move(group: BudgetCategory[], index: number, direction: -1 | 1) {
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= group.length) return
-    const next = [...group]
-    ;[next[index], next[newIndex]] = [next[newIndex], next[index]]
-    reorderBudgetCategories(next.map((c) => c.id)).then(onChanged)
-  }
-
-  function renderRow(c: BudgetCategory, list: BudgetCategory[], i: number, indent: boolean, showClassification: boolean) {
+  function renderClassification(c: BudgetCategory) {
     return (
-      <div key={c.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4, padding: '6px 10px', marginLeft: indent ? 20 : 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <div className="task-card-main">
-            <strong style={{ fontSize: 13 }}>
-              {c.icon} {c.name}
-            </strong>
-          </div>
-          <button
-            type="button"
-            className="link-button"
-            style={{ padding: 4 }}
-            disabled={i === 0}
-            onClick={() => move(list, i, -1)}
-            aria-label={`Subir ${c.name}`}
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            className="link-button"
-            style={{ padding: 4 }}
-            disabled={i === list.length - 1}
-            onClick={() => move(list, i, 1)}
-            aria-label={`Bajar ${c.name}`}
-          >
-            ↓
-          </button>
-          <ConfirmIconButton
-            icon="✕"
-            className="link-button"
-            ariaLabel={`Eliminar categoría ${c.name}`}
-            onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
-          />
-        </div>
-        {/* Skill de Pepa, puntos 15/16 — clasificación automática de
-            fábrica, editable aquí por la familia si no está de
-            acuerdo (petición real: "editables si se quiere
-            posteriormente por el usuario"). */}
-        {showClassification && (
-          <div className="inline-fields" style={{ gap: 6 }}>
-            <select
-              value={c.necessity ?? ''}
-              onChange={(e) => updateBudgetCategory(c.id, { necessity: (e.target.value || null) as 'debo' | 'necesito' | 'quiero' | null }).then(onChanged)}
-              style={{ fontSize: 12, padding: '4px 6px' }}
-            >
-              <option value="">Sin clasificar</option>
-              <option value="debo">Debo</option>
-              <option value="necesito">Necesito</option>
-              <option value="quiero">Quiero</option>
-            </select>
-            <select
-              value={c.isFixed == null ? '' : c.isFixed ? 'fijo' : 'variable'}
-              onChange={(e) => updateBudgetCategory(c.id, { isFixed: e.target.value === '' ? null : e.target.value === 'fijo' }).then(onChanged)}
-              style={{ fontSize: 12, padding: '4px 6px' }}
-            >
-              <option value="">Sin clasificar</option>
-              <option value="fijo">Fijo</option>
-              <option value="variable">Variable</option>
-            </select>
-          </div>
-        )}
+      <div className="inline-fields" style={{ gap: 6, marginTop: 6 }}>
+        <select
+          value={c.necessity ?? ''}
+          onChange={(e) => updateBudgetCategory(c.id, { necessity: (e.target.value || null) as 'debo' | 'necesito' | 'quiero' | null }).then(onChanged)}
+          style={{ fontSize: 12, padding: '4px 6px' }}
+        >
+          <option value="">Sin clasificar</option>
+          <option value="debo">Debo</option>
+          <option value="necesito">Necesito</option>
+          <option value="quiero">Quiero</option>
+        </select>
+        <select
+          value={c.isFixed == null ? '' : c.isFixed ? 'fijo' : 'variable'}
+          onChange={(e) => updateBudgetCategory(c.id, { isFixed: e.target.value === '' ? null : e.target.value === 'fijo' }).then(onChanged)}
+          style={{ fontSize: 12, padding: '4px 6px' }}
+        >
+          <option value="">Sin clasificar</option>
+          <option value="fijo">Fijo</option>
+          <option value="variable">Variable</option>
+        </select>
       </div>
     )
   }
 
-  // Skill de Pepa, punto 10: dos niveles — cada categoría principal
-  // muestra debajo sus subcategorías (parent_id), cada nivel se
-  // reordena por separado.
-  function renderGroupList(label: string, list: BudgetCategory[], showClassification: boolean) {
-    const topLevel = list.filter((c) => !c.parentId)
+  function renderGroup(label: string, list: BudgetCategory[], showClassification: boolean) {
+    const topLevel = [...list.filter((c) => !c.parentId)].sort((a, b) => a.name.localeCompare(b.name, 'es'))
     return (
-      <>
+      <div style={{ marginBottom: 16 }}>
         <p className="muted" style={{ marginBottom: 4, fontWeight: 600 }}>
           {label}
         </p>
-        <div className="event-list" style={{ marginBottom: 8 }}>
-          {topLevel.map((c, i) => {
-            const children = list.filter((x) => x.parentId === c.id)
+        <div className="category-picker-panel" style={{ maxHeight: 'none' }}>
+          {topLevel.map((c) => {
+            const children = [...list.filter((x) => x.parentId === c.id)].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+            const expanded = expandedId === c.id
             return (
               <div key={c.id}>
-                {renderRow(c, topLevel, i, false, showClassification)}
-                {children.map((child, j) => renderRow(child, children, j, true, showClassification))}
+                <button type="button" className="category-picker-row" onClick={() => setExpandedId(expanded ? null : c.id)}>
+                  <span style={{ flex: 1 }}>
+                    {c.icon} {c.name}
+                  </span>
+                  <span className="muted">{expanded ? '▲' : '›'}</span>
+                </button>
+                {expanded && (
+                  <div style={{ padding: '4px 12px 12px 28px', borderBottom: '1px solid #f1f1f1' }}>
+                    {showClassification && renderClassification(c)}
+                    <ConfirmIconButton
+                      icon="✕ Eliminar esta categoría"
+                      className="link-button"
+                      ariaLabel={`Eliminar categoría ${c.name}`}
+                      onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
+                    />
+                    {children.map((child) => (
+                      <div key={child.id} style={{ borderTop: '1px solid #f1f1f1', paddingTop: 8, marginTop: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <strong style={{ flex: 1, fontSize: 14 }}>
+                            {child.icon} {child.name}
+                          </strong>
+                          <ConfirmIconButton
+                            icon="✕"
+                            className="link-button"
+                            ariaLabel={`Eliminar categoría ${child.name}`}
+                            onConfirm={() => deleteBudgetCategory(child.id).then(onChanged)}
+                          />
+                        </div>
+                        {showClassification && renderClassification(child)}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           })}
-          {topLevel.length === 0 && <p className="muted">Sin categorías todavía.</p>}
+          {topLevel.length === 0 && (
+            <p className="muted" style={{ padding: 12 }}>
+              Sin categorías todavía.
+            </p>
+          )}
         </div>
-      </>
+      </div>
     )
   }
 
@@ -1571,31 +1583,15 @@ function ManageCategoriesModal({
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
-            Categorías y movimientos
+            Categorías
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
           </button>
         </div>
 
-        {/* Petición real: "subiría en ese menú los puntos de crear
-            gasto y crear categoría arriba del todo y debajo la lista
-            de categorías". */}
-        <button type="button" className="link-button" onClick={() => setAddingExpense((v) => !v)}>
-          {addingExpense ? 'Cerrar' : '+ Añadir movimiento'}
-        </button>
-        {addingExpense && (
-          <AddExpenseToAnyCategoryInline
-            categories={categories}
-            onAdded={() => {
-              setAddingExpense(false)
-              onChanged()
-            }}
-          />
-        )}
-
         <button type="button" className="link-button" onClick={() => setAddingCategory((v) => !v)}>
-          {addingCategory ? 'Cerrar' : '+ Nueva categoría'}
+          {addingCategory ? 'Cerrar' : '+ Crear nueva categoría'}
         </button>
         {addingCategory && (
           <>
@@ -1628,18 +1624,70 @@ function ManageCategoriesModal({
 
         <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
 
-        {renderGroupList('Generales', generales, true)}
-        {renderGroupList('Ingresos', ingresos, false)}
+        {renderGroup('Generales', generales, true)}
+        {renderGroup('Ingresos', ingresos, false)}
+      </div>
+    </div>
+  )
+}
+
+// Gestión de etiquetas — mismo patrón que CategoriesModal (crear
+// arriba, lista alfabética debajo).
+function TagsModal({ tags, onClose, onChanged }: { tags: Tag[]; onClose: () => void; onChanged: () => void }) {
+  const [addingTag, setAddingTag] = useState(false)
+  const [newTagName, setNewTagName] = useState('')
+  const [renamingTagId, setRenamingTagId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  async function handleAddTag(e: FormEvent) {
+    e.preventDefault()
+    if (!newTagName.trim()) return
+    await createTag({ name: newTagName.trim() })
+    setNewTagName('')
+    setAddingTag(false)
+    onChanged()
+  }
+
+  async function handleRenameTag(id: string) {
+    if (renameValue.trim()) await updateTag(id, { name: renameValue.trim() })
+    setRenamingTagId(null)
+    onChanged()
+  }
+
+  const sorted = [...tags].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Etiquetas
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+
+        <button type="button" className="link-button" onClick={() => setAddingTag((v) => !v)}>
+          {addingTag ? 'Cerrar' : '+ Crear nueva etiqueta'}
+        </button>
+        {addingTag && (
+          <form onSubmit={handleAddTag} className="inline-fields" style={{ margin: '8px 0' }}>
+            <input
+              type="text"
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+              placeholder="Eric, Vacaciones…"
+              autoFocus
+            />
+            <button type="submit">Crear</button>
+          </form>
+        )}
 
         <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
 
-        {/* Skill de Pepa, punto 11: crear/editar/eliminar/reordenar
-            etiquetas — libres, sin lista cerrada. */}
-        <p className="muted" style={{ marginBottom: 4, fontWeight: 600 }}>
-          Etiquetas
-        </p>
-        <div className="event-list" style={{ marginBottom: 8 }}>
-          {tags.map((t, i) =>
+        <div className="event-list">
+          {sorted.map((t) =>
             renamingTagId === t.id ? (
               <form
                 key={t.id}
@@ -1666,40 +1714,40 @@ function ManageCategoriesModal({
                 >
                   <strong style={{ fontSize: 13 }}>🏷️ {t.name}</strong>
                 </button>
-                <button type="button" className="link-button" style={{ padding: 4 }} disabled={i === 0} onClick={() => moveTag(i, -1)} aria-label={`Subir ${t.name}`}>
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="link-button"
-                  style={{ padding: 4 }}
-                  disabled={i === tags.length - 1}
-                  onClick={() => moveTag(i, 1)}
-                  aria-label={`Bajar ${t.name}`}
-                >
-                  ↓
-                </button>
                 <ConfirmIconButton icon="✕" className="link-button" ariaLabel={`Eliminar etiqueta ${t.name}`} onConfirm={() => deleteTag(t.id).then(onChanged)} />
               </div>
             ),
           )}
-          {tags.length === 0 && <p className="muted">Todavía no hay etiquetas.</p>}
+          {sorted.length === 0 && <p className="muted">Todavía no hay etiquetas.</p>}
         </div>
-        <button type="button" className="link-button" onClick={() => setAddingTag((v) => !v)}>
-          {addingTag ? 'Cerrar' : '+ Nueva etiqueta'}
-        </button>
-        {addingTag && (
-          <form onSubmit={handleAddTag} className="inline-fields" style={{ marginTop: 8 }}>
-            <input
-              type="text"
-              value={newTagName}
-              onChange={(e) => setNewTagName(e.target.value)}
-              placeholder="Eric, Vacaciones…"
-              autoFocus
-            />
-            <button type="submit">Crear</button>
-          </form>
-        )}
+      </div>
+    </div>
+  )
+}
+
+// Formulario de nuevo movimiento en su propio modal, accesible desde
+// cualquier pestaña de Economía con el botón flotante "➕ Movimiento".
+function NewMovementModal({
+  categories,
+  onClose,
+  onAdded,
+}: {
+  categories: BudgetCategory[]
+  onClose: () => void
+  onAdded: () => void
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Nuevo movimiento
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <AddExpenseToAnyCategoryInline categories={categories} onAdded={onAdded} />
       </div>
     </div>
   )

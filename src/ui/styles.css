@@ -545,6 +545,8 @@ select {
   border-radius: 10px;
   border: 1px solid #d1d5db;
   background: #fff;
+  color: var(--text);
+  font-weight: 400;
   font-size: 16px;
   text-align: left;
 }
@@ -568,6 +570,8 @@ select {
   padding: 12px;
   text-align: left;
   background: #fff;
+  color: var(--text);
+  font-weight: 400;
   border-bottom: 1px solid #f1f1f1;
   font-size: 15px;
 }
@@ -1565,6 +1569,37 @@ textarea {
   font-size: 14px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   cursor: pointer;
+}
+
+/* Petición real: "3 botones flotantes individuales... arriba a la
+   derecha así no tapan el texto de lo demás" — Categorías / Etiquetas
+   / Nuevo movimiento, visibles en cualquier pestaña de Economía en vez
+   de un único botón escondido dentro de Movimientos. */
+.finance-fab-group {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.finance-fab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .modal-overlay {

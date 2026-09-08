@@ -31,7 +31,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listExpenses(): Promise<Expense[]> {
   const { data, error } = await supabase
     .from('expenses')
-    .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source')
+    .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override')
     .order('expense_date', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -47,6 +47,7 @@ export async function listExpenses(): Promise<Expense[]> {
     budgetGroup: r.budget_group,
     tagId: r.tag_id,
     source: r.source as ExpenseSource,
+    isFixedOverride: r.is_fixed_override,
   }))
 }
 
@@ -94,6 +95,7 @@ export async function updateExpense(
     kind?: ExpenseKind
     isIncome?: boolean
     tagId?: string | null
+    isFixedOverride?: boolean | null
   },
 ): Promise<void> {
   const update: Record<string, unknown> = {}
@@ -104,6 +106,7 @@ export async function updateExpense(
   if (patch.kind !== undefined) update.kind = patch.kind
   if (patch.isIncome !== undefined) update.is_income = patch.isIncome
   if (patch.tagId !== undefined) update.tag_id = patch.tagId
+  if (patch.isFixedOverride !== undefined) update.is_fixed_override = patch.isFixedOverride
   const { error } = await supabase.from('expenses').update(update).eq('id', id)
   if (error) throw error
 }

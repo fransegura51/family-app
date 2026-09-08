@@ -62,6 +62,7 @@ import {
   budgetSpent,
   isFoodCategory,
   resolveCategoryClassification,
+  resolveExpenseFixed,
   walletBalance,
   walletCategoryTotal,
 } from '@/domain/finance'
@@ -839,6 +840,12 @@ function BankTab({
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  // Petición real: "que me pongas una pestaña que sea gastos fijos,
+  // gastos variables... y que me pongas para poder filtrar por
+  // ingresos... para saber cuánto tenemos de cada" — Fijo/Variable se
+  // resuelve por movimiento (resolveExpenseFixed: categoría, o el
+  // propio movimiento si lo has marcado a mano en su edición).
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos'>('todos')
 
   // Petición real: "no me has puesto para poder agregar cuentas a esa
   // pantalla" — el botón "+ Añadir cuenta" de las tarjetas de saldo
@@ -917,7 +924,15 @@ function BankTab({
   const byAccount = activeAccountId
     ? linkedExpenses.filter((e) => expenseAccountId.get(e.id) === activeAccountId)
     : linkedExpenses
-  const filteredExpenses = byAccount.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
+  const dateFilteredExpenses = byAccount.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
+  const filteredExpenses = dateFilteredExpenses.filter((e) => {
+    if (typeFilter === 'todos') return true
+    if (typeFilter === 'ingresos') return e.isIncome
+    if (e.isIncome) return false
+    const isFixed = resolveExpenseFixed(e, categories)
+    return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
+  })
+  const typeFilterTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
   const activeAccountLabel = activeAccountId
     ? (() => {
         const acc = accounts.find((a) => a.id === activeAccountId)
@@ -1019,6 +1034,28 @@ function BankTab({
             customTo={customTo}
             onCustomToChange={setCustomTo}
           />
+          {/* Petición real: "que me pongas una pestaña que sea gastos
+              fijos, gastos variables... y también poder filtrar por
+              ingresos... para saber cuánto tenemos de cada". */}
+          <div className="filter-row" style={{ marginTop: 8 }}>
+            <button type="button" className={'chip' + (typeFilter === 'todos' ? ' chip-active' : '')} onClick={() => setTypeFilter('todos')}>
+              Todos
+            </button>
+            <button type="button" className={'chip' + (typeFilter === 'fijos' ? ' chip-active' : '')} onClick={() => setTypeFilter('fijos')}>
+              Gastos fijos
+            </button>
+            <button type="button" className={'chip' + (typeFilter === 'variables' ? ' chip-active' : '')} onClick={() => setTypeFilter('variables')}>
+              Gastos variables
+            </button>
+            <button type="button" className={'chip' + (typeFilter === 'ingresos' ? ' chip-active' : '')} onClick={() => setTypeFilter('ingresos')}>
+              Ingresos
+            </button>
+          </div>
+          {typeFilter !== 'todos' && (
+            <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+              Total {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : 'de ingresos'}: <strong>{typeFilterTotal.toFixed(2)} €</strong>
+            </p>
+          )}
           <div className="price-row-list">
             {filteredExpenses.length === 0 && <p className="muted">Ningún movimiento en este periodo.</p>}
             {filteredExpenses.slice(0, 50).map((e) =>
@@ -2143,11 +2180,16 @@ function EditExpenseInline({
   const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
   const [store, setStore] = useState(expense.store ?? '')
   const [tagId, setTagId] = useState(expense.tagId ?? '')
+  // Petición real: "quiero que yo pueda seleccionar cada gasto, si es
+  // fijo o es variable" — por defecto sigue a la categoría (null),
+  // pero este movimiento en concreto puede llevar su propia marca.
+  const [isFixedOverride, setIsFixedOverride] = useState<boolean | null>(expense.isFixedOverride)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Skill de Pepa, puntos 15/16 — ya no se elige a mano por movimiento:
-  // se hereda de la categoría (automática, editable en "+ Categorías y
-  // movimientos" si la familia no está de acuerdo con la de fábrica).
+  // Skill de Pepa, puntos 15/16 — por defecto se hereda de la
+  // categoría (automática, editable en "🗂️ Categorías" si la familia
+  // no está de acuerdo con la de fábrica); Debo/Necesito/Quiero sigue
+  // siendo solo por categoría, Fijo/Variable ya se puede pisar aquí.
   const classification = resolveCategoryClassification(category, categories)
 
   async function handleSave() {
@@ -2159,6 +2201,7 @@ function EditExpenseInline({
         amount: Number(amount),
         category,
         tagId: tagId || null,
+        isFixedOverride,
         ...(expense.isIncome ? {} : { store }),
       })
       onDone()
@@ -2204,12 +2247,27 @@ function EditExpenseInline({
         <TagSelect value={tagId} onChange={setTagId} tags={tags} />
       </label>
       {!expense.isIncome && (
-        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-          {classification.necessity ? NECESSITY_LABELS[classification.necessity] : 'Sin clasificar'}
-          {' · '}
-          {classification.isFixed == null ? 'Sin clasificar' : classification.isFixed ? 'Fijo' : 'Variable'}
-          {' — según la categoría, editable en el botón flotante "🗂️ Categorías".'}
-        </p>
+        <>
+          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+            {classification.necessity ? NECESSITY_LABELS[classification.necessity] : 'Sin clasificar'}
+            {' — según la categoría, editable en el botón flotante "🗂️ Categorías".'}
+          </p>
+          {/* Petición real: "quiero que yo pueda seleccionar cada
+              gasto, si es fijo o es variable" — a diferencia de
+              Debo/Necesito/Quiero (solo por categoría), esto se puede
+              pisar para este movimiento en concreto. */}
+          <div className="filter-row" style={{ margin: '4px 0 0' }}>
+            <button type="button" className={'chip' + (isFixedOverride === null ? ' chip-active' : '')} onClick={() => setIsFixedOverride(null)}>
+              Según categoría{classification.isFixed != null ? ` (${classification.isFixed ? 'Fijo' : 'Variable'})` : ''}
+            </button>
+            <button type="button" className={'chip' + (isFixedOverride === true ? ' chip-active' : '')} onClick={() => setIsFixedOverride(true)}>
+              Fijo
+            </button>
+            <button type="button" className={'chip' + (isFixedOverride === false ? ' chip-active' : '')} onClick={() => setIsFixedOverride(false)}>
+              Variable
+            </button>
+          </div>
+        </>
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">

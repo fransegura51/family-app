@@ -207,6 +207,11 @@ export interface Expense {
   // independiente de la categoría, una por movimiento.
   tagId: string | null
   source: ExpenseSource
+  // Petición real: "quiero que yo pueda seleccionar cada gasto, si es
+  // fijo o es variable" — null = se calcula de la categoría como
+  // siempre (resolveCategoryClassification); true/false = este
+  // movimiento en concreto manda por encima de su categoría.
+  isFixedOverride: boolean | null
 }
 
 // "alimentacion" | "generales" — separa las dos pestañas de

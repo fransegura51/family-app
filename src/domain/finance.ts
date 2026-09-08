@@ -69,6 +69,16 @@ export function resolveCategoryClassification(categoryName: string, categories: 
   }
 }
 
+// Petición real: "quiero que yo pueda seleccionar cada gasto, si es
+// fijo o es variable... para saber cuánto tenemos de cada" — por
+// defecto Fijo/Variable sigue viniendo de la categoría (arriba), pero
+// un movimiento concreto puede llevar su propia marca que manda por
+// encima (expense.isFixedOverride, ver 0082_expense_fixed_override.sql).
+export function resolveExpenseFixed(expense: Pick<Expense, 'category' | 'isFixedOverride'>, categories: BudgetCategory[]): boolean | null {
+  if (expense.isFixedOverride != null) return expense.isFixedOverride
+  return resolveCategoryClassification(expense.category, categories).isFixed
+}
+
 export function budgetSpent(
   budget: Budget,
   expenses: Expense[],

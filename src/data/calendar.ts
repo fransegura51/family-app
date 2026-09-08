@@ -1,4 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
 import type { CalendarEvent } from '@/domain/types'
 import type { EventReminder, ReminderAnchor } from '@/domain/reminders'
 
@@ -14,9 +15,21 @@ interface EventRow {
   recurrence_rule: string | null
   exception_dates: string[]
   points: number
+  location_label: string | null
+  location_latitude: number | null
+  location_longitude: number | null
+  attachment_storage_path: string | null
+  attachment_kind: 'foto' | 'archivo' | null
+  attachment_original_name: string | null
+  note: string | null
   calendar_event_members: { member_id: string }[]
   calendar_event_reminders: { minutes_before: number; anchor: string }[]
 }
+
+const EVENT_COLUMNS =
+  'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, exception_dates, points, ' +
+  'location_label, location_latitude, location_longitude, attachment_storage_path, attachment_kind, attachment_original_name, note, ' +
+  'calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)'
 
 function toEvent(row: EventRow): CalendarEvent {
   return {
@@ -36,19 +49,64 @@ function toEvent(row: EventRow): CalendarEvent {
     })),
     memberIds: row.calendar_event_members.map((m) => m.member_id),
     points: row.points,
+    locationLabel: row.location_label,
+    locationLatitude: row.location_latitude,
+    locationLongitude: row.location_longitude,
+    attachmentStoragePath: row.attachment_storage_path,
+    attachmentKind: row.attachment_kind,
+    attachmentOriginalName: row.attachment_original_name,
+    note: row.note,
   }
 }
 
 export async function listUpcomingEvents(): Promise<CalendarEvent[]> {
   const { data, error } = await supabase
     .from('calendar_events')
-    .select(
-      'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, exception_dates, points, calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)',
-    )
+    .select(EVENT_COLUMNS)
     .order('start_at', { ascending: true })
 
   if (error) throw error
   return (data as unknown as EventRow[]).map(toEvent)
+}
+
+async function currentFamilyId(): Promise<string> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data: profileRow, error } = await supabase
+    .from('profiles')
+    .select('family_id')
+    .eq('id', userResult.user.id)
+    .single()
+  if (error) throw error
+  return profileRow.family_id
+}
+
+// Mismo bucket privado que los adjuntos sueltos del día
+// (calendar-attachments) — la foto se enseña grande en la tarjeta del
+// evento (formato de referencia), el archivo genérico solo como enlace.
+export async function uploadEventPhoto(file: File): Promise<string> {
+  const familyId = await currentFamilyId()
+  const compressed = await compressImageFile(file)
+  const ext = compressed.name.split('.').pop() || 'jpg'
+  const path = `${familyId}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('calendar-attachments').upload(path, compressed)
+  if (error) throw error
+  return path
+}
+
+export async function uploadEventFile(file: File): Promise<string> {
+  const familyId = await currentFamilyId()
+  const ext = file.name.split('.').pop() || 'dat'
+  const path = `${familyId}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('calendar-attachments').upload(path, file)
+  if (error) throw error
+  return path
+}
+
+export async function getEventAttachmentUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('calendar-attachments').createSignedUrl(storagePath, 3600)
+  if (error) throw error
+  return data.signedUrl
 }
 
 async function replaceReminders(eventId: string, reminders: EventReminder[]): Promise<void> {
@@ -72,6 +130,13 @@ export async function createEvent(input: {
   reminders: EventReminder[]
   memberIds: string[]
   points?: number
+  locationLabel?: string | null
+  locationLatitude?: number | null
+  locationLongitude?: number | null
+  attachmentStoragePath?: string | null
+  attachmentKind?: 'foto' | 'archivo' | null
+  attachmentOriginalName?: string | null
+  note?: string | null
 }): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
@@ -94,6 +159,13 @@ export async function createEvent(input: {
       recurrence_rule: input.recurrenceRule,
       points: input.points ?? 0,
       created_by: userResult.user.id,
+      location_label: input.locationLabel ?? null,
+      location_latitude: input.locationLatitude ?? null,
+      location_longitude: input.locationLongitude ?? null,
+      attachment_storage_path: input.attachmentStoragePath ?? null,
+      attachment_kind: input.attachmentKind ?? null,
+      attachment_original_name: input.attachmentOriginalName ?? null,
+      note: input.note ?? null,
     })
     .select('id')
     .single()
@@ -127,6 +199,13 @@ export async function updateEvent(
     reminders: EventReminder[]
     memberIds: string[]
     points?: number
+    locationLabel?: string | null
+    locationLatitude?: number | null
+    locationLongitude?: number | null
+    attachmentStoragePath?: string | null
+    attachmentKind?: 'foto' | 'archivo' | null
+    attachmentOriginalName?: string | null
+    note?: string | null
   },
 ): Promise<void> {
   const { error } = await supabase
@@ -139,6 +218,13 @@ export async function updateEvent(
       recurrence_rule: input.recurrenceRule,
       points: input.points ?? 0,
       updated_at: new Date().toISOString(),
+      location_label: input.locationLabel ?? null,
+      location_latitude: input.locationLatitude ?? null,
+      location_longitude: input.locationLongitude ?? null,
+      attachment_storage_path: input.attachmentStoragePath ?? null,
+      attachment_kind: input.attachmentKind ?? null,
+      attachment_original_name: input.attachmentOriginalName ?? null,
+      note: input.note ?? null,
     })
     .eq('id', id)
   if (error) throw error

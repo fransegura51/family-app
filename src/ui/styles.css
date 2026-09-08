@@ -1362,11 +1362,27 @@ textarea {
   line-height: 1.4;
 }
 
+.agenda-card-wrap {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.agenda-card-photo {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+}
+
 .agenda-card {
   position: relative;
   border-radius: 10px;
   padding: 10px 30px 10px 12px;
   color: white;
+}
+
+.agenda-card-with-photo {
+  border-radius: 0 0 10px 10px;
 }
 
 .agenda-card-close {

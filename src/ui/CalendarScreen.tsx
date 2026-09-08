@@ -1,4 +1,4 @@
-import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import { findMemberInText } from '@/domain/voiceQuery'
 import {
@@ -6,15 +6,18 @@ import {
   createEvent,
   deleteEvent,
   deleteEventOccurrence,
+  getEventAttachmentUrl,
   listEventCompletions,
   listUpcomingEvents,
   uncompleteEventOccurrence,
   updateEvent,
+  uploadEventFile,
+  uploadEventPhoto,
   type EventCompletion,
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
-import { ConfirmButton } from '@/ui/ConfirmButton'
+import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import {
   addFeed,
   completeExternalEventOccurrence,
@@ -58,7 +61,16 @@ import {
   type ReminderUnit,
 } from '@/domain/reminders'
 import { MemberAvatar } from '@/ui/MemberAvatar'
-import type { CalendarEvent, Contact, FamilyMember } from '@/domain/types'
+import type { CalendarEvent, Contact, DayAttachment, FamilyMember } from '@/domain/types'
+import {
+  addDayFile,
+  addDayLocation,
+  addDayPhoto,
+  deleteDayAttachment,
+  getDayAttachmentUrl,
+  listDayAttachments,
+} from '@/data/dayAttachments'
+import { getCurrentPosition } from '@/services/geolocation'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
 import { setCalendarMemberFilter } from '@/state/calendarMemberFilter'
 import {
@@ -118,6 +130,7 @@ export function CalendarScreen() {
   const [externalCompletions, setExternalCompletions] = useState<ExternalEventCompletion[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
+  const [dayAttachments, setDayAttachments] = useState<DayAttachment[]>([])
   // Botón flotante "Nuevo evento", tocable desde cualquier parte de la
   // pestaña — petición real: "esa misma idea [la de Contactos] la
   // vamos a aplicar al calendario: botón flotante Nuevo evento y
@@ -196,6 +209,25 @@ export function CalendarScreen() {
   }
 
   useEffect(reload, [])
+
+  // Adjuntos sueltos por día — aparte del reload grande de arriba, para
+  // no volver a pedir eventos/miembros/etc. solo por subir una foto.
+  function reloadAttachments() {
+    listDayAttachments()
+      .then(setDayAttachments)
+      .catch((err: Error) => setError(err.message))
+  }
+  useEffect(reloadAttachments, [])
+
+  const dayAttachmentsByDate = useMemo(() => {
+    const map = new Map<string, DayAttachment[]>()
+    for (const a of dayAttachments) {
+      const list = map.get(a.day) ?? []
+      list.push(a)
+      map.set(a.day, list)
+    }
+    return map
+  }, [dayAttachments])
 
   // Cuando se apunta un evento por voz (VoiceCapture vive fuera de esta
   // pantalla, montado en toda la app), esta pantalla no se enteraba —
@@ -518,6 +550,13 @@ export function CalendarScreen() {
           onDeleteOccurrence: () => handleDeleteOccurrence(ev.id, dateStr),
           onComplete: done ? undefined : () => handleCompleteEvent(ev.id, dateStr),
           onUncomplete: done ? () => handleUncompleteEvent(ev.id, dateStr) : undefined,
+          attachmentStoragePath: ev.attachmentStoragePath,
+          attachmentKind: ev.attachmentKind,
+          attachmentOriginalName: ev.attachmentOriginalName,
+          locationLabel: ev.locationLabel,
+          locationLatitude: ev.locationLatitude,
+          locationLongitude: ev.locationLongitude,
+          note: ev.note,
         }
       }),
       ...dayExternalEvents.map((ev) => {
@@ -674,6 +713,8 @@ export function CalendarScreen() {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
+            attachments={dayAttachmentsByDate.get(selectedDate) ?? []}
+            onAttachmentsChanged={reloadAttachments}
           />
         </>
       ) : view === 'Vista general' ? (
@@ -751,6 +792,8 @@ export function CalendarScreen() {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
+            attachments={dayAttachmentsByDate.get(selectedDate) ?? []}
+            onAttachmentsChanged={reloadAttachments}
           />
         </>
       ) : view === 'Agenda' ? (
@@ -814,6 +857,8 @@ export function CalendarScreen() {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
+            attachments={dayAttachmentsByDate.get(selectedDate) ?? []}
+            onAttachmentsChanged={reloadAttachments}
           />
         </>
       )}
@@ -904,6 +949,17 @@ interface AgendaEntry {
   onDeleteOccurrence?: () => void
   onComplete?: () => void
   onUncomplete?: () => void
+  // Adjuntos del propio evento (Skill de adjuntos, formato "Nuevo
+  // evento" de referencia): foto grande en la tarjeta, archivo,
+  // ubicación y nota — solo los llevan los eventos propios, nunca los
+  // externos/cumpleaños.
+  attachmentStoragePath?: string | null
+  attachmentKind?: 'foto' | 'archivo' | null
+  attachmentOriginalName?: string | null
+  locationLabel?: string | null
+  locationLatitude?: number | null
+  locationLongitude?: number | null
+  note?: string | null
 }
 
 // Ventana emergente al pinchar un día — agenda cronológica de arriba
@@ -921,6 +977,8 @@ function DayModal({
   onEventChanged,
   onNavigateDay,
   swipeHandlers,
+  attachments,
+  onAttachmentsChanged,
 }: {
   selectedDate: string
   entries: AgendaEntry[]
@@ -931,6 +989,8 @@ function DayModal({
   onEventChanged: () => void
   onNavigateDay: (deltaDays: number) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
+  attachments: DayAttachment[]
+  onAttachmentsChanged: () => void
 }) {
   return (
     <div className="day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
@@ -968,6 +1028,237 @@ function DayModal({
         onEventChanged={onEventChanged}
         onCancelEdit={onCancelEdit}
       />
+
+      <DayAttachmentsSection day={selectedDate} attachments={attachments} onChanged={onAttachmentsChanged} />
+    </div>
+  )
+}
+
+// Adjuntos sueltos del día (Skill de adjuntos): foto, archivo o
+// ubicación, sin ligar a ningún evento concreto — petición real: "un
+// botón con un + añadir o foto o archivo adjunto o ubicación" dentro
+// de cada día.
+function DayAttachmentsSection({
+  day,
+  attachments,
+  onChanged,
+}: {
+  day: string
+  attachments: DayAttachment[]
+  onChanged: () => void
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [addingLocation, setAddingLocation] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handlePhotoSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    setError(null)
+    try {
+      await addDayPhoto(day, file)
+      setMenuOpen(false)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo subir la foto')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    setError(null)
+    try {
+      await addDayFile(day, file)
+      setMenuOpen(false)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo subir el archivo')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleDelete(a: DayAttachment) {
+    await deleteDayAttachment(a)
+    onChanged()
+  }
+
+  return (
+    <div className="day-attachments">
+      {attachments.length > 0 && (
+        <div className="day-attachments-list">
+          {attachments.map((a) => (
+            <DayAttachmentRow key={a.id} attachment={a} onDelete={() => handleDelete(a)} />
+          ))}
+        </div>
+      )}
+
+      {!menuOpen ? (
+        <button type="button" className="link-button" onClick={() => setMenuOpen(true)}>
+          + Añadir foto, archivo o ubicación
+        </button>
+      ) : addingLocation ? (
+        <DayLocationForm
+          onCancel={() => setAddingLocation(false)}
+          onSaved={() => {
+            setAddingLocation(false)
+            setMenuOpen(false)
+            onChanged()
+          }}
+          day={day}
+        />
+      ) : (
+        <div className="filter-row">
+          <button type="button" className="chip" onClick={() => photoInputRef.current?.click()} disabled={uploading}>
+            📷 Foto
+          </button>
+          <button type="button" className="chip" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            📎 Archivo
+          </button>
+          <button type="button" className="chip" onClick={() => setAddingLocation(true)}>
+            📍 Ubicación
+          </button>
+          <button type="button" className="link-button" onClick={() => setMenuOpen(false)}>
+            Cancelar
+          </button>
+        </div>
+      )}
+      <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoSelected} />
+      <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileSelected} />
+      {uploading && <p className="muted">Subiendo…</p>}
+      {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+function DayLocationForm({ day, onSaved, onCancel }: { day: string; onSaved: () => void; onCancel: () => void }) {
+  const [label, setLabel] = useState('')
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [locating, setLocating] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleUseCurrentPosition() {
+    setLocating(true)
+    setError(null)
+    try {
+      setCoords(await getCurrentPosition())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo obtener la ubicación')
+    } finally {
+      setLocating(false)
+    }
+  }
+
+  async function handleSave() {
+    if (!label.trim() && !coords) {
+      setError('Escribe un nombre o usa tu ubicación actual')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addDayLocation(day, {
+        label: label.trim() || null,
+        latitude: coords?.latitude ?? null,
+        longitude: coords?.longitude ?? null,
+      })
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar la ubicación')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card member-form">
+      <input type="text" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nombre del sitio (opcional si usas el GPS)" />
+      <button type="button" className="link-button" onClick={handleUseCurrentPosition} disabled={locating}>
+        {coords ? '✓ Ubicación capturada' : locating ? 'Obteniendo…' : '📍 Usar mi ubicación actual'}
+      </button>
+      {error && <p className="error">{error}</p>}
+      <div className="form-actions">
+        <button type="button" onClick={handleSave} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DayAttachmentRow({ attachment, onDelete }: { attachment: DayAttachment; onDelete: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (attachment.storagePath) {
+      getDayAttachmentUrl(attachment.storagePath).then(setUrl).catch(() => {})
+    }
+  }, [attachment.storagePath])
+
+  if (attachment.kind === 'foto') {
+    return (
+      <div className="day-attachment-row">
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer">
+            <img src={url} alt="Foto del día" className="day-attachment-thumb" />
+          </a>
+        ) : (
+          <span className="muted">Cargando…</span>
+        )}
+        <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar foto" onConfirm={onDelete} />
+      </div>
+    )
+  }
+
+  if (attachment.kind === 'archivo') {
+    return (
+      <div className="day-attachment-row">
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer">
+            📎 {attachment.originalName ?? 'Archivo'}
+          </a>
+        ) : (
+          <span className="muted">📎 {attachment.originalName ?? 'Archivo'}</span>
+        )}
+        <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar archivo" onConfirm={onDelete} />
+      </div>
+    )
+  }
+
+  // ubicación
+  const mapsUrl =
+    attachment.latitude != null && attachment.longitude != null
+      ? `https://www.google.com/maps?q=${attachment.latitude},${attachment.longitude}`
+      : null
+  return (
+    <div className="day-attachment-row">
+      <span>
+        📍 {attachment.label || 'Ubicación'}
+        {mapsUrl && (
+          <>
+            {' '}
+            ·{' '}
+            <a href={mapsUrl} target="_blank" rel="noreferrer">
+              Ver en el mapa
+            </a>
+          </>
+        )}
+      </span>
+      <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar ubicación" onConfirm={onDelete} />
     </div>
   )
 }
@@ -1441,32 +1732,82 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
   )
 }
 
+// Foto grande sobre la tarjeta del evento (formato de referencia,
+// como "Moto") — la url firmada se pide sola, no llega ya resuelta.
+function EventAttachmentPhoto({ storagePath }: { storagePath: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    getEventAttachmentUrl(storagePath)
+      .then((u) => active && setUrl(u))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [storagePath])
+  if (!url) return null
+  return <img src={url} alt="" className="agenda-card-photo" />
+}
+
 function AgendaCard({ entry }: { entry: AgendaEntry }) {
   const [confirming, setConfirming] = useState(false)
   const canDelete = !!entry.onDeleteSeries
+  const hasPhoto = entry.attachmentKind === 'foto' && !!entry.attachmentStoragePath
+  const mapsUrl =
+    entry.locationLatitude != null && entry.locationLongitude != null
+      ? `https://www.google.com/maps?q=${entry.locationLatitude},${entry.locationLongitude}`
+      : null
   return (
-    <div
-      className={'agenda-card' + (entry.done ? ' agenda-card-done' : '')}
-      style={{ background: entry.color, color: readableTextColor(entry.color) }}
-    >
-      {/* X siempre visible en la esquina — antes solo había "Borrar" en
-          texto pequeño abajo, junto a "Editar", y no se veía a simple
-          vista dónde quitar algo (bug/petición real: "ponle una X"). */}
-      {canDelete && !confirming && (
-        <button
-          type="button"
-          className="agenda-card-close"
-          onClick={() => setConfirming(true)}
-          aria-label="Borrar"
-        >
-          ✕
-        </button>
-      )}
-      <div className="agenda-card-title">
-        {entry.done ? '✔️ ' : entry.isExternal ? '🔗 ' : ''}
-        {entry.title}
-      </div>
-      {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}
+    <div className={'agenda-card-wrap' + (entry.done ? ' agenda-card-done' : '')}>
+      {hasPhoto && <EventAttachmentPhoto storagePath={entry.attachmentStoragePath!} />}
+      <div
+        className={'agenda-card' + (hasPhoto ? ' agenda-card-with-photo' : '')}
+        style={{ background: entry.color, color: readableTextColor(entry.color) }}
+      >
+        {/* X siempre visible en la esquina — antes solo había "Borrar" en
+            texto pequeño abajo, junto a "Editar", y no se veía a simple
+            vista dónde quitar algo (bug/petición real: "ponle una X"). */}
+        {canDelete && !confirming && (
+          <button
+            type="button"
+            className="agenda-card-close"
+            onClick={() => setConfirming(true)}
+            aria-label="Borrar"
+          >
+            ✕
+          </button>
+        )}
+        <div className="agenda-card-title">
+          {entry.done ? '✔️ ' : entry.isExternal ? '🔗 ' : ''}
+          {entry.title}
+        </div>
+        {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}
+        {entry.locationLabel && (
+          <div className="agenda-card-subtitle">
+            📍 {entry.locationLabel}
+            {mapsUrl && (
+              <>
+                {' '}
+                ·{' '}
+                <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
+                  Ver en el mapa
+                </a>
+              </>
+            )}
+          </div>
+        )}
+        {!entry.locationLabel && mapsUrl && (
+          <div className="agenda-card-subtitle">
+            📍{' '}
+            <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
+              Ver en el mapa
+            </a>
+          </div>
+        )}
+        {entry.attachmentKind === 'archivo' && entry.attachmentStoragePath && (
+          <EventAttachmentFileLink storagePath={entry.attachmentStoragePath} name={entry.attachmentOriginalName ?? null} />
+        )}
+        {entry.note && <div className="agenda-card-subtitle">📝 {entry.note}</div>}
       {!confirming && (entry.onEdit || entry.onComplete || entry.onUncomplete) && (
         <div className="agenda-card-actions">
           {/* "Hecho" ya no lo quita del calendario — se queda marcado
@@ -1507,6 +1848,30 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
           </button>
         </div>
       )}
+      </div>
+    </div>
+  )
+}
+
+// Adjunto tipo "archivo" (no imagen) en la tarjeta de un evento — solo
+// un enlace, sin previsualización.
+function EventAttachmentFileLink({ storagePath, name }: { storagePath: string; name: string | null }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    getEventAttachmentUrl(storagePath)
+      .then(setUrl)
+      .catch(() => {})
+  }, [storagePath])
+  return (
+    <div className="agenda-card-subtitle">
+      📎{' '}
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
+          {name ?? 'Archivo'}
+        </a>
+      ) : (
+        name ?? 'Archivo'
+      )}
     </div>
   )
 }
@@ -1539,8 +1904,15 @@ function EventCard({
   const [confirming, setConfirming] = useState(false)
   const [pickingDay, setPickingDay] = useState(false)
   const [occurrenceDate, setOccurrenceDate] = useState(() => toDateStr(new Date(ev.startAt)))
+  const mapsUrl =
+    ev.locationLatitude != null && ev.locationLongitude != null
+      ? `https://www.google.com/maps?q=${ev.locationLatitude},${ev.locationLongitude}`
+      : null
   return (
     <div className="card event-card" style={{ borderColor: ev.color ?? undefined }}>
+      {ev.attachmentKind === 'foto' && ev.attachmentStoragePath && (
+        <EventAttachmentPhoto storagePath={ev.attachmentStoragePath} />
+      )}
       <strong>{ev.title}</strong>
       <p className="muted">
         {new Date(ev.startAt).toLocaleString('es-ES', {
@@ -1554,6 +1926,23 @@ function EventCard({
         {ev.reminders.length > 0 &&
           ` · 🔔 ${ev.reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}`}
       </p>
+      {(ev.locationLabel || mapsUrl) && (
+        <p className="muted">
+          📍 {ev.locationLabel}
+          {mapsUrl && (
+            <>
+              {' '}
+              <a href={mapsUrl} target="_blank" rel="noreferrer">
+                Ver en el mapa
+              </a>
+            </>
+          )}
+        </p>
+      )}
+      {ev.attachmentKind === 'archivo' && ev.attachmentStoragePath && (
+        <EventAttachmentFileLink storagePath={ev.attachmentStoragePath} name={ev.attachmentOriginalName} />
+      )}
+      {ev.note && <p className="muted">📝 {ev.note}</p>}
       <div className="member-chips">
         {ev.memberIds.map((id) => {
           const m = memberById.get(id)
@@ -1837,6 +2226,101 @@ function RecurrenceControl({ value, onChange }: { value: RecurrenceValue; onChan
   )
 }
 
+// Ubicación + adjunto (foto/archivo) + nota de un evento — formato
+// "Nuevo evento" de referencia. Comparte estos tres campos entre
+// AddEventForm y EditEventForm; quien la usa decide cuándo subir el
+// archivo (en el propio handleSubmit, junto con crear/guardar el
+// evento).
+function EventExtrasFields({
+  locationLabel,
+  onLocationLabelChange,
+  coords,
+  onCoordsChange,
+  attachmentFile,
+  onAttachmentFileChange,
+  existingAttachment,
+  onRemoveExistingAttachment,
+  note,
+  onNoteChange,
+}: {
+  locationLabel: string
+  onLocationLabelChange: (v: string) => void
+  coords: { latitude: number; longitude: number } | null
+  onCoordsChange: (c: { latitude: number; longitude: number } | null) => void
+  attachmentFile: File | null
+  onAttachmentFileChange: (f: File | null) => void
+  existingAttachment: { kind: 'foto' | 'archivo'; name: string | null } | null
+  onRemoveExistingAttachment: () => void
+  note: string
+  onNoteChange: (v: string) => void
+}) {
+  const [locating, setLocating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleUseCurrentPosition() {
+    setLocating(true)
+    setError(null)
+    try {
+      onCoordsChange(await getCurrentPosition())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo obtener la ubicación')
+    } finally {
+      setLocating(false)
+    }
+  }
+
+  return (
+    <>
+      <label>
+        Ubicación (opcional)
+        <input
+          type="text"
+          value={locationLabel}
+          onChange={(e) => onLocationLabelChange(e.target.value)}
+          placeholder="Nombre del sitio o dirección"
+        />
+      </label>
+      <button type="button" className="link-button" onClick={handleUseCurrentPosition} disabled={locating}>
+        {coords ? '✓ Ubicación capturada' : locating ? 'Obteniendo…' : '📍 Usar mi ubicación actual'}
+      </button>
+      <label>
+        Adjunto: foto o archivo (opcional)
+        {existingAttachment && !attachmentFile ? (
+          <div className="inline-fields">
+            <span>
+              {existingAttachment.kind === 'foto' ? '📷' : '📎'} {existingAttachment.name ?? 'Adjunto actual'}
+            </span>
+            <button type="button" className="link-button" onClick={onRemoveExistingAttachment}>
+              Quitar
+            </button>
+          </div>
+        ) : (
+          <input type="file" onChange={(e) => onAttachmentFileChange(e.target.files?.[0] ?? null)} />
+        )}
+      </label>
+      <label>
+        Nota (opcional)
+        <textarea value={note} onChange={(e) => onNoteChange(e.target.value)} rows={2} />
+      </label>
+      {error && <p className="error">{error}</p>}
+    </>
+  )
+}
+
+// Sube el adjunto pendiente (si lo hay) y devuelve los campos listos
+// para mandar a createEvent/updateEvent.
+async function resolveEventAttachment(
+  file: File | null,
+): Promise<{ attachmentStoragePath: string | null; attachmentKind: 'foto' | 'archivo' | null; attachmentOriginalName: string | null }> {
+  if (!file) return { attachmentStoragePath: null, attachmentKind: null, attachmentOriginalName: null }
+  if (file.type.startsWith('image/')) {
+    const path = await uploadEventPhoto(file)
+    return { attachmentStoragePath: path, attachmentKind: 'foto', attachmentOriginalName: file.name }
+  }
+  const path = await uploadEventFile(file)
+  return { attachmentStoragePath: path, attachmentKind: 'archivo', attachmentOriginalName: file.name }
+}
+
 function EditEventForm({
   event,
   members,
@@ -1876,6 +2360,15 @@ function EditEventForm({
   const [reminders, setReminders] = useState<EventReminder[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
   const [points, setPoints] = useState(event.points)
+  const [locationLabel, setLocationLabel] = useState(event.locationLabel ?? '')
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(
+    event.locationLatitude != null && event.locationLongitude != null
+      ? { latitude: event.locationLatitude, longitude: event.locationLongitude }
+      : null,
+  )
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [attachmentRemoved, setAttachmentRemoved] = useState(false)
+  const [note, setNote] = useState(event.note ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -1894,6 +2387,15 @@ function EditEventForm({
       // título ya dice quién es, se asigna solo en vez de quedarse gris.
       const detectedMember = selectedMembers.length === 0 ? findMemberInText(title, members) : null
       const effectiveMembers = selectedMembers.length > 0 ? selectedMembers : detectedMember ? [detectedMember.id] : []
+      const attachment = attachmentFile
+        ? await resolveEventAttachment(attachmentFile)
+        : attachmentRemoved
+          ? { attachmentStoragePath: null, attachmentKind: null, attachmentOriginalName: null }
+          : {
+              attachmentStoragePath: event.attachmentStoragePath,
+              attachmentKind: event.attachmentKind,
+              attachmentOriginalName: event.attachmentOriginalName,
+            }
       await updateEvent(event.id, {
         title,
         startAt,
@@ -1909,6 +2411,11 @@ function EditEventForm({
         reminders,
         memberIds: effectiveMembers,
         points: effectiveMembers.length === 1 ? points : 0,
+        locationLabel: locationLabel.trim() || null,
+        locationLatitude: coords?.latitude ?? null,
+        locationLongitude: coords?.longitude ?? null,
+        note: note.trim() || null,
+        ...attachment,
       })
       onDone()
     } catch (err) {
@@ -1962,6 +2469,22 @@ function EditEventForm({
           <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
         </label>
       )}
+      <EventExtrasFields
+        locationLabel={locationLabel}
+        onLocationLabelChange={setLocationLabel}
+        coords={coords}
+        onCoordsChange={setCoords}
+        attachmentFile={attachmentFile}
+        onAttachmentFileChange={setAttachmentFile}
+        existingAttachment={
+          !attachmentRemoved && event.attachmentKind
+            ? { kind: event.attachmentKind, name: event.attachmentOriginalName }
+            : null
+        }
+        onRemoveExistingAttachment={() => setAttachmentRemoved(true)}
+        note={note}
+        onNoteChange={setNote}
+      />
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
         <button type="submit" disabled={saving}>
@@ -2005,6 +2528,10 @@ function AddEventForm({
   const [reminders, setReminders] = useState<EventReminder[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>(defaultMemberIds ?? [])
   const [points, setPoints] = useState(0)
+  const [locationLabel, setLocationLabel] = useState('')
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -2060,6 +2587,7 @@ function AddEventForm({
       // sin dueño (bug real: se creó así y no salía con su color).
       const detectedMember = selectedMembers.length === 0 ? findMemberInText(title, members) : null
       const effectiveMembers = selectedMembers.length > 0 ? selectedMembers : detectedMember ? [detectedMember.id] : []
+      const attachment = await resolveEventAttachment(attachmentFile)
       await createEvent({
         title,
         startAt,
@@ -2075,6 +2603,11 @@ function AddEventForm({
         reminders,
         memberIds: effectiveMembers,
         points: effectiveMembers.length === 1 ? points : 0,
+        locationLabel: locationLabel.trim() || null,
+        locationLatitude: coords?.latitude ?? null,
+        locationLongitude: coords?.longitude ?? null,
+        note: note.trim() || null,
+        ...attachment,
       })
       setTitle('')
       setDate(defaultDate ?? '')
@@ -2084,6 +2617,10 @@ function AddEventForm({
       setReminders([])
       setSelectedMembers([])
       setPoints(0)
+      setLocationLabel('')
+      setCoords(null)
+      setAttachmentFile(null)
+      setNote('')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear el evento')
@@ -2142,6 +2679,18 @@ function AddEventForm({
           <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
         </label>
       )}
+      <EventExtrasFields
+        locationLabel={locationLabel}
+        onLocationLabelChange={setLocationLabel}
+        coords={coords}
+        onCoordsChange={setCoords}
+        attachmentFile={attachmentFile}
+        onAttachmentFileChange={setAttachmentFile}
+        existingAttachment={null}
+        onRemoveExistingAttachment={() => {}}
+        note={note}
+        onNoteChange={setNote}
+      />
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Crear evento'}

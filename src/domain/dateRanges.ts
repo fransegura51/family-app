@@ -38,5 +38,5 @@ export const PRESET_LABELS: Record<SpendRangePreset, string> = {
   semana: 'Esta semana',
   mes: 'Este mes',
   año: 'Este año',
-  rango: 'Rango',
+  rango: 'Rango de fecha',
 }

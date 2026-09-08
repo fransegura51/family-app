@@ -229,6 +229,13 @@ function BankTab() {
   // día, ver 0077_schedule_bank_sync.sql) es incremental de verdad,
   // solo trae lo nuevo desde el último movimiento ya guardado.
   const [syncDays, setSyncDays] = useState(90)
+  // Petición real: "en banco dijimos de poder filtrar por fechas pero
+  // no veo ningún filtro" — misma pestaña "📅 Fecha" desplegable que
+  // Resumen/Estadísticas/Presupuesto, aquí sobre los movimientos ya
+  // enlazados a gastos.
+  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
 
   function reload() {
     setLoading(true)
@@ -279,6 +286,8 @@ function BankTab() {
   if (loading) return <p className="muted">Cargando cuentas bancarias…</p>
 
   const activeConnections = connections.filter((c) => c.status === 'active')
+  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  const filteredExpenses = linkedExpenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
 
   return (
     <div>
@@ -351,14 +360,23 @@ function BankTab() {
       {linkedExpenses.length > 0 && (
         <>
           <p className="muted" style={{ marginTop: 16, fontWeight: 600 }}>
-            Movimientos del banco ({linkedExpenses.length})
+            Movimientos del banco ({filteredExpenses.length} de {linkedExpenses.length})
           </p>
           <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
             Cada uno se categoriza solo. Toca uno para editar su categoría o etiqueta — es el mismo movimiento que
             aparece en Movimientos.
           </p>
+          <DateFilterTab
+            preset={preset}
+            onPresetChange={setPreset}
+            customFrom={customFrom}
+            onCustomFromChange={setCustomFrom}
+            customTo={customTo}
+            onCustomToChange={setCustomTo}
+          />
           <div className="price-row-list">
-            {linkedExpenses.slice(0, 50).map((e) =>
+            {filteredExpenses.length === 0 && <p className="muted">Ningún movimiento en este periodo.</p>}
+            {filteredExpenses.slice(0, 50).map((e) =>
               editingId === e.id ? (
                 <EditExpenseInline
                   key={e.id}
@@ -491,6 +509,70 @@ const NECESSITY_LABELS: Record<'debo' | 'necesito' | 'quiero', string> = {
   quiero: 'Quiero',
 }
 
+// Selector de periodo (Hoy/Esta semana/Este mes/Este año/Rango de
+// fecha) — petición real: "eso lo metas en una pestaña, la pestaña se
+// tiene que llamar Fecha y que tenga un desplegable... el rango de
+// fecha que te ponga desde hasta... lo colocas donde está ahora mismo
+// la pestaña que pone hoy". Antes era una fila entera de chips
+// siempre visible; ahora es una única pestaña "📅 Fecha: …" que
+// despliega las opciones al tocarla, con los campos desde/hasta
+// dentro del propio desplegable al elegir "Rango de fecha". Mismo
+// componente en los 4 sitios de Economía que usaban la fila de chips.
+function DateFilterTab({
+  preset,
+  onPresetChange,
+  customFrom,
+  onCustomFromChange,
+  customTo,
+  onCustomToChange,
+}: {
+  preset: SpendRangePreset
+  onPresetChange: (p: SpendRangePreset) => void
+  customFrom: string
+  onCustomFromChange: (d: string) => void
+  customTo: string
+  onCustomToChange: (d: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div style={{ margin: '8px 0' }}>
+      <button type="button" className={'chip' + (open ? ' chip-active' : '')} onClick={() => setOpen((v) => !v)}>
+        📅 Fecha: {PRESET_LABELS[preset]} {open ? '▲' : '▼'}
+      </button>
+      {open && (
+        <div className="category-picker-panel" style={{ maxHeight: 'none', marginTop: 6 }}>
+          {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={'category-picker-row' + (preset === p ? ' chip-active' : '')}
+              onClick={() => {
+                onPresetChange(p)
+                if (p !== 'rango') setOpen(false)
+              }}
+            >
+              {PRESET_LABELS[p]}
+            </button>
+          ))}
+          {preset === 'rango' && (
+            <div className="inline-fields" style={{ padding: '10px 12px' }}>
+              <label>
+                Desde
+                <input type="date" value={customFrom} onChange={(e) => onCustomFromChange(e.target.value)} />
+              </label>
+              <label>
+                Hasta
+                <input type="date" value={customTo} onChange={(e) => onCustomToChange(e.target.value)} />
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
@@ -557,20 +639,14 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <div className="filter-row" style={{ marginBottom: 8 }}>
-        {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
-          <button key={p} type="button" className={'chip' + (preset === p ? ' chip-active' : '')} onClick={() => setPreset(p)}>
-            {PRESET_LABELS[p]}
-          </button>
-        ))}
-      </div>
-      {preset === 'rango' && (
-        <div className="inline-fields" style={{ marginBottom: 8 }}>
-          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-          <span>a</span>
-          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-        </div>
-      )}
+      <DateFilterTab
+        preset={preset}
+        onPresetChange={setPreset}
+        customFrom={customFrom}
+        onCustomFromChange={setCustomFrom}
+        customTo={customTo}
+        onCustomToChange={setCustomTo}
+      />
 
       <div className="card event-card">
         <strong>Resumen — {PRESET_LABELS[preset]}</strong>
@@ -969,20 +1045,14 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <div className="filter-row" style={{ marginBottom: 8 }}>
-        {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
-          <button key={p} type="button" className={'chip' + (preset === p ? ' chip-active' : '')} onClick={() => setPreset(p)}>
-            {PRESET_LABELS[p]}
-          </button>
-        ))}
-      </div>
-      {preset === 'rango' && (
-        <div className="inline-fields" style={{ marginBottom: 8 }}>
-          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-          <span>a</span>
-          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-        </div>
-      )}
+      <DateFilterTab
+        preset={preset}
+        onPresetChange={setPreset}
+        customFrom={customFrom}
+        onCustomFromChange={setCustomFrom}
+        customTo={customTo}
+        onCustomToChange={setCustomTo}
+      />
 
       {/* Skill de Pepa, punto 8: mismo selector, mismo periodo, mismo
           total general — solo cambia la dimensión de agrupación. */}
@@ -2166,25 +2236,14 @@ function ReceiptSpendSummary({
   return (
     <div className="card event-card">
       <strong>Cuánto he gastado</strong>
-      <div className="filter-row" style={{ marginTop: 8, marginBottom: 8 }}>
-        {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
-          <button
-            key={p}
-            type="button"
-            className={'chip' + (preset === p ? ' chip-active' : '')}
-            onClick={() => onPresetChange(p)}
-          >
-            {PRESET_LABELS[p]}
-          </button>
-        ))}
-      </div>
-      {preset === 'rango' && (
-        <div className="inline-fields" style={{ marginBottom: 8 }}>
-          <input type="date" value={customFrom} onChange={(e) => onCustomFromChange(e.target.value)} />
-          <span>a</span>
-          <input type="date" value={customTo} onChange={(e) => onCustomToChange(e.target.value)} />
-        </div>
-      )}
+      <DateFilterTab
+        preset={preset}
+        onPresetChange={onPresetChange}
+        customFrom={customFrom}
+        onCustomFromChange={onCustomFromChange}
+        customTo={customTo}
+        onCustomToChange={onCustomToChange}
+      />
       <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} style={{ marginBottom: 8 }}>
         <option value="Todas">Todas las tiendas</option>
         {storeNames.map((s) => (
@@ -3564,25 +3623,14 @@ function BudgetsOverview({
           ? 'Solo registro — no tiene presupuesto ni ingresos propios.'
           : 'Gastado suma Alimentación + Generales · Ingresos es solo de esta pestaña.'}
       </p>
-      <div className="filter-row" style={{ marginTop: 8, marginBottom: 8 }}>
-        {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
-          <button
-            key={p}
-            type="button"
-            className={'chip' + (preset === p ? ' chip-active' : '')}
-            onClick={() => setPreset(p)}
-          >
-            {PRESET_LABELS[p]}
-          </button>
-        ))}
-      </div>
-      {preset === 'rango' && (
-        <div className="inline-fields" style={{ marginBottom: 8 }}>
-          <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-          <span>a</span>
-          <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-        </div>
-      )}
+      <DateFilterTab
+        preset={preset}
+        onPresetChange={setPreset}
+        customFrom={customFrom}
+        onCustomFromChange={setCustomFrom}
+        customTo={customTo}
+        onCustomToChange={setCustomTo}
+      />
       {/* Alimentación ya no tiene presupuesto ni ingresos propios
           (petición real: "hay que quitar en Registro alimentación lo
           de ingreso") — solo se queda con el total gastado. */}

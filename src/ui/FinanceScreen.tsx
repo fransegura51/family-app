@@ -67,7 +67,6 @@ import { StoreIcon } from '@/ui/StoreIcon'
 import type {
   BankAccount,
   BankConnection,
-  BankTransaction,
   Budget,
   BudgetCategory,
   BudgetPeriod,
@@ -146,7 +145,16 @@ export function FinanceScreen() {
 function BankTab() {
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
-  const [transactions, setTransactions] = useState<BankTransaction[]>([])
+  // Petición real: la lista tiene que verse y editarse igual que
+  // Movimientos (fecha, detalle, importe, categoría y etiqueta
+  // editables) — no el texto suelto del banco. Cada movimiento del
+  // banco ya está enlazado a un gasto real (bank_transactions.matched_expense_id,
+  // ver enable-banking-sync-transactions), así que se muestra y se
+  // edita ESE gasto, reutilizando el mismo EditExpenseInline de Movimientos.
+  const [linkedExpenses, setLinkedExpenses] = useState<Expense[]>([])
+  const [categories, setCategories] = useState<BudgetCategory[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -161,11 +169,14 @@ function BankTab() {
 
   function reload() {
     setLoading(true)
-    Promise.all([listBankConnections(), listBankAccounts(), listBankTransactions()])
-      .then(([c, a, t]) => {
+    Promise.all([listBankConnections(), listBankAccounts(), listBankTransactions(), listExpenses(), listBudgetCategories(), listTags()])
+      .then(([c, a, t, allExpenses, cats, tgs]) => {
         setConnections(c)
         setAccounts(a)
-        setTransactions(t)
+        setCategories(cats)
+        setTags(tgs)
+        const matchedIds = new Set(t.map((bt) => bt.matchedExpenseId).filter((id): id is string => !!id))
+        setLinkedExpenses(allExpenses.filter((e) => matchedIds.has(e.id)).sort((a, b) => b.expenseDate.localeCompare(a.expenseDate)))
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -273,28 +284,52 @@ function BankTab() {
         />
       )}
 
-      {transactions.length > 0 && (
+      {linkedExpenses.length > 0 && (
         <>
           <p className="muted" style={{ marginTop: 16, fontWeight: 600 }}>
-            Movimientos del banco ({transactions.length})
+            Movimientos del banco ({linkedExpenses.length})
           </p>
           <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
-            Cada uno se categoriza solo y aparece también en Movimientos, ya editable (categoría, etiqueta...). Si ya
-            existía como ticket con el mismo importe y fecha cercana, se une con él en vez de duplicarse.
+            Cada uno se categoriza solo. Toca uno para editar su categoría o etiqueta — es el mismo movimiento que
+            aparece en Movimientos.
           </p>
           <div className="price-row-list">
-            {transactions.slice(0, 50).map((t) => (
-              <div key={t.id} className="price-row">
-                <span className="price-row-name">
-                  {t.description ?? 'Movimiento'}
-                  <span className="muted"> · {t.transactionDate}</span>
-                </span>
-                <span className="price-row-price" style={{ color: t.creditDebit === 'CRDT' ? '#1e8449' : undefined }}>
-                  {t.creditDebit === 'CRDT' ? '+' : '-'}
-                  {t.amount.toFixed(2)} €
-                </span>
-              </div>
-            ))}
+            {linkedExpenses.slice(0, 50).map((e) =>
+              editingId === e.id ? (
+                <EditExpenseInline
+                  key={e.id}
+                  expense={e}
+                  categories={categories}
+                  tags={tags}
+                  onDone={() => {
+                    setEditingId(null)
+                    reload()
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <div key={e.id} className="price-row" onClick={() => setEditingId(e.id)} style={{ cursor: 'pointer' }}>
+                  <span className="price-row-name">
+                    {!e.isIncome && categories.find((c) => c.name === e.category)?.icon} {e.isIncome ? 'Ingreso' : e.category}
+                    <span className="muted">
+                      {' '}
+                      · {e.expenseDate}
+                      {e.store && ` · ${e.store}`}
+                      {e.tagId && ` · 🏷️ ${tags.find((t) => t.id === e.tagId)?.name ?? ''}`}
+                    </span>
+                    {e.notes && (
+                      <span className="muted" style={{ display: 'block', fontSize: 11 }}>
+                        {e.notes}
+                      </span>
+                    )}
+                  </span>
+                  <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
+                    {e.isIncome ? '+' : ''}
+                    {e.amount.toFixed(2)} €
+                  </span>
+                </div>
+              ),
+            )}
           </div>
         </>
       )}

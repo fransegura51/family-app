@@ -257,6 +257,17 @@ export interface Tag {
   sortOrder: number
 }
 
+// Accesos libres del menú ☰ (petición real: menú tipo Wallet con
+// "todas las subcarpetas", editable) — de momento solo nombre + icono,
+// sin pantalla real detrás todavía.
+export interface CustomMenuItem {
+  id: string
+  familyId: string
+  label: string
+  icon: string
+  sortOrder: number
+}
+
 export interface KidWalletTransaction {
   id: string
   familyId: string

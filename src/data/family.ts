@@ -169,6 +169,25 @@ export async function regenerateAmazonWebhookToken(): Promise<string> {
   return token
 }
 
+// Petición real: "poner familia segura Hepburn... que se pueda editar
+// y poner lo que se quiera" — el nombre de la familia no se podía
+// cambiar en ningún sitio desde que se crea. La política RLS
+// "families: admin update" (0001_init.sql) ya solo deja escribir a un
+// admin de esa familia; aquí solo se hace la llamada, el error de RLS
+// (si lo hay) se propaga tal cual para que la pantalla lo muestre.
+export async function getFamilyName(): Promise<string> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase.from('families').select('name').eq('id', familyId).single()
+  if (error) throw error
+  return data.name
+}
+
+export async function updateFamilyName(name: string): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('families').update({ name: name.trim() }).eq('id', familyId)
+  if (error) throw error
+}
+
 // Toda consulta pasa por aquí en vez de tocar `supabase` desde ui/.
 // RLS ya garantiza el aislamiento por family_id en el backend — este
 // módulo no necesita (ni debe) volver a filtrar por familia en el cliente.

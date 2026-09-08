@@ -502,6 +502,58 @@ button {
   color: var(--muted);
 }
 
+/* Cabecera de familia del ☰ Menú, al estilo Wallet (nombre + desplegable
+   con los miembros) — petición real, con captura de esa app de
+   referencia. */
+.nav-menu-family {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nav-menu-family-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.nav-menu-family-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+  text-align: left;
+  min-width: 0;
+}
+
+.nav-menu-family-text .muted {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.nav-menu-family-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 12px;
+}
+
+.nav-menu-divider {
+  border: none;
+  border-top: 1px solid rgba(15, 18, 30, 0.15);
+  margin: 2px 8px;
+}
+
 .link-button {
   background: none;
   color: var(--primary);

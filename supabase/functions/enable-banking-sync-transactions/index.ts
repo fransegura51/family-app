@@ -147,6 +147,47 @@ interface BankAccountRow {
   bank_connections: { family_id: string; status: string }
 }
 
+interface EnableBalance {
+  balance_amount?: { amount?: string; currency?: string }
+  balance_type?: string
+}
+
+// Petición real: "debajo de Economía Pepa me vas a poner tarjetas de
+// saldo con las cuentas de los bancos" — el saldo no viene en el
+// listado de cuentas (solo iban/nombre/moneda), hay que pedirlo aparte
+// a /accounts/{uid}/balances. Si falla (algún banco no lo expone, o el
+// consentimiento no cubre saldos), no debe tirar abajo el resto de la
+// sincronización — lo importante son los movimientos, el saldo es un
+// extra.
+async function syncBalance(admin: ReturnType<typeof createClient>, jwt: string, account: BankAccountRow): Promise<void> {
+  try {
+    const res = await fetch(`https://api.enablebanking.com/accounts/${account.account_uid}/balances`, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    const balances: EnableBalance[] = Array.isArray(data.balances) ? data.balances : []
+    // Preferimos el disponible de verdad (lo que se puede gastar ya
+    // mismo) sobre el contable/liquidado si el banco distingue los dos.
+    const chosen =
+      balances.find((b) => (b.balance_type ?? "").toLowerCase().includes("available")) ??
+      balances.find((b) => (b.balance_type ?? "").toLowerCase().includes("booked")) ??
+      balances[0]
+    const amount = chosen?.balance_amount?.amount
+    if (amount == null) return
+    await admin
+      .from("bank_accounts")
+      .update({
+        balance: Number(amount),
+        balance_currency: chosen?.balance_amount?.currency ?? null,
+        balance_updated_at: new Date().toISOString(),
+      })
+      .eq("id", account.id)
+  } catch {
+    // Sin saldo esta vez — no bloquea el resto de la sincronización.
+  }
+}
+
 async function syncAccount(
   admin: ReturnType<typeof createClient>,
   jwt: string,
@@ -225,6 +266,7 @@ async function syncAccount(
     continuationKey = data.continuation_key ?? null
   } while (continuationKey)
 
+  await syncBalance(admin, jwt, account)
   await linkTransactionsToExpenses(admin, account)
   return { synced }
 }

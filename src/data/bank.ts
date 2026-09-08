@@ -74,7 +74,9 @@ export async function listBankConnections(): Promise<BankConnection[]> {
 }
 
 export async function listBankAccounts(): Promise<BankAccount[]> {
-  const { data, error } = await supabase.from('bank_accounts').select('id, connection_id, account_uid, iban, name, currency')
+  const { data, error } = await supabase
+    .from('bank_accounts')
+    .select('id, connection_id, account_uid, iban, name, currency, balance, balance_currency, balance_updated_at')
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
@@ -83,6 +85,9 @@ export async function listBankAccounts(): Promise<BankAccount[]> {
     iban: r.iban,
     name: r.name,
     currency: r.currency,
+    balance: r.balance == null ? null : Number(r.balance),
+    balanceCurrency: r.balance_currency,
+    balanceUpdatedAt: r.balance_updated_at,
   }))
 }
 

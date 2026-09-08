@@ -149,6 +149,7 @@ export function FinanceScreen() {
   return (
     <div className="screen">
       <h1>Economía</h1>
+      <AccountBalanceCards key={`${tab}-${refreshKey}`} />
       <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Resumen' && <ResumenTab key={refreshKey} onViewMovements={viewMovements} />}
@@ -195,6 +196,46 @@ export function FinanceScreen() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+// Petición real: "debajo de Economía Pepa me vas a poner tarjetas de
+// saldo con las cuentas de los bancos que te vayamos añadiendo, que se
+// puedan poner más o menos, que se puedan añadir o quitar, como está
+// en la foto [captura de la app Wallet]" — una tarjeta por cada cuenta
+// bancaria enlazada; crecen o decrecen solas al conectar/desconectar
+// un banco en la pestaña Banco, sin nada más que tocar aquí. El saldo
+// lo trae la propia sincronización (enable-banking-sync-transactions →
+// syncBalance) — si una cuenta todavía no se ha sincronizado nunca, se
+// avisa en vez de inventar un 0.
+function AccountBalanceCards() {
+  const [accounts, setAccounts] = useState<BankAccount[]>([])
+  const [connections, setConnections] = useState<BankConnection[]>([])
+
+  useEffect(() => {
+    Promise.all([listBankAccounts(), listBankConnections()])
+      .then(([a, c]) => {
+        setAccounts(a)
+        setConnections(c)
+      })
+      .catch(() => {})
+  }, [])
+
+  if (accounts.length === 0) return null
+
+  return (
+    <div className="account-cards-row">
+      {accounts.map((a) => {
+        const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Banco'
+        return (
+          <div key={a.id} className="account-card">
+            <div className="account-card-bank">{bankName}</div>
+            <div className="account-card-name">{a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'}</div>
+            <div className="account-card-balance">{a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}</div>
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -1552,6 +1552,56 @@ textarea {
   border-color: var(--primary);
 }
 
+/* Tarjetas de saldo por cuenta bancaria, debajo del título Economía
+   (petición real: "que se puedan poner más o menos, que se puedan
+   añadir o quitar, como está en la foto" — una tarjeta por cuenta
+   enlazada, carrusel horizontal para que quepan las que hagan falta). */
+.account-cards-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  margin: 10px 0;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.account-cards-row::-webkit-scrollbar {
+  display: none;
+}
+
+.account-card {
+  flex: 0 0 auto;
+  width: 152px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, var(--primary), #748ffc);
+  color: white;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+}
+
+.account-card-bank {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-card-name {
+  font-size: 12px;
+  opacity: 0.8;
+  margin: 2px 0 10px;
+}
+
+.account-card-balance {
+  font-size: 18px;
+  font-weight: 700;
+}
+
 /* Botón flotante "Nuevo X" — a la vista siempre, sin tener que buscar
    el formulario en la pantalla (petición real, primero en Contactos,
    luego "esa misma idea la vamos a aplicar al calendario"). */

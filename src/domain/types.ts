@@ -454,6 +454,9 @@ export interface BankAccount {
   iban: string | null
   name: string | null
   currency: string | null
+  balance: number | null
+  balanceCurrency: string | null
+  balanceUpdatedAt: string | null
 }
 
 export interface BankTransaction {

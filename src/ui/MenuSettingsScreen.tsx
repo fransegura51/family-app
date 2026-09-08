@@ -1,10 +1,7 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { getFamilyName, updateFamilyName } from '@/data/family'
-import { createCustomMenuItem, deleteCustomMenuItem, listCustomMenuItems, updateCustomMenuItem } from '@/data/customMenu'
-import { ConfirmIconButton } from '@/ui/ConfirmButton'
-import type { CustomMenuItem } from '@/domain/types'
 
 const PINNED_COUNT = 4
 
@@ -86,127 +83,6 @@ function FamilyNameSection() {
   )
 }
 
-// Petición real (con captura de referencia de la app Wallet): "añade
-// todas las subcarpetas que te he puesto en la foto... con la función
-// de añadir más si queremos, o eliminar alguna" — la lista se
-// autorrellena la primera vez desde NavShell (seedDefaultCustomMenuItems);
-// aquí se gestiona: crear, renombrar (icono + nombre) y borrar.
-function CustomMenuItemsSection() {
-  const [items, setItems] = useState<CustomMenuItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [adding, setAdding] = useState(false)
-  const [addLabel, setAddLabel] = useState('')
-  const [addIcon, setAddIcon] = useState('📌')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editLabel, setEditLabel] = useState('')
-  const [editIcon, setEditIcon] = useState('')
-
-  function reload() {
-    listCustomMenuItems()
-      .then(setItems)
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(reload, [])
-
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault()
-    if (!addLabel.trim()) return
-    await createCustomMenuItem({ label: addLabel.trim(), icon: addIcon })
-    setAddLabel('')
-    setAddIcon('📌')
-    setAdding(false)
-    reload()
-  }
-
-  async function handleSave(id: string) {
-    if (editLabel.trim()) await updateCustomMenuItem(id, { label: editLabel.trim(), icon: editIcon })
-    setEditingId(null)
-    reload()
-  }
-
-  if (loading) return null
-
-  return (
-    <>
-      <h2 className="section-title">Tus accesos</h2>
-      <p className="muted">
-        Se ven dentro de "☰ Menú", debajo de las secciones normales — de momento son solo accesos (sin pantalla propia
-        todavía). Tócalos para renombrarlos.
-      </p>
-      <button type="button" className="link-button" onClick={() => setAdding((v) => !v)}>
-        {adding ? 'Cerrar' : '+ Añadir acceso'}
-      </button>
-      {adding && (
-        <form onSubmit={handleAdd} className="inline-fields" style={{ margin: '8px 0' }}>
-          <input
-            type="text"
-            value={addIcon}
-            onChange={(e) => setAddIcon(e.target.value)}
-            style={{ width: 48, textAlign: 'center', flex: 'none' }}
-            maxLength={4}
-            aria-label="Icono"
-          />
-          <input
-            type="text"
-            value={addLabel}
-            onChange={(e) => setAddLabel(e.target.value)}
-            placeholder="Nombre del acceso"
-            style={{ flex: 1 }}
-            autoFocus
-          />
-          <button type="submit">Crear</button>
-        </form>
-      )}
-      <div className="event-list">
-        {items.map((item) =>
-          editingId === item.id ? (
-            <form
-              key={item.id}
-              className="inline-fields"
-              style={{ marginBottom: 6 }}
-              onSubmit={(e) => {
-                e.preventDefault()
-                handleSave(item.id)
-              }}
-            >
-              <input
-                type="text"
-                value={editIcon}
-                onChange={(e) => setEditIcon(e.target.value)}
-                style={{ width: 48, textAlign: 'center', flex: 'none' }}
-                maxLength={4}
-                autoFocus
-              />
-              <input type="text" value={editLabel} onChange={(e) => setEditLabel(e.target.value)} style={{ flex: 1 }} />
-              <button type="submit">Guardar</button>
-            </form>
-          ) : (
-            <div key={item.id} className="card task-card">
-              <button
-                type="button"
-                className="task-card-main"
-                style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: 'var(--text)', fontWeight: 400 }}
-                onClick={() => {
-                  setEditingId(item.id)
-                  setEditLabel(item.label)
-                  setEditIcon(item.icon)
-                }}
-              >
-                <strong>
-                  {item.icon} {item.label}
-                </strong>
-              </button>
-              <ConfirmIconButton icon="✕" className="link-button" ariaLabel={`Eliminar ${item.label}`} onConfirm={() => deleteCustomMenuItem(item.id).then(reload)} />
-            </div>
-          ),
-        )}
-        {items.length === 0 && <p className="muted">Sin accesos todavía.</p>}
-      </div>
-    </>
-  )
-}
-
 // Reordenar el menú con flechas arriba/abajo en vez de arrastrar con
 // el dedo — petición real, tras varios intentos de arrastre táctil
 // poco fiable justo en esta barra (compite con los propios gestos del
@@ -269,10 +145,6 @@ export function MenuSettingsScreen() {
           </div>
         ))}
       </div>
-
-      <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid #eee' }} />
-
-      <CustomMenuItemsSection />
     </div>
   )
 }

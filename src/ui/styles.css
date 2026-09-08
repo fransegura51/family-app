@@ -1622,8 +1622,59 @@ textarea {
 
 .economia-header h1 {
   color: white;
-  margin: 0 0 14px;
+  margin: 0;
   font-size: 22px;
+}
+
+/* Petición real: "la palabra Economía la mueven más para la derecha, y
+   donde ahora pone Economía, pones el círculo con las tres rayas" —
+   ☰ primero, título a su lado, igual que "☰ Inicio" en la referencia
+   de Wallet. Desplegable propio con las pestañas de Economía. */
+.economia-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.economia-menu-fab {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 16px;
+  padding: 0;
+}
+
+.economia-menu-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: white;
+  border-radius: 12px;
+  padding: 8px;
+  margin: -6px 0 14px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.economia-menu-item {
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.economia-menu-item.active {
+  background: #eef1ff;
+  color: var(--primary);
+  font-weight: 700;
 }
 
 .account-cards-heading {

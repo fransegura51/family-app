@@ -137,6 +137,14 @@ export function FinanceScreen() {
   // lleve a la de la otra cuenta" — cada tarjeta manda a Banco ya
   // filtrado a esa cuenta en concreto.
   const [focusAccountId, setFocusAccountId] = useState<string | null>(null)
+  // Petición real: "donde ahora pone Economía, pones el círculo con
+  // las tres rayas... es un desplegable de todos los demás categorías,
+  // y ese lo deja con las categorías que tenía antes" — desplegable
+  // propio de Economía (☰ junto al título, igual que "☰ Inicio" en la
+  // referencia de Wallet) con las mismas pestañas que ya tenía esta
+  // pantalla (Resumen/Estadísticas/Movimientos/...), como forma
+  // alternativa de cambiar de pestaña sin tocar la fila de chips.
+  const [economiaMenuOpen, setEconomiaMenuOpen] = useState(false)
 
   function reloadShared() {
     Promise.all([listBudgetCategories(), listTags()]).then(([c, t]) => {
@@ -166,7 +174,39 @@ export function FinanceScreen() {
           de chip que el resto de la app (se comparte con Calendario,
           Compras...) para no romper esas pantallas. */}
       <div className="economia-header">
-        <h1>Economía</h1>
+        <div className="economia-title-row">
+          <button
+            type="button"
+            className="economia-menu-fab"
+            onClick={() => setEconomiaMenuOpen((v) => !v)}
+            aria-label={economiaMenuOpen ? 'Cerrar menú de Economía' : 'Abrir menú de Economía'}
+          >
+            {economiaMenuOpen ? '✕' : '☰'}
+          </button>
+          <h1>Economía</h1>
+        </div>
+        {economiaMenuOpen && (
+          <div className="economia-menu-dropdown">
+            {SUB_TABS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={'economia-menu-item' + (tab === t ? ' active' : '')}
+                onClick={() => {
+                  setTab(t)
+                  setEconomiaMenuOpen(false)
+                }}
+              >
+                {/* Petición real: "a ese desplegable le pones Inicio de
+                    nombre" — Resumen es la pantalla de inicio de
+                    Economía, igual que "Inicio" en la referencia de
+                    Wallet; solo cambia la etiqueta aquí, la pestaña
+                    sigue siendo "Resumen" en el resto de la app. */}
+                {t === 'Resumen' ? 'Inicio' : t}
+              </button>
+            ))}
+          </div>
+        )}
         <AccountBalanceCards
           key={`${tab}-${refreshKey}`}
           onAddAccount={() => {

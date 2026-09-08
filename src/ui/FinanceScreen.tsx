@@ -42,7 +42,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts } from '@/data/products'
-import { isFoodPurchase } from '@/domain/products'
+import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import {
   deleteProductPricesByReceipt,
@@ -804,13 +804,13 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         setExpenses(e)
         setCategories(c)
         setTags(t)
-        const receiptCategoryById = new Map(receipts.map((r) => [r.id, r.category]))
+        const foodReceiptIds = buildFoodReceiptIds(receipts, c)
         setPurchases(
           // Un pedido de Amazon que no sea de alimentación no debe
           // entrar en el análisis de "¿por qué ha cambiado mi gasto?"
           // de la cesta de tickets — uno que sí lo sea (café...) sí cuenta.
           prices
-            .filter((p) => isFoodPurchase(p, receiptCategoryById))
+            .filter((p) => isFoodPurchase(p, foodReceiptIds))
             .map((p) => {
               const qty = Number(p.quantity)
               return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
@@ -1427,7 +1427,11 @@ function ManageCategoriesModal({
   onClose: () => void
   onChanged: () => void
 }) {
-  const [newCategoryGroup, setNewCategoryGroup] = useState<'alimentacion' | 'generales' | 'ingresos'>('alimentacion')
+  // Petición real: "Alimentación y General que antes eran las
+  // categorías principales se eliminan" — ya no se crean categorías
+  // nuevas bajo 'alimentacion' (grupo retirado, la Alimentación real
+  // vive dentro del árbol de 'generales', ver migración 0076).
+  const [newCategoryGroup, setNewCategoryGroup] = useState<'generales' | 'ingresos'>('generales')
   const [addingCategory, setAddingCategory] = useState(false)
   const [addingExpense, setAddingExpense] = useState(false)
   const [addingTag, setAddingTag] = useState(false)
@@ -1458,7 +1462,6 @@ function ManageCategoriesModal({
     onChanged()
   }
 
-  const alimentacion = categories.filter((c) => c.budgetGroup === 'alimentacion')
   const generales = categories.filter((c) => c.budgetGroup === 'generales')
   const ingresos = categories.filter((c) => c.budgetGroup === 'ingresos')
 
@@ -1599,13 +1602,6 @@ function ManageCategoriesModal({
             <div className="filter-row" style={{ margin: '8px 0' }}>
               <button
                 type="button"
-                className={'chip' + (newCategoryGroup === 'alimentacion' ? ' chip-active' : '')}
-                onClick={() => setNewCategoryGroup('alimentacion')}
-              >
-                Alimentación
-              </button>
-              <button
-                type="button"
                 className={'chip' + (newCategoryGroup === 'generales' ? ' chip-active' : '')}
                 onClick={() => setNewCategoryGroup('generales')}
               >
@@ -1632,7 +1628,6 @@ function ManageCategoriesModal({
 
         <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #eee' }} />
 
-        {renderGroupList('Alimentación', alimentacion, true)}
         {renderGroupList('Generales', generales, true)}
         {renderGroupList('Ingresos', ingresos, false)}
 
@@ -2266,14 +2261,14 @@ function StoreMonthlyChart({
   )
 }
 
-// Desplegable de categoría compartido entre el formulario de tickets y
-// (más adelante) cualquier otro sitio que quiera clasificar un gasto —
-// agrupa las categorías reales de cada presupuesto (Alimentación /
-// Generales) para poder ver de un vistazo a qué grupo pertenece cada
-// una, con "Alimentación" y "Amazon" sueltos arriba como valores
-// genéricos por defecto (el primero ya contaba como el total de
-// tickets de super, Skill 19; el segundo es para pedidos de Amazon
-// mientras no se reclasifiquen a mano).
+// Selector de categoría compartido entre el formulario de tickets y
+// Movimientos — petición real: "ahora mismo es una lista eterna,
+// quiero que se abra una lista de las categorías principales y
+// tocándolas se desplieguen las subcategorías, así no se satura tanto
+// el usuario". Dos pasos en vez de una lista plana con todo: primero
+// las 11 categorías principales de la taxonomía del documento maestro,
+// tocar una con subcategorías las despliega; las que no tienen
+// subcategorías (u "Otros") se eligen directamente.
 function CategorySelect({
   value,
   onChange,
@@ -2283,37 +2278,61 @@ function CategorySelect({
   onChange: (v: string) => void
   categories: BudgetCategory[]
 }) {
-  const alimentacion = categories.filter((c) => c.budgetGroup === 'alimentacion')
+  const [open, setOpen] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
   const generales = categories.filter((c) => c.budgetGroup === 'generales')
-  const known = new Set(['Alimentación', 'Amazon', ...alimentacion.map((c) => c.name), ...generales.map((c) => c.name)])
+  const topLevel = generales.filter((c) => !c.parentId)
+  const selected = generales.find((c) => c.name === value)
+  const expandedParent = expandedId ? topLevel.find((c) => c.id === expandedId) : null
+  const subcats = expandedParent ? generales.filter((c) => c.parentId === expandedParent.id) : []
+
+  function pick(name: string) {
+    onChange(name)
+    setOpen(false)
+    setExpandedId(null)
+  }
 
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="Alimentación">Alimentación (general)</option>
-      <option value="Amazon">Amazon (sin clasificar)</option>
-      {alimentacion.length > 0 && (
-        <optgroup label="Alimentación — categorías">
-          {alimentacion.map((c) => (
-            <option key={c.id} value={c.name}>
-              {c.icon} {c.name}
-            </option>
-          ))}
-        </optgroup>
+    <div>
+      <button type="button" className="category-picker-toggle" onClick={() => setOpen((v) => !v)}>
+        <span>{selected ? `${selected.icon} ${selected.name}` : value || 'Elige una categoría'}</span>
+        <span className="muted">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="category-picker-panel">
+          {expandedParent ? (
+            <>
+              <button type="button" className="link-button" style={{ padding: '6px 4px' }} onClick={() => setExpandedId(null)}>
+                ‹ Volver a categorías
+              </button>
+              <button type="button" className="category-picker-row" onClick={() => pick(expandedParent.name)}>
+                {expandedParent.icon} {expandedParent.name} <span className="muted">(sin subcategoría)</span>
+              </button>
+              {subcats.map((c) => (
+                <button key={c.id} type="button" className="category-picker-row" onClick={() => pick(c.name)}>
+                  {c.icon} {c.name}
+                </button>
+              ))}
+            </>
+          ) : (
+            topLevel.map((c) => {
+              const hasChildren = generales.some((x) => x.parentId === c.id)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="category-picker-row"
+                  onClick={() => (hasChildren ? setExpandedId(c.id) : pick(c.name))}
+                >
+                  {c.icon} {c.name} {hasChildren && <span className="muted">›</span>}
+                </button>
+              )
+            })
+          )}
+        </div>
       )}
-      {generales.length > 0 && (
-        <optgroup label="Generales">
-          {generales.map((c) => (
-            <option key={c.id} value={c.name}>
-              {c.icon} {c.name}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {/* Valor ya guardado que no coincide con ninguna categoría de
-          arriba (texto suelto de antes de este cambio) — se muestra tal
-          cual para no perderlo silenciosamente al abrir el formulario. */}
-      {value && !known.has(value) && <option value={value}>{value}</option>}
-    </select>
+    </div>
   )
 }
 

@@ -1,4 +1,5 @@
-import type { ProductPrice } from '@/domain/types'
+import type { BudgetCategory, ProductPrice, Receipt } from '@/domain/types'
+import { isFoodCategory } from '@/domain/finance'
 
 export interface ProductStats {
   count: number
@@ -32,18 +33,22 @@ export function isLikelyAlcohol(displayName: string): boolean {
 }
 
 // Un artículo de Amazon solo cuenta como alimentación si la propia
-// familia le puso la categoría "Alimentación" al pedido al revisar el
-// ticket (p. ej. un café) — el resto de tiendas (Mercadona, Hiperber...)
-// es siempre compra física, así que cuenta entera como alimentación
-// aunque alguna línea suelta no lo sea del todo (petición real: "al
-// ser todo compra en tienda y no online los dejamos dentro de esa
-// clasificación").
-export function isFoodPurchase(
-  price: { store: string | null; receiptId: string | null },
-  receiptCategoryById: Map<string, string | null>,
-): boolean {
+// familia le puso una categoría de Alimentación (la general o alguna
+// de sus subcategorías, p. ej. un café) al ticket al revisarlo — el
+// resto de tiendas (Mercadona, Hiperber...) es siempre compra física,
+// así que cuenta entera como alimentación aunque alguna línea suelta
+// no lo sea del todo (petición real: "al ser todo compra en tienda y
+// no online los dejamos dentro de esa clasificación").
+export function isFoodPurchase(price: { store: string | null; receiptId: string | null }, foodReceiptIds: Set<string>): boolean {
   if (price.store !== 'Amazon') return true
-  return price.receiptId != null && receiptCategoryById.get(price.receiptId) === 'Alimentación'
+  return price.receiptId != null && foodReceiptIds.has(price.receiptId)
+}
+
+// Construye de una vez el conjunto de tickets que cuentan como
+// alimentación (ver isFoodPurchase) — evita repetir en cada sitio que
+// lo usa la resolución categoría → subcategoría → "Alimentación".
+export function buildFoodReceiptIds(receipts: Pick<Receipt, 'id' | 'category'>[], categories: BudgetCategory[]): Set<string> {
+  return new Set(receipts.filter((r) => isFoodCategory(r.category, categories)).map((r) => r.id))
 }
 
 export function computeProductStats(prices: ProductPrice[]): ProductStats | null {

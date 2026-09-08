@@ -35,8 +35,17 @@ export function budgetPeriodRange(budget: Pick<Budget, 'periodType' | 'periodSta
 // Alimentación completo (Alimentación ya no tiene presupuesto propio,
 // solo "registro" — petición real: "el presupuesto general deduce
 // todos los gastos como un único presupuesto").
+// Petición real: "Alimentación y General que antes eran las
+// categorías principales se eliminan" — ya no hay un budget_group
+// 'alimentacion' aparte (quedó vacío tras adoptar la taxonomía del
+// documento maestro). "Es de Alimentación" ahora se resuelve por el
+// propio árbol: la categoría "Alimentación" en sí, o cualquiera de sus
+// subcategorías reales (Supermercado, Restaurantes...).
 export function isFoodCategory(category: string, categories: BudgetCategory[]): boolean {
-  return category === 'Alimentación' || categories.some((c) => c.budgetGroup === 'alimentacion' && c.name === category)
+  if (category === 'Alimentación') return true
+  const cat = categories.find((c) => c.name === category)
+  if (!cat?.parentId) return false
+  return categories.find((c) => c.id === cat.parentId)?.name === 'Alimentación'
 }
 
 // Skill de Pepa, puntos 15/16 — petición real: "la adjudicación de

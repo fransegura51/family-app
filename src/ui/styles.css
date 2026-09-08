@@ -17,6 +17,12 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--text);
+  /* Nunca debe poder desplazarse de lado — si algún hijo se desborda
+     (petición real: la ventana de editar evento se corría a la
+     derecha y arrastrar para verla cambiaba de día por el gesto de
+     deslizar del calendario), que se recorte ahí en vez de mover toda
+     la página. */
+  overflow-x: hidden;
 }
 
 .app-shell {
@@ -353,6 +359,18 @@ input {
   border-radius: 10px;
   border: 1px solid #d1d5db;
   font-size: 16px;
+}
+
+/* Petición real: al editar un evento la ventana se desplazaba hacia la
+   derecha y moverla para verla cambiaba de día — el control nativo de
+   hora/fecha no encoge en Safari/WebKit dentro de un flex
+   (align-items: stretch no lo alcanza), así que "Empieza"/"Termina"
+   uno junto al otro empujaban todo el ancho de la página. */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+  width: 100%;
+  min-width: 0;
 }
 
 button {
@@ -907,6 +925,7 @@ select {
 
 .inline-fields label {
   flex: 1;
+  min-width: 0;
 }
 
 textarea {

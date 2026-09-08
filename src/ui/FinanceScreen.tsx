@@ -126,6 +126,17 @@ export function FinanceScreen() {
   const [showCategories, setShowCategories] = useState(false)
   const [showTags, setShowTags] = useState(false)
   const [showNewMovement, setShowNewMovement] = useState(false)
+  // Petición real: "no me has puesto para poder agregar cuentas a esa
+  // pantalla" — "+ Añadir cuenta" en las tarjetas de saldo manda a
+  // Banco y abre directamente su formulario de conectar, aunque esa
+  // pestaña ya estuviera montada de antes (por eso un contador, no un
+  // booleano: cada toque es una señal nueva).
+  const [openConnectSignal, setOpenConnectSignal] = useState(0)
+  // Petición real: "cuando pulse al recuadro [de una cuenta] me tiene
+  // que llevar a la pestaña de esa cuenta, si hay otra cuenta que me
+  // lleve a la de la otra cuenta" — cada tarjeta manda a Banco ya
+  // filtrado a esa cuenta en concreto.
+  const [focusAccountId, setFocusAccountId] = useState<string | null>(null)
 
   function reloadShared() {
     Promise.all([listBudgetCategories(), listTags()]).then(([c, t]) => {
@@ -149,7 +160,17 @@ export function FinanceScreen() {
   return (
     <div className="screen">
       <h1>Economía</h1>
-      <AccountBalanceCards key={`${tab}-${refreshKey}`} />
+      <AccountBalanceCards
+        key={`${tab}-${refreshKey}`}
+        onAddAccount={() => {
+          setOpenConnectSignal((n) => n + 1)
+          setTab('Banco')
+        }}
+        onSelectAccount={(accountId) => {
+          setFocusAccountId(accountId)
+          setTab('Banco')
+        }}
+      />
       <ReorderableTabBar storageKey="dinero" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Resumen' && <ResumenTab key={refreshKey} onViewMovements={viewMovements} />}
@@ -160,7 +181,7 @@ export function FinanceScreen() {
       {tab === 'Presupuesto Generales' && (
         <BudgetsTab key={refreshKey} group="generales" seedCategories={MASTER_CATEGORY_SEED} />
       )}
-      {tab === 'Banco' && <BankTab key={refreshKey} />}
+      {tab === 'Banco' && <BankTab key={refreshKey} openConnectSignal={openConnectSignal} focusAccountId={focusAccountId} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
 
       {/* Petición real: "vamos a hacer 3 botones flotantes
@@ -209,7 +230,13 @@ export function FinanceScreen() {
 // lo trae la propia sincronización (enable-banking-sync-transactions →
 // syncBalance) — si una cuenta todavía no se ha sincronizado nunca, se
 // avisa en vez de inventar un 0.
-function AccountBalanceCards() {
+function AccountBalanceCards({
+  onAddAccount,
+  onSelectAccount,
+}: {
+  onAddAccount: () => void
+  onSelectAccount: (accountId: string) => void
+}) {
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [connections, setConnections] = useState<BankConnection[]>([])
 
@@ -222,20 +249,25 @@ function AccountBalanceCards() {
       .catch(() => {})
   }, [])
 
-  if (accounts.length === 0) return null
-
   return (
     <div className="account-cards-row">
       {accounts.map((a) => {
         const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Banco'
         return (
-          <div key={a.id} className="account-card">
+          <button key={a.id} type="button" className="account-card" onClick={() => onSelectAccount(a.id)}>
             <div className="account-card-bank">{bankName}</div>
             <div className="account-card-name">{a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'}</div>
             <div className="account-card-balance">{a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}</div>
-          </div>
+          </button>
         )
       })}
+      {/* Petición real: "no me has puesto para poder agregar cuentas a
+          esa pantalla" — entrada directa al formulario de conectar
+          banco (ya en Banco), sin tener que saber que vive ahí. */}
+      <button type="button" className="account-card account-card-add" onClick={onAddAccount}>
+        <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
+        <span>Añadir cuenta</span>
+      </button>
     </div>
   )
 }
@@ -246,7 +278,13 @@ function AccountBalanceCards() {
 // ?bank=connected|error). Los movimientos importados alimentan
 // Movimientos (source='banco', módulo de conciliación con tickets
 // pendiente aparte).
-function BankTab() {
+function BankTab({
+  openConnectSignal,
+  focusAccountId,
+}: {
+  openConnectSignal?: number
+  focusAccountId?: string | null
+} = {}) {
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   // Petición real: la lista tiene que verse y editarse igual que
@@ -256,6 +294,15 @@ function BankTab() {
   // ver enable-banking-sync-transactions), así que se muestra y se
   // edita ESE gasto, reutilizando el mismo EditExpenseInline de Movimientos.
   const [linkedExpenses, setLinkedExpenses] = useState<Expense[]>([])
+  // Petición real: "cuando pulse al recuadro [de una cuenta] me tiene
+  // que llevar a la pestaña de esa cuenta... si hay otra cuenta que me
+  // lleve a la de la otra cuenta" — con varias cuentas enlazadas, cada
+  // tarjeta de saldo filtra aquí a SU cuenta en vez de mezclar los
+  // movimientos de todas. expenseAccountId hace de puente porque
+  // linkedExpenses (Movimientos reales) no lleva de por sí a qué
+  // cuenta de banco pertenece, solo bank_transactions lo sabe.
+  const [expenseAccountId, setExpenseAccountId] = useState<Map<string, string>>(new Map())
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(focusAccountId ?? null)
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -278,6 +325,29 @@ function BankTab() {
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
 
+  // Petición real: "no me has puesto para poder agregar cuentas a esa
+  // pantalla" — el botón "+ Añadir cuenta" de las tarjetas de saldo
+  // (arriba de Economía) manda aquí y abre este formulario solo,
+  // aunque la pestaña Banco ya estuviera montada de antes.
+  const lastConnectSignalRef = useRef(openConnectSignal)
+  useEffect(() => {
+    if (openConnectSignal != null && openConnectSignal !== lastConnectSignalRef.current) {
+      lastConnectSignalRef.current = openConnectSignal
+      setShowConnect(true)
+    }
+  }, [openConnectSignal])
+
+  // Idem para el filtro por cuenta: si Banco ya estaba montado y se
+  // toca otra tarjeta de saldo, hay que volver a aplicar el filtro
+  // aunque el valor técnicamente ya se recibiera una vez antes.
+  const lastFocusAccountRef = useRef(focusAccountId)
+  useEffect(() => {
+    if (focusAccountId !== undefined && focusAccountId !== lastFocusAccountRef.current) {
+      lastFocusAccountRef.current = focusAccountId
+      setActiveAccountId(focusAccountId)
+    }
+  }, [focusAccountId])
+
   function reload() {
     setLoading(true)
     Promise.all([listBankConnections(), listBankAccounts(), listBankTransactions(), listExpenses(), listBudgetCategories(), listTags()])
@@ -288,6 +358,7 @@ function BankTab() {
         setTags(tgs)
         const matchedIds = new Set(t.map((bt) => bt.matchedExpenseId).filter((id): id is string => !!id))
         setLinkedExpenses(allExpenses.filter((e) => matchedIds.has(e.id)).sort((a, b) => b.expenseDate.localeCompare(a.expenseDate)))
+        setExpenseAccountId(new Map(t.filter((bt) => bt.matchedExpenseId).map((bt) => [bt.matchedExpenseId as string, bt.accountId])))
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -328,7 +399,17 @@ function BankTab() {
 
   const activeConnections = connections.filter((c) => c.status === 'active')
   const [from, to] = rangeForPreset(preset, customFrom, customTo)
-  const filteredExpenses = linkedExpenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
+  const byAccount = activeAccountId
+    ? linkedExpenses.filter((e) => expenseAccountId.get(e.id) === activeAccountId)
+    : linkedExpenses
+  const filteredExpenses = byAccount.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
+  const activeAccountLabel = activeAccountId
+    ? (() => {
+        const acc = accounts.find((a) => a.id === activeAccountId)
+        const bankName = connections.find((c) => c.id === acc?.connectionId)?.aspspName
+        return acc ? `${bankName ?? 'Banco'} · ${acc.iban ? `•• ${acc.iban.slice(-4)}` : (acc.name ?? 'Cuenta')}` : null
+      })()
+    : null
 
   return (
     <div>
@@ -407,6 +488,14 @@ function BankTab() {
             Cada uno se categoriza solo. Toca uno para editar su categoría o etiqueta — es el mismo movimiento que
             aparece en Movimientos.
           </p>
+          {activeAccountLabel && (
+            <div className="card event-card" style={{ marginBottom: 8 }}>
+              <strong>Cuenta: {activeAccountLabel}</strong>
+              <button type="button" className="link-button" onClick={() => setActiveAccountId(null)}>
+                ✕ Ver todas las cuentas
+              </button>
+            </div>
+          )}
           <DateFilterTab
             preset={preset}
             onPresetChange={setPreset}

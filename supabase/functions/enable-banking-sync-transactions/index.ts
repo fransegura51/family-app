@@ -235,6 +235,13 @@ async function syncAccount(
     dateFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   }
 
+  // El saldo se pide antes que los movimientos y en su propio
+  // try/catch (ver syncBalance) — así, si el banco está limitando las
+  // peticiones de movimientos (visto en pruebas reales: "[HUB046]
+  // Allowed number of accesses exceeded for consent"), al menos se
+  // intenta el saldo antes de que el resto de la función pueda fallar.
+  await syncBalance(admin, jwt, account)
+
   let continuationKey: string | null = null
   let synced = 0
   do {
@@ -266,7 +273,6 @@ async function syncAccount(
     continuationKey = data.continuation_key ?? null
   } while (continuationKey)
 
-  await syncBalance(admin, jwt, account)
   await linkTransactionsToExpenses(admin, account)
   return { synced }
 }

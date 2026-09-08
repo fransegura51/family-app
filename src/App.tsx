@@ -21,22 +21,8 @@ import { GalleryScreen } from '@/ui/GalleryScreen'
 import { DocumentsScreen } from '@/ui/DocumentsScreen'
 import { MenuSettingsScreen } from '@/ui/MenuSettingsScreen'
 import { AyudaScreen } from '@/ui/AyudaScreen'
-import { PrivacyScreen } from '@/ui/PrivacyScreen'
-import { TermsScreen } from '@/ui/TermsScreen'
 
 export function App() {
-  // Páginas públicas, sin sesión — las piden integraciones externas
-  // (Enable Banking, Google...) para dar de alta la aplicación, así que
-  // tienen que poder verse sin iniciar sesión, antes de cualquier
-  // comprobación de auth de abajo.
-  const path = window.location.pathname
-  if (path.endsWith('/privacidad')) return <PrivacyScreen />
-  if (path.endsWith('/terminos')) return <TermsScreen />
-
-  return <AuthenticatedApp />
-}
-
-function AuthenticatedApp() {
   const { session, profile, loading, refreshProfile } = useSession()
 
   if (loading) return <div className="screen screen-centered">Cargando…</div>

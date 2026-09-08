@@ -1310,6 +1310,14 @@ textarea {
   gap: 6px;
 }
 
+.agenda-chip-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .agenda-allday-chip-sub {
   font-weight: 400;
   opacity: 0.85;

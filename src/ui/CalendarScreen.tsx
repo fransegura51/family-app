@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import { findMemberInText } from '@/domain/voiceQuery'
 import {
@@ -17,7 +17,7 @@ import {
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
-import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 import {
   addFeed,
   completeExternalEventOccurrence,
@@ -61,16 +61,9 @@ import {
   type ReminderUnit,
 } from '@/domain/reminders'
 import { MemberAvatar } from '@/ui/MemberAvatar'
-import type { CalendarEvent, Contact, DayAttachment, FamilyMember } from '@/domain/types'
-import {
-  addDayFile,
-  addDayLocation,
-  addDayPhoto,
-  deleteDayAttachment,
-  getDayAttachmentUrl,
-  listDayAttachments,
-} from '@/data/dayAttachments'
+import type { CalendarEvent, Contact, FamilyMember } from '@/domain/types'
 import { getCurrentPosition } from '@/services/geolocation'
+import { reverseGeocode, searchPlaces, type PlaceResult } from '@/services/geocoding'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
 import { setCalendarMemberFilter } from '@/state/calendarMemberFilter'
 import {
@@ -130,7 +123,6 @@ export function CalendarScreen() {
   const [externalCompletions, setExternalCompletions] = useState<ExternalEventCompletion[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
-  const [dayAttachments, setDayAttachments] = useState<DayAttachment[]>([])
   // Botón flotante "Nuevo evento", tocable desde cualquier parte de la
   // pestaña — petición real: "esa misma idea [la de Contactos] la
   // vamos a aplicar al calendario: botón flotante Nuevo evento y
@@ -209,25 +201,6 @@ export function CalendarScreen() {
   }
 
   useEffect(reload, [])
-
-  // Adjuntos sueltos por día — aparte del reload grande de arriba, para
-  // no volver a pedir eventos/miembros/etc. solo por subir una foto.
-  function reloadAttachments() {
-    listDayAttachments()
-      .then(setDayAttachments)
-      .catch((err: Error) => setError(err.message))
-  }
-  useEffect(reloadAttachments, [])
-
-  const dayAttachmentsByDate = useMemo(() => {
-    const map = new Map<string, DayAttachment[]>()
-    for (const a of dayAttachments) {
-      const list = map.get(a.day) ?? []
-      list.push(a)
-      map.set(a.day, list)
-    }
-    return map
-  }, [dayAttachments])
 
   // Cuando se apunta un evento por voz (VoiceCapture vive fuera de esta
   // pantalla, montado en toda la app), esta pantalla no se enteraba —
@@ -713,8 +686,6 @@ export function CalendarScreen() {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
-            attachments={dayAttachmentsByDate.get(selectedDate) ?? []}
-            onAttachmentsChanged={reloadAttachments}
           />
         </>
       ) : view === 'Vista general' ? (
@@ -792,8 +763,6 @@ export function CalendarScreen() {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
-            attachments={dayAttachmentsByDate.get(selectedDate) ?? []}
-            onAttachmentsChanged={reloadAttachments}
           />
         </>
       ) : view === 'Agenda' ? (
@@ -857,8 +826,6 @@ export function CalendarScreen() {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
-            attachments={dayAttachmentsByDate.get(selectedDate) ?? []}
-            onAttachmentsChanged={reloadAttachments}
           />
         </>
       )}
@@ -977,8 +944,6 @@ function DayModal({
   onEventChanged,
   onNavigateDay,
   swipeHandlers,
-  attachments,
-  onAttachmentsChanged,
 }: {
   selectedDate: string
   entries: AgendaEntry[]
@@ -989,8 +954,6 @@ function DayModal({
   onEventChanged: () => void
   onNavigateDay: (deltaDays: number) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
-  attachments: DayAttachment[]
-  onAttachmentsChanged: () => void
 }) {
   return (
     <div className="day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
@@ -1028,240 +991,10 @@ function DayModal({
         onEventChanged={onEventChanged}
         onCancelEdit={onCancelEdit}
       />
-
-      <DayAttachmentsSection day={selectedDate} attachments={attachments} onChanged={onAttachmentsChanged} />
     </div>
   )
 }
 
-// Adjuntos sueltos del día (Skill de adjuntos): foto, archivo o
-// ubicación, sin ligar a ningún evento concreto — petición real: "un
-// botón con un + añadir o foto o archivo adjunto o ubicación" dentro
-// de cada día.
-function DayAttachmentsSection({
-  day,
-  attachments,
-  onChanged,
-}: {
-  day: string
-  attachments: DayAttachment[]
-  onChanged: () => void
-}) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [addingLocation, setAddingLocation] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const photoInputRef = useRef<HTMLInputElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  async function handlePhotoSelected(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    setUploading(true)
-    setError(null)
-    try {
-      await addDayPhoto(day, file)
-      setMenuOpen(false)
-      onChanged()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo subir la foto')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    setUploading(true)
-    setError(null)
-    try {
-      await addDayFile(day, file)
-      setMenuOpen(false)
-      onChanged()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo subir el archivo')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  async function handleDelete(a: DayAttachment) {
-    await deleteDayAttachment(a)
-    onChanged()
-  }
-
-  return (
-    <div className="day-attachments">
-      {attachments.length > 0 && (
-        <div className="day-attachments-list">
-          {attachments.map((a) => (
-            <DayAttachmentRow key={a.id} attachment={a} onDelete={() => handleDelete(a)} />
-          ))}
-        </div>
-      )}
-
-      {!menuOpen ? (
-        <button type="button" className="link-button" onClick={() => setMenuOpen(true)}>
-          + Añadir foto, archivo o ubicación
-        </button>
-      ) : addingLocation ? (
-        <DayLocationForm
-          onCancel={() => setAddingLocation(false)}
-          onSaved={() => {
-            setAddingLocation(false)
-            setMenuOpen(false)
-            onChanged()
-          }}
-          day={day}
-        />
-      ) : (
-        <div className="filter-row">
-          <button type="button" className="chip" onClick={() => photoInputRef.current?.click()} disabled={uploading}>
-            📷 Foto
-          </button>
-          <button type="button" className="chip" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            📎 Archivo
-          </button>
-          <button type="button" className="chip" onClick={() => setAddingLocation(true)}>
-            📍 Ubicación
-          </button>
-          <button type="button" className="link-button" onClick={() => setMenuOpen(false)}>
-            Cancelar
-          </button>
-        </div>
-      )}
-      <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoSelected} />
-      <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileSelected} />
-      {uploading && <p className="muted">Subiendo…</p>}
-      {error && <p className="error">{error}</p>}
-    </div>
-  )
-}
-
-function DayLocationForm({ day, onSaved, onCancel }: { day: string; onSaved: () => void; onCancel: () => void }) {
-  const [label, setLabel] = useState('')
-  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
-  const [locating, setLocating] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleUseCurrentPosition() {
-    setLocating(true)
-    setError(null)
-    try {
-      setCoords(await getCurrentPosition())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo obtener la ubicación')
-    } finally {
-      setLocating(false)
-    }
-  }
-
-  async function handleSave() {
-    if (!label.trim() && !coords) {
-      setError('Escribe un nombre o usa tu ubicación actual')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await addDayLocation(day, {
-        label: label.trim() || null,
-        latitude: coords?.latitude ?? null,
-        longitude: coords?.longitude ?? null,
-      })
-      onSaved()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar la ubicación')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="card member-form">
-      <input type="text" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nombre del sitio (opcional si usas el GPS)" />
-      <button type="button" className="link-button" onClick={handleUseCurrentPosition} disabled={locating}>
-        {coords ? '✓ Ubicación capturada' : locating ? 'Obteniendo…' : '📍 Usar mi ubicación actual'}
-      </button>
-      {error && <p className="error">{error}</p>}
-      <div className="form-actions">
-        <button type="button" onClick={handleSave} disabled={saving}>
-          {saving ? 'Guardando…' : 'Guardar'}
-        </button>
-        <button type="button" className="link-button" onClick={onCancel}>
-          Cancelar
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function DayAttachmentRow({ attachment, onDelete }: { attachment: DayAttachment; onDelete: () => void }) {
-  const [url, setUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (attachment.storagePath) {
-      getDayAttachmentUrl(attachment.storagePath).then(setUrl).catch(() => {})
-    }
-  }, [attachment.storagePath])
-
-  if (attachment.kind === 'foto') {
-    return (
-      <div className="day-attachment-row">
-        {url ? (
-          <a href={url} target="_blank" rel="noreferrer">
-            <img src={url} alt="Foto del día" className="day-attachment-thumb" />
-          </a>
-        ) : (
-          <span className="muted">Cargando…</span>
-        )}
-        <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar foto" onConfirm={onDelete} />
-      </div>
-    )
-  }
-
-  if (attachment.kind === 'archivo') {
-    return (
-      <div className="day-attachment-row">
-        {url ? (
-          <a href={url} target="_blank" rel="noreferrer">
-            📎 {attachment.originalName ?? 'Archivo'}
-          </a>
-        ) : (
-          <span className="muted">📎 {attachment.originalName ?? 'Archivo'}</span>
-        )}
-        <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar archivo" onConfirm={onDelete} />
-      </div>
-    )
-  }
-
-  // ubicación
-  const mapsUrl =
-    attachment.latitude != null && attachment.longitude != null
-      ? `https://www.google.com/maps?q=${attachment.latitude},${attachment.longitude}`
-      : null
-  return (
-    <div className="day-attachment-row">
-      <span>
-        📍 {attachment.label || 'Ubicación'}
-        {mapsUrl && (
-          <>
-            {' '}
-            ·{' '}
-            <a href={mapsUrl} target="_blank" rel="noreferrer">
-              Ver en el mapa
-            </a>
-          </>
-        )}
-      </span>
-      <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar ubicación" onConfirm={onDelete} />
-    </div>
-  )
-}
 
 // Cuerpo de una agenda de un día (chips "todo el día" + filas por
 // hora) — lo comparten DayModal (Mes) y AgendaListView (vista Agenda),
@@ -1671,6 +1404,21 @@ function AgendaListView({
 // bug real reportado, se notó porque el autocompletado de títulos
 // copia "todo el día" del evento anterior, así que de golpe había
 // varios eventos así seguidos, todos igual de intocables.
+function AgendaChipThumb({ storagePath }: { storagePath: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    getEventAttachmentUrl(storagePath)
+      .then((u) => active && setUrl(u))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [storagePath])
+  if (!url) return null
+  return <img src={url} alt="" className="agenda-chip-thumb" />
+}
+
 function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
   const [confirming, setConfirming] = useState(false)
   const canDelete = !!entry.onDeleteSeries
@@ -1698,10 +1446,16 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
     >
       <span
         onClick={entry.onEdit}
-        style={{ cursor: entry.onEdit ? 'pointer' : 'default' }}
+        style={{ cursor: entry.onEdit ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 5 }}
       >
+        {/* Vista previa parcial del adjunto — petición real: se veía en
+            Vista Familiar pero no aquí. */}
+        {entry.attachmentKind === 'foto' && entry.attachmentStoragePath && (
+          <AgendaChipThumb storagePath={entry.attachmentStoragePath} />
+        )}
         {entry.done ? '✔️ ' : entry.isExternal ? '🔗 ' : ''}
         {entry.title}
+        {(entry.locationLabel || (entry.locationLatitude != null && entry.locationLongitude != null)) && ' 📍'}
         {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
       </span>
       {/* "Hecho" ya no lo quita del calendario — se queda marcado, y se
@@ -2255,13 +2009,43 @@ function EventExtrasFields({
   onNoteChange: (v: string) => void
 }) {
   const [locating, setLocating] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [suggestions, setSuggestions] = useState<PlaceResult[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  // Petición real: "no siempre es la ubicación actual la que se quiere
+  // adjuntar" — el GPS ya no es la única forma, se puede buscar
+  // cualquier sitio por nombre/dirección (sin mapa de pago, Nominatim
+  // es gratis).
+  async function handleSearch() {
+    if (!locationLabel.trim()) return
+    setSearching(true)
+    setError(null)
+    try {
+      setSuggestions(await searchPlaces(locationLabel.trim()))
+    } catch {
+      setError('No se pudo buscar esa dirección ahora mismo.')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  function pickSuggestion(place: PlaceResult) {
+    onLocationLabelChange(place.label)
+    onCoordsChange({ latitude: place.latitude, longitude: place.longitude })
+    setSuggestions([])
+  }
 
   async function handleUseCurrentPosition() {
     setLocating(true)
     setError(null)
     try {
-      onCoordsChange(await getCurrentPosition())
+      const pos = await getCurrentPosition()
+      onCoordsChange(pos)
+      // Se rellena el nombre del sitio solo — antes se quedaba vacío
+      // aunque la ubicación sí se hubiera capturado (bug real).
+      const label = await reverseGeocode(pos.latitude, pos.longitude)
+      if (label) onLocationLabelChange(label)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo obtener la ubicación')
     } finally {
@@ -2273,16 +2057,44 @@ function EventExtrasFields({
     <>
       <label>
         Ubicación (opcional)
-        <input
-          type="text"
-          value={locationLabel}
-          onChange={(e) => onLocationLabelChange(e.target.value)}
-          placeholder="Nombre del sitio o dirección"
-        />
+        <div className="inline-fields">
+          <input
+            type="text"
+            value={locationLabel}
+            onChange={(e) => onLocationLabelChange(e.target.value)}
+            placeholder="Nombre del sitio o dirección"
+            style={{ flex: 1 }}
+          />
+          <button type="button" className="link-button" onClick={handleSearch} disabled={!locationLabel.trim() || searching}>
+            {searching ? 'Buscando…' : '🔍 Buscar'}
+          </button>
+        </div>
       </label>
-      <button type="button" className="link-button" onClick={handleUseCurrentPosition} disabled={locating}>
-        {coords ? '✓ Ubicación capturada' : locating ? 'Obteniendo…' : '📍 Usar mi ubicación actual'}
-      </button>
+      {suggestions.length > 0 && (
+        <div className="card" style={{ padding: 8 }}>
+          {suggestions.map((s, i) => (
+            <button
+              key={i}
+              type="button"
+              className="link-button"
+              style={{ display: 'block', textAlign: 'left', width: '100%', padding: '4px 0' }}
+              onClick={() => pickSuggestion(s)}
+            >
+              📍 {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="inline-fields">
+        <button type="button" className="link-button" onClick={handleUseCurrentPosition} disabled={locating}>
+          {coords ? '✓ Ubicación real guardada' : locating ? 'Obteniendo…' : '📍 Usar mi ubicación actual'}
+        </button>
+        {coords && (
+          <button type="button" className="link-button" onClick={() => onCoordsChange(null)}>
+            Quitar coordenadas
+          </button>
+        )}
+      </div>
       <label>
         Adjunto: foto o archivo (opcional)
         {existingAttachment && !attachmentFile ? (

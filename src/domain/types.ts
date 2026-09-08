@@ -404,24 +404,6 @@ export interface MemberDocument {
   calendarEventId: string | null
 }
 
-// Adjuntos sueltos por día del calendario (no ligados a un evento
-// concreto): foto, archivo o ubicación — la ubicación admite las dos
-// formas a la vez, texto libre y/o coordenadas reales.
-export type DayAttachmentKind = 'foto' | 'archivo' | 'ubicacion'
-
-export interface DayAttachment {
-  id: string
-  familyId: string
-  day: string
-  kind: DayAttachmentKind
-  storagePath: string | null
-  originalName: string | null
-  label: string | null
-  latitude: number | null
-  longitude: number | null
-  createdAt: string
-}
-
 export interface CalendarEvent {
   id: string
   familyId: string

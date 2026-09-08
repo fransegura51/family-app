@@ -153,6 +153,10 @@ function BankTab() {
   const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [showConnect, setShowConnect] = useState(false)
+  // Petición real: "se pueden importar el último mes por ejemplo?" —
+  // por defecto no se trae el histórico completo del banco, solo el
+  // periodo elegido aquí.
+  const [syncDays, setSyncDays] = useState(30)
 
   function reload() {
     setLoading(true)
@@ -187,7 +191,7 @@ function BankTab() {
     setSyncing(true)
     setError(null)
     try {
-      const result = await syncBankTransactions()
+      const result = await syncBankTransactions(syncDays)
       setNotice(`✓ ${result.totalSynced} movimiento${result.totalSynced === 1 ? '' : 's'} sincronizado${result.totalSynced === 1 ? '' : 's'}.`)
       reload()
     } catch (err) {
@@ -238,9 +242,17 @@ function BankTab() {
       )}
 
       {activeConnections.length > 0 && (
-        <button type="button" onClick={handleSync} disabled={syncing}>
-          {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
-        </button>
+        <div className="inline-fields" style={{ alignItems: 'center' }}>
+          <button type="button" onClick={handleSync} disabled={syncing} style={{ flex: 'none' }}>
+            {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
+          </button>
+          <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))} style={{ flex: 'none' }}>
+            <option value={30}>Último mes</option>
+            <option value={90}>Últimos 3 meses</option>
+            <option value={365}>Último año</option>
+            <option value={0}>Todo el histórico</option>
+          </select>
+        </div>
       )}
 
       <button type="button" className="link-button" onClick={() => setShowConnect((v) => !v)}>
@@ -257,10 +269,10 @@ function BankTab() {
       {transactions.length > 0 && (
         <>
           <p className="muted" style={{ marginTop: 16, fontWeight: 600 }}>
-            Últimos movimientos del banco
+            Movimientos del banco ({transactions.length})
           </p>
           <div className="price-row-list">
-            {transactions.slice(0, 20).map((t) => (
+            {transactions.slice(0, 50).map((t) => (
               <div key={t.id} className="price-row">
                 <span className="price-row-name">
                   {t.description ?? 'Movimiento'}

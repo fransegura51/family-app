@@ -43,8 +43,11 @@ export interface SyncResult {
   totalSynced: number
 }
 
-export async function syncBankTransactions(): Promise<SyncResult> {
-  const res = await authedFetch('enable-banking-sync-transactions', { method: 'POST' })
+// days: cuántos días hacia atrás traer — por defecto el último mes
+// (petición real: "se pueden importar el último mes por ejemplo?", en
+// vez del histórico completo que da el banco). 0 = todo el histórico.
+export async function syncBankTransactions(days = 30): Promise<SyncResult> {
+  const res = await authedFetch('enable-banking-sync-transactions', { method: 'POST', body: JSON.stringify({ days }) })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error ?? 'No se pudo sincronizar')
   return { totalSynced: json.totalSynced }

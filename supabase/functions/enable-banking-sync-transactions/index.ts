@@ -96,6 +96,20 @@ Deno.serve(async (req) => {
     ])
     if (!applicationId || !privateKey) return json({ error: "not_configured" }, 500)
 
+    // Cuántos días hacia atrás traer — por defecto el último mes
+    // (petición real: "se pueden importar el último mes por ejemplo?",
+    // en vez del histórico completo que da el banco). "days" a 0 o
+    // ausente en el body es el único caso que trae todo el histórico.
+    let days = 30
+    try {
+      const body = await req.json()
+      if (typeof body?.days === "number" && body.days > 0) days = body.days
+      else if (body?.days === 0) days = 0
+    } catch {
+      // Sin body (o body vacío) → se queda el valor por defecto (30).
+    }
+    const dateFrom = days > 0 ? new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : null
+
     const { data: accounts, error: accountsError } = await admin
       .from("bank_accounts")
       .select("id, account_uid, connection_id, bank_connections!inner(family_id, status)")
@@ -113,6 +127,7 @@ Deno.serve(async (req) => {
       try {
         do {
           const url = new URL(`https://api.enablebanking.com/accounts/${account.account_uid}/transactions`)
+          if (dateFrom) url.searchParams.set("date_from", dateFrom)
           if (continuationKey) url.searchParams.set("continuation_key", continuationKey)
           const res = await fetch(url, { headers: { Authorization: `Bearer ${jwt}` } })
           if (!res.ok) throw new Error(await res.text())

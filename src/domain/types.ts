@@ -433,3 +433,38 @@ export interface CalendarEvent {
   note: string | null
 }
 
+// Módulo Banco (Enable Banking) — una familia puede tener varias
+// cuentas/conexiones (padre/madre, distintos bancos). "raw" guarda la
+// respuesta cruda de Enable Banking para no perder nada mientras se
+// verifica el mapeo exacto de campos.
+export interface BankConnection {
+  id: string
+  familyId: string
+  aspspName: string
+  aspspCountry: string
+  status: 'active' | 'expired' | 'revoked'
+  validUntil: string | null
+  createdAt: string
+}
+
+export interface BankAccount {
+  id: string
+  connectionId: string
+  accountUid: string
+  iban: string | null
+  name: string | null
+  currency: string | null
+}
+
+export interface BankTransaction {
+  id: string
+  accountId: string
+  entryReference: string | null
+  transactionDate: string | null
+  amount: number
+  currency: string
+  creditDebit: 'CRDT' | 'DBIT'
+  description: string | null
+  matchedExpenseId: string | null
+}
+

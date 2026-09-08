@@ -8,15 +8,16 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 // google-calendar-oauth-callback. Cambia el code por una sesión, guarda
 // las cuentas autorizadas, y vuelve a la app.
 //
-// El mapeo exacto de los campos de cada cuenta (IBAN, nombre...) es la
-// mejor suposición a partir de la documentación pública de Enable
-// Banking — se guarda también la respuesta cruda en "raw" para no
-// perder nada mientras se verifica con datos reales del sandbox.
+// Mapeo de cada cuenta (IBAN, nombre...) verificado contra el sandbox
+// real de Enable Banking (Mock ASPSP) el 2026-09-09 — se sigue
+// guardando también la respuesta cruda en "raw" por si el banco real
+// trae algún campo distinto que no se quiera perder.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 // URL pública de la app — a donde se vuelve tras conectar (o fallar).
-const APP_RETURN_URL = "https://fransegura51.github.io/family-app/familia"
+// Economía > Banco es donde vive la gestión de cuentas enlazadas.
+const APP_RETURN_URL = "https://fransegura51.github.io/family-app/economia"
 
 function redirectTo(status: "connected" | "error", detail?: string): Response {
   const url = new URL(APP_RETURN_URL)

@@ -1,0 +1,105 @@
+// Módulo Banco (Enable Banking) — mismo patrón que google-calendar
+// (startGoogleConnect): esta pestaña redirige al banco, la vuelta
+// ocurre en enable-banking-auth-callback, que trae de vuelta a
+// /familia con ?bank=connected o ?bank=error.
+import { supabase } from '@/data/supabaseClient'
+import type { BankAccount, BankConnection, BankTransaction } from '@/domain/types'
+
+export interface Aspsp {
+  name: string
+  country: string
+  logo: string | null
+}
+
+async function authedFetch(path: string, init?: RequestInit): Promise<Response> {
+  const { data: sessionData } = await supabase.auth.getSession()
+  const token = sessionData.session?.access_token
+  if (!token) throw new Error('No autenticado')
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+  return fetch(`${supabaseUrl}/functions/v1/${path}`, {
+    ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  })
+}
+
+export async function listAspsps(country: string): Promise<Aspsp[]> {
+  const res = await authedFetch(`enable-banking-list-aspsps?country=${encodeURIComponent(country)}`)
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? 'No se pudo obtener la lista de bancos')
+  return json.aspsps
+}
+
+export async function startBankConnection(aspspName: string, aspspCountry: string): Promise<void> {
+  const res = await authedFetch('enable-banking-auth-start', {
+    method: 'POST',
+    body: JSON.stringify({ aspspName, aspspCountry }),
+  })
+  const json = await res.json()
+  if (!res.ok || !json.url) throw new Error(json.error ?? 'No se pudo iniciar la conexión con el banco')
+  window.location.href = json.url
+}
+
+export interface SyncResult {
+  totalSynced: number
+}
+
+export async function syncBankTransactions(): Promise<SyncResult> {
+  const res = await authedFetch('enable-banking-sync-transactions', { method: 'POST' })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? 'No se pudo sincronizar')
+  return { totalSynced: json.totalSynced }
+}
+
+export async function listBankConnections(): Promise<BankConnection[]> {
+  const { data, error } = await supabase
+    .from('bank_connections')
+    .select('id, family_id, aspsp_name, aspsp_country, status, valid_until, created_at')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    aspspName: r.aspsp_name,
+    aspspCountry: r.aspsp_country,
+    status: r.status,
+    validUntil: r.valid_until,
+    createdAt: r.created_at,
+  }))
+}
+
+export async function listBankAccounts(): Promise<BankAccount[]> {
+  const { data, error } = await supabase.from('bank_accounts').select('id, connection_id, account_uid, iban, name, currency')
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    connectionId: r.connection_id,
+    accountUid: r.account_uid,
+    iban: r.iban,
+    name: r.name,
+    currency: r.currency,
+  }))
+}
+
+export async function listBankTransactions(): Promise<BankTransaction[]> {
+  const { data, error } = await supabase
+    .from('bank_transactions')
+    .select('id, account_id, entry_reference, transaction_date, amount, currency, credit_debit, description, matched_expense_id')
+    .order('transaction_date', { ascending: false })
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    accountId: r.account_id,
+    entryReference: r.entry_reference,
+    transactionDate: r.transaction_date,
+    amount: Number(r.amount),
+    currency: r.currency,
+    creditDebit: r.credit_debit,
+    description: r.description,
+    matchedExpenseId: r.matched_expense_id,
+  }))
+}
+
+export async function disconnectBank(connectionId: string): Promise<void> {
+  const { error } = await supabase.from('bank_connections').update({ status: 'revoked' }).eq('id', connectionId)
+  if (error) throw error
+}

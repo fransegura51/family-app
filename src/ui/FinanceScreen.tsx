@@ -26,6 +26,16 @@ import {
   updateExpense,
   updateTag,
 } from '@/data/finance'
+import {
+  disconnectBank,
+  listAspsps,
+  listBankAccounts,
+  listBankConnections,
+  listBankTransactions,
+  startBankConnection,
+  syncBankTransactions,
+  type Aspsp,
+} from '@/data/bank'
 import { listFamilyMembers } from '@/data/family'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -55,6 +65,9 @@ import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { StoreIcon } from '@/ui/StoreIcon'
 import type {
+  BankAccount,
+  BankConnection,
+  BankTransaction,
   Budget,
   BudgetCategory,
   BudgetPeriod,
@@ -80,7 +93,7 @@ import type {
 // Financiera". Resumen y Conclusiones se combinan en una sola pestaña
 // (van siempre juntas, mismo periodo, misma pantalla) en vez de dos
 // pestañas casi vacías por separado.
-const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Educación financiera'] as const
+const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Banco', 'Educación financiera'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 // Skill de Pepa, punto 24: "Ver X registros →" tiene que abrir
@@ -118,7 +131,230 @@ export function FinanceScreen() {
         <ExpensesTab filter={movementsFilter} onClearFilter={() => setMovementsFilter(null)} />
       )}
       {tab === 'Presupuesto Generales' && <BudgetsTab group="generales" seedCategories={MASTER_CATEGORY_SEED} />}
+      {tab === 'Banco' && <BankTab />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
+    </div>
+  )
+}
+
+// Skill de Pepa, punto 22: enlazar cuentas bancarias reales (varias
+// por familia) — mismo patrón que Google Calendar (startGoogleConnect
+// redirige, la vuelta ocurre en enable-banking-auth-callback con
+// ?bank=connected|error). Los movimientos importados alimentan
+// Movimientos (source='banco', módulo de conciliación con tickets
+// pendiente aparte).
+function BankTab() {
+  const [connections, setConnections] = useState<BankConnection[]>([])
+  const [accounts, setAccounts] = useState<BankAccount[]>([])
+  const [transactions, setTransactions] = useState<BankTransaction[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [showConnect, setShowConnect] = useState(false)
+
+  function reload() {
+    setLoading(true)
+    Promise.all([listBankConnections(), listBankAccounts(), listBankTransactions()])
+      .then(([c, a, t]) => {
+        setConnections(c)
+        setAccounts(a)
+        setTransactions(t)
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    // Enable Banking trae de vuelta aquí con ?bank=connected|error tras
+    // el consentimiento — se lee una vez y se limpia de la URL para que
+    // un refresco de página no lo vuelva a mostrar.
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('bank')
+    if (result === 'connected') setNotice('✓ Banco conectado.')
+    else if (result === 'error') setNotice(`No se pudo conectar (${params.get('detail') ?? 'error'}).`)
+    if (result) {
+      params.delete('bank')
+      params.delete('detail')
+      const qs = params.toString()
+      window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''))
+    }
+    reload()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSync() {
+    setSyncing(true)
+    setError(null)
+    try {
+      const result = await syncBankTransactions()
+      setNotice(`✓ ${result.totalSynced} movimiento${result.totalSynced === 1 ? '' : 's'} sincronizado${result.totalSynced === 1 ? '' : 's'}.`)
+      reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  if (loading) return <p className="muted">Cargando cuentas bancarias…</p>
+
+  const activeConnections = connections.filter((c) => c.status === 'active')
+
+  return (
+    <div>
+      {notice && <p className="points-badge">{notice}</p>}
+      {error && <p className="error">{error}</p>}
+
+      {activeConnections.length === 0 ? (
+        <p className="muted">
+          Todavía no hay ningún banco enlazado. Al enlazar una cuenta, sus movimientos se pueden traer aquí y
+          usarlos en Economía junto con los tickets.
+        </p>
+      ) : (
+        activeConnections.map((c) => {
+          const connAccounts = accounts.filter((a) => a.connectionId === c.id)
+          return (
+            <div key={c.id} className="card event-card" style={{ marginBottom: 8 }}>
+              <strong>🏦 {c.aspspName}</strong>
+              <p className="muted" style={{ margin: '4px 0' }}>
+                {connAccounts.length} {connAccounts.length === 1 ? 'cuenta' : 'cuentas'}
+                {c.validUntil && ` · válido hasta ${c.validUntil.slice(0, 10)}`}
+              </p>
+              {connAccounts.map((a) => (
+                <p key={a.id} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                  · {a.name ?? 'Cuenta'} {a.iban ? `(${a.iban})` : ''} {a.currency ?? ''}
+                </p>
+              ))}
+              <ConfirmButton
+                label="Desconectar"
+                confirmLabel="¿Seguro?"
+                className="link-button"
+                onConfirm={() => disconnectBank(c.id).then(reload)}
+              />
+            </div>
+          )
+        })
+      )}
+
+      {activeConnections.length > 0 && (
+        <button type="button" onClick={handleSync} disabled={syncing}>
+          {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
+        </button>
+      )}
+
+      <button type="button" className="link-button" onClick={() => setShowConnect((v) => !v)}>
+        {showConnect ? 'Cerrar' : '+ Conectar banco'}
+      </button>
+      {showConnect && (
+        <ConnectBankForm
+          connecting={connecting}
+          onConnecting={setConnecting}
+          onError={(msg) => setError(msg)}
+        />
+      )}
+
+      {transactions.length > 0 && (
+        <>
+          <p className="muted" style={{ marginTop: 16, fontWeight: 600 }}>
+            Últimos movimientos del banco
+          </p>
+          <div className="price-row-list">
+            {transactions.slice(0, 20).map((t) => (
+              <div key={t.id} className="price-row">
+                <span className="price-row-name">
+                  {t.description ?? 'Movimiento'}
+                  <span className="muted"> · {t.transactionDate}</span>
+                </span>
+                <span className="price-row-price" style={{ color: t.creditDebit === 'CRDT' ? '#1e8449' : undefined }}>
+                  {t.creditDebit === 'CRDT' ? '+' : '-'}
+                  {t.amount.toFixed(2)} €
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ConnectBankForm({
+  connecting,
+  onConnecting,
+  onError,
+}: {
+  connecting: boolean
+  onConnecting: (v: boolean) => void
+  onError: (msg: string) => void
+}) {
+  const [country, setCountry] = useState('ES')
+  const [aspsps, setAspsps] = useState<Aspsp[]>([])
+  const [loadingAspsps, setLoadingAspsps] = useState(false)
+  const [selected, setSelected] = useState('')
+
+  function loadAspsps(c: string) {
+    setLoadingAspsps(true)
+    setSelected('')
+    listAspsps(c)
+      .then(setAspsps)
+      .catch((err: Error) => onError(err.message))
+      .finally(() => setLoadingAspsps(false))
+  }
+
+  useEffect(() => loadAspsps(country), []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleConnect() {
+    if (!selected) return
+    const aspsp = aspsps.find((a) => a.name === selected)
+    if (!aspsp) return
+    onConnecting(true)
+    onError('')
+    try {
+      await startBankConnection(aspsp.name, aspsp.country)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+      onConnecting(false)
+    }
+  }
+
+  return (
+    <div className="card member-form">
+      <label>
+        País
+        <select
+          value={country}
+          onChange={(e) => {
+            setCountry(e.target.value)
+            loadAspsps(e.target.value)
+          }}
+        >
+          <option value="ES">España</option>
+          <option value="FI">Finlandia</option>
+          <option value="FR">Francia</option>
+          <option value="DE">Alemania</option>
+          <option value="IT">Italia</option>
+          <option value="PT">Portugal</option>
+        </select>
+      </label>
+      <label>
+        Banco
+        {loadingAspsps ? (
+          <p className="muted">Cargando bancos…</p>
+        ) : (
+          <select value={selected} onChange={(e) => setSelected(e.target.value)}>
+            <option value="">Elige un banco</option>
+            {aspsps.map((a) => (
+              <option key={a.name} value={a.name}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </label>
+      <button type="button" onClick={handleConnect} disabled={!selected || connecting}>
+        {connecting ? 'Abriendo el banco…' : 'Conectar'}
+      </button>
     </div>
   )
 }

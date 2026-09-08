@@ -523,109 +523,82 @@ interface BreakdownSlice {
 
 const DONUT_COLORS = ['#4C6EF5', '#e8590c', '#2f9e44', '#ae3ec9', '#f08c00', '#1098ad', '#e64980', '#748ffc', '#20c997', '#fa5252']
 
-// Donut reutilizable para categorías, subcategorías, etiquetas,
-// Debo/Necesito/Quiero y Fijo/variable — mismo mecanismo de
-// conic-gradient que StorePieChart, generalizado. Cada fila lleva
-// importe + porcentaje + registros + "Ver X registros →" (Skill de
-// Pepa, punto 6: trazabilidad obligatoria).
-function BreakdownDonut({
-  slices,
-  centerLabel,
-  onSelect,
-  onViewRecords,
-}: {
-  slices: BreakdownSlice[]
-  centerLabel: { name: string; total: number }
-  onSelect?: (key: string) => void
-  onViewRecords: (key: string) => void
-}) {
-  const grandTotal = slices.reduce((s, x) => s + x.total, 0)
-  let cumulative = 0
-  const stops = slices.map((s, i) => {
-    const pct = grandTotal > 0 ? (s.total / grandTotal) * 100 : 0
-    const start = cumulative
-    cumulative += pct
-    return `${DONUT_COLORS[i % DONUT_COLORS.length]} ${start}% ${cumulative}%`
-  })
-  const gradient = grandTotal > 0 ? `conic-gradient(${stops.join(', ')})` : '#e9ecef'
-
-  if (slices.length === 0) {
-    return <p className="muted">No hay movimientos en este periodo para esta vista.</p>
-  }
-
-  return (
-    <div className="store-pie-wrap">
-      <div className="store-pie" style={{ background: gradient, position: 'relative' }}>
-        <div
-          style={{
-            position: 'absolute',
-            inset: '22%',
-            borderRadius: '50%',
-            background: 'var(--card-bg)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            padding: 4,
-          }}
-        >
-          <span style={{ fontSize: 12 }}>{centerLabel.name}</span>
-          <strong style={{ fontSize: 15 }}>{centerLabel.total.toFixed(2)} €</strong>
-        </div>
-      </div>
-      <div className="store-pie-legend">
-        {slices.map((s, i) => {
-          const pct = grandTotal > 0 ? (s.total / grandTotal) * 100 : 0
-          return (
-            <button
-              key={s.key}
-              type="button"
-              className="store-pie-legend-row"
-              style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: '4px 0' }}
-              onClick={() => (s.hasChildren && onSelect ? onSelect(s.key) : onViewRecords(s.key))}
-            >
-              <span className="store-pie-swatch" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-              <span className="store-pie-legend-name">
-                {s.icon} {s.label}
-                {s.hasChildren ? ' ›' : ''}
-              </span>
-              <span className="muted">
-                {pct.toFixed(0)}% · {s.total.toFixed(2)} € · {s.count} {s.count === 1 ? 'registro' : 'registros'}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
+function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) }
 }
 
-// Solo el anillo (sin leyenda) — usado por el carrusel jerárquico de
-// categorías, donde la leyenda se muestra una vez por debajo, no
-// repetida dentro de cada tarjeta.
-function DonutRing({
+// Recorte de anillo (donut) entre dos ángulos — el rodaja real que se
+// toca, no una fila de texto aparte.
+function donutSlicePath(cx: number, cy: number, rOuter: number, rInner: number, startAngle: number, endAngle: number): string {
+  const clampedEnd = Math.min(endAngle, startAngle + 359.99) // círculo completo (1 sola porción) es un caso degenerado en SVG
+  const startOuter = polarToCartesian(cx, cy, rOuter, clampedEnd)
+  const endOuter = polarToCartesian(cx, cy, rOuter, startAngle)
+  const startInner = polarToCartesian(cx, cy, rInner, clampedEnd)
+  const endInner = polarToCartesian(cx, cy, rInner, startAngle)
+  const largeArc = clampedEnd - startAngle > 180 ? 1 : 0
+  return [
+    `M ${startOuter.x} ${startOuter.y}`,
+    `A ${rOuter} ${rOuter} 0 ${largeArc} 0 ${endOuter.x} ${endOuter.y}`,
+    `L ${endInner.x} ${endInner.y}`,
+    `A ${rInner} ${rInner} 0 ${largeArc} 1 ${startInner.x} ${startInner.y}`,
+    'Z',
+  ].join(' ')
+}
+
+// Dónut de verdad interactivo: cada porción es su propio <path> de SVG
+// con su propio onClick — antes era un único div con conic-gradient
+// (no se puede tocar una porción concreta, solo listar el texto
+// debajo). Petición real, muy insistida: "cuando lo toque [el dónut]
+// que se ponga otro subdónut al lado con la categoría que ha
+// tocado... en el dónut, no en la lista" — se aplica igual a todos los
+// dónuts de la app (categorías, etiquetas, Debo/Necesito/Quiero,
+// Fijo/variable, reparto por tienda), sin ninguna lista aparte debajo.
+function SvgDonut({
   slices,
   centerLabel,
   highlightedKey,
+  onSliceClick,
+  size = 190,
+  colors = DONUT_COLORS,
 }: {
-  slices: BreakdownSlice[]
+  slices: { key: string; total: number }[]
   centerLabel: { name: string; total: number }
   highlightedKey: string | null
+  onSliceClick: (key: string) => void
+  size?: number
+  colors?: string[]
 }) {
+  if (slices.length === 0) {
+    return <p className="muted">No hay movimientos en este periodo para esta vista.</p>
+  }
+  const cx = size / 2
+  const cy = size / 2
+  const rOuter = size / 2
+  const rInner = rOuter * 0.52
   const grandTotal = slices.reduce((s, x) => s + x.total, 0)
   let cumulative = 0
-  const stops = slices.map((s, i) => {
-    const pct = grandTotal > 0 ? (s.total / grandTotal) * 100 : 0
-    const start = cumulative
-    cumulative += pct
-    const color = !highlightedKey || highlightedKey === s.key ? DONUT_COLORS[i % DONUT_COLORS.length] : '#dfe3ea'
-    return `${color} ${start}% ${cumulative}%`
-  })
-  const gradient = grandTotal > 0 ? `conic-gradient(${stops.join(', ')})` : '#e9ecef'
 
   return (
-    <div className="donut-ring" style={{ background: gradient }}>
+    <div className="donut-ring" style={{ width: size, height: size }}>
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block' }}>
+        {slices.map((s, i) => {
+          const pct = grandTotal > 0 ? (s.total / grandTotal) * 360 : 0
+          if (pct <= 0) return null
+          const start = cumulative
+          cumulative += pct
+          const dimmed = highlightedKey != null && highlightedKey !== s.key
+          return (
+            <path
+              key={s.key}
+              d={donutSlicePath(cx, cy, rOuter, rInner, start, start + pct)}
+              fill={dimmed ? '#dfe3ea' : colors[i % colors.length]}
+              onClick={() => onSliceClick(s.key)}
+              style={{ cursor: 'pointer' }}
+            />
+          )
+        })}
+      </svg>
       <div className="donut-ring-center">
         <span>{centerLabel.name}</span>
         <strong>{centerLabel.total.toFixed(2)} €</strong>
@@ -634,13 +607,27 @@ function DonutRing({
   )
 }
 
+// Un solo nivel (etiquetas, Debo/Necesito/Quiero, Fijo/variable): tocar
+// una porción va directo a "Ver registros", no hay más niveles debajo.
+function BreakdownDonut({
+  slices,
+  centerLabel,
+  onViewRecords,
+}: {
+  slices: BreakdownSlice[]
+  centerLabel: { name: string; total: number }
+  onViewRecords: (key: string) => void
+}) {
+  return <SvgDonut slices={slices} centerLabel={centerLabel} highlightedKey={null} onSliceClick={onViewRecords} />
+}
+
 // Skill de Pepa, punto 10: "Donut principal por categorías. Al
 // seleccionar una categoría, segundo donut con subcategorías" —
-// petición real: "si tocas una de las categorías se resalta y ves el
-// importe de esa categoría y a la vez se abre un segundo dónut con el
-// reparto de las subcategorías". Carrusel horizontal de anillos (uno
-// por nivel), cada uno con su propia leyenda trazable (importe + % +
-// registros + "Ver X registros →").
+// petición real: "si tocas una de las categorías [EN EL DÓNUT] se
+// resalta y ves el importe de esa categoría y a la vez se abre un
+// segundo dónut con el reparto de las subcategorías, al lado".
+// Carrusel horizontal de anillos (uno por nivel) — sin ninguna lista
+// de texto: la única forma de elegir categoría es tocar la porción.
 function CategoryDonutExplorer({
   categories,
   expenses,
@@ -730,26 +717,6 @@ function CategoryDonutExplorer({
     scrollToIndex(0)
   }
 
-  function legendRows(slices: BreakdownSlice[], grandTotal: number, onPick: (key: string) => void) {
-    if (slices.length === 0) return <p className="muted">Sin movimientos en este periodo.</p>
-    return (
-      <div className="donut-legend">
-        {slices.map((s, i) => (
-          <button key={s.key} type="button" className="donut-legend-row" onClick={() => onPick(s.key)}>
-            <span className="donut-legend-swatch" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-            <span className="donut-legend-name">
-              {s.icon} {s.label}
-              {s.hasChildren ? ' ›' : ''}
-            </span>
-            <span className="muted">
-              {(grandTotal > 0 ? (s.total / grandTotal) * 100 : 0).toFixed(0)}% · {s.total.toFixed(2)} € · {s.count} {s.count === 1 ? 'registro' : 'registros'}
-            </span>
-          </button>
-        ))}
-      </div>
-    )
-  }
-
   if (topSlices.length === 0) {
     return <p className="muted">No hay movimientos en este periodo para esta vista.</p>
   }
@@ -762,16 +729,14 @@ function CategoryDonutExplorer({
         onScroll={(e) => setActiveIndex(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
       >
         <div className="donut-card">
-          <DonutRing slices={topSlices} centerLabel={topCenter} highlightedKey={highlightTop} />
-          {legendRows(topSlices, topGrandTotal, selectTop)}
+          <SvgDonut slices={topSlices} centerLabel={topCenter} highlightedKey={highlightTop} onSliceClick={selectTop} />
         </div>
         {selectedTop && (
           <div className="donut-card">
             <button type="button" className="link-button" onClick={closeSub}>
               ‹ {selectedTop.name}
             </button>
-            <DonutRing slices={subSlices} centerLabel={subCenter} highlightedKey={highlightSub} />
-            {legendRows(subSlices, subGrandTotal, selectSub)}
+            <SvgDonut slices={subSlices} centerLabel={subCenter} highlightedKey={highlightSub} onSliceClick={selectSub} />
           </div>
         )}
       </div>
@@ -2725,18 +2690,15 @@ function ReceiptForm({
 // como un quesito... la porción que se gasta de Mercadona, la porción
 // de Hiperber... el tanto por ciento con el precio que corresponde" —
 // mismo dato que el reparto por tienda de Tickets, pero como tarta en
-// vez de barras. conic-gradient reparte cada tienda su color según su
-// % del total, sin necesidad de dibujar el SVG a mano.
+// vez de barras. Mismo dónut tocable que el resto de la app (sin
+// lista aparte): tocar una porción la resalta y muestra su importe en
+// el centro.
 function StorePieChart({ groups, monthLabel }: { groups: { store: string; total: number }[]; monthLabel: string }) {
+  const [highlighted, setHighlighted] = useState<string | null>(null)
   const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
-  let cumulative = 0
-  const stops = groups.map((g, i) => {
-    const pct = grandTotal > 0 ? (g.total / grandTotal) * 100 : 0
-    const start = cumulative
-    cumulative += pct
-    return `${STORE_COLORS[i % STORE_COLORS.length]} ${start}% ${cumulative}%`
-  })
-  const gradient = grandTotal > 0 ? `conic-gradient(${stops.join(', ')})` : '#e9ecef'
+  const slices = groups.map((g) => ({ key: g.store, total: g.total }))
+  const highlightedSlice = groups.find((g) => g.store === highlighted)
+  const centerLabel = highlightedSlice ? { name: highlightedSlice.store, total: highlightedSlice.total } : { name: 'Todo', total: grandTotal }
 
   return (
     <div className="card event-card">
@@ -2744,23 +2706,13 @@ function StorePieChart({ groups, monthLabel }: { groups: { store: string; total:
       {grandTotal === 0 ? (
         <p className="muted">No hay tickets guardados ese mes.</p>
       ) : (
-        <div className="store-pie-wrap">
-          <div className="store-pie" style={{ background: gradient }} />
-          <div className="store-pie-legend">
-            {groups.map((g, i) => {
-              const pct = grandTotal > 0 ? (g.total / grandTotal) * 100 : 0
-              return (
-                <div key={g.store} className="store-pie-legend-row">
-                  <span className="store-pie-swatch" style={{ background: STORE_COLORS[i % STORE_COLORS.length] }} />
-                  <span className="store-pie-legend-name">{g.store}</span>
-                  <span className="muted">
-                    {pct.toFixed(0)}% · {g.total.toFixed(2)} €
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <SvgDonut
+          slices={slices}
+          centerLabel={centerLabel}
+          highlightedKey={highlighted}
+          onSliceClick={(key) => setHighlighted((prev) => (prev === key ? null : key))}
+          colors={STORE_COLORS}
+        />
       )}
     </div>
   )

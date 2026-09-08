@@ -1766,56 +1766,11 @@ textarea {
   color: var(--muted);
 }
 
-/* Quesito de reparto de gasto por tienda (Presupuestos). */
-.store-pie-wrap {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  margin-top: 10px;
-  flex-wrap: wrap;
-}
-
-.store-pie {
-  flex: 0 0 auto;
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-}
-
-.store-pie-legend {
-  flex: 1;
-  min-width: 160px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.store-pie-legend-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--text);
-}
-
-.store-pie-legend-name {
-  flex: 1;
-  font-weight: 500;
-}
-
-.store-pie-swatch {
-  flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-}
-
 /* Carrusel jerárquico de categorías (Estadísticas → Categorías) — un
-   anillo grande por nivel, se desliza al siguiente al elegir una
-   categoría con subcategorías. Estilo propio de Pepa: donut grande y
-   centrado, leyenda debajo en vez de al lado, sin la barra de fechas
-   ni la hoja inferior de la app de referencia. */
+   anillo grande por nivel, se desliza al siguiente al TOCAR una
+   porción del propio dónut (SvgDonut, sin ninguna lista de texto
+   aparte). Estilo propio de Pepa: donut grande y centrado, sin la
+   barra de fechas ni la hoja inferior de la app de referencia. */
 .donut-explorer {
   margin-top: 12px;
 }
@@ -1873,45 +1828,6 @@ textarea {
 
 .donut-ring-center strong {
   font-size: 17px;
-}
-
-.donut-legend {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.donut-legend-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  background: none;
-  border: none;
-  text-align: left;
-  cursor: pointer;
-  padding: 6px 4px;
-  font-size: 13px;
-  font-weight: 400;
-  border-radius: 8px;
-  color: var(--text);
-}
-
-.donut-legend-row:active {
-  background: var(--hover-bg, rgba(0, 0, 0, 0.04));
-}
-
-.donut-legend-name {
-  flex: 1;
-}
-
-.donut-legend-swatch {
-  flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
 }
 
 .donut-dots {

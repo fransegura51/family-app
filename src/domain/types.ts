@@ -397,6 +397,11 @@ export interface MemberDocument {
   storagePath: string
   title: string
   category: string | null
+  // Petición real: fecha de vencimiento opcional (DNI, seguro, ITV...)
+  // — si se rellena, se crea un evento en el calendario con varios
+  // recordatorios de renovación (calendarEventId lo enlaza).
+  expiryDate: string | null
+  calendarEventId: string | null
 }
 
 // Adjuntos sueltos por día del calendario (no ligados a un evento

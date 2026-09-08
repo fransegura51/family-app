@@ -3,6 +3,7 @@ import {
   deleteMemberDocument,
   getMemberDocumentUrl,
   listMemberDocuments,
+  updateMemberDocumentExpiry,
   uploadMemberDocument,
 } from '@/data/documents'
 import { createDocumentCategory, listDocumentCategories, type DocumentCategory } from '@/data/documentCategories'
@@ -282,7 +283,7 @@ function MemberFolders({
               {isOpen && (
                 <div className="event-list store-folder-contents">
                   {memberDocs.map((doc) => (
-                    <DocumentRow key={doc.id} doc={doc} onDelete={() => onDelete(doc)} />
+                    <DocumentRow key={doc.id} doc={doc} onDelete={() => onDelete(doc)} onReload={onReload} />
                   ))}
                   {memberDocs.length === 0 && <p className="muted">Sin documentos todavía.</p>}
                 </div>
@@ -310,8 +311,22 @@ function MemberFolders({
   )
 }
 
-function DocumentRow({ doc, onDelete }: { doc: MemberDocument; onDelete: () => void }) {
+function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelete: () => void; onReload: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
+  const [editingExpiry, setEditingExpiry] = useState(false)
+  const [expiryDraft, setExpiryDraft] = useState(doc.expiryDate ?? '')
+  const [saving, setSaving] = useState(false)
+
+  async function saveExpiry() {
+    setSaving(true)
+    try {
+      await updateMemberDocumentExpiry(doc, expiryDraft || null)
+      setEditingExpiry(false)
+      onReload()
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="card task-card">
@@ -324,6 +339,26 @@ function DocumentRow({ doc, onDelete }: { doc: MemberDocument; onDelete: () => v
         ) : (
           <button type="button" className="link-button" onClick={() => getMemberDocumentUrl(doc.storagePath).then(setUrl)}>
             Ver documento
+          </button>
+        )}
+        {/* Petición real: fecha de vencimiento con recordatorios de
+            renovación en el calendario — se puede añadir o cambiar
+            después de subir el documento, no solo al crearlo. */}
+        {editingExpiry ? (
+          <div className="inline-fields">
+            <input type="date" value={expiryDraft} onChange={(e) => setExpiryDraft(e.target.value)} />
+            <button type="button" onClick={saveExpiry} disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </button>
+            <button type="button" className="link-button" onClick={() => setEditingExpiry(false)}>
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="link-button" onClick={() => setEditingExpiry(true)}>
+            {doc.expiryDate
+              ? `📅 Vence el ${new Date(doc.expiryDate + 'T00:00').toLocaleDateString('es-ES')}`
+              : '+ Añadir fecha de vencimiento'}
           </button>
         )}
       </div>
@@ -381,6 +416,7 @@ function AddDocumentForm({
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState(defaultCategory)
   const [memberId, setMemberId] = useState(defaultMemberId)
+  const [expiryDate, setExpiryDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -393,9 +429,10 @@ function AddDocumentForm({
     setSaving(true)
     setError(null)
     try {
-      await uploadMemberDocument({ memberId: memberId || null, file, title, category })
+      await uploadMemberDocument({ memberId: memberId || null, file, title, category, expiryDate: expiryDate || null })
       setFile(null)
       setTitle('')
+      setExpiryDate('')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo subir el documento')
@@ -434,6 +471,15 @@ function AddDocumentForm({
           ))}
         </select>
       </label>
+      <label>
+        Fecha de vencimiento (opcional)
+        <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+      </label>
+      {expiryDate && (
+        <p className="muted">
+          Se apuntará en el Calendario y avisará 30, 7 y 1 día antes de que venza.
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Subiendo…' : 'Guardar'}

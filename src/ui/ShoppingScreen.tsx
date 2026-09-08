@@ -125,7 +125,9 @@ interface ProductSuggestion {
 
 function buildSuggestions(products: Product[], prices: ProductPrice[]): ProductSuggestion[] {
   return products.map((p) => {
-    const ownPrices = prices.filter((pr) => pr.productId === p.id)
+    // Un pedido de Amazon no cuenta como "lo sueles comprar" de la
+    // lista de la compra — mismo criterio que Historial.
+    const ownPrices = prices.filter((pr) => pr.productId === p.id && pr.store !== 'Amazon')
     const stats = computeProductStats(ownPrices)
     const last = [...ownPrices].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))[0]
     return {
@@ -146,7 +148,7 @@ function buildSuggestions(products: Product[], prices: ProductPrice[]): ProductS
 // qué se ha comprado que con el dinero en sí). Sus componentes siguen
 // definidos en FinanceScreen.tsx y se importan desde ahí, en vez de
 // duplicar todo el código de tickets/categorías en dos archivos.
-const SUB_TABS = ['Lista', 'Programadas', 'Historial', 'Tickets', 'Registro Alimentación'] as const
+const SUB_TABS = ['Lista', 'Programadas', 'Historial', 'No alimentos', 'Tickets', 'Registro Alimentación'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 export function ShoppingScreen() {
@@ -159,7 +161,8 @@ export function ShoppingScreen() {
 
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Programadas' && <TripsTab />}
-      {tab === 'Historial' && <HistoryTab />}
+      {tab === 'Historial' && <HistoryTab mode="alimentacion" />}
+      {tab === 'No alimentos' && <HistoryTab mode="no_alimentos" />}
       {tab === 'Tickets' && <ReceiptsTab />}
       {tab === 'Registro Alimentación' && <BudgetsTab group="alimentacion" seedCategories={[]} />}
     </div>
@@ -1287,7 +1290,16 @@ interface ProductDetail {
   lines: string[]
 }
 
-function HistoryTab() {
+// Amazon es la única fuente que mete artículos que no son de
+// alimentación en product_prices (el webhook guarda cada línea del
+// pedido, sea ropa, electrónica o lo que sea) — de ahí que "no es de
+// alimentación" se pueda mirar por la tienda, sin necesitar una
+// columna nueva.
+function isNonFoodSource(store: string | null): boolean {
+  return store === 'Amazon'
+}
+
+function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
   const [prices, setPrices] = useState<ProductPrice[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
@@ -1337,9 +1349,16 @@ function HistoryTab() {
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
 
+  // Cada pestaña ve solo lo suyo — Historial nunca mezcla ropa/electrónica
+  // de Amazon, y "No alimentos" no arrastra nada de comida.
+  const scopedPrices = useMemo(
+    () => prices.filter((p) => isNonFoodSource(p.store) === (mode === 'no_alimentos')),
+    [prices, mode],
+  )
+
   const purchases = useMemo(
     () =>
-      prices.map((p) => {
+      scopedPrices.map((p) => {
         const qty = Number(p.quantity)
         return {
           productId: p.productId,
@@ -1348,7 +1367,7 @@ function HistoryTab() {
           recordedDate: p.recordedDate,
         }
       }),
-    [prices],
+    [scopedPrices],
   )
 
   const withStats = useMemo(
@@ -1356,10 +1375,10 @@ function HistoryTab() {
       products
         .map((product) => ({
           product,
-          stats: computeProductStats(prices.filter((p) => p.productId === product.id)),
+          stats: computeProductStats(scopedPrices.filter((p) => p.productId === product.id)),
         }))
         .filter((x) => x.stats !== null),
-    [products, prices],
+    [products, scopedPrices],
   )
 
   const suggestions = withStats.filter((x) => x.stats!.isDue)
@@ -1381,7 +1400,7 @@ function HistoryTab() {
   // real — el precio en cada tienda donde se ha comprado, para
   // comparar ENTRE TIENDAS cuál sale más barata.
   function openDetail(productId: string, name: string) {
-    const productPrices = prices.filter((p) => p.productId === productId)
+    const productPrices = scopedPrices.filter((p) => p.productId === productId)
     const stats = computeProductStats(productPrices)
     const lines: string[] = []
     if (stats) {

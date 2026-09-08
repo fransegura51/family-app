@@ -354,10 +354,14 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         setCategories(c)
         setTags(t)
         setPurchases(
-          prices.map((p) => {
-            const qty = Number(p.quantity)
-            return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
-          }),
+          // Amazon no es alimentación — no debe entrar en el análisis
+          // de "¿por qué ha cambiado mi gasto?" de la cesta de tickets.
+          prices
+            .filter((p) => p.store !== 'Amazon')
+            .map((p) => {
+              const qty = Number(p.quantity)
+              return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
+            }),
         )
         setProductNames(new Map(products.map((pr) => [pr.id, pr.displayName])))
       })

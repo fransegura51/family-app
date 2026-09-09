@@ -2,17 +2,13 @@ import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRe
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
   addShoppingItem,
-  completeShoppingTrip,
-  createShoppingTrip,
   deleteShoppingItem,
   deleteShoppingItems,
-  deleteShoppingTrip,
   listShoppingItems,
-  listShoppingTrips,
   reorderShoppingItems,
   updateShoppingItemStatus,
 } from '@/data/shopping'
-import { listAllProductPrices, listProducts, recordProductPurchase } from '@/data/products'
+import { listAllProductPrices, listProducts } from '@/data/products'
 import {
   createShoppingStore,
   deleteShoppingStore,
@@ -20,28 +16,22 @@ import {
   renameShoppingStore,
   reorderShoppingStores,
 } from '@/data/shoppingStores'
-import { listFamilyMembers } from '@/data/family'
-import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
-import { listReceipts, uploadReceipt } from '@/data/receipts'
+import { listReceipts } from '@/data/receipts'
 import { listBudgetCategories } from '@/data/finance'
 import { buildFoodReceiptIds, computeProductStats, isFoodPurchase, isLikelyAlcohol } from '@/domain/products'
-import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
-import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { normalize } from '@/domain/voiceQuery'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
 import { MONTH_LABELS } from '@/domain/calendar'
 import { BudgetsTab, ReceiptsTab } from '@/ui/FinanceScreen'
 import type {
-  FamilyMember,
   Product,
   ProductPrice,
   ShoppingItem,
   ShoppingItemPriority,
   ShoppingItemStatus,
   ShoppingStoreEntry,
-  ShoppingTrip,
 } from '@/domain/types'
 
 function todayStr(): string {
@@ -56,62 +46,6 @@ function normalizeProductName(s: string): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
 }
-
-const MATCH_STOPWORDS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'o', 'un', 'una', 'para', 'con', 'en'])
-
-// Palabras sueltas y "de peso" (sin tildes, sin plural simple, sin
-// símbolos) — el ticket real abrevia mucho ("GEL LIMPIADOR BAÑO" en vez
-// de "Gel de baño"), así que comparar la frase entera como subcadena se
-// queda corto en cuanto el ticket reordena o recorta alguna palabra.
-function significantTokens(s: string): string[] {
-  return normalizeProductName(s)
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w)) // plural simple: "proteinas" ~ "proteina"
-    .filter((w) => w.length > 1 && !MATCH_STOPWORDS.has(w))
-}
-
-// Empareja lo leído del ticket ("hamburguesas") con un producto YA
-// pendiente en la lista ("Hamburguesas mixtas"). Primero por subcadena
-// (lo más fiable); si no hay, por palabras compartidas — exige que la
-// MAYORÍA de las palabras del producto de la lista aparezcan en la
-// línea del ticket, para no colar un match dudoso entre dos productos
-// solo parecidos. Ante duda de verdad, no empareja: mejor dejarlo
-// como línea suelta (se puede emparejar a mano) que asignarle el precio
-// al producto equivocado — un ticket real trae líneas tan crípticas
-// ("+PROT NATILLA VAINI") que a veces ni una persona sabría decir con
-// seguridad a qué producto de la lista corresponden.
-function matchShoppingItem(lineName: string, items: ShoppingItem[]): ShoppingItem | null {
-  const n = normalizeProductName(lineName)
-  if (!n) return null
-
-  const substringMatch = items.find((i) => {
-    const din = normalizeProductName(i.name)
-    return din.includes(n) || n.includes(din)
-  })
-  if (substringMatch) return substringMatch
-
-  const lineTokens = new Set(significantTokens(lineName))
-  if (lineTokens.size === 0) return null
-
-  let best: { item: ShoppingItem; score: number } | null = null
-  for (const item of items) {
-    const itemTokens = significantTokens(item.name)
-    if (itemTokens.length === 0) continue
-    const shared = itemTokens.filter((t) => lineTokens.has(t)).length
-    const score = shared / itemTokens.length
-    if (score >= 0.6 && (!best || score > best.score)) best = { item, score }
-  }
-  return best?.item ?? null
-}
-
-const REMINDER_OPTIONS = [
-  { value: '', label: 'Sin recordatorio' },
-  { value: '10', label: '10 min antes' },
-  { value: '30', label: '30 min antes' },
-  { value: '60', label: '1 hora antes' },
-  { value: '1440', label: '1 día antes' },
-]
 
 // Memoria de compras (Skill 09) aplicada a la propia lista: nombre
 // habitual (con marca), cantidad/unidad y último precio pagado, para no
@@ -154,7 +88,7 @@ function buildSuggestions(
 // qué se ha comprado que con el dinero en sí). Sus componentes siguen
 // definidos en FinanceScreen.tsx y se importan desde ahí, en vez de
 // duplicar todo el código de tickets/categorías en dos archivos.
-const SUB_TABS = ['Lista', 'Programadas', 'Historial', 'No alimentos', 'Tickets', 'Registro Alimentación'] as const
+const SUB_TABS = ['Lista', 'Historial', 'No alimentos', 'Tickets', 'Registro Alimentación'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 export function ShoppingScreen() {
@@ -166,7 +100,6 @@ export function ShoppingScreen() {
       <ReorderableTabBar storageKey="compras" tabs={SUB_TABS} active={tab} onSelect={setTab} />
 
       {tab === 'Lista' && <ShoppingListTab />}
-      {tab === 'Programadas' && <TripsTab />}
       {tab === 'Historial' && <HistoryTab mode="alimentacion" />}
       {tab === 'No alimentos' && <HistoryTab mode="no_alimentos" />}
       {tab === 'Tickets' && <ReceiptsTab />}
@@ -865,400 +798,6 @@ function AddShoppingItemForm({
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Añadiendo…' : 'Añadir'}
-      </button>
-    </form>
-  )
-}
-
-// ---------------------------------------------------------------------
-// Compras programadas (Skill 08)
-// ---------------------------------------------------------------------
-
-function TripsTab() {
-  const [trips, setTrips] = useState<ShoppingTrip[]>([])
-  const [members, setMembers] = useState<FamilyMember[]>([])
-  const [items, setItems] = useState<ShoppingItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  function reload() {
-    setLoading(true)
-    Promise.all([listShoppingTrips(), listFamilyMembers(), listShoppingItems()])
-      .then(([t, m, i]) => {
-        setTrips(t)
-        setMembers(m)
-        setItems(i)
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(reload, [])
-
-  const pendingItems = useMemo(() => items.filter((i) => i.status === 'pendiente'), [items])
-
-  if (loading) return <p className="muted">Cargando…</p>
-
-  return (
-    <div>
-      {error && <p className="error">{error}</p>}
-      <div className="event-list">
-        {trips.map((trip) => (
-          <TripCard key={trip.id} trip={trip} members={members} pendingItems={pendingItems} onChanged={reload} />
-        ))}
-        {trips.length === 0 && <p className="muted">No hay compras programadas.</p>}
-      </div>
-      <AddTripForm members={members} onAdded={reload} />
-    </div>
-  )
-}
-
-function TripCard({
-  trip,
-  members,
-  pendingItems,
-  onChanged,
-}: {
-  trip: ShoppingTrip
-  members: FamilyMember[]
-  pendingItems: ShoppingItem[]
-  onChanged: () => void
-}) {
-  const [amount, setAmount] = useState('')
-  const [completing, setCompleting] = useState(false)
-  const [showReceipt, setShowReceipt] = useState(false)
-  const assignedMember = members.find((m) => m.id === trip.memberId)
-
-  async function handleComplete() {
-    if (!amount) return
-    await completeShoppingTrip(trip.id, Number(amount))
-    onChanged()
-  }
-
-  return (
-    <div className="card task-card">
-      <div className="task-card-main">
-        <strong>{trip.store || 'Compra sin tienda asignada'}</strong>
-        <p className="muted">
-          {trip.scheduledDate ?? 'sin fecha'}
-          {trip.budget != null && ` · presupuesto ${trip.budget} €`}
-          {trip.status === 'completada' && ` · gastado ${trip.actualAmount} €`}
-        </p>
-        {assignedMember && (
-          <p className="muted">
-            <MemberAvatar member={assignedMember} size={24} /> {assignedMember.name}
-            {trip.calendarEventId && ' · 🔔 en su calendario'}
-          </p>
-        )}
-        {showReceipt && (
-          <TripReceiptForm
-            trip={trip}
-            pendingItems={pendingItems}
-            onDone={() => {
-              setShowReceipt(false)
-              onChanged()
-            }}
-            onCancel={() => setShowReceipt(false)}
-          />
-        )}
-      </div>
-      {trip.status === 'planificada' && !completing && !showReceipt && (
-        <>
-          <button type="button" className="task-toggle" onClick={() => setShowReceipt(true)}>
-            📷 Subir ticket
-          </button>
-          <button type="button" className="link-button" onClick={() => setCompleting(true)}>
-            Completar a mano
-          </button>
-        </>
-      )}
-      {trip.status === 'planificada' && completing && (
-        <>
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Importe real €"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            style={{ width: 110 }}
-          />
-          <button type="button" className="task-toggle" onClick={handleComplete}>
-            Guardar
-          </button>
-        </>
-      )}
-      <ConfirmButton label="Eliminar" onConfirm={() => deleteShoppingTrip(trip).then(onChanged)} />
-    </div>
-  )
-}
-
-type TripOcrStatus = 'idle' | 'reading' | 'done' | 'error'
-
-interface TripReceiptLine {
-  name: string
-  quantity: string
-  price: string
-  matchedItemId: string | null
-}
-
-// Subir el ticket de una compra programada: lo lee con Gemini, empareja
-// cada línea con lo que ya estaba pendiente en la lista de ese
-// supermercado (si lo hay), y al guardar marca esos productos como
-// comprados con su precio real, sube la foto del ticket y cierra la
-// compra con el importe total — todo de una vez, en vez de tener que
-// tocar cada producto suelto a mano.
-function TripReceiptForm({
-  trip,
-  pendingItems,
-  onDone,
-  onCancel,
-}: {
-  trip: ShoppingTrip
-  pendingItems: ShoppingItem[]
-  onDone: () => void
-  onCancel: () => void
-}) {
-  const [file, setFile] = useState<File | null>(null)
-  const [ocrStatus, setOcrStatus] = useState<TripOcrStatus>('idle')
-  const [lines, setLines] = useState<TripReceiptLine[]>([])
-  const [totalAmount, setTotalAmount] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  // Solo se compara contra lo pendiente de ESTA tienda (o sin tienda
-  // asignada) — un ticket del Mercadona no debería emparejar con algo
-  // que se apuntó para el Carrefour.
-  const candidatePool = pendingItems.filter((i) => !i.store || i.store === trip.store)
-
-  async function handleRead() {
-    if (!file) return
-    setOcrStatus('reading')
-    setError(null)
-    try {
-      const parsed = await analyzeReceiptPhoto(file)
-      if (parsed.total != null) setTotalAmount(String(parsed.total))
-      setLines(
-        parsed.items.map((l) => {
-          const match = matchShoppingItem(l.name, candidatePool)
-          return {
-            name: match ? match.name : l.name,
-            quantity: String(l.quantity),
-            price: l.price.toFixed(2),
-            matchedItemId: match?.id ?? null,
-          }
-        }),
-      )
-      setOcrStatus('done')
-    } catch (err) {
-      setOcrStatus('error')
-      setError(err instanceof Error ? err.message : 'No se pudo leer el ticket')
-    }
-  }
-
-  function updateLine(index: number, patch: Partial<TripReceiptLine>) {
-    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
-  }
-
-  function removeLine(index: number) {
-    setLines((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  async function handleSaveTrip() {
-    if (!file) {
-      setError('Sube la foto o el PDF del ticket')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      const receiptDate = trip.scheduledDate ?? todayStr()
-      const receiptId = await uploadReceipt({
-        file,
-        store: trip.store ?? '',
-        receiptDate,
-        totalAmount: totalAmount ? Number(totalAmount) : null,
-        category: 'Alimentación',
-        purchasedByMemberId: null,
-      })
-
-      await Promise.all(
-        lines
-          .filter((l) => l.name.trim() && !Number.isNaN(Number(l.price)))
-          .map(async (l) => {
-            // El ticket trae el importe TOTAL de la línea ("2 botellas de
-            // leche, 2,00€"), no el precio de una — antes se guardaba tal
-            // cual y la Memoria de precios enseñaba 2€ como si fuera el
-            // precio de una botella (bug real reportado). Se divide entre
-            // las unidades para guardar siempre precio por unidad.
-            const units = Number(l.quantity)
-            const unitPrice = Number.isFinite(units) && units > 0 ? Number(l.price) / units : Number(l.price)
-            // El precio se guarda EN el propio producto al marcarlo
-            // comprado (no solo en la Memoria de precios) — si no, al
-            // recargar la app "Comprados" no sabía que este ya tenía
-            // precio y lo volvía a pedir (bug real reportado).
-            if (l.matchedItemId) await updateShoppingItemStatus(l.matchedItemId, 'comprado', unitPrice)
-            await recordProductPurchase({
-              name: l.name.trim(),
-              price: unitPrice,
-              quantity: l.quantity || '1',
-              unit: '',
-              store: trip.store ?? '',
-              date: receiptDate,
-              receiptId,
-            })
-          }),
-      )
-
-      if (totalAmount) {
-        await completeShoppingTrip(trip.id, Number(totalAmount))
-      }
-      onDone()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar la compra')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="card member-form" onClick={(e) => e.stopPropagation()}>
-      <FileOrPdfPicker file={file} onChange={setFile} />
-      {file && (
-        <button type="button" className="voice-mic-button" onClick={handleRead} disabled={ocrStatus === 'reading'}>
-          {ocrStatus === 'reading' ? 'Leyendo ticket…' : '📷 Leer ticket'}
-        </button>
-      )}
-      <label>
-        Importe total (€)
-        <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
-      </label>
-
-      {(ocrStatus === 'done' || lines.length > 0) && (
-        <div className="day-modal-group">
-          <p className="muted">
-            Productos leídos — los que coinciden con la lista se marcarán como comprados automáticamente:
-          </p>
-          {lines.map((line, i) => (
-            <div key={i} className="receipt-line-row">
-              <input type="text" value={line.name} onChange={(e) => updateLine(i, { name: e.target.value })} />
-              <input
-                type="number"
-                className="receipt-line-qty"
-                min={1}
-                step={1}
-                value={line.quantity}
-                onChange={(e) => updateLine(i, { quantity: e.target.value })}
-                placeholder="Cant."
-              />
-              <input
-                type="number"
-                step="0.01"
-                value={line.price}
-                onChange={(e) => updateLine(i, { price: e.target.value })}
-                placeholder="Precio total"
-              />
-              <button type="button" className="link-button" onClick={() => removeLine(i)}>
-                ✕
-              </button>
-              {line.matchedItemId && <span className="muted">✓ en la lista</span>}
-              {/* El ticket da el importe total de la línea — se enseña a
-                  cuánto sale la unidad para que se vea el cálculo antes
-                  de guardar (petición real: precio por unidad, no total). */}
-              {Number(line.quantity) > 1 && !Number.isNaN(Number(line.price)) && (
-                <span className="muted">= {(Number(line.price) / Number(line.quantity)).toFixed(2)} €/ud</span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {error && <p className="error">{error}</p>}
-      <div className="form-actions">
-        <button type="button" onClick={handleSaveTrip} disabled={saving}>
-          {saving ? 'Guardando…' : 'Guardar compra'}
-        </button>
-        <button type="button" className="link-button" onClick={onCancel}>
-          Cancelar
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function AddTripForm({ members, onAdded }: { members: FamilyMember[]; onAdded: () => void }) {
-  const [scheduledDate, setScheduledDate] = useState('')
-  const [store, setStore] = useState('')
-  const [budget, setBudget] = useState('')
-  const [memberId, setMemberId] = useState('')
-  const [reminderMinutes, setReminderMinutes] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      await createShoppingTrip({
-        scheduledDate: scheduledDate || null,
-        store,
-        budget: budget ? Number(budget) : null,
-        memberId: memberId || null,
-        reminderMinutes: reminderMinutes ? Number(reminderMinutes) : null,
-      })
-      setStore('')
-      setBudget('')
-      setMemberId('')
-      setReminderMinutes('')
-      onAdded()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Programar compra</h2>
-      <label>
-        Fecha
-        <input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
-      </label>
-      <label>
-        Tienda
-        <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
-      </label>
-      <label>
-        Presupuesto (€)
-        <input type="number" step="0.01" value={budget} onChange={(e) => setBudget(e.target.value)} />
-      </label>
-      <label>
-        Asignar a
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-          <option value="">Nadie en particular</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {memberId && (
-        <label>
-          Recordatorio en su calendario
-          <select value={reminderMinutes} onChange={(e) => setReminderMinutes(e.target.value)}>
-            {REMINDER_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Programar'}
       </button>
     </form>
   )

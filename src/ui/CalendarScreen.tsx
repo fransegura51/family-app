@@ -72,6 +72,7 @@ import {
 } from '@/domain/reminders'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { CalendarEvent, Contact, FamilyMember } from '@/domain/types'
+import calendarHeaderImg from '@/assets/calendario/calendar-header.jpg'
 import { getCurrentPosition } from '@/services/geolocation'
 import { reverseGeocode, searchPlaces, type PlaceResult } from '@/services/geocoding'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
@@ -621,16 +622,18 @@ export function CalendarScreen() {
 
   return (
     <div className="screen">
-      <div className="section-title-row">
+      {/* Petición real, con imagen de referencia: "ahora lo mismo con
+          Calendario" (mismo tratamiento que "La cocina de Pepa"). */}
+      <div className="kitchen-header">
+        <img src={calendarHeaderImg} alt="Calendario" className="kitchen-header-img" />
         <button
           type="button"
-          className="section-menu-fab"
+          className="kitchen-header-menu-fab"
           onClick={() => setCalendarMenuOpen((v) => !v)}
           aria-label={calendarMenuOpen ? 'Cerrar menú de Calendario' : 'Abrir menú de Calendario'}
         >
-          {calendarMenuOpen ? '✕' : '☰'}
+          {calendarMenuOpen ? '✕' : '☰'} Menú
         </button>
-        <h1>Calendario</h1>
       </div>
       {error && <p className="error">{error}</p>}
 

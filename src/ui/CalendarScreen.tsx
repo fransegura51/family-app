@@ -1,6 +1,16 @@
 import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import { findMemberInText } from '@/domain/voiceQuery'
+import {
+  calendarioMenuEntryMeta,
+  isCustomCalendarioMenuKey,
+  loadCalendarioMenuLayout,
+  loadCalendarioPinnedItems,
+  saveCalendarioMenuLayout,
+  saveCalendarioPinnedItems,
+  type CalendarioMenuEntry,
+  type CalendarioMenuGroup,
+  type CalendarioMenuItemKey,
+} from '@/state/calendarioMenu'
 import {
   completeEventOccurrence,
   createEvent,
@@ -17,7 +27,7 @@ import {
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
-import { ConfirmButton } from '@/ui/ConfirmButton'
+import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import {
   addFeed,
   completeExternalEventOccurrence,
@@ -82,6 +92,10 @@ import { WeekdayPicker } from '@/ui/WeekdayPicker'
 // Mes y Externos que ya había.
 const VIEWS = ['Mes', 'Vista general', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Externos'] as const
 type ViewMode = (typeof VIEWS)[number]
+
+function isCalendarioSubTab(key: CalendarioMenuItemKey): key is ViewMode {
+  return (VIEWS as readonly string[]).includes(key)
+}
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -155,7 +169,17 @@ export function CalendarScreen() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [view, setView] = useState<ViewMode>('Mes')
+  const [view, setView] = useState<ViewMode>('Vista general')
+  // Petición real: "esas pestañas las metes en una con tres rayas
+  // igual, un desplegable... con el mismo formato que economía, que se
+  // puedan sacar, que se puedan quitar, que se puedan editar" — mismo
+  // desplegable ☰ que Economía/Alimentación/Compras/Ubicación. Los
+  // nombres de los miembros (filtro de abajo) se quedan siempre
+  // visibles, fuera del desplegable — petición real explícita.
+  const [calendarMenuOpen, setCalendarMenuOpen] = useState(false)
+  const [pinnedViews, setPinnedViews] = useState<CalendarioMenuItemKey[]>(() => loadCalendarioPinnedItems())
+  const [calendarMenuLayout, setCalendarMenuLayout] = useState<CalendarioMenuGroup[]>(() => loadCalendarioMenuLayout())
+  const [calendarPlaceholderNotice, setCalendarPlaceholderNotice] = useState(false)
   const today = useMemo(() => new Date(), [])
   const [visibleYear, setVisibleYear] = useState(today.getFullYear())
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
@@ -573,15 +597,86 @@ export function CalendarScreen() {
     })
   }
 
+  function persistCalendarMenuLayout(next: CalendarioMenuGroup[]) {
+    setCalendarMenuLayout(next)
+    saveCalendarioMenuLayout(next)
+  }
+
+  function toggleCalendarPinnedItem(key: CalendarioMenuItemKey) {
+    setPinnedViews((prev) => {
+      const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
+      saveCalendarioPinnedItems(next)
+      return next
+    })
+  }
+
+  function handleCalendarMenuAction(key: CalendarioMenuItemKey) {
+    if (isCalendarioSubTab(key)) setView(key)
+  }
+
+  const flatCalendarMenuEntries = calendarMenuLayout.flatMap((g) => g.items)
+
   if (loading) return <div className="screen">Cargando calendario…</div>
 
 
   return (
     <div className="screen">
-      <h1>Calendario</h1>
+      <div className="section-title-row">
+        <button
+          type="button"
+          className="section-menu-fab"
+          onClick={() => setCalendarMenuOpen((v) => !v)}
+          aria-label={calendarMenuOpen ? 'Cerrar menú de Calendario' : 'Abrir menú de Calendario'}
+        >
+          {calendarMenuOpen ? '✕' : '☰'}
+        </button>
+        <h1>Calendario</h1>
+      </div>
       {error && <p className="error">{error}</p>}
 
-      <ReorderableTabBar storageKey="calendario" tabs={VIEWS} active={view} onSelect={setView} />
+      {calendarMenuOpen && (
+        <CalendarioMenuDropdown
+          activeTab={view}
+          layout={calendarMenuLayout}
+          onLayoutChange={persistCalendarMenuLayout}
+          pinnedItems={pinnedViews}
+          onTogglePin={toggleCalendarPinnedItem}
+          onActivate={handleCalendarMenuAction}
+          onClose={() => setCalendarMenuOpen(false)}
+        />
+      )}
+
+      {pinnedViews.length > 0 && (
+        <div className="filter-row">
+          {flatCalendarMenuEntries
+            .filter((entry) => pinnedViews.includes(entry.key))
+            .map((entry) => {
+              const meta = calendarioMenuEntryMeta(entry)
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  className={'chip' + (isCalendarioSubTab(entry.key) && view === entry.key ? ' chip-active' : '')}
+                  onClick={() => {
+                    if (isCustomCalendarioMenuKey(entry.key)) {
+                      setCalendarPlaceholderNotice(true)
+                      setTimeout(() => setCalendarPlaceholderNotice(false), 2500)
+                    } else {
+                      handleCalendarMenuAction(entry.key)
+                    }
+                  }}
+                >
+                  {meta.icon} {meta.label}
+                </button>
+              )
+            })}
+        </div>
+      )}
+      {calendarPlaceholderNotice && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
+        </p>
+      )}
 
       {view !== 'Externos' && (
         <div className="filter-row">
@@ -2973,5 +3068,329 @@ function AddFeedForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
         {saving ? 'Enlazando…' : 'Enlazar calendario'}
       </button>
     </form>
+  )
+}
+
+// Copia de EconomiaMenuDropdown adaptada a las claves de Calendario —
+// mismas clases CSS .economia-menu-* (genéricas).
+function CalendarioMenuDropdown({
+  activeTab,
+  layout,
+  onLayoutChange,
+  pinnedItems,
+  onTogglePin,
+  onActivate,
+  onClose,
+}: {
+  activeTab: ViewMode
+  layout: CalendarioMenuGroup[]
+  onLayoutChange: (next: CalendarioMenuGroup[]) => void
+  pinnedItems: CalendarioMenuItemKey[]
+  onTogglePin: (key: CalendarioMenuItemKey) => void
+  onActivate: (key: CalendarioMenuItemKey) => void
+  onClose: () => void
+}) {
+  const [editMode, setEditMode] = useState(false)
+  const [addingGroup, setAddingGroup] = useState(false)
+  const [addingGroupName, setAddingGroupName] = useState('')
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [addingCustomItem, setAddingCustomItem] = useState(false)
+  const [newItemIcon, setNewItemIcon] = useState('📌')
+  const [newItemLabel, setNewItemLabel] = useState('')
+  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
+  const [editItemIcon, setEditItemIcon] = useState('')
+  const [editItemLabel, setEditItemLabel] = useState('')
+  const [placeholderNotice, setPlaceholderNotice] = useState(false)
+
+  function moveItem(groupId: string, index: number, direction: -1 | 1) {
+    const group = layout.find((g) => g.id === groupId)
+    if (!group) return
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= group.items.length) return
+    const items = [...group.items]
+    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
+    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
+  }
+
+  function moveItemToGroup(itemKey: CalendarioMenuItemKey, fromGroupId: string, toGroupId: string) {
+    if (fromGroupId === toGroupId) return
+    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
+    if (!moved) return
+    onLayoutChange(
+      layout.map((g) => {
+        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
+        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
+        return g
+      }),
+    )
+  }
+
+  function handleAddGroup(e: FormEvent) {
+    e.preventDefault()
+    if (!addingGroupName.trim()) return
+    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
+    setAddingGroupName('')
+    setAddingGroup(false)
+  }
+
+  function handleRenameGroup(id: string) {
+    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
+    setRenamingGroupId(null)
+  }
+
+  function deleteGroup(id: string) {
+    const group = layout.find((g) => g.id === id)
+    const rest = layout.filter((g) => g.id !== id)
+    if (!group || rest.length === 0) return
+    const [first, ...others] = rest
+    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
+  }
+
+  function handleAddCustomItem(e: FormEvent) {
+    e.preventDefault()
+    if (!newItemLabel.trim()) return
+    const entry: CalendarioMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
+    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
+    setNewItemIcon('📌')
+    setNewItemLabel('')
+    setAddingCustomItem(false)
+  }
+
+  function handleSaveItem(groupId: string, key: CalendarioMenuItemKey) {
+    onLayoutChange(
+      layout.map((g) =>
+        g.id === groupId
+          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
+          : g,
+      ),
+    )
+    setEditingItemKey(null)
+  }
+
+  function deleteItem(groupId: string, key: CalendarioMenuItemKey) {
+    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
+  }
+
+  function handleItemActivate(entry: CalendarioMenuEntry) {
+    if (isCustomCalendarioMenuKey(entry.key)) {
+      setPlaceholderNotice(true)
+      setTimeout(() => setPlaceholderNotice(false), 2500)
+      return
+    }
+    onActivate(entry.key)
+    onClose()
+  }
+
+  return (
+    <div className="economia-menu-dropdown">
+      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
+        {editMode ? '✓ Listo' : '✏️ Editar'}
+      </button>
+
+      {layout.map((group) => (
+        <div key={group.id} className="economia-menu-group">
+          {(group.name || editMode) &&
+            (renamingGroupId === group.id ? (
+              <form
+                className="inline-fields"
+                style={{ margin: '4px 4px 6px' }}
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleRenameGroup(group.id)
+                }}
+              >
+                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
+                <button type="submit">Guardar</button>
+              </form>
+            ) : (
+              <div className="economia-menu-group-title">
+                <span>{group.name ?? 'Sin categoría'}</span>
+                {editMode && (
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ padding: '2px 6px' }}
+                      onClick={() => {
+                        setRenamingGroupId(group.id)
+                        setRenameValue(group.name ?? '')
+                      }}
+                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
+                    >
+                      ✎
+                    </button>
+                    {layout.length > 1 && (
+                      <ConfirmIconButton
+                        icon="✕"
+                        className="link-button"
+                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
+                        onConfirm={() => deleteGroup(group.id)}
+                      />
+                    )}
+                  </span>
+                )}
+              </div>
+            ))}
+
+          {group.items.map((entry, i) => {
+            const meta = calendarioMenuEntryMeta(entry)
+            const isTab = isCalendarioSubTab(entry.key)
+            const isCustom = isCustomCalendarioMenuKey(entry.key)
+
+            if (editMode && editingItemKey === entry.key) {
+              return (
+                <form
+                  key={entry.key}
+                  className="inline-fields"
+                  style={{ margin: '2px 4px' }}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleSaveItem(group.id, entry.key)
+                  }}
+                >
+                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
+                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
+                  <button type="submit">Guardar</button>
+                </form>
+              )
+            }
+
+            return (
+              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
+                {editMode ? (
+                  <span className="economia-menu-item">
+                    <span aria-hidden="true">{meta.icon}</span>
+                    {meta.label}
+                  </span>
+                ) : (
+                  <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
+                    <span aria-hidden="true">{meta.icon}</span>
+                    {meta.label}
+                  </button>
+                )}
+
+                {editMode ? (
+                  <span className="economia-menu-edit-controls">
+                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ padding: '2px 6px' }}
+                      disabled={i === group.items.length - 1}
+                      onClick={() => moveItem(group.id, i, 1)}
+                      aria-label={`Bajar ${meta.label}`}
+                    >
+                      ↓
+                    </button>
+                    <select
+                      value={group.id}
+                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
+                      aria-label={`Mover ${meta.label} a otra categoría`}
+                    >
+                      {layout.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name ?? 'Sin categoría'}
+                        </option>
+                      ))}
+                    </select>
+                    {isCustom && (
+                      <>
+                        <button
+                          type="button"
+                          className="link-button"
+                          style={{ padding: '2px 6px' }}
+                          onClick={() => {
+                            setEditingItemKey(entry.key)
+                            setEditItemIcon(meta.icon)
+                            setEditItemLabel(meta.label)
+                          }}
+                          aria-label={`Renombrar ${meta.label}`}
+                        >
+                          ✎
+                        </button>
+                        <ConfirmIconButton
+                          icon="✕"
+                          className="link-button"
+                          ariaLabel={`Eliminar ${meta.label}`}
+                          onConfirm={() => deleteItem(group.id, entry.key)}
+                        />
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="economia-menu-pin"
+                    onClick={() => onTogglePin(entry.key)}
+                    aria-label={pinnedItems.includes(entry.key) ? `Quitar ${meta.label} de la pantalla de Calendario` : `Sacar ${meta.label} a la pantalla de Calendario`}
+                  >
+                    {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
+
+      {placeholderNotice && (
+        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
+          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
+        </p>
+      )}
+
+      {editMode && (
+        <>
+          {addingCustomItem ? (
+            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
+              <input
+                type="text"
+                value={newItemIcon}
+                onChange={(e) => setNewItemIcon(e.target.value)}
+                style={{ width: 48, textAlign: 'center', flex: 'none' }}
+                maxLength={4}
+                aria-label="Icono"
+              />
+              <input
+                type="text"
+                value={newItemLabel}
+                onChange={(e) => setNewItemLabel(e.target.value)}
+                placeholder="Nombre del acceso"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button type="submit">Crear</button>
+            </form>
+          ) : (
+            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
+              <span aria-hidden="true">📌</span>
+              Nuevo acceso
+            </button>
+          )}
+
+          {addingGroup ? (
+            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
+              <input
+                type="text"
+                value={addingGroupName}
+                onChange={(e) => setAddingGroupName(e.target.value)}
+                placeholder="Nombre de la categoría"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button type="submit">Crear</button>
+            </form>
+          ) : (
+            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
+              <span aria-hidden="true">➕</span>
+              Nueva categoría
+            </button>
+          )}
+        </>
+      )}
+    </div>
   )
 }

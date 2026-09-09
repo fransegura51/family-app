@@ -63,6 +63,43 @@ function parseCookpadSearchResults(html: string): CookpadSearchResult[] {
   return results
 }
 
+// Red de seguridad para "y si se rompe pon que se pueda arreglar
+// automáticamente": si Cookpad cambia el HTML y la estrategia de
+// arriba (que depende del envoltorio `<li id="recipe_...">`) deja de
+// encontrar tarjetas, esta segunda estrategia se apoya solo en el
+// patrón más estable `/es/recetas/<id>` para localizar cada receta, y
+// busca su foto en el hueco hasta la siguiente receta (la foto va
+// siempre después del título en el HTML de Cookpad, comprobado en
+// vivo el 2026-09-09). Solo se usa si la estrategia principal no
+// encuentra nada — así un cambio de estilos no rompe la búsqueda.
+function parseCookpadSearchResultsFallback(html: string): CookpadSearchResult[] {
+  const raw = [...html.matchAll(/href="\/es\/recetas\/(\d+)"[^>]*>([\s\S]{0,300}?)<\/a>/g)]
+  const seen = new Set<string>()
+  const entries: { id: string; title: string; index: number }[] = []
+  for (const m of raw) {
+    const id = m[1]
+    if (seen.has(id)) continue
+    const titleText = m[2].replace(/<[^>]+>/g, '').trim()
+    if (!titleText) continue
+    seen.add(id)
+    entries.push({ id, title: titleText, index: m.index ?? 0 })
+  }
+
+  const results: CookpadSearchResult[] = []
+  for (let i = 0; i < entries.length; i++) {
+    const windowEnd = i + 1 < entries.length ? entries[i + 1].index : Math.min(html.length, entries[i].index + 4000)
+    const windowText = html.slice(entries[i].index, windowEnd)
+    const imgMatch = windowText.match(/<img[^>]*src="(https:\/\/img-global\.cpcdn\.com\/recipes\/[^"]+)"/)
+    results.push({
+      id: entries[i].id,
+      title: entries[i].title,
+      imageUrl: imgMatch ? imgMatch[1] : null,
+      url: `https://cookpad.com/es/recetas/${entries[i].id}`,
+    })
+  }
+  return results
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS })
 
@@ -87,7 +124,8 @@ Deno.serve(async (req) => {
     if (!res.ok) return json({ error: "fetch_failed", status: res.status }, 502)
 
     const html = (await res.text()).slice(0, 4_000_000)
-    const results = parseCookpadSearchResults(html).slice(0, 10)
+    const strict = parseCookpadSearchResults(html)
+    const results = (strict.length > 0 ? strict : parseCookpadSearchResultsFallback(html)).slice(0, 10)
 
     return json({ results })
   } catch (err) {

@@ -188,6 +188,28 @@ export async function updateFamilyName(name: string): Promise<void> {
   if (error) throw error
 }
 
+// Petición real: "para mí contablemente el mes empieza el último día
+// de cada mes... quiero que se pueda definir una preferencia de cuándo
+// se quiere que empiece el mes" — día 1-31 en el que "Este mes"
+// empieza a contar en los filtros de Economía (ver
+// domain/dateRanges.ts rangeForPreset). 1 = mes de calendario normal.
+export async function getFinanceMonthStartDay(): Promise<number> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase
+    .from('families')
+    .select('finance_month_start_day')
+    .eq('id', familyId)
+    .single()
+  if (error) throw error
+  return data.finance_month_start_day
+}
+
+export async function updateFinanceMonthStartDay(day: number): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('families').update({ finance_month_start_day: day }).eq('id', familyId)
+  if (error) throw error
+}
+
 // Toda consulta pasa por aquí en vez de tocar `supabase` desde ui/.
 // RLS ya garantiza el aislamiento por family_id en el backend — este
 // módulo no necesita (ni debe) volver a filtrar por familia en el cliente.

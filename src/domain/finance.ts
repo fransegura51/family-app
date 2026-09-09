@@ -48,6 +48,18 @@ export function isFoodCategory(category: string, categories: BudgetCategory[]): 
   return categories.find((c) => c.id === cat.parentId)?.name === 'Alimentación'
 }
 
+// Petición real: "Categoría Movimientos internos debe estar también
+// en Ingresos" — una transferencia entre cuentas propias no lleva
+// isIncome=true (el banco la apunta como cualquier otro movimiento),
+// pero desde el punto de vista de "dinero que entra" tiene que
+// aparecer igual al filtrar por Ingresos en Banco.
+export function isInternalTransferCategory(category: string, categories: BudgetCategory[]): boolean {
+  if (category === 'Movimientos internos') return true
+  const cat = categories.find((c) => c.name === category)
+  if (!cat?.parentId) return false
+  return categories.find((c) => c.id === cat.parentId)?.name === 'Movimientos internos'
+}
+
 // Skill de Pepa, puntos 15/16 — petición real: "la adjudicación de
 // Quiero/Necesito/Debo y la de Fijo/Variable no debería ser manual
 // sino automática... clasificar cada categoría desde un principio".

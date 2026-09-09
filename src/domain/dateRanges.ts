@@ -9,7 +9,24 @@ export function toDateStr(d: Date): string {
 
 export type SpendRangePreset = 'dia' | 'semana' | 'mes' | 'año' | 'rango'
 
-export function rangeForPreset(preset: SpendRangePreset, customFrom: string, customTo: string): [string, string] {
+function daysInMonth(year: number, month0: number): number {
+  return new Date(year, month0 + 1, 0).getDate()
+}
+
+// monthStartDay = día del mes en el que empieza "este mes" para quien
+// filtra (petición real: "para mí contablemente el mes empieza el
+// último día de cada mes... quiero que se pueda definir una
+// preferencia"). Por defecto 1 = mes de calendario normal, igual que
+// antes (Compras/Alimentación siguen así, no llaman con este
+// parámetro). 31 (o cualquier día que no exista en un mes corto) se
+// recorta al último día real de ese mes — así "31" ya cubre el caso
+// "el último día de cada mes" sin necesitar una opción aparte.
+export function rangeForPreset(
+  preset: SpendRangePreset,
+  customFrom: string,
+  customTo: string,
+  monthStartDay = 1,
+): [string, string] {
   const today = new Date()
   const todayStr = toDateStr(today)
   if (preset === 'dia') return [todayStr, todayStr]
@@ -23,8 +40,27 @@ export function rangeForPreset(preset: SpendRangePreset, customFrom: string, cus
     return [toDateStr(monday), toDateStr(sunday)]
   }
   if (preset === 'mes') {
-    const first = new Date(today.getFullYear(), today.getMonth(), 1)
-    const last = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    let startYear = today.getFullYear()
+    let startMonth = today.getMonth()
+    const startDayThisMonth = Math.min(monthStartDay, daysInMonth(startYear, startMonth))
+    if (today.getDate() < startDayThisMonth) {
+      startMonth -= 1
+      if (startMonth < 0) {
+        startMonth = 11
+        startYear -= 1
+      }
+    }
+    const startDay = Math.min(monthStartDay, daysInMonth(startYear, startMonth))
+    const first = new Date(startYear, startMonth, startDay)
+
+    let endYear = startYear
+    let endMonth = startMonth + 1
+    if (endMonth > 11) {
+      endMonth = 0
+      endYear += 1
+    }
+    const endDay = Math.min(monthStartDay, daysInMonth(endYear, endMonth))
+    const last = new Date(endYear, endMonth, endDay - 1)
     return [toDateStr(first), toDateStr(last)]
   }
   if (preset === 'año') {

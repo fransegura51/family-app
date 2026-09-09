@@ -2078,6 +2078,70 @@ textarea {
   font-size: 14px;
 }
 
+/* Fila de un movimiento en Movimientos/Banco — petición real: "hay
+   que ver más información de cada movimiento, al menos se deben ver
+   tres filas... el punto [de la etiqueta] al inicio de movimiento". El
+   punto va el primero de todo (11px, bien visible incluso con muchas
+   etiquetas parecidas) en vez de escondido a mitad de una sola línea. */
+.movement-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.movement-row-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.movement-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.movement-row-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.movement-row-category {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movement-row-meta {
+  font-size: 12px;
+}
+
+.movement-row-meta span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movement-row-notes {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+
 /* Barras horizontales del reparto de gasto por tienda. */
 .store-bar-row {
   display: flex;

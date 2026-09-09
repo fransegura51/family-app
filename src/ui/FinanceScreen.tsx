@@ -34,7 +34,7 @@ import {
   syncBankTransactions,
   type Aspsp,
 } from '@/data/bank'
-import { listFamilyMembers } from '@/data/family'
+import { getFinanceMonthStartDay, listFamilyMembers } from '@/data/family'
 import {
   economiaMenuEntryMeta,
   isCustomEconomiaMenuKey,
@@ -61,6 +61,7 @@ import {
   budgetPeriodRange,
   budgetSpent,
   isFoodCategory,
+  isInternalTransferCategory,
   resolveCategoryClassification,
   resolveExpenseFixed,
   walletBalance,
@@ -79,6 +80,7 @@ import type {
   BudgetCategory,
   BudgetPeriod,
   Expense,
+  ExpenseSource,
   FamilyMember,
   KidGoal,
   KidWalletTransaction,
@@ -846,6 +848,8 @@ function BankTab({
   // resuelve por movimiento (resolveExpenseFixed: categoría, o el
   // propio movimiento si lo has marcado a mano en su edición).
   const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos'>('todos')
+  const [monthStartDay, setMonthStartDay] = useState(1)
+  const [visibleCount, setVisibleCount] = useState(50)
 
   // Petición real: "no me has puesto para poder agregar cuentas a esa
   // pantalla" — el botón "+ Añadir cuenta" de las tarjetas de saldo
@@ -870,14 +874,27 @@ function BankTab({
     }
   }, [focusAccountId])
 
+  useEffect(() => {
+    setVisibleCount(50)
+  }, [preset, customFrom, customTo, typeFilter, activeAccountId])
+
   function reload() {
     setLoading(true)
-    Promise.all([listBankConnections(), listBankAccounts(), listBankTransactions(), listExpenses(), listBudgetCategories(), listTags()])
-      .then(([c, a, t, allExpenses, cats, tgs]) => {
+    Promise.all([
+      listBankConnections(),
+      listBankAccounts(),
+      listBankTransactions(),
+      listExpenses(),
+      listBudgetCategories(),
+      listTags(),
+      getFinanceMonthStartDay(),
+    ])
+      .then(([c, a, t, allExpenses, cats, tgs, monthStart]) => {
         setConnections(c)
         setAccounts(a)
         setCategories(cats)
         setTags(tgs)
+        setMonthStartDay(monthStart)
         const matchedIds = new Set(t.map((bt) => bt.matchedExpenseId).filter((id): id is string => !!id))
         setLinkedExpenses(allExpenses.filter((e) => matchedIds.has(e.id)).sort((a, b) => b.expenseDate.localeCompare(a.expenseDate)))
         setExpenseAccountId(new Map(t.filter((bt) => bt.matchedExpenseId).map((bt) => [bt.matchedExpenseId as string, bt.accountId])))
@@ -920,14 +937,14 @@ function BankTab({
   if (loading) return <p className="muted">Cargando cuentas bancarias…</p>
 
   const activeConnections = connections.filter((c) => c.status === 'active')
-  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const byAccount = activeAccountId
     ? linkedExpenses.filter((e) => expenseAccountId.get(e.id) === activeAccountId)
     : linkedExpenses
   const dateFilteredExpenses = byAccount.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
   const filteredExpenses = dateFilteredExpenses.filter((e) => {
     if (typeFilter === 'todos') return true
-    if (typeFilter === 'ingresos') return e.isIncome
+    if (typeFilter === 'ingresos') return e.isIncome || isInternalTransferCategory(e.category, categories)
     if (e.isIncome) return false
     const isFixed = resolveExpenseFixed(e, categories)
     return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
@@ -1058,7 +1075,7 @@ function BankTab({
           )}
           <div className="price-row-list">
             {filteredExpenses.length === 0 && <p className="muted">Ningún movimiento en este periodo.</p>}
-            {filteredExpenses.slice(0, 50).map((e) =>
+            {filteredExpenses.slice(0, visibleCount).map((e) =>
               editingId === e.id ? (
                 <EditExpenseInline
                   key={e.id}
@@ -1072,29 +1089,25 @@ function BankTab({
                   onCancel={() => setEditingId(null)}
                 />
               ) : (
-                <div key={e.id} className="price-row" onClick={() => setEditingId(e.id)} style={{ cursor: 'pointer' }}>
-                  <span className="price-row-name">
-                    {!e.isIncome && categories.find((c) => c.name === e.category)?.icon} {e.isIncome ? 'Ingreso' : e.category}
-                    <span className="muted">
-                      {' '}
-                      · {e.expenseDate}
-                      {e.store && ` · ${e.store}`}
-                      <TagBadge tag={tags.find((t) => t.id === e.tagId)} />
-                    </span>
-                    {e.notes && (
-                      <span className="muted" style={{ display: 'block', fontSize: 11 }}>
-                        {e.notes}
-                      </span>
-                    )}
-                  </span>
-                  <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
-                    {e.isIncome ? '+' : ''}
-                    {e.amount.toFixed(2)} €
-                  </span>
-                </div>
+                <MovementRow
+                  key={e.id}
+                  expense={e}
+                  category={categories.find((c) => c.name === e.category)}
+                  tag={tags.find((t) => t.id === e.tagId)}
+                  onClick={() => setEditingId(e.id)}
+                />
               ),
             )}
           </div>
+          {/* Petición real: "no puedo ver los movimientos antes del
+              24/08 pero sí que hay movimientos anteriores... ¿hay algún
+              límite de página?" — el corte fijo de 50 se llevaba los más
+              antiguos del periodo por delante en vez de avisar. */}
+          {filteredExpenses.length > visibleCount && (
+            <button type="button" className="link-button" onClick={() => setVisibleCount((n) => n + 50)}>
+              Ver {Math.min(50, filteredExpenses.length - visibleCount)} más ({filteredExpenses.length - visibleCount} restantes)
+            </button>
+          )}
         </>
       )}
     </div>
@@ -1262,17 +1275,21 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  const [monthStartDay, setMonthStartDay] = useState(1)
 
   useEffect(() => {
     listExpenses()
       .then(setExpenses)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
+    getFinanceMonthStartDay()
+      .then(setMonthStartDay)
+      .catch(() => {})
   }, [])
 
   if (loading) return <p className="muted">Cargando resumen…</p>
 
-  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const inRange = expenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
   const real = inRange.filter((e) => e.kind === 'real')
   const totalIncome = real.filter((e) => e.isIncome).reduce((s, e) => s + e.amount, 0)
@@ -1648,13 +1665,23 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [view, setView] = useState<'categorias' | 'etiquetas' | 'dnq' | 'fijo'>('categorias')
+  const [monthStartDay, setMonthStartDay] = useState(1)
 
   useEffect(() => {
-    Promise.all([listExpenses(), listBudgetCategories(), listTags(), listAllProductPrices(), listProducts(), listReceipts()])
-      .then(([e, c, t, prices, products, receipts]) => {
+    Promise.all([
+      listExpenses(),
+      listBudgetCategories(),
+      listTags(),
+      listAllProductPrices(),
+      listProducts(),
+      listReceipts(),
+      getFinanceMonthStartDay(),
+    ])
+      .then(([e, c, t, prices, products, receipts, monthStart]) => {
         setExpenses(e)
         setCategories(c)
         setTags(t)
+        setMonthStartDay(monthStart)
         const foodReceiptIds = buildFoodReceiptIds(receipts, c)
         setPurchases(
           // Un pedido de Amazon que no sea de alimentación no debe
@@ -1675,7 +1702,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
 
   if (loading) return <p className="muted">Cargando estadísticas…</p>
 
-  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const periodLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
   const real = expenses.filter((e) => e.kind === 'real' && !e.isIncome && e.expenseDate >= from && e.expenseDate <= to)
   const totalReal = real.reduce((s, e) => s + e.amount, 0)
@@ -2091,30 +2118,21 @@ function ExpensesTab({
               onCancel={() => setEditingId(null)}
             />
           ) : (
-            <div key={e.id} className="price-row" onClick={() => setEditingId(e.id)} style={{ cursor: 'pointer' }}>
-              <span className="price-row-name">
-                {!e.isIncome && categories.find((c) => c.name === e.category)?.icon} {e.category}
-                <span className="muted">
-                  {' '}
-                  · {e.expenseDate}
-                  {e.store && ` · ${e.store}`}
-                  {e.kind !== 'real' && ` · ${e.kind}`}
-                  <TagBadge tag={tags.find((t) => t.id === e.tagId)} />
-                </span>
-              </span>
-              <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
-                {e.isIncome ? '+' : ''}
-                {e.amount.toFixed(2)} €
-              </span>
-              <span onClick={(ev) => ev.stopPropagation()}>
+            <MovementRow
+              key={e.id}
+              expense={e}
+              category={categories.find((c) => c.name === e.category)}
+              tag={tags.find((t) => t.id === e.tagId)}
+              onClick={() => setEditingId(e.id)}
+              extraAction={
                 <ConfirmIconButton
                   icon="✕"
                   className="icon-button"
                   ariaLabel="Borrar movimiento"
                   onConfirm={() => deleteExpense(e.id).then(reload)}
                 />
-              </span>
-            </div>
+              }
+            />
           ),
         )}
         {monthExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
@@ -2123,21 +2141,72 @@ function ExpensesTab({
   )
 }
 
-// Petición real: "quiero que les pongas también para elegir color
-// para cada etiqueta, ese color luego se debe ver en los movimientos
-// y en el dónut de gastos de etiquetas" — mismo puntito de color que
-// TagsModal, reutilizado donde sea que se muestre una etiqueta ya
-// asignada (Movimientos, Banco).
-function TagBadge({ tag }: { tag: Tag | undefined }) {
-  if (!tag) return null
+const SOURCE_META: Record<ExpenseSource, { icon: string; label: string }> = {
+  manual: { icon: '✏️', label: 'Apuntado a mano' },
+  ticket: { icon: '🧾', label: 'Importado de un ticket' },
+  banco: { icon: '🏦', label: 'Importado del banco' },
+  ticket_banco: { icon: '🏦', label: 'Importado del banco' },
+}
+
+// Fila compartida de un movimiento (Movimientos y Banco son la misma
+// tabla `expenses`, ver EditExpenseInline) — antes era una sola línea
+// con el nombre de la etiqueta escondido detrás de un puntito de 8px a
+// mitad de línea, prácticamente invisible con muchas etiquetas ya
+// puestas (petición real: "en 96 etiquetas que he puesto solo veo
+// una... soy partidaria del punto al inicio de movimiento"). Ahora el
+// punto de color va el primero de todo, y se reparte la información en
+// 3 líneas para verlo todo de un vistazo sin abrir el movimiento:
+// categoría+importe, fecha/establecimiento/etiqueta/origen, y el
+// concepto (editable tocando la fila, como todo lo demás).
+function MovementRow({
+  expense: e,
+  category,
+  tag,
+  onClick,
+  extraAction,
+}: {
+  expense: Expense
+  category: BudgetCategory | undefined
+  tag: Tag | undefined
+  onClick: () => void
+  extraAction?: React.ReactNode
+}) {
+  const source = SOURCE_META[e.source]
   return (
-    <>
-      {' · '}
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: tag.color, display: 'inline-block', flex: 'none' }} />
-        {tag.name}
-      </span>
-    </>
+    <div className="movement-row" onClick={onClick}>
+      <span
+        className="movement-row-dot"
+        style={{ background: tag ? tag.color : 'transparent' }}
+        title={tag ? `Etiqueta: ${tag.name}` : undefined}
+        aria-hidden="true"
+      />
+      <div className="movement-row-body">
+        <div className="movement-row-line">
+          <span className="movement-row-category">
+            {!e.isIncome && category?.icon} {e.isIncome ? 'Ingreso' : e.category}
+          </span>
+          <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
+            {e.isIncome ? '+' : ''}
+            {e.amount.toFixed(2)} €
+          </span>
+        </div>
+        <div className="movement-row-line movement-row-meta muted">
+          <span>
+            {e.expenseDate}
+            {e.store && ` · ${e.store}`}
+            {e.kind !== 'real' && ` · ${e.kind}`}
+            {tag && ` · ${tag.name}`}
+          </span>
+          <span title={source.label}>{source.icon}</span>
+        </div>
+        {e.notes && <div className="movement-row-line movement-row-notes muted">{e.notes}</div>}
+      </div>
+      {extraAction && (
+        <span onClick={(ev) => ev.stopPropagation()} style={{ flex: 'none' }}>
+          {extraAction}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -2180,6 +2249,7 @@ function EditExpenseInline({
   const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
   const [store, setStore] = useState(expense.store ?? '')
   const [tagId, setTagId] = useState(expense.tagId ?? '')
+  const [notes, setNotes] = useState(expense.notes ?? '')
   // Petición real: "quiero que yo pueda seleccionar cada gasto, si es
   // fijo o es variable" — por defecto sigue a la categoría (null),
   // pero este movimiento en concreto puede llevar su propia marca.
@@ -2202,6 +2272,7 @@ function EditExpenseInline({
         category,
         tagId: tagId || null,
         isFixedOverride,
+        notes,
         ...(expense.isIncome ? {} : { store }),
       })
       onDone()
@@ -2245,6 +2316,15 @@ function EditExpenseInline({
       <label>
         Etiqueta (opcional)
         <TagSelect value={tagId} onChange={setTagId} tags={tags} />
+      </label>
+      <label>
+        Concepto (opcional)
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Anotación tuya sobre este movimiento"
+        />
       </label>
       {!expense.isIncome && (
         <>
@@ -3858,14 +3938,15 @@ export function BudgetsTab({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
+  const [monthStartDay, setMonthStartDay] = useState(1)
   // Evita sembrar las categorías sugeridas más de una vez por sesión
   // mientras se espera la respuesta del primer alta.
   const seededRef = useRef(false)
 
   function reload() {
     setLoading(true)
-    Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores(), listBudgetCategories()])
-      .then(async ([b, e, r, stores, cats]) => {
+    Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores(), listBudgetCategories(), getFinanceMonthStartDay()])
+      .then(async ([b, e, r, stores, cats, monthStart]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
         // propias todavía — se dan de alta las sugeridas solas, sin
         // pedirlo (petición real: "me pones todas esas categorías").
@@ -3879,6 +3960,7 @@ export function BudgetsTab({
         setReceipts(r)
         setKnownStores(stores.map((s) => s.name))
         setCategories(cats)
+        setMonthStartDay(monthStart)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -3956,7 +4038,7 @@ export function BudgetsTab({
     <div>
       {error && <p className="error">{error}</p>}
 
-      <BudgetsOverview allExpenses={expenses} allCategories={categories} group={group} onChanged={reload} />
+      <BudgetsOverview allExpenses={expenses} allCategories={categories} group={group} onChanged={reload} monthStartDay={monthStartDay} />
 
       <div className="month-nav">
         <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
@@ -4345,11 +4427,13 @@ function BudgetsOverview({
   allCategories,
   group,
   onChanged,
+  monthStartDay,
 }: {
   allExpenses: Expense[]
   allCategories: BudgetCategory[]
   group: string
   onChanged: () => void
+  monthStartDay: number
 }) {
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
@@ -4361,7 +4445,7 @@ function BudgetsOverview({
   const [addingIncome, setAddingIncome] = useState(false)
   const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null)
 
-  const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const inRange = allExpenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
   // Los ingresos NO se conectan entre pestañas — petición real: "los
   // ingresos tienen que ser diferentes... presupuesto generales tiene

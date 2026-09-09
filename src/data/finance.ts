@@ -96,6 +96,7 @@ export async function updateExpense(
     isIncome?: boolean
     tagId?: string | null
     isFixedOverride?: boolean | null
+    notes?: string | null
   },
 ): Promise<void> {
   const update: Record<string, unknown> = {}
@@ -107,6 +108,11 @@ export async function updateExpense(
   if (patch.isIncome !== undefined) update.is_income = patch.isIncome
   if (patch.tagId !== undefined) update.tag_id = patch.tagId
   if (patch.isFixedOverride !== undefined) update.is_fixed_override = patch.isFixedOverride
+  // Petición real: "quiero poder editar el campo donde viene el
+  // detalle de la tarjeta o el nº de pedido de Amazon, para poder
+  // anotar yo qué es cada gasto" — antes notes no tenía forma de
+  // actualizarse desde la app aunque el dato ya se leía.
+  if (patch.notes !== undefined) update.notes = patch.notes || null
   const { error } = await supabase.from('expenses').update(update).eq('id', id)
   if (error) throw error
 }

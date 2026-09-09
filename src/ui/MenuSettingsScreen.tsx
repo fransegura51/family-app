@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
-import { getFamilyName, updateFamilyName } from '@/data/family'
+import { getFamilyName, getFinanceMonthStartDay, updateFamilyName, updateFinanceMonthStartDay } from '@/data/family'
 import { listAppUsage } from '@/data/appUsage'
 import {
   clearOwnPin,
@@ -90,6 +90,68 @@ function FamilyNameSection() {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// Petición real: "para mí contablemente el mes empieza el último día
+// de cada mes... quiero que se pueda definir una preferencia de cuándo
+// se quiere que empiece el mes... y así cuando le dé a filtrar este
+// mes, me tome los datos desde esa fecha" — afecta al filtro "Este
+// mes" en toda Economía (ver domain/dateRanges.ts). 31 se recorta
+// solo al último día real de cada mes, así que cubre justo el caso
+// que pedían sin necesitar una casilla aparte de "último día".
+function AccountingMonthSection() {
+  const [day, setDay] = useState(1)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getFinanceMonthStartDay()
+      .then(setDay)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleChange(next: number) {
+    setDay(next)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateFinanceMonthStartDay(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>📅 Inicio del mes contable</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        El filtro "Este mes" de Economía cuenta desde este día del mes. Pon 31 para que empiece el último día de
+        cada mes.
+      </p>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        Día
+        <input
+          type="number"
+          min={1}
+          max={31}
+          value={day}
+          style={{ width: 70 }}
+          onChange={(e) => {
+            const n = Number(e.target.value)
+            if (n >= 1 && n <= 31) handleChange(n)
+          }}
+        />
+        {saving && <span className="muted">Guardando…</span>}
+      </label>
+      {error && <p className="error">{error}</p>}
     </div>
   )
 }
@@ -386,6 +448,7 @@ export function MenuSettingsScreen() {
       <h1>Organizar menú</h1>
 
       <FamilyNameSection />
+      <AccountingMonthSection />
       <AdminUsageLink />
       <AppLockSection />
 

@@ -2183,29 +2183,23 @@ textarea {
    barra de fechas ni la hoja inferior de la app de referencia. */
 .donut-explorer {
   margin-top: 12px;
-}
-
-.donut-track {
-  display: flex;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  gap: 0;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.donut-track::-webkit-scrollbar {
-  display: none;
-}
-
-.donut-card {
-  flex: 0 0 100%;
-  scroll-snap-align: start;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 2px;
+}
+
+/* Subdónut de subcategorías — petición real: "no quiero que el
+   segundo dónut esté en una segunda página, quiero poder seguir viendo
+   el primer dónut". Va apilado debajo en el flujo normal de la
+   página (nunca sustituye ni tapa el de arriba). */
+.donut-subsection {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
 }
 
 .donut-ring-wrap {
@@ -2272,24 +2266,6 @@ textarea {
 
 .donut-ring-center strong {
   font-size: 17px;
-}
-
-.donut-dots {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.donut-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #d0d5dd;
-}
-
-.donut-dot-active {
-  background: #4c6ef5;
 }
 
 /* Carpetas de tickets por tienda — plegadas por defecto, tocar para

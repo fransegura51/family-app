@@ -174,6 +174,12 @@ export interface MovementsFilter {
 export function FinanceScreen() {
   const [tab, setTab] = useState<SubTab>('Resumen')
   const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
+  // Petición real: "al tocar un área del dónut no debe llevarme
+  // directamente a los movimientos filtrados... desde los movimientos
+  // filtrados quiero poder volver a la vista anterior" — se recuerda
+  // desde qué pestaña se saltó para poder deshacer el salto, no solo
+  // quitar el filtro (que te deja en Movimientos igualmente).
+  const [previousTab, setPreviousTab] = useState<SubTab | null>(null)
   // Categorías y etiquetas se cargan aquí, una vez, para que los 3
   // botones flotantes (Categorías / Etiquetas / Nuevo movimiento) estén
   // disponibles en cualquier pestaña de Economía — petición real: "cada
@@ -257,6 +263,7 @@ export function FinanceScreen() {
   }
 
   function viewMovements(filter: MovementsFilter) {
+    setPreviousTab((prev) => (tab === 'Movimientos' ? prev : tab))
     setMovementsFilter(filter)
     setTab('Movimientos')
   }
@@ -346,7 +353,21 @@ export function FinanceScreen() {
       {tab === 'Resumen' && <ResumenTab key={refreshKey} onViewMovements={viewMovements} />}
       {tab === 'Estadísticas' && <EstadisticasTab key={refreshKey} onViewMovements={viewMovements} />}
       {tab === 'Movimientos' && (
-        <ExpensesTab key={refreshKey} filter={movementsFilter} onClearFilter={() => setMovementsFilter(null)} />
+        <ExpensesTab
+          key={refreshKey}
+          filter={movementsFilter}
+          onClearFilter={() => setMovementsFilter(null)}
+          previousTabLabel={previousTab}
+          onBack={
+            previousTab
+              ? () => {
+                  setTab(previousTab)
+                  setPreviousTab(null)
+                  setMovementsFilter(null)
+                }
+              : undefined
+          }
+        />
       )}
       {tab === 'Presupuesto Generales' && (
         <BudgetsTab key={refreshKey} group="generales" seedCategories={MASTER_CATEGORY_SEED} />
@@ -1481,12 +1502,16 @@ function SvgDonut({
             // del todo su color); ahora conserva su propio color
             // siempre, solo baja la opacidad si hay otra activa.
             const dimmed = highlightedKey != null && highlightedKey !== s.key
+            // Petición real: "los colores de los demás gastos no deben
+            // ponerse gris, sino aclararse para que se siga viendo las
+            // proporciones" — 0.3 se veía casi gris con muchos colores
+            // ya de por sí pálidos; 0.45 aclara pero conserva el matiz.
             return (
               <path
                 key={s.key}
                 d={donutSlicePath(cx, cy, rOuter, rInner, start, start + pct)}
                 fill={s.color ?? colors[i % colors.length]}
-                fillOpacity={dimmed ? 0.3 : 1}
+                fillOpacity={dimmed ? 0.45 : 1}
                 onClick={() => onSliceClick(s.key)}
                 style={{ cursor: 'pointer' }}
               />
@@ -1510,8 +1535,13 @@ function SvgDonut({
   )
 }
 
-// Un solo nivel (etiquetas, Debo/Necesito/Quiero, Fijo/variable): tocar
-// una porción va directo a "Ver registros", no hay más niveles debajo.
+// Un solo nivel (etiquetas, Debo/Necesito/Quiero, Fijo/variable) — antes
+// tocar una porción llevaba DIRECTO a "Ver registros" saltando de
+// pestaña sin avisar. Petición real: "al tocar un área del dónut no
+// debe llevarme directamente a los movimientos filtrados, debe haber
+// un botón que me diga el número de movimientos... y si pulso ese
+// botón entonces se abren los movimientos filtrados" — tocar solo
+// resalta/selecciona la porción; navegar es un paso aparte y explícito.
 function BreakdownDonut({
   slices,
   centerLabel,
@@ -1521,16 +1551,42 @@ function BreakdownDonut({
   centerLabel: { name: string; total: number }
   onViewRecords: (key: string) => void
 }) {
-  return <SvgDonut slices={slices} centerLabel={centerLabel} highlightedKey={null} onSliceClick={onViewRecords} />
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const selected = slices.find((s) => s.key === selectedKey)
+
+  return (
+    <div>
+      <SvgDonut
+        slices={slices}
+        centerLabel={selected ? { name: selected.label, total: selected.total } : centerLabel}
+        highlightedKey={selectedKey}
+        onSliceClick={(key) => setSelectedKey((prev) => (prev === key ? null : key))}
+      />
+      {selected && (
+        <p className="muted" style={{ textAlign: 'center', marginTop: 4 }}>
+          {selected.count} {selected.count === 1 ? 'movimiento' : 'movimientos'} en {selected.label}
+          {' — '}
+          <button type="button" className="link-button" onClick={() => onViewRecords(selected.key)}>
+            Ver movimientos →
+          </button>
+        </p>
+      )}
+    </div>
+  )
 }
 
 // Skill de Pepa, punto 10: "Donut principal por categorías. Al
 // seleccionar una categoría, segundo donut con subcategorías" —
 // petición real: "si tocas una de las categorías [EN EL DÓNUT] se
 // resalta y ves el importe de esa categoría y a la vez se abre un
-// segundo dónut con el reparto de las subcategorías, al lado".
-// Carrusel horizontal de anillos (uno por nivel) — sin ninguna lista
-// de texto: la única forma de elegir categoría es tocar la porción.
+// segundo dónut con el reparto de las subcategorías, al lado". Pero
+// TAMBIÉN: "no quiero que el segundo dónut esté en una segunda
+// página, quiero poder seguir viendo el primer dónut" (antes era un
+// carrusel horizontal que se llevaba el primero fuera de la vista) y
+// "al tocar un área no debe llevarme directamente a los movimientos,
+// debe haber un botón". Ahora los dos anillos van apilados en
+// vertical (el de arriba nunca desaparece) y tocar una porción solo
+// selecciona — ver movimientos es un botón aparte, explícito.
 function CategoryDonutExplorer({
   categories,
   expenses,
@@ -1543,8 +1599,6 @@ function CategoryDonutExplorer({
   const [selectedTopId, setSelectedTopId] = useState<string | null>(null)
   const [highlightTop, setHighlightTop] = useState<string | null>(null)
   const [highlightSub, setHighlightSub] = useState<string | null>(null)
-  const [activeIndex, setActiveIndex] = useState(0)
-  const trackRef = useRef<HTMLDivElement>(null)
 
   const topLevel = categories.filter((c) => !c.parentId)
   const topSlices: BreakdownSlice[] = topLevel
@@ -1587,37 +1641,27 @@ function CategoryDonutExplorer({
   const highlightedSub = subSlices.find((s) => s.key === highlightSub)
   const subCenter = highlightedSub ? { name: highlightedSub.label, total: highlightedSub.total } : { name: 'Todo', total: subGrandTotal }
 
-  function scrollToIndex(index: number) {
-    requestAnimationFrame(() => {
-      const track = trackRef.current
-      if (track) track.scrollTo({ left: index * track.clientWidth, behavior: 'smooth' })
-    })
-  }
-
   function selectTop(key: string) {
-    setHighlightTop(key)
-    const slice = topSlices.find((s) => s.key === key)
-    if (!slice) return
-    if (slice.hasChildren) {
-      setSelectedTopId(key)
+    if (key === highlightTop) {
+      // Segundo toque en la misma porción: la deselecciona y cierra el subdónut.
+      setHighlightTop(null)
+      setSelectedTopId(null)
       setHighlightSub(null)
-      scrollToIndex(1)
-    } else {
-      onViewRecords(slice.label, slice.label)
+      return
     }
+    setHighlightTop(key)
+    setHighlightSub(null)
+    const slice = topSlices.find((s) => s.key === key)
+    setSelectedTopId(slice?.hasChildren ? key : null)
   }
 
   function selectSub(key: string) {
-    setHighlightSub(key)
-    const slice = subSlices.find((s) => s.key === key)
-    if (!slice || !selectedTop) return
-    onViewRecords(key.startsWith('directo:') ? selectedTop.name : slice.label, slice.label)
+    setHighlightSub((prev) => (prev === key ? null : key))
   }
 
   function closeSub() {
     setSelectedTopId(null)
     setHighlightSub(null)
-    scrollToIndex(0)
   }
 
   if (topSlices.length === 0) {
@@ -1626,27 +1670,43 @@ function CategoryDonutExplorer({
 
   return (
     <div className="donut-explorer">
-      <div
-        className="donut-track"
-        ref={trackRef}
-        onScroll={(e) => setActiveIndex(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
-      >
-        <div className="donut-card">
-          <SvgDonut slices={topSlices} centerLabel={topCenter} highlightedKey={highlightTop} onSliceClick={selectTop} />
-        </div>
-        {selectedTop && (
-          <div className="donut-card">
-            <button type="button" className="link-button" onClick={closeSub}>
-              ‹ {selectedTop.name}
-            </button>
-            <SvgDonut slices={subSlices} centerLabel={subCenter} highlightedKey={highlightSub} onSliceClick={selectSub} />
-          </div>
-        )}
-      </div>
+      <SvgDonut slices={topSlices} centerLabel={topCenter} highlightedKey={highlightTop} onSliceClick={selectTop} />
+      {highlightedTop && (
+        <p className="muted" style={{ textAlign: 'center', marginTop: 4 }}>
+          {highlightedTop.count} {highlightedTop.count === 1 ? 'movimiento' : 'movimientos'} en {highlightedTop.label}
+          {' — '}
+          <button type="button" className="link-button" onClick={() => onViewRecords(highlightedTop.label, highlightedTop.label)}>
+            Ver movimientos →
+          </button>
+        </p>
+      )}
       {selectedTop && (
-        <div className="donut-dots">
-          <span className={'donut-dot' + (activeIndex === 0 ? ' donut-dot-active' : '')} />
-          <span className={'donut-dot' + (activeIndex !== 0 ? ' donut-dot-active' : '')} />
+        <div className="donut-subsection">
+          <div className="inline-fields" style={{ justifyContent: 'center' }}>
+            <strong>Subcategorías de {selectedTop.name}</strong>
+            <button type="button" className="link-button" onClick={closeSub}>
+              ✕ Cerrar
+            </button>
+          </div>
+          <SvgDonut slices={subSlices} centerLabel={subCenter} highlightedKey={highlightSub} onSliceClick={selectSub} />
+          {highlightedSub && (
+            <p className="muted" style={{ textAlign: 'center', marginTop: 4 }}>
+              {highlightedSub.count} {highlightedSub.count === 1 ? 'movimiento' : 'movimientos'} en {highlightedSub.label}
+              {' — '}
+              <button
+                type="button"
+                className="link-button"
+                onClick={() =>
+                  onViewRecords(
+                    highlightedSub.key.startsWith('directo:') ? selectedTop.name : highlightedSub.label,
+                    highlightedSub.label,
+                  )
+                }
+              >
+                Ver movimientos →
+              </button>
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1975,9 +2035,13 @@ function PorQueHaCambiadoMiGasto({
 function ExpensesTab({
   filter,
   onClearFilter,
+  previousTabLabel,
+  onBack,
 }: {
   filter?: MovementsFilter | null
   onClearFilter?: () => void
+  previousTabLabel?: SubTab | null
+  onBack?: () => void
 }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
@@ -2072,9 +2136,16 @@ function ExpensesTab({
           <p className="muted" style={{ margin: '4px 0' }}>
             {monthExpenses.length} {monthExpenses.length === 1 ? 'registro' : 'registros'}
           </p>
-          <button type="button" className="link-button" onClick={onClearFilter}>
-            ✕ Quitar filtro
-          </button>
+          <div className="inline-fields">
+            {onBack && (
+              <button type="button" className="link-button" onClick={onBack}>
+                ‹ Volver{previousTabLabel ? ` a ${previousTabLabel}` : ''}
+              </button>
+            )}
+            <button type="button" className="link-button" onClick={onClearFilter}>
+              ✕ Quitar filtro
+            </button>
+          </div>
         </div>
       ) : (
         <div className="month-nav">

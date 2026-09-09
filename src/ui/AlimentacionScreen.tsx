@@ -24,6 +24,8 @@ import {
   listMenuEntries,
   listRecentFoodLogs,
   listRecipes,
+  listRecipeSearchHistory,
+  logRecipeSearch,
   setMenuEntry,
   updateRecipe,
   uploadRecipePhoto,
@@ -1039,6 +1041,13 @@ function RecipeForm({
   const [recipeUrl, setRecipeUrl] = useState('')
   const [urlImportStatus, setUrlImportStatus] = useState<'idle' | 'importing' | 'error'>('idle')
   const [urlImportError, setUrlImportError] = useState<string | null>(null)
+  const [searchHistory, setSearchHistory] = useState<string[]>([])
+
+  useEffect(() => {
+    listRecipeSearchHistory()
+      .then(setSearchHistory)
+      .catch(() => {})
+  }, [])
 
   function toggleTag(tag: string) {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
@@ -1113,10 +1122,13 @@ function RecipeForm({
   // buscan las tres fuentes a la vez y se juntan en una sola lista de
   // candidatas; solo se trae el texto completo de la que se elija.
   async function handleSearch() {
-    if (!title.trim()) return
+    const query = title.trim()
+    if (!query) return
     setSearchStatus('searching')
     setFound(null)
     setSearchResults([])
+    logRecipeSearch(query).catch(() => {})
+    setSearchHistory((prev) => [query, ...prev.filter((q) => q.toLowerCase() !== query.toLowerCase())].slice(0, 30))
     try {
       const [wikibooks, fatsecret, cookpad] = await Promise.all([
         searchRecipeCandidates(title.trim()).catch(() => []),
@@ -1141,6 +1153,7 @@ function RecipeForm({
 
   async function handleSelectCandidate(candidate: RecipeCandidate) {
     setSearchStatus('searching')
+    setFoundImagePath(null)
     try {
       if (candidate.source === 'cookpad') {
         // Misma función que "importar desde una URL" — ya descarga y
@@ -1239,7 +1252,20 @@ function RecipeForm({
     <form onSubmit={handleSubmit} className="member-form">
       <label>
         Título
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Tortilla de patatas" />
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          required
+          placeholder="Tortilla de patatas"
+          list="recipe-search-history"
+          autoComplete="off"
+        />
+        <datalist id="recipe-search-history">
+          {searchHistory.map((q) => (
+            <option key={q} value={q} />
+          ))}
+        </datalist>
       </label>
 
       {mode === 'add' && (
@@ -1384,6 +1410,8 @@ function RecipeForm({
                     ? 'Encontrada en FatSecret — está en inglés, tradúcela al guardar si quieres.'
                     : 'Encontrada en el recetario abierto de Wikibooks.'}
             </p>
+
+            {foundImagePath && <RecipeImage imagePath={foundImagePath} alt={found.title} />}
 
             {found.ingredients.length > 0 && (
               <div className="day-modal-group">

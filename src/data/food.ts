@@ -131,6 +131,38 @@ export async function getRecipePhotoUrl(imagePath: string): Promise<string> {
   return data.signedUrl
 }
 
+// Petición real: "que se me quede un historial de las recetas que he
+// buscado antes... y conforme vaya escribiendo se me vaya
+// autocompletando" — un registro por búsqueda distinta (no una fila
+// por cada vez que se repite la misma), para alimentar un <datalist>
+// en el campo Título.
+export async function logRecipeSearch(query: string): Promise<void> {
+  const trimmed = query.trim()
+  if (!trimmed) return
+  const familyId = await currentFamilyId()
+  const { data: existing } = await supabase
+    .from('recipe_search_history')
+    .select('id')
+    .eq('family_id', familyId)
+    .eq('query', trimmed)
+    .maybeSingle()
+  if (existing) {
+    await supabase.from('recipe_search_history').update({ searched_at: new Date().toISOString() }).eq('id', existing.id)
+  } else {
+    await supabase.from('recipe_search_history').insert({ family_id: familyId, query: trimmed })
+  }
+}
+
+export async function listRecipeSearchHistory(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('recipe_search_history')
+    .select('query')
+    .order('searched_at', { ascending: false })
+    .limit(30)
+  if (error) throw error
+  return data.map((r) => r.query)
+}
+
 // Flujo Menú → ingredientes → lista (Skill 15): añade a la lista de la
 // compra solo los ingredientes elegidos (no siempre hace falta
 // comprarlos todos — petición real), cada uno en la tienda que se

@@ -58,6 +58,14 @@ Deno.serve(async (req) => {
     if (!token) return json({ error: "missing token" }, 401)
     if (!orderDate) return json({ error: "missing or invalid orderDate" }, 400)
 
+    // Petición real: "de Amazon en movimientos no quiero ver el número
+    // de pedido sino el producto en concepto" — el nº de pedido sigue
+    // guardado en el ticket (recibos), pero lo que se ve en
+    // Movimientos/Banco (Expense.notes) ahora son los productos, que sí
+    // son legibles de un vistazo.
+    const itemsConcept = items.length > 0 ? items.map((it) => it.name.trim()).join(", ") : null
+    const orderConcept = orderNumber ? `Pedido ${orderNumber}` : null
+
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
     const { data: family, error: familyError } = await admin
@@ -80,7 +88,7 @@ Deno.serve(async (req) => {
           category: "Amazon",
           store: "Amazon",
           kind: "real",
-          notes: orderNumber ? `Pedido ${orderNumber}` : null,
+          notes: itemsConcept ?? orderConcept,
           source: "ticket",
         })
         .select("id")

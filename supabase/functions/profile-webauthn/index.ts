@@ -100,12 +100,19 @@ Deno.serve(async (req) => {
 
       if (!verification.verified || !verification.registrationInfo) return json({ verified: false })
 
-      const { credential } = verification.registrationInfo
+      // @simplewebauthn/server@10 devuelve registrationInfo con campos
+      // planos (credentialID ya en base64url, credentialPublicKey en
+      // bytes) — NO un sub-objeto "credential" anidado. Usar el nombre
+      // equivocado aquí fue el bug real que rompía el registro en
+      // Android: fallaba en silencio en el servidor con "Cannot read
+      // properties of undefined (reading 'id')", confirmado leyendo el
+      // código fuente publicado de esta versión exacta.
+      const { credentialID, credentialPublicKey, counter } = verification.registrationInfo
       const { error } = await admin.from("profile_webauthn_credentials").insert({
         profile_id: user.id,
-        credential_id: credential.id,
-        public_key: isoBase64URL.fromBuffer(credential.publicKey),
-        counter: credential.counter,
+        credential_id: credentialID,
+        public_key: isoBase64URL.fromBuffer(credentialPublicKey),
+        counter,
         device_label: typeof payload.deviceLabel === "string" ? payload.deviceLabel : null,
       })
       if (error) throw error
@@ -149,14 +156,17 @@ Deno.serve(async (req) => {
         .maybeSingle()
       if (!credRow) return json({ error: "huella no reconocida" }, 400)
 
+      // El parámetro se llama "authenticator" en @simplewebauthn/server@10
+      // (no "credential") y sus campos son credentialID/credentialPublicKey
+      // — mismo bug de nombres que en registerVerify, mismo motivo.
       const verification = await verifyAuthenticationResponse({
         response: payload.response,
         expectedChallenge: challengeRow.challenge,
         expectedOrigin: rp.origin,
         expectedRPID: rp.rpID,
-        credential: {
-          id: credRow.credential_id,
-          publicKey: isoBase64URL.toBuffer(credRow.public_key),
+        authenticator: {
+          credentialID: credRow.credential_id,
+          credentialPublicKey: isoBase64URL.toBuffer(credRow.public_key),
           counter: credRow.counter,
         },
       })

@@ -91,7 +91,8 @@ export async function deleteWebauthnCredential(id: string): Promise<void> {
 export async function registerPasskey(deviceLabel: string): Promise<void> {
   const options = await callWebauthn('registerOptions')
   const response = await startRegistration(options as never)
-  await callWebauthn('registerVerify', { response, deviceLabel })
+  const result = (await callWebauthn('registerVerify', { response, deviceLabel })) as { verified: boolean }
+  if (!result.verified) throw new Error('No se pudo verificar la huella/Face ID')
 }
 
 // Ceremonia de comprobación: usada en la pantalla de bloqueo como

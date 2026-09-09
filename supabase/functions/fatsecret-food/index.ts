@@ -278,6 +278,78 @@ Deno.serve(async (req) => {
       return json({ detail, fromCache: false })
     }
 
+    // Petición real: "quiero recetas con fotos... si la tenemos que
+    // sacar de FatSecret que tenemos el API, la sacamos de ahí... son
+    // gratuitas" — recipes.search.v3/recipe.get son parte del plan
+    // Basic gratis igual que foods.search/food.get (mismas credenciales,
+    // mismo servidor unificado). OJO comprobado en su documentación:
+    // los datos de recetas en el plan gratis vienen en inglés/EE.UU.
+    // (la localización a español es una función Premier de pago) — se
+    // usa como fuente adicional, no sustituye la búsqueda en español.
+    if (action === "recipeSearch") {
+      const query = typeof body.query === "string" ? body.query.trim() : ""
+      if (!query) return json({ error: "missing query" }, 400)
+
+      const { data: clientId, error: idErr } = await adminClient.rpc("get_app_secret", { p_name: "FATSECRET_CLIENT_ID" })
+      const { data: clientSecret, error: secErr } = await adminClient.rpc("get_app_secret", { p_name: "FATSECRET_CLIENT_SECRET" })
+      if (idErr || secErr || !clientId || !clientSecret) return json({ error: "service not configured" }, 500)
+
+      const url = await fatSecretSignedUrl(
+        { method: "recipes.search.v3", search_expression: query, must_have_images: "true", max_results: "10", format: "json" },
+        clientId,
+        clientSecret,
+      )
+      const res = await fetch(url)
+      if (!res.ok) return json({ error: "fatsecret_error", detail: await res.text() }, 502)
+      const data = await res.json()
+      if (data.error) return json({ error: "fatsecret_error", detail: data.error.message ?? String(data.error) }, 502)
+
+      const recipes = asArray(data.recipes?.recipe)
+      const results = recipes.map((r: Record<string, unknown>) => ({
+        id: String(r.recipe_id),
+        name: String(r.recipe_name ?? ""),
+        description: String(r.recipe_description ?? ""),
+        imageUrl: r.recipe_image ? String(r.recipe_image) : null,
+      }))
+      return json({ results })
+    }
+
+    if (action === "recipeGet") {
+      const recipeId = typeof body.recipeId === "string" ? body.recipeId.trim() : ""
+      if (!recipeId) return json({ error: "missing recipeId" }, 400)
+
+      const { data: clientId, error: idErr } = await adminClient.rpc("get_app_secret", { p_name: "FATSECRET_CLIENT_ID" })
+      const { data: clientSecret, error: secErr } = await adminClient.rpc("get_app_secret", { p_name: "FATSECRET_CLIENT_SECRET" })
+      if (idErr || secErr || !clientId || !clientSecret) return json({ error: "service not configured" }, 500)
+
+      const url = await fatSecretSignedUrl({ method: "recipe.get", recipe_id: recipeId, format: "json" }, clientId, clientSecret)
+      const res = await fetch(url)
+      if (!res.ok) return json({ error: "fatsecret_error", detail: await res.text() }, 502)
+      const data = await res.json()
+      if (data.error) return json({ error: "fatsecret_error", detail: data.error.message ?? String(data.error) }, 502)
+
+      const recipe = data.recipe
+      if (!recipe) return json({ error: "not_found" }, 404)
+
+      const images = asArray(recipe.recipe_images?.recipe_image).map((i) => String(i))
+      const ingredients = asArray(recipe.ingredients?.ingredient).map((i: Record<string, unknown>) =>
+        String(i.ingredient_description ?? i.food_name ?? ""),
+      )
+      const directions = asArray(recipe.directions?.direction)
+        .sort((a: Record<string, unknown>, b: Record<string, unknown>) => Number(a.direction_number) - Number(b.direction_number))
+        .map((d: Record<string, unknown>) => String(d.direction_description ?? ""))
+
+      return json({
+        detail: {
+          id: String(recipe.recipe_id ?? recipeId),
+          name: String(recipe.recipe_name ?? ""),
+          imageUrl: images[0] ?? null,
+          ingredients,
+          directions,
+        },
+      })
+    }
+
     return json({ error: "unknown action" }, 400)
   } catch (err) {
     return json({ error: String(err) }, 500)

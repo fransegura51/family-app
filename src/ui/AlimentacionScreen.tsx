@@ -47,6 +47,7 @@ import {
   uploadBodyPhoto,
 } from '@/data/bodyTracking'
 import type { BodyMeasurement, BodyPhoto, FamilyMember, FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
+import kitchenHeaderImg from '@/assets/alimentacion/kitchen-header.jpg'
 
 const SUB_TABS = ['Inicio', 'Menú', 'Recetas', 'Registro', 'Peso'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -117,16 +118,24 @@ export function AlimentacionScreen() {
 
   return (
     <div className="screen">
-      <div className="section-title-row">
+      {/* Petición real, con imagen de referencia: "pon esta imagen en
+          la cabecera de la cocina de Pepa y quita el texto" — la foto
+          ya trae el título "La cocina de Pepa" dibujado, así que el
+          <h1> de texto plano sobra. "Habrá que resaltar el botón del
+          menú": al no haber ya un fondo liso detrás, el ☰ pasa a ser
+          una píldora opaca con sombra (en vez del círculo gris de
+          section-menu-fab, pensado para fondos lisos), para que se
+          vea igual de bien encima de cualquier parte de la foto. */}
+      <div className="kitchen-header">
+        <img src={kitchenHeaderImg} alt="La cocina de Pepa" className="kitchen-header-img" />
         <button
           type="button"
-          className="section-menu-fab"
+          className="kitchen-header-menu-fab"
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? 'Cerrar menú de Alimentación' : 'Abrir menú de Alimentación'}
         >
-          {menuOpen ? '✕' : '☰'}
+          {menuOpen ? '✕' : '☰'} Menú
         </button>
-        <h1>La cocina de Pepa</h1>
       </div>
       {menuOpen && (
         <AlimentacionMenuDropdown

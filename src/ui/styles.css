@@ -1991,6 +1991,45 @@ textarea {
   padding: 0;
 }
 
+/* Cabecera de "La cocina de Pepa" con foto — petición real: "pon esta
+   imagen en la cabecera... quita el texto [el <h1> plano, la foto ya
+   trae su propio título]... habrá que resaltar el botón del menú". La
+   foto es un formato panorámico (2048×768) — se respeta esa
+   proporción entera (nunca se recorta) para no perder ni el título
+   dibujado a la izquierda ni la pizarra de la derecha. */
+.kitchen-header {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2048 / 768;
+  border-radius: 14px;
+  overflow: hidden;
+  margin: 0 0 14px;
+}
+
+.kitchen-header-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kitchen-header-menu-fab {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: white;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
 /* Tarjeta de acceso rápido de la pestaña Inicio (Alimentación, Compras)
    — un <button> normal hereda el texto blanco del estilo base de
    button{}; aquí el color se pone explícito para no repetir el bug de

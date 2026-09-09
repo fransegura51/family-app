@@ -1,6 +1,17 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
+import {
+  ALIMENTACION_MENU_ITEM_META,
+  alimentacionMenuEntryMeta,
+  isCustomAlimentacionMenuKey,
+  loadAlimentacionMenuLayout,
+  loadAlimentacionPinnedItems,
+  saveAlimentacionMenuLayout,
+  saveAlimentacionPinnedItems,
+  type AlimentacionMenuEntry,
+  type AlimentacionMenuGroup,
+  type AlimentacionMenuItemKey,
+} from '@/state/alimentacionMenu'
 import {
   addFoodLog,
   addRecipeIngredientsToShoppingList,
@@ -36,8 +47,12 @@ import {
 } from '@/data/bodyTracking'
 import type { BodyMeasurement, BodyPhoto, FamilyMember, FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
 
-const SUB_TABS = ['Menú', 'Recetas', 'Registro', 'Peso'] as const
+const SUB_TABS = ['Inicio', 'Menú', 'Recetas', 'Registro', 'Peso'] as const
 type SubTab = (typeof SUB_TABS)[number]
+
+function isAlimentacionSubTab(key: AlimentacionMenuItemKey): key is SubTab {
+  return (SUB_TABS as readonly string[]).includes(key)
+}
 
 const MEAL_TYPES: { value: MealType; label: string }[] = [
   { value: 'desayuno', label: 'Desayuno' },
@@ -64,22 +79,461 @@ function weekDates(): string[] {
 // desde el acceso directo de Inicio) en vez de forzar siempre a pasar por "Menú".
 function initialTabFromParam(param: string | null): SubTab {
   const found = SUB_TABS.find((t) => t.toLowerCase() === param?.toLowerCase())
-  return found ?? 'Menú'
+  return found ?? 'Inicio'
 }
 
 export function AlimentacionScreen() {
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<SubTab>(() => initialTabFromParam(searchParams.get('tab')))
+  // Petición real: "todas estas pestañas... quiero que hagamos como en
+  // economía... el mismo formato que el menú de economía" — mismo
+  // desplegable ☰ con sacar/meter/editar (ver economiaMenu.ts /
+  // EconomiaMenuDropdown en FinanceScreen.tsx), aplicado aquí.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [pinnedItems, setPinnedItems] = useState<AlimentacionMenuItemKey[]>(() => loadAlimentacionPinnedItems())
+  const [menuLayout, setMenuLayout] = useState<AlimentacionMenuGroup[]>(() => loadAlimentacionMenuLayout())
+  const [placeholderNotice, setPlaceholderNotice] = useState(false)
+
+  function persistMenuLayout(next: AlimentacionMenuGroup[]) {
+    setMenuLayout(next)
+    saveAlimentacionMenuLayout(next)
+  }
+
+  function togglePinnedItem(key: AlimentacionMenuItemKey) {
+    setPinnedItems((prev) => {
+      const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
+      saveAlimentacionPinnedItems(next)
+      return next
+    })
+  }
+
+  function handleAction(key: AlimentacionMenuItemKey) {
+    if (isAlimentacionSubTab(key)) setTab(key)
+    // Un acceso personalizado no lleva a ningún sitio todavía.
+  }
+
+  const flatMenuEntries = menuLayout.flatMap((g) => g.items)
 
   return (
     <div className="screen">
-      <h1>Alimentación</h1>
-      <ReorderableTabBar storageKey="alimentacion" tabs={SUB_TABS} active={tab} onSelect={setTab} />
+      <div className="section-title-row">
+        <button
+          type="button"
+          className="section-menu-fab"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label={menuOpen ? 'Cerrar menú de Alimentación' : 'Abrir menú de Alimentación'}
+        >
+          {menuOpen ? '✕' : '☰'}
+        </button>
+        <h1>La cocina de Pepa</h1>
+      </div>
+      {menuOpen && (
+        <AlimentacionMenuDropdown
+          activeTab={tab}
+          layout={menuLayout}
+          onLayoutChange={persistMenuLayout}
+          pinnedItems={pinnedItems}
+          onTogglePin={togglePinnedItem}
+          onActivate={handleAction}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
 
+      {pinnedItems.length > 0 && (
+        <div className="filter-row">
+          {flatMenuEntries
+            .filter((entry) => pinnedItems.includes(entry.key))
+            .map((entry) => {
+              const meta = alimentacionMenuEntryMeta(entry)
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  className={'chip' + (isAlimentacionSubTab(entry.key) && tab === entry.key ? ' chip-active' : '')}
+                  onClick={() => {
+                    if (isCustomAlimentacionMenuKey(entry.key)) {
+                      setPlaceholderNotice(true)
+                      setTimeout(() => setPlaceholderNotice(false), 2500)
+                    } else {
+                      handleAction(entry.key)
+                    }
+                  }}
+                >
+                  {meta.icon} {meta.label}
+                </button>
+              )
+            })}
+        </div>
+      )}
+      {placeholderNotice && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
+        </p>
+      )}
+
+      {tab === 'Inicio' && <AlimentacionInicioTab onNavigate={setTab} />}
       {tab === 'Menú' && <MenuTab />}
       {tab === 'Recetas' && <RecipesTab />}
       {tab === 'Registro' && <FoodLogTab />}
       {tab === 'Peso' && <WeightTab />}
+    </div>
+  )
+}
+
+function AlimentacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void }) {
+  const shortcuts: { tab: SubTab; body: string }[] = [
+    { tab: 'Menú', body: 'Planifica desayuno, comida, merienda y cena de toda la semana.' },
+    { tab: 'Recetas', body: 'Busca, importa y organiza las recetas de la familia, con foto y etiquetas.' },
+    { tab: 'Registro', body: 'Apunta lo que ha comido cada uno, con calorías y macros si quieres.' },
+    { tab: 'Peso', body: 'Evolución del peso y las medidas de cada miembro.' },
+  ]
+  return (
+    <div className="event-list">
+      {shortcuts.map((s) => {
+        const meta = ALIMENTACION_MENU_ITEM_META[s.tab]
+        return (
+          <button key={s.tab} type="button" className="section-shortcut-card" onClick={() => onNavigate(s.tab)}>
+            <span className="section-shortcut-card-icon" aria-hidden="true">
+              {meta.icon}
+            </span>
+            <span>
+              <strong>{meta.label}</strong>
+              <p className="muted" style={{ margin: '4px 0 0' }}>
+                {s.body}
+              </p>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Petición real: "todas estas pestañas... quiero que haga su menú de
+// inicio con tres rayas arriba y metas todas las pestañas en el menú
+// de inicio, meter y sacar para obtenerla fuera o dentro, poder editar
+// nuevas pestañas y hacerlo con el mismo formato que el menú de
+// economía" — copia de EconomiaMenuDropdown (ver FinanceScreen.tsx)
+// adaptada a las claves de Alimentación; incluso reutiliza las mismas
+// clases CSS .economia-menu-* (genéricas, no específicas de Economía).
+function AlimentacionMenuDropdown({
+  activeTab,
+  layout,
+  onLayoutChange,
+  pinnedItems,
+  onTogglePin,
+  onActivate,
+  onClose,
+}: {
+  activeTab: SubTab
+  layout: AlimentacionMenuGroup[]
+  onLayoutChange: (next: AlimentacionMenuGroup[]) => void
+  pinnedItems: AlimentacionMenuItemKey[]
+  onTogglePin: (key: AlimentacionMenuItemKey) => void
+  onActivate: (key: AlimentacionMenuItemKey) => void
+  onClose: () => void
+}) {
+  const [editMode, setEditMode] = useState(false)
+  const [addingGroup, setAddingGroup] = useState(false)
+  const [addingGroupName, setAddingGroupName] = useState('')
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [addingCustomItem, setAddingCustomItem] = useState(false)
+  const [newItemIcon, setNewItemIcon] = useState('📌')
+  const [newItemLabel, setNewItemLabel] = useState('')
+  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
+  const [editItemIcon, setEditItemIcon] = useState('')
+  const [editItemLabel, setEditItemLabel] = useState('')
+  const [placeholderNotice, setPlaceholderNotice] = useState(false)
+
+  function moveItem(groupId: string, index: number, direction: -1 | 1) {
+    const group = layout.find((g) => g.id === groupId)
+    if (!group) return
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= group.items.length) return
+    const items = [...group.items]
+    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
+    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
+  }
+
+  function moveItemToGroup(itemKey: AlimentacionMenuItemKey, fromGroupId: string, toGroupId: string) {
+    if (fromGroupId === toGroupId) return
+    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
+    if (!moved) return
+    onLayoutChange(
+      layout.map((g) => {
+        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
+        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
+        return g
+      }),
+    )
+  }
+
+  function handleAddGroup(e: FormEvent) {
+    e.preventDefault()
+    if (!addingGroupName.trim()) return
+    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
+    setAddingGroupName('')
+    setAddingGroup(false)
+  }
+
+  function handleRenameGroup(id: string) {
+    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
+    setRenamingGroupId(null)
+  }
+
+  function deleteGroup(id: string) {
+    const group = layout.find((g) => g.id === id)
+    const rest = layout.filter((g) => g.id !== id)
+    if (!group || rest.length === 0) return
+    const [first, ...others] = rest
+    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
+  }
+
+  function handleAddCustomItem(e: FormEvent) {
+    e.preventDefault()
+    if (!newItemLabel.trim()) return
+    const entry: AlimentacionMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
+    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
+    setNewItemIcon('📌')
+    setNewItemLabel('')
+    setAddingCustomItem(false)
+  }
+
+  function handleSaveItem(groupId: string, key: AlimentacionMenuItemKey) {
+    onLayoutChange(
+      layout.map((g) =>
+        g.id === groupId
+          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
+          : g,
+      ),
+    )
+    setEditingItemKey(null)
+  }
+
+  function deleteItem(groupId: string, key: AlimentacionMenuItemKey) {
+    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
+  }
+
+  function handleItemActivate(entry: AlimentacionMenuEntry) {
+    if (isCustomAlimentacionMenuKey(entry.key)) {
+      setPlaceholderNotice(true)
+      setTimeout(() => setPlaceholderNotice(false), 2500)
+      return
+    }
+    onActivate(entry.key)
+    onClose()
+  }
+
+  return (
+    <div className="economia-menu-dropdown">
+      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
+        {editMode ? '✓ Listo' : '✏️ Editar'}
+      </button>
+
+      {layout.map((group) => (
+        <div key={group.id} className="economia-menu-group">
+          {(group.name || editMode) &&
+            (renamingGroupId === group.id ? (
+              <form
+                className="inline-fields"
+                style={{ margin: '4px 4px 6px' }}
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleRenameGroup(group.id)
+                }}
+              >
+                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
+                <button type="submit">Guardar</button>
+              </form>
+            ) : (
+              <div className="economia-menu-group-title">
+                <span>{group.name ?? 'Sin categoría'}</span>
+                {editMode && (
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ padding: '2px 6px' }}
+                      onClick={() => {
+                        setRenamingGroupId(group.id)
+                        setRenameValue(group.name ?? '')
+                      }}
+                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
+                    >
+                      ✎
+                    </button>
+                    {layout.length > 1 && (
+                      <ConfirmIconButton
+                        icon="✕"
+                        className="link-button"
+                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
+                        onConfirm={() => deleteGroup(group.id)}
+                      />
+                    )}
+                  </span>
+                )}
+              </div>
+            ))}
+
+          {group.items.map((entry, i) => {
+            const meta = alimentacionMenuEntryMeta(entry)
+            const isTab = isAlimentacionSubTab(entry.key)
+            const isCustom = isCustomAlimentacionMenuKey(entry.key)
+
+            if (editMode && editingItemKey === entry.key) {
+              return (
+                <form
+                  key={entry.key}
+                  className="inline-fields"
+                  style={{ margin: '2px 4px' }}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleSaveItem(group.id, entry.key)
+                  }}
+                >
+                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
+                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
+                  <button type="submit">Guardar</button>
+                </form>
+              )
+            }
+
+            return (
+              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
+                {editMode ? (
+                  <span className="economia-menu-item">
+                    <span aria-hidden="true">{meta.icon}</span>
+                    {meta.label}
+                  </span>
+                ) : (
+                  <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
+                    <span aria-hidden="true">{meta.icon}</span>
+                    {meta.label}
+                  </button>
+                )}
+
+                {editMode ? (
+                  <span className="economia-menu-edit-controls">
+                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ padding: '2px 6px' }}
+                      disabled={i === group.items.length - 1}
+                      onClick={() => moveItem(group.id, i, 1)}
+                      aria-label={`Bajar ${meta.label}`}
+                    >
+                      ↓
+                    </button>
+                    <select
+                      value={group.id}
+                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
+                      aria-label={`Mover ${meta.label} a otra categoría`}
+                    >
+                      {layout.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name ?? 'Sin categoría'}
+                        </option>
+                      ))}
+                    </select>
+                    {isCustom && (
+                      <>
+                        <button
+                          type="button"
+                          className="link-button"
+                          style={{ padding: '2px 6px' }}
+                          onClick={() => {
+                            setEditingItemKey(entry.key)
+                            setEditItemIcon(meta.icon)
+                            setEditItemLabel(meta.label)
+                          }}
+                          aria-label={`Renombrar ${meta.label}`}
+                        >
+                          ✎
+                        </button>
+                        <ConfirmIconButton
+                          icon="✕"
+                          className="link-button"
+                          ariaLabel={`Eliminar ${meta.label}`}
+                          onConfirm={() => deleteItem(group.id, entry.key)}
+                        />
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="economia-menu-pin"
+                    onClick={() => onTogglePin(entry.key)}
+                    aria-label={pinnedItems.includes(entry.key) ? `Quitar ${meta.label} de la pantalla de Alimentación` : `Sacar ${meta.label} a la pantalla de Alimentación`}
+                  >
+                    {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
+
+      {placeholderNotice && (
+        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
+          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
+        </p>
+      )}
+
+      {editMode && (
+        <>
+          {addingCustomItem ? (
+            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
+              <input
+                type="text"
+                value={newItemIcon}
+                onChange={(e) => setNewItemIcon(e.target.value)}
+                style={{ width: 48, textAlign: 'center', flex: 'none' }}
+                maxLength={4}
+                aria-label="Icono"
+              />
+              <input
+                type="text"
+                value={newItemLabel}
+                onChange={(e) => setNewItemLabel(e.target.value)}
+                placeholder="Nombre del acceso"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button type="submit">Crear</button>
+            </form>
+          ) : (
+            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
+              <span aria-hidden="true">📌</span>
+              Nuevo acceso
+            </button>
+          )}
+
+          {addingGroup ? (
+            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
+              <input
+                type="text"
+                value={addingGroupName}
+                onChange={(e) => setAddingGroupName(e.target.value)}
+                placeholder="Nombre de la categoría"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button type="submit">Crear</button>
+            </form>
+          ) : (
+            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
+              <span aria-hidden="true">➕</span>
+              Nueva categoría
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 }

@@ -1140,6 +1140,10 @@ textarea {
   border: none;
   border-bottom: 1px solid #eee;
   background: none;
+  /* Sin esto hereda el blanco del estilo base de <button> — invisible
+     sobre esta fila blanca (mismo bug ya visto y corregido antes en
+     .store-folder-header: no lo repitas). */
+  color: var(--text);
   font-size: 15px;
   text-align: left;
   cursor: pointer;
@@ -1827,6 +1831,57 @@ textarea {
   border: none;
   border-top: 1px solid #eee;
   margin: 4px 4px;
+}
+
+/* Mismo menú ☰ desplegable de Economía (sacar/meter/editar), aplicado
+   a otras secciones con varias pestañas — petición real: "todas estas
+   pestañas... quiero que hagamos como en economía... el mismo formato
+   que el menú de economía", ampliado después a "toda la aplicación que
+   tenga menús en ese formato". Estas secciones no tienen la cabecera
+   azul de Economía (esa lleva las tarjetas de cuenta bancaria, no
+   aplica aquí) — mismo desplegable (.economia-menu-*, reutilizado tal
+   cual), fila de título más sencilla. */
+.section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.section-menu-fab {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  padding: 0;
+}
+
+/* Tarjeta de acceso rápido de la pestaña Inicio (Alimentación, Compras)
+   — un <button> normal hereda el texto blanco del estilo base de
+   button{}; aquí el color se pone explícito para no repetir el bug de
+   "blanco sobre blanco". */
+.section-shortcut-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--card-bg);
+  border: 2px solid transparent;
+  border-radius: 16px;
+  padding: 16px;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+}
+
+.section-shortcut-card-icon {
+  font-size: 24px;
+  flex: none;
 }
 
 .account-cards-heading {

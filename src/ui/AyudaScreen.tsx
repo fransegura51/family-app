@@ -71,6 +71,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Canjear', text: 'Descuenta puntos del saldo del miembro elegido — no deja canjear si no le llegan los puntos.' },
   ],
   '/compras': [
+    { title: 'Menú ☰ e Inicio', text: 'El botón ☰ junto al título abre un desplegable con todas las pestañas de Compras — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
     { title: 'Lista', text: 'Agrupada por tienda en carpetas que se pliegan; arrastra para reordenar, marca prioridad y cantidad, y usa "Modo compra" mientras estás en la tienda.' },
     { title: 'Tiendas', text: 'Tus propias tiendas (Mercadona, Aldi...) con su logo, para agrupar la lista y para que Pepa te entienda al dictar, por ejemplo, "Mercadona, patatas".' },
     { title: 'Historial', text: 'Se construye solo con lo que compras: sugiere recompra, compara el precio de este mes con el anterior y te dice en qué tienda sale más barato.' },
@@ -79,7 +80,8 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Registro Alimentación', text: 'Presupuesto y gasto de comida, con su propio gráfico — vive aquí porque tiene más que ver con la compra que con el dinero en sí.' },
   ],
   '/alimentacion': [
-    { title: 'Menú', text: 'Planifica desayuno, comida, merienda y cena de toda la semana, con una receta guardada o texto libre.' },
+    { title: 'Menú ☰ e Inicio', text: 'El botón ☰ junto al título ("La cocina de Pepa") abre un desplegable con todas las pestañas — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
+    { title: 'Menú semanal', text: 'Planifica desayuno, comida, merienda y cena de toda la semana, con una receta guardada o texto libre.' },
     { title: 'Recetas', text: 'Con foto, etiquetas (Postres, Favoritos, Fáciles de preparar...), ingredientes y notas; puedes buscarla en internet o importarla pegando su URL, y mandar los ingredientes que quieras a la lista de la compra.' },
     { title: 'Registro', text: 'Apunta lo que ha comido cada uno (puedes marcar a varios a la vez), con calorías y macronutrientes si quieres.' },
     { title: 'Peso', text: 'Evolución del peso y las medidas de cada miembro, con gráfico y fotos de seguimiento.' },

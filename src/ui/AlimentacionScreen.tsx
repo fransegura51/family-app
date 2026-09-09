@@ -674,6 +674,14 @@ function MenuEntryPicker({
 
 const DEFAULT_RECIPE_TAGS = ['Postres', 'Favoritos', 'Fáciles de preparar', 'Vegetariano', 'Rápidas']
 
+function normalizeRecipeSearch(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+}
+
 function collectRecipeTags(recipes: Recipe[]): string[] {
   const set = new Set(DEFAULT_RECIPE_TAGS)
   for (const r of recipes) for (const t of r.tags) if (t.trim()) set.add(t.trim())
@@ -717,6 +725,7 @@ function RecipesTab() {
   // de golpe.
   const [pickingFor, setPickingFor] = useState<Recipe | null>(null)
   const [tagFilter, setTagFilter] = useState('Todas')
+  const [recipeSearch, setRecipeSearch] = useState('')
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Recipe | null>(null)
   const [adding, setAdding] = useState(false)
@@ -742,10 +751,52 @@ function RecipesTab() {
     .sort((a, b) => a.title.localeCompare(b.title))
   const viewing = viewingId ? (recipes.find((r) => r.id === viewingId) ?? null) : null
 
+  // Petición real: "entre la foto y la fila de etiquetas... un
+  // buscador para buscar las recetas que tenga guardadas y que me
+  // lleve directamente a las recetas" — busca solo entre lo ya
+  // guardado (no en internet, para eso está "+ Nueva receta") y
+  // pinchar un resultado abre directamente su ficha.
+  const normalizedRecipeSearch = normalizeRecipeSearch(recipeSearch)
+  const recipeSearchMatches = normalizedRecipeSearch
+    ? recipes
+        .filter((r) => normalizeRecipeSearch(r.title).includes(normalizedRecipeSearch))
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .slice(0, 8)
+    : []
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
       {info && <p className="muted">{info}</p>}
+
+      <label>
+        🔍 Buscar receta guardada
+        <input
+          type="search"
+          value={recipeSearch}
+          onChange={(e) => setRecipeSearch(e.target.value)}
+          placeholder="Escribe el nombre de la receta…"
+        />
+      </label>
+      {normalizedRecipeSearch && (
+        <div className="card" style={{ padding: 8, marginBottom: 12 }}>
+          {recipeSearchMatches.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className="recipe-list-row"
+              onClick={() => {
+                setViewingId(r.id)
+                setRecipeSearch('')
+              }}
+            >
+              <RecipeImage imagePath={r.imagePath} alt="" />
+              <span>{r.title}</span>
+            </button>
+          ))}
+          {recipeSearchMatches.length === 0 && <p className="muted" style={{ margin: '4px 8px' }}>Ninguna receta guardada con ese nombre.</p>}
+        </div>
+      )}
 
       <div className="filter-row">
         <button type="button" className={'chip' + (tagFilter === 'Todas' ? ' chip-active' : '')} onClick={() => setTagFilter('Todas')}>

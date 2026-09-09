@@ -274,7 +274,12 @@ body {
   position: absolute;
   left: 58%;
   width: 34%;
-  transform: translateY(-50%);
+  /* Petición real: "ponle la alineación ladeada conforme van las
+     líneas del bloque de notas" — la libreta de la foto está girada
+     unos 4.5°, subiendo de izquierda a derecha (medido a mano sobre
+     la imagen original). */
+  transform: translateY(-50%) rotate(-4.5deg);
+  transform-origin: left center;
   font-size: 3.4cqw;
   line-height: 1.15;
   font-weight: 600;

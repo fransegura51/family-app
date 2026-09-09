@@ -31,7 +31,7 @@ import {
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
-import { searchRecipe } from '@/services/recipeSearch'
+import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResult } from '@/services/recipeSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
 import { fetchImageFromUrl, importRecipeFromUrl } from '@/services/recipeUrlImport'
 import { listShoppingStores } from '@/data/shoppingStores'
@@ -1009,6 +1009,7 @@ function RecipeForm({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
+  const [searchResults, setSearchResults] = useState<WikibooksSearchResult[]>([])
   const [found, setFound] = useState<ParsedRecipe | null>(null)
   const [foundSource, setFoundSource] = useState<'wikibooks' | 'url' | null>(null)
   const [foundImagePath, setFoundImagePath] = useState<string | null>(null)
@@ -1079,23 +1080,42 @@ function RecipeForm({
     }
   }
 
+  // Petición real: "quiero que al buscar una receta en internet se
+  // abra una búsqueda... y pueda elegir la que quiera, no que me coja
+  // la primera que encuentre" — dos pasos: primero se listan las
+  // candidatas (hasta 10, del recetario de Wikibooks), luego se trae
+  // el texto completo solo de la que se elija.
   async function handleSearch() {
     if (!title.trim()) return
     setSearchStatus('searching')
     setFound(null)
+    setSearchResults([])
     try {
-      const page = await searchRecipe(title.trim())
-      if (!page) {
+      const results = await searchRecipeCandidates(title.trim())
+      if (results.length === 0) {
         setSearchStatus('not-found')
         return
       }
-      const parsed = parseWikibooksRecipe(page.title, page.wikitext)
-      if (parsed.ingredients.length === 0 && parsed.steps.length === 0) {
+      setSearchResults(results)
+      setSearchStatus('idle')
+    } catch {
+      setSearchStatus('error')
+    }
+  }
+
+  async function handleSelectCandidate(candidate: WikibooksSearchResult) {
+    setSearchStatus('searching')
+    try {
+      const page = await fetchWikibooksRecipe(candidate.title)
+      const parsed = page ? parseWikibooksRecipe(page.title, page.wikitext) : null
+      if (!parsed || (parsed.ingredients.length === 0 && parsed.steps.length === 0)) {
         setSearchStatus('not-found')
+        setSearchResults([])
         return
       }
       setFound(parsed)
       setFoundSource('wikibooks')
+      setSearchResults([])
       setSearchStatus('idle')
     } catch {
       setSearchStatus('error')
@@ -1143,6 +1163,24 @@ function RecipeForm({
           <button type="button" className="link-button" onClick={handleSearch} disabled={!title.trim() || searchStatus === 'searching'}>
             {searchStatus === 'searching' ? 'Buscando en Internet…' : '🔍 Buscar receta en Internet'}
           </button>
+          {searchResults.length > 0 && (
+            <div className="card" style={{ padding: 8 }}>
+              <p className="muted" style={{ margin: '4px 8px' }}>
+                Elige cuál es la tuya:
+              </p>
+              {searchResults.map((r) => (
+                <button
+                  key={r.title}
+                  type="button"
+                  className="recipe-list-row"
+                  onClick={() => handleSelectCandidate(r)}
+                  disabled={searchStatus === 'searching'}
+                >
+                  {r.displayName}
+                </button>
+              ))}
+            </div>
+          )}
           {searchStatus === 'not-found' && (
             <p className="muted">No he encontrado "{title}" en el recetario de Wikibooks — escríbela a mano abajo.</p>
           )}

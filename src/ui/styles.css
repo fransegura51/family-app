@@ -927,6 +927,59 @@ select {
   flex-wrap: wrap;
 }
 
+/* Ayuda: tarjeta desplegable por sección — petición real: mantener el
+   resumen de una línea siempre visible, y que al tocar la tarjeta se
+   abra el detalle de cada función, en vez de navegar directo. */
+.ayuda-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ayuda-card-header {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ayuda-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ayuda-card-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.ayuda-card-detail {
+  padding: 0 16px 16px;
+  border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ayuda-detail-item {
+  padding-top: 10px;
+}
+
+.ayuda-detail-link {
+  align-self: flex-start;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--primary);
+  margin-top: 4px;
+}
+
 .task-card-main {
   flex: 1;
   min-width: 140px;

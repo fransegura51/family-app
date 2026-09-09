@@ -2020,6 +2020,14 @@ textarea {
   margin: 0 0 14px;
 }
 
+/* Familia: la foto de referencia venía en otra proporción (1774×887,
+   casi 2:1) que las demás cabeceras (2048×768) — se sobreescribe solo
+   la proporción, el resto de .kitchen-header (radio, margen...) vale
+   igual. */
+.kitchen-header-familia {
+  aspect-ratio: 1774 / 887;
+}
+
 .kitchen-header-img {
   width: 100%;
   height: 100%;

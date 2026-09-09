@@ -17,6 +17,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import type { FamilyMember, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
+import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
   { value: 'admin', label: 'Administrador/a' },
@@ -127,7 +128,14 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
 
   return (
     <div className="screen">
-      <h1>Familia</h1>
+      {/* Petición real, con imagen de referencia: "cabecera para
+          sección Familia, como las anteriores" — esta sección no tiene
+          menú ☰ (no tiene varias pestañas), así que solo se sustituye
+          el <h1> de texto plano por la foto (ya trae el título
+          "Familia" dibujado), sin botón encima. */}
+      <div className="kitchen-header kitchen-header-familia">
+        <img src={familiaHeaderImg} alt="Familia" className="kitchen-header-img" />
+      </div>
       <Link to="/actividad" className="link-button">
         Ver actividad reciente
       </Link>

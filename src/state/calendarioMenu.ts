@@ -7,7 +7,7 @@
 // en Economía se etiqueta "Inicio" en el desplegable sin dejar de ser
 // una pestaña real.
 
-export type FixedCalendarioMenuItemKey = 'Vista general' | 'Mes' | 'Semana' | '3 días' | 'Día' | 'Familiar' | 'Agenda' | 'Externos'
+export type FixedCalendarioMenuItemKey = 'Vista general' | 'Mes' | 'Semana' | '3 días' | 'Día' | 'Familiar' | 'Agenda' | 'Personal' | 'Externos'
 export type CalendarioMenuItemKey = FixedCalendarioMenuItemKey | `custom:${string}`
 
 export function isCustomCalendarioMenuKey(key: CalendarioMenuItemKey): boolean {
@@ -34,6 +34,7 @@ export const CALENDARIO_MENU_ITEM_META: Record<FixedCalendarioMenuItemKey, { ico
   Día: { icon: '🗓️', label: 'Día' },
   Familiar: { icon: '👨‍👩‍👧‍👦', label: 'Familiar' },
   Agenda: { icon: '📝', label: 'Agenda' },
+  Personal: { icon: '🔒', label: 'Personal' },
   Externos: { icon: '🔗', label: 'Externos' },
 }
 
@@ -42,7 +43,7 @@ export function calendarioMenuEntryMeta(entry: CalendarioMenuEntry): { icon: str
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
-const DEFAULT_KEYS: FixedCalendarioMenuItemKey[] = ['Vista general', 'Mes', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Externos']
+const DEFAULT_KEYS: FixedCalendarioMenuItemKey[] = ['Vista general', 'Mes', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal', 'Externos']
 
 const KEY = 'familyapp:calendario-menu-layout'
 

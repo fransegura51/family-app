@@ -27,6 +27,7 @@ import {
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
+import { addPersonalNote, deletePersonalNote, listPersonalNotes, type PersonalNote } from '@/data/personalNotes'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import {
   addFeed,
@@ -91,7 +92,7 @@ import { WeekdayPicker } from '@/ui/WeekdayPicker'
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
 // Mes y Externos que ya había.
-const VIEWS = ['Mes', 'Vista general', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Externos'] as const
+const VIEWS = ['Mes', 'Vista general', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal', 'Externos'] as const
 type ViewMode = (typeof VIEWS)[number]
 
 function isCalendarioSubTab(key: CalendarioMenuItemKey): key is ViewMode {
@@ -138,6 +139,7 @@ export function CalendarScreen() {
   const [externalCompletions, setExternalCompletions] = useState<ExternalEventCompletion[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
+  const [personalNotes, setPersonalNotes] = useState<PersonalNote[]>([])
   // Botón flotante "Nuevo evento", tocable desde cualquier parte de la
   // pestaña — petición real: "esa misma idea [la de Contactos] la
   // vamos a aplicar al calendario: botón flotante Nuevo evento y
@@ -209,8 +211,9 @@ export function CalendarScreen() {
       listEventCompletions(),
       listExternalEventDismissals(),
       listExternalEventCompletions(),
+      listPersonalNotes(),
     ])
-      .then(([e, m, h, ee, ef, ct, evc, ed, eec]) => {
+      .then(([e, m, h, ee, ef, ct, evc, ed, eec, pn]) => {
         setEvents(e)
         setMembers(m)
         setHolidayDates(h)
@@ -220,6 +223,7 @@ export function CalendarScreen() {
         setEventCompletions(evc)
         setExternalDismissals(ed)
         setExternalCompletions(eec)
+        setPersonalNotes(pn)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -681,7 +685,7 @@ export function CalendarScreen() {
         </p>
       )}
 
-      {view !== 'Externos' && (
+      {view !== 'Externos' && view !== 'Personal' && (
         <div className="filter-row">
           <button
             className={'chip' + (filterMemberIds.length === 0 ? ' chip-active' : '')}
@@ -897,6 +901,21 @@ export function CalendarScreen() {
             setAddingEvent(true)
           }}
         />
+      ) : view === 'Personal' ? (
+        <PersonalNotesView
+          selectedDate={selectedDate}
+          notes={personalNotes}
+          onNavigateDay={changeSelectedDate}
+          swipeHandlers={daySwipe}
+          onAdd={async (text) => {
+            await addPersonalNote(selectedDate, text)
+            reload()
+          }}
+          onDelete={async (id) => {
+            await deletePersonalNote(id)
+            reload()
+          }}
+        />
       ) : (
         <>
           <TimeGridView
@@ -927,16 +946,18 @@ export function CalendarScreen() {
         </>
       )}
 
-      <button
-        type="button"
-        className="screen-fab"
-        onClick={() => {
-          setAddingEventMemberId(null)
-          setAddingEvent(true)
-        }}
-      >
-        + Nuevo evento
-      </button>
+      {view !== 'Personal' && (
+        <button
+          type="button"
+          className="screen-fab"
+          onClick={() => {
+            setAddingEventMemberId(null)
+            setAddingEvent(true)
+          }}
+        >
+          + Nuevo evento
+        </button>
+      )}
 
       {addingEvent && (
         <div
@@ -1242,6 +1263,84 @@ function FamilyDayView({
           </div>
         ))}
         {columns.length === 0 && <p className="muted">Añade miembros a la familia para usar esta vista.</p>}
+      </div>
+    </div>
+  )
+}
+
+// Petición real: "un nuevo modo... personal... lo que cada usuario
+// quiera poner y que solo lo pueda ver ese usuario, lo que se apunte
+// ahí tiene que ser privado" — notes viene ya filtrado por user_id
+// desde el servidor (RLS de personal_calendar_notes, ver migración
+// 0088), así que aquí no hace falta ningún filtro de "quién puede
+// verlo": lo que llega es siempre de quien tiene la sesión abierta.
+function PersonalNotesView({
+  selectedDate,
+  notes,
+  onNavigateDay,
+  swipeHandlers,
+  onAdd,
+  onDelete,
+}: {
+  selectedDate: string
+  notes: PersonalNote[]
+  onNavigateDay: (deltaDays: number) => void
+  swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
+  onAdd: (text: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}) {
+  const [text, setText] = useState('')
+  const [saving, setSaving] = useState(false)
+  const dayNotes = notes.filter((n) => n.noteDate === selectedDate)
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault()
+    const trimmed = text.trim()
+    if (!trimmed) return
+    setSaving(true)
+    try {
+      await onAdd(trimmed)
+      setText('')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="month-nav" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+        <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
+          ‹
+        </button>
+        <strong>
+          {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </strong>
+        <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
+          ›
+        </button>
+      </div>
+
+      <p className="muted" style={{ fontSize: 12 }}>
+        🔒 Privado — solo tú puedes ver lo que apuntes aquí, ni el resto de la familia lo verá.
+      </p>
+
+      <form onSubmit={handleAdd} className="inline-fields">
+        <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribe algo para este día…" />
+        <button type="submit" disabled={!text.trim() || saving}>
+          {saving ? 'Guardando…' : '+ Añadir'}
+        </button>
+      </form>
+
+      <div className="event-list">
+        {dayNotes.map((n) => (
+          <div key={n.id} className="task-card">
+            <div className="task-card-main">
+              <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{n.text}</p>
+            </div>
+            <ConfirmIconButton onConfirm={() => onDelete(n.id)} ariaLabel="Borrar nota" />
+          </div>
+        ))}
+        {dayNotes.length === 0 && <p className="muted">Nada apuntado este día.</p>}
       </div>
     </div>
   )

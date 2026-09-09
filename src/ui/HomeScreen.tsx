@@ -176,6 +176,22 @@ function PhotoBanner() {
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [paused, setPaused] = useState(false)
+  // Petición real: "quiero también poder pasarlas con el dedo... o
+  // pararlas con el dedo si quiero verla el tiempo que yo quiera...
+  // ponerle el dedo encima y pararla, y si quiero pasarla, pasarla con
+  // el dedo, y si no, que pase automática" — mientras el dedo esté
+  // encima se para el pase (por poco o mucho que dure el toque), y si
+  // al levantarlo hubo un deslizamiento horizontal claro, cambia de
+  // foto; se retoma el pase automático en cuanto se levanta el dedo,
+  // haya habido deslizamiento o no. En ratón (ordenador), lo mismo con
+  // el botón pulsado en vez del dedo.
+  //
+  // OJO: useRef tiene que ir aquí arriba, antes de los `return`
+  // condicionales de más abajo (loading / sin fotos) — bug real en
+  // producción ("Minified React error #310"): un hook después de un
+  // return condicional cambia cuántos hooks se llaman entre un
+  // renderizado y otro, y React no lo permite.
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     listGalleryPhotos()
@@ -256,17 +272,6 @@ function PhotoBanner() {
       ))}
     </div>
   )
-
-  // Petición real: "quiero también poder pasarlas con el dedo... o
-  // pararlas con el dedo si quiero verla el tiempo que yo quiera...
-  // ponerle el dedo encima y pararla, y si quiero pasarla, pasarla con
-  // el dedo, y si no, que pase automática" — mientras el dedo esté
-  // encima se para el pase (por poco o mucho que dure el toque), y si
-  // al levantarlo hubo un deslizamiento horizontal claro, cambia de
-  // foto; se retoma el pase automático en cuanto se levanta el dedo,
-  // haya habido deslizamiento o no. En ratón (ordenador), lo mismo con
-  // el botón pulsado en vez del dedo.
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   function handlePressStart() {
     setPaused(true)

@@ -12,6 +12,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ShoppingCartArt, TaskArt } from '@/ui/HomeSlideArt'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
+import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
@@ -25,19 +26,35 @@ interface HomeCardDef {
   color: string
 }
 
-const HOME_CARDS: HomeCardDef[] = [
-  { id: 'familia', title: 'Familia', body: 'Miembros y perfiles', to: '/familia', icon: '👨‍👩‍👧‍👦', color: '#ffe3d6' },
-  { id: 'calendario', title: 'Calendario', body: 'Eventos de hoy', to: '/calendario', icon: '📅', color: '#dbeafe' },
-  { id: 'puntos', title: 'Puntos', body: 'Recompensas de la familia', to: '/puntos', icon: '⭐', color: '#dcfce7' },
-  { id: 'compras', title: 'Próxima compra', body: 'Lista actual', to: '/compras', icon: '🛒', color: '#fef3c7' },
-  { id: 'alimentacion', title: 'Alimentación', body: 'Menú, registro y peso', to: '/alimentacion', icon: '🍎', color: '#d1fae5' },
-  { id: 'dinero', title: 'Economía', body: 'Resumen del mes', to: '/dinero', icon: '💶', color: '#dcfce7' },
-  { id: 'ubicacion', title: 'Ubicación y avisos', body: 'Opcional, desactivado por defecto', to: '/ubicacion', icon: '📍', color: '#e0e7ff' },
-  { id: 'cumpleanos', title: 'Cumpleaños', body: 'Próximos en la familia', to: '/cumpleanos', icon: '🎂', color: '#fed7aa' },
-  { id: 'contactos', title: 'Contactos', body: 'Colegio, médico, emergencias', to: '/contactos', icon: '📇', color: '#ede9fe' },
-  { id: 'galeria', title: 'Galería', body: 'Fotos de la familia', to: '/galeria', icon: '📷', color: '#fef9c3' },
-  { id: 'documentos', title: 'Documentos', body: 'Por cada miembro', to: '/documentos', icon: '📁', color: '#dbeafe' },
-]
+// El título, icono y ruta de cada tarjeta salen de navTabs.ts — la
+// misma fuente que ya usan el menú ☰, Ayuda y "Organizar menú" — en
+// vez de estar copiados a mano aquí también. Bug real encontrado por
+// el usuario: se renombró "Alimentación" a "La cocina de Pepa" en
+// navTabs.ts, pero esta pantalla seguía diciendo "Alimentación" porque
+// tenía su propia copia del nombre, sin actualizar. Solo lo que de
+// verdad es propio de esta pantalla (la frase corta y el color de
+// fondo) vive en este mapa.
+const HOME_CARD_EXTRAS: Record<string, { body: string; color: string }> = {
+  familia: { body: 'Miembros y perfiles', color: '#ffe3d6' },
+  calendario: { body: 'Eventos de hoy', color: '#dbeafe' },
+  puntos: { body: 'Recompensas de la familia', color: '#dcfce7' },
+  compras: { body: 'Lista actual', color: '#fef3c7' },
+  alimentacion: { body: 'Menú, registro y peso', color: '#d1fae5' },
+  dinero: { body: 'Resumen del mes', color: '#dcfce7' },
+  ubicacion: { body: 'Opcional, desactivado por defecto', color: '#e0e7ff' },
+  cumpleanos: { body: 'Próximos en la familia', color: '#fed7aa' },
+  contactos: { body: 'Colegio, médico, emergencias', color: '#ede9fe' },
+  galeria: { body: 'Fotos de la familia', color: '#fef9c3' },
+  documentos: { body: 'Por cada miembro', color: '#dbeafe' },
+}
+
+const HOME_CARDS: HomeCardDef[] = NAV_TABS.filter((t) => t.to !== '/')
+  .map((t) => {
+    const id = navSectionId(t)
+    const extra = HOME_CARD_EXTRAS[id]
+    return extra ? { id, title: t.label, body: extra.body, to: t.to, icon: t.icon, color: extra.color } : null
+  })
+  .filter((c): c is HomeCardDef => c !== null)
 const HOME_CARDS_BY_ID = new Map(HOME_CARDS.map((c) => [c.id, c]))
 
 // Junta el orden guardado con las tarjetas que existan de verdad hoy —

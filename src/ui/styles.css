@@ -2610,6 +2610,16 @@ textarea {
   margin: 2px 0;
 }
 
+/* Petición real: "que marque con un símbolo 'falta ticket' los que no
+   se haya subido el ticket" — tono de aviso (mismo naranja que el
+   resto de avisos suaves de la app), no rojo de error: no es que algo
+   haya fallado, solo que todavía no se ha subido la foto. */
+.receipt-row-missing-ticket {
+  color: #b5651d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Vistas de calendario Agenda / Familiar / Día / 3 días / Semana. */
 
 .agenda-day-header {

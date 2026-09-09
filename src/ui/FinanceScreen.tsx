@@ -3060,11 +3060,23 @@ function canonicalStoreName(raw: string | null, knownStores: string[]): string {
 // una carpeta por cada tienda YA DADA DE ALTA en Compras, aunque
 // todavía no tenga ningún ticket guardado, no solo las que ya
 // tuvieran alguno.
-function groupReceiptsByStore(
-  receipts: Receipt[],
+// Petición real: "que la estadística de compras por establecimientos
+// se complete también con las compras hechas en supermercados
+// importadas del banco, ya que no siempre se acordarán los usuarios de
+// subir los tickets... que marque con un símbolo 'falta ticket' los
+// que no se haya subido el ticket". hasTicket=false identifica un
+// gasto de alimentación que llegó SOLO del banco (source='banco'),
+// nunca conciliado con ningún ticket — ver ese cruce en ReceiptsTab.
+// El genérico <T extends Receipt> conserva ese campo de principio a
+// fin del reparto por tienda sin tocar la firma en cada sitio que ya
+// llamaba a esta función solo con Receipt[] normales.
+type DisplayReceipt = Receipt & { hasTicket: boolean }
+
+function groupReceiptsByStore<T extends Receipt>(
+  receipts: T[],
   knownStores: string[],
-): { store: string; receipts: Receipt[]; total: number }[] {
-  const groups = new Map<string, Receipt[]>()
+): { store: string; receipts: T[]; total: number }[] {
+  const groups = new Map<string, T[]>()
   for (const s of knownStores) groups.set(s, [])
   for (const r of receipts) {
     const key = canonicalStoreName(r.store, knownStores)
@@ -3119,6 +3131,7 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
 
 export function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
   const [knownStores, setKnownStores] = useState<string[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
@@ -3137,8 +3150,16 @@ export function ReceiptsTab() {
 
   function reload() {
     setLoading(true)
-    listReceipts()
-      .then(setReceipts)
+    Promise.all([listReceipts(), listExpenses(), listBudgetCategories()])
+      .then(([r, allExpenses, cats]) => {
+        setReceipts(r)
+        setCategories(cats)
+        // Un gasto de alimentación con source='banco' nunca ha pasado
+        // por la conciliación con ningún ticket (la propia sincronización
+        // del banco lo marcaría 'ticket_banco' en cuanto encontrara uno
+        // — ver linkTransactionsToExpenses en enable-banking-sync-transactions).
+        setBankOnlyExpenses(allExpenses.filter((e) => e.source === 'banco' && !e.isIncome && isFoodCategory(e.category, cats)))
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
@@ -3148,7 +3169,6 @@ export function ReceiptsTab() {
     listShoppingStores()
       .then((rows) => setKnownStores(rows.map((s) => s.name)))
       .catch(() => {})
-    listBudgetCategories().then(setCategories).catch(() => {})
     listFamilyMembers().then(setMembers).catch(() => {})
   }, [])
 
@@ -3163,10 +3183,33 @@ export function ReceiptsTab() {
 
   if (loading) return <p className="muted">Cargando tickets…</p>
 
-  const grouped = groupReceiptsByStore(receipts, knownStores)
+  // Los tickets subidos a mano (o llegados por email de Amazon/Mercadona)
+  // se completan con las compras de alimentación que solo se conocen por
+  // el banco, para que el reparto por tienda no se quede corto solo
+  // porque nadie subió el ticket ese día.
+  const displayReceipts: DisplayReceipt[] = [
+    ...receipts.map((r) => ({ ...r, hasTicket: true })),
+    ...bankOnlyExpenses.map(
+      (e): DisplayReceipt => ({
+        id: `bank:${e.id}`,
+        familyId: e.familyId,
+        storagePath: null,
+        store: e.store,
+        receiptDate: e.expenseDate,
+        totalAmount: e.amount,
+        expenseId: e.id,
+        notes: e.notes,
+        category: e.category,
+        purchasedByMemberId: null,
+        hasTicket: false,
+      }),
+    ),
+  ]
+
+  const grouped = groupReceiptsByStore(displayReceipts, knownStores)
   const storeNames = grouped.map((g) => g.store)
   const [rangeFrom, rangeTo] = rangeForPreset(rangePreset, rangeCustomFrom, rangeCustomTo)
-  const rangeFilteredReceipts = receipts.filter((r) => r.receiptDate >= rangeFrom && r.receiptDate <= rangeTo)
+  const rangeFilteredReceipts = displayReceipts.filter((r) => r.receiptDate >= rangeFrom && r.receiptDate <= rangeTo)
   const rangeGrouped = groupReceiptsByStore(rangeFilteredReceipts, knownStores)
 
   return (
@@ -3189,7 +3232,7 @@ export function ReceiptsTab() {
           reparto por tienda y el gasto mensual, en vez de uno nuevo en
           cada apartado. */}
       <ReceiptSpendSummary
-        receipts={receipts}
+        receipts={displayReceipts}
         knownStores={knownStores}
         storeNames={storeNames}
         preset={rangePreset}
@@ -3200,7 +3243,7 @@ export function ReceiptsTab() {
         onCustomToChange={setRangeCustomTo}
       />
 
-      {receipts.length > 0 && (
+      {displayReceipts.length > 0 && (
         <>
           <StoreBreakdownChart groups={rangeGrouped} />
           <StoreMonthlyChart receipts={rangeFilteredReceipts} knownStores={knownStores} storeNames={storeNames} from={rangeFrom} to={rangeTo} />
@@ -3245,7 +3288,7 @@ export function ReceiptsTab() {
                 <span className="store-folder-info">
                   <strong>{store}</strong>
                   <span className="muted">
-                    {storeReceipts.length} {storeReceipts.length === 1 ? 'ticket' : 'tickets'} · {total.toFixed(2)} €
+                    {storeReceipts.length} {storeReceipts.length === 1 ? 'compra' : 'compras'} · {total.toFixed(2)} €
                   </span>
                 </span>
                 <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
@@ -3272,6 +3315,7 @@ export function ReceiptsTab() {
                       <ReceiptRow
                         key={r.id}
                         receipt={r}
+                        hasTicket={r.hasTicket}
                         members={members}
                         onEdit={() => setEditingId(r.id)}
                         onDelete={() => handleDelete(r)}
@@ -3539,11 +3583,13 @@ function CategorySelect({
 
 function ReceiptRow({
   receipt,
+  hasTicket,
   members,
   onEdit,
   onDelete,
 }: {
   receipt: Receipt
+  hasTicket: boolean
   members: FamilyMember[]
   onEdit: () => void
   onDelete: () => void
@@ -3556,6 +3602,9 @@ function ReceiptRow({
   const purchaser = receipt.purchasedByMemberId ? members.find((m) => m.id === receipt.purchasedByMemberId) : null
 
   async function handleToggleExpand() {
+    // Un gasto solo del banco (sin ticket subido) nunca tiene líneas de
+    // producto que leer — no hay nada que desplegar.
+    if (!hasTicket) return
     setExpanded((prev) => !prev)
     if (lines === null) {
       setLoadingLines(true)
@@ -3588,17 +3637,35 @@ function ReceiptRow({
           {receipt.totalAmount != null && <span> · {receipt.totalAmount.toFixed(2)} €</span>}
           <span> · {receipt.category}</span>
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
+          {/* Petición real: "que marque con un símbolo 'falta ticket'
+              los que no se haya subido el ticket" — este gasto se sabe
+              solo por el banco, nadie ha subido la foto del ticket
+              todavía; se edita/categoriza desde Movimientos o Banco, no
+              aquí (no hay ningún ticket real que editar). */}
+          {!hasTicket && (
+            <span className="muted receipt-row-missing-ticket" title="Este gasto llegó del banco — nadie ha subido su ticket todavía">
+              📎 falta ticket
+            </span>
+          )}
         </button>
         <div className="receipt-row-actions">
-          {receipt.storagePath && (
-            <button type="button" className="icon-button" onClick={handleViewTicket} aria-label="Ver ticket" title="Ver ticket">
-              👁
-            </button>
+          {hasTicket ? (
+            <>
+              {receipt.storagePath && (
+                <button type="button" className="icon-button" onClick={handleViewTicket} aria-label="Ver ticket" title="Ver ticket">
+                  👁
+                </button>
+              )}
+              <button type="button" className="icon-button" onClick={onEdit} aria-label="Editar ticket" title="Editar">
+                ✏️
+              </button>
+              <ConfirmIconButton icon="✕" onConfirm={onDelete} ariaLabel="Borrar ticket" className="icon-button" />
+            </>
+          ) : (
+            <span className="muted" style={{ fontSize: 12 }}>
+              Ver en Banco →
+            </span>
           )}
-          <button type="button" className="icon-button" onClick={onEdit} aria-label="Editar ticket" title="Editar">
-            ✏️
-          </button>
-          <ConfirmIconButton icon="✕" onConfirm={onDelete} ariaLabel="Borrar ticket" className="icon-button" />
         </div>
       </div>
       {expanded && (

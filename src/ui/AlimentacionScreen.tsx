@@ -1752,13 +1752,21 @@ function WeightTab() {
   )
 }
 
+// Petición real: "un gráfico para registrar el peso... una línea que
+// vaya subiendo o bajando, marcando la fecha que es" — el gráfico ya
+// existía pero no marcaba ninguna fecha, solo el kg máximo/mínimo. Con
+// pocos puntos cabe la fecha debajo de cada uno; con muchos se
+// solaparían, así que solo se marcan los extremos (mismo criterio que
+// ya usaban las etiquetas de kg).
 function WeightChart({ measurements }: { measurements: BodyMeasurement[] }) {
   const points = measurements as (BodyMeasurement & { weightKg: number })[]
   if (points.length < 2) return null
 
   const width = 300
-  const height = 120
+  const height = 130
   const padding = 24
+  const dateRowY = height - 10
+  const chartBottom = dateRowY - 14
   const weights = points.map((p) => p.weightKg)
   const min = Math.min(...weights)
   const max = Math.max(...weights)
@@ -1766,20 +1774,39 @@ function WeightChart({ measurements }: { measurements: BodyMeasurement[] }) {
 
   const coords = points.map((p, i) => {
     const x = padding + (i / (points.length - 1)) * (width - padding * 2)
-    const y = height - padding - ((p.weightKg - min) / range) * (height - padding * 2)
+    const y = chartBottom - ((p.weightKg - min) / range) * (chartBottom - padding)
     return { x, y }
   })
+
+  const shortDate = (d: string) => new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+  const showEveryDate = points.length <= 6
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="weight-chart" role="img" aria-label="Gráfico de evolución del peso">
       <polyline points={coords.map((c) => `${c.x},${c.y}`).join(' ')} fill="none" stroke="var(--primary)" strokeWidth="2" />
-      {coords.map((c, i) => (
-        <circle key={i} cx={c.x} cy={c.y} r="3" fill="var(--primary)" />
-      ))}
+      {coords.map((c, i) => {
+        const isEdge = i === 0 || i === coords.length - 1
+        return (
+          <g key={i}>
+            <circle cx={c.x} cy={c.y} r="3" fill="var(--primary)" />
+            {(showEveryDate || isEdge) && (
+              <text
+                x={c.x}
+                y={dateRowY}
+                fontSize="9"
+                fill="#6b7280"
+                textAnchor={i === 0 ? 'start' : i === coords.length - 1 ? 'end' : 'middle'}
+              >
+                {shortDate(points[i].measuredDate)}
+              </text>
+            )}
+          </g>
+        )
+      })}
       <text x={padding} y={12} fontSize="10" fill="#6b7280">
         {max} kg
       </text>
-      <text x={padding} y={height - 6} fontSize="10" fill="#6b7280">
+      <text x={padding} y={chartBottom - 4} fontSize="10" fill="#6b7280">
         {min} kg
       </text>
     </svg>

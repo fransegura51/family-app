@@ -348,20 +348,26 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Petición real: "baja el texto para que la primera línea de la hoja
+   esté justo debajo de la primera tarea" — la fila que se había
+   medido como "línea 1" era en realidad el subrayado amarillo de
+   "cosas pendientes" (misma caída de brillo que una línea de
+   verdad), no la primera línea en blanco de la hoja. Se baja una
+   posición entera. */
 .home-agenda-note-line-1 {
-  top: 30.8%;
-}
-.home-agenda-note-line-2 {
   top: 37%;
 }
-.home-agenda-note-line-3 {
+.home-agenda-note-line-2 {
   top: 42.4%;
 }
-.home-agenda-note-line-4 {
+.home-agenda-note-line-3 {
   top: 47.6%;
 }
-.home-agenda-note-line-5 {
+.home-agenda-note-line-4 {
   top: 52.7%;
+}
+.home-agenda-note-line-5 {
+  top: 57.9%;
   font-weight: 500;
   color: #5b6c94;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import { getPermissionState, requestPermission, subscribeToPush } from '@/services/notifications'
@@ -257,6 +257,56 @@ function PhotoBanner() {
     </div>
   )
 
+  // Petición real: "quiero también poder pasarlas con el dedo... o
+  // pararlas con el dedo si quiero verla el tiempo que yo quiera...
+  // ponerle el dedo encima y pararla, y si quiero pasarla, pasarla con
+  // el dedo, y si no, que pase automática" — mientras el dedo esté
+  // encima se para el pase (por poco o mucho que dure el toque), y si
+  // al levantarlo hubo un deslizamiento horizontal claro, cambia de
+  // foto; se retoma el pase automático en cuanto se levanta el dedo,
+  // haya habido deslizamiento o no. En ratón (ordenador), lo mismo con
+  // el botón pulsado en vez del dedo.
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  function handlePressStart() {
+    setPaused(true)
+  }
+
+  function handleTouchStart(e: TouchEvent) {
+    const t = e.touches[0]
+    touchStartRef.current = { x: t.clientX, y: t.clientY }
+    handlePressStart()
+  }
+
+  function handleTouchEnd(e: TouchEvent) {
+    const start = touchStartRef.current
+    touchStartRef.current = null
+    if (start && slides.length > 1) {
+      const t = e.changedTouches[0]
+      const dx = t.clientX - start.x
+      const dy = t.clientY - start.y
+      if (Math.abs(dx) >= 50 && Math.abs(dx) > Math.abs(dy)) {
+        setIndex((i) => (dx < 0 ? (i + 1) % slides.length : (i - 1 + slides.length) % slides.length))
+      }
+    }
+    setPaused(false)
+  }
+
+  function handleMouseUp() {
+    setPaused(false)
+  }
+
+  const slideInteractionProps = {
+    role: 'button' as const,
+    tabIndex: 0,
+    onTouchStart: handleTouchStart,
+    onTouchEnd: handleTouchEnd,
+    onMouseDown: handlePressStart,
+    onMouseUp: handleMouseUp,
+    onMouseLeave: handleMouseUp,
+    onKeyDown: (e: KeyboardEvent) => e.key === 'Enter' && setPaused((p) => !p),
+  }
+
   // Petición real: "quiero que uses esta imagen como fondo para la
   // compra pendiente... pon un cuadro de texto en las líneas para
   // poner los productos pendientes cuando hay" — imagen de fondo a
@@ -264,14 +314,7 @@ function PhotoBanner() {
   // con los artículos "escritos" encima de las líneas de la libreta.
   if (current.kind === 'info' && current.art === 'compra') {
     return (
-      <div
-        className="home-photo-banner home-shopping-banner"
-        role="button"
-        tabIndex={0}
-        aria-label={current.title}
-        onClick={() => setPaused((p) => !p)}
-        onKeyDown={(e) => e.key === 'Enter' && setPaused((p) => !p)}
-      >
+      <div className="home-photo-banner home-shopping-banner" aria-label={current.title} {...slideInteractionProps}>
         <div className="home-shopping-note">
           <img src={shoppingListBg} alt="" className="home-shopping-note-img" />
           {current.items.slice(0, 4).map((item, i) => (
@@ -293,14 +336,7 @@ function PhotoBanner() {
   // "Hoy, cosas pendientes").
   if (current.kind === 'info') {
     return (
-      <div
-        className="home-photo-banner home-agenda-banner"
-        role="button"
-        tabIndex={0}
-        aria-label={current.title}
-        onClick={() => setPaused((p) => !p)}
-        onKeyDown={(e) => e.key === 'Enter' && setPaused((p) => !p)}
-      >
+      <div className="home-photo-banner home-agenda-banner" aria-label={current.title} {...slideInteractionProps}>
         <div className="home-agenda-note">
           <img src={agendaBg} alt="" className="home-agenda-note-img" />
           {current.items.slice(0, 4).map((item, i) => (
@@ -317,20 +353,13 @@ function PhotoBanner() {
     )
   }
 
-  // Al tocar (dedo en el móvil, ratón en el ordenador) se para el
-  // pase para poder leer o ver la foto entera — antes esto era un
-  // enlace y tocarlo se iba directo a Galería/Calendario/Compras sin
-  // dar tiempo a mirar (petición real: "que no se abra la carpeta...
-  // solamente tiene que pararse cuando lo toque"). Se reanuda al
-  // volver a tocar.
+  // Mantener el dedo (o el ratón) encima para el pase mientras se lee
+  // o se mira la foto entera — antes esto era un enlace y tocarlo se
+  // iba directo a Galería/Calendario/Compras sin dar tiempo a mirar
+  // (petición real: "que no se abra la carpeta... solamente tiene que
+  // pararse cuando lo toque"). Se reanuda al levantar el dedo.
   return (
-    <div
-      className="home-photo-banner"
-      role="button"
-      tabIndex={0}
-      onClick={() => setPaused((p) => !p)}
-      onKeyDown={(e) => e.key === 'Enter' && setPaused((p) => !p)}
-    >
+    <div className="home-photo-banner" {...slideInteractionProps}>
       {current.url && <img src={current.url} alt={current.caption} className="home-photo-banner-img" />}
       <div className="home-photo-banner-overlay">
         <p className="home-photo-banner-title">📷 {current.caption}</p>

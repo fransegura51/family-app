@@ -82,6 +82,14 @@ export async function updateRecipe(
   id: string,
   input: { title: string; notes: string; ingredientLines: string[]; tags: string[]; imagePath: string | null },
 ): Promise<void> {
+  // Si se cambia o se quita la foto, la anterior se queda huérfana en
+  // el storage si no se borra aquí — bug real, encontrado probando en
+  // vivo (deleteRecipe tampoco la borraba).
+  const { data: existing } = await supabase.from('recipes').select('image_path').eq('id', id).single()
+  if (existing?.image_path && existing.image_path !== input.imagePath) {
+    await supabase.storage.from('recipe-photos').remove([existing.image_path])
+  }
+
   const { error } = await supabase
     .from('recipes')
     .update({ title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath })
@@ -99,8 +107,10 @@ export async function updateRecipe(
 }
 
 export async function deleteRecipe(id: string): Promise<void> {
+  const { data: existing } = await supabase.from('recipes').select('image_path').eq('id', id).single()
   const { error } = await supabase.from('recipes').delete().eq('id', id)
   if (error) throw error
+  if (existing?.image_path) await supabase.storage.from('recipe-photos').remove([existing.image_path])
 }
 
 // Misma convención que uploadMemberPhoto — bucket privado propio,

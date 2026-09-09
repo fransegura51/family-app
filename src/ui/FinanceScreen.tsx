@@ -88,6 +88,7 @@ import type {
   Tag,
   WalletTransactionType,
 } from '@/domain/types'
+import economiaHeaderImg from '@/assets/economia/economia-header.jpg'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
 // "estoy pensando si pasar registro alimentación y tickets a compra")
@@ -277,48 +278,48 @@ export function FinanceScreen() {
 
   return (
     <div className="screen">
-      {/* Petición real, con captura de referencia exacta (app Wallet):
-          "quiero un aspecto idéntico a este" — cabecera de color propio
-          para Economía, con las tarjetas de cuenta dentro, como en la
-          referencia. Las pestañas de abajo se quedan con el mismo estilo
-          de chip que el resto de la app (se comparte con Calendario,
-          Compras...) para no romper esas pantallas. */}
-      <div className="economia-header">
-        <div className="economia-title-row">
-          <button
-            type="button"
-            className="economia-menu-fab"
-            onClick={() => setEconomiaMenuOpen((v) => !v)}
-            aria-label={economiaMenuOpen ? 'Cerrar menú de Economía' : 'Abrir menú de Economía'}
-          >
-            {economiaMenuOpen ? '✕' : '☰'}
-          </button>
-          <h1>Economía</h1>
-        </div>
-        {economiaMenuOpen && (
-          <EconomiaMenuDropdown
-            activeTab={tab}
-            layout={menuLayout}
-            onLayoutChange={persistMenuLayout}
-            pinnedItems={pinnedItems}
-            onTogglePin={togglePinnedItem}
-            onActivate={handleEconomiaAction}
-            onClose={() => setEconomiaMenuOpen(false)}
-          />
-        )}
-        <AccountBalanceCards
-          key={`${tab}-${refreshKey}`}
-          onAddAccount={() => {
-            setOpenConnectSignal((n) => n + 1)
-            setTab('Banco')
-          }}
-          onSelectAccount={(accountId) => {
-            setFocusAccountId(accountId)
-            setTab('Banco')
-          }}
-          onViewAll={() => setTab('Banco')}
-        />
+      {/* Petición real, con imagen de referencia: "y la de Economía"
+          (mismo tratamiento de foto que las demás cabeceras) — "aquí
+          tendrás que bajar los botones de las cuentas por debajo de la
+          cabecera y desplazar también el resto de la página para
+          ajustar bien todo": las tarjetas de cuenta ya no van DENTRO
+          de la cabecera de color de antes (esa desaparece con la
+          foto), pasan a su propio bloque justo debajo, sobre el fondo
+          normal de la página. */}
+      <div className="kitchen-header">
+        <img src={economiaHeaderImg} alt="Economía" className="kitchen-header-img" />
+        <button
+          type="button"
+          className="kitchen-header-menu-fab"
+          onClick={() => setEconomiaMenuOpen((v) => !v)}
+          aria-label={economiaMenuOpen ? 'Cerrar menú de Economía' : 'Abrir menú de Economía'}
+        >
+          {economiaMenuOpen ? '✕' : '☰'} Menú
+        </button>
       </div>
+      {economiaMenuOpen && (
+        <EconomiaMenuDropdown
+          activeTab={tab}
+          layout={menuLayout}
+          onLayoutChange={persistMenuLayout}
+          pinnedItems={pinnedItems}
+          onTogglePin={togglePinnedItem}
+          onActivate={handleEconomiaAction}
+          onClose={() => setEconomiaMenuOpen(false)}
+        />
+      )}
+      <AccountBalanceCards
+        key={`${tab}-${refreshKey}`}
+        onAddAccount={() => {
+          setOpenConnectSignal((n) => n + 1)
+          setTab('Banco')
+        }}
+        onSelectAccount={(accountId) => {
+          setFocusAccountId(accountId)
+          setTab('Banco')
+        }}
+        onViewAll={() => setTab('Banco')}
+      />
 
       {/* Petición real: "quiero que los quites de ahí [debajo de las
           tarjetas del banco]" — ya no hay una fila fija; solo aparece

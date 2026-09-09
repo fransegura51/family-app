@@ -1831,51 +1831,11 @@ textarea {
   border-color: var(--primary);
 }
 
-/* Cabecera propia de Economía + tarjetas de saldo por cuenta bancaria
-   — petición real, con captura de referencia exacta (app Wallet,
-   pantalla "Mis cuentas en Wallet"): "quiero un aspecto idéntico a
-   este". Barra de color a sangre (compensando el padding de .screen)
-   con el título y las tarjetas dentro, rejilla de 2 columnas con un
-   color sólido distinto por cuenta — no una tira que se desliza de
-   lado, ni todas del mismo azul degradado. Las pestañas de abajo (ver
-   ReorderableTabBar) se quedan fuera, con su estilo de chip normal,
-   compartido con Calendario/Compras. */
-.economia-header {
-  margin: -20px -16px 16px;
-  padding: 16px 16px 16px;
-  background: var(--primary);
-  border-radius: 0 0 20px 20px;
-}
-
-.economia-header h1 {
-  color: white;
-  margin: 0;
-  font-size: 22px;
-}
-
-/* Petición real: "la palabra Economía la mueven más para la derecha, y
-   donde ahora pone Economía, pones el círculo con las tres rayas" —
-   ☰ primero, título a su lado, igual que "☰ Inicio" en la referencia
-   de Wallet. Desplegable propio con las pestañas de Economía. */
-.economia-title-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.economia-menu-fab {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  font-size: 16px;
-  padding: 0;
-}
-
+/* La cabecera de color propio (app Wallet) y las tarjetas de saldo se
+   sustituyeron por la cabecera con foto (.kitchen-header, ver
+   petición real "y la de Economía") — este desplegable de pestañas es
+   lo único que queda de aquel diseño, ahora reutilizado tal cual por
+   Economía/Alimentación/Compras/Ubicación/Calendario. */
 .economia-menu-dropdown {
   display: flex;
   flex-direction: column;
@@ -2052,6 +2012,15 @@ textarea {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 
+/* Petición real: "en Ubicación hay que bajar el botón del menú por
+   debajo de la palabra Ubicación" — esa foto en concreto tiene su
+   título dibujado justo en la esquina donde va el botón por defecto,
+   así que aquí se baja para no taparlo (en %, no px, para que baje
+   proporcional al ancho igual que el resto de la cabecera). */
+.kitchen-header-menu-fab-lower {
+  top: 34%;
+}
+
 /* Tarjeta de acceso rápido de la pestaña Inicio (Alimentación, Compras)
    — un <button> normal hereda el texto blanco del estilo base de
    button{}; aquí el color se pone explícito para no repetir el bug de
@@ -2076,23 +2045,36 @@ textarea {
   flex: none;
 }
 
+/* Petición real: "bajar los botones de las cuentas por debajo de la
+   cabecera y desplazar también el resto de la página para ajustar
+   bien todo" — este bloque vivía dentro de la cabecera azul de antes
+   (heredaba el texto blanco de ahí); ahora es su propio bloque sobre
+   el fondo normal de la página, así que el título y el botón "›"
+   pasan a colores oscuros — otro "blanco sobre blanco" que no había
+   que repetir. Las propias tarjetas de cuenta (.account-card) no
+   cambian: cada una lleva su color sólido de fondo, no dependen de lo
+   que haya detrás. */
+.account-cards-block {
+  margin: 16px 0;
+}
+
 .account-cards-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: white;
+  color: var(--text);
   margin-bottom: 8px;
   font-size: 14px;
 }
 
 .account-cards-view-all {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--bg);
   border: none;
   border-radius: 50%;
   width: 26px;
   height: 26px;
   padding: 0;
-  color: white;
+  color: var(--text);
   font-size: 16px;
   font-weight: 700;
   line-height: 1;
@@ -2135,15 +2117,18 @@ textarea {
   font-weight: 700;
 }
 
+/* Igual que arriba: esta tarjeta llevaba fondo/borde translúcidos
+   blancos pensados para la cabecera azul de antes — invisible sobre
+   el fondo normal de la página. */
 .account-card-add {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px dashed rgba(255, 255, 255, 0.55);
-  color: white;
+  background: var(--card-bg);
+  border: 2px dashed #d1d5db;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 600;
 }

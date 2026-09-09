@@ -98,7 +98,7 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
         <img src={ubicacionHeaderImg} alt="Ubicación" className="kitchen-header-img" />
         <button
           type="button"
-          className="kitchen-header-menu-fab"
+          className="kitchen-header-menu-fab kitchen-header-menu-fab-lower"
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? 'Cerrar menú de Ubicación' : 'Abrir menú de Ubicación'}
         >

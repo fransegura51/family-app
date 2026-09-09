@@ -171,6 +171,7 @@ export interface MovementsFilter {
   // de una categoría así tiene que incluir toda la familia, no solo
   // los apuntados directamente a la categoría padre sin subcategoría.
   categoryGroup?: string[]
+  store?: string
   tagId?: string
   necessity?: 'debo' | 'necesito' | 'quiero'
   isFixed?: boolean
@@ -1295,8 +1296,24 @@ function DateFilterTab({
   )
 }
 
+// Petición real: "las conclusiones de Pepa deben variar a diario, no
+// siempre ser las mismas... tener más ocurrencias que una frase fija"
+// — de un grupo de observaciones reales (nunca inventadas) que quepan
+// ese día, se enseña un subconjunto que rota según la fecha, para que
+// aún con un ritmo de gasto estable haya algo distinto que leer.
+function pickDaily<T>(pool: T[], count: number): T[] {
+  if (pool.length <= count) return pool
+  const dayIndex = Math.floor(Date.now() / 86_400_000)
+  const start = dayIndex % pool.length
+  const picked: T[] = []
+  for (let i = 0; i < count; i++) picked.push(pool[(start + i) % pool.length])
+  return picked
+}
+
 function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [categories, setCategories] = useState<BudgetCategory[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
@@ -1305,8 +1322,12 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const [monthStartDay, setMonthStartDay] = useState(1)
 
   useEffect(() => {
-    listExpenses()
-      .then(setExpenses)
+    Promise.all([listExpenses(), listBudgetCategories(), listTags()])
+      .then(([e, c, t]) => {
+        setExpenses(e)
+        setCategories(c)
+        setTags(t)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
     getFinanceMonthStartDay()
@@ -1340,26 +1361,142 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const conclusions: { text: string; filter?: MovementsFilter }[] = []
   if (real.length === 0) {
     conclusions.push({ text: 'Todavía no hay movimientos en este periodo para sacar conclusiones.' })
-  } else if (prevReal.length === 0) {
-    conclusions.push({ text: 'No hay datos del periodo anterior para comparar todavía — con el tiempo Pepa podrá comparar la evolución.' })
   } else {
-    const deltaPct = prevSpent > 0 ? ((totalSpent - prevSpent) / prevSpent) * 100 : null
-    const deltaEur = totalSpent - prevSpent
-    if (deltaPct === null) {
-      conclusions.push({ text: `Habéis gastado ${totalSpent.toFixed(2)} € — no había gasto en el periodo anterior con el que comparar.` })
-    } else if (Math.abs(deltaPct) < 3) {
-      conclusions.push({ text: `Habéis mantenido prácticamente el mismo ritmo de gasto que el periodo anterior y vuestra economía se mantiene estable.` })
+    if (prevReal.length === 0) {
+      conclusions.push({ text: 'No hay datos del periodo anterior para comparar todavía — con el tiempo Pepa podrá comparar la evolución.' })
     } else {
-      const sign = deltaPct > 0 ? '+' : ''
-      conclusions.push({
-        text: `Habéis gastado un ${sign}${deltaPct.toFixed(0)}% (${sign}${deltaEur.toFixed(2)} €) ${deltaPct > 0 ? 'más' : 'menos'} que en el periodo anterior.`,
-        filter: { label: `Gastos — ${PRESET_LABELS[preset]}`, from, to, isIncome: false },
-      })
+      const deltaPct = prevSpent > 0 ? ((totalSpent - prevSpent) / prevSpent) * 100 : null
+      const deltaEur = totalSpent - prevSpent
+      if (deltaPct === null) {
+        conclusions.push({ text: `Habéis gastado ${totalSpent.toFixed(2)} € — no había gasto en el periodo anterior con el que comparar.` })
+      } else if (Math.abs(deltaPct) < 3) {
+        conclusions.push({ text: `Habéis mantenido prácticamente el mismo ritmo de gasto que el periodo anterior y vuestra economía se mantiene estable.` })
+      } else {
+        const sign = deltaPct > 0 ? '+' : ''
+        conclusions.push({
+          text: `Habéis gastado un ${sign}${deltaPct.toFixed(0)}% (${sign}${deltaEur.toFixed(2)} €) ${deltaPct > 0 ? 'más' : 'menos'} que en el periodo anterior.`,
+          filter: { label: `Gastos — ${PRESET_LABELS[preset]}`, from, to, isIncome: false },
+        })
+      }
     }
     if (tasaAhorro !== null) {
       if (tasaAhorro >= 20) conclusions.push({ text: `Vuestra tasa de ahorro es del ${tasaAhorro.toFixed(0)}% — una economía saneada.` })
       else if (tasaAhorro < 0) conclusions.push({ text: `Este periodo habéis gastado más de lo que habéis ingresado (${ahorro.toFixed(2)} €).` })
     }
+
+    // Más señales reales, además del ritmo de gasto y el ahorro, para
+    // que la sección tenga contenido variado incluso cuando esos dos
+    // primeros apartados salen iguales varios días seguidos.
+    const nonIncome = real.filter((e) => !e.isIncome)
+    const categoryTotals = new Map<string, number>()
+    for (const e of nonIncome) categoryTotals.set(e.category, (categoryTotals.get(e.category) ?? 0) + e.amount)
+    const prevCategoryTotals = new Map<string, number>()
+    for (const e of prevReal.filter((e) => !e.isIncome)) prevCategoryTotals.set(e.category, (prevCategoryTotals.get(e.category) ?? 0) + e.amount)
+
+    let topCategoryCandidate: { text: string; filter?: MovementsFilter } | null = null
+    if (categoryTotals.size > 0) {
+      const [topCatName, topCatTotal] = [...categoryTotals.entries()].sort((a, b) => b[1] - a[1])[0]
+      const icon = categories.find((c) => c.name === topCatName)?.icon ?? ''
+      const pct = totalSpent > 0 ? (topCatTotal / totalSpent) * 100 : 0
+      topCategoryCandidate = {
+        text: `La categoría en la que más habéis gastado es ${icon} ${topCatName}, con ${topCatTotal.toFixed(2)} € (${pct.toFixed(0)}% del total).`,
+        filter: { label: `${topCatName} — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, category: topCatName },
+      }
+    }
+
+    let biggestMoverCandidate: { text: string; filter?: MovementsFilter } | null = null
+    if (prevReal.length > 0) {
+      let best: { name: string; deltaEur: number; deltaPct: number | null } | null = null
+      for (const [name, total] of categoryTotals) {
+        const prevTotal = prevCategoryTotals.get(name) ?? 0
+        const deltaEur = total - prevTotal
+        if (Math.abs(deltaEur) < 5) continue
+        if (!best || Math.abs(deltaEur) > Math.abs(best.deltaEur)) best = { name, deltaEur, deltaPct: prevTotal > 0 ? (deltaEur / prevTotal) * 100 : null }
+      }
+      if (best) {
+        const sign = best.deltaEur > 0 ? '+' : ''
+        const pctText = best.deltaPct !== null ? ` (${sign}${best.deltaPct.toFixed(0)}%)` : ''
+        biggestMoverCandidate = {
+          text: `La categoría que más ha cambiado respecto al periodo anterior es ${best.name}: ${sign}${best.deltaEur.toFixed(2)} €${pctText}.`,
+          filter: { label: `${best.name} — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, category: best.name },
+        }
+      }
+    }
+
+    let topStoreCandidate: { text: string; filter?: MovementsFilter } | null = null
+    const storeInfo = new Map<string, { count: number; total: number }>()
+    for (const e of nonIncome) {
+      if (!e.store) continue
+      const cur = storeInfo.get(e.store) ?? { count: 0, total: 0 }
+      cur.count++
+      cur.total += e.amount
+      storeInfo.set(e.store, cur)
+    }
+    if (storeInfo.size > 0) {
+      const [storeName, info] = [...storeInfo.entries()].sort((a, b) => b[1].count - a[1].count)[0]
+      if (info.count >= 2) {
+        topStoreCandidate = {
+          text: `Vuestro comercio más frecuente ha sido ${storeName}, con ${info.count} compras (${info.total.toFixed(2)} €).`,
+          filter: { label: `${storeName} — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, store: storeName },
+        }
+      }
+    }
+
+    let biggestExpenseCandidate: { text: string; filter?: MovementsFilter } | null = null
+    if (nonIncome.length > 0) {
+      const biggest = [...nonIncome].sort((a, b) => b.amount - a.amount)[0]
+      biggestExpenseCandidate = {
+        text: `El gasto más alto del periodo ha sido ${biggest.category}${biggest.store ? ` en ${biggest.store}` : ''}: ${biggest.amount.toFixed(2)} € el ${biggest.expenseDate}.`,
+        filter: { label: `${biggest.category} — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, category: biggest.category },
+      }
+    }
+
+    let necessityCandidate: { text: string; filter?: MovementsFilter } | null = null
+    const quieroTotal = nonIncome
+      .filter((e) => resolveCategoryClassification(e.category, categories).necessity === 'quiero')
+      .reduce((s, e) => s + e.amount, 0)
+    if (quieroTotal > 0) {
+      const pct = totalSpent > 0 ? (quieroTotal / totalSpent) * 100 : 0
+      necessityCandidate = {
+        text: `Un ${pct.toFixed(0)}% de lo gastado (${quieroTotal.toFixed(2)} €) ha sido "Quiero" — gasto no esencial.`,
+        filter: { label: `Quiero — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, necessity: 'quiero' },
+      }
+    }
+
+    let fixedVariableCandidate: { text: string; filter?: MovementsFilter } | null = null
+    const fixedTotal = nonIncome.filter((e) => resolveExpenseFixed(e, categories) === true).reduce((s, e) => s + e.amount, 0)
+    if (fixedTotal > 0) {
+      const pct = totalSpent > 0 ? (fixedTotal / totalSpent) * 100 : 0
+      fixedVariableCandidate = {
+        text: `El ${pct.toFixed(0)}% de vuestro gasto (${fixedTotal.toFixed(2)} €) es fijo; el resto, variable.`,
+        filter: { label: `Fijo — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, isFixed: true },
+      }
+    }
+
+    let tagCandidate: { text: string; filter?: MovementsFilter } | null = null
+    const tagCounts = new Map<string, number>()
+    for (const e of nonIncome) if (e.tagId) tagCounts.set(e.tagId, (tagCounts.get(e.tagId) ?? 0) + 1)
+    if (tagCounts.size > 0) {
+      const [tagId, count] = [...tagCounts.entries()].sort((a, b) => b[1] - a[1])[0]
+      const tag = tags.find((t) => t.id === tagId)
+      if (tag && count >= 2) {
+        tagCandidate = {
+          text: `La etiqueta que más se repite es ${tag.name}, en ${count} movimientos.`,
+          filter: { label: `${tag.name} — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, tagId: tag.id },
+        }
+      }
+    }
+
+    const extraPool = [
+      topCategoryCandidate,
+      biggestMoverCandidate,
+      topStoreCandidate,
+      biggestExpenseCandidate,
+      necessityCandidate,
+      fixedVariableCandidate,
+      tagCandidate,
+    ].filter((c): c is { text: string; filter?: MovementsFilter } => c !== null)
+    conclusions.push(...pickDaily(extraPool, 3))
   }
 
   return (
@@ -2124,6 +2261,7 @@ function ExpensesTab({
       if (filter.to && e.expenseDate > filter.to) return false
       if (filter.category !== undefined && e.category !== filter.category) return false
       if (filter.categoryGroup !== undefined && !filter.categoryGroup.includes(e.category)) return false
+      if (filter.store !== undefined && e.store !== filter.store) return false
       if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
       if (filter.necessity !== undefined || filter.isFixed !== undefined) {
         const classification = resolveCategoryClassification(e.category, categories)

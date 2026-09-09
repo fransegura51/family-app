@@ -4,6 +4,7 @@ import { listContacts, setContactBirthdayFavorite, updateContactBirthDate } from
 import { nextBirthday, sortByDaysUntil, type UpcomingBirthday } from '@/domain/birthdays'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { Contact, FamilyMember } from '@/domain/types'
+import cumpleanosHeaderImg from '@/assets/cumpleanos/cumpleanos-header.jpg'
 
 interface UpcomingItem extends UpcomingBirthday {
   name: string
@@ -86,7 +87,14 @@ export function BirthdaysScreen() {
 
   return (
     <div className="screen">
-      <h1>Cumpleaños</h1>
+      {/* Petición real, con imagen de referencia: "cabecera para la
+          sección de Cumpleaños" (mismo tratamiento que las demás). Sin
+          botón encima: esta sección no tiene menú ☰ (Próximos/
+          Favoritos es un filtro sobre la misma lista, no dos pestañas
+          de verdad — ver AyudaScreen.tsx). */}
+      <div className="kitchen-header">
+        <img src={cumpleanosHeaderImg} alt="Cumpleaños" className="kitchen-header-img" />
+      </div>
       {error && <p className="error">{error}</p>}
 
       <div className="filter-row">

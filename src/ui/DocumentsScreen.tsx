@@ -3,14 +3,14 @@ import {
   deleteMemberDocument,
   getMemberDocumentUrl,
   listMemberDocuments,
-  updateMemberDocumentExpiry,
+  updateMemberDocument,
   uploadMemberDocument,
 } from '@/data/documents'
 import { createDocumentCategory, listDocumentCategories, type DocumentCategory } from '@/data/documentCategories'
 import { listFamilyMembers } from '@/data/family'
 import type { FamilyMember, MemberDocument } from '@/domain/types'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
-import { ConfirmButton } from '@/ui/ConfirmButton'
+import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { AddMemberForm } from '@/ui/FamilyScreen'
 
@@ -311,58 +311,86 @@ function MemberFolders({
   )
 }
 
+// Petición real: "en lugar de Ver documento y Eliminar haya un ojo y
+// una X, además un lápiz para poder editar el nombre del documento y
+// la fecha de vencimiento" — mismo patrón de iconos ya usado en la
+// ficha de contacto (📞✏️✕, ver ContactsScreen.tsx).
 function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelete: () => void; onReload: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
-  const [editingExpiry, setEditingExpiry] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(doc.title)
   const [expiryDraft, setExpiryDraft] = useState(doc.expiryDate ?? '')
   const [saving, setSaving] = useState(false)
 
-  async function saveExpiry() {
+  async function saveEdit() {
+    if (!titleDraft.trim()) return
     setSaving(true)
     try {
-      await updateMemberDocumentExpiry(doc, expiryDraft || null)
-      setEditingExpiry(false)
+      await updateMemberDocument(doc, { title: titleDraft.trim(), expiryDate: expiryDraft || null })
+      setEditing(false)
       onReload()
     } finally {
       setSaving(false)
     }
   }
 
+  if (editing) {
+    return (
+      <form
+        className="card member-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          saveEdit()
+        }}
+      >
+        <label>
+          Título
+          <input type="text" value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} required />
+        </label>
+        <label>
+          Fecha de vencimiento
+          <input type="date" value={expiryDraft} onChange={(e) => setExpiryDraft(e.target.value)} />
+        </label>
+        <div className="inline-fields">
+          <button type="submit" disabled={saving || !titleDraft.trim()}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+          <button type="button" className="link-button" onClick={() => setEditing(false)}>
+            Cancelar
+          </button>
+        </div>
+      </form>
+    )
+  }
+
   return (
     <div className="card task-card">
       <div className="task-card-main">
         <strong>{doc.title}</strong>
+        <p className="muted" style={{ margin: '2px 0 0' }}>
+          {doc.expiryDate ? `📅 Vence el ${new Date(doc.expiryDate + 'T00:00').toLocaleDateString('es-ES')}` : 'Sin fecha de vencimiento'}
+        </p>
+      </div>
+      <div className="task-card-actions">
         {url ? (
-          <a href={url} target="_blank" rel="noreferrer">
-            Ver documento
+          <a href={url} target="_blank" rel="noreferrer" className="link-button" aria-label="Ver documento">
+            👁
           </a>
         ) : (
-          <button type="button" className="link-button" onClick={() => getMemberDocumentUrl(doc.storagePath).then(setUrl)}>
-            Ver documento
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => getMemberDocumentUrl(doc.storagePath).then(setUrl)}
+            aria-label="Ver documento"
+          >
+            👁
           </button>
         )}
-        {/* Petición real: fecha de vencimiento con recordatorios de
-            renovación en el calendario — se puede añadir o cambiar
-            después de subir el documento, no solo al crearlo. */}
-        {editingExpiry ? (
-          <div className="inline-fields">
-            <input type="date" value={expiryDraft} onChange={(e) => setExpiryDraft(e.target.value)} />
-            <button type="button" onClick={saveExpiry} disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar'}
-            </button>
-            <button type="button" className="link-button" onClick={() => setEditingExpiry(false)}>
-              Cancelar
-            </button>
-          </div>
-        ) : (
-          <button type="button" className="link-button" onClick={() => setEditingExpiry(true)}>
-            {doc.expiryDate
-              ? `📅 Vence el ${new Date(doc.expiryDate + 'T00:00').toLocaleDateString('es-ES')}`
-              : '+ Añadir fecha de vencimiento'}
-          </button>
-        )}
+        <button type="button" className="link-button" onClick={() => setEditing(true)} aria-label="Editar">
+          ✏️
+        </button>
+        <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar" onConfirm={onDelete} />
       </div>
-      <ConfirmButton label="Eliminar" onConfirm={onDelete} />
     </div>
   )
 }

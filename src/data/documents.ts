@@ -98,19 +98,21 @@ export async function uploadMemberDocument(input: {
   if (error) throw error
 }
 
-// Cambia solo la fecha de vencimiento de un documento ya subido —
-// crea, actualiza o borra el evento del calendario según haga falta,
-// sin tocar el archivo.
-export async function updateMemberDocumentExpiry(doc: MemberDocument, expiryDate: string | null): Promise<void> {
+// Cambia el título y/o la fecha de vencimiento de un documento ya
+// subido — crea, actualiza o borra el evento del calendario según
+// haga falta (con el título nuevo si ha cambiado), sin tocar el
+// archivo. Petición real: "un lápiz para poder editar el nombre del
+// documento y la fecha de vencimiento".
+export async function updateMemberDocument(doc: MemberDocument, input: { title: string; expiryDate: string | null }): Promise<void> {
   const calendarEventId = await syncExpiryEvent({
     existingEventId: doc.calendarEventId,
-    title: doc.title,
+    title: input.title,
     memberId: doc.memberId,
-    expiryDate,
+    expiryDate: input.expiryDate,
   })
   const { error } = await supabase
     .from('member_documents')
-    .update({ expiry_date: expiryDate, calendar_event_id: calendarEventId })
+    .update({ title: input.title, expiry_date: input.expiryDate, calendar_event_id: calendarEventId })
     .eq('id', doc.id)
   if (error) throw error
 }

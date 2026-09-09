@@ -165,6 +165,12 @@ export interface MovementsFilter {
   from?: string
   to?: string
   category?: string
+  // Una categoría con subcategorías (p. ej. "Compras y familia") no
+  // tiene gastos con ese nombre EXACTO casi nunca — los gastos están
+  // en sus hijas ("Ropa y accesorios", "Niños"...). "Ver movimientos"
+  // de una categoría así tiene que incluir toda la familia, no solo
+  // los apuntados directamente a la categoría padre sin subcategoría.
+  categoryGroup?: string[]
   tagId?: string
   necessity?: 'debo' | 'necesito' | 'quiero'
   isFixed?: boolean
@@ -1594,7 +1600,7 @@ function CategoryDonutExplorer({
 }: {
   categories: BudgetCategory[]
   expenses: Expense[]
-  onViewRecords: (category: string, label: string) => void
+  onViewRecords: (category: string | string[], label: string) => void
 }) {
   const [selectedTopId, setSelectedTopId] = useState<string | null>(null)
   const [highlightTop, setHighlightTop] = useState<string | null>(null)
@@ -1675,7 +1681,22 @@ function CategoryDonutExplorer({
         <p className="muted" style={{ textAlign: 'center', marginTop: 4 }}>
           {highlightedTop.count} {highlightedTop.count === 1 ? 'movimiento' : 'movimientos'} en {highlightedTop.label}
           {' — '}
-          <button type="button" className="link-button" onClick={() => onViewRecords(highlightedTop.label, highlightedTop.label)}>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              // Una categoría con hijas casi nunca tiene gastos con su
+              // propio nombre exacto — hay que incluir toda la familia
+              // (padre + subcategorías), si no "Ver movimientos" enseña
+              // 0 registros aunque el dónut sí sume su importe.
+              if (highlightedTop.hasChildren) {
+                const childNames = categories.filter((c) => c.parentId === highlightedTop.key).map((c) => c.name)
+                onViewRecords([highlightedTop.label, ...childNames], highlightedTop.label)
+              } else {
+                onViewRecords(highlightedTop.label, highlightedTop.label)
+              }
+            }}
+          >
             Ver movimientos →
           </button>
         </p>
@@ -1773,7 +1794,15 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
 
   let body: JSX.Element
   if (view === 'categorias') {
-    body = <CategoryDonutExplorer categories={categories} expenses={real} onViewRecords={(cat, label) => viewFor({ category: cat }, `${label} — ${periodLabel}`)} />
+    body = (
+      <CategoryDonutExplorer
+        categories={categories}
+        expenses={real}
+        onViewRecords={(cat, label) =>
+          viewFor(Array.isArray(cat) ? { categoryGroup: cat } : { category: cat }, `${label} — ${periodLabel}`)
+        }
+      />
+    )
   } else if (view === 'etiquetas') {
     const slices: BreakdownSlice[] = tags
       .map((t) => {
@@ -2094,6 +2123,7 @@ function ExpensesTab({
       if (filter.from && e.expenseDate < filter.from) return false
       if (filter.to && e.expenseDate > filter.to) return false
       if (filter.category !== undefined && e.category !== filter.category) return false
+      if (filter.categoryGroup !== undefined && !filter.categoryGroup.includes(e.category)) return false
       if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
       if (filter.necessity !== undefined || filter.isFixed !== undefined) {
         const classification = resolveCategoryClassification(e.category, categories)

@@ -33,6 +33,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResult } from '@/services/recipeSearch'
 import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult } from '@/services/fatsecretRecipes'
+import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
 import { fetchImageFromUrl, importRecipeFromUrl } from '@/services/recipeUrlImport'
 import { listShoppingStores } from '@/data/shoppingStores'
@@ -992,7 +993,10 @@ type SearchStatus = 'idle' | 'searching' | 'not-found' | 'error'
 // español, pocas fotos) y FatSecret (con foto casi siempre, pero en
 // inglés/EE.UU. en el plan gratis — ver comentario en
 // fatsecretRecipes.ts).
-type RecipeCandidate = ({ source: 'wikibooks' } & WikibooksSearchResult) | ({ source: 'fatsecret' } & FatSecretRecipeResult)
+type RecipeCandidate =
+  | ({ source: 'wikibooks' } & WikibooksSearchResult)
+  | ({ source: 'fatsecret' } & FatSecretRecipeResult)
+  | ({ source: 'cookpad' } & CookpadSearchResult)
 
 // Petición real: "hay que poder editar las recetas no solo comprar o
 // borrar" — mismo formulario para crear y editar (mode), como ya se
@@ -1030,7 +1034,7 @@ function RecipeForm({
   const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
   const [searchResults, setSearchResults] = useState<RecipeCandidate[]>([])
   const [found, setFound] = useState<ParsedRecipe | null>(null)
-  const [foundSource, setFoundSource] = useState<'wikibooks' | 'url' | 'fatsecret' | null>(null)
+  const [foundSource, setFoundSource] = useState<'wikibooks' | 'url' | 'fatsecret' | 'cookpad' | null>(null)
   const [foundImagePath, setFoundImagePath] = useState<string | null>(null)
   const [recipeUrl, setRecipeUrl] = useState('')
   const [urlImportStatus, setUrlImportStatus] = useState<'idle' | 'importing' | 'error'>('idle')
@@ -1103,20 +1107,24 @@ function RecipeForm({
   // abra una búsqueda... y pueda elegir la que quiera, no que me coja
   // la primera que encuentre" — y después: "quiero recetas con
   // fotos... si hay que sacarla de FatSecret que tenemos el API,
-  // sácala de ahí". Se buscan las dos fuentes a la vez (Wikibooks +
-  // FatSecret) y se juntan en una sola lista de candidatas; solo se
-  // trae el texto completo de la que se elija.
+  // sácala de ahí" — y por último: "lo que quiero es importar esa web
+  // entera y poder buscar allí" (Cookpad no tiene API gratis, así que
+  // se lee su propia página de búsqueda — ver cookpadSearch.ts). Se
+  // buscan las tres fuentes a la vez y se juntan en una sola lista de
+  // candidatas; solo se trae el texto completo de la que se elija.
   async function handleSearch() {
     if (!title.trim()) return
     setSearchStatus('searching')
     setFound(null)
     setSearchResults([])
     try {
-      const [wikibooks, fatsecret] = await Promise.all([
+      const [wikibooks, fatsecret, cookpad] = await Promise.all([
         searchRecipeCandidates(title.trim()).catch(() => []),
         searchFatSecretRecipes(title.trim()).catch(() => []),
+        searchCookpadRecipes(title.trim()).catch(() => []),
       ])
       const results: RecipeCandidate[] = [
+        ...cookpad.map((r): RecipeCandidate => ({ source: 'cookpad', ...r })),
         ...fatsecret.map((r): RecipeCandidate => ({ source: 'fatsecret', ...r })),
         ...wikibooks.map((r): RecipeCandidate => ({ source: 'wikibooks', ...r })),
       ]
@@ -1134,6 +1142,27 @@ function RecipeForm({
   async function handleSelectCandidate(candidate: RecipeCandidate) {
     setSearchStatus('searching')
     try {
+      if (candidate.source === 'cookpad') {
+        // Misma función que "importar desde una URL" — ya descarga y
+        // guarda la foto, así que no hace falta ningún paso aparte.
+        const result = await importRecipeFromUrl(candidate.url)
+        if (result.ingredients.length === 0) {
+          setSearchStatus('not-found')
+          setSearchResults([])
+          return
+        }
+        setFound({
+          title: result.title || candidate.title,
+          ingredients: result.ingredients,
+          steps: result.instructions ? result.instructions.split('\n').filter(Boolean) : [],
+        })
+        setFoundSource('cookpad')
+        setFoundImagePath(result.imagePath)
+        setSearchResults([])
+        setSearchStatus('idle')
+        return
+      }
+
       if (candidate.source === 'fatsecret') {
         const detail = await getFatSecretRecipe(candidate.id)
         if (detail.ingredients.length === 0 && detail.directions.length === 0) {
@@ -1223,27 +1252,37 @@ function RecipeForm({
               <p className="muted" style={{ margin: '4px 8px' }}>
                 Elige cuál es la tuya:
               </p>
-              {searchResults.map((r) => (
-                <button
-                  key={r.source === 'fatsecret' ? `fs-${r.id}` : `wb-${r.title}`}
-                  type="button"
-                  className="recipe-list-row"
-                  onClick={() => handleSelectCandidate(r)}
-                  disabled={searchStatus === 'searching'}
-                >
-                  {r.source === 'fatsecret' && r.imageUrl && <img src={r.imageUrl} alt="" className="recipe-image" />}
-                  <span>
-                    {r.source === 'fatsecret' ? r.name : r.displayName}
-                    <span className="muted" style={{ display: 'block', fontSize: 11 }}>
-                      {r.source === 'fatsecret' ? 'FatSecret (en inglés, con foto)' : 'Wikibooks (en español)'}
+              {searchResults.map((r) => {
+                const key = r.source === 'wikibooks' ? `wb-${r.title}` : `${r.source}-${r.id}`
+                const label = r.source === 'wikibooks' ? r.displayName : r.source === 'fatsecret' ? r.name : r.title
+                const sourceLabel =
+                  r.source === 'cookpad'
+                    ? 'Cookpad (español, con foto)'
+                    : r.source === 'fatsecret'
+                      ? 'FatSecret (en inglés, con foto)'
+                      : 'Wikibooks (en español)'
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className="recipe-list-row"
+                    onClick={() => handleSelectCandidate(r)}
+                    disabled={searchStatus === 'searching'}
+                  >
+                    {r.source !== 'wikibooks' && r.imageUrl && <img src={r.imageUrl} alt="" className="recipe-image" />}
+                    <span>
+                      {label}
+                      <span className="muted" style={{ display: 'block', fontSize: 11 }}>
+                        {sourceLabel}
+                      </span>
                     </span>
-                  </span>
-                </button>
-              ))}
+                  </button>
+                )
+              })}
             </div>
           )}
           {searchStatus === 'not-found' && (
-            <p className="muted">No he encontrado "{title}" en Wikibooks ni en FatSecret — escríbela a mano abajo.</p>
+            <p className="muted">No he encontrado "{title}" en Cookpad, Wikibooks ni FatSecret — escríbela a mano abajo.</p>
           )}
           {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
 
@@ -1339,9 +1378,11 @@ function RecipeForm({
             <p className="muted">
               {foundSource === 'url'
                 ? 'Importada desde la URL indicada.'
-                : foundSource === 'fatsecret'
-                  ? 'Encontrada en FatSecret — está en inglés, tradúcela al guardar si quieres.'
-                  : 'Encontrada en el recetario abierto de Wikibooks.'}
+                : foundSource === 'cookpad'
+                  ? 'Encontrada buscando en Cookpad.'
+                  : foundSource === 'fatsecret'
+                    ? 'Encontrada en FatSecret — está en inglés, tradúcela al guardar si quieres.'
+                    : 'Encontrada en el recetario abierto de Wikibooks.'}
             </p>
 
             {found.ingredients.length > 0 && (

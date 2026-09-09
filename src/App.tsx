@@ -23,6 +23,7 @@ import { MenuSettingsScreen } from '@/ui/MenuSettingsScreen'
 import { AyudaScreen } from '@/ui/AyudaScreen'
 import { SuggestionsScreen } from '@/ui/SuggestionsScreen'
 import { AppLockGate } from '@/ui/AppLockGate'
+import { AdminUsageScreen } from '@/ui/AdminUsageScreen'
 
 export function App() {
   const { session, profile, loading, refreshProfile } = useSession()
@@ -61,6 +62,7 @@ export function App() {
             <Route path="/galeria" element={<GalleryScreen />} />
             <Route path="/documentos" element={<DocumentsScreen />} />
             <Route path="/menu-organizar" element={<MenuSettingsScreen />} />
+            <Route path="/admin-uso" element={<AdminUsageScreen />} />
             <Route path="/ayuda" element={<AyudaScreen />} />
             <Route path="/sugerencias" element={<SuggestionsScreen />} />
           </Route>

@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { getFamilyName, updateFamilyName } from '@/data/family'
+import { listAppUsage } from '@/data/appUsage'
 import {
   clearOwnPin,
   deleteWebauthnCredential,
@@ -89,6 +91,31 @@ function FamilyNameSection() {
         </div>
       )}
     </div>
+  )
+}
+
+// Enlace al panel de uso de la app (quién se ha dado de alta, cuándo
+// entró por última vez...) — solo para Jennifer y Paco
+// (profiles.is_app_owner). No hay forma de saber eso en el cliente sin
+// preguntar al servidor, así que se intenta cargar el panel una vez y
+// solo se muestra el enlace si de verdad ha devuelto algo; para
+// cualquier otra persona (incluidos admins de otras familias de
+// prueba) esto no aparece.
+function AdminUsageLink() {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    listAppUsage()
+      .then((rows) => setVisible(rows.length > 0))
+      .catch(() => {})
+  }, [])
+
+  if (!visible) return null
+
+  return (
+    <Link to="/admin-uso" className="link-button" style={{ display: 'block', marginBottom: 16 }}>
+      📊 Panel de uso de la app
+    </Link>
   )
 }
 
@@ -359,6 +386,7 @@ export function MenuSettingsScreen() {
       <h1>Organizar menú</h1>
 
       <FamilyNameSection />
+      <AdminUsageLink />
       <AppLockSection />
 
       <p className="muted">

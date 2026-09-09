@@ -51,6 +51,7 @@ import type {
   MemberLocation,
   MemberLocationPoint,
 } from '@/domain/types'
+import ubicacionHeaderImg from '@/assets/ubicacion/ubicacion-header.jpg'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -90,16 +91,19 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
 
   return (
     <div className="screen">
-      <div className="section-title-row">
+      {/* Petición real, con imagen de referencia: "cabecera Ubicación,
+          mismas instrucciones que antes" (mismo tratamiento que las
+          demás cabeceras con foto). */}
+      <div className="kitchen-header">
+        <img src={ubicacionHeaderImg} alt="Ubicación" className="kitchen-header-img" />
         <button
           type="button"
-          className="section-menu-fab"
+          className="kitchen-header-menu-fab"
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? 'Cerrar menú de Ubicación' : 'Abrir menú de Ubicación'}
         >
-          {menuOpen ? '✕' : '☰'}
+          {menuOpen ? '✕' : '☰'} Menú
         </button>
-        <h1>Ubicación y avisos</h1>
       </div>
       <p className="muted">
         Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El

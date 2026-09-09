@@ -9,12 +9,12 @@ import { listUpcomingEvents } from '@/data/calendar'
 import { expandOccurrences } from '@/domain/calendar'
 import { listShoppingItems } from '@/data/shopping'
 import { MemberAvatar } from '@/ui/MemberAvatar'
-import { TaskArt } from '@/ui/HomeSlideArt'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
+import agendaBg from '@/assets/home/agenda-background.jpg'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -288,30 +288,29 @@ function PhotoBanner() {
     )
   }
 
+  // Petición real: "ahora haz lo mismo con el del calendario" — misma
+  // idea que la diapositiva de compra, con su propia foto (pizarra
+  // "Hoy, cosas pendientes").
   if (current.kind === 'info') {
     return (
       <div
-        className="home-photo-banner"
+        className="home-photo-banner home-agenda-banner"
         role="button"
         tabIndex={0}
+        aria-label={current.title}
         onClick={() => setPaused((p) => !p)}
         onKeyDown={(e) => e.key === 'Enter' && setPaused((p) => !p)}
       >
-        <div className="home-photo-banner-info">
-          <div className="home-photo-banner-info-text">
-            <p className="home-photo-banner-title">
-              {current.icon} {current.title}
-            </p>
-            <ul className="home-photo-banner-info-list">
-              {current.items.slice(0, 4).map((item, i) => (
-                <li key={i}>{item}</li>
-              ))}
-            </ul>
-            {current.items.length > 4 && <p className="home-photo-banner-sub">+{current.items.length - 4} más</p>}
-          </div>
-          <div className="home-photo-banner-info-art">
-            <TaskArt />
-          </div>
+        <div className="home-agenda-note">
+          <img src={agendaBg} alt="" className="home-agenda-note-img" />
+          {current.items.slice(0, 4).map((item, i) => (
+            <div key={i} className={`home-agenda-note-line home-agenda-note-line-${i + 1}`}>
+              {item}
+            </div>
+          ))}
+          {current.items.length > 4 && (
+            <div className="home-agenda-note-line home-agenda-note-line-5">+{current.items.length - 4} más</div>
+          )}
         </div>
         {dots}
       </div>

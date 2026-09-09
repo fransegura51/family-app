@@ -307,6 +307,63 @@ body {
   color: #5b6c94;
 }
 
+/* Diapositiva "Hoy en el calendario" — mismo tratamiento que la de
+   compra, con su propia foto (petición real: "ahora haz lo mismo con
+   el del calendario"). Esta pizarra apenas está girada (~2.5°, medido
+   igual que la libreta) y el texto empieza a la izquierda en vez de
+   a la derecha, porque así está compuesta esta foto. */
+.home-agenda-banner {
+  height: auto;
+  aspect-ratio: 1536 / 1024;
+  background: none;
+}
+
+.home-agenda-note {
+  position: absolute;
+  inset: 0;
+  container-type: inline-size;
+}
+
+.home-agenda-note-img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  display: block;
+}
+
+.home-agenda-note-line {
+  position: absolute;
+  left: 10.5%;
+  width: 33%;
+  transform: translateY(-50%) rotate(-2.5deg);
+  transform-origin: left center;
+  font-size: 3cqw;
+  line-height: 1.15;
+  font-weight: 600;
+  color: #33456e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-agenda-note-line-1 {
+  top: 37%;
+}
+.home-agenda-note-line-2 {
+  top: 42.8%;
+}
+.home-agenda-note-line-3 {
+  top: 48.5%;
+}
+.home-agenda-note-line-4 {
+  top: 54.2%;
+}
+.home-agenda-note-line-5 {
+  top: 60%;
+  font-weight: 500;
+  color: #5b6c94;
+}
+
 /* Ilustraciones animadas de las diapositivas "Compra pendiente" y "Hoy
    en el calendario" — petición real: "más elaboradas... que no se vea
    tan soso". Sin librería, keyframes CSS puros. */

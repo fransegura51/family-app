@@ -16,9 +16,22 @@ declare const self: ServiceWorkerGlobalScope
 // precacheAndRoute para que gane esta ruta (workbox usa la primera que
 // haga match) — el índice sigue precacheado como reserva solo para sin
 // conexión (networkTimeoutSeconds).
+//
+// `fetchOptions: { cache: 'no-store' }` es la parte que faltaba,
+// encontrada probando en vivo: GitHub Pages manda el index.html con
+// `Cache-Control: max-age=600`, y el fetch() normal de dentro del
+// service worker sigue mirando la caché HTTP del navegador por
+// defecto — así que "NetworkFirst" podía devolver igualmente una
+// respuesta de hace hasta 10 minutos sin llegar a tocar la red de
+// verdad. Con no-store, esta petición concreta ignora esa caché HTTP
+// y siempre pregunta al servidor.
 registerRoute(
   ({ request }) => request.mode === 'navigate',
-  new NetworkFirst({ cacheName: 'navigations', networkTimeoutSeconds: 3 }),
+  new NetworkFirst({
+    cacheName: 'navigations',
+    networkTimeoutSeconds: 3,
+    fetchOptions: { cache: 'no-store' },
+  }),
 )
 
 // Precacheo offline estándar de vite-plugin-pwa (injectManifest rellena

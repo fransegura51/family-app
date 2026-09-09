@@ -79,6 +79,31 @@ function extractImageUrl(image: unknown): string | null {
   return null
 }
 
+// Muchas webs de recetas (Cookpad entre ellas) no meten la foto dentro
+// del bloque schema.org/Recipe, solo en las etiquetas Open Graph que
+// usan las redes sociales para la vista previa — petición real: "las
+// recetas que saques de internet si puedes que sean con fotos". Se
+// prueba como último recurso, solo si el schema.org no trajo ninguna.
+function extractMetaImage(html: string, pageUrl: string): string | null {
+  for (const name of ["og:image", "twitter:image"]) {
+    const patterns = [
+      new RegExp(`<meta[^>]+(?:property|name)=["']${name}["'][^>]*content=["']([^"']+)["']`, "i"),
+      new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${name}["']`, "i"),
+    ]
+    for (const pattern of patterns) {
+      const match = html.match(pattern)
+      if (match) {
+        try {
+          return new URL(match[1], pageUrl).href
+        } catch {
+          continue
+        }
+      }
+    }
+  }
+  return null
+}
+
 interface ParsedRecipe {
   title: string
   ingredients: string[]
@@ -168,6 +193,8 @@ Deno.serve(async (req) => {
         const parsed = JSON.parse(block[1].trim())
         const recipe = extractRecipe(parsed, url)
         if (recipe) {
+          if (!recipe.imageUrl) recipe.imageUrl = extractMetaImage(html, url)
+
           // La imagen es un "a mayores" — si falla la descarga, se
           // devuelve la receta igual (texto/ingredientes) sin foto,
           // nunca se rompe la importación entera por esto.

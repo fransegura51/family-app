@@ -1,5 +1,6 @@
 import { supabase } from '@/data/supabaseClient'
 import { addShoppingItem } from '@/data/shopping'
+import { compressImageFile } from '@/domain/imageCompression'
 import type { FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -21,7 +22,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listRecipes(): Promise<Recipe[]> {
   const { data, error } = await supabase
     .from('recipes')
-    .select('id, family_id, title, notes, recipe_ingredients(id, name, quantity, unit)')
+    .select('id, family_id, title, notes, image_path, tags, recipe_ingredients(id, name, quantity, unit)')
     .order('created_at', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -29,40 +30,95 @@ export async function listRecipes(): Promise<Recipe[]> {
     familyId: r.family_id,
     title: r.title,
     notes: r.notes,
+    imagePath: r.image_path,
+    tags: r.tags ?? [],
     ingredients: (r.recipe_ingredients as { id: string; name: string; quantity: string | null; unit: string | null }[]).map(
       (i) => ({ id: i.id, name: i.name, quantity: i.quantity, unit: i.unit }),
     ),
   }))
 }
 
-// ingredientLines: una línea por ingrediente, "nombre, cantidad, unidad"
-// — más simple que una UI de filas dinámicas para un primer MVP.
-export async function createRecipe(input: { title: string; notes: string; ingredientLines: string[] }): Promise<void> {
-  const familyId = await currentFamilyId()
-  const { data: recipe, error } = await supabase
-    .from('recipes')
-    .insert({ family_id: familyId, title: input.title, notes: input.notes || null })
-    .select('id')
-    .single()
-  if (error) throw error
-
-  const ingredients = input.ingredientLines
+function parseIngredientLines(lines: string[]): { name: string; quantity: string | null; unit: string | null }[] {
+  return lines
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
       const [name, quantity, unit] = line.split(',').map((p) => p.trim())
-      return { recipe_id: recipe.id, name, quantity: quantity || null, unit: unit || null }
+      return { name, quantity: quantity || null, unit: unit || null }
     })
+}
 
+// ingredientLines: una línea por ingrediente, "nombre, cantidad, unidad"
+// — más simple que una UI de filas dinámicas para un primer MVP.
+export async function createRecipe(input: {
+  title: string
+  notes: string
+  ingredientLines: string[]
+  tags: string[]
+  imagePath: string | null
+}): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { data: recipe, error } = await supabase
+    .from('recipes')
+    .insert({ family_id: familyId, title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath })
+    .select('id')
+    .single()
+  if (error) throw error
+
+  const ingredients = parseIngredientLines(input.ingredientLines).map((i) => ({ recipe_id: recipe.id, ...i }))
   if (ingredients.length > 0) {
     const { error: ingredientsError } = await supabase.from('recipe_ingredients').insert(ingredients)
     if (ingredientsError) throw ingredientsError
   }
 }
 
+// Petición real: "hay que poder editar las recetas no solo comprar o
+// borrar" — no había ninguna forma de corregir una receta ya guardada.
+// Los ingredientes se sustituyen enteros (borrar + volver a insertar)
+// en vez de intentar casar cada línea con su fila original — más
+// simple y suficiente, dado que el formulario ya es "una línea de
+// texto por ingrediente", no filas editables una a una.
+export async function updateRecipe(
+  id: string,
+  input: { title: string; notes: string; ingredientLines: string[]; tags: string[]; imagePath: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('recipes')
+    .update({ title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath })
+    .eq('id', id)
+  if (error) throw error
+
+  const { error: deleteError } = await supabase.from('recipe_ingredients').delete().eq('recipe_id', id)
+  if (deleteError) throw deleteError
+
+  const ingredients = parseIngredientLines(input.ingredientLines).map((i) => ({ recipe_id: id, ...i }))
+  if (ingredients.length > 0) {
+    const { error: insertError } = await supabase.from('recipe_ingredients').insert(ingredients)
+    if (insertError) throw insertError
+  }
+}
+
 export async function deleteRecipe(id: string): Promise<void> {
   const { error } = await supabase.from('recipes').delete().eq('id', id)
   if (error) throw error
+}
+
+// Misma convención que uploadMemberPhoto — bucket privado propio,
+// signed URL para verla (nunca pública).
+export async function uploadRecipePhoto(file: File): Promise<string> {
+  const familyId = await currentFamilyId()
+  const compressed = await compressImageFile(file)
+  const ext = compressed.name.split('.').pop() || 'jpg'
+  const path = `${familyId}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('recipe-photos').upload(path, compressed)
+  if (error) throw error
+  return path
+}
+
+export async function getRecipePhotoUrl(imagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('recipe-photos').createSignedUrl(imagePath, 3600)
+  if (error) throw error
+  return data.signedUrl
 }
 
 // Flujo Menú → ingredientes → lista (Skill 15): añade a la lista de la

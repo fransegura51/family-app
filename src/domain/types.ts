@@ -128,6 +128,8 @@ export interface Recipe {
   familyId: string
   title: string
   notes: string | null
+  imagePath: string | null
+  tags: string[]
   ingredients: RecipeIngredient[]
 }
 

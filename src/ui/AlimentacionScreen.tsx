@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
 import {
@@ -8,18 +8,21 @@ import {
   deleteFoodLog,
   deleteMenuEntry,
   deleteRecipe,
+  getRecipePhotoUrl,
   listFoodLogs,
   listMenuEntries,
   listRecentFoodLogs,
   listRecipes,
   setMenuEntry,
+  updateRecipe,
+  uploadRecipePhoto,
 } from '@/data/food'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { searchRecipe } from '@/services/recipeSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
-import { importRecipeFromUrl } from '@/services/recipeUrlImport'
+import { fetchImageFromUrl, importRecipeFromUrl } from '@/services/recipeUrlImport'
 import { listShoppingStores } from '@/data/shoppingStores'
 import type { ShoppingStoreEntry } from '@/domain/types'
 import {
@@ -202,6 +205,39 @@ function MenuEntryPicker({
 // Recetas (Skill 15)
 // ---------------------------------------------------------------------
 
+const DEFAULT_RECIPE_TAGS = ['Postres', 'Favoritos', 'Fáciles de preparar', 'Vegetariano', 'Rápidas']
+
+function collectRecipeTags(recipes: Recipe[]): string[] {
+  const set = new Set(DEFAULT_RECIPE_TAGS)
+  for (const r of recipes) for (const t of r.tags) if (t.trim()) set.add(t.trim())
+  return [...set].sort((a, b) => a.localeCompare(b))
+}
+
+function RecipeImage({ imagePath, alt }: { imagePath: string | null; alt: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!imagePath) {
+      setUrl(null)
+      return
+    }
+    let cancelled = false
+    getRecipePhotoUrl(imagePath)
+      .then((u) => {
+        if (!cancelled) setUrl(u)
+      })
+      .catch(() => {
+        if (!cancelled) setUrl(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [imagePath])
+
+  if (!url) return null
+  return <img src={url} alt={alt} className="recipe-image" />
+}
+
 function RecipesTab() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
@@ -213,6 +249,10 @@ function RecipesTab() {
   // comprarlos" — se abre un paso intermedio en vez de mandarlos todos
   // de golpe.
   const [pickingFor, setPickingFor] = useState<Recipe | null>(null)
+  const [tagFilter, setTagFilter] = useState('Todas')
+  const [viewingId, setViewingId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Recipe | null>(null)
+  const [adding, setAdding] = useState(false)
 
   function reload() {
     setLoading(true)
@@ -229,34 +269,153 @@ function RecipesTab() {
 
   if (loading) return <p className="muted">Cargando recetas…</p>
 
+  const availableTags = collectRecipeTags(recipes)
+  const filteredRecipes = recipes
+    .filter((r) => tagFilter === 'Todas' || r.tags.includes(tagFilter))
+    .sort((a, b) => a.title.localeCompare(b.title))
+  const viewing = viewingId ? (recipes.find((r) => r.id === viewingId) ?? null) : null
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
       {info && <p className="muted">{info}</p>}
+
+      <div className="filter-row">
+        <button type="button" className={'chip' + (tagFilter === 'Todas' ? ' chip-active' : '')} onClick={() => setTagFilter('Todas')}>
+          Todas
+        </button>
+        {availableTags.map((tag) => (
+          <button key={tag} type="button" className={'chip' + (tagFilter === tag ? ' chip-active' : '')} onClick={() => setTagFilter(tag)}>
+            {tag}
+          </button>
+        ))}
+      </div>
+
       <div className="event-list">
-        {recipes.map((recipe) => (
-          <div key={recipe.id} className="card recipe-card">
-            <strong>{recipe.title}</strong>
-            {recipe.notes && <p className="muted">{recipe.notes}</p>}
-            <ul className="ingredient-list">
-              {recipe.ingredients.map((i) => (
-                <li key={i.id}>
-                  {i.name}
-                  {i.quantity && ` — ${i.quantity}${i.unit ? ' ' + i.unit : ''}`}
-                </li>
-              ))}
-            </ul>
+        {filteredRecipes.map((r) => (
+          <button key={r.id} type="button" className="recipe-list-row" onClick={() => setViewingId(r.id)}>
+            <RecipeImage imagePath={r.imagePath} alt="" />
+            <span>{r.title}</span>
+          </button>
+        ))}
+        {filteredRecipes.length === 0 && (
+          <p className="muted">{recipes.length === 0 ? 'Todavía no hay recetas.' : 'Ninguna receta con esa etiqueta.'}</p>
+        )}
+      </div>
+
+      <button type="button" className="screen-fab" onClick={() => setAdding(true)}>
+        + Nueva receta
+      </button>
+
+      {adding && (
+        <div className="modal-overlay" onClick={() => setAdding(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Nueva receta
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setAdding(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <RecipeForm
+              mode="add"
+              availableTags={availableTags}
+              onDone={() => {
+                setAdding(false)
+                reload()
+              }}
+              onCancel={() => setAdding(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {viewing && !editing && (
+        <div className="modal-overlay" onClick={() => setViewingId(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {viewing.title}
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setViewingId(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <RecipeImage imagePath={viewing.imagePath} alt={viewing.title} />
+            {viewing.tags.length > 0 && (
+              <div className="filter-row" style={{ marginTop: 8 }}>
+                {viewing.tags.map((t) => (
+                  <span key={t} className="chip">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            {viewing.ingredients.length > 0 && (
+              <div className="day-modal-group">
+                <h3>Ingredientes</h3>
+                <ul className="ingredient-list">
+                  {viewing.ingredients.map((i) => (
+                    <li key={i.id}>
+                      {i.name}
+                      {i.quantity && ` — ${i.quantity}${i.unit ? ' ' + i.unit : ''}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {viewing.notes && (
+              <div className="day-modal-group">
+                <h3>Preparación / notas</h3>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{viewing.notes}</p>
+              </div>
+            )}
             <div className="task-card-actions">
-              <button type="button" className="link-button" onClick={() => setPickingFor(recipe)}>
+              <button type="button" className="link-button" onClick={() => setPickingFor(viewing)}>
                 Añadir a la lista de la compra
               </button>
-              <ConfirmButton onConfirm={() => deleteRecipe(recipe.id).then(reload)} />
+              <button type="button" className="link-button" onClick={() => setEditing(viewing)} aria-label="Editar">
+                ✏️ Editar
+              </button>
+              <ConfirmButton
+                onConfirm={() =>
+                  deleteRecipe(viewing.id).then(() => {
+                    setViewingId(null)
+                    reload()
+                  })
+                }
+              />
             </div>
           </div>
-        ))}
-        {recipes.length === 0 && <p className="muted">Todavía no hay recetas.</p>}
-      </div>
-      <AddRecipeForm onAdded={reload} />
+        </div>
+      )}
+
+      {editing && (
+        <div className="modal-overlay" onClick={() => setEditing(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Editar receta
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setEditing(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <RecipeForm
+              mode="edit"
+              recipe={editing}
+              availableTags={availableTags}
+              onDone={() => {
+                setEditing(null)
+                setViewingId(null)
+                reload()
+              }}
+              onCancel={() => setEditing(null)}
+            />
+          </div>
+        </div>
+      )}
 
       {pickingFor && (
         <PickIngredientsModal
@@ -362,18 +521,86 @@ function PickIngredientsModal({
 
 type SearchStatus = 'idle' | 'searching' | 'not-found' | 'error'
 
-function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
-  const [title, setTitle] = useState('')
-  const [notes, setNotes] = useState('')
-  const [ingredients, setIngredients] = useState('')
+// Petición real: "hay que poder editar las recetas no solo comprar o
+// borrar" — mismo formulario para crear y editar (mode), como ya se
+// hace con el ticket de Compras (ReceiptForm mode="add"|"edit").
+function RecipeForm({
+  mode,
+  recipe,
+  availableTags,
+  onDone,
+  onCancel,
+}: {
+  mode: 'add' | 'edit'
+  recipe?: Recipe
+  availableTags: string[]
+  onDone: () => void
+  onCancel?: () => void
+}) {
+  const [title, setTitle] = useState(recipe?.title ?? '')
+  const [notes, setNotes] = useState(recipe?.notes ?? '')
+  const [ingredients, setIngredients] = useState(
+    recipe ? recipe.ingredients.map((i) => [i.name, i.quantity ?? '', i.unit ?? ''].join(', ')).join('\n') : '',
+  )
+  const [tags, setTags] = useState<string[]>(recipe?.tags ?? [])
+  const [newTag, setNewTag] = useState('')
+  // Petición real: "que las recetas tengan una imagen en la cabecera...
+  // si no [importada] que se pueda subir una foto propia o buscar una
+  // de internet" — sin API de búsqueda de pago, "buscar de internet" es
+  // pegar la URL de una foto ya encontrada en el navegador.
+  const [imagePath, setImagePath] = useState<string | null>(recipe?.imagePath ?? null)
+  const [imageUrlInput, setImageUrlInput] = useState('')
+  const [imageBusy, setImageBusy] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle')
   const [found, setFound] = useState<ParsedRecipe | null>(null)
   const [foundSource, setFoundSource] = useState<'wikibooks' | 'url' | null>(null)
+  const [foundImagePath, setFoundImagePath] = useState<string | null>(null)
   const [recipeUrl, setRecipeUrl] = useState('')
   const [urlImportStatus, setUrlImportStatus] = useState<'idle' | 'importing' | 'error'>('idle')
   const [urlImportError, setUrlImportError] = useState<string | null>(null)
+
+  function toggleTag(tag: string) {
+    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
+  }
+
+  function handleAddNewTag() {
+    const t = newTag.trim()
+    if (!t) return
+    if (!tags.includes(t)) setTags((prev) => [...prev, t])
+    setNewTag('')
+  }
+
+  async function handleUploadImage(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setImageBusy(true)
+    setImageError(null)
+    try {
+      setImagePath(await uploadRecipePhoto(file))
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'No se pudo subir la foto')
+    } finally {
+      setImageBusy(false)
+    }
+  }
+
+  async function handleFetchImageUrl() {
+    if (!imageUrlInput.trim()) return
+    setImageBusy(true)
+    setImageError(null)
+    try {
+      setImagePath(await fetchImageFromUrl(imageUrlInput.trim()))
+      setImageUrlInput('')
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'No se pudo descargar esa imagen')
+    } finally {
+      setImageBusy(false)
+    }
+  }
 
   // Petición real: "subir recetas mediante la URL de otras páginas" —
   // reutiliza el mismo paso de revisión que la búsqueda en Wikibooks
@@ -390,6 +617,7 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
         steps: result.instructions ? result.instructions.split('\n').filter(Boolean) : [],
       })
       setFoundSource('url')
+      setFoundImagePath(result.imagePath)
       setUrlImportStatus('idle')
     } catch (err) {
       setUrlImportStatus('error')
@@ -425,7 +653,9 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
     if (found.title && !title.trim()) setTitle(found.title)
     setIngredients(found.ingredients.map((i) => `${i}, ,`).join('\n'))
     setNotes(found.steps.map((s, i) => `${i + 1}. ${s}`).join('\n'))
+    if (foundImagePath) setImagePath(foundImagePath)
     setFound(null)
+    setFoundImagePath(null)
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -433,52 +663,89 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      await createRecipe({ title, notes, ingredientLines: ingredients.split('\n') })
-      setTitle('')
-      setNotes('')
-      setIngredients('')
-      setSearchStatus('idle')
-      onAdded()
+      const input = { title, notes, ingredientLines: ingredients.split('\n'), tags, imagePath }
+      if (mode === 'edit' && recipe) {
+        await updateRecipe(recipe.id, input)
+      } else {
+        await createRecipe(input)
+      }
+      onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear la receta')
+      setError(err instanceof Error ? err.message : 'No se pudo guardar la receta')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Nueva receta</h2>
+    <form onSubmit={handleSubmit} className="member-form">
       <label>
         Título
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Tortilla de patatas" />
       </label>
-      <button type="button" className="link-button" onClick={handleSearch} disabled={!title.trim() || searchStatus === 'searching'}>
-        {searchStatus === 'searching' ? 'Buscando en Internet…' : '🔍 Buscar receta en Internet'}
-      </button>
-      {searchStatus === 'not-found' && (
-        <p className="muted">No he encontrado "{title}" en el recetario de Wikibooks — escríbela a mano abajo.</p>
-      )}
-      {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
 
+      {mode === 'add' && (
+        <>
+          <button type="button" className="link-button" onClick={handleSearch} disabled={!title.trim() || searchStatus === 'searching'}>
+            {searchStatus === 'searching' ? 'Buscando en Internet…' : '🔍 Buscar receta en Internet'}
+          </button>
+          {searchStatus === 'not-found' && (
+            <p className="muted">No he encontrado "{title}" en el recetario de Wikibooks — escríbela a mano abajo.</p>
+          )}
+          {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
+
+          <label>
+            O importar desde la URL de otra web de recetas
+            <input type="url" value={recipeUrl} onChange={(e) => setRecipeUrl(e.target.value)} placeholder="https://..." />
+          </label>
+          <button
+            type="button"
+            className="link-button"
+            onClick={handleImportUrl}
+            disabled={!recipeUrl.trim() || urlImportStatus === 'importing'}
+          >
+            {urlImportStatus === 'importing' ? 'Leyendo la página…' : '🔗 Importar desde esa URL'}
+          </button>
+          {urlImportStatus === 'error' && <p className="error">{urlImportError}</p>}
+        </>
+      )}
+
+      <label style={{ marginBottom: 0 }}>Imagen de cabecera (opcional)</label>
+      {imagePath && <RecipeImage imagePath={imagePath} alt="" />}
+      <div className="inline-fields">
+        <label className="link-button" style={{ cursor: 'pointer' }}>
+          {imageBusy ? 'Subiendo…' : '📷 Subir foto'}
+          <input type="file" accept="image/*" onChange={handleUploadImage} style={{ display: 'none' }} disabled={imageBusy} />
+        </label>
+        {imagePath && (
+          <button type="button" className="link-button" onClick={() => setImagePath(null)}>
+            ✕ Quitar imagen
+          </button>
+        )}
+      </div>
       <label>
-        O importar desde la URL de otra web de recetas
-        <input
-          type="url"
-          value={recipeUrl}
-          onChange={(e) => setRecipeUrl(e.target.value)}
-          placeholder="https://..."
-        />
+        O pegar la URL de una foto encontrada en internet
+        <input type="url" value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder="https://..." />
       </label>
-      <button
-        type="button"
-        className="link-button"
-        onClick={handleImportUrl}
-        disabled={!recipeUrl.trim() || urlImportStatus === 'importing'}
-      >
-        {urlImportStatus === 'importing' ? 'Leyendo la página…' : '🔗 Importar desde esa URL'}
+      <button type="button" className="link-button" onClick={handleFetchImageUrl} disabled={!imageUrlInput.trim() || imageBusy}>
+        {imageBusy ? 'Descargando…' : '🌐 Usar esa foto'}
       </button>
-      {urlImportStatus === 'error' && <p className="error">{urlImportError}</p>}
+      {imageError && <p className="error">{imageError}</p>}
+
+      <label style={{ marginBottom: 0 }}>Etiquetas (opcional)</label>
+      <div className="filter-row">
+        {availableTags.map((tag) => (
+          <button key={tag} type="button" className={'chip' + (tags.includes(tag) ? ' chip-active' : '')} onClick={() => toggleTag(tag)}>
+            {tag}
+          </button>
+        ))}
+      </div>
+      <div className="inline-fields">
+        <input type="text" value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="Nueva etiqueta" />
+        <button type="button" className="link-button" onClick={handleAddNewTag} disabled={!newTag.trim()}>
+          + Añadir
+        </button>
+      </div>
 
       <label>
         Ingredientes (uno por línea: nombre, cantidad, unidad)
@@ -494,9 +761,16 @@ function AddRecipeForm({ onAdded }: { onAdded: () => void }) {
         <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Crear receta'}
-      </button>
+      <div className="form-actions">
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : mode === 'edit' ? 'Guardar cambios' : 'Crear receta'}
+        </button>
+        {onCancel && (
+          <button type="button" className="link-button" onClick={onCancel}>
+            Cancelar
+          </button>
+        )}
+      </div>
 
       {found && (
         <div className="modal-overlay" onClick={() => setFound(null)}>

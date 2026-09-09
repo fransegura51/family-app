@@ -1101,6 +1101,16 @@ select {
 
 .ayuda-detail-item {
   padding-top: 10px;
+  border-radius: 8px;
+  transition: background-color 0.4s ease;
+}
+
+/* Petición real: "un buscador... que me lleve a la sección de ayuda
+   donde te explica [eso]" — al llegar desde un resultado de búsqueda,
+   el punto exacto que coincidía se resalta un momento para que no
+   haya que buscarlo a ojo dentro de la tarjeta ya abierta. */
+.ayuda-detail-item-highlight {
+  background: #fff3cd;
 }
 
 .ayuda-detail-link {
@@ -1109,6 +1119,10 @@ select {
   text-decoration: none;
   color: var(--primary);
   margin-top: 4px;
+}
+
+.ayuda-search-label {
+  margin-top: 10px;
 }
 
 .task-card-main {

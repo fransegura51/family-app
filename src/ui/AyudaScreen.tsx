@@ -15,7 +15,7 @@
 // cambie o quite una función en cualquier sección, hay que actualizar
 // aquí su entrada correspondiente en el mismo cambio — si no, la ayuda
 // queda desactualizada y deja de ser fiable.
-import { useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { NAV_TABS } from '@/domain/navTabs'
 
@@ -122,14 +122,15 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
   ],
 }
 
-// Ajustes y cuenta no tiene entrada propia en NAV_TABS (se llega desde
-// el icono ⚙️ dentro de "☰ Menú" → "Organizar menú"), pero es igual de
-// importante explicarlo — se añade como una tarjeta más, a mano.
+// Configuración no tiene entrada propia en NAV_TABS (se llega desde el
+// icono ⚙️ dentro de "☰ Menú" → "Configuración", antes llamada
+// "Organizar menú"), pero es igual de importante explicarlo — se añade
+// como una tarjeta más, a mano.
 const SETTINGS_ENTRY = {
   to: '/menu-organizar',
   icon: '⚙️',
-  label: 'Ajustes y cuenta',
-  summary: 'Nombre de familia, bloqueo con PIN o huella, orden del menú y panel de uso — se llega desde ☰ Menú → Organizar menú.',
+  label: 'Configuración',
+  summary: 'Nombre de familia, bloqueo con PIN o huella, orden del menú y panel de uso — se llega desde ☰ Menú → Configuración.',
   details: [
     { title: 'Nombre de familia', text: 'Editable, solo por el admin.' },
     { title: 'Inicio del mes contable', text: 'El día en que empieza "Este mes" en toda Economía, por si lleváis las cuentas desde otra fecha que no sea el día 1.' },
@@ -140,6 +141,79 @@ const SETTINGS_ENTRY = {
   ] as HelpItem[],
 }
 
+// Petición real: "quiero que me pongas un buscador para buscar
+// directamente lo que necesito... que me lleve a la sección de ayuda
+// donde te explica [eso]" — busca por palabra suelta en el título de
+// cada sección y en el título/texto de cada punto de detalle, no solo
+// coincidencia exacta: "banco" tiene que encontrar "bancaria" aunque
+// no sea la misma palabra completa, comparando solo el principio de
+// cada palabra (mismo criterio que ya se usaba para emparejar
+// productos leídos de un ticket).
+interface SearchEntry {
+  to: string
+  sectionIcon: string
+  sectionLabel: string
+  itemTitle: string
+  itemText: string
+}
+
+function normalizeSearch(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+}
+
+const SEARCH_STOPWORDS = new Set([
+  'de', 'del', 'la', 'el', 'los', 'las', 'y', 'o', 'un', 'una', 'para', 'con', 'en', 'como', 'que', 'se', 'es', 'a', 'al', 'mi', 'tu', 'su',
+])
+
+function significantSearchWords(s: string): string[] {
+  return normalizeSearch(s)
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !SEARCH_STOPWORDS.has(w))
+}
+
+// Dos palabras "coinciden" si son iguales, o si ambas tienen 4+ letras
+// y comparten las 4 primeras — así "banco" encuentra "bancaria",
+// "instalar" encuentra "instalación", etc., sin depender de acertar
+// la palabra exacta.
+function wordsMatch(a: string, b: string): boolean {
+  if (a === b) return true
+  if (a.length < 4 || b.length < 4) return false
+  return a.slice(0, 4) === b.slice(0, 4)
+}
+
+function searchMatchScore(queryWords: string[], haystack: string): number {
+  const haystackWords = significantSearchWords(haystack)
+  let score = 0
+  for (const q of queryWords) {
+    if (haystackWords.some((h) => wordsMatch(q, h))) score++
+  }
+  return score
+}
+
+const SEARCH_INDEX: SearchEntry[] = [
+  ...NAV_TABS.flatMap((tab) =>
+    (HELP_DETAILS[tab.to] ?? []).map((item) => ({
+      to: tab.to,
+      sectionIcon: tab.icon,
+      sectionLabel: tab.label,
+      itemTitle: item.title,
+      itemText: item.text,
+    })),
+  ),
+  ...SETTINGS_ENTRY.details.map((item) => ({
+    to: SETTINGS_ENTRY.to,
+    sectionIcon: SETTINGS_ENTRY.icon,
+    sectionLabel: SETTINGS_ENTRY.label,
+    itemTitle: item.title,
+    itemText: item.text,
+  })),
+]
+
 function HelpCard({
   to,
   icon,
@@ -148,6 +222,8 @@ function HelpCard({
   details,
   expanded,
   onToggle,
+  highlightedItem,
+  cardRef,
 }: {
   to: string
   icon: string
@@ -156,9 +232,11 @@ function HelpCard({
   details: HelpItem[]
   expanded: boolean
   onToggle: () => void
+  highlightedItem?: string | null
+  cardRef?: (el: HTMLDivElement | null) => void
 }) {
   return (
-    <div className="card ayuda-card">
+    <div className="card ayuda-card" ref={cardRef}>
       <button type="button" className="ayuda-card-header" onClick={onToggle} aria-expanded={expanded}>
         <div className="ayuda-card-main">
           <strong>
@@ -173,7 +251,10 @@ function HelpCard({
       {expanded && (
         <div className="ayuda-card-detail">
           {details.map((item) => (
-            <div key={item.title} className="ayuda-detail-item">
+            <div
+              key={item.title}
+              className={'ayuda-detail-item' + (item.title === highlightedItem ? ' ayuda-detail-item-highlight' : '')}
+            >
               <strong>{item.title}</strong>
               <p className="muted" style={{ margin: '2px 0 0' }}>
                 {item.text}
@@ -191,34 +272,100 @@ function HelpCard({
 
 export function AyudaScreen() {
   const [expandedTo, setExpandedTo] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [highlightedItem, setHighlightedItem] = useState<string | null>(null)
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  const searchResults = useMemo(() => {
+    const words = significantSearchWords(searchQuery)
+    if (words.length === 0) return []
+    return SEARCH_INDEX.map((entry) => ({
+      entry,
+      score: searchMatchScore(words, `${entry.sectionLabel} ${entry.itemTitle} ${entry.itemText}`),
+    }))
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map((r) => r.entry)
+  }, [searchQuery])
+
+  function goToResult(entry: SearchEntry) {
+    setSearchQuery('')
+    setExpandedTo(entry.to)
+    setHighlightedItem(entry.itemTitle)
+    requestAnimationFrame(() => {
+      cardRefs.current[entry.to]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    setTimeout(() => setHighlightedItem(null), 2500)
+  }
 
   return (
     <div className="screen">
       <h1>Ayuda</h1>
       <p className="muted">Para qué sirve cada sección de la app. Toca una para ver el detalle.</p>
-      <div className="event-list">
-        {NAV_TABS.map((tab) => (
-          <HelpCard
-            key={tab.to}
-            to={tab.to}
-            icon={tab.icon}
-            label={tab.label}
-            summary={SUMMARIES[tab.to] ?? ''}
-            details={HELP_DETAILS[tab.to] ?? []}
-            expanded={expandedTo === tab.to}
-            onToggle={() => setExpandedTo((cur) => (cur === tab.to ? null : tab.to))}
-          />
-        ))}
-        <HelpCard
-          to={SETTINGS_ENTRY.to}
-          icon={SETTINGS_ENTRY.icon}
-          label={SETTINGS_ENTRY.label}
-          summary={SETTINGS_ENTRY.summary}
-          details={SETTINGS_ENTRY.details}
-          expanded={expandedTo === SETTINGS_ENTRY.to}
-          onToggle={() => setExpandedTo((cur) => (cur === SETTINGS_ENTRY.to ? null : SETTINGS_ENTRY.to))}
+
+      <label className="ayuda-search-label">
+        Buscar en la ayuda
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="p. ej. «conectar banco», «importar contactos»…"
         />
-      </div>
+      </label>
+
+      {searchQuery.trim() ? (
+        <div className="card" style={{ padding: 8, marginTop: 8 }}>
+          {searchResults.length > 0 ? (
+            searchResults.map((r) => (
+              <button key={`${r.to}-${r.itemTitle}`} type="button" className="recipe-list-row" onClick={() => goToResult(r)}>
+                <span>
+                  <strong>{r.itemTitle}</strong>
+                  <span className="muted" style={{ display: 'block', fontSize: 12 }}>
+                    {r.sectionIcon} {r.sectionLabel}
+                  </span>
+                </span>
+              </button>
+            ))
+          ) : (
+            <p className="muted" style={{ margin: '4px 8px' }}>
+              No he encontrado nada para "{searchQuery}".
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="event-list">
+          {NAV_TABS.map((tab) => (
+            <HelpCard
+              key={tab.to}
+              to={tab.to}
+              icon={tab.icon}
+              label={tab.label}
+              summary={SUMMARIES[tab.to] ?? ''}
+              details={HELP_DETAILS[tab.to] ?? []}
+              expanded={expandedTo === tab.to}
+              onToggle={() => setExpandedTo((cur) => (cur === tab.to ? null : tab.to))}
+              highlightedItem={expandedTo === tab.to ? highlightedItem : null}
+              cardRef={(el) => {
+                cardRefs.current[tab.to] = el
+              }}
+            />
+          ))}
+          <HelpCard
+            to={SETTINGS_ENTRY.to}
+            icon={SETTINGS_ENTRY.icon}
+            label={SETTINGS_ENTRY.label}
+            summary={SETTINGS_ENTRY.summary}
+            details={SETTINGS_ENTRY.details}
+            expanded={expandedTo === SETTINGS_ENTRY.to}
+            onToggle={() => setExpandedTo((cur) => (cur === SETTINGS_ENTRY.to ? null : SETTINGS_ENTRY.to))}
+            highlightedItem={expandedTo === SETTINGS_ENTRY.to ? highlightedItem : null}
+            cardRef={(el) => {
+              cardRefs.current[SETTINGS_ENTRY.to] = el
+            }}
+          />
+        </div>
+      )}
     </div>
   )
 }

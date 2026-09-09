@@ -445,7 +445,7 @@ export function MenuSettingsScreen() {
 
   return (
     <div className="screen">
-      <h1>Organizar menú</h1>
+      <h1>Configuración</h1>
 
       <FamilyNameSection />
       <AccountingMonthSection />

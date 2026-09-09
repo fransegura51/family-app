@@ -241,6 +241,67 @@ body {
   width: 100px;
 }
 
+/* Diapositiva "Compra pendiente" con foto real de fondo — petición
+   real: "usa esta imagen como fondo... pon un cuadro de texto en las
+   líneas para poner los productos pendientes". La imagen es 3:2
+   (1536×1024); en vez del alto fijo de 260px de las demás diapositivas
+   (que recortaría la imagen de forma distinta según el ancho de
+   pantalla y desalinearía el texto de las líneas de la libreta), esta
+   diapositiva usa aspect-ratio para que la imagen entera se vea
+   siempre completa y las líneas de texto (posicionadas en % sobre la
+   propia imagen) encajen exactas en cualquier tamaño.
+   Coordenadas de las líneas medidas a mano sobre la imagen original. */
+.home-shopping-banner {
+  height: auto;
+  aspect-ratio: 1536 / 1024;
+  background: none;
+}
+
+.home-shopping-note {
+  position: absolute;
+  inset: 0;
+  container-type: inline-size;
+}
+
+.home-shopping-note-img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  display: block;
+}
+
+.home-shopping-note-line {
+  position: absolute;
+  left: 58%;
+  width: 34%;
+  transform: translateY(-50%);
+  font-size: 3.4cqw;
+  line-height: 1.15;
+  font-weight: 600;
+  color: #33456e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-shopping-note-line-1 {
+  top: 32.2%;
+}
+.home-shopping-note-line-2 {
+  top: 38.9%;
+}
+.home-shopping-note-line-3 {
+  top: 45.5%;
+}
+.home-shopping-note-line-4 {
+  top: 51.4%;
+}
+.home-shopping-note-line-5 {
+  top: 57.8%;
+  font-weight: 500;
+  color: #5b6c94;
+}
+
 /* Ilustraciones animadas de las diapositivas "Compra pendiente" y "Hoy
    en el calendario" — petición real: "más elaboradas... que no se vea
    tan soso". Sin librería, keyframes CSS puros. */

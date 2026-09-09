@@ -9,11 +9,12 @@ import { listUpcomingEvents } from '@/data/calendar'
 import { expandOccurrences } from '@/domain/calendar'
 import { listShoppingItems } from '@/data/shopping'
 import { MemberAvatar } from '@/ui/MemberAvatar'
-import { ShoppingCartArt, TaskArt } from '@/ui/HomeSlideArt'
+import { TaskArt } from '@/ui/HomeSlideArt'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
+import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -256,6 +257,37 @@ function PhotoBanner() {
     </div>
   )
 
+  // Petición real: "quiero que uses esta imagen como fondo para la
+  // compra pendiente... pon un cuadro de texto en las líneas para
+  // poner los productos pendientes cuando hay" — imagen de fondo a
+  // pantalla completa (no icono+texto+ilustración al lado como antes),
+  // con los artículos "escritos" encima de las líneas de la libreta.
+  if (current.kind === 'info' && current.art === 'compra') {
+    return (
+      <div
+        className="home-photo-banner home-shopping-banner"
+        role="button"
+        tabIndex={0}
+        aria-label={current.title}
+        onClick={() => setPaused((p) => !p)}
+        onKeyDown={(e) => e.key === 'Enter' && setPaused((p) => !p)}
+      >
+        <div className="home-shopping-note">
+          <img src={shoppingListBg} alt="" className="home-shopping-note-img" />
+          {current.items.slice(0, 4).map((item, i) => (
+            <div key={i} className={`home-shopping-note-line home-shopping-note-line-${i + 1}`}>
+              {item}
+            </div>
+          ))}
+          {current.items.length > 4 && (
+            <div className="home-shopping-note-line home-shopping-note-line-5">+{current.items.length - 4} más</div>
+          )}
+        </div>
+        {dots}
+      </div>
+    )
+  }
+
   if (current.kind === 'info') {
     return (
       <div
@@ -277,7 +309,9 @@ function PhotoBanner() {
             </ul>
             {current.items.length > 4 && <p className="home-photo-banner-sub">+{current.items.length - 4} más</p>}
           </div>
-          <div className="home-photo-banner-info-art">{current.art === 'compra' ? <ShoppingCartArt /> : <TaskArt />}</div>
+          <div className="home-photo-banner-info-art">
+            <TaskArt />
+          </div>
         </div>
         {dots}
       </div>

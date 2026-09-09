@@ -44,6 +44,7 @@ import type {
   ShoppingItemStatus,
   ShoppingStoreEntry,
 } from '@/domain/types'
+import comprasHeaderImg from '@/assets/compras/compras-header.jpg'
 
 function todayStr(): string {
   const d = new Date()
@@ -139,16 +140,19 @@ export function ShoppingScreen() {
 
   return (
     <div className="screen">
-      <div className="section-title-row">
+      {/* Petición real, con imagen de referencia: "cabecera para la
+          sección de compras, hacer lo mismo que con las anteriores"
+          (mismo tratamiento que "La cocina de Pepa" y Calendario). */}
+      <div className="kitchen-header">
+        <img src={comprasHeaderImg} alt="Compras" className="kitchen-header-img" />
         <button
           type="button"
-          className="section-menu-fab"
+          className="kitchen-header-menu-fab"
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? 'Cerrar menú de Compras' : 'Abrir menú de Compras'}
         >
-          {menuOpen ? '✕' : '☰'}
+          {menuOpen ? '✕' : '☰'} Menú
         </button>
-        <h1>Compras</h1>
       </div>
       {menuOpen && (
         <ComprasMenuDropdown

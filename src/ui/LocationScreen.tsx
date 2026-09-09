@@ -1,5 +1,16 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
-import { ReorderableTabBar } from '@/ui/ReorderableTabBar'
+import {
+  UBICACION_MENU_ITEM_META,
+  ubicacionMenuEntryMeta,
+  isCustomUbicacionMenuKey,
+  loadUbicacionMenuLayout,
+  loadUbicacionPinnedItems,
+  saveUbicacionMenuLayout,
+  saveUbicacionPinnedItems,
+  type UbicacionMenuEntry,
+  type UbicacionMenuGroup,
+  type UbicacionMenuItemKey,
+} from '@/state/ubicacionMenu'
 import {
   addPlace,
   createAutomationRule,
@@ -16,7 +27,7 @@ import {
   toggleAutomationRule,
 } from '@/data/location'
 import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
-import { ConfirmButton } from '@/ui/ConfirmButton'
+import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { distanceMeters, formatDistance } from '@/domain/geo'
 import { getCurrentPosition } from '@/services/geolocation'
 import {
@@ -41,23 +52,457 @@ import type {
   MemberLocationPoint,
 } from '@/domain/types'
 
-const SUB_TABS = ['Ubicación', 'Reglas'] as const
+const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
+function isUbicacionSubTab(key: UbicacionMenuItemKey): key is SubTab {
+  return (SUB_TABS as readonly string[]).includes(key)
+}
+
 export function LocationScreen({ role, profileId }: { role: FamilyRole; profileId: string }) {
-  const [tab, setTab] = useState<SubTab>('Ubicación')
+  const [tab, setTab] = useState<SubTab>('Inicio')
+  // Petición real: "el formato que has hecho ahora para meter todas
+  // las pestañas me gusta mucho, aplícalo a toda la aplicación" —
+  // mismo desplegable ☰ con sacar/meter/editar que Economía.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [pinnedItems, setPinnedItems] = useState<UbicacionMenuItemKey[]>(() => loadUbicacionPinnedItems())
+  const [menuLayout, setMenuLayout] = useState<UbicacionMenuGroup[]>(() => loadUbicacionMenuLayout())
+  const [placeholderNotice, setPlaceholderNotice] = useState(false)
+
+  function persistMenuLayout(next: UbicacionMenuGroup[]) {
+    setMenuLayout(next)
+    saveUbicacionMenuLayout(next)
+  }
+
+  function togglePinnedItem(key: UbicacionMenuItemKey) {
+    setPinnedItems((prev) => {
+      const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
+      saveUbicacionPinnedItems(next)
+      return next
+    })
+  }
+
+  function handleAction(key: UbicacionMenuItemKey) {
+    if (isUbicacionSubTab(key)) setTab(key)
+  }
+
+  const flatMenuEntries = menuLayout.flatMap((g) => g.items)
 
   return (
     <div className="screen">
-      <h1>Ubicación y avisos</h1>
+      <div className="section-title-row">
+        <button
+          type="button"
+          className="section-menu-fab"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label={menuOpen ? 'Cerrar menú de Ubicación' : 'Abrir menú de Ubicación'}
+        >
+          {menuOpen ? '✕' : '☰'}
+        </button>
+        <h1>Ubicación y avisos</h1>
+      </div>
       <p className="muted">
         Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El
         mapa muestra la ruta de las últimas 24h — pasado ese tiempo se borra sola.
       </p>
-      <ReorderableTabBar storageKey="ubicacion" tabs={SUB_TABS} active={tab} onSelect={setTab} />
+      {menuOpen && (
+        <UbicacionMenuDropdown
+          activeTab={tab}
+          layout={menuLayout}
+          onLayoutChange={persistMenuLayout}
+          pinnedItems={pinnedItems}
+          onTogglePin={togglePinnedItem}
+          onActivate={handleAction}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
 
+      {pinnedItems.length > 0 && (
+        <div className="filter-row">
+          {flatMenuEntries
+            .filter((entry) => pinnedItems.includes(entry.key))
+            .map((entry) => {
+              const meta = ubicacionMenuEntryMeta(entry)
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  className={'chip' + (isUbicacionSubTab(entry.key) && tab === entry.key ? ' chip-active' : '')}
+                  onClick={() => {
+                    if (isCustomUbicacionMenuKey(entry.key)) {
+                      setPlaceholderNotice(true)
+                      setTimeout(() => setPlaceholderNotice(false), 2500)
+                    } else {
+                      handleAction(entry.key)
+                    }
+                  }}
+                >
+                  {meta.icon} {meta.label}
+                </button>
+              )
+            })}
+        </div>
+      )}
+      {placeholderNotice && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
+        </p>
+      )}
+
+      {tab === 'Inicio' && <UbicacionInicioTab onNavigate={setTab} />}
       {tab === 'Ubicación' && <LocationTab isAdmin={role === 'admin'} profileId={profileId} />}
       {tab === 'Reglas' && <RulesTab />}
+    </div>
+  )
+}
+
+function UbicacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void }) {
+  const shortcuts: { tab: SubTab; body: string }[] = [
+    { tab: 'Ubicación', body: 'Mapa en vivo con dónde está cada uno que lo comparte, y lugares frecuentes guardados.' },
+    { tab: 'Reglas', body: 'Avisos automáticos al llegar o salir de un sitio, o todos los días a una hora.' },
+  ]
+  return (
+    <div className="event-list">
+      {shortcuts.map((s) => {
+        const meta = UBICACION_MENU_ITEM_META[s.tab]
+        return (
+          <button key={s.tab} type="button" className="section-shortcut-card" onClick={() => onNavigate(s.tab)}>
+            <span className="section-shortcut-card-icon" aria-hidden="true">
+              {meta.icon}
+            </span>
+            <span>
+              <strong>{meta.label}</strong>
+              <p className="muted" style={{ margin: '4px 0 0' }}>
+                {s.body}
+              </p>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Copia de EconomiaMenuDropdown adaptada a las claves de Ubicación —
+// mismas clases CSS .economia-menu-* (genéricas).
+function UbicacionMenuDropdown({
+  activeTab,
+  layout,
+  onLayoutChange,
+  pinnedItems,
+  onTogglePin,
+  onActivate,
+  onClose,
+}: {
+  activeTab: SubTab
+  layout: UbicacionMenuGroup[]
+  onLayoutChange: (next: UbicacionMenuGroup[]) => void
+  pinnedItems: UbicacionMenuItemKey[]
+  onTogglePin: (key: UbicacionMenuItemKey) => void
+  onActivate: (key: UbicacionMenuItemKey) => void
+  onClose: () => void
+}) {
+  const [editMode, setEditMode] = useState(false)
+  const [addingGroup, setAddingGroup] = useState(false)
+  const [addingGroupName, setAddingGroupName] = useState('')
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [addingCustomItem, setAddingCustomItem] = useState(false)
+  const [newItemIcon, setNewItemIcon] = useState('📌')
+  const [newItemLabel, setNewItemLabel] = useState('')
+  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
+  const [editItemIcon, setEditItemIcon] = useState('')
+  const [editItemLabel, setEditItemLabel] = useState('')
+  const [placeholderNotice, setPlaceholderNotice] = useState(false)
+
+  function moveItem(groupId: string, index: number, direction: -1 | 1) {
+    const group = layout.find((g) => g.id === groupId)
+    if (!group) return
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= group.items.length) return
+    const items = [...group.items]
+    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
+    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
+  }
+
+  function moveItemToGroup(itemKey: UbicacionMenuItemKey, fromGroupId: string, toGroupId: string) {
+    if (fromGroupId === toGroupId) return
+    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
+    if (!moved) return
+    onLayoutChange(
+      layout.map((g) => {
+        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
+        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
+        return g
+      }),
+    )
+  }
+
+  function handleAddGroup(e: FormEvent) {
+    e.preventDefault()
+    if (!addingGroupName.trim()) return
+    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
+    setAddingGroupName('')
+    setAddingGroup(false)
+  }
+
+  function handleRenameGroup(id: string) {
+    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
+    setRenamingGroupId(null)
+  }
+
+  function deleteGroup(id: string) {
+    const group = layout.find((g) => g.id === id)
+    const rest = layout.filter((g) => g.id !== id)
+    if (!group || rest.length === 0) return
+    const [first, ...others] = rest
+    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
+  }
+
+  function handleAddCustomItem(e: FormEvent) {
+    e.preventDefault()
+    if (!newItemLabel.trim()) return
+    const entry: UbicacionMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
+    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
+    setNewItemIcon('📌')
+    setNewItemLabel('')
+    setAddingCustomItem(false)
+  }
+
+  function handleSaveItem(groupId: string, key: UbicacionMenuItemKey) {
+    onLayoutChange(
+      layout.map((g) =>
+        g.id === groupId
+          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
+          : g,
+      ),
+    )
+    setEditingItemKey(null)
+  }
+
+  function deleteItem(groupId: string, key: UbicacionMenuItemKey) {
+    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
+  }
+
+  function handleItemActivate(entry: UbicacionMenuEntry) {
+    if (isCustomUbicacionMenuKey(entry.key)) {
+      setPlaceholderNotice(true)
+      setTimeout(() => setPlaceholderNotice(false), 2500)
+      return
+    }
+    onActivate(entry.key)
+    onClose()
+  }
+
+  return (
+    <div className="economia-menu-dropdown">
+      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
+        {editMode ? '✓ Listo' : '✏️ Editar'}
+      </button>
+
+      {layout.map((group) => (
+        <div key={group.id} className="economia-menu-group">
+          {(group.name || editMode) &&
+            (renamingGroupId === group.id ? (
+              <form
+                className="inline-fields"
+                style={{ margin: '4px 4px 6px' }}
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleRenameGroup(group.id)
+                }}
+              >
+                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
+                <button type="submit">Guardar</button>
+              </form>
+            ) : (
+              <div className="economia-menu-group-title">
+                <span>{group.name ?? 'Sin categoría'}</span>
+                {editMode && (
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ padding: '2px 6px' }}
+                      onClick={() => {
+                        setRenamingGroupId(group.id)
+                        setRenameValue(group.name ?? '')
+                      }}
+                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
+                    >
+                      ✎
+                    </button>
+                    {layout.length > 1 && (
+                      <ConfirmIconButton
+                        icon="✕"
+                        className="link-button"
+                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
+                        onConfirm={() => deleteGroup(group.id)}
+                      />
+                    )}
+                  </span>
+                )}
+              </div>
+            ))}
+
+          {group.items.map((entry, i) => {
+            const meta = ubicacionMenuEntryMeta(entry)
+            const isTab = isUbicacionSubTab(entry.key)
+            const isCustom = isCustomUbicacionMenuKey(entry.key)
+
+            if (editMode && editingItemKey === entry.key) {
+              return (
+                <form
+                  key={entry.key}
+                  className="inline-fields"
+                  style={{ margin: '2px 4px' }}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleSaveItem(group.id, entry.key)
+                  }}
+                >
+                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
+                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
+                  <button type="submit">Guardar</button>
+                </form>
+              )
+            }
+
+            return (
+              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
+                {editMode ? (
+                  <span className="economia-menu-item">
+                    <span aria-hidden="true">{meta.icon}</span>
+                    {meta.label}
+                  </span>
+                ) : (
+                  <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
+                    <span aria-hidden="true">{meta.icon}</span>
+                    {meta.label}
+                  </button>
+                )}
+
+                {editMode ? (
+                  <span className="economia-menu-edit-controls">
+                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ padding: '2px 6px' }}
+                      disabled={i === group.items.length - 1}
+                      onClick={() => moveItem(group.id, i, 1)}
+                      aria-label={`Bajar ${meta.label}`}
+                    >
+                      ↓
+                    </button>
+                    <select
+                      value={group.id}
+                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
+                      aria-label={`Mover ${meta.label} a otra categoría`}
+                    >
+                      {layout.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name ?? 'Sin categoría'}
+                        </option>
+                      ))}
+                    </select>
+                    {isCustom && (
+                      <>
+                        <button
+                          type="button"
+                          className="link-button"
+                          style={{ padding: '2px 6px' }}
+                          onClick={() => {
+                            setEditingItemKey(entry.key)
+                            setEditItemIcon(meta.icon)
+                            setEditItemLabel(meta.label)
+                          }}
+                          aria-label={`Renombrar ${meta.label}`}
+                        >
+                          ✎
+                        </button>
+                        <ConfirmIconButton
+                          icon="✕"
+                          className="link-button"
+                          ariaLabel={`Eliminar ${meta.label}`}
+                          onConfirm={() => deleteItem(group.id, entry.key)}
+                        />
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="economia-menu-pin"
+                    onClick={() => onTogglePin(entry.key)}
+                    aria-label={pinnedItems.includes(entry.key) ? `Quitar ${meta.label} de la pantalla de Ubicación` : `Sacar ${meta.label} a la pantalla de Ubicación`}
+                  >
+                    {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
+
+      {placeholderNotice && (
+        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
+          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
+        </p>
+      )}
+
+      {editMode && (
+        <>
+          {addingCustomItem ? (
+            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
+              <input
+                type="text"
+                value={newItemIcon}
+                onChange={(e) => setNewItemIcon(e.target.value)}
+                style={{ width: 48, textAlign: 'center', flex: 'none' }}
+                maxLength={4}
+                aria-label="Icono"
+              />
+              <input
+                type="text"
+                value={newItemLabel}
+                onChange={(e) => setNewItemLabel(e.target.value)}
+                placeholder="Nombre del acceso"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button type="submit">Crear</button>
+            </form>
+          ) : (
+            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
+              <span aria-hidden="true">📌</span>
+              Nuevo acceso
+            </button>
+          )}
+
+          {addingGroup ? (
+            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
+              <input
+                type="text"
+                value={addingGroupName}
+                onChange={(e) => setAddingGroupName(e.target.value)}
+                placeholder="Nombre de la categoría"
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button type="submit">Crear</button>
+            </form>
+          ) : (
+            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
+              <span aria-hidden="true">➕</span>
+              Nueva categoría
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 }

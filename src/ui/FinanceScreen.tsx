@@ -3888,22 +3888,23 @@ function ReceiptForm({
       {/* Petición real: "el ticket, ¿dónde quiero guardarlo? en
           Mercadona, en Hiperber, en Aldi, donde yo quiera" / "¿puedo yo
           decir dónde se meten? porque H Rafal II e Hiperber es lo
-          mismo" — tocar la carpeta de destino en vez de escribirla. */}
+          mismo" — tocar la carpeta de destino en vez de escribirla.
+          Antes era una fila de chips (uno por tienda) que ocupaba toda
+          la pantalla con muchas tiendas — petición real: "ahí me haces
+          un desplegable y me pones todas las tiendas que hay arriba me
+          las metes dentro del desplegable, así damos con la aplicación
+          más ordenada". */}
       {existingFolders.length > 0 && (
         <label>
           {mode === 'add' ? '¿Dónde guardo este ticket?' : 'Mover a esta carpeta'}
-          <div className="filter-row" style={{ margin: '4px 0' }}>
+          <select value={existingFolders.includes(store) ? store : ''} onChange={(e) => e.target.value && setStore(e.target.value)}>
+            <option value="">— Elegir tienda —</option>
             {existingFolders.map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={'chip' + (store === f ? ' chip-active' : '')}
-                onClick={() => setStore(f)}
-              >
+              <option key={f} value={f}>
                 {f}
-              </button>
+              </option>
             ))}
-          </div>
+          </select>
         </label>
       )}
       <label>

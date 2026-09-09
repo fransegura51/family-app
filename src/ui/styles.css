@@ -275,10 +275,10 @@ body {
   left: 58%;
   width: 34%;
   /* Petición real: "ponle la alineación ladeada conforme van las
-     líneas del bloque de notas" — la libreta de la foto está girada
-     unos 4.5°, subiendo de izquierda a derecha (medido a mano sobre
-     la imagen original). */
-  transform: translateY(-50%) rotate(-4.5deg);
+     líneas del bloque de notas" — corregido con medición por píxel
+     sobre la imagen real (antes iba a ojo y se quedaba corto): la
+     libreta sube 5.13° de izquierda a derecha. */
+  transform: translateY(-50%) rotate(-5.13deg);
   transform-origin: left center;
   font-size: 3.4cqw;
   line-height: 1.15;
@@ -290,28 +290,27 @@ body {
 }
 
 .home-shopping-note-line-1 {
-  top: 32.2%;
+  top: 33.6%;
 }
 .home-shopping-note-line-2 {
-  top: 38.9%;
+  top: 39.8%;
 }
 .home-shopping-note-line-3 {
-  top: 45.5%;
+  top: 46.1%;
 }
 .home-shopping-note-line-4 {
-  top: 51.4%;
+  top: 52.4%;
 }
 .home-shopping-note-line-5 {
-  top: 57.8%;
+  top: 58.8%;
   font-weight: 500;
   color: #5b6c94;
 }
 
 /* Diapositiva "Hoy en el calendario" — mismo tratamiento que la de
    compra, con su propia foto (petición real: "ahora haz lo mismo con
-   el del calendario"). Esta pizarra apenas está girada (~2.5°, medido
-   igual que la libreta) y el texto empieza a la izquierda en vez de
-   a la derecha, porque así está compuesta esta foto. */
+   el del calendario"). El texto empieza a la izquierda en vez de a la
+   derecha, porque así está compuesta esta foto. */
 .home-agenda-banner {
   height: auto;
   aspect-ratio: 1536 / 1024;
@@ -333,9 +332,12 @@ body {
 
 .home-agenda-note-line {
   position: absolute;
-  left: 10.5%;
-  width: 33%;
-  transform: translateY(-50%) rotate(-2.5deg);
+  left: 16.3%;
+  width: 27%;
+  /* Medido por píxel sobre la imagen real, igual que la de compra —
+     esta pizarra sube 4.87° (antes se había estimado a ojo en solo
+     2.5°, por eso se veía demasiado plana). */
+  transform: translateY(-50%) rotate(-4.87deg);
   transform-origin: left center;
   font-size: 3cqw;
   line-height: 1.15;
@@ -347,19 +349,19 @@ body {
 }
 
 .home-agenda-note-line-1 {
-  top: 37%;
+  top: 30.8%;
 }
 .home-agenda-note-line-2 {
-  top: 42.8%;
+  top: 37%;
 }
 .home-agenda-note-line-3 {
-  top: 48.5%;
+  top: 42.4%;
 }
 .home-agenda-note-line-4 {
-  top: 54.2%;
+  top: 47.6%;
 }
 .home-agenda-note-line-5 {
-  top: 60%;
+  top: 52.7%;
   font-weight: 500;
   color: #5b6c94;
 }

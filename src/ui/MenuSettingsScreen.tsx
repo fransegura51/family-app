@@ -2,7 +2,15 @@ import { FormEvent, useEffect, useState } from 'react'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { getFamilyName, updateFamilyName } from '@/data/family'
-import { clearOwnPin, hasOwnPin, setOwnPin } from '@/data/appLock'
+import {
+  clearOwnPin,
+  deleteWebauthnCredential,
+  hasOwnPin,
+  listWebauthnCredentials,
+  registerPasskey,
+  setOwnPin,
+  type WebauthnCredentialInfo,
+} from '@/data/appLock'
 
 const PINNED_COUNT = 4
 
@@ -98,15 +106,52 @@ function AppLockSection() {
   const [pinConfirm, setPinConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [passkeys, setPasskeys] = useState<WebauthnCredentialInfo[]>([])
+  const [addingPasskey, setAddingPasskey] = useState(false)
+  const [passkeyLabel, setPasskeyLabel] = useState('')
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+  const [passkeyError, setPasskeyError] = useState<string | null>(null)
 
   function reload() {
     hasOwnPin()
       .then(setEnabled)
       .catch(() => {})
       .finally(() => setLoading(false))
+    listWebauthnCredentials()
+      .then(setPasskeys)
+      .catch(() => {})
   }
 
   useEffect(reload, [])
+
+  async function handleAddPasskey(e: FormEvent) {
+    e.preventDefault()
+    setPasskeyBusy(true)
+    setPasskeyError(null)
+    try {
+      await registerPasskey(passkeyLabel.trim() || 'Este dispositivo')
+      setAddingPasskey(false)
+      setPasskeyLabel('')
+      setPasskeys(await listWebauthnCredentials())
+    } catch (err) {
+      setPasskeyError(err instanceof Error ? err.message : 'No se pudo activar la huella/Face ID')
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
+  async function handleDeletePasskey(id: string) {
+    setPasskeyBusy(true)
+    setPasskeyError(null)
+    try {
+      await deleteWebauthnCredential(id)
+      setPasskeys(await listWebauthnCredentials())
+    } catch (err) {
+      setPasskeyError(err instanceof Error ? err.message : 'No se pudo quitar')
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
 
   function startSetup() {
     setPin('')
@@ -222,6 +267,64 @@ function AppLockSection() {
             <button type="button" className="link-button" onClick={startSetup}>
               Activar PIN
             </button>
+          )}
+        </div>
+      )}
+
+      {enabled && (
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-color, #eee)' }}>
+          <strong style={{ fontSize: 14 }}>👆 Huella / Face ID</strong>
+          <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+            Capa opcional además del PIN — si falla o la quitas, siempre puedes seguir usando el PIN.
+          </p>
+
+          {passkeys.length > 0 && (
+            <div className="event-list" style={{ marginTop: 8 }}>
+              {passkeys.map((p) => (
+                <div key={p.id} className="inline-fields">
+                  <span className="muted" style={{ flex: 1 }}>{p.deviceLabel || 'Dispositivo'}</span>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => handleDeletePasskey(p.id)}
+                    disabled={passkeyBusy}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {addingPasskey ? (
+            <form onSubmit={handleAddPasskey} className="member-form" style={{ marginTop: 8 }}>
+              <label>
+                Nombre de este dispositivo (opcional)
+                <input
+                  type="text"
+                  value={passkeyLabel}
+                  onChange={(e) => setPasskeyLabel(e.target.value)}
+                  placeholder="Mi móvil"
+                  autoFocus
+                />
+              </label>
+              {passkeyError && <p className="error">{passkeyError}</p>}
+              <div className="inline-fields">
+                <button type="submit" disabled={passkeyBusy}>
+                  {passkeyBusy ? 'Comprobando…' : 'Activar'}
+                </button>
+                <button type="button" className="link-button" onClick={() => setAddingPasskey(false)}>
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ marginTop: 8 }}>
+              <button type="button" className="link-button" onClick={() => setAddingPasskey(true)}>
+                + Activar huella/Face ID en este dispositivo
+              </button>
+              {passkeyError && <p className="error">{passkeyError}</p>}
+            </div>
           )}
         </div>
       )}

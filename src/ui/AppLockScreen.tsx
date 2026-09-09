@@ -1,5 +1,5 @@
-import { FormEvent, useState } from 'react'
-import { verifyOwnPin } from '@/data/appLock'
+import { FormEvent, useEffect, useState } from 'react'
+import { authenticateWithPasskey, listWebauthnCredentials, verifyOwnPin } from '@/data/appLock'
 
 // Pantalla de bloqueo — solo se muestra si esta persona activó un PIN
 // en Ajustes (ver AppLockSection en MenuSettingsScreen.tsx); si nunca
@@ -8,6 +8,33 @@ export function AppLockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
+  const [hasPasskey, setHasPasskey] = useState(false)
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+
+  useEffect(() => {
+    listWebauthnCredentials()
+      .then((creds) => setHasPasskey(creds.length > 0))
+      .catch(() => {})
+  }, [])
+
+  async function handlePasskey() {
+    setPasskeyBusy(true)
+    setError(null)
+    try {
+      const ok = await authenticateWithPasskey()
+      if (ok) {
+        onUnlock()
+        return
+      }
+      setError('No se ha podido comprobar la huella')
+    } catch {
+      // Cancelado por la persona, o el dispositivo no dejó completar el
+      // gesto — no es un error de PIN, así que no se cuenta como intento
+      // fallido; simplemente se queda en la pantalla de bloqueo.
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -55,6 +82,17 @@ export function AppLockScreen({ onUnlock }: { onUnlock: () => void }) {
             {checking ? 'Comprobando…' : 'Desbloquear'}
           </button>
         </form>
+        {hasPasskey && (
+          <button
+            type="button"
+            className="link-button"
+            onClick={handlePasskey}
+            disabled={passkeyBusy}
+            style={{ width: '100%', marginTop: 8 }}
+          >
+            {passkeyBusy ? 'Comprobando…' : '👆 Usar huella / Face ID'}
+          </button>
+        )}
         <p className="muted app-lock-hint">
           ¿Has olvidado el PIN? Pide a un administrador de la familia que te lo reinicie desde Familia.
         </p>

@@ -5,6 +5,7 @@ import { nextBirthday, sortByDaysUntil, type UpcomingBirthday } from '@/domain/b
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { Contact, FamilyMember } from '@/domain/types'
 import cumpleanosHeaderImg from '@/assets/cumpleanos/cumpleanos-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 interface UpcomingItem extends UpcomingBirthday {
   name: string
@@ -57,7 +58,7 @@ export function BirthdaysScreen() {
       else if (item.contact) await setContactBirthdayFavorite(item.contact.id, !item.favorite)
       await reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo actualizar')
+      setError(errorMessage(e, 'No se pudo actualizar'))
     }
   }
 
@@ -68,7 +69,7 @@ export function BirthdaysScreen() {
       setEditingId(null)
       await reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo guardar')
+      setError(errorMessage(e, 'No se pudo guardar'))
     }
   }
 
@@ -79,7 +80,7 @@ export function BirthdaysScreen() {
       else if (item.contact) await updateContactBirthDate(item.contact.id, null)
       await reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo quitar')
+      setError(errorMessage(e, 'No se pudo quitar'))
     }
   }
 

@@ -4,6 +4,7 @@
 // en base de datos ocurren aquí, bajo la sesión del propio usuario.
 import { supabase } from '@/data/supabaseClient'
 import { parseIcs } from '@/domain/icsParser'
+import { errorMessage } from '@/domain/errorMessage'
 
 export interface ExternalCalendarFeed {
   id: string
@@ -268,7 +269,7 @@ export async function syncFeed(feedId: string): Promise<{ count: number }> {
 
     return { count: parsed.length }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Error al sincronizar'
+    const message = errorMessage(err, 'Error al sincronizar')
     await supabase.from('external_calendar_feeds').update({ last_sync_error: message }).eq('id', feedId)
     throw err
   }

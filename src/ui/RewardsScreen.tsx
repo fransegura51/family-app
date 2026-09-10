@@ -8,6 +8,7 @@ import { memberPointsBalance } from '@/domain/rewards'
 import type { FamilyMember, Reward, RewardRedemption } from '@/domain/types'
 import type { EventCompletion } from '@/data/calendar'
 import puntosHeaderImg from '@/assets/puntos/puntos-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 // Antes esto era la pestaña "Tareas" (lista de tareas + recompensas
 // juntas). Las tareas ahora son eventos del calendario (petición real:
@@ -51,7 +52,7 @@ export function RewardsScreen() {
       await redeemReward(reward.id, activeMemberId, reward.pointsCost)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo canjear la recompensa')
+      setError(errorMessage(err, 'No se pudo canjear la recompensa'))
     }
   }
 
@@ -136,7 +137,7 @@ function AddRewardForm({ onAdded }: { onAdded: () => void }) {
       setTitle('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear la recompensa')
+      setError(errorMessage(err, 'No se pudo crear la recompensa'))
     } finally {
       setSaving(false)
     }

@@ -14,6 +14,7 @@ import {
   type WebauthnCredentialInfo,
 } from '@/data/appLock'
 import configuracionHeaderImg from '@/assets/configuracion/configuracion-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 const PINNED_COUNT = 4
 
@@ -49,7 +50,7 @@ function FamilyNameSection() {
       setName(draft.trim())
       setEditing(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar — puede que solo un admin de la familia pueda cambiar el nombre.')
+      setError(errorMessage(err, 'No se pudo guardar — puede que solo un admin de la familia pueda cambiar el nombre.'))
     } finally {
       setSaving(false)
     }
@@ -122,7 +123,7 @@ function AccountingMonthSection() {
     try {
       await updateFinanceMonthStartDay(next)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -224,7 +225,7 @@ function AppLockSection() {
       setPasskeyLabel('')
       setPasskeys(await listWebauthnCredentials())
     } catch (err) {
-      setPasskeyError(err instanceof Error ? err.message : 'No se pudo activar la huella/Face ID')
+      setPasskeyError(errorMessage(err, 'No se pudo activar la huella/Face ID'))
     } finally {
       setPasskeyBusy(false)
     }
@@ -237,7 +238,7 @@ function AppLockSection() {
       await deleteWebauthnCredential(id)
       setPasskeys(await listWebauthnCredentials())
     } catch (err) {
-      setPasskeyError(err instanceof Error ? err.message : 'No se pudo quitar')
+      setPasskeyError(errorMessage(err, 'No se pudo quitar'))
     } finally {
       setPasskeyBusy(false)
     }
@@ -267,7 +268,7 @@ function AppLockSection() {
       setEnabled(true)
       setMode('idle')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo activar el PIN')
+      setError(errorMessage(err, 'No se pudo activar el PIN'))
     } finally {
       setSaving(false)
     }
@@ -281,7 +282,7 @@ function AppLockSection() {
       setEnabled(false)
       setMode('idle')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo quitar el PIN')
+      setError(errorMessage(err, 'No se pudo quitar el PIN'))
     } finally {
       setSaving(false)
     }

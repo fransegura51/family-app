@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { startGoogleConnect } from '@/data/googleCalendarSync'
+import { errorMessage } from '@/domain/errorMessage'
 
 // Se enseña UNA vez a cada persona nueva que entra en la app (marcado
 // en este móvil, por perfil) — petición real, pensando en cuando se
@@ -53,7 +54,7 @@ export function CalendarOnboardingModal({ profileId }: { profileId: string }) {
     try {
       await startGoogleConnect()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err, String(err)))
       setConnecting(false)
     }
   }

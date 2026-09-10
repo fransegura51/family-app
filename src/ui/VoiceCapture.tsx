@@ -12,6 +12,7 @@ import {
   listFeeds,
 } from '@/data/externalCalendarFeeds'
 import { splitEntries } from '@/domain/quickCapture'
+import { errorMessage } from '@/domain/errorMessage'
 import { expandOccurrences } from '@/domain/calendar'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
@@ -790,7 +791,7 @@ export function VoiceCapture() {
       await respond(`Apuntado en ${DESTINATION_INFO.compras.label}${storeSuffix}: ${entries.join(', ')}`)
     } catch (err) {
       setStatus('error')
-      const detail = err instanceof Error ? err.message : String(err)
+      const detail = errorMessage(err, String(err))
       await respond(`No he podido hacerlo: ${detail}`)
     }
   }

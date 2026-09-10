@@ -51,6 +51,7 @@ import {
 } from '@/data/bodyTracking'
 import type { BodyMeasurement, BodyPhoto, FamilyMember, FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
 import kitchenHeaderImg from '@/assets/alimentacion/kitchen-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 const SUB_TABS = ['Inicio', 'Menú', 'Recetas', 'Registro', 'Peso'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -987,7 +988,7 @@ function PickIngredientsModal({
       await addRecipeIngredientsToShoppingList(recipe, selections)
       onDone(selections.length)
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'No se pudo generar la lista')
+      onError(errorMessage(err, 'No se pudo generar la lista'))
     } finally {
       setSaving(false)
     }
@@ -1120,7 +1121,7 @@ function RecipeForm({
     try {
       setImagePath(await uploadRecipePhoto(file))
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : 'No se pudo subir la foto')
+      setImageError(errorMessage(err, 'No se pudo subir la foto'))
     } finally {
       setImageBusy(false)
     }
@@ -1134,7 +1135,7 @@ function RecipeForm({
       setImagePath(await fetchImageFromUrl(imageUrlInput.trim()))
       setImageUrlInput('')
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : 'No se pudo descargar esa imagen')
+      setImageError(errorMessage(err, 'No se pudo descargar esa imagen'))
     } finally {
       setImageBusy(false)
     }
@@ -1159,7 +1160,7 @@ function RecipeForm({
       setUrlImportStatus('idle')
     } catch (err) {
       setUrlImportStatus('error')
-      setUrlImportError(err instanceof Error ? err.message : 'No se pudo importar la receta')
+      setUrlImportError(errorMessage(err, 'No se pudo importar la receta'))
     }
   }
 
@@ -1293,7 +1294,7 @@ function RecipeForm({
       }
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar la receta')
+      setError(errorMessage(err, 'No se pudo guardar la receta'))
     } finally {
       setSaving(false)
     }
@@ -1732,7 +1733,7 @@ function AddFoodLogForm({
       setSelectedIds([activeMemberId])
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo registrar')
+      setError(errorMessage(err, 'No se pudo registrar'))
     } finally {
       setSaving(false)
     }
@@ -2067,7 +2068,7 @@ function AddMeasurementForm({ memberId, onAdded }: { memberId: string; onAdded: 
       setLegCm('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -2129,7 +2130,7 @@ function AddPhotoFormBody({ memberId, onAdded }: { memberId: string; onAdded: ()
       setCaption('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo subir la foto')
+      setError(errorMessage(err, 'No se pudo subir la foto'))
     } finally {
       setSaving(false)
     }

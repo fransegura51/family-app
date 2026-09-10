@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { listAppUsage, type AppUsageRow } from '@/data/appUsage'
 import { deleteClientErrors, listClientErrors, type ClientErrorRow } from '@/data/errorReports'
+import { deleteFamilyInvite, generateFamilyInvite, listFamilyInvites, type FamilyInvite } from '@/data/familyInvites'
+import { errorMessage } from '@/domain/errorMessage'
 
 function formatDate(iso: string | null): string {
   if (!iso) return 'Nunca'
@@ -33,12 +35,48 @@ export function AdminUsageScreen() {
     listClientErrors().then(setClientErrors).catch(() => setClientErrors([]))
   }
 
+  // Petición real: dar entrada a las primeras familias sin compartir el
+  // código maestro — códigos de invitación de un solo uso (ver 0093).
+  const [invites, setInvites] = useState<FamilyInvite[]>([])
+  const [inviteNote, setInviteNote] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [lastCode, setLastCode] = useState<string | null>(null)
+
+  function reloadInvites() {
+    listFamilyInvites().then(setInvites).catch(() => setInvites([]))
+  }
+
+  async function handleGenerateInvite() {
+    setGenerating(true)
+    setError(null)
+    try {
+      const code = await generateFamilyInvite(inviteNote)
+      setLastCode(code)
+      setInviteNote('')
+      reloadInvites()
+    } catch (e) {
+      setError(errorMessage(e, 'No se pudo generar el código'))
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  async function handleDeleteInvite(code: string) {
+    try {
+      await deleteFamilyInvite(code)
+      reloadInvites()
+    } catch (e) {
+      setError(errorMessage(e, 'No se pudo borrar el código'))
+    }
+  }
+
   useEffect(() => {
     listAppUsage()
       .then(setRows)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
     reloadErrors()
+    reloadInvites()
   }, [])
 
   async function clearErrors(ids: string[]) {
@@ -46,7 +84,7 @@ export function AdminUsageScreen() {
       await deleteClientErrors(ids)
       reloadErrors()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudieron borrar')
+      setError(errorMessage(e, 'No se pudieron borrar'))
     }
   }
 
@@ -117,6 +155,57 @@ export function AdminUsageScreen() {
             ✕ Borrar todos
           </button>
         </>
+      )}
+
+      <h2 className="section-title">🔑 Códigos de invitación para familias nuevas</h2>
+      <p className="muted">
+        Cada código vale para crear UNA familia y caduca a los 30 días. Se lo das a la familia y ellos lo escriben en
+        "Código de acceso" al crear la suya.
+      </p>
+      <div className="inline-fields">
+        <input
+          type="text"
+          value={inviteNote}
+          onChange={(e) => setInviteNote(e.target.value)}
+          placeholder="Nota: Familia López (amigos de Paco)"
+          style={{ flex: 1 }}
+        />
+        <button type="button" disabled={generating} onClick={handleGenerateInvite}>
+          {generating ? 'Generando…' : 'Generar código'}
+        </button>
+      </div>
+      {lastCode && (
+        <p className="points-badge" style={{ fontSize: 18, letterSpacing: 2 }}>
+          {lastCode}
+        </p>
+      )}
+      {invites.length > 0 && (
+        <div className="event-list">
+          {invites.map((inv) => {
+            const usedBy = inv.usedByFamily ? families.get(inv.usedByFamily)?.name ?? 'una familia' : null
+            const expired = !inv.usedAt && new Date(inv.expiresAt).getTime() < Date.now()
+            return (
+              <div key={inv.code} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <strong style={{ letterSpacing: 1 }}>{inv.code}</strong>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {usedBy ? `✅ Usado por ${usedBy}` : expired ? '⏰ Caducado' : '🟢 Disponible'}
+                  </span>
+                </div>
+                {inv.note && <p className="muted" style={{ margin: 0, fontSize: 13 }}>{inv.note}</p>}
+                <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                  Creado {formatDate(inv.createdAt)}
+                  {!inv.usedAt && ` · caduca el ${new Date(inv.expiresAt).toLocaleDateString('es-ES')}`}
+                </p>
+                {!inv.usedAt && (
+                  <button type="button" className="link-button" onClick={() => handleDeleteInvite(inv.code)}>
+                    ✕ Anular
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
 
       <h2 className="section-title">Familias y cuentas</h2>

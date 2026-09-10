@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { createFamily, joinFamilyWithCode } from '@/data/family'
+import { errorMessage } from '@/domain/errorMessage'
 
 type Mode = 'choose' | 'create' | 'join'
 
@@ -50,7 +51,7 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
       await createFamily(familyName, displayName, accessCode)
       await onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear la familia')
+      setError(errorMessage(err, 'Error al crear la familia'))
     } finally {
       setLoading(false)
     }
@@ -119,7 +120,7 @@ function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBac
       await joinFamilyWithCode(code, displayName)
       await onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Código no válido o caducado')
+      setError(errorMessage(err, 'Código no válido o caducado'))
     } finally {
       setLoading(false)
     }

@@ -7,6 +7,7 @@ import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
 import contactosHeaderImg from '@/assets/contactos/contactos-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 // Categorías de partida — ya no es una lista cerrada: cualquier
 // contacto puede llevar una categoría nueva escrita a mano (petición
@@ -249,7 +250,7 @@ function EditContactForm({
       await updateContact(contact.id, { name, category, phone, email, notes, birthDate: birthDate || null })
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -323,7 +324,7 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
       setSelected(new Set(results.map((_, i) => i)))
       setPickedOnce(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo abrir la agenda del teléfono')
+      setError(errorMessage(err, 'No se pudo abrir la agenda del teléfono'))
     } finally {
       setPicking(false)
     }
@@ -351,7 +352,7 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
       setSelected(new Set())
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron guardar los contactos')
+      setError(errorMessage(err, 'No se pudieron guardar los contactos'))
     } finally {
       setSaving(false)
     }
@@ -488,7 +489,7 @@ function ImportVcfContactsForm({ existingContacts, onAdded }: { existingContacts
       setCandidates([])
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron importar')
+      setError(errorMessage(err, 'No se pudieron importar'))
     } finally {
       setSaving(false)
     }
@@ -616,7 +617,7 @@ function ImportIcsBirthdaysForm({ existingContacts, onAdded }: { existingContact
       setCandidates([])
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron importar')
+      setError(errorMessage(err, 'No se pudieron importar'))
     } finally {
       setSaving(false)
     }
@@ -701,7 +702,7 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
       setBirthDate('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir')
+      setError(errorMessage(err, 'No se pudo añadir'))
     } finally {
       setSaving(false)
     }

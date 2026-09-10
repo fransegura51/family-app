@@ -45,6 +45,7 @@ import type {
   ShoppingStoreEntry,
 } from '@/domain/types'
 import comprasHeaderImg from '@/assets/compras/compras-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 function todayStr(): string {
   const d = new Date()
@@ -711,7 +712,7 @@ function ShoppingListTab() {
       await updateShoppingItemStatus(id, status)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo actualizar')
+      setError(errorMessage(err, 'No se pudo actualizar'))
     }
   }
 
@@ -724,7 +725,7 @@ function ShoppingListTab() {
       await deleteShoppingItems(boughtIds)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo finalizar la compra')
+      setError(errorMessage(err, 'No se pudo finalizar la compra'))
     }
   }
 
@@ -944,7 +945,7 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
       setNewName('')
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir la tienda')
+      setError(errorMessage(err, 'No se pudo añadir la tienda'))
     } finally {
       setSaving(false)
     }
@@ -958,7 +959,7 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
       setEditingId(null)
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo renombrar')
+      setError(errorMessage(err, 'No se pudo renombrar'))
     }
   }
 
@@ -968,7 +969,7 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
       await deleteShoppingStore(id)
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo quitar')
+      setError(errorMessage(err, 'No se pudo quitar'))
     }
   }
 
@@ -1248,7 +1249,7 @@ function AddShoppingItemForm({
       // hace falta volver a escribirla cada vez.
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir')
+      setError(errorMessage(err, 'No se pudo añadir'))
     } finally {
       setSaving(false)
     }
@@ -1502,7 +1503,7 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
       setAdded((prev) => new Set(prev).add(productId))
       setAddingToList(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir a la lista')
+      setError(errorMessage(err, 'No se pudo añadir a la lista'))
     }
   }
 

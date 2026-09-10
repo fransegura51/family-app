@@ -90,6 +90,7 @@ import type {
 } from '@/domain/types'
 import economiaHeaderImg from '@/assets/economia/economia-header.jpg'
 import pepaConclusionsImg from '@/assets/economia/pepa-conclusiones.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
 // "estoy pensando si pasar registro alimentación y tickets a compra")
@@ -1012,7 +1013,7 @@ function BankTab({
       setNotice(`✓ ${result.totalSynced} movimiento${result.totalSynced === 1 ? '' : 's'} sincronizado${result.totalSynced === 1 ? '' : 's'}.`)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err, String(err)))
     } finally {
       setSyncing(false)
     }
@@ -1248,7 +1249,7 @@ function ConnectBankForm({
     try {
       await startBankConnection(aspsp.name, aspsp.country, iban)
     } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
+      onError(errorMessage(err, String(err)))
       onConnecting(false)
     }
   }
@@ -2765,7 +2766,7 @@ function EditExpenseInline({
       })
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -3221,7 +3222,7 @@ function AddExpenseToAnyCategoryInline({
       setStore('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir')
+      setError(errorMessage(err, 'No se pudo añadir'))
     } finally {
       setSaving(false)
     }
@@ -3361,7 +3362,7 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
       setName('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir la tienda')
+      setError(errorMessage(err, 'No se pudo añadir la tienda'))
     } finally {
       setSaving(false)
     }
@@ -3433,7 +3434,7 @@ export function ReceiptsTab() {
       await deleteReceipt(receipt)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar')
+      setError(errorMessage(err, 'No se pudo borrar'))
     }
   }
 
@@ -4060,7 +4061,7 @@ function ReceiptForm({
       setOcrStatus('done')
     } catch (err) {
       setOcrStatus('error')
-      setError(err instanceof Error ? err.message : 'No se pudo leer el ticket')
+      setError(errorMessage(err, 'No se pudo leer el ticket'))
     }
   }
 
@@ -4146,7 +4147,7 @@ function ReceiptForm({
       }
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -4759,7 +4760,7 @@ function OverallBudgetCard({
       setAmount('')
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -4988,7 +4989,7 @@ function AddIncomeInline({
       setAmount('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir')
+      setError(errorMessage(err, 'No se pudo añadir'))
     } finally {
       setSaving(false)
     }
@@ -5531,7 +5532,7 @@ function LogCategoryExpenseModal({
       setAmount('')
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir')
+      setError(errorMessage(err, 'No se pudo añadir'))
     } finally {
       setSaving(false)
     }
@@ -5542,7 +5543,7 @@ function LogCategoryExpenseModal({
       await deleteExpense(id)
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo eliminar')
+      setError(errorMessage(err, 'No se pudo eliminar'))
     }
   }
 
@@ -5634,7 +5635,7 @@ function EditCategoryExpenseRow({
       await updateExpense(expense.id, { date, amount: Number(amount) })
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -5801,7 +5802,7 @@ function AddBudgetCategoryInline({
       iconTouchedRef.current = false
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir la categoría')
+      setError(errorMessage(err, 'No se pudo añadir la categoría'))
     } finally {
       setSaving(false)
     }
@@ -5918,7 +5919,7 @@ function AddBudgetForm({
       setAmount('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear')
+      setError(errorMessage(err, 'No se pudo crear'))
     } finally {
       setSaving(false)
     }
@@ -6122,7 +6123,7 @@ function AddGoalForm({ memberId, onAdded }: { memberId: string; onAdded: () => v
       setTargetAmount('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear')
+      setError(errorMessage(err, 'No se pudo crear'))
     } finally {
       setSaving(false)
     }
@@ -6177,7 +6178,7 @@ function AddTransactionForm({
       setDescription('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo registrar')
+      setError(errorMessage(err, 'No se pudo registrar'))
     } finally {
       setSaving(false)
     }

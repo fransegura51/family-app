@@ -1,4 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
+import { errorMessage } from '@/domain/errorMessage'
 
 export interface ClientErrorRow {
   id: string
@@ -28,7 +29,9 @@ export async function reportClientError(error: unknown, extra: { componentStack?
     const { data: sessionData } = await supabase.auth.getSession()
     const userId = sessionData.session?.user.id
     if (!userId) return
-    const err = error instanceof Error ? error : new Error(String(error))
+    // Un error de Supabase es un objeto plano: String() daría
+    // "[object Object]" y perderíamos el motivo (ver domain/errorMessage).
+    const err = error instanceof Error ? error : new Error(errorMessage(error, String(error)))
     await supabase.from('client_errors').insert({
       profile_id: userId,
       message: err.message.slice(0, 1000),

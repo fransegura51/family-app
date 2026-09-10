@@ -14,6 +14,7 @@ import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { AddMemberForm } from '@/ui/FamilyScreen'
 import documentosHeaderImg from '@/assets/documentos/documentos-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
@@ -77,7 +78,7 @@ export function DocumentsScreen() {
       await deleteMemberDocument(doc)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar')
+      setError(errorMessage(err, 'No se pudo borrar'))
     }
   }
 
@@ -413,7 +414,7 @@ function AddCategoryInline({ onAdded }: { onAdded: () => void }) {
       setName('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir la categoría')
+      setError(errorMessage(err, 'No se pudo añadir la categoría'))
     } finally {
       setSaving(false)
     }
@@ -466,7 +467,7 @@ function AddDocumentForm({
       setExpiryDate('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo subir el documento')
+      setError(errorMessage(err, 'No se pudo subir el documento'))
     } finally {
       setSaving(false)
     }

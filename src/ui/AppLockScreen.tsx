@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { authenticateWithPasskey, listWebauthnCredentials, verifyOwnPin } from '@/data/appLock'
+import { errorMessage } from '@/domain/errorMessage'
 
 // Pantalla de bloqueo — solo se muestra si esta persona activó un PIN
 // en Ajustes (ver AppLockSection en MenuSettingsScreen.tsx); si nunca
@@ -50,7 +51,10 @@ export function AppLockScreen({ onUnlock }: { onUnlock: () => void }) {
       setPin('')
     } catch (err) {
       setError(
-        err instanceof Error && err.message === 'PIN_LOCKED'
+        // El RPC devuelve un objeto plano, no un Error (ver
+        // domain/errorMessage): con `instanceof Error` este aviso de
+        // bloqueo nunca se mostraba.
+        errorMessage(err, '') === 'PIN_LOCKED'
           ? 'Demasiados intentos — espera unos minutos e inténtalo de nuevo.'
           : 'No se pudo comprobar el PIN',
       )

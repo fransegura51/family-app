@@ -88,6 +88,7 @@ import {
   type RecurrencePreset,
 } from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
+import { errorMessage } from '@/domain/errorMessage'
 
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
@@ -438,7 +439,7 @@ export function CalendarScreen() {
       await deleteEvent(id)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar el evento')
+      setError(errorMessage(err, 'No se pudo borrar el evento'))
     }
   }
 
@@ -447,7 +448,7 @@ export function CalendarScreen() {
       await deleteEventOccurrence(id, dateStr)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar ese día')
+      setError(errorMessage(err, 'No se pudo borrar ese día'))
     }
   }
 
@@ -463,7 +464,7 @@ export function CalendarScreen() {
       await completeEventOccurrence(eventId, dateStr, soleMember, ev?.points ?? 0)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo marcar como hecho')
+      setError(errorMessage(err, 'No se pudo marcar como hecho'))
     }
   }
 
@@ -476,7 +477,7 @@ export function CalendarScreen() {
       await uncompleteEventOccurrence(eventId, dateStr)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo deshacer')
+      setError(errorMessage(err, 'No se pudo deshacer'))
     }
   }
 
@@ -485,7 +486,7 @@ export function CalendarScreen() {
       await dismissExternalEventOccurrence(feedId, uid, dateStr)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar ese día')
+      setError(errorMessage(err, 'No se pudo borrar ese día'))
     }
   }
 
@@ -494,7 +495,7 @@ export function CalendarScreen() {
       await dismissExternalEventSeries(feedId, uid)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar')
+      setError(errorMessage(err, 'No se pudo borrar'))
     }
   }
 
@@ -503,7 +504,7 @@ export function CalendarScreen() {
       await completeExternalEventOccurrence(feedId, uid, dateStr)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo marcar como hecho')
+      setError(errorMessage(err, 'No se pudo marcar como hecho'))
     }
   }
 
@@ -512,7 +513,7 @@ export function CalendarScreen() {
       await uncompleteExternalEventOccurrence(feedId, uid, dateStr)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo deshacer')
+      setError(errorMessage(err, 'No se pudo deshacer'))
     }
   }
 
@@ -2259,7 +2260,7 @@ function EventExtrasFields({
       const label = await reverseGeocode(pos.latitude, pos.longitude)
       if (label) onLocationLabelChange(label)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo obtener la ubicación')
+      setError(errorMessage(err, 'No se pudo obtener la ubicación'))
     } finally {
       setLocating(false)
     }
@@ -2445,7 +2446,7 @@ function EditEventForm({
       })
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar el evento')
+      setError(errorMessage(err, 'No se pudo guardar el evento'))
     } finally {
       setSaving(false)
     }
@@ -2666,7 +2667,7 @@ function AddEventForm({
       setVisibility('shared')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear el evento')
+      setError(errorMessage(err, 'No se pudo crear el evento'))
     } finally {
       setSaving(false)
     }
@@ -2789,7 +2790,7 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
       await syncFeed(feedId)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo sincronizar')
+      setError(errorMessage(err, 'No se pudo sincronizar'))
     } finally {
       setSyncingId(null)
     }
@@ -2800,7 +2801,7 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
       await deleteFeed(id)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar el calendario')
+      setError(errorMessage(err, 'No se pudo borrar el calendario'))
     }
   }
 
@@ -2995,7 +2996,7 @@ function GoogleCalendarSyncCard() {
   function load() {
     getGoogleCalendarStatus()
       .then(setStatus)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(errorMessage(err, String(err))))
   }
 
   useEffect(() => {
@@ -3022,7 +3023,7 @@ function GoogleCalendarSyncCard() {
     try {
       await startGoogleConnect()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err, String(err)))
       setBusy(false)
     }
   }
@@ -3034,7 +3035,7 @@ function GoogleCalendarSyncCard() {
       await disconnectGoogleCalendar()
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err, String(err)))
     } finally {
       setBusy(false)
     }
@@ -3086,7 +3087,7 @@ function CalendarExportCard() {
     try {
       setUrl(await getCalendarExportUrl())
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err, String(err)))
     }
   }
 
@@ -3158,7 +3159,7 @@ function AddFeedForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
       await syncFeed(id).catch(() => {})
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo enlazar el calendario')
+      setError(errorMessage(err, 'No se pudo enlazar el calendario'))
     } finally {
       setSaving(false)
     }

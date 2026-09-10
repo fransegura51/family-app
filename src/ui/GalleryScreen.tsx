@@ -3,6 +3,7 @@ import { deleteGalleryPhoto, getGalleryPhotoUrl, listGalleryPhotos, uploadGaller
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import type { GalleryPhoto } from '@/domain/types'
 import galeriaHeaderImg from '@/assets/galeria/galeria-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 export function GalleryScreen() {
   const [photos, setPhotos] = useState<GalleryPhoto[]>([])
@@ -31,7 +32,7 @@ export function GalleryScreen() {
       await deleteGalleryPhoto(photo)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar')
+      setError(errorMessage(err, 'No se pudo borrar'))
     }
   }
 
@@ -81,7 +82,7 @@ function AddPhotoForm({ onAdded }: { onAdded: () => void }) {
       setCaption('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo subir la foto')
+      setError(errorMessage(err, 'No se pudo subir la foto'))
     } finally {
       setSaving(false)
     }

@@ -52,6 +52,7 @@ import type {
   MemberLocationPoint,
 } from '@/domain/types'
 import ubicacionHeaderImg from '@/assets/ubicacion/ubicacion-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -639,7 +640,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
       const member = members.find((m) => m.id === memberId)
       if (enabled && member?.linkedProfileId === profileId) startSharingGlobal(memberId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo cambiar el consentimiento')
+      setError(errorMessage(err, 'No se pudo cambiar el consentimiento'))
     }
   }
 
@@ -1000,7 +1001,7 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
     try {
       setCoords(await getCurrentPosition())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo obtener la ubicación')
+      setError(errorMessage(err, 'No se pudo obtener la ubicación'))
     }
   }
 
@@ -1018,7 +1019,7 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
       setCoords(null)
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear')
+      setError(errorMessage(err, 'No se pudo crear'))
     } finally {
       setSaving(false)
     }
@@ -1159,7 +1160,7 @@ function AddRuleForm({
       setMessage('')
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear')
+      setError(errorMessage(err, 'No se pudo crear'))
     } finally {
       setSaving(false)
     }

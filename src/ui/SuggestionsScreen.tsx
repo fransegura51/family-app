@@ -14,6 +14,7 @@ import {
   withdrawSuggestion,
 } from '@/data/suggestions'
 import { supabase } from '@/data/supabaseClient'
+import { errorMessage } from '@/domain/errorMessage'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import type { Suggestion } from '@/domain/types'
 
@@ -72,7 +73,7 @@ export function SuggestionsScreen() {
       setMessage('')
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err, String(err)))
     } finally {
       setSending(false)
     }

@@ -18,6 +18,7 @@ import { ConfirmButton } from '@/ui/ConfirmButton'
 import type { FamilyMember, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
+import { errorMessage } from '@/domain/errorMessage'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
   { value: 'admin', label: 'Administrador/a' },
@@ -120,7 +121,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       await deleteFamilyMember(id)
       reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar el miembro')
+      setError(errorMessage(err, 'No se pudo borrar el miembro'))
     }
   }
 
@@ -243,7 +244,7 @@ function AmazonWebhookSettings() {
     try {
       setToken(await regenerateAmazonWebhookToken())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo regenerar el token')
+      setError(errorMessage(err, 'No se pudo regenerar el token'))
     } finally {
       setBusy(false)
     }
@@ -351,7 +352,7 @@ function ResetPinButton({ profileId }: { profileId: string }) {
       setDone(true)
       setTimeout(() => setDone(false), 2500)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo reiniciar el PIN')
+      setError(errorMessage(err, 'No se pudo reiniciar el PIN'))
     }
   }
 
@@ -375,7 +376,7 @@ function InviteCodeButton({ memberId, memberName }: { memberId: string; memberNa
     try {
       setCode(await generateMemberInviteCode(memberId))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo generar el código')
+      setError(errorMessage(err, 'No se pudo generar el código'))
     } finally {
       setGenerating(false)
     }
@@ -438,7 +439,7 @@ function EditMemberForm({
       })
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSaving(false)
     }
@@ -513,7 +514,7 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
       setAllowedSections([])
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo añadir el miembro')
+      setError(errorMessage(err, 'No se pudo añadir el miembro'))
     } finally {
       setSaving(false)
     }

@@ -1156,6 +1156,10 @@ function ConnectBankForm({
   const [aspsps, setAspsps] = useState<Aspsp[]>([])
   const [loadingAspsps, setLoadingAspsps] = useState(false)
   const [selected, setSelected] = useState('')
+  // IBAN opcional — caso real: Caja Rural Central (hub Ruralvía) autoriza
+  // el consentimiento "global" pero devuelve 0 cuentas; con el IBAN se
+  // pide acceso a esa cuenta concreta, que sí devuelve (ver bank.ts).
+  const [iban, setIban] = useState('')
 
   function loadAspsps(c: string) {
     setLoadingAspsps(true)
@@ -1175,7 +1179,7 @@ function ConnectBankForm({
     onConnecting(true)
     onError('')
     try {
-      await startBankConnection(aspsp.name, aspsp.country)
+      await startBankConnection(aspsp.name, aspsp.country, iban)
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err))
       onConnecting(false)
@@ -1216,6 +1220,22 @@ function ConnectBankForm({
           </select>
         )}
       </label>
+      <label>
+        IBAN de la cuenta (opcional, recomendado en cajas rurales)
+        <input
+          type="text"
+          value={iban}
+          onChange={(e) => setIban(e.target.value)}
+          placeholder="ES00 0000 0000 0000 0000 0000"
+          autoComplete="off"
+          inputMode="text"
+        />
+      </label>
+      <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
+        Algunos bancos (Caja Rural / Ruralvía, entre otros) autorizan el acceso pero no dicen a qué cuenta si no se les
+        indica el IBAN. Si al conectar te sale "0 cuentas", vuelve a conectar poniendo aquí el IBAN de la cuenta que
+        quieres enlazar.
+      </p>
       <button type="button" onClick={handleConnect} disabled={!selected || connecting}>
         {connecting ? 'Abriendo el banco…' : 'Conectar'}
       </button>

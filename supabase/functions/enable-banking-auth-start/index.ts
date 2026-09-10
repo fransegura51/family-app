@@ -68,8 +68,18 @@ Deno.serve(async (req) => {
     const { data: userData, error: userError } = await userClient.auth.getUser()
     if (userError || !userData.user) return json({ error: "unauthorized" }, 401)
 
-    const { aspspName, aspspCountry } = await req.json()
+    const { aspspName, aspspCountry, iban: rawIban } = await req.json()
     if (!aspspName || !aspspCountry) return json({ error: "missing aspspName/aspspCountry" }, 400)
+    // IBAN opcional. Caso real (Caja Rural Central / hub Ruralvía): con el
+    // consentimiento "global" (sin cuentas) el banco autoriza la sesión
+    // pero devuelve CERO cuentas — comprobado 12 veces seguidas contra la
+    // API de Enable Banking (status AUTHORIZED, accounts: []), mientras
+    // que Sabadell sí las devuelve con la misma petición. La propia doc
+    // de Enable Banking avisa: "if not set behaviour depends on the
+    // bank". Con el IBAN concreto se pide un consentimiento "dedicado" a
+    // esa cuenta, que es lo que estos hubs sí saben devolver.
+    const iban = typeof rawIban === "string" ? rawIban.replace(/\s+/g, "").toUpperCase() : ""
+    if (iban && !/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban)) return json({ error: "iban_invalid" }, 400)
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
     const { data: profile, error: profileError } = await admin
@@ -94,7 +104,9 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        access: { valid_until: validUntil },
+        access: iban
+          ? { valid_until: validUntil, accounts: [{ iban }], balances: true, transactions: true }
+          : { valid_until: validUntil },
         aspsp: { name: aspspName, country: aspspCountry },
         state,
         redirect_url: redirectUrl,

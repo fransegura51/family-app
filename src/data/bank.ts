@@ -29,13 +29,20 @@ export async function listAspsps(country: string): Promise<Aspsp[]> {
   return json.aspsps
 }
 
-export async function startBankConnection(aspspName: string, aspspCountry: string): Promise<void> {
+// iban (opcional): pide un consentimiento "dedicado" a esa cuenta en vez
+// del "global". Caso real: Caja Rural Central (hub Ruralvía) autorizaba
+// el consentimiento global pero devolvía 0 cuentas, 12 veces seguidas —
+// ver enable-banking-auth-start.
+export async function startBankConnection(aspspName: string, aspspCountry: string, iban?: string): Promise<void> {
   const res = await authedFetch('enable-banking-auth-start', {
     method: 'POST',
-    body: JSON.stringify({ aspspName, aspspCountry }),
+    body: JSON.stringify({ aspspName, aspspCountry, iban: iban?.trim() || undefined }),
   })
   const json = await res.json()
-  if (!res.ok || !json.url) throw new Error(json.error ?? 'No se pudo iniciar la conexión con el banco')
+  if (!res.ok || !json.url) {
+    if (json.error === 'iban_invalid') throw new Error('El IBAN no parece correcto — revísalo (empieza por ES y tiene 24 caracteres).')
+    throw new Error(json.error ?? 'No se pudo iniciar la conexión con el banco')
+  }
   window.location.href = json.url
 }
 
@@ -110,7 +117,16 @@ export async function listBankTransactions(): Promise<BankTransaction[]> {
   }))
 }
 
+// Antes solo se marcaba la fila como "revoked" y el consentimiento
+// seguía vivo en Enable Banking y en el banco (bug real: 12 sesiones
+// autorizadas huérfanas acumuladas en un solo día). Ahora se cierra de
+// verdad en el servidor (DELETE /sessions, que cancela el consentimiento
+// en el banco "si es posible"), y solo después se marca aquí.
 export async function disconnectBank(connectionId: string): Promise<void> {
-  const { error } = await supabase.from('bank_connections').update({ status: 'revoked' }).eq('id', connectionId)
-  if (error) throw error
+  const res = await authedFetch('enable-banking-disconnect', {
+    method: 'POST',
+    body: JSON.stringify({ connectionId }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json.error ?? 'No se pudo desconectar el banco')
 }

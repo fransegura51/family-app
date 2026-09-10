@@ -90,7 +90,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Peso', text: 'Evolución del peso y las medidas de cada miembro, con gráfico y fotos de seguimiento.' },
   ],
   '/dinero': [
-    { title: 'Resumen', text: 'Ingresos, gastos y ahorro del mes, más las "Conclusiones de Pepa": frases que cambian cada día señalando algo distinto (la categoría que más ha crecido, la tienda más frecuente...).' },
+    { title: 'Resumen', text: 'Ingresos, gastos y ahorro del mes, más las "Conclusiones de Pepa": en su bocadillo se ve una frase a la vez señalando algo distinto (la categoría que más ha crecido, la tienda más frecuente...) — cambia sola cada vez que abres la pantalla, o deslizando con el dedo sobre la imagen para ver las demás.' },
     { title: 'Estadísticas', text: 'Gráficos donut por categoría, etiqueta, Debo/Necesito/Quiero y Fijo/Variable — toca una porción para ver justo esos movimientos.' },
     { title: 'Movimientos', text: 'Todos los gastos e ingresos del mes, editables uno a uno.' },
     { title: 'Presupuesto Generales', text: 'Cuánto os habéis propuesto gastar por categoría este mes y cuánto lleváis gastado.' },

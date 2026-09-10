@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addExpense,
   addWalletTransaction,
@@ -89,6 +89,7 @@ import type {
   WalletTransactionType,
 } from '@/domain/types'
 import economiaHeaderImg from '@/assets/economia/economia-header.jpg'
+import pepaConclusionsImg from '@/assets/economia/pepa-conclusiones.jpg'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
 // "estoy pensando si pasar registro alimentación y tickets a compra")
@@ -1351,20 +1352,6 @@ function DateFilterTab({
   )
 }
 
-// Petición real: "las conclusiones de Pepa deben variar a diario, no
-// siempre ser las mismas... tener más ocurrencias que una frase fija"
-// — de un grupo de observaciones reales (nunca inventadas) que quepan
-// ese día, se enseña un subconjunto que rota según la fecha, para que
-// aún con un ritmo de gasto estable haya algo distinto que leer.
-function pickDaily<T>(pool: T[], count: number): T[] {
-  if (pool.length <= count) return pool
-  const dayIndex = Math.floor(Date.now() / 86_400_000)
-  const start = dayIndex % pool.length
-  const picked: T[] = []
-  for (let i = 0; i < count; i++) picked.push(pool[(start + i) % pool.length])
-  return picked
-}
-
 function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
@@ -1551,7 +1538,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       fixedVariableCandidate,
       tagCandidate,
     ].filter((c): c is { text: string; filter?: MovementsFilter } => c !== null)
-    conclusions.push(...pickDaily(extraPool, 3))
+    conclusions.push(...extraPool)
   }
 
   return (
@@ -1587,16 +1574,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       </div>
 
       <h2 className="section-title">Conclusiones de Pepa</h2>
-      {conclusions.map((c, i) => (
-        <div key={i} className="card event-card">
-          <p style={{ margin: 0 }}>{c.text}</p>
-          {c.filter && (
-            <button type="button" className="link-button" onClick={() => onViewMovements(c.filter!)}>
-              +info →
-            </button>
-          )}
-        </div>
-      ))}
+      <PepaConclusionsWidget conclusions={conclusions} onViewMovements={onViewMovements} />
     </div>
   )
 }
@@ -1604,6 +1582,79 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
 // ---------------------------------------------------------------------
 // Estadísticas (Skill de Pepa, puntos 7-17)
 // ---------------------------------------------------------------------
+
+// Petición real: "para las Conclusiones de Pepa quiero que uses esta
+// imagen y en el bocadillo cada vez que se abra la página ponga una
+// frase diferente... puede ser un widget como de inicio, pero con sus
+// frases y que solo cambien solas al volver a abrir la página o cuando
+// los pases con la mano. Solo quiero una frase a la vez" — mismo gesto
+// de deslizar con el dedo/ratón que el carrusel de fotos de Inicio
+// (HomeScreen), pero sin el pase automático por tiempo: aquí solo
+// cambia al reabrir la pantalla (índice de partida al azar cada vez que
+// se monta el componente) o al deslizar a mano.
+function PepaConclusionsWidget({
+  conclusions,
+  onViewMovements,
+}: {
+  conclusions: { text: string; filter?: MovementsFilter }[]
+  onViewMovements: (f: MovementsFilter) => void
+}) {
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * Math.max(conclusions.length, 1)))
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    if (index >= conclusions.length) setIndex(0)
+  }, [conclusions.length, index])
+
+  if (conclusions.length === 0) return null
+  const current = conclusions[index] ?? conclusions[0]
+
+  function go(delta: number) {
+    setIndex((i) => (i + delta + conclusions.length) % conclusions.length)
+  }
+
+  function handleTouchStart(e: ReactTouchEvent) {
+    const t = e.touches[0]
+    touchStartRef.current = { x: t.clientX, y: t.clientY }
+  }
+
+  function handleTouchEnd(e: ReactTouchEvent) {
+    const start = touchStartRef.current
+    touchStartRef.current = null
+    if (!start || conclusions.length < 2) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    if (Math.abs(dx) >= 50 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1)
+  }
+
+  return (
+    <div className="pepa-conclusion-banner">
+      <div
+        className="pepa-conclusion-note"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        role="group"
+        aria-label="Conclusión de Pepa"
+      >
+        <img src={pepaConclusionsImg} alt="" className="pepa-conclusion-note-img" />
+        <p className="pepa-conclusion-note-text">{current.text}</p>
+        {conclusions.length > 1 && (
+          <div className="home-photo-banner-dots pepa-conclusion-dots">
+            {conclusions.map((_, i) => (
+              <span key={i} className={'home-photo-banner-dot' + (i === index ? ' home-photo-banner-dot-active' : '')} />
+            ))}
+          </div>
+        )}
+      </div>
+      {current.filter && (
+        <button type="button" className="link-button" onClick={() => onViewMovements(current.filter!)}>
+          +info →
+        </button>
+      )}
+    </div>
+  )
+}
 
 interface BreakdownSlice {
   key: string

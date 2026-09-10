@@ -483,6 +483,60 @@ body {
   background: white;
 }
 
+/* Widget "Conclusiones de Pepa" (Economía → Resumen) — petición real:
+   "usa esta imagen y en el bocadillo... ponga una frase diferente...
+   puede ser un widget como de inicio, pero que solo cambien solas al
+   volver a abrir la página o cuando los pases con la mano". Reutiliza
+   el mismo patrón de imagen+texto posicionado en % con container query
+   units que las notas de Inicio (home-shopping-note/home-agenda-note),
+   y los puntos de home-photo-banner-dots, pero sin su pase automático
+   por tiempo — aquí el índice solo cambia al montar (reabrir la
+   pantalla) o al deslizar. Coordenadas del bocadillo medidas a mano
+   sobre la imagen real (1024×1536).*/
+.pepa-conclusion-banner {
+  margin: 14px 0;
+}
+
+.pepa-conclusion-note {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1024 / 1536;
+  border-radius: 14px;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.pepa-conclusion-note-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pepa-conclusion-note-text {
+  position: absolute;
+  top: 7.5%;
+  left: 11%;
+  width: 72%;
+  margin: 0;
+  text-align: center;
+  color: #3a2f28;
+  font-weight: 600;
+  font-size: 6cqw;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pepa-conclusion-dots {
+  bottom: 12px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+}
+
 .member-card {
   display: flex;
   align-items: center;

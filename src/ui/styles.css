@@ -513,21 +513,46 @@ body {
   display: block;
 }
 
-.pepa-conclusion-note-text {
+/* Petición real: "cuando la frase se sale del bocadillo que ajuste el
+   tamaño de letra para que se quede dentro" — antes se limitaba a 6
+   líneas (-webkit-line-clamp) pero esas 6 líneas al tamaño base podían
+   ser más altas que el globo real y se salían por debajo. Ahora el
+   texto vive en una caja de ALTURA fija (el interior real del
+   bocadillo) y es el componente (ver PepaConclusionsWidget) el que
+   reduce el font-size en JS hasta que el texto entra en esa caja.
+   También aloja el "+info" (petición real: "+info debería salir dentro
+   del bocadillo no debajo de la imagen"), fijo debajo de la frase sin
+   contar para el ajuste de tamaño. */
+.pepa-conclusion-bubble-content {
   position: absolute;
-  top: 7.5%;
-  left: 11%;
-  width: 72%;
+  top: 6%;
+  left: 9%;
+  width: 82%;
+  height: 27%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.pepa-conclusion-note-text {
+  flex: none;
+  max-height: 100%;
+  width: 100%;
   margin: 0;
   text-align: center;
   color: #3a2f28;
   font-weight: 600;
   font-size: 6cqw;
   line-height: 1.28;
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.pepa-conclusion-info {
+  flex: none;
+  font-size: 3.4cqw;
+  padding: 0;
 }
 
 .pepa-conclusion-dots {

@@ -1625,10 +1625,39 @@ function PepaConclusionsWidget({
 }) {
   const [index, setIndex] = useState(() => Math.floor(Math.random() * Math.max(conclusions.length, 1)))
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const bubbleRef = useRef<HTMLDivElement>(null)
+  const textRef = useRef<HTMLParagraphElement>(null)
+  const infoRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (index >= conclusions.length) setIndex(0)
   }, [conclusions.length, index])
+
+  // Petición real: "cuando la frase se sale del bocadillo que ajuste el
+  // tamaño de letra para que se quede dentro" — frases largas (con un
+  // concepto bancario largo, por ejemplo) desbordaban por debajo del
+  // globo. En vez de un tamaño fijo, se arranca del tamaño base (el
+  // 6cqw de siempre, ya calculado por el navegador) y se va reduciendo
+  // de medio en medio punto mientras el texto no quepa en el hueco
+  // disponible, hasta un mínimo legible. El hueco se mide a mano (alto
+  // del contenedor del bocadillo menos el botón "+info", si lo hay) en
+  // vez de leer el propio clientHeight del texto — con flex:1 ese
+  // alto dependía del contenido y no daba un objetivo fijo de verdad.
+  const currentText = conclusions[index]?.text ?? conclusions[0]?.text
+  useEffect(() => {
+    const el = textRef.current
+    const bubble = bubbleRef.current
+    if (!el || !bubble) return
+    el.style.fontSize = ''
+    const infoHeight = infoRef.current ? infoRef.current.offsetHeight + 2 : 0
+    const available = bubble.clientHeight - infoHeight
+    let size = parseFloat(window.getComputedStyle(el).fontSize)
+    const minSize = 9
+    while (el.scrollHeight > available && size > minSize) {
+      size -= 0.5
+      el.style.fontSize = `${size}px`
+    }
+  }, [currentText])
 
   if (conclusions.length === 0) return null
   const current = conclusions[index] ?? conclusions[0]
@@ -1662,7 +1691,24 @@ function PepaConclusionsWidget({
         aria-label="Conclusión de Pepa"
       >
         <img src={pepaConclusionsImg} alt="" className="pepa-conclusion-note-img" />
-        <p className="pepa-conclusion-note-text">{current.text}</p>
+        <div ref={bubbleRef} className="pepa-conclusion-bubble-content">
+          <p ref={textRef} className="pepa-conclusion-note-text">
+            {current.text}
+          </p>
+          {current.filter && (
+            <button
+              ref={infoRef}
+              type="button"
+              className="link-button pepa-conclusion-info"
+              onClick={(e) => {
+                e.stopPropagation()
+                onViewMovements(current.filter!)
+              }}
+            >
+              +info →
+            </button>
+          )}
+        </div>
         {conclusions.length > 1 && (
           <div className="home-photo-banner-dots pepa-conclusion-dots">
             {conclusions.map((_, i) => (
@@ -1671,11 +1717,6 @@ function PepaConclusionsWidget({
           </div>
         )}
       </div>
-      {current.filter && (
-        <button type="button" className="link-button" onClick={() => onViewMovements(current.filter!)}>
-          +info →
-        </button>
-      )}
     </div>
   )
 }

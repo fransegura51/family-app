@@ -907,8 +907,16 @@ function BankTab({
     setVisibleCount(50)
   }, [preset, customFrom, customTo, typeFilter, activeAccountId])
 
+  // Petición real: "cada vez que edito un movimiento me devuelve al
+  // inicio de la página" — recargar tras editar sustituía toda la
+  // pantalla por "Cargando…" (la lista se venía abajo a casi nada y el
+  // navegador perdía la posición de scroll); a partir de la segunda vez
+  // se recarga en silencio, dejando la lista anterior a la vista hasta
+  // que llegan los datos nuevos.
+  const hasLoadedOnceRef = useRef(false)
+
   function reload() {
-    setLoading(true)
+    if (!hasLoadedOnceRef.current) setLoading(true)
     Promise.all([
       listBankConnections(),
       listBankAccounts(),
@@ -929,7 +937,10 @@ function BankTab({
         setExpenseAccountId(new Map(t.filter((bt) => bt.matchedExpenseId).map((bt) => [bt.matchedExpenseId as string, bt.accountId])))
       })
       .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        hasLoadedOnceRef.current = true
+        setLoading(false)
+      })
   }
 
   useEffect(() => {
@@ -2270,8 +2281,12 @@ function ExpensesTab({
   // regalo, ingreso".
   const seededIncomeRef = useRef(false)
 
+  // Petición real: "cada vez que edito un movimiento me devuelve al
+  // inicio de la página" — ver mismo arreglo en la pestaña Banco.
+  const hasLoadedOnceRef = useRef(false)
+
   function reload() {
-    setLoading(true)
+    if (!hasLoadedOnceRef.current) setLoading(true)
     Promise.all([listExpenses(), listBudgetCategories(), listTags()])
       .then(async ([e, c, t]) => {
         if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
@@ -2284,7 +2299,10 @@ function ExpensesTab({
         setTags(t)
       })
       .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        hasLoadedOnceRef.current = true
+        setLoading(false)
+      })
   }
 
   useEffect(reload, [])
@@ -3192,8 +3210,12 @@ export function ReceiptsTab() {
   const [rangeCustomFrom, setRangeCustomFrom] = useState(toDateStr(new Date()))
   const [rangeCustomTo, setRangeCustomTo] = useState(toDateStr(new Date()))
 
+  // Petición real: "cada vez que edito un movimiento me devuelve al
+  // inicio de la página" — ver mismo arreglo en la pestaña Banco.
+  const hasLoadedOnceRef = useRef(false)
+
   function reload() {
-    setLoading(true)
+    if (!hasLoadedOnceRef.current) setLoading(true)
     Promise.all([listReceipts(), listExpenses(), listBudgetCategories()])
       .then(([r, allExpenses, cats]) => {
         setReceipts(r)
@@ -3205,7 +3227,10 @@ export function ReceiptsTab() {
         setBankOnlyExpenses(allExpenses.filter((e) => e.source === 'banco' && !e.isIncome && isFoodCategory(e.category, cats)))
       })
       .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        hasLoadedOnceRef.current = true
+        setLoading(false)
+      })
   }
 
   useEffect(() => {
@@ -4332,8 +4357,12 @@ export function BudgetsTab({
   // mientras se espera la respuesta del primer alta.
   const seededRef = useRef(false)
 
+  // Petición real: "cada vez que edito un movimiento me devuelve al
+  // inicio de la página" — ver mismo arreglo en la pestaña Banco.
+  const hasLoadedOnceRef = useRef(false)
+
   function reload() {
-    setLoading(true)
+    if (!hasLoadedOnceRef.current) setLoading(true)
     Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores(), listBudgetCategories(), getFinanceMonthStartDay()])
       .then(async ([b, e, r, stores, cats, monthStart]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
@@ -4352,7 +4381,10 @@ export function BudgetsTab({
         setMonthStartDay(monthStart)
       })
       .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        hasLoadedOnceRef.current = true
+        setLoading(false)
+      })
   }
 
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -5772,8 +5804,12 @@ function KidsFinanceTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Petición real: "cada vez que edito un movimiento me devuelve al
+  // inicio de la página" — ver mismo arreglo en la pestaña Banco.
+  const hasLoadedOnceRef = useRef(false)
+
   function reload() {
-    setLoading(true)
+    if (!hasLoadedOnceRef.current) setLoading(true)
     Promise.all([listFamilyMembers(), listWalletTransactions(), listGoals()])
       .then(([m, t, g]) => {
         const kids = m.filter((x) => x.memberType === 'child' || x.memberType === 'baby')
@@ -5783,7 +5819,10 @@ function KidsFinanceTab() {
         setGoals(g)
       })
       .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        hasLoadedOnceRef.current = true
+        setLoading(false)
+      })
   }
 
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps

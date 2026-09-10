@@ -1007,6 +1007,18 @@ function BankTab({
                 {connAccounts.length} {connAccounts.length === 1 ? 'cuenta' : 'cuentas'}
                 {c.validUntil && ` · válido hasta ${c.validUntil.slice(0, 10)}`}
               </p>
+              {/* Caso real (Caja Rural Central / Ruralvía): el banco autoriza el
+                  permiso pero no dice a qué cuenta si no se le indica el IBAN —
+                  antes esto se quedaba en "0 cuentas" sin ninguna pista de qué
+                  hacer. Comprobado en la API de Enable Banking: la sesión queda
+                  AUTHORIZED con accounts: [] y access.accounts: null. */}
+              {connAccounts.length === 0 && (
+                <p className="error" style={{ margin: '4px 0', fontSize: 13 }}>
+                  El banco ha autorizado el acceso pero no ha dicho a qué cuenta. Desconecta esta conexión y vuelve a
+                  conectar escribiendo el <strong>IBAN</strong> de la cuenta en el campo opcional (recarga la página antes
+                  si no ves ese campo).
+                </p>
+              )}
               {connAccounts.map((a) => (
                 <p key={a.id} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
                   · {a.name ?? 'Cuenta'} {a.iban ? `(${a.iban})` : ''} {a.currency ?? ''}

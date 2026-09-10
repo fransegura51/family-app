@@ -1,4 +1,5 @@
-import { fetchAllRows, supabase } from '@/data/supabaseClient'
+import { fetchAllRows } from '@/data/paginate'
+import { supabase } from '@/data/supabaseClient'
 import type { Product, ProductPrice } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {

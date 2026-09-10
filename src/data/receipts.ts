@@ -1,4 +1,5 @@
-import { fetchAllRows, supabase } from '@/data/supabaseClient'
+import { fetchAllRows } from '@/data/paginate'
+import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
 import type { Receipt } from '@/domain/types'
 

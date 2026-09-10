@@ -2,7 +2,8 @@
 // (startGoogleConnect): esta pestaña redirige al banco, la vuelta
 // ocurre en enable-banking-auth-callback, que trae de vuelta a
 // /familia con ?bank=connected o ?bank=error.
-import { fetchAllRows, supabase } from '@/data/supabaseClient'
+import { fetchAllRows } from '@/data/paginate'
+import { supabase } from '@/data/supabaseClient'
 import type { BankAccount, BankConnection, BankTransaction } from '@/domain/types'
 
 export interface Aspsp {

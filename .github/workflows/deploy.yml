@@ -24,6 +24,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Petición real: "que no falle" — el despliegue se bloquea si los
+      # tipos o los tests no pasan; nada roto llega a producción.
+      - run: npm run typecheck
+      - run: npm test
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

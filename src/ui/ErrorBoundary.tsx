@@ -1,4 +1,5 @@
 import { Component, ReactNode } from 'react'
+import { reportClientError } from '@/data/errorReports'
 
 interface Props {
   children: ReactNode
@@ -21,6 +22,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
     console.error('Family App crash:', error, info.componentStack)
+    // Petición real: "que no falle" — además de enseñarlo aquí, queda
+    // registrado en client_errors para que la dueña de la app se entere
+    // de los fallos de cualquier familia (antes solo lo veía quien lo
+    // sufría). Nunca lanza (ver reportClientError).
+    void reportClientError(error, { componentStack: info.componentStack })
   }
 
   render() {

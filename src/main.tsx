@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from '@/App'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
+import { reportClientError } from '@/data/errorReports'
 import '@/ui/styles.css'
 
 // El registro básico (registerSW.js, autoinyectado) instala el service
@@ -60,10 +61,18 @@ if ('serviceWorker' in navigator) {
 // queda en blanco sin ninguna pista — pasó de verdad en el primer
 // despliegue real.
 window.addEventListener('unhandledrejection', (event) => {
+  void reportClientError(event.reason)
   const root = document.getElementById('root')
   if (root && !root.innerHTML) {
     root.innerHTML = `<div style="padding:20px;font-family:system-ui"><h1>Algo ha fallado</h1><pre style="white-space:pre-wrap;font-size:12px;color:#6b7280">${String(event.reason?.stack || event.reason)}</pre></div>`
   }
+})
+
+// Errores síncronos fuera de React (manejadores de eventos, timers,
+// scripts) — la tercera vía por la que un fallo podía pasar sin dejar
+// rastro en ningún sitio.
+window.addEventListener('error', (event) => {
+  void reportClientError(event.error ?? event.message)
 })
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

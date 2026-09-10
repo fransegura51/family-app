@@ -109,15 +109,17 @@ export function budgetSpent(
   }
 
   const { categories } = context
-  const alimentacionTotal = periodExpenses
-    .filter((e) => isFoodCategory(e.category, categories))
-    .reduce((sum, e) => sum + e.amount, 0)
-  if (budget.budgetGroup === 'alimentacion') return alimentacionTotal
+  const isFood = (e: Expense) => isFoodCategory(e.category, categories)
+  if (budget.budgetGroup === 'alimentacion') return periodExpenses.filter(isFood).reduce((sum, e) => sum + e.amount, 0)
 
-  const ownGroupTotal = periodExpenses
-    .filter((e) => categories.some((c) => c.budgetGroup === budget.budgetGroup && c.name === e.category))
-    .reduce((sum, e) => sum + e.amount, 0)
-  return ownGroupTotal + alimentacionTotal
+  // Unión, no suma: desde la migración 0076 Alimentación y sus
+  // subcategorías viven también en 'generales', así que "las categorías
+  // propias del grupo" y "todo lo de alimentación" se solapan. Sumarlas
+  // aparte (como se hacía) contaba dos veces cada euro de comida en el
+  // gastado de Presupuesto Generales — bug real destapado por
+  // finance.test.ts al preparar los tests.
+  const inOwnGroup = (e: Expense) => categories.some((c) => c.budgetGroup === budget.budgetGroup && c.name === e.category)
+  return periodExpenses.filter((e) => inOwnGroup(e) || isFood(e)).reduce((sum, e) => sum + e.amount, 0)
 }
 
 // Lo que el niño/a tiene DISPONIBLE ahora mismo — no lo mismo que lo

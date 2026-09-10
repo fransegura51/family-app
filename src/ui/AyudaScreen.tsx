@@ -75,7 +75,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
   ],
   '/compras': [
     { title: 'Menú ☰ e Inicio', text: 'El botón ☰ junto al título abre un desplegable con todas las pestañas de Compras — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
-    { title: 'Lista', text: 'Agrupada por tienda en carpetas que se pliegan; arrastra para reordenar, marca prioridad y cantidad, y usa "Modo compra" mientras estás en la tienda.' },
+    { title: 'Lista', text: 'Agrupada por tienda en carpetas que se pliegan; arrastra para reordenar, marca prioridad y cantidad, y usa "Modo compra" mientras estás en la tienda — ahí verás un total que va sumando lo que marcas como comprado, usando el último precio que recuerde de cada producto.' },
     { title: 'Tiendas', text: 'Tus propias tiendas (Mercadona, Aldi...) con su logo, para agrupar la lista y para que Pepa te entienda al dictar, por ejemplo, "Mercadona, patatas".' },
     { title: 'Historial', text: 'Se construye solo con lo que compras: sugiere recompra, compara el precio de este mes con el anterior y te dice en qué tienda sale más barato.' },
     { title: 'No alimentos', text: 'El mismo historial pero para ropa, electrónica y demás compras que no son de comida — nunca se mezcla con Alimentación.' },

@@ -664,6 +664,27 @@ function ShoppingListTab() {
   const bought = items.filter((i) => i.status === 'comprado')
   const total = pending.length + bought.length
 
+  // Petición real: "en modo compra, si va reconociendo los precios...
+  // que te los vaya sumando... para ir sabiendo el dinero que va
+  // gastando conforme vas comprando" — usa el precio del propio
+  // producto si ya lo trae (p. ej. de un ticket ya enlazado) y, si no,
+  // el último precio pagado guardado en la Memoria de precios (mismo
+  // dato que ya se enseña junto a cada línea, "X €/ud"). Los productos
+  // sin ningún precio conocido no cuentan para el total, pero se
+  // avisa de cuántos son para que el total no parezca "el gasto real"
+  // cuando en realidad falta alguno por contar.
+  const suggestionByName = useMemo(
+    () => new Map(suggestions.map((s) => [s.normalizedName, s])),
+    [suggestions],
+  )
+  function knownPriceFor(item: ShoppingItem): number | null {
+    if (item.price != null) return item.price
+    return suggestionByName.get(normalizeProductName(item.name))?.lastPrice ?? null
+  }
+  const boughtPrices = bought.map((i) => knownPriceFor(i))
+  const boughtTotal = boughtPrices.reduce((sum: number, p) => sum + (p ?? 0), 0)
+  const boughtWithoutPrice = boughtPrices.filter((p) => p == null).length
+
   // Los marcados con ✓ ya NO desaparecen de aquí — se quedan tachados
   // en su sitio hasta "Finalizar compra" (petición real: poder seguir
   // viendo lo que ya se cogió mientras se sigue comprando lo demás).
@@ -716,6 +737,13 @@ function ShoppingListTab() {
         <p className="points-badge">
           {bought.length}/{total || 0} comprados
         </p>
+        {shoppingMode && bought.length > 0 && (
+          <p className="points-badge shopping-running-total">
+            🧾 {boughtTotal.toFixed(2)} €
+            {boughtWithoutPrice > 0 &&
+              ` (${boughtWithoutPrice} sin precio conocido)`}
+          </p>
+        )}
         <button type="button" className="link-button" onClick={() => setShoppingMode(!shoppingMode)}>
           {shoppingMode ? 'Salir de modo compra' : '🛒 Modo compra'}
         </button>

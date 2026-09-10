@@ -1209,7 +1209,18 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+/* Total acumulado de lo ya marcado en Modo compra — petición real:
+   "conforme vas marcando productos, que te vaya sumando... para ir
+   sabiendo el dinero que va gastando conforme vas comprando". Verde
+   en vez del amarillo de "comprados" para que se distinga de un
+   vistazo que es un dato de dinero, no de progreso. */
+.shopping-running-total {
+  background: #d1e7dd;
+  color: #0f5132;
 }
 
 .inline-fields {

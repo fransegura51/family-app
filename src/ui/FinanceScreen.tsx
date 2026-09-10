@@ -1405,14 +1405,23 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
     conclusions.push({ text: 'Todavía no hay movimientos en este periodo para sacar conclusiones.' })
   } else {
     if (prevReal.length === 0) {
-      conclusions.push({ text: 'No hay datos del periodo anterior para comparar todavía — con el tiempo Pepa podrá comparar la evolución.' })
+      conclusions.push({
+        text: 'No hay datos del periodo anterior para comparar todavía — con el tiempo Pepa podrá comparar la evolución.',
+        filter: { label: `Movimientos — ${PRESET_LABELS[preset]}`, from, to },
+      })
     } else {
       const deltaPct = prevSpent > 0 ? ((totalSpent - prevSpent) / prevSpent) * 100 : null
       const deltaEur = totalSpent - prevSpent
       if (deltaPct === null) {
-        conclusions.push({ text: `Habéis gastado ${totalSpent.toFixed(2)} € — no había gasto en el periodo anterior con el que comparar.` })
+        conclusions.push({
+          text: `Habéis gastado ${totalSpent.toFixed(2)} € — no había gasto en el periodo anterior con el que comparar.`,
+          filter: { label: `Gastos — ${PRESET_LABELS[preset]}`, from, to, isIncome: false },
+        })
       } else if (Math.abs(deltaPct) < 3) {
-        conclusions.push({ text: `Habéis mantenido prácticamente el mismo ritmo de gasto que el periodo anterior y vuestra economía se mantiene estable.` })
+        conclusions.push({
+          text: `Habéis mantenido prácticamente el mismo ritmo de gasto que el periodo anterior y vuestra economía se mantiene estable.`,
+          filter: { label: `Gastos — ${PRESET_LABELS[preset]}`, from, to, isIncome: false },
+        })
       } else {
         const sign = deltaPct > 0 ? '+' : ''
         conclusions.push({
@@ -1422,8 +1431,23 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       }
     }
     if (tasaAhorro !== null) {
-      if (tasaAhorro >= 20) conclusions.push({ text: `Vuestra tasa de ahorro es del ${tasaAhorro.toFixed(0)}% — una economía saneada.` })
-      else if (tasaAhorro < 0) conclusions.push({ text: `Este periodo habéis gastado más de lo que habéis ingresado (${ahorro.toFixed(2)} €).` })
+      // Petición real: "en el bocadillo de Pepa falta el enlace de
+      // +info" — a estas dos les faltaba `filter`, así que el botón no
+      // salía nunca (mismo bocadillo, unas veces con enlace y otras
+      // sin él). Llevan a todos los movimientos del periodo, sin
+      // distinguir ingreso/gasto, que es lo que sustenta la tasa de
+      // ahorro.
+      if (tasaAhorro >= 20) {
+        conclusions.push({
+          text: `Vuestra tasa de ahorro es del ${tasaAhorro.toFixed(0)}% — una economía saneada.`,
+          filter: { label: `Movimientos — ${PRESET_LABELS[preset]}`, from, to },
+        })
+      } else if (tasaAhorro < 0) {
+        conclusions.push({
+          text: `Este periodo habéis gastado más de lo que habéis ingresado (${ahorro.toFixed(2)} €).`,
+          filter: { label: `Movimientos — ${PRESET_LABELS[preset]}`, from, to },
+        })
+      }
     }
 
     // Más señales reales, además del ritmo de gasto y el ahorro, para

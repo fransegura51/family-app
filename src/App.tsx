@@ -1,29 +1,39 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
 import { useSession } from '@/auth/useSession'
 import { LoginScreen } from '@/ui/LoginScreen'
 import { OnboardingScreen } from '@/ui/OnboardingScreen'
 import { HomeScreen } from '@/ui/HomeScreen'
-import { FamilyScreen } from '@/ui/FamilyScreen'
-import { CalendarScreen } from '@/ui/CalendarScreen'
-import { RewardsScreen } from '@/ui/RewardsScreen'
-import { ShoppingScreen } from '@/ui/ShoppingScreen'
-import { AlimentacionScreen } from '@/ui/AlimentacionScreen'
-import { FinanceScreen } from '@/ui/FinanceScreen'
-import { LocationScreen } from '@/ui/LocationScreen'
 import { NavShell } from '@/ui/NavShell'
+
+// Preparación de escala / "que sea la mejor": el bundle único pesaba
+// ~1 MB (Vite avisaba en cada build) y en un móvil con datos eso es la
+// primera pantalla tardando segundos. Cada sección se descarga solo al
+// entrar en ella (React.lazy → un chunk por pantalla; el mapa de
+// Leaflet, por ejemplo, ya no lo paga quien nunca abre Ubicación). El
+// service worker sigue precacheando todos los chunks, así que sin red
+// funciona igual. Inicio y Login se quedan en el bundle principal para
+// que la primera pantalla salga al instante.
+const FamilyScreen = lazy(() => import('@/ui/FamilyScreen').then((m) => ({ default: m.FamilyScreen })))
+const CalendarScreen = lazy(() => import('@/ui/CalendarScreen').then((m) => ({ default: m.CalendarScreen })))
+const RewardsScreen = lazy(() => import('@/ui/RewardsScreen').then((m) => ({ default: m.RewardsScreen })))
+const ShoppingScreen = lazy(() => import('@/ui/ShoppingScreen').then((m) => ({ default: m.ShoppingScreen })))
+const AlimentacionScreen = lazy(() => import('@/ui/AlimentacionScreen').then((m) => ({ default: m.AlimentacionScreen })))
+const FinanceScreen = lazy(() => import('@/ui/FinanceScreen').then((m) => ({ default: m.FinanceScreen })))
+const LocationScreen = lazy(() => import('@/ui/LocationScreen').then((m) => ({ default: m.LocationScreen })))
 import { ReminderWatcher } from '@/ui/ReminderWatcher'
 import { AutomationWatcher } from '@/ui/AutomationWatcher'
 import { LocationSharingWatcher } from '@/ui/LocationSharingWatcher'
-import { ActivityScreen } from '@/ui/ActivityScreen'
-import { BirthdaysScreen } from '@/ui/BirthdaysScreen'
-import { ContactsScreen } from '@/ui/ContactsScreen'
-import { GalleryScreen } from '@/ui/GalleryScreen'
-import { DocumentsScreen } from '@/ui/DocumentsScreen'
-import { MenuSettingsScreen } from '@/ui/MenuSettingsScreen'
-import { AyudaScreen } from '@/ui/AyudaScreen'
-import { SuggestionsScreen } from '@/ui/SuggestionsScreen'
 import { AppLockGate } from '@/ui/AppLockGate'
-import { AdminUsageScreen } from '@/ui/AdminUsageScreen'
+const ActivityScreen = lazy(() => import('@/ui/ActivityScreen').then((m) => ({ default: m.ActivityScreen })))
+const BirthdaysScreen = lazy(() => import('@/ui/BirthdaysScreen').then((m) => ({ default: m.BirthdaysScreen })))
+const ContactsScreen = lazy(() => import('@/ui/ContactsScreen').then((m) => ({ default: m.ContactsScreen })))
+const GalleryScreen = lazy(() => import('@/ui/GalleryScreen').then((m) => ({ default: m.GalleryScreen })))
+const DocumentsScreen = lazy(() => import('@/ui/DocumentsScreen').then((m) => ({ default: m.DocumentsScreen })))
+const MenuSettingsScreen = lazy(() => import('@/ui/MenuSettingsScreen').then((m) => ({ default: m.MenuSettingsScreen })))
+const AyudaScreen = lazy(() => import('@/ui/AyudaScreen').then((m) => ({ default: m.AyudaScreen })))
+const SuggestionsScreen = lazy(() => import('@/ui/SuggestionsScreen').then((m) => ({ default: m.SuggestionsScreen })))
+const AdminUsageScreen = lazy(() => import('@/ui/AdminUsageScreen').then((m) => ({ default: m.AdminUsageScreen })))
 import { LegalScreen, type LegalKind } from '@/ui/LegalScreen'
 
 // Las páginas legales tienen que poder leerse SIN sesión (antes de crear
@@ -79,6 +89,7 @@ export function App() {
         <ReminderWatcher />
         <AutomationWatcher />
         <LocationSharingWatcher profileId={profile.id} />
+        <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
         <Routes>
           <Route element={<NavShell profile={profile} />}>
             <Route path="/" element={<HomeOrBankReturn profile={profile} />} />
@@ -102,6 +113,7 @@ export function App() {
             <Route path="/condiciones" element={<LegalScreen kind="condiciones" />} />
           </Route>
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </AppLockGate>
   )

@@ -108,12 +108,18 @@ export async function deleteFamilyMember(id: string): Promise<void> {
 // real: "los miembros de la familia los cojo y los puedo arrastrar y
 // poner primero Jennifer, luego Paco...") — mismo patrón que
 // reorderShoppingItems.
+//
+// Update de verdad, no upsert (ver reorderShoppingItems en shopping.ts
+// para la explicación completa: upsert exige mandar TODAS las columnas
+// obligatorias sin valor por defecto — family_id, name, member_type —
+// y fallaba en silencio; estas filas ya existen siempre al reordenar).
 export async function reorderFamilyMembers(orderedIds: string[]): Promise<void> {
   const base = Date.now()
-  const { error } = await supabase
-    .from('family_members')
-    .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
-  if (error) throw new Error(error.message)
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from('family_members').update({ sort_order: base + index }).eq('id', id)),
+  )
+  const failed = results.find((r) => r.error)
+  if (failed?.error) throw new Error(failed.error.message)
 }
 
 // Foto de perfil por miembro — para identificarlos visualmente en toda

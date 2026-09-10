@@ -51,12 +51,26 @@ export async function listShoppingItems(): Promise<ShoppingItem[]> {
 // sort_order nuevos y crecientes; como se basan en "ahora", quedan
 // siempre por delante de lo que ya hubiera sin tener que tocar el
 // sort_order de nada más.
+//
+// Bug real encontrado probando en vivo ("si añado algo y vuelvo, no
+// sigue en el orden que había puesto"): esto usaba upsert mandando
+// solo id+sort_order. Postgres construye la fila candidata a insertar
+// ANTES de darse cuenta de que hay conflicto (y que en realidad toca
+// actualizar) — esa fila candidata necesita TODAS las columnas
+// obligatorias sin valor por defecto (family_id, name), que faltaban,
+// así que el upsert entero fallaba (RLS primero, luego "null value in
+// column name") con un error que se quedaba sin capturar: el orden
+// parecía guardado en pantalla (estado local optimista) pero nunca
+// llegaba a la base de datos. Como estas filas SIEMPRE existen ya al
+// reordenar, lo correcto es un update de verdad (una sola columna),
+// no un upsert — así no hace falta mandar el resto de columnas nunca.
 export async function reorderShoppingItems(orderedIds: string[]): Promise<void> {
   const base = Date.now()
-  const { error } = await supabase
-    .from('shopping_items')
-    .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
-  if (error) throw new Error(error.message)
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from('shopping_items').update({ sort_order: base + index }).eq('id', id)),
+  )
+  const failed = results.find((r) => r.error)
+  if (failed?.error) throw new Error(failed.error.message)
 }
 
 export async function addShoppingItem(input: {

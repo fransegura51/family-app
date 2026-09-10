@@ -14,12 +14,18 @@ export async function listShoppingStores(): Promise<ShoppingStoreEntry[]> {
 // real: "los supermercados quiero poder tocarlos con el dedo... coger
 // Aldi y ponerlo debajo del Líder") — mismo patrón que
 // reorderShoppingItems.
+//
+// Update de verdad, no upsert (ver reorderShoppingItems en shopping.ts
+// para la explicación completa: upsert exige mandar TODAS las columnas
+// obligatorias sin valor por defecto — family_id, name — y fallaba en
+// silencio; estas filas ya existen siempre al reordenar).
 export async function reorderShoppingStores(orderedIds: string[]): Promise<void> {
   const base = Date.now()
-  const { error } = await supabase
-    .from('shopping_stores')
-    .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
-  if (error) throw new Error(error.message)
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from('shopping_stores').update({ sort_order: base + index }).eq('id', id)),
+  )
+  const failed = results.find((r) => r.error)
+  if (failed?.error) throw new Error(failed.error.message)
 }
 
 export async function createShoppingStore(name: string): Promise<void> {

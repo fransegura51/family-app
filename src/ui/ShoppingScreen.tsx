@@ -872,17 +872,29 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
     const drag = dragRef.current
     if (!drag) return
     const dy = e.clientY - drag.startY
-    setDragOffset(dy)
     const shift = Math.round(dy / drag.itemHeight)
     const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
-    setOrder((prev) => {
-      const currentIndex = prev.findIndex((s) => s.id === drag.id)
-      if (currentIndex === -1 || currentIndex === newIndex) return prev
-      const next = [...prev]
-      const [moved] = next.splice(currentIndex, 1)
-      next.splice(newIndex, 0, moved)
-      return next
-    })
+    if (shift !== 0 && newIndex !== drag.startIndex) {
+      setOrder((prev) => {
+        const currentIndex = prev.findIndex((s) => s.id === drag.id)
+        if (currentIndex === -1 || currentIndex === newIndex) return prev
+        const next = [...prev]
+        const [moved] = next.splice(currentIndex, 1)
+        next.splice(newIndex, 0, moved)
+        return next
+      })
+      // Bug real ("al ordenar varias líneas se montan los productos"):
+      // tras mover un elemento en la lista, había que reiniciar aquí el
+      // punto de referencia — si no, el siguiente cálculo seguía
+      // contando desde el dedo hasta el principio del gesto entero, y
+      // el desplazamiento se iba acumulando con cada salto en vez de
+      // medirse solo desde el último salto.
+      drag.startY += shift * drag.itemHeight
+      drag.startIndex = newIndex
+      setDragOffset(dy - shift * drag.itemHeight)
+    } else {
+      setDragOffset(dy)
+    }
   }
 
   function handleDragEnd() {
@@ -1058,17 +1070,30 @@ function DraggableStoreGroup({
     const drag = dragRef.current
     if (!drag) return
     const dy = e.clientY - drag.startY
-    setDragOffset(dy)
     const shift = Math.round(dy / drag.itemHeight)
     const newIndex = Math.min(order.length - 1, Math.max(0, drag.startIndex + shift))
-    setOrder((prev) => {
-      const currentIndex = prev.findIndex((i) => i.id === drag.id)
-      if (currentIndex === -1 || currentIndex === newIndex) return prev
-      const next = [...prev]
-      const [moved] = next.splice(currentIndex, 1)
-      next.splice(newIndex, 0, moved)
-      return next
-    })
+    if (shift !== 0 && newIndex !== drag.startIndex) {
+      setOrder((prev) => {
+        const currentIndex = prev.findIndex((i) => i.id === drag.id)
+        if (currentIndex === -1 || currentIndex === newIndex) return prev
+        const next = [...prev]
+        const [moved] = next.splice(currentIndex, 1)
+        next.splice(newIndex, 0, moved)
+        return next
+      })
+      // Bug real ("al ordenar varias líneas se montan los productos"):
+      // tras mover un elemento, había que reiniciar aquí el punto de
+      // referencia — si no, el siguiente cálculo seguía contando desde
+      // el principio de todo el gesto, y el desplazamiento se iba
+      // acumulando con cada salto en vez de medirse solo desde el
+      // último. Esto también hacía que el orden final guardado no
+      // fuera siempre el que se veía en pantalla al soltar.
+      drag.startY += shift * drag.itemHeight
+      drag.startIndex = newIndex
+      setDragOffset(dy - shift * drag.itemHeight)
+    } else {
+      setDragOffset(dy)
+    }
   }
 
   function handleTouchEnd() {

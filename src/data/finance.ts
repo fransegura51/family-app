@@ -270,12 +270,18 @@ export async function deleteBudgetCategory(id: string): Promise<void> {
 // arrastrándolos con el dedo". Mismo patrón que reorderShoppingItems:
 // se manda la lista ya en el orden final y aquí se reparten sort_order
 // nuevos y crecientes.
+//
+// Update de verdad, no upsert (ver reorderShoppingItems en shopping.ts
+// para la explicación completa: upsert exige mandar TODAS las columnas
+// obligatorias sin valor por defecto — family_id, name — y fallaba en
+// silencio; estas filas ya existen siempre al reordenar).
 export async function reorderBudgetCategories(orderedIds: string[]): Promise<void> {
   const base = Date.now()
-  const { error } = await supabase
-    .from('budget_categories')
-    .upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
-  if (error) throw new Error(error.message)
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from('budget_categories').update({ sort_order: base + index }).eq('id', id)),
+  )
+  const failed = results.find((r) => r.error)
+  if (failed?.error) throw new Error(failed.error.message)
 }
 
 // ---------------------------------------------------------------------
@@ -322,10 +328,15 @@ export async function deleteTag(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Mismo bug que reorderBudgetCategories/reorderShoppingItems: update
+// de verdad en vez de upsert, ver la explicación en shopping.ts.
 export async function reorderTags(orderedIds: string[]): Promise<void> {
   const base = Date.now()
-  const { error } = await supabase.from('tags').upsert(orderedIds.map((id, index) => ({ id, sort_order: base + index })))
-  if (error) throw new Error(error.message)
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from('tags').update({ sort_order: base + index }).eq('id', id)),
+  )
+  const failed = results.find((r) => r.error)
+  if (failed?.error) throw new Error(failed.error.message)
 }
 
 // ---------------------------------------------------------------------

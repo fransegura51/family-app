@@ -538,7 +538,7 @@ export function CalendarScreen() {
         return {
           key: `ev-${ev.id}`,
           id: ev.id,
-          title: ev.title,
+          title: ev.visibility === 'private' ? `🔒 ${ev.title}` : ev.title,
           subtitle,
           color: eventColor(ev, memberById),
           allDay: ev.allDay,
@@ -1412,7 +1412,14 @@ function TimeGridView({
       const startMin = start.getHours() * 60 + start.getMinutes()
       const end = ev.endAt ? new Date(ev.endAt) : null
       const endMin = end ? Math.max(end.getHours() * 60 + end.getMinutes(), startMin + 20) : startMin + 60
-      blocks.push({ key: `ev-${ev.id}`, title: ev.title, color: eventColor(ev, memberById), startMin, endMin, dateStr })
+      blocks.push({
+        key: `ev-${ev.id}`,
+        title: ev.visibility === 'private' ? `🔒 ${ev.title}` : ev.title,
+        color: eventColor(ev, memberById),
+        startMin,
+        endMin,
+        dateStr,
+      })
     }
     for (const ev of externalEventsByDate.get(dateStr) ?? []) {
       if (ev.allDay) continue
@@ -1433,7 +1440,7 @@ function TimeGridView({
       if (!ev.allDay) continue
       const hasPhoto = ev.attachmentKind === 'foto'
       const hasLocation = !!ev.locationLabel || (ev.locationLatitude != null && ev.locationLongitude != null)
-      const prefix = (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
+      const prefix = (ev.visibility === 'private' ? '🔒' : '') + (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
       chips.push({ key: `ev-${ev.id}`, title: prefix ? `${prefix} ${ev.title}` : ev.title, color: eventColor(ev, memberById) })
     }
     for (const ev of externalEventsByDate.get(dateStr) ?? []) {
@@ -1869,7 +1876,10 @@ function EventCard({
       {ev.attachmentKind === 'foto' && ev.attachmentStoragePath && (
         <EventAttachmentPhoto storagePath={ev.attachmentStoragePath} />
       )}
-      <strong>{ev.title}</strong>
+      <strong>
+        {ev.visibility === 'private' && '🔒 '}
+        {ev.title}
+      </strong>
       <p className="muted">
         {new Date(ev.startAt).toLocaleString('es-ES', {
           dateStyle: 'medium',
@@ -2383,6 +2393,7 @@ function EditEventForm({
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [attachmentRemoved, setAttachmentRemoved] = useState(false)
   const [note, setNote] = useState(event.note ?? '')
+  const [visibility, setVisibility] = useState<'shared' | 'private'>(event.visibility)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -2429,6 +2440,7 @@ function EditEventForm({
         locationLatitude: coords?.latitude ?? null,
         locationLongitude: coords?.longitude ?? null,
         note: note.trim() || null,
+        visibility,
         ...attachment,
       })
       onDone()
@@ -2464,6 +2476,20 @@ function EditEventForm({
       <label className="checkbox-label">
         <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
         Todo el día
+      </label>
+      {/* Petición real: "quiero que las notas se puedan poner con una
+          etiqueta de personal y que se vean solo en el calendario del
+          usuario que las pone... que los demás usuarios aunque sean de
+          la familia no lo puedan ver" — convive con el resto de
+          eventos de la familia (mismas vistas), pero el servidor
+          filtra quién puede llegar a leerlo (RLS, ver migración 0089). */}
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={visibility === 'private'}
+          onChange={(e) => setVisibility(e.target.checked ? 'private' : 'shared')}
+        />
+        🔒 Solo yo (privado — el resto de la familia no lo verá)
       </label>
       <RecurrenceControl value={recurrence} onChange={setRecurrence} />
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
@@ -2546,6 +2572,7 @@ function AddEventForm({
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
+  const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -2621,6 +2648,7 @@ function AddEventForm({
         locationLatitude: coords?.latitude ?? null,
         locationLongitude: coords?.longitude ?? null,
         note: note.trim() || null,
+        visibility,
         ...attachment,
       })
       setTitle('')
@@ -2635,6 +2663,7 @@ function AddEventForm({
       setCoords(null)
       setAttachmentFile(null)
       setNote('')
+      setVisibility('shared')
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear el evento')
@@ -2680,6 +2709,14 @@ function AddEventForm({
       <label className="checkbox-label">
         <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
         Todo el día
+      </label>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={visibility === 'private'}
+          onChange={(e) => setVisibility(e.target.checked ? 'private' : 'shared')}
+        />
+        🔒 Solo yo (privado — el resto de la familia no lo verá)
       </label>
       <RecurrenceControl value={recurrence} onChange={setRecurrence} />
       <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />

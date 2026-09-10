@@ -59,7 +59,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Menú ☰ y Vista general', text: 'Se abre por defecto en Vista general. El botón ☰ junto al título agrupa el resto de vistas (Mes, Semana, 3 días, Día, Familiar, Agenda, Personal, Externos) — sácalas para verlas siempre como chip, igual que en Economía. Los nombres de la familia para filtrar se quedan siempre visibles, fuera del desplegable.' },
     { title: 'Vistas', text: 'Mes, Semana, 3 días, Día, Familiar (una columna por persona), Agenda, Personal y Vista general — elige la que mejor te venga.' },
     { title: 'Personal', text: 'Notas privadas por día, solo para ti — ni el resto de la familia las ve, aunque compartáis cuenta. No lleva hora, foto ni recordatorios, solo lo que quieras apuntarte a ti mismo.' },
-    { title: 'Crear evento', text: 'Título, hora, foto o archivo adjunto, repetición (con excluir festivos) y varios recordatorios por evento.' },
+    { title: 'Crear evento', text: 'Título, hora, foto o archivo adjunto, repetición (con excluir festivos) y varios recordatorios por evento. Puedes marcarlo "🔒 Solo yo" para que aparezca mezclado con el resto del calendario pero solo tú lo veas — ni el resto de la familia.' },
     { title: 'Puntos por evento', text: 'Si el evento es de una sola persona, puedes ponerle puntos que se ganan al marcarlo "Hecho" — van a la sección Puntos.' },
     { title: 'Marcar hecho / borrar', text: 'Un evento hecho se queda tachado en su sitio. En los repetidos puedes borrar solo esa vez o toda la serie.' },
     { title: 'Calendarios enlazados', text: 'Pega la "URL secreta" de tu Google, Outlook, Apple o Android para traer tus citas de fuera (solo lectura).' },

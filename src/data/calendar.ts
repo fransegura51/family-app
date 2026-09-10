@@ -22,13 +22,14 @@ interface EventRow {
   attachment_kind: 'foto' | 'archivo' | null
   attachment_original_name: string | null
   note: string | null
+  visibility: string
   calendar_event_members: { member_id: string }[]
   calendar_event_reminders: { minutes_before: number; anchor: string }[]
 }
 
 const EVENT_COLUMNS =
   'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, exception_dates, points, ' +
-  'location_label, location_latitude, location_longitude, attachment_storage_path, attachment_kind, attachment_original_name, note, ' +
+  'location_label, location_latitude, location_longitude, attachment_storage_path, attachment_kind, attachment_original_name, note, visibility, ' +
   'calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)'
 
 function toEvent(row: EventRow): CalendarEvent {
@@ -56,6 +57,7 @@ function toEvent(row: EventRow): CalendarEvent {
     attachmentKind: row.attachment_kind,
     attachmentOriginalName: row.attachment_original_name,
     note: row.note,
+    visibility: row.visibility === 'private' ? 'private' : 'shared',
   }
 }
 
@@ -137,6 +139,7 @@ export async function createEvent(input: {
   attachmentKind?: 'foto' | 'archivo' | null
   attachmentOriginalName?: string | null
   note?: string | null
+  visibility?: 'shared' | 'private'
 }): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
@@ -166,6 +169,7 @@ export async function createEvent(input: {
       attachment_kind: input.attachmentKind ?? null,
       attachment_original_name: input.attachmentOriginalName ?? null,
       note: input.note ?? null,
+      visibility: input.visibility ?? 'shared',
     })
     .select('id')
     .single()
@@ -206,6 +210,7 @@ export async function updateEvent(
     attachmentKind?: 'foto' | 'archivo' | null
     attachmentOriginalName?: string | null
     note?: string | null
+    visibility?: 'shared' | 'private'
   },
 ): Promise<void> {
   const { error } = await supabase
@@ -225,6 +230,7 @@ export async function updateEvent(
       attachment_kind: input.attachmentKind ?? null,
       attachment_original_name: input.attachmentOriginalName ?? null,
       note: input.note ?? null,
+      visibility: input.visibility ?? 'shared',
     })
     .eq('id', id)
   if (error) throw error

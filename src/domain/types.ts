@@ -449,6 +449,11 @@ export interface CalendarEvent {
   locationLatitude: number | null
   locationLongitude: number | null
   note: string | null
+  // Petición real: "quiero que las notas se puedan poner con una
+  // etiqueta de personal y que se vean solo en el calendario... que
+  // los demás usuarios aunque sean de la familia no lo puedan ver" —
+  // 'private' se filtra ya en el propio servidor (RLS), no aquí.
+  visibility: 'shared' | 'private'
 }
 
 // Módulo Banco (Enable Banking) — una familia puede tener varias

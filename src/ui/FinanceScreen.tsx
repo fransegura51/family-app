@@ -2534,8 +2534,14 @@ function MovementRow({
       />
       <div className="movement-row-body">
         <div className="movement-row-line">
+          {/* Petición real: "he puesto la categoría Sueldo pero fuera
+              sigue poniendo Ingreso" — la fila forzaba el texto
+              "Ingreso" en cualquier movimiento marcado como ingreso, sin
+              mirar la categoría real (que sí se guardaba bien). Ahora se
+              muestra igual que un gasto: icono + nombre de la categoría
+              elegida (Sueldo, Regalo, Ingreso genérico...). */}
           <span className="movement-row-category">
-            {!e.isIncome && category?.icon} {e.isIncome ? 'Ingreso' : e.category}
+            {category?.icon} {e.category}
           </span>
           <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
             {e.isIncome ? '+' : ''}
@@ -2578,10 +2584,11 @@ function TagSelect({ value, onChange, tags }: { value: string; onChange: (v: str
 }
 
 // Editar cualquier movimiento de la lista de Gastos — categoría
-// (desplegable real, ya no texto libre) para uno normal, o solo
-// fecha/importe si es un ingreso (los ingresos no llevan categoría de
-// presupuesto). Etiqueta, Debo/Necesito/Quiero y Fijo/variable se
-// pueden asignar en los dos casos (Skill de Pepa, puntos 11/15/16).
+// (desplegable real, ya no texto libre): la del árbol de gasto para uno
+// normal, o la de INCOME_CATEGORY_SEED (Sueldo, Regalo, Ingreso...) si
+// es un ingreso. Sin establecimiento en un ingreso (no aplica). Etiqueta,
+// Debo/Necesito/Quiero y Fijo/variable se pueden asignar en los dos
+// casos (Skill de Pepa, puntos 11/15/16).
 function EditExpenseInline({
   expense,
   categories,

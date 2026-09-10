@@ -1003,7 +1003,7 @@ function BankTab({
       window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''))
     }
     reload()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleSync() {
     setSyncing(true)
@@ -2514,7 +2514,10 @@ function ExpensesTab({
       if (filter.isIncome !== undefined && e.isIncome !== filter.isIncome) return false
       return true
     })
-  }, [expenses, filter, visibleMonth])
+    // `categories` faltaba en las dependencias (lo cantó el linter al
+    // activarlo): reclasificar una categoría no refrescaba un filtro por
+    // Debo/Necesito/Quiero o Fijo/Variable hasta que cambiaban los gastos.
+  }, [expenses, filter, visibleMonth, categories])
 
   const monthExpenses = filteredExpenses
 

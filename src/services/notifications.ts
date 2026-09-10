@@ -18,7 +18,7 @@ export async function requestPermission(): Promise<NotificationPermissionState> 
 
 export function showNotification(title: string, body: string): void {
   if (!('Notification' in window) || Notification.permission !== 'granted') return
-  // eslint-disable-next-line no-new
+
   new Notification(title, { body, icon: '/pwa-192.png' })
 }
 

@@ -1538,7 +1538,7 @@ function FoodLogTab() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [activeMemberId, date]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(reload, [activeMemberId, date])
 
   const activeMember = members.find((m) => m.id === activeMemberId)
   const showDetail = activeMember?.memberType === 'admin' || activeMember?.memberType === 'adult'
@@ -1690,7 +1690,7 @@ function AddFoodLogForm({
       })
   }
 
-  useEffect(loadRecent, [activeMemberId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(loadRecent, [activeMemberId])
 
   function pickRecent(log: FoodLog) {
     setDescription(log.description)
@@ -1866,7 +1866,7 @@ function WeightTab() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [activeMemberId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(reload, [activeMemberId])
 
   async function handleDeleteMeasurement(id: string) {
     await deleteBodyMeasurement(id)

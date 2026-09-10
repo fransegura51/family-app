@@ -579,7 +579,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
       })
   }
 
-  useEffect(() => reload(), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => reload(), [])
 
   // El watch vive fuera de este componente (services/locationSharing.ts)
   // precisamente para seguir en marcha aunque se salga de esta pantalla
@@ -606,7 +606,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   useEffect(() => {
     const interval = setInterval(() => reload(true), 30_000)
     return () => clearInterval(interval)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // El rastro de la ruta sí conviene refrescarlo de vez en cuando (para
   // ver avanzar el camino si alguien deja la pantalla abierta viendo a

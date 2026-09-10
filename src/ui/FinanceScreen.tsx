@@ -3582,43 +3582,67 @@ function CategorySelect({
     setExpandedId(null)
   }
 
+  function close() {
+    setOpen(false)
+    setExpandedId(null)
+  }
+
   return (
     <div>
-      <button type="button" className="category-picker-toggle" onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
         <span>{selected ? `${selected.icon} ${selected.name}` : value || 'Elige una categoría'}</span>
-        <span className="muted">{open ? '▲' : '▼'}</span>
+        <span className="muted">▼</span>
       </button>
       {open && (
-        <div className="category-picker-panel">
-          {expandedParent ? (
-            <>
-              <button type="button" className="link-button" style={{ padding: '6px 4px' }} onClick={() => setExpandedId(null)}>
-                ‹ Volver a categorías
+        // Petición real: "en el iPhone, al darle a una categoría padre se
+        // cierra el desplegable y al reabrirlo se ven las subcategorías" —
+        // el panel inline reflowaba la página bajo el dedo al expandir, y
+        // Safari en iOS disparaba un click fantasma sobre el botón que
+        // había quedado en esa posición, cerrando el desplegable justo
+        // después de abrirlo. Al ser ahora una ventana emergente fija, el
+        // resto de la página ya no se mueve al expandir una categoría.
+        <div className="modal-overlay" onClick={close}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {expandedParent ? `${expandedParent.icon} ${expandedParent.name}` : 'Elige una categoría'}
+              </h2>
+              <button type="button" className="modal-close" onClick={close}>
+                ✕
               </button>
-              <button type="button" className="category-picker-row" onClick={() => pick(expandedParent.name)}>
-                {expandedParent.icon} {expandedParent.name} <span className="muted">(sin subcategoría)</span>
-              </button>
-              {subcats.map((c) => (
-                <button key={c.id} type="button" className="category-picker-row" onClick={() => pick(c.name)}>
-                  {c.icon} {c.name}
-                </button>
-              ))}
-            </>
-          ) : (
-            topLevel.map((c) => {
-              const hasChildren = generales.some((x) => x.parentId === c.id)
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="category-picker-row"
-                  onClick={() => (hasChildren ? setExpandedId(c.id) : pick(c.name))}
-                >
-                  {c.icon} {c.name} {hasChildren && <span className="muted">›</span>}
-                </button>
-              )
-            })
-          )}
+            </div>
+            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
+              {expandedParent ? (
+                <>
+                  <button type="button" className="link-button" style={{ padding: '6px 4px' }} onClick={() => setExpandedId(null)}>
+                    ‹ Volver a categorías
+                  </button>
+                  <button type="button" className="category-picker-row" onClick={() => pick(expandedParent.name)}>
+                    {expandedParent.icon} {expandedParent.name} <span className="muted">(sin subcategoría)</span>
+                  </button>
+                  {subcats.map((c) => (
+                    <button key={c.id} type="button" className="category-picker-row" onClick={() => pick(c.name)}>
+                      {c.icon} {c.name}
+                    </button>
+                  ))}
+                </>
+              ) : (
+                topLevel.map((c) => {
+                  const hasChildren = generales.some((x) => x.parentId === c.id)
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className="category-picker-row"
+                      onClick={() => (hasChildren ? setExpandedId(c.id) : pick(c.name))}
+                    >
+                      {c.icon} {c.name} {hasChildren && <span className="muted">›</span>}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -6,6 +6,7 @@ import { parseVcf } from '@/domain/vcardParser'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
+import contactosHeaderImg from '@/assets/contactos/contactos-header.jpg'
 
 // Categorías de partida — ya no es una lista cerrada: cualquier
 // contacto puede llevar una categoría nueva escrita a mano (petición
@@ -67,7 +68,9 @@ export function ContactsScreen() {
 
   return (
     <div className="screen">
-      <h1>Contactos</h1>
+      <div className="kitchen-header kitchen-header-familia">
+        <img src={contactosHeaderImg} alt="Contactos" className="kitchen-header-img" />
+      </div>
       {error && <p className="error">{error}</p>}
       <datalist id="contact-categories">
         {availableCategories.map((cat) => (

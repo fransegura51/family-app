@@ -13,6 +13,7 @@ import {
   setOwnPin,
   type WebauthnCredentialInfo,
 } from '@/data/appLock'
+import configuracionHeaderImg from '@/assets/configuracion/configuracion-header.jpg'
 
 const PINNED_COUNT = 4
 
@@ -445,7 +446,9 @@ export function MenuSettingsScreen() {
 
   return (
     <div className="screen">
-      <h1>Configuración</h1>
+      <div className="kitchen-header kitchen-header-familia">
+        <img src={configuracionHeaderImg} alt="Configuración" className="kitchen-header-img" />
+      </div>
 
       <FamilyNameSection />
       <AccountingMonthSection />

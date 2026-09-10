@@ -18,6 +18,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { NAV_TABS } from '@/domain/navTabs'
+import ayudaHeaderImg from '@/assets/ayuda/ayuda-header.jpg'
 
 const SUMMARIES: Record<string, string> = {
   '/': 'Resumen del día: próximos eventos, cumpleaños cercanos y accesos rápidos.',
@@ -302,7 +303,9 @@ export function AyudaScreen() {
 
   return (
     <div className="screen">
-      <h1>Ayuda</h1>
+      <div className="kitchen-header kitchen-header-familia">
+        <img src={ayudaHeaderImg} alt="Ayuda" className="kitchen-header-img" />
+      </div>
       <p className="muted">Para qué sirve cada sección de la app. Toca una para ver el detalle.</p>
 
       <label className="ayuda-search-label">

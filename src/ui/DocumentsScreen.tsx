@@ -13,6 +13,7 @@ import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { AddMemberForm } from '@/ui/FamilyScreen'
+import documentosHeaderImg from '@/assets/documentos/documentos-header.jpg'
 
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
@@ -107,7 +108,9 @@ export function DocumentsScreen() {
 
   return (
     <div className="screen">
-      <h1>Documentos</h1>
+      <div className="kitchen-header kitchen-header-familia">
+        <img src={documentosHeaderImg} alt="Documentos" className="kitchen-header-img" />
+      </div>
       {error && <p className="error">{error}</p>}
 
       {/* Carpetas grandes de colores en rejilla, con el icono de cada

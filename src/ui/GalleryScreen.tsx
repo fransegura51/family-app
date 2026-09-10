@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { deleteGalleryPhoto, getGalleryPhotoUrl, listGalleryPhotos, uploadGalleryPhoto } from '@/data/gallery'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import type { GalleryPhoto } from '@/domain/types'
+import galeriaHeaderImg from '@/assets/galeria/galeria-header.jpg'
 
 export function GalleryScreen() {
   const [photos, setPhotos] = useState<GalleryPhoto[]>([])
@@ -38,7 +39,9 @@ export function GalleryScreen() {
 
   return (
     <div className="screen">
-      <h1>Galería</h1>
+      <div className="kitchen-header kitchen-header-familia">
+        <img src={galeriaHeaderImg} alt="Galería" className="kitchen-header-img" />
+      </div>
       {error && <p className="error">{error}</p>}
       <div className="gallery-grid">
         {photos.map((p) => (

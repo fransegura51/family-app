@@ -3569,6 +3569,13 @@ function CategorySelect({
 }) {
   const [open, setOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Petición real: "elijo una subcategoría y me devuelve a la lista de
+  // categorías y no puedo cerrar la ventana" (iPhone) — sospecha de un
+  // "click fantasma" de Safari/iOS que llega justo después de cerrarse
+  // el modal y cae sobre el botón que queda al descubierto en esa misma
+  // posición, reabriéndolo. Se ignora cualquier toque que reabra el
+  // desplegable en los 400ms siguientes a haberlo cerrado.
+  const closedAtRef = useRef(0)
 
   const generales = categories.filter((c) => c.budgetGroup === 'generales')
   const topLevel = generales.filter((c) => !c.parentId)
@@ -3578,18 +3585,25 @@ function CategorySelect({
 
   function pick(name: string) {
     onChange(name)
+    closedAtRef.current = Date.now()
     setOpen(false)
     setExpandedId(null)
   }
 
   function close() {
+    closedAtRef.current = Date.now()
     setOpen(false)
     setExpandedId(null)
   }
 
+  function openPicker() {
+    if (Date.now() - closedAtRef.current < 400) return
+    setOpen(true)
+  }
+
   return (
     <div>
-      <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
+      <button type="button" className="category-picker-toggle" onClick={openPicker}>
         <span>{selected ? `${selected.icon} ${selected.name}` : value || 'Elige una categoría'}</span>
         <span className="muted">▼</span>
       </button>

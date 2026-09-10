@@ -140,7 +140,7 @@ const SETTINGS_ENTRY = {
     { title: 'Huella / Face ID', text: 'Capa opcional por encima del PIN, para no tener que teclearlo cada vez.' },
     { title: 'Reordenar el menú', text: 'Sube o baja cada sección; las 4 primeras se quedan fijas abajo y el resto vive dentro de "☰ Menú".' },
     { title: 'Panel de uso', text: 'Solo visible para los dueños de la app: quién se ha dado de alta, cuándo entró por última vez y si tiene las notificaciones activadas. Ahí también se ven los errores que haya sufrido cualquier familia (agrupados por mensaje, con su traza) y se generan los códigos de invitación de un solo uso para que una familia nueva pueda crear la suya.' },
-    { title: 'Privacidad y condiciones', text: 'La política de privacidad y las condiciones de uso están enlazadas abajo del todo en esta pantalla de Ayuda y en la pantalla de entrada, y se pueden leer sin tener cuenta.' },
+    { title: 'Privacidad y términos', text: 'La política de privacidad y los términos de uso están enlazados abajo del todo en esta pantalla de Ayuda y en la pantalla de entrada, y se pueden leer sin tener cuenta.' },
   ] as HelpItem[],
 }
 
@@ -372,9 +372,9 @@ export function AyudaScreen() {
         </div>
       )}
       <p className="muted" style={{ fontSize: 12, marginTop: 24, textAlign: 'center' }}>
-        <a href={`${import.meta.env.BASE_URL}privacidad`}>Política de privacidad</a>
+        <a href={`${import.meta.env.BASE_URL}privacidad.html`}>Política de privacidad</a>
         {' · '}
-        <a href={`${import.meta.env.BASE_URL}condiciones`}>Condiciones de uso</a>
+        <a href={`${import.meta.env.BASE_URL}terminos.html`}>Términos de uso</a>
       </p>
     </div>
   )

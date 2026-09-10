@@ -66,12 +66,11 @@ export function LoginScreen() {
         {mode === 'signin' ? '¿No tienes cuenta? Crear una' : '¿Ya tienes cuenta? Entrar'}
       </button>
       {/* Una persona tiene que poder leer la política ANTES de crear la
-          cuenta (RGPD) — enlaces normales, fuera del router, que App
-          resuelve sin sesión. */}
+          cuenta (RGPD) — páginas estáticas de public/, sin sesión. */}
       <p className="muted" style={{ fontSize: 12, marginTop: 24, textAlign: 'center' }}>
-        Al crear una cuenta aceptas las{' '}
-        <a href={`${import.meta.env.BASE_URL}condiciones`}>condiciones de uso</a> y la{' '}
-        <a href={`${import.meta.env.BASE_URL}privacidad`}>política de privacidad</a>.
+        Al crear una cuenta aceptas los{' '}
+        <a href={`${import.meta.env.BASE_URL}terminos.html`}>términos de uso</a> y la{' '}
+        <a href={`${import.meta.env.BASE_URL}privacidad.html`}>política de privacidad</a>.
       </p>
     </div>
   )

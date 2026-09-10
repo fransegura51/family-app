@@ -25,11 +25,22 @@ declare const self: ServiceWorkerGlobalScope
 // respuesta de hace hasta 10 minutos sin llegar a tocar la red de
 // verdad. Con no-store, esta petición concreta ignora esa caché HTTP
 // y siempre pregunta al servidor.
+//
+// networkTimeoutSeconds: bug real reportado ("me pide ubicación, le
+// doy a permitir y se queda la página en blanco") justo al volver de
+// una redirección externa larga (banco → Enable Banking → nuestra
+// app) — en ese momento concreto la conexión del móvil tarda en
+// "despertar" tras el salto entre sitios, y con solo 3s de margen la
+// red no siempre llega a tiempo, así que caía a la reserva
+// precacheada (que puede apuntar a archivos ya borrados del servidor
+// si hubo despliegues nuevos mientras tanto → pantalla en blanco).
+// Más margen para que un pico de latencia puntual no dispare la
+// reserva innecesariamente.
 registerRoute(
   ({ request }) => request.mode === 'navigate',
   new NetworkFirst({
     cacheName: 'navigations',
-    networkTimeoutSeconds: 3,
+    networkTimeoutSeconds: 8,
     fetchOptions: { cache: 'no-store' },
   }),
 )

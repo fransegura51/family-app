@@ -1,4 +1,4 @@
-import { supabase } from '@/data/supabaseClient'
+import { fetchAllRows, supabase } from '@/data/supabaseClient'
 import type { Product, ProductPrice } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -18,10 +18,9 @@ function normalize(name: string): string {
 }
 
 export async function listProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from('products')
-    .select('id, family_id, normalized_name, display_name, category, brand')
-  if (error) throw error
+  const data = await fetchAllRows((from, to) =>
+    supabase.from('products').select('id, family_id, normalized_name, display_name, category, brand').order('id').range(from, to),
+  )
   return data.map((r) => ({
     id: r.id,
     familyId: r.family_id,
@@ -66,11 +65,14 @@ export async function deleteProductPricesByReceipt(receiptId: string): Promise<v
 }
 
 export async function listAllProductPrices(): Promise<ProductPrice[]> {
-  const { data, error } = await supabase
-    .from('product_prices')
-    .select('id, product_id, price, store, quantity, unit, recorded_date, receipt_id')
-    .order('recorded_date', { ascending: true })
-  if (error) throw error
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from('product_prices')
+      .select('id, product_id, price, store, quantity, unit, recorded_date, receipt_id')
+      .order('recorded_date', { ascending: true })
+      .order('id')
+      .range(from, to),
+  )
   return data.map((r) => ({
     id: r.id,
     productId: r.product_id,

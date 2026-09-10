@@ -1,4 +1,4 @@
-import { supabase } from '@/data/supabaseClient'
+import { fetchAllRows, supabase } from '@/data/supabaseClient'
 import type {
   Budget,
   BudgetCategory,
@@ -29,11 +29,14 @@ async function currentFamilyId(): Promise<string> {
 // ---------------------------------------------------------------------
 
 export async function listExpenses(): Promise<Expense[]> {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override')
-    .order('expense_date', { ascending: false })
-  if (error) throw error
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from('expenses')
+      .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override')
+      .order('expense_date', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
   return data.map((r) => ({
     id: r.id,
     familyId: r.family_id,

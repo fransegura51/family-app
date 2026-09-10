@@ -1,4 +1,4 @@
-import { supabase } from '@/data/supabaseClient'
+import { fetchAllRows, supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
 import type { CalendarEvent } from '@/domain/types'
 import type { EventReminder, ReminderAnchor } from '@/domain/reminders'
@@ -62,12 +62,9 @@ function toEvent(row: EventRow): CalendarEvent {
 }
 
 export async function listUpcomingEvents(): Promise<CalendarEvent[]> {
-  const { data, error } = await supabase
-    .from('calendar_events')
-    .select(EVENT_COLUMNS)
-    .order('start_at', { ascending: true })
-
-  if (error) throw error
+  const data = await fetchAllRows((from, to) =>
+    supabase.from('calendar_events').select(EVENT_COLUMNS).order('start_at', { ascending: true }).order('id').range(from, to),
+  )
   return (data as unknown as EventRow[]).map(toEvent)
 }
 
@@ -287,10 +284,14 @@ export interface EventCompletion {
 // memberId/pointsAwarded solo se rellenan cuando el evento lleva puntos
 // y está asignado a una sola persona — para el resto queda a null/0.
 export async function listEventCompletions(): Promise<EventCompletion[]> {
-  const { data, error } = await supabase
-    .from('calendar_event_completions')
-    .select('event_id, occurrence_date, member_id, points_awarded')
-  if (error) throw error
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from('calendar_event_completions')
+      .select('event_id, occurrence_date, member_id, points_awarded')
+      .order('event_id')
+      .order('occurrence_date')
+      .range(from, to),
+  )
   return data.map((r) => ({
     eventId: r.event_id,
     occurrenceDate: r.occurrence_date,

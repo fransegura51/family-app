@@ -2,7 +2,7 @@
 // (startGoogleConnect): esta pestaña redirige al banco, la vuelta
 // ocurre en enable-banking-auth-callback, que trae de vuelta a
 // /familia con ?bank=connected o ?bank=error.
-import { supabase } from '@/data/supabaseClient'
+import { fetchAllRows, supabase } from '@/data/supabaseClient'
 import type { BankAccount, BankConnection, BankTransaction } from '@/domain/types'
 
 export interface Aspsp {
@@ -99,11 +99,14 @@ export async function listBankAccounts(): Promise<BankAccount[]> {
 }
 
 export async function listBankTransactions(): Promise<BankTransaction[]> {
-  const { data, error } = await supabase
-    .from('bank_transactions')
-    .select('id, account_id, entry_reference, transaction_date, amount, currency, credit_debit, description, matched_expense_id')
-    .order('transaction_date', { ascending: false })
-  if (error) throw error
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from('bank_transactions')
+      .select('id, account_id, entry_reference, transaction_date, amount, currency, credit_debit, description, matched_expense_id')
+      .order('transaction_date', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
   return data.map((r) => ({
     id: r.id,
     accountId: r.account_id,

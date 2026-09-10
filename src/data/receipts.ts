@@ -1,4 +1,4 @@
-import { supabase } from '@/data/supabaseClient'
+import { fetchAllRows, supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
 import type { Receipt } from '@/domain/types'
 
@@ -15,11 +15,14 @@ async function currentFamilyId(): Promise<string> {
 }
 
 export async function listReceipts(): Promise<Receipt[]> {
-  const { data, error } = await supabase
-    .from('receipts')
-    .select('id, family_id, storage_path, store, receipt_date, total_amount, expense_id, notes, category, purchased_by_member_id')
-    .order('receipt_date', { ascending: false })
-  if (error) throw error
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from('receipts')
+      .select('id, family_id, storage_path, store, receipt_date, total_amount, expense_id, notes, category, purchased_by_member_id')
+      .order('receipt_date', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
   return data.map((r) => ({
     id: r.id,
     familyId: r.family_id,

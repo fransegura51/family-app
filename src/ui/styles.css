@@ -562,6 +562,16 @@ body {
   transform: translateX(-50%);
 }
 
+/* Petición real: "no solo queríamos dar datos, sino también ayudar a
+   los usuarios a comprender lo que significan... aunque fuese en otra
+   ventana debajo de la imagen" — mismo tinte que otros bloques de
+   contexto/ayuda de la app (#eef1ff). */
+.pepa-conclusion-explain {
+  background: #eef1ff;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .member-card {
   display: flex;
   align-items: center;

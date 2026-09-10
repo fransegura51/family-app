@@ -180,6 +180,49 @@ export interface MovementsFilter {
   isIncome?: boolean
 }
 
+// Petición real: "no solo queríamos dar datos, sino también ayudar a
+// los usuarios a comprender lo que significan esos datos... no cabe en
+// el bocadillo, ¿ves alguna forma de añadir algo así, aunque fuese en
+// otra ventana debajo de la imagen?" — cada tipo de conclusión (no cada
+// frase concreta, que cambia con los números) tiene una explicación
+// fija de qué significa y por qué importa, apoyada en referencias
+// reales de educación financiera (p. ej. la regla 50/30/20), enlazada
+// con el propio sistema de clasificación de la app (Debo/Necesito/Quiero,
+// Fijo/Variable — Skill de Pepa, puntos 15/16).
+// Petición real (matiz sobre lo anterior): "no todas las secciones lo
+// necesitan, por ejemplo que el gasto más alto hayan sido 450€ no
+// necesita más explicación, pero cuando se puede aclarar algo más se
+// debería hacer" — solo llevan explicación las conclusiones que se
+// apoyan en un concepto/criterio propio de la app (Debo/Necesito/Quiero,
+// Fijo/Variable, tasa de ahorro, comparación entre periodos). Las que
+// son un dato puntual sin más lectura detrás (categoría con más gasto,
+// comercio más frecuente, gasto más alto, etiqueta más repetida...) se
+// quedan sin `kind` y por tanto sin panel.
+type ConclusionKind = 'periodo-sube' | 'periodo-baja' | 'periodo-estable' | 'ahorro-bueno' | 'ahorro-negativo' | 'quiero' | 'fijo-variable'
+
+interface Conclusion {
+  text: string
+  filter?: MovementsFilter
+  kind?: ConclusionKind
+}
+
+const CONCLUSION_EXPLANATIONS: Record<ConclusionKind, string> = {
+  'periodo-sube':
+    'Comparar el gasto con el periodo anterior ayuda a distinguir un cambio de hábito real de un gasto puntual. Si la subida viene de una compra excepcional (una reparación, un regalo grande), no hay nada que ajustar; si se repite varios periodos seguidos, sí merece revisar qué categoría lo está empujando.',
+  'periodo-baja':
+    'Una bajada de gasto respecto al periodo anterior es buena señal, pero vale la pena confirmar que no sea solo porque falta algún gasto habitual por registrar (un ticket sin subir, un pago que todavía no ha llegado del banco), y no una bajada real del ritmo de gasto.',
+  'periodo-estable':
+    'Mantener un ritmo de gasto parecido mes a mes es en general positivo: indica un presupuesto predecible, fácil de planificar, sin sobresaltos grandes de un periodo a otro.',
+  'ahorro-bueno':
+    'La tasa de ahorro es el porcentaje de lo ingresado que queda sin gastar. Una referencia habitual en finanzas personales sitúa una tasa saludable a partir del 20%. Por encima de ese umbral hay colchón real para imprevistos o metas a medio plazo, sin depender de ingresos futuros.',
+  'ahorro-negativo':
+    'Gastar más de lo que se ingresa en un periodo significa que ese saldo negativo ha salido de ahorros, tarjeta de crédito o algún otro colchón. Un mes puntual (una factura fuera de lo normal) no es motivo de alarma; si se repite varios periodos seguidos, conviene revisar qué categoría está empujando el gasto por encima del ingreso.',
+  quiero:
+    '"Quiero" es el gasto discrecional: el que se podría recortar sin afectar a lo esencial (ocio, caprichos, restaurantes por gusto). Una referencia habitual en finanzas personales (la regla 50/30/20) sugiere no pasar de un 30% de los ingresos en esta partida. Un porcentaje bajo suele indicar que se prioriza el ahorro o se cubre bien lo básico; si sube mucho, es la primera partida a la que mirar si algún periodo hay que ajustar el presupuesto.',
+  'fijo-variable':
+    'Fijo es el gasto comprometido que se repite cada periodo con un importe parecido (hipoteca/alquiler, seguros, cuotas de préstamos, suscripciones) — no depende de cuánto se consuma. Variable sí depende del consumo real (comida, gasolina, ocio). La misma regla 50/30/20 sugiere no destinar más de un 50% de los ingresos a gastos fijos y de primera necesidad: cuanto más alto sea ese porcentaje, menos margen hay para reaccionar ante un imprevisto o una bajada de ingresos, porque esos pagos no se pueden recortar de un periodo para otro.',
+}
+
 export function FinanceScreen() {
   const [tab, setTab] = useState<SubTab>('Resumen')
   const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
@@ -1400,7 +1443,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const prevReal = expenses.filter((e) => e.kind === 'real' && e.expenseDate >= prevFrom && e.expenseDate <= prevTo)
   const prevSpent = prevReal.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
 
-  const conclusions: { text: string; filter?: MovementsFilter }[] = []
+  const conclusions: Conclusion[] = []
   if (real.length === 0) {
     conclusions.push({ text: 'Todavía no hay movimientos en este periodo para sacar conclusiones.' })
   } else {
@@ -1421,12 +1464,14 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
         conclusions.push({
           text: `Habéis mantenido prácticamente el mismo ritmo de gasto que el periodo anterior y vuestra economía se mantiene estable.`,
           filter: { label: `Gastos — ${PRESET_LABELS[preset]}`, from, to, isIncome: false },
+          kind: 'periodo-estable',
         })
       } else {
         const sign = deltaPct > 0 ? '+' : ''
         conclusions.push({
           text: `Habéis gastado un ${sign}${deltaPct.toFixed(0)}% (${sign}${deltaEur.toFixed(2)} €) ${deltaPct > 0 ? 'más' : 'menos'} que en el periodo anterior.`,
           filter: { label: `Gastos — ${PRESET_LABELS[preset]}`, from, to, isIncome: false },
+          kind: deltaPct > 0 ? 'periodo-sube' : 'periodo-baja',
         })
       }
     }
@@ -1441,11 +1486,13 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
         conclusions.push({
           text: `Vuestra tasa de ahorro es del ${tasaAhorro.toFixed(0)}% — una economía saneada.`,
           filter: { label: `Movimientos — ${PRESET_LABELS[preset]}`, from, to },
+          kind: 'ahorro-bueno',
         })
       } else if (tasaAhorro < 0) {
         conclusions.push({
           text: `Este periodo habéis gastado más de lo que habéis ingresado (${ahorro.toFixed(2)} €).`,
           filter: { label: `Movimientos — ${PRESET_LABELS[preset]}`, from, to },
+          kind: 'ahorro-negativo',
         })
       }
     }
@@ -1459,7 +1506,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
     const prevCategoryTotals = new Map<string, number>()
     for (const e of prevReal.filter((e) => !e.isIncome)) prevCategoryTotals.set(e.category, (prevCategoryTotals.get(e.category) ?? 0) + e.amount)
 
-    let topCategoryCandidate: { text: string; filter?: MovementsFilter } | null = null
+    let topCategoryCandidate: Conclusion | null = null
     if (categoryTotals.size > 0) {
       const [topCatName, topCatTotal] = [...categoryTotals.entries()].sort((a, b) => b[1] - a[1])[0]
       const icon = categories.find((c) => c.name === topCatName)?.icon ?? ''
@@ -1470,7 +1517,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       }
     }
 
-    let biggestMoverCandidate: { text: string; filter?: MovementsFilter } | null = null
+    let biggestMoverCandidate: Conclusion | null = null
     if (prevReal.length > 0) {
       let best: { name: string; deltaEur: number; deltaPct: number | null } | null = null
       for (const [name, total] of categoryTotals) {
@@ -1489,7 +1536,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       }
     }
 
-    let topStoreCandidate: { text: string; filter?: MovementsFilter } | null = null
+    let topStoreCandidate: Conclusion | null = null
     const storeInfo = new Map<string, { count: number; total: number }>()
     for (const e of nonIncome) {
       if (!e.store) continue
@@ -1508,7 +1555,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       }
     }
 
-    let biggestExpenseCandidate: { text: string; filter?: MovementsFilter } | null = null
+    let biggestExpenseCandidate: Conclusion | null = null
     if (nonIncome.length > 0) {
       const biggest = [...nonIncome].sort((a, b) => b.amount - a.amount)[0]
       biggestExpenseCandidate = {
@@ -1517,7 +1564,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       }
     }
 
-    let necessityCandidate: { text: string; filter?: MovementsFilter } | null = null
+    let necessityCandidate: Conclusion | null = null
     const quieroTotal = nonIncome
       .filter((e) => resolveCategoryClassification(e.category, categories).necessity === 'quiero')
       .reduce((s, e) => s + e.amount, 0)
@@ -1526,20 +1573,22 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       necessityCandidate = {
         text: `Un ${pct.toFixed(0)}% de lo gastado (${quieroTotal.toFixed(2)} €) ha sido "Quiero" — gasto no esencial.`,
         filter: { label: `Quiero — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, necessity: 'quiero' },
+        kind: 'quiero',
       }
     }
 
-    let fixedVariableCandidate: { text: string; filter?: MovementsFilter } | null = null
+    let fixedVariableCandidate: Conclusion | null = null
     const fixedTotal = nonIncome.filter((e) => resolveExpenseFixed(e, categories) === true).reduce((s, e) => s + e.amount, 0)
     if (fixedTotal > 0) {
       const pct = totalSpent > 0 ? (fixedTotal / totalSpent) * 100 : 0
       fixedVariableCandidate = {
         text: `El ${pct.toFixed(0)}% de vuestro gasto (${fixedTotal.toFixed(2)} €) es fijo; el resto, variable.`,
         filter: { label: `Fijo — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, isFixed: true },
+        kind: 'fijo-variable',
       }
     }
 
-    let tagCandidate: { text: string; filter?: MovementsFilter } | null = null
+    let tagCandidate: Conclusion | null = null
     const tagCounts = new Map<string, number>()
     for (const e of nonIncome) if (e.tagId) tagCounts.set(e.tagId, (tagCounts.get(e.tagId) ?? 0) + 1)
     if (tagCounts.size > 0) {
@@ -1561,7 +1610,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       necessityCandidate,
       fixedVariableCandidate,
       tagCandidate,
-    ].filter((c): c is { text: string; filter?: MovementsFilter } => c !== null)
+    ].filter((c): c is Conclusion => c !== null)
     conclusions.push(...extraPool)
   }
 
@@ -1620,7 +1669,7 @@ function PepaConclusionsWidget({
   conclusions,
   onViewMovements,
 }: {
-  conclusions: { text: string; filter?: MovementsFilter }[]
+  conclusions: Conclusion[]
   onViewMovements: (f: MovementsFilter) => void
 }) {
   const [index, setIndex] = useState(() => Math.floor(Math.random() * Math.max(conclusions.length, 1)))
@@ -1717,6 +1766,21 @@ function PepaConclusionsWidget({
           </div>
         )}
       </div>
+      {/* Petición real: "no solo queríamos dar datos, sino también
+          ayudar a los usuarios a comprender lo que significan esos
+          datos... no cabe en el bocadillo, ¿ves alguna forma de
+          añadirlo aunque fuese en otra ventana debajo de la imagen?" —
+          y matiz siguiente: "no todas las secciones lo necesitan... pero
+          cuando se puede aclarar algo más se debería hacer". Solo se
+          muestra cuando la conclusión actual tiene `kind` (las que se
+          apoyan en un criterio propio de la app, no un dato suelto). */}
+      {current.kind && (
+        <div className="card pepa-conclusion-explain">
+          <p style={{ margin: 0 }}>
+            💡 {CONCLUSION_EXPLANATIONS[current.kind]}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

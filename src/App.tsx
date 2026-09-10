@@ -24,6 +24,18 @@ import { AyudaScreen } from '@/ui/AyudaScreen'
 import { SuggestionsScreen } from '@/ui/SuggestionsScreen'
 import { AppLockGate } from '@/ui/AppLockGate'
 import { AdminUsageScreen } from '@/ui/AdminUsageScreen'
+import { LegalScreen, type LegalKind } from '@/ui/LegalScreen'
+
+// Las páginas legales tienen que poder leerse SIN sesión (antes de crear
+// la cuenta) — el BrowserRouter solo existe una vez dentro; para estas
+// dos rutas se mira la URL a mano antes de la puerta de login.
+function legalKindFromLocation(): LegalKind | null {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+  const path = window.location.pathname.slice(base.length).replace(/\/$/, '')
+  if (path === '/privacidad') return 'privacidad'
+  if (path === '/condiciones') return 'condiciones'
+  return null
+}
 
 // Bug real reportado varias veces ("se queda la pantalla en gris/
 // blanco al volver del banco"): enable-banking-auth-callback volvía
@@ -48,8 +60,9 @@ function HomeOrBankReturn({ profile }: { profile: Parameters<typeof HomeScreen>[
 export function App() {
   const { session, profile, loading, refreshProfile } = useSession()
 
+  const legalKind = legalKindFromLocation()
   if (loading) return <div className="screen screen-centered">Cargando…</div>
-  if (!session) return <LoginScreen />
+  if (!session) return legalKind ? <LegalScreen kind={legalKind} standalone /> : <LoginScreen />
   if (!profile) {
     // Usuario autenticado pero sin family_id asignado todavía: crea su
     // familia (alta del primer adulto administrador, Fase 1).
@@ -85,6 +98,8 @@ export function App() {
             <Route path="/admin-uso" element={<AdminUsageScreen />} />
             <Route path="/ayuda" element={<AyudaScreen />} />
             <Route path="/sugerencias" element={<SuggestionsScreen />} />
+            <Route path="/privacidad" element={<LegalScreen kind="privacidad" />} />
+            <Route path="/condiciones" element={<LegalScreen kind="condiciones" />} />
           </Route>
         </Routes>
       </BrowserRouter>

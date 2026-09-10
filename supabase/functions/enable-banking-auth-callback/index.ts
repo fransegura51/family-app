@@ -16,8 +16,15 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 // URL pública de la app — a donde se vuelve tras conectar (o fallar).
-// Economía > Banco es donde vive la gestión de cuentas enlazadas.
-const APP_RETURN_URL = "https://fransegura51.github.io/family-app/economia"
+// Bug real reportado varias veces ("se queda la pantalla en gris/
+// blanco al volver del banco"): volver directo a /economia obliga a
+// GitHub Pages a usar su truco de 404.html -> decodificar ->
+// index.html para esa ruta, que es justo el salto más frágil de todos
+// nada más aterrizar desde un enlace externo largo en el móvil. La
+// raíz sí es un archivo real (sin truco), así que se vuelve siempre
+// ahí — la propia app hace el salto a Economía por dentro, ya cargada
+// y funcionando (ver HomeOrBankReturn en App.tsx).
+const APP_RETURN_URL = "https://fransegura51.github.io/family-app/"
 
 function redirectTo(status: "connected" | "error", detail?: string): Response {
   const url = new URL(APP_RETURN_URL)

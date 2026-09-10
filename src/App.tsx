@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
 import { useSession } from '@/auth/useSession'
 import { LoginScreen } from '@/ui/LoginScreen'
 import { OnboardingScreen } from '@/ui/OnboardingScreen'
@@ -25,6 +25,26 @@ import { SuggestionsScreen } from '@/ui/SuggestionsScreen'
 import { AppLockGate } from '@/ui/AppLockGate'
 import { AdminUsageScreen } from '@/ui/AdminUsageScreen'
 
+// Bug real reportado varias veces ("se queda la pantalla en gris/
+// blanco al volver del banco"): enable-banking-auth-callback volvía
+// directo a /dinero, una ruta que en GitHub Pages no es un archivo de
+// verdad — necesita el truco de 404.html (redirección → decodificar →
+// index.html) para funcionar, y ese doble salto es justo el más
+// frágil de todos justo tras un enlace externo largo en el móvil (con
+// la red recién "despertando"). La raíz ("/") sí es un archivo real,
+// sin truco de por medio, así que el banco vuelve siempre ahí y esto
+// hace el salto a Economía por dentro, ya con la app cargada y
+// funcionando.
+function HomeOrBankReturn({ profile }: { profile: Parameters<typeof HomeScreen>[0]['profile'] }) {
+  const [params] = useSearchParams()
+  const bank = params.get('bank')
+  if (bank) {
+    const detail = params.get('detail')
+    return <Navigate to={`/dinero?bank=${bank}${detail ? `&detail=${detail}` : ''}`} replace />
+  }
+  return <HomeScreen profile={profile} />
+}
+
 export function App() {
   const { session, profile, loading, refreshProfile } = useSession()
 
@@ -48,7 +68,7 @@ export function App() {
         <LocationSharingWatcher profileId={profile.id} />
         <Routes>
           <Route element={<NavShell profile={profile} />}>
-            <Route path="/" element={<HomeScreen profile={profile} />} />
+            <Route path="/" element={<HomeOrBankReturn profile={profile} />} />
             <Route path="/calendario" element={<CalendarScreen />} />
             <Route path="/puntos" element={<RewardsScreen />} />
             <Route path="/compras" element={<ShoppingScreen />} />

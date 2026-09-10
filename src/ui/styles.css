@@ -12,6 +12,16 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Safari/iOS agranda automáticamente el texto de bloques que considera
+     "de lectura larga" (p.ej. el concepto completo de un movimiento
+     bancario) cuando mide más que un par de líneas — Android no lo hace,
+     por eso ahí no se ve. Se desactiva ese autoescalado para que el
+     tamaño de letra sea siempre el que fija el CSS. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;

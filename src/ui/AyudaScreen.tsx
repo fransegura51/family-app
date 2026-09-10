@@ -93,7 +93,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Estadísticas', text: 'Gráficos donut por categoría, etiqueta, Debo/Necesito/Quiero y Fijo/Variable — toca una porción para ver justo esos movimientos.' },
     { title: 'Movimientos', text: 'Todos los gastos e ingresos del mes, editables uno a uno.' },
     { title: 'Presupuesto Generales', text: 'Cuánto os habéis propuesto gastar por categoría este mes y cuánto lleváis gastado.' },
-    { title: 'Banco', text: 'Conecta tu cuenta bancaria y los movimientos se traen y concilian solos varias veces al día. Si al conectar te sale "0 cuentas" (pasa con Caja Rural / Ruralvía y otros bancos que no dicen a qué cuenta dan acceso), vuelve a conectar poniendo el IBAN de la cuenta en el campo opcional. "Desconectar" cancela de verdad el permiso en el banco.' },
+    { title: 'Banco', text: 'Conecta tu cuenta bancaria y los movimientos se traen y concilian solos varias veces al día. Si al conectar te sale "0 cuentas" (pasa con Caja Rural / Ruralvía y otros bancos que no dicen a qué cuenta dan acceso), vuelve a conectar poniendo el IBAN de la cuenta en el campo opcional. Si en el móvil se queda en "Redirigir a su proveedor de servicios de cuenta", conéctalo desde un ordenador (queda enlazado para todos). "Desconectar" cancela de verdad el permiso en el banco.' },
     { title: 'Educación financiera', text: 'Un monedero para cada niño (Ingresos, Ahorro, Gastos, Impuestos) con objetivos de ahorro y su barra de progreso.' },
   ],
   '/ubicacion': [

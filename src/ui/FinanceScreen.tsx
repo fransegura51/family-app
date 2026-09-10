@@ -1236,6 +1236,17 @@ function ConnectBankForm({
         indica el IBAN. Si al conectar te sale "0 cuentas", vuelve a conectar poniendo aquí el IBAN de la cuenta que
         quieres enlazar.
       </p>
+      {/* Caso real (móvil Android + Ruralvía): el teléfono intercepta el
+          enlace del banco para abrir su app y el navegador se queda en
+          "Redirigir a su proveedor de servicios de cuenta" para siempre.
+          Comprobado que el mismo enlace, en un navegador de ordenador,
+          llega al login del banco en segundos — la conexión se guarda en
+          el servidor, así que da igual desde dónde se haga. */}
+      <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
+        Si en el móvil se queda en "Redirigir a su proveedor de servicios de cuenta" sin avanzar, es que el teléfono
+        intenta abrir la app del banco y no vuelve: conéctalo desde un ordenador (la cuenta quedará enlazada igual
+        para todos los dispositivos).
+      </p>
       <button type="button" onClick={handleConnect} disabled={!selected || connecting}>
         {connecting ? 'Abriendo el banco…' : 'Conectar'}
       </button>

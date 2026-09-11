@@ -936,7 +936,6 @@ function toDateStrLocal(d: Date): string {
 // cómo estructurar varias cuentas).
 function BalanceTrendCard() {
   const [accounts, setAccounts] = useState<BankAccount[]>([])
-  const [connections, setConnections] = useState<BankConnection[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [transactions, setTransactions] = useState<BankTransaction[]>([])
   const [monthStartDay, setMonthStartDay] = useState(1)
@@ -947,10 +946,9 @@ function BalanceTrendCard() {
   const [customTo, setCustomTo] = useState(toDateStrLocal(new Date()))
 
   function reload() {
-    Promise.all([listBankAccounts(), listBankConnections(), listFamilyMembers(), listBankTransactions(), getFinanceMonthStartDay()])
-      .then(([a, c, m, t, monthStart]) => {
+    Promise.all([listBankAccounts(), listFamilyMembers(), listBankTransactions(), getFinanceMonthStartDay()])
+      .then(([a, m, t, monthStart]) => {
         setAccounts(a)
-        setConnections(c)
         setMembers(m)
         setTransactions(t)
         setMonthStartDay(monthStart)
@@ -991,11 +989,14 @@ function BalanceTrendCard() {
   // movimientos" para traer más histórico).
   const effectiveFrom = earliest && earliest > from ? earliest : from
 
+  // Petición real: "que ponga Común, no el banco y la cuenta, así
+  // ocupan menos sitio" — el chip identifica DE QUIÉN es la cuenta
+  // (para eso están, igual que "Eric"/"Fernando"), no hace falta
+  // repetir banco + últimos dígitos ahí; esos datos ya están en la
+  // tarjeta de arriba y en Banco.
   function accountChipLabel(a: BankAccount): { label: string; owner: FamilyMember | null } {
     const owner = a.ownerMemberId ? (members.find((m) => m.id === a.ownerMemberId) ?? null) : null
-    if (owner) return { label: owner.name, owner }
-    const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Cuenta'
-    return { label: a.iban ? `${bankName} ••${a.iban.slice(-4)}` : bankName, owner: null }
+    return { label: owner ? owner.name : 'Común', owner }
   }
 
   // Petición real: "componlos de los colores asignados a las cuentas...

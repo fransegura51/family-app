@@ -1377,16 +1377,16 @@ function BankTab({
     const ownerId = accId ? accountById.get(accId)?.ownerMemberId : null
     return ownerId ? (memberById.get(ownerId) ?? null) : null
   }
-  // Petición real: "no me salen los identificadores de cuentas en la
-  // lista de los movimientos... el dueño no basta si dos cuentas son
-  // del mismo miembro o las dos son Común" — mismo color que ya usa la
-  // tarjeta de esa cuenta en "Mis cuentas" (mismo índice → mismo color,
-  // ver AccountBalanceCards), para distinguir cuenta a cuenta y no solo
-  // dueño a dueño.
-  const accountColorById = new Map(accounts.map((a, i) => [a.id, ACCOUNT_CARD_COLORS[i % ACCOUNT_CARD_COLORS.length]]))
+  // Petición real: "los colores que quiero que pongas son las de las
+  // etiquetas de personas... los de las tarjetas de cuentas son
+  // demasiado similares" — mismo color que ya usa el avatar de esa
+  // persona en toda la app (member.color), o el mismo gris de "Común"
+  // (COMMON_OWNER_COLOR) si la cuenta no tiene dueño asignado.
   function accountColorForExpense(expenseId: string): string | null {
     const accId = expenseAccountId.get(expenseId)
-    return accId ? (accountColorById.get(accId) ?? null) : null
+    if (!accId) return null
+    const owner = ownerMemberForExpense(expenseId)
+    return owner ? owner.color : COMMON_OWNER_COLOR
   }
   const activeAccountLabel = activeAccountId
     ? (() => {

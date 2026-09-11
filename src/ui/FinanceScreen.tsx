@@ -1377,17 +1377,6 @@ function BankTab({
     const ownerId = accId ? accountById.get(accId)?.ownerMemberId : null
     return ownerId ? (memberById.get(ownerId) ?? null) : null
   }
-  // Petición real: "los colores que quiero que pongas son las de las
-  // etiquetas de personas... los de las tarjetas de cuentas son
-  // demasiado similares" — mismo color que ya usa el avatar de esa
-  // persona en toda la app (member.color), o el mismo gris de "Común"
-  // (COMMON_OWNER_COLOR) si la cuenta no tiene dueño asignado.
-  function accountColorForExpense(expenseId: string): string | null {
-    const accId = expenseAccountId.get(expenseId)
-    if (!accId) return null
-    const owner = ownerMemberForExpense(expenseId)
-    return owner ? owner.color : COMMON_OWNER_COLOR
-  }
   const activeAccountLabel = activeAccountId
     ? (() => {
         const acc = accounts.find((a) => a.id === activeAccountId)
@@ -1524,7 +1513,6 @@ function BankTab({
                   tag={tags.find((t) => t.id === e.tagId)}
                   onClick={() => setEditingId(e.id)}
                   ownerMember={activeAccountId ? undefined : ownerMemberForExpense(e.id)}
-                  accountColor={activeAccountId ? undefined : accountColorForExpense(e.id)}
                 />
               ),
             )}
@@ -2878,7 +2866,6 @@ function MovementRow({
   onClick,
   extraAction,
   ownerMember,
-  accountColor,
 }: {
   expense: Expense
   category: BudgetCategory | undefined
@@ -2890,11 +2877,6 @@ function MovementRow({
   // filtrar una a una) — el avatar/color ya asignado a esa cuenta en
   // "De quién es la cuenta".
   ownerMember?: FamilyMember | null
-  // Petición real: "no puedo distinguir qué movimiento pertenece a qué
-  // cuenta cuando los veo todos a la vez" — el dueño no basta si dos
-  // cuentas comparten dueño (o las dos son Común), así que además del
-  // avatar se marca la cuenta en sí con su mismo color de "Mis cuentas".
-  accountColor?: string | null
 }) {
   const source = SOURCE_META[e.source]
   return (
@@ -2928,16 +2910,7 @@ function MovementRow({
             {e.kind !== 'real' && ` · ${e.kind}`}
             {tag && ` · ${tag.name}`}
           </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            {accountColor && (
-              <span
-                aria-hidden="true"
-                title="Color de la cuenta"
-                style={{ width: 8, height: 8, borderRadius: '50%', background: accountColor, display: 'inline-block' }}
-              />
-            )}
-            <span title={source.label}>{source.icon}</span>
-          </span>
+          <span title={source.label}>{source.icon}</span>
         </div>
         {e.notes && <div className="movement-row-line movement-row-notes muted">{e.notes}</div>}
       </div>

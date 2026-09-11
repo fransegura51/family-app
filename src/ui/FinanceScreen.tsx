@@ -68,7 +68,7 @@ import {
   walletCategoryTotal,
 } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
-import { PRESET_LABELS, rangeForPreset, toDateStr, type SpendRangePreset } from '@/domain/dateRanges'
+import { accountingMonthsBack, PRESET_LABELS, rangeForPreset, toDateStr, type SpendRangePreset } from '@/domain/dateRanges'
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
@@ -819,13 +819,26 @@ function AccountBalanceCards({
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [connections, setConnections] = useState<BankConnection[]>([])
 
-  useEffect(() => {
+  function reload() {
     Promise.all([listBankAccounts(), listBankConnections()])
       .then(([a, c]) => {
         setAccounts(a)
         setConnections(c)
       })
       .catch(() => {})
+  }
+
+  useEffect(reload, [])
+
+  // Bug real reportado: "sincronizo el banco y las tarjetas de arriba se
+  // quedan en 'Sincronizando...', tengo que cambiar de pestaña para que
+  // se vea el saldo real" — esta tarjeta vive en Resumen y solo se
+  // cargaba una vez al montarse; Banco (otra pestaña) avisa aquí cuando
+  // sincroniza, conecta o desconecta una cuenta, mismo patrón que
+  // "family-app:calendar-changed" en Calendario.
+  useEffect(() => {
+    window.addEventListener('family-app:bank-changed', reload)
+    return () => window.removeEventListener('family-app:bank-changed', reload)
   }, [])
 
   return (
@@ -995,8 +1008,10 @@ function BankTab({
     // un refresco de página no lo vuelva a mostrar.
     const params = new URLSearchParams(window.location.search)
     const result = params.get('bank')
-    if (result === 'connected') setNotice('✓ Banco conectado.')
-    else if (result === 'error') setNotice(`No se pudo conectar (${params.get('detail') ?? 'error'}).`)
+    if (result === 'connected') {
+      setNotice('✓ Banco conectado.')
+      window.dispatchEvent(new Event('family-app:bank-changed'))
+    } else if (result === 'error') setNotice(`No se pudo conectar (${params.get('detail') ?? 'error'}).`)
     if (result) {
       params.delete('bank')
       params.delete('detail')
@@ -1013,6 +1028,13 @@ function BankTab({
       const result = await syncBankTransactions(syncDays)
       setNotice(`✓ ${result.totalSynced} movimiento${result.totalSynced === 1 ? '' : 's'} sincronizado${result.totalSynced === 1 ? '' : 's'}.`)
       reload()
+      // Bug real reportado: "las tarjetas de saldo de arriba de Economía
+      // (Resumen) se quedaban en 'Sincronizando...' aunque el saldo ya
+      // estuviera guardado — había que cambiar de pestaña para que se
+      // refrescaran". AccountBalanceCards vive fuera de esta pestaña y
+      // solo se cargaba una vez al montarse; este aviso le dice que
+      // vuelva a pedir los datos.
+      window.dispatchEvent(new Event('family-app:bank-changed'))
     } catch (err) {
       setError(errorMessage(err, String(err)))
     } finally {
@@ -1085,7 +1107,12 @@ function BankTab({
                 label="Desconectar"
                 confirmLabel="¿Seguro?"
                 className="link-button"
-                onConfirm={() => disconnectBank(c.id).then(reload)}
+                onConfirm={() =>
+                  disconnectBank(c.id).then(() => {
+                    reload()
+                    window.dispatchEvent(new Event('family-app:bank-changed'))
+                  })
+                }
               />
             </div>
           )
@@ -2278,28 +2305,34 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         {body}
       </div>
 
-      <EvolucionTemporal expenses={expenses} onViewMovements={onViewMovements} />
+      <EvolucionTemporal expenses={expenses} monthStartDay={monthStartDay} onViewMovements={onViewMovements} />
       <PorQueHaCambiadoMiGasto purchases={purchases} productNames={productNames} onViewMovements={onViewMovements} />
     </div>
   )
 }
 
 // Skill de Pepa, punto 13: ingresos/gastos/ahorro mes a mes, con acceso
-// directo a los movimientos de cada mes.
-function EvolucionTemporal({ expenses, onViewMovements }: { expenses: Expense[]; onViewMovements: (f: MovementsFilter) => void }) {
+// directo a los movimientos de cada mes. Petición real: "la evolución
+// temporal debería ajustarse a la configuración del mes contable" — antes
+// siempre usaba el mes de calendario (día 1 al último), sin importar el
+// día de inicio elegido en Configuración.
+function EvolucionTemporal({
+  expenses,
+  monthStartDay,
+  onViewMovements,
+}: {
+  expenses: Expense[]
+  monthStartDay: number
+  onViewMovements: (f: MovementsFilter) => void
+}) {
   const months = useMemo(() => {
-    const now = new Date()
-    const list: { key: string; label: string; from: string; to: string }[] = []
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      const from = `${key}-01`
-      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
-      const to = `${key}-${String(lastDay).padStart(2, '0')}`
-      list.push({ key, label: `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`, from, to })
-    }
-    return list
-  }, [])
+    return accountingMonthsBack(6, monthStartDay).map((p) => ({
+      key: `${p.monthLabelYear}-${String(p.monthLabelMonth0 + 1).padStart(2, '0')}`,
+      label: `${MONTH_LABELS[p.monthLabelMonth0]} ${p.monthLabelYear}`,
+      from: p.from,
+      to: p.to,
+    }))
+  }, [monthStartDay])
 
   const rows = months.map((m) => {
     const inMonth = expenses.filter((e) => e.kind === 'real' && e.expenseDate >= m.from && e.expenseDate <= m.to)

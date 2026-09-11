@@ -69,6 +69,51 @@ export function rangeForPreset(
   return [customFrom || todayStr, customTo || todayStr]
 }
 
+// Los últimos `count` periodos contables (el actual incluido), del más
+// antiguo al más reciente — misma regla del día de inicio que
+// rangeForPreset('mes', ...) pero repetida hacia atrás. Petición real:
+// "la evolución temporal debería ajustarse a la configuración del mes
+// contable" (antes usaba siempre mes de calendario 1-31, sin importar
+// lo que se hubiera puesto en Configuración).
+export function accountingMonthsBack(
+  count: number,
+  monthStartDay = 1,
+): { monthLabelYear: number; monthLabelMonth0: number; from: string; to: string }[] {
+  const today = new Date()
+  let startYear = today.getFullYear()
+  let startMonth = today.getMonth()
+  const startDayThisMonth = Math.min(monthStartDay, daysInMonth(startYear, startMonth))
+  if (today.getDate() < startDayThisMonth) {
+    startMonth -= 1
+    if (startMonth < 0) {
+      startMonth = 11
+      startYear -= 1
+    }
+  }
+
+  const periods: { monthLabelYear: number; monthLabelMonth0: number; from: string; to: string }[] = []
+  for (let i = count - 1; i >= 0; i--) {
+    let y = startYear
+    let m = startMonth - i
+    while (m < 0) {
+      m += 12
+      y -= 1
+    }
+    const startDay = Math.min(monthStartDay, daysInMonth(y, m))
+    const first = new Date(y, m, startDay)
+    let endY = y
+    let endM = m + 1
+    if (endM > 11) {
+      endM = 0
+      endY += 1
+    }
+    const endDay = Math.min(monthStartDay, daysInMonth(endY, endM))
+    const last = new Date(endY, endM, endDay - 1)
+    periods.push({ monthLabelYear: y, monthLabelMonth0: m, from: toDateStr(first), to: toDateStr(last) })
+  }
+  return periods
+}
+
 export const PRESET_LABELS: Record<SpendRangePreset, string> = {
   dia: 'Hoy',
   semana: 'Esta semana',

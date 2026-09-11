@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { rangeForPreset, toDateStr } from '@/domain/dateRanges'
+import { accountingMonthsBack, rangeForPreset, toDateStr } from '@/domain/dateRanges'
 
 describe('rangeForPreset', () => {
   beforeEach(() => {
@@ -34,5 +34,40 @@ describe('rangeForPreset', () => {
 
   it('toDateStr usa hora local y rellena con ceros', () => {
     expect(toDateStr(new Date(2026, 0, 5))).toBe('2026-01-05')
+  })
+})
+
+describe('accountingMonthsBack', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    // Viernes 11 de septiembre de 2026, mediodía local.
+    vi.setSystemTime(new Date(2026, 8, 11, 12, 0))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('mes de calendario (día 1): del más antiguo al más reciente, el actual incluido', () => {
+    const periods = accountingMonthsBack(3, 1)
+    expect(periods.map((p) => [p.from, p.to])).toEqual([
+      ['2026-07-01', '2026-07-31'],
+      ['2026-08-01', '2026-08-31'],
+      ['2026-09-01', '2026-09-30'],
+    ])
+    expect(periods[2]).toMatchObject({ monthLabelYear: 2026, monthLabelMonth0: 8 })
+  })
+
+  it('inicio contable el 25: hoy (11 sept) cae antes del 25, así que "este mes" es 25 ago–24 sep', () => {
+    const periods = accountingMonthsBack(2, 25)
+    expect(periods.map((p) => [p.from, p.to])).toEqual([
+      ['2026-07-25', '2026-08-24'],
+      ['2026-08-25', '2026-09-24'],
+    ])
+  })
+
+  it('inicio el 31 se recorta al último día real de cada mes', () => {
+    const periods = accountingMonthsBack(2, 31)
+    expect(periods.map((p) => [p.from, p.to])).toEqual([
+      ['2026-07-31', '2026-08-30'],
+      ['2026-08-31', '2026-09-29'],
+    ])
   })
 })

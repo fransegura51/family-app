@@ -56,7 +56,7 @@ export function ContactsScreen() {
   const [shareNotice, setShareNotice] = useState<string | null>(null)
   function flashShareNotice(msg: string) {
     setShareNotice(msg)
-    setTimeout(() => setShareNotice(null), 2500)
+    setTimeout(() => setShareNotice(null), 5000)
   }
 
   function toggleSelected(id: string) {
@@ -112,7 +112,7 @@ export function ContactsScreen() {
         <img src={contactosHeaderImg} alt="Contactos" className="kitchen-header-img" />
       </div>
       {error && <p className="error">{error}</p>}
-      {shareNotice && <p className="muted">{shareNotice}</p>}
+      {shareNotice && <p className="points-badge">{shareNotice}</p>}
       <datalist id="contact-categories">
         {availableCategories.map((cat) => (
           <option key={cat} value={cat} />
@@ -254,13 +254,21 @@ function ContactCard({
   const [editingAll, setEditingAll] = useState(false)
   const [birthDate, setBirthDate] = useState(c.birthDate ?? '')
   const [saving, setSaving] = useState(false)
+  // Bug real reportado: "no hace nada" al tocar compartir, sin poder
+  // ver la pantalla del móvil para saber en qué paso se queda — esto
+  // da una señal visible de que el toque SÍ se ha registrado, aunque
+  // lo que pase después (se abra el menú, o no) dependa del navegador.
+  const [sharing, setSharing] = useState(false)
 
   async function handleShareOne() {
+    setSharing(true)
     try {
       const shared = await shareContacts([c])
       if (!shared) onShareFallback()
     } catch (err) {
       onShareError(errorMessage(err, 'No se pudo compartir'))
+    } finally {
+      setSharing(false)
     }
   }
 
@@ -335,8 +343,14 @@ function ContactCard({
             📞
           </a>
         )}
-        <button type="button" className="icon-button-share" onClick={handleShareOne} aria-label="Compartir contacto">
-          📤
+        <button
+          type="button"
+          className="icon-button-share"
+          onClick={handleShareOne}
+          disabled={sharing}
+          aria-label="Compartir contacto"
+        >
+          {sharing ? '…' : '📤'}
         </button>
         <button type="button" className="link-button" onClick={() => setEditingAll(true)} aria-label="Editar">
           ✏️

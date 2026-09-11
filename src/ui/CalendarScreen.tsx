@@ -181,9 +181,14 @@ export function CalendarScreen() {
   // parecía que no había pasado nada. Mismo aviso que ya tienen
   // Compras/Recetas.
   const [shareNotice, setShareNotice] = useState<string | null>(null)
+  // Bug real reportado: "no hace nada" al tocar compartir, sin poder
+  // ver la pantalla del móvil para saber en qué paso se queda — marca
+  // qué evento está en ello para dar una señal visible de que el toque
+  // SÍ se ha registrado, aunque lo que pase después dependa del navegador.
+  const [sharingEventKey, setSharingEventKey] = useState<string | null>(null)
   function flashShareNotice(msg: string) {
     setShareNotice(msg)
-    setTimeout(() => setShareNotice(null), 2500)
+    setTimeout(() => setShareNotice(null), 5000)
   }
   const [editingId, setEditingId] = useState<string | null>(null)
   const [view, setView] = useState<ViewMode>('Vista general')
@@ -500,6 +505,8 @@ export function CalendarScreen() {
   // ni recordatorios internos), recolocado sobre el día que se está
   // viendo si el evento es recurrente.
   async function handleShareEvent(ev: CalendarEvent, dateStr: string) {
+    const key = `${ev.id}-${dateStr}`
+    setSharingEventKey(key)
     const occ = occurrenceAt(ev, dateStr)
     const ics = icsForEvent({ title: ev.title, startAt: occ.startAt, endAt: occ.endAt, allDay: ev.allDay, description: ev.description })
     const file = new File([ics], `${ev.title || 'evento'}.ics`, { type: 'text/calendar' })
@@ -515,6 +522,8 @@ export function CalendarScreen() {
       }
     } catch (err) {
       setError(errorMessage(err, 'No se pudo compartir el evento'))
+    } finally {
+      setSharingEventKey((k) => (k === key ? null : k))
     }
   }
 
@@ -591,6 +600,7 @@ export function CalendarScreen() {
           onComplete: done ? undefined : () => handleCompleteEvent(ev.id, dateStr),
           onUncomplete: done ? () => handleUncompleteEvent(ev.id, dateStr) : undefined,
           onShare: () => handleShareEvent(ev, dateStr),
+          sharing: sharingEventKey === `${ev.id}-${dateStr}`,
           attachmentStoragePath: ev.attachmentStoragePath,
           attachmentKind: ev.attachmentKind,
           attachmentOriginalName: ev.attachmentOriginalName,
@@ -679,7 +689,7 @@ export function CalendarScreen() {
         </button>
       </div>
       {error && <p className="error">{error}</p>}
-      {shareNotice && <p className="muted">{shareNotice}</p>}
+      {shareNotice && <p className="points-badge">{shareNotice}</p>}
 
       {calendarMenuOpen && (
         <CalendarioMenuDropdown
@@ -1080,6 +1090,9 @@ interface AgendaEntry {
   // específico... que la otra persona se lo pueda anotar en su
   // calendario, no tiene por qué ser de nuestra app".
   onShare?: () => void
+  // Señal visible de que el toque en 📤 SÍ se ha registrado, mientras
+  // se espera a ver si se abre el menú o no (bug real: "no hace nada").
+  sharing?: boolean
   // Adjuntos del propio evento (Skill de adjuntos, formato "Nuevo
   // evento" de referencia): foto grande en la tarjeta, archivo,
   // ubicación y nota — solo los llevan los eventos propios, nunca los
@@ -1735,9 +1748,10 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
           type="button"
           className="icon-button-share icon-button-share-sm"
           onClick={entry.onShare}
+          disabled={entry.sharing}
           aria-label="Compartir"
         >
-          📤
+          {entry.sharing ? '…' : '📤'}
         </button>
       )}
       {canDelete && (
@@ -1848,8 +1862,14 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
             </button>
           )}
           {entry.onShare && (
-            <button type="button" className="icon-button-share" onClick={entry.onShare} aria-label="Compartir">
-              📤
+            <button
+              type="button"
+              className="icon-button-share"
+              onClick={entry.onShare}
+              disabled={entry.sharing}
+              aria-label="Compartir"
+            >
+              {entry.sharing ? '…' : '📤'}
             </button>
           )}
           {entry.onEdit && (

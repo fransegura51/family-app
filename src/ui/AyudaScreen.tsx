@@ -96,7 +96,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Estadísticas', text: 'Gráficos donut por categoría, etiqueta, Debo/Necesito/Quiero y Fijo/Variable — toca una porción para ver justo esos movimientos. "Evolución temporal" (últimos 6 meses) respeta el día de inicio del mes contable que hayas puesto en Configuración.' },
     { title: 'Movimientos', text: 'Todos los gastos e ingresos del mes, editables uno a uno.' },
     { title: 'Presupuesto Generales', text: 'Cuánto os habéis propuesto gastar por categoría este mes y cuánto lleváis gastado.' },
-    { title: 'Banco', text: 'Conecta tu cuenta bancaria y los movimientos se traen y concilian solos varias veces al día. Si al conectar te sale "0 cuentas" (pasa con Caja Rural / Ruralvía y otros bancos que no dicen a qué cuenta dan acceso), vuelve a conectar poniendo el IBAN de la cuenta en el campo opcional. Si en el móvil se queda en "Redirigir a su proveedor de servicios de cuenta", conéctalo desde un ordenador (queda enlazado para todos). "Desconectar" cancela de verdad el permiso en el banco. Junto a cada cuenta hay un desplegable para decir de quién es, o "🏠 Común" si es de toda la familia — ese color/avatar se usa luego como símbolo en cada movimiento cuando ves todas las cuentas mezcladas, para saber de un vistazo de cuál viene sin tener que filtrar una a una.' },
+    { title: 'Banco', text: 'Los movimientos se traen y concilian solos varias veces al día, o pulsa "🔄 Sincronizar movimientos" para forzarlo (el desplegable de al lado amplía cuánto histórico pedir). Conectar un banco nuevo, desconectarlo o decir de quién es cada cuenta se hace desde "⚙️ Gestionar cuentas bancarias" — la misma ventana emergente a la que también se llega desde ☰ Menú → Configuración → 🏦 Cuentas bancarias.' },
     { title: 'Educación financiera', text: 'Un monedero para cada niño (Ingresos, Ahorro, Gastos, Impuestos) con objetivos de ahorro y su barra de progreso.' },
   ],
   '/ubicacion': [
@@ -137,10 +137,11 @@ const SETTINGS_ENTRY = {
   to: '/menu-organizar',
   icon: '⚙️',
   label: 'Configuración',
-  summary: 'Nombre de familia, bloqueo con PIN o huella, orden del menú y panel de uso — se llega desde ☰ Menú → Configuración.',
+  summary: 'Nombre de familia, cuentas bancarias, bloqueo con PIN o huella, orden del menú y panel de uso — se llega desde ☰ Menú → Configuración.',
   details: [
     { title: 'Nombre de familia', text: 'Editable, solo por el admin.' },
     { title: 'Inicio del mes contable', text: 'El día en que empieza "Este mes" en toda Economía, por si lleváis las cuentas desde otra fecha que no sea el día 1.' },
+    { title: 'Cuentas bancarias', text: 'Conectar un banco nuevo, desconectarlo o decir de quién es cada cuenta ("🏠 Común" si es de toda la familia). Por normativa (PSD2) cada banco pide renovar el permiso cada 90 días — se ve como "válido hasta" junto al nombre del banco; cuando se acerque esa fecha, vuelve aquí y conecta el mismo banco otra vez para que la sincronización no se corte. Le pasa igual a cualquier familia y a cualquier app de banca abierta, no es un fallo.' },
     { title: 'Bloqueo de la app', text: 'Pon un PIN de 4 a 6 dígitos que se pide cada vez que se abre la app.' },
     { title: 'Huella / Face ID', text: 'Capa opcional por encima del PIN, para no tener que teclearlo cada vez.' },
     { title: 'Reordenar el menú', text: 'Sube o baja cada sección; las 4 primeras se quedan fijas abajo y el resto vive dentro de "☰ Menú".' },

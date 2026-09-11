@@ -24,17 +24,8 @@ import {
   updateExpense,
   updateTag,
 } from '@/data/finance'
-import {
-  disconnectBank,
-  listAspsps,
-  listBankAccounts,
-  listBankConnections,
-  listBankTransactions,
-  setBankAccountOwner,
-  startBankConnection,
-  syncBankTransactions,
-  type Aspsp,
-} from '@/data/bank'
+import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTransactions } from '@/data/bank'
+import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import { getFinanceMonthStartDay, listFamilyMembers } from '@/data/family'
 import {
   economiaMenuEntryMeta,
@@ -1223,9 +1214,8 @@ function BankTab({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
-  const [showConnect, setShowConnect] = useState(false)
+  const [showAccountsModal, setShowAccountsModal] = useState(false)
   // Solo importa para la primera sincronización de cada cuenta — a
   // partir de ahí cada sincronización (manual o del cron 4 veces al
   // día, ver 0077_schedule_bank_sync.sql) es incremental de verdad,
@@ -1255,7 +1245,7 @@ function BankTab({
   useEffect(() => {
     if (openConnectSignal != null && openConnectSignal !== lastConnectSignalRef.current) {
       lastConnectSignalRef.current = openConnectSignal
-      setShowConnect(true)
+      setShowAccountsModal(true)
     }
   }, [openConnectSignal])
 
@@ -1391,82 +1381,39 @@ function BankTab({
       {notice && <p className="points-badge">{notice}</p>}
       {error && <p className="error">{error}</p>}
 
+      {/* Petición real: "Esta parte de las cuentas quiero que la pongas
+          en una página emergente accesible desde el menú arriba con
+          Configuración cuentas" — conectar/desconectar/asignar dueño
+          vive ahora en BankAccountsModal (también abierto desde
+          Configuración → Cuentas bancarias); aquí solo queda un resumen
+          y el botón para gestionar, más lo que sí es del día a día
+          (sincronizar y ver movimientos). */}
       {activeConnections.length === 0 ? (
         <p className="muted">
           Todavía no hay ningún banco enlazado. Al enlazar una cuenta, sus movimientos se pueden traer aquí y
           usarlos en Economía junto con los tickets.
         </p>
       ) : (
-        activeConnections.map((c) => {
-          const connAccounts = accounts.filter((a) => a.connectionId === c.id)
-          return (
-            <div key={c.id} className="card event-card" style={{ marginBottom: 8 }}>
-              <strong>🏦 {c.aspspName}</strong>
-              <p className="muted" style={{ margin: '4px 0' }}>
-                {connAccounts.length} {connAccounts.length === 1 ? 'cuenta' : 'cuentas'}
-                {c.validUntil && ` · válido hasta ${c.validUntil.slice(0, 10)}`}
-              </p>
-              {/* Caso real (Caja Rural Central / Ruralvía): el banco autoriza el
-                  permiso pero no dice a qué cuenta si no se le indica el IBAN —
-                  antes esto se quedaba en "0 cuentas" sin ninguna pista de qué
-                  hacer. Comprobado en la API de Enable Banking: la sesión queda
-                  AUTHORIZED con accounts: [] y access.accounts: null. */}
-              {connAccounts.length === 0 && (
-                <p className="error" style={{ margin: '4px 0', fontSize: 13 }}>
-                  El banco ha autorizado el acceso pero no ha dicho a qué cuenta. Desconecta esta conexión y vuelve a
-                  conectar escribiendo el <strong>IBAN</strong> de la cuenta en el campo opcional (recarga la página antes
-                  si no ves ese campo).
-                </p>
-              )}
-              {connAccounts.map((a) => (
-                <div key={a.id} className="inline-fields" style={{ margin: '4px 0', alignItems: 'center' }}>
-                  <p className="muted" style={{ margin: 0, fontSize: 13, flex: 1 }}>
-                    · {a.name ?? 'Cuenta'} {a.iban ? `(${a.iban})` : ''} {a.currency ?? ''}
-                  </p>
-                  {/* Petición real: "quiero definir a cada pestaña de banco
-                      el nombre de quien es la cuenta para que use esa letra
-                      para los movimientos" — el nombre del banco (arriba) es
-                      el del titular legal, no sirve para distinguir de un
-                      vistazo entre varias cuentas de la familia. */}
-                  <select
-                    value={a.ownerMemberId ?? ''}
-                    onChange={(e) =>
-                      setBankAccountOwner(a.id, e.target.value || null).then(() => {
-                        reload()
-                        window.dispatchEvent(new Event('family-app:bank-changed'))
-                      })
-                    }
-                    style={{ flex: 'none', fontSize: 13 }}
-                    aria-label={`De quién es la cuenta ${a.name ?? ''}`}
-                  >
-                    <option value="">🏠 Común</option>
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-              <ConfirmButton
-                label="Desconectar"
-                confirmLabel="¿Seguro?"
-                className="link-button"
-                onConfirm={() =>
-                  disconnectBank(c.id).then(() => {
-                    reload()
-                    window.dispatchEvent(new Event('family-app:bank-changed'))
-                  })
-                }
-              />
-            </div>
-          )
-        })
+        <p className="muted">
+          {activeConnections.length} {activeConnections.length === 1 ? 'banco enlazado' : 'bancos enlazados'} (
+          {accounts.length} {accounts.length === 1 ? 'cuenta' : 'cuentas'}).
+        </p>
+      )}
+      <button type="button" className="link-button" onClick={() => setShowAccountsModal(true)}>
+        ⚙️ Gestionar cuentas bancarias
+      </button>
+      {showAccountsModal && (
+        <BankAccountsModal
+          onClose={() => {
+            setShowAccountsModal(false)
+            reload()
+          }}
+        />
       )}
 
       {activeConnections.length > 0 && (
         <>
-          <div className="inline-fields" style={{ alignItems: 'center' }}>
+          <div className="inline-fields" style={{ alignItems: 'center', marginTop: 12 }}>
             <button type="button" onClick={handleSync} disabled={syncing} style={{ flex: 'none' }}>
               {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
             </button>
@@ -1483,17 +1430,6 @@ function BankTab({
             para consultar, aunque se pida más.
           </p>
         </>
-      )}
-
-      <button type="button" className="link-button" onClick={() => setShowConnect((v) => !v)}>
-        {showConnect ? 'Cerrar' : '+ Conectar banco'}
-      </button>
-      {showConnect && (
-        <ConnectBankForm
-          connecting={connecting}
-          onConnecting={setConnecting}
-          onError={(msg) => setError(msg)}
-        />
       )}
 
       {linkedExpenses.length > 0 && (
@@ -1581,117 +1517,6 @@ function BankTab({
           )}
         </>
       )}
-    </div>
-  )
-}
-
-function ConnectBankForm({
-  connecting,
-  onConnecting,
-  onError,
-}: {
-  connecting: boolean
-  onConnecting: (v: boolean) => void
-  onError: (msg: string) => void
-}) {
-  const [country, setCountry] = useState('ES')
-  const [aspsps, setAspsps] = useState<Aspsp[]>([])
-  const [loadingAspsps, setLoadingAspsps] = useState(false)
-  const [selected, setSelected] = useState('')
-  // IBAN opcional — caso real: Caja Rural Central (hub Ruralvía) autoriza
-  // el consentimiento "global" pero devuelve 0 cuentas; con el IBAN se
-  // pide acceso a esa cuenta concreta, que sí devuelve (ver bank.ts).
-  const [iban, setIban] = useState('')
-
-  function loadAspsps(c: string) {
-    setLoadingAspsps(true)
-    setSelected('')
-    listAspsps(c)
-      .then(setAspsps)
-      .catch((err: Error) => onError(err.message))
-      .finally(() => setLoadingAspsps(false))
-  }
-
-  useEffect(() => loadAspsps(country), []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function handleConnect() {
-    if (!selected) return
-    const aspsp = aspsps.find((a) => a.name === selected)
-    if (!aspsp) return
-    onConnecting(true)
-    onError('')
-    try {
-      await startBankConnection(aspsp.name, aspsp.country, iban)
-    } catch (err) {
-      onError(errorMessage(err, String(err)))
-      onConnecting(false)
-    }
-  }
-
-  return (
-    <div className="card member-form">
-      <label>
-        País
-        <select
-          value={country}
-          onChange={(e) => {
-            setCountry(e.target.value)
-            loadAspsps(e.target.value)
-          }}
-        >
-          <option value="ES">España</option>
-          <option value="FI">Finlandia</option>
-          <option value="FR">Francia</option>
-          <option value="DE">Alemania</option>
-          <option value="IT">Italia</option>
-          <option value="PT">Portugal</option>
-        </select>
-      </label>
-      <label>
-        Banco
-        {loadingAspsps ? (
-          <p className="muted">Cargando bancos…</p>
-        ) : (
-          <select value={selected} onChange={(e) => setSelected(e.target.value)}>
-            <option value="">Elige un banco</option>
-            {aspsps.map((a) => (
-              <option key={a.name} value={a.name}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </label>
-      <label>
-        IBAN de la cuenta (opcional, recomendado en cajas rurales)
-        <input
-          type="text"
-          value={iban}
-          onChange={(e) => setIban(e.target.value)}
-          placeholder="ES00 0000 0000 0000 0000 0000"
-          autoComplete="off"
-          inputMode="text"
-        />
-      </label>
-      <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
-        Algunos bancos (Caja Rural / Ruralvía, entre otros) autorizan el acceso pero no dicen a qué cuenta si no se les
-        indica el IBAN. Si al conectar te sale "0 cuentas", vuelve a conectar poniendo aquí el IBAN de la cuenta que
-        quieres enlazar.
-      </p>
-      {/* Caso real (móvil Android + Ruralvía): el teléfono intercepta el
-          enlace del banco para abrir su app y el navegador se queda en
-          "Redirigir a su proveedor de servicios de cuenta" para siempre.
-          Comprobado que el mismo enlace, en un navegador de ordenador,
-          llega al login del banco en segundos — la conexión se guarda en
-          el servidor, así que da igual desde dónde se haga. */}
-      <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
-        Si en el móvil se queda en "Redirigir a su proveedor de servicios de cuenta" sin avanzar, es que el teléfono
-        intenta abrir la app del banco y no vuelve: conéctalo desde un ordenador (la cuenta quedará enlazada igual
-        para todos los dispositivos).
-      </p>
-      <button type="button" onClick={handleConnect} disabled={!selected || connecting}>
-        {connecting ? 'Abriendo el banco…' : 'Conectar'}
-      </button>
     </div>
   )
 }

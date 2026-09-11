@@ -4,6 +4,7 @@ import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { getFamilyName, getFinanceMonthStartDay, updateFamilyName, updateFinanceMonthStartDay } from '@/data/family'
 import { listAppUsage } from '@/data/appUsage'
+import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import {
   clearOwnPin,
   deleteWebauthnCredential,
@@ -154,6 +155,29 @@ function AccountingMonthSection() {
         {saving && <span className="muted">Guardando…</span>}
       </label>
       {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+// Petición real: "Esta parte de las cuentas quiero que la pongas en una
+// página emergente accesible desde el menú arriba con Configuración
+// cuentas" — conectar bancos, asignar de quién es cada cuenta y
+// desconectar vivía mezclado dentro de Economía → Banco; ahora se
+// gestiona desde aquí (y también desde un botón dentro de esa misma
+// pestaña, para quien ya esté ahí). Un solo componente, BankAccountsModal,
+// para no duplicar la lógica.
+function BankAccountsSection() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>🏦 Cuentas bancarias</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Conecta o desconecta bancos y define de quién es cada cuenta.
+      </p>
+      <button type="button" className="link-button" style={{ marginTop: 8 }} onClick={() => setOpen(true)}>
+        Gestionar cuentas
+      </button>
+      {open && <BankAccountsModal onClose={() => setOpen(false)} />}
     </div>
   )
 }
@@ -453,6 +477,7 @@ export function MenuSettingsScreen() {
 
       <FamilyNameSection />
       <AccountingMonthSection />
+      <BankAccountsSection />
       <AdminUsageLink />
       <AppLockSection />
 

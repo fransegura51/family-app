@@ -30,6 +30,7 @@ import {
   listBankAccounts,
   listBankConnections,
   listBankTransactions,
+  setBankAccountOwner,
   startBankConnection,
   syncBankTransactions,
   type Aspsp,
@@ -51,6 +52,7 @@ import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceip
 import { listAllProductPrices, listProducts } from '@/data/products'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
+import { balanceTrend, earliestTransactionDate } from '@/domain/balanceTrend'
 import {
   deleteProductPricesByReceipt,
   listProductPricesByReceipt,
@@ -76,6 +78,7 @@ import { StoreIcon } from '@/ui/StoreIcon'
 import type {
   BankAccount,
   BankConnection,
+  BankTransaction,
   Budget,
   BudgetCategory,
   BudgetPeriod,
@@ -366,6 +369,7 @@ export function FinanceScreen() {
         }}
         onViewAll={() => setTab('Banco')}
       />
+      <BalanceTrendCard key={`trend-${refreshKey}`} />
 
       {/* Petición real: "quiero que los quites de ahí [debajo de las
           tarjetas del banco]" — ya no hay una fila fija; solo aparece
@@ -818,12 +822,14 @@ function AccountBalanceCards({
 }) {
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [connections, setConnections] = useState<BankConnection[]>([])
+  const [members, setMembers] = useState<FamilyMember[]>([])
 
   function reload() {
-    Promise.all([listBankAccounts(), listBankConnections()])
-      .then(([a, c]) => {
+    Promise.all([listBankAccounts(), listBankConnections(), listFamilyMembers()])
+      .then(([a, c, m]) => {
         setAccounts(a)
         setConnections(c)
+        setMembers(m)
       })
       .catch(() => {})
   }
@@ -852,6 +858,7 @@ function AccountBalanceCards({
       <div className="account-cards-grid">
         {accounts.map((a, i) => {
           const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Banco'
+          const owner = a.ownerMemberId ? members.find((m) => m.id === a.ownerMemberId) : null
           return (
             <button
               key={a.id}
@@ -860,6 +867,14 @@ function AccountBalanceCards({
               style={{ background: ACCOUNT_CARD_COLORS[i % ACCOUNT_CARD_COLORS.length] }}
               onClick={() => onSelectAccount(a.id)}
             >
+              {/* De quién es la cuenta (asignado en Banco) — petición
+                  real: "quiero definir a cada pestaña de banco el nombre
+                  de quien es la cuenta". */}
+              {owner && (
+                <div className="account-card-owner">
+                  <MemberAvatar member={owner} size={22} />
+                </div>
+              )}
               <div className="account-card-bank">🏦 {bankName}</div>
               <div className="account-card-name">{a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'}</div>
               <div className="account-card-balance">{a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}</div>
@@ -873,6 +888,177 @@ function AccountBalanceCards({
           <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
           <span>Añadir cuenta</span>
         </button>
+      </div>
+    </div>
+  )
+}
+
+function toDateStrLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Petición real, con captura de referencia (app Wallet): una línea con
+// la evolución del saldo. A diferencia de la referencia, el plazo se
+// puede ampliar (mismo selector 📅 que Tickets/Presupuesto) en vez de
+// quedarse fijo a unos meses, y varias cuentas se manejan con los
+// mismos chips ya usados para filtrar por miembro en Calendario:
+// "Todas" combinada por defecto, o una sola cuenta a la vez — no
+// pestañas independientes por cuenta (ver conversación real sobre
+// cómo estructurar varias cuentas).
+function BalanceTrendCard() {
+  const [accounts, setAccounts] = useState<BankAccount[]>([])
+  const [connections, setConnections] = useState<BankConnection[]>([])
+  const [members, setMembers] = useState<FamilyMember[]>([])
+  const [transactions, setTransactions] = useState<BankTransaction[]>([])
+  const [monthStartDay, setMonthStartDay] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [customFrom, setCustomFrom] = useState(toDateStrLocal(new Date()))
+  const [customTo, setCustomTo] = useState(toDateStrLocal(new Date()))
+
+  function reload() {
+    Promise.all([listBankAccounts(), listBankConnections(), listFamilyMembers(), listBankTransactions(), getFinanceMonthStartDay()])
+      .then(([a, c, m, t, monthStart]) => {
+        setAccounts(a)
+        setConnections(c)
+        setMembers(m)
+        setTransactions(t)
+        setMonthStartDay(monthStart)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(reload, [])
+  useEffect(() => {
+    window.addEventListener('family-app:bank-changed', reload)
+    return () => window.removeEventListener('family-app:bank-changed', reload)
+  }, [])
+
+  // Sin banco enlazado todavía, no hay nada que enseñar — igual que el
+  // resto de tarjetas condicionales de la app.
+  if (loading || accounts.length === 0) return null
+
+  const [from, rawTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
+  // "Este mes" (u otro preset) puede terminar en el futuro — el saldo
+  // de un día que todavía no ha llegado no se puede conocer, así que la
+  // línea nunca dibuja más allá de hoy (antes seguía plana hasta fin de
+  // mes, como si el futuro ya se supiera).
+  const todayStr = toDateStrLocal(new Date())
+  const to = rawTo > todayStr ? todayStr : rawTo
+  const selectedAccounts = selectedAccountId ? accounts.filter((a) => a.id === selectedAccountId) : accounts
+  const accountIds = new Set(selectedAccounts.map((a) => a.id))
+  const txForBalance = transactions.map((t) => ({
+    accountId: t.accountId,
+    transactionDate: t.transactionDate,
+    amount: t.amount,
+    creditDebit: t.creditDebit,
+  }))
+  const earliest = earliestTransactionDate(accountIds, txForBalance)
+  // Limitación real: solo se pueden reconstruir los días con
+  // movimientos guardados — más atrás de ahí no hay forma de saberlo,
+  // aunque se amplíe el plazo pedido (ver Banco → "Sincronizar
+  // movimientos" para traer más histórico).
+  const effectiveFrom = earliest && earliest > from ? earliest : from
+  const points =
+    effectiveFrom <= to
+      ? balanceTrend(
+          selectedAccounts.map((a) => ({ id: a.id, balance: a.balance })),
+          txForBalance,
+          effectiveFrom,
+          to,
+        )
+      : []
+  const currentBalance =
+    points.length > 0 ? points[points.length - 1].balance : selectedAccounts.reduce((s, a) => s + (a.balance ?? 0), 0)
+
+  function accountChipLabel(a: BankAccount): { label: string; owner: FamilyMember | null } {
+    const owner = a.ownerMemberId ? (members.find((m) => m.id === a.ownerMemberId) ?? null) : null
+    if (owner) return { label: owner.name, owner }
+    const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Cuenta'
+    return { label: a.iban ? `${bankName} ••${a.iban.slice(-4)}` : bankName, owner: null }
+  }
+
+  return (
+    <div className="card event-card">
+      <strong>Tendencia del saldo</strong>
+      {accounts.length > 1 && (
+        <div className="filter-row" style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className={'chip' + (selectedAccountId === null ? ' chip-active' : '')}
+            onClick={() => setSelectedAccountId(null)}
+          >
+            Todas
+          </button>
+          {accounts.map((a) => {
+            const { label, owner } = accountChipLabel(a)
+            return (
+              <button
+                key={a.id}
+                type="button"
+                className={'chip' + (selectedAccountId === a.id ? ' chip-active' : '')}
+                onClick={() => setSelectedAccountId(a.id)}
+              >
+                {owner && <MemberAvatar member={owner} size={16} />} {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <DateFilterTab
+        preset={preset}
+        onPresetChange={setPreset}
+        customFrom={customFrom}
+        onCustomFromChange={setCustomFrom}
+        customTo={customTo}
+        onCustomToChange={setCustomTo}
+      />
+      {earliest && effectiveFrom !== from && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Solo hay movimientos guardados desde el {earliest} — no se puede ir más atrás aunque amplíes el plazo (trae
+          más histórico desde Banco → Sincronizar movimientos).
+        </p>
+      )}
+      <p style={{ fontSize: 24, fontWeight: 700, margin: '10px 0 6px' }}>{currentBalance.toFixed(2)} €</p>
+      {points.length > 1 ? (
+        <BalanceTrendChart points={points} />
+      ) : (
+        <p className="muted">No hay movimientos guardados en este periodo para dibujar la tendencia.</p>
+      )}
+    </div>
+  )
+}
+
+function BalanceTrendChart({ points }: { points: { date: string; balance: number }[] }) {
+  const width = 300
+  const height = 110
+  const padding = 4
+  const balances = points.map((p) => p.balance)
+  const min = Math.min(...balances)
+  const max = Math.max(...balances)
+  const span = max - min || 1
+  const stepX = points.length > 1 ? (width - padding * 2) / (points.length - 1) : 0
+  const coords = points.map((p, i) => {
+    const x = padding + i * stepX
+    const y = padding + (height - padding * 2) * (1 - (p.balance - min) / span)
+    return { x, y }
+  })
+  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ')
+  const areaPath = `${linePath} L ${coords[coords.length - 1].x.toFixed(1)} ${height - padding} L ${coords[0].x.toFixed(1)} ${height - padding} Z`
+  const positive = points[points.length - 1].balance >= points[0].balance
+  const lineColor = positive ? '#2f9e44' : '#e03131'
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none">
+        <path d={areaPath} fill={lineColor} fillOpacity={0.12} stroke="none" />
+        <path d={linePath} fill="none" stroke={lineColor} strokeWidth={2} />
+      </svg>
+      <div className="muted" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+        <span>{points[0].date}</span>
+        <span>{points[points.length - 1].date}</span>
       </div>
     </div>
   )
@@ -893,6 +1079,7 @@ function BankTab({
 } = {}) {
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
+  const [members, setMembers] = useState<FamilyMember[]>([])
   // Petición real: la lista tiene que verse y editarse igual que
   // Movimientos (fecha, detalle, importe, categoría y etiqueta
   // editables) — no el texto suelto del banco. Cada movimiento del
@@ -984,13 +1171,15 @@ function BankTab({
       listBudgetCategories(),
       listTags(),
       getFinanceMonthStartDay(),
+      listFamilyMembers(),
     ])
-      .then(([c, a, t, allExpenses, cats, tgs, monthStart]) => {
+      .then(([c, a, t, allExpenses, cats, tgs, monthStart, m]) => {
         setConnections(c)
         setAccounts(a)
         setCategories(cats)
         setTags(tgs)
         setMonthStartDay(monthStart)
+        setMembers(m)
         const matchedIds = new Set(t.map((bt) => bt.matchedExpenseId).filter((id): id is string => !!id))
         setLinkedExpenses(allExpenses.filter((e) => matchedIds.has(e.id)).sort((a, b) => b.expenseDate.localeCompare(a.expenseDate)))
         setExpenseAccountId(new Map(t.filter((bt) => bt.matchedExpenseId).map((bt) => [bt.matchedExpenseId as string, bt.accountId])))
@@ -1058,6 +1247,16 @@ function BankTab({
     return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
   })
   const typeFilterTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
+  // Símbolo por fila cuando se ven todas las cuentas mezcladas
+  // (petición real: "no ves ningún símbolo que diga de qué cuenta
+  // viene" — antes solo se sabía filtrando una a una).
+  const memberById = new Map(members.map((m) => [m.id, m]))
+  const accountById = new Map(accounts.map((a) => [a.id, a]))
+  function ownerMemberForExpense(expenseId: string): FamilyMember | null {
+    const accId = expenseAccountId.get(expenseId)
+    const ownerId = accId ? accountById.get(accId)?.ownerMemberId : null
+    return ownerId ? (memberById.get(ownerId) ?? null) : null
+  }
   const activeAccountLabel = activeAccountId
     ? (() => {
         const acc = accounts.find((a) => a.id === activeAccountId)
@@ -1099,9 +1298,34 @@ function BankTab({
                 </p>
               )}
               {connAccounts.map((a) => (
-                <p key={a.id} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
-                  · {a.name ?? 'Cuenta'} {a.iban ? `(${a.iban})` : ''} {a.currency ?? ''}
-                </p>
+                <div key={a.id} className="inline-fields" style={{ margin: '4px 0', alignItems: 'center' }}>
+                  <p className="muted" style={{ margin: 0, fontSize: 13, flex: 1 }}>
+                    · {a.name ?? 'Cuenta'} {a.iban ? `(${a.iban})` : ''} {a.currency ?? ''}
+                  </p>
+                  {/* Petición real: "quiero definir a cada pestaña de banco
+                      el nombre de quien es la cuenta para que use esa letra
+                      para los movimientos" — el nombre del banco (arriba) es
+                      el del titular legal, no sirve para distinguir de un
+                      vistazo entre varias cuentas de la familia. */}
+                  <select
+                    value={a.ownerMemberId ?? ''}
+                    onChange={(e) =>
+                      setBankAccountOwner(a.id, e.target.value || null).then(() => {
+                        reload()
+                        window.dispatchEvent(new Event('family-app:bank-changed'))
+                      })
+                    }
+                    style={{ flex: 'none', fontSize: 13 }}
+                    aria-label={`De quién es la cuenta ${a.name ?? ''}`}
+                  >
+                    <option value="">Sin asignar</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               ))}
               <ConfirmButton
                 label="Desconectar"
@@ -1220,6 +1444,7 @@ function BankTab({
                   category={categories.find((c) => c.name === e.category)}
                   tag={tags.find((t) => t.id === e.tagId)}
                   onClick={() => setEditingId(e.id)}
+                  ownerMember={activeAccountId ? undefined : ownerMemberForExpense(e.id)}
                 />
               ),
             )}
@@ -2683,12 +2908,18 @@ function MovementRow({
   tag,
   onClick,
   extraAction,
+  ownerMember,
 }: {
   expense: Expense
   category: BudgetCategory | undefined
   tag: Tag | undefined
   onClick: () => void
   extraAction?: React.ReactNode
+  // Solo en Banco, viendo todas las cuentas mezcladas (petición real: no
+  // había forma de saber de qué cuenta venía cada movimiento sin
+  // filtrar una a una) — el avatar/color ya asignado a esa cuenta en
+  // "De quién es la cuenta".
+  ownerMember?: FamilyMember | null
 }) {
   const source = SOURCE_META[e.source]
   return (
@@ -2708,7 +2939,7 @@ function MovementRow({
               muestra igual que un gasto: icono + nombre de la categoría
               elegida (Sueldo, Regalo, Ingreso genérico...). */}
           <span className="movement-row-category">
-            {category?.icon} {e.category}
+            {ownerMember && <MemberAvatar member={ownerMember} size={16} />} {category?.icon} {e.category}
           </span>
           <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
             {e.isIncome ? '+' : ''}

@@ -2223,6 +2223,7 @@ textarea {
 }
 
 .account-card {
+  position: relative;
   border-radius: 14px;
   padding: 12px 14px;
   min-height: 74px;
@@ -2230,6 +2231,17 @@ textarea {
   text-align: left;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
   cursor: pointer;
+}
+
+/* De quién es la cuenta (petición real) — mismo rincón que ya usa el
+   botón de borrar en Galería/Documentos, aquí solo de adorno (no es
+   tocable, la propia tarjeta ya lleva a Banco). */
+.account-card-owner {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
 }
 
 .account-card-bank {

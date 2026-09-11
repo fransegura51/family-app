@@ -480,6 +480,12 @@ export interface BankAccount {
   balance: number | null
   balanceCurrency: string | null
   balanceUpdatedAt: string | null
+  // Quién de la familia es el dueño de esta cuenta — el nombre que
+  // trae el banco (`name`, arriba) es el del titular legal, que en
+  // cuentas de menores suele ser el padre/madre representante, no
+  // sirve para distinguir de un vistazo entre varias cuentas. null =
+  // sin asignar (p. ej. una cuenta común de la casa).
+  ownerMemberId: string | null
 }
 
 export interface BankTransaction {

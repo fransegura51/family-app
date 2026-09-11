@@ -84,7 +84,7 @@ export async function listBankConnections(): Promise<BankConnection[]> {
 export async function listBankAccounts(): Promise<BankAccount[]> {
   const { data, error } = await supabase
     .from('bank_accounts')
-    .select('id, connection_id, account_uid, iban, name, currency, balance, balance_currency, balance_updated_at')
+    .select('id, connection_id, account_uid, iban, name, currency, balance, balance_currency, balance_updated_at, owner_member_id')
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
@@ -96,7 +96,17 @@ export async function listBankAccounts(): Promise<BankAccount[]> {
     balance: r.balance == null ? null : Number(r.balance),
     balanceCurrency: r.balance_currency,
     balanceUpdatedAt: r.balance_updated_at,
+    ownerMemberId: r.owner_member_id,
   }))
+}
+
+// Petición real: "quiero definir a cada pestaña de banco el nombre de
+// quien es la cuenta para que use esa letra para los movimientos" —
+// enlaza la cuenta a un miembro ya existente de la familia (o la deja
+// sin asignar con null), en vez de una etiqueta de texto aparte.
+export async function setBankAccountOwner(accountId: string, memberId: string | null): Promise<void> {
+  const { error } = await supabase.from('bank_accounts').update({ owner_member_id: memberId }).eq('id', accountId)
+  if (error) throw error
 }
 
 export async function listBankTransactions(): Promise<BankTransaction[]> {

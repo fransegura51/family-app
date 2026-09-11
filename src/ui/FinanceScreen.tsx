@@ -91,6 +91,7 @@ import type {
 import economiaHeaderImg from '@/assets/economia/economia-header.jpg'
 import pepaConclusionsImg from '@/assets/economia/pepa-conclusiones.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { fetchAsShareableFile, shareFiles } from '@/services/share'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
 // "estoy pensando si pasar registro alimentación y tickets a compra")
@@ -3896,6 +3897,8 @@ function ReceiptRow({
   const [lines, setLines] = useState<ReceiptLineDetail[] | null>(null)
   const [loadingLines, setLoadingLines] = useState(false)
   const [viewing, setViewing] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [shareError, setShareError] = useState<string | null>(null)
 
   const purchaser = receipt.purchasedByMemberId ? members.find((m) => m.id === receipt.purchasedByMemberId) : null
 
@@ -3927,6 +3930,26 @@ function ReceiptRow({
     }
   }
 
+  // Petición real: "Un ticket también [se debería poder compartir]" —
+  // misma foto/PDF que "Ver ticket", pero al menú nativo del teléfono en
+  // vez de a una pestaña nueva.
+  async function handleShareTicket() {
+    if (!receipt.storagePath || sharing) return
+    setSharing(true)
+    setShareError(null)
+    try {
+      const url = await getReceiptUrl(receipt.storagePath)
+      const ext = receipt.storagePath.split('.').pop() || 'jpg'
+      const file = await fetchAsShareableFile(url, `ticket-${receipt.receiptDate}.${ext}`, ext === 'pdf' ? 'application/pdf' : 'image/jpeg')
+      const shared = await shareFiles([file], { title: `Ticket ${receipt.store ?? ''} ${receipt.receiptDate}`.trim() })
+      if (!shared) window.open(url, '_blank')
+    } catch (err) {
+      setShareError(errorMessage(err, 'No se pudo compartir'))
+    } finally {
+      setSharing(false)
+    }
+  }
+
   return (
     <div className="card receipt-row">
       <div className="receipt-row-main">
@@ -3950,9 +3973,14 @@ function ReceiptRow({
           {hasTicket ? (
             <>
               {receipt.storagePath && (
-                <button type="button" className="icon-button" onClick={handleViewTicket} aria-label="Ver ticket" title="Ver ticket">
-                  👁
-                </button>
+                <>
+                  <button type="button" className="icon-button" onClick={handleViewTicket} aria-label="Ver ticket" title="Ver ticket">
+                    👁
+                  </button>
+                  <button type="button" className="icon-button" onClick={handleShareTicket} aria-label="Compartir ticket" title="Compartir">
+                    📤
+                  </button>
+                </>
               )}
               <button type="button" className="icon-button" onClick={onEdit} aria-label="Editar ticket" title="Editar">
                 ✏️
@@ -3966,6 +3994,7 @@ function ReceiptRow({
           )}
         </div>
       </div>
+      {shareError && <p className="error" style={{ margin: '4px 0 0' }}>{shareError}</p>}
       {expanded && (
         <div className="receipt-row-detail">
           {loadingLines && <p className="muted">Cargando detalle…</p>}

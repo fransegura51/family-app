@@ -46,6 +46,8 @@ import type {
 } from '@/domain/types'
 import comprasHeaderImg from '@/assets/compras/compras-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { shoppingListText } from '@/domain/share'
+import { shareText } from '@/services/share'
 
 function todayStr(): string {
   const d = new Date()
@@ -599,6 +601,47 @@ function ShoppingListTab() {
     })
   }
 
+  // Petición real: "Compras: compartir la lista de una tienda o de
+  // todas, que se pueda elegir en el momento de compartir" — solo lo
+  // pendiente (lo ya comprado no tiene sentido mandarlo a nadie). Sin
+  // Web Share API (ordenador) se copia al portapapeles y se avisa aquí.
+  const [shareNotice, setShareNotice] = useState<string | null>(null)
+  function flashShareNotice(msg: string) {
+    setShareNotice(msg)
+    setTimeout(() => setShareNotice(null), 2500)
+  }
+
+  function pendingLines(storeItems: ShoppingItem[]) {
+    return storeItems
+      .filter((i) => i.status === 'pendiente')
+      .map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit }))
+  }
+
+  async function shareGroups(groups: { store: string; items: { name: string; quantity: string | null; unit: string | null }[] }[], title: string) {
+    const nonEmpty = groups.filter((g) => g.items.length > 0)
+    if (nonEmpty.length === 0) {
+      flashShareNotice('No hay nada pendiente que compartir.')
+      return
+    }
+    try {
+      const shared = await shareText({ title, text: shoppingListText(nonEmpty) })
+      flashShareNotice(shared ? '' : 'Copiado al portapapeles.')
+    } catch (err) {
+      flashShareNotice(errorMessage(err, 'No se pudo compartir'))
+    }
+  }
+
+  async function handleShareStore(store: string, storeItems: ShoppingItem[]) {
+    await shareGroups([{ store, items: pendingLines(storeItems) }], `Lista de la compra — ${store}`)
+  }
+
+  async function handleShareAll() {
+    await shareGroups(
+      storeGroups.map(([store, storeItems]) => ({ store, items: pendingLines(storeItems) })),
+      'Lista de la compra',
+    )
+  }
+
   // Solo se enseña "Cargando…" (que desmonta el formulario de abajo) la
   // primera vez — si no, cada "reload" tras añadir un producto borraba
   // lo que llevaras escrito en el formulario, incluida la tienda que se
@@ -748,7 +791,13 @@ function ShoppingListTab() {
         <button type="button" className="link-button" onClick={() => setShoppingMode(!shoppingMode)}>
           {shoppingMode ? 'Salir de modo compra' : '🛒 Modo compra'}
         </button>
+        {pending.length > 0 && (
+          <button type="button" className="link-button" onClick={handleShareAll}>
+            📤 Compartir todo
+          </button>
+        )}
       </div>
+      {shareNotice && <p className="muted" style={{ fontSize: 12 }}>{shareNotice}</p>}
 
       <h2 className="section-title">Pendientes</h2>
       {storeGroups.map(([store, storeItems]) => {
@@ -768,6 +817,18 @@ function ShoppingListTab() {
               <span className="shopping-store-chevron">{collapsed ? '▸' : '▾'}</span>
               {store === 'Sin tienda' ? '🏬' : <StoreIconBadge name={store} size={20} />} {store}
               <span className="muted"> ({storeItems.length})</span>
+              <button
+                type="button"
+                className="link-button"
+                style={{ marginLeft: 'auto' }}
+                aria-label={`Compartir lista de ${store}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleShareStore(store, storeItems)
+                }}
+              >
+                📤
+              </button>
             </h3>
           )}
           {!collapsed && (

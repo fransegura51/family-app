@@ -67,6 +67,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Conectar con Google Calendar', text: 'Sincronización automática de verdad, sin tener que copiar ninguna URL.' },
     { title: 'Exportar a tu móvil', text: 'Tu propia URL para que Google o Apple Calendar lean lo que apuntéis en la app.' },
     { title: 'Apuntar por voz', text: 'Dile a Pepa que te cree un evento y lo hace por ti.' },
+    { title: 'Compartir', text: 'El icono 📤 de cada evento manda un archivo .ics al menú de compartir del móvil, para que quien lo reciba pueda añadirlo a su propio calendario (Google, Apple...) aunque no use esta app.' },
   ],
   '/puntos': [
     { title: 'Saldo por miembro', text: 'Se gana marcando "Hecho" en eventos del Calendario que llevan puntos asignados.' },
@@ -79,13 +80,14 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Tiendas', text: 'Tus propias tiendas (Mercadona, Aldi...) con su logo, para agrupar la lista y para que Pepa te entienda al dictar, por ejemplo, "Mercadona, patatas".' },
     { title: 'Historial', text: 'Se construye solo con lo que compras: sugiere recompra, compara el precio de este mes con el anterior y te dice en qué tienda sale más barato.' },
     { title: 'No alimentos', text: 'El mismo historial pero para ropa, electrónica y demás compras que no son de comida — nunca se mezcla con Alimentación.' },
-    { title: 'Tickets', text: 'Sube la foto del ticket y Pepa lo lee sola; guarda el gasto por tienda y avisa con "falta ticket" si esa compra solo se conoce por el banco.' },
+    { title: 'Tickets', text: 'Sube la foto del ticket y Pepa lo lee sola; guarda el gasto por tienda y avisa con "falta ticket" si esa compra solo se conoce por el banco. El icono 📤 de cada ticket lo manda al menú de compartir del móvil.' },
+    { title: 'Compartir la lista', text: 'El icono 📤 de cada tienda manda solo lo pendiente de esa tienda; "📤 Compartir todo" manda la lista entera, agrupada por tienda.' },
     { title: 'Registro Alimentación', text: 'Presupuesto y gasto de comida, con su propio gráfico — vive aquí porque tiene más que ver con la compra que con el dinero en sí.' },
   ],
   '/alimentacion': [
     { title: 'Menú ☰ e Inicio', text: 'El botón ☰ junto al título ("La cocina de Pepa") abre un desplegable con todas las pestañas — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
     { title: 'Menú semanal', text: 'Planifica desayuno, comida, merienda y cena de toda la semana, con una receta guardada o texto libre.' },
-    { title: 'Recetas', text: 'Con foto, etiquetas (Postres, Favoritos, Fáciles de preparar...), ingredientes y notas; un buscador arriba te lleva directo a las que ya tienes guardadas, y también puedes buscarla en internet (el campo Título recuerda tus búsquedas anteriores y las autocompleta) o importarla pegando su URL, y mandar los ingredientes que quieras a la lista de la compra.' },
+    { title: 'Recetas', text: 'Con foto, etiquetas (Postres, Favoritos, Fáciles de preparar...), ingredientes y notas; un buscador arriba te lleva directo a las que ya tienes guardadas, y también puedes buscarla en internet (el campo Título recuerda tus búsquedas anteriores y las autocompleta) o importarla pegando su URL, y mandar los ingredientes que quieras a la lista de la compra. "📤 Compartir" manda el título, los ingredientes, la preparación y la foto (si tiene) al menú de compartir del móvil.' },
     { title: 'Registro', text: 'Apunta lo que ha comido cada uno (puedes marcar a varios a la vez), con calorías y macronutrientes si quieres.' },
     { title: 'Peso', text: 'Evolución del peso y las medidas de cada miembro, con gráfico y fotos de seguimiento.' },
   ],
@@ -112,14 +114,17 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Categorías', text: 'Colegio, Médico, Emergencia, Familia, Otros, o las que tú escribas.' },
     { title: 'Ficha de contacto', text: 'Teléfono con botón de llamada directa, email, notas y cumpleaños.' },
     { title: 'Importar', text: 'Desde la agenda de tu móvil, desde un archivo .vcf exportado del iPhone, o los cumpleaños desde tu calendario de Google.' },
+    { title: 'Compartir', text: 'El icono 📤 de cada ficha manda ese contacto al menú de compartir del móvil. "📤 Compartir varios" deja marcar varios con una casilla y mandarlos juntos en un único archivo.' },
   ],
   '/galeria': [
     { title: 'Fotos de la familia', text: 'Sube una foto con su descripción, o bórrala si ya no quieres tenerla.' },
     { title: 'Se usa también en Inicio', text: 'Es la misma galería que alimenta el carrusel de fotos de la pantalla de Inicio.' },
+    { title: 'Compartir', text: 'El icono 📤 de cada foto la manda al menú de compartir del móvil. "📤 Compartir varias" deja marcar varias con una casilla y mandarlas juntas.' },
   ],
   '/documentos': [
     { title: 'Carpetas', text: 'Por categoría (Familia, Privado, Educación, Casa, Salud o una nueva que crees) y, dentro de cada una, una subcarpeta por miembro.' },
     { title: 'Subir documento', text: 'Foto o PDF, con título, carpeta y de quién es, desde un único botón flotante.' },
+    { title: 'Compartir', text: 'El icono 📤 de cada documento lo manda al menú de compartir del móvil — útil para pasar, por ejemplo, la foto del DNI.' },
     { title: 'Vencimiento', text: 'Si le pones una fecha, se apunta en el Calendario y avisa 30, 7 y 1 día antes de que venza.' },
   ],
 }

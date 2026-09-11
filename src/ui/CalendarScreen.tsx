@@ -59,9 +59,12 @@ import {
   expandOccurrences,
   getMonthGridDays,
   MONTH_LABELS,
+  occurrenceAt,
   readableTextColor,
   WEEKDAY_LABELS,
 } from '@/domain/calendar'
+import { icsForEvent } from '@/domain/share'
+import { shareFiles, shareText } from '@/services/share'
 import {
   REMINDER_PRESETS,
   REMINDER_UNIT_OPTIONS,
@@ -481,6 +484,29 @@ export function CalendarScreen() {
     }
   }
 
+  // Petición real: "Calendario: compartir un evento específico... que la
+  // otra persona se lo pueda anotar en su calendario, no tiene por qué
+  // ser de nuestra app" — se manda como .ics suelto (sin nuestro RRULE
+  // ni recordatorios internos), recolocado sobre el día que se está
+  // viendo si el evento es recurrente.
+  async function handleShareEvent(ev: CalendarEvent, dateStr: string) {
+    const occ = occurrenceAt(ev, dateStr)
+    const ics = icsForEvent({ title: ev.title, startAt: occ.startAt, endAt: occ.endAt, allDay: ev.allDay, description: ev.description })
+    const file = new File([ics], `${ev.title || 'evento'}.ics`, { type: 'text/calendar' })
+    try {
+      const shared = await shareFiles([file], { title: ev.title })
+      if (!shared) {
+        const when = new Date(occ.startAt).toLocaleString('es-ES', {
+          dateStyle: 'medium',
+          timeStyle: ev.allDay ? undefined : 'short',
+        })
+        await shareText({ title: ev.title, text: `${ev.title}\n${when}` })
+      }
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo compartir el evento'))
+    }
+  }
+
   async function handleDismissExternalOccurrence(feedId: string, uid: string, dateStr: string) {
     try {
       await dismissExternalEventOccurrence(feedId, uid, dateStr)
@@ -553,6 +579,7 @@ export function CalendarScreen() {
           onDeleteOccurrence: () => handleDeleteOccurrence(ev.id, dateStr),
           onComplete: done ? undefined : () => handleCompleteEvent(ev.id, dateStr),
           onUncomplete: done ? () => handleUncompleteEvent(ev.id, dateStr) : undefined,
+          onShare: () => handleShareEvent(ev, dateStr),
           attachmentStoragePath: ev.attachmentStoragePath,
           attachmentKind: ev.attachmentKind,
           attachmentOriginalName: ev.attachmentOriginalName,
@@ -901,6 +928,7 @@ export function CalendarScreen() {
             setAddingEventMemberId(memberId)
             setAddingEvent(true)
           }}
+          onShareEvent={handleShareEvent}
         />
       ) : view === 'Personal' ? (
         <PersonalNotesView
@@ -1035,6 +1063,11 @@ interface AgendaEntry {
   onDeleteOccurrence?: () => void
   onComplete?: () => void
   onUncomplete?: () => void
+  // Solo los eventos propios lo llevan (ni los externos ni los
+  // cumpleaños) — petición real: "Calendario: compartir un evento
+  // específico... que la otra persona se lo pueda anotar en su
+  // calendario, no tiene por qué ser de nuestra app".
+  onShare?: () => void
   // Adjuntos del propio evento (Skill de adjuntos, formato "Nuevo
   // evento" de referencia): foto grande en la tarjeta, archivo,
   // ubicación y nota — solo los llevan los eventos propios, nunca los
@@ -1193,6 +1226,7 @@ function FamilyDayView({
   onEventChanged,
   onNavigateDay,
   onQuickAdd,
+  onShareEvent,
 }: {
   selectedDate: string
   members: FamilyMember[]
@@ -1206,6 +1240,7 @@ function FamilyDayView({
   onEventChanged: () => void
   onNavigateDay: (deltaDays: number) => void
   onQuickAdd: (memberId: string | null) => void
+  onShareEvent: (event: CalendarEvent, dateStr: string) => void
 }) {
   const unassigned = dayEvents.filter((e) => e.memberIds.length === 0)
   const columns: { key: string; label: string; member: FamilyMember | null; events: CalendarEvent[] }[] = [
@@ -1225,6 +1260,7 @@ function FamilyDayView({
         onEdit={() => onEdit(ev.id)}
         onDeleteSeries={() => onDelete(ev.id)}
         onDeleteOccurrence={(dateStr) => onDeleteOccurrence(ev.id, dateStr)}
+        onShare={() => onShareEvent(ev, selectedDate)}
       />
     )
   }
@@ -1682,6 +1718,11 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
           ↺ Deshacer
         </button>
       )}
+      {entry.onShare && (
+        <button type="button" className="agenda-allday-chip-action" onClick={entry.onShare} aria-label="Compartir">
+          📤
+        </button>
+      )}
       {canDelete && (
         <button
           type="button"
@@ -1772,7 +1813,7 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
           <EventAttachmentFileLink storagePath={entry.attachmentStoragePath} name={entry.attachmentOriginalName ?? null} />
         )}
         {entry.note && <div className="agenda-card-subtitle">📝 {entry.note}</div>}
-      {!confirming && (entry.onEdit || entry.onComplete || entry.onUncomplete) && (
+      {!confirming && (entry.onEdit || entry.onComplete || entry.onUncomplete || entry.onShare) && (
         <div className="agenda-card-actions">
           {/* "Hecho" ya no lo quita del calendario — se queda marcado
               (con el título tachado) y se puede deshacer aquí mismo si
@@ -1787,6 +1828,11 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
           {entry.onUncomplete && (
             <button type="button" onClick={entry.onUncomplete}>
               ↺ Deshacer
+            </button>
+          )}
+          {entry.onShare && (
+            <button type="button" onClick={entry.onShare} aria-label="Compartir">
+              📤
             </button>
           )}
           {entry.onEdit && (
@@ -1850,11 +1896,13 @@ function EventCard({
   onEdit,
   onDeleteSeries,
   onDeleteOccurrence,
+  onShare,
 }: {
   event: CalendarEvent
   memberById: Map<string, FamilyMember>
   onEdit: () => void
   onDeleteSeries: () => void
+  onShare?: () => void
   // Antes solo la vista Mes (DayModal, que ya sabe qué día se está
   // mirando) podía ofrecer "solo este día" — desde Lista, un evento
   // recurrente solo se veía UNA vez (la serie entera, sin ningún día
@@ -1921,6 +1969,11 @@ function EventCard({
         <button type="button" className="link-button" onClick={onEdit}>
           Editar
         </button>
+        {onShare && (
+          <button type="button" className="link-button" onClick={onShare} aria-label="Compartir">
+            📤
+          </button>
+        )}
         {!confirming ? (
           <button type="button" className="link-button" onClick={() => setConfirming(true)}>
             Borrar

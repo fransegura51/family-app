@@ -15,6 +15,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { AddMemberForm } from '@/ui/FamilyScreen'
 import documentosHeaderImg from '@/assets/documentos/documentos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { fetchAsShareableFile, shareFiles } from '@/services/share'
 
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
@@ -325,6 +326,24 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
   const [titleDraft, setTitleDraft] = useState(doc.title)
   const [expiryDraft, setExpiryDraft] = useState(doc.expiryDate ?? '')
   const [saving, setSaving] = useState(false)
+  const [shareError, setShareError] = useState<string | null>(null)
+
+  // Petición real: "Documentos: compartir un documento como la foto del
+  // DNI por ejemplo" — se baja el archivo (ya sea foto o PDF) con su
+  // propia URL firmada y se manda al menú nativo del teléfono.
+  async function handleShare() {
+    setShareError(null)
+    try {
+      const docUrl = url ?? (await getMemberDocumentUrl(doc.storagePath))
+      if (!url) setUrl(docUrl)
+      const ext = doc.storagePath.split('.').pop() || 'pdf'
+      const file = await fetchAsShareableFile(docUrl, `${doc.title}.${ext}`, ext === 'pdf' ? 'application/pdf' : 'image/jpeg')
+      const shared = await shareFiles([file], { title: doc.title })
+      if (!shared) window.open(docUrl, '_blank')
+    } catch (err) {
+      setShareError(errorMessage(err, 'No se pudo compartir'))
+    }
+  }
 
   async function saveEdit() {
     if (!titleDraft.trim()) return
@@ -375,6 +394,7 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
           {doc.expiryDate ? `📅 Vence el ${new Date(doc.expiryDate + 'T00:00').toLocaleDateString('es-ES')}` : 'Sin fecha de vencimiento'}
         </p>
       </div>
+      {shareError && <p className="error">{shareError}</p>}
       <div className="task-card-actions">
         {url ? (
           <a href={url} target="_blank" rel="noreferrer" className="link-button" aria-label="Ver documento">
@@ -390,6 +410,9 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
             👁
           </button>
         )}
+        <button type="button" className="link-button" onClick={handleShare} aria-label="Compartir documento">
+          📤
+        </button>
         <button type="button" className="link-button" onClick={() => setEditing(true)} aria-label="Editar">
           ✏️
         </button>

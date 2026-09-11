@@ -52,6 +52,8 @@ import {
 import type { BodyMeasurement, BodyPhoto, FamilyMember, FoodLog, MealType, MenuEntry, Recipe } from '@/domain/types'
 import kitchenHeaderImg from '@/assets/alimentacion/kitchen-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { recipeText } from '@/domain/share'
+import { fetchAsShareableFile, shareFiles, shareText } from '@/services/share'
 
 const SUB_TABS = ['Inicio', 'Menú', 'Recetas', 'Registro', 'Peso'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -731,6 +733,34 @@ function RecipesTab() {
   const [editing, setEditing] = useState<Recipe | null>(null)
   const [adding, setAdding] = useState(false)
 
+  // Petición real: "Recetas: compartir una receta" — título, ingredientes
+  // y preparación en texto, más la foto si la receta tiene una (falla en
+  // silencio si no se puede bajar: mejor compartir solo el texto que no
+  // compartir nada).
+  async function handleShareRecipe(recipe: Recipe) {
+    const text = recipeText(recipe)
+    try {
+      let photoFile: File | null = null
+      if (recipe.imagePath) {
+        try {
+          const url = await getRecipePhotoUrl(recipe.imagePath)
+          photoFile = await fetchAsShareableFile(url, `${recipe.title}.jpg`, 'image/jpeg')
+        } catch {
+          photoFile = null
+        }
+      }
+      const shared = photoFile
+        ? await shareFiles([photoFile], { title: recipe.title, text })
+        : false
+      if (!shared) {
+        const sharedText = await shareText({ title: recipe.title, text })
+        setInfo(sharedText ? null : 'Copiado al portapapeles.')
+      }
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo compartir la receta'))
+    }
+  }
+
   function reload() {
     setLoading(true)
     Promise.all([listRecipes(), listShoppingStores()])
@@ -893,6 +923,9 @@ function RecipesTab() {
             <div className="task-card-actions">
               <button type="button" className="link-button" onClick={() => setPickingFor(viewing)}>
                 Añadir a la lista de la compra
+              </button>
+              <button type="button" className="link-button" onClick={() => handleShareRecipe(viewing)} aria-label="Compartir receta">
+                📤 Compartir
               </button>
               <button type="button" className="link-button" onClick={() => setEditing(viewing)} aria-label="Editar">
                 ✏️ Editar

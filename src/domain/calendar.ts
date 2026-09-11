@@ -197,6 +197,27 @@ export function readableTextColor(hex: string): string {
   return contrastWithBlack >= contrastWithWhite ? '#000000' : '#ffffff'
 }
 
+// Reposiciona la hora de un evento (posiblemente recurrente) sobre el
+// DÍA de una ocurrencia concreta — para "Compartir" un evento semanal,
+// por ejemplo, se manda la fecha del día que se está viendo, no la
+// fecha original de creación de la serie. Mismo criterio que ya usa
+// export-calendar-ics en el servidor.
+export function occurrenceAt(
+  event: { startAt: string; endAt: string | null; allDay: boolean },
+  occurrenceDateStr: string,
+): { startAt: string; endAt: string | null } {
+  if (event.allDay) {
+    return { startAt: new Date(occurrenceDateStr + 'T00:00').toISOString(), endAt: null }
+  }
+  const originalStart = new Date(event.startAt)
+  const originalEnd = event.endAt ? new Date(event.endAt) : null
+  const durationMs = originalEnd ? originalEnd.getTime() - originalStart.getTime() : 60 * 60 * 1000
+  const occStart = new Date(occurrenceDateStr + 'T00:00')
+  occStart.setHours(originalStart.getHours(), originalStart.getMinutes(), originalStart.getSeconds())
+  const occEnd = new Date(occStart.getTime() + durationMs)
+  return { startAt: occStart.toISOString(), endAt: occEnd.toISOString() }
+}
+
 export const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 export const MONTH_LABELS = [

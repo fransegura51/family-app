@@ -8,6 +8,8 @@ import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
 import contactosHeaderImg from '@/assets/contactos/contactos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { vCardForContacts } from '@/domain/share'
+import { shareFiles, shareText } from '@/services/share'
 
 // Categorías de partida — ya no es una lista cerrada: cualquier
 // contacto puede llevar una categoría nueva escrita a mano (petición
@@ -41,6 +43,32 @@ export function ContactsScreen() {
   // abra en una ventana emergente que se cierra cuando se haya
   // guardado el contacto".
   const [addingContact, setAddingContact] = useState(false)
+  // Petición real: "Contactos: compartir uno o varios contactos" — el
+  // icono 📤 de cada ficha comparte solo ese; este modo aparte es para
+  // elegir varios de golpe y mandarlos en un único archivo .vcf.
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleShareSelected() {
+    const chosen = contacts.filter((c) => selectedIds.has(c.id))
+    if (chosen.length === 0) return
+    try {
+      await shareContacts(chosen)
+      setSelecting(false)
+      setSelectedIds(new Set())
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo compartir'))
+    }
+  }
 
   // Solo pone "Cargando…" en la primera carga — si se vuelve a llamar
   // tras guardar una edición, reemplazar TODA la pantalla por ese
@@ -88,6 +116,17 @@ export function ContactsScreen() {
         placeholder="🔍 Buscar por nombre…"
         style={{ marginBottom: 8 }}
       />
+      <button
+        type="button"
+        className="link-button"
+        style={{ marginBottom: 8 }}
+        onClick={() => {
+          setSelecting((v) => !v)
+          setSelectedIds(new Set())
+        }}
+      >
+        {selecting ? 'Cancelar selección' : '📤 Compartir varios'}
+      </button>
       <div className="filter-row">
         <button
           type="button"
@@ -108,9 +147,23 @@ export function ContactsScreen() {
         ))}
       </div>
 
+      {selecting && selectedIds.size > 0 && (
+        <button type="button" onClick={handleShareSelected} style={{ marginBottom: 8 }}>
+          📤 Compartir {selectedIds.size} contacto{selectedIds.size === 1 ? '' : 's'}
+        </button>
+      )}
+
       <div className="event-list">
         {filteredContacts.map((c) => (
-          <ContactCard key={c.id} contact={c} onChanged={reload} />
+          <ContactCard
+            key={c.id}
+            contact={c}
+            onChanged={reload}
+            selecting={selecting}
+            selected={selectedIds.has(c.id)}
+            onToggleSelect={() => toggleSelected(c.id)}
+            onShareError={(msg) => setError(msg)}
+          />
         ))}
         {filteredContacts.length === 0 && <p className="muted">No hay contactos que coincidan.</p>}
       </div>
@@ -147,11 +200,51 @@ export function ContactsScreen() {
   )
 }
 
-function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: () => void }) {
+// Un contacto suelto o varios en un único .vcf — formato válido para
+// Contactos de iPhone/Android tanto con uno como con muchos (petición
+// real: "Contactos: compartir uno o varios contactos"). Sin soporte de
+// compartir archivos (típico en ordenador), se manda como texto plano.
+async function shareContacts(contacts: Contact[]): Promise<void> {
+  const vcf = vCardForContacts(contacts.map((c) => ({ name: c.name, phone: c.phone, email: c.email })))
+  const filename = contacts.length === 1 ? `${contacts[0].name}.vcf` : 'contactos.vcf'
+  const file = new File([vcf], filename, { type: 'text/vcard' })
+  const title = contacts.length === 1 ? contacts[0].name : `${contacts.length} contactos`
+  const shared = await shareFiles([file], { title })
+  if (!shared) {
+    const text = contacts
+      .map((c) => `${c.name}${c.phone ? ' · ' + c.phone : ''}${c.email ? ' · ' + c.email : ''}`)
+      .join('\n')
+    await shareText({ title, text })
+  }
+}
+
+function ContactCard({
+  contact: c,
+  onChanged,
+  selecting,
+  selected,
+  onToggleSelect,
+  onShareError,
+}: {
+  contact: Contact
+  onChanged: () => void
+  selecting: boolean
+  selected: boolean
+  onToggleSelect: () => void
+  onShareError: (msg: string) => void
+}) {
   const [editingBirthday, setEditingBirthday] = useState(false)
   const [editingAll, setEditingAll] = useState(false)
   const [birthDate, setBirthDate] = useState(c.birthDate ?? '')
   const [saving, setSaving] = useState(false)
+
+  async function handleShareOne() {
+    try {
+      await shareContacts([c])
+    } catch (err) {
+      onShareError(errorMessage(err, 'No se pudo compartir'))
+    }
+  }
 
   async function handleSaveBirthday() {
     setSaving(true)
@@ -179,6 +272,15 @@ function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: (
 
   return (
     <div className="card task-card contact-card">
+      {selecting && (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`Seleccionar ${c.name}`}
+          style={{ marginRight: 4 }}
+        />
+      )}
       <div className="task-card-main">
         <strong>{c.name}</strong>
         <p className="muted contact-card-detail">
@@ -215,6 +317,9 @@ function ContactCard({ contact: c, onChanged }: { contact: Contact; onChanged: (
             📞
           </a>
         )}
+        <button type="button" className="link-button" onClick={handleShareOne} aria-label="Compartir contacto">
+          📤
+        </button>
         <button type="button" className="link-button" onClick={() => setEditingAll(true)} aria-label="Editar">
           ✏️
         </button>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expandOccurrences } from '@/domain/calendar'
+import { expandOccurrences, occurrenceAt } from '@/domain/calendar'
 
 // Hora LOCAL a propósito (10:00): expandOccurrences lee la fecha en hora
 // local (bug real: recortar el ISO UTC desplazaba un día). Así el test
@@ -54,5 +54,28 @@ describe('expandOccurrences', () => {
     expect(expandOccurrences(skipHolidays, '2026-09-01', '2026-09-03', new Set(['2026-09-02']))).toEqual(['2026-09-01', '2026-09-03'])
     // Sin SKIPHOLIDAYS, los festivos no se tocan.
     expect(expandOccurrences({ ...skipHolidays, recurrenceRule: 'FREQ=DAILY' }, '2026-09-01', '2026-09-03', new Set(['2026-09-02']))).toHaveLength(3)
+  })
+})
+
+describe('occurrenceAt', () => {
+  it('recoloca la misma hora sobre otro día, conservando la duración', () => {
+    const ev = { startAt: '2026-09-01T18:00:00.000Z', endAt: '2026-09-01T19:30:00.000Z', allDay: false }
+    const occ = occurrenceAt(ev, '2026-09-15')
+    expect(new Date(occ.startAt).toISOString()).toBe('2026-09-15T18:00:00.000Z')
+    expect(new Date(occ.endAt!).toISOString()).toBe('2026-09-15T19:30:00.000Z')
+  })
+
+  it('sin endAt, dura 1 hora por defecto', () => {
+    const ev = { startAt: '2026-09-01T10:00:00.000Z', endAt: null, allDay: false }
+    const occ = occurrenceAt(ev, '2026-09-15')
+    expect(new Date(occ.startAt).toISOString()).toBe('2026-09-15T10:00:00.000Z')
+    expect(new Date(occ.endAt!).toISOString()).toBe('2026-09-15T11:00:00.000Z')
+  })
+
+  it('todo el día: solo la fecha, sin endAt', () => {
+    const ev = { startAt: '2026-09-01T00:00:00.000Z', endAt: null, allDay: true }
+    const occ = occurrenceAt(ev, '2026-09-20')
+    expect(occ.endAt).toBeNull()
+    expect(new Date(occ.startAt).getDate()).toBe(20)
   })
 })

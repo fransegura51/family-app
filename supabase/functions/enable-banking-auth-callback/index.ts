@@ -62,6 +62,57 @@ async function signEnableBankingJWT(applicationId: string, privateKeyPem: string
   return `${signingInput}.${base64url(signature)}`
 }
 
+// Petición real: "ponemos una función que se genere automáticamente dos
+// avisos en el calendario por cada cuenta cuando se conecte, uno una
+// semana antes del vencimiento y otro un día antes del vencimiento" —
+// un aviso por CONEXIÓN (banco), no por cada cuenta individual: varias
+// cuentas del mismo banco comparten el mismo valid_until y se renuevan
+// con la misma reconexión, así que un aviso por cuenta solo duplicaría
+// el mismo mensaje el mismo día. Eventos de todo el día, sin miembro
+// asignado (visibles para toda la familia). bank_connection_reminders
+// (ver 0096) guarda el enlace para poder borrarlos si se desconecta el
+// banco a mano (enable-banking-disconnect).
+async function createRenewalReminders(
+  admin: ReturnType<typeof createClient>,
+  familyId: string,
+  connectionId: string,
+  bankName: string,
+  validUntil: string | null,
+): Promise<void> {
+  if (!validUntil) return
+  const expiry = new Date(validUntil)
+  if (Number.isNaN(expiry.getTime())) return
+
+  const reminders = [
+    { daysBefore: 7, when: "en una semana" },
+    { daysBefore: 1, when: "mañana" },
+  ]
+
+  for (const r of reminders) {
+    const eventDate = new Date(expiry)
+    eventDate.setUTCDate(eventDate.getUTCDate() - r.daysBefore)
+    eventDate.setUTCHours(0, 0, 0, 0)
+    if (eventDate.getTime() < Date.now()) continue
+
+    const message = `Hace falta que renueves la conexión con ${bankName} — caduca ${r.when}.`
+    const { data: event, error } = await admin
+      .from("calendar_events")
+      .insert({
+        family_id: familyId,
+        title: `🏦 Renovar conexión con ${bankName} (caduca ${r.when})`,
+        description: message,
+        start_at: eventDate.toISOString(),
+        all_day: true,
+        visibility: "shared",
+      })
+      .select("id")
+      .single()
+    if (error || !event) continue
+
+    await admin.from("bank_connection_reminders").insert({ connection_id: connectionId, event_id: event.id })
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     const url = new URL(req.url)
@@ -120,6 +171,8 @@ Deno.serve(async (req) => {
         raw: acc,
       })
     }
+
+    await createRenewalReminders(admin, familyId, connection.id, sessionJson.aspsp?.name ?? "tu banco", sessionJson.access?.valid_until ?? null)
 
     return redirectTo("connected")
   } catch (err) {

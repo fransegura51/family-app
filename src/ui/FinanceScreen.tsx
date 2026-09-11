@@ -1,4 +1,5 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   addExpense,
   addWalletTransaction,
@@ -909,6 +910,14 @@ function AccountBalanceCards({
           <span>Añadir cuenta</span>
         </button>
       </div>
+      {/* Petición real: "debajo de las 4 ventanas de cuentas pon un
+          enlace Configuración cuentas que lleve directamente al menú de
+          configuración" — conectar/desconectar/asignar dueño vive ahora
+          en Configuración (ver BankAccountsModal), así que desde aquí
+          mismo se puede ir directo sin buscarlo en ☰ Menú. */}
+      <Link to="/menu-organizar" className="link-button" style={{ display: 'block', marginTop: 8 }}>
+        ⚙️ Configuración cuentas
+      </Link>
     </div>
   )
 }

@@ -103,6 +103,17 @@ Deno.serve(async (req) => {
       .eq("id", connectionId)
     if (updateError) return json({ error: updateError.message }, 500)
 
+    // Borra los avisos "renueva la conexión" que se crearon al conectar
+    // (ver enable-banking-auth-callback) — si no, seguirían recordando
+    // renovar algo que la familia acaba de desconectar a propósito.
+    const { data: reminders } = await admin
+      .from("bank_connection_reminders")
+      .select("event_id")
+      .eq("connection_id", connectionId)
+    if (reminders && reminders.length > 0) {
+      await admin.from("calendar_events").delete().in("id", reminders.map((r) => r.event_id))
+    }
+
     return json({ ok: true, closedRemotely })
   } catch (err) {
     return json({ error: String(err) }, 500)

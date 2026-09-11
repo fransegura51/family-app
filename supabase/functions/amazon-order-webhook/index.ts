@@ -31,6 +31,8 @@ interface OrderItem {
   quantity: number
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS })
 
@@ -53,9 +55,15 @@ Deno.serve(async (req) => {
             }
           })
           .filter((it: OrderItem) => it.name.trim() && Number.isFinite(it.price))
+          // Auditoría de seguridad: tope de líneas por pedido, para que un
+          // token filtrado no pueda inflar la base de datos sin límite.
+          .slice(0, 200)
       : []
 
     if (!token) return json({ error: "missing token" }, 401)
+    // La columna es uuid: un token con otra forma haría fallar la consulta
+    // (500 con el error de Postgres) en vez de un 401 limpio.
+    if (!UUID_RE.test(token)) return json({ error: "invalid token" }, 401)
     if (!orderDate) return json({ error: "missing or invalid orderDate" }, 400)
 
     // Petición real: "de Amazon en movimientos no quiero ver el número

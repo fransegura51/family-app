@@ -29,6 +29,37 @@ function json(body: unknown, status = 200) {
 }
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+// Auditoría de seguridad: el servidor descarga la URL que le pase un
+// usuario con sesión (la página de la receta y luego su imagen). Sin
+// esto se podría usar como puente hacia direcciones internas (localhost,
+// red privada, metadatos de la nube) — SSRF. Solo http(s) a hosts
+// públicos. Copia de fetch-image-url (a propósito: cada función es
+// independiente).
+function isPublicHttpUrl(raw: string): boolean {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false
+  if (url.username || url.password) return false
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return false
+  if (host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) return false
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])]
+    if (a === 10 || a === 127 || a === 0) return false
+    if (a === 169 && b === 254) return false
+    if (a === 172 && b >= 16 && b <= 31) return false
+    if (a === 192 && b === 168) return false
+    if (a === 100 && b >= 64 && b <= 127) return false
+  }
+  return true
+}
+
 const EXT_BY_TYPE: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -42,7 +73,11 @@ const EXT_BY_TYPE: Record<string, string> = {
 // externa (que podría borrar o mover la imagen más adelante).
 async function fetchAndStoreImage(admin: ReturnType<typeof createClient>, imageUrl: string, familyId: string): Promise<string | null> {
   try {
+    // La URL de la imagen viene de la propia web externa: también se
+    // valida, y sin seguir redirecciones (podrían apuntar a algo interno).
+    if (!isPublicHttpUrl(imageUrl)) return null
     const res = await fetch(imageUrl, {
+      redirect: "manual",
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
     })
     if (!res.ok) return null
@@ -172,7 +207,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
     const url: string | null = typeof body.url === "string" ? body.url.trim() : null
-    if (!url || !/^https?:\/\//i.test(url)) return json({ error: "invalid_url" }, 400)
+    if (!url || !isPublicHttpUrl(url)) return json({ error: "invalid_url" }, 400)
 
     const pageRes = await fetch(url, {
       headers: {

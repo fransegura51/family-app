@@ -155,17 +155,30 @@ Deno.serve(async (req) => {
 
     const familyId = tokenRow.family_id as string
 
-    const [{ data: events }, { data: eventMembers }, { data: reminders }, { data: familyMembers }, { data: holidayFeeds }] =
-      await Promise.all([
-        admin
-          .from("calendar_events")
-          .select("id, title, description, start_at, end_at, all_day, recurrence_rule, exception_dates")
-          .eq("family_id", familyId),
-        admin.from("calendar_event_members").select("event_id, member_id"),
-        admin.from("calendar_event_reminders").select("event_id, minutes_before, anchor"),
-        admin.from("family_members").select("id, name").eq("family_id", familyId),
-        admin.from("external_calendar_feeds").select("id").eq("family_id", familyId).eq("is_holiday_calendar", true),
-      ])
+    // Auditoría de seguridad: el token de exportación es de la FAMILIA
+    // entera (lo usa Google/Apple, sin login), así que un evento "Solo
+    // yo" (visibility='private', migración 0089) no puede salir por aquí
+    // — lo verían todos los miembros suscritos, justo lo contrario de lo
+    // que promete esa opción.
+    const [{ data: events }, { data: familyMembers }, { data: holidayFeeds }] = await Promise.all([
+      admin
+        .from("calendar_events")
+        .select("id, title, description, start_at, end_at, all_day, recurrence_rule, exception_dates")
+        .eq("family_id", familyId)
+        .neq("visibility", "private"),
+      admin.from("family_members").select("id, name").eq("family_id", familyId),
+      admin.from("external_calendar_feeds").select("id").eq("family_id", familyId).eq("is_holiday_calendar", true),
+    ])
+
+    // Solo los miembros/recordatorios de ESTOS eventos — antes se cargaban
+    // las tablas enteras (de todas las familias) en cada exportación.
+    const eventIds = (events ?? []).map((e) => e.id as string)
+    const [{ data: eventMembers }, { data: reminders }] = eventIds.length
+      ? await Promise.all([
+          admin.from("calendar_event_members").select("event_id, member_id").in("event_id", eventIds),
+          admin.from("calendar_event_reminders").select("event_id, minutes_before, anchor").in("event_id", eventIds),
+        ])
+      : [{ data: [] }, { data: [] }]
 
     const memberNameById = new Map((familyMembers ?? []).map((m) => [m.id as string, m.name as string]))
     const membersByEvent = new Map<string, string[]>()

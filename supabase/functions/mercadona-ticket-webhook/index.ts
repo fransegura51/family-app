@@ -45,6 +45,8 @@ interface ReceiptItem {
   price: number
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
@@ -62,7 +64,17 @@ Deno.serve(async (req) => {
     const mimeType: string = typeof body.mimeType === "string" ? body.mimeType : "application/pdf"
 
     if (!token) return json({ error: "missing token" }, 401)
+    // La columna es uuid: un token con otra forma haría fallar la consulta
+    // (500 con el error de Postgres) en vez de un 401 limpio.
+    if (!UUID_RE.test(token)) return json({ error: "invalid token" }, 401)
     if (!fileBase64) return json({ error: "missing fileBase64" }, 400)
+    // Auditoría de seguridad: sin tope, un token filtrado permitiría
+    // llenar el storage de la familia con archivos enormes. Un ticket
+    // real ocupa unos pocos cientos de KB; 10 MB es más que de sobra.
+    if (fileBase64.length > 14_000_000) return json({ error: "file too large" }, 413)
+    if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+      return json({ error: "unsupported mimeType" }, 415)
+    }
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
@@ -150,6 +162,7 @@ Deno.serve(async (req) => {
             }
           })
           .filter((it: ReceiptItem) => it.name.trim() && Number.isFinite(it.price))
+          .slice(0, 200)
       }
     } catch {
       // Se guarda el ticket igualmente (foto/PDF + fecha de hoy si no se

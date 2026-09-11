@@ -27,6 +27,36 @@ function json(body: unknown, status = 200) {
 }
 
 const MAX_BYTES = 8 * 1024 * 1024
+
+// Auditoría de seguridad: esta función descarga desde el servidor la URL
+// que le pase un usuario con sesión. Sin esto, alguien podría usarla
+// para que el servidor consultara direcciones internas (localhost, la
+// red privada del proveedor, el endpoint de metadatos de la nube...) —
+// el clásico SSRF. Solo se aceptan http(s) hacia nombres/IP públicos.
+export function isPublicHttpUrl(raw: string): boolean {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false
+  if (url.username || url.password) return false
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return false
+  if (host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) return false
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])]
+    if (a === 10 || a === 127 || a === 0) return false
+    if (a === 169 && b === 254) return false
+    if (a === 172 && b >= 16 && b <= 31) return false
+    if (a === 192 && b === 168) return false
+    if (a === 100 && b >= 64 && b <= 127) return false
+  }
+  return true
+}
+
 const EXT_BY_TYPE: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -55,7 +85,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
     const imageUrl: string | null = typeof body.url === "string" ? body.url.trim() : null
-    if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return json({ error: "invalid_url" }, 400)
+    if (!imageUrl || !isPublicHttpUrl(imageUrl)) return json({ error: "invalid_url" }, 400)
 
     const imagePath = await fetchAndStoreImage(admin, imageUrl, profileRow.family_id)
     if (!imagePath) return json({ error: "download_failed" }, 502)
@@ -74,7 +104,9 @@ async function fetchAndStoreImage(
   familyId: string,
 ): Promise<string | null> {
   try {
+    // redirect: "manual" — una URL pública podría redirigir a una interna.
     const res = await fetch(imageUrl, {
+      redirect: "manual",
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
     })
     if (!res.ok) return null

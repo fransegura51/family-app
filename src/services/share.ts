@@ -26,9 +26,19 @@ function isUserCancelled(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError'
 }
 
-// true = se abrió el menú de compartir del teléfono. false = el
-// navegador no soporta compartir archivos (quien llama debe ofrecer su
-// propia alternativa: abrir el archivo en una pestaña, por ejemplo).
+// true = se abrió el menú de compartir del teléfono. false = no se ha
+// podido compartir el ARCHIVO aquí — sin soporte, o el navegador dice
+// que sí puede (canShare) pero share() falla al intentarlo de verdad —
+// en cualquier caso, quien llama debe ofrecer su propia alternativa
+// (texto simple, o abrir el archivo en una pestaña).
+//
+// Bug real reportado ("en Android no se puede compartir"): canShare()
+// decía que sí podía compartir el .vcf/.ics, pero share() fallaba con
+// "NotAllowedError: Permission denied" — probablemente porque el
+// teléfono no tenía ninguna app capaz de abrir ese tipo de archivo
+// concreto. Antes esto se relanzaba tal cual y rompía TODO el intento
+// de compartir; ahora se trata igual que "no se puede" y cae al plan B
+// de texto simple (que si funciona, ya no hace falta el archivo).
 export async function shareFiles(files: File[], meta: { title?: string; text?: string } = {}): Promise<boolean> {
   if (!canShareFiles(files)) return false
   try {
@@ -36,7 +46,7 @@ export async function shareFiles(files: File[], meta: { title?: string; text?: s
     return true
   } catch (err) {
     if (isUserCancelled(err)) return true
-    throw err
+    return false
   }
 }
 

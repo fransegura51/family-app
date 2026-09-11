@@ -10,6 +10,7 @@ import contactosHeaderImg from '@/assets/contactos/contactos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { vCardForContacts } from '@/domain/share'
 import { shareFiles, shareText } from '@/services/share'
+import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 
 // Categorías de partida — ya no es una lista cerrada: cualquier
 // contacto puede llevar una categoría nueva escrita a mano (petición
@@ -58,6 +59,13 @@ export function ContactsScreen() {
     setShareNotice(msg)
     setTimeout(() => setShareNotice(null), 5000)
   }
+  // Bug real reportado: "en Android y en ordenador no funciona, en
+  // iPhone sí" (confirmado en dos Android distintos) — cuando ni el
+  // menú nativo ni el portapapeles funcionan aquí, en vez de un aviso
+  // sin más se abre una ventana con el texto listo para copiar a mano
+  // o mandar directo por WhatsApp/email — nunca se queda sin ninguna
+  // forma de compartir.
+  const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -72,8 +80,9 @@ export function ContactsScreen() {
     const chosen = contacts.filter((c) => selectedIds.has(c.id))
     if (chosen.length === 0) return
     try {
-      const shared = await shareContacts(chosen)
-      if (!shared) flashShareNotice('Copiado al portapapeles.')
+      const outcome = await shareContacts(chosen)
+      if (outcome.kind === 'clipboard') flashShareNotice('Copiado al portapapeles.')
+      else if (outcome.kind === 'manual') setManualShare({ title: outcome.title, text: outcome.text })
       setSelecting(false)
       setSelectedIds(new Set())
     } catch (err) {
@@ -176,6 +185,7 @@ export function ContactsScreen() {
             onToggleSelect={() => toggleSelected(c.id)}
             onShareError={(msg) => setError(msg)}
             onShareFallback={() => flashShareNotice('Copiado al portapapeles.')}
+            onManualShare={(title, text) => setManualShare({ title, text })}
           />
         ))}
         {filteredContacts.length === 0 && <p className="muted">No hay contactos que coincidan.</p>}
@@ -209,6 +219,10 @@ export function ContactsScreen() {
           </div>
         </div>
       )}
+
+      {manualShare && (
+        <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />
+      )}
     </div>
   )
 }
@@ -216,21 +230,32 @@ export function ContactsScreen() {
 // Un contacto suelto o varios en un único .vcf — formato válido para
 // Contactos de iPhone/Android tanto con uno como con muchos (petición
 // real: "Contactos: compartir uno o varios contactos"). Sin soporte de
-// compartir archivos (típico en ordenador), se manda como texto plano.
-// Devuelve si se llegó a abrir el menú nativo (false = cayó en
-// portapapeles) — bug real reportado: "sigue sin poderse compartir",
-// que en realidad era esto pasando en silencio, sin avisar nada.
-async function shareContacts(contacts: Contact[]): Promise<boolean> {
+// compartir archivos (típico en ordenador, o en Android con tipos de
+// archivo que ninguna app reclama), se manda como texto plano — y si
+// eso TAMBIÉN falla, la pantalla debe caer a la ventana de respaldo
+// (ShareFallbackModal) en vez de darse por vencida.
+type ShareOutcome = { kind: 'shared' } | { kind: 'clipboard' } | { kind: 'manual'; title: string; text: string }
+
+async function shareContacts(contacts: Contact[]): Promise<ShareOutcome> {
   const vcf = vCardForContacts(contacts.map((c) => ({ name: c.name, phone: c.phone, email: c.email })))
   const filename = contacts.length === 1 ? `${contacts[0].name}.vcf` : 'contactos.vcf'
   const file = new File([vcf], filename, { type: 'text/vcard' })
   const title = contacts.length === 1 ? contacts[0].name : `${contacts.length} contactos`
   const shared = await shareFiles([file], { title })
-  if (shared) return true
+  if (shared) return { kind: 'shared' }
   const text = contacts
     .map((c) => `${c.name}${c.phone ? ' · ' + c.phone : ''}${c.email ? ' · ' + c.email : ''}`)
     .join('\n')
-  return shareText({ title, text })
+  try {
+    const shownText = await shareText({ title, text })
+    return shownText ? { kind: 'shared' } : { kind: 'clipboard' }
+  } catch {
+    // Bug real reportado: "en Android y en ordenador no funciona, en
+    // iPhone sí" (confirmado en dos Android distintos) — ni el menú
+    // nativo ni el portapapeles han podido usarse aquí. En vez de un
+    // error sin más, la pantalla debe ofrecer la ventana de respaldo.
+    return { kind: 'manual', title, text }
+  }
 }
 
 function ContactCard({
@@ -241,6 +266,7 @@ function ContactCard({
   onToggleSelect,
   onShareError,
   onShareFallback,
+  onManualShare,
 }: {
   contact: Contact
   onChanged: () => void
@@ -249,6 +275,7 @@ function ContactCard({
   onToggleSelect: () => void
   onShareError: (msg: string) => void
   onShareFallback: () => void
+  onManualShare: (title: string, text: string) => void
 }) {
   const [editingBirthday, setEditingBirthday] = useState(false)
   const [editingAll, setEditingAll] = useState(false)
@@ -263,8 +290,9 @@ function ContactCard({
   async function handleShareOne() {
     setSharing(true)
     try {
-      const shared = await shareContacts([c])
-      if (!shared) onShareFallback()
+      const outcome = await shareContacts([c])
+      if (outcome.kind === 'clipboard') onShareFallback()
+      else if (outcome.kind === 'manual') onManualShare(outcome.title, outcome.text)
     } catch (err) {
       onShareError(errorMessage(err, 'No se pudo compartir'))
     } finally {

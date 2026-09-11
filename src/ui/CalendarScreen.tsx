@@ -65,6 +65,7 @@ import {
 } from '@/domain/calendar'
 import { icsForEvent } from '@/domain/share'
 import { shareFiles, shareText } from '@/services/share'
+import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import {
   REMINDER_PRESETS,
   REMINDER_UNIT_OPTIONS,
@@ -186,6 +187,12 @@ export function CalendarScreen() {
   // qué evento está en ello para dar una señal visible de que el toque
   // SÍ se ha registrado, aunque lo que pase después dependa del navegador.
   const [sharingEventKey, setSharingEventKey] = useState<string | null>(null)
+  // Bug real reportado: "en Android y en ordenador no funciona, en
+  // iPhone sí" (confirmado en dos Android distintos) — cuando ni el
+  // menú nativo ni el portapapeles funcionan aquí, en vez de un aviso
+  // sin más se abre una ventana con el texto listo para copiar a mano
+  // o mandar directo por WhatsApp/email.
+  const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
   function flashShareNotice(msg: string) {
     setShareNotice(msg)
     setTimeout(() => setShareNotice(null), 5000)
@@ -510,15 +517,23 @@ export function CalendarScreen() {
     const occ = occurrenceAt(ev, dateStr)
     const ics = icsForEvent({ title: ev.title, startAt: occ.startAt, endAt: occ.endAt, allDay: ev.allDay, description: ev.description })
     const file = new File([ics], `${ev.title || 'evento'}.ics`, { type: 'text/calendar' })
+    const when = new Date(occ.startAt).toLocaleString('es-ES', {
+      dateStyle: 'medium',
+      timeStyle: ev.allDay ? undefined : 'short',
+    })
+    const plainText = `${ev.title}\n${when}`
     try {
       const shared = await shareFiles([file], { title: ev.title })
       if (!shared) {
-        const when = new Date(occ.startAt).toLocaleString('es-ES', {
-          dateStyle: 'medium',
-          timeStyle: ev.allDay ? undefined : 'short',
-        })
-        const shownText = await shareText({ title: ev.title, text: `${ev.title}\n${when}` })
-        if (!shownText) flashShareNotice('Copiado al portapapeles.')
+        try {
+          const shownText = await shareText({ title: ev.title, text: plainText })
+          if (!shownText) flashShareNotice('Copiado al portapapeles.')
+        } catch {
+          // Bug real reportado: "en Android y en ordenador no funciona,
+          // en iPhone sí" (confirmado en dos Android distintos) — ni el
+          // menú nativo ni el portapapeles han podido usarse aquí.
+          setManualShare({ title: ev.title, text: plainText })
+        }
       }
     } catch (err) {
       setError(errorMessage(err, 'No se pudo compartir el evento'))
@@ -1049,6 +1064,10 @@ export function CalendarScreen() {
             />
           </div>
         </div>
+      )}
+
+      {manualShare && (
+        <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />
       )}
     </div>
   )

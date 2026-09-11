@@ -67,7 +67,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Conectar con Google Calendar', text: 'Sincronización automática de verdad, sin tener que copiar ninguna URL.' },
     { title: 'Exportar a tu móvil', text: 'Tu propia URL para que Google o Apple Calendar lean lo que apuntéis en la app.' },
     { title: 'Apuntar por voz', text: 'Dile a Pepa que te cree un evento y lo hace por ti.' },
-    { title: 'Compartir', text: 'El icono 📤 de cada evento manda un archivo .ics al menú de compartir del móvil, para que quien lo reciba pueda añadirlo a su propio calendario (Google, Apple...) aunque no use esta app.' },
+    { title: 'Compartir', text: 'El icono 📤 de cada evento manda un archivo .ics al menú de compartir del móvil, para que quien lo reciba pueda añadirlo a su propio calendario (Google, Apple...) aunque no use esta app. En Android o en ordenador, donde ese menú puede no funcionar, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
   ],
   '/puntos': [
     { title: 'Saldo por miembro', text: 'Se gana marcando "Hecho" en eventos del Calendario que llevan puntos asignados.' },
@@ -114,7 +114,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Categorías', text: 'Colegio, Médico, Emergencia, Familia, Otros, o las que tú escribas.' },
     { title: 'Ficha de contacto', text: 'Teléfono con botón de llamada directa, email, notas y cumpleaños.' },
     { title: 'Importar', text: 'Desde la agenda de tu móvil, desde un archivo .vcf exportado del iPhone, o los cumpleaños desde tu calendario de Google.' },
-    { title: 'Compartir', text: 'El icono 📤 de cada ficha manda ese contacto al menú de compartir del móvil. "📤 Compartir varios" deja marcar varios con una casilla y mandarlos juntos en un único archivo.' },
+    { title: 'Compartir', text: 'El icono 📤 de cada ficha manda ese contacto al menú de compartir del móvil. "📤 Compartir varios" deja marcar varios con una casilla y mandarlos juntos en un único archivo. En Android o en ordenador, donde ese menú puede no funcionar, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
   ],
   '/galeria': [
     { title: 'Fotos de la familia', text: 'Sube una foto con su descripción, o bórrala si ya no quieres tenerla.' },

@@ -317,7 +317,7 @@ function ContactCard({
             📞
           </a>
         )}
-        <button type="button" className="link-button" onClick={handleShareOne} aria-label="Compartir contacto">
+        <button type="button" className="icon-button-share" onClick={handleShareOne} aria-label="Compartir contacto">
           📤
         </button>
         <button type="button" className="link-button" onClick={() => setEditingAll(true)} aria-label="Editar">

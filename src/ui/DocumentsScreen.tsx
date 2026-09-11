@@ -410,7 +410,7 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
             👁
           </button>
         )}
-        <button type="button" className="link-button" onClick={handleShare} aria-label="Compartir documento">
+        <button type="button" className="icon-button-share" onClick={handleShare} aria-label="Compartir documento">
           📤
         </button>
         <button type="button" className="link-button" onClick={() => setEditing(true)} aria-label="Editar">

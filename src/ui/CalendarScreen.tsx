@@ -1719,7 +1719,12 @@ function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
         </button>
       )}
       {entry.onShare && (
-        <button type="button" className="agenda-allday-chip-action" onClick={entry.onShare} aria-label="Compartir">
+        <button
+          type="button"
+          className="icon-button-share icon-button-share-sm"
+          onClick={entry.onShare}
+          aria-label="Compartir"
+        >
           📤
         </button>
       )}
@@ -1831,7 +1836,7 @@ function AgendaCard({ entry }: { entry: AgendaEntry }) {
             </button>
           )}
           {entry.onShare && (
-            <button type="button" onClick={entry.onShare} aria-label="Compartir">
+            <button type="button" className="icon-button-share" onClick={entry.onShare} aria-label="Compartir">
               📤
             </button>
           )}
@@ -1970,7 +1975,7 @@ function EventCard({
           Editar
         </button>
         {onShare && (
-          <button type="button" className="link-button" onClick={onShare} aria-label="Compartir">
+          <button type="button" className="icon-button-share" onClick={onShare} aria-label="Compartir">
             📤
           </button>
         )}

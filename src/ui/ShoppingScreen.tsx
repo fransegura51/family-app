@@ -819,7 +819,7 @@ function ShoppingListTab() {
               <span className="muted"> ({storeItems.length})</span>
               <button
                 type="button"
-                className="link-button"
+                className="icon-button-share"
                 style={{ marginLeft: 'auto' }}
                 aria-label={`Compartir lista de ${store}`}
                 onClick={(e) => {

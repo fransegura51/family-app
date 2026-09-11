@@ -1520,13 +1520,13 @@ textarea {
   position: absolute;
   top: 6px;
   left: 6px;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   border: none;
   background: rgba(0, 0, 0, 0.55);
   color: white;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
 }
@@ -3050,6 +3050,38 @@ textarea {
   line-height: 1;
   padding: 4px 6px;
   cursor: pointer;
+}
+
+/* Botón de compartir (📤) en icono solo — bug real reportado: "el
+   icono que has puesto para compartir es muy pequeño, ponlo más
+   grande y accesible" — en Calendario/Contactos heredaba el mismo
+   tamaño que un enlace de texto ("Editar", 12-14px sin relleno), casi
+   imposible de acertar con el dedo para un solo emoji. Área de toque
+   de verdad (36px, cerca del mínimo recomendado de 44px) en vez de
+   heredar el tamaño de alrededor. */
+.icon-button-share {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+
+/* Misma idea pero más compacta, para el chip "todo el día" del
+   calendario — no hay sitio para 36px en una píldora de una sola
+   línea, pero sigue siendo mayor que el texto subrayado de alrededor. */
+.icon-button-share-sm {
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
 }
 
 .receipt-row-detail {

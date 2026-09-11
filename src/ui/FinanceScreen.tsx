@@ -4362,7 +4362,7 @@ function ReceiptRow({
                   <button type="button" className="icon-button" onClick={handleViewTicket} aria-label="Ver ticket" title="Ver ticket">
                     👁
                   </button>
-                  <button type="button" className="icon-button" onClick={handleShareTicket} aria-label="Compartir ticket" title="Compartir">
+                  <button type="button" className="icon-button-share" onClick={handleShareTicket} aria-label="Compartir ticket" title="Compartir">
                     📤
                   </button>
                 </>

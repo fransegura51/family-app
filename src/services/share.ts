@@ -43,6 +43,13 @@ export async function shareFiles(files: File[], meta: { title?: string; text?: s
 // true = se abrió el menú de compartir. false = no hay Web Share API
 // (típico en ordenador) y en su lugar se ha copiado el texto al
 // portapapeles — quien llama debe avisar "Copiado" en ese caso.
+//
+// Bug real reportado ("Contacto/Calendario sigue sin poderse
+// compartir"): navigator.clipboard.writeText puede FALLAR de verdad —
+// "Write permission denied" si el navegador no considera la pestaña
+// con foco/interacción reciente, entre otros motivos — y antes eso
+// dejaba reventar la función con ese error técnico del navegador tal
+// cual, en vez de avisar algo que la familia pueda entender.
 export async function shareText(meta: { title?: string; text: string }): Promise<boolean> {
   if (isShareSupported()) {
     try {
@@ -53,10 +60,16 @@ export async function shareText(meta: { title?: string; text: string }): Promise
       throw err
     }
   }
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(meta.text)
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(meta.text)
+      return false
+    }
+  } catch {
+    // Sigue al aviso de abajo — ni menú nativo ni portapapeles han
+    // podido usarse aquí.
   }
-  return false
+  throw new Error('Este navegador no deja compartir ni copiar automáticamente aquí — pruébalo desde el móvil.')
 }
 
 // Descarga una foto/documento/ticket ya guardado (URL firmada de

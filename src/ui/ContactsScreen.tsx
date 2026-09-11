@@ -48,6 +48,16 @@ export function ContactsScreen() {
   // elegir varios de golpe y mandarlos en un único archivo .vcf.
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // Bug real reportado: "Contacto sigue sin poderse compartir" — no era
+  // que fallara, era que sin menú nativo (ordenador, o el navegador no
+  // sabe compartir un .vcf) caía en copiar al portapapeles EN SILENCIO,
+  // sin avisar nada — parecía que no había pasado nada. Mismo aviso que
+  // ya tienen Compras/Recetas.
+  const [shareNotice, setShareNotice] = useState<string | null>(null)
+  function flashShareNotice(msg: string) {
+    setShareNotice(msg)
+    setTimeout(() => setShareNotice(null), 2500)
+  }
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -62,7 +72,8 @@ export function ContactsScreen() {
     const chosen = contacts.filter((c) => selectedIds.has(c.id))
     if (chosen.length === 0) return
     try {
-      await shareContacts(chosen)
+      const shared = await shareContacts(chosen)
+      if (!shared) flashShareNotice('Copiado al portapapeles.')
       setSelecting(false)
       setSelectedIds(new Set())
     } catch (err) {
@@ -101,6 +112,7 @@ export function ContactsScreen() {
         <img src={contactosHeaderImg} alt="Contactos" className="kitchen-header-img" />
       </div>
       {error && <p className="error">{error}</p>}
+      {shareNotice && <p className="muted">{shareNotice}</p>}
       <datalist id="contact-categories">
         {availableCategories.map((cat) => (
           <option key={cat} value={cat} />
@@ -163,6 +175,7 @@ export function ContactsScreen() {
             selected={selectedIds.has(c.id)}
             onToggleSelect={() => toggleSelected(c.id)}
             onShareError={(msg) => setError(msg)}
+            onShareFallback={() => flashShareNotice('Copiado al portapapeles.')}
           />
         ))}
         {filteredContacts.length === 0 && <p className="muted">No hay contactos que coincidan.</p>}
@@ -204,18 +217,20 @@ export function ContactsScreen() {
 // Contactos de iPhone/Android tanto con uno como con muchos (petición
 // real: "Contactos: compartir uno o varios contactos"). Sin soporte de
 // compartir archivos (típico en ordenador), se manda como texto plano.
-async function shareContacts(contacts: Contact[]): Promise<void> {
+// Devuelve si se llegó a abrir el menú nativo (false = cayó en
+// portapapeles) — bug real reportado: "sigue sin poderse compartir",
+// que en realidad era esto pasando en silencio, sin avisar nada.
+async function shareContacts(contacts: Contact[]): Promise<boolean> {
   const vcf = vCardForContacts(contacts.map((c) => ({ name: c.name, phone: c.phone, email: c.email })))
   const filename = contacts.length === 1 ? `${contacts[0].name}.vcf` : 'contactos.vcf'
   const file = new File([vcf], filename, { type: 'text/vcard' })
   const title = contacts.length === 1 ? contacts[0].name : `${contacts.length} contactos`
   const shared = await shareFiles([file], { title })
-  if (!shared) {
-    const text = contacts
-      .map((c) => `${c.name}${c.phone ? ' · ' + c.phone : ''}${c.email ? ' · ' + c.email : ''}`)
-      .join('\n')
-    await shareText({ title, text })
-  }
+  if (shared) return true
+  const text = contacts
+    .map((c) => `${c.name}${c.phone ? ' · ' + c.phone : ''}${c.email ? ' · ' + c.email : ''}`)
+    .join('\n')
+  return shareText({ title, text })
 }
 
 function ContactCard({
@@ -225,6 +240,7 @@ function ContactCard({
   selected,
   onToggleSelect,
   onShareError,
+  onShareFallback,
 }: {
   contact: Contact
   onChanged: () => void
@@ -232,6 +248,7 @@ function ContactCard({
   selected: boolean
   onToggleSelect: () => void
   onShareError: (msg: string) => void
+  onShareFallback: () => void
 }) {
   const [editingBirthday, setEditingBirthday] = useState(false)
   const [editingAll, setEditingAll] = useState(false)
@@ -240,7 +257,8 @@ function ContactCard({
 
   async function handleShareOne() {
     try {
-      await shareContacts([c])
+      const shared = await shareContacts([c])
+      if (!shared) onShareFallback()
     } catch (err) {
       onShareError(errorMessage(err, 'No se pudo compartir'))
     }

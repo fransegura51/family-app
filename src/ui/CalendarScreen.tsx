@@ -175,6 +175,16 @@ export function CalendarScreen() {
   }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Bug real reportado: "calendario tampoco se puede compartir" — no
+  // fallaba, caía en copiar al portapapeles EN SILENCIO cuando no hay
+  // menú nativo de compartir (típico en ordenador), sin avisar nada —
+  // parecía que no había pasado nada. Mismo aviso que ya tienen
+  // Compras/Recetas.
+  const [shareNotice, setShareNotice] = useState<string | null>(null)
+  function flashShareNotice(msg: string) {
+    setShareNotice(msg)
+    setTimeout(() => setShareNotice(null), 2500)
+  }
   const [editingId, setEditingId] = useState<string | null>(null)
   const [view, setView] = useState<ViewMode>('Vista general')
   // Petición real: "esas pestañas las metes en una con tres rayas
@@ -500,7 +510,8 @@ export function CalendarScreen() {
           dateStyle: 'medium',
           timeStyle: ev.allDay ? undefined : 'short',
         })
-        await shareText({ title: ev.title, text: `${ev.title}\n${when}` })
+        const shownText = await shareText({ title: ev.title, text: `${ev.title}\n${when}` })
+        if (!shownText) flashShareNotice('Copiado al portapapeles.')
       }
     } catch (err) {
       setError(errorMessage(err, 'No se pudo compartir el evento'))
@@ -668,6 +679,7 @@ export function CalendarScreen() {
         </button>
       </div>
       {error && <p className="error">{error}</p>}
+      {shareNotice && <p className="muted">{shareNotice}</p>}
 
       {calendarMenuOpen && (
         <CalendarioMenuDropdown

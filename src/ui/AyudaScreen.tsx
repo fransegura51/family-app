@@ -59,7 +59,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
   '/calendario': [
     { title: 'Menú ☰ y Vista general', text: 'Se abre por defecto en Vista general. El botón ☰ junto al título agrupa el resto de vistas (Mes, Semana, 3 días, Día, Familiar, Agenda, Personal, Externos) — sácalas para verlas siempre como chip, igual que en Economía. Los nombres de la familia para filtrar se quedan siempre visibles, fuera del desplegable.' },
     { title: 'Vistas', text: 'Mes, Semana, 3 días, Día, Familiar (una columna por persona), Agenda, Personal y Vista general — elige la que mejor te venga.' },
-    { title: 'Personal', text: 'Notas privadas por día, solo para ti — ni el resto de la familia las ve, aunque compartáis cuenta. No lleva hora, foto ni recordatorios, solo lo que quieras apuntarte a ti mismo.' },
+    { title: 'Personal', text: 'Notas privadas por día, solo para ti — ni el resto de la familia las ve, aunque compartáis cuenta. No lleva hora, foto ni recordatorios, solo lo que quieras apuntarte a ti mismo. El icono 📤 de cada nota la manda fuera de la app (WhatsApp, email...) si quieres pasársela a alguien, sin dejar de ser privada dentro de la app.' },
     { title: 'Crear evento', text: 'Título, hora, foto o archivo adjunto, repetición (con excluir festivos) y varios recordatorios por evento. Puedes marcarlo "🔒 Solo yo" para que aparezca mezclado con el resto del calendario pero solo tú lo veas — ni el resto de la familia.' },
     { title: 'Puntos por evento', text: 'Si el evento es de una sola persona, puedes ponerle puntos que se ganan al marcarlo "Hecho" — van a la sección Puntos.' },
     { title: 'Marcar hecho / borrar', text: 'Un evento hecho se queda tachado en su sitio. En los repetidos puedes borrar solo esa vez o toda la serie.' },
@@ -67,7 +67,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Conectar con Google Calendar', text: 'Sincronización automática de verdad, sin tener que copiar ninguna URL.' },
     { title: 'Exportar a tu móvil', text: 'Tu propia URL para que Google o Apple Calendar lean lo que apuntéis en la app.' },
     { title: 'Apuntar por voz', text: 'Dile a Pepa que te cree un evento y lo hace por ti.' },
-    { title: 'Compartir', text: 'El icono 📤 de cada evento manda un archivo .ics al menú de compartir del móvil, para que quien lo reciba pueda añadirlo a su propio calendario (Google, Apple...) aunque no use esta app. En Android o en ordenador, donde ese menú puede no funcionar, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
+    { title: 'Compartir', text: 'El icono 📤 de cada evento manda el título, la fecha y la nota como texto al menú de compartir del móvil (con quién quieras: WhatsApp, Instagram, email...) — como texto en vez de un archivo .ics, porque muchas apps de Android no aceptan archivos de calendario y el menú se quedaba sin ningún sitio real donde mandarlo. Si ni el menú nativo ni el portapapeles funcionan aquí, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
   ],
   '/puntos': [
     { title: 'Saldo por miembro', text: 'Se gana marcando "Hecho" en eventos del Calendario que llevan puntos asignados.' },
@@ -114,7 +114,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Categorías', text: 'Colegio, Médico, Emergencia, Familia, Otros, o las que tú escribas.' },
     { title: 'Ficha de contacto', text: 'Teléfono con botón de llamada directa, email, notas y cumpleaños.' },
     { title: 'Importar', text: 'Desde la agenda de tu móvil, desde un archivo .vcf exportado del iPhone, o los cumpleaños desde tu calendario de Google.' },
-    { title: 'Compartir', text: 'El icono 📤 de cada ficha manda ese contacto al menú de compartir del móvil. "📤 Compartir varios" deja marcar varios con una casilla y mandarlos juntos en un único archivo. En Android o en ordenador, donde ese menú puede no funcionar, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
+    { title: 'Compartir', text: 'El icono 📤 de cada ficha manda ese contacto (nombre, teléfono, email) como texto al menú de compartir del móvil, con quién quieras: WhatsApp, Instagram, email... "📤 Compartir varios" deja marcar varios con una casilla y mandarlos todos juntos en el mismo texto. Se manda como texto en vez de un archivo .vcf, porque muchas apps de Android no aceptan archivos de contacto y el menú se quedaba sin ningún sitio real donde mandarlo. Si ni el menú nativo ni el portapapeles funcionan aquí, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
   ],
   '/galeria': [
     { title: 'Fotos de la familia', text: 'Sube una foto con su descripción, o bórrala si ya no quieres tenerla.' },

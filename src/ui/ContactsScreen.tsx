@@ -8,8 +8,7 @@ import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
 import contactosHeaderImg from '@/assets/contactos/contactos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
-import { vCardForContacts } from '@/domain/share'
-import { shareFiles, shareText } from '@/services/share'
+import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 
 // Categorías de partida — ya no es una lista cerrada: cualquier
@@ -237,12 +236,16 @@ export function ContactsScreen() {
 type ShareOutcome = { kind: 'shared' } | { kind: 'clipboard' } | { kind: 'manual'; title: string; text: string }
 
 async function shareContacts(contacts: Contact[]): Promise<ShareOutcome> {
-  const vcf = vCardForContacts(contacts.map((c) => ({ name: c.name, phone: c.phone, email: c.email })))
-  const filename = contacts.length === 1 ? `${contacts[0].name}.vcf` : 'contactos.vcf'
-  const file = new File([vcf], filename, { type: 'text/vcard' })
+  // Bug real reportado, varias veces, en Android y ordenador (nunca en
+  // iPhone): compartir el .vcf como ARCHIVO abría el menú nativo, pero
+  // WhatsApp/Instagram/etc. no aparecían como destino — la mayoría de
+  // apps de Android no se registran para recibir vcard, así que
+  // canShare()/share() podían "tener éxito" técnicamente sin ofrecer
+  // ningún sitio real donde mandarlo. Texto plano sí lo acepta
+  // cualquier app de mensajería, así que ahora se comparte siempre así
+  // — se pierde el "añadir directo a Contactos" de un vCard real, pero
+  // se gana que el menú "con quién compartir" salga siempre poblado.
   const title = contacts.length === 1 ? contacts[0].name : `${contacts.length} contactos`
-  const shared = await shareFiles([file], { title })
-  if (shared) return { kind: 'shared' }
   const text = contacts
     .map((c) => `${c.name}${c.phone ? ' · ' + c.phone : ''}${c.email ? ' · ' + c.email : ''}`)
     .join('\n')
@@ -250,10 +253,8 @@ async function shareContacts(contacts: Contact[]): Promise<ShareOutcome> {
     const shownText = await shareText({ title, text })
     return shownText ? { kind: 'shared' } : { kind: 'clipboard' }
   } catch {
-    // Bug real reportado: "en Android y en ordenador no funciona, en
-    // iPhone sí" (confirmado en dos Android distintos) — ni el menú
-    // nativo ni el portapapeles han podido usarse aquí. En vez de un
-    // error sin más, la pantalla debe ofrecer la ventana de respaldo.
+    // Ni el menú nativo ni el portapapeles han podido usarse aquí — la
+    // pantalla ofrece la ventana de respaldo (copiar / WhatsApp / email).
     return { kind: 'manual', title, text }
   }
 }

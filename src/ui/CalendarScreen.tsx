@@ -63,8 +63,7 @@ import {
   readableTextColor,
   WEEKDAY_LABELS,
 } from '@/domain/calendar'
-import { icsForEvent } from '@/domain/share'
-import { shareFiles, shareText } from '@/services/share'
+import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import {
   REMINDER_PRESETS,
@@ -187,6 +186,7 @@ export function CalendarScreen() {
   // qué evento está en ello para dar una señal visible de que el toque
   // SÍ se ha registrado, aunque lo que pase después dependa del navegador.
   const [sharingEventKey, setSharingEventKey] = useState<string | null>(null)
+  const [sharingNoteId, setSharingNoteId] = useState<string | null>(null)
   // Bug real reportado: "en Android y en ordenador no funciona, en
   // iPhone sí" (confirmado en dos Android distintos) — cuando ni el
   // menú nativo ni el portapapeles funcionan aquí, en vez de un aviso
@@ -515,30 +515,47 @@ export function CalendarScreen() {
     const key = `${ev.id}-${dateStr}`
     setSharingEventKey(key)
     const occ = occurrenceAt(ev, dateStr)
-    const ics = icsForEvent({ title: ev.title, startAt: occ.startAt, endAt: occ.endAt, allDay: ev.allDay, description: ev.description })
-    const file = new File([ics], `${ev.title || 'evento'}.ics`, { type: 'text/calendar' })
     const when = new Date(occ.startAt).toLocaleString('es-ES', {
       dateStyle: 'medium',
       timeStyle: ev.allDay ? undefined : 'short',
     })
-    const plainText = `${ev.title}\n${when}`
+    const plainText = [ev.title, when, ev.description?.trim() || null].filter(Boolean).join('\n')
+    // Bug real reportado, varias veces, en Android y ordenador (nunca en
+    // iPhone): compartir el .ics como ARCHIVO abría el menú nativo, pero
+    // WhatsApp/Instagram/etc. no aparecían como destino — la mayoría de
+    // apps de Android no se registran para recibir text/calendar, así
+    // que canShare()/share() podían "tener éxito" técnicamente sin
+    // ofrecer ningún sitio real donde mandarlo. Texto plano sí lo acepta
+    // cualquier app de mensajería, así que ahora se comparte siempre así
+    // — se pierde el "añadir directo al calendario" de un .ics real,
+    // pero se gana que el menú "con quién compartir" salga siempre
+    // poblado.
     try {
-      const shared = await shareFiles([file], { title: ev.title })
-      if (!shared) {
-        try {
-          const shownText = await shareText({ title: ev.title, text: plainText })
-          if (!shownText) flashShareNotice('Copiado al portapapeles.')
-        } catch {
-          // Bug real reportado: "en Android y en ordenador no funciona,
-          // en iPhone sí" (confirmado en dos Android distintos) — ni el
-          // menú nativo ni el portapapeles han podido usarse aquí.
-          setManualShare({ title: ev.title, text: plainText })
-        }
-      }
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo compartir el evento'))
+      const shownText = await shareText({ title: ev.title, text: plainText })
+      if (!shownText) flashShareNotice('Copiado al portapapeles.')
+    } catch {
+      // Ni el menú nativo ni el portapapeles han podido usarse aquí — la
+      // pantalla ofrece la ventana de respaldo (copiar / WhatsApp / email).
+      setManualShare({ title: ev.title, text: plainText })
     } finally {
       setSharingEventKey((k) => (k === key ? null : k))
+    }
+  }
+
+  // Petición real: "en las notas no se puede compartir" — las notas
+  // personales (🔒 privadas dentro de la familia, ver PersonalNotesView)
+  // se pueden mandar igualmente fuera de la app, mismo mecanismo que
+  // eventos/contactos: menú nativo con texto plano → portapapeles →
+  // ventana de respaldo.
+  async function handleShareNote(note: PersonalNote) {
+    setSharingNoteId(note.id)
+    try {
+      const shownText = await shareText({ title: 'Nota', text: note.text })
+      if (!shownText) flashShareNotice('Copiado al portapapeles.')
+    } catch {
+      setManualShare({ title: 'Nota', text: note.text })
+    } finally {
+      setSharingNoteId((id) => (id === note.id ? null : id))
     }
   }
 
@@ -981,6 +998,8 @@ export function CalendarScreen() {
             await deletePersonalNote(id)
             reload()
           }}
+          onShare={handleShareNote}
+          sharingNoteId={sharingNoteId}
         />
       ) : (
         <>
@@ -1362,6 +1381,8 @@ function PersonalNotesView({
   swipeHandlers,
   onAdd,
   onDelete,
+  onShare,
+  sharingNoteId,
 }: {
   selectedDate: string
   notes: PersonalNote[]
@@ -1369,6 +1390,8 @@ function PersonalNotesView({
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
   onAdd: (text: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onShare: (note: PersonalNote) => void
+  sharingNoteId: string | null
 }) {
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -1418,6 +1441,15 @@ function PersonalNotesView({
             <div className="task-card-main">
               <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{n.text}</p>
             </div>
+            <button
+              type="button"
+              className="icon-button-share"
+              onClick={() => onShare(n)}
+              disabled={sharingNoteId === n.id}
+              aria-label="Compartir nota"
+            >
+              {sharingNoteId === n.id ? '…' : '📤'}
+            </button>
             <ConfirmIconButton onConfirm={() => onDelete(n.id)} ariaLabel="Borrar nota" />
           </div>
         ))}

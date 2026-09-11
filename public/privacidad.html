@@ -11,6 +11,14 @@
   p, li { font-size: 15px; }
   .muted { color: #6b7280; font-size: 13px; }
   .hueco { background: #fff3cd; padding: 0 4px; }
+  /* Página estática fuera de la app (React Router no la ve) — si se
+     instala como PWA no hay barra del navegador con botón "atrás", así
+     que sin esto no habría manera de volver (queja real de usuario).
+     href="./" es relativo a esta misma carpeta, así que funciona igual
+     en local (BASE_URL "/") que en GitHub Pages (BASE_URL "/family-app/"). */
+  .volver { position: sticky; top: 0; background: #f4f6fb; margin: 0 -20px 20px; padding: 12px 20px; border-bottom: 1px solid #dde3ee; }
+  .volver a { display: inline-block; color: #1e2530; text-decoration: none; font-size: 14px; font-weight: 600; }
+  .volver a:before { content: "← "; }
 </style>
 </head>
 <body>
@@ -20,6 +28,7 @@
     Los huecos <span class="hueco">[…]</span> son datos de la empresa
     que aún no existen: mientras haya huecos, no cobrar a nadie.
   -->
+  <div class="volver"><a href="./">Volver a la app</a></div>
   <h1>Política de privacidad de Family App</h1>
   <p class="muted">Versión: 11 de septiembre de 2026</p>
   <p>Family App es una aplicación para organizar una familia (calendario, lista de la compra, tareas, alimentación, economía, documentos y fotos). Esta página explica qué datos trata, para qué, y qué derechos tienes.</p>

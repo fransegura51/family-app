@@ -140,7 +140,7 @@ const SETTINGS_ENTRY = {
     { title: 'Huella / Face ID', text: 'Capa opcional por encima del PIN, para no tener que teclearlo cada vez.' },
     { title: 'Reordenar el menú', text: 'Sube o baja cada sección; las 4 primeras se quedan fijas abajo y el resto vive dentro de "☰ Menú".' },
     { title: 'Panel de uso', text: 'Solo visible para los dueños de la app: quién se ha dado de alta, cuándo entró por última vez y si tiene las notificaciones activadas. Ahí también se ven los errores que haya sufrido cualquier familia (agrupados por mensaje, con su traza) y se generan los códigos de invitación de un solo uso para que una familia nueva pueda crear la suya.' },
-    { title: 'Privacidad y términos', text: 'La política de privacidad y los términos de uso están enlazados abajo del todo en esta pantalla de Ayuda y en la pantalla de entrada, y se pueden leer sin tener cuenta.' },
+    { title: 'Privacidad y términos', text: 'La política de privacidad y los términos de uso están enlazados abajo del todo en esta pantalla de Ayuda y en la pantalla de entrada, y se pueden leer sin tener cuenta. Al ser páginas propias fuera de la app, tienen su propio botón "← Volver a la app" arriba del todo para no quedarse atascado sin barra de navegador (por ejemplo, con la app instalada en la pantalla de inicio).' },
   ] as HelpItem[],
 }
 

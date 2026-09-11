@@ -2223,7 +2223,6 @@ textarea {
 }
 
 .account-card {
-  position: relative;
   border-radius: 14px;
   padding: 12px 14px;
   min-height: 74px;
@@ -2233,18 +2232,20 @@ textarea {
   cursor: pointer;
 }
 
-/* De quién es la cuenta (petición real) — mismo rincón que ya usa el
-   botón de borrar en Galería/Documentos, aquí solo de adorno (no es
-   tocable, la propia tarjeta ya lleva a Banco). */
-.account-card-owner {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+/* De quién es la cuenta (petición real) — en fila con el nombre del
+   banco, nunca superpuesto encima (bug real: "la etiqueta de la cuenta
+   se solapa con el nombre del banco"). min-width:0 en el nombre es lo
+   que deja que la elipsis (text-overflow) funcione dentro de un flex
+   item en vez de desbordar por debajo del avatar. */
+.account-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .account-card-bank {
+  flex: 1;
+  min-width: 0;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -2252,6 +2253,24 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Icono neutro para una cuenta "Común" (sin miembro asignado) — mismo
+   tamaño y forma que MemberAvatar, para que encaje igual en cualquier
+   fila junto a un avatar de verdad. */
+.owner-badge-common {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #868e96;
+}
+
+/* Solo sobre el fondo de color de la tarjeta de cuenta — sin esto, el
+   avatar/icono se confunde con el fondo si es parecido. */
+.owner-badge-ring {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
 }
 
 .account-card-name {

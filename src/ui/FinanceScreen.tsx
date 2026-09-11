@@ -811,6 +811,34 @@ function EconomiaMenuDropdown({
 // del mismo azul degradado como antes).
 const ACCOUNT_CARD_COLORS = ['#2f6e6e', '#4a5568', '#0f6b4c', '#4a90d9', '#8854d0', '#c0392b']
 
+// Petición real: "quiero una etiqueta que sea toda la familia o común,
+// mejor común, porque es más corto, que es para las cosas que son de
+// todos" — una cuenta sin miembro asignado (owner_member_id null) no se
+// queda sin símbolo: lleva su propio icono neutro, igual de visible que
+// el avatar de un miembro. Mismo gris que ya usa Documentos para "sin
+// categoría", por coherencia.
+const COMMON_OWNER_COLOR = '#868e96'
+
+function OwnerBadge({ owner, size = 16, ring = false }: { owner: FamilyMember | null; size?: number; ring?: boolean }) {
+  if (owner) {
+    return (
+      <span className={ring ? 'owner-badge-ring' : undefined} style={{ display: 'inline-flex', borderRadius: '50%' }}>
+        <MemberAvatar member={owner} size={size} />
+      </span>
+    )
+  }
+  return (
+    <span
+      className={'owner-badge-common' + (ring ? ' owner-badge-ring' : '')}
+      style={{ width: size, height: size, fontSize: size * 0.62 }}
+      title="Común (de toda la familia)"
+      aria-label="Común"
+    >
+      🏠
+    </span>
+  )
+}
+
 function AccountBalanceCards({
   onAddAccount,
   onSelectAccount,
@@ -858,7 +886,7 @@ function AccountBalanceCards({
       <div className="account-cards-grid">
         {accounts.map((a, i) => {
           const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Banco'
-          const owner = a.ownerMemberId ? members.find((m) => m.id === a.ownerMemberId) : null
+          const owner = a.ownerMemberId ? (members.find((m) => m.id === a.ownerMemberId) ?? null) : null
           return (
             <button
               key={a.id}
@@ -869,13 +897,14 @@ function AccountBalanceCards({
             >
               {/* De quién es la cuenta (asignado en Banco) — petición
                   real: "quiero definir a cada pestaña de banco el nombre
-                  de quien es la cuenta". */}
-              {owner && (
-                <div className="account-card-owner">
-                  <MemberAvatar member={owner} size={22} />
-                </div>
-              )}
-              <div className="account-card-bank">🏦 {bankName}</div>
+                  de quien es la cuenta". En fila junto al nombre del
+                  banco (no superpuesto encima) para que no se solapen —
+                  bug real reportado: "la etiqueta de la cuenta se
+                  solapa con el nombre del banco". */}
+              <div className="account-card-header">
+                <div className="account-card-bank">🏦 {bankName}</div>
+                <OwnerBadge owner={owner} size={20} ring />
+              </div>
               <div className="account-card-name">{a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'}</div>
               <div className="account-card-balance">{a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}</div>
             </button>
@@ -961,17 +990,6 @@ function BalanceTrendCard() {
   // aunque se amplíe el plazo pedido (ver Banco → "Sincronizar
   // movimientos" para traer más histórico).
   const effectiveFrom = earliest && earliest > from ? earliest : from
-  const points =
-    effectiveFrom <= to
-      ? balanceTrend(
-          selectedAccounts.map((a) => ({ id: a.id, balance: a.balance })),
-          txForBalance,
-          effectiveFrom,
-          to,
-        )
-      : []
-  const currentBalance =
-    points.length > 0 ? points[points.length - 1].balance : selectedAccounts.reduce((s, a) => s + (a.balance ?? 0), 0)
 
   function accountChipLabel(a: BankAccount): { label: string; owner: FamilyMember | null } {
     const owner = a.ownerMemberId ? (members.find((m) => m.id === a.ownerMemberId) ?? null) : null
@@ -979,6 +997,30 @@ function BalanceTrendCard() {
     const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Cuenta'
     return { label: a.iban ? `${bankName} ••${a.iban.slice(-4)}` : bankName, owner: null }
   }
+
+  // Petición real: "componlos de los colores asignados a las cuentas...
+  // en proporción, en cada momento, que la franja... de qué cuenta es"
+  // — una serie por cuenta (con 1 sola cuenta, se queda en una franja
+  // sola, igual que antes) en vez de una única línea combinada, para
+  // que se vea de un vistazo cuánto aporta cada cuenta al total en
+  // cada día. El color es el del miembro asignado, o el gris de
+  // "Común" si no tiene.
+  const series = selectedAccounts.map((a) => {
+    const { label, owner } = accountChipLabel(a)
+    return {
+      accountId: a.id,
+      label,
+      color: owner?.color ?? COMMON_OWNER_COLOR,
+      points:
+        effectiveFrom <= to ? balanceTrend([{ id: a.id, balance: a.balance }], txForBalance, effectiveFrom, to) : [],
+    }
+  })
+  const currentBalance = selectedAccounts.reduce((sum, a) => {
+    const s = series.find((s) => s.accountId === a.id)
+    const last = s?.points[s.points.length - 1]
+    return sum + (last ? last.balance : (a.balance ?? 0))
+  }, 0)
+  const hasPoints = series.some((s) => s.points.length > 1)
 
   return (
     <div className="card event-card">
@@ -1001,7 +1043,7 @@ function BalanceTrendCard() {
                 className={'chip' + (selectedAccountId === a.id ? ' chip-active' : '')}
                 onClick={() => setSelectedAccountId(a.id)}
               >
-                {owner && <MemberAvatar member={owner} size={16} />} {label}
+                <OwnerBadge owner={owner} size={16} /> {label}
               </button>
             )
           })}
@@ -1022,8 +1064,8 @@ function BalanceTrendCard() {
         </p>
       )}
       <p style={{ fontSize: 24, fontWeight: 700, margin: '10px 0 6px' }}>{currentBalance.toFixed(2)} €</p>
-      {points.length > 1 ? (
-        <BalanceTrendChart points={points} />
+      {hasPoints ? (
+        <BalanceTrendChart series={series} />
       ) : (
         <p className="muted">No hay movimientos guardados en este periodo para dibujar la tendencia.</p>
       )}
@@ -1031,35 +1073,113 @@ function BalanceTrendCard() {
   )
 }
 
-function BalanceTrendChart({ points }: { points: { date: string; balance: number }[] }) {
-  const width = 300
-  const height = 110
-  const padding = 4
-  const balances = points.map((p) => p.balance)
-  const min = Math.min(...balances)
-  const max = Math.max(...balances)
-  const span = max - min || 1
-  const stepX = points.length > 1 ? (width - padding * 2) / (points.length - 1) : 0
-  const coords = points.map((p, i) => {
-    const x = padding + i * stepX
-    const y = padding + (height - padding * 2) * (1 - (p.balance - min) / span)
-    return { x, y }
+interface BalanceSeries {
+  accountId: string
+  label: string
+  color: string
+  points: { date: string; balance: number }[]
+}
+
+// Petición real: "en los ejes datos, cantidad de euros en una y en la
+// otra, algo de indicador de tiempo, y componlos de los colores
+// asignados a las cuentas... en proporción, en cada momento, que la
+// franja [diga] de qué cuenta es" — área APILADA (cada cuenta encima de
+// la anterior, no una línea sola sumada) con eje de € a la izquierda y
+// fechas abajo. Con una sola cuenta se queda en una única franja, igual
+// que el gráfico simple de antes.
+function BalanceTrendChart({ series }: { series: BalanceSeries[] }) {
+  const width = 320
+  const height = 140
+  const padLeft = 42
+  const padRight = 6
+  const padTop = 8
+  const padBottom = 20
+  const plotW = width - padLeft - padRight
+  const plotH = height - padTop - padBottom
+
+  const n = series[0]?.points.length ?? 0
+  let runningBottom = new Array(n).fill(0)
+  const bands = series.map((s) => {
+    const bottom = runningBottom
+    const top = bottom.map((b, i) => b + (s.points[i]?.balance ?? 0))
+    runningBottom = top
+    return { ...s, bottom, top }
   })
-  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ')
-  const areaPath = `${linePath} L ${coords[coords.length - 1].x.toFixed(1)} ${height - padding} L ${coords[0].x.toFixed(1)} ${height - padding} Z`
-  const positive = points[points.length - 1].balance >= points[0].balance
-  const lineColor = positive ? '#2f9e44' : '#e03131'
+  const grandTotal = runningBottom // = suma de todas las cuentas, día a día
+  const maxY = Math.max(0, ...grandTotal)
+  const minY = Math.min(0, ...grandTotal)
+  const span = maxY - minY || 1
+
+  function xAt(i: number): number {
+    return padLeft + (n > 1 ? (i / (n - 1)) * plotW : 0)
+  }
+  function yAt(v: number): number {
+    return padTop + plotH * (1 - (v - minY) / span)
+  }
+
+  const yTicks = [minY, minY + span / 2, maxY]
+  const dateTickIndices = n > 2 ? [0, Math.floor((n - 1) / 2), n - 1] : [0, n - 1]
 
   return (
     <div>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none">
-        <path d={areaPath} fill={lineColor} fillOpacity={0.12} stroke="none" />
-        <path d={linePath} fill="none" stroke={lineColor} strokeWidth={2} />
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height}>
+        {/* Eje de € — 3 líneas guía (mínimo, mitad, máximo del total). */}
+        {yTicks.map((v, i) => {
+          const y = yAt(v)
+          return (
+            <g key={i}>
+              <line x1={padLeft} y1={y} x2={width - padRight} y2={y} stroke="#e5e7eb" strokeWidth={1} />
+              <text x={padLeft - 4} y={y + 3} textAnchor="end" fontSize="8" fill="#868e96">
+                {Math.round(v)} €
+              </text>
+            </g>
+          )
+        })}
+        {/* Una franja por cuenta, apiladas — la altura de cada una en
+            cada punto del tiempo es lo que aporta esa cuenta al total
+            ese día (petición real: "que la franja diga de qué cuenta
+            es, en proporción, en cada momento"). */}
+        {bands.map((b) => {
+          if (b.points.length === 0) return null
+          const upperPts = b.top.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`)
+          const lowerPts = b.bottom
+            .map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`)
+            .reverse()
+          return (
+            <polygon
+              key={b.accountId}
+              points={[...upperPts, ...lowerPts].join(' ')}
+              fill={b.color}
+              fillOpacity={0.78}
+              stroke={b.color}
+              strokeWidth={0.5}
+            />
+          )
+        })}
+        {/* Eje de tiempo. */}
+        {dateTickIndices.map((i) => (
+          <text
+            key={i}
+            x={xAt(i)}
+            y={height - 4}
+            textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}
+            fontSize="8"
+            fill="#868e96"
+          >
+            {series[0]?.points[i]?.date}
+          </text>
+        ))}
       </svg>
-      <div className="muted" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-        <span>{points[0].date}</span>
-        <span>{points[points.length - 1].date}</span>
-      </div>
+      {series.length > 1 && (
+        <div className="filter-row" style={{ marginTop: 4 }}>
+          {series.map((s) => (
+            <span key={s.accountId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: 'inline-block' }} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -1318,7 +1438,7 @@ function BankTab({
                     style={{ flex: 'none', fontSize: 13 }}
                     aria-label={`De quién es la cuenta ${a.name ?? ''}`}
                   >
-                    <option value="">Sin asignar</option>
+                    <option value="">🏠 Común</option>
                     {members.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
@@ -2939,7 +3059,7 @@ function MovementRow({
               muestra igual que un gasto: icono + nombre de la categoría
               elegida (Sueldo, Regalo, Ingreso genérico...). */}
           <span className="movement-row-category">
-            {ownerMember && <MemberAvatar member={ownerMember} size={16} />} {category?.icon} {e.category}
+            {ownerMember !== undefined && <OwnerBadge owner={ownerMember} size={16} />} {category?.icon} {e.category}
           </span>
           <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
             {e.isIncome ? '+' : ''}

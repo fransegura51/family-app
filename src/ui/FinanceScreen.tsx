@@ -1377,6 +1377,17 @@ function BankTab({
     const ownerId = accId ? accountById.get(accId)?.ownerMemberId : null
     return ownerId ? (memberById.get(ownerId) ?? null) : null
   }
+  // Petición real: "no me salen los identificadores de cuentas en la
+  // lista de los movimientos... el dueño no basta si dos cuentas son
+  // del mismo miembro o las dos son Común" — mismo color que ya usa la
+  // tarjeta de esa cuenta en "Mis cuentas" (mismo índice → mismo color,
+  // ver AccountBalanceCards), para distinguir cuenta a cuenta y no solo
+  // dueño a dueño.
+  const accountColorById = new Map(accounts.map((a, i) => [a.id, ACCOUNT_CARD_COLORS[i % ACCOUNT_CARD_COLORS.length]]))
+  function accountColorForExpense(expenseId: string): string | null {
+    const accId = expenseAccountId.get(expenseId)
+    return accId ? (accountColorById.get(accId) ?? null) : null
+  }
   const activeAccountLabel = activeAccountId
     ? (() => {
         const acc = accounts.find((a) => a.id === activeAccountId)
@@ -1394,9 +1405,14 @@ function BankTab({
           en una página emergente accesible desde el menú arriba con
           Configuración cuentas" — conectar/desconectar/asignar dueño
           vive ahora en BankAccountsModal (también abierto desde
-          Configuración → Cuentas bancarias); aquí solo queda un resumen
-          y el botón para gestionar, más lo que sí es del día a día
-          (sincronizar y ver movimientos). */}
+          Configuración → Cuentas bancarias, y desde "⚙️ Configuración
+          cuentas" en AccountBalanceCards, siempre visible encima de
+          esta pestaña); aquí solo queda el resumen y lo que sí es del
+          día a día (sincronizar y ver movimientos) — un botón propio
+          aquí abajo quedaba duplicado con el de arriba, mismo sitio,
+          mismo destino ("Está duplicado lo de configuración"). El
+          modal se queda montado igualmente para cuando "+ Añadir
+          cuenta" (en Mis cuentas) manda aquí con openConnectSignal. */}
       {activeConnections.length === 0 ? (
         <p className="muted">
           Todavía no hay ningún banco enlazado. Al enlazar una cuenta, sus movimientos se pueden traer aquí y
@@ -1408,9 +1424,6 @@ function BankTab({
           {accounts.length} {accounts.length === 1 ? 'cuenta' : 'cuentas'}).
         </p>
       )}
-      <button type="button" className="link-button" onClick={() => setShowAccountsModal(true)}>
-        ⚙️ Gestionar cuentas bancarias
-      </button>
       {showAccountsModal && (
         <BankAccountsModal
           onClose={() => {
@@ -1511,6 +1524,7 @@ function BankTab({
                   tag={tags.find((t) => t.id === e.tagId)}
                   onClick={() => setEditingId(e.id)}
                   ownerMember={activeAccountId ? undefined : ownerMemberForExpense(e.id)}
+                  accountColor={activeAccountId ? undefined : accountColorForExpense(e.id)}
                 />
               ),
             )}
@@ -2864,6 +2878,7 @@ function MovementRow({
   onClick,
   extraAction,
   ownerMember,
+  accountColor,
 }: {
   expense: Expense
   category: BudgetCategory | undefined
@@ -2875,6 +2890,11 @@ function MovementRow({
   // filtrar una a una) — el avatar/color ya asignado a esa cuenta en
   // "De quién es la cuenta".
   ownerMember?: FamilyMember | null
+  // Petición real: "no puedo distinguir qué movimiento pertenece a qué
+  // cuenta cuando los veo todos a la vez" — el dueño no basta si dos
+  // cuentas comparten dueño (o las dos son Común), así que además del
+  // avatar se marca la cuenta en sí con su mismo color de "Mis cuentas".
+  accountColor?: string | null
 }) {
   const source = SOURCE_META[e.source]
   return (
@@ -2908,7 +2928,16 @@ function MovementRow({
             {e.kind !== 'real' && ` · ${e.kind}`}
             {tag && ` · ${tag.name}`}
           </span>
-          <span title={source.label}>{source.icon}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {accountColor && (
+              <span
+                aria-hidden="true"
+                title="Color de la cuenta"
+                style={{ width: 8, height: 8, borderRadius: '50%', background: accountColor, display: 'inline-block' }}
+              />
+            )}
+            <span title={source.label}>{source.icon}</span>
+          </span>
         </div>
         {e.notes && <div className="movement-row-line movement-row-notes muted">{e.notes}</div>}
       </div>

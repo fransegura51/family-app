@@ -51,15 +51,22 @@ export async function shareFiles(files: File[], meta: { title?: string; text?: s
 }
 
 // true = se abrió el menú de compartir. false = no hay Web Share API
-// (típico en ordenador) y en su lugar se ha copiado el texto al
-// portapapeles — quien llama debe avisar "Copiado" en ese caso.
+// (típico en ordenador), o la hay pero share() también ha fallado al
+// intentarlo — en ese caso se ha copiado el texto al portapapeles en
+// su lugar (quien llama debe avisar "Copiado" cuando esto da false).
 //
 // Bug real reportado ("Contacto/Calendario sigue sin poderse
-// compartir"): navigator.clipboard.writeText puede FALLAR de verdad —
-// "Write permission denied" si el navegador no considera la pestaña
-// con foco/interacción reciente, entre otros motivos — y antes eso
-// dejaba reventar la función con ese error técnico del navegador tal
-// cual, en vez de avisar algo que la familia pueda entender.
+// compartir", en Android Y en ordenador): dos fallos distintos, cada
+// uno rompía TODO el intento en vez de caer al siguiente plan B:
+// 1) navigator.share(solo texto) puede fallar igual que con archivos
+//    (visto real: "NotAllowedError: Permission denied" en Android) —
+//    antes se relanzaba tal cual; ahora, si falla, se sigue probando
+//    el portapapeles en su lugar, en vez de rendirse ahí mismo.
+// 2) navigator.clipboard.writeText puede fallar de verdad también
+//    ("Write permission denied" — pestaña sin foco/interacción
+//    reciente, entre otros motivos) — antes eso dejaba reventar la
+//    función con ese error técnico del navegador tal cual, en vez de
+//    avisar algo que la familia pueda entender.
 export async function shareText(meta: { title?: string; text: string }): Promise<boolean> {
   if (isShareSupported()) {
     try {
@@ -67,7 +74,8 @@ export async function shareText(meta: { title?: string; text: string }): Promise
       return true
     } catch (err) {
       if (isUserCancelled(err)) return true
-      throw err
+      // No relanza — sigue abajo e intenta el portapapeles en su lugar,
+      // en vez de rendirse aquí.
     }
   }
   try {

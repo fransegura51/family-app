@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
+import { TiktokFab } from '@/ui/TiktokFab'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
 import type { Profile } from '@/domain/types'
@@ -70,6 +71,7 @@ export function NavShell({ profile }: { profile: Profile }) {
         <Outlet />
       </main>
       <VoiceCapture />
+      <TiktokFab />
 
       {menuOpen && <div className="nav-menu-overlay" onClick={() => setMenuOpen(false)} />}
 

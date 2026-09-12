@@ -72,6 +72,15 @@ export function LoginScreen() {
         <a href={`${import.meta.env.BASE_URL}terminos.html`}>términos de uso</a> y la{' '}
         <a href={`${import.meta.env.BASE_URL}privacidad.html`}>política de privacidad</a>.
       </p>
+      {/* Petición real: "queremos ponerle un enlace directo desde la
+          aplicación a la cuenta del TikTok que tiene Pepa" — visible
+          incluso antes de entrar, pensado para quien todavía no usa la
+          app. */}
+      <p className="muted" style={{ fontSize: 13, marginTop: 8, textAlign: 'center' }}>
+        <a href="https://vm.tiktok.com/ZN9SCoTPw5T4b-Psl03/" target="_blank" rel="noreferrer">
+          🎵 Conoce a Pepa en TikTok
+        </a>
+      </p>
     </div>
   )
 }

@@ -2506,11 +2506,26 @@ textarea {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
-/* Botón de TikTok, junto a los de Pepa (ver TiktokFab.tsx) — mismo
-   redondel/arrastre, en negro (color de marca de TikTok) en vez de
-   morado/azul. */
+/* Botones de redes sociales, junto a los de Pepa (ver SocialFab.tsx)
+   — mismo redondel/arrastre, cada uno con el color de marca de su red
+   en vez de morado/azul. */
 .tiktok-fab {
   background: #010101;
+  text-decoration: none;
+}
+
+.facebook-fab {
+  background: #1877f2;
+  text-decoration: none;
+}
+
+.instagram-fab {
+  background: linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7);
+  text-decoration: none;
+}
+
+.youtube-fab {
+  background: #ff0000;
   text-decoration: none;
 }
 

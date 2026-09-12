@@ -1,55 +1,74 @@
-import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
+import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, useRef, useState } from 'react'
 
 // Petición real: "queremos ponerle un enlace directo desde la
-// aplicación a la cuenta del TikTok que tiene Pepa" — probado antes en
-// la pantalla de login, pero ahí solo lo ve quien no ha entrado nunca
-// ("no me aparece [porque ya tengo sesión iniciada]"). Ahora vive junto
-// a los botones redondos de Pepa (ver VoiceCapture.tsx: mismo tamaño,
-// misma fila arriba del todo, mismo arrastre con el dedo a cualquier
-// sitio de la pantalla) — visible en todas las pantallas de la app,
-// para toda la familia.
-const TIKTOK_URL = 'https://vm.tiktok.com/ZN9SCoTPw5T4b-Psl03/'
+// aplicación a la cuenta de TikTok/Facebook/Instagram/YouTube que
+// tiene Pepa" — mismo tamaño y fila que los botones redondos de Pepa
+// (ver VoiceCapture.tsx), arrastrable con el dedo a cualquier sitio de
+// la pantalla, visible en todas las pantallas para toda la familia.
+// Un solo componente genérico (en vez de repetir la lógica de
+// arrastre en un archivo por red social) parametrizado por url/icono/
+// color/posición — NavShell.tsx instancia una vez por red.
 
 // Mismas medidas que los botones de Pepa (FAB_SIZE/FAB_GAP/FAB_DEFAULT_TOP
 // en VoiceCapture.tsx, no exportadas — se repiten aquí a propósito, son
 // solo 3 números y así este archivo no depende de los internos de ese
-// componente). Posición por defecto: quinto hueco de la misma fila,
-// justo después de los 4 de Pepa.
+// componente).
 const FAB_SIZE = 42
 const FAB_GAP = 7
 const FAB_DEFAULT_TOP = 8
-const DEFAULT_POSITION: FabPosition = { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + 4 * (FAB_SIZE + FAB_GAP) }
+// Los 4 primeros huecos de la fila son los botones de Pepa — las redes
+// sociales ocupan el quinto en adelante, uno por `slotIndex` (0 = justo
+// después de Pepa).
+const PEPA_SLOTS = 4
 const TAP_THRESHOLD_PX = 8
-const POSITION_KEY = 'familyapp:tiktok-fab-position'
 
 interface FabPosition {
   top: number
   left: number
 }
 
-function loadPosition(): FabPosition {
+function defaultPosition(slotIndex: number): FabPosition {
+  return { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + (PEPA_SLOTS + slotIndex) * (FAB_SIZE + FAB_GAP) }
+}
+
+function loadPosition(storageKey: string, fallback: FabPosition): FabPosition {
   try {
-    const raw = localStorage.getItem(POSITION_KEY)
-    if (!raw) return DEFAULT_POSITION
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) return fallback
     const parsed = JSON.parse(raw)
     if (typeof parsed?.top === 'number' && typeof parsed?.left === 'number') return parsed
-    return DEFAULT_POSITION
+    return fallback
   } catch {
-    return DEFAULT_POSITION
+    return fallback
   }
 }
 
-function savePosition(position: FabPosition) {
+function savePosition(storageKey: string, position: FabPosition) {
   try {
-    localStorage.setItem(POSITION_KEY, JSON.stringify(position))
+    localStorage.setItem(storageKey, JSON.stringify(position))
   } catch {
     // localStorage puede fallar en privado/incógnito — no es crítico,
     // solo se pierde recordar dónde se dejó el botón.
   }
 }
 
-export function TiktokFab() {
-  const [position, setPosition] = useState<FabPosition>(() => loadPosition())
+export function SocialFab({
+  href,
+  ariaLabel,
+  className,
+  slotIndex,
+  storageKey,
+  children,
+}: {
+  href: string
+  ariaLabel: string
+  className: string
+  slotIndex: number
+  storageKey: string
+  children: ReactNode
+}) {
+  const fallback = defaultPosition(slotIndex)
+  const [position, setPosition] = useState<FabPosition>(() => loadPosition(storageKey, fallback))
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
   const dragRef = useRef<{ startX: number; startY: number; moved: number } | null>(null)
@@ -88,7 +107,7 @@ export function TiktokFab() {
         left: Math.min(Math.max(0, rect.left), maxLeft),
       }
       setPosition(next)
-      savePosition(next)
+      savePosition(storageKey, next)
     }
   }
 
@@ -103,11 +122,11 @@ export function TiktokFab() {
 
   return (
     <a
-      href={TIKTOK_URL}
+      href={href}
       target="_blank"
       rel="noreferrer"
-      aria-label="Síguenos en TikTok"
-      className={'voice-fab-round tiktok-fab' + (dragging ? ' voice-fab-dragging' : '')}
+      aria-label={ariaLabel}
+      className={'voice-fab-round ' + className + (dragging ? ' voice-fab-dragging' : '')}
       style={{
         top: position.top + (dragging ? dragOffset.y : 0),
         left: position.left + (dragging ? dragOffset.x : 0),
@@ -120,9 +139,7 @@ export function TiktokFab() {
       onPointerUp={handleDragEnd}
       onPointerCancel={handleDragEnd}
     >
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="white" aria-hidden="true">
-        <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" />
-      </svg>
+      {children}
     </a>
   )
 }

@@ -47,7 +47,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Accesos rápidos', text: 'Una tarjeta por sección con un resumen de una línea — tócala para entrar directamente.' },
     { title: 'Organizar', text: 'Botón para reordenar las tarjetas de Inicio a tu gusto; cada uno puede tener su propio orden en su móvil.' },
     { title: 'Notificaciones', text: 'Aviso para activar los recordatorios push, para que te lleguen aunque tengas la app cerrada.' },
-    { title: 'Botones redondos de arriba', text: 'Pregúntale o dile algo a Pepa por voz o texto (Calendario/Compras), y el de TikTok, que te lleva a su cuenta — se ven en cualquier pantalla de la app, y se pueden arrastrar con el dedo a donde te venga mejor.' },
+    { title: 'Botones redondos de arriba', text: 'Pregúntale o dile algo a Pepa por voz o texto (Calendario/Compras), y los de TikTok, Facebook, Instagram y YouTube, que te llevan a sus cuentas — se ven en cualquier pantalla de la app, y se pueden arrastrar con el dedo a donde te venga mejor.' },
   ],
   '/familia': [
     { title: 'Miembros', text: 'Nombre, tipo (Adulto, Niño/a, Bebé, Invitado/a), color y foto de cada uno; arrastra para reordenar la lista.' },

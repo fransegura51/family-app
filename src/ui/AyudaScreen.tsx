@@ -50,7 +50,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
   ],
   '/familia': [
     { title: 'Miembros', text: 'Nombre, tipo (Adulto, Niño/a, Bebé, Invitado/a), color y foto de cada uno; arrastra para reordenar la lista.' },
-    { title: 'Invitados con acceso limitado', text: 'Al crear un miembro "Invitado/a" eliges a qué secciones concretas de la app puede entrar.' },
+    { title: 'Invitados con acceso limitado', text: 'Al crear un miembro "Invitado/a" eliges a qué secciones concretas de la app puede entrar. Un "Niño/a" tiene la misma casilla: si le quitas "Economía", cuando se cree su propia cuenta seguirá viendo Economía en el menú, pero solo su Educación financiera — el resto (Resumen, Movimientos, Presupuesto, Banco) queda oculto.' },
     { title: 'Código de invitación', text: 'Genera un código de un solo uso (24h) para que alguien se cree su propia cuenta y quede enlazado a su ficha, sin compartir tu contraseña.' },
     { title: 'Reiniciar PIN', text: 'Si un miembro olvida su PIN de bloqueo, el admin puede reiniciarlo (nunca verlo) desde su ficha.' },
     { title: 'Actividad reciente', text: 'Registro de qué se ha hecho en la app y quién lo ha hecho.' },

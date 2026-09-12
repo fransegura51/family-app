@@ -6,9 +6,13 @@ import type { EventReminder } from '@/domain/reminders'
 // "guest" = invitado externo a la familia (Skill de invitados): tiene
 // su propia cuenta pero solo ve las secciones marcadas en
 // allowedSections, pensado para preparar la app de cara a compartirla
-// con otras personas/familias en el futuro.
+// con otras personas/familias en el futuro. "child" es el mismo
+// mecanismo aplicado a un hijo con su propia cuenta — a diferencia de
+// "guest", Economía (/dinero) se le queda visible en el menú aunque no
+// esté en su allowedSections, porque ahí vive también Educación
+// financiera (ver NavShell).
 export type MemberType = 'admin' | 'adult' | 'child' | 'baby' | 'guest'
-export type FamilyRole = 'admin' | 'adult' | 'guest'
+export type FamilyRole = 'admin' | 'adult' | 'guest' | 'child'
 
 export interface Family {
   id: string

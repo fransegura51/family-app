@@ -28,14 +28,24 @@ const MEMBER_TYPES: { value: MemberType; label: string }[] = [
   { value: 'guest', label: 'Invitado/a' },
 ]
 
-// Secciones elegibles para un invitado — todo NAV_TABS salvo "Inicio",
-// que siempre es visible (Skill de invitados).
-const GUEST_SECTIONS = NAV_TABS.filter((t) => t.to !== '/')
+// Secciones elegibles para un invitado o un hijo con su propia cuenta —
+// todo NAV_TABS salvo "Inicio", que siempre es visible (Skill de
+// invitados; reutilizado tal cual para "restringir Economía a un hijo").
+const RESTRICTABLE_SECTIONS = NAV_TABS.filter((t) => t.to !== '/')
+
+// Petición real: "poder limitar la información que pueden ver los hijos
+// en la app... como los invitados" — mismo checklist de allowed_sections,
+// ahora también para 'child' (antes solo 'guest'). Por defecto sigue
+// siendo null (acceso total) para cualquier miembro ya existente; es el
+// admin quien desmarcaría "Economía" a mano.
+function canRestrictSections(memberType: MemberType): boolean {
+  return memberType === 'guest' || memberType === 'child'
+}
 
 function SectionsChecklist({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
   return (
     <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-      {GUEST_SECTIONS.map((t) => {
+      {RESTRICTABLE_SECTIONS.map((t) => {
         const id = navSectionId(t)
         const checked = value.includes(id)
         return (
@@ -435,7 +445,7 @@ function EditMemberForm({
         memberType,
         color,
         birthDate: birthDate || null,
-        allowedSections: memberType === 'guest' ? allowedSections : null,
+        allowedSections: canRestrictSections(memberType) ? allowedSections : null,
       })
       onDone()
     } catch (err) {
@@ -469,7 +479,7 @@ function EditMemberForm({
         Fecha de nacimiento (opcional)
         <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
       </label>
-      {memberType === 'guest' && (
+      {canRestrictSections(memberType) && (
         <label>
           Secciones a las que puede entrar
           <SectionsChecklist value={allowedSections} onChange={setAllowedSections} />
@@ -507,7 +517,7 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
         memberType,
         color,
         birthDate: birthDate || null,
-        allowedSections: memberType === 'guest' ? allowedSections : null,
+        allowedSections: canRestrictSections(memberType) ? allowedSections : null,
       })
       setName('')
       setBirthDate('')
@@ -545,7 +555,7 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
         Fecha de nacimiento (opcional)
         <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
       </label>
-      {memberType === 'guest' && (
+      {canRestrictSections(memberType) && (
         <label>
           Secciones a las que puede entrar
           <SectionsChecklist value={allowedSections} onChange={setAllowedSections} />

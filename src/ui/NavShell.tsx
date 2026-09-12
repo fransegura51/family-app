@@ -42,10 +42,20 @@ export function NavShell({ profile }: { profile: Profile }) {
 
   // Un invitado con allowedSections no ve en el menú las secciones que
   // no le tocan — "Inicio" siempre visible, el resto según permiso.
+  // Para un hijo con su propia cuenta (role 'child'), Economía
+  // (/dinero) se queda visible aunque 'dinero' no esté en su
+  // allowedSections: ahí vive también Educación financiera, que sí debe
+  // verse (FinanceScreen filtra las demás pestañas por dentro).
   const visibleTabs = order
     .map((path) => NAV_TAB_BY_PATH.get(path))
     .filter((t): t is NavTab => !!t)
-    .filter((t) => profile.allowedSections == null || t.to === '/' || profile.allowedSections.includes(navSectionId(t)))
+    .filter(
+      (t) =>
+        profile.allowedSections == null ||
+        t.to === '/' ||
+        (profile.role === 'child' && t.to === '/dinero') ||
+        profile.allowedSections.includes(navSectionId(t)),
+    )
   const pinned = visibleTabs.slice(0, PINNED_COUNT)
   const rest = visibleTabs.slice(PINNED_COUNT)
 

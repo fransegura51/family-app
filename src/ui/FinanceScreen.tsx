@@ -79,6 +79,7 @@ import type {
   FamilyMember,
   KidGoal,
   KidWalletTransaction,
+  Profile,
   Receipt,
   Tag,
   WalletTransactionType,
@@ -220,8 +221,20 @@ const CONCLUSION_EXPLANATIONS: Record<ConclusionKind, string> = {
     'Fijo es el gasto comprometido que se repite cada periodo con un importe parecido (hipoteca/alquiler, seguros, cuotas de préstamos, suscripciones) — no depende de cuánto se consuma. Variable sí depende del consumo real (comida, gasolina, ocio). La misma regla 50/30/20 sugiere no destinar más de un 50% de los ingresos a gastos fijos y de primera necesidad: cuanto más alto sea ese porcentaje, menos margen hay para reaccionar ante un imprevisto o una bajada de ingresos, porque esos pagos no se pueden recortar de un periodo para otro.',
 }
 
-export function FinanceScreen() {
-  const [tab, setTab] = useState<SubTab>('Resumen')
+// Petición real: "lo primero que quiero restringirles es Economía, [pero]
+// al estar dentro Educación Financiera no se la puedo restringir por
+// completo" — un hijo con su propia cuenta y 'dinero' fuera de sus
+// allowedSections (ver NavShell y FamilyScreen) llega aquí igual, pero
+// ve solo su monedero: nada de saldo/tendencia real ni del resto de
+// pestañas. La RLS (migración 0097) es quien de verdad bloquea el dato;
+// esto es solo para no enseñarle una pantalla confusa o vacía.
+function isDineroRestricted(profile: Profile): boolean {
+  return profile.role === 'child' && profile.allowedSections != null && !profile.allowedSections.includes('dinero')
+}
+
+export function FinanceScreen({ profile }: { profile: Profile }) {
+  const dineroRestricted = isDineroRestricted(profile)
+  const [tab, setTab] = useState<SubTab>(dineroRestricted ? 'Educación financiera' : 'Resumen')
   const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
   // Petición real: "al tocar un área del dónut no debe llevarme
   // directamente a los movimientos filtrados... desde los movimientos
@@ -315,6 +328,22 @@ export function FinanceScreen() {
     setPreviousTab((prev) => (tab === 'Movimientos' ? prev : tab))
     setMovementsFilter(filter)
     setTab('Movimientos')
+  }
+
+  // Sin menú, sin tarjetas de saldo/tendencia, sin las demás pestañas —
+  // nada que pueda insinuar que hay más Economía detrás. El propio
+  // KidsFinanceTab ya lee family_members/wallet con RLS por debajo, así
+  // que solo ve su propio monedero aunque la lista de chips muestre a
+  // sus hermanos (les sale a 0€, sin poder abrir el detalle real).
+  if (dineroRestricted) {
+    return (
+      <div className="screen">
+        <div className="kitchen-header">
+          <img src={economiaHeaderImg} alt="Economía" className="kitchen-header-img" />
+        </div>
+        <KidsFinanceTab />
+      </div>
+    )
   }
 
   return (

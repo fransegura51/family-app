@@ -2506,6 +2506,27 @@ textarea {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
+/* Botón de TikTok en la pantalla de login (ver LoginScreen.tsx) —
+   mismo redondel/arrastre que los de Pepa, en negro (color de marca de
+   TikTok) en vez de morado/azul. */
+.tiktok-fab {
+  background: #010101;
+  text-decoration: none;
+}
+
+/* Mientras no se haya arrastrado nunca, ancla a la esquina por CSS
+   (right/bottom) en vez de calcular top/left a mano con
+   window.innerWidth/innerHeight — así se adapta solo a cualquier
+   tamaño de pantalla, sin quedar mal calculado si la ventana cambia de
+   tamaño justo después de cargar (bug real visto en pruebas). En
+   cuanto se arrastra una vez, pasa a top/left fijos (ver TiktokFab). */
+.tiktok-fab-default-corner {
+  top: auto;
+  left: auto;
+  right: 16px;
+  bottom: 16px;
+}
+
 .voice-fab-ask {
   background: #7c3aed;
 }

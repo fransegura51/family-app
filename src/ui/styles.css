@@ -2506,27 +2506,74 @@ textarea {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
-/* Botones de redes sociales, junto a los de Pepa (ver SocialFab.tsx)
-   — mismo redondel/arrastre, cada uno con el color de marca de su red
-   en vez de morado/azul. */
+/* Colores de marca de cada red social, reutilizados como fondo del
+   icono dentro del desplegable de "Redes sociales" (ver
+   SocialMenuFab.tsx). */
 .tiktok-fab {
   background: #010101;
-  text-decoration: none;
 }
 
 .facebook-fab {
   background: #1877f2;
-  text-decoration: none;
 }
 
 .instagram-fab {
   background: linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7);
-  text-decoration: none;
 }
 
 .youtube-fab {
   background: #ff0000;
+}
+
+/* Botón único que agrupa las cuatro redes sociales, junto a los de
+   Pepa — petición real: "agrupa las cuatro botones de las redes
+   sociales... para que no ocupe lugar en la pantalla". Mismo
+   redondel/arrastre que el resto; al tocarlo despliega
+   .social-menu-flyout en vez de navegar. */
+.social-menu-fab {
+  background: #475569;
+}
+
+.social-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  background: transparent;
+}
+
+.social-menu-flyout {
+  position: fixed;
+  z-index: 43;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--card-bg, white);
+  border-radius: 14px;
+  padding: 8px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.social-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
   text-decoration: none;
+  white-space: nowrap;
+}
+
+.social-menu-item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .voice-fab-ask {

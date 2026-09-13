@@ -649,10 +649,13 @@ button {
    volver rápidamente de vuelta arriba" — en toda la app, no arrastrable
    (a diferencia de los redondos de Pepa/redes sociales: este siempre
    tiene que estar en el mismo sitio predecible). Esquina inferior
-   derecha, justo encima de la barra de navegación fija de abajo. */
+   IZQUIERDA — la derecha ya la usan los botones "+ Nuevo ..." de cada
+   pantalla (.screen-fab: Calendario, Contactos, Compras, Documentos,
+   Alimentación), justo en el mismo sitio y solapando (bug real:
+   "En Calendario el botón Nuevo Evento solapa con la flecha"). */
 .scroll-top-fab {
   position: fixed;
-  right: 16px;
+  left: 16px;
   bottom: 88px;
   width: 42px;
   height: 42px;

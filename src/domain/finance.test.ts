@@ -125,16 +125,13 @@ describe('budgetSpent', () => {
 })
 
 describe('categoryColors', () => {
-  // sortOrder propio y distinto para cada una — en los datos reales sale
-  // de crear las categorías (0, 1, 2... por orden de alta), aquí se pone
-  // a mano porque el resto de fixtures de este archivo no lo necesita.
   const colored: BudgetCategory[] = [
-    cat({ id: 'ali', name: 'Alimentación', sortOrder: 0 }),
-    cat({ id: 'super', name: 'Supermercado', parentId: 'ali', sortOrder: 0 }),
-    cat({ id: 'restaurantes', name: 'Restaurantes', parentId: 'ali', sortOrder: 1 }),
-    cat({ id: 'viv', name: 'Vivienda y hogar', sortOrder: 1 }),
-    cat({ id: 'ocio', name: 'Ocio y viajes', sortOrder: 2 }),
-    cat({ id: 'mov', name: 'Movimientos internos', sortOrder: 3 }),
+    cat({ id: 'ali', name: 'Alimentación' }),
+    cat({ id: 'super', name: 'Supermercado', parentId: 'ali' }),
+    cat({ id: 'restaurantes', name: 'Restaurantes', parentId: 'ali' }),
+    cat({ id: 'viv', name: 'Vivienda y hogar' }),
+    cat({ id: 'ocio', name: 'Ocio y viajes' }),
+    cat({ id: 'mov', name: 'Movimientos internos' }),
   ]
 
   it('cada categoría principal tiene un color propio, distinto de las demás', () => {
@@ -156,6 +153,31 @@ describe('categoryColors', () => {
     expect(subset.get('ali')).toBe(full.get('ali'))
     expect(subset.get('viv')).toBe(full.get('viv'))
     expect(subset.get('mov')).toBe(full.get('mov'))
+  })
+  it('varias categorías con el mismo sortOrder (bug real de sembrado duplicado) no colapsan en el mismo color', () => {
+    // Caso real destapado al verificar en producción: una familia tenía
+    // el árbol de categorías sembrado por triplicado, y dos de esas tres
+    // copias completas compartían EXACTAMENTE el mismo sortOrder entre
+    // sí — con el color basado en sortOrder, las ~10 categorías
+    // principales de esas copias salían todas del mismo tono. El color
+    // por nombre no depende de sortOrder, así que no le afecta.
+    const duplicatedSortOrder: BudgetCategory[] = [
+      cat({ id: 'a', name: 'Alimentación', sortOrder: 1000 }),
+      cat({ id: 'b', name: 'Vivienda y hogar', sortOrder: 1000 }),
+      cat({ id: 'c', name: 'Transporte y vehículo', sortOrder: 1000 }),
+      cat({ id: 'd', name: 'Compras y familia', sortOrder: 1000 }),
+    ]
+    const colors = categoryColors(duplicatedSortOrder)
+    const hues = [colors.get('a'), colors.get('b'), colors.get('c'), colors.get('d')]
+    expect(new Set(hues).size).toBe(hues.length)
+  })
+  it('dos categorías duplicadas con el mismo nombre (mismo caso real) comparten color, no compiten por dos tonos', () => {
+    const dup: BudgetCategory[] = [
+      cat({ id: 'mov1', name: 'Movimientos internos', sortOrder: 500 }),
+      cat({ id: 'mov2', name: 'Movimientos internos', sortOrder: 900000 }),
+    ]
+    const colors = categoryColors(dup)
+    expect(colors.get('mov1')).toBe(colors.get('mov2'))
   })
 })
 

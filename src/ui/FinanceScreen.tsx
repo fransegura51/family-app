@@ -2751,6 +2751,13 @@ function ExpensesTab({
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Petición real: "aquí no veo los símbolos de las cuentas" — mismo
+  // símbolo por fila que ya tenía Banco al mezclar todas las cuentas
+  // (ownerMemberForExpense ahí), para saber a qué cuenta fue cada
+  // movimiento sin tener que ir a mirarlo aparte.
+  const [accounts, setAccounts] = useState<BankAccount[]>([])
+  const [members, setMembers] = useState<FamilyMember[]>([])
+  const [expenseAccountId, setExpenseAccountId] = useState<Map<string, string>>(new Map())
   // Petición real: "quiero que quites el filtro mensual... y pongas
   // los mismos filtros temporales desplegables que en el resto de
   // Economía en el mismo sitio" — mismo componente (DateFilterTab,
@@ -2775,8 +2782,16 @@ function ExpensesTab({
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
-    Promise.all([listExpenses(), listBudgetCategories(), listTags(), getFinanceMonthStartDay()])
-      .then(async ([e, c, t, monthStart]) => {
+    Promise.all([
+      listExpenses(),
+      listBudgetCategories(),
+      listTags(),
+      getFinanceMonthStartDay(),
+      listBankAccounts(),
+      listBankTransactions(),
+      listFamilyMembers(),
+    ])
+      .then(async ([e, c, t, monthStart, acc, bankTx, m]) => {
         if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
           seededIncomeRef.current = true
           await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
@@ -2786,6 +2801,9 @@ function ExpensesTab({
         setCategories(c)
         setTags(t)
         setMonthStartDay(monthStart)
+        setAccounts(acc)
+        setMembers(m)
+        setExpenseAccountId(new Map(bankTx.filter((bt) => bt.matchedExpenseId).map((bt) => [bt.matchedExpenseId as string, bt.accountId])))
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -2841,6 +2859,14 @@ function ExpensesTab({
     () => monthExpenses.filter((e) => e.isIncome).reduce((sum, e) => sum + e.amount, 0),
     [monthExpenses],
   )
+
+  const memberById = new Map(members.map((m) => [m.id, m]))
+  const accountById = new Map(accounts.map((a) => [a.id, a]))
+  function ownerMemberForExpense(expenseId: string): FamilyMember | null {
+    const accId = expenseAccountId.get(expenseId)
+    const ownerId = accId ? accountById.get(accId)?.ownerMemberId : null
+    return ownerId ? (memberById.get(ownerId) ?? null) : null
+  }
 
   if (loading) return <p className="muted">Cargando gastos…</p>
 
@@ -2902,6 +2928,7 @@ function ExpensesTab({
               expense={e}
               category={categories.find((c) => c.name === e.category)}
               tag={tags.find((t) => t.id === e.tagId)}
+              ownerMember={ownerMemberForExpense(e.id)}
               onClick={() => setEditingId(e.id)}
               extraAction={
                 <ConfirmIconButton

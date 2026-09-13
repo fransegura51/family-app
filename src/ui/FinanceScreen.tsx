@@ -63,7 +63,15 @@ import {
   walletCategoryTotal,
 } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
-import { accountingMonthRange, accountingMonthsBack, PRESET_LABELS, rangeForPreset, toDateStr, type SpendRangePreset } from '@/domain/dateRanges'
+import {
+  accountingMonthRange,
+  accountingMonthsBack,
+  accountingPeriodLabel,
+  PRESET_LABELS,
+  rangeForPreset,
+  toDateStr,
+  type SpendRangePreset,
+} from '@/domain/dateRanges'
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
@@ -1600,6 +1608,7 @@ function DateFilterTab({
   onCustomFromChange,
   customTo,
   onCustomToChange,
+  mesContable,
 }: {
   preset: SpendRangePreset
   onPresetChange: (p: SpendRangePreset) => void
@@ -1607,17 +1616,26 @@ function DateFilterTab({
   onCustomFromChange: (d: string) => void
   customTo: string
   onCustomToChange: (d: string) => void
+  // Solo tiene sentido donde ya existe la distinción mes contable/mes
+  // real (Presupuesto Generales) — en el resto de sitios (Compras,
+  // Tickets) "Este mes" ya es mes real sin más, así que se deja el
+  // rótulo genérico y no se ofrece "Mes real" como opción aparte.
+  mesContable?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const presets: SpendRangePreset[] = mesContable
+    ? ['dia', 'semana', 'mes', 'mes_real', 'año', 'rango']
+    : ['dia', 'semana', 'mes', 'año', 'rango']
+  const label = (p: SpendRangePreset) => (mesContable && p === 'mes' ? 'Mes contable' : PRESET_LABELS[p])
 
   return (
     <div style={{ margin: '8px 0' }}>
       <button type="button" className={'chip' + (open ? ' chip-active' : '')} onClick={() => setOpen((v) => !v)}>
-        📅 Fecha: {PRESET_LABELS[preset]} {open ? '▲' : '▼'}
+        📅 Fecha: {label(preset)} {open ? '▲' : '▼'}
       </button>
       {open && (
         <div className="category-picker-panel" style={{ maxHeight: 'none', marginTop: 6 }}>
-          {(['dia', 'semana', 'mes', 'año', 'rango'] as SpendRangePreset[]).map((p) => (
+          {presets.map((p) => (
             <button
               key={p}
               type="button"
@@ -1627,7 +1645,7 @@ function DateFilterTab({
                 if (p !== 'rango') setOpen(false)
               }}
             >
-              {PRESET_LABELS[p]}
+              {label(p)}
             </button>
           ))}
           {preset === 'rango' && (
@@ -2119,6 +2137,18 @@ function SvgDonut({
 
   return (
     <div className="donut-ring-wrap">
+      {/* Petición real: "quiero que todos los puntos estén en el lado
+          izquierdo" — la leyenda va ANTES del anillo en el propio DOM
+          (no solo con CSS) para que quede a la izquierda sin más
+          trucos de orden visual. */}
+      <div className="donut-legend">
+        {legendEntries.map((s) => (
+          <span key={s.key} className="donut-legend-item">
+            <span className="donut-legend-dot" style={{ background: s.color }} />
+            {s.label}
+          </span>
+        ))}
+      </div>
       <div className="donut-ring" style={{ width: size, height: size }}>
         <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block' }}>
           {slices.map((s, i) => {
@@ -2153,14 +2183,6 @@ function SvgDonut({
           <span>{centerLabel.name}</span>
           <strong>{centerLabel.total.toFixed(2)} €</strong>
         </div>
-      </div>
-      <div className="donut-legend">
-        {legendEntries.map((s) => (
-          <span key={s.key} className="donut-legend-item">
-            <span className="donut-legend-dot" style={{ background: s.color }} />
-            {s.label}
-          </span>
-        ))}
       </div>
     </div>
   )
@@ -4861,12 +4883,15 @@ export function BudgetsTab({
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // Petición real: "el mes contable se debería aplicar aquí igual que
-  // en el resto de Economía" — antes navegaba por mes de CALENDARIO
-  // plano (visibleMonth = "2026-09", 1 a 30), ignorando el día de
-  // inicio configurado; ahora navega por periodos contables (offset
-  // desde el actual), igual que ya hacía BudgetsOverview de aquí abajo.
-  const [monthOffset, setMonthOffset] = useState(0)
+  // Petición real: "que una cosa filtre por mes físico y la otra por
+  // mes contable confunde... pon un filtro que se aplique a toda la
+  // página" — antes había DOS controles de fecha independientes (la
+  // navegación ‹ Mes › de aquí y el propio "Fecha" de BudgetsOverview),
+  // que podían quedar desincronizados. Ahora uno solo, para toda la
+  // pestaña — mismo componente que ya se usaba en Resumen.
+  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
   // Evita sembrar las categorías sugeridas más de una vez por sesión
   // mientras se espera la respuesta del primer alta.
@@ -4904,29 +4929,14 @@ export function BudgetsTab({
 
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function shiftMonth(delta: number) {
-    setMonthOffset((o) => o + delta)
-  }
-
-  // El <input type="month"> deja elegir un mes de calendario directo;
-  // se traduce a "cuántos periodos contables de distancia" respecto al
-  // actual, que es lo que de verdad navega monthOffset.
-  function jumpToMonth(value: string) {
-    if (!value) return
-    const [pickedYear, pickedMonth] = value.split('-').map(Number)
-    const baseline = accountingMonthRange(monthStartDay, 0)
-    setMonthOffset((pickedYear - baseline.labelYear) * 12 + (pickedMonth - 1 - baseline.labelMonth0))
-  }
-
   if (loading) return <p className="muted">Cargando presupuestos…</p>
 
-  const { from: periodFrom, to: periodTo, labelYear: visibleYear, labelMonth0 } = accountingMonthRange(monthStartDay, monthOffset)
-  const visibleMonthIndex = labelMonth0 + 1
-  // Solo para el desglose por tienda de Alimentación (rama que ya no
-  // se usa desde que Alimentación vive dentro de 'generales' — ver
-  // comentario en CategoriesModal) y para el <input type="month">
-  // de abajo. El resto de cálculos usa periodFrom/periodTo.
-  const visibleMonth = `${visibleYear}-${String(visibleMonthIndex).padStart(2, '0')}`
+  const [periodFrom, periodTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
+  // Solo para el desglose por tienda de Alimentación (rama que ya no se
+  // usa desde que Alimentación vive dentro de 'generales' — ver
+  // comentario en CategoriesModal).
+  const visibleMonth = periodFrom.slice(0, 7)
+  const periodTitle = periodLabelForTitle(preset, periodFrom, periodTo)
   const groupCategories = categories.filter((c) => c.budgetGroup === group)
   const groupBudgets = budgets.filter((b) => b.budgetGroup === group)
   // Solo los tickets clasificados como Alimentación cuentan aquí —
@@ -4953,17 +4963,22 @@ export function BudgetsTab({
   const alimentacionTotal = monthRealExpenses
     .filter((e) => isFoodCategory(e.category, categories))
     .reduce((sum, e) => sum + e.amount, 0)
-  // Bug real: Alimentación (con todas sus subcategorías) vive dentro de
-  // 'generales' desde la migración 0076, así que YA está incluida en
-  // `generalesCategoriesTotal` (recorre TODAS las categorías del
-  // grupo). Sumar `alimentacionTotal` aparte, como se hacía antes,
-  // contaba cada euro de comida dos veces en "Presupuesto total del
-  // mes" — el mismo fallo que ya se había arreglado en
-  // domain/finance.ts (budgetSpent) pero no aquí.
-  const generalesCategoriesTotal = groupCategories
-    .map((c) => monthRealExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0))
-    .reduce((sum, t) => sum + t, 0)
   const catColors = categoryColors(groupCategories)
+  // Petición real: "quiero que estén ordenados por categorías
+  // principales, todas las subcategorías de una categoría juntas" —
+  // sin este orden explícito, las porciones/leyenda salían en el orden
+  // en que llegan de la base de datos (sort_order), que con el bug de
+  // sembrado duplicado (ver project_duplicate_category_seeding) ni
+  // siquiera es un orden fiable. Se agrupa por el NOMBRE de la
+  // categoría principal (no su id — mismo motivo que categoryColors),
+  // padre primero dentro de su grupo, luego hijas por nombre.
+  const sortedGroupCategories = [...groupCategories].sort((a, b) => {
+    const groupA = a.parentId ? (groupCategories.find((p) => p.id === a.parentId)?.name ?? a.name) : a.name
+    const groupB = b.parentId ? (groupCategories.find((p) => p.id === b.parentId)?.name ?? b.name) : b.name
+    if (groupA !== groupB) return groupA.localeCompare(groupB, 'es')
+    if (!a.parentId !== !b.parentId) return a.parentId ? 1 : -1
+    return a.name.localeCompare(b.name, 'es')
+  })
   // Petición real: "que sean solo las subcategorías" — ya no se añade
   // el bloque especial "Alimentación (total)" (duplicaba cada euro que
   // sus propias subcategorías ya representan); una categoría con hijas
@@ -4972,7 +4987,7 @@ export function BudgetsTab({
   // subcategoría más.
   const categoryPieSlices =
     group === 'generales'
-      ? groupCategories
+      ? sortedGroupCategories
           .map((c) => {
             const hasChildren = groupCategories.some((x) => x.parentId === c.id)
             return {
@@ -4984,23 +4999,11 @@ export function BudgetsTab({
           .filter((s) => s.total > 0)
       : []
 
-  // Presupuesto total del mes con su barra de % gastado — solo existe
-  // en Generales ahora. Alimentación ya no tiene presupuesto/límite
-  // propio, se queda como puro registro (petición real: "el
-  // presupuesto general deduce todos los gastos como un único
-  // presupuesto") — el gastado de Generales YA incluye Alimentación
-  // (ver comentario arriba, no se suma aparte).
-  const groupSpentTotal = generalesCategoriesTotal
-  const overallBudget = groupBudgets.find((b) => !b.category && budgetPeriodRange(b).start === periodFrom) ?? null
-
   return (
     <div>
       {error && <p className="error">{error}</p>}
 
-      {/* Petición real: "Presupuesto total del mes debería estar lo
-          primero debajo de las cuentas" — antes iba después de Resumen
-          y de la navegación por mes. */}
-      {group === 'alimentacion' ? (
+      {group === 'alimentacion' && (
         <div className="card event-card">
           <strong>Total registrado en Alimentación</strong>
           <p style={{ margin: '4px 0' }}>{alimentacionTotal.toFixed(2)} €</p>
@@ -5008,44 +5011,37 @@ export function BudgetsTab({
             Solo registro — no resta de ningún presupuesto. Cuenta para el Presupuesto General.
           </p>
         </div>
-      ) : (
-        <OverallBudgetCard group={group} periodStart={periodFrom} budget={overallBudget} spent={groupSpentTotal} onChanged={reload} />
       )}
 
-      <div className="month-nav">
-        <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
-          ‹
-        </button>
-        <strong>
-          {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
-        </strong>
-        <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
-          ›
-        </button>
-        <input type="month" value={visibleMonth} onChange={(e) => jumpToMonth(e.target.value)} />
-        <button type="button" className="link-button" onClick={() => setMonthOffset(0)}>
-          Hoy
-        </button>
-      </div>
+      {/* Petición real: "pon un filtro que se aplique a toda la
+          página en formato de botón con desplegable... 'mes contable'
+          y 'mes real'" — un único filtro para Resumen y el dónut, en
+          vez de los dos controles independientes de antes (navegación
+          por mes + "Fecha" propio de Resumen). */}
+      <DateFilterTab
+        preset={preset}
+        onPresetChange={setPreset}
+        customFrom={customFrom}
+        onCustomFromChange={setCustomFrom}
+        customTo={customTo}
+        onCustomToChange={setCustomTo}
+        mesContable={group !== 'alimentacion'}
+      />
 
       <BudgetsOverview
         allExpenses={expenses}
         allCategories={categories}
         budgets={budgets}
         group={group}
+        from={periodFrom}
+        to={periodTo}
+        preset={preset}
         onChanged={reload}
-        monthStartDay={monthStartDay}
       />
 
-      {group === 'alimentacion' && (
-        <StorePieChart groups={pieGroups} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
-      )}
+      {group === 'alimentacion' && <StorePieChart groups={pieGroups} monthLabel={periodTitle} />}
       {group === 'generales' && categoryPieSlices.length > 0 && (
-        <StorePieChart
-          groups={categoryPieSlices}
-          monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`}
-          title="Reparto del gasto por categoría"
-        />
+        <StorePieChart groups={categoryPieSlices} monthLabel={periodTitle} title="Reparto del gasto por categoría" />
       )}
 
       {/* Petición real: "la lista larga de categorías abajo en
@@ -5062,242 +5058,151 @@ export function BudgetsTab({
       )}
 
       {group === 'generales' && (
-        <BudgetMonthFolders
-          budgets={groupBudgets}
-          expenses={expenses}
-          categories={categories}
-          group={group}
-          onChanged={reload}
-        />
+        <BudgetsSection budgets={groupBudgets} expenses={expenses} categories={categories} group={group} monthStartDay={monthStartDay} onChanged={reload} />
       )}
     </div>
   )
 }
 
-// Presupuesto total del mes con su barra de % gastado — petición real:
-// "si tengo 800€ de presupuesto para comida... voy gastando 200,
-// 250... qué tanto por ciento voy gastando, cada vez que añado una
-// compra" (y lo mismo en Generales, con 4000€ sumando todas sus
-// categorías más el total de Alimentación). Sin presupuesto puesto
-// todavía para este mes, pide el importe; una vez puesto, se puede
-// cambiar en cualquier momento.
-function OverallBudgetCard({
-  group,
-  periodStart,
-  budget,
-  spent,
-  onChanged,
-}: {
-  group: string
-  periodStart: string
-  budget: Budget | null
-  spent: number
-  onChanged: () => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [amount, setAmount] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSave(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      if (budget) await deleteBudget(budget.id)
-      await createBudget({
-        periodType: 'mensual',
-        periodStart,
-        category: '',
-        amount: Number(amount),
-        budgetGroup: group,
-      })
-      setEditing(false)
-      setAmount('')
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar'))
-    } finally {
-      setSaving(false)
-    }
+// Título del periodo que se está viendo, para el dónut y el desglose
+// por tienda de Alimentación — "Septiembre 2026" para mes
+// contable/real (usa accountingPeriodLabel para que un mes contable que
+// empieza el último día del anterior salga con el nombre correcto, ver
+// dateRanges.ts), el propio nombre del filtro para el resto (Hoy/Esta
+// semana/Este año), o el rango de fechas exacto para "Rango".
+function periodLabelForTitle(preset: SpendRangePreset, from: string, to: string): string {
+  if (preset === 'mes' || preset === 'mes_real') {
+    const { year, month0 } = accountingPeriodLabel(from)
+    return `${MONTH_LABELS[month0]} ${year}`
   }
-
-  if (!budget || editing) {
-    return (
-      <form onSubmit={handleSave} className="card member-form">
-        <label>
-          Presupuesto total del mes (€)
-          <input
-            type="number"
-            step="0.01"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-            autoFocus
-          />
-        </label>
-        {error && <p className="error">{error}</p>}
-        <div className="form-actions">
-          <button type="submit" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </button>
-          {budget && (
-            <button type="button" className="link-button" onClick={() => setEditing(false)}>
-              Cancelar
-            </button>
-          )}
-        </div>
-      </form>
-    )
-  }
-
-  const pct = Math.min(100, Math.round((spent / budget.amount) * 100))
-  const over = spent > budget.amount
-
-  return (
-    <div className="card event-card">
-      <strong>Presupuesto total del mes</strong>
-      <p>
-        {spent.toFixed(2)} € de {budget.amount.toFixed(2)} € ({pct}%)
-      </p>
-      <div className="progress-bar">
-        <div
-          className="progress-bar-fill"
-          style={{ width: `${pct}%`, background: over ? '#c0392b' : undefined }}
-        />
-      </div>
-      <button
-        type="button"
-        className="link-button"
-        onClick={() => {
-          setAmount(String(budget.amount))
-          setEditing(true)
-        }}
-      >
-        Cambiar importe
-      </button>
-    </div>
-  )
+  if (preset === 'rango') return `${from} a ${to}`
+  return PRESET_LABELS[preset]
 }
 
-// Los presupuestos se guardan por mes, en carpetas — petición real:
-// "la parte del nuevo presupuesto la eliminaría, y ahí pondría una
-// carpeta para guardar todos los presupuestos... créame una carpeta
-// por cada mes... para poderlos consultar". Reemplaza el formulario
-// siempre visible de antes: ahora "Nuevo presupuesto" es una carpeta
-// más, al final de la lista, que se despliega para dar de alta uno.
-function BudgetMonthFolders({
+// Presupuestos: petición real: "no me gusta que arriba haya un
+// presupuesto y abajo otro listado... quitamos el panel Presupuesto
+// total del mes por completo, subimos los presupuestos del mes en
+// curso arriba, el campo para crear uno nuevo seguido y debajo
+// Historial que al desplegar se abren los anteriores". Reemplaza tanto
+// a la antigua OverallBudgetCard (una única tarjeta aparte) como a las
+// carpetas-por-mes de antes: ahora el mes en curso siempre está a la
+// vista, sin desplegar nada.
+function BudgetsSection({
   budgets,
   expenses,
   categories,
   group,
+  monthStartDay,
   onChanged,
 }: {
   budgets: Budget[]
   expenses: Expense[]
   categories: BudgetCategory[]
   group: string
+  monthStartDay: number
   onChanged: () => void
 }) {
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [openMonth, setOpenMonth] = useState<string | null>(null)
-  const [addingMonth, setAddingMonth] = useState(false)
+
+  const current = accountingMonthRange(monthStartDay, 0)
+  const sameLabel = (dateStr: string) => {
+    const l = accountingPeriodLabel(dateStr)
+    return l.year === current.labelYear && l.month0 === current.labelMonth0
+  }
+  const currentBudgets = budgets.filter((b) => sameLabel(budgetPeriodRange(b).start))
+  const pastBudgets = budgets.filter((b) => !sameLabel(budgetPeriodRange(b).start))
+
+  function renderBudgetRow(b: Budget) {
+    const spent = budgetSpent(b, expenses, { categories })
+    const pct = Math.min(100, Math.round((spent / b.amount) * 100))
+    const icon = categories.find((c) => c.name === b.category)?.icon
+    return (
+      <div key={b.id} className="card task-card">
+        <div className="task-card-main">
+          <strong>
+            {icon && `${icon} `}
+            {b.category || 'General'}
+          </strong>
+          <p className="muted">
+            {b.periodType} desde {b.periodStart} · gastado {spent.toFixed(2)} € de {b.amount.toFixed(2)} € ({pct}%)
+          </p>
+          <div className="progress-bar">
+            <div className="progress-bar-fill" style={{ width: `${pct}%`, background: spent > b.amount ? '#c0392b' : undefined }} />
+          </div>
+        </div>
+        <ConfirmButton label="Eliminar" onConfirm={() => deleteBudget(b.id).then(onChanged)} />
+      </div>
+    )
+  }
 
   const byMonth = new Map<string, Budget[]>()
-  for (const b of budgets) {
-    const month = budgetPeriodRange(b).start.slice(0, 7)
-    const list = byMonth.get(month) ?? []
+  for (const b of pastBudgets) {
+    const label = accountingPeriodLabel(budgetPeriodRange(b).start)
+    const key = `${label.year}-${String(label.month0 + 1).padStart(2, '0')}`
+    const list = byMonth.get(key) ?? []
     list.push(b)
-    byMonth.set(month, list)
+    byMonth.set(key, list)
   }
   const months = [...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0]))
 
   return (
     <>
       <h2 className="section-title">Presupuestos</h2>
-      <p className="muted" style={{ marginTop: -8 }}>Guardados por mes — toca uno para consultarlo.</p>
-      <div className="store-folder-grid">
-        {months.map(([month, monthBudgets]) => {
-          const [y, m] = month.split('-').map(Number)
-          const isOpen = openMonth === month
-          const totalBudgeted = monthBudgets.reduce((sum, b) => sum + b.amount, 0)
-          return (
-            <div key={month} className="store-folder">
-              <button
-                type="button"
-                className="store-folder-header"
-                onClick={() => setOpenMonth(isOpen ? null : month)}
-              >
-                <span className="store-folder-icon">📅</span>
-                <span className="store-folder-info">
-                  <strong>
-                    {MONTH_LABELS[m - 1]} {y}
-                  </strong>
-                  <span className="muted">
-                    {monthBudgets.length} {monthBudgets.length === 1 ? 'presupuesto' : 'presupuestos'} ·{' '}
-                    {totalBudgeted.toFixed(2)} €
-                  </span>
-                </span>
-                <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
-              </button>
-              {isOpen && (
-                <div className="event-list store-folder-contents">
-                  {monthBudgets.map((b) => {
-                    const spent = budgetSpent(b, expenses, { categories })
-                    const pct = Math.min(100, Math.round((spent / b.amount) * 100))
-                    const icon = categories.find((c) => c.name === b.category)?.icon
-                    return (
-                      <div key={b.id} className="card task-card">
-                        <div className="task-card-main">
-                          <strong>
-                            {icon && `${icon} `}
-                            {b.category ?? 'General'}
-                          </strong>
-                          <p className="muted">
-                            {b.periodType} desde {b.periodStart} · gastado {spent.toFixed(2)} € de{' '}
-                            {b.amount.toFixed(2)} € ({pct}%)
-                          </p>
-                          <div className="progress-bar">
-                            <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                        <ConfirmButton label="Eliminar" onConfirm={() => deleteBudget(b.id).then(onChanged)} />
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
+      <p className="muted" style={{ marginTop: -8 }}>
+        {MONTH_LABELS[current.labelMonth0]} {current.labelYear} (mes contable en curso)
+      </p>
 
-        <div className="store-folder">
-          <button
-            type="button"
-            className="store-folder-header"
-            onClick={() => setAddingMonth((v) => !v)}
-          >
-            <span className="store-folder-icon">➕</span>
-            <span className="store-folder-info">
-              <strong>Nuevo presupuesto</strong>
-            </span>
-            <span className="store-folder-chevron">{addingMonth ? '▾' : '▸'}</span>
-          </button>
-          {addingMonth && (
-            <div className="store-folder-contents">
-              <AddBudgetForm
-                onAdded={() => {
-                  setAddingMonth(false)
-                  onChanged()
-                }}
-                defaultPeriodStart={`${toDateStr(new Date()).slice(0, 7)}-01`}
-                categories={categories}
-                group={group}
-              />
-            </div>
-          )}
-        </div>
+      <div className="event-list" style={{ marginBottom: 8 }}>
+        {currentBudgets.map(renderBudgetRow)}
+        {currentBudgets.length === 0 && (
+          <p className="muted">Todavía no hay presupuesto para {MONTH_LABELS[current.labelMonth0]} {current.labelYear}.</p>
+        )}
       </div>
-      {months.length === 0 && <p className="muted">No hay presupuestos guardados todavía.</p>}
+
+      <AddBudgetForm
+        onAdded={onChanged}
+        defaultPeriodStart={current.from}
+        categories={categories}
+        group={group}
+        existingBudgets={budgets}
+      />
+
+      <button
+        type="button"
+        className="link-button section-title"
+        style={{ marginTop: 16 }}
+        onClick={() => setHistoryOpen((v) => !v)}
+      >
+        {historyOpen ? '▾' : '▸'} Historial
+      </button>
+      {historyOpen && (
+        <div className="store-folder-grid" style={{ marginTop: 8 }}>
+          {months.map(([month, monthBudgets]) => {
+            const [y, m] = month.split('-').map(Number)
+            const isOpen = openMonth === month
+            const totalBudgeted = monthBudgets.reduce((sum, b) => sum + b.amount, 0)
+            return (
+              <div key={month} className="store-folder">
+                <button type="button" className="store-folder-header" onClick={() => setOpenMonth(isOpen ? null : month)}>
+                  <span className="store-folder-icon">📅</span>
+                  <span className="store-folder-info">
+                    <strong>
+                      {MONTH_LABELS[m - 1]} {y}
+                    </strong>
+                    <span className="muted">
+                      {monthBudgets.length} {monthBudgets.length === 1 ? 'presupuesto' : 'presupuestos'} · {totalBudgeted.toFixed(2)} €
+                    </span>
+                  </span>
+                  <span className="store-folder-chevron">{isOpen ? '▾' : '▸'}</span>
+                </button>
+                {isOpen && <div className="event-list store-folder-contents">{monthBudgets.map(renderBudgetRow)}</div>}
+              </div>
+            )
+          })}
+          {months.length === 0 && <p className="muted">No hay presupuestos de otros meses.</p>}
+        </div>
+      )}
     </>
   )
 }
@@ -5392,19 +5297,20 @@ function BudgetsOverview({
   allCategories,
   budgets,
   group,
+  from,
+  to,
+  preset,
   onChanged,
-  monthStartDay,
 }: {
   allExpenses: Expense[]
   allCategories: BudgetCategory[]
   budgets: Budget[]
   group: string
+  from: string
+  to: string
+  preset: SpendRangePreset
   onChanged: () => void
-  monthStartDay: number
 }) {
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
-  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
-  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   // Petición real: "quiero poder ir poniendo los ingresos que tengo
   // ese mes y cuando los tengo... que se cree el día que lo apunte
   // pero que se pueda cambiar con un calendario y que se pueda
@@ -5416,14 +5322,12 @@ function BudgetsOverview({
   // fácil de leer que varias listas abiertas de golpe.
   const [expandedParentId, setExpandedParentId] = useState<string | null>(null)
 
-  const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const inRange = allExpenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
-  // Presupuesto total del mes, mostrado aquí solo con el rango "Este
-  // mes" — con Esta semana/Este año/Rango no hay un "presupuesto de
-  // ese periodo" con el que compararlo (el presupuesto siempre es
-  // mensual). Mismo criterio de búsqueda que OverallBudgetCard: el
-  // presupuesto general (sin categoría) cuyo periodo empieza justo en
-  // el `from` de este mes contable.
+  // Presupuesto total del mes, mostrado aquí solo con el rango "Mes
+  // contable" — con Esta semana/Mes real/Este año/Rango no hay un
+  // "presupuesto de ese periodo" con el que compararlo (el presupuesto
+  // siempre es del mes contable). El presupuesto general (sin
+  // categoría) cuyo periodo empieza justo en el `from` de este mes.
   const overallBudget =
     group !== 'alimentacion' && preset === 'mes'
       ? (budgets.find((b) => b.budgetGroup === group && !b.category && budgetPeriodRange(b).start === from) ?? null)
@@ -5493,14 +5397,6 @@ function BudgetsOverview({
           ? 'Solo registro — no tiene presupuesto ni ingresos propios.'
           : 'Gastado suma Alimentación + Generales · Ingresos es solo de esta pestaña.'}
       </p>
-      <DateFilterTab
-        preset={preset}
-        onPresetChange={setPreset}
-        customFrom={customFrom}
-        onCustomFromChange={setCustomFrom}
-        customTo={customTo}
-        onCustomToChange={setCustomTo}
-      />
       {/* Alimentación ya no tiene presupuesto ni ingresos propios
           (petición real: "hay que quitar en Registro alimentación lo
           de ingreso") — solo se queda con el total gastado. */}
@@ -5593,7 +5489,17 @@ function BudgetsOverview({
                 <button
                   type="button"
                   className="price-row"
-                  style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: children.length > 0 ? 'pointer' : 'default' }}
+                  style={{
+                    width: '100%',
+                    background: 'none',
+                    border: 'none',
+                    textAlign: 'left',
+                    color: 'var(--text)',
+                    fontWeight: 400,
+                    fontSize: 14,
+                    padding: '6px 4px',
+                    cursor: children.length > 0 ? 'pointer' : 'default',
+                  }}
                   onClick={() => children.length > 0 && setExpandedParentId(isOpen ? null : name)}
                 >
                   <span className="price-row-name">
@@ -6316,11 +6222,17 @@ function AddBudgetForm({
   defaultPeriodStart,
   categories,
   group,
+  existingBudgets,
 }: {
   onAdded: () => void
   defaultPeriodStart: string
   categories: BudgetCategory[]
   group: string
+  // Petición real: "si creas un nuevo presupuesto con la misma
+  // clasificación... que salte un aviso 'ya creaste uno, ¿quieres
+  // proceder?'" — pasado solo cuando hay algo que comprobar (desde
+  // BudgetsSection); en el Historial de meses pasados no hace falta.
+  existingBudgets?: Budget[]
 }) {
   const [periodType, setPeriodType] = useState<BudgetPeriod>('mensual')
   const [periodStart, setPeriodStart] = useState(defaultPeriodStart)
@@ -6331,6 +6243,20 @@ function AddBudgetForm({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    // Mismo grupo (categoría, o "general" si vacía) + mismo mes contable
+    // que uno ya guardado — se avisa en vez de dejar crear un segundo
+    // silenciosamente, que fue justo lo que pasó al probar esto: dos
+    // presupuestos "General" para el mismo mes sin darse cuenta.
+    const targetLabel = accountingPeriodLabel(periodStart)
+    const duplicate = existingBudgets?.find((b) => {
+      if ((b.category || '') !== category) return false
+      const l = accountingPeriodLabel(budgetPeriodRange(b).start)
+      return l.year === targetLabel.year && l.month0 === targetLabel.month0
+    })
+    if (duplicate) {
+      const label = `${category || 'General'} para ${MONTH_LABELS[targetLabel.month0]} ${targetLabel.year}`
+      if (!window.confirm(`Ya creaste un presupuesto de ${label}. ¿Quieres proceder de todas formas?`)) return
+    }
     setSaving(true)
     setError(null)
     try {

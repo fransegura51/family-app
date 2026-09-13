@@ -81,14 +81,31 @@ export function resolveCategoryClassification(categoryName: string, categories: 
   }
 }
 
-// Hash de texto determinista y estable (mismo algoritmo que
-// String.hashCode de Java) — solo para repartir tono de color, no para
-// nada que necesite resistir colisiones de verdad.
-function stableStringHash(text: string): number {
-  let h = 0
-  for (let i = 0; i < text.length; i++) h = (Math.imul(h, 31) + text.charCodeAt(i)) | 0
-  return h >>> 0
-}
+// Paleta escogida a mano (no repartida por fórmula) para garantizar
+// variedad real: un hash continuo (hue = f(nombre) % 360) puede dejar,
+// solo por mala suerte con pocas categorías, huecos enteros sin cubrir
+// — petición real tras verlo en producción: "no veo ningún amarillo,
+// ni rojo ni naranja". Con ~11-16 categorías reales, una paleta ya
+// pensada para cubrir todo el espectro (rojo, naranja, ámbar, verdes,
+// azules, morados, rosas...) no deja huecos.
+const CATEGORY_PALETTE: { h: number; s: number; l: number }[] = [
+  { h: 4, s: 75, l: 46 }, // rojo
+  { h: 26, s: 90, l: 47 }, // naranja
+  { h: 42, s: 90, l: 40 }, // ámbar/dorado
+  { h: 78, s: 55, l: 38 }, // verde lima
+  { h: 134, s: 45, l: 36 }, // verde
+  { h: 158, s: 60, l: 34 }, // verde azulado
+  { h: 188, s: 65, l: 38 }, // cian
+  { h: 205, s: 75, l: 48 }, // azul cielo
+  { h: 221, s: 70, l: 56 }, // azul
+  { h: 243, s: 60, l: 62 }, // índigo
+  { h: 262, s: 55, l: 58 }, // violeta
+  { h: 283, s: 50, l: 46 }, // púrpura
+  { h: 305, s: 50, l: 46 }, // magenta
+  { h: 336, s: 60, l: 52 }, // rosa
+  { h: 16, s: 50, l: 40 }, // terracota
+  { h: 210, s: 20, l: 45 }, // pizarra (comodín si hay más de 15)
+]
 
 // Bug real: los dónuts de categorías coloreaban cada porción según su
 // POSICIÓN en la lista filtrada de ese mes (colors[i % colors.length]),
@@ -96,35 +113,35 @@ function stableStringHash(text: string): number {
 // categorías sin relación (p. ej. "Niños" y "Alimentación (total)")
 // podían coincidir en el mismo color solo por casualidad de índice —
 // petición real: "cada una debería tener uno propio, los de la misma
-// categoría padre pueden tener matices del mismo color". Un color por
-// categoría PRINCIPAL, y sus subcategorías comparten el mismo tono
-// variando solo la luminosidad, para que se note el parentesco sin
-// perder distinción entre ellas.
-// El tono sale del NOMBRE (hash estable), no de `sortOrder` ni de la
-// posición en esta lista — un intento con `sortOrder` se deshizo al
-// verificar con datos reales: esta familia tiene el árbol de
-// categorías sembrado por triplicado (bug de sembrado aparte, no de
-// esta función) y casi todas esas filas duplicadas comparten
-// EXACTAMENTE el mismo `sortOrder`, así que salían todas del mismo
-// color. El nombre no tiene ese problema — de propina, dos categorías
-// duplicadas con el mismo nombre (mismo caso real) salen del mismo
-// color en vez de competir por dos tonos distintos para "lo mismo".
+// categoría padre pueden tener matices del mismo color, pero deben ser
+// fácilmente distinguibles". Un color por categoría PRINCIPAL (de la
+// paleta de arriba, por orden alfabético de nombre — no por
+// `sortOrder`: un intento con sortOrder se deshizo al verificar con
+// datos reales, porque esta familia tiene el árbol de categorías
+// sembrado por triplicado —bug de sembrado aparte, ver
+// project_duplicate_category_seeding— y casi todas esas filas
+// duplicadas comparten EXACTAMENTE el mismo sortOrder, así que salían
+// todas del mismo color; el nombre no tiene ese problema, y de propina
+// dos categorías duplicadas con el mismo nombre comparten color en vez
+// de competir por dos tonos para "lo mismo"). Sus subcategorías
+// comparten el tono, variando la luminosidad en un rango amplio para
+// que se distingan bien entre ellas.
 export function categoryColors(categories: BudgetCategory[]): Map<string, string> {
   const colors = new Map<string, string>()
   const topLevel = categories.filter((c) => !c.parentId)
+  const distinctNames = [...new Set(topLevel.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'es'))
   topLevel.forEach((parent) => {
-    // 47° de salto — sin divisores comunes pequeños con 360, así el
-    // color no se repite ni con muchas categorías (a diferencia de
-    // repartir 360/N a partes iguales, que sí puede volver a coincidir
-    // con pocas categorías).
-    const hue = Math.round((stableStringHash(parent.name) * 47) % 360)
-    colors.set(parent.id, `hsl(${hue}, 65%, 46%)`)
+    const palette = CATEGORY_PALETTE[distinctNames.indexOf(parent.name) % CATEGORY_PALETTE.length]
+    colors.set(parent.id, `hsl(${palette.h}, ${palette.s}%, ${palette.l}%)`)
     const children = [...categories.filter((c) => c.parentId === parent.id)].sort(
       (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'es'),
     )
     children.forEach((child, j) => {
-      const lightness = children.length <= 1 ? 46 : Math.round(34 + (j * 32) / (children.length - 1))
-      colors.set(child.id, `hsl(${hue}, 60%, ${lightness}%)`)
+      // Rango de luminosidad amplio (24 a 74) para que las subcategorías
+      // de una misma familia de color se distingan con claridad entre
+      // sí, no solo del resto de categorías.
+      const lightness = children.length <= 1 ? palette.l : Math.round(24 + (j * 50) / (children.length - 1))
+      colors.set(child.id, `hsl(${palette.h}, ${Math.max(40, palette.s - 10)}%, ${lightness}%)`)
     })
   })
   return colors

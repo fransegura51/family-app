@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { accountingMonthRange, accountingMonthsBack, rangeForPreset, toDateStr } from '@/domain/dateRanges'
+import { accountingMonthRange, accountingMonthsBack, accountingPeriodLabel, rangeForPreset, toDateStr } from '@/domain/dateRanges'
 
 describe('rangeForPreset', () => {
   beforeEach(() => {
@@ -94,5 +94,30 @@ describe('accountingMonthRange', () => {
     const back = accountingMonthsBack(3, 1)
     expect(accountingMonthRange(1, -2)).toMatchObject({ from: back[0].from, to: back[0].to })
     expect(accountingMonthRange(1, 0)).toMatchObject({ from: back[2].from, to: back[2].to })
+  })
+
+  it('inicio contable el 31 (último día del mes anterior): el periodo se etiqueta con el mes que sigue, no el que empieza', () => {
+    // Bug real reportado: "si el mes contable empieza el 31 de agosto,
+    // el presupuesto debe ser de septiembre, no de agosto" — el periodo
+    // (2026-08-31 a 2026-09-29) antes se etiquetaba "Agosto" (el mes del
+    // día de inicio); ahora "Septiembre", porque el 31 de agosto es solo
+    // la antesala de septiembre, no un día que de verdad pertenezca a
+    // agosto para quien lleva las cuentas así.
+    const period = accountingMonthRange(31, 0)
+    expect(period).toMatchObject({ from: '2026-08-31', to: '2026-09-29', labelYear: 2026, labelMonth0: 8 })
+  })
+})
+
+describe('accountingPeriodLabel', () => {
+  it('una fecha normal cuenta como su propio mes', () => {
+    expect(accountingPeriodLabel('2026-09-05')).toEqual({ year: 2026, month0: 8 })
+    expect(accountingPeriodLabel('2026-09-01')).toEqual({ year: 2026, month0: 8 })
+  })
+  it('el último día real de un mes cuenta como el mes siguiente', () => {
+    expect(accountingPeriodLabel('2026-08-31')).toEqual({ year: 2026, month0: 8 })
+    expect(accountingPeriodLabel('2026-02-28')).toEqual({ year: 2026, month0: 2 })
+  })
+  it('diciembre pasa al año siguiente', () => {
+    expect(accountingPeriodLabel('2026-12-31')).toEqual({ year: 2027, month0: 0 })
   })
 })

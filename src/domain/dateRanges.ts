@@ -7,7 +7,15 @@ export function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export type SpendRangePreset = 'dia' | 'semana' | 'mes' | 'año' | 'rango'
+// 'mes_real' = mes de calendario normal (día 1 a fin de mes) SIEMPRE,
+// aunque la familia tenga configurado un día de inicio de mes contable
+// distinto — petición real: "una cosa filtra por mes físico y la otra
+// por mes contable, confunde... añade una opción 'mes real' mientras
+// que 'este mes' se cambia el nombre a 'mes contable'". Solo tiene
+// sentido donde ya existe esa distinción (Presupuesto Generales); en
+// el resto de sitios (Compras, Alimentación) 'mes' ya es mes real,
+// porque nunca pasan un monthStartDay propio.
+export type SpendRangePreset = 'dia' | 'semana' | 'mes' | 'mes_real' | 'año' | 'rango'
 
 function daysInMonth(year: number, month0: number): number {
   return new Date(year, month0 + 1, 0).getDate()
@@ -27,6 +35,7 @@ export function rangeForPreset(
   customTo: string,
   monthStartDay = 1,
 ): [string, string] {
+  if (preset === 'mes_real') return rangeForPreset('mes', customFrom, customTo, 1)
   const today = new Date()
   const todayStr = toDateStr(today)
   if (preset === 'dia') return [todayStr, todayStr]
@@ -69,6 +78,33 @@ export function rangeForPreset(
   return [customFrom || todayStr, customTo || todayStr]
 }
 
+// A qué mes "cuenta" una fecha de inicio de periodo — normalmente el
+// suyo propio, PERO si esa fecha es el último día real de su mes (el
+// caso del sentinel monthStartDay=31, "el mes contable empieza el
+// último día del mes anterior"), cuenta como el mes SIGUIENTE. Petición
+// real, tras confusión real: "si el mes contable empieza el 31 de
+// agosto, el presupuesto debe ser de septiembre, no de agosto" — antes
+// se etiquetaba por el mes en el que caía el día de inicio (agosto),
+// aunso ese día fuera solo la antesala del mes que de verdad se está
+// contando. Se usa tanto para navegar (accountingMonthRange) como para
+// agrupar presupuestos ya guardados por su periodStart real, sea cual
+// sea el monthStartDay configurado AHORA (que pudo cambiar desde que
+// se guardaron).
+export function accountingPeriodLabel(dateStr: string): { year: number; month0: number } {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const month0 = m - 1
+  if (d === daysInMonth(y, month0)) {
+    let ny = y
+    let nm = month0 + 1
+    if (nm > 11) {
+      nm = 0
+      ny += 1
+    }
+    return { year: ny, month0: nm }
+  }
+  return { year: y, month0 }
+}
+
 // Un periodo contable concreto, `offset` meses desde el actual (0 =
 // el que corre ahora mismo, -1 = el anterior, +1 = el siguiente) —
 // misma regla del día de inicio que rangeForPreset('mes', ...).
@@ -109,7 +145,8 @@ export function accountingMonthRange(monthStartDay: number, offset = 0): { from:
   }
   const endDay = Math.min(monthStartDay, daysInMonth(endY, endM))
   const last = new Date(endY, endM, endDay - 1)
-  return { from: toDateStr(first), to: toDateStr(last), labelYear: y, labelMonth0: m }
+  const label = accountingPeriodLabel(toDateStr(first))
+  return { from: toDateStr(first), to: toDateStr(last), labelYear: label.year, labelMonth0: label.month0 }
 }
 
 // Los últimos `count` periodos contables (el actual incluido), del más
@@ -134,6 +171,7 @@ export const PRESET_LABELS: Record<SpendRangePreset, string> = {
   dia: 'Hoy',
   semana: 'Esta semana',
   mes: 'Este mes',
+  mes_real: 'Mes real',
   año: 'Este año',
   rango: 'Rango de fecha',
 }

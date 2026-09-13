@@ -147,12 +147,12 @@ describe('categoryColors', () => {
     expect(colors.get('super')).not.toBe(colors.get('ali'))
     expect(colors.get('super')).not.toBe(colors.get('restaurantes'))
   })
-  it('el color de una categoría no depende de qué otras categorías tengan gasto ese mes (estable, no por posición)', () => {
+  it('el color no depende del ORDEN de la lista, solo del conjunto de nombres (no por posición)', () => {
     const full = categoryColors(colored)
-    const subset = categoryColors(colored.filter((c) => c.id !== 'ocio'))
-    expect(subset.get('ali')).toBe(full.get('ali'))
-    expect(subset.get('viv')).toBe(full.get('viv'))
-    expect(subset.get('mov')).toBe(full.get('mov'))
+    const reordered = categoryColors([...colored].reverse())
+    expect(reordered.get('ali')).toBe(full.get('ali'))
+    expect(reordered.get('viv')).toBe(full.get('viv'))
+    expect(reordered.get('mov')).toBe(full.get('mov'))
   })
   it('varias categorías con el mismo sortOrder (bug real de sembrado duplicado) no colapsan en el mismo color', () => {
     // Caso real destapado al verificar en producción: una familia tenía

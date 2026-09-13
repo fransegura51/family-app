@@ -122,6 +122,11 @@ describe('budgetSpent', () => {
     // "alimentación").
     expect(budgetSpent(budgetBase, expenses, { categories })).toBe(520)
   })
+  it('un traspaso entre cuentas propias no cuenta como gasto', () => {
+    const withTransfer = [...expenses, exp({ id: '6', expenseDate: '2026-09-12', amount: 100, category: 'Movimientos internos' })]
+    expect(budgetSpent(budgetBase, withTransfer, { categories })).toBe(520)
+    expect(budgetSpent(budgetBase, withTransfer)).toBe(520)
+  })
 })
 
 describe('categoryColors', () => {

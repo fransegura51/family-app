@@ -171,8 +171,16 @@ export function budgetSpent(
   context?: { categories: BudgetCategory[] },
 ): number {
   const { start, end } = budgetPeriodRange(budget)
+  // Petición real: "el dinero traspasado a las cuentas de los niños no
+  // debería contar como gasto" — un traspaso entre cuentas propias no
+  // es gasto real de la familia (mismo criterio que Resumen/Estadísticas).
   const periodExpenses = expenses.filter(
-    (e) => e.expenseDate >= start && e.expenseDate < end && e.kind === 'real' && !e.isIncome,
+    (e) =>
+      e.expenseDate >= start &&
+      e.expenseDate < end &&
+      e.kind === 'real' &&
+      !e.isIncome &&
+      !isInternalTransferCategory(e.category, context?.categories ?? []),
   )
 
   if (budget.category) {

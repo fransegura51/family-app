@@ -5005,8 +5005,17 @@ export function BudgetsTab({
   // mismo euro dos veces. Ver domain/finance.ts (isFoodCategory /
   // budgetSpent) para la misma regla aplicada a los presupuestos
   // guardados.
+  // Un traspaso entre cuentas propias no es gasto real (ver mismo
+  // criterio en Resumen/Estadísticas/BudgetsOverview) — se excluye
+  // aquí también, que es lo que alimenta el dónut "Reparto del gasto
+  // por categoría" de más abajo.
   const monthRealExpenses = expenses.filter(
-    (e) => e.expenseDate >= periodFrom && e.expenseDate <= periodTo && !e.isIncome && e.kind === 'real',
+    (e) =>
+      e.expenseDate >= periodFrom &&
+      e.expenseDate <= periodTo &&
+      !e.isIncome &&
+      e.kind === 'real' &&
+      !isInternalTransferCategory(e.category, categories),
   )
   const alimentacionTotal = monthRealExpenses
     .filter((e) => isFoodCategory(e.category, categories))

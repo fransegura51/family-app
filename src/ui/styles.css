@@ -645,6 +645,32 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Petición real: "un botón flotante con una flecha para arriba para
+   volver rápidamente de vuelta arriba" — en toda la app, no arrastrable
+   (a diferencia de los redondos de Pepa/redes sociales: este siempre
+   tiene que estar en el mismo sitio predecible). Esquina inferior
+   derecha, justo encima de la barra de navegación fija de abajo. */
+.scroll-top-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 88px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+  z-index: 39;
+}
+
 .nav-item {
   flex: 0 0 auto;
   min-width: 66px;

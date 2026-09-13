@@ -2192,7 +2192,14 @@ function SvgDonut({
         </svg>
         <div className="donut-ring-center">
           <span>{centerLabel.name}</span>
-          <strong>{centerLabel.total.toFixed(2)} €</strong>
+          <strong>
+            {centerLabel.total.toFixed(2)} €
+            {/* Petición real: "en todas las estadísticas de dónut quiero
+                que pongas en paréntesis el porcentaje al que corresponde
+                el importe" — solo tiene sentido para una porción tocada,
+                no para "Todo" (siempre sería 100%). */}
+            {highlightedKey != null && grandTotal > 0 && ` (${((centerLabel.total / grandTotal) * 100).toFixed(0)}%)`}
+          </strong>
         </div>
       </div>
     </div>

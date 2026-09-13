@@ -1697,7 +1697,13 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const inRange = expenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
-  const real = inRange.filter((e) => e.kind === 'real')
+  // Petición real: "el dinero traspasado entre nuestras cuentas y las
+  // de los niños no debería contar como ingreso ni como gasto" — un
+  // traspaso interno genera un movimiento en CADA cuenta (uno de
+  // salida, otro de entrada); si se cuentan los dos, Ingresos y Gastos
+  // se inflan por igual (el Ahorro no cambia, pero la Tasa de ahorro
+  // sale más baja de lo real al hincharse el denominador).
+  const real = inRange.filter((e) => e.kind === 'real' && !isInternalTransferCategory(e.category, categories))
   const totalIncome = real.filter((e) => e.isIncome).reduce((s, e) => s + e.amount, 0)
   const totalSpent = real.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
   const ahorro = totalIncome - totalSpent
@@ -1713,7 +1719,9 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const spanMs = Math.max(toMs - fromMs, 86_400_000)
   const prevTo = toDateStr(new Date(fromMs - 86_400_000))
   const prevFrom = toDateStr(new Date(fromMs - spanMs))
-  const prevReal = expenses.filter((e) => e.kind === 'real' && e.expenseDate >= prevFrom && e.expenseDate <= prevTo)
+  const prevReal = expenses.filter(
+    (e) => e.kind === 'real' && !isInternalTransferCategory(e.category, categories) && e.expenseDate >= prevFrom && e.expenseDate <= prevTo,
+  )
   const prevSpent = prevReal.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
 
   const conclusions: Conclusion[] = []
@@ -2448,7 +2456,13 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const periodLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
-  const real = expenses.filter((e) => e.kind === 'real' && !e.isIncome && e.expenseDate >= from && e.expenseDate <= to)
+  // Un traspaso entre cuentas propias de la familia no es gasto real
+  // (ver mismo cambio en Resumen y Presupuesto Generales) — se excluye
+  // aquí también para que categorías, etiquetas, D/N/Q y Fijo/Variable
+  // no lo cuenten.
+  const real = expenses.filter(
+    (e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories) && e.expenseDate >= from && e.expenseDate <= to,
+  )
   const totalReal = real.reduce((s, e) => s + e.amount, 0)
 
   function viewFor(extra: Partial<MovementsFilter>, label: string) {
@@ -2835,6 +2849,11 @@ function ExpensesTab({
         if (filter.isFixed !== undefined && classification.isFixed !== filter.isFixed) return false
         if (filter.isFixedUnclassified && classification.isFixed != null) return false
       }
+      // Un traspaso entre cuentas propias no cuenta ni como Ingreso ni
+      // como Gasto (ver Resumen/Estadísticas/Presupuesto Generales) —
+      // se excluye aquí también para que "Ver registros →" sume
+      // exactamente la misma cifra que se tocó para llegar aquí.
+      if (filter.isIncome !== undefined && isInternalTransferCategory(e.category, categories)) return false
       if (filter.isIncome !== undefined && e.isIncome !== filter.isIncome) return false
       return true
     })
@@ -5383,12 +5402,20 @@ function BudgetsOverview({
     .filter((e) => e.isIncome && e.budgetGroup === group && e.source === 'manual')
     .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
   const manualIncomeTotal = manualIncomeEntries.reduce((sum, e) => sum + e.amount, 0)
+  // Petición real: "el dinero traspasado de nuestras cuentas a las de
+  // los niños no debería duplicarse en Ingresos" — el lado de entrada
+  // de un traspaso interno llega marcado is_income=true igual que un
+  // ingreso real (lo pone el banco, no la categoría), así que hay que
+  // excluirlo aquí explícitamente; el lado de salida ya se excluye de
+  // totalSpent más abajo por el mismo motivo.
   const bankIncomeTotal = inRange
-    .filter((e) => e.isIncome && (e.source === 'banco' || e.source === 'ticket_banco'))
+    .filter((e) => e.isIncome && (e.source === 'banco' || e.source === 'ticket_banco') && !isInternalTransferCategory(e.category, allCategories))
     .reduce((sum, e) => sum + e.amount, 0)
   const totalIncome = hasBankAccounts ? bankIncomeTotal : manualIncomeTotal
   const incomeEntries = manualIncomeEntries
-  const totalSpent = inRange.filter((e) => !e.isIncome && e.kind === 'real').reduce((sum, e) => sum + e.amount, 0)
+  const totalSpent = inRange
+    .filter((e) => !e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, allCategories))
+    .reduce((sum, e) => sum + e.amount, 0)
 
   async function handleDeleteIncome(id: string) {
     await deleteExpense(id)
@@ -5401,11 +5428,11 @@ function BudgetsOverview({
   // por categoría padre, ver `byParentCategory`.
   const byCategoryFlat = useMemo(() => {
     const map = new Map<string, number>()
-    for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real')) {
+    for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, allCategories))) {
       map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1])
-  }, [inRange])
+  }, [inRange, allCategories])
 
   // Petición real: "en Resumen ordena la lista por categorías padres
   // (con el importe total de cada categoría padre y ordenándolas por
@@ -5422,7 +5449,7 @@ function BudgetsOverview({
   const groupCategories = useMemo(() => allCategories.filter((c) => c.budgetGroup === group), [allCategories, group])
   const byParentCategory = useMemo(() => {
     const totals = new Map<string, { name: string; icon?: string; rootIds: string[]; total: number }>()
-    for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real')) {
+    for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, allCategories))) {
       const cat = groupCategories.find((c) => c.name === e.category)
       if (!cat) continue
       const root = cat.parentId ? (groupCategories.find((p) => p.id === cat.parentId) ?? cat) : cat
@@ -5432,7 +5459,7 @@ function BudgetsOverview({
       totals.set(root.name, entry)
     }
     return [...totals.values()].sort((a, b) => b.total - a.total)
-  }, [inRange, groupCategories])
+  }, [inRange, groupCategories, allCategories])
 
   const rangeLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
 

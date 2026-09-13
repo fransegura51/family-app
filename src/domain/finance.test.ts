@@ -127,6 +127,18 @@ describe('budgetSpent', () => {
     expect(budgetSpent(budgetBase, withTransfer, { categories })).toBe(520)
     expect(budgetSpent(budgetBase, withTransfer)).toBe(520)
   })
+  it('un presupuesto sobre una categoría padre deduce también sus subcategorías', () => {
+    // Bug real: "he creado un presupuesto para Alimentación y no se ha
+    // deducido nada" — todo el gasto real vive en "Supermercado" (hija
+    // de Alimentación), nunca en "Alimentación" a secas.
+    expect(budgetSpent({ ...budgetBase, category: 'Alimentación' }, expenses, { categories })).toBe(20)
+  })
+  it('sin contexto, un presupuesto sobre una categoría padre solo cuenta la igualdad exacta', () => {
+    expect(budgetSpent({ ...budgetBase, category: 'Alimentación' }, expenses)).toBe(0)
+  })
+  it('un presupuesto sobre una subcategoría deduce solo esa, no sus hermanas', () => {
+    expect(budgetSpent({ ...budgetBase, category: 'Supermercado' }, expenses, { categories })).toBe(20)
+  })
 })
 
 describe('categoryColors', () => {

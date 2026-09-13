@@ -4124,10 +4124,16 @@ function CategorySelect({
   value,
   onChange,
   categories,
+  allowGeneral,
 }: {
   value: string
   onChange: (v: string) => void
   categories: BudgetCategory[]
+  // Petición real: "el desplegable de presupuesto, el mismo que el de
+  // categorías del banco pero con la diferencia de que también se
+  // pueda elegir General" — solo lo pide Nuevo presupuesto (donde
+  // value === '' significa "sin categoría concreta, cuenta todo").
+  allowGeneral?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -4166,7 +4172,9 @@ function CategorySelect({
   return (
     <div>
       <button type="button" className="category-picker-toggle" onClick={openPicker}>
-        <span>{selected ? `${selected.icon} ${selected.name}` : value || 'Elige una categoría'}</span>
+        <span>
+          {selected ? `${selected.icon} ${selected.name}` : allowGeneral && !value ? '🗂️ General' : value || 'Elige una categoría'}
+        </span>
         <span className="muted">▼</span>
       </button>
       {open && (
@@ -4203,19 +4211,26 @@ function CategorySelect({
                   ))}
                 </>
               ) : (
-                topLevel.map((c) => {
-                  const hasChildren = generales.some((x) => x.parentId === c.id)
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className="category-picker-row"
-                      onClick={() => (hasChildren ? setExpandedId(c.id) : pick(c.name))}
-                    >
-                      {c.icon} {c.name} {hasChildren && <span className="muted">›</span>}
+                <>
+                  {allowGeneral && (
+                    <button type="button" className="category-picker-row" onClick={() => pick('')}>
+                      🗂️ General <span className="muted">(todos los gastos)</span>
                     </button>
-                  )
-                })
+                  )}
+                  {topLevel.map((c) => {
+                    const hasChildren = generales.some((x) => x.parentId === c.id)
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="category-picker-row"
+                        onClick={() => (hasChildren ? setExpandedId(c.id) : pick(c.name))}
+                      >
+                        {c.icon} {c.name} {hasChildren && <span className="muted">›</span>}
+                      </button>
+                    )
+                  })}
+                </>
               )}
             </div>
           </div>
@@ -6412,19 +6427,8 @@ function AddBudgetForm({
         <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} required />
       </label>
       <label>
-        Categoría (vacío = general)
-        <input
-          type="text"
-          list="budget-category-options"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="Alimentación"
-        />
-        <datalist id="budget-category-options">
-          {categories.map((c) => (
-            <option key={c.id} value={c.name} />
-          ))}
-        </datalist>
+        Categoría
+        <CategorySelect value={category} onChange={setCategory} categories={categories} allowGeneral />
       </label>
       <label>
         Importe (€)

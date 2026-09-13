@@ -184,7 +184,19 @@ export function budgetSpent(
   )
 
   if (budget.category) {
-    return periodExpenses.filter((e) => e.category === budget.category).reduce((sum, e) => sum + e.amount, 0)
+    // Bug real: "he creado un presupuesto para Alimentación y no se ha
+    // deducido nada" — Alimentación es una categoría PADRE, y todo el
+    // gasto real se apunta en sus subcategorías (Supermercado...), así
+    // que comparar solo por igualdad exacta nunca encontraba nada. Un
+    // presupuesto sobre una categoría padre deduce esa categoría y
+    // cualquiera de sus subcategorías; sobre una subcategoría, deduce
+    // solo esa (no tiene hijas propias en este árbol de dos niveles).
+    const cats = context?.categories ?? []
+    const budgetCat = cats.find((c) => c.name === budget.category)
+    const childNames = budgetCat ? cats.filter((c) => c.parentId === budgetCat.id).map((c) => c.name) : []
+    return periodExpenses
+      .filter((e) => e.category === budget.category || childNames.includes(e.category))
+      .reduce((sum, e) => sum + e.amount, 0)
   }
   if (!context) {
     return periodExpenses.reduce((sum, e) => sum + e.amount, 0)

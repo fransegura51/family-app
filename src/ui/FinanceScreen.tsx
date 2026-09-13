@@ -1107,6 +1107,7 @@ function BalanceTrendCard() {
         onCustomFromChange={setCustomFrom}
         customTo={customTo}
         onCustomToChange={setCustomTo}
+        mesContable
       />
       {earliest && effectiveFrom !== from && (
         <p className="muted" style={{ fontSize: 12 }}>
@@ -1517,6 +1518,7 @@ function BankTab({
             onCustomFromChange={setCustomFrom}
             customTo={customTo}
             onCustomToChange={setCustomTo}
+            mesContable
           />
           {/* Petición real: "que me pongas una pestaña que sea gastos
               fijos, gastos variables... y también poder filtrar por
@@ -1895,6 +1897,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
         onCustomFromChange={setCustomFrom}
         customTo={customTo}
         onCustomToChange={setCustomTo}
+        mesContable
       />
 
       <div className="card event-card">
@@ -2543,6 +2546,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         onCustomFromChange={setCustomFrom}
         customTo={customTo}
         onCustomToChange={setCustomTo}
+        mesContable
       />
 
       {/* Skill de Pepa, punto 8: mismo selector, mismo periodo, mismo
@@ -2747,11 +2751,17 @@ function ExpensesTab({
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // "YYYY-MM" del mes que se está viendo — no siempre el actual, para
-  // poder consultar meses anteriores (o cualquier mes suelto, como
-  // febrero) en vez de solo el que corre. Se ignora mientras haya un
-  // `filter` activo (viene de "Ver X registros →" en Estadísticas).
-  const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
+  // Petición real: "quiero que quites el filtro mensual... y pongas
+  // los mismos filtros temporales desplegables que en el resto de
+  // Economía en el mismo sitio" — mismo componente (DateFilterTab,
+  // Hoy/Esta semana/Mes contable/Mes real/Este año/Rango) que ya usan
+  // Resumen, Estadísticas, Banco y Presupuesto Generales, en vez de la
+  // navegación ‹ Mes › propia de esta pantalla. Se ignora mientras haya
+  // un `filter` activo (viene de "Ver X registros →" en Estadísticas).
+  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  const [monthStartDay, setMonthStartDay] = useState(1)
   const [editingId, setEditingId] = useState<string | null>(null)
   // Igual que las categorías sugeridas de Presupuesto Generales: se dan
   // de alta solas la primera vez, sin pedirlo — petición real: "los
@@ -2765,8 +2775,8 @@ function ExpensesTab({
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
-    Promise.all([listExpenses(), listBudgetCategories(), listTags()])
-      .then(async ([e, c, t]) => {
+    Promise.all([listExpenses(), listBudgetCategories(), listTags(), getFinanceMonthStartDay()])
+      .then(async ([e, c, t, monthStart]) => {
         if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
           seededIncomeRef.current = true
           await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
@@ -2775,6 +2785,7 @@ function ExpensesTab({
         setExpenses(e)
         setCategories(c)
         setTags(t)
+        setMonthStartDay(monthStart)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -2785,17 +2796,13 @@ function ExpensesTab({
 
   useEffect(reload, [])
 
-  function shiftMonth(delta: number) {
-    const [y, m] = visibleMonth.split('-').map(Number)
-    const d = new Date(y, m - 1 + delta, 1)
-    setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
+  const [periodFrom, periodTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
 
   // Skill de Pepa, punto 24: el filtro que llega de "Ver X registros →"
   // manda sobre la navegación por mes normal — mismos criterios que
   // produjeron la cifra, ni uno más ni uno menos.
   const filteredExpenses = useMemo(() => {
-    if (!filter) return expenses.filter((e) => e.expenseDate.startsWith(visibleMonth))
+    if (!filter) return expenses.filter((e) => e.expenseDate >= periodFrom && e.expenseDate <= periodTo)
     return expenses.filter((e) => {
       if (filter.from && e.expenseDate < filter.from) return false
       if (filter.to && e.expenseDate > filter.to) return false
@@ -2816,7 +2823,7 @@ function ExpensesTab({
     // `categories` faltaba en las dependencias (lo cantó el linter al
     // activarlo): reclasificar una categoría no refrescaba un filtro por
     // Debo/Necesito/Quiero o Fijo/Variable hasta que cambiaban los gastos.
-  }, [expenses, filter, visibleMonth, categories])
+  }, [expenses, filter, periodFrom, periodTo, categories])
 
   const monthExpenses = filteredExpenses
 
@@ -2836,8 +2843,6 @@ function ExpensesTab({
   )
 
   if (loading) return <p className="muted">Cargando gastos…</p>
-
-  const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
 
   return (
     <div>
@@ -2861,25 +2866,15 @@ function ExpensesTab({
           </div>
         </div>
       ) : (
-        <div className="month-nav">
-          <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
-            ‹
-          </button>
-          <strong>
-            {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
-          </strong>
-          <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
-            ›
-          </button>
-          <input
-            type="month"
-            value={visibleMonth}
-            onChange={(e) => e.target.value && setVisibleMonth(e.target.value)}
-          />
-          <button type="button" className="link-button" onClick={() => setVisibleMonth(toDateStr(new Date()).slice(0, 7))}>
-            Hoy
-          </button>
-        </div>
+        <DateFilterTab
+          preset={preset}
+          onPresetChange={setPreset}
+          customFrom={customFrom}
+          onCustomFromChange={setCustomFrom}
+          customTo={customTo}
+          onCustomToChange={setCustomTo}
+          mesContable
+        />
       )}
 
       <p className="points-badge">

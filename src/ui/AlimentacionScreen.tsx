@@ -27,6 +27,7 @@ import {
   listRecipeSearchHistory,
   logRecipeSearch,
   setMenuEntry,
+  updateMenuEntry,
   updateRecipe,
   uploadRecipePhoto,
 } from '@/data/food'
@@ -565,6 +566,10 @@ function MenuTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addingFor, setAddingFor] = useState<{ date: string; meal: MealType } | null>(null)
+  // Bug real: "en menú semanal no se puede editar una vez guardado,
+  // solo borrar" — antes la única forma de cambiar un día era Quitar +
+  // volver a Añadir desde cero.
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
@@ -593,12 +598,28 @@ function MenuTab() {
             const entry = entries.find((e) => e.entryDate === date && e.mealType === meal.value)
             const recipe = entry?.recipeId ? recipes.find((r) => r.id === entry.recipeId) : null
             const isAdding = addingFor?.date === date && addingFor.meal === meal.value
+            const isEditing = entry && editingId === entry.id
             return (
               <div key={meal.value} className="menu-row">
                 <span className="muted menu-meal-label">{meal.label}</span>
-                {entry ? (
+                {entry && isEditing ? (
+                  <MenuEntryPicker
+                    recipes={recipes}
+                    initialRecipeId={entry.recipeId}
+                    initialFreeText={entry.freeText}
+                    onPick={async (pick) => {
+                      await updateMenuEntry(entry.id, pick)
+                      setEditingId(null)
+                      reload()
+                    }}
+                    onCancel={() => setEditingId(null)}
+                  />
+                ) : entry ? (
                   <>
                     <span>{recipe?.title ?? entry.freeText}</span>
+                    <button type="button" className="link-button" onClick={() => setEditingId(entry.id)}>
+                      Editar
+                    </button>
                     <ConfirmButton label="Quitar" onConfirm={() => deleteMenuEntry(entry.id).then(reload)} />
                   </>
                 ) : isAdding ? (
@@ -633,13 +654,17 @@ function MenuEntryPicker({
   recipes,
   onPick,
   onCancel,
+  initialRecipeId,
+  initialFreeText,
 }: {
   recipes: Recipe[]
   onPick: (input: { recipeId: string | null; freeText: string | null }) => void
   onCancel: () => void
+  initialRecipeId?: string | null
+  initialFreeText?: string | null
 }) {
-  const [recipeId, setRecipeId] = useState('')
-  const [freeText, setFreeText] = useState('')
+  const [recipeId, setRecipeId] = useState(initialRecipeId ?? '')
+  const [freeText, setFreeText] = useState(initialFreeText ?? '')
 
   return (
     <span className="menu-picker">

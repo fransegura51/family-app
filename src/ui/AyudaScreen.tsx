@@ -88,7 +88,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
   ],
   '/alimentacion': [
     { title: 'Menú ☰ e Inicio', text: 'El botón ☰ junto al título ("La cocina de Pepa") abre un desplegable con todas las pestañas — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
-    { title: 'Menú semanal', text: 'Planifica desayuno, comida, merienda y cena de toda la semana, con una receta guardada o texto libre.' },
+    { title: 'Menú semanal', text: 'Planifica desayuno, comida, merienda y cena de toda la semana, con una receta guardada o texto libre. Una vez guardado, "Editar" cambia la receta o el texto sin tener que quitarlo primero — "Quitar" sigue ahí para borrarlo del todo.' },
     { title: 'Recetas', text: 'Con foto, etiquetas (Postres, Favoritos, Fáciles de preparar...), ingredientes y notas; un buscador arriba te lleva directo a las que ya tienes guardadas, y también puedes buscarla en internet (el campo Título recuerda tus búsquedas anteriores y las autocompleta) o importarla pegando su URL, y mandar los ingredientes que quieras a la lista de la compra. "📤 Compartir" manda el título, los ingredientes, la preparación y la foto (si tiene) al menú de compartir del móvil.' },
     { title: 'Registro', text: 'Apunta lo que ha comido cada uno (puedes marcar a varios a la vez), con calorías y macronutrientes si quieres.' },
     { title: 'Peso', text: 'Evolución del peso y las medidas de cada miembro, con gráfico y fotos de seguimiento.' },

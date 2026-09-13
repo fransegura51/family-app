@@ -224,6 +224,17 @@ export async function setMenuEntry(input: {
   if (error) throw error
 }
 
+// Bug real: "en menú semanal no se puede editar una vez guardado, solo
+// borrar" — antes solo existía setMenuEntry (insert) y deleteMenuEntry,
+// así que cambiar un día implicaba borrar y volver a crear.
+export async function updateMenuEntry(id: string, input: { recipeId: string | null; freeText: string | null }): Promise<void> {
+  const { error } = await supabase
+    .from('menu_entries')
+    .update({ recipe_id: input.recipeId, free_text: input.freeText })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteMenuEntry(id: string): Promise<void> {
   const { error } = await supabase.from('menu_entries').delete().eq('id', id)
   if (error) throw error

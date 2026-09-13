@@ -5587,9 +5587,15 @@ function BudgetsOverview({
       )}
 
       <p style={{ color: '#c0392b', fontWeight: 600, margin: '4px 0' }}>Gastado: -{totalSpent.toFixed(2)} €</p>
-      {group !== 'alimentacion' && (
+      {/* Bug real: "el balance en presupuesto no debería ser presupuesto
+          menos gastos? Ahora mismo es ingresos menos gastos" — Balance
+          vive justo debajo de Presupuesto/Gastado, así que tiene que ser
+          lo que queda de ESE presupuesto, no un ahorro familiar (eso ya
+          lo muestra "Ahorro" en Resumen, con Ingresos). Solo tiene
+          sentido cuando hay un presupuesto general con el que restar.*/}
+      {group !== 'alimentacion' && overallBudget && (
         <p style={{ margin: '4px 0' }}>
-          <strong>Balance: {(totalIncome - totalSpent).toFixed(2)} €</strong>
+          <strong>Balance: {(overallBudget.amount - totalSpent).toFixed(2)} €</strong>
         </p>
       )}
 

@@ -5462,19 +5462,26 @@ function BudgetsOverview({
   // las subcategorías" — sustituye a la lista larga y plana de abajo
   // (categorías Y subcategorías mezcladas al mismo nivel, repitiendo lo
   // que ya se ve en el dónut).
+  // Categorías de ESTE grupo — se agrupa por NOMBRE (no por id) porque
+  // esta familia tiene categorías duplicadas de verdad en la base de
+  // datos (p. ej. tres filas distintas llamadas "Movimientos internos",
+  // de un sembrado que se disparó más de una vez): agrupar por id
+  // partía el mismo gasto en varias filas idénticas visualmente. Un
+  // "root" puede así representar a más de un id real (`rootIds`).
+  const groupCategories = useMemo(() => allCategories.filter((c) => c.budgetGroup === group), [allCategories, group])
   const byParentCategory = useMemo(() => {
-    const byName = new Map(allCategories.map((c) => [c.name, c]))
-    const totals = new Map<string, { name: string; icon?: string; categoryId?: string; total: number }>()
+    const totals = new Map<string, { name: string; icon?: string; rootIds: string[]; total: number }>()
     for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real')) {
-      const cat = byName.get(e.category)
-      const root = cat ? (cat.parentId ? (allCategories.find((p) => p.id === cat.parentId) ?? cat) : cat) : null
-      const key = root?.id ?? e.category
-      const entry = totals.get(key) ?? { name: root?.name ?? e.category, icon: root?.icon, categoryId: root?.id, total: 0 }
+      const cat = groupCategories.find((c) => c.name === e.category)
+      if (!cat) continue
+      const root = cat.parentId ? (groupCategories.find((p) => p.id === cat.parentId) ?? cat) : cat
+      const entry = totals.get(root.name) ?? { name: root.name, icon: root.icon, rootIds: [], total: 0 }
+      if (!entry.rootIds.includes(root.id)) entry.rootIds.push(root.id)
       entry.total += e.amount
-      totals.set(key, entry)
+      totals.set(root.name, entry)
     }
-    return [...totals.entries()].map(([key, v]) => ({ key, ...v })).sort((a, b) => b.total - a.total)
-  }, [inRange, allCategories])
+    return [...totals.values()].sort((a, b) => b.total - a.total)
+  }, [inRange, groupCategories])
 
   const rangeLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
 
@@ -5571,16 +5578,23 @@ function BudgetsOverview({
 
       {byParentCategory.length > 0 && (
         <div className="price-row-list" style={{ marginTop: 8 }}>
-          {byParentCategory.map(({ key, name, icon, categoryId, total }) => {
-            const children = categoryId ? allCategories.filter((c) => c.parentId === categoryId) : []
-            const isOpen = expandedParentId === key
+          {byParentCategory.map(({ name, icon, rootIds, total }) => {
+            const children = groupCategories.filter((c) => c.parentId && rootIds.includes(c.parentId))
+            const isOpen = expandedParentId === name
+            // El gasto puesto directamente en la categoría padre (sin
+            // elegir subcategoría) no aparece dentro de ninguna hija —
+            // se muestra aparte para que la suma de lo desplegado
+            // cuadre con el total de la fila.
+            const directTotal = inRange
+              .filter((e) => !e.isIncome && e.kind === 'real' && rootIds.some((id) => groupCategories.find((c) => c.id === id)?.name === e.category))
+              .reduce((s, e) => s + e.amount, 0)
             return (
-              <div key={key}>
+              <div key={name}>
                 <button
                   type="button"
                   className="price-row"
                   style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: children.length > 0 ? 'pointer' : 'default' }}
-                  onClick={() => children.length > 0 && setExpandedParentId(isOpen ? null : key)}
+                  onClick={() => children.length > 0 && setExpandedParentId(isOpen ? null : name)}
                 >
                   <span className="price-row-name">
                     {icon && `${icon} `}
@@ -5609,6 +5623,12 @@ function BudgetsOverview({
                           <span className="price-row-price">{c.total.toFixed(2)} €</span>
                         </div>
                       ))}
+                    {directTotal > 0 && (
+                      <div className="price-row">
+                        <span className="price-row-name">(sin subcategoría)</span>
+                        <span className="price-row-price">{directTotal.toFixed(2)} €</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

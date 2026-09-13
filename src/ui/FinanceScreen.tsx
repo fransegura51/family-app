@@ -5505,11 +5505,9 @@ function BudgetsOverview({
   return (
     <div className="card event-card">
       <strong>Resumen</strong>
-      <p className="muted" style={{ marginTop: 0 }}>
-        {group === 'alimentacion'
-          ? 'Solo registro — no tiene presupuesto ni ingresos propios.'
-          : 'Gastado suma Alimentación + Generales · Ingresos es solo de esta pestaña.'}
-      </p>
+      {group === 'alimentacion' && (
+        <p className="muted" style={{ marginTop: 0 }}>Solo registro — no tiene presupuesto ni ingresos propios.</p>
+      )}
       {/* Alimentación ya no tiene presupuesto ni ingresos propios
           (petición real: "hay que quitar en Registro alimentación lo
           de ingreso") — solo se queda con el total gastado. */}

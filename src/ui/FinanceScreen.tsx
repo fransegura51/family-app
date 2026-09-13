@@ -54,6 +54,7 @@ import {
 import {
   budgetPeriodRange,
   budgetSpent,
+  categoryColors,
   isFoodCategory,
   isInternalTransferCategory,
   resolveCategoryClassification,
@@ -62,7 +63,7 @@ import {
   walletCategoryTotal,
 } from '@/domain/finance'
 import { MONTH_LABELS } from '@/domain/calendar'
-import { accountingMonthsBack, PRESET_LABELS, rangeForPreset, toDateStr, type SpendRangePreset } from '@/domain/dateRanges'
+import { accountingMonthRange, accountingMonthsBack, PRESET_LABELS, rangeForPreset, toDateStr, type SpendRangePreset } from '@/domain/dateRanges'
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
@@ -398,7 +399,11 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
         }}
         onViewAll={() => setTab('Banco')}
       />
-      <BalanceTrendCard key={`trend-${refreshKey}`} />
+      {/* Petición real: "que venga solo en Estadísticas" — antes se veía
+          fija encima de CUALQUIER pestaña de Economía (Movimientos,
+          Presupuesto Generales...), repitiendo la misma tendencia sin
+          venir a cuento en pantallas que no son de estadísticas. */}
+      {tab === 'Estadísticas' && <BalanceTrendCard key={`trend-${refreshKey}`} />}
 
       {/* Petición real: "quiero que los quites de ahí [debajo de las
           tarjetas del banco]" — ya no hay una fila fija; solo aparece
@@ -2226,6 +2231,10 @@ function CategoryDonutExplorer({
   const [highlightTop, setHighlightTop] = useState<string | null>(null)
   const [highlightSub, setHighlightSub] = useState<string | null>(null)
 
+  // Un color estable por categoría (no por posición en la lista de este
+  // mes) — ver domain/finance.ts (categoryColors) para el porqué.
+  const catColors = categoryColors(categories)
+
   const topLevel = categories.filter((c) => !c.parentId)
   const topSlices: BreakdownSlice[] = topLevel
     .map((c) => {
@@ -2235,6 +2244,7 @@ function CategoryDonutExplorer({
         key: c.id,
         label: c.name,
         icon: c.icon,
+        color: catColors.get(c.id),
         total: matched.reduce((s, e) => s + e.amount, 0),
         count: matched.length,
         hasChildren: childNames.length > 0,
@@ -2251,13 +2261,21 @@ function CategoryDonutExplorer({
         .filter((c) => c.parentId === selectedTop.id)
         .map((c): BreakdownSlice => {
           const matched = expenses.filter((e) => e.category === c.name)
-          return { key: c.id, label: c.name, icon: c.icon, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+          return { key: c.id, label: c.name, icon: c.icon, color: catColors.get(c.id), total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
         })
         .concat(
           (() => {
             const direct = expenses.filter((e) => e.category === selectedTop.name)
             return direct.length > 0
-              ? [{ key: `directo:${selectedTop.id}`, label: '(sin subcategoría)', total: direct.reduce((s, e) => s + e.amount, 0), count: direct.length } as BreakdownSlice]
+              ? [
+                  {
+                    key: `directo:${selectedTop.id}`,
+                    label: '(sin subcategoría)',
+                    color: catColors.get(selectedTop.id),
+                    total: direct.reduce((s, e) => s + e.amount, 0),
+                    count: direct.length,
+                  } as BreakdownSlice,
+                ]
               : []
           })(),
         )
@@ -4607,16 +4625,24 @@ function ReceiptForm({
 // vez de barras. Mismo dónut tocable que el resto de la app (sin
 // lista aparte): tocar una porción la resalta y muestra su importe en
 // el centro.
-function StorePieChart({ groups, monthLabel }: { groups: { store: string; total: number }[]; monthLabel: string }) {
+function StorePieChart({
+  groups,
+  monthLabel,
+  title = 'Reparto del gasto por tienda',
+}: {
+  groups: { store: string; total: number; color?: string }[]
+  monthLabel: string
+  title?: string
+}) {
   const [highlighted, setHighlighted] = useState<string | null>(null)
   const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
-  const slices = groups.map((g) => ({ key: g.store, total: g.total }))
+  const slices = groups.map((g) => ({ key: g.store, total: g.total, color: g.color }))
   const highlightedSlice = groups.find((g) => g.store === highlighted)
   const centerLabel = highlightedSlice ? { name: highlightedSlice.store, total: highlightedSlice.total } : { name: 'Todo', total: grandTotal }
 
   return (
     <div className="card event-card">
-      <strong>Reparto del gasto por tienda — {monthLabel}</strong>
+      <strong>{title} — {monthLabel}</strong>
       {grandTotal === 0 ? (
         <p className="muted">No hay tickets guardados ese mes.</p>
       ) : (
@@ -4835,7 +4861,12 @@ export function BudgetsTab({
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [visibleMonth, setVisibleMonth] = useState(toDateStr(new Date()).slice(0, 7))
+  // Petición real: "el mes contable se debería aplicar aquí igual que
+  // en el resto de Economía" — antes navegaba por mes de CALENDARIO
+  // plano (visibleMonth = "2026-09", 1 a 30), ignorando el día de
+  // inicio configurado; ahora navega por periodos contables (offset
+  // desde el actual), igual que ya hacía BudgetsOverview de aquí abajo.
+  const [monthOffset, setMonthOffset] = useState(0)
   const [monthStartDay, setMonthStartDay] = useState(1)
   // Evita sembrar las categorías sugeridas más de una vez por sesión
   // mientras se espera la respuesta del primer alta.
@@ -4874,14 +4905,28 @@ export function BudgetsTab({
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function shiftMonth(delta: number) {
-    const [y, m] = visibleMonth.split('-').map(Number)
-    const d = new Date(y, m - 1 + delta, 1)
-    setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    setMonthOffset((o) => o + delta)
+  }
+
+  // El <input type="month"> deja elegir un mes de calendario directo;
+  // se traduce a "cuántos periodos contables de distancia" respecto al
+  // actual, que es lo que de verdad navega monthOffset.
+  function jumpToMonth(value: string) {
+    if (!value) return
+    const [pickedYear, pickedMonth] = value.split('-').map(Number)
+    const baseline = accountingMonthRange(monthStartDay, 0)
+    setMonthOffset((pickedYear - baseline.labelYear) * 12 + (pickedMonth - 1 - baseline.labelMonth0))
   }
 
   if (loading) return <p className="muted">Cargando presupuestos…</p>
 
-  const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
+  const { from: periodFrom, to: periodTo, labelYear: visibleYear, labelMonth0 } = accountingMonthRange(monthStartDay, monthOffset)
+  const visibleMonthIndex = labelMonth0 + 1
+  // Solo para el desglose por tienda de Alimentación (rama que ya no
+  // se usa desde que Alimentación vive dentro de 'generales' — ver
+  // comentario en CategoriesModal) y para el <input type="month">
+  // de abajo. El resto de cálculos usa periodFrom/periodTo.
+  const visibleMonth = `${visibleYear}-${String(visibleMonthIndex).padStart(2, '0')}`
   const groupCategories = categories.filter((c) => c.budgetGroup === group)
   const groupBudgets = budgets.filter((b) => b.budgetGroup === group)
   // Solo los tickets clasificados como Alimentación cuentan aquí —
@@ -4903,47 +4948,69 @@ export function BudgetsTab({
   // budgetSpent) para la misma regla aplicada a los presupuestos
   // guardados.
   const monthRealExpenses = expenses.filter(
-    (e) => e.expenseDate.startsWith(visibleMonth) && !e.isIncome && e.kind === 'real',
+    (e) => e.expenseDate >= periodFrom && e.expenseDate <= periodTo && !e.isIncome && e.kind === 'real',
   )
   const alimentacionTotal = monthRealExpenses
     .filter((e) => isFoodCategory(e.category, categories))
     .reduce((sum, e) => sum + e.amount, 0)
+  // Bug real: Alimentación (con todas sus subcategorías) vive dentro de
+  // 'generales' desde la migración 0076, así que YA está incluida en
+  // `generalesCategoriesTotal` (recorre TODAS las categorías del
+  // grupo). Sumar `alimentacionTotal` aparte, como se hacía antes,
+  // contaba cada euro de comida dos veces en "Presupuesto total del
+  // mes" — el mismo fallo que ya se había arreglado en
+  // domain/finance.ts (budgetSpent) pero no aquí.
   const generalesCategoriesTotal = groupCategories
     .map((c) => monthRealExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0))
     .reduce((sum, t) => sum + t, 0)
+  const catColors = categoryColors(groupCategories)
+  // Petición real: "que sean solo las subcategorías" — ya no se añade
+  // el bloque especial "Alimentación (total)" (duplicaba cada euro que
+  // sus propias subcategorías ya representan); una categoría con hijas
+  // solo aparece si tiene gasto puesto DIRECTAMENTE en ella (sin elegir
+  // subcategoría), y se etiqueta como tal para que no parezca una
+  // subcategoría más.
   const categoryPieSlices =
     group === 'generales'
-      ? [
-          ...groupCategories
-            .map((c) => ({
-              store: `${c.icon} ${c.name}`,
+      ? groupCategories
+          .map((c) => {
+            const hasChildren = groupCategories.some((x) => x.parentId === c.id)
+            return {
+              store: `${c.icon} ${c.name}${hasChildren ? ' (sin subcategoría)' : ''}`,
               total: monthRealExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0),
-            }))
-            .filter((s) => s.total > 0),
-          // 🛒 y no 🍽️ a propósito — petición real: "se ha colado el
-          // emoticono de restaurantes aunque no hay gastos de
-          // restaurantes". Esta porción es TODO el gasto de Alimentación
-          // (tickets de compra, no comer fuera), así que el icono de
-          // carrito es el que no confunde.
-          { store: '🛒 Alimentación (total)', total: alimentacionTotal },
-        ].filter((s) => s.total > 0)
+              color: catColors.get(c.id),
+            }
+          })
+          .filter((s) => s.total > 0)
       : []
 
   // Presupuesto total del mes con su barra de % gastado — solo existe
   // en Generales ahora. Alimentación ya no tiene presupuesto/límite
   // propio, se queda como puro registro (petición real: "el
   // presupuesto general deduce todos los gastos como un único
-  // presupuesto") — el gastado de Generales suma sus categorías MÁS
-  // el total de Alimentación completo.
-  const groupSpentTotal = generalesCategoriesTotal + alimentacionTotal
-  const overallBudget =
-    groupBudgets.find((b) => !b.category && budgetPeriodRange(b).start.slice(0, 7) === visibleMonth) ?? null
+  // presupuesto") — el gastado de Generales YA incluye Alimentación
+  // (ver comentario arriba, no se suma aparte).
+  const groupSpentTotal = generalesCategoriesTotal
+  const overallBudget = groupBudgets.find((b) => !b.category && budgetPeriodRange(b).start === periodFrom) ?? null
 
   return (
     <div>
       {error && <p className="error">{error}</p>}
 
-      <BudgetsOverview allExpenses={expenses} allCategories={categories} group={group} onChanged={reload} monthStartDay={monthStartDay} />
+      {/* Petición real: "Presupuesto total del mes debería estar lo
+          primero debajo de las cuentas" — antes iba después de Resumen
+          y de la navegación por mes. */}
+      {group === 'alimentacion' ? (
+        <div className="card event-card">
+          <strong>Total registrado en Alimentación</strong>
+          <p style={{ margin: '4px 0' }}>{alimentacionTotal.toFixed(2)} €</p>
+          <p className="muted" style={{ margin: 0 }}>
+            Solo registro — no resta de ningún presupuesto. Cuenta para el Presupuesto General.
+          </p>
+        </div>
+      ) : (
+        <OverallBudgetCard group={group} periodStart={periodFrom} budget={overallBudget} spent={groupSpentTotal} onChanged={reload} />
+      )}
 
       <div className="month-nav">
         <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
@@ -4955,50 +5022,43 @@ export function BudgetsTab({
         <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
           ›
         </button>
-        <input
-          type="month"
-          value={visibleMonth}
-          onChange={(e) => e.target.value && setVisibleMonth(e.target.value)}
-        />
-        <button type="button" className="link-button" onClick={() => setVisibleMonth(toDateStr(new Date()).slice(0, 7))}>
+        <input type="month" value={visibleMonth} onChange={(e) => jumpToMonth(e.target.value)} />
+        <button type="button" className="link-button" onClick={() => setMonthOffset(0)}>
           Hoy
         </button>
       </div>
 
-      {group === 'alimentacion' ? (
-        <div className="card event-card">
-          <strong>Total registrado en Alimentación</strong>
-          <p style={{ margin: '4px 0' }}>{alimentacionTotal.toFixed(2)} €</p>
-          <p className="muted" style={{ margin: 0 }}>
-            Solo registro — no resta de ningún presupuesto. Cuenta para el Presupuesto General.
-          </p>
-        </div>
-      ) : (
-        <OverallBudgetCard
-          group={group}
-          visibleMonth={visibleMonth}
-          budget={overallBudget}
-          spent={groupSpentTotal}
-          onChanged={reload}
-        />
-      )}
+      <BudgetsOverview
+        allExpenses={expenses}
+        allCategories={categories}
+        budgets={budgets}
+        group={group}
+        onChanged={reload}
+        monthStartDay={monthStartDay}
+      />
 
       {group === 'alimentacion' && (
         <StorePieChart groups={pieGroups} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
       )}
       {group === 'generales' && categoryPieSlices.length > 0 && (
-        <StorePieChart groups={categoryPieSlices} monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`} />
+        <StorePieChart
+          groups={categoryPieSlices}
+          monthLabel={`${MONTH_LABELS[visibleMonthIndex - 1]} ${visibleYear}`}
+          title="Reparto del gasto por categoría"
+        />
       )}
 
-      {group === 'alimentacion' ? (
+      {/* Petición real: "la lista larga de categorías abajo en
+          Presupuesto General, bórrala. Es repetir información" —
+          quitaba lugar por duplicar el dónut de arriba y la lista de
+          Resumen (ver byParentCategory en BudgetsOverview). */}
+      {group === 'alimentacion' && (
         <BudgetCategoriesSection
           categories={groupCategories}
           budgetGroup={group}
           monthExpenses={monthRealExpenses}
           onChanged={reload}
         />
-      ) : (
-        <GeneralesCategoriesSection categories={groupCategories} monthExpenses={monthRealExpenses} />
       )}
 
       {group === 'generales' && (
@@ -5023,13 +5083,13 @@ export function BudgetsTab({
 // cambiar en cualquier momento.
 function OverallBudgetCard({
   group,
-  visibleMonth,
+  periodStart,
   budget,
   spent,
   onChanged,
 }: {
   group: string
-  visibleMonth: string
+  periodStart: string
   budget: Budget | null
   spent: number
   onChanged: () => void
@@ -5047,7 +5107,7 @@ function OverallBudgetCard({
       if (budget) await deleteBudget(budget.id)
       await createBudget({
         periodType: 'mensual',
-        periodStart: `${visibleMonth}-01`,
+        periodStart,
         category: '',
         amount: Number(amount),
         budgetGroup: group,
@@ -5330,12 +5390,14 @@ function AddIncomeInline({
 function BudgetsOverview({
   allExpenses,
   allCategories,
+  budgets,
   group,
   onChanged,
   monthStartDay,
 }: {
   allExpenses: Expense[]
   allCategories: BudgetCategory[]
+  budgets: Budget[]
   group: string
   onChanged: () => void
   monthStartDay: number
@@ -5349,9 +5411,23 @@ function BudgetsOverview({
   // eliminar".
   const [addingIncome, setAddingIncome] = useState(false)
   const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null)
+  // Petición real: "tocando el nombre de la categoría padre se
+  // desplieguen las subcategorías" — una sola desplegada a la vez, más
+  // fácil de leer que varias listas abiertas de golpe.
+  const [expandedParentId, setExpandedParentId] = useState<string | null>(null)
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const inRange = allExpenses.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
+  // Presupuesto total del mes, mostrado aquí solo con el rango "Este
+  // mes" — con Esta semana/Este año/Rango no hay un "presupuesto de
+  // ese periodo" con el que compararlo (el presupuesto siempre es
+  // mensual). Mismo criterio de búsqueda que OverallBudgetCard: el
+  // presupuesto general (sin categoría) cuyo periodo empieza justo en
+  // el `from` de este mes contable.
+  const overallBudget =
+    group !== 'alimentacion' && preset === 'mes'
+      ? (budgets.find((b) => b.budgetGroup === group && !b.category && budgetPeriodRange(b).start === from) ?? null)
+      : null
   // Los ingresos NO se conectan entre pestañas — petición real: "los
   // ingresos tienen que ser diferentes... presupuesto generales tiene
   // 4000€... presupuesto de alimentación 800€... no quiero que me
@@ -5368,13 +5444,37 @@ function BudgetsOverview({
     onChanged()
   }
 
-  const byCategory = useMemo(() => {
+  // Detallado por categoría exacta (padre O hija, tal cual se apuntó
+  // el gasto) — se queda así para el informe imprimible, que quiere el
+  // detalle fino. La lista EN PANTALLA (más abajo) es otra: agrupada
+  // por categoría padre, ver `byParentCategory`.
+  const byCategoryFlat = useMemo(() => {
     const map = new Map<string, number>()
     for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real')) {
       map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1])
   }, [inRange])
+
+  // Petición real: "en Resumen ordena la lista por categorías padres
+  // (con el importe total de cada categoría padre y ordenándolas por
+  // importe, el mayor arriba...) y que tocando el nombre se desplieguen
+  // las subcategorías" — sustituye a la lista larga y plana de abajo
+  // (categorías Y subcategorías mezcladas al mismo nivel, repitiendo lo
+  // que ya se ve en el dónut).
+  const byParentCategory = useMemo(() => {
+    const byName = new Map(allCategories.map((c) => [c.name, c]))
+    const totals = new Map<string, { name: string; icon?: string; categoryId?: string; total: number }>()
+    for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real')) {
+      const cat = byName.get(e.category)
+      const root = cat ? (cat.parentId ? (allCategories.find((p) => p.id === cat.parentId) ?? cat) : cat) : null
+      const key = root?.id ?? e.category
+      const entry = totals.get(key) ?? { name: root?.name ?? e.category, icon: root?.icon, categoryId: root?.id, total: 0 }
+      entry.total += e.amount
+      totals.set(key, entry)
+    }
+    return [...totals.entries()].map(([key, v]) => ({ key, ...v })).sort((a, b) => b.total - a.total)
+  }, [inRange, allCategories])
 
   const rangeLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
 
@@ -5405,6 +5505,16 @@ function BudgetsOverview({
               {addingIncome ? 'Cerrar' : '+ Añadir ingreso'}
             </button>
           </div>
+          {/* Petición real: "el ingreso solo se debería apuntar
+              manualmente si no hay cuentas enlazadas... de otro modo se
+              duplica" — este Ingresos NUNCA se calcula solo desde el
+              banco (Mis cuentas es un saldo, no un histórico de
+              nóminas/ingresos), así que no hay duplicado real, pero se
+              deja explícito para que no parezca que suma lo mismo dos
+              veces. */}
+          <p className="muted" style={{ marginTop: -4, marginBottom: 4, fontSize: 12 }}>
+            Solo lo que apuntes aquí a mano — no se calcula desde el saldo de tus cuentas bancarias.
+          </p>
 
           {addingIncome && <AddIncomeInline group={group} categories={allCategories} onAdded={onChanged} />}
         </>
@@ -5442,6 +5552,16 @@ function BudgetsOverview({
         </div>
       )}
 
+      {/* Petición real: "pon el importe del presupuesto entre Ingresos
+          y gastado" — el control para cambiarlo sigue viviendo solo en
+          la tarjeta "Presupuesto total del mes" (arriba de todo), aquí
+          es solo un vistazo rápido junto al resto de cifras del mes. */}
+      {group !== 'alimentacion' && preset === 'mes' && (
+        <p className="muted" style={{ margin: '4px 0' }}>
+          Presupuesto: {overallBudget ? `${overallBudget.amount.toFixed(2)} €` : 'sin establecer'}
+        </p>
+      )}
+
       <p style={{ color: '#c0392b', fontWeight: 600, margin: '4px 0' }}>Gastado: -{totalSpent.toFixed(2)} €</p>
       {group !== 'alimentacion' && (
         <p style={{ margin: '4px 0' }}>
@@ -5449,17 +5569,48 @@ function BudgetsOverview({
         </p>
       )}
 
-      {byCategory.length > 0 && (
+      {byParentCategory.length > 0 && (
         <div className="price-row-list" style={{ marginTop: 8 }}>
-          {byCategory.map(([cat, amount]) => {
-            const icon = allCategories.find((c) => c.name === cat)?.icon
+          {byParentCategory.map(({ key, name, icon, categoryId, total }) => {
+            const children = categoryId ? allCategories.filter((c) => c.parentId === categoryId) : []
+            const isOpen = expandedParentId === key
             return (
-              <div key={cat} className="price-row">
-                <span className="price-row-name">
-                  {icon && `${icon} `}
-                  {cat}
-                </span>
-                <span className="price-row-price">{amount.toFixed(2)} €</span>
+              <div key={key}>
+                <button
+                  type="button"
+                  className="price-row"
+                  style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: children.length > 0 ? 'pointer' : 'default' }}
+                  onClick={() => children.length > 0 && setExpandedParentId(isOpen ? null : key)}
+                >
+                  <span className="price-row-name">
+                    {icon && `${icon} `}
+                    {name}
+                    {children.length > 0 && (isOpen ? ' ▾' : ' ▸')}
+                  </span>
+                  <span className="price-row-price">{total.toFixed(2)} €</span>
+                </button>
+                {isOpen && children.length > 0 && (
+                  <div style={{ paddingLeft: 20 }}>
+                    {children
+                      .map((c) => ({
+                        name: c.name,
+                        icon: c.icon,
+                        total: inRange
+                          .filter((e) => !e.isIncome && e.kind === 'real' && e.category === c.name)
+                          .reduce((s, e) => s + e.amount, 0),
+                      }))
+                      .filter((c) => c.total > 0)
+                      .sort((a, b) => b.total - a.total)
+                      .map((c) => (
+                        <div key={c.name} className="price-row">
+                          <span className="price-row-name">
+                            {c.icon} {c.name}
+                          </span>
+                          <span className="price-row-price">{c.total.toFixed(2)} €</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -5475,7 +5626,7 @@ function BudgetsOverview({
             rangeLabel,
             totalIncome,
             totalSpent,
-            byCategory: byCategory.map(([name, amount]) => ({
+            byCategory: byCategoryFlat.map(([name, amount]) => ({
               name,
               icon: allCategories.find((c) => c.name === name)?.icon,
               amount,
@@ -5740,53 +5891,6 @@ function BudgetCategoriesSection({
           onChanged={onChanged}
         />
       )}
-    </>
-  )
-}
-
-// Versión de la sección de categorías para Presupuesto Generales: un
-// único botón flotante reúne crear categoría, reordenarlas y añadir un
-// gasto suelto (petición real: "las categorías que se organicen en el
-// mismo menú flotante donde se crean, y haz otro para crear gastos, o
-// si lo ves mejor combina todo en el mismo botón" — un solo botón es
-// más limpio que dos flotando a la vez). La lista de la pantalla queda
-// solo para consultar y apuntar un gasto a una categoría concreta
-// tocándola; crear, reordenar (con flechas, mismo mecanismo que
-// "Organizar menú") y borrar categorías, o apuntar un gasto sin elegir
-// antes una tarjeta, vive dentro de ese botón.
-// Presupuesto Generales ya no crea ni edita nada por su cuenta — solo
-// consulta cuánto lleva cada categoría. Crear, reordenar y apuntar
-// gastos vive todo en el botón flotante de Gastos (petición real: "las
-// categorías... en el mismo menú flotante donde se crean").
-function GeneralesCategoriesSection({
-  categories,
-  monthExpenses,
-}: {
-  categories: BudgetCategory[]
-  monthExpenses: Expense[]
-}) {
-  return (
-    <>
-      <h2 className="section-title">Categorías</h2>
-      <p className="muted" style={{ marginTop: -8 }}>
-        Se crean y se apuntan desde el botón flotante de la pestaña Gastos.
-      </p>
-      <div className="event-list">
-        {categories.map((c) => {
-          const spent = monthExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0)
-          return (
-            <div key={c.id} className="card task-card">
-              <div className="task-card-main">
-                <strong>
-                  {c.icon} {c.name}
-                </strong>
-                <p className="muted">{spent > 0 ? `${spent.toFixed(2)} €` : 'Sin gastos'}</p>
-              </div>
-            </div>
-          )
-        })}
-        {categories.length === 0 && <p className="muted">Todavía no hay categorías.</p>}
-      </div>
     </>
   )
 }

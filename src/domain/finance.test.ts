@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   budgetPeriodRange,
   budgetSpent,
+  categoryColors,
   isFoodCategory,
   isInternalTransferCategory,
   resolveCategoryClassification,
@@ -120,6 +121,41 @@ describe('budgetSpent', () => {
     // 520, no 540 (20 de Supermercado contados como "propio" Y como
     // "alimentación").
     expect(budgetSpent(budgetBase, expenses, { categories })).toBe(520)
+  })
+})
+
+describe('categoryColors', () => {
+  // sortOrder propio y distinto para cada una — en los datos reales sale
+  // de crear las categorías (0, 1, 2... por orden de alta), aquí se pone
+  // a mano porque el resto de fixtures de este archivo no lo necesita.
+  const colored: BudgetCategory[] = [
+    cat({ id: 'ali', name: 'Alimentación', sortOrder: 0 }),
+    cat({ id: 'super', name: 'Supermercado', parentId: 'ali', sortOrder: 0 }),
+    cat({ id: 'restaurantes', name: 'Restaurantes', parentId: 'ali', sortOrder: 1 }),
+    cat({ id: 'viv', name: 'Vivienda y hogar', sortOrder: 1 }),
+    cat({ id: 'ocio', name: 'Ocio y viajes', sortOrder: 2 }),
+    cat({ id: 'mov', name: 'Movimientos internos', sortOrder: 3 }),
+  ]
+
+  it('cada categoría principal tiene un color propio, distinto de las demás', () => {
+    const colors = categoryColors(colored)
+    const topLevelColors = [colors.get('ali'), colors.get('viv'), colors.get('ocio'), colors.get('mov')]
+    expect(new Set(topLevelColors).size).toBe(topLevelColors.length)
+  })
+  it('una subcategoría comparte el tono de su categoría principal, no el color entero', () => {
+    const colors = categoryColors(colored)
+    const parentHue = colors.get('ali')?.match(/hsl\((\d+)/)?.[1]
+    const childHue = colors.get('super')?.match(/hsl\((\d+)/)?.[1]
+    expect(childHue).toBe(parentHue)
+    expect(colors.get('super')).not.toBe(colors.get('ali'))
+    expect(colors.get('super')).not.toBe(colors.get('restaurantes'))
+  })
+  it('el color de una categoría no depende de qué otras categorías tengan gasto ese mes (estable, no por posición)', () => {
+    const full = categoryColors(colored)
+    const subset = categoryColors(colored.filter((c) => c.id !== 'ocio'))
+    expect(subset.get('ali')).toBe(full.get('ali'))
+    expect(subset.get('viv')).toBe(full.get('viv'))
+    expect(subset.get('mov')).toBe(full.get('mov'))
   })
 })
 

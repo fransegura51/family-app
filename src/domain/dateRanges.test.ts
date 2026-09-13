@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { accountingMonthsBack, rangeForPreset, toDateStr } from '@/domain/dateRanges'
+import { accountingMonthRange, accountingMonthsBack, rangeForPreset, toDateStr } from '@/domain/dateRanges'
 
 describe('rangeForPreset', () => {
   beforeEach(() => {
@@ -69,5 +69,30 @@ describe('accountingMonthsBack', () => {
       ['2026-07-31', '2026-08-30'],
       ['2026-08-31', '2026-09-29'],
     ])
+  })
+})
+
+describe('accountingMonthRange', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    // Viernes 11 de septiembre de 2026, mediodía local.
+    vi.setSystemTime(new Date(2026, 8, 11, 12, 0))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('offset 0 es el mes actual; navega hacia atrás y hacia delante', () => {
+    expect(accountingMonthRange(1, 0)).toMatchObject({ from: '2026-09-01', to: '2026-09-30' })
+    expect(accountingMonthRange(1, -1)).toMatchObject({ from: '2026-08-01', to: '2026-08-31' })
+    expect(accountingMonthRange(1, 1)).toMatchObject({ from: '2026-10-01', to: '2026-10-31' })
+  })
+
+  it('respeta el mismo día de inicio contable que rangeForPreset/accountingMonthsBack', () => {
+    expect(accountingMonthRange(25, 0)).toMatchObject({ from: '2026-08-25', to: '2026-09-24' })
+  })
+
+  it('es la misma pieza que arma accountingMonthsBack (equivalente a offset negativo)', () => {
+    const back = accountingMonthsBack(3, 1)
+    expect(accountingMonthRange(1, -2)).toMatchObject({ from: back[0].from, to: back[0].to })
+    expect(accountingMonthRange(1, 0)).toMatchObject({ from: back[2].from, to: back[2].to })
   })
 })

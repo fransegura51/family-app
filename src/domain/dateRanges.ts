@@ -69,16 +69,15 @@ export function rangeForPreset(
   return [customFrom || todayStr, customTo || todayStr]
 }
 
-// Los últimos `count` periodos contables (el actual incluido), del más
-// antiguo al más reciente — misma regla del día de inicio que
-// rangeForPreset('mes', ...) pero repetida hacia atrás. Petición real:
-// "la evolución temporal debería ajustarse a la configuración del mes
-// contable" (antes usaba siempre mes de calendario 1-31, sin importar
-// lo que se hubiera puesto en Configuración).
-export function accountingMonthsBack(
-  count: number,
-  monthStartDay = 1,
-): { monthLabelYear: number; monthLabelMonth0: number; from: string; to: string }[] {
+// Un periodo contable concreto, `offset` meses desde el actual (0 =
+// el que corre ahora mismo, -1 = el anterior, +1 = el siguiente) —
+// misma regla del día de inicio que rangeForPreset('mes', ...).
+// Petición real: "el mes contable se debería aplicar aquí igual que en
+// el resto de Economía" — Presupuesto Generales navegaba por mes de
+// calendario plano (1 a fin de mes) con su propio `visibleMonth`,
+// ignorando el día de inicio configurado, a diferencia del resto de
+// Economía (Resumen, Estadísticas) que ya lo respetaba.
+export function accountingMonthRange(monthStartDay: number, offset = 0): { from: string; to: string; labelYear: number; labelMonth0: number } {
   const today = new Date()
   let startYear = today.getFullYear()
   let startMonth = today.getMonth()
@@ -90,26 +89,43 @@ export function accountingMonthsBack(
       startYear -= 1
     }
   }
+  let y = startYear
+  let m = startMonth + offset
+  while (m < 0) {
+    m += 12
+    y -= 1
+  }
+  while (m > 11) {
+    m -= 12
+    y += 1
+  }
+  const startDay = Math.min(monthStartDay, daysInMonth(y, m))
+  const first = new Date(y, m, startDay)
+  let endY = y
+  let endM = m + 1
+  if (endM > 11) {
+    endM = 0
+    endY += 1
+  }
+  const endDay = Math.min(monthStartDay, daysInMonth(endY, endM))
+  const last = new Date(endY, endM, endDay - 1)
+  return { from: toDateStr(first), to: toDateStr(last), labelYear: y, labelMonth0: m }
+}
 
+// Los últimos `count` periodos contables (el actual incluido), del más
+// antiguo al más reciente — construido sobre accountingMonthRange en
+// vez de repetir su misma aritmética de meses. Petición real: "la
+// evolución temporal debería ajustarse a la configuración del mes
+// contable" (antes usaba siempre mes de calendario 1-31, sin importar
+// lo que se hubiera puesto en Configuración).
+export function accountingMonthsBack(
+  count: number,
+  monthStartDay = 1,
+): { monthLabelYear: number; monthLabelMonth0: number; from: string; to: string }[] {
   const periods: { monthLabelYear: number; monthLabelMonth0: number; from: string; to: string }[] = []
   for (let i = count - 1; i >= 0; i--) {
-    let y = startYear
-    let m = startMonth - i
-    while (m < 0) {
-      m += 12
-      y -= 1
-    }
-    const startDay = Math.min(monthStartDay, daysInMonth(y, m))
-    const first = new Date(y, m, startDay)
-    let endY = y
-    let endM = m + 1
-    if (endM > 11) {
-      endM = 0
-      endY += 1
-    }
-    const endDay = Math.min(monthStartDay, daysInMonth(endY, endM))
-    const last = new Date(endY, endM, endDay - 1)
-    periods.push({ monthLabelYear: y, monthLabelMonth0: m, from: toDateStr(first), to: toDateStr(last) })
+    const { from, to, labelYear, labelMonth0 } = accountingMonthRange(monthStartDay, -i)
+    periods.push({ monthLabelYear: labelYear, monthLabelMonth0: labelMonth0, from, to })
   }
   return periods
 }

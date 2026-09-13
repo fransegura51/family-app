@@ -2768,10 +2768,18 @@ textarea {
   border-top: 1px solid #eee;
 }
 
+/* Petición real: "la leyenda en lugar de centralizada ponla a la
+   derecha" — el anillo y la leyenda van en fila (leyenda a la derecha,
+   en columna) en vez de apilados; en pantallas estrechas donde no cabe
+   la fila entera, `flex-wrap` deja que la leyenda baje debajo como
+   antes, sin romper el layout. */
 .donut-ring-wrap {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
+  gap: 4px 20px;
 }
 
 .donut-ring {
@@ -2789,11 +2797,13 @@ textarea {
    elegir una porción sigue siendo tocar el propio dónut. */
 .donut-legend {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
   justify-content: center;
   gap: 6px 14px;
-  margin-top: 10px;
-  max-width: 260px;
+  max-width: 220px;
+  max-height: 190px;
+  text-align: left;
 }
 
 .donut-legend-item {

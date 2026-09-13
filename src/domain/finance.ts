@@ -81,6 +81,40 @@ export function resolveCategoryClassification(categoryName: string, categories: 
   }
 }
 
+// Bug real: los dónuts de categorías coloreaban cada porción según su
+// POSICIÓN en la lista filtrada de ese mes (colors[i % colors.length]),
+// así que la misma categoría cambiaba de color de un mes a otro, y dos
+// categorías sin relación (p. ej. "Niños" y "Alimentación (total)")
+// podían coincidir en el mismo color solo por casualidad de índice —
+// petición real: "cada una debería tener uno propio, los de la misma
+// categoría padre pueden tener matices del mismo color". Un color por
+// categoría PRINCIPAL (id, no posición — estable siempre), y sus
+// subcategorías comparten el mismo tono variando solo la luminosidad,
+// para que se note el parentesco sin perder distinción entre ellas.
+export function categoryColors(categories: BudgetCategory[]): Map<string, string> {
+  const colors = new Map<string, string>()
+  const topLevel = categories.filter((c) => !c.parentId)
+  topLevel.forEach((parent) => {
+    // El tono sale de `sortOrder` (fijo desde que se crea la categoría,
+    // igual en cualquier pantalla) y NO de la posición dentro de esta
+    // lista en concreto — una llamada con menos categorías (p. ej. solo
+    // las de un grupo, o solo las que tuvieron gasto este mes) no debe
+    // desplazar el color de las que sí están. 47° de salto entre
+    // sortOrder sucesivos — sin divisores comunes pequeños con 360, así
+    // el color no se repite ni con muchas categorías (a diferencia de
+    // repartir 360/N a partes iguales, que sí puede volver a coincidir
+    // con pocas categorías).
+    const hue = Math.round((parent.sortOrder * 47) % 360)
+    colors.set(parent.id, `hsl(${hue}, 65%, 46%)`)
+    const children = [...categories.filter((c) => c.parentId === parent.id)].sort((a, b) => a.sortOrder - b.sortOrder)
+    children.forEach((child, j) => {
+      const lightness = children.length <= 1 ? 46 : Math.round(34 + (j * 32) / (children.length - 1))
+      colors.set(child.id, `hsl(${hue}, 60%, ${lightness}%)`)
+    })
+  })
+  return colors
+}
+
 // Petición real: "quiero que yo pueda seleccionar cada gasto, si es
 // fijo o es variable... para saber cuánto tenemos de cada" — por
 // defecto Fijo/Variable sigue viniendo de la categoría (arriba), pero

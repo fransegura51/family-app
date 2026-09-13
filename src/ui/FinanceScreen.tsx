@@ -4893,6 +4893,12 @@ export function BudgetsTab({
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
+  // Petición real: "cuando se anota manualmente el ingreso se refleja
+  // en Movimientos y descuadra las cuentas reales... si hay cuentas
+  // bancarias enlazadas no se anotan ingresos manualmente y se refleja
+  // el ingreso sumado de movimientos" — hace falta saber si la familia
+  // tiene algún banco enlazado para decidir de dónde sale "Ingresos".
+  const [hasBankAccounts, setHasBankAccounts] = useState(false)
   // Evita sembrar las categorías sugeridas más de una vez por sesión
   // mientras se espera la respuesta del primer alta.
   const seededRef = useRef(false)
@@ -4903,8 +4909,8 @@ export function BudgetsTab({
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
-    Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores(), listBudgetCategories(), getFinanceMonthStartDay()])
-      .then(async ([b, e, r, stores, cats, monthStart]) => {
+    Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores(), listBudgetCategories(), getFinanceMonthStartDay(), listBankAccounts()])
+      .then(async ([b, e, r, stores, cats, monthStart, accounts]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
         // propias todavía — se dan de alta las sugeridas solas, sin
         // pedirlo (petición real: "me pones todas esas categorías").
@@ -4919,6 +4925,7 @@ export function BudgetsTab({
         setKnownStores(stores.map((s) => s.name))
         setCategories(cats)
         setMonthStartDay(monthStart)
+        setHasBankAccounts(accounts.length > 0)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -5036,6 +5043,7 @@ export function BudgetsTab({
         from={periodFrom}
         to={periodTo}
         preset={preset}
+        hasBankAccounts={hasBankAccounts}
         onChanged={reload}
       />
 
@@ -5300,6 +5308,7 @@ function BudgetsOverview({
   from,
   to,
   preset,
+  hasBankAccounts,
   onChanged,
 }: {
   allExpenses: Expense[]
@@ -5309,6 +5318,7 @@ function BudgetsOverview({
   from: string
   to: string
   preset: SpendRangePreset
+  hasBankAccounts: boolean
   onChanged: () => void
 }) {
   // Petición real: "quiero poder ir poniendo los ingresos que tengo
@@ -5337,10 +5347,25 @@ function BudgetsOverview({
   // 4000€... presupuesto de alimentación 800€... no quiero que me
   // sumen [los de Generales] en Alimentación". El gasto sí se sigue
   // sumando entre las dos (eso no ha cambiado).
-  const incomeEntries = inRange
-    .filter((e) => e.isIncome && e.budgetGroup === group)
+  // Bug real: "cuando se anota manualmente el ingreso se refleja en
+  // Movimientos y descuadra las cuentas reales" — un ingreso apuntado
+  // a mano (p. ej. "Sueldo") es dinero que NUNCA pasó por el banco, así
+  // que si la familia ya tiene cuentas enlazadas, sumarlo junto al
+  // ingreso real de esas cuentas infla el total por encima de lo que de
+  // verdad hay. Con banco enlazado, "Ingresos" pasa a salir SOLO de los
+  // movimientos reales conciliados (source 'banco'/'ticket_banco', de
+  // cualquier categoría — es dinero real, no depende del budget_group
+  // que le haya puesto la sincronización); sin banco, sigue siendo la
+  // suma de lo apuntado a mano, como siempre.
+  const manualIncomeEntries = inRange
+    .filter((e) => e.isIncome && e.budgetGroup === group && e.source === 'manual')
     .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
-  const totalIncome = incomeEntries.reduce((sum, e) => sum + e.amount, 0)
+  const manualIncomeTotal = manualIncomeEntries.reduce((sum, e) => sum + e.amount, 0)
+  const bankIncomeTotal = inRange
+    .filter((e) => e.isIncome && (e.source === 'banco' || e.source === 'ticket_banco'))
+    .reduce((sum, e) => sum + e.amount, 0)
+  const totalIncome = hasBankAccounts ? bankIncomeTotal : manualIncomeTotal
+  const incomeEntries = manualIncomeEntries
   const totalSpent = inRange.filter((e) => !e.isIncome && e.kind === 'real').reduce((sum, e) => sum + e.amount, 0)
 
   async function handleDeleteIncome(id: string) {
@@ -5404,27 +5429,37 @@ function BudgetsOverview({
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <p style={{ color: '#1e8449', fontWeight: 600, margin: '4px 0' }}>Ingresos: +{totalIncome.toFixed(2)} €</p>
-            <button type="button" className="link-button" onClick={() => setAddingIncome((v) => !v)}>
-              {addingIncome ? 'Cerrar' : '+ Añadir ingreso'}
-            </button>
+            {/* Bug real: "cuando se anota manualmente el ingreso se
+                refleja en Movimientos y descuadra las cuentas reales" —
+                con banco enlazado, un ingreso a mano ya no se puede
+                distinguir de dinero real una vez mezclado en
+                Movimientos, así que se apunta un movimiento nuevo (o se
+                edita uno ya existente) desde ahí en vez de crear un
+                ingreso "fantasma" aquí. */}
+            {!hasBankAccounts && (
+              <button type="button" className="link-button" onClick={() => setAddingIncome((v) => !v)}>
+                {addingIncome ? 'Cerrar' : '+ Añadir ingreso'}
+              </button>
+            )}
           </div>
-          {/* Petición real: "el ingreso solo se debería apuntar
-              manualmente si no hay cuentas enlazadas... de otro modo se
-              duplica" — este Ingresos NUNCA se calcula solo desde el
-              banco (Mis cuentas es un saldo, no un histórico de
-              nóminas/ingresos), así que no hay duplicado real, pero se
-              deja explícito para que no parezca que suma lo mismo dos
-              veces. */}
           <p className="muted" style={{ marginTop: -4, marginBottom: 4, fontSize: 12 }}>
-            Solo lo que apuntes aquí a mano — no se calcula desde el saldo de tus cuentas bancarias.
+            {hasBankAccounts
+              ? 'Suma real de lo que ha entrado en tus cuentas bancarias enlazadas — ya no se apunta a mano, para que no descuadre con Movimientos.'
+              : 'Solo lo que apuntes aquí a mano — no se calcula desde el saldo de tus cuentas bancarias.'}
           </p>
 
-          {addingIncome && <AddIncomeInline group={group} categories={allCategories} onAdded={onChanged} />}
+          {!hasBankAccounts && addingIncome && <AddIncomeInline group={group} categories={allCategories} onAdded={onChanged} />}
         </>
       )}
 
       {group !== 'alimentacion' && incomeEntries.length > 0 && (
         <div className="event-list" style={{ marginBottom: 8 }}>
+          {hasBankAccounts && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Estos ingresos apuntados a mano ya NO se cuentan en el total de arriba (ver aviso encima) — bórralos si ya no
+              hacen falta.
+            </p>
+          )}
           {incomeEntries.map((inc) =>
             editingIncomeId === inc.id ? (
               <EditCategoryExpenseRow

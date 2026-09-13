@@ -5085,6 +5085,15 @@ export function BudgetsTab({
         mesContable={group !== 'alimentacion'}
       />
 
+      {/* Petición real: "desde Presupuesto en Negrita hasta Historial
+          lo muevas todo arriba debajo del botón de Fecha" — en
+          Presupuesto Generales, los presupuestos del mes en curso (y
+          su enlace a Historial) van antes que Resumen y el dónut, no
+          después. */}
+      {group === 'generales' && (
+        <BudgetsSection budgets={groupBudgets} expenses={expenses} categories={categories} group={group} monthStartDay={monthStartDay} onChanged={reload} />
+      )}
+
       <BudgetsOverview
         allExpenses={expenses}
         allCategories={categories}
@@ -5113,10 +5122,6 @@ export function BudgetsTab({
           monthExpenses={monthRealExpenses}
           onChanged={reload}
         />
-      )}
-
-      {group === 'generales' && (
-        <BudgetsSection budgets={groupBudgets} expenses={expenses} categories={categories} group={group} monthStartDay={monthStartDay} onChanged={reload} />
       )}
     </div>
   )
@@ -5162,6 +5167,11 @@ function BudgetsSection({
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [openMonth, setOpenMonth] = useState<string | null>(null)
+  // Petición real: "el formulario de Nuevo Presupuesto conviértelo en
+  // un enlace que abre el formulario en una ventana emergente" — ya no
+  // vive siempre desplegado entre los presupuestos del mes y el
+  // Historial, solo su enlace.
+  const [showAddForm, setShowAddForm] = useState(false)
 
   const current = accountingMonthRange(monthStartDay, 0)
   const sameLabel = (dateStr: string) => {
@@ -5218,18 +5228,38 @@ function BudgetsSection({
         )}
       </div>
 
-      <AddBudgetForm
-        onAdded={onChanged}
-        defaultPeriodStart={current.from}
-        categories={categories}
-        group={group}
-        existingBudgets={budgets}
-      />
+      <button type="button" className="link-button" onClick={() => setShowAddForm(true)}>
+        + Nuevo presupuesto
+      </button>
+      {showAddForm && (
+        <div className="modal-overlay" onClick={() => setShowAddForm(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Nuevo presupuesto
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setShowAddForm(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <AddBudgetForm
+              onAdded={() => {
+                setShowAddForm(false)
+                onChanged()
+              }}
+              defaultPeriodStart={current.from}
+              categories={categories}
+              group={group}
+              existingBudgets={budgets}
+            />
+          </div>
+        </div>
+      )}
 
       <button
         type="button"
         className="link-button section-title"
-        style={{ marginTop: 16 }}
+        style={{ marginTop: 8, display: 'block' }}
         onClick={() => setHistoryOpen((v) => !v)}
       >
         {historyOpen ? '▾' : '▸'} Historial
@@ -6365,8 +6395,7 @@ function AddBudgetForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Nuevo presupuesto</h2>
+    <form onSubmit={handleSubmit} className="member-form">
       <label>
         Periodo
         <select value={periodType} onChange={(e) => setPeriodType(e.target.value as BudgetPeriod)}>

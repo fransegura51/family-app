@@ -51,7 +51,7 @@ export const ECONOMIA_MENU_ITEM_META: Record<FixedEconomiaMenuItemKey, { icon: s
   Resumen: { icon: '🏠', label: 'Inicio' },
   Estadísticas: { icon: '📊', label: 'Estadísticas' },
   Movimientos: { icon: '📋', label: 'Movimientos' },
-  'Presupuesto Generales': { icon: '💰', label: 'Presupuesto Generales' },
+  'Presupuesto Generales': { icon: '💰', label: 'Presupuesto(s)' },
   Banco: { icon: '🏦', label: 'Banco' },
   'Educación financiera': { icon: '🎓', label: 'Educación financiera' },
   'accion:categorias': { icon: '🗂️', label: 'Categorías' },

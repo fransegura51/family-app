@@ -174,7 +174,15 @@ export interface MovementsFilter {
   store?: string
   tagId?: string
   necessity?: 'debo' | 'necesito' | 'quiero'
+  // La porción "Sin clasificar" del dónut no es un valor de `necessity`
+  // más — es la ausencia de clasificación (categoría sin asignar, ni
+  // ella ni su padre). Bug real: "según el dónut hay 2 movimientos sin
+  // clasificar... pero cuando intento verlos me devuelve 49 movimientos
+  // filtrados" — `viewFor({}, ...)` no filtraba nada, devolvía el mes
+  // entero. Necesita su propio flag en vez de un valor de `necessity`.
+  necessityUnclassified?: boolean
   isFixed?: boolean
+  isFixedUnclassified?: boolean
   isIncome?: boolean
 }
 
@@ -2452,7 +2460,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         centerLabel={{ name: 'Todo', total: totalReal }}
         onViewRecords={(key) =>
           key === 'sin_clasificar'
-            ? viewFor({}, `Sin clasificar — ${periodLabel}`)
+            ? viewFor({ necessityUnclassified: true }, `Sin clasificar — ${periodLabel}`)
             : viewFor({ necessity: key as 'debo' | 'necesito' | 'quiero' }, `${NECESSITY_LABELS[key as 'debo' | 'necesito' | 'quiero']} — ${periodLabel}`)
         }
       />
@@ -2476,7 +2484,11 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
       <BreakdownDonut
         slices={slices}
         centerLabel={{ name: 'Todo', total: totalReal }}
-        onViewRecords={(key) => (key === 'sin_clasificar' ? viewFor({}, `Sin clasificar — ${periodLabel}`) : viewFor({ isFixed: key === 'fijo' }, `${key === 'fijo' ? 'Fijo' : 'Variable'} — ${periodLabel}`))}
+        onViewRecords={(key) =>
+          key === 'sin_clasificar'
+            ? viewFor({ isFixedUnclassified: true }, `Sin clasificar — ${periodLabel}`)
+            : viewFor({ isFixed: key === 'fijo' }, `${key === 'fijo' ? 'Fijo' : 'Variable'} — ${periodLabel}`)
+        }
       />
     )
   }
@@ -2751,10 +2763,12 @@ function ExpensesTab({
       if (filter.categoryGroup !== undefined && !filter.categoryGroup.includes(e.category)) return false
       if (filter.store !== undefined && e.store !== filter.store) return false
       if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
-      if (filter.necessity !== undefined || filter.isFixed !== undefined) {
+      if (filter.necessity !== undefined || filter.necessityUnclassified || filter.isFixed !== undefined || filter.isFixedUnclassified) {
         const classification = resolveCategoryClassification(e.category, categories)
         if (filter.necessity !== undefined && classification.necessity !== filter.necessity) return false
+        if (filter.necessityUnclassified && classification.necessity != null) return false
         if (filter.isFixed !== undefined && classification.isFixed !== filter.isFixed) return false
+        if (filter.isFixedUnclassified && classification.isFixed != null) return false
       }
       if (filter.isIncome !== undefined && e.isIncome !== filter.isIncome) return false
       return true

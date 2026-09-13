@@ -137,11 +137,19 @@ export function categoryColors(categories: BudgetCategory[]): Map<string, string
       (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'es'),
     )
     children.forEach((child, j) => {
-      // Rango de luminosidad amplio (24 a 74) para que las subcategorías
-      // de una misma familia de color se distingan con claridad entre
-      // sí, no solo del resto de categorías.
-      const lightness = children.length <= 1 ? palette.l : Math.round(24 + (j * 50) / (children.length - 1))
-      colors.set(child.id, `hsl(${palette.h}, ${Math.max(40, palette.s - 10)}%, ${lightness}%)`)
+      // Bug real visto en producción: con luminosidad demasiado oscura
+      // (por debajo de ~30%) muchos tonos (sobre todo tierras/marrones)
+      // se ven todos igual de "marrón oscuro" aunque el número de
+      // luminosidad sea distinto — dos hermanas (p. ej. "Casa y jardín"
+      // y "Niños") costaba distinguirlas a simple vista. Ahora varía
+      // TANTO luminosidad (36 a 78, nunca demasiado oscura) COMO un
+      // pequeño desplazamiento de tono (±14°) — dos ejes en vez de uno
+      // hacen mucho más fácil distinguir subcategorías de una misma
+      // familia, sin dejar de notarse que son de la misma familia.
+      const t = children.length <= 1 ? 0.5 : j / (children.length - 1)
+      const lightness = children.length <= 1 ? palette.l : Math.round(36 + t * 42)
+      const hue = children.length <= 1 ? palette.h : Math.round((palette.h + (t - 0.5) * 28 + 360) % 360)
+      colors.set(child.id, `hsl(${hue}, ${Math.max(40, palette.s - 10)}%, ${lightness}%)`)
     })
   })
   return colors

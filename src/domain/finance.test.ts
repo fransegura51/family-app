@@ -139,11 +139,13 @@ describe('categoryColors', () => {
     const topLevelColors = [colors.get('ali'), colors.get('viv'), colors.get('ocio'), colors.get('mov')]
     expect(new Set(topLevelColors).size).toBe(topLevelColors.length)
   })
-  it('una subcategoría comparte el tono de su categoría principal, no el color entero', () => {
+  it('una subcategoría queda CERCA del tono de su categoría principal (misma familia), pero no es el color entero', () => {
     const colors = categoryColors(colored)
-    const parentHue = colors.get('ali')?.match(/hsl\((\d+)/)?.[1]
-    const childHue = colors.get('super')?.match(/hsl\((\d+)/)?.[1]
-    expect(childHue).toBe(parentHue)
+    const parentHue = Number(colors.get('ali')?.match(/hsl\((\d+)/)?.[1])
+    const childHue = Number(colors.get('super')?.match(/hsl\((\d+)/)?.[1])
+    // El desplazamiento entre hermanas es de como mucho ±14° — se nota
+    // el parentesco sin ser el hue exacto del padre.
+    expect(Math.abs(childHue - parentHue)).toBeLessThanOrEqual(14)
     expect(colors.get('super')).not.toBe(colors.get('ali'))
     expect(colors.get('super')).not.toBe(colors.get('restaurantes'))
   })

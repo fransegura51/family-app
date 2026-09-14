@@ -2198,6 +2198,9 @@ textarea {
 .kitchen-header-menu-fab-floating {
   position: fixed;
   top: 10px;
+  /* .kitchen-header-menu-fab (base) ya pone left:10px — sin anularlo
+     aquí, left Y right a la vez estiraban el botón a todo el ancho. */
+  left: auto;
   right: 10px;
   z-index: 39;
 }

@@ -81,10 +81,15 @@ export async function listBankConnections(): Promise<BankConnection[]> {
   }))
 }
 
+// Piso compartido, modo Cuentas Separadas: bank_accounts en sí no tiene
+// RLS por dueño (hace falta poder ver/gestionar cualquier cuenta), así
+// que el saldo se lee de esta vista en vez de la tabla — ella sí decide,
+// fila a fila, si el saldo es tuyo/Común/compartido (balance_visible) o
+// hay que ocultarlo (balance llega null, la tarjeta pinta un candado).
 export async function listBankAccounts(): Promise<BankAccount[]> {
   const { data, error } = await supabase
-    .from('bank_accounts')
-    .select('id, connection_id, account_uid, iban, name, currency, balance, balance_currency, balance_updated_at, owner_member_id')
+    .from('bank_accounts_with_visibility')
+    .select('id, connection_id, account_uid, iban, name, currency, balance, balance_currency, balance_updated_at, owner_member_id, balance_visible')
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
@@ -97,6 +102,7 @@ export async function listBankAccounts(): Promise<BankAccount[]> {
     balanceCurrency: r.balance_currency,
     balanceUpdatedAt: r.balance_updated_at,
     ownerMemberId: r.owner_member_id,
+    balanceVisible: r.balance_visible,
   }))
 }
 

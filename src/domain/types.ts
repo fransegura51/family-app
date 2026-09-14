@@ -218,6 +218,17 @@ export interface Expense {
   // siempre (resolveCategoryClassification); true/false = este
   // movimiento en concreto manda por encima de su categoría.
   isFixedOverride: boolean | null
+  // Piso compartido: de quién es / quién pagó este gasto. null = cuenta
+  // o bolsillo Común, visible para todos siempre (misma convención que
+  // bank_accounts.ownerMemberId).
+  ownerMemberId: string | null
+  // Si este gasto entra en el bote común (modo Cuentas Separadas) —
+  // siempre true cuando ownerMemberId es null.
+  shared: boolean
+  // Si esta fila es una copia compartida, el gasto privado original del
+  // que se copió — solo informativo (evita copias duplicadas), nunca
+  // sincroniza cambios entre las dos filas.
+  sharedFromExpenseId: string | null
 }
 
 // "alimentacion" | "generales" — separa las dos pestañas de
@@ -234,6 +245,8 @@ export interface Budget {
   category: string | null
   amount: number
   budgetGroup: BudgetGroup
+  // Piso compartido: null = presupuesto Común, visible para todos.
+  ownerMemberId: string | null
 }
 
 // Categoría de presupuesto con icono — petición real: "que se puedan
@@ -490,6 +503,12 @@ export interface BankAccount {
   // sirve para distinguir de un vistazo entre varias cuentas. null =
   // sin asignar (p. ej. una cuenta común de la casa).
   ownerMemberId: string | null
+  // Piso compartido, modo Cuentas Separadas: false = el saldo de esta
+  // cuenta no es tuyo ni Común, así que `balance` llega como null desde
+  // la vista bank_accounts_with_visibility (candado en la tarjeta). En
+  // modo Compartidas (o si eres el dueño, o la cuenta es Común) siempre
+  // true.
+  balanceVisible: boolean
 }
 
 export interface BankTransaction {

@@ -8,8 +8,10 @@ import {
   listFamilyMembers,
   regenerateAmazonWebhookToken,
   reorderFamilyMembers,
+  updateAccountsMode,
   updateFamilyMember,
   uploadMemberPhoto,
+  type AccountsMode,
 } from '@/data/family'
 import { adminResetProfilePin } from '@/data/appLock'
 import { supabase } from '@/data/supabaseClient'
@@ -216,7 +218,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         {order.length === 0 && <p className="muted">Todavía no hay miembros.</p>}
       </div>
 
-      {isAdmin && <AddMemberForm onAdded={reload} />}
+      {isAdmin && <AddMemberForm onAdded={reload} existingMemberCount={order.length} />}
       {isAdmin && <AmazonWebhookSettings />}
     </div>
   )
@@ -498,7 +500,58 @@ function EditMemberForm({
   )
 }
 
-export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
+// Piso compartido — se abre justo al crear el 2º miembro de la familia.
+// Compartidas preseleccionada (mismo valor por defecto que ya tiene la
+// familia); cerrar sin elegir deja el modo tal cual está (Compartidas).
+function AccountsModePromptModal({ onClose }: { onClose: () => void }) {
+  const [mode, setMode] = useState<AccountsMode>('compartido')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handlePick(picked: AccountsMode) {
+    setMode(picked)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateAccountsMode(picked)
+      onClose()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            ¿Cómo lleváis las cuentas?
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Compartidas: todo el mundo ve los movimientos y saldos de todos, como hasta ahora. Separadas: cada uno ve
+          solo los suyos, con una pestaña Común para lo que se comparta a propósito. Se puede cambiar más adelante
+          desde Configuración.
+        </p>
+        <div className="filter-row">
+          <button type="button" className={'chip' + (mode === 'compartido' ? ' chip-active' : '')} disabled={saving} onClick={() => handlePick('compartido')}>
+            Compartidas
+          </button>
+          <button type="button" className={'chip' + (mode === 'separado' ? ' chip-active' : '')} disabled={saving} onClick={() => handlePick('separado')}>
+            Separadas
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+      </div>
+    </div>
+  )
+}
+
+export function AddMemberForm({ onAdded, existingMemberCount }: { onAdded: () => void; existingMemberCount: number }) {
   const [name, setName] = useState('')
   const [memberType, setMemberType] = useState<MemberType>('child')
   const [color, setColor] = useState('#4C6EF5')
@@ -506,6 +559,11 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
   const [allowedSections, setAllowedSections] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Piso compartido — petición real: "que se pueda elegir desde el
+  // momento de añadir un segundo miembro... Compartidas por defecto".
+  // Solo tiene sentido preguntar la primera vez que la familia pasa de
+  // 1 a 2 miembros — añadir un 3º, 4º... no vuelve a preguntar.
+  const [showModePrompt, setShowModePrompt] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -522,6 +580,7 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
       setName('')
       setBirthDate('')
       setAllowedSections([])
+      if (existingMemberCount === 1) setShowModePrompt(true)
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir el miembro'))
@@ -532,6 +591,7 @@ export function AddMemberForm({ onAdded }: { onAdded: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
+      {showModePrompt && <AccountsModePromptModal onClose={() => setShowModePrompt(false)} />}
       <h2>Añadir miembro</h2>
       <label>
         Nombre

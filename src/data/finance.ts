@@ -33,7 +33,9 @@ export async function listExpenses(): Promise<Expense[]> {
   const data = await fetchAllRows((from, to) =>
     supabase
       .from('expenses')
-      .select('id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override')
+      .select(
+        'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id, shared, shared_from_expense_id',
+      )
       .order('expense_date', { ascending: false })
       .order('id')
       .range(from, to),
@@ -52,7 +54,42 @@ export async function listExpenses(): Promise<Expense[]> {
     tagId: r.tag_id,
     source: r.source as ExpenseSource,
     isFixedOverride: r.is_fixed_override,
+    ownerMemberId: r.owner_member_id,
+    shared: r.shared,
+    sharedFromExpenseId: r.shared_from_expense_id,
   }))
+}
+
+// Piso compartido: "pasar una copia al listado común" — copia
+// INDEPENDIENTE del gasto (no un enlace ni una marca sobre el original),
+// para que editar uno no toque el otro. shared_from_expense_id es solo
+// informativo (permite avisar "✓ Ya en Común" y evitar duplicados).
+export async function copyExpenseToShared(expenseId: string): Promise<void> {
+  const { data: original, error: fetchError } = await supabase
+    .from('expenses')
+    .select('family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id')
+    .eq('id', expenseId)
+    .single()
+  if (fetchError) throw fetchError
+
+  const { error } = await supabase.from('expenses').insert({
+    family_id: original.family_id,
+    expense_date: original.expense_date,
+    amount: original.amount,
+    category: original.category,
+    store: original.store,
+    kind: original.kind,
+    notes: original.notes,
+    is_income: original.is_income,
+    budget_group: original.budget_group,
+    tag_id: original.tag_id,
+    source: original.source,
+    is_fixed_override: original.is_fixed_override,
+    owner_member_id: original.owner_member_id,
+    shared: true,
+    shared_from_expense_id: expenseId,
+  })
+  if (error) throw error
 }
 
 export async function addExpense(input: {
@@ -128,7 +165,7 @@ export async function updateExpense(
 export async function listBudgets(): Promise<Budget[]> {
   const { data, error } = await supabase
     .from('budgets')
-    .select('id, family_id, period_type, period_start, category, amount, budget_group')
+    .select('id, family_id, period_type, period_start, category, amount, budget_group, owner_member_id')
     .order('period_start', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -139,6 +176,7 @@ export async function listBudgets(): Promise<Budget[]> {
     category: r.category,
     amount: Number(r.amount),
     budgetGroup: r.budget_group,
+    ownerMemberId: r.owner_member_id,
   }))
 }
 
@@ -148,6 +186,10 @@ export async function createBudget(input: {
   category: string
   amount: number
   budgetGroup: string
+  // Piso compartido: pásalo explícitamente a null para un presupuesto
+  // Común — si no se pasa, la columna toma por defecto quien esté
+  // logueado (presupuesto Individual).
+  ownerMemberId?: string | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('budgets').insert({
@@ -157,6 +199,7 @@ export async function createBudget(input: {
     category: input.category || null,
     amount: input.amount,
     budget_group: input.budgetGroup,
+    ...(input.ownerMemberId !== undefined ? { owner_member_id: input.ownerMemberId } : {}),
   })
   if (error) throw error
 }

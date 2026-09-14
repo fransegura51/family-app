@@ -8,6 +8,7 @@ import {
   createBudgetCategory,
   createGoal,
   createTag,
+  copyExpenseToShared,
   deleteBudget,
   deleteBudgetCategory,
   deleteExpense,
@@ -27,7 +28,7 @@ import {
 } from '@/data/finance'
 import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTransactions } from '@/data/bank'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
-import { getFinanceMonthStartDay, listFamilyMembers } from '@/data/family'
+import { getAccountsMode, getFinanceMonthStartDay, listFamilyMembers, type AccountsMode } from '@/data/family'
 import {
   economiaMenuEntryMeta,
   isCustomEconomiaMenuKey,
@@ -301,6 +302,20 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   // lean del mismo sitio.
   const [menuLayout, setMenuLayout] = useState<EconomiaMenuGroup[]>(() => loadEconomiaMenuLayout())
   const [pinnedPlaceholderNotice, setPinnedPlaceholderNotice] = useState(false)
+  // Piso compartido — se cargan aquí arriba, una vez, para que cualquier
+  // pestaña (Movimientos, Presupuesto(s), Banco...) sepa si tiene que
+  // separar lo tuyo de lo de los demás y cuál es "lo tuyo".
+  const [accountsMode, setAccountsMode] = useState<AccountsMode>('compartido')
+  const [myMemberId, setMyMemberId] = useState<string | null>(null)
+
+  useEffect(() => {
+    Promise.all([getAccountsMode(), listFamilyMembers()])
+      .then(([mode, members]) => {
+        setAccountsMode(mode)
+        setMyMemberId(members.find((m) => m.linkedProfileId === profile.id)?.id ?? null)
+      })
+      .catch(() => {})
+  }, [profile.id])
 
   function persistMenuLayout(next: EconomiaMenuGroup[]) {
     setMenuLayout(next)
@@ -467,10 +482,18 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
                 }
               : undefined
           }
+          accountsMode={accountsMode}
+          myMemberId={myMemberId}
         />
       )}
       {tab === 'Presupuesto Generales' && (
-        <BudgetsTab key={refreshKey} group="generales" seedCategories={MASTER_CATEGORY_SEED} />
+        <BudgetsTab
+          key={refreshKey}
+          group="generales"
+          seedCategories={MASTER_CATEGORY_SEED}
+          accountsMode={accountsMode}
+          myMemberId={myMemberId}
+        />
       )}
       {tab === 'Banco' && <BankTab key={refreshKey} openConnectSignal={openConnectSignal} focusAccountId={focusAccountId} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
@@ -948,7 +971,14 @@ function AccountBalanceCards({
                 <OwnerBadge owner={owner} size={20} ring />
               </div>
               <div className="account-card-name">{a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'}</div>
-              <div className="account-card-balance">{a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}</div>
+              {/* Piso compartido, modo Separado: el saldo de una cuenta
+                  que no es tuya ni Común llega null a propósito desde
+                  bank_accounts_with_visibility — candado en vez de
+                  "Sincronizando…" para no dar a entender que falta un
+                  dato que en realidad está oculto aposta. */}
+              <div className="account-card-balance">
+                {!a.balanceVisible ? '🔒' : a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}
+              </div>
             </button>
           )
         })}
@@ -2768,12 +2798,20 @@ function ExpensesTab({
   onClearFilter,
   previousTabLabel,
   onBack,
+  accountsMode = 'compartido',
+  myMemberId = null,
 }: {
   filter?: MovementsFilter | null
   onClearFilter?: () => void
   previousTabLabel?: SubTab | null
   onBack?: () => void
+  accountsMode?: AccountsMode
+  myMemberId?: string | null
 }) {
+  // Piso compartido — solo tiene sentido elegir Individual/Común en modo
+  // Separado; en Compartido no hay nada que separar (todo es una sola
+  // lista, como siempre).
+  const [scope, setScope] = useState<'personal' | 'comun'>('personal')
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
@@ -2888,12 +2926,20 @@ function ExpensesTab({
 
   const monthExpenses = filteredExpenses
 
+  // Piso compartido: en modo Separado, RLS ya solo entrega lo tuyo + lo
+  // compartido — aquí solo falta partir eso en dos vistas (Individual /
+  // Común). En modo Compartido no hay nada que partir, todo es Individual.
+  const scopeFilteredExpenses = useMemo(
+    () => (accountsMode === 'separado' ? monthExpenses.filter((e) => (scope === 'comun' ? e.shared : !e.shared)) : monthExpenses),
+    [monthExpenses, accountsMode, scope],
+  )
+
   // Base para "cuentas separadas": si hay una cuenta elegida, todo lo
   // demás (cabecera, filtro de tipo, lista) se calcula solo sobre ESA
   // cuenta — mismo patrón que activeAccountId en BankTab.
   const accountFilteredExpenses = useMemo(
-    () => (activeAccountId ? monthExpenses.filter((e) => expenseAccountId.get(e.id) === activeAccountId) : monthExpenses),
-    [monthExpenses, activeAccountId, expenseAccountId],
+    () => (activeAccountId ? scopeFilteredExpenses.filter((e) => expenseAccountId.get(e.id) === activeAccountId) : scopeFilteredExpenses),
+    [scopeFilteredExpenses, activeAccountId, expenseAccountId],
   )
 
   // Bug real: "en Movimientos salen 4349,63€ de ingresos, pero en
@@ -2985,6 +3031,21 @@ function ExpensesTab({
         />
       )}
 
+      {/* Piso compartido, modo Separado: Individual (lo tuyo) / Común
+          (el bote compartido) — mismas listas y totales de siempre,
+          solo cambia qué gastos entran. En Compartido no se muestra:
+          no hay nada que separar. */}
+      {accountsMode === 'separado' && (
+        <div className="filter-row" style={{ marginTop: 8 }}>
+          <button type="button" className={'chip' + (scope === 'personal' ? ' chip-active' : '')} onClick={() => setScope('personal')}>
+            Individual
+          </button>
+          <button type="button" className={'chip' + (scope === 'comun' ? ' chip-active' : '')} onClick={() => setScope('comun')}>
+            Común
+          </button>
+        </div>
+      )}
+
       {/* Base para "Piso compartido/cuentas separadas": poder ver solo
           la cuenta de uno (o la común), no todas mezcladas — mismo
           filtro que ya existía en Banco (activeAccountId), pero
@@ -3056,12 +3117,36 @@ function ExpensesTab({
               ownerMember={ownerMemberForExpense(e.id)}
               onClick={() => setEditingId(e.id)}
               extraAction={
-                <ConfirmIconButton
-                  icon="✕"
-                  className="icon-button"
-                  ariaLabel="Borrar movimiento"
-                  onConfirm={() => deleteExpense(e.id).then(reload)}
-                />
+                <>
+                  {/* Piso compartido — petición real: "que el que haya
+                      pagado algo en común... pueda pasar una copia del
+                      movimiento con un botón al listado común". Copia
+                      independiente (editar/borrar una no toca la otra),
+                      solo tiene sentido sobre lo tuyo, sin compartir ya. */}
+                  {accountsMode === 'separado' && scope === 'personal' && !e.shared && e.ownerMemberId === myMemberId && (
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={(ev) => {
+                        ev.stopPropagation()
+                        copyExpenseToShared(e.id).then(reload)
+                      }}
+                    >
+                      → Compartir a Común
+                    </button>
+                  )}
+                  {accountsMode === 'separado' && scope === 'personal' && expenses.some((x) => x.sharedFromExpenseId === e.id) && (
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      ✓ En Común
+                    </span>
+                  )}
+                  <ConfirmIconButton
+                    icon="✕"
+                    className="icon-button"
+                    ariaLabel="Borrar movimiento"
+                    onConfirm={() => deleteExpense(e.id).then(reload)}
+                  />
+                </>
               }
             />
           ),
@@ -5034,10 +5119,19 @@ async function seedCategoryTree(seed: CategorySeed[], budgetGroup: string): Prom
 export function BudgetsTab({
   group,
   seedCategories,
+  accountsMode = 'compartido',
+  myMemberId = null,
 }: {
   group: string
   seedCategories: CategorySeed[]
+  accountsMode?: AccountsMode
+  myMemberId?: string | null
 }) {
+  // Piso compartido — solo aplica a Presupuesto Generales ('generales');
+  // Alimentación se sigue viendo entera por todos siempre (RLS ya lo
+  // deja fuera del modo Separado, ver 0098_shared_accounts_mode.sql).
+  const scopingActive = group === 'generales' && accountsMode === 'separado'
+  const [scope, setScope] = useState<'personal' | 'comun'>('personal')
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -5061,6 +5155,9 @@ export function BudgetsTab({
   // el ingreso sumado de movimientos" — hace falta saber si la familia
   // tiene algún banco enlazado para decidir de dónde sale "Ingresos".
   const [hasBankAccounts, setHasBankAccounts] = useState(false)
+  // Piso compartido: para poner nombre/avatar a cada dueño en el saldo
+  // entre personas de la pestaña Común.
+  const [members, setMembers] = useState<FamilyMember[]>([])
   // Evita sembrar las categorías sugeridas más de una vez por sesión
   // mientras se espera la respuesta del primer alta.
   const seededRef = useRef(false)
@@ -5071,8 +5168,17 @@ export function BudgetsTab({
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
-    Promise.all([listBudgets(), listExpenses(), listReceipts(), listShoppingStores(), listBudgetCategories(), getFinanceMonthStartDay(), listBankAccounts()])
-      .then(async ([b, e, r, stores, cats, monthStart, accounts]) => {
+    Promise.all([
+      listBudgets(),
+      listExpenses(),
+      listReceipts(),
+      listShoppingStores(),
+      listBudgetCategories(),
+      getFinanceMonthStartDay(),
+      listBankAccounts(),
+      listFamilyMembers(),
+    ])
+      .then(async ([b, e, r, stores, cats, monthStart, accounts, m]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
         // propias todavía — se dan de alta las sugeridas solas, sin
         // pedirlo (petición real: "me pones todas esas categorías").
@@ -5088,6 +5194,7 @@ export function BudgetsTab({
         setCategories(cats)
         setMonthStartDay(monthStart)
         setHasBankAccounts(accounts.length > 0)
+        setMembers(m)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -5107,7 +5214,12 @@ export function BudgetsTab({
   const visibleMonth = periodFrom.slice(0, 7)
   const periodTitle = periodLabelForTitle(preset, periodFrom, periodTo)
   const groupCategories = categories.filter((c) => c.budgetGroup === group)
-  const groupBudgets = budgets.filter((b) => b.budgetGroup === group)
+  // Piso compartido: Individual = lo tuyo (owner_member_id no nulo, RLS
+  // ya solo entrega el tuyo); Común = owner_member_id null. Sin modo
+  // Separado activo (o en Alimentación), todo se ve junto como siempre.
+  const scopedExpenses = scopingActive ? expenses.filter((e) => (scope === 'comun' ? e.shared : !e.shared)) : expenses
+  const scopedBudgets = scopingActive ? budgets.filter((b) => (scope === 'comun' ? b.ownerMemberId === null : b.ownerMemberId !== null)) : budgets
+  const groupBudgets = scopedBudgets.filter((b) => b.budgetGroup === group)
   // Solo los tickets clasificados como Alimentación cuentan aquí —
   // petición real: "ahora también hay tickets que no son de
   // Alimentación (Amazon...), esos no se deberían detallar en el
@@ -5130,7 +5242,7 @@ export function BudgetsTab({
   // criterio en Resumen/Estadísticas/BudgetsOverview) — se excluye
   // aquí también, que es lo que alimenta el dónut "Reparto del gasto
   // por categoría" de más abajo.
-  const monthRealExpenses = expenses.filter(
+  const monthRealExpenses = scopedExpenses.filter(
     (e) =>
       e.expenseDate >= periodFrom &&
       e.expenseDate <= periodTo &&
@@ -5206,19 +5318,42 @@ export function BudgetsTab({
         mesContable={group !== 'alimentacion'}
       />
 
+      {/* Piso compartido, modo Separado: Individual (tu presupuesto) /
+          Común (el de todos) — mismas pestañas de siempre, cambia solo
+          qué presupuestos/gastos entran. */}
+      {scopingActive && (
+        <div className="filter-row" style={{ marginTop: 8 }}>
+          <button type="button" className={'chip' + (scope === 'personal' ? ' chip-active' : '')} onClick={() => setScope('personal')}>
+            Individual
+          </button>
+          <button type="button" className={'chip' + (scope === 'comun' ? ' chip-active' : '')} onClick={() => setScope('comun')}>
+            Común
+          </button>
+        </div>
+      )}
+      {scopingActive && scope === 'comun' && <SharedBalanceCard expenses={monthRealExpenses} members={members} myMemberId={myMemberId} />}
+
       {/* Petición real: "desde Presupuesto en Negrita hasta Historial
           lo muevas todo arriba debajo del botón de Fecha" — en
           Presupuesto Generales, los presupuestos del mes en curso (y
           su enlace a Historial) van antes que Resumen y el dónut, no
           después. */}
       {group === 'generales' && (
-        <BudgetsSection budgets={groupBudgets} expenses={expenses} categories={categories} group={group} monthStartDay={monthStartDay} onChanged={reload} />
+        <BudgetsSection
+          budgets={groupBudgets}
+          expenses={scopedExpenses}
+          categories={categories}
+          group={group}
+          monthStartDay={monthStartDay}
+          onChanged={reload}
+          forceOwnerNull={scopingActive && scope === 'comun'}
+        />
       )}
 
       <BudgetsOverview
-        allExpenses={expenses}
+        allExpenses={scopedExpenses}
         allCategories={categories}
-        budgets={budgets}
+        budgets={scopedBudgets}
         group={group}
         from={periodFrom}
         to={periodTo}
@@ -5263,6 +5398,88 @@ function periodLabelForTitle(preset: SpendRangePreset, from: string, to: string)
   return PRESET_LABELS[preset]
 }
 
+// Piso compartido — petición real: "en el listado quiero que por un
+// lado haya un contador de gastos totales y por otro que se vea cuánto
+// ha pagado cada uno de los usuarios" (saldo entre personas). Reparto a
+// partes iguales entre quienes tengan algo apuntado — no hay pedido de
+// repartos distintos todavía. Los gastos de una cuenta Común (sin dueño)
+// cuentan en el total pero no se atribuyen a nadie, tal y como se pidió.
+function SharedBalanceCard({
+  expenses,
+  members,
+  myMemberId,
+}: {
+  expenses: Expense[]
+  members: FamilyMember[]
+  myMemberId: string | null
+}) {
+  const total = expenses.reduce((sum, e) => sum + e.amount, 0)
+  const memberById = new Map(members.map((m) => [m.id, m]))
+
+  const byOwner = new Map<string, number>()
+  let unattributed = 0
+  for (const e of expenses) {
+    if (e.ownerMemberId === null) {
+      unattributed += e.amount
+    } else {
+      byOwner.set(e.ownerMemberId, (byOwner.get(e.ownerMemberId) ?? 0) + e.amount)
+    }
+  }
+  const rows = [...byOwner.entries()]
+    .map(([memberId, paid]) => ({ memberId, name: memberById.get(memberId)?.name ?? 'Alguien', paid }))
+    .sort((a, b) => b.paid - a.paid)
+  const participants = rows.length
+  const fairShare = participants > 0 ? total / participants : 0
+
+  return (
+    <div className="card event-card">
+      <strong>Saldo entre personas</strong>
+      <p style={{ margin: '4px 0' }}>
+        Total gastado: <strong>{total.toFixed(2)} €</strong>
+      </p>
+      {participants > 0 && (
+        <p className="muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 8 }}>
+          A partes iguales entre {participants} {participants === 1 ? 'persona' : 'personas'}, tocaría a{' '}
+          {fairShare.toFixed(2)} € cada una.
+        </p>
+      )}
+      <div className="event-list">
+        {rows.map((r) => {
+          const diff = r.paid - fairShare
+          return (
+            <div key={r.memberId} className="card task-card">
+              <div className="task-card-main">
+                <strong>
+                  {r.name}
+                  {r.memberId === myMemberId ? ' (tú)' : ''}
+                </strong>
+                <p className="muted">
+                  Ha pagado {r.paid.toFixed(2)} €
+                  {participants > 1 && (
+                    <>
+                      {' — '}
+                      {diff >= 0 ? `le deben ${diff.toFixed(2)} €` : `debe ${Math.abs(diff).toFixed(2)} €`}
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+        {unattributed > 0 && (
+          <div className="card task-card">
+            <div className="task-card-main">
+              <strong>🏠 Cuenta común</strong>
+              <p className="muted">{unattributed.toFixed(2)} € — no se atribuye a nadie en concreto</p>
+            </div>
+          </div>
+        )}
+        {rows.length === 0 && unattributed === 0 && <p className="muted">Todavía no hay gastos comunes en este periodo.</p>}
+      </div>
+    </div>
+  )
+}
+
 // Presupuestos: petición real: "no me gusta que arriba haya un
 // presupuesto y abajo otro listado... quitamos el panel Presupuesto
 // total del mes por completo, subimos los presupuestos del mes en
@@ -5278,6 +5495,7 @@ function BudgetsSection({
   group,
   monthStartDay,
   onChanged,
+  forceOwnerNull = false,
 }: {
   budgets: Budget[]
   expenses: Expense[]
@@ -5285,6 +5503,9 @@ function BudgetsSection({
   group: string
   monthStartDay: number
   onChanged: () => void
+  // Piso compartido: true en la pestaña Común — un presupuesto nuevo
+  // creado desde aquí es de todos (owner_member_id null), no solo tuyo.
+  forceOwnerNull?: boolean
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [openMonth, setOpenMonth] = useState<string | null>(null)
@@ -5372,6 +5593,7 @@ function BudgetsSection({
               categories={categories}
               group={group}
               existingBudgets={budgets}
+              ownerMemberId={forceOwnerNull ? null : undefined}
             />
           </div>
         </div>
@@ -6471,6 +6693,7 @@ function AddBudgetForm({
   categories,
   group,
   existingBudgets,
+  ownerMemberId,
 }: {
   onAdded: () => void
   defaultPeriodStart: string
@@ -6481,6 +6704,10 @@ function AddBudgetForm({
   // proceder?'" — pasado solo cuando hay algo que comprobar (desde
   // BudgetsSection); en el Historial de meses pasados no hace falta.
   existingBudgets?: Budget[]
+  // Piso compartido: null = presupuesto Común (pestaña Común);
+  // undefined = deja que la base de datos lo asigne automáticamente a
+  // quien esté logueado (pestaña Individual).
+  ownerMemberId?: string | null
 }) {
   const [periodType, setPeriodType] = useState<BudgetPeriod>('mensual')
   const [periodStart, setPeriodStart] = useState(defaultPeriodStart)
@@ -6508,7 +6735,7 @@ function AddBudgetForm({
     setSaving(true)
     setError(null)
     try {
-      await createBudget({ periodType, periodStart, category, amount: Number(amount), budgetGroup: group })
+      await createBudget({ periodType, periodStart, category, amount: Number(amount), budgetGroup: group, ownerMemberId })
       setCategory('')
       setAmount('')
       onAdded()

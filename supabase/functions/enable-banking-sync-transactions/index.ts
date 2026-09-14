@@ -144,6 +144,7 @@ interface BankAccountRow {
   id: string
   account_uid: string
   connection_id: string
+  owner_member_id: string | null
   bank_connections: { family_id: string; status: string }
 }
 
@@ -328,7 +329,10 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
           .eq("matched_expense_id", match.id)
           .maybeSingle()
         if (!alreadyLinked) {
-          await admin.from("expenses").update({ source: "ticket_banco" }).eq("id", match.id)
+          // Piso compartido: si el ticket/manual ya tenía otro dueño
+          // (p. ej. quien lo apuntó a mano), pasa a ser el de la cuenta
+          // bancaria — es la fuente real de quién es ese dinero.
+          await admin.from("expenses").update({ source: "ticket_banco", owner_member_id: account.owner_member_id }).eq("id", match.id)
           await admin.from("bank_transactions").update({ matched_expense_id: match.id }).eq("id", bt.id)
           continue
         }
@@ -349,6 +353,10 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
         is_income: isIncome,
         budget_group: isIncome ? "ingresos" : "generales",
         source: "banco",
+        // Piso compartido: este insert corre con el rol de servicio (sin
+        // auth.uid()), así que el default de la columna no aplica aquí
+        // — el dueño real es el de la cuenta bancaria de origen.
+        owner_member_id: account.owner_member_id,
       })
       .select("id")
       .single()
@@ -409,7 +417,7 @@ Deno.serve(async (req) => {
 
     let accountsQuery = admin
       .from("bank_accounts")
-      .select("id, account_uid, connection_id, bank_connections!inner(family_id, status)")
+      .select("id, account_uid, connection_id, owner_member_id, bank_connections!inner(family_id, status)")
       .eq("bank_connections.status", "active")
     if (familyIds) accountsQuery = accountsQuery.in("bank_connections.family_id", familyIds)
     const { data: accounts, error: accountsError } = await accountsQuery

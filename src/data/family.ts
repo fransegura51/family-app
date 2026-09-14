@@ -199,20 +199,47 @@ export async function updateFamilyName(name: string): Promise<void> {
 // se quiere que empiece el mes" — día 1-31 en el que "Este mes"
 // empieza a contar en los filtros de Economía (ver
 // domain/dateRanges.ts rangeForPreset). 1 = mes de calendario normal.
+// Piso compartido: pedido al revisar el plan de Cuentas Separadas —
+// pasa de ser un único ajuste por familia a uno por persona, para que
+// cada uno vea sus propios totales agrupados a su manera sin depender
+// de los demás. Vive en `profiles` (cada usuario solo puede tocar su
+// propia fila) en vez de `family_members` (ahí solo puede escribir el
+// admin) — mismo `auth.uid()` que ya resuelve currentFamilyId.
 export async function getFinanceMonthStartDay(): Promise<number> {
-  const familyId = await currentFamilyId()
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
   const { data, error } = await supabase
-    .from('families')
+    .from('profiles')
     .select('finance_month_start_day')
-    .eq('id', familyId)
+    .eq('id', userResult.user.id)
     .single()
   if (error) throw error
   return data.finance_month_start_day
 }
 
 export async function updateFinanceMonthStartDay(day: number): Promise<void> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { error } = await supabase.from('profiles').update({ finance_month_start_day: day }).eq('id', userResult.user.id)
+  if (error) throw error
+}
+
+// Piso compartido: "compartido" (todos ven todo, comportamiento de
+// siempre) o "separado" (cada uno ve solo lo suyo + un bote común) —
+// ajuste único por familia, elegido al añadir el 2º miembro y
+// cambiable después desde Configuración.
+export type AccountsMode = 'compartido' | 'separado'
+
+export async function getAccountsMode(): Promise<AccountsMode> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase.from('families').update({ finance_month_start_day: day }).eq('id', familyId)
+  const { data, error } = await supabase.from('families').select('accounts_mode').eq('id', familyId).single()
+  if (error) throw error
+  return data.accounts_mode as AccountsMode
+}
+
+export async function updateAccountsMode(mode: AccountsMode): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('families').update({ accounts_mode: mode }).eq('id', familyId)
   if (error) throw error
 }
 

@@ -42,6 +42,9 @@ function exp(over: Partial<Expense> & Pick<Expense, 'expenseDate' | 'amount' | '
     tagId: null,
     source: 'manual',
     isFixedOverride: null,
+    ownerMemberId: null,
+    shared: false,
+    sharedFromExpenseId: null,
     ...over,
   }
 }
@@ -100,7 +103,7 @@ describe('budgetPeriodRange', () => {
 })
 
 describe('budgetSpent', () => {
-  const budgetBase: Budget = { id: 'b', familyId: 'f', periodType: 'mensual', periodStart: '2026-09-01', category: null, amount: 1000, budgetGroup: 'generales' }
+  const budgetBase: Budget = { id: 'b', familyId: 'f', periodType: 'mensual', periodStart: '2026-09-01', category: null, amount: 1000, budgetGroup: 'generales', ownerMemberId: null }
   const expenses: Expense[] = [
     exp({ id: '1', expenseDate: '2026-09-05', amount: 20, category: 'Supermercado' }),
     exp({ id: '2', expenseDate: '2026-09-06', amount: 5, category: 'Supermercado', kind: 'estimado' }),

@@ -2,7 +2,15 @@ import { FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
-import { getFamilyName, getFinanceMonthStartDay, updateFamilyName, updateFinanceMonthStartDay } from '@/data/family'
+import {
+  getAccountsMode,
+  getFamilyName,
+  getFinanceMonthStartDay,
+  updateAccountsMode,
+  updateFamilyName,
+  updateFinanceMonthStartDay,
+  type AccountsMode,
+} from '@/data/family'
 import { listAppUsage } from '@/data/appUsage'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import {
@@ -137,7 +145,7 @@ function AccountingMonthSection() {
       <strong>📅 Inicio del mes contable</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         El filtro "Este mes" de Economía cuenta desde este día del mes. Pon 31 para que empiece el último día de
-        cada mes.
+        cada mes. Es solo tuyo — cada persona de la familia puede tener el suyo, sin afectar al de los demás.
       </p>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
         Día
@@ -154,6 +162,61 @@ function AccountingMonthSection() {
         />
         {saving && <span className="muted">Guardando…</span>}
       </label>
+      {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+// Piso compartido — petición real: "que se pueda elegir desde el momento
+// de añadir un segundo miembro... y que se pueda cambiar de modo en un
+// futuro". El primer momento vive en FamilyScreen (ventana emergente al
+// crear el 2º miembro); este es el sitio para cambiarlo después. Mismo
+// patrón que AccountingMonthSection (card, carga y guarda solo).
+function AccountsModeSection() {
+  const [mode, setMode] = useState<AccountsMode>('compartido')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getAccountsMode()
+      .then(setMode)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleChange(next: AccountsMode) {
+    if (next === mode) return
+    setMode(next)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateAccountsMode(next)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>🔐 Modo de cuentas</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Compartidas: todo el mundo ve los movimientos y saldos de todos, como hasta ahora. Separadas: cada uno ve
+        solo los suyos (ni el admin ve los de otro), con una pestaña Común para lo que se comparta a propósito.
+      </p>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" className={'chip' + (mode === 'compartido' ? ' chip-active' : '')} onClick={() => handleChange('compartido')}>
+          Compartidas
+        </button>
+        <button type="button" className={'chip' + (mode === 'separado' ? ' chip-active' : '')} onClick={() => handleChange('separado')}>
+          Separadas
+        </button>
+      </div>
+      {saving && <span className="muted">Guardando…</span>}
       {error && <p className="error">{error}</p>}
     </div>
   )
@@ -477,6 +540,7 @@ export function MenuSettingsScreen() {
 
       <FamilyNameSection />
       <AccountingMonthSection />
+      <AccountsModeSection />
       <BankAccountsSection />
       <AdminUsageLink />
       <AppLockSection />

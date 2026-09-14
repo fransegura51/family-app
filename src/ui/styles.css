@@ -2186,6 +2186,18 @@ textarea {
   top: 34%;
 }
 
+/* Petición real: "el botón de Menú de Economía lo vamos a convertir en
+   flotante" — deja de estar pegado a la cabecera con foto (se iba
+   scroll arriba con ella) para quedarse siempre a la vista, como el
+   resto de botones flotantes de la app (↑ arriba, redes sociales...).
+   Mismo aspecto que .kitchen-header-menu-fab, solo cambia la posición. */
+.kitchen-header-menu-fab-floating {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 39;
+}
+
 /* Tarjeta de acceso rápido de la pestaña Inicio (Alimentación, Compras)
    — un <button> normal hereda el texto blanco del estilo base de
    button{}; aquí el color se pone explícito para no repetir el bug de

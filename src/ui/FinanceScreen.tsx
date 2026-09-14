@@ -392,8 +392,15 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
         <img src={economiaHeaderImg} alt="Economía" className="kitchen-header-img" />
         <button
           type="button"
-          className="kitchen-header-menu-fab"
-          onClick={() => setEconomiaMenuOpen((v) => !v)}
+          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating"
+          onClick={() => {
+            // El desplegable se abre pegado a la cabecera (arriba del
+            // todo) — si el botón flotante se toca con la página ya
+            // desplazada, hay que subir para que el menú no se abra
+            // fuera de la vista.
+            if (!economiaMenuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
+            setEconomiaMenuOpen((v) => !v)
+          }}
           aria-label={economiaMenuOpen ? 'Cerrar menú de Economía' : 'Abrir menú de Economía'}
         >
           {economiaMenuOpen ? '✕' : '☰'} Menú

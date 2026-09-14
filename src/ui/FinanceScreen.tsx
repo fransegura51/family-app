@@ -2798,6 +2798,11 @@ function ExpensesTab({
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Petición real: "para Piso compartido/cuentas separadas primero hay
+  // que dejar Movimientos preparado... ponle los mismos filtros que a
+  // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
+  // chip row y mismo criterio que ya usa BankTab.
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos'>('todos')
   // Igual que las categorías sugeridas de Presupuesto Generales: se dan
   // de alta solas la primera vez, sin pedirlo — petición real: "los
   // ingresos también se deberían poder categorizar, como sueldo,
@@ -2903,6 +2908,22 @@ function ExpensesTab({
     [monthExpenses, categories],
   )
 
+  // Mismo criterio que BankTab: "Ingresos" no cuenta un traspaso entre
+  // cuentas propias ni entrando ni saliendo; Fijos/Variables ignora los
+  // ingresos (no tienen esa clasificación).
+  const typeFilteredExpenses = useMemo(
+    () =>
+      monthExpenses.filter((e) => {
+        if (typeFilter === 'todos') return true
+        if (typeFilter === 'ingresos') return e.isIncome && !isInternalTransferCategory(e.category, categories)
+        if (e.isIncome) return false
+        const isFixed = resolveExpenseFixed(e, categories)
+        return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
+      }),
+    [monthExpenses, typeFilter, categories],
+  )
+  const typeFilterTotal = useMemo(() => typeFilteredExpenses.reduce((sum, e) => sum + e.amount, 0), [typeFilteredExpenses])
+
   const memberById = new Map(members.map((m) => [m.id, m]))
   const accountById = new Map(accounts.map((a) => [a.id, a]))
   function ownerMemberForExpense(expenseId: string): FamilyMember | null {
@@ -2951,8 +2972,28 @@ function ExpensesTab({
         {monthIncome > 0 && ` · +${monthIncome.toFixed(2)} € ingresados`}
       </p>
 
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" className={'chip' + (typeFilter === 'todos' ? ' chip-active' : '')} onClick={() => setTypeFilter('todos')}>
+          Todos
+        </button>
+        <button type="button" className={'chip' + (typeFilter === 'fijos' ? ' chip-active' : '')} onClick={() => setTypeFilter('fijos')}>
+          Gastos fijos
+        </button>
+        <button type="button" className={'chip' + (typeFilter === 'variables' ? ' chip-active' : '')} onClick={() => setTypeFilter('variables')}>
+          Gastos variables
+        </button>
+        <button type="button" className={'chip' + (typeFilter === 'ingresos' ? ' chip-active' : '')} onClick={() => setTypeFilter('ingresos')}>
+          Ingresos
+        </button>
+      </div>
+      {typeFilter !== 'todos' && (
+        <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+          Total {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : 'de ingresos'}: <strong>{typeFilterTotal.toFixed(2)} €</strong>
+        </p>
+      )}
+
       <div className="price-row-list">
-        {monthExpenses.map((e) =>
+        {typeFilteredExpenses.map((e) =>
           editingId === e.id ? (
             <EditExpenseInline
               key={e.id}
@@ -2984,7 +3025,7 @@ function ExpensesTab({
             />
           ),
         )}
-        {monthExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
+        {typeFilteredExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
       </div>
     </div>
   )

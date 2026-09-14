@@ -17,6 +17,7 @@ import {
   deleteShoppingItems,
   listShoppingItems,
   reorderShoppingItems,
+  updateShoppingItem,
   updateShoppingItemStatus,
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts } from '@/data/products'
@@ -588,6 +589,10 @@ function ShoppingListTab() {
   // petición real: "en compras lo mismo, botón flotante Añadir
   // producto y formulario emergente".
   const [addingItem, setAddingItem] = useState(false)
+  // Tocar el nombre de un producto pendiente lo abre para editarlo
+  // (petición real: "que se puedan editar los productos tocándolos") —
+  // mismo modal que "Añadir producto", pero precargado con sus datos.
+  const [editingItem, setEditingItem] = useState<ShoppingItem | null>(null)
   // Cada tienda se puede plegar tocando su nombre — petición real: "que
   // la lista de cada supermercado sea extensible y se contraiga si se
   // toca el nombre de la tienda". Empiezan todas desplegadas.
@@ -840,6 +845,7 @@ function ShoppingListTab() {
                 onSetStatus={setStatus}
                 onDeleted={reload}
                 onReordered={reload}
+                onEdit={setEditingItem}
               />
               {/* Los comprados se quedan tachados a la vista; solo se
                   limpia la tienda entera al terminar de comprar allí. */}
@@ -889,6 +895,30 @@ function ShoppingListTab() {
               knownStores={[...new Set(items.map((i) => i.store).filter((s): s is string => !!s))]}
               hideHeading
               onAdded={reload}
+            />
+          </div>
+        </div>
+      )}
+
+      {editingItem && (
+        <div className="modal-overlay" onClick={() => setEditingItem(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Editar producto
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setEditingItem(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <EditShoppingItemForm
+              item={editingItem}
+              suggestions={suggestions}
+              knownStores={[...new Set(items.map((i) => i.store).filter((s): s is string => !!s))]}
+              onSaved={() => {
+                reload()
+                setEditingItem(null)
+              }}
             />
           </div>
         </div>
@@ -1128,6 +1158,7 @@ function DraggableStoreGroup({
   onSetStatus,
   onDeleted,
   onReordered,
+  onEdit,
 }: {
   items: ShoppingItem[]
   suggestions: ProductSuggestion[]
@@ -1135,6 +1166,7 @@ function DraggableStoreGroup({
   onSetStatus: (id: string, status: ShoppingItemStatus) => void
   onDeleted: () => void
   onReordered: () => void
+  onEdit: (item: ShoppingItem) => void
 }) {
   const [order, setOrder] = useState(items)
   const dragRef = useRef<{ id: string; startY: number; startIndex: number; itemHeight: number } | null>(null)
@@ -1210,50 +1242,157 @@ function DraggableStoreGroup({
         ].filter(Boolean)
         const label = item.name + (detailParts.length > 0 ? ` · ${detailParts.join(' · ')}` : '')
         return (
-          <div
+          <ShoppingItemRow
             key={item.id}
-            className={
-              'price-row' +
-              (draggingId === item.id ? ' shopping-item-dragging' : '') +
-              (done ? ' shopping-item-done' : '')
-            }
-            style={draggingId === item.id ? { transform: `translateY(${dragOffset}px)` } : undefined}
-          >
-            {!shoppingMode && (
-              <span
-                className="shopping-drag-handle"
-                onPointerDown={(e) => handleTouchStart(e, item.id, e.currentTarget.parentElement as HTMLElement)}
-                onPointerMove={handleTouchMove}
-                onPointerUp={handleTouchEnd}
-                onPointerCancel={handleTouchEnd}
-                aria-label="Arrastrar para reordenar"
-              >
-                ⠿
-              </span>
-            )}
-            <span className="price-row-name">{label}</span>
-            {/* Marcar/desmarcar comprado — ya NO borra el producto de la
-                lista, solo lo tacha (petición real: seguir viéndolo
-                mientras se sigue comprando el resto). */}
-            <button
-              type="button"
-              className={'task-toggle-compact' + (done ? ' task-toggle-done' : '')}
-              onClick={() => onSetStatus(item.id, done ? 'pendiente' : 'comprado')}
-              aria-label={done ? 'Marcar como pendiente' : 'Comprado'}
-            >
-              ✓
-            </button>
-            {!shoppingMode && (
-              <ConfirmIconButton
-                icon="✕"
-                className="link-button"
-                ariaLabel="Eliminar"
-                onConfirm={() => deleteShoppingItem(item.id).then(onDeleted)}
-              />
-            )}
-          </div>
+            item={item}
+            label={label}
+            done={done}
+            dragging={draggingId === item.id}
+            dragOffsetY={dragOffset}
+            shoppingMode={shoppingMode}
+            onSetStatus={onSetStatus}
+            onDelete={(id) => deleteShoppingItem(id).then(onDeleted)}
+            onEdit={onEdit}
+            onDragStart={handleTouchStart}
+            onDragMove={handleTouchMove}
+            onDragEnd={handleTouchEnd}
+          />
         )
       })}
+    </div>
+  )
+}
+
+const SWIPE_OPEN_X = -76
+
+// Fila de un producto: check ligero (círculo vacío hasta marcarlo,
+// petición real: el check cuadrado con el aspa siempre dibujada hacía
+// que la lista pareciera ya comprada de un vistazo) + borrar
+// deslizando en vez de un aspa fija siempre visible junto al check.
+// Tocar el nombre lo abre para editarlo (petición real: "que se
+// puedan editar los productos tocándolos").
+function ShoppingItemRow({
+  item,
+  label,
+  done,
+  dragging,
+  dragOffsetY,
+  shoppingMode,
+  onSetStatus,
+  onDelete,
+  onEdit,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: {
+  item: ShoppingItem
+  label: string
+  done: boolean
+  dragging: boolean
+  dragOffsetY: number
+  shoppingMode: boolean
+  onSetStatus: (id: string, status: ShoppingItemStatus) => void
+  onDelete: (id: string) => void
+  onEdit: (item: ShoppingItem) => void
+  onDragStart: (e: ReactPointerEvent, id: string, el: HTMLElement) => void
+  onDragMove: (e: ReactPointerEvent) => void
+  onDragEnd: () => void
+}) {
+  const [openX, setOpenX] = useState(0)
+  const [liveX, setLiveX] = useState<number | null>(null)
+  const swipeStartX = useRef(0)
+  const swiping = useRef(false)
+
+  function handleSwipeStart(e: ReactPointerEvent) {
+    if (shoppingMode) return
+    swipeStartX.current = e.clientX
+    swiping.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  function handleSwipeMove(e: ReactPointerEvent) {
+    if (!swiping.current) return
+    const raw = openX + (e.clientX - swipeStartX.current)
+    setLiveX(Math.min(0, Math.max(SWIPE_OPEN_X, raw)))
+  }
+
+  function handleSwipeEnd() {
+    if (!swiping.current) return
+    swiping.current = false
+    const current = liveX ?? openX
+    setOpenX(current < SWIPE_OPEN_X / 2 ? SWIPE_OPEN_X : 0)
+    setLiveX(null)
+  }
+
+  const translateX = liveX ?? openX
+
+  return (
+    <div className="shopping-row-outer" style={{ overflow: dragging ? 'visible' : 'hidden' }}>
+      {!shoppingMode && (
+        <div className="shopping-row-delete-behind">
+          <button
+            type="button"
+            className="shopping-row-delete-btn"
+            onClick={() => onDelete(item.id)}
+            aria-label={`Eliminar ${item.name}`}
+          >
+            🗑 Eliminar
+          </button>
+        </div>
+      )}
+      <div
+        className={'price-row shopping-row-inner' + (dragging ? ' shopping-item-dragging' : '') + (done ? ' shopping-item-done' : '')}
+        style={{
+          transform: dragging ? `translateY(${dragOffsetY}px)` : translateX !== 0 ? `translateX(${translateX}px)` : undefined,
+          transition: liveX == null ? undefined : 'none',
+        }}
+        onPointerDown={handleSwipeStart}
+        onPointerMove={handleSwipeMove}
+        onPointerUp={handleSwipeEnd}
+        onPointerCancel={handleSwipeEnd}
+      >
+        {!shoppingMode && (
+          <span
+            className="shopping-drag-handle"
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              onDragStart(e, item.id, e.currentTarget.parentElement as HTMLElement)
+            }}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            onPointerCancel={onDragEnd}
+            aria-label="Arrastrar para reordenar"
+          >
+            ⠿
+          </span>
+        )}
+        <button
+          type="button"
+          className="price-row-name price-row-name-button"
+          onClick={() => {
+            if (openX !== 0) {
+              setOpenX(0)
+              return
+            }
+            onEdit(item)
+          }}
+        >
+          {label}
+        </button>
+        {/* Marcar/desmarcar comprado — ya NO borra el producto de la
+            lista, solo lo tacha (petición real: seguir viéndolo
+            mientras se sigue comprando el resto). */}
+        <button
+          type="button"
+          className={'shopping-check' + (done ? ' shopping-check-checked' : '')}
+          onClick={() => onSetStatus(item.id, done ? 'pendiente' : 'comprado')}
+          aria-label={done ? 'Marcar como pendiente' : 'Comprado'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </button>
+      </div>
     </div>
   )
 }
@@ -1367,6 +1506,89 @@ function AddShoppingItemForm({
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Añadiendo…' : 'Añadir'}
+      </button>
+    </form>
+  )
+}
+
+// Editar un producto ya apuntado — mismos campos que al añadirlo,
+// precargados con lo que ya tenía.
+function EditShoppingItemForm({
+  item,
+  suggestions,
+  knownStores,
+  onSaved,
+}: {
+  item: ShoppingItem
+  suggestions: ProductSuggestion[]
+  knownStores: string[]
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(item.name)
+  const [quantity, setQuantity] = useState(item.quantity ?? '')
+  const [unit, setUnit] = useState(item.unit ?? '')
+  const [store, setStore] = useState(item.store ?? '')
+  const [priority, setPriority] = useState<ShoppingItemPriority>(item.priority)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await updateShoppingItem(item.id, { name, quantity, unit, priority, store: store || null })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <label>
+        Nombre
+        <input type="text" list="product-suggestions-edit" value={name} onChange={(e) => setName(e.target.value)} required />
+        <datalist id="product-suggestions-edit">
+          {suggestions.map((s) => (
+            <option key={s.normalizedName} value={s.displayName} />
+          ))}
+        </datalist>
+      </label>
+      <div className="inline-fields">
+        <label>
+          Cantidad
+          <input type="text" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="2" />
+        </label>
+        <label>
+          Unidad
+          <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="kg" />
+        </label>
+      </div>
+      <label>
+        Tienda
+        <input type="text" list="known-stores-edit" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+        <datalist id="known-stores-edit">
+          {knownStores.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </label>
+      <label>
+        Prioridad
+        <select value={priority} onChange={(e) => setPriority(e.target.value as ShoppingItemPriority)}>
+          {PRIORITIES.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : 'Guardar'}
       </button>
     </form>
   )

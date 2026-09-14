@@ -104,6 +104,28 @@ export async function updateShoppingItemStore(id: string, store: string): Promis
   if (error) throw error
 }
 
+// Editar un producto tocando su nombre en la lista (petición real: "que
+// se puedan editar los productos tocándolos"), en vez de tener que
+// borrarlo y volver a añadirlo para corregir un nombre, cantidad o
+// tienda.
+export async function updateShoppingItem(
+  id: string,
+  input: { name: string; quantity: string; unit: string; priority: ShoppingItemPriority; store: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('shopping_items')
+    .update({
+      name: input.name,
+      quantity: input.quantity || null,
+      unit: input.unit || null,
+      priority: input.priority,
+      store: input.store || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
 // El precio opcional se puede fijar en el mismo cambio de estado
 // (ticket que marca comprado y ya trae el precio) — se guarda EN el
 // propio producto, no solo en la Memoria de precios, para que al

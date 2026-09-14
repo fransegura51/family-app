@@ -1310,27 +1310,73 @@ select {
   font-weight: 600;
 }
 
-/* Mismo botón, versión estrecha para la fila de una sola línea de la
-   Lista de la compra (petición real: "más estrecha, al estilo de
-   Memoria"). */
-.task-toggle-compact {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border-radius: 8px;
-  border: 2px solid var(--primary);
-  background: white;
-  color: var(--primary);
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.task-toggle-done {
-  background: var(--primary);
-  color: white;
-}
-
 .task-toggle:disabled {
   opacity: 0.5;
+}
+
+/* Fila de la Lista de la compra: contenedor que revela "Eliminar" al
+   deslizar (petición real: el aspa fija junto al check quedaba
+   recargada — ver .shopping-check más abajo, el mismo cambio pedido).
+   overflow:hidden solo mientras no se arrastra en vertical para
+   reordenar, si no el propio contenedor recorta la fila que flota por
+   encima de las demás durante ese gesto. */
+.shopping-row-outer {
+  position: relative;
+}
+
+.shopping-row-delete-behind {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  background: var(--error);
+}
+
+.shopping-row-delete-btn {
+  border: none;
+  background: none;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 18px;
+  cursor: pointer;
+}
+
+.shopping-row-inner {
+  touch-action: pan-y;
+  background: var(--bg);
+  position: relative;
+}
+
+/* Check ligero: círculo vacío que solo se rellena al marcar — antes
+   era un cuadrado de borde grueso con el aspa siempre dibujada dentro,
+   lo que hacía que toda la lista de "Pendientes" pareciera ya
+   comprada de un vistazo. */
+.shopping-check {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  background: none;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.shopping-check svg {
+  width: 14px;
+  height: 14px;
+}
+
+.shopping-check-checked {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: white;
 }
 
 .shopping-toolbar {

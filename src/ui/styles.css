@@ -2192,13 +2192,14 @@ textarea {
    resto de botones flotantes de la app. Petición real posterior:
    "Devuelve el botón flotante a donde estaba originalmente en el otro
    formato, a la izquierda arriba" — vuelve a la izquierda (mismo
-   left:10px que ya pone la base .kitchen-header-menu-fab); ahí también
-   vive la fila de avatares/accesos de Pepa (VoiceCapture,
-   SocialMenuFab), pero esos son arrastrables a cualquier punto de la
-   pantalla, así que el solape se resuelve moviéndolos, no aquí. */
+   left:10px que ya pone la base .kitchen-header-menu-fab), pero un
+   poco más abajo: en su sitio por defecto (top:10px) quedaba tapado
+   por la fila de avatares/accesos de Pepa (VoiceCapture, SocialMenuFab
+   — top:8px, 42px de alto cada uno), así que baja justo debajo de esa
+   fila para no solaparse sin tener que mover los avatares. */
 .kitchen-header-menu-fab-floating {
   position: fixed;
-  top: 10px;
+  top: 58px;
   left: 10px;
   right: auto;
   z-index: 39;

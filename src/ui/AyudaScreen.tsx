@@ -82,7 +82,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Tiendas', text: 'Tus propias tiendas (Mercadona, Aldi...) con su logo, para agrupar la lista y para que Pepa te entienda al dictar, por ejemplo, "Mercadona, patatas".' },
     { title: 'Historial', text: 'Se construye solo con lo que compras: sugiere recompra, compara el precio de este mes con el anterior y te dice en qué tienda sale más barato.' },
     { title: 'No alimentos', text: 'El mismo historial pero para ropa, electrónica y demás compras que no son de comida — nunca se mezcla con Alimentación.' },
-    { title: 'Tickets', text: 'Sube la foto del ticket y Pepa lo lee sola; guarda el gasto por tienda y avisa con "falta ticket" si esa compra solo se conoce por el banco. El icono 📤 de cada ticket lo manda al menú de compartir del móvil.' },
+    { title: 'Tickets', text: 'Sube la foto del ticket y Pepa lo lee sola; guarda el gasto por tienda y avisa con "falta ticket" si esa compra solo se conoce por el banco. Si el banco ya había traído esa compra (mismo importe, fecha con hasta 3 días de diferencia), el ticket se enlaza a ESE gasto en vez de crear uno duplicado — así no aparece dos veces en Movimientos. El icono 📤 de cada ticket lo manda al menú de compartir del móvil.' },
     { title: 'Compartir la lista', text: 'El icono 📤 de cada tienda manda solo lo pendiente de esa tienda; "📤 Compartir todo" manda la lista entera, agrupada por tienda.' },
     { title: 'Registro Alimentación', text: 'Presupuesto y gasto de comida, con su propio gráfico — vive aquí porque tiene más que ver con la compra que con el dinero en sí.' },
   ],

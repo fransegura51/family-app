@@ -1,7 +1,14 @@
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
+import { toDateStr } from '@/domain/dateRanges'
 import type { Receipt } from '@/domain/types'
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00')
+  d.setDate(d.getDate() + days)
+  return toDateStr(d)
+}
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -60,21 +67,52 @@ export async function uploadReceipt(input: {
 
   let expenseId: string | null = null
   if (input.totalAmount != null) {
-    const { data: expense, error: expenseError } = await supabase
+    // Bug real: "he mandado los tickets... pero no los ha conciliado
+    // con las compras que ya estaban generadas, se han duplicado" — el
+    // banco puede haber traído ya este mismo gasto antes de subir el
+    // ticket (source 'banco', sin ticket propio todavía). Mismo
+    // criterio ±3 días/importe exacto que usa
+    // enable-banking-sync-transactions al revés (banco→ticket), para
+    // enlazar el ticket a ESE gasto en vez de crear uno duplicado.
+    const { data: candidates } = await supabase
       .from('expenses')
-      .insert({
-        family_id: familyId,
-        expense_date: input.receiptDate,
-        amount: input.totalAmount,
-        category: input.category,
-        store: input.store || null,
-        kind: 'real',
-        source: 'ticket',
-      })
-      .select('id')
-      .single()
-    if (expenseError) throw expenseError
-    expenseId = expense.id
+      .select('id, amount')
+      .eq('family_id', familyId)
+      .eq('source', 'banco')
+      .eq('is_income', false)
+      .gte('expense_date', addDays(input.receiptDate, -3))
+      .lte('expense_date', addDays(input.receiptDate, 3))
+    const match = (candidates ?? []).find((c) => Math.abs(Number(c.amount) - input.totalAmount!) < 0.01)
+
+    if (match) {
+      const { data: alreadyLinked } = await supabase.from('receipts').select('id').eq('expense_id', match.id).maybeSingle()
+      if (!alreadyLinked) {
+        const { error: updateExpenseError } = await supabase
+          .from('expenses')
+          .update({ source: 'ticket_banco', category: input.category, store: input.store || null })
+          .eq('id', match.id)
+        if (updateExpenseError) throw updateExpenseError
+        expenseId = match.id
+      }
+    }
+
+    if (expenseId === null) {
+      const { data: expense, error: expenseError } = await supabase
+        .from('expenses')
+        .insert({
+          family_id: familyId,
+          expense_date: input.receiptDate,
+          amount: input.totalAmount,
+          category: input.category,
+          store: input.store || null,
+          kind: 'real',
+          source: 'ticket',
+        })
+        .select('id')
+        .single()
+      if (expenseError) throw expenseError
+      expenseId = expense.id
+    }
   }
 
   const { data: receiptRow, error: receiptError } = await supabase

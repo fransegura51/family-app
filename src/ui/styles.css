@@ -2189,12 +2189,16 @@ textarea {
 /* Petición real: "el botón de Menú de Economía lo vamos a convertir en
    flotante" — deja de estar pegado a la cabecera con foto (se iba
    scroll arriba con ella) para quedarse siempre a la vista, como el
-   resto de botones flotantes de la app (↑ arriba, redes sociales...).
-   Mismo aspecto que .kitchen-header-menu-fab, solo cambia la posición. */
+   resto de botones flotantes de la app. Mismo aspecto que
+   .kitchen-header-menu-fab, solo cambia la posición — a la derecha, no
+   a la izquierda: ahí (arriba a la izquierda) ya vive la fila de
+   avatares/accesos de Pepa (VoiceCapture, SocialMenuFab), que además
+   se puede arrastrar por toda la pantalla; dejarlo a la izquierda con
+   position:fixed lo tapaba en su sitio por defecto. */
 .kitchen-header-menu-fab-floating {
   position: fixed;
   top: 10px;
-  left: 10px;
+  right: 10px;
   z-index: 39;
 }
 

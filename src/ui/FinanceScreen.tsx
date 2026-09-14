@@ -1566,19 +1566,8 @@ function BankTab({
           {/* Petición real: "que me pongas una pestaña que sea gastos
               fijos, gastos variables... y también poder filtrar por
               ingresos... para saber cuánto tenemos de cada". */}
-          <div className="filter-row" style={{ marginTop: 8 }}>
-            <button type="button" className={'chip' + (typeFilter === 'todos' ? ' chip-active' : '')} onClick={() => setTypeFilter('todos')}>
-              Todos
-            </button>
-            <button type="button" className={'chip' + (typeFilter === 'fijos' ? ' chip-active' : '')} onClick={() => setTypeFilter('fijos')}>
-              Gastos fijos
-            </button>
-            <button type="button" className={'chip' + (typeFilter === 'variables' ? ' chip-active' : '')} onClick={() => setTypeFilter('variables')}>
-              Gastos variables
-            </button>
-            <button type="button" className={'chip' + (typeFilter === 'ingresos' ? ' chip-active' : '')} onClick={() => setTypeFilter('ingresos')}>
-              Ingresos
-            </button>
+          <div style={{ marginTop: 8 }}>
+            <DropdownFilter label="Filtrar por" value={typeFilter} onChange={(k) => setTypeFilter(k as typeof typeFilter)} options={TYPE_FILTER_OPTIONS} />
           </div>
           {typeFilter !== 'todos' && (
             <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
@@ -3056,22 +3045,17 @@ function ExpensesTab({
           la cuenta de uno (o la común), no todas mezcladas — mismo
           filtro que ya existía en Banco (activeAccountId), pero
           elegible aquí mismo en vez de solo al tocar una tarjeta de
-          saldo. Solo tiene sentido con más de una cuenta enlazada. */}
+          saldo. Solo tiene sentido con más de una cuenta enlazada.
+          Petición real: "cámbialo como has propuesto" — mismo botón con
+          desplegable que "📅 Fecha", en vez de una fila de chips. */}
       {accounts.length > 1 && (
-        <div className="filter-row" style={{ marginTop: 8 }}>
-          <button type="button" className={'chip' + (activeAccountId === null ? ' chip-active' : '')} onClick={() => setActiveAccountId(null)}>
-            Todas las cuentas
-          </button>
-          {accounts.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              className={'chip' + (activeAccountId === a.id ? ' chip-active' : '')}
-              onClick={() => setActiveAccountId(a.id)}
-            >
-              {accountLabel(a)}
-            </button>
-          ))}
+        <div style={{ marginTop: 8 }}>
+          <DropdownFilter
+            label="🏦 Cuenta"
+            value={activeAccountId ?? 'todas'}
+            onChange={(k) => setActiveAccountId(k === 'todas' ? null : k)}
+            options={[{ key: 'todas', label: 'Todas las cuentas' }, ...accounts.map((a) => ({ key: a.id, label: accountLabel(a) }))]}
+          />
         </div>
       )}
 
@@ -3080,19 +3064,8 @@ function ExpensesTab({
         {monthIncome > 0 && ` · +${monthIncome.toFixed(2)} € ingresados`}
       </p>
 
-      <div className="filter-row" style={{ marginTop: 8 }}>
-        <button type="button" className={'chip' + (typeFilter === 'todos' ? ' chip-active' : '')} onClick={() => setTypeFilter('todos')}>
-          Todos
-        </button>
-        <button type="button" className={'chip' + (typeFilter === 'fijos' ? ' chip-active' : '')} onClick={() => setTypeFilter('fijos')}>
-          Gastos fijos
-        </button>
-        <button type="button" className={'chip' + (typeFilter === 'variables' ? ' chip-active' : '')} onClick={() => setTypeFilter('variables')}>
-          Gastos variables
-        </button>
-        <button type="button" className={'chip' + (typeFilter === 'ingresos' ? ' chip-active' : '')} onClick={() => setTypeFilter('ingresos')}>
-          Ingresos
-        </button>
+      <div style={{ marginTop: 8 }}>
+        <DropdownFilter label="Filtrar por" value={typeFilter} onChange={(k) => setTypeFilter(k as typeof typeFilter)} options={TYPE_FILTER_OPTIONS} />
       </div>
       {typeFilter !== 'todos' && (
         <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
@@ -4305,6 +4278,76 @@ function StoreMonthlyChart({
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// Compartido entre Banco y Movimientos — mismo filtro, mismas opciones.
+const TYPE_FILTER_OPTIONS = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'fijos', label: 'Gastos fijos' },
+  { key: 'variables', label: 'Gastos variables' },
+  { key: 'ingresos', label: 'Ingresos' },
+]
+
+// Petición real: "ninguno de los dos [nombres] me parecen intuitivos
+// para que un usuario nuevo tenga claro que allí puede filtrar" — un
+// botón que enseña la elección actual y despliega la lista al tocarlo,
+// mismo patrón visual que "📅 Fecha: Mes contable ▼" (DateFilterTab) y
+// el selector de categoría de abajo, en vez de una fila de chips que
+// siempre está a la vista. Genérico: sirve para cualquier filtro de
+// opciones planas (tipo de movimiento, cuenta...).
+function DropdownFilter({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: { key: string; label: string }[]
+  onChange: (key: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = options.find((o) => o.key === value)
+
+  return (
+    <div>
+      <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
+        <span>
+          {label}: {selected?.label ?? value}
+        </span>
+        <span className="muted">▼</span>
+      </button>
+      {open && (
+        <div className="modal-overlay" onClick={() => setOpen(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {label}
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
+              {options.map((o) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  className="category-picker-row"
+                  onClick={() => {
+                    onChange(o.key)
+                    setOpen(false)
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

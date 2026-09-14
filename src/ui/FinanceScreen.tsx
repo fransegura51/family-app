@@ -2803,6 +2803,11 @@ function ExpensesTab({
   // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
   // chip row y mismo criterio que ya usa BankTab.
   const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos'>('todos')
+  // Base para "Piso compartido/cuentas separadas": poder ver solo la
+  // cuenta de uno (o la común), no todas mezcladas — mismo dato
+  // (expenseAccountId) que ya usa el avatar de cada fila, ahora también
+  // como filtro. null = todas las cuentas.
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
   // Igual que las categorías sugeridas de Presupuesto Generales: se dan
   // de alta solas la primera vez, sin pedirlo — petición real: "los
   // ingresos también se deberían poder categorizar, como sueldo,
@@ -2883,6 +2888,14 @@ function ExpensesTab({
 
   const monthExpenses = filteredExpenses
 
+  // Base para "cuentas separadas": si hay una cuenta elegida, todo lo
+  // demás (cabecera, filtro de tipo, lista) se calcula solo sobre ESA
+  // cuenta — mismo patrón que activeAccountId en BankTab.
+  const accountFilteredExpenses = useMemo(
+    () => (activeAccountId ? monthExpenses.filter((e) => expenseAccountId.get(e.id) === activeAccountId) : monthExpenses),
+    [monthExpenses, activeAccountId, expenseAccountId],
+  )
+
   // Bug real: "en Movimientos salen 4349,63€ de ingresos, pero en
   // Presupuesto/Resumen 4241,63€" — esta cabecera sumaba TODO
   // (traspasos entre cuentas propias incluidos) sin filtro activo,
@@ -2892,10 +2905,10 @@ function ExpensesTab({
   // cabecera deja de sumarlas, para que coincida con el resto.
   const monthTotal = useMemo(
     () =>
-      monthExpenses
+      accountFilteredExpenses
         .filter((e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories))
         .reduce((sum, e) => sum + e.amount, 0),
-    [monthExpenses, categories],
+    [accountFilteredExpenses, categories],
   )
 
   // Petición real: "gráficos de estadísticas, total ingresos" — un
@@ -2904,8 +2917,8 @@ function ExpensesTab({
   // (Skill: ingresos separados por pestaña), pero se ven aquí también
   // para tener el listado completo por fecha.
   const monthIncome = useMemo(
-    () => monthExpenses.filter((e) => e.isIncome && !isInternalTransferCategory(e.category, categories)).reduce((sum, e) => sum + e.amount, 0),
-    [monthExpenses, categories],
+    () => accountFilteredExpenses.filter((e) => e.isIncome && !isInternalTransferCategory(e.category, categories)).reduce((sum, e) => sum + e.amount, 0),
+    [accountFilteredExpenses, categories],
   )
 
   // Mismo criterio que BankTab: "Ingresos" no cuenta un traspaso entre
@@ -2913,14 +2926,14 @@ function ExpensesTab({
   // ingresos (no tienen esa clasificación).
   const typeFilteredExpenses = useMemo(
     () =>
-      monthExpenses.filter((e) => {
+      accountFilteredExpenses.filter((e) => {
         if (typeFilter === 'todos') return true
         if (typeFilter === 'ingresos') return e.isIncome && !isInternalTransferCategory(e.category, categories)
         if (e.isIncome) return false
         const isFixed = resolveExpenseFixed(e, categories)
         return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
       }),
-    [monthExpenses, typeFilter, categories],
+    [accountFilteredExpenses, typeFilter, categories],
   )
   const typeFilterTotal = useMemo(() => typeFilteredExpenses.reduce((sum, e) => sum + e.amount, 0), [typeFilteredExpenses])
 
@@ -2930,6 +2943,11 @@ function ExpensesTab({
     const accId = expenseAccountId.get(expenseId)
     const ownerId = accId ? accountById.get(accId)?.ownerMemberId : null
     return ownerId ? (memberById.get(ownerId) ?? null) : null
+  }
+  function accountLabel(a: BankAccount): string {
+    const owner = a.ownerMemberId ? memberById.get(a.ownerMemberId) : null
+    const last4 = a.iban ? `•• ${a.iban.slice(-4)}` : (a.name ?? 'Cuenta')
+    return `${owner ? owner.name : 'Común'} (${last4})`
   }
 
   if (loading) return <p className="muted">Cargando gastos…</p>
@@ -2965,6 +2983,29 @@ function ExpensesTab({
           onCustomToChange={setCustomTo}
           mesContable
         />
+      )}
+
+      {/* Base para "Piso compartido/cuentas separadas": poder ver solo
+          la cuenta de uno (o la común), no todas mezcladas — mismo
+          filtro que ya existía en Banco (activeAccountId), pero
+          elegible aquí mismo en vez de solo al tocar una tarjeta de
+          saldo. Solo tiene sentido con más de una cuenta enlazada. */}
+      {accounts.length > 1 && (
+        <div className="filter-row" style={{ marginTop: 8 }}>
+          <button type="button" className={'chip' + (activeAccountId === null ? ' chip-active' : '')} onClick={() => setActiveAccountId(null)}>
+            Todas las cuentas
+          </button>
+          {accounts.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={'chip' + (activeAccountId === a.id ? ' chip-active' : '')}
+              onClick={() => setActiveAccountId(a.id)}
+            >
+              {accountLabel(a)}
+            </button>
+          ))}
+        </div>
       )}
 
       <p className="points-badge">

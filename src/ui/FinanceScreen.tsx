@@ -1512,21 +1512,27 @@ function BankTab({
 
       {activeConnections.length > 0 && (
         <>
-          <div className="inline-fields" style={{ alignItems: 'center', marginTop: 12 }}>
-            <button type="button" onClick={handleSync} disabled={syncing} style={{ flex: 'none' }}>
+          {/* Petición real: "quiero que muevas el desplegable de Traer
+              al menos x meses debajo de sincronizar movimientos" — antes
+              iban en la misma fila. Se quitan además "último año" y
+              "todo el histórico": comprobado con los datos reales de la
+              familia que el banco nunca entrega más de ~3 meses aunque se
+              pida más (el movimiento más antiguo guardado nunca pasa de
+              ahí), así que esas dos opciones no tenían ningún efecto. */}
+          <div style={{ marginTop: 12 }}>
+            <button type="button" onClick={handleSync} disabled={syncing}>
               {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
             </button>
-            <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))} style={{ flex: 'none' }}>
-              <option value={30}>Traer al menos: último mes</option>
-              <option value={90}>Traer al menos: últimos 3 meses</option>
-              <option value={365}>Traer al menos: último año</option>
-              <option value={0}>Traer al menos: todo el histórico</option>
-            </select>
+            <div style={{ marginTop: 6 }}>
+              <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))}>
+                <option value={30}>Traer al menos: último mes</option>
+                <option value={90}>Traer al menos: últimos 3 meses</option>
+              </select>
+            </div>
           </div>
           <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-            Se sincroniza sola 4 veces al día trayendo solo lo nuevo. Para ampliar hacia atrás elige aquí un periodo
-            más largo y pulsa "Sincronizar" — pero el banco solo entrega el histórico que él mismo tenga disponible
-            para consultar, aunque se pida más.
+            Se sincroniza sola 4 veces al día trayendo solo lo nuevo. El banco no entrega más de unos 3 meses de
+            histórico aunque se pida más, así que no hace falta elegir un periodo más largo que ese.
           </p>
         </>
       )}

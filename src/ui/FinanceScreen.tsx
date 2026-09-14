@@ -1412,7 +1412,14 @@ function BankTab({
   const dateFilteredExpenses = byAccount.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
   const filteredExpenses = dateFilteredExpenses.filter((e) => {
     if (typeFilter === 'todos') return true
-    if (typeFilter === 'ingresos') return e.isIncome || isInternalTransferCategory(e.category, categories)
+    // Bug real: "en Banco si filtro por Ingresos me salen 4549,63€,
+    // pero en Presupuesto/Resumen 4241,63€" — este filtro sumaba
+    // también el LADO DE SALIDA de un traspaso entre cuentas propias
+    // (is_income=false, categoría "Movimientos internos"), porque el
+    // `||` de abajo no miraba is_income para esa categoría. Un traspaso
+    // no cuenta como Ingreso en ningún otro sitio de la app — tampoco
+    // aquí, ni saliendo ni entrando.
+    if (typeFilter === 'ingresos') return e.isIncome && !isInternalTransferCategory(e.category, categories)
     if (e.isIncome) return false
     const isFixed = resolveExpenseFixed(e, categories)
     return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
@@ -2871,9 +2878,19 @@ function ExpensesTab({
 
   const monthExpenses = filteredExpenses
 
+  // Bug real: "en Movimientos salen 4349,63€ de ingresos, pero en
+  // Presupuesto/Resumen 4241,63€" — esta cabecera sumaba TODO
+  // (traspasos entre cuentas propias incluidos) sin filtro activo,
+  // mientras que en el resto de la app un traspaso no cuenta ni como
+  // Ingreso ni como Gasto. Las filas individuales del traspaso se
+  // siguen viendo en la lista (no se ocultan), solo el total de
+  // cabecera deja de sumarlas, para que coincida con el resto.
   const monthTotal = useMemo(
-    () => monthExpenses.filter((e) => e.kind === 'real' && !e.isIncome).reduce((sum, e) => sum + e.amount, 0),
-    [monthExpenses],
+    () =>
+      monthExpenses
+        .filter((e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories))
+        .reduce((sum, e) => sum + e.amount, 0),
+    [monthExpenses, categories],
   )
 
   // Petición real: "gráficos de estadísticas, total ingresos" — un
@@ -2882,8 +2899,8 @@ function ExpensesTab({
   // (Skill: ingresos separados por pestaña), pero se ven aquí también
   // para tener el listado completo por fecha.
   const monthIncome = useMemo(
-    () => monthExpenses.filter((e) => e.isIncome).reduce((sum, e) => sum + e.amount, 0),
-    [monthExpenses],
+    () => monthExpenses.filter((e) => e.isIncome && !isInternalTransferCategory(e.category, categories)).reduce((sum, e) => sum + e.amount, 0),
+    [monthExpenses, categories],
   )
 
   const memberById = new Map(members.map((m) => [m.id, m]))

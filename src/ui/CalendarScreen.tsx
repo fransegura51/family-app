@@ -2499,6 +2499,25 @@ function EventExtrasFields({
   const [searching, setSearching] = useState(false)
   const [suggestions, setSuggestions] = useState<PlaceResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  // Ubicación/Adjunto/Nota empiezan plegados y se abren al tocar su
+  // icono (petición real: "que solo se desplieguen si se le da al
+  // icono") — si el evento YA trae algo en alguno, ese arranca
+  // desplegado para no esconder un dato que ya existía.
+  const [openSections, setOpenSections] = useState<Set<'location' | 'attachment' | 'note'>>(() => {
+    const initial = new Set<'location' | 'attachment' | 'note'>()
+    if (locationLabel || coords) initial.add('location')
+    if (existingAttachment || attachmentFile) initial.add('attachment')
+    if (note) initial.add('note')
+    return initial
+  })
+  function toggleSection(key: 'location' | 'attachment' | 'note') {
+    setOpenSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   // Petición real: "no siempre es la ubicación actual la que se quiere
   // adjuntar" — el GPS ya no es la única forma, se puede buscar
@@ -2542,65 +2561,100 @@ function EventExtrasFields({
 
   return (
     <>
-      <label>
-        Ubicación (opcional)
-        <div className="inline-fields">
-          <input
-            type="text"
-            value={locationLabel}
-            onChange={(e) => onLocationLabelChange(e.target.value)}
-            placeholder="Nombre del sitio o dirección"
-            style={{ flex: 1 }}
-          />
-          <button type="button" className="link-button" onClick={handleSearch} disabled={!locationLabel.trim() || searching}>
-            {searching ? 'Buscando…' : '🔍 Buscar'}
-          </button>
-        </div>
-      </label>
-      {suggestions.length > 0 && (
-        <div className="card" style={{ padding: 8 }}>
-          {suggestions.map((s, i) => (
-            <button
-              key={i}
-              type="button"
-              className="link-button"
-              style={{ display: 'block', textAlign: 'left', width: '100%', padding: '4px 0' }}
-              onClick={() => pickSuggestion(s)}
-            >
-              📍 {s.label}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="inline-fields">
-        <button type="button" className="link-button" onClick={handleUseCurrentPosition} disabled={locating}>
-          {coords ? '✓ Ubicación real guardada' : locating ? 'Obteniendo…' : '📍 Usar mi ubicación actual'}
+      <div className="filter-row">
+        <button
+          type="button"
+          className={'chip' + (openSections.has('location') ? ' chip-active' : '')}
+          onClick={() => toggleSection('location')}
+        >
+          📍 Ubicación
         </button>
-        {coords && (
-          <button type="button" className="link-button" onClick={() => onCoordsChange(null)}>
-            Quitar coordenadas
-          </button>
-        )}
+        <button
+          type="button"
+          className={'chip' + (openSections.has('attachment') ? ' chip-active' : '')}
+          onClick={() => toggleSection('attachment')}
+        >
+          📷📎 Adjunto
+        </button>
+        <button
+          type="button"
+          className={'chip' + (openSections.has('note') ? ' chip-active' : '')}
+          onClick={() => toggleSection('note')}
+        >
+          📝 Nota
+        </button>
       </div>
-      <label>
-        📷📎 Foto o archivo adjunto (opcional)
-        {existingAttachment && !attachmentFile ? (
+
+      {openSections.has('location') && (
+        <>
+          <label>
+            Ubicación (opcional)
+            <div className="inline-fields">
+              <input
+                type="text"
+                value={locationLabel}
+                onChange={(e) => onLocationLabelChange(e.target.value)}
+                placeholder="Nombre del sitio o dirección"
+                style={{ flex: 1 }}
+              />
+              <button type="button" className="link-button" onClick={handleSearch} disabled={!locationLabel.trim() || searching}>
+                {searching ? 'Buscando…' : '🔍 Buscar'}
+              </button>
+            </div>
+          </label>
+          {suggestions.length > 0 && (
+            <div className="card" style={{ padding: 8 }}>
+              {suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className="link-button"
+                  style={{ display: 'block', textAlign: 'left', width: '100%', padding: '4px 0' }}
+                  onClick={() => pickSuggestion(s)}
+                >
+                  📍 {s.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="inline-fields">
-            <span>
-              {existingAttachment.kind === 'foto' ? '📷' : '📎'} {existingAttachment.name ?? 'Adjunto actual'}
-            </span>
-            <button type="button" className="link-button" onClick={onRemoveExistingAttachment}>
-              Quitar
+            <button type="button" className="link-button" onClick={handleUseCurrentPosition} disabled={locating}>
+              {coords ? '✓ Ubicación real guardada' : locating ? 'Obteniendo…' : '📍 Usar mi ubicación actual'}
             </button>
+            {coords && (
+              <button type="button" className="link-button" onClick={() => onCoordsChange(null)}>
+                Quitar coordenadas
+              </button>
+            )}
           </div>
-        ) : (
-          <input type="file" onChange={(e) => onAttachmentFileChange(e.target.files?.[0] ?? null)} />
-        )}
-      </label>
-      <label>
-        📝 Nota (opcional)
-        <textarea value={note} onChange={(e) => onNoteChange(e.target.value)} rows={2} />
-      </label>
+        </>
+      )}
+
+      {openSections.has('attachment') && (
+        <label>
+          Foto o archivo adjunto (opcional)
+          {existingAttachment && !attachmentFile ? (
+            <div className="inline-fields">
+              <span>
+                {existingAttachment.kind === 'foto' ? '📷' : '📎'} {existingAttachment.name ?? 'Adjunto actual'}
+              </span>
+              <button type="button" className="link-button" onClick={onRemoveExistingAttachment}>
+                Quitar
+              </button>
+            </div>
+          ) : (
+            <input type="file" onChange={(e) => onAttachmentFileChange(e.target.files?.[0] ?? null)} />
+          )}
+        </label>
+      )}
+
+      {openSections.has('note') && (
+        <label>
+          Nota (opcional)
+          <textarea value={note} onChange={(e) => onNoteChange(e.target.value)} rows={2} />
+        </label>
+      )}
+
       {error && <p className="error">{error}</p>}
     </>
   )

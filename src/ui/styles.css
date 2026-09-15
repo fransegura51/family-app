@@ -601,6 +601,14 @@ label {
   flex-direction: column;
   gap: 4px;
   font-size: 14px;
+  /* Sin esto, un <label> dentro de un formulario en columna (flex) no
+     se encoge más allá del "min-content" de lo que lleve dentro — y un
+     input[type=date]/time nativo en iOS/Safari tiene un min-content
+     bastante ancho, así que el label entero (y el campo al 100% que
+     hay dentro) se salía del formulario en vez de quedarse al ancho de
+     los demás campos (petición real: "ajusta el tamaño de Fecha,
+     Empieza y Termina al tamaño de los demás campos"). */
+  min-width: 0;
 }
 
 input {
@@ -619,6 +627,7 @@ input[type='date'],
 input[type='time'],
 input[type='datetime-local'] {
   width: 100%;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -1858,23 +1867,11 @@ textarea {
   margin-top: 2px;
 }
 
-/* Etiqueta "Todo el día" dentro del propio bloque del día (petición
-   real: "a los cumples hay que cambiarles el formato también") — los
-   eventos de todo el día comparten ahora la misma AgendaRow que los
-   que llevan hora, solo que sin franja de hora a la derecha; esta
-   etiqueta es el único rastro que queda del antiguo grupo aparte. */
-.agenda-allday-label {
-  margin: 0;
-  padding: 10px 12px 4px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-/* Apuntes con hora del día unidos en un solo bloque (petición real,
-   sobre la maqueta aprobada: "eventos del mismo día unidos en un solo
-   bloque... no una pastilla suelta por evento") en vez de una tarjeta
-   de color entera por evento. */
+/* Apuntes del día unidos en un solo bloque (petición real, sobre la
+   maqueta aprobada: "eventos del mismo día unidos en un solo bloque...
+   no una pastilla suelta por evento") en vez de una tarjeta de color
+   entera por evento. Los "todo el día" (cumpleaños incluidos)
+   comparten la misma fila, con "Todo el día" en el hueco de la hora. */
 .agenda-day-block {
   background: var(--card-bg);
   border-radius: 14px;
@@ -1888,6 +1885,31 @@ textarea {
 
 .agenda-row-outer {
   position: relative;
+}
+
+/* Redondeo explícito de la primera/última fila (petición real: "la
+   esquina izquierda arriba de la primera fila también esté redonda
+   como las demás") — el overflow:hidden del bloque padre por sí solo
+   no basta: Safari/iOS no recorta al radio del padre un descendiente
+   con transition/transform activo (la fila arrastrable para deslizar,
+   ver .agenda-row-inner), así que la franja de color del primer/
+   último apunte se salía de la esquina redondeada. */
+.agenda-day-block > *:first-child .agenda-row-inner {
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+}
+
+.agenda-day-block > *:first-child .agenda-stripe {
+  border-top-left-radius: 14px;
+}
+
+.agenda-day-block > *:last-child .agenda-row-inner {
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+
+.agenda-day-block > *:last-child .agenda-stripe {
+  border-bottom-left-radius: 14px;
 }
 
 .agenda-row-delete-behind {

@@ -1242,11 +1242,11 @@ function DayEntriesBody({
           "todo el día" comparten ahora el mismo formato de fila que
           los que tienen hora (petición real: "a los cumples hay que
           cambiarles el formato también"), en vez de la antigua pastilla
-          de color entero con "Hecho"/✕ sueltos. Solo se distinguen por
-          no llevar hora a la derecha. */}
+          de color entero con "Hecho"/✕ sueltos. Se distinguen con
+          "Todo el día" en el mismo hueco donde las demás llevan la
+          hora, en vez de una etiqueta aparte arriba del grupo. */}
       {(allDayEntries.length > 0 || timedEntries.length > 0) && (
         <div className="agenda-day-block">
-          {allDayEntries.length > 0 && <p className="agenda-allday-label">Todo el día</p>}
           {allDayEntries.map((entry) => (
             <div key={entry.key}>{renderCard(entry)}</div>
           ))}
@@ -1857,12 +1857,20 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
           </span>
           <span className="agenda-row-meta">
             <span className="agenda-row-sub">{entry.locationLabel ? `📍 ${entry.locationLabel}` : entry.subtitle}</span>
-            {(entry.startTime || entry.endTime) && (
-              <span className="agenda-row-time">
-                {entry.startTime}
-                {entry.endTime && ` – ${entry.endTime}`}
-              </span>
-            )}
+            {/* "Todo el día" ocupa el mismo hueco que la hora en las
+                demás filas (petición real: "pon 'todo el día' donde en
+                los demás viene la hora") en vez de una etiqueta aparte
+                arriba del grupo. */}
+            <span className="agenda-row-time">
+              {entry.allDay
+                ? 'Todo el día'
+                : (entry.startTime || entry.endTime) && (
+                    <>
+                      {entry.startTime}
+                      {entry.endTime && ` – ${entry.endTime}`}
+                    </>
+                  )}
+            </span>
           </span>
         </button>
         {entry.onShare && (
@@ -2575,7 +2583,7 @@ function EventExtrasFields({
         )}
       </div>
       <label>
-        Adjunto: foto o archivo (opcional)
+        📷📎 Foto o archivo adjunto (opcional)
         {existingAttachment && !attachmentFile ? (
           <div className="inline-fields">
             <span>
@@ -2590,7 +2598,7 @@ function EventExtrasFields({
         )}
       </label>
       <label>
-        Nota (opcional)
+        📝 Nota (opcional)
         <textarea value={note} onChange={(e) => onNoteChange(e.target.value)} rows={2} />
       </label>
       {error && <p className="error">{error}</p>}

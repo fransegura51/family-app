@@ -626,6 +626,13 @@ input {
 input[type='date'],
 input[type='time'],
 input[type='datetime-local'] {
+  /* Sin esto, iOS/Safari dibuja el control con SU chrome nativo (fondo
+     gris propio, esquinas cuadradas) por encima del border-radius y el
+     fondo que ya pone el <input> genérico de arriba — petición real:
+     "se puede conseguir que todas las esquinas sean redondeadas". */
+  appearance: none;
+  -webkit-appearance: none;
+  background: white;
   width: 100%;
   max-width: 100%;
   min-width: 0;

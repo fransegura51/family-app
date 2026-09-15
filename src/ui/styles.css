@@ -3162,17 +3162,22 @@ textarea {
    el detalle (petición real: "sueles comprarlo cada..." en un popup en
    vez de ensanchar la fila). Se resetea el aspecto de <button>. */
 .price-row-name-button {
+  /* -webkit-appearance por defecto en iOS/Safari le da al <button> su
+     propia caja de control nativa, que recorta el contenido a su alto
+     "de control" sin mirar line-height/overflow — eso, combinado con
+     el overflow:hidden de .price-row-name (para el "..." al final),
+     cortaba el palo de las letras con descendente (p, g, y). Bug real
+     visto en vivo (dos veces: subir line-height no bastaba) tras
+     convertir el nombre en botón tocable para poder editarlo. */
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
   background: none;
   border: none;
   padding: 0;
   margin: 0;
   font: inherit;
-  /* Un <button> parte con una caja de línea más ajustada que la de un
-     <span> — combinada con el overflow:hidden de .price-row-name (para
-     el "..." al final), eso cortaba el palo de las letras con
-     descendente (p, g, y) en vez de solo recortar el texto sobrante a
-     lo ancho. Bug real visto en vivo tras convertir el nombre en
-     botón tocable para poder editarlo. */
   line-height: 1.4;
   color: inherit;
   text-align: left;

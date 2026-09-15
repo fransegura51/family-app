@@ -30,12 +30,11 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
   const [showConnect, setShowConnect] = useState(false)
   // Petición real, tras encontrar el fallo de seguridad de reasignación
   // de dueño: "no debería ser posible que cualquier usuario pueda
-  // cambiar la adjudicación de cuentas... solo uno mismo [o el admin]".
-  // El servidor (RLS) ya lo bloquea de verdad — esto es solo para que
-  // el desplegable no se vea tocable cuando en realidad no lo es (evita
+  // cambiar la adjudicación de cuentas... solo uno mismo". El servidor
+  // (RLS) ya lo bloquea de verdad — esto es solo para que el
+  // desplegable no se vea tocable cuando en realidad no lo es (evita
   // el "lo cambié pero no pasó nada" sin explicación).
   const [myMemberId, setMyMemberId] = useState<string | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
 
   function reload() {
     Promise.all([listBankConnections(), listBankAccounts(), listFamilyMembers()])
@@ -55,12 +54,6 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
       const uid = data.user?.id
       if (!uid) return
       supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', uid)
-        .single()
-        .then(({ data: p }) => setIsAdmin(p?.role === 'admin'))
-      supabase
         .from('family_members')
         .select('id')
         .eq('linked_profile_id', uid)
@@ -69,8 +62,13 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
     })
   }, [])
 
+  // Petición real, revisando el arreglo anterior: "pienso que el
+  // administrador tampoco debería poder modificar la etiqueta de
+  // otro" — ni el admin de la familia puede tocar la cuenta ya
+  // asignada a otra persona, solo esa misma persona (o cualquiera si
+  // todavía no tiene dueño).
   function canEditOwner(a: BankAccount): boolean {
-    return isAdmin || !a.ownerMemberId || a.ownerMemberId === myMemberId
+    return !a.ownerMemberId || a.ownerMemberId === myMemberId
   }
 
   const activeConnections = connections.filter((c) => c.status === 'active')
@@ -149,7 +147,7 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
                           aria-label={
                             canEditOwner(a)
                               ? `De quién es la cuenta ${a.name ?? ''}`
-                              : `De quién es la cuenta ${a.name ?? ''} — solo el dueño o el administrador pueden cambiarlo`
+                              : `De quién es la cuenta ${a.name ?? ''} — solo su dueño actual puede cambiarlo`
                           }
                         >
                           <option value="">🏠 Común</option>

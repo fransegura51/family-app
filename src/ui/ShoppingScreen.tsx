@@ -151,8 +151,11 @@ export function ShoppingScreen() {
         <img src={comprasHeaderImg} alt="Compras" className="kitchen-header-img" />
         <button
           type="button"
-          className="kitchen-header-menu-fab"
-          onClick={() => setMenuOpen((v) => !v)}
+          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating"
+          onClick={() => {
+            if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
+            setMenuOpen((v) => !v)
+          }}
           aria-label={menuOpen ? 'Cerrar menú de Compras' : 'Abrir menú de Compras'}
         >
           {menuOpen ? '✕' : '☰'} Menú

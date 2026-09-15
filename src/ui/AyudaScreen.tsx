@@ -59,12 +59,12 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Automatizaciones por email (solo admin)', text: 'Direcciones propias para reenviar pedidos de Amazon, tickets de Mercadona y correos con eventos, y que se apunten solos en la app.' },
   ],
   '/calendario': [
-    { title: 'Menú ☰ y Vista general', text: 'Se abre por defecto en Vista general. El botón ☰ junto al título agrupa el resto de vistas (Mes, Semana, 3 días, Día, Familiar, Agenda, Personal, Externos) — sácalas para verlas siempre como chip, igual que en Economía. Los nombres de la familia para filtrar se quedan siempre visibles, fuera del desplegable.' },
+    { title: 'Menú ☰ y Vista general', text: 'Se abre por defecto en Vista general. El botón ☰, flotante junto al título, agrupa el resto de vistas (Mes, Semana, 3 días, Día, Familiar, Agenda, Personal, Externos) — sácalas para verlas siempre como chip, igual que en Economía. "Filtrar por: ..." es un desplegable con el color de cada uno delante del nombre; puedes marcar a varios a la vez.' },
     { title: 'Vistas', text: 'Mes, Semana, 3 días, Día, Familiar (una columna por persona), Agenda, Personal y Vista general — elige la que mejor te venga.' },
     { title: 'Personal', text: 'Notas privadas por día, solo para ti — ni el resto de la familia las ve, aunque compartáis cuenta. No lleva hora, foto ni recordatorios, solo lo que quieras apuntarte a ti mismo. El icono 📤 de cada nota la manda fuera de la app (WhatsApp, email...) si quieres pasársela a alguien, sin dejar de ser privada dentro de la app.' },
-    { title: 'Crear evento', text: 'Título, hora, foto o archivo adjunto, repetición (con excluir festivos) y varios recordatorios por evento. Puedes marcarlo "🔒 Solo yo" para que aparezca mezclado con el resto del calendario pero solo tú lo veas — ni el resto de la familia.' },
+    { title: 'Crear evento', text: 'Título, hora, foto o archivo adjunto, y "Repetición", "Recordatorio" y "¿Para quién?" como desplegables (este último con el color de cada uno delante del nombre). Puedes marcarlo "🔒 Solo yo" para que aparezca mezclado con el resto del calendario pero solo tú lo veas — ni el resto de la familia.' },
     { title: 'Puntos por evento', text: 'Si el evento es de una sola persona, puedes ponerle puntos que se ganan al marcarlo "Hecho" — van a la sección Puntos.' },
-    { title: 'Marcar hecho / borrar', text: 'Un evento hecho se queda tachado en su sitio. En los repetidos puedes borrar solo esa vez o toda la serie.' },
+    { title: 'Marcar hecho / editar / borrar', text: 'En Agenda y en el día de Mes, cada apunte lleva una franja de color con un círculo dentro para marcarlo hecho (se queda tachado en su sitio, sin desaparecer). Toca el apunte para editarlo, o deslízalo hacia la izquierda para borrarlo — en los repetidos te pregunta si solo esa vez o toda la serie.' },
     { title: 'Calendarios enlazados', text: 'Pega la "URL secreta" de tu Google, Outlook, Apple o Android para traer tus citas de fuera (solo lectura).' },
     { title: 'Conectar con Google Calendar', text: 'Sincronización automática de verdad, sin tener que copiar ninguna URL.' },
     { title: 'Exportar a tu móvil', text: 'Tu propia URL para que Google o Apple Calendar lean lo que apuntéis en la app.' },
@@ -77,7 +77,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Canjear', text: 'Descuenta puntos del saldo del miembro elegido — no deja canjear si no le llegan los puntos.' },
   ],
   '/compras': [
-    { title: 'Menú ☰ e Inicio', text: 'El botón ☰ junto al título abre un desplegable con todas las pestañas de Compras — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
+    { title: 'Menú ☰ e Inicio', text: 'El botón ☰, flotante junto al título, abre un desplegable con todas las pestañas de Compras — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
     { title: 'Lista', text: 'Agrupada por tienda en carpetas que se pliegan; toca el nombre de un producto para editarlo (cantidad, unidad, tienda, prioridad), arrastra el ⠿ para reordenar, desliza hacia la izquierda para borrarlo, y usa "Modo compra" mientras estás en la tienda — ahí verás un total que va sumando lo que marcas como comprado, usando el último precio que recuerde de cada producto.' },
     { title: 'Tiendas', text: 'Tus propias tiendas (Mercadona, Aldi...) con su logo, para agrupar la lista y para que Pepa te entienda al dictar, por ejemplo, "Mercadona, patatas".' },
     { title: 'Historial', text: 'Se construye solo con lo que compras: sugiere recompra, compara el precio de este mes con el anterior y te dice en qué tienda sale más barato.' },
@@ -87,7 +87,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Registro Alimentación', text: 'Presupuesto y gasto de comida, con su propio gráfico — vive aquí porque tiene más que ver con la compra que con el dinero en sí.' },
   ],
   '/alimentacion': [
-    { title: 'Menú ☰ e Inicio', text: 'El botón ☰ junto al título ("La cocina de Pepa") abre un desplegable con todas las pestañas — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
+    { title: 'Menú ☰ e Inicio', text: 'El botón ☰, flotante junto al título ("La cocina de Pepa"), abre un desplegable con todas las pestañas — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
     { title: 'Menú semanal', text: 'Planifica desayuno, comida, merienda y cena de toda la semana, con una receta guardada o texto libre. Una vez guardado, "Editar" cambia la receta o el texto sin tener que quitarlo primero — "Quitar" sigue ahí para borrarlo del todo.' },
     { title: 'Recetas', text: 'Con foto, etiquetas (Postres, Favoritos, Fáciles de preparar...), ingredientes y notas; un buscador arriba te lleva directo a las que ya tienes guardadas, y también puedes buscarla en internet (el campo Título recuerda tus búsquedas anteriores y las autocompleta) o importarla pegando su URL, y mandar los ingredientes que quieras a la lista de la compra. "📤 Compartir" manda el título, los ingredientes, la preparación y la foto (si tiene) al menú de compartir del móvil.' },
     { title: 'Registro', text: 'Apunta lo que ha comido cada uno (puedes marcar a varios a la vez), con calorías y macronutrientes si quieres.' },
@@ -102,7 +102,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Educación financiera', text: 'Un monedero para cada niño (Ingresos, Ahorro, Gastos, Impuestos) con objetivos de ahorro y su barra de progreso.' },
   ],
   '/ubicacion': [
-    { title: 'Menú ☰ e Inicio', text: 'El botón ☰ junto al título abre un desplegable con las pestañas de Ubicación — puedes sacar las que uses más para verlas siempre en pantalla, igual que en Economía.' },
+    { title: 'Menú ☰ e Inicio', text: 'El botón ☰, flotante junto al título, abre un desplegable con las pestañas de Ubicación — puedes sacar las que uses más para verlas siempre en pantalla, igual que en Economía.' },
     { title: 'Ubicación en vivo', text: 'Mapa con dónde está cada uno que lo comparte (con su permiso), y el recorrido de las últimas 24h.' },
     { title: 'Activar en este móvil', text: 'Elige quién lleva el teléfono para que empiece a compartir su posición desde ese dispositivo.' },
     { title: 'Lugares frecuentes', text: 'Guarda sitios (casa, colegio...) para que la app los reconozca.' },

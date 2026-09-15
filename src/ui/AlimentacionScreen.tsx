@@ -137,8 +137,11 @@ export function AlimentacionScreen() {
         <img src={kitchenHeaderImg} alt="La cocina de Pepa" className="kitchen-header-img" />
         <button
           type="button"
-          className="kitchen-header-menu-fab"
-          onClick={() => setMenuOpen((v) => !v)}
+          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating"
+          onClick={() => {
+            if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
+            setMenuOpen((v) => !v)
+          }}
           aria-label={menuOpen ? 'Cerrar menú de Alimentación' : 'Abrir menú de Alimentación'}
         >
           {menuOpen ? '✕' : '☰'} Menú

@@ -1,4 +1,4 @@
-import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { findMemberInText } from '@/domain/voiceQuery'
 import {
   calendarioMenuEntryMeta,
@@ -713,8 +713,11 @@ export function CalendarScreen() {
         <img src={calendarHeaderImg} alt="Calendario" className="kitchen-header-img" />
         <button
           type="button"
-          className="kitchen-header-menu-fab"
-          onClick={() => setCalendarMenuOpen((v) => !v)}
+          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating"
+          onClick={() => {
+            if (!calendarMenuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
+            setCalendarMenuOpen((v) => !v)
+          }}
           aria-label={calendarMenuOpen ? 'Cerrar menú de Calendario' : 'Abrir menú de Calendario'}
         >
           {calendarMenuOpen ? '✕' : '☰'} Menú
@@ -768,25 +771,12 @@ export function CalendarScreen() {
       )}
 
       {view !== 'Externos' && view !== 'Personal' && (
-        <div className="filter-row">
-          <button
-            className={'chip' + (filterMemberIds.length === 0 ? ' chip-active' : '')}
-            onClick={() => setFilterMemberIds([])}
-          >
-            Todos
-          </button>
-          {members.map((m) => (
-            <button
-              key={m.id}
-              className={'chip' + (filterMemberIds.includes(m.id) ? ' chip-active' : '')}
-              style={{ borderColor: m.color }}
-              onClick={() => toggleFilterMember(m.id)}
-            >
-              <MemberAvatar member={m} size={18} />
-              {m.name}
-            </button>
-          ))}
-        </div>
+        <MemberFilterDropdown
+          members={members}
+          selected={filterMemberIds}
+          onToggle={toggleFilterMember}
+          onClear={() => setFilterMemberIds([])}
+        />
       )}
 
       {view === 'Externos' ? (
@@ -1239,7 +1229,7 @@ function DayEntriesBody({
       const ev = events.find((e) => e.id === entry.id)!
       return <EditEventForm key={entry.key} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
     }
-    return <AgendaCard key={entry.key} entry={entry} />
+    return <AgendaRow key={entry.key} entry={entry} />
   }
 
   return (
@@ -1259,15 +1249,18 @@ function DayEntriesBody({
         </>
       )}
 
-      {timedEntries.map((entry) => (
-        <div key={entry.key} className="agenda-row">
-          <div className="agenda-time">
-            <div>{entry.startTime}</div>
-            {entry.endTime && <div>{entry.endTime}</div>}
-          </div>
-          <div style={{ flex: 1 }}>{renderCard(entry)}</div>
+      {/* Un solo bloque por día (petición real, junto a la maqueta
+          aprobada: "eventos del mismo día unidos" en vez de una
+          pastilla suelta por evento) en vez de una fila con la hora
+          aparte — la hora ahora vive dentro de cada AgendaRow, a la
+          derecha, como en la referencia de Apple Calendario. */}
+      {timedEntries.length > 0 && (
+        <div className="agenda-day-block">
+          {timedEntries.map((entry) => (
+            <div key={entry.key}>{renderCard(entry)}</div>
+          ))}
         </div>
-      ))}
+      )}
     </>
   )
 }
@@ -1836,116 +1829,159 @@ function EventAttachmentPhoto({ storagePath }: { storagePath: string }) {
   return <img src={url} alt="" className="agenda-card-photo" />
 }
 
-function AgendaCard({ entry }: { entry: AgendaEntry }) {
+const agendaCheckSvg = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+)
+
+// Franja de color ancha con el check dentro (petición real: "una
+// franja de color al principio... más ancha... dentro de la franja
+// pondría el círculo para tocarlo como hecho"), hora a la derecha
+// (como en la referencia de Apple Calendario), borrar deslizando en
+// vez de una X fija, y tocar la fila para editar — mismo lenguaje
+// visual que ya se aplicó a la Lista de la compra. Sustituye a la
+// antigua "pastilla" de color entero por evento.
+const AGENDA_SWIPE_OPEN = -84
+
+function AgendaRow({ entry }: { entry: AgendaEntry }) {
   const [confirming, setConfirming] = useState(false)
   const canDelete = !!entry.onDeleteSeries
-  const hasPhoto = entry.attachmentKind === 'foto' && !!entry.attachmentStoragePath
-  const mapsUrl =
-    entry.locationLatitude != null && entry.locationLongitude != null
-      ? `https://www.google.com/maps?q=${entry.locationLatitude},${entry.locationLongitude}`
-      : null
-  return (
-    <div className={'agenda-card-wrap' + (entry.done ? ' agenda-card-done' : '')}>
-      {hasPhoto && <EventAttachmentPhoto storagePath={entry.attachmentStoragePath!} />}
-      <div
-        className={'agenda-card' + (hasPhoto ? ' agenda-card-with-photo' : '')}
-        style={{ background: entry.color, color: readableTextColor(entry.color) }}
-      >
-        {/* X siempre visible en la esquina — antes solo había "Borrar" en
-            texto pequeño abajo, junto a "Editar", y no se veía a simple
-            vista dónde quitar algo (bug/petición real: "ponle una X"). */}
-        {canDelete && !confirming && (
-          <button
-            type="button"
-            className="agenda-card-close"
-            onClick={() => setConfirming(true)}
-            aria-label="Borrar"
-          >
-            ✕
-          </button>
-        )}
-        <div className="agenda-card-title">
-          {entry.done ? '✔️ ' : entry.isExternal ? '🔗 ' : ''}
-          {entry.title}
-        </div>
-        {entry.subtitle && <div className="agenda-card-subtitle">{entry.subtitle}</div>}
-        {entry.locationLabel && (
-          <div className="agenda-card-subtitle">
-            📍 {entry.locationLabel}
-            {mapsUrl && (
-              <>
-                {' '}
-                ·{' '}
-                <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
-                  Ver en el mapa
-                </a>
-              </>
-            )}
-          </div>
-        )}
-        {!entry.locationLabel && mapsUrl && (
-          <div className="agenda-card-subtitle">
-            📍{' '}
-            <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
-              Ver en el mapa
-            </a>
-          </div>
-        )}
-        {entry.attachmentKind === 'archivo' && entry.attachmentStoragePath && (
-          <EventAttachmentFileLink storagePath={entry.attachmentStoragePath} name={entry.attachmentOriginalName ?? null} />
-        )}
-        {entry.note && <div className="agenda-card-subtitle">📝 {entry.note}</div>}
-      {!confirming && (entry.onEdit || entry.onComplete || entry.onUncomplete || entry.onShare) && (
-        <div className="agenda-card-actions">
-          {/* "Hecho" ya no lo quita del calendario — se queda marcado
-              (con el título tachado) y se puede deshacer aquí mismo si
-              hizo falta marcarlo sin querer (petición real: "quiero
-              poder verlo posteriormente lo que he hecho y cuándo, no
-              quiero que desaparezca"). */}
-          {entry.onComplete && (
-            <button type="button" onClick={entry.onComplete}>
-              ✓ Hecho
-            </button>
-          )}
-          {entry.onUncomplete && (
-            <button type="button" onClick={entry.onUncomplete}>
-              ↺ Deshacer
-            </button>
-          )}
-          {entry.onShare && (
-            <button
-              type="button"
-              className="icon-button-share"
-              onClick={entry.onShare}
-              disabled={entry.sharing}
-              aria-label="Compartir"
-            >
-              {entry.sharing ? '…' : '📤'}
-            </button>
-          )}
-          {entry.onEdit && (
-            <button type="button" onClick={entry.onEdit}>
-              Editar
-            </button>
-          )}
-        </div>
-      )}
-      {confirming && (
-        <div className="agenda-card-actions">
-          <span>¿Seguro?</span>
-          {entry.recurring && entry.onDeleteOccurrence && (
-            <button type="button" onClick={entry.onDeleteOccurrence}>
+  const [openX, setOpenX] = useState(0)
+  const [liveX, setLiveX] = useState<number | null>(null)
+  const startXRef = useRef(0)
+  const swiping = useRef(false)
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    startXRef.current = e.clientX
+    swiping.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  function handlePointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!swiping.current) return
+    const raw = openX + (e.clientX - startXRef.current)
+    setLiveX(Math.min(0, Math.max(AGENDA_SWIPE_OPEN, raw)))
+  }
+  function handlePointerUp() {
+    if (!swiping.current) return
+    swiping.current = false
+    const current = liveX ?? openX
+    setOpenX(current < AGENDA_SWIPE_OPEN / 2 ? AGENDA_SWIPE_OPEN : 0)
+    setLiveX(null)
+  }
+
+  function handleDeleteTap() {
+    setOpenX(0)
+    // Un evento recurrente necesita elegir "solo este día" o "toda la
+    // serie" — deslizar y soltar no basta para decidir eso, así que se
+    // pregunta aquí en vez de borrar directamente (a diferencia de un
+    // evento suelto, donde el propio gesto de deslizar ya es la
+    // confirmación).
+    if (entry.recurring && entry.onDeleteOccurrence) setConfirming(true)
+    else entry.onDeleteSeries?.()
+  }
+
+  if (confirming) {
+    return (
+      <div className="agenda-row-confirm">
+        <span>¿Borrar "{entry.title}"?</span>
+        <div className="agenda-row-confirm-actions">
+          {entry.onDeleteOccurrence && (
+            <button type="button" className="link-button" onClick={entry.onDeleteOccurrence}>
               Solo este día
             </button>
           )}
-          <button type="button" onClick={entry.onDeleteSeries}>
-            {entry.recurring ? 'Toda la serie' : 'Borrar'}
+          <button type="button" className="link-button" onClick={entry.onDeleteSeries}>
+            Toda la serie
           </button>
-          <button type="button" onClick={() => setConfirming(false)}>
+          <button type="button" className="link-button" onClick={() => setConfirming(false)}>
             Cancelar
           </button>
         </div>
+      </div>
+    )
+  }
+
+  const translateX = liveX ?? openX
+
+  return (
+    <div className="agenda-row-outer">
+      {canDelete && (
+        <div className="agenda-row-delete-behind">
+          <button type="button" className="agenda-row-delete-btn" onClick={handleDeleteTap} aria-label={`Eliminar ${entry.title}`}>
+            🗑 Eliminar
+          </button>
+        </div>
       )}
+      <div
+        className={'agenda-row-inner' + (entry.done ? ' agenda-row-done' : '')}
+        style={{
+          transform: translateX !== 0 ? `translateX(${translateX}px)` : undefined,
+          transition: liveX == null ? undefined : 'none',
+        }}
+        onPointerDown={canDelete ? handlePointerDown : undefined}
+        onPointerMove={canDelete ? handlePointerMove : undefined}
+        onPointerUp={canDelete ? handlePointerUp : undefined}
+        onPointerCancel={canDelete ? handlePointerUp : undefined}
+      >
+        <div className="agenda-stripe" style={{ background: entry.color }}>
+          {(entry.onComplete || entry.onUncomplete) && (
+            <button
+              type="button"
+              className="agenda-check"
+              style={entry.done ? { color: entry.color } : undefined}
+              onClick={(e) => {
+                e.stopPropagation()
+                ;(entry.onComplete ?? entry.onUncomplete)?.()
+              }}
+              aria-label={entry.done ? 'Marcar como pendiente' : 'Marcar como hecho'}
+            >
+              {agendaCheckSvg}
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          className="agenda-row-body"
+          onClick={() => {
+            if (openX !== 0) {
+              setOpenX(0)
+              return
+            }
+            entry.onEdit?.()
+          }}
+        >
+          <span className="agenda-row-main">
+            <span className="agenda-row-title">
+              {entry.isExternal ? '🔗 ' : ''}
+              {entry.title}
+              {entry.attachmentKind === 'foto' && ' 📷'}
+              {entry.attachmentKind === 'archivo' && ' 📎'}
+              {entry.note && ' 📝'}
+            </span>
+            <span className="agenda-row-sub">{entry.locationLabel ? `📍 ${entry.locationLabel}` : entry.subtitle}</span>
+          </span>
+          {(entry.startTime || entry.endTime) && (
+            <span className="agenda-row-time">
+              <strong>{entry.startTime}</strong>
+              {entry.endTime}
+            </span>
+          )}
+        </button>
+        {entry.onShare && (
+          <button
+            type="button"
+            className="icon-button-share agenda-row-share"
+            onClick={(e) => {
+              e.stopPropagation()
+              entry.onShare?.()
+            }}
+            disabled={entry.sharing}
+            aria-label="Compartir"
+          >
+            {entry.sharing ? '…' : '📤'}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -2110,7 +2146,137 @@ function EventCard({
   )
 }
 
-function MemberPicker({
+// Filtro de personas del calendario, convertido en desplegable (mismo
+// patrón que "Filtrar por" en Economía/Compras) en vez de una fila de
+// chips — petición real: "los chips de Filtro de persona al inicio los
+// metas también en un desplegable con su color al inicio". Multi-
+// selección: se queda abierto entre toques para poder marcar varios
+// antes de cerrar, a diferencia del de Economía (una sola opción).
+function MemberFilterDropdown({
+  members,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  members: FamilyMember[]
+  selected: string[]
+  onToggle: (id: string) => void
+  onClear: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const summary = selected.length === 0 ? 'Todos' : members.filter((m) => selected.includes(m.id)).map((m) => m.name).join(', ')
+
+  return (
+    <div>
+      <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          {selected.length > 0 && (
+            <span style={{ display: 'flex', flex: 'none' }}>
+              {members
+                .filter((m) => selected.includes(m.id))
+                .slice(0, 4)
+                .map((m, i) => (
+                  <span
+                    key={m.id}
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      background: m.color,
+                      marginLeft: i === 0 ? 0 : -6,
+                      border: '2px solid white',
+                    }}
+                  />
+                ))}
+            </span>
+          )}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Filtrar por: {summary}
+          </span>
+        </span>
+        <span className="muted">▼</span>
+      </button>
+      {open && (
+        <div className="modal-overlay" onClick={() => setOpen(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Filtrar por persona
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
+              <button type="button" className="category-picker-row" style={{ justifyContent: 'space-between' }} onClick={onClear}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#9ca3af' }} />
+                  Todos
+                </span>
+                {selected.length === 0 && <span aria-hidden="true">✓</span>}
+              </button>
+              {members.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="category-picker-row"
+                  style={{ justifyContent: 'space-between' }}
+                  onClick={() => onToggle(m.id)}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: '50%', background: m.color }} />
+                    {m.name}
+                  </span>
+                  {selected.includes(m.id) && <span aria-hidden="true">✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Envuelve un control ya existente (Repetición, Recordatorio) en un
+// desplegable cerrado por defecto — petición real: "pondría las
+// repeticiones, los recordatorios... en desplegables" — sin tocar el
+// control de dentro, que conserva toda su funcionalidad (preajustes,
+// modo personalizado, varios recordatorios con distinto ancla...).
+function FieldDropdown({ label, summary, children }: { label: string; summary: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {label}: {summary}
+        </span>
+        <span className="muted">▼</span>
+      </button>
+      {open && (
+        <div className="modal-overlay" onClick={() => setOpen(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {label}
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            {children}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// "¿Para quién?" como desplegable — petición real: "el de para quien
+// que lleve al principio la franja de color definida para cada uno".
+// Multi-selección igual que el MemberPicker de chips que sustituye,
+// solo que en forma de lista con el color por delante de cada nombre.
+function WhoDropdown({
   members,
   selected,
   onToggle,
@@ -2119,20 +2285,69 @@ function MemberPicker({
   selected: string[]
   onToggle: (id: string) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const summary = selected.length === 0 ? 'Toda la familia' : members.filter((m) => selected.includes(m.id)).map((m) => m.name).join(', ')
+
   return (
-    <div className="filter-row">
-      {members.map((m) => (
-        <button
-          type="button"
-          key={m.id}
-          className={'chip' + (selected.includes(m.id) ? ' chip-active' : '')}
-          style={{ borderColor: m.color }}
-          onClick={() => onToggle(m.id)}
-        >
-          <MemberAvatar member={m} size={18} />
-          {m.name}
-        </button>
-      ))}
+    <div>
+      <p className="muted">¿Para quién?</p>
+      <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          {selected.length > 0 && (
+            <span style={{ display: 'flex', flex: 'none' }}>
+              {members
+                .filter((m) => selected.includes(m.id))
+                .slice(0, 4)
+                .map((m, i) => (
+                  <span
+                    key={m.id}
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      background: m.color,
+                      marginLeft: i === 0 ? 0 : -6,
+                      border: '2px solid white',
+                    }}
+                  />
+                ))}
+            </span>
+          )}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
+        </span>
+        <span className="muted">▼</span>
+      </button>
+      {open && (
+        <div className="modal-overlay" onClick={() => setOpen(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                ¿Para quién?
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
+              {members.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="category-picker-row"
+                  style={{ justifyContent: 'space-between' }}
+                  onClick={() => onToggle(m.id)}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: '50%', background: m.color }} />
+                    {m.name}
+                  </span>
+                  {selected.includes(m.id) && <span aria-hidden="true">✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2633,12 +2848,22 @@ function EditEventForm({
         />
         🔒 Solo yo (privado — el resto de la familia no lo verá)
       </label>
-      <RecurrenceControl value={recurrence} onChange={setRecurrence} />
-      <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
-      <div>
-        <p className="muted">¿Para quién?</p>
-        <MemberPicker members={members} selected={selectedMembers} onToggle={toggleMember} />
-      </div>
+      <FieldDropdown
+        label="Repetición"
+        summary={
+          recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
+          'No se repite'
+        }
+      >
+        <RecurrenceControl value={recurrence} onChange={setRecurrence} />
+      </FieldDropdown>
+      <FieldDropdown
+        label="Recordatorio"
+        summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
+      >
+        <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
+      </FieldDropdown>
+      <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
       {/* Puntos: solo tiene sentido cuando el evento es de una sola
           persona — para un niño, o también para un adulto si se quiere
           (petición real: "cuando le asignemos un evento a un niño...
@@ -2860,12 +3085,22 @@ function AddEventForm({
         />
         🔒 Solo yo (privado — el resto de la familia no lo verá)
       </label>
-      <RecurrenceControl value={recurrence} onChange={setRecurrence} />
-      <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
-      <div>
-        <p className="muted">¿Para quién?</p>
-        <MemberPicker members={members} selected={selectedMembers} onToggle={toggleMember} />
-      </div>
+      <FieldDropdown
+        label="Repetición"
+        summary={
+          recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
+          'No se repite'
+        }
+      >
+        <RecurrenceControl value={recurrence} onChange={setRecurrence} />
+      </FieldDropdown>
+      <FieldDropdown
+        label="Recordatorio"
+        summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
+      >
+        <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
+      </FieldDropdown>
+      <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
       {selectedMembers.length === 1 && (
         <label>
           Puntos al marcarlo "Hecho" (opcional)

@@ -1911,66 +1911,11 @@ textarea {
   padding: 0;
 }
 
-.agenda-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 10px;
-  align-items: stretch;
-}
-
-.agenda-time {
-  flex: 0 0 46px;
-  font-size: 12px;
-  color: var(--muted);
-  padding-top: 10px;
-  text-align: right;
-  line-height: 1.4;
-}
-
-.agenda-card-wrap {
-  border-radius: 10px;
-  overflow: hidden;
-}
-
 .agenda-card-photo {
   display: block;
   width: 100%;
   max-height: 160px;
   object-fit: cover;
-}
-
-.agenda-card {
-  position: relative;
-  border-radius: 10px;
-  padding: 10px 30px 10px 12px;
-  color: white;
-}
-
-.agenda-card-with-photo {
-  border-radius: 0 0 10px 10px;
-}
-
-.agenda-card-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.3);
-  color: inherit;
-  font-size: 12px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.agenda-card-title {
-  font-weight: 700;
-  font-size: 14px;
 }
 
 .agenda-card-subtitle {
@@ -1979,43 +1924,182 @@ textarea {
   margin-top: 2px;
 }
 
-.agenda-card-actions {
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  opacity: 0.9;
+.agenda-allday-chip-done {
+  opacity: 0.55;
 }
 
-.agenda-card-actions button {
-  background: none;
+/* Apuntes con hora del día unidos en un solo bloque (petición real,
+   sobre la maqueta aprobada: "eventos del mismo día unidos en un solo
+   bloque... no una pastilla suelta por evento") en vez de una tarjeta
+   de color entera por evento. */
+.agenda-day-block {
+  background: var(--card-bg);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.agenda-day-block > * + * {
+  border-top: 1px solid #eee;
+}
+
+.agenda-row-outer {
+  position: relative;
+}
+
+.agenda-row-delete-behind {
+  position: absolute;
+  inset: 0;
+  background: var(--error);
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.agenda-row-delete-btn {
   border: none;
+  background: none;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 18px;
+  cursor: pointer;
+}
+
+.agenda-row-inner {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  background: var(--card-bg);
+  transition: transform 0.2s ease;
+  touch-action: pan-y;
+  min-height: 62px;
+}
+
+/* Franja de color ancha (petición real: "la pondría más ancha"), con
+   el círculo de "hecho" dentro (petición real: "dentro de la franja
+   pondría el círculo") en vez de teñir toda la tarjeta del color de
+   la persona. */
+.agenda-stripe {
+  flex: 0 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agenda-check {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid white;
+  background: transparent;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
-  /* Antes blanco fijo: sobre un color claro de persona (amarillo,
-     verde) "Hecho"/"Editar" quedaban casi invisibles — hereda el
-     mismo color con contraste ya calculado que pone la tarjeta
-     (petición real: "pon las letras de hecho y editar también negras
-     cuando el color de la persona es claro"). */
+  cursor: pointer;
+}
+
+.agenda-check svg {
+  width: 13px;
+  height: 13px;
+}
+
+.agenda-row-done .agenda-check {
+  background: white;
+  color: var(--primary);
+}
+
+.agenda-row-body {
+  /* Un <button> reduce por defecto la caja de línea del texto frente a
+     un <span> — combinado con el overflow:hidden de .agenda-row-title/
+     -sub (para el "…" al final), eso cortaba el palo de las letras con
+     descendente (p, g, y). Mismo bug ya visto y arreglado en Compras. */
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: none;
+  background: none;
+  padding: 10px 12px;
+  font: inherit;
   color: inherit;
-  text-decoration: underline;
-  font-size: 12px;
-  opacity: 0.9;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agenda-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agenda-row-title {
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-row-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-row-time {
+  flex: 0 0 auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.agenda-row-time strong {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* Marcado como "hecho" pero sin desaparecer del calendario — se queda
    ahí, solo que apagado y con el título tachado, para poder ver
    después qué se hizo y cuándo (petición real). */
-.agenda-card-done {
-  opacity: 0.55;
-}
-
-.agenda-card-done .agenda-card-title {
+.agenda-row-done .agenda-row-title,
+.agenda-row-done .agenda-row-time strong {
+  color: var(--muted);
   text-decoration: line-through;
 }
 
-.agenda-allday-chip-done {
-  opacity: 0.55;
+.agenda-row-share {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-right: 10px;
+}
+
+.agenda-row-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.agenda-row-confirm-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .progress-bar {
@@ -2249,6 +2333,17 @@ textarea {
   left: 10px;
   right: auto;
   z-index: 39;
+}
+
+/* Petición real: "esto último lo haría en todas las páginas donde
+   está" — mismo flotante en Alimentación/Calendario/Compras/Ubicación.
+   Ubicación necesita quedarse más abajo (ver .kitchen-header-menu-fab-
+   lower): su foto trae el título dibujado justo donde iría el botón
+   por defecto. Bajo position:fixed el % de -lower ya no vale (sería %
+   de la pantalla entera, no de la cabecera), así que aquí se fija en
+   píxeles en su lugar. */
+.kitchen-header-menu-fab-floating-lower {
+  top: 80px;
 }
 
 /* Tarjeta de acceso rápido de la pestaña Inicio (Alimentación, Compras)

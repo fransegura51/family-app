@@ -127,7 +127,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Carpetas', text: 'Por categoría (Familia, Privado, Educación, Casa, Salud o una nueva que crees) y, dentro de cada una, una subcarpeta por miembro.' },
     { title: 'Subir documento', text: 'Foto o PDF, con título, carpeta y de quién es, desde un único botón flotante.' },
     { title: 'Compartir', text: 'El icono 📤 de cada documento lo manda al menú de compartir del móvil — útil para pasar, por ejemplo, la foto del DNI.' },
-    { title: 'Vencimiento', text: 'Si le pones una fecha, se apunta en el Calendario y avisa 30, 7 y 1 día antes de que venza.' },
+    { title: 'Vencimiento', text: 'Si le pones una fecha, se apunta en el Calendario y avisa 30, 7 y 1 día antes de que venza. "🔍 Detectar caducidad" hace que Pepa lea la propia foto o PDF (DNI, carnet, ITV, seguro...) y rellene la fecha sola — revísala antes de guardar por si el documento no la trae clara.' },
   ],
 }
 

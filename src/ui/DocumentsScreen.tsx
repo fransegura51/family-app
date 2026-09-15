@@ -16,6 +16,7 @@ import { AddMemberForm } from '@/ui/FamilyScreen'
 import documentosHeaderImg from '@/assets/documentos/documentos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
+import { analyzeDocumentExpiry } from '@/services/documentExpiry'
 
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
@@ -474,6 +475,32 @@ function AddDocumentForm({
   const [expiryDate, setExpiryDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Petición real: "que Pepa detecte automáticamente la fecha de
+  // caducidad y la anote" — lee el propio archivo (DNI, carnet, ITV,
+  // seguro...) con IA en vez de tener que escribir la fecha a mano.
+  // Se deja como botón aparte (no automático al elegir archivo) para
+  // no gastar peticiones de la cuota gratuita de Gemini si al final no
+  // hace falta — mismo patrón que "Leer ticket" en Tickets.
+  const [scanStatus, setScanStatus] = useState<'idle' | 'reading' | 'done' | 'not-found' | 'error'>('idle')
+
+  async function handleDetectExpiry() {
+    if (!file) return
+    setScanStatus('reading')
+    setError(null)
+    try {
+      const result = await analyzeDocumentExpiry(file)
+      if (result.expiryDate) {
+        setExpiryDate(result.expiryDate)
+        setScanStatus('done')
+      } else {
+        setScanStatus('not-found')
+      }
+      if (result.documentType && !title.trim()) setTitle(result.documentType)
+    } catch (err) {
+      setScanStatus('error')
+      setError(errorMessage(err, 'No se pudo leer el documento'))
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -488,6 +515,7 @@ function AddDocumentForm({
       setFile(null)
       setTitle('')
       setExpiryDate('')
+      setScanStatus('idle')
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo subir el documento'))
@@ -499,7 +527,22 @@ function AddDocumentForm({
   return (
     <form onSubmit={handleSubmit} className="member-form">
       <label>Archivo</label>
-      <FileOrPdfPicker file={file} onChange={setFile} />
+      <FileOrPdfPicker
+        file={file}
+        onChange={(f) => {
+          setFile(f)
+          setScanStatus('idle')
+        }}
+      />
+      {file && (
+        <div>
+          <button type="button" className="link-button" onClick={handleDetectExpiry} disabled={scanStatus === 'reading'}>
+            {scanStatus === 'reading' ? 'Leyendo el documento…' : '🔍 Detectar caducidad'}
+          </button>
+          {scanStatus === 'done' && <p className="muted">✓ Fecha de caducidad detectada — revísala abajo antes de guardar.</p>}
+          {scanStatus === 'not-found' && <p className="muted">No se ha visto ninguna fecha de caducidad en el documento — ponla a mano si la sabes.</p>}
+        </div>
+      )}
       <label>
         Título
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="DNI" required />

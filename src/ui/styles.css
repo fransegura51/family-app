@@ -631,6 +631,19 @@ input[type='datetime-local'] {
   min-width: 0;
 }
 
+/* El label ya se encogía bien (min-width:0 de arriba lo confirma), pero
+   en iOS/Safari real el control nativo de fecha/hora sigue PINTÁNDOSE
+   más ancho que su propia caja aunque el layout ya le haya asignado el
+   ancho correcto — no es un problema de flex-shrink, es que Safari
+   dibuja el control por fuera de su caja. overflow:hidden en el label
+   recorta ese sobrante en vez de depender de que el control se ajuste
+   solo (petición real, tras comprobar que seguía saliéndose en el
+   móvil de verdad aunque en escritorio ya medía bien). */
+label:has(> input[type='date']),
+label:has(> input[type='time']) {
+  overflow: hidden;
+}
+
 button {
   padding: 14px;
   border-radius: 12px;

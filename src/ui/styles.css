@@ -618,6 +618,18 @@ input {
   font-size: 16px;
 }
 
+/* El padding:12px de arriba, pensado para texto, le dejaba al cuadrado
+   de color casi ningún hueco donde pintar el color elegido (se veía
+   vacío/blanco por mucho que se cambiara) — petición real: "ese color
+   elegido no se visualiza en el cuadrado de color". El propio control
+   nativo ya se pinta él solo del color entero sin necesitar relleno. */
+input[type='color'] {
+  padding: 0;
+  width: 56px;
+  height: 40px;
+  cursor: pointer;
+}
+
 /* Petición real: al editar un evento la ventana se desplazaba hacia la
    derecha y moverla para verla cambiaba de día — el control nativo de
    hora/fecha no encoge en Safari/WebKit dentro de un flex

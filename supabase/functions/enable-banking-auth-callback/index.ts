@@ -123,15 +123,35 @@ Deno.serve(async (req) => {
     if (!code || !stateRaw) return redirectTo("error", "missing_code")
 
     let familyId: string
+    let profileId: string | null = null
     try {
       const state = JSON.parse(atob(stateRaw))
       familyId = state.familyId
+      profileId = typeof state.profileId === "string" ? state.profileId : null
       if (!familyId) throw new Error("bad state")
     } catch {
       return redirectTo("error", "bad_state")
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+
+    // Petición real, tras encontrar el fallo de seguridad de
+    // reasignación de dueño: "cuando un usuario en cuentas separadas
+    // conecta una cuenta automáticamente debe salir su etiqueta
+    // puesta (preferible)". Se resuelve aquí el member_id de quien
+    // conectó (a partir de profileId, que ya viajaba en el state) para
+    // dejarlo como dueño de sus propias cuentas nuevas — antes se
+    // quedaban sin dueño, lo que en modo Separadas se veía y se leía
+    // igual que "Cuenta Común", visible para toda la familia.
+    let connectingMemberId: string | null = null
+    if (profileId) {
+      const { data: connectingMember } = await admin
+        .from("family_members")
+        .select("id")
+        .eq("linked_profile_id", profileId)
+        .maybeSingle()
+      connectingMemberId = connectingMember?.id ?? null
+    }
     const [{ data: applicationId }, { data: privateKey }] = await Promise.all([
       admin.rpc("get_app_secret", { p_name: "enablebanking_application_id" }),
       admin.rpc("get_app_secret", { p_name: "enablebanking_private_key" }),
@@ -169,6 +189,7 @@ Deno.serve(async (req) => {
         name: acc.name ?? acc.product ?? null,
         currency: acc.currency ?? null,
         raw: acc,
+        owner_member_id: connectingMemberId,
       })
     }
 

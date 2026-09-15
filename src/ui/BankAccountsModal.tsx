@@ -9,6 +9,7 @@ import {
   type Aspsp,
 } from '@/data/bank'
 import { listFamilyMembers } from '@/data/family'
+import { supabase } from '@/data/supabaseClient'
 import type { BankAccount, BankConnection, FamilyMember } from '@/domain/types'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { errorMessage } from '@/domain/errorMessage'
@@ -27,6 +28,14 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [showConnect, setShowConnect] = useState(false)
+  // Petición real, tras encontrar el fallo de seguridad de reasignación
+  // de dueño: "no debería ser posible que cualquier usuario pueda
+  // cambiar la adjudicación de cuentas... solo uno mismo [o el admin]".
+  // El servidor (RLS) ya lo bloquea de verdad — esto es solo para que
+  // el desplegable no se vea tocable cuando en realidad no lo es (evita
+  // el "lo cambié pero no pasó nada" sin explicación).
+  const [myMemberId, setMyMemberId] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   function reload() {
     Promise.all([listBankConnections(), listBankAccounts(), listFamilyMembers()])
@@ -40,6 +49,29 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
   }
 
   useEffect(reload, [])
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data.user?.id
+      if (!uid) return
+      supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', uid)
+        .single()
+        .then(({ data: p }) => setIsAdmin(p?.role === 'admin'))
+      supabase
+        .from('family_members')
+        .select('id')
+        .eq('linked_profile_id', uid)
+        .maybeSingle()
+        .then(({ data: m }) => setMyMemberId(m?.id ?? null))
+    })
+  }, [])
+
+  function canEditOwner(a: BankAccount): boolean {
+    return isAdmin || !a.ownerMemberId || a.ownerMemberId === myMemberId
+  }
 
   const activeConnections = connections.filter((c) => c.status === 'active')
 
@@ -112,8 +144,13 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
                               window.dispatchEvent(new Event('family-app:bank-changed'))
                             })
                           }
+                          disabled={!canEditOwner(a)}
                           style={{ flex: 'none', fontSize: 13 }}
-                          aria-label={`De quién es la cuenta ${a.name ?? ''}`}
+                          aria-label={
+                            canEditOwner(a)
+                              ? `De quién es la cuenta ${a.name ?? ''}`
+                              : `De quién es la cuenta ${a.name ?? ''} — solo el dueño o el administrador pueden cambiarlo`
+                          }
                         >
                           <option value="">🏠 Común</option>
                           {members.map((m) => (

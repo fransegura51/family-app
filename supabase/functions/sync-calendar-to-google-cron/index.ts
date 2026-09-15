@@ -178,9 +178,14 @@ Deno.serve(async (req) => {
           }
 
           if (allDay) {
+            // Un "todo el día" de varios días (p. ej. una baja o unas
+            // vacaciones) se mandaba siempre como un solo día — bug
+            // real: la duración de verdad (end_at) se ignoraba, igual
+            // que en export-calendar-ics.
+            const spanDays = endAt ? Math.max(1, Math.round((endAt.getTime() - startAt.getTime()) / 86400000)) : 1
             const dateStr = toDateStr(startAt)
             const endDate = new Date(startAt)
-            endDate.setDate(endDate.getDate() + 1)
+            endDate.setDate(endDate.getDate() + spanDays)
             body.start = { date: dateStr }
             body.end = { date: toDateStr(endDate) }
           } else {

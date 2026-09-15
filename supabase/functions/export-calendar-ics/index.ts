@@ -239,6 +239,13 @@ Deno.serve(async (req) => {
       const timeOfDayStart = new Date(startAt)
       const timeOfDayEnd = endAt ? new Date(endAt) : null
       const durationMs = timeOfDayEnd ? timeOfDayEnd.getTime() - timeOfDayStart.getTime() : 60 * 60 * 1000
+      // Un "todo el día" de varios días (p. ej. una baja o unas
+      // vacaciones, del 17 de junio al 28 de octubre) se exportaba
+      // siempre como un solo día (el de inicio) — bug real: la
+      // duración de verdad (end_at) se ignoraba del todo aquí.
+      const allDaySpanDays = allDay && timeOfDayEnd
+        ? Math.max(1, Math.round((timeOfDayEnd.getTime() - timeOfDayStart.getTime()) / 86400000))
+        : 1
 
       const memberNames = membersByEvent.get(id) ?? []
       const descParts: string[] = []
@@ -254,7 +261,7 @@ Deno.serve(async (req) => {
 
         if (allDay) {
           lines.push(`DTSTART;VALUE=DATE:${icsDate(occDate)}`)
-          lines.push(`DTEND;VALUE=DATE:${icsDate(addDaysStr(occDate, 1))}`)
+          lines.push(`DTEND;VALUE=DATE:${icsDate(addDaysStr(occDate, allDaySpanDays))}`)
         } else {
           // Se recoloca la hora del evento original sobre el DÍA de esta
           // ocurrencia (para las repeticiones) — misma hora, día distinto.

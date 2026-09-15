@@ -308,7 +308,7 @@ function MemberFolders({
           </button>
           {addingMember && (
             <div className="store-folder-contents">
-              <AddMemberForm onAdded={onReload} existingMemberCount={members.length} />
+              <AddMemberForm onAdded={onReload} existingMembers={members} />
             </div>
           )}
         </div>

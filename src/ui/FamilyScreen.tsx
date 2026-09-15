@@ -44,6 +44,13 @@ function canRestrictSections(memberType: MemberType): boolean {
   return memberType === 'guest' || memberType === 'child'
 }
 
+// Petición real: "los nombres de las clases de cuentas vienen en
+// inglés" — la ficha de cada miembro pintaba memberType tal cual
+// ('admin', 'child'...) en vez de pasarlo por MEMBER_TYPES.
+function memberTypeLabel(memberType: MemberType): string {
+  return MEMBER_TYPES.find((t) => t.value === memberType)?.label ?? memberType
+}
+
 function SectionsChecklist({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
   return (
     <div className="filter-row" style={{ flexWrap: 'wrap' }}>
@@ -192,7 +199,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
               <MemberAvatar member={m} size={40} />
               <div className="member-card-body">
                 <strong>{m.name}</strong>
-                <p className="muted">{m.memberType}</p>
+                <p className="muted">{memberTypeLabel(m.memberType)}</p>
               </div>
               {isAdmin && (
                 <div className="member-card-actions">
@@ -218,7 +225,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         {order.length === 0 && <p className="muted">Todavía no hay miembros.</p>}
       </div>
 
-      {isAdmin && <AddMemberForm onAdded={reload} existingMemberCount={order.length} />}
+      {isAdmin && <AddMemberForm onAdded={reload} existingMembers={order} />}
       {isAdmin && <AmazonWebhookSettings />}
     </div>
   )
@@ -551,7 +558,14 @@ function AccountsModePromptModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-export function AddMemberForm({ onAdded, existingMemberCount }: { onAdded: () => void; existingMemberCount: number }) {
+// "Adulto" a efectos de Piso compartido: admin (quien crea la familia)
+// cuenta igual que un 'adult' normal — ambos pueden tener sus propias
+// cuentas bancarias; niños/bebés/invitados no.
+function isFinancialAdult(memberType: MemberType): boolean {
+  return memberType === 'admin' || memberType === 'adult'
+}
+
+export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => void; existingMembers: FamilyMember[] }) {
   const [name, setName] = useState('')
   const [memberType, setMemberType] = useState<MemberType>('child')
   const [color, setColor] = useState('#4C6EF5')
@@ -559,10 +573,12 @@ export function AddMemberForm({ onAdded, existingMemberCount }: { onAdded: () =>
   const [allowedSections, setAllowedSections] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  // Piso compartido — petición real: "que se pueda elegir desde el
-  // momento de añadir un segundo miembro... Compartidas por defecto".
-  // Solo tiene sentido preguntar la primera vez que la familia pasa de
-  // 1 a 2 miembros — añadir un 3º, 4º... no vuelve a preguntar.
+  // Piso compartido — petición real: "que se pueda elegir... al añadir
+  // un segundo miembro" y, tras probarlo con un 2º miembro Niño: "que
+  // al crear una segunda cuenta ADULTA pregunte" — un hijo/bebé/invitado
+  // no tiene cuentas propias, así que no cuenta para esta pregunta; solo
+  // tiene sentido la primera vez que la familia pasa de 1 a 2 adultos
+  // (admin cuenta como adulto) — añadir un 3º, 4º adulto no repregunta.
   const [showModePrompt, setShowModePrompt] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
@@ -580,7 +596,8 @@ export function AddMemberForm({ onAdded, existingMemberCount }: { onAdded: () =>
       setName('')
       setBirthDate('')
       setAllowedSections([])
-      if (existingMemberCount === 1) setShowModePrompt(true)
+      const existingAdults = existingMembers.filter((m) => isFinancialAdult(m.memberType)).length
+      if (isFinancialAdult(memberType) && existingAdults === 1) setShowModePrompt(true)
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir el miembro'))

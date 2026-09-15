@@ -19,7 +19,17 @@ export function LoginScreen() {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) setError(error.message)
     } else {
-      const { data, error } = await supabase.auth.signUp({ email, password })
+      // Bug real: el enlace de confirmación del email llevaba a
+      // localhost:3000 (el "Site URL" que trae Supabase por defecto) y,
+      // tras corregirlo en el panel, a la raíz del dominio sin
+      // "/family-app" (el campo no se queda con la ruta completa) —
+      // se fija aquí mismo, calculado con la URL real desde la que se
+      // esté usando la app, en vez de depender de esa configuración.
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
+      })
       if (error) {
         setError(error.message)
       } else if (!data.session) {

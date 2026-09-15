@@ -1236,26 +1236,20 @@ function DayEntriesBody({
     <>
       {entries.length === 0 && <p className="muted">{emptyLabel}</p>}
 
-      {allDayEntries.length > 0 && (
-        <>
-          <p className="muted" style={{ margin: '4px 0' }}>
-            Todo el día
-          </p>
-          <div className="agenda-allday-row">
-            {allDayEntries.map((entry) =>
-              editingId === entry.id ? renderCard(entry) : <AgendaAllDayChip key={entry.key} entry={entry} />,
-            )}
-          </div>
-        </>
-      )}
-
       {/* Un solo bloque por día (petición real, junto a la maqueta
           aprobada: "eventos del mismo día unidos" en vez de una
-          pastilla suelta por evento) en vez de una fila con la hora
-          aparte — la hora ahora vive dentro de cada AgendaRow, a la
-          derecha, como en la referencia de Apple Calendario. */}
-      {timedEntries.length > 0 && (
+          pastilla suelta por evento) — los cumpleaños y demás eventos
+          "todo el día" comparten ahora el mismo formato de fila que
+          los que tienen hora (petición real: "a los cumples hay que
+          cambiarles el formato también"), en vez de la antigua pastilla
+          de color entero con "Hecho"/✕ sueltos. Solo se distinguen por
+          no llevar hora a la derecha. */}
+      {(allDayEntries.length > 0 || timedEntries.length > 0) && (
         <div className="agenda-day-block">
+          {allDayEntries.length > 0 && <p className="agenda-allday-label">Todo el día</p>}
+          {allDayEntries.map((entry) => (
+            <div key={entry.key}>{renderCard(entry)}</div>
+          ))}
           {timedEntries.map((entry) => (
             <div key={entry.key}>{renderCard(entry)}</div>
           ))}
@@ -1710,108 +1704,6 @@ function AgendaListView({
   )
 }
 
-// Chip de "todo el día" — solo lectura al vistazo; para editar/borrar se
-// usa la tarjeta normal (AgendaCard), no hace falta duplicar esos
-// controles en un chip tan pequeño.
-// Antes esta etiqueta era solo de adorno: no se podía pulsar para
-// editar ni tenía botón de borrar, así que un evento "todo el día"
-// (sin hora, como "Cole cerrado") no se podía tocar una vez guardado —
-// bug real reportado, se notó porque el autocompletado de títulos
-// copia "todo el día" del evento anterior, así que de golpe había
-// varios eventos así seguidos, todos igual de intocables.
-function AgendaChipThumb({ storagePath }: { storagePath: string }) {
-  const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => {
-    let active = true
-    getEventAttachmentUrl(storagePath)
-      .then((u) => active && setUrl(u))
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [storagePath])
-  if (!url) return null
-  return <img src={url} alt="" className="agenda-chip-thumb" />
-}
-
-function AgendaAllDayChip({ entry }: { entry: AgendaEntry }) {
-  const [confirming, setConfirming] = useState(false)
-  const canDelete = !!entry.onDeleteSeries
-
-  const textColor = readableTextColor(entry.color)
-
-  if (confirming) {
-    return (
-      <span className="agenda-allday-chip" style={{ background: entry.color, color: textColor }}>
-        ¿Seguro?
-        <button type="button" className="agenda-allday-chip-action" onClick={entry.onDeleteSeries}>
-          Borrar
-        </button>
-        <button type="button" className="agenda-allday-chip-action" onClick={() => setConfirming(false)}>
-          Cancelar
-        </button>
-      </span>
-    )
-  }
-
-  return (
-    <span
-      className={'agenda-allday-chip' + (entry.done ? ' agenda-allday-chip-done' : '')}
-      style={{ background: entry.color, color: textColor }}
-    >
-      <span
-        onClick={entry.onEdit}
-        style={{ cursor: entry.onEdit ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 5 }}
-      >
-        {/* Vista previa parcial del adjunto — petición real: se veía en
-            Vista Familiar pero no aquí. */}
-        {entry.attachmentKind === 'foto' && entry.attachmentStoragePath && (
-          <AgendaChipThumb storagePath={entry.attachmentStoragePath} />
-        )}
-        {entry.done ? '✔️ ' : entry.isExternal ? '🔗 ' : ''}
-        {entry.title}
-        {(entry.locationLabel || (entry.locationLatitude != null && entry.locationLongitude != null)) && ' 📍'}
-        {entry.subtitle && <span className="agenda-allday-chip-sub"> · {entry.subtitle}</span>}
-      </span>
-      {/* "Hecho" ya no lo quita del calendario — se queda marcado, y se
-          puede deshacer aquí mismo si hizo falta marcarlo sin querer
-          (petición real: "quiero poder verlo posteriormente lo que he
-          hecho y cuándo lo he hecho, no quiero que desaparezca"). */}
-      {entry.onComplete && (
-        <button type="button" className="agenda-allday-chip-action" onClick={entry.onComplete}>
-          ✓ Hecho
-        </button>
-      )}
-      {entry.onUncomplete && (
-        <button type="button" className="agenda-allday-chip-action" onClick={entry.onUncomplete}>
-          ↺ Deshacer
-        </button>
-      )}
-      {entry.onShare && (
-        <button
-          type="button"
-          className="icon-button-share icon-button-share-sm"
-          onClick={entry.onShare}
-          disabled={entry.sharing}
-          aria-label="Compartir"
-        >
-          {entry.sharing ? '…' : '📤'}
-        </button>
-      )}
-      {canDelete && (
-        <button
-          type="button"
-          className="agenda-allday-chip-close"
-          onClick={() => setConfirming(true)}
-          aria-label="Borrar"
-        >
-          ✕
-        </button>
-      )}
-    </span>
-  )
-}
-
 // Foto grande sobre la tarjeta del evento (formato de referencia,
 // como "Moto") — la url firmada se pide sola, no llega ya resuelta.
 function EventAttachmentPhoto({ storagePath }: { storagePath: string }) {
@@ -1951,22 +1843,27 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
             entry.onEdit?.()
           }}
         >
-          <span className="agenda-row-main">
-            <span className="agenda-row-title">
-              {entry.isExternal ? '🔗 ' : ''}
-              {entry.title}
-              {entry.attachmentKind === 'foto' && ' 📷'}
-              {entry.attachmentKind === 'archivo' && ' 📎'}
-              {entry.note && ' 📝'}
-            </span>
-            <span className="agenda-row-sub">{entry.locationLabel ? `📍 ${entry.locationLabel}` : entry.subtitle}</span>
+          {/* Título en su propia línea a todo lo ancho (petición real:
+              "ver más título en la fila compacta") — antes competía por
+              sitio con la hora en la misma línea y se truncaba antes de
+              tiempo. La hora baja a una segunda línea, junto al
+              subtítulo. */}
+          <span className="agenda-row-title">
+            {entry.isExternal ? '🔗 ' : ''}
+            {entry.title}
+            {entry.attachmentKind === 'foto' && ' 📷'}
+            {entry.attachmentKind === 'archivo' && ' 📎'}
+            {entry.note && ' 📝'}
           </span>
-          {(entry.startTime || entry.endTime) && (
-            <span className="agenda-row-time">
-              <strong>{entry.startTime}</strong>
-              {entry.endTime}
-            </span>
-          )}
+          <span className="agenda-row-meta">
+            <span className="agenda-row-sub">{entry.locationLabel ? `📍 ${entry.locationLabel}` : entry.subtitle}</span>
+            {(entry.startTime || entry.endTime) && (
+              <span className="agenda-row-time">
+                {entry.startTime}
+                {entry.endTime && ` – ${entry.endTime}`}
+              </span>
+            )}
+          </span>
         </button>
         {entry.onShare && (
           <button
@@ -2357,6 +2254,13 @@ function WhoDropdown({
 // desde que TERMINA el evento — "que me avise media hora antes de
 // recogerlo" cuenta desde el final, no desde el principio. La opción de
 // "al terminar" solo se ofrece si el evento tiene hora de fin.
+// Mismo formato de lista que Repetición (petición real: "los
+// recordatorios que se vean en el mismo formato que las repeticiones")
+// — preajustes como filas con indicador redondo en vez de chips
+// sueltos para quitar por un lado y chips para añadir por otro. A
+// diferencia de Repetición (una sola opción activa), aquí varias filas
+// pueden estar marcadas a la vez: cada una es su propio
+// recordatorio independiente.
 function ReminderPicker({
   reminders,
   onChange,
@@ -2369,45 +2273,27 @@ function ReminderPicker({
   const [amount, setAmount] = useState('1')
   const [unit, setUnit] = useState<ReminderUnit>('horas')
   const [anchor, setAnchor] = useState<ReminderAnchor>('start')
+  const [customMode, setCustomMode] = useState(false)
 
-  const sameReminder = (a: EventReminder, b: EventReminder) =>
-    a.minutesBefore === b.minutesBefore && a.anchor === b.anchor
+  const sameReminder = (a: EventReminder, b: EventReminder) => a.minutesBefore === b.minutesBefore && a.anchor === b.anchor
+  const isActive = (minutesBefore: number) => reminders.some((r) => sameReminder(r, { minutesBefore, anchor }))
 
-  function add(minutesBefore: number, addAnchor: ReminderAnchor) {
-    const next = { minutesBefore, anchor: addAnchor }
-    if (minutesBefore > 0 && !reminders.some((r) => sameReminder(r, next))) {
-      onChange([...reminders, next].sort((a, b) => a.minutesBefore - b.minutesBefore))
-    }
+  function toggle(minutesBefore: number) {
+    const target = { minutesBefore, anchor }
+    if (reminders.some((r) => sameReminder(r, target))) onChange(reminders.filter((r) => !sameReminder(r, target)))
+    else onChange([...reminders, target].sort((a, b) => a.minutesBefore - b.minutesBefore))
   }
 
   function addCustom() {
     const n = Number(amount)
     if (!n || n <= 0) return
-    add(reminderMinutesFrom(n, unit), anchor)
-  }
-
-  function remove(target: EventReminder) {
-    onChange(reminders.filter((r) => !sameReminder(r, target)))
+    const target = { minutesBefore: reminderMinutesFrom(n, unit), anchor }
+    if (!reminders.some((r) => sameReminder(r, target))) onChange([...reminders, target].sort((a, b) => a.minutesBefore - b.minutesBefore))
+    setCustomMode(false)
   }
 
   return (
     <div>
-      <p className="muted">Recordatorios</p>
-      {reminders.length > 0 && (
-        <div className="filter-row">
-          {reminders.map((r) => (
-            <button
-              type="button"
-              key={`${r.minutesBefore}-${r.anchor}`}
-              className="chip chip-active"
-              onClick={() => remove(r)}
-            >
-              🔔 {reminderLabel(r.minutesBefore, r.anchor)} ✕
-            </button>
-          ))}
-        </div>
-      )}
-
       {hasEnd && (
         <div className="filter-row">
           <button
@@ -2427,32 +2313,56 @@ function ReminderPicker({
         </div>
       )}
 
-      <div className="filter-row">
+      <div className="recurrence-preset-list">
+        <button
+          type="button"
+          className={'chip recurrence-preset' + (reminders.length === 0 ? ' chip-active' : '')}
+          onClick={() => onChange([])}
+        >
+          Sin recordatorio
+        </button>
         {REMINDER_PRESETS.map((m) => (
-          <button type="button" key={m} className="chip" onClick={() => add(m, anchor)}>
+          <button
+            type="button"
+            key={m}
+            className={'chip recurrence-preset' + (isActive(m) ? ' chip-active' : '')}
+            onClick={() => toggle(m)}
+          >
             {reminderLabel(m, anchor)}
           </button>
         ))}
+        <button
+          type="button"
+          className={'chip recurrence-preset' + (customMode ? ' chip-active' : '')}
+          onClick={() => setCustomMode((v) => !v)}
+        >
+          Personalizado…
+        </button>
       </div>
-      <div className="inline-fields">
-        <label>
-          Cantidad
-          <input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </label>
-        <label>
-          Unidad
-          <select value={unit} onChange={(e) => setUnit(e.target.value as ReminderUnit)}>
-            {REMINDER_UNIT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <button type="button" className="link-button" onClick={addCustom}>
-        + Añadir recordatorio
-      </button>
+
+      {customMode && (
+        <div className="day-modal-group">
+          <div className="inline-fields">
+            <label>
+              Cantidad
+              <input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </label>
+            <label>
+              Unidad
+              <select value={unit} onChange={(e) => setUnit(e.target.value as ReminderUnit)}>
+                {REMINDER_UNIT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <button type="button" className="link-button" onClick={addCustom}>
+            + Añadir recordatorio
+          </button>
+        </div>
+      )}
     </div>
   )
 }

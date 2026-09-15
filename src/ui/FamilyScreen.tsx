@@ -597,8 +597,16 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
       setBirthDate('')
       setAllowedSections([])
       const existingAdults = existingMembers.filter((m) => isFinancialAdult(m.memberType)).length
+      // Bug real encontrado probando en vivo ("sigue sin preguntar"): si
+      // aquí mismo se llamaba a onAdded() (recarga la lista del padre),
+      // FamilyScreen pasaba un instante por su "Cargando familia…" — un
+      // return anticipado que DESMONTA este formulario entero, llevándose
+      // por delante el showModePrompt recién puesto a true antes de que
+      // llegara a pintarse. Con la ventana abierta, onAdded() se retrasa
+      // hasta que se cierra (ver AccountsModePromptModal más abajo); sin
+      // ventana, se llama aquí mismo como siempre.
       if (isFinancialAdult(memberType) && existingAdults === 1) setShowModePrompt(true)
-      onAdded()
+      else onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir el miembro'))
     } finally {
@@ -608,7 +616,14 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      {showModePrompt && <AccountsModePromptModal onClose={() => setShowModePrompt(false)} />}
+      {showModePrompt && (
+        <AccountsModePromptModal
+          onClose={() => {
+            setShowModePrompt(false)
+            onAdded()
+          }}
+        />
+      )}
       <h2>Añadir miembro</h2>
       <label>
         Nombre

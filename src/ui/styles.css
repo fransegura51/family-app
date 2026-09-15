@@ -3167,6 +3167,13 @@ textarea {
   padding: 0;
   margin: 0;
   font: inherit;
+  /* Un <button> parte con una caja de línea más ajustada que la de un
+     <span> — combinada con el overflow:hidden de .price-row-name (para
+     el "..." al final), eso cortaba el palo de las letras con
+     descendente (p, g, y) en vez de solo recortar el texto sobrante a
+     lo ancho. Bug real visto en vivo tras convertir el nombre en
+     botón tocable para poder editarlo. */
+  line-height: 1.4;
   color: inherit;
   text-align: left;
   cursor: pointer;

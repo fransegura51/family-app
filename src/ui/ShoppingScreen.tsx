@@ -862,6 +862,16 @@ function ShoppingListTab() {
       })}
       {visible.length === 0 && <p className="muted">Nada pendiente.</p>}
 
+      {/* Petición real: "pon una nota... en letra pequeña como los
+          productos se borran y editan" — ni el check ni deslizar ni
+          tocar el nombre se ven como acciones a la primera, así que se
+          explican aquí en vez de dejarlos por descubrir. */}
+      {visible.length > 0 && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Toca un producto para editarlo, desliza hacia la izquierda para borrarlo.
+        </p>
+      )}
+
       {/* Petición real: "pondría las tiendas que Pepa reconoce por voz
           debajo de la lista de pendientes" — antes iba justo encima,
           delante de lo que de verdad se mira primero al entrar. */}

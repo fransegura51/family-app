@@ -1831,6 +1831,7 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
   const [notice, setNotice] = useState<string | null>(null)
   const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
   const [customCanvas, setCustomCanvas] = useState<InvitationCanvas | null>(null)
+  const [customTemplateKey, setCustomTemplateKey] = useState<string | null>(null)
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -1845,6 +1846,7 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
       .then(async (invitation) => {
         if (!invitation || invitation.canvas.layers.length === 0) return
         setCustomCanvas(invitation.canvas)
+        setCustomTemplateKey(invitation.templateKey)
         const paths = invitation.canvas.layers.map((l) => l.photoPath).filter((p): p is string => !!p)
         const urls = await Promise.all(paths.map((p) => getInvitationPhotoUrl(p).catch(() => null)))
         const map: Record<string, string> = {}
@@ -1906,7 +1908,7 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
         {notice && <p className="points-badge">{notice}</p>}
 
         {customCanvas ? (
-          <InvitationCanvasView canvas={customCanvas} photoUrls={photoUrls} />
+          <InvitationCanvasView canvas={customCanvas} templateKey={customTemplateKey} photoUrls={photoUrls} />
         ) : (
           <>
             <p className="muted" style={{ fontSize: 13 }}>
@@ -1921,14 +1923,19 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
               ))}
             </div>
 
-            <div style={{ marginTop: 12, borderRadius: 16, padding: 20, background: template.gradient, color: template.text, textAlign: 'center' }}>
-              <div style={{ fontSize: 28 }}>{EVENT_TYPE_META[event.type].icon}</div>
-              <strong style={{ fontSize: 18 }}>{event.title}</strong>
-              {infoLines.map((l) => (
-                <p key={l} style={{ margin: '6px 0', fontSize: 13, opacity: 0.9 }}>
-                  {l}
-                </p>
-              ))}
+            <div
+              style={{ position: 'relative', overflow: 'hidden', marginTop: 12, borderRadius: 16, padding: 20, background: template.gradient, color: template.text, textAlign: 'center' }}
+            >
+              <InvitationBackgroundArt artKey={template.artKey} />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ fontSize: 28 }}>{EVENT_TYPE_META[event.type].icon}</div>
+                <strong style={{ fontSize: 18 }}>{event.title}</strong>
+                {infoLines.map((l) => (
+                  <p key={l} style={{ margin: '6px 0', fontSize: 13, opacity: 0.9 }}>
+                    {l}
+                  </p>
+                ))}
+              </div>
             </div>
           </>
         )}
@@ -2861,7 +2868,259 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
 // Renderer de solo lectura — reutilizado tanto en el editor (sin
 // selección/gestos) como en el previo dentro de InvitationModal, para
 // que "lo que ves es lo que se manda" sea literal.
-function InvitationCanvasView({ canvas, photoUrls }: { canvas: InvitationCanvas; photoUrls: Record<string, string> }) {
+// Arte decorativo propio por plantilla — nunca un personaje con
+// copyright, solo formas geométricas simples (círculos, óvalos,
+// triángulos) con el espíritu de cada tema. Petición real: "no quiero
+// un simple fondo colorido, quiero plantillas bonitas temáticas... como
+// las de las fotos adjuntas" (referencias de Canva/Pinterest — esos
+// diseños concretos no se pueden copiar, son de terceros). Vive aquí
+// (no en domain/events.ts) porque ese archivo es .ts sin JSX. No es una
+// capa editable — va detrás de las capas del usuario, fija al elegir
+// plantilla (igual que el degradado de fondo).
+function InvitationBackgroundArt({ artKey }: { artKey: string }) {
+  const common = { style: { position: 'absolute' as const, inset: 0, width: '100%', height: '100%', pointerEvents: 'none' as const } }
+  switch (artKey) {
+    case 'globos':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {[
+            [40, 300, 32, '#ffffff'],
+            [80, 340, 24, '#F472B6'],
+            [255, 310, 30, '#ffffff'],
+            [220, 350, 22, '#34D399'],
+          ].map(([cx, cy, r, fill], i) => (
+            <g key={i}>
+              <ellipse cx={cx as number} cy={cy as number} rx={r as number} ry={(r as number) * 1.15} fill={fill as string} opacity={0.9} />
+              <polygon
+                points={`${(cx as number) - 5},${(cy as number) + (r as number) * 1.1} ${(cx as number) + 5},${(cy as number) + (r as number) * 1.1} ${cx},${(cy as number) + (r as number) * 1.1 + 8}`}
+                fill={fill as string}
+                opacity={0.9}
+              />
+              <path
+                d={`M${cx} ${(cy as number) + (r as number) * 1.1 + 8} q 6 20 -4 40 q -8 18 4 36`}
+                stroke={fill as string}
+                strokeWidth={1.5}
+                fill="none"
+                opacity={0.6}
+              />
+            </g>
+          ))}
+          {[[30, 60], [270, 90], [150, 40], [60, 150], [250, 200], [190, 60]].map(([x, y], i) => (
+            <circle key={i} cx={x} cy={y} r={i % 2 === 0 ? 4 : 3} fill="#ffffff" opacity={0.7} />
+          ))}
+        </svg>
+      )
+    case 'monstruo':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <g opacity={0.9}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <polygon key={i} points={`${i * 40 + 5},18 ${i * 40 + 25},18 ${i * 40 + 15},42`} fill={i % 2 === 0 ? '#FBBF24' : '#F472B6'} />
+            ))}
+            <line x1={0} y1={18} x2={300} y2={18} stroke="#ffffff" strokeWidth={2} opacity={0.5} />
+          </g>
+          <g transform="translate(70 330)">
+            <ellipse cx={0} cy={0} rx={75} ry={70} fill="#0D9488" />
+            <circle cx={-25} cy={-50} r={10} fill="#0D9488" />
+            <circle cx={5} cy={-58} r={8} fill="#0D9488" />
+            <circle cx={30} cy={-48} r={9} fill="#0D9488" />
+            <circle cx={-20} cy={-15} r={22} fill="#ffffff" />
+            <circle cx={-20} cy={-15} r={11} fill="#1F2937" />
+            <circle cx={-16} cy={-19} r={4} fill="#ffffff" />
+            <circle cx={22} cy={-8} r={16} fill="#ffffff" />
+            <circle cx={22} cy={-8} r={8} fill="#1F2937" />
+            <path d="M-15 25 q 15 18 35 2" stroke="#1F2937" strokeWidth={3} fill="none" strokeLinecap="round" />
+          </g>
+          {[[240, 260], [265, 220], [220, 300]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 7, 3)} fill="#FBBF24" opacity={0.85} />
+          ))}
+        </svg>
+      )
+    case 'futbol':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {[[45, 340, 38], [255, 70, 26]].map(([cx, cy, r], i) => (
+            <g key={i}>
+              <circle cx={cx} cy={cy} r={r} fill="#ffffff" />
+              <polygon
+                points={ballPentagon(cx, cy, r * 0.42)}
+                fill="#1F2937"
+              />
+              {[0, 1, 2, 3, 4].map((k) => {
+                const a = (Math.PI * 2 * k) / 5 - Math.PI / 2
+                const x1 = cx + Math.cos(a) * r * 0.42
+                const y1 = cy + Math.sin(a) * r * 0.42
+                const x2 = cx + Math.cos(a) * r * 0.95
+                const y2 = cy + Math.sin(a) * r * 0.95
+                return <line key={k} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#1F2937" strokeWidth={2} />
+              })}
+              <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1F2937" strokeWidth={2} />
+            </g>
+          ))}
+          {[[200, 330], [90, 60], [240, 220]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 6, 3)} fill="#ffffff" opacity={0.8} />
+          ))}
+        </svg>
+      )
+    case 'unicornio':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <path d="M20 60 A130 130 0 0 1 280 60" stroke="#FCA5A5" strokeWidth={10} fill="none" opacity={0.7} />
+          <path d="M35 60 A115 115 0 0 1 265 60" stroke="#FDE68A" strokeWidth={10} fill="none" opacity={0.7} />
+          <path d="M50 60 A100 100 0 0 1 250 60" stroke="#A7F3D0" strokeWidth={10} fill="none" opacity={0.7} />
+          <g transform="translate(190 320) rotate(-8)">
+            <ellipse cx={0} cy={0} rx={48} ry={34} fill="#ffffff" />
+            <path d="M-30 -20 L-55 -55 L-15 -30 Z" fill="#ffffff" />
+            <polygon points="-52,-58 -46,-78 -38,-56" fill="#FDE68A" />
+            {[-8, 4, 16].map((dy, i) => (
+              <path key={i} d={`M-40 ${-30 + dy} q -18 6 -10 22`} stroke={['#F472B6', '#C4B5FD', '#93C5FD'][i]} strokeWidth={6} fill="none" strokeLinecap="round" />
+            ))}
+            <circle cx={-38} cy={-28} r={3} fill="#4C1D95" />
+            <line x1={-25} y1={30} x2={-25} y2={50} stroke="#ffffff" strokeWidth={7} strokeLinecap="round" />
+            <line x1={0} y1={32} x2={0} y2={52} stroke="#ffffff" strokeWidth={7} strokeLinecap="round" />
+            <line x1={25} y1={30} x2={25} y2={50} stroke="#ffffff" strokeWidth={7} strokeLinecap="round" />
+          </g>
+          {[[40, 90], [230, 140], [60, 250], [260, 260]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 6, 3)} fill="#ffffff" opacity={0.85} />
+          ))}
+        </svg>
+      )
+    case 'dorado':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <g opacity={0.9}>
+            <circle cx={150} cy={330} r={70} fill="none" stroke="#D4AF6A" strokeWidth={3} />
+            <circle cx={150} cy={330} r={58} fill="none" stroke="#D4AF6A" strokeWidth={1.5} />
+            <circle cx={150} cy={330} r={82} fill="none" stroke="#D4AF6A" strokeWidth={1} opacity={0.6} />
+          </g>
+          {[[40, 60], [260, 90], [230, 200], [50, 220], [270, 300], [30, 340]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, i % 2 === 0 ? 5 : 3, 2)} fill="#D4AF6A" opacity={0.85} />
+          ))}
+          <path d="M0 40 h300 M0 44 h300" stroke="#D4AF6A" strokeWidth={0.5} opacity={0.3} />
+        </svg>
+      )
+    case 'floral':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {[[45, 350, 1], [255, 55, 0.8], [255, 360, 0.65]].map(([cx, cy, scale], i) => (
+            <g key={i} transform={`translate(${cx} ${cy}) scale(${scale})`}>
+              {[0, 60, 120, 180, 240, 300].map((deg) => (
+                <ellipse key={deg} cx={0} cy={-16} rx={10} ry={16} fill={['#FBCFE8', '#FDBA74', '#FECDD3'][deg / 60] ?? '#FBCFE8'} opacity={0.9} transform={`rotate(${deg})`} />
+              ))}
+              <circle cx={0} cy={0} r={8} fill="#FDE68A" />
+            </g>
+          ))}
+          <path d="M45 380 q -6 -40 10 -70" stroke="#86EFAC" strokeWidth={3} fill="none" opacity={0.8} />
+          <path d="M255 90 q 10 30 -4 55" stroke="#86EFAC" strokeWidth={3} fill="none" opacity={0.8} />
+          {[[150, 70], [90, 130], [210, 260]].map(([x, y], i) => (
+            <circle key={i} cx={x} cy={y} r={2.5} fill="#FDBA74" opacity={0.7} />
+          ))}
+        </svg>
+      )
+    case 'celeste':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {[[70, 350, 1], [230, 60, 0.8], [40, 90, 0.6]].map(([cx, cy, scale], i) => (
+            <g key={i} transform={`translate(${cx} ${cy}) scale(${scale})`} fill="#ffffff" opacity={0.85}>
+              <circle cx={-24} cy={0} r={20} />
+              <circle cx={0} cy={-10} r={26} />
+              <circle cx={26} cy={0} r={20} />
+              <rect x={-26} y={0} width={78} height={20} rx={10} />
+            </g>
+          ))}
+          {[[150, 140], [200, 200], [90, 220], [250, 300], [30, 260]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 5, 2)} fill="#ffffff" opacity={0.9} />
+          ))}
+        </svg>
+      )
+    case 'disco':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <defs>
+            <clipPath id="disco-ball-clip">
+              <circle r={36} />
+            </clipPath>
+          </defs>
+          {/* Bola de espejos de verdad (esfera + rejilla de facetas), no
+              una diana — la primera versión con anillos concéntricos no
+              se leía como bola de discoteca. */}
+          <g transform="translate(150 86)">
+            <line x1={0} y1={-70} x2={0} y2={-37} stroke="#ffffff" strokeWidth={1.5} opacity={0.6} />
+            {[['#F472B6', -34], ['#38BDF8', 0], ['#FBBF24', 34]].map(([color, dx], i) => (
+              <polygon key={i} points={`0,0 ${(dx as number) - 10},120 ${(dx as number) + 10},120`} fill={color as string} opacity={0.14} />
+            ))}
+            <circle r={36} fill="#CBD5F5" />
+            <g clipPath="url(#disco-ball-clip)">
+              {[-27, -18, -9, 0, 9, 18, 27].map((y) => (
+                <line key={`h${y}`} x1={-36} y1={y} x2={36} y2={y} stroke="#7C86B8" strokeWidth={1} opacity={0.55} />
+              ))}
+              {Array.from({ length: 10 }).map((_, i) => {
+                const x = -45 + i * 10
+                return <line key={`d1${i}`} x1={x} y1={-40} x2={x + 18} y2={40} stroke="#7C86B8" strokeWidth={0.8} opacity={0.45} />
+              })}
+              {Array.from({ length: 10 }).map((_, i) => {
+                const x = -45 + i * 10
+                return <line key={`d2${i}`} x1={x} y1={40} x2={x + 18} y2={-40} stroke="#7C86B8" strokeWidth={0.8} opacity={0.45} />
+              })}
+            </g>
+            <circle r={36} fill="none" stroke="#ffffff" strokeWidth={1} opacity={0.4} />
+            <ellipse cx={-11} cy={-13} rx={11} ry={6} fill="#ffffff" opacity={0.55} transform="rotate(-25 -11 -13)" />
+          </g>
+          {[[40, 200], [260, 230], [70, 320], [230, 340], [30, 60], [270, 130]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, i % 2 === 0 ? 8 : 5, 3)} fill="#ffffff" opacity={0.85} />
+          ))}
+        </svg>
+      )
+    case 'confeti':
+    default:
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {[
+            [30, 40, '#F472B6', 'c'],
+            [270, 70, '#FBBF24', 't'],
+            [250, 340, '#34D399', 'c'],
+            [40, 330, '#7C3AED', 's'],
+            [150, 30, '#FBBF24', 's'],
+            [90, 370, '#F472B6', 't'],
+            [220, 190, '#34D399', 'c'],
+            [60, 190, '#7C3AED', 't'],
+          ].map(([x, y, color, shape], i) =>
+            shape === 'c' ? (
+              <circle key={i} cx={x as number} cy={y as number} r={5} fill={color as string} opacity={0.8} />
+            ) : shape === 's' ? (
+              <rect key={i} x={(x as number) - 4} y={(y as number) - 4} width={8} height={8} rx={2} fill={color as string} opacity={0.8} transform={`rotate(20 ${x} ${y})`} />
+            ) : (
+              <polygon key={i} points={`${x as number},${(y as number) - 6} ${(x as number) + 6},${(y as number) + 5} ${(x as number) - 6},${(y as number) + 5}`} fill={color as string} opacity={0.8} />
+            ),
+          )}
+        </svg>
+      )
+  }
+}
+
+function starPath(cx: number, cy: number, outerR: number, innerR: number): string {
+  let d = ''
+  for (let i = 0; i < 8; i++) {
+    const r = i % 2 === 0 ? outerR : innerR
+    const a = (Math.PI * i) / 4 - Math.PI / 2
+    const x = cx + Math.cos(a) * r
+    const y = cy + Math.sin(a) * r
+    d += (i === 0 ? 'M' : 'L') + x + ' ' + y + ' '
+  }
+  return d + 'Z'
+}
+
+function ballPentagon(cx: number, cy: number, r: number): string {
+  return Array.from({ length: 5 })
+    .map((_, k) => {
+      const a = (Math.PI * 2 * k) / 5 - Math.PI / 2
+      return `${cx + Math.cos(a) * r},${cy + Math.sin(a) * r}`
+    })
+    .join(' ')
+}
+
+function InvitationCanvasView({ canvas, templateKey, photoUrls }: { canvas: InvitationCanvas; templateKey: string | null; photoUrls: Record<string, string> }) {
+  const art = INVITATION_TEMPLATES.find((t) => t.key === templateKey)?.artKey ?? 'confeti'
   return (
     <div
       style={{
@@ -2873,6 +3132,7 @@ function InvitationCanvasView({ canvas, photoUrls }: { canvas: InvitationCanvas;
         background: canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient,
       }}
     >
+      <InvitationBackgroundArt artKey={art} />
       {canvas.layers
         .slice()
         .sort((a, b) => a.zIndex - b.zIndex)
@@ -3144,6 +3404,7 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
               onPointerDown={() => setSelectedId(null)}
               style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 16, overflow: 'hidden', background: backgroundGradient, marginTop: 10, touchAction: 'none' }}
             >
+              <InvitationBackgroundArt artKey={INVITATION_TEMPLATES.find((t) => t.key === templateKey)?.artKey ?? 'confeti'} />
               {layers
                 .slice()
                 .sort((a, b) => a.zIndex - b.zIndex)

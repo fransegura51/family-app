@@ -284,15 +284,33 @@ export function eventLocationLines(
   return lines
 }
 
-// Plantillas v1 — solo tema de color (la Skill pide "large, visual
-// thumbnails" para elegir tema; el editor en capas de verdad con
-// arrastrar/pellizcar/rotar llega en la Fase 3). Sin ningún personaje
-// con copyright, solo colores propios de PEPA.
-export const INVITATION_TEMPLATES: { key: string; label: string; gradient: string; text: string }[] = [
-  { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff' },
-  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(135deg, #F472B6, #FB923C)', text: '#ffffff' },
-  { key: 'elegante', label: 'Elegante', gradient: 'linear-gradient(135deg, #1F2937, #4B5563)', text: '#ffffff' },
-  { key: 'alegre', label: 'Alegre', gradient: 'linear-gradient(135deg, #FBBF24, #34D399)', text: '#1f2233' },
+// Plantillas — cada una es color + una ilustración decorativa propia
+// (ver INVITATION_ART en EventosScreen.tsx, ahí vive el JSX porque este
+// archivo es .ts sin JSX). Petición real: "no quiero un simple fondo
+// colorido, quiero plantillas bonitas temáticas para cada clase de
+// evento" — con referencia a plantillas de Canva/Pinterest, que no se
+// pueden copiar (son diseños de terceros con derechos); en su lugar,
+// arte propio original con el mismo espíritu de cada tema. `artKey`
+// nunca cambia para una `key` ya existente (event_invitations guarda
+// el `key` de eventos ya creados; renombrar rompería sus diseños).
+export interface InvitationTemplateMeta {
+  key: string
+  label: string
+  gradient: string
+  text: string
+  artKey: string
+}
+
+export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
+  { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti' },
+  { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos' },
+  { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo' },
+  { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol' },
+  { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio' },
+  { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado' },
+  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral' },
+  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste' },
+  { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco' },
 ]
 
 // ---------------------------------------------------------------------

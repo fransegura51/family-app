@@ -5557,6 +5557,18 @@ function SharedBalanceCard({
     .sort((a, b) => b.contributed - a.contributed)
   const participants = rows.length
 
+  // Petición real: "no sé si sería mejor diferenciar entre Común antes
+  // de Jenny y después para no confundir mucho con los importes" — el
+  // total solo (1273€) no deja ver que la mayoría es histórico de antes
+  // de que existiera el último en unirse y no se reparte con nadie; se
+  // desglosa en una línea aparte, solo cuando de verdad hay las dos
+  // partes (si todo es de un solo tramo, el desglose no añade nada).
+  const newestMember =
+    financialAdults.length > 1 ? [...financialAdults].sort((a, b) => (a.joinedAt < b.joinedAt ? 1 : -1))[0] : null
+  const cutoffDate = newestMember?.joinedAt.slice(0, 10) ?? null
+  const legacyTotal = cutoffDate ? expenses.filter((e) => e.expenseDate < cutoffDate).reduce((sum, e) => sum + e.amount, 0) : 0
+  const sharedEraTotal = totalExpenses - legacyTotal
+
   return (
     <div className="card event-card">
       <strong>Saldo entre personas</strong>
@@ -5568,6 +5580,12 @@ function SharedBalanceCard({
           </>
         )}
       </p>
+      {newestMember && legacyTotal > 0 && sharedEraTotal > 0 && (
+        <p className="muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 2 }}>
+          {legacyTotal.toFixed(2)} € de antes de que {newestMember.name} se uniera · {sharedEraTotal.toFixed(2)} € desde
+          entonces
+        </p>
+      )}
       {participants > 0 && (
         <p className="muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 8 }}>
           Cada gasto se reparte a partes iguales entre quien ya estuviera en la familia en su fecha — lo de antes de

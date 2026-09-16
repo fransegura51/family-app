@@ -542,3 +542,112 @@ export interface Suggestion {
   createdAt: string
 }
 
+// Módulo Eventos (PEPA Events) — Skill completa en pepa-events-skill/,
+// plan en curso. Un evento es una fila de `events`; los campos muy
+// específicos de un tipo concreto (pareja, padrinos, testigos,
+// sorpresa, años que se cumplen...) viven en `details` en vez de
+// columnas sueltas, para no rediseñar el esquema cuando llegue un tipo
+// de evento nuevo. Los campos compartidos entre varios tipos y que se
+// consultan a menudo (estado de fecha, las dos ubicaciones de
+// Comunión/Bautizo/Boda) sí son columnas reales.
+export type EventType = 'cumpleanos' | 'comunion' | 'bautizo' | 'celebracion' | 'boda' | 'personalizado'
+export type EventDateStatus = 'pendiente' | 'provisional' | 'confirmada'
+export type EventStatus = 'planificacion' | 'archivado'
+
+// Claves de los módulos del motor común — no todos los tipos de evento
+// usan todos (ver referencia de cada tipo en la Skill). "invitaciones"
+// cubre a la vez Invitaciones y RSVP.
+export type EventModuleKey =
+  | 'invitados'
+  | 'invitaciones'
+  | 'tareas'
+  | 'presupuesto'
+  | 'pagos'
+  | 'menu_compra'
+  | 'decoracion'
+  | 'actividades'
+  | 'mesas'
+  | 'ceremonia'
+  | 'proveedores'
+  | 'detalles'
+  | 'regalos'
+  | 'plan_dia'
+
+export interface FamilyEvent {
+  id: string
+  familyId: string
+  type: EventType
+  subtype: string | null
+  title: string
+  dateStatus: EventDateStatus
+  eventDate: string | null
+  eventTime: string | null
+  venueLabel: string | null
+  venueType: string | null
+  ceremonyLocationLabel: string | null
+  ceremonyLocationLatitude: number | null
+  ceremonyLocationLongitude: number | null
+  ceremonyTime: string | null
+  celebrationLocationLabel: string | null
+  celebrationLocationLatitude: number | null
+  celebrationLocationLongitude: number | null
+  theme: string | null
+  // Datos propios de un tipo concreto — ver EVENT_DETAILS_BY_TYPE en
+  // src/domain/events.ts para la forma esperada de cada tipo.
+  details: Record<string, unknown>
+  enabledModules: EventModuleKey[]
+  status: EventStatus
+  tagId: string | null
+  calendarEventId: string | null
+  rsvpDeadline: string | null
+  openRsvpToken: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type EventGuestRsvpStatus = 'pendiente' | 'confirmado' | 'no_asiste' | 'no_seguro'
+export type EventGuestInviteScope = 'ambas' | 'solo_ceremonia' | 'solo_celebracion'
+
+export interface EventGuest {
+  id: string
+  eventId: string
+  familyId: string
+  displayName: string
+  adultsCount: number
+  childrenCount: number
+  notes: string | null
+  inviteScope: EventGuestInviteScope | null
+  rsvpStatus: EventGuestRsvpStatus
+  rsvpAdultsCount: number | null
+  rsvpChildrenCount: number | null
+  rsvpNote: string | null
+  rsvpTokenActive: boolean
+  rsvpRespondedAt: string | null
+  tableId: string | null
+  sortOrder: number
+  createdAt: string
+}
+
+export interface EventTask {
+  id: string
+  eventId: string
+  familyId: string
+  title: string
+  done: boolean
+  dueDate: string | null
+  source: 'auto' | 'manual'
+  sortOrder: number
+  createdAt: string
+}
+
+export interface EventBudgetItem {
+  id: string
+  eventId: string
+  familyId: string
+  category: string
+  plannedAmount: number
+  sortOrder: number
+  createdAt: string
+}
+

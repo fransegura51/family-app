@@ -24,6 +24,7 @@ const SUMMARIES: Record<string, string> = {
   '/': 'Resumen del día: próximos eventos, cumpleaños cercanos y accesos rápidos.',
   '/familia': 'Quién forma parte de la familia, sus fotos, y los usuarios invitados con acceso limitado.',
   '/calendario': 'Eventos de todos, en varias vistas (mes, semana, agenda...). Se puede enlazar con Google Calendar o con cualquier calendario por URL.',
+  '/eventos': 'Organiza cumpleaños, comuniones, bautizos, celebraciones, bodas íntimas o cualquier evento personalizado, con su propia checklist de tareas — invitados, presupuesto e invitaciones llegan en próximas actualizaciones.',
   '/puntos': 'Puntos y recompensas por tareas hechas — pensado sobre todo para los más pequeños.',
   '/compras': 'Lista de la compra, recetas, historial de precios y tickets — desde apuntar algo suelto hasta llevar la compra semanal.',
   '/alimentacion': 'Menú semanal, registro de comidas y seguimiento de peso/medidas de la familia.',
@@ -70,6 +71,13 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Exportar a tu móvil', text: 'Tu propia URL para que Google o Apple Calendar lean lo que apuntéis en la app.' },
     { title: 'Apuntar por voz', text: 'Dile a Pepa que te cree un evento y lo hace por ti.' },
     { title: 'Compartir', text: 'El icono 📤 de cada evento manda el título, la fecha y la nota como texto al menú de compartir del móvil (con quién quieras: WhatsApp, Instagram, email...) — como texto en vez de un archivo .ics, porque muchas apps de Android no aceptan archivos de calendario y el menú se quedaba sin ningún sitio real donde mandarlo. Si ni el menú nativo ni el portapapeles funcionan aquí, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
+  ],
+  '/eventos': [
+    { title: 'Tipos de evento', text: 'Cumpleaños, Comunión, Bautizo, Celebración (aniversario, jubilación, fiesta sorpresa, reunión familiar...), Boda íntima o Personalizado — cada uno con su propia checklist inicial.' },
+    { title: 'Fecha', text: 'Puedes crear el evento sin fecha todavía, con una provisional o ya confirmada; si la cambias más adelante, las fechas de las tareas generadas se recalculan solas.' },
+    { title: 'Qué módulos usar', text: '"Recomendado" activa lo típico de ese tipo de evento; "Elegir yo" te deja marcarlos a mano. Se pueden encender o apagar después desde "⚙️ Gestionar módulos" dentro del propio evento, sin perder nada de lo que ya tuvieras apuntado.' },
+    { title: 'Pendiente ahora', text: 'La checklist de preparativos se genera sola según el tipo de evento y la fecha; añade, marca hecha o borra cualquier tarea a mano.' },
+    { title: 'Finalizar / Duplicar', text: '"Finalizar y archivar" guarda el evento sin borrar nada (se puede reactivar); "Duplicar" crea uno nuevo con la misma configuración pero sin arrastrar invitados ni gastos de la vez anterior — útil para el cumpleaños del año que viene.' },
   ],
   '/puntos': [
     { title: 'Saldo por miembro', text: 'Se gana marcando "Hecho" en eventos del Calendario que llevan puntos asignados.' },

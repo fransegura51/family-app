@@ -13,6 +13,7 @@ export const NAV_TABS: NavTab[] = [
   { to: '/', label: 'Inicio', icon: '🏠', end: true },
   { to: '/familia', label: 'Familia', icon: '👨‍👩‍👧‍👦' },
   { to: '/calendario', label: 'Calendario', icon: '📅' },
+  { to: '/eventos', label: 'Eventos', icon: '🎉' },
   { to: '/puntos', label: 'Puntos', icon: '⭐' },
   { to: '/compras', label: 'Compras', icon: '🛒' },
   { to: '/alimentacion', label: 'La cocina de Pepa', icon: '🍎' },

@@ -3052,6 +3052,15 @@ function ExpensesTab({
           </button>
         </div>
       )}
+      {/* Petición real: "pon en letra pequeña la leyenda de los símbolos
+          nuevos en Movimientos Individuales" — los iconos 🤝/✅ solo
+          salen en Individual (ver extraAction de MovementRow), así que
+          la leyenda también. */}
+      {accountsMode === 'separado' && scope === 'personal' && (
+        <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+          🤝 Compartir a Común · ✅ Ya está en Común
+        </p>
+      )}
 
       {/* Base para "Piso compartido/cuentas separadas": poder ver solo
           la cuenta de uno (o la común), no todas mezcladas — mismo
@@ -5318,6 +5327,17 @@ export function BudgetsTab({
       e.kind === 'real' &&
       !isInternalTransferCategory(e.category, categories),
   )
+  // Piso compartido: petición real tras probarlo — "Jennifer ha
+  // ingresado 100€ a la cuenta común... ¿no debería salir otro importe
+  // a Jennifer?". "Saldo entre personas" reparte lo que cada uno ha
+  // puesto para el bote común, y un ingreso compartido (meter dinero al
+  // bote) cuenta para eso exactamente igual que un gasto pagado de su
+  // bolsillo — monthRealExpenses de arriba deja fuera los ingresos a
+  // propósito (es solo para el dónut de gasto por categoría), así que
+  // aquí se cuenta aparte sin ese filtro.
+  const monthSharedContributions = scopedExpenses.filter(
+    (e) => e.expenseDate >= periodFrom && e.expenseDate <= periodTo && e.kind === 'real' && !isInternalTransferCategory(e.category, categories),
+  )
   const alimentacionTotal = monthRealExpenses
     .filter((e) => isFoodCategory(e.category, categories))
     .reduce((sum, e) => sum + e.amount, 0)
@@ -5399,7 +5419,7 @@ export function BudgetsTab({
           </button>
         </div>
       )}
-      {scopingActive && scope === 'comun' && <SharedBalanceCard expenses={monthRealExpenses} members={members} myMemberId={myMemberId} />}
+      {scopingActive && scope === 'comun' && <SharedBalanceCard expenses={monthSharedContributions} members={members} myMemberId={myMemberId} />}
 
       {/* Petición real: "desde Presupuesto en Negrita hasta Historial
           lo muevas todo arriba debajo del botón de Fecha" — en
@@ -5503,7 +5523,7 @@ function SharedBalanceCard({
     <div className="card event-card">
       <strong>Saldo entre personas</strong>
       <p style={{ margin: '4px 0' }}>
-        Total gastado: <strong>{total.toFixed(2)} €</strong>
+        Total aportado: <strong>{total.toFixed(2)} €</strong>
       </p>
       {participants > 0 && (
         <p className="muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 8 }}>
@@ -5522,7 +5542,7 @@ function SharedBalanceCard({
                   {r.memberId === myMemberId ? ' (tú)' : ''}
                 </strong>
                 <p className="muted">
-                  Ha pagado {r.paid.toFixed(2)} €
+                  Ha puesto {r.paid.toFixed(2)} €
                   {participants > 1 && (
                     <>
                       {' — '}

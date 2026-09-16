@@ -1761,6 +1761,17 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
     setOpenX(current < AGENDA_SWIPE_OPEN / 2 ? AGENDA_SWIPE_OPEN : 0)
     setLiveX(null)
   }
+  // Bug real: deslizar una fila para borrar cambiaba de día a la vez,
+  // porque el gesto de borrar usa Pointer Events (arriba) mientras que
+  // el cambio de día (useSwipeHandlers, más arriba en el árbol) usa
+  // Touch Events nativos — son dos sistemas de eventos distintos que el
+  // navegador dispara los dos para el mismo toque, así que parar la
+  // propagación del pointerdown/move no frena el touchstart/touchend
+  // que sigue subiendo hasta el .day-panel. Se paran aquí también, en
+  // el mismo elemento, para que el cambio de día no vea ningún gesto.
+  function stopTouchPropagation(e: TouchEvent<HTMLDivElement>) {
+    e.stopPropagation()
+  }
 
   function handleDeleteTap() {
     setOpenX(0)
@@ -1815,6 +1826,8 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
         onPointerMove={canDelete ? handlePointerMove : undefined}
         onPointerUp={canDelete ? handlePointerUp : undefined}
         onPointerCancel={canDelete ? handlePointerUp : undefined}
+        onTouchStart={canDelete ? stopTouchPropagation : undefined}
+        onTouchEnd={canDelete ? stopTouchPropagation : undefined}
       >
         <div className="agenda-stripe" style={{ background: entry.color }}>
           {(entry.onComplete || entry.onUncomplete) && (

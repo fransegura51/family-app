@@ -3078,6 +3078,144 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
           ))}
         </svg>
       )
+    case 'dinosaurios':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {/* Silueta de cuello largo (tipo braquiosaurio) — se lee mucho
+              mejor a tamaño pequeño que una forma libre; la primera
+              versión con un path complejo parecía una mancha. */}
+          <g transform="translate(100 355) scale(0.62)">
+            <path d="M50 15 Q95 -5 85 25 Q72 18 50 28 Z" fill="#65A30D" />
+            <ellipse cx={0} cy={15} rx={58} ry={34} fill="#65A30D" />
+            <ellipse cx={-68} cy={-28} rx={15} ry={36} fill="#65A30D" transform="rotate(-22 -68 -28)" />
+            <circle cx={-92} cy={-56} r={17} fill="#65A30D" />
+            <circle cx={-97} cy={-59} r={2.5} fill="#1F2937" />
+            {[-25, -5, 15].map((x, i) => (
+              <polygon key={i} points={`${x},-10 ${x + 10},-26 ${x + 20},-10`} fill="#4D7C0F" />
+            ))}
+            {[-32, -6, 22, 40].map((x, i) => (
+              <ellipse key={i} cx={x} cy={44} rx={10} ry={16} fill="#4D7C0F" />
+            ))}
+          </g>
+          {[[220, 90], [250, 130], [200, 60]].map(([x, y], i) => (
+            <ellipse key={i} cx={x} cy={y} rx={7} ry={4} fill="#4D7C0F" opacity={0.6} transform={`rotate(${i * 30} ${x} ${y})`} />
+          ))}
+          {[[250, 340], [270, 310], [235, 365]].map(([x, y], i) => (
+            <path key={i} d={`M${x} ${y} q -6 -10 0 -18 q 6 8 0 18`} fill="#166534" opacity={0.5} />
+          ))}
+        </svg>
+      )
+    case 'videojuegos':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {/* Mando genérico (D-pad + botones) — sin logotipo ni forma de
+              ninguna marca concreta, no es ninguna videoconsola real. */}
+          <g transform="translate(230 340)">
+            <rect x={-55} y={-30} width={110} height={60} rx={28} fill="#A78BFA" opacity={0.9} />
+            <rect x={-40} y={-7} width={24} height={8} fill="#312E81" />
+            <rect x={-32} y={-15} width={8} height={24} fill="#312E81" />
+            <circle cx={30} cy={-8} r={6} fill="#4ADE80" />
+            <circle cx={44} cy={2} r={6} fill="#F472B6" />
+          </g>
+          {[[40, 70], [90, 50], [60, 110], [30, 140]].map(([x, y], i) => (
+            <rect key={i} x={x - 5} y={y - 5} width={10} height={10} fill={['#4ADE80', '#F472B6', '#FBBF24', '#38BDF8'][i]} opacity={0.85} />
+          ))}
+          {[[260, 200], [50, 300], [230, 100]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 7, 3)} fill="#FBBF24" opacity={0.8} />
+          ))}
+        </svg>
+      )
+    case 'corazones':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {[[50, 340, 1], [250, 70, 0.7], [235, 330, 0.55], [55, 80, 0.5]].map(([x, y, s], i) => (
+            <path
+              key={i}
+              d={`M${x} ${(y as number) + 14 * (s as number)} C${(x as number) - 26 * (s as number)} ${(y as number) - 8 * (s as number)} ${(x as number) - 14 * (s as number)} ${(y as number) - 26 * (s as number)} ${x} ${(y as number) - 10 * (s as number)} C${(x as number) + 14 * (s as number)} ${(y as number) - 26 * (s as number)} ${(x as number) + 26 * (s as number)} ${(y as number) - 8 * (s as number)} ${x} ${(y as number) + 14 * (s as number)} Z`}
+              fill="#ffffff"
+              opacity={0.9}
+            />
+          ))}
+          {[[150, 150], [90, 220], [210, 250], [170, 40]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 5, 2)} fill="#ffffff" opacity={0.6} />
+          ))}
+        </svg>
+      )
+    case 'ositos':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <g transform="translate(60 355) scale(0.62)">
+            <circle cx={-38} cy={-70} r={16} fill="#B98756" />
+            <circle cx={38} cy={-70} r={16} fill="#B98756" />
+            <circle cx={0} cy={-40} r={48} fill="#C89666" />
+            <circle cx={-16} cy={-45} r={7} fill="#3F2A16" />
+            <circle cx={16} cy={-45} r={7} fill="#3F2A16" />
+            <ellipse cx={0} cy={-28} rx={13} ry={10} fill="#EFE0CB" />
+            <circle cx={0} cy={-30} r={4} fill="#3F2A16" />
+            <ellipse cx={0} cy={40} rx={54} ry={48} fill="#C89666" />
+            <circle cx={-40} cy={30} r={16} fill="#B98756" />
+            <circle cx={40} cy={30} r={16} fill="#B98756" />
+          </g>
+          {[[230, 300], [255, 340], [210, 350]].map(([x, y], i) => (
+            <ellipse key={i} cx={x} cy={y} rx={6} ry={9} fill="#ffffff" opacity={0.7} transform={`rotate(${i * 25} ${x} ${y})`} />
+          ))}
+          {[[240, 90], [60, 60], [200, 140]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 5, 2)} fill="#ffffff" opacity={0.6} />
+          ))}
+        </svg>
+      )
+    case 'gatitos':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <g transform="translate(250 350) scale(0.7)">
+            <ellipse cx={0} cy={10} rx={40} ry={32} fill="#8B5CF6" />
+            <circle cx={0} cy={-38} r={30} fill="#8B5CF6" />
+            <polygon points="-24,-58 -8,-58 -16,-78" fill="#8B5CF6" />
+            <polygon points="8,-58 24,-58 16,-78" fill="#8B5CF6" />
+            <polygon points="-19,-58 -11,-58 -15,-70" fill="#F472B6" />
+            <polygon points="11,-58 19,-58 15,-70" fill="#F472B6" />
+            <circle cx={-11} cy={-38} r={3} fill="#312E81" />
+            <circle cx={11} cy={-38} r={3} fill="#312E81" />
+            <path d="M0 -30 q -4 5 0 8 q 4 -3 0 -8" fill="#F472B6" />
+            {[-1, 1].map((s) => (
+              <g key={s}>
+                <line x1={s * 4} y1={-28} x2={s * 26} y2={-32} stroke="#4C1D95" strokeWidth={1} opacity={0.6} />
+                <line x1={s * 4} y1={-25} x2={s * 26} y2={-24} stroke="#4C1D95" strokeWidth={1} opacity={0.6} />
+              </g>
+            ))}
+            <path d="M38 15 Q65 5 55 -25" stroke="#8B5CF6" strokeWidth={12} fill="none" strokeLinecap="round" />
+          </g>
+          {[[40, 80], [70, 130], [30, 200]].map(([x, y], i) => (
+            <ellipse key={i} cx={x} cy={y} rx={10} ry={7} fill="#ffffff" opacity={0.5} />
+          ))}
+          <circle cx={50} cy={330} r={16} fill="none" stroke="#ffffff" strokeWidth={4} opacity={0.6} />
+        </svg>
+      )
+    case 'coches':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <g opacity={0.9}>
+            {Array.from({ length: 20 }).map((_, i) => (
+              <rect key={i} x={(i % 10) * 30} y={i < 10 ? 0 : 16} width={30} height={16} fill={(i + Math.floor(i / 10)) % 2 === 0 ? '#ffffff' : '#1F2937'} />
+            ))}
+          </g>
+          <g transform="translate(210 340)">
+            <rect x={-60} y={-18} width={120} height={30} rx={12} fill="#DC2626" />
+            <polygon points="-30,-18 -10,-38 40,-38 50,-18" fill="#DC2626" />
+            <rect x={-8} y={-33} width={40} height={16} fill="#BFDBFE" opacity={0.8} />
+            <circle cx={-32} cy={14} r={14} fill="#1F2937" />
+            <circle cx={-32} cy={14} r={5} fill="#9CA3AF" />
+            <circle cx={38} cy={14} r={14} fill="#1F2937" />
+            <circle cx={38} cy={14} r={5} fill="#9CA3AF" />
+          </g>
+          {[0, 1, 2].map((i) => (
+            <line key={i} x1={20} y1={330 + i * 12} x2={70} y2={330 + i * 12} stroke="#ffffff" strokeWidth={3} opacity={0.5} />
+          ))}
+          {[[240, 250], [40, 120], [260, 160]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 6, 3)} fill="#ffffff" opacity={0.8} />
+          ))}
+        </svg>
+      )
     case 'confeti':
     default:
       return (

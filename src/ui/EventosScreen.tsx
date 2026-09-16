@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react'
+import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import {
   addEventActivity,
   addEventBudgetItem,
@@ -232,7 +233,13 @@ export function EventosScreen() {
 
   return (
     <div className="screen">
-      <h1 className="section-title">🎉 Eventos</h1>
+      {/* Petición real, con imagen de referencia: cabecera con foto para
+          Eventos, igual que Familia/Alimentación/Calendario — esta
+          sección tampoco tiene menú ☰ (una sola pantalla), así que solo
+          sustituye el <h1> de texto plano, sin botón de menú encima. */}
+      <div className="kitchen-header">
+        <img src={eventosHeaderImg} alt="Eventos" className="kitchen-header-img" />
+      </div>
       {error && <p className="error">{error}</p>}
 
       {selected ? (

@@ -5327,17 +5327,10 @@ export function BudgetsTab({
       e.kind === 'real' &&
       !isInternalTransferCategory(e.category, categories),
   )
-  // Piso compartido: petición real tras probarlo — "Jennifer ha
-  // ingresado 100€ a la cuenta común... ¿no debería salir otro importe
-  // a Jennifer?". Un primer intento metió ingresos y gastos en el mismo
-  // reparto de "Saldo entre personas", pero la propia usuaria detectó
-  // que la cuenta no salía — con razón: meter dinero al bote (un
-  // ingreso) no es un coste que haya que repartir a partes iguales,
-  // es solo fondo disponible; mezclarlo con los gastos rompe que la
-  // suma de "le deben"/"debe" de todos cuadre con el total repartido.
-  // Se separan en dos tarjetas: "Saldo entre personas" sigue siendo
-  // solo gastos (monthRealExpenses, como al principio), y "Fondo
-  // común" es solo un recuento de lo ingresado, sin repartir nada.
+  // Piso compartido: ingresos compartidos a Común (ver
+  // SharedBalanceCard para cómo se combinan con los gastos en "Saldo
+  // entre personas" — dos rondas de feedback real hasta dar con la
+  // cuenta correcta).
   const monthSharedDeposits = scopedExpenses.filter(
     (e) => e.expenseDate >= periodFrom && e.expenseDate <= periodTo && e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, categories),
   )
@@ -5422,9 +5415,8 @@ export function BudgetsTab({
           </button>
         </div>
       )}
-      {scopingActive && scope === 'comun' && <SharedBalanceCard expenses={monthRealExpenses} members={members} myMemberId={myMemberId} />}
-      {scopingActive && scope === 'comun' && monthSharedDeposits.length > 0 && (
-        <SharedDepositsCard incomes={monthSharedDeposits} members={members} myMemberId={myMemberId} />
+      {scopingActive && scope === 'comun' && (
+        <SharedBalanceCard expenses={monthRealExpenses} incomes={monthSharedDeposits} members={members} myMemberId={myMemberId} />
       )}
 
       {/* Petición real: "desde Presupuesto en Negrita hasta Historial
@@ -5494,52 +5486,80 @@ function periodLabelForTitle(preset: SpendRangePreset, from: string, to: string)
 
 // Piso compartido — petición real: "en el listado quiero que por un
 // lado haya un contador de gastos totales y por otro que se vea cuánto
-// ha pagado cada uno de los usuarios" (saldo entre personas). Reparto a
-// partes iguales entre quienes tengan algo apuntado — no hay pedido de
-// repartos distintos todavía. Los gastos de una cuenta Común (sin dueño)
-// cuentan en el total pero no se atribuyen a nadie, tal y como se pidió.
+// ha pagado cada uno de los usuarios" (saldo entre personas), revisado
+// tras dos rondas más de feedback real:
+// 1) "los 100 de Jenny han sido un ingreso y los 74,65 de Fran un
+//    pago, la cuenta no está bien" — meter dinero al bote (ingreso) y
+//    pagar algo de tu bolsillo (gasto) son cosas distintas, así que NO
+//    se suman en el mismo total a repartir.
+// 2) "74,65€ a partes iguales entre dos adultos = 37,325€ por
+//    persona, por lo tanto del saldo de 100€ quedan 63,675€ a favor de
+//    Jenny" — el reparto es del GASTO (lo único que de verdad hay que
+//    devolver entre todos) entre quienes han participado (pagando o
+//    ingresando), y lo ya ingresado se descuenta de la parte que le
+//    tocaría a cada uno, como un pago adelantado a cuenta.
+// Los gastos de una cuenta Común (sin dueño) cuentan en el total pero
+// no se atribuyen a nadie, tal y como se pidió — no entran en el
+// reparto por persona, solo engordan el total a dividir.
 function SharedBalanceCard({
   expenses,
+  incomes,
   members,
   myMemberId,
 }: {
   expenses: Expense[]
+  incomes: Expense[]
   members: FamilyMember[]
   myMemberId: string | null
 }) {
-  const total = expenses.reduce((sum, e) => sum + e.amount, 0)
+  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
+  const totalDeposits = incomes.reduce((sum, e) => sum + e.amount, 0)
   const memberById = new Map(members.map((m) => [m.id, m]))
 
-  const byOwner = new Map<string, number>()
+  const paidByOwner = new Map<string, number>()
   let unattributed = 0
   for (const e of expenses) {
-    if (e.ownerMemberId === null) {
-      unattributed += e.amount
-    } else {
-      byOwner.set(e.ownerMemberId, (byOwner.get(e.ownerMemberId) ?? 0) + e.amount)
-    }
+    if (e.ownerMemberId === null) unattributed += e.amount
+    else paidByOwner.set(e.ownerMemberId, (paidByOwner.get(e.ownerMemberId) ?? 0) + e.amount)
   }
-  const rows = [...byOwner.entries()]
-    .map(([memberId, paid]) => ({ memberId, name: memberById.get(memberId)?.name ?? 'Alguien', paid }))
-    .sort((a, b) => b.paid - a.paid)
+  const depositedByOwner = new Map<string, number>()
+  for (const e of incomes) {
+    if (e.ownerMemberId !== null) depositedByOwner.set(e.ownerMemberId, (depositedByOwner.get(e.ownerMemberId) ?? 0) + e.amount)
+  }
+  // Participa cualquiera que haya pagado un gasto común o metido dinero
+  // al bote este periodo — el gasto se reparte entre ellos, no solo
+  // entre quien pagó algo (si no, quien solo ingresó nunca contaba).
+  const participantIds = new Set([...paidByOwner.keys(), ...depositedByOwner.keys()])
+  const rows = [...participantIds]
+    .map((memberId) => {
+      const paid = paidByOwner.get(memberId) ?? 0
+      const deposited = depositedByOwner.get(memberId) ?? 0
+      return { memberId, name: memberById.get(memberId)?.name ?? 'Alguien', paid, deposited, contributed: paid + deposited }
+    })
+    .sort((a, b) => b.contributed - a.contributed)
   const participants = rows.length
-  const fairShare = participants > 0 ? total / participants : 0
+  const fairShare = participants > 0 ? totalExpenses / participants : 0
 
   return (
     <div className="card event-card">
       <strong>Saldo entre personas</strong>
       <p style={{ margin: '4px 0' }}>
-        Total gastado: <strong>{total.toFixed(2)} €</strong>
+        Total gastado: <strong>{totalExpenses.toFixed(2)} €</strong>
+        {totalDeposits > 0 && (
+          <>
+            {' · '}Ingresado al bote: <strong>{totalDeposits.toFixed(2)} €</strong>
+          </>
+        )}
       </p>
       {participants > 0 && (
         <p className="muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 8 }}>
-          A partes iguales entre {participants} {participants === 1 ? 'persona' : 'personas'}, tocaría a{' '}
+          El gasto, a partes iguales entre {participants} {participants === 1 ? 'persona' : 'personas'}, tocaría a{' '}
           {fairShare.toFixed(2)} € cada una.
         </p>
       )}
       <div className="event-list">
         {rows.map((r) => {
-          const diff = r.paid - fairShare
+          const diff = r.contributed - fairShare
           return (
             <div key={r.memberId} className="card task-card">
               <div className="task-card-main">
@@ -5548,7 +5568,9 @@ function SharedBalanceCard({
                   {r.memberId === myMemberId ? ' (tú)' : ''}
                 </strong>
                 <p className="muted">
-                  Ha pagado {r.paid.toFixed(2)} €
+                  {r.paid > 0 && `Ha pagado ${r.paid.toFixed(2)} €`}
+                  {r.paid > 0 && r.deposited > 0 && ' y '}
+                  {r.deposited > 0 && `ha metido ${r.deposited.toFixed(2)} € al bote`}
                   {participants > 1 && (
                     <>
                       {' — '}
@@ -5569,65 +5591,6 @@ function SharedBalanceCard({
           </div>
         )}
         {rows.length === 0 && unattributed === 0 && <p className="muted">Todavía no hay gastos comunes en este periodo.</p>}
-      </div>
-    </div>
-  )
-}
-
-// Piso compartido: petición real — "los 100 de Jenny han sido un
-// ingreso y los 74,65 de Fran un pago, la cuenta no está bien". Meter
-// dinero al bote (un ingreso compartido) no es un coste a repartir
-// como SharedBalanceCard de arriba, es solo fondo disponible — por eso
-// va en su propia tarjeta, sin "a partes iguales" ni "le deben/debe":
-// solo un recuento de quién ha metido cuánto.
-function SharedDepositsCard({
-  incomes,
-  members,
-  myMemberId,
-}: {
-  incomes: Expense[]
-  members: FamilyMember[]
-  myMemberId: string | null
-}) {
-  const total = incomes.reduce((sum, e) => sum + e.amount, 0)
-  const memberById = new Map(members.map((m) => [m.id, m]))
-
-  const byOwner = new Map<string, number>()
-  let unattributed = 0
-  for (const e of incomes) {
-    if (e.ownerMemberId === null) unattributed += e.amount
-    else byOwner.set(e.ownerMemberId, (byOwner.get(e.ownerMemberId) ?? 0) + e.amount)
-  }
-  const rows = [...byOwner.entries()]
-    .map(([memberId, amount]) => ({ memberId, name: memberById.get(memberId)?.name ?? 'Alguien', amount }))
-    .sort((a, b) => b.amount - a.amount)
-
-  return (
-    <div className="card event-card">
-      <strong>Fondo común</strong>
-      <p style={{ margin: '4px 0' }}>
-        Total ingresado: <strong>{total.toFixed(2)} €</strong>
-      </p>
-      <div className="event-list">
-        {rows.map((r) => (
-          <div key={r.memberId} className="card task-card">
-            <div className="task-card-main">
-              <strong>
-                {r.name}
-                {r.memberId === myMemberId ? ' (tú)' : ''}
-              </strong>
-              <p className="muted">Ha metido {r.amount.toFixed(2)} €</p>
-            </div>
-          </div>
-        ))}
-        {unattributed > 0 && (
-          <div className="card task-card">
-            <div className="task-card-main">
-              <strong>🏠 Cuenta común</strong>
-              <p className="muted">{unattributed.toFixed(2)} € — no se atribuye a nadie en concreto</p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

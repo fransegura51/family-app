@@ -1330,7 +1330,9 @@ function BankTab({
   // ingresos... para saber cuánto tenemos de cada" — Fijo/Variable se
   // resuelve por movimiento (resolveExpenseFixed: categoría, o el
   // propio movimiento si lo has marcado a mano en su edición).
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos'>('todos')
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'categoria' | 'busqueda'>('todos')
+  const [categoryFilterValue, setCategoryFilterValue] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [visibleCount, setVisibleCount] = useState(50)
 
@@ -1454,6 +1456,8 @@ function BankTab({
   const dateFilteredExpenses = byAccount.filter((e) => e.expenseDate >= from && e.expenseDate <= to)
   const filteredExpenses = dateFilteredExpenses.filter((e) => {
     if (typeFilter === 'todos') return true
+    if (typeFilter === 'categoria') return !categoryFilterValue || e.category === categoryFilterValue
+    if (typeFilter === 'busqueda') return matchesFreeSearch(e, searchQuery)
     // Bug real: "en Banco si filtro por Ingresos me salen 4549,63€,
     // pero en Presupuesto/Resumen 4241,63€" — este filtro sumaba
     // también el LADO DE SALIDA de un traspaso entre cuentas propias
@@ -1581,9 +1585,25 @@ function BankTab({
           <div style={{ marginTop: 8 }}>
             <DropdownFilter label="Filtrar por" value={typeFilter} onChange={(k) => setTypeFilter(k as typeof typeFilter)} options={TYPE_FILTER_OPTIONS} />
           </div>
+          {typeFilter === 'categoria' && (
+            <div style={{ marginTop: 8 }}>
+              <CategorySelect value={categoryFilterValue} onChange={setCategoryFilterValue} categories={categories} allowGeneral />
+            </div>
+          )}
+          {typeFilter === 'busqueda' && (
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar en tienda, categoría o notas..."
+              style={{ marginTop: 8 }}
+              autoFocus
+            />
+          )}
           {typeFilter !== 'todos' && (
             <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-              Total {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : 'de ingresos'}: <strong>{typeFilterTotal.toFixed(2)} €</strong>
+              Total {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : typeFilter === 'ingresos' ? 'de ingresos' : 'filtrado'}:{' '}
+              <strong>{typeFilterTotal.toFixed(2)} €</strong>
             </p>
           )}
           <div className="price-row-list">
@@ -2847,7 +2867,9 @@ function ExpensesTab({
   // que dejar Movimientos preparado... ponle los mismos filtros que a
   // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
   // chip row y mismo criterio que ya usa BankTab.
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos'>('todos')
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'categoria' | 'busqueda'>('todos')
+  const [categoryFilterValue, setCategoryFilterValue] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   // Base para "Piso compartido/cuentas separadas": poder ver solo la
   // cuenta de uno (o la común), no todas mezcladas — mismo dato
   // (expenseAccountId) que ya usa el avatar de cada fila, ahora también
@@ -2981,12 +3003,14 @@ function ExpensesTab({
     () =>
       accountFilteredExpenses.filter((e) => {
         if (typeFilter === 'todos') return true
+        if (typeFilter === 'categoria') return !categoryFilterValue || e.category === categoryFilterValue
+        if (typeFilter === 'busqueda') return matchesFreeSearch(e, searchQuery)
         if (typeFilter === 'ingresos') return e.isIncome && !isInternalTransferCategory(e.category, categories)
         if (e.isIncome) return false
         const isFixed = resolveExpenseFixed(e, categories)
         return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
       }),
-    [accountFilteredExpenses, typeFilter, categories],
+    [accountFilteredExpenses, typeFilter, categories, categoryFilterValue, searchQuery],
   )
   const typeFilterTotal = useMemo(() => typeFilteredExpenses.reduce((sum, e) => sum + e.amount, 0), [typeFilteredExpenses])
 
@@ -3088,9 +3112,25 @@ function ExpensesTab({
       <div style={{ marginTop: 8 }}>
         <DropdownFilter label="Filtrar por" value={typeFilter} onChange={(k) => setTypeFilter(k as typeof typeFilter)} options={TYPE_FILTER_OPTIONS} />
       </div>
+      {typeFilter === 'categoria' && (
+        <div style={{ marginTop: 8 }}>
+          <CategorySelect value={categoryFilterValue} onChange={setCategoryFilterValue} categories={categories} allowGeneral />
+        </div>
+      )}
+      {typeFilter === 'busqueda' && (
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Buscar en tienda, categoría o notas..."
+          style={{ marginTop: 8 }}
+          autoFocus
+        />
+      )}
       {typeFilter !== 'todos' && (
         <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-          Total {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : 'de ingresos'}: <strong>{typeFilterTotal.toFixed(2)} €</strong>
+          Total {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : typeFilter === 'ingresos' ? 'de ingresos' : 'filtrado'}:{' '}
+          <strong>{typeFilterTotal.toFixed(2)} €</strong>
         </p>
       )}
 
@@ -4328,7 +4368,19 @@ const TYPE_FILTER_OPTIONS = [
   { key: 'fijos', label: 'Gastos fijos' },
   { key: 'variables', label: 'Gastos variables' },
   { key: 'ingresos', label: 'Ingresos' },
+  { key: 'categoria', label: 'Categoría' },
+  { key: 'busqueda', label: 'Búsqueda libre' },
 ]
+
+// Petición real: "Búsqueda libre, que se pueda poner una palabra y
+// filtrar por todos los movimientos que la contengan" — busca en
+// tienda, categoría y notas (los únicos campos de texto libre de un
+// movimiento), sin distinguir mayúsculas/acentos exactos.
+function matchesFreeSearch(e: Expense, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [e.store, e.category, e.notes].some((field) => field?.toLowerCase().includes(q))
+}
 
 // Petición real: "ninguno de los dos [nombres] me parecen intuitivos
 // para que un usuario nuevo tenga claro que allí puede filtrar" — un

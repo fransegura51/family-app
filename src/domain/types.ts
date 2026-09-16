@@ -651,3 +651,45 @@ export interface EventBudgetItem {
   createdAt: string
 }
 
+// Menú — petición de la Skill: "Menu comes BEFORE shopping". Una vez
+// confirmado el traspaso, cada línea crea un shopping_items con este
+// event_id (ver src/data/events.ts, transferMenuToShopping).
+export interface EventMenuItem {
+  id: string
+  eventId: string
+  familyId: string
+  name: string
+  category: string | null
+  quantityNote: string | null
+  transferred: boolean
+  sortOrder: number
+  createdAt: string
+}
+
+export interface EventProvider {
+  id: string
+  eventId: string
+  familyId: string
+  name: string
+  type: string | null
+  contactNote: string | null
+  notes: string | null
+  createdAt: string
+}
+
+export type EventPaymentStatus = 'pendiente' | 'parcial' | 'pagado'
+
+export interface EventPayment {
+  id: string
+  eventId: string
+  familyId: string
+  providerId: string | null
+  concept: string
+  totalAmount: number
+  depositPaid: number
+  dueDate: string | null
+  status: EventPaymentStatus
+  notes: string | null
+  createdAt: string
+}
+

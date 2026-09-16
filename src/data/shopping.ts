@@ -81,6 +81,10 @@ export async function addShoppingItem(input: {
   tripId: string | null
   store?: string | null
   price?: number | null
+  // Módulo Eventos: de qué evento viene este producto (menú → compra,
+  // ver transferMenuToShopping en src/data/events.ts) — independiente
+  // de tripId, que es "ir físicamente a una tienda", no "para qué es".
+  eventId?: string | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('shopping_items').insert({
@@ -92,6 +96,7 @@ export async function addShoppingItem(input: {
     priority: input.priority,
     store: input.store || null,
     price: input.price ?? null,
+    event_id: input.eventId ?? null,
   })
   if (error) throw error
 }

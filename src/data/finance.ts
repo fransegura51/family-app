@@ -64,7 +64,21 @@ export async function listExpenses(): Promise<Expense[]> {
 // INDEPENDIENTE del gasto (no un enlace ni una marca sobre el original),
 // para que editar uno no toque el otro. shared_from_expense_id es solo
 // informativo (permite avisar "✓ Ya en Común" y evitar duplicados).
+// Petición real, encontrado en vivo: tocar varias veces seguidas el
+// icono 🤝 antes de que la pantalla se refrescara creó varias copias
+// idénticas en Común — el aviso de "ya compartido" se calculaba del
+// propio estado cargado, que todavía no se había enterado del primer
+// toque. Se comprueba aquí primero (evita la llamada de más en el caso
+// normal) Y además hay un índice único en la base de datos
+// (0105_expenses_shared_copy_unique.sql) que lo impide de verdad pase
+// lo que pase en el cliente — si el insert choca contra él (23505,
+// alguien lo compartió a la vez desde otro sitio), se trata como éxito
+// silencioso en vez de error, porque el resultado que quería el usuario
+// (que exista una copia en Común) ya se ha cumplido.
 export async function copyExpenseToShared(expenseId: string): Promise<void> {
+  const { data: existing } = await supabase.from('expenses').select('id').eq('shared_from_expense_id', expenseId).maybeSingle()
+  if (existing) return
+
   const { data: original, error: fetchError } = await supabase
     .from('expenses')
     .select('family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id')
@@ -89,7 +103,7 @@ export async function copyExpenseToShared(expenseId: string): Promise<void> {
     shared: true,
     shared_from_expense_id: expenseId,
   })
-  if (error) throw error
+  if (error && error.code !== '23505') throw error
 }
 
 export async function addExpense(input: {

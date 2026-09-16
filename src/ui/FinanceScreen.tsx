@@ -3127,20 +3127,20 @@ function ExpensesTab({
                       demasiado espacio... alguna sugerencia... ver más
                       detalle del movimiento") — mismo ancho que el icono
                       de borrar de al lado, así el resto de la fila (fecha,
-                      establecimiento, concepto) deja de comerse el texto. */}
+                      establecimiento, concepto) deja de comerse el texto.
+                      Confirmación de doble toque (petición real, tras
+                      encontrar 3 copias del mismo gasto en Común: "hay
+                      que poner... que pida confirmación si estás seguro
+                      que quieres pasarlo a Común") — mismo componente que
+                      el icono de borrar de al lado, así un toque de más
+                      no comparte nada por accidente. */}
                   {accountsMode === 'separado' && scope === 'personal' && !e.shared && e.ownerMemberId === myMemberId && (
-                    <button
-                      type="button"
+                    <ConfirmIconButton
+                      icon="🤝"
                       className="icon-button"
-                      title="Compartir a Común"
-                      aria-label="Compartir a Común"
-                      onClick={(ev) => {
-                        ev.stopPropagation()
-                        copyExpenseToShared(e.id).then(reload)
-                      }}
-                    >
-                      🤝
-                    </button>
+                      ariaLabel="Compartir a Común"
+                      onConfirm={() => copyExpenseToShared(e.id).then(reload)}
+                    />
                   )}
                   {accountsMode === 'separado' && scope === 'personal' && expenses.some((x) => x.sharedFromExpenseId === e.id) && (
                     <span className="icon-button" title="Ya está en Común" aria-label="Ya está en Común" style={{ opacity: 0.6 }}>

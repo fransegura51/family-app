@@ -16,6 +16,7 @@ import {
   deleteEventProvider,
   deleteEventTask,
   duplicateEvent,
+  getGuestRsvpUrl,
   linkEventToCalendar,
   listEventBudgetItems,
   listEventGuests,
@@ -25,6 +26,7 @@ import {
   listEventTasks,
   listEvents,
   recalculateAutoTasks,
+  regenerateGuestRsvpUrl,
   transferMenuToShopping,
   unarchiveEvent,
   updateEvent,
@@ -35,7 +37,17 @@ import {
 } from '@/data/events'
 import { listExpenses } from '@/data/finance'
 import { errorMessage } from '@/domain/errorMessage'
-import { CELEBRATION_SUBTYPES, EVENT_MODULES, EVENT_TYPES, EVENT_TYPE_META, RECOMMENDED_MODULES } from '@/domain/events'
+import {
+  CELEBRATION_SUBTYPES,
+  DUAL_LOCATION_EVENT_TYPES,
+  EVENT_MODULES,
+  EVENT_TYPES,
+  EVENT_TYPE_META,
+  eventDateLine,
+  eventLocationLines,
+  INVITATION_TEMPLATES,
+  RECOMMENDED_MODULES,
+} from '@/domain/events'
 import type {
   EventBudgetItem,
   EventGuest,
@@ -49,7 +61,9 @@ import type {
   EventType,
   FamilyEvent,
 } from '@/domain/types'
+import { shareText } from '@/services/share'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 
 // Módulo Eventos (PEPA Events) — plan aprobado en
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
@@ -77,7 +91,8 @@ const READY_MODULE_KEYS = new Set<EventModuleKey>(['tareas', 'invitados', 'presu
 
 // Ceremonia (dos ubicaciones) solo tiene sentido en estos tipos —
 // aunque el módulo esté activado, en otros tipos no se muestra.
-const DUAL_LOCATION_TYPES: EventType[] = ['comunion', 'bautizo', 'boda']
+// (DUAL_LOCATION_EVENT_TYPES importado de domain/events.ts, compartido
+// con el texto de la invitación/RSVP.)
 
 const RSVP_STATUS_OPTIONS: { value: EventGuestRsvpStatus; label: string }[] = [
   { value: 'pendiente', label: 'Pendiente' },
@@ -488,7 +503,7 @@ function EventDetail({
         </div>
       )}
 
-      {event.enabledModules.includes('ceremonia') && DUAL_LOCATION_TYPES.includes(event.type) && <CeremoniaSection event={event} onChanged={onChanged} />}
+      {event.enabledModules.includes('ceremonia') && DUAL_LOCATION_EVENT_TYPES.includes(event.type) && <CeremoniaSection event={event} onChanged={onChanged} />}
       {event.enabledModules.includes('invitados') && <GuestsSection event={event} />}
       {event.enabledModules.includes('presupuesto') && <BudgetSection event={event} />}
       {event.enabledModules.includes('menu_compra') && <MenuSection eventId={event.id} />}
@@ -749,11 +764,20 @@ function CeremoniaSection({ event, onChanged }: { event: FamilyEvent; onChanged:
 // Invitados.
 // ---------------------------------------------------------------------
 
+const GUEST_FILTER_OPTIONS: { value: EventGuestRsvpStatus | 'todos'; label: string }[] = [
+  { value: 'todos', label: 'Todos' },
+  ...RSVP_STATUS_OPTIONS,
+]
+
 function GuestsSection({ event }: { event: FamilyEvent }) {
   const [guests, setGuests] = useState<EventGuest[]>([])
   const [showAdd, setShowAdd] = useState(false)
+  const [invitationGuest, setInvitationGuest] = useState<EventGuest | null>(null)
+  const [statusFilter, setStatusFilter] = useState<EventGuestRsvpStatus | 'todos'>('todos')
   const [error, setError] = useState<string | null>(null)
-  const hasScope = DUAL_LOCATION_TYPES.includes(event.type)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
+  const hasScope = DUAL_LOCATION_EVENT_TYPES.includes(event.type)
 
   function reload() {
     listEventGuests(event.id)
@@ -766,7 +790,10 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
   const confirmed = guests.filter((g) => g.rsvpStatus === 'confirmado')
   const confirmedAdults = confirmed.reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount), 0)
   const confirmedChildren = confirmed.reduce((sum, g) => sum + (g.rsvpChildrenCount ?? g.childrenCount), 0)
-  const pendingCount = guests.filter((g) => g.rsvpStatus === 'pendiente').length
+  const pending = guests.filter((g) => g.rsvpStatus === 'pendiente')
+  const notAttending = guests.filter((g) => g.rsvpStatus === 'no_asiste').length
+  const unsure = guests.filter((g) => g.rsvpStatus === 'no_seguro').length
+  const visibleGuests = statusFilter === 'todos' ? guests : guests.filter((g) => g.rsvpStatus === statusFilter)
 
   async function handleRsvpStatusChange(guest: EventGuest, status: EventGuestRsvpStatus) {
     try {
@@ -781,21 +808,58 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
     }
   }
 
+  // Petición de la Skill: "Provide Remind pending as a manual share
+  // workflow. PEPA prepares text; user shares through native share
+  // sheet" — un único aviso con los nombres, nunca se manda solo.
+  async function handleRemindPending() {
+    const text = `Recordatorio: todavía falta por confirmar ${pending.length === 1 ? 'la asistencia de' : 'la asistencia de'} ${pending
+      .map((g) => g.displayName)
+      .join(', ')} a "${event.title}". ¡Avisadnos cuando podáis! 🙏`
+    try {
+      const shown = await shareText({ title: event.title, text })
+      setNotice(shown ? null : 'Copiado al portapapeles.')
+    } catch {
+      setManualShare({ title: event.title, text })
+    }
+  }
+
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>👥 Invitados</strong>
       <p className="muted" style={{ margin: '4px 0' }}>
         {guests.length} {guests.length === 1 ? 'invitado/grupo' : 'invitados/grupos'} · {totalPeople} personas en total · {confirmedAdults + confirmedChildren}{' '}
-        confirmadas ({confirmedAdults} adultos, {confirmedChildren} niños) · {pendingCount} pendientes
+        confirmadas ({confirmedAdults} adultos, {confirmedChildren} niños) · {pending.length} pendientes · {notAttending} no asisten · {unsure} no seguros
       </p>
+      {notice && <p className="points-badge">{notice}</p>}
       {error && <p className="error">{error}</p>}
-      <div className="event-list">
-        {guests.map((g) => (
+      {pending.length > 0 && (
+        <button type="button" className="link-button" onClick={handleRemindPending}>
+          🔔 Recordar a pendientes ({pending.length})
+        </button>
+      )}
+      {guests.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as EventGuestRsvpStatus | 'todos')}>
+            {GUEST_FILTER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {visibleGuests.map((g) => (
           <div key={g.id} className="card task-card">
             <div className="task-card-main" style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong>{g.displayName}</strong>
-                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar invitado" onConfirm={() => deleteEventGuest(g.id).then(reload)} />
+                <div>
+                  <button type="button" className="link-button" onClick={() => setInvitationGuest(g)}>
+                    💌 Invitación
+                  </button>
+                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar invitado" onConfirm={() => deleteEventGuest(g.id).then(reload)} />
+                </div>
               </div>
               <p className="muted" style={{ margin: '2px 0' }}>
                 {g.adultsCount} adultos, {g.childrenCount} niños
@@ -848,6 +912,7 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
           </div>
         ))}
         {guests.length === 0 && <p className="muted">Todavía no hay invitados.</p>}
+        {guests.length > 0 && visibleGuests.length === 0 && <p className="muted">Nadie con ese estado por ahora.</p>}
       </div>
       <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
         + Añadir invitado
@@ -862,6 +927,8 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
           }}
         />
       )}
+      {invitationGuest && <InvitationModal event={event} guest={invitationGuest} onClose={() => setInvitationGuest(null)} />}
+      {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
     </div>
   )
 }
@@ -874,7 +941,7 @@ function AddGuestModal({ event, onClose, onAdded }: { event: FamilyEvent; onClos
   const [inviteScope, setInviteScope] = useState<EventGuestInviteScope>('ambas')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const hasScope = DUAL_LOCATION_TYPES.includes(event.type)
+  const hasScope = DUAL_LOCATION_EVENT_TYPES.includes(event.type)
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -1397,6 +1464,123 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
           </button>
         </form>
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Invitaciones + RSVP público (Fase 2) — plantilla rellenable (tema de
+// color, texto autorrelleno editable) y enlace personalizado por
+// invitado, compartido con el menú nativo del móvil. El editor en
+// capas de verdad (arrastrar/pellizcar/rotar) llega en la Fase 3.
+// ---------------------------------------------------------------------
+
+function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest: EventGuest; onClose: () => void }) {
+  const [templateKey, setTemplateKey] = useState(INVITATION_TEMPLATES[0].key)
+  const [message, setMessage] = useState('¡Nos encantaría contar contigo!')
+  const [rsvpUrl, setRsvpUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [sharing, setSharing] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
+
+  useEffect(() => {
+    getGuestRsvpUrl(guest.id)
+      .then(setRsvpUrl)
+      .catch((err) => setError(errorMessage(err, 'No se pudo generar el enlace')))
+      .finally(() => setLoading(false))
+  }, [guest.id])
+
+  const template = INVITATION_TEMPLATES.find((t) => t.key === templateKey) ?? INVITATION_TEMPLATES[0]
+  const infoLines = [eventDateLine(event), ...eventLocationLines(event, guest)]
+
+  function buildShareText(): string {
+    return [`${EVENT_TYPE_META[event.type].icon} ${event.title}`, ...infoLines, '', message, '', `Confirma tu asistencia aquí: ${rsvpUrl}`].join('\n')
+  }
+
+  async function handleShare() {
+    if (!rsvpUrl) return
+    setSharing(true)
+    setNotice(null)
+    try {
+      const shown = await shareText({ title: event.title, text: buildShareText() })
+      setNotice(shown ? null : 'Copiado al portapapeles.')
+    } catch {
+      setManualShare({ title: event.title, text: buildShareText() })
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  async function handleRegenerate() {
+    setLoading(true)
+    setError(null)
+    try {
+      const url = await regenerateGuestRsvpUrl(guest.id)
+      setRsvpUrl(url)
+      setNotice('Enlace nuevo generado — el anterior ha dejado de funcionar.')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo regenerar'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Invitación para {guest.displayName}
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+        {notice && <p className="points-badge">{notice}</p>}
+
+        <p className="muted" style={{ fontSize: 13 }}>
+          Elige un tema — el texto sale relleno solo, y se puede editar antes de mandarlo.
+        </p>
+        <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+          {INVITATION_TEMPLATES.map((t) => (
+            <button key={t.key} type="button" className={'chip' + (t.key === templateKey ? ' chip-active' : '')} onClick={() => setTemplateKey(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 12, borderRadius: 16, padding: 20, background: template.gradient, color: template.text, textAlign: 'center' }}>
+          <div style={{ fontSize: 28 }}>{EVENT_TYPE_META[event.type].icon}</div>
+          <strong style={{ fontSize: 18 }}>{event.title}</strong>
+          {infoLines.map((l) => (
+            <p key={l} style={{ margin: '6px 0', fontSize: 13, opacity: 0.9 }}>
+              {l}
+            </p>
+          ))}
+        </div>
+
+        <label style={{ marginTop: 12, display: 'block' }}>
+          Mensaje
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} />
+        </label>
+
+        <p className="muted" style={{ fontSize: 12, marginTop: 8, wordBreak: 'break-all' }}>
+          {loading ? 'Generando enlace de confirmación…' : rsvpUrl}
+        </p>
+
+        <button type="button" onClick={handleShare} disabled={loading || sharing || !rsvpUrl} style={{ marginTop: 8 }}>
+          {sharing ? 'Compartiendo…' : '📤 Compartir invitación'}
+        </button>
+        {!loading && rsvpUrl && (
+          <button type="button" className="link-button" onClick={handleRegenerate} style={{ marginTop: 8 }}>
+            🔄 Regenerar enlace (invalida el anterior)
+          </button>
+        )}
+      </div>
+      {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
     </div>
   )
 }

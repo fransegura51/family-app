@@ -662,3 +662,28 @@ export async function deleteEventPayment(id: string): Promise<void> {
   const { error } = await supabase.from('event_payments').delete().eq('id', id)
   if (error) throw error
 }
+
+// ---------------------------------------------------------------------
+// RSVP público — enlace personalizado por invitado, sin cuenta PEPA
+// (ver supabase/functions/event-rsvp). El token se genera bajo demanda,
+// no al crear el invitado.
+// ---------------------------------------------------------------------
+
+function rsvpUrlFromToken(token: string): string {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+  return `${supabaseUrl}/functions/v1/event-rsvp?token=${token}`
+}
+
+export async function getGuestRsvpUrl(guestId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('generate_event_guest_rsvp_token', { p_guest_id: guestId })
+  if (error) throw error
+  return rsvpUrlFromToken(data as string)
+}
+
+// Petición de la Skill: "Organizer can regenerate/invalidate the RSVP
+// token/link if needed" — el enlace viejo deja de servir al instante.
+export async function regenerateGuestRsvpUrl(guestId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('regenerate_event_guest_rsvp_token', { p_guest_id: guestId })
+  if (error) throw error
+  return rsvpUrlFromToken(data as string)
+}

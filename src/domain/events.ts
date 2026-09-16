@@ -4,7 +4,7 @@
 // archivo reúne lo que cambia por tipo de evento (nombre, módulos
 // recomendados, checklist inicial) para que EventosScreen.tsx no lleve
 // ningún "if (type === ...)" disperso por la UI.
-import type { EventModuleKey, EventType } from '@/domain/types'
+import type { EventGuestInviteScope, EventModuleKey, EventType, FamilyEvent } from '@/domain/types'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -142,3 +142,50 @@ function offsetDate(date: string, days: number): string {
   d.setDate(d.getDate() + days)
   return d.toISOString().slice(0, 10)
 }
+
+// ---------------------------------------------------------------------
+// Fase 2 — texto de la invitación/RSVP. La función edge event-rsvp
+// (Deno, no puede importar código del cliente) repite esta misma
+// lógica a mano — igual que ya pasa con expandOccurrences entre el
+// cliente y las funciones edge de calendario; se mantienen las dos
+// copias en sincronía a mano si esto cambia.
+// ---------------------------------------------------------------------
+
+export const DUAL_LOCATION_EVENT_TYPES: EventType[] = ['comunion', 'bautizo', 'boda']
+
+export function eventDateLine(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate' | 'eventTime'>): string {
+  if (event.dateStatus === 'pendiente' || !event.eventDate) return '📅 Fecha todavía por confirmar'
+  const label = event.dateStatus === 'provisional' ? 'Fecha provisional' : 'Fecha'
+  const time = event.eventTime ? ` a las ${event.eventTime.slice(0, 5)}` : ''
+  return `📅 ${label}: ${event.eventDate}${time}`
+}
+
+export function eventLocationLines(
+  event: Pick<FamilyEvent, 'type' | 'venueLabel' | 'ceremonyLocationLabel' | 'ceremonyTime' | 'celebrationLocationLabel'>,
+  guest: { inviteScope: EventGuestInviteScope | null },
+): string[] {
+  const lines: string[] = []
+  if (DUAL_LOCATION_EVENT_TYPES.includes(event.type)) {
+    const scope = guest.inviteScope ?? 'ambas'
+    if (scope !== 'solo_celebracion' && event.ceremonyLocationLabel) {
+      lines.push(`🕊️ Ceremonia: ${event.ceremonyLocationLabel}${event.ceremonyTime ? ' · ' + event.ceremonyTime.slice(0, 5) : ''}`)
+    }
+    if (scope !== 'solo_ceremonia' && event.celebrationLocationLabel) {
+      lines.push(`🎉 Celebración: ${event.celebrationLocationLabel}`)
+    }
+  } else if (event.venueLabel) {
+    lines.push(`📍 ${event.venueLabel}`)
+  }
+  return lines
+}
+
+// Plantillas v1 — solo tema de color (la Skill pide "large, visual
+// thumbnails" para elegir tema; el editor en capas de verdad con
+// arrastrar/pellizcar/rotar llega en la Fase 3). Sin ningún personaje
+// con copyright, solo colores propios de PEPA.
+export const INVITATION_TEMPLATES: { key: string; label: string; gradient: string; text: string }[] = [
+  { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff' },
+  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(135deg, #F472B6, #FB923C)', text: '#ffffff' },
+  { key: 'elegante', label: 'Elegante', gradient: 'linear-gradient(135deg, #1F2937, #4B5563)', text: '#ffffff' },
+  { key: 'alegre', label: 'Alegre', gradient: 'linear-gradient(135deg, #FBBF24, #34D399)', text: '#1f2233' },
+]

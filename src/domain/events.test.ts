@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeEventConclusions } from '@/domain/events'
+import { computeEventConclusions, generateEventPlan } from '@/domain/events'
 
 function daysFromNow(days: number): string {
   const d = new Date()
@@ -121,5 +121,32 @@ describe('computeEventConclusions', () => {
       spentBudget: 50,
     })
     expect(conclusions).toHaveLength(0)
+  })
+})
+
+describe('generateEventPlan', () => {
+  it('proposes budget, menu, decoration and activities for a birthday', () => {
+    const plan = generateEventPlan({ type: 'cumpleanos', enabledModules: ['invitados', 'tareas'] })
+    expect(plan.budgetItems.length).toBeGreaterThan(0)
+    expect(plan.menuItems.length).toBeGreaterThan(0)
+    expect(plan.decorationItems.length).toBeGreaterThan(0)
+    expect(plan.activities.length).toBeGreaterThan(0)
+  })
+
+  it('only lists modules that are not already enabled', () => {
+    const plan = generateEventPlan({ type: 'cumpleanos', enabledModules: ['invitados', 'invitaciones', 'tareas', 'presupuesto', 'menu_compra', 'decoracion', 'actividades', 'plan_dia'] })
+    expect(plan.missingModules).toHaveLength(0)
+  })
+
+  it('lists a recommended module that is missing', () => {
+    const plan = generateEventPlan({ type: 'cumpleanos', enabledModules: [] })
+    expect(plan.missingModules).toContain('presupuesto')
+  })
+
+  it('does not propose decoration or activities for a wedding', () => {
+    const plan = generateEventPlan({ type: 'boda', enabledModules: [] })
+    expect(plan.decorationItems).toHaveLength(0)
+    expect(plan.activities).toHaveLength(0)
+    expect(plan.budgetItems.length).toBeGreaterThan(0)
   })
 })

@@ -95,6 +95,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Plan del día', text: 'Lista cronológica con hora y título de cada momento del día — se vuelve más protagonista el propio día del evento.' },
     { title: 'Plazo de RSVP', text: 'Fecha opcional (editar evento) — cuando se acerca y todavía queda gente sin responder, avisa en "Pepa dice". "🔔 Recordarme el plazo de RSVP" apunta un aviso en el Calendario 3 días antes, usando el mismo sistema de recordatorios de siempre.' },
     { title: 'Recordatorio de un pago', text: 'Si un pago o fianza tiene fecha de vencimiento y todavía queda algo pendiente, "🔔 Recordarme" apunta un aviso en el Calendario 3 días antes.' },
+    { title: 'Organízamelo Pepa', text: 'Propuesta típica de partidas de presupuesto, productos de menú, ideas de decoración y actividades según el tipo de evento (y qué módulos activar si faltan) — revisas cada línea, destildas lo que no te haga falta, y solo se escribe al pulsar "Aplicar". Las tareas no están aquí porque ya se crean solas al hacer el evento.' },
     { title: 'Pepa dice', text: 'Avisos que solo aparecen si hay algo real que decir: invitados sin responder cerca del plazo, tareas con fecha ya pasada, pagos que vencen pronto con saldo pendiente, o gasto ya por encima de lo planeado en Presupuesto.' },
     { title: 'Hoy es el día', text: 'Con la fecha ya confirmada y siendo hoy, arriba del todo aparece un aviso con las personas confirmadas, lo que falte pasar a Compras y el siguiente momento del Plan del día.' },
   ],

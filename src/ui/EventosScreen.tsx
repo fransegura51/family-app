@@ -83,6 +83,7 @@ import {
   EVENT_TYPE_META,
   eventDateLine,
   eventLocationLines,
+  generateEventPlan,
   INVITATION_EMOJI_SUGGESTIONS,
   INVITATION_SHAPES,
   INVITATION_TEMPLATES,
@@ -454,6 +455,8 @@ function EventDetail({
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [showEdit, setShowEdit] = useState(false)
   const [showModules, setShowModules] = useState(false)
+  const [showPlan, setShowPlan] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [linkingCalendar, setLinkingCalendar] = useState(false)
 
@@ -597,13 +600,15 @@ function EventDetail({
         </div>
       )}
 
-      {event.enabledModules.includes('ceremonia') && DUAL_LOCATION_EVENT_TYPES.includes(event.type) && <CeremoniaSection event={event} onChanged={onChanged} />}
-      {event.enabledModules.includes('invitados') && <GuestsSection event={event} />}
-      {event.enabledModules.includes('mesas') && <TablesSection event={event} />}
-      {event.enabledModules.includes('presupuesto') && <BudgetSection event={event} />}
-      {event.enabledModules.includes('menu_compra') && <MenuSection eventId={event.id} />}
-      {event.enabledModules.includes('decoracion') && <DecorationSection eventId={event.id} />}
-      {event.enabledModules.includes('actividades') && <ActivitiesSection eventId={event.id} />}
+      {event.enabledModules.includes('ceremonia') && DUAL_LOCATION_EVENT_TYPES.includes(event.type) && (
+        <CeremoniaSection key={`ceremonia-${refreshKey}`} event={event} onChanged={onChanged} />
+      )}
+      {event.enabledModules.includes('invitados') && <GuestsSection key={`invitados-${refreshKey}`} event={event} />}
+      {event.enabledModules.includes('mesas') && <TablesSection key={`mesas-${refreshKey}`} event={event} />}
+      {event.enabledModules.includes('presupuesto') && <BudgetSection key={`presupuesto-${refreshKey}`} event={event} />}
+      {event.enabledModules.includes('menu_compra') && <MenuSection key={`menu-${refreshKey}`} eventId={event.id} />}
+      {event.enabledModules.includes('decoracion') && <DecorationSection key={`decoracion-${refreshKey}`} eventId={event.id} />}
+      {event.enabledModules.includes('actividades') && <ActivitiesSection key={`actividades-${refreshKey}`} eventId={event.id} />}
       {event.enabledModules.includes('proveedores') && <ProvidersSection eventId={event.id} />}
       {event.enabledModules.includes('pagos') && <PaymentsSection event={event} />}
       {event.enabledModules.includes('detalles') && <DetailsSection eventId={event.id} />}
@@ -630,6 +635,17 @@ function EventDetail({
           </div>
         )
       })}
+
+      {event.status === 'planificacion' && (
+        <div className="card event-card" style={{ marginTop: 8 }}>
+          <button type="button" className="link-button" onClick={() => setShowPlan(true)}>
+            🪄 Organízamelo Pepa
+          </button>
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            Propuesta de presupuesto, menú, decoración y actividades típicas de este tipo de evento — revisas y eliges qué aplicar, no se escribe nada solo.
+          </p>
+        </div>
+      )}
 
       <div className="card event-card" style={{ marginTop: 8 }}>
         <button type="button" className="link-button" onClick={() => setShowModules(true)}>
@@ -671,6 +687,17 @@ function EventDetail({
           onClose={() => setShowModules(false)}
           onSaved={() => {
             setShowModules(false)
+            onChanged()
+          }}
+        />
+      )}
+      {showPlan && (
+        <OrganizamePepaModal
+          event={event}
+          onClose={() => setShowPlan(false)}
+          onApplied={() => {
+            setShowPlan(false)
+            setRefreshKey((k) => k + 1)
             onChanged()
           }}
         />
@@ -3092,6 +3119,164 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
             </button>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 4 — "Organízamelo Pepa". Petición de la Skill (08-data-
+// integration-ai.md): "Show a summary of proposed writes before user
+// confirms" — nada se escribe hasta que el usuario pulsa "Aplicar", y
+// puede destildar cualquier línea suelta antes de confirmar.
+// ---------------------------------------------------------------------
+
+function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent; onClose: () => void; onApplied: () => void }) {
+  const plan = generateEventPlan(event)
+  const [modulesChecked, setModulesChecked] = useState(() => new Set(plan.missingModules))
+  const [budgetChecked, setBudgetChecked] = useState(() => new Set(plan.budgetItems.map((_, i) => i)))
+  const [menuChecked, setMenuChecked] = useState(() => new Set(plan.menuItems.map((_, i) => i)))
+  const [decorationChecked, setDecorationChecked] = useState(() => new Set(plan.decorationItems.map((_, i) => i)))
+  const [activitiesChecked, setActivitiesChecked] = useState(() => new Set(plan.activities.map((_, i) => i)))
+  const [applying, setApplying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function toggle<T>(set: Set<T>, setSet: (s: Set<T>) => void, i: T) {
+    const next = new Set(set)
+    if (next.has(i)) next.delete(i)
+    else next.add(i)
+    setSet(next)
+  }
+
+  const totalCount = budgetChecked.size + menuChecked.size + decorationChecked.size + activitiesChecked.size
+
+  async function handleApply() {
+    setApplying(true)
+    setError(null)
+    try {
+      if (modulesChecked.size > 0) {
+        await updateEvent(event.id, { enabledModules: [...event.enabledModules, ...modulesChecked] })
+      }
+      await Promise.all([
+        ...plan.budgetItems.filter((_, i) => budgetChecked.has(i)).map((b) => addEventBudgetItem(event.id, b.category, b.plannedAmount)),
+        ...plan.menuItems.filter((_, i) => menuChecked.has(i)).map((m) => addEventMenuItem(event.id, m.name)),
+        ...plan.decorationItems.filter((_, i) => decorationChecked.has(i)).map((d) => addEventDecorationItem(event.id, d.name)),
+        ...plan.activities.filter((_, i) => activitiesChecked.has(i)).map((a) => addEventActivity(event.id, { title: a.title, ageRange: a.ageRange ?? null })),
+      ])
+      onApplied()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo aplicar la propuesta'))
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const nothingToPropose = plan.budgetItems.length + plan.menuItems.length + plan.decorationItems.length + plan.activities.length === 0
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            🪄 Organízamelo Pepa
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+        <p className="muted" style={{ fontSize: 13 }}>
+          Propuesta típica de {EVENT_TYPE_META[event.type].label.toLowerCase()} — destilda lo que no te haga falta antes de aplicar. Las tareas no están
+          aquí porque ya se crearon solas al hacer el evento.
+        </p>
+
+        {nothingToPropose && plan.missingModules.length === 0 && <p className="muted">Este tipo de evento no tiene ninguna propuesta automática de partida.</p>}
+
+        {plan.missingModules.length > 0 && (
+          <>
+            <strong style={{ fontSize: 13 }}>Módulos que hacen falta para esto</strong>
+            <div className="event-list" style={{ marginTop: 4 }}>
+              {plan.missingModules.map((m) => {
+                const meta = EVENT_MODULES.find((em) => em.key === m)
+                return (
+                  <label key={m} className="inline-fields" style={{ alignItems: 'center' }}>
+                    <input type="checkbox" checked={modulesChecked.has(m)} onChange={() => toggle(modulesChecked, setModulesChecked, m)} />
+                    <span>
+                      {meta?.icon} {meta?.label}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {plan.budgetItems.length > 0 && (
+          <>
+            <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>💰 Presupuesto</strong>
+            <div className="event-list" style={{ marginTop: 4 }}>
+              {plan.budgetItems.map((b, i) => (
+                <label key={b.category} className="inline-fields" style={{ alignItems: 'center' }}>
+                  <input type="checkbox" checked={budgetChecked.has(i)} onChange={() => toggle(budgetChecked, setBudgetChecked, i)} />
+                  <span style={{ flex: 1 }}>{b.category}</span>
+                  <span>{b.plannedAmount.toFixed(2)} €</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+
+        {plan.menuItems.length > 0 && (
+          <>
+            <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>🍽️ Menú</strong>
+            <div className="event-list" style={{ marginTop: 4 }}>
+              {plan.menuItems.map((m, i) => (
+                <label key={m.name} className="inline-fields" style={{ alignItems: 'center' }}>
+                  <input type="checkbox" checked={menuChecked.has(i)} onChange={() => toggle(menuChecked, setMenuChecked, i)} />
+                  <span>{m.name}</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+
+        {plan.decorationItems.length > 0 && (
+          <>
+            <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>🎈 Decoración</strong>
+            <div className="event-list" style={{ marginTop: 4 }}>
+              {plan.decorationItems.map((d, i) => (
+                <label key={d.name} className="inline-fields" style={{ alignItems: 'center' }}>
+                  <input type="checkbox" checked={decorationChecked.has(i)} onChange={() => toggle(decorationChecked, setDecorationChecked, i)} />
+                  <span>{d.name}</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+
+        {plan.activities.length > 0 && (
+          <>
+            <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>🎲 Actividades</strong>
+            <div className="event-list" style={{ marginTop: 4 }}>
+              {plan.activities.map((a, i) => (
+                <label key={a.title} className="inline-fields" style={{ alignItems: 'center' }}>
+                  <input type="checkbox" checked={activitiesChecked.has(i)} onChange={() => toggle(activitiesChecked, setActivitiesChecked, i)} />
+                  <span>{a.title}</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+
+        {!nothingToPropose && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+            Pepa va a añadir {totalCount} {totalCount === 1 ? 'elemento' : 'elementos'} en total.
+          </p>
+        )}
+
+        <button type="button" onClick={handleApply} disabled={applying || (nothingToPropose && modulesChecked.size === 0)} style={{ marginTop: 12 }}>
+          {applying ? 'Aplicando…' : 'Aplicar'}
+        </button>
       </div>
     </div>
   )

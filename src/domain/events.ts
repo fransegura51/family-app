@@ -153,6 +153,102 @@ function offsetDate(date: string, days: number): string {
 }
 
 // ---------------------------------------------------------------------
+// Fase 4 — "Organízamelo Pepa" (08-data-integration-ai.md, punto 6):
+// "First target: structured proposal for tasks, budget, menu, shopping,
+// decoration, activities and plan. Do not assume perfect one-shot
+// automation." Reglas propias por tipo, sin ninguna llamada a un
+// servicio de IA externo (ni falta hace: son listas de partida
+// editables, no una redacción libre) — las tareas quedan fuera de esta
+// propuesta porque ya se generan solas al crear el evento
+// (generateAutoTasks); repetirlas aquí las duplicaría.
+// ---------------------------------------------------------------------
+
+const BUDGET_PLAN_TEMPLATES: Record<EventType, { category: string; plannedAmount: number }[]> = {
+  cumpleanos: [
+    { category: 'Local o espacio', plannedAmount: 150 },
+    { category: 'Tarta', plannedAmount: 40 },
+    { category: 'Decoración', plannedAmount: 60 },
+    { category: 'Comida y bebida', plannedAmount: 120 },
+    { category: 'Detalles para invitados', plannedAmount: 30 },
+  ],
+  comunion: [
+    { category: 'Iglesia/parroquia', plannedAmount: 50 },
+    { category: 'Restaurante', plannedAmount: 1500 },
+    { category: 'Traje o vestido', plannedAmount: 300 },
+    { category: 'Fotógrafo', plannedAmount: 400 },
+    { category: 'Recuerdos', plannedAmount: 150 },
+  ],
+  bautizo: [
+    { category: 'Ceremonia', plannedAmount: 50 },
+    { category: 'Celebración', plannedAmount: 600 },
+    { category: 'Recuerdos', plannedAmount: 100 },
+  ],
+  celebracion: [
+    { category: 'Local o espacio', plannedAmount: 200 },
+    { category: 'Comida y bebida', plannedAmount: 300 },
+    { category: 'Decoración', plannedAmount: 80 },
+  ],
+  boda: [
+    { category: 'Ceremonia', plannedAmount: 300 },
+    { category: 'Celebración', plannedAmount: 3000 },
+    { category: 'Fotógrafo/vídeo', plannedAmount: 800 },
+    { category: 'Flores', plannedAmount: 200 },
+    { category: 'Música', plannedAmount: 300 },
+  ],
+  personalizado: [{ category: 'General', plannedAmount: 100 }],
+}
+
+const MENU_PLAN_TEMPLATES: Record<EventType, string[]> = {
+  cumpleanos: ['Tarta', 'Bebidas', 'Snacks', 'Chuches'],
+  comunion: ['Aperitivo', 'Primer plato', 'Segundo plato', 'Postre', 'Bebidas'],
+  bautizo: ['Aperitivo', 'Dulces', 'Bebidas'],
+  celebracion: ['Aperitivo', 'Plato principal', 'Postre', 'Bebidas'],
+  boda: ['Aperitivo', 'Menú', 'Tarta nupcial', 'Barra libre'],
+  personalizado: ['Comida', 'Bebidas'],
+}
+
+// Decoración/actividades — petición de la Skill: "Never assume every
+// event needs decoration"; boda y personalizado se quedan sin
+// propuesta (venue-provided o demasiado variable para adivinar).
+const DECORATION_PLAN_TEMPLATES: Record<EventType, string[]> = {
+  cumpleanos: ['Globos', 'Pancarta de cumpleaños', 'Centro de mesa'],
+  comunion: ['Centros de mesa', 'Detalles en las sillas'],
+  bautizo: ['Globos', 'Centro de mesa'],
+  celebracion: ['Centros de mesa', 'Iluminación'],
+  boda: [],
+  personalizado: [],
+}
+
+const ACTIVITY_PLAN_TEMPLATES: Record<EventType, { title: string; ageRange?: string }[]> = {
+  cumpleanos: [{ title: 'Juegos de fiesta' }, { title: 'Piñata' }],
+  comunion: [],
+  bautizo: [],
+  celebracion: [],
+  boda: [],
+  personalizado: [],
+}
+
+export interface EventPlanProposal {
+  missingModules: EventModuleKey[]
+  budgetItems: { category: string; plannedAmount: number }[]
+  menuItems: { name: string }[]
+  decorationItems: { name: string }[]
+  activities: { title: string; ageRange?: string }[]
+}
+
+export function generateEventPlan(event: Pick<FamilyEvent, 'type' | 'enabledModules'>): EventPlanProposal {
+  const recommended = RECOMMENDED_MODULES[event.type]
+  const missingModules = recommended.filter((m) => !event.enabledModules.includes(m))
+  return {
+    missingModules,
+    budgetItems: BUDGET_PLAN_TEMPLATES[event.type],
+    menuItems: MENU_PLAN_TEMPLATES[event.type].map((name) => ({ name })),
+    decorationItems: DECORATION_PLAN_TEMPLATES[event.type].map((name) => ({ name })),
+    activities: ACTIVITY_PLAN_TEMPLATES[event.type],
+  }
+}
+
+// ---------------------------------------------------------------------
 // Fase 2 — texto de la invitación/RSVP. La función edge event-rsvp
 // (Deno, no puede importar código del cliente) repite esta misma
 // lógica a mano — igual que ya pasa con expandOccurrences entre el

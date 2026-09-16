@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react'
 import {
   addEventActivity,
   addEventBudgetItem,
@@ -31,7 +31,9 @@ import {
   deleteEventTable,
   deleteEventTask,
   duplicateEvent,
+  getEventInvitation,
   getGuestRsvpUrl,
+  getInvitationPhotoUrl,
   linkEventToCalendar,
   listEventActivities,
   listEventBudgetItems,
@@ -49,6 +51,7 @@ import {
   listEvents,
   recalculateAutoTasks,
   regenerateGuestRsvpUrl,
+  saveEventInvitation,
   transferActivityMaterialsToShopping,
   transferDecorationItemToShopping,
   transferMenuToShopping,
@@ -61,10 +64,13 @@ import {
   updateEventSpecialDetail,
   updateEventTask,
   updateLinkedCalendarEvent,
+  uploadInvitationPhoto,
 } from '@/data/events'
 import { listExpenses } from '@/data/finance'
 import { errorMessage } from '@/domain/errorMessage'
 import {
+  autoArrangeLayers,
+  buildInvitationTemplateLayers,
   CELEBRATION_SUBTYPES,
   computeEventConclusions,
   DUAL_LOCATION_EVENT_TYPES,
@@ -74,8 +80,11 @@ import {
   EVENT_TYPE_META,
   eventDateLine,
   eventLocationLines,
+  INVITATION_EMOJI_SUGGESTIONS,
+  INVITATION_SHAPES,
   INVITATION_TEMPLATES,
   isToday,
+  makeInvitationLayer,
   RECOMMENDED_MODULES,
 } from '@/domain/events'
 import type {
@@ -97,6 +106,8 @@ import type {
   EventTask,
   EventType,
   FamilyEvent,
+  InvitationCanvas,
+  InvitationLayer,
 } from '@/domain/types'
 import { shareText } from '@/services/share'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -844,6 +855,7 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
   const [guests, setGuests] = useState<EventGuest[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [invitationGuest, setInvitationGuest] = useState<EventGuest | null>(null)
+  const [showDesigner, setShowDesigner] = useState(false)
   const [statusFilter, setStatusFilter] = useState<EventGuestRsvpStatus | 'todos'>('todos')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -896,7 +908,12 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
-      <strong>👥 Invitados</strong>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <strong>👥 Invitados</strong>
+        <button type="button" className="link-button" onClick={() => setShowDesigner(true)}>
+          🎨 Diseño de la invitación
+        </button>
+      </div>
       <p className="muted" style={{ margin: '4px 0' }}>
         {guests.length} {guests.length === 1 ? 'invitado/grupo' : 'invitados/grupos'} · {totalPeople} personas en total · {confirmedAdults + confirmedChildren}{' '}
         confirmadas ({confirmedAdults} adultos, {confirmedChildren} niños) · {pending.length} pendientes · {notAttending} no asisten · {unsure} no seguros
@@ -1000,6 +1017,7 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
       )}
       {invitationGuest && <InvitationModal event={event} guest={invitationGuest} onClose={() => setInvitationGuest(null)} />}
       {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
+      {showDesigner && <InvitationCanvasEditor event={event} onClose={() => setShowDesigner(false)} onSaved={() => setShowDesigner(false)} />}
     </div>
   )
 }
@@ -1555,13 +1573,31 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
   const [sharing, setSharing] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
+  const [customCanvas, setCustomCanvas] = useState<InvitationCanvas | null>(null)
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
     getGuestRsvpUrl(guest.id)
       .then(setRsvpUrl)
       .catch((err) => setError(errorMessage(err, 'No se pudo generar el enlace')))
       .finally(() => setLoading(false))
-  }, [guest.id])
+    // El diseño en capas (Fase 3) es opcional — si no se ha creado
+    // ninguno todavía, seguimos con la tarjeta de tema simple de
+    // siempre; un fallo aquí no debe bloquear el enlace de RSVP.
+    getEventInvitation(event.id)
+      .then(async (invitation) => {
+        if (!invitation || invitation.canvas.layers.length === 0) return
+        setCustomCanvas(invitation.canvas)
+        const paths = invitation.canvas.layers.map((l) => l.photoPath).filter((p): p is string => !!p)
+        const urls = await Promise.all(paths.map((p) => getInvitationPhotoUrl(p).catch(() => null)))
+        const map: Record<string, string> = {}
+        paths.forEach((p, i) => {
+          if (urls[i]) map[p] = urls[i] as string
+        })
+        setPhotoUrls(map)
+      })
+      .catch(() => {})
+  }, [guest.id, event.id])
 
   const template = INVITATION_TEMPLATES.find((t) => t.key === templateKey) ?? INVITATION_TEMPLATES[0]
   const infoLines = [eventDateLine(event), ...eventLocationLines(event, guest)]
@@ -1612,26 +1648,33 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
         {error && <p className="error">{error}</p>}
         {notice && <p className="points-badge">{notice}</p>}
 
-        <p className="muted" style={{ fontSize: 13 }}>
-          Elige un tema — el texto sale relleno solo, y se puede editar antes de mandarlo.
-        </p>
-        <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-          {INVITATION_TEMPLATES.map((t) => (
-            <button key={t.key} type="button" className={'chip' + (t.key === templateKey ? ' chip-active' : '')} onClick={() => setTemplateKey(t.key)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 12, borderRadius: 16, padding: 20, background: template.gradient, color: template.text, textAlign: 'center' }}>
-          <div style={{ fontSize: 28 }}>{EVENT_TYPE_META[event.type].icon}</div>
-          <strong style={{ fontSize: 18 }}>{event.title}</strong>
-          {infoLines.map((l) => (
-            <p key={l} style={{ margin: '6px 0', fontSize: 13, opacity: 0.9 }}>
-              {l}
+        {customCanvas ? (
+          <InvitationCanvasView canvas={customCanvas} photoUrls={photoUrls} />
+        ) : (
+          <>
+            <p className="muted" style={{ fontSize: 13 }}>
+              Elige un tema — el texto sale relleno solo, y se puede editar antes de mandarlo. Para un diseño con foto, texto y emoji a tu gusto, usa "🎨
+              Diseño de la invitación" en Invitados.
             </p>
-          ))}
-        </div>
+            <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+              {INVITATION_TEMPLATES.map((t) => (
+                <button key={t.key} type="button" className={'chip' + (t.key === templateKey ? ' chip-active' : '')} onClick={() => setTemplateKey(t.key)}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 12, borderRadius: 16, padding: 20, background: template.gradient, color: template.text, textAlign: 'center' }}>
+              <div style={{ fontSize: 28 }}>{EVENT_TYPE_META[event.type].icon}</div>
+              <strong style={{ fontSize: 18 }}>{event.title}</strong>
+              {infoLines.map((l) => (
+                <p key={l} style={{ margin: '6px 0', fontSize: 13, opacity: 0.9 }}>
+                  {l}
+                </p>
+              ))}
+            </div>
+          </>
+        )}
 
         <label style={{ marginTop: 12, display: 'block' }}>
           Mensaje
@@ -2461,6 +2504,545 @@ function PepaConclusions({ event }: { event: FamilyEvent }) {
             {c.icon} {c.text}
           </p>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Editor de invitaciones en capas de verdad. Petición de la
+// Skill: "Think WhatsApp / Instagram Stories simplicity" — un único
+// gesto de arrastre en el "tirador" de la esquina mueve tamaño Y
+// rotación a la vez (igual que un texto de Instagram Stories), en vez
+// de un lienzo estilo Canva de escritorio con herramientas separadas.
+// Un solo diseño por evento (event_invitations, unique(event_id)); el
+// invite_scope de cada invitado no cambia el diseño.
+// ---------------------------------------------------------------------
+
+function InvitationShapeGraphic({ shapeKey, color, size }: { shapeKey?: string; color?: string; size: number }) {
+  const c = color || '#ffffff'
+  switch (shapeKey) {
+    case 'anillo':
+      return (
+        <svg width={size} height={size} viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="38" fill="none" stroke={c} strokeWidth="10" />
+        </svg>
+      )
+    case 'estrella':
+      return (
+        <svg width={size} height={size} viewBox="0 0 100 100">
+          <polygon points="50,5 61,38 96,38 68,59 79,92 50,72 21,92 32,59 4,38 39,38" fill={c} />
+        </svg>
+      )
+    case 'confeti':
+      return (
+        <svg width={size} height={size} viewBox="0 0 100 100">
+          <circle cx="20" cy="20" r="6" fill={c} />
+          <circle cx="70" cy="15" r="5" fill={c} />
+          <circle cx="50" cy="50" r="7" fill={c} />
+          <circle cx="80" cy="70" r="5" fill={c} />
+          <circle cx="25" cy="75" r="6" fill={c} />
+          <circle cx="55" cy="85" r="4" fill={c} />
+        </svg>
+      )
+    case 'ondas':
+      return (
+        <svg width={size} height={size * 0.4} viewBox="0 0 100 40">
+          <path d="M0,20 Q12,0 25,20 T50,20 T75,20 T100,20" fill="none" stroke={c} strokeWidth="6" />
+        </svg>
+      )
+    case 'circulo':
+    default:
+      return (
+        <svg width={size} height={size} viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="45" fill={c} />
+        </svg>
+      )
+  }
+}
+
+// "fontSize" se reutiliza como tamaño base en píxeles para foto/forma,
+// no solo para texto — evita añadir un campo más al tipo por algo tan
+// parecido (ver domain/types.ts, InvitationLayer).
+function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; photoUrls: Record<string, string> }) {
+  switch (layer.type) {
+    case 'text':
+    case 'event_data':
+      return (
+        <div
+          style={{
+            color: layer.color || '#ffffff',
+            fontSize: layer.fontSize ?? 16,
+            fontFamily: layer.fontFamily || 'inherit',
+            fontWeight: layer.type === 'text' ? 700 : 400,
+            whiteSpace: 'pre-line',
+            textAlign: 'center',
+            textShadow: '0 1px 4px rgba(0,0,0,0.25)',
+          }}
+        >
+          {layer.text}
+        </div>
+      )
+    case 'emoji':
+      return <div style={{ fontSize: layer.fontSize ?? 48, lineHeight: 1 }}>{layer.text}</div>
+    case 'shape':
+      return <InvitationShapeGraphic shapeKey={layer.shapeKey} color={layer.color} size={layer.fontSize ?? 60} />
+    case 'photo': {
+      const url = layer.photoPath ? photoUrls[layer.photoPath] : undefined
+      const size = layer.fontSize ?? 120
+      return url ? (
+        <img src={url} alt="" style={{ width: size, height: size, objectFit: 'cover', borderRadius: 12, display: 'block' }} />
+      ) : (
+        <div style={{ width: size, height: size, borderRadius: 12, background: 'rgba(255,255,255,0.35)' }} />
+      )
+    }
+    default:
+      return null
+  }
+}
+
+// Renderer de solo lectura — reutilizado tanto en el editor (sin
+// selección/gestos) como en el previo dentro de InvitationModal, para
+// que "lo que ves es lo que se manda" sea literal.
+function InvitationCanvasView({ canvas, photoUrls }: { canvas: InvitationCanvas; photoUrls: Record<string, string> }) {
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        aspectRatio: '3 / 4',
+        borderRadius: 16,
+        overflow: 'hidden',
+        background: canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient,
+      }}
+    >
+      {canvas.layers
+        .slice()
+        .sort((a, b) => a.zIndex - b.zIndex)
+        .map((layer) => (
+          <div
+            key={layer.id}
+            style={{
+              position: 'absolute',
+              left: `${layer.x * 100}%`,
+              top: `${layer.y * 100}%`,
+              transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
+            }}
+          >
+            <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
+          </div>
+        ))}
+    </div>
+  )
+}
+
+const LAYER_COLOR_PRESETS = ['#ffffff', '#1f2233', '#4C6EF5', '#F472B6', '#FBBF24', '#34D399']
+const LAYER_FONT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'inherit', label: 'Normal' },
+  { value: 'Georgia, serif', label: 'Con serifa' },
+  { value: '"Brush Script MT", cursive', label: 'Manuscrita' },
+]
+
+interface DragState {
+  mode: 'move' | 'transform'
+  layerId: string
+  // 'move'
+  startClientX?: number
+  startClientY?: number
+  rectW?: number
+  rectH?: number
+  x0?: number
+  y0?: number
+  // 'transform'
+  centerPx?: { x: number; y: number }
+  dist0?: number
+  angle0?: number
+  scale0?: number
+  rotation0?: number
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n))
+}
+
+function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
+  const [templateKey, setTemplateKey] = useState(INVITATION_TEMPLATES[0].key)
+  const [backgroundGradient, setBackgroundGradient] = useState(INVITATION_TEMPLATES[0].gradient)
+  const [layers, setLayers] = useState<InvitationLayer[]>([])
+  const [history, setHistory] = useState<InvitationLayer[][]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [addMenu, setAddMenu] = useState<'emoji' | 'forma' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<DragState | null>(null)
+
+  useEffect(() => {
+    getEventInvitation(event.id)
+      .then(async (invitation) => {
+        if (invitation && invitation.canvas.layers.length > 0) {
+          setTemplateKey(invitation.templateKey || INVITATION_TEMPLATES[0].key)
+          setBackgroundGradient(invitation.canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient)
+          setLayers(invitation.canvas.layers)
+          const paths = invitation.canvas.layers.map((l) => l.photoPath).filter((p): p is string => !!p)
+          const urls = await Promise.all(paths.map((p) => getInvitationPhotoUrl(p).catch(() => null)))
+          const map: Record<string, string> = {}
+          paths.forEach((p, i) => {
+            if (urls[i]) map[p] = urls[i] as string
+          })
+          setPhotoUrls(map)
+        } else {
+          setLayers(buildInvitationTemplateLayers(event))
+        }
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar el diseño')))
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  const selected = layers.find((l) => l.id === selectedId) ?? null
+
+  function pushHistory() {
+    setHistory((h) => [...h.slice(-19), layers])
+  }
+
+  function handleUndo() {
+    if (history.length === 0) return
+    setLayers(history[history.length - 1])
+    setHistory((h) => h.slice(0, -1))
+  }
+
+  function updateSelected(patch: Partial<InvitationLayer>) {
+    if (!selectedId) return
+    setLayers((ls) => ls.map((l) => (l.id === selectedId ? { ...l, ...patch } : l)))
+  }
+
+  function handleAddLayer(layer: InvitationLayer) {
+    pushHistory()
+    const maxZ = layers.reduce((m, l) => Math.max(m, l.zIndex), 0)
+    setLayers((ls) => [...ls, { ...layer, zIndex: maxZ + 1 }])
+    setSelectedId(layer.id)
+    setAddMenu(null)
+  }
+
+  function handleDuplicate() {
+    if (!selected) return
+    pushHistory()
+    const maxZ = layers.reduce((m, l) => Math.max(m, l.zIndex), 0)
+    const copy: InvitationLayer = { ...selected, id: `${selected.id}-copy-${Date.now()}`, x: clamp(selected.x + 0.05, 0, 1), y: clamp(selected.y + 0.05, 0, 1), zIndex: maxZ + 1 }
+    setLayers((ls) => [...ls, copy])
+    setSelectedId(copy.id)
+  }
+
+  function handleDeleteSelected() {
+    if (!selectedId) return
+    pushHistory()
+    setLayers((ls) => ls.filter((l) => l.id !== selectedId))
+    setSelectedId(null)
+  }
+
+  function handleReorder(direction: 1 | -1) {
+    if (!selected) return
+    pushHistory()
+    const sorted = [...layers].sort((a, b) => a.zIndex - b.zIndex)
+    const idx = sorted.findIndex((l) => l.id === selected.id)
+    const swapIdx = idx + direction
+    if (swapIdx < 0 || swapIdx >= sorted.length) return
+    const tmp = sorted[idx].zIndex
+    sorted[idx].zIndex = sorted[swapIdx].zIndex
+    sorted[swapIdx].zIndex = tmp
+    setLayers(sorted)
+  }
+
+  function handleRestoreTemplate() {
+    pushHistory()
+    setLayers(buildInvitationTemplateLayers(event))
+    setSelectedId(null)
+  }
+
+  function handlePrettify() {
+    pushHistory()
+    setLayers((ls) => autoArrangeLayers(ls))
+  }
+
+  async function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploadingPhoto(true)
+    setError(null)
+    try {
+      const path = await uploadInvitationPhoto(event.id, file)
+      const url = await getInvitationPhotoUrl(path)
+      setPhotoUrls((m) => ({ ...m, [path]: url }))
+      handleAddLayer(makeInvitationLayer('photo', { photoPath: path, fontSize: 130, zIndex: 0 }))
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo subir la foto'))
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  function handleLayerPointerDown(e: ReactPointerEvent<HTMLDivElement>, layer: InvitationLayer) {
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pushHistory()
+    setSelectedId(layer.id)
+    const rect = canvasRef.current!.getBoundingClientRect()
+    dragRef.current = { mode: 'move', layerId: layer.id, startClientX: e.clientX, startClientY: e.clientY, rectW: rect.width, rectH: rect.height, x0: layer.x, y0: layer.y }
+  }
+
+  function handleHandlePointerDown(e: ReactPointerEvent<HTMLDivElement>, layer: InvitationLayer) {
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pushHistory()
+    setSelectedId(layer.id)
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const centerPx = { x: rect.left + layer.x * rect.width, y: rect.top + layer.y * rect.height }
+    const dx0 = e.clientX - centerPx.x
+    const dy0 = e.clientY - centerPx.y
+    dragRef.current = {
+      mode: 'transform',
+      layerId: layer.id,
+      centerPx,
+      dist0: Math.hypot(dx0, dy0) || 1,
+      angle0: Math.atan2(dy0, dx0),
+      scale0: layer.scale,
+      rotation0: layer.rotation,
+    }
+  }
+
+  function handleDragPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = dragRef.current
+    if (!d) return
+    if (d.mode === 'move') {
+      const dx = (e.clientX - d.startClientX!) / d.rectW!
+      const dy = (e.clientY - d.startClientY!) / d.rectH!
+      setLayers((ls) => ls.map((l) => (l.id === d.layerId ? { ...l, x: clamp(d.x0! + dx, 0, 1), y: clamp(d.y0! + dy, 0, 1) } : l)))
+    } else {
+      const dx = e.clientX - d.centerPx!.x
+      const dy = e.clientY - d.centerPx!.y
+      const dist = Math.hypot(dx, dy)
+      const angle = Math.atan2(dy, dx)
+      const newScale = clamp(d.scale0! * (dist / d.dist0!), 0.3, 3)
+      const newRotation = d.rotation0! + (angle - d.angle0!) * (180 / Math.PI)
+      setLayers((ls) => ls.map((l) => (l.id === d.layerId ? { ...l, scale: newScale, rotation: newRotation } : l)))
+    }
+  }
+
+  function handleDragPointerUp() {
+    dragRef.current = null
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar el diseño'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Diseño de la invitación
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+        {loading ? (
+          <p className="muted">Cargando…</p>
+        ) : (
+          <>
+            <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+              {INVITATION_TEMPLATES.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={'chip' + (t.key === templateKey ? ' chip-active' : '')}
+                  onClick={() => {
+                    setTemplateKey(t.key)
+                    setBackgroundGradient(t.gradient)
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div
+              ref={canvasRef}
+              onPointerDown={() => setSelectedId(null)}
+              style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 16, overflow: 'hidden', background: backgroundGradient, marginTop: 10, touchAction: 'none' }}
+            >
+              {layers
+                .slice()
+                .sort((a, b) => a.zIndex - b.zIndex)
+                .map((layer) => (
+                  <div
+                    key={layer.id}
+                    onPointerDown={(e) => handleLayerPointerDown(e, layer)}
+                    onPointerMove={handleDragPointerMove}
+                    onPointerUp={handleDragPointerUp}
+                    onPointerCancel={handleDragPointerUp}
+                    style={{
+                      position: 'absolute',
+                      left: `${layer.x * 100}%`,
+                      top: `${layer.y * 100}%`,
+                      transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
+                      cursor: 'grab',
+                      touchAction: 'none',
+                      outline: layer.id === selectedId ? '2px dashed #ffffff' : 'none',
+                      outlineOffset: 4,
+                    }}
+                  >
+                    <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
+                    {layer.id === selectedId && (
+                      <div
+                        onPointerDown={(e) => handleHandlePointerDown(e, layer)}
+                        onPointerMove={handleDragPointerMove}
+                        onPointerUp={handleDragPointerUp}
+                        onPointerCancel={handleDragPointerUp}
+                        style={{
+                          position: 'absolute',
+                          right: -14,
+                          bottom: -14,
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          background: '#4C6EF5',
+                          border: '2px solid white',
+                          cursor: 'grab',
+                          touchAction: 'none',
+                        }}
+                      />
+                    )}
+                  </div>
+                ))}
+            </div>
+            <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Arrastra para mover; el punto azul de la esquina cambia tamaño y rotación a la vez.
+            </p>
+
+            <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
+              <button type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('text', { text: 'Texto', color: '#ffffff', fontSize: 18, fontFamily: 'inherit' }))}>
+                + Texto
+              </button>
+              <button type="button" className="chip" onClick={() => setAddMenu(addMenu === 'emoji' ? null : 'emoji')}>
+                + Emoji
+              </button>
+              <button type="button" className="chip" onClick={() => setAddMenu(addMenu === 'forma' ? null : 'forma')}>
+                + Forma
+              </button>
+              <label className="chip" style={{ cursor: 'pointer' }}>
+                {uploadingPhoto ? 'Subiendo…' : '+ Foto'}
+                <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} disabled={uploadingPhoto} />
+              </label>
+              <button type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('event_data', { text: [eventDateLine(event), ...eventLocationLines(event, { inviteScope: null })].join('\n'), color: '#ffffff', fontSize: 14 }))}>
+                + Datos del evento
+              </button>
+            </div>
+            {addMenu === 'emoji' && (
+              <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+                {INVITATION_EMOJI_SUGGESTIONS.map((em) => (
+                  <button key={em} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))}>
+                    {em}
+                  </button>
+                ))}
+              </div>
+            )}
+            {addMenu === 'forma' && (
+              <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+                {INVITATION_SHAPES.map((s) => (
+                  <button key={s.key} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('shape', { shapeKey: s.key, color: '#ffffff', fontSize: 60 }))}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selected && (
+              <div className="card member-form" style={{ marginTop: 8 }}>
+                <strong style={{ fontSize: 13 }}>Elemento seleccionado</strong>
+                {(selected.type === 'text' || selected.type === 'event_data' || selected.type === 'shape') && (
+                  <div className="filter-row" style={{ marginTop: 4 }}>
+                    {LAYER_COLOR_PRESETS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => updateSelected({ color: c })}
+                        style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: selected.color === c ? '2px solid #4C6EF5' : '1px solid #d8dae8' }}
+                        aria-label={`Color ${c}`}
+                      />
+                    ))}
+                  </div>
+                )}
+                {(selected.type === 'text' || selected.type === 'event_data') && (
+                  <label style={{ marginTop: 8, display: 'block' }}>
+                    Texto
+                    <textarea value={selected.text ?? ''} onChange={(e) => updateSelected({ text: e.target.value })} rows={2} />
+                  </label>
+                )}
+                {(selected.type === 'text' || selected.type === 'event_data') && (
+                  <label style={{ marginTop: 8, display: 'block' }}>
+                    Fuente
+                    <select value={selected.fontFamily || 'inherit'} onChange={(e) => updateSelected({ fontFamily: e.target.value })}>
+                      {LAYER_FONT_OPTIONS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div className="filter-row" style={{ marginTop: 8 }}>
+                  <button type="button" className="link-button" onClick={() => updateSelected({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 2) })}>
+                    A-
+                  </button>
+                  <button type="button" className="link-button" onClick={() => updateSelected({ fontSize: (selected.fontSize ?? 16) + 2 })}>
+                    A+
+                  </button>
+                  <button type="button" className="link-button" onClick={() => handleReorder(1)}>
+                    ⬆ Adelante
+                  </button>
+                  <button type="button" className="link-button" onClick={() => handleReorder(-1)}>
+                    ⬇ Atrás
+                  </button>
+                  <button type="button" className="link-button" onClick={handleDuplicate}>
+                    ⧉ Duplicar
+                  </button>
+                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
+                </div>
+              </div>
+            )}
+
+            <div className="filter-row" style={{ marginTop: 12 }}>
+              <button type="button" className="link-button" onClick={handleUndo} disabled={history.length === 0}>
+                ↩️ Deshacer
+              </button>
+              <button type="button" className="link-button" onClick={handlePrettify}>
+                ✨ Pepa, hazla bonita
+              </button>
+              <ConfirmButton label="↺ Restaurar plantilla" confirmLabel="Restaurar" className="link-button" onConfirm={handleRestoreTemplate} />
+            </div>
+
+            <button type="button" onClick={handleSave} disabled={saving} style={{ marginTop: 12 }}>
+              {saving ? 'Guardando…' : '💾 Guardar diseño'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

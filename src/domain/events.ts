@@ -4,7 +4,16 @@
 // archivo reúne lo que cambia por tipo de evento (nombre, módulos
 // recomendados, checklist inicial) para que EventosScreen.tsx no lleve
 // ningún "if (type === ...)" disperso por la UI.
-import type { EventGuest, EventGuestInviteScope, EventModuleKey, EventPayment, EventTask, EventType, FamilyEvent } from '@/domain/types'
+import type {
+  EventGuest,
+  EventGuestInviteScope,
+  EventModuleKey,
+  EventPayment,
+  EventTask,
+  EventType,
+  FamilyEvent,
+  InvitationLayer,
+} from '@/domain/types'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -278,4 +287,98 @@ export function computeEventConclusions(input: {
   }
 
   return conclusions
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — editor de invitaciones en capas. Petición de la Skill:
+// "Think WhatsApp / Instagram Stories simplicity" — nada de lienzo
+// estilo Canva de escritorio. Formas decorativas genéricas (sin ningún
+// personaje con copyright) para la capa "shape".
+// ---------------------------------------------------------------------
+
+export const INVITATION_SHAPES: { key: string; label: string }[] = [
+  { key: 'circulo', label: '⚪ Círculo' },
+  { key: 'anillo', label: '⭕ Anillo' },
+  { key: 'estrella', label: '⭐ Estrella' },
+  { key: 'confeti', label: '🎊 Confeti' },
+  { key: 'ondas', label: '〰️ Ondas' },
+]
+
+export const INVITATION_EMOJI_SUGGESTIONS = ['🎉', '🎂', '🎈', '⛪', '👶', '💍', '🥂', '🌸', '✨', '🎁']
+
+let layerCounter = 0
+function newLayerId(): string {
+  layerCounter += 1
+  return `layer-${Date.now()}-${layerCounter}`
+}
+
+// Capas iniciales autorrellenas desde el propio evento (Stage B de la
+// Skill) — se usan tanto al abrir el editor por primera vez como en
+// "Restaurar plantilla".
+export function buildInvitationTemplateLayers(event: FamilyEvent): InvitationLayer[] {
+  const infoLines = [eventDateLine(event), ...eventLocationLines(event, { inviteScope: null })]
+  return [
+    { id: newLayerId(), type: 'emoji', x: 0.5, y: 0.22, rotation: 0, scale: 1, zIndex: 1, text: EVENT_TYPE_META[event.type].icon, fontSize: 56 },
+    { id: newLayerId(), type: 'text', x: 0.5, y: 0.42, rotation: 0, scale: 1, zIndex: 2, text: event.title, color: '#ffffff', fontSize: 24, fontFamily: 'inherit' },
+    {
+      id: newLayerId(),
+      type: 'event_data',
+      x: 0.5,
+      y: 0.78,
+      rotation: 0,
+      scale: 1,
+      zIndex: 3,
+      text: infoLines.join('\n'),
+      color: '#ffffff',
+      fontSize: 14,
+      fontFamily: 'inherit',
+    },
+  ]
+}
+
+export function makeInvitationLayer(type: InvitationLayer['type'], overrides: Partial<InvitationLayer> = {}): InvitationLayer {
+  return {
+    id: newLayerId(),
+    type,
+    x: 0.5,
+    y: 0.5,
+    rotation: 0,
+    scale: 1,
+    zIndex: 10,
+    ...overrides,
+  }
+}
+
+// "Pepa, hazla bonita" (opcional, Skill 07 punto 2) — reglas
+// deterministas, no IA de verdad: reparte las capas de texto en
+// vertical, centra la foto y las formas, sin tocar el contenido de
+// nadie. Nunca se llama sola, solo cuando el usuario la pide.
+export function autoArrangeLayers(layers: InvitationLayer[]): InvitationLayer[] {
+  const photos = layers.filter((l) => l.type === 'photo')
+  const texts = layers.filter((l) => l.type === 'text' || l.type === 'event_data')
+  const emojis = layers.filter((l) => l.type === 'emoji')
+  const shapes = layers.filter((l) => l.type === 'shape')
+
+  const arranged: InvitationLayer[] = []
+  photos.forEach((l) => arranged.push({ ...l, x: 0.5, y: 0.4, rotation: 0, scale: Math.min(l.scale, 1.4) }))
+  emojis.forEach((l, i) => arranged.push({ ...l, x: 0.5, y: photos.length > 0 ? 0.16 : 0.2 + i * 0.05, rotation: 0 }))
+
+  const textSlots = texts.length
+  texts.forEach((l, i) => {
+    const y = textSlots === 1 ? 0.5 : 0.38 + (i / Math.max(1, textSlots - 1)) * 0.4
+    arranged.push({ ...l, x: 0.5, y, rotation: 0 })
+  })
+
+  const corners: [number, number][] = [
+    [0.15, 0.12],
+    [0.85, 0.12],
+    [0.15, 0.88],
+    [0.85, 0.88],
+  ]
+  shapes.forEach((l, i) => {
+    const [x, y] = corners[i % corners.length]
+    arranged.push({ ...l, x, y })
+  })
+
+  return arranged
 }

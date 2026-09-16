@@ -18,6 +18,7 @@ import type {
   EventGuest,
   EventGuestInviteScope,
   EventGuestRsvpStatus,
+  EventInvitation,
   EventMenuItem,
   EventModuleKey,
   EventPayment,
@@ -29,7 +30,9 @@ import type {
   EventTask,
   EventType,
   FamilyEvent,
+  InvitationCanvas,
 } from '@/domain/types'
+import { compressImageFile } from '@/domain/imageCompression'
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -1064,4 +1067,63 @@ export async function addEventDayPlanItem(eventId: string, title: string, itemTi
 export async function deleteEventDayPlanItem(id: string): Promise<void> {
   const { error } = await supabase.from('event_day_plan_items').delete().eq('id', id)
   if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Editor de invitaciones en capas. Una fila por evento
+// (unique(event_id) en la tabla); canvas_json guarda las capas con
+// posición/rotación/escala — el cliente es la única fuente de verdad
+// de esa forma, la función edge event-rsvp no la toca para nada.
+// ---------------------------------------------------------------------
+
+const INVITATION_SELECT = 'id, event_id, family_id, template_key, canvas_json, background_image_path, created_at, updated_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapInvitation(r: any): EventInvitation {
+  const canvas = r.canvas_json as Partial<InvitationCanvas> | null
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    templateKey: r.template_key,
+    canvas: { backgroundGradient: canvas?.backgroundGradient ?? '', layers: canvas?.layers ?? [] },
+    backgroundImagePath: r.background_image_path,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }
+}
+
+export async function getEventInvitation(eventId: string): Promise<EventInvitation | null> {
+  const { data, error } = await supabase.from('event_invitations').select(INVITATION_SELECT).eq('event_id', eventId).maybeSingle()
+  if (error) throw error
+  return data ? mapInvitation(data) : null
+}
+
+export async function saveEventInvitation(eventId: string, templateKey: string, canvas: InvitationCanvas): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('event_invitations')
+    .upsert(
+      { event_id: eventId, family_id: familyId, template_key: templateKey, canvas_json: canvas, updated_at: new Date().toISOString() },
+      { onConflict: 'event_id' },
+    )
+  if (error) throw error
+}
+
+// Foto subida por el usuario para una capa del diseño — mismo patrón
+// que member-photos (bucket privado, carpeta por familia, URL firmada).
+export async function uploadInvitationPhoto(eventId: string, file: File): Promise<string> {
+  const familyId = await currentFamilyId()
+  const compressed = await compressImageFile(file)
+  const ext = compressed.name.split('.').pop() || 'jpg'
+  const path = `${familyId}/${eventId}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('event-photos').upload(path, compressed)
+  if (error) throw error
+  return path
+}
+
+export async function getInvitationPhotoUrl(photoPath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('event-photos').createSignedUrl(photoPath, 3600)
+  if (error) throw error
+  return data.signedUrl
 }

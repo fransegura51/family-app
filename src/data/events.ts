@@ -356,7 +356,17 @@ export async function updateLinkedCalendarEvent(event: FamilyEvent): Promise<voi
 // normal en calendar_events con sus propios recordatorios, para que el
 // pipeline de avisos ya existente (send-due-reminders) funcione sin
 // tocar nada. Acción explícita del usuario, nunca automática.
+// Los recordatorios de un calendar_event NO son una columna suya —
+// viven en la tabla aparte calendar_event_reminders (event_id,
+// minutes_before, anchor), igual que hace src/data/calendar.ts.
 const DEFAULT_DEADLINE_REMINDERS: EventReminder[] = [{ minutesBefore: 3 * 1440, anchor: 'start' }]
+
+async function insertReminders(calendarEventId: string, reminders: EventReminder[]): Promise<void> {
+  const { error } = await supabase
+    .from('calendar_event_reminders')
+    .insert(reminders.map((r) => ({ event_id: calendarEventId, minutes_before: r.minutesBefore, anchor: r.anchor })))
+  if (error) throw error
+}
 
 export async function linkRsvpDeadlineReminder(event: FamilyEvent): Promise<void> {
   if (!event.rsvpDeadline) throw new Error('Este evento no tiene plazo de RSVP')
@@ -371,12 +381,12 @@ export async function linkRsvpDeadlineReminder(event: FamilyEvent): Promise<void
       start_at: `${event.rsvpDeadline}T00:00:00`,
       all_day: true,
       created_by: userResult.user.id,
-      reminders: DEFAULT_DEADLINE_REMINDERS,
       visibility: 'shared',
     })
     .select('id')
     .single()
   if (error) throw error
+  await insertReminders(calendarEvent.id, DEFAULT_DEADLINE_REMINDERS)
   const { error: linkError } = await supabase.from('events').update({ rsvp_deadline_calendar_event_id: calendarEvent.id }).eq('id', event.id)
   if (linkError) throw linkError
 }
@@ -408,12 +418,12 @@ export async function linkPaymentReminder(payment: EventPayment, eventTitle: str
       start_at: `${payment.dueDate}T00:00:00`,
       all_day: true,
       created_by: userResult.user.id,
-      reminders: DEFAULT_DEADLINE_REMINDERS,
       visibility: 'shared',
     })
     .select('id')
     .single()
   if (error) throw error
+  await insertReminders(calendarEvent.id, DEFAULT_DEADLINE_REMINDERS)
   const { error: linkError } = await supabase.from('event_payments').update({ reminder_calendar_event_id: calendarEvent.id }).eq('id', payment.id)
   if (linkError) throw linkError
 }

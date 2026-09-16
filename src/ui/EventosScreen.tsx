@@ -1832,6 +1832,7 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
   const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
   const [customCanvas, setCustomCanvas] = useState<InvitationCanvas | null>(null)
   const [customTemplateKey, setCustomTemplateKey] = useState<string | null>(null)
+  const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null)
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -1847,6 +1848,11 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
         if (!invitation || invitation.canvas.layers.length === 0) return
         setCustomCanvas(invitation.canvas)
         setCustomTemplateKey(invitation.templateKey)
+        if (invitation.backgroundImagePath) {
+          getInvitationPhotoUrl(invitation.backgroundImagePath)
+            .then(setCustomBackgroundUrl)
+            .catch(() => {})
+        }
         const paths = invitation.canvas.layers.map((l) => l.photoPath).filter((p): p is string => !!p)
         const urls = await Promise.all(paths.map((p) => getInvitationPhotoUrl(p).catch(() => null)))
         const map: Record<string, string> = {}
@@ -1908,7 +1914,7 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
         {notice && <p className="points-badge">{notice}</p>}
 
         {customCanvas ? (
-          <InvitationCanvasView canvas={customCanvas} templateKey={customTemplateKey} photoUrls={photoUrls} />
+          <InvitationCanvasView canvas={customCanvas} templateKey={customTemplateKey} photoUrls={photoUrls} backgroundImageUrl={customBackgroundUrl} />
         ) : (
           <>
             <p className="muted" style={{ fontSize: 13 }}>
@@ -1926,7 +1932,7 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
             <div
               style={{ position: 'relative', overflow: 'hidden', marginTop: 12, borderRadius: 16, padding: 20, background: template.gradient, color: template.text, textAlign: 'center' }}
             >
-              <InvitationBackgroundArt artKey={template.artKey} />
+              <InvitationBackground templateKey={template.key} />
               <div style={{ position: 'relative', zIndex: 1 }}>
                 <div style={{ fontSize: 28 }}>{EVENT_TYPE_META[event.type].icon}</div>
                 <strong style={{ fontSize: 18 }}>{event.title}</strong>
@@ -2913,6 +2919,10 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
     case 'monstruo':
       return (
         <svg {...common} viewBox="0 0 300 400">
+          <defs>
+            <MascotGradient id="monster-body" light="#5EEAD4" dark="#0D9488" />
+            <MascotGradient id="monster-horn" light="#2DD4BF" dark="#0F766E" />
+          </defs>
           <g opacity={0.9}>
             {Array.from({ length: 8 }).map((_, i) => (
               <polygon key={i} points={`${i * 40 + 5},18 ${i * 40 + 25},18 ${i * 40 + 15},42`} fill={i % 2 === 0 ? '#FBBF24' : '#F472B6'} />
@@ -2923,17 +2933,17 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
               monstruo tapaba el texto de fecha que va por defecto a
               y=0.78 — se encoge y se mete en la esquina para dejar el
               centro libre para las capas de texto del usuario. */}
-          <g transform="translate(46 366) scale(0.6)">
-            <ellipse cx={0} cy={0} rx={75} ry={70} fill="#0D9488" />
-            <circle cx={-25} cy={-50} r={10} fill="#0D9488" />
-            <circle cx={5} cy={-58} r={8} fill="#0D9488" />
-            <circle cx={30} cy={-48} r={9} fill="#0D9488" />
-            <circle cx={-20} cy={-15} r={22} fill="#ffffff" />
-            <circle cx={-20} cy={-15} r={11} fill="#1F2937" />
-            <circle cx={-16} cy={-19} r={4} fill="#ffffff" />
-            <circle cx={22} cy={-8} r={16} fill="#ffffff" />
-            <circle cx={22} cy={-8} r={8} fill="#1F2937" />
-            <path d="M-15 25 q 15 18 35 2" stroke="#1F2937" strokeWidth={3} fill="none" strokeLinecap="round" />
+          {groundShadow(66, 418, 62)}
+          <g transform="translate(46 366) scale(0.6)" strokeLinejoin="round">
+            <circle cx={-25} cy={-50} r={11} fill="url(#monster-horn)" stroke="#115E59" strokeWidth={2} />
+            <circle cx={5} cy={-60} r={9} fill="url(#monster-horn)" stroke="#115E59" strokeWidth={2} />
+            <circle cx={30} cy={-48} r={10} fill="url(#monster-horn)" stroke="#115E59" strokeWidth={2} />
+            <ellipse cx={0} cy={0} rx={75} ry={70} fill="url(#monster-body)" stroke="#115E59" strokeWidth={3} />
+            {blush(-42, 8, 11)}
+            {blush(42, 14, 11)}
+            {sparkleEye(-20, -15, 20)}
+            {sparkleEye(22, -6, 15)}
+            <path d="M-15 25 q 15 18 35 2" stroke="#115E59" strokeWidth={3.5} fill="none" strokeLinecap="round" />
           </g>
           {[[240, 260], [265, 220], [220, 300]].map(([x, y], i) => (
             <path key={i} d={starPath(x, y, 7, 3)} fill="#FBBF24" opacity={0.85} />
@@ -2969,20 +2979,37 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
     case 'unicornio':
       return (
         <svg {...common} viewBox="0 0 300 400">
+          <defs>
+            <MascotGradient id="uni-body" light="#ffffff" dark="#E9D8FD" />
+            <MascotGradient id="uni-horn" light="#FEF3C7" dark="#F59E0B" />
+          </defs>
           <path d="M20 60 A130 130 0 0 1 280 60" stroke="#FCA5A5" strokeWidth={10} fill="none" opacity={0.7} />
           <path d="M35 60 A115 115 0 0 1 265 60" stroke="#FDE68A" strokeWidth={10} fill="none" opacity={0.7} />
           <path d="M50 60 A100 100 0 0 1 250 60" stroke="#A7F3D0" strokeWidth={10} fill="none" opacity={0.7} />
-          <g transform="translate(190 320) rotate(-8)">
-            <ellipse cx={0} cy={0} rx={48} ry={34} fill="#ffffff" />
-            <path d="M-30 -20 L-55 -55 L-15 -30 Z" fill="#ffffff" />
-            <polygon points="-52,-58 -46,-78 -38,-56" fill="#FDE68A" />
-            {[-8, 4, 16].map((dy, i) => (
-              <path key={i} d={`M-40 ${-30 + dy} q -18 6 -10 22`} stroke={['#F472B6', '#C4B5FD', '#93C5FD'][i]} strokeWidth={6} fill="none" strokeLinecap="round" />
+          {groundShadow(198, 366, 58)}
+          <g transform="translate(190 320) rotate(-6)" strokeLinejoin="round">
+            <ellipse cx={0} cy={4} rx={50} ry={36} fill="url(#uni-body)" stroke="#C4B5FD" strokeWidth={2.5} />
+            <path d="M-46 -14 Q-64 -46 -38 -60 Q-14 -50 -22 -20 Z" fill="url(#uni-body)" stroke="#C4B5FD" strokeWidth={2.5} />
+            <circle cx={-38} cy={-32} r={22} fill="url(#uni-body)" stroke="#C4B5FD" strokeWidth={2.5} />
+            <ellipse cx={-56} cy={-24} rx={13} ry={9} fill="url(#uni-body)" stroke="#C4B5FD" strokeWidth={2} />
+            <polygon points="-46,-52 -38,-80 -30,-52" fill="url(#uni-horn)" stroke="#B45309" strokeWidth={2} />
+            <polygon points="-24,-52 -18,-68 -12,-52" fill="url(#uni-body)" stroke="#C4B5FD" strokeWidth={2} />
+            {[-10, 2, 14, 26].map((dy, i) => (
+              <path
+                key={i}
+                d={`M-32 ${-38 + dy} q -26 8 -14 30`}
+                stroke={['#F472B6', '#C4B5FD', '#93C5FD', '#FDE68A'][i]}
+                strokeWidth={9}
+                fill="none"
+                strokeLinecap="round"
+              />
             ))}
-            <circle cx={-38} cy={-28} r={3} fill="#4C1D95" />
-            <line x1={-25} y1={30} x2={-25} y2={50} stroke="#ffffff" strokeWidth={7} strokeLinecap="round" />
-            <line x1={0} y1={32} x2={0} y2={52} stroke="#ffffff" strokeWidth={7} strokeLinecap="round" />
-            <line x1={25} y1={30} x2={25} y2={50} stroke="#ffffff" strokeWidth={7} strokeLinecap="round" />
+            {sparkleEye(-45, -31, 9.5)}
+            {blush(-58, -16, 7)}
+            <path d="M-62 -22 q -4 3 0 6" stroke="#C2793F" strokeWidth={2} fill="none" strokeLinecap="round" />
+            <line x1={-25} y1={34} x2={-25} y2={54} stroke="url(#uni-body)" strokeWidth={9} strokeLinecap="round" />
+            <line x1={0} y1={36} x2={0} y2={56} stroke="url(#uni-body)" strokeWidth={9} strokeLinecap="round" />
+            <line x1={25} y1={34} x2={25} y2={54} stroke="url(#uni-body)" strokeWidth={9} strokeLinecap="round" />
           </g>
           {[[40, 90], [230, 140], [60, 250], [260, 260]].map(([x, y], i) => (
             <path key={i} d={starPath(x, y, 6, 3)} fill="#ffffff" opacity={0.85} />
@@ -3084,17 +3111,24 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
           {/* Silueta de cuello largo (tipo braquiosaurio) — se lee mucho
               mejor a tamaño pequeño que una forma libre; la primera
               versión con un path complejo parecía una mancha. */}
-          <g transform="translate(100 355) scale(0.62)">
-            <path d="M50 15 Q95 -5 85 25 Q72 18 50 28 Z" fill="#65A30D" />
-            <ellipse cx={0} cy={15} rx={58} ry={34} fill="#65A30D" />
-            <ellipse cx={-68} cy={-28} rx={15} ry={36} fill="#65A30D" transform="rotate(-22 -68 -28)" />
-            <circle cx={-92} cy={-56} r={17} fill="#65A30D" />
-            <circle cx={-97} cy={-59} r={2.5} fill="#1F2937" />
+          <defs>
+            <MascotGradient id="dino-body" light="#A3E635" dark="#4D7C0F" />
+            <MascotGradient id="dino-belly" light="#FEF9C3" dark="#FDE68A" />
+          </defs>
+          {groundShadow(110, 402, 66)}
+          <g transform="translate(100 355) scale(0.62)" strokeLinejoin="round">
+            <path d="M50 15 Q95 -5 85 25 Q72 18 50 28 Z" fill="url(#dino-body)" stroke="#365314" strokeWidth={3} />
+            <ellipse cx={0} cy={15} rx={58} ry={34} fill="url(#dino-body)" stroke="#365314" strokeWidth={3} />
+            <ellipse cx={0} cy={28} rx={34} ry={16} fill="url(#dino-belly)" />
+            <ellipse cx={-68} cy={-28} rx={15} ry={36} fill="url(#dino-body)" stroke="#365314" strokeWidth={3} transform="rotate(-22 -68 -28)" />
+            <circle cx={-92} cy={-56} r={19} fill="url(#dino-body)" stroke="#365314" strokeWidth={3} />
+            {sparkleEye(-97, -60, 7)}
+            {blush(-84, -48, 6)}
             {[-25, -5, 15].map((x, i) => (
-              <polygon key={i} points={`${x},-10 ${x + 10},-26 ${x + 20},-10`} fill="#4D7C0F" />
+              <polygon key={i} points={`${x},-10 ${x + 10},-26 ${x + 20},-10`} fill="url(#dino-belly)" stroke="#365314" strokeWidth={2} />
             ))}
             {[-32, -6, 22, 40].map((x, i) => (
-              <ellipse key={i} cx={x} cy={44} rx={10} ry={16} fill="#4D7C0F" />
+              <ellipse key={i} cx={x} cy={44} rx={10} ry={16} fill="url(#dino-body)" stroke="#365314" strokeWidth={2.5} />
             ))}
           </g>
           {[[220, 90], [250, 130], [200, 60]].map(([x, y], i) => (
@@ -3144,17 +3178,27 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
     case 'ositos':
       return (
         <svg {...common} viewBox="0 0 300 400">
-          <g transform="translate(60 355) scale(0.62)">
-            <circle cx={-38} cy={-70} r={16} fill="#B98756" />
-            <circle cx={38} cy={-70} r={16} fill="#B98756" />
-            <circle cx={0} cy={-40} r={48} fill="#C89666" />
-            <circle cx={-16} cy={-45} r={7} fill="#3F2A16" />
-            <circle cx={16} cy={-45} r={7} fill="#3F2A16" />
-            <ellipse cx={0} cy={-28} rx={13} ry={10} fill="#EFE0CB" />
-            <circle cx={0} cy={-30} r={4} fill="#3F2A16" />
-            <ellipse cx={0} cy={40} rx={54} ry={48} fill="#C89666" />
-            <circle cx={-40} cy={30} r={16} fill="#B98756" />
-            <circle cx={40} cy={30} r={16} fill="#B98756" />
+          <defs>
+            <MascotGradient id="bear-fur" light="#E8C39E" dark="#B98756" />
+            <MascotGradient id="bear-fur-dark" light="#C89666" dark="#9C6B3E" />
+          </defs>
+          {groundShadow(60, 415, 64)}
+          <g transform="translate(60 355) scale(0.62)" strokeLinejoin="round">
+            <ellipse cx={0} cy={40} rx={54} ry={48} fill="url(#bear-fur-dark)" stroke="#6B4423" strokeWidth={3} />
+            <circle cx={-40} cy={30} r={17} fill="url(#bear-fur-dark)" stroke="#6B4423" strokeWidth={2.5} />
+            <circle cx={40} cy={30} r={17} fill="url(#bear-fur-dark)" stroke="#6B4423" strokeWidth={2.5} />
+            <circle cx={-38} cy={-70} r={17} fill="url(#bear-fur)" stroke="#6B4423" strokeWidth={2.5} />
+            <circle cx={38} cy={-70} r={17} fill="url(#bear-fur)" stroke="#6B4423" strokeWidth={2.5} />
+            <circle cx={-38} cy={-70} r={8} fill="#F4A9C0" />
+            <circle cx={38} cy={-70} r={8} fill="#F4A9C0" />
+            <circle cx={0} cy={-40} r={50} fill="url(#bear-fur)" stroke="#6B4423" strokeWidth={3} />
+            {blush(-32, -22, 10)}
+            {blush(32, -22, 10)}
+            {sparkleEye(-17, -46, 9)}
+            {sparkleEye(17, -46, 9)}
+            <ellipse cx={0} cy={-24} rx={16} ry={12} fill="#FBF3E3" stroke="#6B4423" strokeWidth={2} />
+            <ellipse cx={0} cy={-28} rx={6} ry={4.5} fill="#3F2A16" />
+            <path d="M0 -23 v6 M-9 -1 Q0 8 9 -1" stroke="#6B4423" strokeWidth={2.5} fill="none" strokeLinecap="round" />
           </g>
           {[[230, 300], [255, 340], [210, 350]].map(([x, y], i) => (
             <ellipse key={i} cx={x} cy={y} rx={6} ry={9} fill="#ffffff" opacity={0.7} transform={`rotate(${i * 25} ${x} ${y})`} />
@@ -3167,23 +3211,33 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
     case 'gatitos':
       return (
         <svg {...common} viewBox="0 0 300 400">
-          <g transform="translate(250 350) scale(0.7)">
-            <ellipse cx={0} cy={10} rx={40} ry={32} fill="#8B5CF6" />
-            <circle cx={0} cy={-38} r={30} fill="#8B5CF6" />
-            <polygon points="-24,-58 -8,-58 -16,-78" fill="#8B5CF6" />
-            <polygon points="8,-58 24,-58 16,-78" fill="#8B5CF6" />
-            <polygon points="-19,-58 -11,-58 -15,-70" fill="#F472B6" />
-            <polygon points="11,-58 19,-58 15,-70" fill="#F472B6" />
-            <circle cx={-11} cy={-38} r={3} fill="#312E81" />
-            <circle cx={11} cy={-38} r={3} fill="#312E81" />
-            <path d="M0 -30 q -4 5 0 8 q 4 -3 0 -8" fill="#F472B6" />
+          <defs>
+            <MascotGradient id="cat-fur" light="#F5F3FF" dark="#C4B5FD" />
+          </defs>
+          {groundShadow(250, 400, 58)}
+          <g transform="translate(250 350) scale(0.72)" strokeLinejoin="round">
+            <path d="M38 20 Q64 8 56 -22" stroke="url(#cat-fur)" strokeWidth={15} fill="none" strokeLinecap="round" />
+            <ellipse cx={0} cy={16} rx={42} ry={34} fill="url(#cat-fur)" stroke="#8B7BC7" strokeWidth={2.5} />
             {[-1, 1].map((s) => (
-              <g key={s}>
-                <line x1={s * 4} y1={-28} x2={s * 26} y2={-32} stroke="#4C1D95" strokeWidth={1} opacity={0.6} />
-                <line x1={s * 4} y1={-25} x2={s * 26} y2={-24} stroke="#4C1D95" strokeWidth={1} opacity={0.6} />
+              <ellipse key={s} cx={s * 22} cy={44} rx={11} ry={8} fill="#ffffff" stroke="#8B7BC7" strokeWidth={2} />
+            ))}
+            <circle cx={0} cy={-34} r={32} fill="url(#cat-fur)" stroke="#8B7BC7" strokeWidth={2.5} />
+            <polygon points="-26,-56 -8,-58 -15,-80" fill="url(#cat-fur)" stroke="#8B7BC7" strokeWidth={2.5} />
+            <polygon points="8,-58 26,-56 15,-80" fill="url(#cat-fur)" stroke="#8B7BC7" strokeWidth={2.5} />
+            <polygon points="-20,-58 -11,-59 -15,-73" fill="#F9A8D4" />
+            <polygon points="11,-59 20,-58 15,-73" fill="#F9A8D4" />
+            {blush(-24, -18, 8)}
+            {blush(24, -18, 8)}
+            {sparkleEye(-14, -34, 10)}
+            {sparkleEye(14, -34, 10)}
+            <path d="M0 -22 q -5 5 0 8 q 5 -3 0 -8" fill="#F9A8D4" stroke="#8B7BC7" strokeWidth={1} />
+            <path d="M-4 -14 Q0 -9 4 -14" stroke="#6D28D9" strokeWidth={2} fill="none" strokeLinecap="round" />
+            {[-1, 1].map((s) => (
+              <g key={s} opacity={0.6}>
+                <line x1={s * 6} y1={-20} x2={s * 30} y2={-24} stroke="#6D28D9" strokeWidth={1.2} />
+                <line x1={s * 6} y1={-16} x2={s * 30} y2={-16} stroke="#6D28D9" strokeWidth={1.2} />
               </g>
             ))}
-            <path d="M38 15 Q65 5 55 -25" stroke="#8B5CF6" strokeWidth={12} fill="none" strokeLinecap="round" />
           </g>
           {[[40, 80], [70, 130], [30, 200]].map(([x, y], i) => (
             <ellipse key={i} cx={x} cy={y} rx={10} ry={7} fill="#ffffff" opacity={0.5} />
@@ -3213,6 +3267,159 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
           ))}
           {[[240, 250], [40, 120], [260, 160]].map(([x, y], i) => (
             <path key={i} d={starPath(x, y, 6, 3)} fill="#ffffff" opacity={0.8} />
+          ))}
+        </svg>
+      )
+    case 'robots':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <defs>
+            <MascotGradient id="robot-body" light="#F1F5F9" dark="#94A3B8" />
+            <MascotGradient id="robot-head" light="#E2E8F0" dark="#64748B" />
+            <radialGradient id="robot-eye" cx="40%" cy="35%" r="70%">
+              <stop offset="0%" stopColor="#FDE68A" />
+              <stop offset="100%" stopColor="#F59E0B" />
+            </radialGradient>
+          </defs>
+          {groundShadow(230, 388, 56)}
+          <g transform="translate(230 350) scale(0.78)" strokeLinejoin="round">
+            <line x1={0} y1={-90} x2={0} y2={-72} stroke="#94A3B8" strokeWidth={3} />
+            <circle cx={0} cy={-96} r={7} fill="url(#robot-eye)" stroke="#B45309" strokeWidth={1.5} />
+            <rect x={-36} y={-72} width={72} height={52} rx={14} fill="url(#robot-head)" stroke="#475569" strokeWidth={2.5} />
+            <circle cx={-16} cy={-48} r={10} fill="url(#robot-eye)" stroke="#B45309" strokeWidth={1.5} />
+            <circle cx={16} cy={-48} r={10} fill="url(#robot-eye)" stroke="#B45309" strokeWidth={1.5} />
+            <circle cx={-18} cy={-51} r={3} fill="#ffffff" opacity={0.85} />
+            <circle cx={14} cy={-51} r={3} fill="#ffffff" opacity={0.85} />
+            <path d="M-10 -28 Q0 -21 10 -28" stroke="#475569" strokeWidth={2.5} fill="none" strokeLinecap="round" />
+            <rect x={-44} y={-14} width={88} height={62} rx={14} fill="url(#robot-body)" stroke="#475569" strokeWidth={2.5} />
+            <rect x={-18} y={8} width={36} height={22} rx={5} fill="#475569" />
+            <circle cx={0} cy={19} r={7} fill="url(#robot-eye)" stroke="#B45309" strokeWidth={1.5} />
+            <circle cx={-30} cy={2} r={4} fill="#CBD5E1" stroke="#64748B" strokeWidth={1} />
+            <circle cx={30} cy={2} r={4} fill="#CBD5E1" stroke="#64748B" strokeWidth={1} />
+            <rect x={-58} y={-8} width={16} height={38} rx={7} fill="url(#robot-body)" stroke="#475569" strokeWidth={2} />
+            <rect x={42} y={-8} width={16} height={38} rx={7} fill="url(#robot-body)" stroke="#475569" strokeWidth={2} />
+            <rect x={-26} y={48} width={18} height={28} rx={5} fill="url(#robot-head)" stroke="#475569" strokeWidth={2} />
+            <rect x={8} y={48} width={18} height={28} rx={5} fill="url(#robot-head)" stroke="#475569" strokeWidth={2} />
+          </g>
+          {[0, 1, 2].map((i) => (
+            <circle key={i} cx={40 + i * 14} cy={340} r={4} fill="none" stroke="#CBD5E1" strokeWidth={2} opacity={0.6} />
+          ))}
+          <path d="M40 320 h60 M70 320 v-30 M40 250 h30" stroke="#CBD5E1" strokeWidth={2} fill="none" opacity={0.35} />
+          {[[260, 240], [40, 100], [220, 80]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, 6, 3)} fill="#FBBF24" opacity={0.75} />
+          ))}
+        </svg>
+      )
+    case 'superheroe':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          {/* Superhéroe infantil genérico (cara redonda, antifaz,
+              estrella en el pecho) — sin ningún emblema ni color de una
+              franquicia concreta, para no evocar a ningún personaje con
+              copyright. La primera versión era una silueta sin cara y
+              no resultaba nada entrañable. */}
+          <defs>
+            <MascotGradient id="hero-cape" light="#EF4444" dark="#B91C1C" />
+            <MascotGradient id="hero-suit" light="#3B82F6" dark="#1E3A8A" />
+            <MascotGradient id="hero-skin" light="#FDE0C4" dark="#F2B681" />
+          </defs>
+          {groundShadow(70, 375, 52)}
+          <g transform="translate(70 340) scale(0.66)" strokeLinejoin="round">
+            <path d="M-30 -10 Q-70 20 -55 90 Q-30 60 -15 70 Z" fill="url(#hero-cape)" stroke="#7F1D1D" strokeWidth={2.5} />
+            <path d="M30 -10 Q70 20 55 90 Q30 60 15 70 Z" fill="url(#hero-cape)" stroke="#7F1D1D" strokeWidth={2.5} />
+            <path d="M-32 20 Q-38 70 0 82 Q38 70 32 20 Q0 34 -32 20 Z" fill="url(#hero-suit)" stroke="#1E3A8A" strokeWidth={2.5} />
+            <path d={starPath(0, 48, 13, 6)} fill="#FDE68A" />
+            <circle cx={0} cy={-18} r={34} fill="url(#hero-skin)" stroke="#C2793F" strokeWidth={2.5} />
+            <path d="M-34 -22 Q0 -46 34 -22 L30 -8 Q0 -26 -30 -8 Z" fill="url(#hero-suit)" stroke="#1E3A8A" strokeWidth={2.5} />
+            {sparkleEye(-13, -14, 9)}
+            {sparkleEye(13, -14, 9)}
+            {blush(-20, -2, 7)}
+            {blush(20, -2, 7)}
+            <path d="M-10 4 Q0 12 10 4" stroke="#B45309" strokeWidth={2.5} fill="none" strokeLinecap="round" />
+            <circle cx={-46} cy={30} r={13} fill="url(#hero-skin)" stroke="#C2793F" strokeWidth={2} />
+            <path d="M28 30 Q52 4 46 -16" stroke="url(#hero-suit)" strokeWidth={17} fill="none" strokeLinecap="round" />
+            <circle cx={46} cy={-18} r={13} fill="url(#hero-skin)" stroke="#C2793F" strokeWidth={2} />
+          </g>
+          {[[240, 90], [60, 60], [255, 230]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, i === 0 ? 16 : 9, i === 0 ? 7 : 4)} fill="#FDE68A" opacity={0.85} />
+          ))}
+        </svg>
+      )
+    case 'superheroina':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <defs>
+            <MascotGradient id="heroina-cape" light="#F472B6" dark="#BE185D" />
+            <MascotGradient id="heroina-suit" light="#A78BFA" dark="#6D28D9" />
+            <MascotGradient id="heroina-skin" light="#FDE0C4" dark="#F2B681" />
+            <MascotGradient id="heroina-hair" light="#7C3AED" dark="#4C1D95" />
+          </defs>
+          {groundShadow(230, 375, 52)}
+          <g transform="translate(230 340) scale(0.66)" strokeLinejoin="round">
+            <path d="M-30 -14 Q-70 16 -55 86 Q-30 56 -15 66 Z" fill="url(#heroina-cape)" stroke="#9D174D" strokeWidth={2.5} />
+            <path d="M30 -14 Q70 16 55 86 Q30 56 15 66 Z" fill="url(#heroina-cape)" stroke="#9D174D" strokeWidth={2.5} />
+            <path d="M-30 18 Q-36 66 0 78 Q36 66 30 18 Q0 32 -30 18 Z" fill="url(#heroina-suit)" stroke="#5B21B6" strokeWidth={2.5} />
+            <path d={starPath(0, 44, 12, 5.5)} fill="#FBCFE8" />
+            <path d="M-34 -46 Q0 -66 34 -46 Q40 0 24 22 Q0 4 -24 22 Q-40 0 -34 -46 Z" fill="url(#heroina-hair)" />
+            <circle cx={0} cy={-20} r={32} fill="url(#heroina-skin)" stroke="#C2793F" strokeWidth={2.5} />
+            <path d="M-32 -24 Q0 -44 32 -24 L28 -10 Q0 -26 -28 -10 Z" fill="url(#heroina-suit)" stroke="#5B21B6" strokeWidth={2.5} />
+            {sparkleEye(-12, -16, 8.5)}
+            {sparkleEye(12, -16, 8.5)}
+            {blush(-19, -4, 6.5)}
+            {blush(19, -4, 6.5)}
+            <path d="M-9 2 Q0 9 9 2" stroke="#B45309" strokeWidth={2.5} fill="none" strokeLinecap="round" />
+            <circle cx={-28} cy={-40} r={9} fill="url(#heroina-hair)" />
+            <circle cx={28} cy={-40} r={9} fill="url(#heroina-hair)" />
+            <circle cx={44} cy={28} r={12} fill="url(#heroina-skin)" stroke="#C2793F" strokeWidth={2} />
+            <path d="M-26 28 Q-50 2 -44 -18" stroke="url(#heroina-suit)" strokeWidth={16} fill="none" strokeLinecap="round" />
+            <circle cx={-44} cy={-18} r={12} fill="url(#heroina-skin)" stroke="#C2793F" strokeWidth={2} />
+          </g>
+          {[[50, 90], [230, 60], [45, 230]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, i === 0 ? 16 : 9, i === 0 ? 7 : 4)} fill="#FBCFE8" opacity={0.85} />
+          ))}
+        </svg>
+      )
+    case 'pijamas':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <g transform="translate(230 90)">
+            <path d="M30 -30 A38 38 0 1 0 32 40 A30 30 0 1 1 30 -30 Z" fill="#FDE68A" opacity={0.9} />
+          </g>
+          {[[70, 60], [180, 40], [60, 150], [250, 200], [90, 250], [220, 300]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, i % 2 === 0 ? 8 : 5, 3)} fill="#ffffff" opacity={0.85} />
+          ))}
+          <g transform="translate(70 350)" opacity={0.9}>
+            <path d="M-45 0 Q-45 -30 0 -30 Q45 -30 45 0 Z" fill="#818CF8" />
+            <rect x={-45} y={0} width={90} height={14} rx={4} fill="#6366F1" />
+          </g>
+          <text x={165} y={330} fontSize={26} fill="#ffffff" opacity={0.7} fontFamily="inherit">
+            Zzz
+          </text>
+        </svg>
+      )
+    case 'kpop':
+      return (
+        <svg {...common} viewBox="0 0 300 400">
+          <g opacity={0.25}>
+            {[60, 150, 240].map((x, i) => (
+              <polygon key={i} points={`${x},0 ${x - 40},400 ${x + 40},400`} fill={['#F472B6', '#A78BFA', '#38BDF8'][i]} />
+            ))}
+          </g>
+          <g transform="translate(150 335)">
+            <ellipse cx={0} cy={-38} rx={14} ry={18} fill="#F5D0FE" />
+            <rect x={-3} y={-20} width={6} height={26} fill="#E9D5FF" />
+            <path d="M-16 6 L16 6 L10 16 L-10 16 Z" fill="#E9D5FF" />
+            {Array.from({ length: 10 }).map((_, i) => (
+              <line key={i} x1={0} y1={-56} x2={Math.cos((Math.PI * i) / 9 - Math.PI) * 15} y2={-56 + Math.sin((Math.PI * i) / 9 - Math.PI) * 15} stroke="#F5D0FE" strokeWidth={1} />
+            ))}
+          </g>
+          {[[60, 80], [230, 120], [80, 260], [240, 300], [40, 340]].map(([x, y], i) => (
+            <path key={i} d={starPath(x, y, i % 2 === 0 ? 7 : 5, 3)} fill="#ffffff" opacity={0.85} />
+          ))}
+          {[[190, 200], [110, 150]].map(([x, y], i) => (
+            <text key={i} x={x} y={y} fontSize={20} fill="#ffffff" opacity={0.75}>
+              ♪
+            </text>
           ))}
         </svg>
       )
@@ -3264,8 +3471,63 @@ function ballPentagon(cx: number, cy: number, r: number): string {
     .join(' ')
 }
 
-function InvitationCanvasView({ canvas, templateKey, photoUrls }: { canvas: InvitationCanvas; templateKey: string | null; photoUrls: Record<string, string> }) {
-  const art = INVITATION_TEMPLATES.find((t) => t.key === templateKey)?.artKey ?? 'confeti'
+// Petición real: "deberían ser más elaborados, especialmente los
+// personajes... que gusten tanto a niños como a padres" — degradado
+// suave (esfera con luz), contorno tipo pegatina, sombra en el suelo,
+// brillo en el ojo y mofletes sonrosados, en vez de formas planas de un
+// solo color. Se reutiliza en todas las mascotas (monstruo, osito,
+// gatito, dinosaurio, unicornio, superhéroes, robot).
+function MascotGradient({ id, light, dark }: { id: string; light: string; dark: string }) {
+  return (
+    <radialGradient id={id} cx="32%" cy="26%" r="80%">
+      <stop offset="0%" stopColor={light} />
+      <stop offset="100%" stopColor={dark} />
+    </radialGradient>
+  )
+}
+
+function groundShadow(cx: number, cy: number, rx: number) {
+  return <ellipse cx={cx} cy={cy} rx={rx} ry={rx * 0.26} fill="#000000" opacity={0.15} />
+}
+
+function sparkleEye(cx: number, cy: number, r: number, pupil = '#1F2937') {
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={r} fill="#ffffff" />
+      <circle cx={cx} cy={cy} r={r * 0.62} fill={pupil} />
+      <circle cx={cx - r * 0.28} cy={cy - r * 0.28} r={r * 0.24} fill="#ffffff" />
+    </g>
+  )
+}
+
+function blush(cx: number, cy: number, r: number, color = '#F472B6') {
+  return <ellipse cx={cx} cy={cy} rx={r} ry={r * 0.68} fill={color} opacity={0.4} />
+}
+
+// Petición real: "obras de arte" — cuando la plantilla trae una imagen
+// propia (template.image, encargada fuera con licencia en regla), se
+// usa esa foto en vez del dibujo SVG; si no, cae al arte por reglas de
+// siempre. Mismo sitio para el editor y para la vista previa de solo
+// lectura, así no hay que tocar dos veces cuando llegue cada imagen.
+function InvitationBackground({ templateKey }: { templateKey: string | null }) {
+  const template = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
+  if (template?.image) {
+    return <img src={template.image} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+  }
+  return <InvitationBackgroundArt artKey={template?.artKey ?? 'confeti'} />
+}
+
+function InvitationCanvasView({
+  canvas,
+  templateKey,
+  photoUrls,
+  backgroundImageUrl,
+}: {
+  canvas: InvitationCanvas
+  templateKey: string | null
+  photoUrls: Record<string, string>
+  backgroundImageUrl?: string | null
+}) {
   return (
     <div
       style={{
@@ -3277,7 +3539,11 @@ function InvitationCanvasView({ canvas, templateKey, photoUrls }: { canvas: Invi
         background: canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient,
       }}
     >
-      <InvitationBackgroundArt artKey={art} />
+      {backgroundImageUrl ? (
+        <img src={backgroundImageUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <InvitationBackground templateKey={templateKey} />
+      )}
       {canvas.layers
         .slice()
         .sort((a, b) => a.zIndex - b.zIndex)
@@ -3334,9 +3600,18 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
   const [history, setHistory] = useState<InvitationLayer[][]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+  // Petición real: "que cualquier usuario pueda importar una imagen
+  // que le guste para hacer la invitación" — foto de fondo A PANTALLA
+  // COMPLETA (distinta de "+ Foto", que añade una capa suelta movible)
+  // — sustituye al degradado/dibujo de la plantilla, guardada en
+  // event_invitations.background_image_path (columna ya existía desde
+  // la Fase 0, sin usar hasta ahora).
+  const [backgroundImagePath, setBackgroundImagePath] = useState<string | null>(null)
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [uploadingBackground, setUploadingBackground] = useState(false)
   const [addMenu, setAddMenu] = useState<'emoji' | 'forma' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -3349,6 +3624,12 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
           setTemplateKey(invitation.templateKey || INVITATION_TEMPLATES[0].key)
           setBackgroundGradient(invitation.canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient)
           setLayers(invitation.canvas.layers)
+          if (invitation.backgroundImagePath) {
+            setBackgroundImagePath(invitation.backgroundImagePath)
+            getInvitationPhotoUrl(invitation.backgroundImagePath)
+              .then(setBackgroundImageUrl)
+              .catch(() => {})
+          }
           const paths = invitation.canvas.layers.map((l) => l.photoPath).filter((p): p is string => !!p)
           const urls = await Promise.all(paths.map((p) => getInvitationPhotoUrl(p).catch(() => null)))
           const map: Record<string, string> = {}
@@ -3423,6 +3704,31 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
     pushHistory()
     setLayers(buildInvitationTemplateLayers(event))
     setSelectedId(null)
+    setBackgroundImagePath(null)
+    setBackgroundImageUrl(null)
+  }
+
+  async function handleBackgroundPhotoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploadingBackground(true)
+    setError(null)
+    try {
+      const path = await uploadInvitationPhoto(event.id, file)
+      const url = await getInvitationPhotoUrl(path)
+      setBackgroundImagePath(path)
+      setBackgroundImageUrl(url)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo subir la foto de fondo'))
+    } finally {
+      setUploadingBackground(false)
+    }
+  }
+
+  function handleRemoveBackgroundPhoto() {
+    setBackgroundImagePath(null)
+    setBackgroundImageUrl(null)
   }
 
   function handlePrettify() {
@@ -3503,7 +3809,7 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
     setSaving(true)
     setError(null)
     try {
-      await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers })
+      await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers }, backgroundImagePath)
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar el diseño'))
@@ -3543,13 +3849,31 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
                 </button>
               ))}
             </div>
+            <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              O usa tu propia foto como fondo entero, en vez de un tema:
+            </p>
+            <div className="filter-row" style={{ marginTop: 2 }}>
+              <label className="chip" style={{ cursor: 'pointer' }}>
+                {uploadingBackground ? 'Subiendo…' : backgroundImageUrl ? '🖼️ Cambiar foto de fondo' : '🖼️ Usar mi foto de fondo'}
+                <input type="file" accept="image/*" onChange={handleBackgroundPhotoChange} style={{ display: 'none' }} disabled={uploadingBackground} />
+              </label>
+              {backgroundImageUrl && (
+                <button type="button" className="link-button" onClick={handleRemoveBackgroundPhoto}>
+                  Quitar foto de fondo
+                </button>
+              )}
+            </div>
 
             <div
               ref={canvasRef}
               onPointerDown={() => setSelectedId(null)}
               style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 16, overflow: 'hidden', background: backgroundGradient, marginTop: 10, touchAction: 'none' }}
             >
-              <InvitationBackgroundArt artKey={INVITATION_TEMPLATES.find((t) => t.key === templateKey)?.artKey ?? 'confeti'} />
+              {backgroundImageUrl ? (
+                <img src={backgroundImageUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <InvitationBackground templateKey={templateKey} />
+              )}
               {layers
                 .slice()
                 .sort((a, b) => a.zIndex - b.zIndex)

@@ -1210,12 +1210,24 @@ export async function getEventInvitation(eventId: string): Promise<EventInvitati
   return data ? mapInvitation(data) : null
 }
 
-export async function saveEventInvitation(eventId: string, templateKey: string, canvas: InvitationCanvas): Promise<void> {
+export async function saveEventInvitation(
+  eventId: string,
+  templateKey: string,
+  canvas: InvitationCanvas,
+  backgroundImagePath: string | null = null,
+): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase
     .from('event_invitations')
     .upsert(
-      { event_id: eventId, family_id: familyId, template_key: templateKey, canvas_json: canvas, updated_at: new Date().toISOString() },
+      {
+        event_id: eventId,
+        family_id: familyId,
+        template_key: templateKey,
+        canvas_json: canvas,
+        background_image_path: backgroundImagePath,
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: 'event_id' },
     )
   if (error) throw error

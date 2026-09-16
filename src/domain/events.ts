@@ -299,6 +299,13 @@ export interface InvitationTemplateMeta {
   gradient: string
   text: string
   artKey: string
+  // Petición real: "quiero obras de arte" — el SVG dibujado a mano
+  // tiene techo (queda "plano", nunca pintado/con textura). Cuando el
+  // usuario trae una ilustración propia (encargada fuera, con
+  // licencia en regla) para un tema, `image` apunta a ese archivo y
+  // sustituye el dibujo por artKey sin tocar nada más del editor — las
+  // capas del usuario (texto/emoji/foto) se siguen viendo encima igual.
+  image?: string
 }
 
 export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
@@ -321,6 +328,14 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos' },
   { key: 'gatitos', label: 'Gatitos', gradient: 'linear-gradient(160deg, #F3E8FF, #E9D5FF)', text: '#6B21A8', artKey: 'gatitos' },
   { key: 'coches', label: 'Coches de carreras', gradient: 'linear-gradient(160deg, #1F2937, #7F1D1D)', text: '#ffffff', artKey: 'coches' },
+  // Lote 3.
+  { key: 'robots', label: 'Robots', gradient: 'linear-gradient(160deg, #64748B, #1E293B)', text: '#ffffff', artKey: 'robots' },
+  { key: 'superheroe', label: 'Superhéroe', gradient: 'linear-gradient(160deg, #DC2626, #1E3A8A)', text: '#ffffff', artKey: 'superheroe' },
+  { key: 'superheroina', label: 'Superheroína', gradient: 'linear-gradient(160deg, #EC4899, #7C3AED)', text: '#ffffff', artKey: 'superheroina' },
+  { key: 'pijamas', label: 'Estrellitas', gradient: 'linear-gradient(160deg, #312E81, #0F172A)', text: '#ffffff', artKey: 'pijamas' },
+  // "Guerreras Kpop" — ambiente genérico de concierto/idol (neón,
+  // micro, focos), sin ningún grupo, cara ni persona real de por medio.
+  { key: 'kpop', label: 'Kpop', gradient: 'linear-gradient(160deg, #DB2777, #6D28D9)', text: '#ffffff', artKey: 'kpop' },
 ]
 
 // ---------------------------------------------------------------------

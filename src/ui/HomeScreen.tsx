@@ -39,6 +39,7 @@ interface HomeCardDef {
 const HOME_CARD_EXTRAS: Record<string, { body: string; color: string }> = {
   familia: { body: 'Miembros y perfiles', color: '#ffe3d6' },
   calendario: { body: 'Eventos de hoy', color: '#dbeafe' },
+  eventos: { body: 'Cumpleaños, comuniones y más', color: '#fce7f3' },
   puntos: { body: 'Recompensas de la familia', color: '#dcfce7' },
   compras: { body: 'Lista actual', color: '#fef3c7' },
   alimentacion: { body: 'Menú, registro y peso', color: '#d1fae5' },

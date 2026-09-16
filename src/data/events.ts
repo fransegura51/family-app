@@ -6,6 +6,7 @@
 import { addShoppingItem } from '@/data/shopping'
 import { supabase } from '@/data/supabaseClient'
 import { generateAutoTasks } from '@/domain/events'
+import type { EventReminder } from '@/domain/reminders'
 import type {
   EventActivity,
   EventBudgetItem,
@@ -43,7 +44,7 @@ async function currentFamilyId(): Promise<string> {
 }
 
 const EVENT_SELECT =
-  'id, family_id, type, subtype, title, date_status, event_date, event_time, venue_label, venue_type, ceremony_location_label, ceremony_location_latitude, ceremony_location_longitude, ceremony_time, celebration_location_label, celebration_location_latitude, celebration_location_longitude, theme, details, enabled_modules, status, tag_id, calendar_event_id, rsvp_deadline, open_rsvp_token, created_by, created_at, updated_at'
+  'id, family_id, type, subtype, title, date_status, event_date, event_time, venue_label, venue_type, ceremony_location_label, ceremony_location_latitude, ceremony_location_longitude, ceremony_time, celebration_location_label, celebration_location_latitude, celebration_location_longitude, theme, details, enabled_modules, status, tag_id, calendar_event_id, rsvp_deadline, rsvp_deadline_calendar_event_id, open_rsvp_token, created_by, created_at, updated_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapEvent(r: any): FamilyEvent {
@@ -72,6 +73,7 @@ function mapEvent(r: any): FamilyEvent {
     tagId: r.tag_id,
     calendarEventId: r.calendar_event_id,
     rsvpDeadline: r.rsvp_deadline,
+    rsvpDeadlineCalendarEventId: r.rsvp_deadline_calendar_event_id,
     openRsvpToken: r.open_rsvp_token,
     createdBy: r.created_by,
     createdAt: r.created_at,
@@ -349,6 +351,73 @@ export async function updateLinkedCalendarEvent(event: FamilyEvent): Promise<voi
   if (error) throw error
 }
 
+// Recordatorio push del plazo de RSVP — mismo patrón que el
+// vencimiento de un documento (member_documents.expiryDate): una fila
+// normal en calendar_events con sus propios recordatorios, para que el
+// pipeline de avisos ya existente (send-due-reminders) funcione sin
+// tocar nada. Acción explícita del usuario, nunca automática.
+const DEFAULT_DEADLINE_REMINDERS: EventReminder[] = [{ minutesBefore: 3 * 1440, anchor: 'start' }]
+
+export async function linkRsvpDeadlineReminder(event: FamilyEvent): Promise<void> {
+  if (!event.rsvpDeadline) throw new Error('Este evento no tiene plazo de RSVP')
+  const familyId = await currentFamilyId()
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data: calendarEvent, error } = await supabase
+    .from('calendar_events')
+    .insert({
+      family_id: familyId,
+      title: `Plazo de RSVP: ${event.title}`,
+      start_at: `${event.rsvpDeadline}T00:00:00`,
+      all_day: true,
+      created_by: userResult.user.id,
+      reminders: DEFAULT_DEADLINE_REMINDERS,
+      visibility: 'shared',
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  const { error: linkError } = await supabase.from('events').update({ rsvp_deadline_calendar_event_id: calendarEvent.id }).eq('id', event.id)
+  if (linkError) throw linkError
+}
+
+export async function updateRsvpDeadlineReminder(event: FamilyEvent): Promise<void> {
+  if (!event.rsvpDeadlineCalendarEventId) return
+  if (!event.rsvpDeadline) {
+    const { error } = await supabase.from('calendar_events').delete().eq('id', event.rsvpDeadlineCalendarEventId)
+    if (error) throw error
+    return
+  }
+  const { error } = await supabase
+    .from('calendar_events')
+    .update({ title: `Plazo de RSVP: ${event.title}`, start_at: `${event.rsvpDeadline}T00:00:00` })
+    .eq('id', event.rsvpDeadlineCalendarEventId)
+  if (error) throw error
+}
+
+export async function linkPaymentReminder(payment: EventPayment, eventTitle: string): Promise<void> {
+  if (!payment.dueDate) throw new Error('Este pago no tiene fecha de vencimiento')
+  const familyId = await currentFamilyId()
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data: calendarEvent, error } = await supabase
+    .from('calendar_events')
+    .insert({
+      family_id: familyId,
+      title: `Vence "${payment.concept}" (${eventTitle})`,
+      start_at: `${payment.dueDate}T00:00:00`,
+      all_day: true,
+      created_by: userResult.user.id,
+      reminders: DEFAULT_DEADLINE_REMINDERS,
+      visibility: 'shared',
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  const { error: linkError } = await supabase.from('event_payments').update({ reminder_calendar_event_id: calendarEvent.id }).eq('id', payment.id)
+  if (linkError) throw linkError
+}
+
 // ---------------------------------------------------------------------
 // Invitados — petición de la Skill: alta mínima (nombre/grupo + adultos
 // + niños), sin importar contactos; los totales se calculan solos
@@ -613,7 +682,7 @@ export async function deleteEventProvider(id: string): Promise<void> {
 // Pagos / fianzas.
 // ---------------------------------------------------------------------
 
-const PAYMENT_SELECT = 'id, event_id, family_id, provider_id, concept, total_amount, deposit_paid, due_date, status, notes, created_at'
+const PAYMENT_SELECT = 'id, event_id, family_id, provider_id, concept, total_amount, deposit_paid, due_date, status, notes, reminder_calendar_event_id, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapPayment(r: any): EventPayment {
@@ -628,6 +697,7 @@ function mapPayment(r: any): EventPayment {
     dueDate: r.due_date,
     status: r.status,
     notes: r.notes,
+    reminderCalendarEventId: r.reminder_calendar_event_id,
     createdAt: r.created_at,
   }
 }

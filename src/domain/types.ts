@@ -600,6 +600,9 @@ export interface FamilyEvent {
   tagId: string | null
   calendarEventId: string | null
   rsvpDeadline: string | null
+  // Recordatorio push del plazo de RSVP (Fase 3) — reutiliza el
+  // pipeline de calendar_events, igual que member_documents.expiryDate.
+  rsvpDeadlineCalendarEventId: string | null
   openRsvpToken: string | null
   createdBy: string
   createdAt: string
@@ -690,6 +693,7 @@ export interface EventPayment {
   dueDate: string | null
   status: EventPaymentStatus
   notes: string | null
+  reminderCalendarEventId: string | null
   createdAt: string
 }
 

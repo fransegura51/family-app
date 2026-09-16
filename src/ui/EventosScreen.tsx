@@ -35,6 +35,8 @@ import {
   getGuestRsvpUrl,
   getInvitationPhotoUrl,
   linkEventToCalendar,
+  linkPaymentReminder,
+  linkRsvpDeadlineReminder,
   listEventActivities,
   listEventBudgetItems,
   listEventDayPlan,
@@ -64,6 +66,7 @@ import {
   updateEventSpecialDetail,
   updateEventTask,
   updateLinkedCalendarEvent,
+  updateRsvpDeadlineReminder,
   uploadInvitationPhoto,
 } from '@/data/events'
 import { listExpenses } from '@/data/finance'
@@ -480,6 +483,21 @@ function EventDetail({
     }
   }
 
+  const [linkingReminder, setLinkingReminder] = useState(false)
+
+  async function handleLinkRsvpReminder() {
+    setLinkingReminder(true)
+    setError(null)
+    try {
+      await linkRsvpDeadlineReminder(event)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo poner el recordatorio'))
+    } finally {
+      setLinkingReminder(false)
+    }
+  }
+
   function reloadTasks() {
     listEventTasks(event.id)
       .then(setTasks)
@@ -540,6 +558,12 @@ function EventDetail({
             </button>
           </p>
         )}
+        {event.rsvpDeadline && !event.rsvpDeadlineCalendarEventId && (
+          <button type="button" className="link-button" onClick={handleLinkRsvpReminder} disabled={linkingReminder} style={{ marginTop: 4, display: 'block' }}>
+            {linkingReminder ? 'Poniendo recordatorio…' : `🔔 Recordarme el plazo de RSVP (${event.rsvpDeadline})`}
+          </button>
+        )}
+        {event.rsvpDeadline && event.rsvpDeadlineCalendarEventId && <p className="muted" style={{ marginTop: 4 }}>🔔 Recordatorio de plazo puesto</p>}
       </div>
 
       {event.status === 'planificacion' && event.dateStatus === 'confirmada' && isToday(event.eventDate) && <EventDayBanner event={event} />}
@@ -581,7 +605,7 @@ function EventDetail({
       {event.enabledModules.includes('decoracion') && <DecorationSection eventId={event.id} />}
       {event.enabledModules.includes('actividades') && <ActivitiesSection eventId={event.id} />}
       {event.enabledModules.includes('proveedores') && <ProvidersSection eventId={event.id} />}
-      {event.enabledModules.includes('pagos') && <PaymentsSection eventId={event.id} />}
+      {event.enabledModules.includes('pagos') && <PaymentsSection event={event} />}
       {event.enabledModules.includes('detalles') && <DetailsSection eventId={event.id} />}
       {event.enabledModules.includes('regalos') && <GiftsSection eventId={event.id} />}
       {event.enabledModules.includes('plan_dia') && <DayPlanSection eventId={event.id} />}
@@ -682,6 +706,10 @@ function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClo
       // Petición de la Skill: "relative tasks update when event date
       // changes" — solo se recalcula si la fecha de verdad ha cambiado.
       if (nextDate !== event.eventDate) await recalculateAutoTasks(event.id, event.type, nextDate)
+      const nextDeadline = rsvpDeadline || null
+      if (nextDeadline !== event.rsvpDeadline && event.rsvpDeadlineCalendarEventId) {
+        await updateRsvpDeadlineReminder({ ...event, rsvpDeadline: nextDeadline })
+      }
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -1424,10 +1452,12 @@ function AddProviderModal({ eventId, onClose, onAdded }: { eventId: string; onCl
 // Pagos / fianzas.
 // ---------------------------------------------------------------------
 
-function PaymentsSection({ eventId }: { eventId: string }) {
+function PaymentsSection({ event }: { event: FamilyEvent }) {
+  const eventId = event.id
   const [payments, setPayments] = useState<EventPayment[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [linkingReminderId, setLinkingReminderId] = useState<string | null>(null)
 
   function reload() {
     listEventPayments(eventId)
@@ -1435,6 +1465,19 @@ function PaymentsSection({ eventId }: { eventId: string }) {
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los pagos')))
   }
   useEffect(reload, [eventId])
+
+  async function handleRemindPayment(p: EventPayment) {
+    setLinkingReminderId(p.id)
+    setError(null)
+    try {
+      await linkPaymentReminder(p, event.title)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo poner el recordatorio'))
+    } finally {
+      setLinkingReminderId(null)
+    }
+  }
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
@@ -1463,6 +1506,12 @@ function PaymentsSection({ eventId }: { eventId: string }) {
                     Marcar como pagado del todo
                   </button>
                 )}
+                {p.dueDate && remaining > 0 && !p.reminderCalendarEventId && (
+                  <button type="button" className="link-button" onClick={() => handleRemindPayment(p)} disabled={linkingReminderId === p.id}>
+                    {linkingReminderId === p.id ? 'Poniendo…' : '🔔 Recordarme'}
+                  </button>
+                )}
+                {p.reminderCalendarEventId && <span className="muted" style={{ fontSize: 12 }}>🔔 Recordatorio puesto</span>}
               </div>
             </div>
           )

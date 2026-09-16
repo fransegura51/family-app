@@ -3108,22 +3108,29 @@ function ExpensesTab({
                       pagado algo en común... pueda pasar una copia del
                       movimiento con un botón al listado común". Copia
                       independiente (editar/borrar una no toca la otra),
-                      solo tiene sentido sobre lo tuyo, sin compartir ya. */}
+                      solo tiene sentido sobre lo tuyo, sin compartir ya.
+                      Icono en vez de texto (petición real: "ocupa
+                      demasiado espacio... alguna sugerencia... ver más
+                      detalle del movimiento") — mismo ancho que el icono
+                      de borrar de al lado, así el resto de la fila (fecha,
+                      establecimiento, concepto) deja de comerse el texto. */}
                   {accountsMode === 'separado' && scope === 'personal' && !e.shared && e.ownerMemberId === myMemberId && (
                     <button
                       type="button"
-                      className="link-button"
+                      className="icon-button"
+                      title="Compartir a Común"
+                      aria-label="Compartir a Común"
                       onClick={(ev) => {
                         ev.stopPropagation()
                         copyExpenseToShared(e.id).then(reload)
                       }}
                     >
-                      → Compartir a Común
+                      🤝
                     </button>
                   )}
                   {accountsMode === 'separado' && scope === 'personal' && expenses.some((x) => x.sharedFromExpenseId === e.id) && (
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      ✓ En Común
+                    <span className="icon-button" title="Ya está en Común" aria-label="Ya está en Común" style={{ opacity: 0.6 }}>
+                      ✅
                     </span>
                   )}
                   <ConfirmIconButton

@@ -1,37 +1,64 @@
 import { FormEvent, useEffect, useState } from 'react'
 import {
+  addEventActivity,
   addEventBudgetItem,
+  addEventDayPlanItem,
+  addEventDecorationItem,
+  addEventFavorItem,
+  addEventGift,
   addEventGuest,
   addEventMenuItem,
   addEventPayment,
   addEventProvider,
+  addEventSpecialDetail,
+  addEventTable,
   addEventTask,
   archiveEvent,
+  assignGuestTable,
   createEvent,
   deleteEvent,
+  deleteEventActivity,
   deleteEventBudgetItem,
+  deleteEventDayPlanItem,
+  deleteEventDecorationItem,
+  deleteEventFavorItem,
+  deleteEventGift,
   deleteEventGuest,
   deleteEventMenuItem,
   deleteEventPayment,
   deleteEventProvider,
+  deleteEventSpecialDetail,
+  deleteEventTable,
   deleteEventTask,
   duplicateEvent,
   getGuestRsvpUrl,
   linkEventToCalendar,
+  listEventActivities,
   listEventBudgetItems,
+  listEventDayPlan,
+  listEventDecorationItems,
+  listEventFavorItems,
+  listEventGifts,
   listEventGuests,
   listEventMenuItems,
   listEventPayments,
   listEventProviders,
+  listEventSpecialDetails,
+  listEventTables,
   listEventTasks,
   listEvents,
   recalculateAutoTasks,
   regenerateGuestRsvpUrl,
+  transferActivityMaterialsToShopping,
+  transferDecorationItemToShopping,
   transferMenuToShopping,
   unarchiveEvent,
   updateEvent,
+  updateEventDecorationItem,
+  updateEventFavorItem,
   updateEventGuest,
   updateEventPayment,
+  updateEventSpecialDetail,
   updateEventTask,
   updateLinkedCalendarEvent,
 } from '@/data/events'
@@ -49,7 +76,12 @@ import {
   RECOMMENDED_MODULES,
 } from '@/domain/events'
 import type {
+  EventActivity,
   EventBudgetItem,
+  EventDayPlanItem,
+  EventDecorationItem,
+  EventFavorItem,
+  EventGiftReceived,
   EventGuest,
   EventGuestInviteScope,
   EventGuestRsvpStatus,
@@ -57,6 +89,8 @@ import type {
   EventModuleKey,
   EventPayment,
   EventProvider,
+  EventSpecialDetail,
+  EventTableSeat,
   EventTask,
   EventType,
   FamilyEvent,
@@ -70,9 +104,9 @@ import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 // Fase 0: motor común configurable + tareas. Fase 1: invitados,
 // presupuesto (con gasto real de Economía vía etiqueta), menú →
 // traspaso a Compras, ceremonia/ubicaciones, proveedores, pagos/
-// fianzas y enlace con Calendario. El resto de módulos (invitaciones/
-// RSVP, decoración, actividades, mesas, detalles, regalos, plan del
-// día) siguen mostrándose como chips "próximamente" — ver READY_MODULE_KEYS.
+// fianzas y enlace con Calendario. Fase 2: invitaciones + RSVP público.
+// Fase 3: decoración, actividades, mesas, detalles/recuerdos, regalos
+// recibidos, plan del día, modo "día del evento" y conclusiones PEPA.
 const DATE_STATUS_OPTIONS: { value: FamilyEvent['dateStatus']; label: string }[] = [
   { value: 'pendiente', label: 'Todavía sin fecha' },
   { value: 'provisional', label: 'Fecha provisional' },
@@ -100,6 +134,12 @@ const READY_MODULE_KEYS = new Set<EventModuleKey>([
   'proveedores',
   'pagos',
   'ceremonia',
+  'decoracion',
+  'actividades',
+  'mesas',
+  'detalles',
+  'regalos',
+  'plan_dia',
 ])
 
 // Ceremonia (dos ubicaciones) solo tiene sentido en estos tipos —
@@ -518,10 +558,16 @@ function EventDetail({
 
       {event.enabledModules.includes('ceremonia') && DUAL_LOCATION_EVENT_TYPES.includes(event.type) && <CeremoniaSection event={event} onChanged={onChanged} />}
       {event.enabledModules.includes('invitados') && <GuestsSection event={event} />}
+      {event.enabledModules.includes('mesas') && <TablesSection event={event} />}
       {event.enabledModules.includes('presupuesto') && <BudgetSection event={event} />}
       {event.enabledModules.includes('menu_compra') && <MenuSection eventId={event.id} />}
+      {event.enabledModules.includes('decoracion') && <DecorationSection eventId={event.id} />}
+      {event.enabledModules.includes('actividades') && <ActivitiesSection eventId={event.id} />}
       {event.enabledModules.includes('proveedores') && <ProvidersSection eventId={event.id} />}
       {event.enabledModules.includes('pagos') && <PaymentsSection eventId={event.id} />}
+      {event.enabledModules.includes('detalles') && <DetailsSection eventId={event.id} />}
+      {event.enabledModules.includes('regalos') && <GiftsSection eventId={event.id} />}
+      {event.enabledModules.includes('plan_dia') && <DayPlanSection eventId={event.id} />}
 
       {MODULE_GROUPS.map((group) => {
         const groupModules = group.keys.filter((k) => event.enabledModules.includes(k) && !READY_MODULE_KEYS.has(k))
@@ -1594,6 +1640,718 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
         )}
       </div>
       {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Mesas. Asignación simple, sin plano 3D.
+// ---------------------------------------------------------------------
+
+function TablesSection({ event }: { event: FamilyEvent }) {
+  const [tables, setTables] = useState<EventTableSeat[]>([])
+  const [guests, setGuests] = useState<EventGuest[]>([])
+  const [newName, setNewName] = useState('')
+  const [newCapacity, setNewCapacity] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventTables(event.id)
+      .then(setTables)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las mesas')))
+    listEventGuests(event.id)
+      .then(setGuests)
+      .catch(() => {})
+  }
+  useEffect(reload, [event.id])
+
+  async function handleAdd(ev: FormEvent) {
+    ev.preventDefault()
+    if (!newName.trim()) return
+    try {
+      await addEventTable(event.id, newName, newCapacity ? Number(newCapacity) : null)
+      setNewName('')
+      setNewCapacity('')
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    }
+  }
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8 }}>
+      <strong>🪑 Mesas</strong>
+      {error && <p className="error">{error}</p>}
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {tables.map((t) => {
+          const seated = guests.filter((g) => g.tableId === t.id)
+          const seatedCount = seated.reduce((sum, g) => sum + g.adultsCount + g.childrenCount, 0)
+          return (
+            <div key={t.id} className="card task-card">
+              <div className="task-card-main" style={{ width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <strong>
+                    {t.name}
+                    {t.capacity ? ` (${seatedCount}/${t.capacity})` : ` (${seatedCount})`}
+                  </strong>
+                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar mesa" onConfirm={() => deleteEventTable(t.id).then(reload)} />
+                </div>
+                <p className="muted" style={{ margin: '2px 0' }}>
+                  {seated.length === 0 ? 'Sin invitados asignados.' : seated.map((g) => g.displayName).join(', ')}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+        {tables.length === 0 && <p className="muted">Todavía no hay mesas.</p>}
+      </div>
+      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
+        <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="+ Añadir mesa" style={{ flex: 1 }} />
+        <input type="number" min={0} value={newCapacity} onChange={(e) => setNewCapacity(e.target.value)} placeholder="Aforo" style={{ width: 70 }} />
+        <button type="submit">Añadir</button>
+      </form>
+      {guests.length > 0 && tables.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Asignar invitados a una mesa:
+          </p>
+          <div className="event-list">
+            {guests.map((g) => (
+              <div key={g.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                <span style={{ flex: 1 }}>{g.displayName}</span>
+                <select value={g.tableId ?? ''} onChange={(e) => assignGuestTable(g.id, e.target.value || null).then(reload)}>
+                  <option value="">Sin mesa</option>
+                  {tables.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Decoración. Opcional; PEPA propone, la familia elige todo/
+// algo/nada.
+// ---------------------------------------------------------------------
+
+function DecorationSection({ eventId }: { eventId: string }) {
+  const [items, setItems] = useState<EventDecorationItem[]>([])
+  const [newName, setNewName] = useState('')
+  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventDecorationItems(eventId)
+      .then(setItems)
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar la decoración')))
+  }
+  useEffect(reload, [eventId])
+
+  async function handleAdd(ev: FormEvent) {
+    ev.preventDefault()
+    if (!newName.trim()) return
+    try {
+      await addEventDecorationItem(eventId, newName)
+      setNewName('')
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    }
+  }
+
+  async function handleTransfer(item: EventDecorationItem) {
+    try {
+      await transferDecorationItemToShopping(item)
+      setNotice(`✓ "${item.name}" añadido a Compras.`)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo traspasar'))
+    }
+  }
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8 }}>
+      <strong>🎈 Decoración</strong>
+      {notice && <p className="points-badge">{notice}</p>}
+      {error && <p className="error">{error}</p>}
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {items.map((i) => (
+          <div key={i.id} className="inline-fields" style={{ alignItems: 'center' }}>
+            <select value={i.status} onChange={(e) => updateEventDecorationItem(i.id, { status: e.target.value as EventDecorationItem['status'] }).then(reload)}>
+              <option value="idea">Idea</option>
+              <option value="elegido">Elegido</option>
+              <option value="comprado">Comprado</option>
+            </select>
+            <span style={{ flex: 1 }}>
+              {i.name}
+              {i.transferredToShopping ? ' · ✓ en Compras' : ''}
+            </span>
+            {!i.transferredToShopping && (
+              <button type="button" className="link-button" onClick={() => handleTransfer(i)}>
+                → Compras
+              </button>
+            )}
+            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventDecorationItem(i.id).then(reload)} />
+          </div>
+        ))}
+        {items.length === 0 && <p className="muted">Ninguna idea todavía — no hace falta decoración si no la quieres.</p>}
+      </div>
+      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
+        <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="+ Añadir idea" style={{ flex: 1 }} />
+        <button type="submit">Añadir</button>
+      </form>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Actividades / juegos. Contextual y opcional.
+// ---------------------------------------------------------------------
+
+function ActivitiesSection({ eventId }: { eventId: string }) {
+  const [activities, setActivities] = useState<EventActivity[]>([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventActivities(eventId)
+      .then(setActivities)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las actividades')))
+  }
+  useEffect(reload, [eventId])
+
+  async function handleTransfer(activity: EventActivity) {
+    try {
+      await transferActivityMaterialsToShopping(activity)
+      setNotice(`✓ Material de "${activity.title}" añadido a Compras.`)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo traspasar'))
+    }
+  }
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8 }}>
+      <strong>🎲 Actividades y juegos</strong>
+      {notice && <p className="points-badge">{notice}</p>}
+      {error && <p className="error">{error}</p>}
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {activities.map((a) => (
+          <div key={a.id} className="card task-card">
+            <div className="task-card-main" style={{ width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>{a.title}</strong>
+                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar actividad" onConfirm={() => deleteEventActivity(a.id).then(reload)} />
+              </div>
+              <p className="muted" style={{ margin: '2px 0' }}>
+                {[a.ageRange, a.durationMinutes ? `${a.durationMinutes} min` : null].filter(Boolean).join(' · ')}
+              </p>
+              {a.materialsNote && (
+                <p className="muted" style={{ margin: '2px 0' }}>
+                  Material: {a.materialsNote}
+                  {a.transferredToShopping ? ' · ✓ en Compras' : ''}
+                </p>
+              )}
+              {a.materialsNote && !a.transferredToShopping && (
+                <button type="button" className="link-button" onClick={() => handleTransfer(a)}>
+                  → Compras
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {activities.length === 0 && <p className="muted">Todavía no hay actividades apuntadas.</p>}
+      </div>
+      <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+        + Añadir actividad
+      </button>
+      {showAdd && (
+        <AddActivityModal
+          eventId={eventId}
+          onClose={() => setShowAdd(false)}
+          onAdded={() => {
+            setShowAdd(false)
+            reload()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function AddActivityModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+  const [title, setTitle] = useState('')
+  const [ageRange, setAgeRange] = useState('')
+  const [durationMinutes, setDurationMinutes] = useState('')
+  const [materialsNote, setMaterialsNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!title.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addEventActivity(eventId, {
+        title,
+        ageRange: ageRange || null,
+        durationMinutes: durationMinutes ? Number(durationMinutes) : null,
+        materialsNote: materialsNote || null,
+      })
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Nueva actividad
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            Nombre
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Búsqueda del tesoro..." autoFocus />
+          </label>
+          <div className="inline-fields">
+            <label style={{ flex: 1 }}>
+              Edad (opcional)
+              <input type="text" value={ageRange} onChange={(e) => setAgeRange(e.target.value)} placeholder="4-8 años" />
+            </label>
+            <label style={{ flex: 1 }}>
+              Duración (min)
+              <input type="number" min={0} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} />
+            </label>
+          </div>
+          <label>
+            Material necesario (opcional)
+            <input type="text" value={materialsNote} onChange={(e) => setMaterialsNote(e.target.value)} placeholder="Globos, premios..." />
+          </label>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Añadir'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Detalles/recuerdos (por tipo de artículo) + Detalles
+// especiales (por persona) — un único módulo 'detalles' con dos formas
+// distintas a propósito.
+// ---------------------------------------------------------------------
+
+function DetailsSection({ eventId }: { eventId: string }) {
+  const [favors, setFavors] = useState<EventFavorItem[]>([])
+  const [specials, setSpecials] = useState<EventSpecialDetail[]>([])
+  const [showAddFavor, setShowAddFavor] = useState(false)
+  const [showAddSpecial, setShowAddSpecial] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventFavorItems(eventId)
+      .then(setFavors)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los detalles')))
+    listEventSpecialDetails(eventId)
+      .then(setSpecials)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los detalles especiales')))
+  }
+  useEffect(reload, [eventId])
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8 }}>
+      <strong>🎁 Detalles / recuerdos</strong>
+      <p className="muted" style={{ fontSize: 13 }}>
+        Para los invitados en general, y aparte, para personas concretas (padrinos, testigos...).
+      </p>
+      {error && <p className="error">{error}</p>}
+
+      <p className="muted" style={{ margin: '8px 0 4px', fontSize: 13, fontWeight: 600 }}>
+        Recuerdos para invitados
+      </p>
+      <div className="event-list">
+        {favors.map((f) => (
+          <div key={f.id} className="inline-fields" style={{ alignItems: 'center' }}>
+            <select value={f.status} onChange={(e) => updateEventFavorItem(f.id, { status: e.target.value as EventFavorItem['status'] }).then(reload)}>
+              <option value="pendiente">Pendiente</option>
+              <option value="encargado">Encargado</option>
+              <option value="listo">Listo</option>
+            </select>
+            <span style={{ flex: 1 }}>
+              {f.itemType}
+              {f.quantityNeeded ? ` · ${f.quantityNeeded}` : ''}
+              {f.supplier ? ` · ${f.supplier}` : ''}
+            </span>
+            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventFavorItem(f.id).then(reload)} />
+          </div>
+        ))}
+        {favors.length === 0 && <p className="muted">Ninguno todavía.</p>}
+      </div>
+      <button type="button" className="link-button" onClick={() => setShowAddFavor(true)}>
+        + Añadir recuerdo
+      </button>
+
+      <p className="muted" style={{ margin: '12px 0 4px', fontSize: 13, fontWeight: 600 }}>
+        Detalles para personas especiales
+      </p>
+      <div className="event-list">
+        {specials.map((s) => (
+          <div key={s.id} className="inline-fields" style={{ alignItems: 'center' }}>
+            <select
+              value={s.status}
+              onChange={(e) => updateEventSpecialDetail(s.id, { status: e.target.value as EventSpecialDetail['status'] }).then(reload)}
+            >
+              <option value="pendiente">Pendiente</option>
+              <option value="comprado">Comprado</option>
+              <option value="preparado">Preparado</option>
+            </select>
+            <span style={{ flex: 1 }}>
+              {s.recipientName}
+              {s.relationship ? ` (${s.relationship})` : ''}
+              {s.detail ? ` · ${s.detail}` : ''}
+            </span>
+            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventSpecialDetail(s.id).then(reload)} />
+          </div>
+        ))}
+        {specials.length === 0 && <p className="muted">Ninguno todavía.</p>}
+      </div>
+      <button type="button" className="link-button" onClick={() => setShowAddSpecial(true)}>
+        + Añadir persona especial
+      </button>
+
+      {showAddFavor && (
+        <AddFavorModal
+          eventId={eventId}
+          onClose={() => setShowAddFavor(false)}
+          onAdded={() => {
+            setShowAddFavor(false)
+            reload()
+          }}
+        />
+      )}
+      {showAddSpecial && (
+        <AddSpecialDetailModal
+          eventId={eventId}
+          onClose={() => setShowAddSpecial(false)}
+          onAdded={() => {
+            setShowAddSpecial(false)
+            reload()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function AddFavorModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+  const [itemType, setItemType] = useState('')
+  const [quantityNeeded, setQuantityNeeded] = useState('')
+  const [supplier, setSupplier] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!itemType.trim()) {
+      setError('Dile qué es.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addEventFavorItem(eventId, { itemType, quantityNeeded: quantityNeeded ? Number(quantityNeeded) : null, supplier: supplier || null })
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Nuevo recuerdo
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            Qué es
+            <input type="text" value={itemType} onChange={(e) => setItemType(e.target.value)} placeholder="Bolsa de chuches, estuche..." autoFocus />
+          </label>
+          <label>
+            Cantidad necesaria (opcional)
+            <input type="number" min={0} value={quantityNeeded} onChange={(e) => setQuantityNeeded(e.target.value)} />
+          </label>
+          <label>
+            Proveedor (opcional)
+            <input type="text" value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+          </label>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Añadir'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function AddSpecialDetailModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+  const [recipientName, setRecipientName] = useState('')
+  const [relationship, setRelationship] = useState('')
+  const [detail, setDetail] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!recipientName.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addEventSpecialDetail(eventId, { recipientName, relationship: relationship || null, detail: detail || null })
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Persona especial
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            Nombre
+            <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Abuela Pepa" autoFocus />
+          </label>
+          <label>
+            Relación (opcional)
+            <input type="text" value={relationship} onChange={(e) => setRelationship(e.target.value)} placeholder="Madrina, testigo..." />
+          </label>
+          <label>
+            Idea de detalle (opcional)
+            <input type="text" value={detail} onChange={(e) => setDetail(e.target.value)} />
+          </label>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Añadir'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Regalos recibidos. PRIVADO, opcional.
+// ---------------------------------------------------------------------
+
+function GiftsSection({ eventId }: { eventId: string }) {
+  const [gifts, setGifts] = useState<EventGiftReceived[]>([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventGifts(eventId)
+      .then(setGifts)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los regalos')))
+  }
+  useEffect(reload, [eventId])
+
+  const totalCash = gifts.reduce((sum, g) => sum + (g.cashAmount ?? 0), 0)
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8 }}>
+      <strong>🎀 Regalos recibidos</strong>
+      <p className="muted" style={{ fontSize: 12 }}>
+        Privado — nunca se muestra en la página pública de RSVP.
+      </p>
+      {error && <p className="error">{error}</p>}
+      {gifts.length > 0 && (
+        <p className="muted" style={{ margin: '4px 0' }}>
+          Total en efectivo: <strong>{totalCash.toFixed(2)} €</strong>
+        </p>
+      )}
+      <div className="event-list">
+        {gifts.map((g) => (
+          <div key={g.id} className="inline-fields" style={{ alignItems: 'center' }}>
+            <span style={{ flex: 1 }}>
+              {g.guestName}
+              {g.giftDescription ? ` · ${g.giftDescription}` : ''}
+              {g.cashAmount ? ` · ${g.cashAmount.toFixed(2)} €` : ''}
+            </span>
+            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventGift(g.id).then(reload)} />
+          </div>
+        ))}
+        {gifts.length === 0 && <p className="muted">Todavía no hay nada apuntado.</p>}
+      </div>
+      <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+        + Añadir regalo
+      </button>
+      {showAdd && (
+        <AddGiftModal
+          eventId={eventId}
+          onClose={() => setShowAdd(false)}
+          onAdded={() => {
+            setShowAdd(false)
+            reload()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function AddGiftModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+  const [guestName, setGuestName] = useState('')
+  const [giftDescription, setGiftDescription] = useState('')
+  const [cashAmount, setCashAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!guestName.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addEventGift(eventId, { guestName, giftDescription: giftDescription || null, cashAmount: cashAmount ? Number(cashAmount) : null })
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Nuevo regalo
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            De quién
+            <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} autoFocus />
+          </label>
+          <label>
+            Qué regaló (opcional)
+            <input type="text" value={giftDescription} onChange={(e) => setGiftDescription(e.target.value)} />
+          </label>
+          <label>
+            Importe en efectivo (opcional)
+            <input type="number" min={0} step="0.01" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} />
+          </label>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Añadir'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Plan del día. Cronológico; protagonista el día del evento.
+// ---------------------------------------------------------------------
+
+function DayPlanSection({ eventId }: { eventId: string }) {
+  const [items, setItems] = useState<EventDayPlanItem[]>([])
+  const [newTitle, setNewTitle] = useState('')
+  const [newTime, setNewTime] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventDayPlan(eventId)
+      .then(setItems)
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar el plan del día')))
+  }
+  useEffect(reload, [eventId])
+
+  async function handleAdd(ev: FormEvent) {
+    ev.preventDefault()
+    if (!newTitle.trim()) return
+    try {
+      await addEventDayPlanItem(eventId, newTitle, newTime || null)
+      setNewTitle('')
+      setNewTime('')
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    }
+  }
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8 }}>
+      <strong>🗓️ Plan del día</strong>
+      {error && <p className="error">{error}</p>}
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {items.map((i) => (
+          <div key={i.id} className="inline-fields" style={{ alignItems: 'center' }}>
+            <span style={{ fontWeight: 600, minWidth: 48 }}>{i.itemTime ? i.itemTime.slice(0, 5) : '—'}</span>
+            <span style={{ flex: 1 }}>{i.title}</span>
+            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventDayPlanItem(i.id).then(reload)} />
+          </div>
+        ))}
+        {items.length === 0 && <p className="muted">Todavía no hay plan del día.</p>}
+      </div>
+      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
+        <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} style={{ width: 90 }} />
+        <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="+ Añadir al plan" style={{ flex: 1 }} />
+        <button type="submit">Añadir</button>
+      </form>
     </div>
   )
 }

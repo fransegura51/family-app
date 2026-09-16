@@ -7,7 +7,14 @@ import { addShoppingItem } from '@/data/shopping'
 import { supabase } from '@/data/supabaseClient'
 import { generateAutoTasks } from '@/domain/events'
 import type {
+  EventActivity,
   EventBudgetItem,
+  EventDayPlanItem,
+  EventDecorationItem,
+  EventDecorationStatus,
+  EventFavorItem,
+  EventFavorStatus,
+  EventGiftReceived,
   EventGuest,
   EventGuestInviteScope,
   EventGuestRsvpStatus,
@@ -16,6 +23,9 @@ import type {
   EventPayment,
   EventPaymentStatus,
   EventProvider,
+  EventSpecialDetail,
+  EventSpecialDetailStatus,
+  EventTableSeat,
   EventTask,
   EventType,
   FamilyEvent,
@@ -686,4 +696,372 @@ export async function regenerateGuestRsvpUrl(guestId: string): Promise<string> {
   const { data, error } = await supabase.rpc('regenerate_event_guest_rsvp_token', { p_guest_id: guestId })
   if (error) throw error
   return rsvpUrlFromToken(data as string)
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Decoración. Opcional; PEPA propone, la familia elige todo/
+// algo/nada (nunca se asume que un evento necesita decoración).
+// ---------------------------------------------------------------------
+
+const DECORATION_SELECT = 'id, event_id, family_id, name, note, status, price_estimate, transferred_to_shopping, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapDecorationItem(r: any): EventDecorationItem {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    name: r.name,
+    note: r.note,
+    status: r.status,
+    priceEstimate: r.price_estimate === null ? null : Number(r.price_estimate),
+    transferredToShopping: r.transferred_to_shopping,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventDecorationItems(eventId: string): Promise<EventDecorationItem[]> {
+  const { data, error } = await supabase
+    .from('event_decoration_items')
+    .select(DECORATION_SELECT)
+    .eq('event_id', eventId)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapDecorationItem)
+}
+
+export async function addEventDecorationItem(eventId: string, name: string, priceEstimate: number | null = null): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('event_decoration_items')
+    .insert({ event_id: eventId, family_id: familyId, name: name.trim(), price_estimate: priceEstimate, sort_order: Date.now() })
+  if (error) throw error
+}
+
+export async function updateEventDecorationItem(id: string, patch: { status?: EventDecorationStatus }): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.status !== undefined) update.status = patch.status
+  const { error } = await supabase.from('event_decoration_items').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventDecorationItem(id: string): Promise<void> {
+  const { error } = await supabase.from('event_decoration_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function transferDecorationItemToShopping(item: EventDecorationItem): Promise<void> {
+  await addShoppingItem({ name: item.name, quantity: '', unit: '', priority: 'normal', tripId: null, eventId: item.eventId })
+  const { error } = await supabase.from('event_decoration_items').update({ transferred_to_shopping: true }).eq('id', item.id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Actividades / juegos. Contextual, sobre todo cumpleaños sin
+// animación incluida por el local.
+// ---------------------------------------------------------------------
+
+const ACTIVITY_SELECT = 'id, event_id, family_id, title, description, age_range, duration_minutes, materials_note, transferred_to_shopping, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapActivity(r: any): EventActivity {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    title: r.title,
+    description: r.description,
+    ageRange: r.age_range,
+    durationMinutes: r.duration_minutes,
+    materialsNote: r.materials_note,
+    transferredToShopping: r.transferred_to_shopping,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventActivities(eventId: string): Promise<EventActivity[]> {
+  const { data, error } = await supabase.from('event_activities').select(ACTIVITY_SELECT).eq('event_id', eventId).order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapActivity)
+}
+
+export async function addEventActivity(
+  eventId: string,
+  input: { title: string; ageRange?: string | null; durationMinutes?: number | null; materialsNote?: string | null },
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_activities').insert({
+    event_id: eventId,
+    family_id: familyId,
+    title: input.title.trim(),
+    age_range: input.ageRange ?? null,
+    duration_minutes: input.durationMinutes ?? null,
+    materials_note: input.materialsNote ?? null,
+    sort_order: Date.now(),
+  })
+  if (error) throw error
+}
+
+export async function deleteEventActivity(id: string): Promise<void> {
+  const { error } = await supabase.from('event_activities').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function transferActivityMaterialsToShopping(activity: EventActivity): Promise<void> {
+  if (!activity.materialsNote?.trim()) return
+  await addShoppingItem({ name: activity.materialsNote, quantity: '', unit: '', priority: 'normal', tripId: null, eventId: activity.eventId })
+  const { error } = await supabase.from('event_activities').update({ transferred_to_shopping: true }).eq('id', activity.id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Mesas. Asignación simple, sin plano 3D (excluido a propósito
+// por la Skill).
+// ---------------------------------------------------------------------
+
+const TABLE_SELECT = 'id, event_id, family_id, name, capacity, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapTableSeat(r: any): EventTableSeat {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    name: r.name,
+    capacity: r.capacity,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventTables(eventId: string): Promise<EventTableSeat[]> {
+  const { data, error } = await supabase.from('event_tables').select(TABLE_SELECT).eq('event_id', eventId).order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapTableSeat)
+}
+
+export async function addEventTable(eventId: string, name: string, capacity: number | null): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_tables').insert({ event_id: eventId, family_id: familyId, name: name.trim(), capacity, sort_order: Date.now() })
+  if (error) throw error
+}
+
+export async function deleteEventTable(id: string): Promise<void> {
+  const { error } = await supabase.from('event_tables').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function assignGuestTable(guestId: string, tableId: string | null): Promise<void> {
+  const { error } = await supabase.from('event_guests').update({ table_id: tableId }).eq('id', guestId)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Detalles/recuerdos (por tipo de artículo) y Detalles
+// especiales (por persona) — mismo módulo 'detalles' del motor común,
+// dos formas distintas a propósito (ver plan).
+// ---------------------------------------------------------------------
+
+const FAVOR_SELECT = 'id, event_id, family_id, item_type, quantity_needed, budget, supplier, status, delivery_note, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapFavorItem(r: any): EventFavorItem {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    itemType: r.item_type,
+    quantityNeeded: r.quantity_needed,
+    budget: r.budget === null ? null : Number(r.budget),
+    supplier: r.supplier,
+    status: r.status,
+    deliveryNote: r.delivery_note,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventFavorItems(eventId: string): Promise<EventFavorItem[]> {
+  const { data, error } = await supabase.from('event_favor_items').select(FAVOR_SELECT).eq('event_id', eventId).order('created_at', { ascending: true })
+  if (error) throw error
+  return data.map(mapFavorItem)
+}
+
+export async function addEventFavorItem(
+  eventId: string,
+  input: { itemType: string; quantityNeeded?: number | null; budget?: number | null; supplier?: string | null },
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_favor_items').insert({
+    event_id: eventId,
+    family_id: familyId,
+    item_type: input.itemType.trim(),
+    quantity_needed: input.quantityNeeded ?? null,
+    budget: input.budget ?? null,
+    supplier: input.supplier ?? null,
+  })
+  if (error) throw error
+}
+
+export async function updateEventFavorItem(id: string, patch: { status?: EventFavorStatus }): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.status !== undefined) update.status = patch.status
+  const { error } = await supabase.from('event_favor_items').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventFavorItem(id: string): Promise<void> {
+  const { error } = await supabase.from('event_favor_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+const SPECIAL_DETAIL_SELECT = 'id, event_id, family_id, recipient_name, relationship, detail, budget, status, delivery_note, notes, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapSpecialDetail(r: any): EventSpecialDetail {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    recipientName: r.recipient_name,
+    relationship: r.relationship,
+    detail: r.detail,
+    budget: r.budget === null ? null : Number(r.budget),
+    status: r.status,
+    deliveryNote: r.delivery_note,
+    notes: r.notes,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventSpecialDetails(eventId: string): Promise<EventSpecialDetail[]> {
+  const { data, error } = await supabase
+    .from('event_special_details')
+    .select(SPECIAL_DETAIL_SELECT)
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data.map(mapSpecialDetail)
+}
+
+export async function addEventSpecialDetail(
+  eventId: string,
+  input: { recipientName: string; relationship?: string | null; detail?: string | null; budget?: number | null },
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_special_details').insert({
+    event_id: eventId,
+    family_id: familyId,
+    recipient_name: input.recipientName.trim(),
+    relationship: input.relationship ?? null,
+    detail: input.detail ?? null,
+    budget: input.budget ?? null,
+  })
+  if (error) throw error
+}
+
+export async function updateEventSpecialDetail(id: string, patch: { status?: EventSpecialDetailStatus }): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.status !== undefined) update.status = patch.status
+  const { error } = await supabase.from('event_special_details').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventSpecialDetail(id: string): Promise<void> {
+  const { error } = await supabase.from('event_special_details').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Regalos recibidos. PRIVADO, nunca en la página pública de
+// RSVP (event-rsvp no consulta esta tabla en ningún momento).
+// ---------------------------------------------------------------------
+
+const GIFT_SELECT = 'id, event_id, family_id, guest_name, gift_description, cash_amount, note, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapGiftReceived(r: any): EventGiftReceived {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    guestName: r.guest_name,
+    giftDescription: r.gift_description,
+    cashAmount: r.cash_amount === null ? null : Number(r.cash_amount),
+    note: r.note,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventGifts(eventId: string): Promise<EventGiftReceived[]> {
+  const { data, error } = await supabase.from('event_gifts_received').select(GIFT_SELECT).eq('event_id', eventId).order('created_at', { ascending: true })
+  if (error) throw error
+  return data.map(mapGiftReceived)
+}
+
+export async function addEventGift(
+  eventId: string,
+  input: { guestName: string; giftDescription?: string | null; cashAmount?: number | null; note?: string | null },
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_gifts_received').insert({
+    event_id: eventId,
+    family_id: familyId,
+    guest_name: input.guestName.trim(),
+    gift_description: input.giftDescription ?? null,
+    cash_amount: input.cashAmount ?? null,
+    note: input.note ?? null,
+  })
+  if (error) throw error
+}
+
+export async function deleteEventGift(id: string): Promise<void> {
+  const { error } = await supabase.from('event_gifts_received').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Plan del día. Cronológico, protagonista el propio día del
+// evento (ver modo "día del evento" en EventosScreen.tsx).
+// ---------------------------------------------------------------------
+
+const DAY_PLAN_SELECT = 'id, event_id, family_id, item_time, title, note, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapDayPlanItem(r: any): EventDayPlanItem {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    itemTime: r.item_time,
+    title: r.title,
+    note: r.note,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventDayPlan(eventId: string): Promise<EventDayPlanItem[]> {
+  const { data, error } = await supabase
+    .from('event_day_plan_items')
+    .select(DAY_PLAN_SELECT)
+    .eq('event_id', eventId)
+    .order('item_time', { ascending: true, nullsFirst: false })
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapDayPlanItem)
+}
+
+export async function addEventDayPlanItem(eventId: string, title: string, itemTime: string | null, note: string | null = null): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('event_day_plan_items')
+    .insert({ event_id: eventId, family_id: familyId, title: title.trim(), item_time: itemTime, note, sort_order: Date.now() })
+  if (error) throw error
+}
+
+export async function deleteEventDayPlanItem(id: string): Promise<void> {
+  const { error } = await supabase.from('event_day_plan_items').delete().eq('id', id)
+  if (error) throw error
 }

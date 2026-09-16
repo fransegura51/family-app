@@ -693,3 +693,147 @@ export interface EventPayment {
   createdAt: string
 }
 
+// Fase 3 — decoración/actividades: PEPA propone, la familia elige todo/
+// algo/nada (petición de la Skill); "transferredToShopping" evita
+// duplicar la línea si ya se pasó a Compras.
+export type EventDecorationStatus = 'idea' | 'elegido' | 'comprado'
+
+export interface EventDecorationItem {
+  id: string
+  eventId: string
+  familyId: string
+  name: string
+  note: string | null
+  status: EventDecorationStatus
+  priceEstimate: number | null
+  transferredToShopping: boolean
+  sortOrder: number
+  createdAt: string
+}
+
+export interface EventActivity {
+  id: string
+  eventId: string
+  familyId: string
+  title: string
+  description: string | null
+  ageRange: string | null
+  durationMinutes: number | null
+  materialsNote: string | null
+  transferredToShopping: boolean
+  sortOrder: number
+  createdAt: string
+}
+
+export interface EventTableSeat {
+  id: string
+  eventId: string
+  familyId: string
+  name: string
+  capacity: number | null
+  sortOrder: number
+  createdAt: string
+}
+
+export type EventFavorStatus = 'pendiente' | 'encargado' | 'listo'
+
+// Detalles/recuerdos para los invitados (petición real: no solo boda/
+// comunión — también aplica a cumpleaños con bolsas de chuches, etc.),
+// por tipo de artículo — distinto de EventSpecialDetail (por persona).
+export interface EventFavorItem {
+  id: string
+  eventId: string
+  familyId: string
+  itemType: string
+  quantityNeeded: number | null
+  budget: number | null
+  supplier: string | null
+  status: EventFavorStatus
+  deliveryNote: string | null
+  createdAt: string
+}
+
+export type EventSpecialDetailStatus = 'pendiente' | 'comprado' | 'preparado'
+
+// Detalles para personas concretas (padrinos, testigos, abuelos...) —
+// por destinatario, no por tipo de artículo.
+export interface EventSpecialDetail {
+  id: string
+  eventId: string
+  familyId: string
+  recipientName: string
+  relationship: string | null
+  detail: string | null
+  budget: number | null
+  status: EventSpecialDetailStatus
+  deliveryNote: string | null
+  notes: string | null
+  createdAt: string
+}
+
+// Regalos recibidos — PRIVADO, nunca expuesto en la página pública de
+// RSVP (petición explícita de la Skill).
+export interface EventGiftReceived {
+  id: string
+  eventId: string
+  familyId: string
+  guestName: string
+  giftDescription: string | null
+  cashAmount: number | null
+  note: string | null
+  createdAt: string
+}
+
+export interface EventDayPlanItem {
+  id: string
+  eventId: string
+  familyId: string
+  itemTime: string | null
+  title: string
+  note: string | null
+  sortOrder: number
+  createdAt: string
+}
+
+// Diseño de la invitación en capas (Fase 3) — una fila por evento.
+// canvasJson guarda las capas (fondo/decoración/foto/texto/emoji) con
+// posición/rotación/escala; el invite_scope de cada invitado no cambia
+// el diseño, solo qué líneas de ubicación se muestran al compartir.
+export type InvitationLayerType = 'background' | 'shape' | 'photo' | 'text' | 'emoji' | 'event_data'
+
+export interface InvitationLayer {
+  id: string
+  type: InvitationLayerType
+  x: number
+  y: number
+  rotation: number
+  scale: number
+  zIndex: number
+  // texto/emoji
+  text?: string
+  color?: string
+  fontFamily?: string
+  fontSize?: number
+  // forma decorativa genérica (sin personajes con copyright)
+  shapeKey?: string
+  // foto subida por el usuario (event-photos bucket)
+  photoPath?: string
+  photoUrl?: string
+}
+
+export interface InvitationCanvas {
+  backgroundGradient: string
+  layers: InvitationLayer[]
+}
+
+export interface EventInvitation {
+  id: string
+  eventId: string
+  familyId: string
+  templateKey: string | null
+  canvas: InvitationCanvas
+  backgroundImagePath: string | null
+  createdAt: string
+  updatedAt: string
+}
+

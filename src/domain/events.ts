@@ -57,6 +57,9 @@ import invitaHalloweenCalabaza from '@/assets/eventos/invitaciones/halloween_cal
 import invitaHalloweenCasa from '@/assets/eventos/invitaciones/halloween_casa.jpg'
 import invitaHalloweenBruja from '@/assets/eventos/invitaciones/halloween_bruja.jpg'
 import invitaHalloweenFantasmas from '@/assets/eventos/invitaciones/halloween_fantasmas.jpg'
+import invitaAlegre from '@/assets/eventos/invitaciones/alegre.jpg'
+import invitaCumpleanosRosa from '@/assets/eventos/invitaciones/cumpleanos_rosa.jpg'
+import invitaCumpleanosFiesta from '@/assets/eventos/invitaciones/cumpleanos_fiesta.jpg'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -353,7 +356,7 @@ export interface InvitationTemplateMeta {
 
 export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti' },
-  { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos' },
+  { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos', image: invitaAlegre },
   { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo' },
   { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol', image: invitaFutbol },
   { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio },
@@ -438,6 +441,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'halloween_casa', label: 'Halloween casa encantada', gradient: 'linear-gradient(160deg, #1E1B4B, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaHalloweenCasa },
   { key: 'halloween_bruja', label: 'Halloween bruja', gradient: 'linear-gradient(160deg, #166534, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaHalloweenBruja },
   { key: 'halloween_fantasmas', label: 'Halloween fantasmas', gradient: 'linear-gradient(160deg, #C2410C, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaHalloweenFantasmas },
+  // Lote 9 — más variantes de cumpleaños; se descarta una cuarta
+  // (señal de madera "Buena compañía/Risas/Momentos inolvidables" en
+  // playa) por quedar demasiado parecida a Playa tropical.
+  { key: 'cumpleanos_rosa', label: 'Cumpleaños rosa', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaCumpleanosRosa },
+  { key: 'cumpleanos_fiesta', label: 'Cumpleaños fiesta', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCumpleanosFiesta },
 ]
 
 // ---------------------------------------------------------------------

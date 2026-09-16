@@ -782,6 +782,33 @@ export async function regenerateGuestRsvpUrl(guestId: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------
+// Fase 4 — enlace de RSVP abierto (opcional, sin invitado previo).
+// Mismo patrón de token que el personalizado, pero a nivel de evento.
+// ---------------------------------------------------------------------
+
+function openRsvpUrlFromToken(token: string): string {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+  return `${supabaseUrl}/functions/v1/event-rsvp?open=${token}`
+}
+
+export async function getEventOpenRsvpUrl(eventId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('generate_event_open_rsvp_token', { p_event_id: eventId })
+  if (error) throw error
+  return openRsvpUrlFromToken(data as string)
+}
+
+export async function regenerateEventOpenRsvpUrl(eventId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('regenerate_event_open_rsvp_token', { p_event_id: eventId })
+  if (error) throw error
+  return openRsvpUrlFromToken(data as string)
+}
+
+export async function disableEventOpenLink(eventId: string): Promise<void> {
+  const { error } = await supabase.from('events').update({ open_rsvp_token: null }).eq('id', eventId)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
 // Fase 3 — Decoración. Opcional; PEPA propone, la familia elige todo/
 // algo/nada (nunca se asume que un evento necesita decoración).
 // ---------------------------------------------------------------------

@@ -30,8 +30,10 @@ import {
   deleteEventSpecialDetail,
   deleteEventTable,
   deleteEventTask,
+  disableEventOpenLink,
   duplicateEvent,
   getEventInvitation,
+  getEventOpenRsvpUrl,
   getGuestRsvpUrl,
   getInvitationPhotoUrl,
   linkEventToCalendar,
@@ -52,6 +54,7 @@ import {
   listEventTasks,
   listEvents,
   recalculateAutoTasks,
+  regenerateEventOpenRsvpUrl,
   regenerateGuestRsvpUrl,
   saveEventInvitation,
   transferActivityMaterialsToShopping,
@@ -975,6 +978,7 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
       </p>
       {notice && <p className="points-badge">{notice}</p>}
       {error && <p className="error">{error}</p>}
+      <EventOpenLinkBlock event={event} />
       {pending.length > 0 && (
         <button type="button" className="link-button" onClick={handleRemindPending}>
           🔔 Recordar a pendientes ({pending.length})
@@ -1073,6 +1077,108 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
       {invitationGuest && <InvitationModal event={event} guest={invitationGuest} onClose={() => setInvitationGuest(null)} />}
       {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
       {showDesigner && <InvitationCanvasEditor event={event} onClose={() => setShowDesigner(false)} onSaved={() => setShowDesigner(false)} />}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 4 — enlace de RSVP abierto. Petición de la Skill: "For informal
+// events, an open RSVP link may allow recipient to type minimal
+// identification and adult/child counts" — cada envío crea un
+// invitado nuevo directamente (ver event-rsvp), sin pasar por aquí.
+// ---------------------------------------------------------------------
+
+function EventOpenLinkBlock({ event }: { event: FamilyEvent }) {
+  const [token, setToken] = useState(event.openRsvpToken)
+  const [url, setUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
+
+  useEffect(() => {
+    if (event.openRsvpToken) getEventOpenRsvpUrl(event.id).then(setUrl).catch(() => {})
+  }, [event.id, event.openRsvpToken])
+
+  async function handleActivate() {
+    setLoading(true)
+    setError(null)
+    try {
+      const newUrl = await getEventOpenRsvpUrl(event.id)
+      setUrl(newUrl)
+      setToken('activo')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo activar el enlace'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRegenerate() {
+    setLoading(true)
+    setError(null)
+    try {
+      const newUrl = await regenerateEventOpenRsvpUrl(event.id)
+      setUrl(newUrl)
+      setNotice('Enlace nuevo generado — el anterior ha dejado de funcionar.')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo regenerar'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDisable() {
+    setLoading(true)
+    setError(null)
+    try {
+      await disableEventOpenLink(event.id)
+      setToken(null)
+      setUrl(null)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo desactivar'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleShare() {
+    if (!url) return
+    try {
+      const shown = await shareText({ title: event.title, text: `Confirma tu asistencia a "${event.title}" aquí: ${url}` })
+      setNotice(shown ? null : 'Copiado al portapapeles.')
+    } catch {
+      setManualShare({ title: event.title, text: `Confirma tu asistencia a "${event.title}" aquí: ${url}` })
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
+      <strong style={{ fontSize: 13 }}>🔗 Enlace abierto (opcional)</strong>
+      <p className="muted" style={{ fontSize: 12, margin: '2px 0 4px' }}>
+        Para invitar sin lista cerrada — quien lo abre escribe su nombre y cuántos vienen, y crea su propio invitado.
+      </p>
+      {error && <p className="error">{error}</p>}
+      {notice && <p className="points-badge">{notice}</p>}
+      {!token && (
+        <button type="button" className="link-button" onClick={handleActivate} disabled={loading}>
+          {loading ? 'Activando…' : 'Activar enlace abierto'}
+        </button>
+      )}
+      {token && (
+        <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+          <button type="button" className="link-button" onClick={handleShare} disabled={!url}>
+            📤 Compartir
+          </button>
+          <button type="button" className="link-button" onClick={handleRegenerate} disabled={loading}>
+            🔄 Regenerar
+          </button>
+          <button type="button" className="link-button" onClick={handleDisable} disabled={loading}>
+            🚫 Desactivar
+          </button>
+        </div>
+      )}
+      {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
     </div>
   )
 }

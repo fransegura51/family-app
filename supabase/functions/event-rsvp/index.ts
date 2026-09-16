@@ -36,6 +36,7 @@ const DUAL_LOCATION_TYPES = new Set(["comunion", "bautizo", "boda"])
 
 interface EventRow {
   id: string
+  family_id: string
   type: string
   title: string
   date_status: string
@@ -242,13 +243,116 @@ function formPage(event: EventRow, guest: GuestRow): string {
   )
 }
 
+// Enlace abierto (Fase 4, opcional) — para eventos informales: quien
+// lo recibe escribe su propio nombre y cuántos vienen, sin identidad
+// previa (petición de la Skill: "type minimal identification and
+// adult/child counts"). Cada envío crea un invitado nuevo, nunca
+// actualiza uno existente (a diferencia del enlace personalizado).
+function openFormPage(event: EventRow): string {
+  const infoLines = [dateLine(event), ...locationLines(event, { invite_scope: null } as unknown as GuestRow)]
+  const deadline = event.rsvp_deadline ? `<p class="muted">Por favor, responde antes del ${event.rsvp_deadline}.</p>` : ""
+  return pageShell(
+    event.title,
+    `<div class="card" id="form-card">
+  <h1>${EVENT_TYPE_LABEL[event.type] ?? "🎉"} ${escapeHtml(event.title)}</h1>
+  ${infoLines.map((l) => `<p class="info-line">${l}</p>`).join("")}
+  ${deadline}
+  <form id="rsvp-form">
+    <label style="display:block; margin-top: 14px; font-size: 13px;">
+      Tu nombre (o el de tu familia/grupo)
+      <input type="text" id="name" maxlength="120" required style="width:100%; margin-top:4px; padding:10px; border-radius:10px; border:1px solid #d8dae8; font-size:15px;">
+    </label>
+    <div class="counts-row">
+      <label>Adultos<input type="number" min="0" max="50" id="adults" value="1"></label>
+      <label>Niños<input type="number" min="0" max="50" id="children" value="0"></label>
+    </div>
+    <label style="display:block; margin-top: 14px; font-size: 13px;">
+      Nota (alergia, algún comentario...) — opcional
+      <textarea id="note" maxlength="300"></textarea>
+    </label>
+    <button type="submit" id="submit-btn">Confirmar asistencia</button>
+  </form>
+  <p id="msg" class="muted"></p>
+</div>
+<script>
+  var form = document.getElementById('rsvp-form');
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var name = document.getElementById('name').value.trim();
+    if (!name) return;
+    var btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Enviando…';
+    fetch(window.location.href, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name,
+        adults: document.getElementById('adults').value,
+        children: document.getElementById('children').value,
+        note: document.getElementById('note').value,
+      }),
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function () {
+        document.getElementById('form-card').innerHTML =
+          '<div class="thanks"><div class="big">🎉</div><h1>¡Gracias!</h1><p class="muted">Tu respuesta se ha guardado.</p></div>';
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = 'Confirmar asistencia';
+        document.getElementById('msg').style.display = 'block';
+        document.getElementById('msg').textContent = 'No se ha podido guardar — inténtalo otra vez en un momento.';
+      });
+  });
+</script>`,
+  )
+}
+
+const EVENT_SELECT =
+  "id, family_id, type, title, date_status, event_date, event_time, venue_label, ceremony_location_label, ceremony_time, celebration_location_label, rsvp_deadline, status"
+
 Deno.serve(async (req) => {
   try {
     const url = new URL(req.url)
     const token = url.searchParams.get("token")
-    if (!token) return htmlResponse(notFoundPage(), 404)
+    const openToken = url.searchParams.get("open")
+    if (!token && !openToken) return htmlResponse(notFoundPage(), 404)
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+
+    // Enlace abierto — sin invitado previo, quien lo usa crea su propia fila.
+    if (openToken) {
+      const { data: event } = await admin.from("events").select(EVENT_SELECT).eq("open_rsvp_token", openToken).maybeSingle()
+      if (!event) return htmlResponse(notFoundPage(), 404)
+
+      if (req.method === "POST") {
+        const body = await req.json().catch(() => null)
+        const name = typeof body?.name === "string" ? body.name.trim().slice(0, 120) : ""
+        if (!name) return jsonResponse({ error: "missing_name" }, 400)
+        const clamp = (n: unknown) => Math.max(0, Math.min(50, Math.round(Number(n)) || 0))
+        const note = typeof body.note === "string" ? body.note.slice(0, 300) || null : null
+
+        const { error } = await admin.from("event_guests").insert({
+          event_id: event.id,
+          family_id: event.family_id,
+          display_name: name,
+          adults_count: clamp(body.adults) || 1,
+          children_count: clamp(body.children),
+          rsvp_status: "confirmado",
+          rsvp_adults_count: clamp(body.adults) || 1,
+          rsvp_children_count: clamp(body.children),
+          rsvp_note: note,
+          rsvp_responded_at: new Date().toISOString(),
+          sort_order: Date.now(),
+        })
+        if (error) return jsonResponse({ error: "save_failed" }, 500)
+        return jsonResponse({ ok: true })
+      }
+
+      if (event.status === "archivado") return htmlResponse(archivedPage(event as EventRow))
+      return htmlResponse(openFormPage(event as EventRow))
+    }
 
     const { data: guest } = await admin
       .from("event_guests")
@@ -257,13 +361,7 @@ Deno.serve(async (req) => {
       .maybeSingle()
     if (!guest) return htmlResponse(notFoundPage(), 404)
 
-    const { data: event } = await admin
-      .from("events")
-      .select(
-        "id, type, title, date_status, event_date, event_time, venue_label, ceremony_location_label, ceremony_time, celebration_location_label, rsvp_deadline, status",
-      )
-      .eq("id", guest.event_id)
-      .maybeSingle()
+    const { data: event } = await admin.from("events").select(EVENT_SELECT).eq("id", guest.event_id).maybeSingle()
     if (!event) return htmlResponse(notFoundPage(), 404)
 
     if (req.method === "POST") {

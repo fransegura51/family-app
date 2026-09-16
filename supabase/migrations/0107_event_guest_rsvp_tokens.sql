@@ -10,7 +10,7 @@ create or replace function public.generate_event_guest_rsvp_token(p_guest_id uui
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_family_id uuid;
@@ -47,7 +47,7 @@ create or replace function public.regenerate_event_guest_rsvp_token(p_guest_id u
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_family_id uuid;

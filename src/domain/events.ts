@@ -34,6 +34,29 @@ import invitaAlienigenas from '@/assets/eventos/invitaciones/alienigenas.jpg'
 import invitaPlaya from '@/assets/eventos/invitaciones/playa.jpg'
 import invitaConcierto from '@/assets/eventos/invitaciones/concierto.jpg'
 import invitaBoda from '@/assets/eventos/invitaciones/boda.jpg'
+import invitaSuperheroe from '@/assets/eventos/invitaciones/superheroe.jpg'
+import invitaCorazones from '@/assets/eventos/invitaciones/corazones.jpg'
+import invitaObras from '@/assets/eventos/invitaciones/obras.jpg'
+import invitaNochevieja from '@/assets/eventos/invitaciones/nochevieja.jpg'
+import invitaComunion from '@/assets/eventos/invitaciones/comunion.jpg'
+import invitaBebeNino from '@/assets/eventos/invitaciones/bebe_nino.jpg'
+import invitaDisco from '@/assets/eventos/invitaciones/disco.jpg'
+import invitaElegante from '@/assets/eventos/invitaciones/elegante.jpg'
+import invitaBautizo from '@/assets/eventos/invitaciones/bautizo.jpg'
+import invitaBarbacoa from '@/assets/eventos/invitaciones/barbacoa.jpg'
+import invitaBautizoNina from '@/assets/eventos/invitaciones/bautizo_nina.jpg'
+import invitaNavidad from '@/assets/eventos/invitaciones/navidad.jpg'
+import invitaCumpleanosElegante from '@/assets/eventos/invitaciones/cumpleanos_elegante.jpg'
+import invitaNavidadHogar from '@/assets/eventos/invitaciones/navidad_hogar.jpg'
+import invitaNavidadMuneco from '@/assets/eventos/invitaciones/navidad_muneco.jpg'
+import invitaNavidadDorada from '@/assets/eventos/invitaciones/navidad_dorada.jpg'
+import invitaNavidadPapanoel from '@/assets/eventos/invitaciones/navidad_papanoel.jpg'
+import invitaNavidadGalletas from '@/assets/eventos/invitaciones/navidad_galletas.jpg'
+import invitaNavidadFarolillos from '@/assets/eventos/invitaciones/navidad_farolillos.jpg'
+import invitaHalloweenCalabaza from '@/assets/eventos/invitaciones/halloween_calabaza.jpg'
+import invitaHalloweenCasa from '@/assets/eventos/invitaciones/halloween_casa.jpg'
+import invitaHalloweenBruja from '@/assets/eventos/invitaciones/halloween_bruja.jpg'
+import invitaHalloweenFantasmas from '@/assets/eventos/invitaciones/halloween_fantasmas.jpg'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -334,23 +357,23 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo' },
   { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol', image: invitaFutbol },
   { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio },
-  { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado' },
+  { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado', image: invitaElegante },
   { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral' },
-  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste' },
-  { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco' },
+  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo },
+  { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco', image: invitaDisco },
   // Lote 2 — petición real, lista de 26 temas; 3 no se hacen por ser
   // personajes/estilos con derechos de terceros (Minecraft, Mario Bros,
   // Spiderman — ver INVITATION_ART en EventosScreen.tsx). El resto se
   // reparte en varios lotes.
   { key: 'dinosaurios', label: 'Dinosaurios', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'dinosaurios', image: invitaDinosaurios },
   { key: 'videojuegos', label: 'Videojuegos', gradient: 'linear-gradient(160deg, #312E81, #4C1D95)', text: '#ffffff', artKey: 'videojuegos', image: invitaVideojuegos },
-  { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones' },
+  { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones', image: invitaCorazones },
   { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos' },
   { key: 'gatitos', label: 'Gatitos', gradient: 'linear-gradient(160deg, #F3E8FF, #E9D5FF)', text: '#6B21A8', artKey: 'gatitos' },
   { key: 'coches', label: 'Coches de carreras', gradient: 'linear-gradient(160deg, #1F2937, #7F1D1D)', text: '#ffffff', artKey: 'coches', image: invitaCoches },
   // Lote 3.
   { key: 'robots', label: 'Robots', gradient: 'linear-gradient(160deg, #64748B, #1E293B)', text: '#ffffff', artKey: 'robots' },
-  { key: 'superheroe', label: 'Superhéroe', gradient: 'linear-gradient(160deg, #DC2626, #1E3A8A)', text: '#ffffff', artKey: 'superheroe' },
+  { key: 'superheroe', label: 'Superhéroe', gradient: 'linear-gradient(160deg, #DC2626, #1E3A8A)', text: '#ffffff', artKey: 'superheroe', image: invitaSuperheroe },
   { key: 'superheroina', label: 'Superheroína', gradient: 'linear-gradient(160deg, #EC4899, #7C3AED)', text: '#ffffff', artKey: 'superheroina' },
   { key: 'pijamas', label: 'Estrellitas', gradient: 'linear-gradient(160deg, #312E81, #0F172A)', text: '#ffffff', artKey: 'pijamas' },
   // "Guerreras Kpop" — ambiente genérico de concierto/idol (neón,
@@ -378,6 +401,43 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'playa', label: 'Playa tropical', gradient: 'linear-gradient(160deg, #FDBA74, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlaya },
   { key: 'concierto', label: 'Concierto', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaConcierto },
   { key: 'boda', label: 'Boda', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#4A5D23', artKey: 'confeti', image: invitaBoda },
+  // Lote 5 — segunda hoja de arte real. Se descartan los repetidos de
+  // temas que ya tenían imagen (fútbol, dinosaurios, espacio, unicornio)
+  // y una sirena que se parece demasiado a un personaje Disney conocido
+  // (pelo rojo, top de concha, mismo silueta) — misma regla de siempre.
+  { key: 'obras', label: 'Obras', gradient: 'linear-gradient(160deg, #FBBF24, #78350F)', text: '#1f2233', artKey: 'confeti', image: invitaObras },
+  { key: 'nochevieja', label: 'Nochevieja', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaNochevieja },
+  { key: 'comunion', label: 'Comunión', gradient: 'linear-gradient(160deg, #ECFDF5, #D1FAE5)', text: '#166534', artKey: 'confeti', image: invitaComunion },
+  { key: 'bebe_nino', label: 'Bebé niño', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'confeti', image: invitaBebeNino },
+  // Lote 6 — tercera hoja de arte real. Se descartan los repetidos
+  // (Nochevieja, Playa, los 5 de boda que ya teníamos cubiertos, la
+  // variante rosa de comunión, el barco de bautizo y el osito de luna
+  // que repetía Bebé niño) y se sustituye el comunion.jpg del lote 5
+  // (floral verde) por este cáliz, más reconocible.
+  { key: 'barbacoa', label: 'Barbacoa', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaBarbacoa },
+  // Lote 7 — cuarta hoja. Se descartan los repetidos (Nochevieja, un
+  // marco de luces de jardín parecido a Barbacoa, y rosas/corazones que
+  // ya teníamos) y se añaden Bautizo niña, Navidad y un Cumpleaños más
+  // elegante/adulto (pastel de chocolate y cóctel, distinto del
+  // Cumpleaños infantil de "Globos").
+  { key: 'bautizo_nina', label: 'Bautizo niña', gradient: 'linear-gradient(160deg, #FCE7F3, #FBCFE8)', text: '#9D174D', artKey: 'confeti', image: invitaBautizoNina },
+  { key: 'navidad', label: 'Navidad', gradient: 'linear-gradient(160deg, #166534, #7F1D1D)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidad },
+  { key: 'cumpleanos_elegante', label: 'Cumpleaños elegante', gradient: 'linear-gradient(160deg, #134E4A, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCumpleanosElegante },
+  // Lote 8 — "Navidad varias" (pedido explícito en la lista de 26
+  // temas: varias variantes navideñas, no solo una) + una hoja extra de
+  // Halloween que no estaba en la lista pero encaja igual de bien en
+  // Celebración/Personalizado — nada con copyright, calabazas/fantasmas
+  // genéricos.
+  { key: 'navidad_hogar', label: 'Navidad junto al fuego', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadHogar },
+  { key: 'navidad_muneco', label: 'Navidad muñeco de nieve', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaNavidadMuneco },
+  { key: 'navidad_dorada', label: 'Navidad dorada', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#7C2D12', artKey: 'confeti', image: invitaNavidadDorada },
+  { key: 'navidad_papanoel', label: 'Navidad Papá Noel', gradient: 'linear-gradient(160deg, #7F1D1D, #1E3A8A)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadPapanoel },
+  { key: 'navidad_galletas', label: 'Navidad galletas', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadGalletas },
+  { key: 'navidad_farolillos', label: 'Navidad farolillos', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaNavidadFarolillos },
+  { key: 'halloween_calabaza', label: 'Halloween calabaza', gradient: 'linear-gradient(160deg, #C2410C, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaHalloweenCalabaza },
+  { key: 'halloween_casa', label: 'Halloween casa encantada', gradient: 'linear-gradient(160deg, #1E1B4B, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaHalloweenCasa },
+  { key: 'halloween_bruja', label: 'Halloween bruja', gradient: 'linear-gradient(160deg, #166534, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaHalloweenBruja },
+  { key: 'halloween_fantasmas', label: 'Halloween fantasmas', gradient: 'linear-gradient(160deg, #C2410C, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaHalloweenFantasmas },
 ]
 
 // ---------------------------------------------------------------------

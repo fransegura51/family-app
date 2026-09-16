@@ -92,6 +92,9 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Detalles / recuerdos', text: 'Dos listas aparte: recuerdos para los invitados en general (bolsas de chuches, detalles de comunión...) por tipo de artículo con proveedor y estado, y detalles para personas concretas (padrinos, testigos, abuelos...) por destinatario.' },
     { title: 'Regalos recibidos', text: 'Privado — nunca se muestra en la página pública de RSVP. Quién trajo qué, importe en efectivo si lo hay, y el total sumado solo.' },
     { title: 'Plan del día', text: 'Lista cronológica con hora y título de cada momento del día — se vuelve más protagonista el propio día del evento.' },
+    { title: 'Plazo de RSVP', text: 'Fecha opcional (editar evento) — cuando se acerca y todavía queda gente sin responder, avisa en "Pepa dice".' },
+    { title: 'Pepa dice', text: 'Avisos que solo aparecen si hay algo real que decir: invitados sin responder cerca del plazo, tareas con fecha ya pasada, pagos que vencen pronto con saldo pendiente, o gasto ya por encima de lo planeado en Presupuesto.' },
+    { title: 'Hoy es el día', text: 'Con la fecha ya confirmada y siendo hoy, arriba del todo aparece un aviso con las personas confirmadas, lo que falte pasar a Compras y el siguiente momento del Plan del día.' },
   ],
   '/puntos': [
     { title: 'Saldo por miembro', text: 'Se gana marcando "Hecho" en eventos del Calendario que llevan puntos asignados.' },

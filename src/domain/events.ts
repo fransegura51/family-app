@@ -4,7 +4,7 @@
 // archivo reúne lo que cambia por tipo de evento (nombre, módulos
 // recomendados, checklist inicial) para que EventosScreen.tsx no lleve
 // ningún "if (type === ...)" disperso por la UI.
-import type { EventGuestInviteScope, EventModuleKey, EventType, FamilyEvent } from '@/domain/types'
+import type { EventGuest, EventGuestInviteScope, EventModuleKey, EventPayment, EventTask, EventType, FamilyEvent } from '@/domain/types'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -189,3 +189,93 @@ export const INVITATION_TEMPLATES: { key: string; label: string; gradient: strin
   { key: 'elegante', label: 'Elegante', gradient: 'linear-gradient(135deg, #1F2937, #4B5563)', text: '#ffffff' },
   { key: 'alegre', label: 'Alegre', gradient: 'linear-gradient(135deg, #FBBF24, #34D399)', text: '#1f2233' },
 ]
+
+// ---------------------------------------------------------------------
+// Fase 3 — modo "día del evento" y conclusiones de PEPA por reglas.
+// Petición de la Skill (00-master-spec.md, puntos 14/15): "Conclusions
+// should link directly to the relevant module/action where possible" y
+// "On the event date, home view should emphasise..." — nada de IA de
+// verdad aquí, solo reglas sobre datos que ya tenemos, igual que las
+// "Conclusiones de Pepa" que ya existen en Economía.
+// ---------------------------------------------------------------------
+
+export function isToday(dateStr: string | null): boolean {
+  if (!dateStr) return false
+  return dateStr === new Date().toISOString().slice(0, 10)
+}
+
+function daysUntil(dateStr: string): number {
+  const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`)
+  const target = new Date(`${dateStr}T00:00:00`)
+  return Math.round((target.getTime() - today.getTime()) / 86400000)
+}
+
+export interface EventConclusion {
+  id: string
+  icon: string
+  text: string
+}
+
+export function computeEventConclusions(input: {
+  rsvpDeadline: string | null
+  guests: Pick<EventGuest, 'rsvpStatus'>[]
+  tasks: Pick<EventTask, 'done' | 'dueDate'>[]
+  payments: Pick<EventPayment, 'concept' | 'totalAmount' | 'depositPaid' | 'dueDate' | 'status'>[]
+  plannedBudget: number
+  spentBudget: number | null
+}): EventConclusion[] {
+  const conclusions: EventConclusion[] = []
+
+  const pendingGuests = input.guests.filter((g) => g.rsvpStatus === 'pendiente').length
+  if (input.rsvpDeadline && pendingGuests > 0) {
+    const days = daysUntil(input.rsvpDeadline)
+    if (days >= 0 && days <= 7) {
+      conclusions.push({
+        id: 'rsvp-deadline',
+        icon: '⏳',
+        text: `${pendingGuests} ${pendingGuests === 1 ? 'invitado sin responder' : 'invitados sin responder'} y el plazo de RSVP es en ${days === 0 ? 'hoy' : days === 1 ? '1 día' : `${days} días`}.`,
+      })
+    } else if (days < 0) {
+      conclusions.push({
+        id: 'rsvp-deadline-passed',
+        icon: '⏳',
+        text: `El plazo de RSVP ya pasó y ${pendingGuests} ${pendingGuests === 1 ? 'invitado sigue' : 'invitados siguen'} sin responder.`,
+      })
+    }
+  }
+
+  const overdueTasks = input.tasks.filter((t) => !t.done && t.dueDate && daysUntil(t.dueDate) < 0).length
+  if (overdueTasks > 0) {
+    conclusions.push({
+      id: 'overdue-tasks',
+      icon: '✅',
+      text: `${overdueTasks} ${overdueTasks === 1 ? 'tarea tiene' : 'tareas tienen'} fecha ya pasada y sigue sin marcarse hecha.`,
+    })
+  }
+
+  for (const p of input.payments) {
+    if (p.status === 'pagado' || !p.dueDate) continue
+    const days = daysUntil(p.dueDate)
+    const remaining = p.totalAmount - p.depositPaid
+    if (days <= 7 && remaining > 0) {
+      conclusions.push({
+        id: `payment-${p.concept}-${p.dueDate}`,
+        icon: '🧾',
+        text:
+          days < 0
+            ? `"${p.concept}" venció y quedan ${remaining.toFixed(2)} € pendientes.`
+            : `"${p.concept}" vence en ${days === 0 ? 'hoy' : days === 1 ? '1 día' : `${days} días`} y quedan ${remaining.toFixed(2)} € pendientes.`,
+      })
+    }
+  }
+
+  if (input.spentBudget !== null && input.plannedBudget > 0 && input.spentBudget > input.plannedBudget) {
+    conclusions.push({
+      id: 'budget-over',
+      icon: '💰',
+      text: `El gasto ya supera lo planeado: ${input.spentBudget.toFixed(2)} € gastados de ${input.plannedBudget.toFixed(2)} € presupuestados.`,
+    })
+  }
+
+  return conclusions
+}

@@ -66,13 +66,16 @@ import { listExpenses } from '@/data/finance'
 import { errorMessage } from '@/domain/errorMessage'
 import {
   CELEBRATION_SUBTYPES,
+  computeEventConclusions,
   DUAL_LOCATION_EVENT_TYPES,
+  type EventConclusion as EventConclusionType,
   EVENT_MODULES,
   EVENT_TYPES,
   EVENT_TYPE_META,
   eventDateLine,
   eventLocationLines,
   INVITATION_TEMPLATES,
+  isToday,
   RECOMMENDED_MODULES,
 } from '@/domain/events'
 import type {
@@ -528,6 +531,9 @@ function EventDetail({
         )}
       </div>
 
+      {event.status === 'planificacion' && event.dateStatus === 'confirmada' && isToday(event.eventDate) && <EventDayBanner event={event} />}
+      {event.status === 'planificacion' && <PepaConclusions event={event} />}
+
       {hasTasksModule && (
         <div className="card event-card" style={{ marginTop: 8 }}>
           <strong>Pendiente ahora</strong>
@@ -644,6 +650,7 @@ function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClo
   const [eventDate, setEventDate] = useState(event.eventDate ?? '')
   const [venueLabel, setVenueLabel] = useState(event.venueLabel ?? '')
   const [theme, setTheme] = useState(event.theme ?? '')
+  const [rsvpDeadline, setRsvpDeadline] = useState(event.rsvpDeadline ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -659,6 +666,7 @@ function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClo
         eventDate: nextDate,
         venueLabel: venueLabel || null,
         theme: theme || null,
+        rsvpDeadline: rsvpDeadline || null,
       })
       // Petición de la Skill: "relative tasks update when event date
       // changes" — solo se recalcula si la fecha de verdad ha cambiado.
@@ -711,6 +719,10 @@ function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClo
           <label>
             Tema
             <input type="text" value={theme} onChange={(e) => setTheme(e.target.value)} />
+          </label>
+          <label>
+            Plazo de RSVP (opcional)
+            <input type="date" value={rsvpDeadline} onChange={(e) => setRsvpDeadline(e.target.value)} />
           </label>
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando…' : 'Guardar'}
@@ -2352,6 +2364,104 @@ function DayPlanSection({ eventId }: { eventId: string }) {
         <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="+ Añadir al plan" style={{ flex: 1 }} />
         <button type="submit">Añadir</button>
       </form>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — modo "día del evento". Petición de la Skill: el día del
+// evento, la pantalla debe destacar lo inmediato (asistencia
+// confirmada, compras pendientes, próximo momento del plan) — nunca se
+// muestra si el evento no está en marcha o la fecha no está confirmada.
+// ---------------------------------------------------------------------
+
+function EventDayBanner({ event }: { event: FamilyEvent }) {
+  const [confirmedPeople, setConfirmedPeople] = useState<number | null>(null)
+  const [pendingPurchases, setPendingPurchases] = useState(0)
+  const [nextPlanItem, setNextPlanItem] = useState<EventDayPlanItem | null>(null)
+
+  useEffect(() => {
+    if (event.enabledModules.includes('invitados')) {
+      listEventGuests(event.id).then((guests) => {
+        const confirmed = guests.filter((g) => g.rsvpStatus === 'confirmado')
+        setConfirmedPeople(confirmed.reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0))
+      })
+    }
+    Promise.all([
+      event.enabledModules.includes('menu_compra') ? listEventMenuItems(event.id) : Promise.resolve([]),
+      event.enabledModules.includes('decoracion') ? listEventDecorationItems(event.id) : Promise.resolve([]),
+    ]).then(([menu, decoration]) => {
+      setPendingPurchases(menu.filter((i) => !i.transferred).length + decoration.filter((i) => !i.transferredToShopping).length)
+    })
+    if (event.enabledModules.includes('plan_dia')) {
+      listEventDayPlan(event.id).then((items) => {
+        const now = new Date().toTimeString().slice(0, 5)
+        setNextPlanItem(items.find((i) => !i.itemTime || i.itemTime.slice(0, 5) >= now) ?? null)
+      })
+    }
+  }, [event.id, event.enabledModules])
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8, background: '#eef2ff', borderColor: '#c7d2fe' }}>
+      <strong>🎉 ¡Hoy es el día!</strong>
+      <div className="event-list" style={{ marginTop: 4 }}>
+        {confirmedPeople !== null && <p style={{ margin: '2px 0' }}>👥 {confirmedPeople} personas confirmadas</p>}
+        {pendingPurchases > 0 && <p style={{ margin: '2px 0' }}>🛒 {pendingPurchases} cosas todavía sin pasar a Compras</p>}
+        {nextPlanItem && (
+          <p style={{ margin: '2px 0' }}>
+            🗓️ Siguiente: {nextPlanItem.itemTime ? `${nextPlanItem.itemTime.slice(0, 5)} · ` : ''}
+            {nextPlanItem.title}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 3 — Conclusiones de PEPA por reglas. Contextual, no un panel
+// gigante aparte (petición de la Skill) — se enseña solo si hay algo
+// que decir de verdad.
+// ---------------------------------------------------------------------
+
+function PepaConclusions({ event }: { event: FamilyEvent }) {
+  const [conclusions, setConclusions] = useState<EventConclusionType[]>([])
+
+  useEffect(() => {
+    Promise.all([
+      event.enabledModules.includes('invitados') ? listEventGuests(event.id) : Promise.resolve([]),
+      event.enabledModules.includes('tareas') ? listEventTasks(event.id) : Promise.resolve([]),
+      event.enabledModules.includes('pagos') ? listEventPayments(event.id) : Promise.resolve([]),
+      event.enabledModules.includes('presupuesto') ? listEventBudgetItems(event.id) : Promise.resolve([]),
+      event.tagId && event.enabledModules.includes('presupuesto') ? listExpenses() : Promise.resolve(null),
+    ]).then(([guests, tasks, payments, budgetItems, expenses]) => {
+      const plannedBudget = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
+      const spentBudget = expenses ? expenses.filter((e) => e.tagId === event.tagId && !e.isIncome).reduce((sum, e) => sum + e.amount, 0) : null
+      setConclusions(
+        computeEventConclusions({
+          rsvpDeadline: event.rsvpDeadline,
+          guests,
+          tasks,
+          payments,
+          plannedBudget,
+          spentBudget,
+        }),
+      )
+    })
+  }, [event.id, event.enabledModules, event.rsvpDeadline, event.tagId])
+
+  if (conclusions.length === 0) return null
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8, background: '#fdf4ff', borderColor: '#f0abfc' }}>
+      <strong>🧠 Pepa dice</strong>
+      <div className="event-list" style={{ marginTop: 4 }}>
+        {conclusions.map((c) => (
+          <p key={c.id} style={{ margin: '2px 0' }}>
+            {c.icon} {c.text}
+          </p>
+        ))}
+      </div>
     </div>
   )
 }

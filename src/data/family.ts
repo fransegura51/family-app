@@ -250,7 +250,7 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
   const { data, error } = await supabase
     .from('family_members')
     .select(
-      'id, family_id, name, avatar, color, member_type, birth_date, birthday_favorite, permissions, linked_profile_id, photo_path, allowed_sections',
+      'id, family_id, name, avatar, color, member_type, birth_date, birthday_favorite, permissions, linked_profile_id, photo_path, allowed_sections, created_at',
     )
     .order('sort_order', { ascending: true })
 
@@ -269,5 +269,6 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
     linkedProfileId: row.linked_profile_id,
     photoPath: row.photo_path,
     allowedSections: row.allowed_sections,
+    joinedAt: row.created_at,
   }))
 }

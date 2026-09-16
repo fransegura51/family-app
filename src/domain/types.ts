@@ -44,6 +44,13 @@ export interface FamilyMember {
   linkedProfileId: string | null
   photoPath: string | null
   allowedSections: string[] | null
+  // Piso compartido: petición real — "lo anterior a la llegada de
+  // Jenny... debería repartirse a partes iguales entre los que ya
+  // estuvieron y lo posterior se reparte con uno más". Fecha en que
+  // este miembro se creó — el reparto de "Saldo entre personas" solo
+  // cuenta a alguien para un gasto si ya existía en esa fecha (ver
+  // SharedBalanceCard en FinanceScreen.tsx).
+  joinedAt: string
 }
 
 export interface Reward {

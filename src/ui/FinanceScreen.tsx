@@ -1423,7 +1423,12 @@ function BankTab({
     setError(null)
     try {
       const result = await syncBankTransactions(syncDays)
-      setNotice(`✓ ${result.totalSynced} movimiento${result.totalSynced === 1 ? '' : 's'} sincronizado${result.totalSynced === 1 ? '' : 's'}.`)
+      const base = `✓ ${result.totalSynced} movimiento${result.totalSynced === 1 ? '' : 's'} sincronizado${result.totalSynced === 1 ? '' : 's'}.`
+      // Petición real: "la de Caja Rural... no se actualiza ni dando a
+      // sincronizar" — antes un fallo en una cuenta concreta (banco
+      // caducado, límite de peticiones...) se perdía del todo detrás de
+      // un aviso de éxito que solo hablaba de las demás cuentas.
+      setNotice(result.errors.length > 0 ? `${base} Alguna cuenta no se ha podido sincronizar: ${result.errors.join(' · ')}` : base)
       reload()
       // Bug real reportado: "las tarjetas de saldo de arriba de Economía
       // (Resumen) se quedaban en 'Sincronizando...' aunque el saldo ya

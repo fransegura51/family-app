@@ -24,6 +24,17 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 // verdad: solo pide al banco desde el último movimiento que ya
 // tenemos guardado (con 3 días de margen por si algo llega con
 // retraso), no repite el mes entero cada vez.
+//
+// verify_jwt = false a propósito (petición real: "la de Sabadell no se
+// ha sincronizado sola pero si dándole a sincronizar" — el cron 4x/día
+// llamaba SIN cabecera Authorization, solo con x-cron-secret; con
+// verify_jwt=true la propia plataforma rechazaba esa llamada con 401
+// antes de que el código de aquí abajo llegase a comprobar el secreto,
+// así que el cron llevaba fallando siempre, silenciosamente, y solo el
+// botón manual (que sí manda el JWT del usuario) funcionaba). La
+// autenticación real la sigue haciendo el propio código: secreto
+// compartido para el cron, o JWT de usuario para el botón — igual que
+// sync-external-calendars-cron / sync-calendar-to-google-cron.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!

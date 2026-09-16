@@ -49,6 +49,13 @@ export async function startBankConnection(aspspName: string, aspspCountry: strin
 
 export interface SyncResult {
   totalSynced: number
+  // Petición real: "la de Caja Rural... no se actualiza ni dando a
+  // sincronizar" — el banco puede fallar cuenta a cuenta (consentimiento
+  // caducado, límite de peticiones del propio banco...) sin que el resto
+  // de la sincronización se caiga; antes ese error se perdía del todo, la
+  // familia solo veía "✓ N movimientos sincronizados" sin enterarse de
+  // que una cuenta en concreto no se había tocado.
+  errors: string[]
 }
 
 // days: solo importa para la primera sincronización de cada cuenta —
@@ -61,7 +68,9 @@ export async function syncBankTransactions(days = 90): Promise<SyncResult> {
   const res = await authedFetch('enable-banking-sync-transactions', { method: 'POST', body: JSON.stringify({ days }) })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error ?? 'No se pudo sincronizar')
-  return { totalSynced: json.totalSynced }
+  const accounts: { error?: string }[] = Array.isArray(json.accounts) ? json.accounts : []
+  const errors = [...new Set(accounts.map((a) => a.error).filter((e): e is string => Boolean(e)))]
+  return { totalSynced: json.totalSynced, errors }
 }
 
 export async function listBankConnections(): Promise<BankConnection[]> {

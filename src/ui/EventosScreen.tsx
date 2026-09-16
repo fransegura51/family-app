@@ -87,7 +87,20 @@ const MODULE_GROUPS: { title: string; keys: EventModuleKey[] }[] = [
 
 // Módulos con sección funcional propia ya construida — el resto se
 // queda como chip "próximamente" dentro de su grupo.
-const READY_MODULE_KEYS = new Set<EventModuleKey>(['tareas', 'invitados', 'presupuesto', 'menu_compra', 'proveedores', 'pagos', 'ceremonia'])
+const READY_MODULE_KEYS = new Set<EventModuleKey>([
+  'tareas',
+  'invitados',
+  // Invitaciones/RSVP no tiene sección propia aparte — el botón "💌
+  // Invitación" de cada invitado (dentro de Invitados) ya cubre la
+  // Fase 2 completa (plantilla, autorrelleno, compartir, enlace de
+  // RSVP público, recordatorio a pendientes).
+  'invitaciones',
+  'presupuesto',
+  'menu_compra',
+  'proveedores',
+  'pagos',
+  'ceremonia',
+])
 
 // Ceremonia (dos ubicaciones) solo tiene sentido en estos tipos —
 // aunque el módulo esté activado, en otros tipos no se muestra.

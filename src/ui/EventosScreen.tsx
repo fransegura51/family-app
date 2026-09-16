@@ -3047,8 +3047,11 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
           </defs>
           {/* Bola de espejos de verdad (esfera + rejilla de facetas), no
               una diana — la primera versión con anillos concéntricos no
-              se leía como bola de discoteca. */}
-          <g transform="translate(150 86)">
+              se leía como bola de discoteca. Va a la esquina (no
+              centrada arriba) porque el emoji del tipo de evento
+              también se coloca ahí por defecto — bug real visto
+              probando en vivo, se pisaban los dos. */}
+          <g transform="translate(228 80) scale(0.8)">
             <line x1={0} y1={-70} x2={0} y2={-37} stroke="#ffffff" strokeWidth={1.5} opacity={0.6} />
             {[['#F472B6', -34], ['#38BDF8', 0], ['#FBBF24', 34]].map(([color, dx], i) => (
               <polygon key={i} points={`0,0 ${(dx as number) - 10},120 ${(dx as number) + 10},120`} fill={color as string} opacity={0.14} />

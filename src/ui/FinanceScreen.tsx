@@ -3139,7 +3139,19 @@ function ExpensesTab({
                       icon="🤝"
                       className="icon-button"
                       ariaLabel="Compartir a Común"
-                      onConfirm={() => copyExpenseToShared(e.id).then(reload)}
+                      onConfirm={() =>
+                        copyExpenseToShared(e.id)
+                          .then(reload)
+                          .catch((err) => {
+                            // Petición real: "que salte una ventana
+                            // emergente que diga que ya está pasado que
+                            // no se puede duplicar" — puede pasar si la
+                            // lista todavía no se había refrescado desde
+                            // otra pestaña/dispositivo.
+                            window.alert(errorMessage(err, 'No se pudo compartir a Común'))
+                            reload()
+                          })
+                      }
                     />
                   )}
                   {accountsMode === 'separado' && scope === 'personal' && expenses.some((x) => x.sharedFromExpenseId === e.id) && (

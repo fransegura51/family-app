@@ -71,13 +71,17 @@ export async function listExpenses(): Promise<Expense[]> {
 // toque. Se comprueba aquí primero (evita la llamada de más en el caso
 // normal) Y además hay un índice único en la base de datos
 // (0105_expenses_shared_copy_unique.sql) que lo impide de verdad pase
-// lo que pase en el cliente — si el insert choca contra él (23505,
-// alguien lo compartió a la vez desde otro sitio), se trata como éxito
-// silencioso en vez de error, porque el resultado que quería el usuario
-// (que exista una copia en Común) ya se ha cumplido.
+// lo que pase en el cliente. Petición real de seguimiento: "que salte
+// una ventana emergente que diga que ya está pasado que no se puede
+// duplicar" — en vez de quedarse callado, tanto si ya existía la copia
+// como si el índice único frena un choque en el insert (23505, dos
+// toques a la vez), se lanza siempre este mismo mensaje para que la
+// pantalla lo pueda mostrar.
+export const ALREADY_SHARED_MESSAGE = 'Este movimiento ya se había compartido a Común — no se puede duplicar.'
+
 export async function copyExpenseToShared(expenseId: string): Promise<void> {
   const { data: existing } = await supabase.from('expenses').select('id').eq('shared_from_expense_id', expenseId).maybeSingle()
-  if (existing) return
+  if (existing) throw new Error(ALREADY_SHARED_MESSAGE)
 
   const { data: original, error: fetchError } = await supabase
     .from('expenses')
@@ -103,7 +107,8 @@ export async function copyExpenseToShared(expenseId: string): Promise<void> {
     shared: true,
     shared_from_expense_id: expenseId,
   })
-  if (error && error.code !== '23505') throw error
+  if (error?.code === '23505') throw new Error(ALREADY_SHARED_MESSAGE)
+  if (error) throw error
 }
 
 export async function addExpense(input: {

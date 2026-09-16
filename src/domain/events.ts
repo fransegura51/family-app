@@ -438,7 +438,11 @@ export function buildInvitationTemplateLayers(event: FamilyEvent): InvitationLay
       id: newLayerId(),
       type: 'event_data',
       x: 0.5,
-      y: 0.78,
+      // 0.65, no 0.78 — más arriba deja sitio a la ilustración de fondo
+      // (formas/personajes por tema), que suele apoyarse en la esquina
+      // inferior de la plantilla (bug real visto probando en vivo con
+      // el tema Monstruo, donde el texto quedaba encima de la cara).
+      y: 0.65,
       rotation: 0,
       scale: 1,
       zIndex: 3,

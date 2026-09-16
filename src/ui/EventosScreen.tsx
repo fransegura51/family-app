@@ -2919,7 +2919,11 @@ function InvitationBackgroundArt({ artKey }: { artKey: string }) {
             ))}
             <line x1={0} y1={18} x2={300} y2={18} stroke="#ffffff" strokeWidth={2} opacity={0.5} />
           </g>
-          <g transform="translate(70 330)">
+          {/* Bug real visto probando en vivo: a tamaño completo, el
+              monstruo tapaba el texto de fecha que va por defecto a
+              y=0.78 — se encoge y se mete en la esquina para dejar el
+              centro libre para las capas de texto del usuario. */}
+          <g transform="translate(46 366) scale(0.6)">
             <ellipse cx={0} cy={0} rx={75} ry={70} fill="#0D9488" />
             <circle cx={-25} cy={-50} r={10} fill="#0D9488" />
             <circle cx={5} cy={-58} r={8} fill="#0D9488" />

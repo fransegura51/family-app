@@ -18,6 +18,7 @@ import {
   createEvent,
   deleteEvent,
   deleteEventActivity,
+  deleteEventTemplate,
   deleteEventBudgetItem,
   deleteEventDayPlanItem,
   deleteEventDecorationItem,
@@ -53,10 +54,12 @@ import {
   listEventTables,
   listEventTasks,
   listEvents,
+  listEventTemplates,
   recalculateAutoTasks,
   regenerateEventOpenRsvpUrl,
   regenerateGuestRsvpUrl,
   saveEventInvitation,
+  saveEventTemplate,
   transferActivityMaterialsToShopping,
   transferDecorationItemToShopping,
   transferMenuToShopping,
@@ -111,6 +114,7 @@ import type {
   EventSpecialDetail,
   EventTableSeat,
   EventTask,
+  EventTemplate,
   EventType,
   FamilyEvent,
   InvitationCanvas,
@@ -308,12 +312,32 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [eventDate, setEventDate] = useState('')
   const [moduleMode, setModuleMode] = useState<'recomendado' | 'elegir'>('recomendado')
   const [modules, setModules] = useState<EventModuleKey[]>(RECOMMENDED_MODULES.cumpleanos)
+  const [theme, setTheme] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<EventTemplate[]>([])
+  const [templateId, setTemplateId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    listEventTemplates()
+      .then(setTemplates)
+      .catch(() => {})
+  }, [])
 
   function handleTypeChange(next: EventType) {
     setType(next)
     if (moduleMode === 'recomendado') setModules(RECOMMENDED_MODULES[next])
+  }
+
+  function handleUseTemplate(id: string) {
+    setTemplateId(id)
+    const t = templates.find((tpl) => tpl.id === id)
+    if (!t) return
+    setType(t.type)
+    if (t.subtype) setSubtype(t.subtype)
+    setTheme(t.theme)
+    setModuleMode('elegir')
+    setModules(t.enabledModules)
   }
 
   async function handleSubmit(ev: FormEvent) {
@@ -339,6 +363,7 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
         eventDate: dateStatus === 'pendiente' ? null : eventDate || null,
         details,
         enabledModules: modules,
+        theme,
       })
       onCreated(id)
     } catch (err) {
@@ -361,6 +386,34 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
         </div>
         <form className="card member-form" onSubmit={handleSubmit}>
           {error && <p className="error">{error}</p>}
+          {templates.length > 0 && (
+            <label>
+              Usar plantilla (opcional)
+              <div className="inline-fields">
+                <select value={templateId} onChange={(e) => handleUseTemplate(e.target.value)} style={{ flex: 1 }}>
+                  <option value="">Sin plantilla</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                {templateId && (
+                  <ConfirmIconButton
+                    icon="✕"
+                    className="icon-button"
+                    ariaLabel="Borrar plantilla"
+                    onConfirm={() =>
+                      deleteEventTemplate(templateId).then(() => {
+                        setTemplates((ts) => ts.filter((t) => t.id !== templateId))
+                        setTemplateId('')
+                      })
+                    }
+                  />
+                )}
+              </div>
+            </label>
+          )}
           <label>
             Nombre del evento
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Cumpleaños de Eric" autoFocus />
@@ -459,6 +512,8 @@ function EventDetail({
   const [showEdit, setShowEdit] = useState(false)
   const [showModules, setShowModules] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [showEndSummary, setShowEndSummary] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [linkingCalendar, setLinkingCalendar] = useState(false)
@@ -651,17 +706,19 @@ function EventDetail({
       )}
 
       <div className="card event-card" style={{ marginTop: 8 }}>
-        <button type="button" className="link-button" onClick={() => setShowModules(true)}>
-          ⚙️ Gestionar módulos
-        </button>
+        <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+          <button type="button" className="link-button" onClick={() => setShowModules(true)}>
+            ⚙️ Gestionar módulos
+          </button>
+          <button type="button" className="link-button" onClick={() => setShowSaveTemplate(true)}>
+            💾 Guardar como plantilla
+          </button>
+        </div>
         <div className="filter-row" style={{ marginTop: 8 }}>
           {event.status === 'planificacion' ? (
-            <ConfirmButton
-              label="📦 Finalizar y archivar"
-              confirmLabel="Archivar"
-              className="link-button"
-              onConfirm={() => archiveEvent(event.id).then(onArchivedOrDeleted)}
-            />
+            <button type="button" className="link-button" onClick={() => setShowEndSummary(true)}>
+              📦 Finalizar y archivar
+            </button>
           ) : (
             <button type="button" className="link-button" onClick={() => unarchiveEvent(event.id).then(onChanged)}>
               Reactivar
@@ -702,6 +759,17 @@ function EventDetail({
             setShowPlan(false)
             setRefreshKey((k) => k + 1)
             onChanged()
+          }}
+        />
+      )}
+      {showSaveTemplate && <SaveTemplateModal event={event} onClose={() => setShowSaveTemplate(false)} onSaved={() => setShowSaveTemplate(false)} />}
+      {showEndSummary && (
+        <EndSummaryModal
+          event={event}
+          onClose={() => setShowEndSummary(false)}
+          onConfirmed={() => {
+            setShowEndSummary(false)
+            archiveEvent(event.id).then(onArchivedOrDeleted)
           }}
         />
       )}
@@ -3383,6 +3451,146 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
         <button type="button" onClick={handleApply} disabled={applying || (nothingToPropose && modulesChecked.size === 0)} style={{ marginTop: 12 }}>
           {applying ? 'Aplicando…' : 'Aplicar'}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 4 — plantillas personales. Petición de la Skill
+// (06-custom-event.md): "Do not copy old live RSVP/expense state into
+// new occurrences" — solo se guarda la configuración, nunca datos en
+// marcha (ver saveEventTemplate).
+// ---------------------------------------------------------------------
+
+function SaveTemplateModal({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(event.title)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!name.trim()) {
+      setError('Ponle un nombre a la plantilla.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await saveEventTemplate(name, event)
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar la plantilla'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Guardar como plantilla
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <p className="muted" style={{ fontSize: 13 }}>
+          Se guarda el tipo, el tema y los módulos activados — nunca invitados, RSVP ni gastos. Útil para eventos que se repiten (la comida de Navidad, el
+          cumpleaños de cada año...).
+        </p>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            Nombre de la plantilla
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Comida de Navidad" autoFocus />
+          </label>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar plantilla'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Fase 4 — resumen final al archivar (master-spec, punto 16: "Provide
+// an end summary such as: budget vs spent, final attendance, task
+// completion, net cost where gifts received are tracked").
+// ---------------------------------------------------------------------
+
+function EndSummaryModal({ event, onClose, onConfirmed }: { event: FamilyEvent; onClose: () => void; onConfirmed: () => void }) {
+  const [loading, setLoading] = useState(true)
+  const [confirmedPeople, setConfirmedPeople] = useState(0)
+  const [taskStats, setTaskStats] = useState({ done: 0, total: 0 })
+  const [plannedBudget, setPlannedBudget] = useState<number | null>(null)
+  const [spentBudget, setSpentBudget] = useState<number | null>(null)
+  const [cashGifts, setCashGifts] = useState<number | null>(null)
+
+  useEffect(() => {
+    Promise.all([
+      event.enabledModules.includes('invitados') ? listEventGuests(event.id) : Promise.resolve([]),
+      event.enabledModules.includes('tareas') ? listEventTasks(event.id) : Promise.resolve([]),
+      event.enabledModules.includes('presupuesto') ? listEventBudgetItems(event.id) : Promise.resolve([]),
+      event.tagId && event.enabledModules.includes('presupuesto') ? listExpenses() : Promise.resolve(null),
+      event.enabledModules.includes('regalos') ? listEventGifts(event.id) : Promise.resolve([]),
+    ]).then(([guests, tasks, budgetItems, expenses, gifts]) => {
+      const confirmed = guests.filter((g) => g.rsvpStatus === 'confirmado')
+      setConfirmedPeople(confirmed.reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0))
+      setTaskStats({ done: tasks.filter((t) => t.done).length, total: tasks.length })
+      if (event.enabledModules.includes('presupuesto')) {
+        setPlannedBudget(budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0))
+        setSpentBudget(expenses ? expenses.filter((e) => e.tagId === event.tagId && !e.isIncome).reduce((sum, e) => sum + e.amount, 0) : null)
+      }
+      if (event.enabledModules.includes('regalos')) {
+        setCashGifts(gifts.reduce((sum, g) => sum + (g.cashAmount ?? 0), 0))
+      }
+      setLoading(false)
+    })
+  }, [event.id, event.enabledModules, event.tagId])
+
+  const netCost = spentBudget !== null && cashGifts !== null ? spentBudget - cashGifts : null
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Resumen de {event.title}
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        {loading ? (
+          <p className="muted">Calculando…</p>
+        ) : (
+          <div className="event-list">
+            {event.enabledModules.includes('invitados') && <p>👥 Asistencia final: {confirmedPeople} personas confirmadas</p>}
+            {taskStats.total > 0 && (
+              <p>
+                ✅ Tareas: {taskStats.done} de {taskStats.total} hechas
+              </p>
+            )}
+            {plannedBudget !== null && (
+              <p>
+                💰 Presupuesto: {plannedBudget.toFixed(2)} € planeados{spentBudget !== null ? ` · ${spentBudget.toFixed(2)} € gastados` : ''}
+              </p>
+            )}
+            {cashGifts !== null && <p>🎀 Regalos en efectivo: {cashGifts.toFixed(2)} €</p>}
+            {netCost !== null && <p>🧮 Coste neto (gastado menos regalos): {netCost.toFixed(2)} €</p>}
+            {confirmedPeople === 0 && taskStats.total === 0 && plannedBudget === null && cashGifts === null && (
+              <p className="muted">No hay datos suficientes todavía para un resumen — se puede archivar igual.</p>
+            )}
+          </div>
+        )}
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          Archivar guarda todo esto tal cual está — invitados, presupuesto, tareas e invitación no se borran, y se puede reactivar cuando quieras.
+        </p>
+        <ConfirmButton label="📦 Archivar" confirmLabel="Confirmar" onConfirm={onConfirmed} />
       </div>
     </div>
   )

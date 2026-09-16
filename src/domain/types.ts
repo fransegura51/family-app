@@ -841,3 +841,17 @@ export interface EventInvitation {
   updatedAt: string
 }
 
+// Plantillas personales reutilizables (Fase 4) — solo la configuración
+// (tipo/subtipo/tema/módulos/details), nunca invitados/gastos/RSVP.
+export interface EventTemplate {
+  id: string
+  familyId: string
+  name: string
+  type: EventType
+  subtype: string | null
+  theme: string | null
+  details: Record<string, unknown>
+  enabledModules: EventModuleKey[]
+  createdAt: string
+}
+

@@ -29,6 +29,7 @@ import type {
   EventSpecialDetailStatus,
   EventTableSeat,
   EventTask,
+  EventTemplate,
   EventType,
   FamilyEvent,
   InvitationCanvas,
@@ -120,6 +121,7 @@ export async function createEvent(input: {
   eventDate?: string | null
   details?: Record<string, unknown>
   enabledModules: EventModuleKey[]
+  theme?: string | null
 }): Promise<string> {
   const familyId = await currentFamilyId()
   const { data: userResult } = await supabase.auth.getUser()
@@ -138,6 +140,7 @@ export async function createEvent(input: {
       event_date: input.eventDate ?? null,
       details: input.details ?? {},
       enabled_modules: input.enabledModules,
+      theme: input.theme ?? null,
       tag_id: tagId,
       created_by: userResult.user.id,
     })
@@ -245,6 +248,7 @@ export async function duplicateEvent(id: string): Promise<string> {
     eventDate: null,
     details: original.details,
     enabledModules: original.enabledModules,
+    theme: original.theme,
   })
 }
 
@@ -1233,4 +1237,52 @@ export async function getInvitationPhotoUrl(photoPath: string): Promise<string> 
   const { data, error } = await supabase.storage.from('event-photos').createSignedUrl(photoPath, 3600)
   if (error) throw error
   return data.signedUrl
+}
+
+// ---------------------------------------------------------------------
+// Fase 4 — plantillas personales reutilizables (06-custom-event.md):
+// solo la configuración (tipo/subtipo/tema/módulos/details), nunca
+// invitados/gastos/RSVP en marcha.
+// ---------------------------------------------------------------------
+
+const TEMPLATE_SELECT = 'id, family_id, name, type, subtype, theme, details, enabled_modules, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapTemplate(r: any): EventTemplate {
+  return {
+    id: r.id,
+    familyId: r.family_id,
+    name: r.name,
+    type: r.type,
+    subtype: r.subtype,
+    theme: r.theme,
+    details: r.details ?? {},
+    enabledModules: r.enabled_modules ?? [],
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventTemplates(): Promise<EventTemplate[]> {
+  const { data, error } = await supabase.from('event_templates').select(TEMPLATE_SELECT).order('created_at', { ascending: false })
+  if (error) throw error
+  return data.map(mapTemplate)
+}
+
+export async function saveEventTemplate(name: string, event: FamilyEvent): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_templates').insert({
+    family_id: familyId,
+    name: name.trim(),
+    type: event.type,
+    subtype: event.subtype,
+    theme: event.theme,
+    details: event.details,
+    enabled_modules: event.enabledModules,
+  })
+  if (error) throw error
+}
+
+export async function deleteEventTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('event_templates').delete().eq('id', id)
+  if (error) throw error
 }

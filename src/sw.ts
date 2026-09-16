@@ -84,11 +84,25 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
+  const targetUrl = '/calendario'
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      const existing = clients.find((c) => 'focus' in c)
-      if (existing) return (existing as WindowClient).focus()
-      return self.clients.openWindow('/calendario')
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
+      const existing = clients.find((c) => 'focus' in c) as WindowClient | undefined
+      if (existing) {
+        // Petición real: "cuando le doy a una notificación de Pepa se
+        // me abre Pepa, pero no el calendario" — con la app ya abierta
+        // en otra pantalla (el chat de Pepa, Compras...), antes solo se
+        // enfocaba tal cual estaba en vez de llevar al calendario como
+        // si se abriera de cero.
+        try {
+          await existing.navigate(targetUrl)
+        } catch {
+          // El navegador no ha dejado navegar la ventana ya abierta —
+          // al menos se enfoca la que hay, mejor que nada.
+        }
+        return existing.focus()
+      }
+      return self.clients.openWindow(targetUrl)
     }),
   )
 })

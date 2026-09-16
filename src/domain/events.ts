@@ -15,6 +15,26 @@ import type {
   InvitationLayer,
 } from '@/domain/types'
 
+// Arte real, traído fuera por el usuario ("quiero obras de arte", no SVG
+// dibujado a mano) — ver InvitationTemplateMeta.image más abajo.
+import invitaDinosaurios from '@/assets/eventos/invitaciones/dinosaurios.jpg'
+import invitaUnicornio from '@/assets/eventos/invitaciones/unicornio.jpg'
+import invitaFutbol from '@/assets/eventos/invitaciones/futbol.jpg'
+import invitaCoches from '@/assets/eventos/invitaciones/coches.jpg'
+import invitaVideojuegos from '@/assets/eventos/invitaciones/videojuegos.jpg'
+import invitaPrincesa from '@/assets/eventos/invitaciones/princesa.jpg'
+import invitaEspacio from '@/assets/eventos/invitaciones/espacio.jpg'
+import invitaPiratas from '@/assets/eventos/invitaciones/piratas.jpg'
+import invitaSafari from '@/assets/eventos/invitaciones/safari.jpg'
+import invitaAcampada from '@/assets/eventos/invitaciones/acampada.jpg'
+import invitaOceano from '@/assets/eventos/invitaciones/oceano.jpg'
+import invitaHadas from '@/assets/eventos/invitaciones/hadas.jpg'
+import invitaGranja from '@/assets/eventos/invitaciones/granja.jpg'
+import invitaAlienigenas from '@/assets/eventos/invitaciones/alienigenas.jpg'
+import invitaPlaya from '@/assets/eventos/invitaciones/playa.jpg'
+import invitaConcierto from '@/assets/eventos/invitaciones/concierto.jpg'
+import invitaBoda from '@/assets/eventos/invitaciones/boda.jpg'
+
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
   comunion: { label: 'Comunión', icon: '⛪' },
@@ -312,8 +332,8 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti' },
   { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos' },
   { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo' },
-  { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol' },
-  { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio' },
+  { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol', image: invitaFutbol },
+  { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio },
   { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado' },
   { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral' },
   { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste' },
@@ -322,12 +342,12 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // personajes/estilos con derechos de terceros (Minecraft, Mario Bros,
   // Spiderman — ver INVITATION_ART en EventosScreen.tsx). El resto se
   // reparte en varios lotes.
-  { key: 'dinosaurios', label: 'Dinosaurios', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'dinosaurios' },
-  { key: 'videojuegos', label: 'Videojuegos', gradient: 'linear-gradient(160deg, #312E81, #4C1D95)', text: '#ffffff', artKey: 'videojuegos' },
+  { key: 'dinosaurios', label: 'Dinosaurios', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'dinosaurios', image: invitaDinosaurios },
+  { key: 'videojuegos', label: 'Videojuegos', gradient: 'linear-gradient(160deg, #312E81, #4C1D95)', text: '#ffffff', artKey: 'videojuegos', image: invitaVideojuegos },
   { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones' },
   { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos' },
   { key: 'gatitos', label: 'Gatitos', gradient: 'linear-gradient(160deg, #F3E8FF, #E9D5FF)', text: '#6B21A8', artKey: 'gatitos' },
-  { key: 'coches', label: 'Coches de carreras', gradient: 'linear-gradient(160deg, #1F2937, #7F1D1D)', text: '#ffffff', artKey: 'coches' },
+  { key: 'coches', label: 'Coches de carreras', gradient: 'linear-gradient(160deg, #1F2937, #7F1D1D)', text: '#ffffff', artKey: 'coches', image: invitaCoches },
   // Lote 3.
   { key: 'robots', label: 'Robots', gradient: 'linear-gradient(160deg, #64748B, #1E293B)', text: '#ffffff', artKey: 'robots' },
   { key: 'superheroe', label: 'Superhéroe', gradient: 'linear-gradient(160deg, #DC2626, #1E3A8A)', text: '#ffffff', artKey: 'superheroe' },
@@ -336,6 +356,28 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // "Guerreras Kpop" — ambiente genérico de concierto/idol (neón,
   // micro, focos), sin ningún grupo, cara ni persona real de por medio.
   { key: 'kpop', label: 'Kpop', gradient: 'linear-gradient(160deg, #DB2777, #6D28D9)', text: '#ffffff', artKey: 'kpop' },
+  // Lote 4 — arte real traído por el usuario (dos hojas de 6 y 12
+  // ilustraciones ya recortadas en plantillas individuales). De las 12
+  // de la segunda hoja se descarta una (castillo/varita/lechuza al
+  // estilo Hogwarts — personaje/franquicia con derechos de terceros,
+  // misma regla que Minecraft/Mario/Spiderman). El resto sustituye el
+  // SVG de algún tema ya existente (dinosaurios/unicornio/fútbol/
+  // coches/videojuegos, arriba) o suma un tema nuevo. Estos temas
+  // nuevos no llevan `artKey` propio con dibujo de repuesto porque
+  // siempre tienen `image`; si en el futuro faltara la imagen, el
+  // fallback de InvitationBackgroundArt usa 'confeti'.
+  { key: 'princesa', label: 'Princesa', gradient: 'linear-gradient(160deg, #FBCFE8, #F9A8D4)', text: '#9D174D', artKey: 'confeti', image: invitaPrincesa },
+  { key: 'espacio', label: 'Espacio', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaEspacio },
+  { key: 'piratas', label: 'Piratas', gradient: 'linear-gradient(160deg, #38BDF8, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaPiratas },
+  { key: 'safari', label: 'Safari', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'confeti', image: invitaSafari },
+  { key: 'acampada', label: 'Acampada', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaAcampada },
+  { key: 'oceano', label: 'Fondo del mar', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaOceano },
+  { key: 'hadas', label: 'Hadas', gradient: 'linear-gradient(160deg, #FBCFE8, #BBF7D0)', text: '#BE185D', artKey: 'confeti', image: invitaHadas },
+  { key: 'granja', label: 'Granja', gradient: 'linear-gradient(160deg, #FDE9D9, #DC2626)', text: '#7C2D12', artKey: 'confeti', image: invitaGranja },
+  { key: 'alienigenas', label: 'Alienígenas', gradient: 'linear-gradient(160deg, #312E81, #020617)', text: '#ffffff', artKey: 'confeti', image: invitaAlienigenas },
+  { key: 'playa', label: 'Playa tropical', gradient: 'linear-gradient(160deg, #FDBA74, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlaya },
+  { key: 'concierto', label: 'Concierto', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaConcierto },
+  { key: 'boda', label: 'Boda', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#4A5D23', artKey: 'confeti', image: invitaBoda },
 ]
 
 // ---------------------------------------------------------------------

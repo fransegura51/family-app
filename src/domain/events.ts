@@ -60,6 +60,29 @@ import invitaHalloweenFantasmas from '@/assets/eventos/invitaciones/halloween_fa
 import invitaAlegre from '@/assets/eventos/invitaciones/alegre.jpg'
 import invitaCumpleanosRosa from '@/assets/eventos/invitaciones/cumpleanos_rosa.jpg'
 import invitaCumpleanosFiesta from '@/assets/eventos/invitaciones/cumpleanos_fiesta.jpg'
+import invitaGraduacionEsfuerzo from '@/assets/eventos/invitaciones/graduacion_esfuerzo.jpg'
+import invitaGraduacionSuena from '@/assets/eventos/invitaciones/graduacion_suena.jpg'
+import invitaGraduacionDisciplina from '@/assets/eventos/invitaciones/graduacion_disciplina.jpg'
+import invitaGraduacionExplorar from '@/assets/eventos/invitaciones/graduacion_explorar.jpg'
+import invitaBebeNina from '@/assets/eventos/invitaciones/bebe_nina.jpg'
+import invitaBebeNeutro from '@/assets/eventos/invitaciones/bebe_neutro.jpg'
+import invitaBebeArcoiris from '@/assets/eventos/invitaciones/bebe_arcoiris.jpg'
+import invitaCasaBienvenida from '@/assets/eventos/invitaciones/casa_bienvenida.jpg'
+import invitaCasaLlaves from '@/assets/eventos/invitaciones/casa_llaves.jpg'
+import invitaCasaTerraza from '@/assets/eventos/invitaciones/casa_terraza.jpg'
+import invitaCasaCajas from '@/assets/eventos/invitaciones/casa_cajas.jpg'
+import invitaDespedidaNovia from '@/assets/eventos/invitaciones/despedida_novia.jpg'
+import invitaDespedidaNovio from '@/assets/eventos/invitaciones/despedida_novio.jpg'
+import invitaDespedidaViaje from '@/assets/eventos/invitaciones/despedida_viaje.jpg'
+import invitaDespedidaNoche from '@/assets/eventos/invitaciones/despedida_noche.jpg'
+import invitaFloralJardin from '@/assets/eventos/invitaciones/floral_jardin.jpg'
+import invitaFloralPicnic from '@/assets/eventos/invitaciones/floral_picnic.jpg'
+import invitaFloralPrimavera from '@/assets/eventos/invitaciones/floral_primavera.jpg'
+import invitaFloralNoche from '@/assets/eventos/invitaciones/floral_noche.jpg'
+import invitaPlayaPiscina from '@/assets/eventos/invitaciones/playa_piscina.jpg'
+import invitaPlayaPina from '@/assets/eventos/invitaciones/playa_pina.jpg'
+import invitaPlayaAtardecer from '@/assets/eventos/invitaciones/playa_atardecer.jpg'
+import invitaPlayaTerraza from '@/assets/eventos/invitaciones/playa_terraza.jpg'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -361,7 +384,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol', image: invitaFutbol },
   { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio },
   { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado', image: invitaElegante },
-  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral' },
+  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralJardin },
   { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo },
   { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco', image: invitaDisco },
   // Lote 2 — petición real, lista de 26 temas; 3 no se hacen por ser
@@ -446,6 +469,34 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // playa) por quedar demasiado parecida a Playa tropical.
   { key: 'cumpleanos_rosa', label: 'Cumpleaños rosa', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaCumpleanosRosa },
   { key: 'cumpleanos_fiesta', label: 'Cumpleaños fiesta', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCumpleanosFiesta },
+  // Lote 10 — "Ribete (Graduación)" de la lista de 26 (varias
+  // variantes), Bebé chica/Cuna neutral/variante arcoíris (completa la
+  // pareja con Bebé niño), y tres categorías nuevas que no estaban en la
+  // lista pero encajan en Celebración/Personalizado: estrenar casa,
+  // despedida de soltero/a y más variantes de Floral y Playa tropical
+  // ("varias", igual que Navidad).
+  { key: 'graduacion_esfuerzo', label: 'Graduación esfuerzo', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaGraduacionEsfuerzo },
+  { key: 'graduacion_suena', label: 'Graduación sueña', gradient: 'linear-gradient(160deg, #166534, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaGraduacionSuena },
+  { key: 'graduacion_disciplina', label: 'Graduación disciplina', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaGraduacionDisciplina },
+  { key: 'graduacion_explorar', label: 'Graduación explorar', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaGraduacionExplorar },
+  { key: 'bebe_nina', label: 'Bebé niña', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaBebeNina },
+  { key: 'bebe_neutro', label: 'Cuna neutral', gradient: 'linear-gradient(160deg, #D9F99D, #FDE9D9)', text: '#3F6212', artKey: 'confeti', image: invitaBebeNeutro },
+  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris },
+  { key: 'casa_bienvenida', label: 'Nueva casa bienvenida', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaBienvenida },
+  { key: 'casa_llaves', label: 'Nueva casa llaves', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaLlaves },
+  { key: 'casa_terraza', label: 'Nueva casa terraza', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaTerraza },
+  { key: 'casa_cajas', label: 'Nueva casa mudanza', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaCajas },
+  { key: 'despedida_novia', label: 'Despedida de soltera', gradient: 'linear-gradient(160deg, #EC4899, #9D174D)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNovia },
+  { key: 'despedida_novio', label: 'Despedida de soltero', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNovio },
+  { key: 'despedida_viaje', label: 'Despedida de viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaViaje },
+  { key: 'despedida_noche', label: 'Despedida de noche', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNoche },
+  { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic },
+  { key: 'floral_primavera', label: 'Floral primavera', gradient: 'linear-gradient(160deg, #FFE4E6, #D9F99D)', text: '#3F6212', artKey: 'floral', image: invitaFloralPrimavera },
+  { key: 'floral_noche', label: 'Floral noche de jardín', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'floral', image: invitaFloralNoche },
+  { key: 'playa_piscina', label: 'Playa piscina', gradient: 'linear-gradient(160deg, #0EA5E9, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPiscina },
+  { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina },
+  { key: 'playa_atardecer', label: 'Playa atardecer', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaAtardecer },
+  { key: 'playa_terraza', label: 'Playa noche de verano', gradient: 'linear-gradient(160deg, #B45309, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaTerraza },
 ]
 
 // ---------------------------------------------------------------------

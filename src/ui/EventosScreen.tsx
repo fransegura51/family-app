@@ -91,6 +91,7 @@ import {
   EVENT_TYPE_META,
   eventDateLine,
   eventLocationLines,
+  eventLocationMapLines,
   generateEventPlan,
   INVITATION_EMOJI_SUGGESTIONS,
   INVITATION_SHAPES,
@@ -1223,11 +1224,12 @@ function EventOpenLinkBlock({ event }: { event: FamilyEvent }) {
 
   async function handleShare() {
     if (!url) return
+    const text = [`Confirma tu asistencia a "${event.title}" aquí: ${url}`, ...eventLocationMapLines(event, { inviteScope: null })].join('\n')
     try {
-      const shown = await shareText({ title: event.title, text: `Confirma tu asistencia a "${event.title}" aquí: ${url}` })
+      const shown = await shareText({ title: event.title, text })
       setNotice(shown ? null : 'Copiado al portapapeles.')
     } catch {
-      setManualShare({ title: event.title, text: `Confirma tu asistencia a "${event.title}" aquí: ${url}` })
+      setManualShare({ title: event.title, text })
     }
   }
 
@@ -1872,8 +1874,13 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
   const template = INVITATION_TEMPLATES.find((t) => t.key === templateKey) ?? INVITATION_TEMPLATES[0]
   const infoLines = [eventDateLine(event), ...eventLocationLines(event, guest)]
 
+  // Petición real: "prepara que cuando se mande la invitación se mande
+  // automáticamente también la ubicación" — la invitación es una
+  // imagen (no se puede hacer clicable nada dentro), así que el enlace
+  // de mapa real va en el mismo texto que la acompaña al compartir, no
+  // hace falta un paso aparte.
   function buildShareText(): string {
-    return [`${EVENT_TYPE_META[event.type].icon} ${event.title}`, ...infoLines, '', message, '', `Confirma tu asistencia aquí: ${rsvpUrl}`].join('\n')
+    return [`${EVENT_TYPE_META[event.type].icon} ${event.title}`, ...infoLines, ...eventLocationMapLines(event, guest), '', message, '', `Confirma tu asistencia aquí: ${rsvpUrl}`].join('\n')
   }
 
   async function handleShare() {

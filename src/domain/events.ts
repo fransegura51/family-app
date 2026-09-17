@@ -389,6 +389,36 @@ export function eventLocationLines(
   return lines
 }
 
+// Petición real: "podemos incluir una ubicación real... que se pueda
+// abrir" — la invitación en sí es una imagen (capas/texto), no se
+// puede hacer clicable nada dentro de ella; el enlace real va en el
+// texto que acompaña al compartir. No hace falta pedir coordenadas ni
+// picker de mapa (ni geocodificar, que sería de pago): un enlace de
+// búsqueda de Google Maps con el nombre/dirección que ya se escribe en
+// "Ubicación" ya abre la app de mapas y da indicaciones.
+export function buildMapsUrl(label: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`
+}
+
+export function eventLocationMapLines(
+  event: Pick<FamilyEvent, 'type' | 'venueLabel' | 'ceremonyLocationLabel' | 'celebrationLocationLabel'>,
+  guest: { inviteScope: EventGuestInviteScope | null },
+): string[] {
+  const lines: string[] = []
+  if (DUAL_LOCATION_EVENT_TYPES.includes(event.type)) {
+    const scope = guest.inviteScope ?? 'ambas'
+    if (scope !== 'solo_celebracion' && event.ceremonyLocationLabel) {
+      lines.push(`🕊️ Cómo llegar a la ceremonia: ${buildMapsUrl(event.ceremonyLocationLabel)}`)
+    }
+    if (scope !== 'solo_ceremonia' && event.celebrationLocationLabel) {
+      lines.push(`🎉 Cómo llegar a la celebración: ${buildMapsUrl(event.celebrationLocationLabel)}`)
+    }
+  } else if (event.venueLabel) {
+    lines.push(`📍 Cómo llegar: ${buildMapsUrl(event.venueLabel)}`)
+  }
+  return lines
+}
+
 function invitationDateClause(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate' | 'eventTime'>): string {
   if (event.dateStatus === 'pendiente' || !event.eventDate) return 'en una fecha que anunciaremos pronto'
   const nice = new Date(event.eventDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInvitationMessage, buildInvitationTemplateLayers, computeEventConclusions, generateEventPlan, INVITATION_TEMPLATES, sortInvitationTemplatesForEvent } from '@/domain/events'
+import { buildInvitationMessage, buildInvitationTemplateLayers, buildMapsUrl, computeEventConclusions, eventLocationMapLines, generateEventPlan, INVITATION_TEMPLATES, sortInvitationTemplatesForEvent } from '@/domain/events'
 import type { InvitationTemplateMeta } from '@/domain/events'
 import type { FamilyEvent } from '@/domain/types'
 
@@ -344,5 +344,43 @@ describe('buildInvitationTemplateLayers', () => {
       expect(layer.x).toBeGreaterThan(0)
       expect(layer.x).toBeLessThan(1)
     }
+  })
+})
+
+describe('eventLocationMapLines', () => {
+  it('builds an openable Google Maps link for a single-venue event', () => {
+    const event = makeEvent({ type: 'cumpleanos', venueLabel: 'Restaurante La Terraza, Madrid' })
+    const lines = eventLocationMapLines(event, { inviteScope: null })
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('https://www.google.com/maps/search/?api=1&query=')
+    expect(lines[0]).toContain(encodeURIComponent('Restaurante La Terraza, Madrid'))
+  })
+
+  it('links both locations for a dual-location event when both are set', () => {
+    const event = makeEvent({ type: 'boda', ceremonyLocationLabel: 'Iglesia de la Concepción', celebrationLocationLabel: 'Finca Los Almendros' })
+    const lines = eventLocationMapLines(event, { inviteScope: null })
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toContain(encodeURIComponent('Iglesia de la Concepción'))
+    expect(lines[1]).toContain(encodeURIComponent('Finca Los Almendros'))
+  })
+
+  it('respects a guest scoped to only the ceremony', () => {
+    const event = makeEvent({ type: 'boda', ceremonyLocationLabel: 'Iglesia de la Concepción', celebrationLocationLabel: 'Finca Los Almendros' })
+    const lines = eventLocationMapLines(event, { inviteScope: 'solo_ceremonia' })
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('ceremonia')
+  })
+
+  it('returns nothing when no location is set yet', () => {
+    const event = makeEvent({ type: 'cumpleanos', venueLabel: null })
+    expect(eventLocationMapLines(event, { inviteScope: null })).toHaveLength(0)
+  })
+})
+
+describe('buildMapsUrl', () => {
+  it('url-encodes the address so it survives being pasted into a share text', () => {
+    const url = buildMapsUrl('Calle Mayor 5, 2ºB, Madrid')
+    expect(url).not.toContain(' ')
+    expect(url).not.toContain('º')
   })
 })

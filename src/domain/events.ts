@@ -83,6 +83,29 @@ import invitaPlayaPiscina from '@/assets/eventos/invitaciones/playa_piscina.jpg'
 import invitaPlayaPina from '@/assets/eventos/invitaciones/playa_pina.jpg'
 import invitaPlayaAtardecer from '@/assets/eventos/invitaciones/playa_atardecer.jpg'
 import invitaPlayaTerraza from '@/assets/eventos/invitaciones/playa_terraza.jpg'
+import invitaComidaFamiliar from '@/assets/eventos/invitaciones/comida_familiar.jpg'
+import invitaCenaHogar from '@/assets/eventos/invitaciones/cena_hogar.jpg'
+import invitaTapas from '@/assets/eventos/invitaciones/tapas.jpg'
+import invitaDesayuno from '@/assets/eventos/invitaciones/desayuno.jpg'
+import invitaJubilacionBrindis from '@/assets/eventos/invitaciones/jubilacion_brindis.jpg'
+import invitaJubilacionViaje from '@/assets/eventos/invitaciones/jubilacion_viaje.jpg'
+import invitaJubilacionRelax from '@/assets/eventos/invitaciones/jubilacion_relax.jpg'
+import invitaJubilacionCena from '@/assets/eventos/invitaciones/jubilacion_cena.jpg'
+import invitaCarnavalBufon from '@/assets/eventos/invitaciones/carnaval_bufon.jpg'
+import invitaCarnavalPlumas from '@/assets/eventos/invitaciones/carnaval_plumas.jpg'
+import invitaCarnavalPayaso from '@/assets/eventos/invitaciones/carnaval_payaso.jpg'
+import invitaCarnavalConfeti from '@/assets/eventos/invitaciones/carnaval_confeti.jpg'
+import invitaOtonoAcogedor from '@/assets/eventos/invitaciones/otono_acogedor.jpg'
+import invitaOtonoSenderismo from '@/assets/eventos/invitaciones/otono_senderismo.jpg'
+import invitaOtonoHogar from '@/assets/eventos/invitaciones/otono_hogar.jpg'
+import invitaOtonoCosecha from '@/assets/eventos/invitaciones/otono_cosecha.jpg'
+import invitaCorazonesAcuarela from '@/assets/eventos/invitaciones/corazones_acuarela.jpg'
+import invitaCorazonesMadera from '@/assets/eventos/invitaciones/corazones_madera.jpg'
+import invitaCorazonesTerraza from '@/assets/eventos/invitaciones/corazones_terraza.jpg'
+import invitaCorazonesDorado from '@/assets/eventos/invitaciones/corazones_dorado.jpg'
+import invitaClasico from '@/assets/eventos/invitaciones/clasico.jpg'
+import invitaCelebracionDorada from '@/assets/eventos/invitaciones/celebracion_dorada.jpg'
+import invitaFiestaAcuarela from '@/assets/eventos/invitaciones/fiesta_acuarela.jpg'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -104,6 +127,8 @@ export const CELEBRATION_SUBTYPES = [
   'Reunión familiar',
   'Compromiso',
   'Graduación',
+  'Despedida de soltero/a',
+  'Estreno de casa',
   'Celebración especial',
   'Otro',
 ]
@@ -378,7 +403,7 @@ export interface InvitationTemplateMeta {
 }
 
 export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
-  { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti' },
+  { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti', image: invitaClasico },
   { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos', image: invitaAlegre },
   { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo' },
   { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol', image: invitaFutbol },
@@ -497,6 +522,33 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina },
   { key: 'playa_atardecer', label: 'Playa atardecer', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaAtardecer },
   { key: 'playa_terraza', label: 'Playa noche de verano', gradient: 'linear-gradient(160deg, #B45309, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaTerraza },
+  // Lote 11 — Clásico (SVG→foto), Reunión familiar (ya existe como
+  // subtipo de Celebración) con varias escenas de comida, Jubilación
+  // (también subtipo ya existente) y más variantes de Carnaval, Otoño y
+  // Corazones. Se descarta una última hoja recibida por repetir Dorado,
+  // Disco, Barbacoa y Comunión.
+  { key: 'comida_familiar', label: 'Comida familiar', gradient: 'linear-gradient(160deg, #FBBF24, #166534)', text: '#1f2233', artKey: 'confeti', image: invitaComidaFamiliar },
+  { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar },
+  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas },
+  { key: 'desayuno', label: 'Desayuno / Brunch', gradient: 'linear-gradient(160deg, #FDE9D9, #FBBF24)', text: '#7C2D12', artKey: 'confeti', image: invitaDesayuno },
+  { key: 'jubilacion_brindis', label: 'Jubilación brindis', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaJubilacionBrindis },
+  { key: 'jubilacion_viaje', label: 'Jubilación viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaJubilacionViaje },
+  { key: 'jubilacion_relax', label: 'Jubilación tranquila', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaJubilacionRelax },
+  { key: 'jubilacion_cena', label: 'Jubilación cena', gradient: 'linear-gradient(160deg, #7F1D1D, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaJubilacionCena },
+  { key: 'carnaval_bufon', label: 'Carnaval bufón', gradient: 'linear-gradient(160deg, #7C3AED, #DB2777)', text: '#ffffff', artKey: 'confeti', image: invitaCarnavalBufon },
+  { key: 'carnaval_plumas', label: 'Carnaval plumas', gradient: 'linear-gradient(160deg, #0EA5E9, #DB2777)', text: '#ffffff', artKey: 'confeti', image: invitaCarnavalPlumas },
+  { key: 'carnaval_payaso', label: 'Carnaval payaso', gradient: 'linear-gradient(160deg, #FBBF24, #7C3AED)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalPayaso },
+  { key: 'carnaval_confeti', label: 'Carnaval confeti', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalConfeti },
+  { key: 'otono_acogedor', label: 'Otoño acogedor', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoAcogedor },
+  { key: 'otono_senderismo', label: 'Otoño senderismo', gradient: 'linear-gradient(160deg, #B45309, #166534)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoSenderismo },
+  { key: 'otono_hogar', label: 'Otoño en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoHogar },
+  { key: 'otono_cosecha', label: 'Otoño cosecha', gradient: 'linear-gradient(160deg, #FBBF24, #B45309)', text: '#7C2D12', artKey: 'confeti', image: invitaOtonoCosecha },
+  { key: 'corazones_acuarela', label: 'Corazones acuarela', gradient: 'linear-gradient(160deg, #FDA4AF, #FFE4E6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesAcuarela },
+  { key: 'corazones_madera', label: 'Corazones rústico', gradient: 'linear-gradient(160deg, #E11D48, #78350F)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesMadera },
+  { key: 'corazones_terraza', label: 'Corazones terraza', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesTerraza },
+  { key: 'corazones_dorado', label: 'Corazones dorado', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesDorado },
+  { key: 'celebracion_dorada', label: 'Celebración dorada', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCelebracionDorada },
+  { key: 'fiesta_acuarela', label: 'Fiesta acuarela', gradient: 'linear-gradient(160deg, #FDE9D9, #F3E8FF)', text: '#6B21A8', artKey: 'confeti', image: invitaFiestaAcuarela },
 ]
 
 // ---------------------------------------------------------------------

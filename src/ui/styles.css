@@ -1016,6 +1016,37 @@ select {
   border-color: var(--primary);
 }
 
+/* Botón de color nativo (rueda completa del móvil) junto a los 6
+   colores rápidos del editor de invitaciones — sin esto, Chrome/Safari
+   dibujan el swatch cuadrado con relleno interno en vez de un círculo
+   limpio a juego con los presets. */
+.color-wheel-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid #d8dae8;
+  padding: 0;
+  cursor: pointer;
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+
+.color-wheel-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+  border-radius: 50%;
+}
+
+.color-wheel-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.color-wheel-input::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
 /* Selector de plantilla de invitación — con ~96 temas, una fila de
    chips que se envuelve obliga a repasarlos todos. En su lugar, un
    botón abre una rueda horizontal de miniaturas que se desliza con el

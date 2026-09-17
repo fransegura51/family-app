@@ -4186,7 +4186,7 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
               <div className="card member-form" style={{ marginTop: 8 }}>
                 <strong style={{ fontSize: 13 }}>Elemento seleccionado</strong>
                 {(selected.type === 'text' || selected.type === 'event_data' || selected.type === 'shape') && (
-                  <div className="filter-row" style={{ marginTop: 4 }}>
+                  <div className="filter-row" style={{ marginTop: 4, alignItems: 'center' }}>
                     {LAYER_COLOR_PRESETS.map((c) => (
                       <button
                         key={c}
@@ -4196,6 +4196,18 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
                         aria-label={`Color ${c}`}
                       />
                     ))}
+                    {/* Petición real: "mejor pon un botón que puedas
+                        elegir el color de la letra de una paleta más
+                        amplia" — input[type=color] nativo abre la rueda
+                        de color completa del móvil, sin límite a los 6
+                        rápidos de arriba. */}
+                    <input
+                      type="color"
+                      className="color-wheel-input"
+                      value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
+                      onChange={(e) => updateSelected({ color: e.target.value })}
+                      aria-label="Elegir cualquier color"
+                    />
                   </div>
                 )}
                 {(selected.type === 'text' || selected.type === 'event_data') && (

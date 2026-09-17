@@ -1927,7 +1927,17 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
             <InvitationTemplatePicker templates={sortedTemplates} selectedKey={templateKey} onSelect={(t) => setTemplateKey(t.key)} />
 
             <div
-              style={{ position: 'relative', overflow: 'hidden', marginTop: 12, borderRadius: 16, padding: 20, background: template.gradient, color: template.text, textAlign: 'center' }}
+              style={{
+                position: 'relative',
+                overflow: 'hidden',
+                marginTop: 12,
+                borderRadius: 16,
+                padding: 20,
+                background: template.gradient,
+                color: template.text,
+                textAlign: 'center',
+                aspectRatio: template.imageAspect ? `${template.imageAspect} / 1` : '3 / 4',
+              }}
             >
               <InvitationBackground templateKey={template.key} />
               <div style={{ position: 'relative', zIndex: 1 }}>
@@ -3572,12 +3582,14 @@ function InvitationCanvasView({
   photoUrls: Record<string, string>
   backgroundImageUrl?: string | null
 }) {
+  const template = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
+  const aspectRatio = !backgroundImageUrl && template?.imageAspect ? `${template.imageAspect} / 1` : '3 / 4'
   return (
     <div
       style={{
         position: 'relative',
         width: '100%',
-        aspectRatio: '3 / 4',
+        aspectRatio,
         borderRadius: 16,
         overflow: 'hidden',
         background: canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient,
@@ -3876,6 +3888,9 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
     }
   }
 
+  const currentTemplate = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
+  const canvasAspectRatio = !backgroundImageUrl && currentTemplate?.imageAspect ? `${currentTemplate.imageAspect} / 1` : '3 / 4'
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
@@ -3918,7 +3933,7 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
             <div
               ref={canvasRef}
               onPointerDown={() => setSelectedId(null)}
-              style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 16, overflow: 'hidden', background: backgroundGradient, marginTop: 10, touchAction: 'none' }}
+              style={{ position: 'relative', width: '100%', aspectRatio: canvasAspectRatio, borderRadius: 16, overflow: 'hidden', background: backgroundGradient, marginTop: 10, touchAction: 'none' }}
             >
               {backgroundImageUrl ? (
                 <img src={backgroundImageUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />

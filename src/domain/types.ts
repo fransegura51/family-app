@@ -828,6 +828,14 @@ export interface InvitationLayer {
 export interface InvitationCanvas {
   backgroundGradient: string
   layers: InvitationLayer[]
+  // Petición real: "que se pueda ajustar el tamaño del fondo con los
+  // dedos" — solo para la foto de fondo (background_image_path), no
+  // para el arte del tema. Fracción del contenedor (-0.5..0.5) y
+  // multiplicador de zoom (>=1); sin ellas se comporta igual que antes
+  // (centrada, sin zoom).
+  backgroundOffsetX?: number
+  backgroundOffsetY?: number
+  backgroundScale?: number
 }
 
 export interface EventInvitation {

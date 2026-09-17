@@ -3541,32 +3541,45 @@ function InvitationTemplatePicker({
 }) {
   const [open, setOpen] = useState(false)
   const selected = templates.find((t) => t.key === selectedKey) ?? templates[0]
+  const selectedThumbRef = useRef<HTMLButtonElement>(null)
+  const didCenterOnce = useRef(false)
+
+  // Petición real: "que la rueda vuelva a abrirse donde te quedaste, no
+  // de nuevo al principio" — la rueda se queda siempre montada (solo se
+  // oculta con display:none) para que el navegador conserve el scroll
+  // entre un cierre y la siguiente apertura; lo único que se hace a
+  // mano es centrar la seleccionada la primera vez que aparece.
+  useEffect(() => {
+    if (open && !didCenterOnce.current) {
+      didCenterOnce.current = true
+      selectedThumbRef.current?.scrollIntoView({ inline: 'center', block: 'nearest' })
+    }
+  }, [open])
 
   return (
     <div className="invitation-template-picker">
       <button type="button" className="invitation-template-toggle" onClick={() => setOpen((v) => !v)}>
         🎨 Elige tu plantilla — {selected.label} {open ? '▲' : '▼'}
       </button>
-      {open && (
-        <div className="invitation-template-carousel">
-          {templates.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className={'invitation-template-thumb' + (t.key === selectedKey ? ' invitation-template-thumb-active' : '')}
-              onClick={() => {
-                onSelect(t)
-                setOpen(false)
-              }}
-            >
-              <span className="invitation-template-thumb-preview">
-                <InvitationBackground templateKey={t.key} />
-              </span>
-              <span className="invitation-template-thumb-label">{t.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="invitation-template-carousel" style={{ display: open ? 'flex' : 'none' }}>
+        {templates.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            ref={t.key === selectedKey ? selectedThumbRef : undefined}
+            className={'invitation-template-thumb' + (t.key === selectedKey ? ' invitation-template-thumb-active' : '')}
+            onClick={() => {
+              onSelect(t)
+              setOpen(false)
+            }}
+          >
+            <span className="invitation-template-thumb-preview">
+              <InvitationBackground templateKey={t.key} />
+            </span>
+            <span className="invitation-template-thumb-label">{t.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -3596,7 +3609,18 @@ function InvitationCanvasView({
       }}
     >
       {backgroundImageUrl ? (
-        <img src={backgroundImageUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img
+          src={backgroundImageUrl}
+          alt=""
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            transform: `translate(${(canvas.backgroundOffsetX ?? 0) * 100}%, ${(canvas.backgroundOffsetY ?? 0) * 100}%) scale(${canvas.backgroundScale ?? 1})`,
+          }}
+        />
       ) : (
         <InvitationBackground templateKey={templateKey} />
       )}
@@ -3665,11 +3689,22 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
   // la Fase 0, sin usar hasta ahora).
   const [backgroundImagePath, setBackgroundImagePath] = useState<string | null>(null)
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null)
+  // Petición real: "que se pueda ajustar el tamaño del fondo con los
+  // dedos, con un botón ajustar fondo que sea editable si está marcado
+  // y cuando no lo está esté fijo" — arrastrar mueve, pellizcar con dos
+  // dedos hace zoom; solo activo mientras adjustingBackground es true,
+  // para no interferir con el arrastre normal de las capas de texto.
+  const [backgroundOffsetX, setBackgroundOffsetX] = useState(0)
+  const [backgroundOffsetY, setBackgroundOffsetY] = useState(0)
+  const [backgroundScale, setBackgroundScale] = useState(1)
+  const [adjustingBackground, setAdjustingBackground] = useState(false)
+  const bgDragRef = useRef<{ pointers: Map<number, { x: number; y: number }>; startOffsetX: number; startOffsetY: number; startScale: number; startDist: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [uploadingBackground, setUploadingBackground] = useState(false)
   const [addMenu, setAddMenu] = useState<'emoji' | 'forma' | null>(null)
+  const [customEmoji, setCustomEmoji] = useState('')
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -3677,10 +3712,18 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
   useEffect(() => {
     getEventInvitation(event.id)
       .then(async (invitation) => {
-        if (invitation && invitation.canvas.layers.length > 0) {
+        // Antes miraba layers.length > 0 para decidir si había "algo
+        // guardado" — pero un diseño guardado con la foto de fondo en
+        // blanco a propósito (0 capas) volvía a rellenarse solo al
+        // reabrir. Lo que importa es si existe fila guardada, no si
+        // tiene capas.
+        if (invitation) {
           setTemplateKey(invitation.templateKey || INVITATION_TEMPLATES[0].key)
           setBackgroundGradient(invitation.canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient)
           setLayers(invitation.canvas.layers)
+          setBackgroundOffsetX(invitation.canvas.backgroundOffsetX ?? 0)
+          setBackgroundOffsetY(invitation.canvas.backgroundOffsetY ?? 0)
+          setBackgroundScale(invitation.canvas.backgroundScale ?? 1)
           if (invitation.backgroundImagePath) {
             setBackgroundImagePath(invitation.backgroundImagePath)
             getInvitationPhotoUrl(invitation.backgroundImagePath)
@@ -3763,6 +3806,10 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
     setSelectedId(null)
     setBackgroundImagePath(null)
     setBackgroundImageUrl(null)
+    setBackgroundOffsetX(0)
+    setBackgroundOffsetY(0)
+    setBackgroundScale(1)
+    setAdjustingBackground(false)
   }
 
   async function handleBackgroundPhotoChange(e: ChangeEvent<HTMLInputElement>) {
@@ -3799,6 +3846,55 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
   function handleRemoveBackgroundPhoto() {
     setBackgroundImagePath(null)
     setBackgroundImageUrl(null)
+    setBackgroundOffsetX(0)
+    setBackgroundOffsetY(0)
+    setBackgroundScale(1)
+    setAdjustingBackground(false)
+  }
+
+  // Un dedo mueve (pan), dos dedos hacen zoom (pinch) — solo mientras
+  // "🔧 Ajustar fondo" está activo; si no, el fondo queda fijo y los
+  // toques van a las capas de texto de siempre.
+  function handleBackgroundPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!adjustingBackground) return
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    if (!bgDragRef.current) {
+      bgDragRef.current = { pointers: new Map(), startOffsetX: backgroundOffsetX, startOffsetY: backgroundOffsetY, startScale: backgroundScale, startDist: 0 }
+    }
+    bgDragRef.current.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (bgDragRef.current.pointers.size === 2) {
+      const pts = [...bgDragRef.current.pointers.values()]
+      bgDragRef.current.startDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1
+      bgDragRef.current.startScale = backgroundScale
+    } else {
+      bgDragRef.current.startOffsetX = backgroundOffsetX
+      bgDragRef.current.startOffsetY = backgroundOffsetY
+    }
+  }
+
+  function handleBackgroundPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const drag = bgDragRef.current
+    if (!drag || !drag.pointers.has(e.pointerId)) return
+    e.stopPropagation()
+    const prev = drag.pointers.get(e.pointerId)!
+    drag.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pts = [...drag.pointers.values()]
+    if (pts.length === 2) {
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1
+      setBackgroundScale(clamp(drag.startScale * (dist / drag.startDist), 1, 3))
+    } else if (pts.length === 1 && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect()
+      const dx = (e.clientX - prev.x) / rect.width
+      const dy = (e.clientY - prev.y) / rect.height
+      setBackgroundOffsetX((x) => clamp(x + dx, -0.5, 0.5))
+      setBackgroundOffsetY((y) => clamp(y + dy, -0.5, 0.5))
+    }
+  }
+
+  function handleBackgroundPointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    bgDragRef.current?.pointers.delete(e.pointerId)
+    if (bgDragRef.current && bgDragRef.current.pointers.size === 0) bgDragRef.current = null
   }
 
   function handlePrettify() {
@@ -3879,7 +3975,7 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
     setSaving(true)
     setError(null)
     try {
-      await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers }, backgroundImagePath)
+      await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers, backgroundOffsetX, backgroundOffsetY, backgroundScale }, backgroundImagePath)
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar el diseño'))
@@ -3928,7 +4024,21 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
                   Quitar foto de fondo
                 </button>
               )}
+              {backgroundImageUrl && (
+                <button
+                  type="button"
+                  className={'chip' + (adjustingBackground ? ' chip-active' : '')}
+                  onClick={() => setAdjustingBackground((v) => !v)}
+                >
+                  🔧 Ajustar fondo
+                </button>
+              )}
             </div>
+            {adjustingBackground && (
+              <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                Arrastra la foto para moverla y pellizca con dos dedos para hacer zoom.
+              </p>
+            )}
 
             <div
               ref={canvasRef}
@@ -3936,7 +4046,24 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
               style={{ position: 'relative', width: '100%', aspectRatio: canvasAspectRatio, borderRadius: 16, overflow: 'hidden', background: backgroundGradient, marginTop: 10, touchAction: 'none' }}
             >
               {backgroundImageUrl ? (
-                <img src={backgroundImageUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img
+                  src={backgroundImageUrl}
+                  alt=""
+                  onPointerDown={handleBackgroundPointerDown}
+                  onPointerMove={handleBackgroundPointerMove}
+                  onPointerUp={handleBackgroundPointerUp}
+                  onPointerCancel={handleBackgroundPointerUp}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    transform: `translate(${backgroundOffsetX * 100}%, ${backgroundOffsetY * 100}%) scale(${backgroundScale})`,
+                    touchAction: adjustingBackground ? 'none' : undefined,
+                    cursor: adjustingBackground ? 'grab' : undefined,
+                  }}
+                />
               ) : (
                 <InvitationBackground templateKey={templateKey} />
               )}
@@ -4008,13 +4135,42 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
               </button>
             </div>
             {addMenu === 'emoji' && (
-              <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
-                {INVITATION_EMOJI_SUGGESTIONS.map((em) => (
-                  <button key={em} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))}>
-                    {em}
+              <>
+                {/* Petición real: "los emojis salen muy pocos, lo suyo
+                    sería poder usar cualquier emoji del teclado" — el
+                    teclado emoji nativo del móvil ya funciona en
+                    cualquier campo de texto, así que basta con un campo
+                    donde pegar/escribir cualquiera; los botones de abajo
+                    siguen para los más usados, de un toque. */}
+                <form
+                  style={{ display: 'flex', gap: 6, marginTop: 4 }}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    const em = customEmoji.trim()
+                    if (!em) return
+                    handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))
+                    setCustomEmoji('')
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={customEmoji}
+                    onChange={(e) => setCustomEmoji(e.target.value)}
+                    placeholder="Escribe o pega cualquier emoji del teclado"
+                    style={{ flex: 1 }}
+                  />
+                  <button type="submit" className="chip" disabled={!customEmoji.trim()}>
+                    + Añadir
                   </button>
-                ))}
-              </div>
+                </form>
+                <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
+                  {INVITATION_EMOJI_SUGGESTIONS.map((em) => (
+                    <button key={em} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))}>
+                      {em}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
             {addMenu === 'forma' && (
               <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
@@ -4061,10 +4217,24 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
                   </label>
                 )}
                 <div className="filter-row" style={{ marginTop: 8 }}>
-                  <button type="button" className="link-button" onClick={() => updateSelected({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 2) })}>
+                  {/* Petición real: "he insertado una foto y no consigo
+                      editar su tamaño" — con ±2 el cambio era
+                      imperceptible en una foto/forma de 60-300px (sí se
+                      notaba en texto, de 10-40px); foto/forma usan un
+                      paso mayor. El punto azul de la esquina (pellizcar/
+                      arrastrar) sigue siendo el gesto principal. */}
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => updateSelected({ fontSize: Math.max(10, (selected.fontSize ?? 16) - (selected.type === 'text' || selected.type === 'event_data' ? 2 : 15)) })}
+                  >
                     A-
                   </button>
-                  <button type="button" className="link-button" onClick={() => updateSelected({ fontSize: (selected.fontSize ?? 16) + 2 })}>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => updateSelected({ fontSize: (selected.fontSize ?? 16) + (selected.type === 'text' || selected.type === 'event_data' ? 2 : 15) })}
+                  >
                     A+
                   </button>
                   <button type="button" className="link-button" onClick={() => handleReorder(1)}>

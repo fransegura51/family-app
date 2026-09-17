@@ -44,6 +44,7 @@ import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts } from '@/data/products'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
+import { classifyFoodType, FOOD_TYPES } from '@/domain/foodTypes'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import { balanceTrend, earliestTransactionDate } from '@/domain/balanceTrend'
 import {
@@ -90,6 +91,8 @@ import type {
   FamilyMember,
   KidGoal,
   KidWalletTransaction,
+  Product,
+  ProductPrice,
   Profile,
   Receipt,
   Tag,
@@ -2301,7 +2304,11 @@ function BreakdownDonut({
 }: {
   slices: BreakdownSlice[]
   centerLabel: { name: string; total: number }
-  onViewRecords: (key: string) => void
+  // Ausente cuando la porción no viene de gastos reales (p. ej. el
+  // reparto por tipo de alimento, calculado a partir de precios por
+  // producto — no hay un "movimiento" 1:1 que enseñar) — el conteo se
+  // sigue viendo, solo sin el enlace.
+  onViewRecords?: (key: string) => void
 }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const selected = slices.find((s) => s.key === selectedKey)
@@ -2317,10 +2324,14 @@ function BreakdownDonut({
       {selected && (
         <p className="muted" style={{ textAlign: 'center', marginTop: 4 }}>
           {selected.count} {selected.count === 1 ? 'movimiento' : 'movimientos'} en {selected.label}
-          {' — '}
-          <button type="button" className="link-button" onClick={() => onViewRecords(selected.key)}>
-            Ver movimientos →
-          </button>
+          {onViewRecords && (
+            <>
+              {' — '}
+              <button type="button" className="link-button" onClick={() => onViewRecords(selected.key)}>
+                Ver movimientos →
+              </button>
+            </>
+          )}
         </p>
       )}
     </div>
@@ -5126,10 +5137,14 @@ function LinkedDonutCard({
 }: {
   title: string
   monthLabel: string
-  slices: (BreakdownSlice & { expenseIds: string[] })[]
+  // `expenseIds` falta en los dónuts calculados a partir de precios
+  // por producto (p. ej. tipo de alimento) — ahí no hay "Ver
+  // movimientos" porque no hay un gasto real 1:1 con la porción.
+  slices: (BreakdownSlice & { expenseIds?: string[] })[]
   onViewRecords?: (expenseIds: string[], label: string) => void
 }) {
   const grandTotal = slices.reduce((sum, s) => sum + s.total, 0)
+  const linkable = onViewRecords && slices.every((s) => s.expenseIds !== undefined)
   return (
     <div className="card event-card">
       <strong>
@@ -5141,10 +5156,14 @@ function LinkedDonutCard({
         <BreakdownDonut
           slices={slices}
           centerLabel={{ name: 'Todo', total: grandTotal }}
-          onViewRecords={(key) => {
-            const slice = slices.find((s) => s.key === key)
-            if (slice && onViewRecords) onViewRecords(slice.expenseIds, `${title} — ${slice.label}`)
-          }}
+          onViewRecords={
+            linkable
+              ? (key) => {
+                  const slice = slices.find((s) => s.key === key)
+                  if (slice?.expenseIds) onViewRecords(slice.expenseIds, `${title} — ${slice.label}`)
+                }
+              : undefined
+          }
         />
       )}
     </div>
@@ -5367,6 +5386,11 @@ export function BudgetsTab({
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [knownStores, setKnownStores] = useState<string[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
+  // Solo para Estadística compras (group === 'alimentacion') — precio
+  // por producto, para el dónut "por tipo de alimento" (ver más abajo).
+  // Presupuesto Generales no los necesita, así que se quedan vacíos ahí.
+  const [prices, setPrices] = useState<ProductPrice[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // Petición real: "que una cosa filtre por mes físico y la otra por
@@ -5407,8 +5431,10 @@ export function BudgetsTab({
       getFinanceMonthStartDay(),
       listBankAccounts(),
       listFamilyMembers(),
+      group === 'alimentacion' ? listAllProductPrices() : Promise.resolve([]),
+      group === 'alimentacion' ? listProducts() : Promise.resolve([]),
     ])
-      .then(async ([b, e, r, stores, cats, monthStart, accounts, m]) => {
+      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
         // propias todavía — se dan de alta las sugeridas solas, sin
         // pedirlo (petición real: "me pones todas esas categorías").
@@ -5425,6 +5451,8 @@ export function BudgetsTab({
         setMonthStartDay(monthStart)
         setHasBankAccounts(accounts.length > 0)
         setMembers(m)
+        setPrices(p)
+        setProducts(prod)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -5507,8 +5535,41 @@ export function BudgetsTab({
   const comprasTotal = alimentacionTotal + noAlimentosTotal
   const totalGastadoPeriodo = monthRealExpenses.reduce((sum, e) => sum + e.amount, 0)
   const pctOf = (part: number, total: number) => (total > 0 ? (part / total) * 100 : 0)
-  const foodCategoryPieGroups = groupExpensesByCategory(alimentacionExpenses, categories)
   const noAlimentosCategoryPieGroups = groupExpensesByCategory(noAlimentosExpenses, categories)
+  // Petición real: "la estadística de tipos de alimentos no sirve para
+  // mucho así por categoría, puedes clasificar los alimentos... verdura,
+  // fruta, carne, etc" — la categoría del gasto (Supermercado/
+  // Restaurantes) es casi siempre la misma para todo, así que hace
+  // falta bajar al PRODUCTO de cada ticket (product_prices), no al
+  // gasto entero. Por eso este dónut no lleva "Ver movimientos" como
+  // los otros dos: un ticket mezcla varios tipos de alimento a la vez,
+  // no hay un gasto 1:1 con "Verdura" o "Carne".
+  const productById = new Map(products.map((p) => [p.id, p]))
+  const nonFoodProductIds = new Set(products.filter((p) => p.nonFood).map((p) => p.id))
+  const foodReceiptIdsForPrices = buildFoodReceiptIds(receipts, categories)
+  const periodFoodPrices = prices.filter(
+    (pr) =>
+      pr.recordedDate >= periodFrom &&
+      pr.recordedDate <= periodTo &&
+      isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds),
+  )
+  const foodTypeTotals = new Map<string, { total: number; count: number }>()
+  for (const pr of periodFoodPrices) {
+    const name = productById.get(pr.productId)?.displayName ?? ''
+    const type = classifyFoodType(name)
+    const qty = Number(pr.quantity)
+    const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
+    const entry = foodTypeTotals.get(type.key) ?? { total: 0, count: 0 }
+    entry.total += amount
+    entry.count += 1
+    foodTypeTotals.set(type.key, entry)
+  }
+  const foodTypePieGroups: BreakdownSlice[] = FOOD_TYPES.filter((t) => foodTypeTotals.has(t.key))
+    .map((t) => {
+      const entry = foodTypeTotals.get(t.key)!
+      return { key: t.key, label: t.label, icon: t.icon, total: entry.total, count: entry.count }
+    })
+    .sort((a, b) => b.total - a.total)
   // Mismo enlace "Ver movimientos →" para el dónut por tienda — cada
   // grupo ya trae sus propios tickets (groupReceiptsByStore), de ahí
   // se sacan los ids de gasto reales.
@@ -5710,12 +5771,7 @@ export function BudgetsTab({
         <StorePieChart groups={categoryPieSlices} monthLabel={periodTitle} title="Reparto del gasto por categoría" />
       )}
       {group === 'alimentacion' && (
-        <LinkedDonutCard
-          title="Reparto del gasto por tipo de alimento"
-          monthLabel={periodTitle}
-          slices={foodCategoryPieGroups}
-          onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
-        />
+        <LinkedDonutCard title="Reparto del gasto por tipo de alimento" monthLabel={periodTitle} slices={foodTypePieGroups} />
       )}
       {group === 'alimentacion' && (
         <LinkedDonutCard

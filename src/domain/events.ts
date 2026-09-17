@@ -106,6 +106,16 @@ import invitaCorazonesDorado from '@/assets/eventos/invitaciones/corazones_dorad
 import invitaClasico from '@/assets/eventos/invitaciones/clasico.jpg'
 import invitaCelebracionDorada from '@/assets/eventos/invitaciones/celebracion_dorada.jpg'
 import invitaFiestaAcuarela from '@/assets/eventos/invitaciones/fiesta_acuarela.jpg'
+import invitaRobots from '@/assets/eventos/invitaciones/robots.jpg'
+import invitaOsitos from '@/assets/eventos/invitaciones/ositos.jpg'
+import invitaGatitos from '@/assets/eventos/invitaciones/gatitos.jpg'
+import invitaKpop from '@/assets/eventos/invitaciones/kpop.jpg'
+import invitaPijamas from '@/assets/eventos/invitaciones/pijamas.jpg'
+import invitaSuperheroina from '@/assets/eventos/invitaciones/superheroina.jpg'
+import invitaSirena from '@/assets/eventos/invitaciones/sirena.jpg'
+import invitaDelfinTortuga from '@/assets/eventos/invitaciones/delfin_tortuga.jpg'
+import invitaMago from '@/assets/eventos/invitaciones/mago.jpg'
+import invitaBruja from '@/assets/eventos/invitaciones/bruja.jpg'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -418,7 +428,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio, imageAspect: 0.4322 },
   { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado', image: invitaElegante, imageAspect: 1.1861 },
   { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralJardin, imageAspect: 1 },
-  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo, imageAspect: 0.4387 },
+  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo, imageAspect: 1.2163 },
   { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco', image: invitaDisco, imageAspect: 1.188 },
   // Lote 2 — petición real, lista de 26 temas; 3 no se hacen por ser
   // personajes/estilos con derechos de terceros (Minecraft, Mario Bros,
@@ -427,17 +437,17 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'dinosaurios', label: 'Dinosaurios', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'dinosaurios', image: invitaDinosaurios, imageAspect: 0.4361 },
   { key: 'videojuegos', label: 'Videojuegos', gradient: 'linear-gradient(160deg, #312E81, #4C1D95)', text: '#ffffff', artKey: 'videojuegos', image: invitaVideojuegos, imageAspect: 0.499 },
   { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones', image: invitaCorazones, imageAspect: 0.4512 },
-  { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos' },
-  { key: 'gatitos', label: 'Gatitos', gradient: 'linear-gradient(160deg, #F3E8FF, #E9D5FF)', text: '#6B21A8', artKey: 'gatitos' },
+  { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos', image: invitaOsitos, imageAspect: 1.214 },
+  { key: 'gatitos', label: 'Gatitos', gradient: 'linear-gradient(160deg, #F3E8FF, #E9D5FF)', text: '#6B21A8', artKey: 'gatitos', image: invitaGatitos, imageAspect: 1.2163 },
   { key: 'coches', label: 'Coches de carreras', gradient: 'linear-gradient(160deg, #1F2937, #7F1D1D)', text: '#ffffff', artKey: 'coches', image: invitaCoches, imageAspect: 0.4829 },
   // Lote 3.
-  { key: 'robots', label: 'Robots', gradient: 'linear-gradient(160deg, #64748B, #1E293B)', text: '#ffffff', artKey: 'robots' },
+  { key: 'robots', label: 'Robots', gradient: 'linear-gradient(160deg, #64748B, #1E293B)', text: '#ffffff', artKey: 'robots', image: invitaRobots, imageAspect: 1.214 },
   { key: 'superheroe', label: 'Superhéroe', gradient: 'linear-gradient(160deg, #DC2626, #1E3A8A)', text: '#ffffff', artKey: 'superheroe', image: invitaSuperheroe, imageAspect: 0.4844 },
-  { key: 'superheroina', label: 'Superheroína', gradient: 'linear-gradient(160deg, #EC4899, #7C3AED)', text: '#ffffff', artKey: 'superheroina' },
-  { key: 'pijamas', label: 'Estrellitas', gradient: 'linear-gradient(160deg, #312E81, #0F172A)', text: '#ffffff', artKey: 'pijamas' },
+  { key: 'superheroina', label: 'Superheroína', gradient: 'linear-gradient(160deg, #EC4899, #7C3AED)', text: '#ffffff', artKey: 'superheroina', image: invitaSuperheroina, imageAspect: 1.2163 },
+  { key: 'pijamas', label: 'Estrellitas', gradient: 'linear-gradient(160deg, #312E81, #0F172A)', text: '#ffffff', artKey: 'pijamas', image: invitaPijamas, imageAspect: 1.214 },
   // "Guerreras Kpop" — ambiente genérico de concierto/idol (neón,
   // micro, focos), sin ningún grupo, cara ni persona real de por medio.
-  { key: 'kpop', label: 'Kpop', gradient: 'linear-gradient(160deg, #DB2777, #6D28D9)', text: '#ffffff', artKey: 'kpop' },
+  { key: 'kpop', label: 'Kpop', gradient: 'linear-gradient(160deg, #DB2777, #6D28D9)', text: '#ffffff', artKey: 'kpop', image: invitaKpop, imageAspect: 1.2163 },
   // Lote 4 — arte real traído por el usuario (dos hojas de 6 y 12
   // ilustraciones ya recortadas en plantillas individuales). De las 12
   // de la segunda hoja se descarta una (castillo/varita/lechuza al
@@ -451,20 +461,20 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'princesa', label: 'Princesa', gradient: 'linear-gradient(160deg, #FBCFE8, #F9A8D4)', text: '#9D174D', artKey: 'confeti', image: invitaPrincesa, imageAspect: 0.5 },
   { key: 'espacio', label: 'Espacio', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaEspacio, imageAspect: 0.4322 },
   { key: 'piratas', label: 'Piratas', gradient: 'linear-gradient(160deg, #38BDF8, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaPiratas, imageAspect: 0.4355 },
-  { key: 'safari', label: 'Safari', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'confeti', image: invitaSafari, imageAspect: 0.5151 },
+  { key: 'safari', label: 'Safari', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'confeti', image: invitaSafari, imageAspect: 1.214 },
   { key: 'acampada', label: 'Acampada', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaAcampada, imageAspect: 0.5565 },
   { key: 'oceano', label: 'Fondo del mar', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaOceano, imageAspect: 0.5011 },
-  { key: 'hadas', label: 'Hadas', gradient: 'linear-gradient(160deg, #FBCFE8, #BBF7D0)', text: '#BE185D', artKey: 'confeti', image: invitaHadas, imageAspect: 0.5229 },
-  { key: 'granja', label: 'Granja', gradient: 'linear-gradient(160deg, #FDE9D9, #DC2626)', text: '#7C2D12', artKey: 'confeti', image: invitaGranja, imageAspect: 0.5391 },
+  { key: 'hadas', label: 'Hadas', gradient: 'linear-gradient(160deg, #FBCFE8, #BBF7D0)', text: '#BE185D', artKey: 'confeti', image: invitaHadas, imageAspect: 1.214 },
+  { key: 'granja', label: 'Granja', gradient: 'linear-gradient(160deg, #FDE9D9, #DC2626)', text: '#7C2D12', artKey: 'confeti', image: invitaGranja, imageAspect: 1.214 },
   { key: 'alienigenas', label: 'Alienígenas', gradient: 'linear-gradient(160deg, #312E81, #020617)', text: '#ffffff', artKey: 'confeti', image: invitaAlienigenas, imageAspect: 0.5 },
   { key: 'playa', label: 'Playa tropical', gradient: 'linear-gradient(160deg, #FDBA74, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlaya, imageAspect: 0.4492 },
   { key: 'concierto', label: 'Concierto', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaConcierto, imageAspect: 0.4688 },
-  { key: 'boda', label: 'Boda', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#4A5D23', artKey: 'confeti', image: invitaBoda, imageAspect: 0.4844 },
+  { key: 'boda', label: 'Boda', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#4A5D23', artKey: 'confeti', image: invitaBoda, imageAspect: 1.2163 },
   // Lote 5 — segunda hoja de arte real. Se descartan los repetidos de
   // temas que ya tenían imagen (fútbol, dinosaurios, espacio, unicornio)
   // y una sirena que se parece demasiado a un personaje Disney conocido
   // (pelo rojo, top de concha, mismo silueta) — misma regla de siempre.
-  { key: 'obras', label: 'Obras', gradient: 'linear-gradient(160deg, #FBBF24, #78350F)', text: '#1f2233', artKey: 'confeti', image: invitaObras, imageAspect: 0.5112 },
+  { key: 'obras', label: 'Obras', gradient: 'linear-gradient(160deg, #FBBF24, #78350F)', text: '#1f2233', artKey: 'confeti', image: invitaObras, imageAspect: 1.214 },
   { key: 'nochevieja', label: 'Nochevieja', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaNochevieja, imageAspect: 0.5 },
   { key: 'comunion', label: 'Comunión', gradient: 'linear-gradient(160deg, #ECFDF5, #D1FAE5)', text: '#166534', artKey: 'confeti', image: invitaComunion, imageAspect: 1.188 },
   { key: 'bebe_nino', label: 'Bebé niño', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'confeti', image: invitaBebeNino, imageAspect: 0.4844 },
@@ -557,6 +567,16 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'corazones_dorado', label: 'Corazones dorado', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesDorado, imageAspect: 1.188 },
   { key: 'celebracion_dorada', label: 'Celebración dorada', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCelebracionDorada, imageAspect: 1.188 },
   { key: 'fiesta_acuarela', label: 'Fiesta acuarela', gradient: 'linear-gradient(160deg, #FDE9D9, #F3E8FF)', text: '#6B21A8', artKey: 'confeti', image: invitaFiestaAcuarela, imageAspect: 1.1861 },
+  // Lote 12 — repaso visual de la familia: sustituye SVG o fotos que
+  // "quedan borrosas o no quedan bien" en Robots, Ositos, Gatitos,
+  // Kpop, Superheroína y Estrellitas (ya no dibujo/foto vieja, ahora
+  // foto real a juego), y también en Hadas/Granja/Boda/Safari/Obras/
+  // Bautizo (mejor foto que la que había). Sirena, Delfín y tortuga,
+  // Mago y Bruja son temas nuevos.
+  { key: 'sirena', label: 'Sirena', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaSirena, imageAspect: 1.2163 },
+  { key: 'delfin_tortuga', label: 'Delfín y tortuga', gradient: 'linear-gradient(160deg, #0EA5E9, #0369A1)', text: '#ffffff', artKey: 'confeti', image: invitaDelfinTortuga, imageAspect: 1.2163 },
+  { key: 'mago', label: 'Mago', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaMago, imageAspect: 1.214 },
+  { key: 'bruja', label: 'Bruja', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaBruja, imageAspect: 1.2163 },
 ]
 
 // Petición real: "quiero evitar que tengan que repasar las 97 [temas],
@@ -593,10 +613,10 @@ const INVITATION_TEMPLATE_TAGS: Record<string, InvitationTag[]> = {
   monstruo: ['cumple_infantil'],
   futbol: ['cumple_infantil'],
   unicornio: ['cumple_infantil'],
-  elegante: ['romantico', 'cumple_adulto', 'generico'],
+  elegante: ['romantico', 'generico'],
   floral: ['romantico', 'boda', 'generico'],
   bautizo: ['bautizo'],
-  disco: ['cumple_adulto', 'despedida_soltero'],
+  disco: ['despedida_soltero', 'generico'],
   dinosaurios: ['cumple_infantil'],
   videojuegos: ['cumple_infantil'],
   corazones: ['romantico', 'generico'],
@@ -618,10 +638,10 @@ const INVITATION_TEMPLATE_TAGS: Record<string, InvitationTag[]> = {
   granja: ['cumple_infantil'],
   alienigenas: ['cumple_infantil'],
   playa: ['playa', 'cumple_generico', 'generico'],
-  concierto: ['cumple_adulto', 'despedida_soltero'],
+  concierto: ['despedida_soltero', 'generico'],
   boda: ['boda'],
   obras: ['cumple_infantil'],
-  nochevieja: ['nochevieja', 'cumple_adulto'],
+  nochevieja: ['nochevieja'],
   comunion: ['comunion'],
   bebe_nino: ['bebe'],
   barbacoa: ['reunion_familiar', 'generico'],
@@ -682,8 +702,12 @@ const INVITATION_TEMPLATE_TAGS: Record<string, InvitationTag[]> = {
   corazones_madera: ['romantico'],
   corazones_terraza: ['romantico'],
   corazones_dorado: ['romantico'],
-  celebracion_dorada: ['cumple_adulto', 'generico'],
+  celebracion_dorada: ['generico'],
   fiesta_acuarela: ['cumple_generico', 'generico'],
+  sirena: ['cumple_infantil'],
+  delfin_tortuga: ['cumple_infantil'],
+  mago: ['cumple_infantil'],
+  bruja: ['cumple_infantil', 'halloween'],
 }
 
 // Palabras del propio título/tema del evento — la señal más útil en

@@ -185,6 +185,20 @@ describe('sortInvitationTemplatesForEvent', () => {
     expect(eleganteIdx).toBeLessThan(dinosauriosIdx)
   })
 
+  it('does not let a non-birthday theme (Dorado, Nochevieja) outrank an actual birthday theme for an adult', () => {
+    // Bug real: "elegante" (cena romántica) y "nochevieja" llevaban la
+    // etiqueta cumple_adulto por error, así que un tema que no es de
+    // cumpleaños salía como plantilla por defecto de un "Cumpleaños
+    // Alvaro" de adulto — visto al revisar en vivo.
+    const event = makeEvent({ type: 'cumpleanos', details: { ageTurning: 40 } })
+    const sorted = sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event)
+    const cumpleanosElegante = sorted.findIndex((t) => t.key === 'cumpleanos_elegante')
+    const elegante = sorted.findIndex((t) => t.key === 'elegante')
+    const nochevieja = sorted.findIndex((t) => t.key === 'nochevieja')
+    expect(cumpleanosElegante).toBeLessThan(elegante)
+    expect(cumpleanosElegante).toBeLessThan(nochevieja)
+  })
+
   it('puts wedding themes first, then romantic ones, for a boda', () => {
     const event = makeEvent({ type: 'boda', title: 'Boda de Ana y Luis' })
     const sorted = sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event)

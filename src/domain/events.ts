@@ -116,6 +116,7 @@ import invitaSirena from '@/assets/eventos/invitaciones/sirena.jpg'
 import invitaDelfinTortuga from '@/assets/eventos/invitaciones/delfin_tortuga.jpg'
 import invitaMago from '@/assets/eventos/invitaciones/mago.jpg'
 import invitaBruja from '@/assets/eventos/invitaciones/bruja.jpg'
+import invitaMonstruo from '@/assets/eventos/invitaciones/monstruo.jpg'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -423,7 +424,7 @@ export interface InvitationTemplateMeta {
 export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti', image: invitaClasico, imageAspect: 1.1861 },
   { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos', image: invitaAlegre, imageAspect: 0.6531 },
-  { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo' },
+  { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo', image: invitaMonstruo, imageAspect: 0.8333 },
   { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol', image: invitaFutbol, imageAspect: 0.4361 },
   { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio, imageAspect: 0.4322 },
   { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado', image: invitaElegante, imageAspect: 1.1861 },

@@ -1766,15 +1766,13 @@ function HistoryTab() {
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [purchases, currentMonth, previousMonth, productById])
 
-  // El buscador es para encontrar cualquier producto que añadir a la
-  // lista, no solo los de `comparisons` (que solo lleva lo comprado
-  // ESTE mes, para poder compararlo con el anterior) — bug real: "por
-  // qué el Roti no sale abajo en productos, mientras que el bizcocho
-  // sí" — Roti no se había comprado este mes, así que no estaba ni en
-  // la lista ni al alcance del buscador, aunque sí en Sugerencias (que
-  // mira todo el histórico). Al buscar, se amplía a todo el catálogo
-  // con precio conocido; sin buscar, se seguye viendo solo este mes.
-  const allProductsForSearch = useMemo(
+  // Petición real: "quita el filtro de abajo, que se puedan ver todos
+  // los productos... comprados alguna vez" — la lista ya no se limita
+  // a `comparisons` (solo lo comprado ESTE mes, para poder compararlo
+  // con el anterior); se ve todo el catálogo con precio conocido, y
+  // cuando SÍ hay compra este mes y el anterior, se sigue mostrando la
+  // comparación real (🔺/🔻); si no, solo el último precio.
+  const allProducts = useMemo(
     () =>
       withStats
         .map(({ product, stats }) => {
@@ -1793,11 +1791,11 @@ function HistoryTab() {
     [withStats, comparisons],
   )
 
-  const filteredComparisons = useMemo(() => {
+  const filteredProducts = useMemo(() => {
     const q = normalizeProductName(query)
-    if (!q) return comparisons
-    return allProductsForSearch.filter((c) => normalizeProductName(c.name).includes(q))
-  }, [comparisons, allProductsForSearch, query])
+    if (!q) return allProducts
+    return allProducts.filter((c) => normalizeProductName(c.name).includes(q))
+  }, [allProducts, query])
 
   const currentBasket = useMemo(() => basketTotal(purchases, currentMonth), [purchases, currentMonth])
   const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
@@ -1938,12 +1936,13 @@ function HistoryTab() {
       </div>
 
       <p className="muted">
-        Precio medio por unidad este mes frente al mes anterior — 🔺 rojo si ha subido, 🔻 verde si ha bajado. Toca
-        el nombre de un producto para ver cada cuánto lo compras y comparar precio entre tiendas.
+        Todo lo que has comprado alguna vez, con su último precio — cuando también se compró el mes anterior, se ve
+        la comparación (🔺 rojo si ha subido, 🔻 verde si ha bajado). Toca el nombre de un producto para ver cada
+        cuánto lo compras y comparar precio entre tiendas.
       </p>
 
       <div className="price-row-list">
-        {filteredComparisons.map((c) => (
+        {filteredProducts.map((c) => (
           <div key={c.productId} className="price-row">
             <button
               type="button"
@@ -1966,11 +1965,11 @@ function HistoryTab() {
             </button>
           </div>
         ))}
-        {filteredComparisons.length === 0 && (
+        {filteredProducts.length === 0 && (
           <p className="muted">
             {query.trim()
               ? 'Ningún producto coincide con esa búsqueda.'
-              : 'No hay productos con precio registrado este mes (tickets o lista de la compra).'}
+              : 'Todavía no hay ningún producto con precio registrado (tickets o lista de la compra).'}
           </p>
         )}
       </div>

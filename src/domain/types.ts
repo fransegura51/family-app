@@ -818,6 +818,13 @@ export interface InvitationLayer {
   color?: string
   fontFamily?: string
   fontSize?: number
+  // Petición real: "que al texto se le pueda dar formato 3D y que se
+  // pueda poner en una curva" — effect3d añade relieve (capas de sombra
+  // en tono más oscuro); curve (-100..100, 0 recto) solo se usa en
+  // capas de tipo "text" (una línea), no en "event_data" (varias
+  // líneas, no tiene sentido curvarlo).
+  effect3d?: boolean
+  curve?: number
   // forma decorativa genérica (sin personajes con copyright)
   shapeKey?: string
   // foto subida por el usuario (event-photos bucket)

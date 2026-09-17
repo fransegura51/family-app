@@ -2838,28 +2838,85 @@ function InvitationShapeGraphic({ shapeKey, color, size }: { shapeKey?: string; 
   }
 }
 
+function darkenHexColor(hex: string, amount: number): string {
+  const clean = hex.replace('#', '')
+  if (clean.length !== 6) return hex
+  const num = parseInt(clean, 16)
+  const c = (v: number) => Math.max(0, Math.min(255, v))
+  const r = c((num >> 16) - amount)
+  const g = c(((num >> 8) & 0xff) - amount)
+  const b = c((num & 0xff) - amount)
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
+}
+
+// Petición real: "que al texto se le pueda dar formato 3D" — capas de
+// sombra escalonadas en un tono más oscuro del propio color del texto,
+// el truco clásico de CSS para simular relieve/extrusión sin librerías.
+function text3dShadow(color: string): string {
+  const dark = darkenHexColor(color, 70)
+  const steps = [1, 2, 3, 4, 5].map((i) => `${i}px ${i}px 0 ${dark}`)
+  return [...steps, '6px 6px 10px rgba(0,0,0,0.35)'].join(', ')
+}
+
 // "fontSize" se reutiliza como tamaño base en píxeles para foto/forma,
 // no solo para texto — evita añadir un campo más al tipo por algo tan
 // parecido (ver domain/types.ts, InvitationLayer).
 function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; photoUrls: Record<string, string> }) {
   switch (layer.type) {
     case 'text':
-    case 'event_data':
+    case 'event_data': {
+      const color = layer.color || '#ffffff'
+      const fontSize = layer.fontSize ?? 16
+      const fontFamily = layer.fontFamily || 'inherit'
+      const fontWeight = layer.type === 'text' ? 700 : 400
+
+      // Curvar solo tiene sentido en una línea — "event_data" (varias
+      // líneas de fecha/ubicación) siempre se queda recto.
+      if (layer.type === 'text' && layer.curve) {
+        const text = (layer.text ?? '').replace(/\n/g, ' ')
+        const bend = clamp(layer.curve, -100, 100)
+        const pathId = `curve-${layer.id}`
+        const width = Math.max(220, text.length * fontSize * 0.62)
+        const height = Math.max(80, Math.abs(bend) * 0.9 + fontSize * 1.6)
+        const midY = height / 2
+        const d = `M 10 ${midY} Q ${width / 2} ${midY - bend} ${width - 10} ${midY}`
+        const dark = darkenHexColor(color, 70)
+        return (
+          <svg width={width} height={height} style={{ overflow: 'visible', display: 'block' }}>
+            <path id={pathId} d={d} fill="none" />
+            {layer.effect3d &&
+              [5, 4, 3, 2, 1].map((i) => (
+                <text key={i} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={dark} transform={`translate(${i}, ${i})`}>
+                  <textPath href={`#${pathId}`} xlinkHref={`#${pathId}`} startOffset="50%" textAnchor="middle">
+                    {text}
+                  </textPath>
+                </text>
+              ))}
+            <text fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={color}>
+              <textPath href={`#${pathId}`} xlinkHref={`#${pathId}`} startOffset="50%" textAnchor="middle">
+                {text}
+              </textPath>
+            </text>
+          </svg>
+        )
+      }
+
       return (
         <div
           style={{
-            color: layer.color || '#ffffff',
-            fontSize: layer.fontSize ?? 16,
-            fontFamily: layer.fontFamily || 'inherit',
-            fontWeight: layer.type === 'text' ? 700 : 400,
+            color,
+            fontSize,
+            fontFamily,
+            fontWeight,
             whiteSpace: 'pre-line',
             textAlign: 'center',
-            textShadow: '0 1px 4px rgba(0,0,0,0.25)',
+            textShadow: layer.effect3d ? text3dShadow(color) : '0 1px 4px rgba(0,0,0,0.25)',
           }}
         >
           {layer.text}
         </div>
       )
+    }
     case 'emoji':
       return <div style={{ fontSize: layer.fontSize ?? 48, lineHeight: 1 }}>{layer.text}</div>
     case 'shape':
@@ -4226,6 +4283,33 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
                         </option>
                       ))}
                     </select>
+                  </label>
+                )}
+                {/* Petición real: "que al texto se le pueda dar formato
+                    3D y que se pueda poner en una curva" — el relieve
+                    vale para texto y fecha/ubicación, pero curvar solo
+                    tiene sentido en una línea (una capa de texto). */}
+                {(selected.type === 'text' || selected.type === 'event_data') && (
+                  <button
+                    type="button"
+                    className={'chip' + (selected.effect3d ? ' chip-active' : '')}
+                    style={{ marginTop: 8 }}
+                    onClick={() => updateSelected({ effect3d: !selected.effect3d })}
+                  >
+                    🧊 Efecto 3D
+                  </button>
+                )}
+                {selected.type === 'text' && (
+                  <label style={{ marginTop: 8, display: 'block' }}>
+                    Curvar texto {selected.curve ? `(${selected.curve > 0 ? '⌣ arriba' : '⌢ abajo'})` : '(recto)'}
+                    <input
+                      type="range"
+                      min={-100}
+                      max={100}
+                      value={selected.curve ?? 0}
+                      onChange={(e) => updateSelected({ curve: Number(e.target.value) })}
+                      style={{ width: '100%' }}
+                    />
                   </label>
                 )}
                 <div className="filter-row" style={{ marginTop: 8 }}>

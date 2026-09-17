@@ -1490,7 +1490,14 @@ function BankTab({
     const isFixed = resolveExpenseFixed(e, categories)
     return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
   })
-  const typeFilterTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
+  // Un traspaso entre cuentas propias o un cobro anulado y re-cobrado
+  // (categoría "Movimientos internos") se sigue viendo en la lista de
+  // "Todos"/"Búsqueda libre" para poder consultarlo, pero no debe
+  // sumar en el total de arriba — igual que en Resumen/Presupuesto.
+  const typeFilterTotal = filteredExpenses.reduce(
+    (sum, e) => (isInternalTransferCategory(e.category, categories) ? sum : sum + e.amount),
+    0,
+  )
   // Símbolo por fila cuando se ven todas las cuentas mezcladas
   // (petición real: "no ves ningún símbolo que diga de qué cuenta
   // viene" — antes solo se sabía filtrando una a una).
@@ -3036,7 +3043,14 @@ function ExpensesTab({
       }),
     [accountFilteredExpenses, typeFilter, categories, categoryFilterValue, searchQuery],
   )
-  const typeFilterTotal = useMemo(() => typeFilteredExpenses.reduce((sum, e) => sum + e.amount, 0), [typeFilteredExpenses])
+  // Un traspaso entre cuentas propias o un cobro anulado y re-cobrado
+  // (categoría "Movimientos internos") se sigue viendo en la lista de
+  // "Todos"/"Búsqueda libre" para poder consultarlo, pero no debe
+  // sumar en el total de arriba — igual que en Resumen/Presupuesto.
+  const typeFilterTotal = useMemo(
+    () => typeFilteredExpenses.reduce((sum, e) => (isInternalTransferCategory(e.category, categories) ? sum : sum + e.amount), 0),
+    [typeFilteredExpenses, categories],
+  )
 
   const memberById = new Map(members.map((m) => [m.id, m]))
   const accountById = new Map(accounts.map((a) => [a.id, a]))
@@ -5442,7 +5456,10 @@ const MASTER_CATEGORY_SEED: CategorySeed[] = [
     icon: '🔄',
     necessity: null,
     isFixed: null,
-    children: [{ name: 'Transferencias entre cuentas propias', icon: '🔁', necessity: null, isFixed: null }],
+    children: [
+      { name: 'Transferencias entre cuentas propias', icon: '🔁', necessity: null, isFixed: null },
+      { name: 'Cobro anulado', icon: '↩️', necessity: null, isFixed: null },
+    ],
   },
   { name: 'Otros', icon: '📦', necessity: null, isFixed: null },
 ]

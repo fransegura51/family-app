@@ -10,6 +10,10 @@ function addDays(dateStr: string, days: number): string {
   return toDateStr(d)
 }
 
+function daysBetween(a: string, b: string): number {
+  return Math.abs(new Date(a + 'T00:00').getTime() - new Date(b + 'T00:00').getTime()) / 86_400_000
+}
+
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
@@ -71,18 +75,26 @@ export async function uploadReceipt(input: {
     // con las compras que ya estaban generadas, se han duplicado" — el
     // banco puede haber traído ya este mismo gasto antes de subir el
     // ticket (source 'banco', sin ticket propio todavía). Mismo
-    // criterio ±3 días/importe exacto que usa
+    // criterio ±7 días/importe exacto que usa
     // enable-banking-sync-transactions al revés (banco→ticket), para
-    // enlazar el ticket a ESE gasto en vez de crear uno duplicado.
+    // enlazar el ticket a ESE gasto en vez de crear uno duplicado. Antes
+    // era ±3 días, pero se vio en producción un ticket fotografiado 4
+    // días después de la compra (fin de semana) que se coló como
+    // duplicado por quedarse fuera del margen.
     const { data: candidates } = await supabase
       .from('expenses')
-      .select('id, amount')
+      .select('id, amount, expense_date')
       .eq('family_id', familyId)
       .eq('source', 'banco')
       .eq('is_income', false)
-      .gte('expense_date', addDays(input.receiptDate, -3))
-      .lte('expense_date', addDays(input.receiptDate, 3))
-    const match = (candidates ?? []).find((c) => Math.abs(Number(c.amount) - input.totalAmount!) < 0.01)
+      .gte('expense_date', addDays(input.receiptDate, -7))
+      .lte('expense_date', addDays(input.receiptDate, 7))
+    // Con ±7 días cabe más de un candidato del mismo importe exacto —
+    // se queda con el de fecha más cercana al ticket, no el primero que
+    // devuelva la consulta (sin orden garantizado).
+    const match = (candidates ?? [])
+      .filter((c) => Math.abs(Number(c.amount) - input.totalAmount!) < 0.01)
+      .sort((a, b) => daysBetween(a.expense_date, input.receiptDate) - daysBetween(b.expense_date, input.receiptDate))[0]
 
     if (match) {
       const { data: alreadyLinked } = await supabase.from('receipts').select('id').eq('expense_id', match.id).maybeSingle()

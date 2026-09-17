@@ -9,7 +9,8 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 // por entry_reference) y ADEMÁS se convierte en un gasto real de
 // Movimientos — nunca se queda "solo en el banco" sin poder editarse:
 // - Si ya existe un gasto de un TICKET o apuntado A MANO con el mismo
-//   importe y una fecha muy cercana (±3 días), es la misma compra
+//   importe y una fecha cercana (±7 días — un ticket puede fotografiarse
+//   días después de la compra), es la misma compra
 //   pagada con tarjeta: no se duplica, se marca ese gasto como source
 //   'ticket_banco' y se enlaza (petición real: "que no se dupliquen
 //   movimientos con los tickets importados" — se detectó en pruebas
@@ -18,6 +19,11 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 //   'banco', categoría adivinada por el comercio (siempre editable
 //   después, igual que cualquier otro gasto — nunca se inventa una
 //   categoría seguro: si no hay pista clara, se deja en "Otros").
+// - Un "ANUL COMPRA TARJ..." (cobro anulado por el comercio/banco, no
+//   un ingreso real) se empareja con el cobro original del mismo
+//   importe y ambos pasan a "Cobro anulado" (ver
+//   linkTransactionsToExpenses) — así no cuentan como gasto duplicado
+//   ni como ingreso suelto si luego se vuelve a cobrar.
 //
 // Primera vez que se sincroniza una cuenta: trae el periodo pedido
 // (días). A partir de ahí cada sincronización es incremental de
@@ -291,7 +297,7 @@ async function syncAccount(
 
 // Convierte cada movimiento del banco sin enlazar todavía en un gasto
 // real de Movimientos: o se une a un ticket ya existente (mismo
-// importe, ±3 días) o se crea un gasto nuevo con categoría adivinada.
+// importe, ±7 días) o se crea un gasto nuevo con categoría adivinada.
 async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>, account: BankAccountRow): Promise<void> {
   const familyId = account.bank_connections.family_id
 
@@ -309,6 +315,66 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
     const store = cleanMerchantName(bt.description as string | null)
     const isIncome = bt.credit_debit === "CRDT"
 
+    // Petición real: "H&M las últimas dos compras me han cobrado, me lo
+    // han devuelto y lo han vuelto a cobrar... parece que se ha
+    // gastado el doble" — "ANUL COMPRA TARJ..." es la anulación de un
+    // cobro anterior, no un ingreso real. Se busca ese cobro original
+    // (mismo importe, en los 60 días anteriores, todavía no emparejado
+    // con otra anulación) y se pasan AMBOS a "Cobro anulado" —
+    // subcategoría hermana de "Transferencias entre cuentas propias"
+    // bajo "Movimientos internos" (ver 0115_cancelled_charge_category),
+    // así que queda excluido de Gastado/Ingresado en toda la app con el
+    // mismo mecanismo que ya usa isInternalTransferCategory, sin tocar
+    // cada sitio que lo calcula. Si no se encuentra el cobro original
+    // (p. ej. de antes de empezar a sincronizar), cae al camino normal
+    // de abajo y se guarda como un Ingreso cualquiera.
+    if (isIncome && /^anul\b/i.test((bt.description as string | null) ?? "")) {
+      const date = new Date(bt.transaction_date as string)
+      const from = new Date(date)
+      from.setDate(from.getDate() - 60)
+
+      const { data: chargeCandidates } = await admin
+        .from("expenses")
+        .select("id, amount, expense_date")
+        .eq("family_id", familyId)
+        .in("source", ["banco", "ticket_banco"])
+        .eq("is_income", false)
+        .neq("category", "Cobro anulado")
+        .gte("expense_date", from.toISOString().slice(0, 10))
+        .lte("expense_date", bt.transaction_date as string)
+
+      const originalCharge = (chargeCandidates ?? [])
+        .filter((c) => Math.abs(Number(c.amount) - Number(bt.amount)) < 0.01)
+        .sort(
+          (a, b) =>
+            Math.abs(new Date(a.expense_date as string).getTime() - date.getTime()) -
+            Math.abs(new Date(b.expense_date as string).getTime() - date.getTime()),
+        )[0]
+
+      if (originalCharge) {
+        await admin.from("expenses").update({ category: "Cobro anulado" }).eq("id", originalCharge.id)
+        const { data: refundExpense } = await admin
+          .from("expenses")
+          .insert({
+            family_id: familyId,
+            expense_date: bt.transaction_date,
+            amount: Number(bt.amount),
+            category: "Cobro anulado",
+            store: null,
+            kind: "real",
+            notes: bt.description as string | null,
+            is_income: true,
+            budget_group: "generales",
+            source: "banco",
+            owner_member_id: account.owner_member_id,
+          })
+          .select("id")
+          .single()
+        if (refundExpense) await admin.from("bank_transactions").update({ matched_expense_id: refundExpense.id }).eq("id", bt.id)
+        continue
+      }
+    }
+
     if (!isIncome) {
       // ¿Ya existe un ticket O un gasto apuntado a mano con este mismo
       // importe en una fecha cercana, sin enlazar todavía a ningún
@@ -316,22 +382,34 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
       // con tarjeta: no se duplica (petición real: "comprobar que no
       // se dupliquen movimientos con los tickets importados" — se
       // aplica igual a un gasto manual, es el mismo caso real).
+      // Antes ±3 días: se vio en producción un ticket fotografiado 4
+      // días después de la compra (fin de semana) que se quedaba fuera
+      // del margen y se duplicaba. Con ±7 días cabe más de un candidato
+      // del mismo importe exacto, así que se queda con el de fecha más
+      // cercana al movimiento del banco, no el primero que devuelva la
+      // consulta (sin orden garantizado).
       const date = new Date(bt.transaction_date as string)
       const from = new Date(date)
-      from.setDate(from.getDate() - 3)
+      from.setDate(from.getDate() - 7)
       const to = new Date(date)
-      to.setDate(to.getDate() + 3)
+      to.setDate(to.getDate() + 7)
 
       const { data: candidates } = await admin
         .from("expenses")
-        .select("id, amount")
+        .select("id, amount, expense_date")
         .eq("family_id", familyId)
         .in("source", ["ticket", "manual"])
         .eq("is_income", false)
         .gte("expense_date", from.toISOString().slice(0, 10))
         .lte("expense_date", to.toISOString().slice(0, 10))
 
-      const match = (candidates ?? []).find((c) => Math.abs(Number(c.amount) - Number(bt.amount)) < 0.01)
+      const match = (candidates ?? [])
+        .filter((c) => Math.abs(Number(c.amount) - Number(bt.amount)) < 0.01)
+        .sort(
+          (a, b) =>
+            Math.abs(new Date(a.expense_date as string).getTime() - date.getTime()) -
+            Math.abs(new Date(b.expense_date as string).getTime() - date.getTime()),
+        )[0]
 
       if (match) {
         const { data: alreadyLinked } = await admin

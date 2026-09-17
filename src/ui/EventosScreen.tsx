@@ -3762,6 +3762,19 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
     try {
       const path = await uploadInvitationPhoto(event.id, file)
       const url = await getInvitationPhotoUrl(path)
+      // Petición real: "para la foto subida debe ser editable de 0, ya
+      // que es probable que sean plantillas que no sean nuestras y que
+      // las quieran rellenar" — el icono/título/fecha que rellenamos
+      // por defecto tiene sentido sobre nuestro propio arte, pero sobre
+      // una plantilla ajena (traída de fuera) solo estorbaría. Se borra
+      // solo la primera vez que se sube una foto de fondo, no en cada
+      // cambio posterior, para no tirar un diseño ya empezado; se puede
+      // deshacer con "↩️ Deshacer" si no era lo que querían.
+      if (!backgroundImagePath) {
+        pushHistory()
+        setLayers([])
+        setSelectedId(null)
+      }
       setBackgroundImagePath(path)
       setBackgroundImageUrl(url)
     } catch (err) {

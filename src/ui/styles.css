@@ -2739,6 +2739,21 @@ textarea {
   padding: 20px;
 }
 
+/* Mapa interactivo dentro de LocationPickerModal (buscador de
+   Calendario/Eventos): mismo alto generoso que el mapa de "dónde está
+   cada uno" para que tocar/arrastrar el punto sea cómodo en móvil. */
+.location-picker-map {
+  width: 100%;
+  height: 45vh;
+  min-height: 260px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.location-picker-sheet {
+  max-width: 640px;
+}
+
 /* Último recurso de compartir (ShareFallbackModal) — cuadro de texto
    de solo lectura, con el mismo estilo que un input normal de la app,
    para que se lea y se seleccione bien al tocarlo. */

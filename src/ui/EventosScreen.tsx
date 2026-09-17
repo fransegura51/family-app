@@ -78,7 +78,6 @@ import {
 } from '@/data/events'
 import { listExpenses } from '@/data/finance'
 import { errorMessage } from '@/domain/errorMessage'
-import { searchPlaces, type PlaceResult } from '@/services/geocoding'
 import {
   autoArrangeLayers,
   buildInvitationMessage,
@@ -131,6 +130,7 @@ import type {
 import { shareText } from '@/services/share'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
+import { LocationPickerModal } from '@/ui/LocationPickerModal'
 
 // Módulo Eventos (PEPA Events) — plan aprobado en
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
@@ -807,26 +807,13 @@ function EventLocationCoordsPicker({
   coords: { latitude: number; longitude: number } | null
   onCoordsChange: (c: { latitude: number; longitude: number } | null) => void
 }) {
-  const [query, setQuery] = useState('')
-  const [searching, setSearching] = useState(false)
-  const [suggestions, setSuggestions] = useState<PlaceResult[]>([])
+  const [showMap, setShowMap] = useState(false)
   const [pickedLabel, setPickedLabel] = useState<string | null>(null)
 
-  async function handleSearch() {
-    if (!query.trim()) return
-    setSearching(true)
-    try {
-      setSuggestions(await searchPlaces(query.trim()))
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  function pick(s: PlaceResult) {
-    onCoordsChange({ latitude: s.latitude, longitude: s.longitude })
-    setPickedLabel(s.label)
-    setSuggestions([])
-    setQuery('')
+  function handleConfirmMapLocation(result: { latitude: number; longitude: number; label: string | null }) {
+    onCoordsChange({ latitude: result.latitude, longitude: result.longitude })
+    setPickedLabel(result.label)
+    setShowMap(false)
   }
 
   return (
@@ -834,20 +821,17 @@ function EventLocationCoordsPicker({
       <label>
         Ubicación (para el enlace del mapa que reciben los invitados)
         <div className="inline-fields">
-          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Busca la dirección o el nombre del sitio" style={{ flex: 1 }} />
-          <button type="button" className="link-button" onClick={handleSearch} disabled={!query.trim() || searching}>
-            {searching ? 'Buscando…' : '🔍 Buscar'}
+          <button type="button" className="link-button" onClick={() => setShowMap(true)}>
+            🔍 Buscar en el mapa
           </button>
         </div>
       </label>
-      {suggestions.length > 0 && (
-        <div className="card" style={{ padding: 8 }}>
-          {suggestions.map((s, i) => (
-            <button key={i} type="button" className="link-button" style={{ display: 'block', textAlign: 'left', width: '100%', padding: '4px 0' }} onClick={() => pick(s)}>
-              📍 {s.label}
-            </button>
-          ))}
-        </div>
+      {showMap && (
+        <LocationPickerModal
+          initialCoords={coords}
+          onConfirm={handleConfirmMapLocation}
+          onClose={() => setShowMap(false)}
+        />
       )}
       {coords && (
         <div className="filter-row" style={{ marginTop: 4, alignItems: 'center' }}>

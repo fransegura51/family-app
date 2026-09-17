@@ -78,7 +78,8 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { CalendarEvent, Contact, FamilyMember } from '@/domain/types'
 import calendarHeaderImg from '@/assets/calendario/calendar-header.jpg'
 import { getCurrentPosition } from '@/services/geolocation'
-import { reverseGeocode, searchPlaces, type PlaceResult } from '@/services/geocoding'
+import { reverseGeocode } from '@/services/geocoding'
+import { LocationPickerModal } from '@/ui/LocationPickerModal'
 import { setSelectedCalendarDate } from '@/state/calendarSelection'
 import { setCalendarMemberFilter } from '@/state/calendarMemberFilter'
 import {
@@ -2509,8 +2510,7 @@ function EventExtrasFields({
   onNoteChange: (v: string) => void
 }) {
   const [locating, setLocating] = useState(false)
-  const [searching, setSearching] = useState(false)
-  const [suggestions, setSuggestions] = useState<PlaceResult[]>([])
+  const [showMap, setShowMap] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Ubicación/Adjunto/Nota empiezan plegados y se abren al tocar su
   // icono (petición real: "que solo se desplieguen si se le da al
@@ -2535,24 +2535,13 @@ function EventExtrasFields({
   // Petición real: "no siempre es la ubicación actual la que se quiere
   // adjuntar" — el GPS ya no es la única forma, se puede buscar
   // cualquier sitio por nombre/dirección (sin mapa de pago, Nominatim
-  // es gratis).
-  async function handleSearch() {
-    if (!locationLabel.trim()) return
-    setSearching(true)
-    setError(null)
-    try {
-      setSuggestions(await searchPlaces(locationLabel.trim()))
-    } catch {
-      setError('No se pudo buscar esa dirección ahora mismo.')
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  function pickSuggestion(place: PlaceResult) {
-    onLocationLabelChange(place.label)
-    onCoordsChange({ latitude: place.latitude, longitude: place.longitude })
-    setSuggestions([])
+  // es gratis). Petición posterior: "que dar a buscar te lleve
+  // directamente al mapa" — el botón abre el mapa interactivo en vez de
+  // una lista de texto, y ya no hace falta haber escrito nada antes.
+  function handleConfirmMapLocation(result: { latitude: number; longitude: number; label: string | null }) {
+    if (result.label) onLocationLabelChange(result.label)
+    onCoordsChange({ latitude: result.latitude, longitude: result.longitude })
+    setShowMap(false)
   }
 
   async function handleUseCurrentPosition() {
@@ -2610,25 +2599,18 @@ function EventExtrasFields({
                 placeholder="Nombre del sitio o dirección"
                 style={{ flex: 1 }}
               />
-              <button type="button" className="link-button" onClick={handleSearch} disabled={!locationLabel.trim() || searching}>
-                {searching ? 'Buscando…' : '🔍 Buscar'}
+              <button type="button" className="link-button" onClick={() => setShowMap(true)}>
+                🔍 Buscar en el mapa
               </button>
             </div>
           </label>
-          {suggestions.length > 0 && (
-            <div className="card" style={{ padding: 8 }}>
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className="link-button"
-                  style={{ display: 'block', textAlign: 'left', width: '100%', padding: '4px 0' }}
-                  onClick={() => pickSuggestion(s)}
-                >
-                  📍 {s.label}
-                </button>
-              ))}
-            </div>
+          {showMap && (
+            <LocationPickerModal
+              initialQuery={locationLabel}
+              initialCoords={coords}
+              onConfirm={handleConfirmMapLocation}
+              onClose={() => setShowMap(false)}
+            />
           )}
           <div className="inline-fields">
             <button type="button" className="link-button" onClick={handleUseCurrentPosition} disabled={locating}>

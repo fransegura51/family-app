@@ -58,7 +58,7 @@ import {
   budgetPeriodRange,
   budgetSpent,
   categoryColors,
-  CATEGORY_PALETTE,
+  distinctPaletteEntries,
   isComprasFamiliaCategory,
   isFoodCategory,
   isInternalTransferCategory,
@@ -1165,7 +1165,6 @@ function BalanceTrendCard() {
         onCustomFromChange={setCustomFrom}
         customTo={customTo}
         onCustomToChange={setCustomTo}
-        mesContable
       />
       {earliest && effectiveFrom !== from && (
         <p className="muted" style={{ fontSize: 12 }}>
@@ -1598,7 +1597,6 @@ function BankTab({
             onCustomFromChange={setCustomFrom}
             customTo={customTo}
             onCustomToChange={setCustomTo}
-            mesContable
           />
           {/* Petición real: "que me pongas una pestaña que sea gastos
               fijos, gastos variables... y también poder filtrar por
@@ -1687,7 +1685,10 @@ const NECESSITY_LABELS: Record<'debo' | 'necesito' | 'quiero', string> = {
 // siempre visible; ahora es una única pestaña "📅 Fecha: …" que
 // despliega las opciones al tocarla, con los campos desde/hasta
 // dentro del propio desplegable al elegir "Rango de fecha". Mismo
-// componente en los 4 sitios de Economía que usaban la fila de chips.
+// componente en todos los sitios de Economía y Compras que usaban la
+// fila de chips — petición real: "en todos los desplegables de Fecha
+// de la app incluyas mes real y mes contable", así que ya no hace
+// falta el interruptor que antes dejaba fuera "Mes real" en algunos.
 function DateFilterTab({
   preset,
   onPresetChange,
@@ -1695,7 +1696,6 @@ function DateFilterTab({
   onCustomFromChange,
   customTo,
   onCustomToChange,
-  mesContable,
 }: {
   preset: SpendRangePreset
   onPresetChange: (p: SpendRangePreset) => void
@@ -1703,18 +1703,10 @@ function DateFilterTab({
   onCustomFromChange: (d: string) => void
   customTo: string
   onCustomToChange: (d: string) => void
-  // Añade "Mes contable" (con "Mes real" aparte) en vez del genérico
-  // "Este mes" — usado en Presupuesto Generales y en Estadística
-  // compras (petición real: "al filtro temporal también el mes
-  // contable"). En Tickets, donde no existe esa distinción, se deja
-  // sin pasar.
-  mesContable?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const presets: SpendRangePreset[] = mesContable
-    ? ['dia', 'semana', 'mes', 'mes_real', 'año', 'rango']
-    : ['dia', 'semana', 'mes', 'año', 'rango']
-  const label = (p: SpendRangePreset) => (mesContable && p === 'mes' ? 'Mes contable' : PRESET_LABELS[p])
+  const presets: SpendRangePreset[] = ['dia', 'semana', 'mes', 'mes_real', 'año', 'rango']
+  const label = (p: SpendRangePreset) => (p === 'mes' ? 'Mes contable' : PRESET_LABELS[p])
 
   return (
     <div style={{ margin: '8px 0' }}>
@@ -1991,7 +1983,6 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
         onCustomFromChange={setCustomFrom}
         customTo={customTo}
         onCustomToChange={setCustomTo}
-        mesContable
       />
 
       <div className="card event-card">
@@ -2664,7 +2655,6 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         onCustomFromChange={setCustomFrom}
         customTo={customTo}
         onCustomToChange={setCustomTo}
-        mesContable
       />
 
       {/* Skill de Pepa, punto 8: mismo selector, mismo periodo, mismo
@@ -3092,7 +3082,6 @@ function ExpensesTab({
           onCustomFromChange={setCustomFrom}
           customTo={customTo}
           onCustomToChange={setCustomTo}
-          mesContable
         />
       )}
 
@@ -3930,8 +3919,6 @@ function AddExpenseToAnyCategoryInline({
 // coincidencia de texto puede saber eso; para esos casos hay que
 // corregir el ticket a mano una vez (el desplegable de abajo ya
 // ofrece las tiendas dadas de alta para no tener que escribirlo).
-const STORE_COLORS = ['#4C6EF5', '#e8590c', '#2f9e44', '#ae3ec9', '#f08c00', '#1098ad', '#e64980']
-
 function canonicalStoreName(raw: string | null, knownStores: string[]): string {
   if (!raw || !raw.trim()) return 'Sin establecimiento'
   return findKnownStore(raw, knownStores)?.store ?? raw.trim()
@@ -3993,17 +3980,18 @@ function buildStorePieSlices(list: Expense[], knownStores: string[]): (Breakdown
     g.expenseIds.push(e.id)
     groups.set(store, g)
   }
-  return [...groups.entries()]
+  const sorted = [...groups.entries()]
     .map(([store, g]) => ({ store, total: g.total, expenseIds: g.expenseIds }))
     .sort((a, b) => b.total - a.total)
-    .map((g, i) => ({
-      key: g.store,
-      label: g.store,
-      color: STORE_COLORS[i % STORE_COLORS.length],
-      total: g.total,
-      count: g.expenseIds.length,
-      expenseIds: g.expenseIds,
-    }))
+  const palette = distinctPaletteEntries(sorted.length)
+  return sorted.map((g, i) => ({
+    key: g.store,
+    label: g.store,
+    color: `hsl(${palette[i].h}, ${palette[i].s}%, ${palette[i].l}%)`,
+    total: g.total,
+    count: g.expenseIds.length,
+    expenseIds: g.expenseIds,
+  }))
 }
 
 // Agrupado por CLASIFICACIÓN de producto (ver Historial de precios,
@@ -4031,8 +4019,9 @@ function buildProductTypeBreakdown(
     totals.set(resolved.name, group)
   }
   const namesAlpha = [...totals.keys()].sort((a, b) => a.localeCompare(b, 'es'))
+  const palette = distinctPaletteEntries(namesAlpha.length)
   function colorFor(name: string): string {
-    const p = CATEGORY_PALETTE[namesAlpha.indexOf(name) % CATEGORY_PALETTE.length]
+    const p = palette[namesAlpha.indexOf(name)]
     return `hsl(${p.h}, ${p.s}%, ${p.l}%)`
   }
   return [...totals.entries()]
@@ -4363,6 +4352,7 @@ function ReceiptSpendSummary({
 function StoreBreakdownChart({ groups }: { groups: { store: string; receipts: Receipt[]; total: number }[] }) {
   const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
   const maxTotal = Math.max(...groups.map((g) => g.total), 1)
+  const palette = distinctPaletteEntries(groups.length)
   return (
     <div className="card event-card">
       <strong>Reparto del gasto por tienda</strong>
@@ -4375,7 +4365,7 @@ function StoreBreakdownChart({ groups }: { groups: { store: string; receipts: Re
               <div className="store-bar-track">
                 <div
                   className="store-bar-fill"
-                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: STORE_COLORS[i % STORE_COLORS.length] }}
+                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: `hsl(${palette[i].h}, ${palette[i].s}%, ${palette[i].l}%)` }}
                 />
               </div>
               <span className="store-bar-value">
@@ -5165,7 +5155,6 @@ function StorePieChart({
           centerLabel={centerLabel}
           highlightedKey={highlighted}
           onSliceClick={(key) => setHighlighted((prev) => (prev === key ? null : key))}
-          colors={STORE_COLORS}
         />
       )}
     </div>
@@ -5857,7 +5846,6 @@ export function BudgetsTab({
         onCustomFromChange={setCustomFrom}
         customTo={customTo}
         onCustomToChange={setCustomTo}
-        mesContable
       />
 
       {/* Piso compartido, modo Separado: Individual (tu presupuesto) /

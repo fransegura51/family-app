@@ -121,6 +121,26 @@ export const CATEGORY_PALETTE: { h: number; s: number; l: number }[] = [
   { h: 210, s: 20, l: 45 }, // pizarra (comodín si hay más de 15)
 ]
 
+// Petición real: "en ninguna estadística utilices 2 veces el mismo
+// color" — con más porciones que las 16 de la paleta de arriba
+// (tiendas, sobre todo: una familia con muchos pedidos sueltos de
+// Amazon/tiendas de ropa puede tener 10-15 fácilmente), reciclar con
+// `% length` (bug real visto con el dónut "por tienda": pasada la 7ª
+// tienda, STORE_COLORS repetía el mismo azul de la 1ª) vuelve a
+// repetir colores tarde o temprano. A partir de la 16ª porción se
+// genera un tono nuevo con el ángulo dorado (137.508°, la misma
+// constante que usan los girasoles para no solapar semillas) en vez de
+// dar la vuelta al principio — nunca coincide justo con uno ya usado.
+const GOLDEN_ANGLE = 137.508
+export function distinctPaletteEntries(count: number): { h: number; s: number; l: number }[] {
+  return Array.from({ length: count }, (_, i) => {
+    if (i < CATEGORY_PALETTE.length) return CATEGORY_PALETTE[i]
+    const hue = Math.round((i * GOLDEN_ANGLE) % 360)
+    const lightness = 40 + ((i * 13) % 30)
+    return { h: hue, s: 65, l: lightness }
+  })
+}
+
 // Bug real: los dónuts de categorías coloreaban cada porción según su
 // POSICIÓN en la lista filtrada de ese mes (colors[i % colors.length]),
 // así que la misma categoría cambiaba de color de un mes a otro, y dos
@@ -144,8 +164,9 @@ export function categoryColors(categories: BudgetCategory[]): Map<string, string
   const colors = new Map<string, string>()
   const topLevel = categories.filter((c) => !c.parentId)
   const distinctNames = [...new Set(topLevel.map((c) => c.name))].sort((a, b) => a.localeCompare(b, 'es'))
+  const entries = distinctPaletteEntries(distinctNames.length)
   topLevel.forEach((parent) => {
-    const palette = CATEGORY_PALETTE[distinctNames.indexOf(parent.name) % CATEGORY_PALETTE.length]
+    const palette = entries[distinctNames.indexOf(parent.name)]
     colors.set(parent.id, `hsl(${palette.h}, ${palette.s}%, ${palette.l}%)`)
     const children = [...categories.filter((c) => c.parentId === parent.id)].sort(
       (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'es'),

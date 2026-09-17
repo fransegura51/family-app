@@ -1,4 +1,5 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   COMPRAS_MENU_ITEM_META,
   comprasMenuEntryMeta,
@@ -35,8 +36,8 @@ import { buildFoodReceiptIds, computeProductStats, isFoodPurchase, isLikelyAlcoh
 import { normalize } from '@/domain/voiceQuery'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
-import { MONTH_LABELS } from '@/domain/calendar'
-import { BudgetsTab, ReceiptsTab } from '@/ui/FinanceScreen'
+import { BudgetsTab, ReceiptsTab, type MovementsFilter } from '@/ui/FinanceScreen'
+import { setPendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import type {
   Product,
   ProductPrice,
@@ -105,7 +106,7 @@ function buildSuggestions(
 // qué se ha comprado que con el dinero en sí). Sus componentes siguen
 // definidos en FinanceScreen.tsx y se importan desde ahí, en vez de
 // duplicar todo el código de tickets/categorías en dos archivos.
-const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'No alimentos', 'Tickets', 'Estadística compras'] as const
+const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Estadística compras'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 function isComprasSubTab(key: ComprasMenuItemKey): key is SubTab {
@@ -113,6 +114,7 @@ function isComprasSubTab(key: ComprasMenuItemKey): key is SubTab {
 }
 
 export function ShoppingScreen() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<SubTab>('Inicio')
   // Petición real: "todas estas pestañas... quiero que hagamos como en
   // economía... el mismo formato que el menú de economía" — mismo
@@ -139,6 +141,14 @@ export function ShoppingScreen() {
   function handleAction(key: ComprasMenuItemKey) {
     if (isComprasSubTab(key)) setTab(key)
     // Un acceso personalizado no lleva a ningún sitio todavía.
+  }
+
+  // "Ver movimientos →" desde Estadística compras — Compras y Economía
+  // son rutas distintas, así que el filtro viaja por pendingMovementsFilter
+  // (ver ese archivo) en vez de por props.
+  function handleViewMovements(filter: MovementsFilter) {
+    setPendingMovementsFilter(filter)
+    navigate('/dinero')
   }
 
   const flatMenuEntries = menuLayout.flatMap((g) => g.items)
@@ -208,10 +218,11 @@ export function ShoppingScreen() {
 
       {tab === 'Inicio' && <ComprasInicioTab onNavigate={setTab} />}
       {tab === 'Lista' && <ShoppingListTab />}
-      {tab === 'Historial' && <HistoryTab mode="alimentacion" />}
-      {tab === 'No alimentos' && <HistoryTab mode="no_alimentos" />}
+      {tab === 'Historial' && <HistoryTab />}
       {tab === 'Tickets' && <ReceiptsTab />}
-      {tab === 'Estadística compras' && <BudgetsTab group="alimentacion" seedCategories={[]} />}
+      {tab === 'Estadística compras' && (
+        <BudgetsTab group="alimentacion" seedCategories={[]} onViewMovements={handleViewMovements} />
+      )}
     </div>
   )
 }
@@ -219,10 +230,9 @@ export function ShoppingScreen() {
 function ComprasInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void }) {
   const shortcuts: { tab: SubTab; body: string }[] = [
     { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda.' },
-    { tab: 'Historial', body: 'Precios de lo que sueles comprar, mes a mes y por tienda.' },
-    { tab: 'No alimentos', body: 'Ropa, electrónica y demás compras que no son de comida.' },
+    { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.' },
     { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.' },
-    { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en No alimentos, y en qué.' },
+    { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.' },
   ]
   return (
     <div className="event-list">
@@ -1642,14 +1652,25 @@ interface ProductDetail {
   nonFood: boolean
 }
 
-function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
+// Petición real: "en Historial de precios vamos a fusionar Alimentos y
+// No Alimentos al mismo estilo que las cuentas separadas" — un solo
+// tab con dos vistas (chip Alimentos / chip Otros) en vez de dos
+// pestañas separadas que cargaban los mismos datos por duplicado.
+function HistoryTab() {
+  const [mode, setMode] = useState<'alimentacion' | 'no_alimentos'>('alimentacion')
   const [prices, setPrices] = useState<ProductPrice[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
   const [foodReceiptIds, setFoodReceiptIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [visibleMonth, setVisibleMonth] = useState(todayStr().slice(0, 7))
+  // Petición real: "le quitamos el filtro de meses... y en cambio
+  // vamos a poner un filtro por palabra para que no se tenga que
+  // repasar toda la lista cada vez que se quiera meter un producto a
+  // la lista de la compra" — la comparación de precio mes a mes se
+  // sigue haciendo igual, solo que siempre contra el mes real actual
+  // en vez de dejar navegar a un mes distinto.
+  const [query, setQuery] = useState('')
   // Petición real: "vamos a añadir un botón... añadir a la lista de la
   // compra... con el precio que hay marcado" — un solo toque para
   // apuntarlo, con el último precio ya puesto. "added" evita mandarlo
@@ -1680,29 +1701,23 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
       .finally(() => setLoading(false))
   }, [])
 
-  function shiftMonth(delta: number) {
-    const [y, m] = visibleMonth.split('-').map(Number)
-    const d = new Date(y, m - 1 + delta, 1)
-    setVisibleMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-
+  const currentMonth = todayStr().slice(0, 7)
   const previousMonth = useMemo(() => {
-    const [y, m] = visibleMonth.split('-').map(Number)
+    const [y, m] = currentMonth.split('-').map(Number)
     const d = new Date(y, m - 2, 1)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  }, [visibleMonth])
+  }, [currentMonth])
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
   const nonFoodProductIds = useMemo(() => new Set(products.filter((p) => p.nonFood).map((p) => p.id)), [products])
 
-  // Cada pestaña ve solo lo suyo — Historial nunca mezcla ropa/electrónica
-  // de Amazon, y "No alimentos" no arrastra nada de comida. Un pedido
-  // de Amazon marcado como "Alimentación" (p. ej. café) sí cuenta como
-  // comida — no todo lo de Amazon es "no alimentos" por defecto. Un
-  // producto marcado a mano como No alimentos (ver "Marcar como No
-  // alimentos" en su ficha) nunca cuenta como comida, sea cual sea la
-  // tienda.
+  // Cada vista ve solo lo suyo — Alimentos nunca mezcla ropa/electrónica
+  // de Amazon, y Otros no arrastra nada de comida. Un pedido de Amazon
+  // marcado como "Alimentación" (p. ej. café) sí cuenta como comida —
+  // no todo lo de Amazon es Otros por defecto. Un producto marcado a
+  // mano como Otros (ver el botón 🚫 en su ficha) nunca cuenta como
+  // comida, sea cual sea la tienda.
   const scopedPrices = useMemo(
     () => prices.filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds) === (mode === 'alimentacion')),
     [prices, mode, foodReceiptIds, nonFoodProductIds],
@@ -1746,12 +1761,18 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
 
   const comparisons = useMemo(() => {
     const monthly = averagePricesByMonth(purchases)
-    return compareMonths(monthly, visibleMonth, previousMonth)
+    return compareMonths(monthly, currentMonth, previousMonth)
       .map((c) => ({ ...c, name: productById.get(c.productId) ?? '?' }))
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [purchases, visibleMonth, previousMonth, productById])
+  }, [purchases, currentMonth, previousMonth, productById])
 
-  const currentBasket = useMemo(() => basketTotal(purchases, visibleMonth), [purchases, visibleMonth])
+  const filteredComparisons = useMemo(() => {
+    const q = normalizeProductName(query)
+    if (!q) return comparisons
+    return comparisons.filter((c) => normalizeProductName(c.name).includes(q))
+  }, [comparisons, query])
+
+  const currentBasket = useMemo(() => basketTotal(purchases, currentMonth), [purchases, currentMonth])
   const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
   const basketDeltaPercent = previousBasket > 0 ? ((currentBasket - previousBasket) / previousBasket) * 100 : null
 
@@ -1830,12 +1851,19 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
 
   if (loading) return <p className="muted">Cargando historial…</p>
 
-  const [visibleYear, visibleMonthIndex] = visibleMonth.split('-').map(Number)
-
   return (
     <div>
       {error && <p className="error">{error}</p>}
       <p className="muted">Se construye solo: cada vez que guardas el precio de un producto comprado, queda aquí.</p>
+
+      <div className="filter-row">
+        <button type="button" className={'chip' + (mode === 'alimentacion' ? ' chip-active' : '')} onClick={() => setMode('alimentacion')}>
+          Alimentos
+        </button>
+        <button type="button" className={'chip' + (mode === 'no_alimentos' ? ' chip-active' : '')} onClick={() => setMode('no_alimentos')}>
+          Otros
+        </button>
+      </div>
 
       <h2 className="section-title">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">
@@ -1865,18 +1893,13 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
         {suggestions.length === 0 && <p className="muted">Sin sugerencias todavía.</p>}
       </div>
 
-      <div className="month-nav">
-        <button type="button" className="link-button" onClick={() => shiftMonth(-1)}>
-          ‹
-        </button>
-        <strong>
-          {MONTH_LABELS[visibleMonthIndex - 1]} {visibleYear}
-        </strong>
-        <button type="button" className="link-button" onClick={() => shiftMonth(1)}>
-          ›
-        </button>
-        <input type="month" value={visibleMonth} onChange={(e) => e.target.value && setVisibleMonth(e.target.value)} />
-      </div>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Buscar un producto para añadirlo a la lista…"
+        style={{ margin: '8px 0' }}
+      />
 
       <div className="card event-card">
         <strong>Total de la compra</strong>
@@ -1893,7 +1916,7 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
       </p>
 
       <div className="price-row-list">
-        {comparisons.map((c) => (
+        {filteredComparisons.map((c) => (
           <div key={c.productId} className="price-row">
             <button
               type="button"
@@ -1916,8 +1939,12 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
             </button>
           </div>
         ))}
-        {comparisons.length === 0 && (
-          <p className="muted">No hay productos con precio registrado este mes (tickets o lista de la compra).</p>
+        {filteredComparisons.length === 0 && (
+          <p className="muted">
+            {comparisons.length === 0
+              ? 'No hay productos con precio registrado este mes (tickets o lista de la compra).'
+              : 'Ningún producto coincide con esa búsqueda.'}
+          </p>
         )}
       </div>
 
@@ -1942,7 +1969,7 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
               className="link-button"
               style={{ marginTop: 8 }}
               onClick={handleToggleNonFood}
-              title={detail.nonFood ? 'Quitar marca de No alimentos' : 'Marcar como No alimentos'}
+              title={detail.nonFood ? 'Quitar marca de Otros' : 'Marcar como Otros'}
             >
               {detail.nonFood ? '✅' : '🚫'}
             </button>

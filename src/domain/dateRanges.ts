@@ -11,10 +11,10 @@ export function toDateStr(d: Date): string {
 // aunque la familia tenga configurado un día de inicio de mes contable
 // distinto — petición real: "una cosa filtra por mes físico y la otra
 // por mes contable, confunde... añade una opción 'mes real' mientras
-// que 'este mes' se cambia el nombre a 'mes contable'". Solo tiene
-// sentido donde ya existe esa distinción (Presupuesto Generales); en
-// el resto de sitios (Compras, Alimentación) 'mes' ya es mes real,
-// porque nunca pasan un monthStartDay propio.
+// que 'este mes' se cambia el nombre a 'mes contable'". Se ofrece como
+// opción aparte donde tiene sentido elegir entre las dos (Presupuesto
+// Generales, Estadística compras); en Tickets, sin esa distinción,
+// 'mes' se queda con el rótulo genérico "Este mes".
 export type SpendRangePreset = 'dia' | 'semana' | 'mes' | 'mes_real' | 'año' | 'rango'
 
 function daysInMonth(year: number, month0: number): number {

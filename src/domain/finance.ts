@@ -102,7 +102,7 @@ export function resolveCategoryClassification(categoryName: string, categories: 
 // ni rojo ni naranja". Con ~11-16 categorías reales, una paleta ya
 // pensada para cubrir todo el espectro (rojo, naranja, ámbar, verdes,
 // azules, morados, rosas...) no deja huecos.
-const CATEGORY_PALETTE: { h: number; s: number; l: number }[] = [
+export const CATEGORY_PALETTE: { h: number; s: number; l: number }[] = [
   { h: 4, s: 75, l: 46 }, // rojo
   { h: 26, s: 90, l: 47 }, // naranja
   { h: 42, s: 90, l: 40 }, // ámbar/dorado

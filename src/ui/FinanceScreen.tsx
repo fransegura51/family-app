@@ -58,6 +58,7 @@ import {
   budgetPeriodRange,
   budgetSpent,
   categoryColors,
+  CATEGORY_PALETTE,
   isComprasFamiliaCategory,
   isFoodCategory,
   isInternalTransferCategory,
@@ -5667,19 +5668,41 @@ export function BudgetsTab({
     group.products.set(pr.productId, entry)
     foodTypeProductTotals.set(typeName, group)
   }
+  // Petición real: "en el dónut tipo de alimentos se repiten colores...
+  // azul viene 3 veces, verde dos" — antes se coloreaba por POSICIÓN
+  // (colors[i % colors.length]) con solo 10 colores, así que con 11
+  // tipos (o más, con clases propias) se repetía seguro. Mismo criterio
+  // que categoryColors: un color por NOMBRE (orden alfabético, no por
+  // el total de cada uno, para que además no cambien de un mes a
+  // otro), sacado de la misma paleta de 16 tonos ya pensada para no
+  // dejar huecos ni parecerse entre sí.
+  const foodTypeNamesAlpha = [...foodTypeProductTotals.keys()].sort((a, b) => a.localeCompare(b, 'es'))
+  function colorForFoodType(name: string): string {
+    const p = CATEGORY_PALETTE[foodTypeNamesAlpha.indexOf(name) % CATEGORY_PALETTE.length]
+    return `hsl(${p.h}, ${p.s}%, ${p.l}%)`
+  }
   const foodTypeBreakdown = [...foodTypeProductTotals.entries()]
     .map(([typeName, group]) => {
       const productList = [...group.products.entries()]
         .map(([productId, p]) => ({ productId, name: p.name, total: p.total }))
         .sort((a, b) => b.total - a.total)
       const total = productList.reduce((sum, p) => sum + p.total, 0)
-      return { key: typeName, label: typeName, icon: group.icon, total, count: productList.length, products: productList }
+      return {
+        key: typeName,
+        label: typeName,
+        icon: group.icon,
+        color: colorForFoodType(typeName),
+        total,
+        count: productList.length,
+        products: productList,
+      }
     })
     .sort((a, b) => b.total - a.total)
   const foodTypePieGroups: BreakdownSlice[] = foodTypeBreakdown.map((t) => ({
     key: t.key,
     label: t.label,
     icon: t.icon,
+    color: t.color,
     total: t.total,
     count: t.count,
   }))

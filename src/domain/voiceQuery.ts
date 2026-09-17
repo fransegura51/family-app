@@ -470,3 +470,39 @@ export function findMemberInText<T extends { name: string }>(text: string, membe
   }
   return null
 }
+
+// Skill pepa-busqueda-voz, Fase 1: "búscame un restaurante cercano" —
+// el botón "📍 Buscar sitio" ya deja claro que es una búsqueda de
+// sitio, así que solo hace falta quitar las coletillas típicas de
+// pedirlo (verbo delante, "cerca"/"cercano" detrás, ya implícito en
+// que se busca desde la ubicación actual) para quedarse con el texto
+// que de verdad hay que buscar.
+const PLACE_QUERY_PREFIXES = [
+  /^buscame\s+/,
+  /^busca\s+/,
+  /^encuentrame\s+/,
+  /^encuentra\s+/,
+  /^quiero encontrar\s+/,
+  /^necesito\s+/,
+  /^donde hay\s+/,
+  /^dime donde hay\s+/,
+]
+const PLACE_QUERY_SUFFIXES = [/\s+cerca de aqui$/, /\s+cerca de mi$/, /\s+cercano$/, /\s+cercana$/, /\s+cerca$/, /\s+por aqui$/]
+
+export function extractPlaceSearchTerm(text: string): string {
+  let t = normalize(text)
+  for (const re of PLACE_QUERY_PREFIXES) t = t.replace(re, '')
+  for (const re of PLACE_QUERY_SUFFIXES) t = t.replace(re, '')
+  return t.trim()
+}
+
+// Enlace directo a Google Maps (sin API de pago, tal como pide la
+// skill para esta primera fase) — con coordenadas, centra el mapa
+// justo ahí para que la búsqueda salga de verdad "cerca"; sin ellas
+// (permiso de ubicación denegado, por ejemplo), busca solo por texto.
+export function buildNearbySearchUrl(term: string, coords: { latitude: number; longitude: number } | null): string {
+  if (coords) {
+    return `https://www.google.com/maps/search/${encodeURIComponent(term)}/@${coords.latitude},${coords.longitude},15z`
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(term)}`
+}

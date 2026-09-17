@@ -17,6 +17,8 @@ import { expandOccurrences } from '@/domain/calendar'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
 import {
+  buildNearbySearchUrl,
+  extractPlaceSearchTerm,
   extractShoppingStore,
   findMemberInText,
   isUnsupportedDelete,
@@ -31,6 +33,7 @@ import {
 } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenContinuous, speakAsync } from '@/services/voice'
+import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
@@ -104,9 +107,12 @@ const CREATE_CALENDARIO_EXAMPLES = [
 
 const CREATE_COMPRAS_EXAMPLES = ['Leche y pan', 'Mercadona, patatas', 'Aldi, arenques, queso']
 
+// Skill pepa-busqueda-voz, Fase 1: "búscame un restaurante cercano".
+const SEARCH_PLACE_EXAMPLES = ['Un restaurante cercano', 'Una farmacia de guardia', 'Un supermercado cerca de aquí', 'Una gasolinera']
+
 type Destination = 'calendario' | 'compras'
-type PanelMode = 'ask-calendario' | 'ask-compras' | 'create-calendario' | 'create-compras'
-const PANEL_MODES: PanelMode[] = ['ask-calendario', 'ask-compras', 'create-calendario', 'create-compras']
+type PanelMode = 'ask-calendario' | 'ask-compras' | 'create-calendario' | 'create-compras' | 'search-place'
+const PANEL_MODES: PanelMode[] = ['ask-calendario', 'ask-compras', 'create-calendario', 'create-compras', 'search-place']
 const BUTTON_TAP_THRESHOLD_PX = 8
 
 // Los 4 botones se pueden arrastrar a cualquier sitio de la pantalla,
@@ -216,6 +222,18 @@ const PANEL_INFO: Record<
     ],
     submitLabel: 'Apuntar',
     examples: CREATE_COMPRAS_EXAMPLES,
+  },
+  'search-place': {
+    icon: '📍',
+    title: '📍 Buscar sitio cercano',
+    instructions: [
+      'Abre Google Maps ya buscando lo que digas cerca de donde estás — nunca apunta ni responde nada.',
+      'En cuanto veas "Te escucho", di qué buscas (p. ej. "un restaurante cercano"); se busca sola al quedarte 3s callado.',
+      'La primera vez te pedirá permiso de ubicación — sin él, busca igual pero sin centrar el mapa cerca de ti.',
+      'Se cierra sola al abrir el mapa — para buscar otra cosa, toca este icono otra vez.',
+    ],
+    submitLabel: 'Buscar',
+    examples: SEARCH_PLACE_EXAMPLES,
   },
 }
 
@@ -670,10 +688,47 @@ export function VoiceCapture() {
     if (mode === 'voice' && isSpeechSupported()) await speakAsync(text)
   }
 
+  // Skill pepa-busqueda-voz, Fase 1: "búscame un restaurante cercano"
+  // — enlace directo a Google Maps (sin API de pago todavía, tal como
+  // pide la skill para validar el flujo completo voz → texto →
+  // intención → acción antes de nada más elaborado). El permiso de
+  // ubicación se pide aquí mismo, justo antes de usarlo — nunca al
+  // abrir la app.
+  async function handleSearchPlace(text: string) {
+    const term = extractPlaceSearchTerm(text)
+    if (!term) {
+      setStatus('done')
+      await respond('No he entendido qué quieres buscar — dime, por ejemplo, "un restaurante cercano".')
+      return
+    }
+    let coords: { latitude: number; longitude: number } | null = null
+    if (isGeolocationSupported()) {
+      try {
+        coords = await getCurrentPosition()
+      } catch {
+        // Sin ubicación (permiso denegado, GPS apagado...) se busca
+        // igual, solo sin centrar el mapa cerca — mejor que no buscar
+        // nada.
+      }
+    }
+    window.open(buildNearbySearchUrl(term, coords), '_blank', 'noopener,noreferrer')
+    setStatus('done')
+    await respond(`Abriendo el mapa para buscar: ${term}.`)
+  }
+
   async function processText(rawText: string) {
     setStatus('saving')
     try {
       const text = stripWakeWord(rawText)
+
+      // No encaja en el esquema destino(calendario/compras) ×
+      // kind(ask/create) del resto de botones, así que se resuelve
+      // aparte, antes de esa clasificación.
+      if (panelModeRef.current === 'search-place') {
+        await handleSearchPlace(text)
+        return
+      }
+
       const destination = destinationOf(panelModeRef.current)
       const kind = kindOf(panelModeRef.current)
 

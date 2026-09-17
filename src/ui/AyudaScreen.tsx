@@ -48,7 +48,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Accesos rápidos', text: 'Una tarjeta por sección con un resumen de una línea — tócala para entrar directamente.' },
     { title: 'Organizar', text: 'Botón para reordenar las tarjetas de Inicio a tu gusto; cada uno puede tener su propio orden en su móvil.' },
     { title: 'Notificaciones', text: 'Aviso para activar los recordatorios push, para que te lleguen aunque tengas la app cerrada.' },
-    { title: 'Botones redondos de arriba', text: 'Pregúntale o dile algo a Pepa por voz o texto (Calendario/Compras), y el de "Redes sociales", que despliega los enlaces a TikTok, Facebook, Instagram y YouTube — se ven en cualquier pantalla de la app, y se pueden arrastrar con el dedo a donde te venga mejor.' },
+    { title: 'Botones redondos de arriba', text: 'Pregúntale o dile algo a Pepa por voz o texto (Calendario/Compras), "📍 Buscar sitio cercano" (di, por ejemplo, "un restaurante cercano" y se abre Google Maps ya buscándolo cerca de ti), y el de "Redes sociales", que despliega los enlaces a TikTok, Facebook, Instagram y YouTube — se ven en cualquier pantalla de la app, y se pueden arrastrar con el dedo a donde te venga mejor.' },
     { title: 'Flecha ↑ abajo a la izquierda', text: 'Aparece al bajar un poco en cualquier pantalla de la app — tócala para volver arriba del todo sin tener que deslizar. Va a la izquierda para no taparse con los botones "+ Nuevo..." de cada pantalla.' },
   ],
   '/familia': [

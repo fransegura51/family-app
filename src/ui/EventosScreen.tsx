@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import {
   addEventActivity,
@@ -94,9 +94,11 @@ import {
   INVITATION_EMOJI_SUGGESTIONS,
   INVITATION_SHAPES,
   INVITATION_TEMPLATES,
+  type InvitationTemplateMeta,
   isToday,
   makeInvitationLayer,
   RECOMMENDED_MODULES,
+  sortInvitationTemplatesForEvent,
 } from '@/domain/events'
 import type {
   EventActivity,
@@ -1822,7 +1824,8 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
 // ---------------------------------------------------------------------
 
 function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest: EventGuest; onClose: () => void }) {
-  const [templateKey, setTemplateKey] = useState(INVITATION_TEMPLATES[0].key)
+  const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
+  const [templateKey, setTemplateKey] = useState(sortedTemplates[0].key)
   const [message, setMessage] = useState('¡Nos encantaría contar contigo!')
   const [rsvpUrl, setRsvpUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1921,13 +1924,7 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
               Elige un tema — el texto sale relleno solo, y se puede editar antes de mandarlo. Para un diseño con foto, texto y emoji a tu gusto, usa "🎨
               Diseño de la invitación" en Invitados.
             </p>
-            <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-              {INVITATION_TEMPLATES.map((t) => (
-                <button key={t.key} type="button" className={'chip' + (t.key === templateKey ? ' chip-active' : '')} onClick={() => setTemplateKey(t.key)}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <InvitationTemplatePicker templates={sortedTemplates} selectedKey={templateKey} onSelect={(t) => setTemplateKey(t.key)} />
 
             <div
               style={{ position: 'relative', overflow: 'hidden', marginTop: 12, borderRadius: 16, padding: 20, background: template.gradient, color: template.text, textAlign: 'center' }}
@@ -3517,6 +3514,53 @@ function InvitationBackground({ templateKey }: { templateKey: string | null }) {
   return <InvitationBackgroundArt artKey={template?.artKey ?? 'confeti'} />
 }
 
+// Petición real: "no quiero que vean todos esos chips para empezar" —
+// con 96 temas, una fila de chips que se envuelve obliga a repasarlos
+// todos. En su lugar: un botón que abre una rueda horizontal de
+// miniaturas (ya en el orden de sortInvitationTemplatesForEvent, más
+// probable primero) que se desliza con el dedo — scroll nativo con
+// scroll-snap, sin librería de gestos — y un toque selecciona y cierra.
+function InvitationTemplatePicker({
+  templates,
+  selectedKey,
+  onSelect,
+}: {
+  templates: InvitationTemplateMeta[]
+  selectedKey: string
+  onSelect: (template: InvitationTemplateMeta) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = templates.find((t) => t.key === selectedKey) ?? templates[0]
+
+  return (
+    <div className="invitation-template-picker">
+      <button type="button" className="invitation-template-toggle" onClick={() => setOpen((v) => !v)}>
+        🎨 Elige tu plantilla — {selected.label} {open ? '▲' : '▼'}
+      </button>
+      {open && (
+        <div className="invitation-template-carousel">
+          {templates.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              className={'invitation-template-thumb' + (t.key === selectedKey ? ' invitation-template-thumb-active' : '')}
+              onClick={() => {
+                onSelect(t)
+                setOpen(false)
+              }}
+            >
+              <span className="invitation-template-thumb-preview">
+                <InvitationBackground templateKey={t.key} />
+              </span>
+              <span className="invitation-template-thumb-label">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function InvitationCanvasView({
   canvas,
   templateKey,
@@ -3594,8 +3638,9 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
-  const [templateKey, setTemplateKey] = useState(INVITATION_TEMPLATES[0].key)
-  const [backgroundGradient, setBackgroundGradient] = useState(INVITATION_TEMPLATES[0].gradient)
+  const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
+  const [templateKey, setTemplateKey] = useState(sortedTemplates[0].key)
+  const [backgroundGradient, setBackgroundGradient] = useState(sortedTemplates[0].gradient)
   const [layers, setLayers] = useState<InvitationLayer[]>([])
   const [history, setHistory] = useState<InvitationLayer[][]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -3834,21 +3879,14 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
           <p className="muted">Cargando…</p>
         ) : (
           <>
-            <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-              {INVITATION_TEMPLATES.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  className={'chip' + (t.key === templateKey ? ' chip-active' : '')}
-                  onClick={() => {
-                    setTemplateKey(t.key)
-                    setBackgroundGradient(t.gradient)
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <InvitationTemplatePicker
+              templates={sortedTemplates}
+              selectedKey={templateKey}
+              onSelect={(t) => {
+                setTemplateKey(t.key)
+                setBackgroundGradient(t.gradient)
+              }}
+            />
             <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
               O usa tu propia foto como fondo entero, en vez de un tema:
             </p>

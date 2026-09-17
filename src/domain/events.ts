@@ -551,6 +551,226 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'fiesta_acuarela', label: 'Fiesta acuarela', gradient: 'linear-gradient(160deg, #FDE9D9, #F3E8FF)', text: '#6B21A8', artKey: 'confeti', image: invitaFiestaAcuarela },
 ]
 
+// Petición real: "quiero evitar que tengan que repasar las 97 [temas],
+// que son muchos" — en vez de filtrar/ocultar (perdería temas que a
+// alguien le puede apetecer igual, p. ej. Halloween en un cumpleaños),
+// se reordena la lista de más a menos probable según el evento, dejando
+// siempre los 96 disponibles. Un tema puede llevar varias etiquetas
+// (p. ej. un atardecer de playa sirve de aniversario romántico).
+type InvitationTag =
+  | 'cumple_infantil'
+  | 'cumple_adulto'
+  | 'cumple_generico'
+  | 'boda'
+  | 'romantico'
+  | 'bautizo'
+  | 'comunion'
+  | 'bebe'
+  | 'graduacion'
+  | 'jubilacion'
+  | 'despedida_soltero'
+  | 'nueva_casa'
+  | 'navidad'
+  | 'halloween'
+  | 'carnaval'
+  | 'nochevieja'
+  | 'otono'
+  | 'playa'
+  | 'reunion_familiar'
+  | 'generico'
+
+const INVITATION_TEMPLATE_TAGS: Record<string, InvitationTag[]> = {
+  clasico: ['generico', 'cumple_generico'],
+  alegre: ['cumple_generico', 'generico'],
+  monstruo: ['cumple_infantil'],
+  futbol: ['cumple_infantil'],
+  unicornio: ['cumple_infantil'],
+  elegante: ['romantico', 'cumple_adulto', 'generico'],
+  floral: ['romantico', 'boda', 'generico'],
+  bautizo: ['bautizo'],
+  disco: ['cumple_adulto', 'despedida_soltero'],
+  dinosaurios: ['cumple_infantil'],
+  videojuegos: ['cumple_infantil'],
+  corazones: ['romantico', 'generico'],
+  ositos: ['cumple_infantil', 'bebe'],
+  gatitos: ['cumple_infantil'],
+  coches: ['cumple_infantil'],
+  robots: ['cumple_infantil'],
+  superheroe: ['cumple_infantil'],
+  superheroina: ['cumple_infantil'],
+  pijamas: ['cumple_infantil'],
+  kpop: ['cumple_infantil'],
+  princesa: ['cumple_infantil'],
+  espacio: ['cumple_infantil'],
+  piratas: ['cumple_infantil'],
+  safari: ['cumple_infantil'],
+  acampada: ['cumple_infantil'],
+  oceano: ['cumple_infantil'],
+  hadas: ['cumple_infantil'],
+  granja: ['cumple_infantil'],
+  alienigenas: ['cumple_infantil'],
+  playa: ['playa', 'cumple_generico', 'generico'],
+  concierto: ['cumple_adulto', 'despedida_soltero'],
+  boda: ['boda'],
+  obras: ['cumple_infantil'],
+  nochevieja: ['nochevieja', 'cumple_adulto'],
+  comunion: ['comunion'],
+  bebe_nino: ['bebe'],
+  barbacoa: ['reunion_familiar', 'generico'],
+  bautizo_nina: ['bautizo'],
+  navidad: ['navidad'],
+  cumpleanos_elegante: ['cumple_adulto'],
+  navidad_hogar: ['navidad'],
+  navidad_muneco: ['navidad'],
+  navidad_dorada: ['navidad'],
+  navidad_papanoel: ['navidad'],
+  navidad_galletas: ['navidad'],
+  navidad_farolillos: ['navidad'],
+  halloween_calabaza: ['halloween'],
+  halloween_casa: ['halloween'],
+  halloween_bruja: ['halloween'],
+  halloween_fantasmas: ['halloween'],
+  cumpleanos_rosa: ['cumple_generico'],
+  cumpleanos_fiesta: ['cumple_adulto', 'cumple_generico'],
+  graduacion_esfuerzo: ['graduacion'],
+  graduacion_suena: ['graduacion'],
+  graduacion_disciplina: ['graduacion'],
+  graduacion_explorar: ['graduacion'],
+  bebe_nina: ['bebe'],
+  bebe_neutro: ['bebe'],
+  bebe_arcoiris: ['bebe'],
+  casa_bienvenida: ['nueva_casa'],
+  casa_llaves: ['nueva_casa'],
+  casa_terraza: ['nueva_casa'],
+  casa_cajas: ['nueva_casa'],
+  despedida_novia: ['despedida_soltero'],
+  despedida_novio: ['despedida_soltero'],
+  despedida_viaje: ['despedida_soltero'],
+  despedida_noche: ['despedida_soltero'],
+  floral_picnic: ['romantico', 'reunion_familiar', 'generico'],
+  floral_primavera: ['romantico', 'generico'],
+  floral_noche: ['romantico', 'generico'],
+  playa_piscina: ['playa', 'cumple_infantil'],
+  playa_pina: ['playa'],
+  playa_atardecer: ['playa', 'romantico'],
+  playa_terraza: ['playa', 'romantico'],
+  comida_familiar: ['reunion_familiar'],
+  cena_hogar: ['reunion_familiar', 'romantico'],
+  tapas: ['reunion_familiar'],
+  desayuno: ['reunion_familiar'],
+  jubilacion_brindis: ['jubilacion'],
+  jubilacion_viaje: ['jubilacion'],
+  jubilacion_relax: ['jubilacion'],
+  jubilacion_cena: ['jubilacion'],
+  carnaval_bufon: ['carnaval'],
+  carnaval_plumas: ['carnaval'],
+  carnaval_payaso: ['carnaval', 'cumple_infantil'],
+  carnaval_confeti: ['carnaval', 'cumple_infantil'],
+  otono_acogedor: ['otono'],
+  otono_senderismo: ['otono'],
+  otono_hogar: ['otono'],
+  otono_cosecha: ['otono'],
+  corazones_acuarela: ['romantico', 'generico'],
+  corazones_madera: ['romantico'],
+  corazones_terraza: ['romantico'],
+  corazones_dorado: ['romantico'],
+  celebracion_dorada: ['cumple_adulto', 'generico'],
+  fiesta_acuarela: ['cumple_generico', 'generico'],
+}
+
+// Palabras del propio título/tema del evento — la señal más útil en
+// "Personalizado", donde el tipo de evento no da ninguna pista (p. ej.
+// "Fiesta de Halloween de Eric" debe enseñar los temas de Halloween
+// primero aunque el tipo sea "personalizado").
+const INVITATION_TITLE_KEYWORD_TAGS: [RegExp, InvitationTag[]][] = [
+  [/halloween/i, ['halloween']],
+  [/navidad/i, ['navidad']],
+  [/carnaval/i, ['carnaval']],
+  [/nochevieja|a[nñ]o nuevo/i, ['nochevieja']],
+  [/oto[nñ]o/i, ['otono']],
+  [/playa|piscina/i, ['playa']],
+  [/boda/i, ['boda']],
+  [/bautizo/i, ['bautizo']],
+  [/comuni[oó]n/i, ['comunion']],
+  [/graduaci[oó]n/i, ['graduacion']],
+  [/jubilaci[oó]n/i, ['jubilacion']],
+  [/despedida de solter/i, ['despedida_soltero']],
+  [/estreno de casa|nueva casa|mudanza/i, ['nueva_casa']],
+  [/beb[eé]/i, ['bebe']],
+]
+
+// Da el orden de etiquetas más a menos probable para un evento
+// concreto — p. ej. cumpleaños infantil (< 13 años, dato ya guardado en
+// details.ageTurning): infantiles de cumple, luego genéricos de
+// cumple; boda: temas de boda, luego románticos.
+function getInvitationPriorityTags(event: FamilyEvent): InvitationTag[] {
+  const tags: InvitationTag[] = []
+  const push = (...more: InvitationTag[]) => {
+    for (const t of more) if (!tags.includes(t)) tags.push(t)
+  }
+
+  if (event.type === 'cumpleanos') {
+    const age = typeof event.details.ageTurning === 'number' ? event.details.ageTurning : null
+    if (age !== null && age < 13) push('cumple_infantil', 'cumple_generico')
+    else push('cumple_adulto', 'cumple_generico')
+  } else if (event.type === 'boda') {
+    push('boda', 'romantico')
+  } else if (event.type === 'comunion') {
+    push('comunion')
+  } else if (event.type === 'bautizo') {
+    push('bautizo')
+  } else if (event.type === 'celebracion') {
+    switch (event.subtype) {
+      case 'Jubilación':
+        push('jubilacion')
+        break
+      case 'Despedida de soltero/a':
+        push('despedida_soltero')
+        break
+      case 'Estreno de casa':
+        push('nueva_casa')
+        break
+      case 'Reunión familiar':
+        push('reunion_familiar', 'generico')
+        break
+      case 'Graduación':
+        push('graduacion')
+        break
+      case 'Aniversario':
+        push('romantico', 'generico')
+        break
+      case 'Compromiso':
+        push('romantico', 'boda', 'generico')
+        break
+      default:
+        push('generico')
+    }
+  }
+
+  const text = `${event.title} ${event.theme ?? ''}`.toLowerCase()
+  for (const [pattern, matchTags] of INVITATION_TITLE_KEYWORD_TAGS) {
+    if (pattern.test(text)) push(...matchTags)
+  }
+
+  push('generico')
+  return tags
+}
+
+// Reordena (nunca oculta) los 96 temas de más a menos probable para un
+// evento concreto, para que el usuario no tenga que repasarlos todos.
+export function sortInvitationTemplatesForEvent(templates: InvitationTemplateMeta[], event: FamilyEvent): InvitationTemplateMeta[] {
+  const priority = getInvitationPriorityTags(event)
+  const rank = (key: string): number => {
+    const templateTags = INVITATION_TEMPLATE_TAGS[key]
+    if (!templateTags) return priority.length
+    for (let i = 0; i < priority.length; i++) {
+      if (templateTags.includes(priority[i])) return i
+    }
+    return priority.length
+  }
+  return templates.map((t, i) => ({ t, i, r: rank(t.key) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.t)
+}
+
 // ---------------------------------------------------------------------
 // Fase 3 — modo "día del evento" y conclusiones de PEPA por reglas.
 // Petición de la Skill (00-master-spec.md, puntos 14/15): "Conclusions

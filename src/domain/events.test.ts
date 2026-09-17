@@ -1,5 +1,41 @@
 import { describe, expect, it } from 'vitest'
-import { computeEventConclusions, generateEventPlan } from '@/domain/events'
+import { computeEventConclusions, generateEventPlan, INVITATION_TEMPLATES, sortInvitationTemplatesForEvent } from '@/domain/events'
+import type { FamilyEvent } from '@/domain/types'
+
+function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
+  return {
+    id: 'e1',
+    familyId: 'f1',
+    type: 'cumpleanos',
+    subtype: null,
+    title: 'Evento',
+    dateStatus: 'confirmada',
+    eventDate: null,
+    eventTime: null,
+    venueLabel: null,
+    venueType: null,
+    ceremonyLocationLabel: null,
+    ceremonyLocationLatitude: null,
+    ceremonyLocationLongitude: null,
+    ceremonyTime: null,
+    celebrationLocationLabel: null,
+    celebrationLocationLatitude: null,
+    celebrationLocationLongitude: null,
+    theme: null,
+    details: {},
+    enabledModules: [],
+    status: 'planificacion',
+    tagId: null,
+    calendarEventId: null,
+    rsvpDeadline: null,
+    rsvpDeadlineCalendarEventId: null,
+    openRsvpToken: null,
+    createdBy: 'u1',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
 
 function daysFromNow(days: number): string {
   const d = new Date()
@@ -121,6 +157,50 @@ describe('computeEventConclusions', () => {
       spentBudget: 50,
     })
     expect(conclusions).toHaveLength(0)
+  })
+})
+
+describe('sortInvitationTemplatesForEvent', () => {
+  it('never drops a template — only reorders the same 96', () => {
+    const event = makeEvent({ type: 'cumpleanos', details: { ageTurning: 5 } })
+    const sorted = sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event)
+    expect(sorted).toHaveLength(INVITATION_TEMPLATES.length)
+    expect(new Set(sorted.map((t) => t.key))).toEqual(new Set(INVITATION_TEMPLATES.map((t) => t.key)))
+  })
+
+  it('puts kid-birthday themes before adult-birthday themes for a young child', () => {
+    const event = makeEvent({ type: 'cumpleanos', details: { ageTurning: 5 } })
+    const sorted = sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event)
+    const dinosauriosIdx = sorted.findIndex((t) => t.key === 'dinosaurios')
+    const nocheviejaIdx = sorted.findIndex((t) => t.key === 'nochevieja')
+    expect(dinosauriosIdx).toBeGreaterThanOrEqual(0)
+    expect(dinosauriosIdx).toBeLessThan(nocheviejaIdx)
+  })
+
+  it('puts adult-birthday themes before kid-birthday themes for an adult', () => {
+    const event = makeEvent({ type: 'cumpleanos', details: { ageTurning: 40 } })
+    const sorted = sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event)
+    const eleganteIdx = sorted.findIndex((t) => t.key === 'cumpleanos_elegante')
+    const dinosauriosIdx = sorted.findIndex((t) => t.key === 'dinosaurios')
+    expect(eleganteIdx).toBeLessThan(dinosauriosIdx)
+  })
+
+  it('puts wedding themes first, then romantic ones, for a boda', () => {
+    const event = makeEvent({ type: 'boda', title: 'Boda de Ana y Luis' })
+    const sorted = sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event)
+    const bodaIdx = sorted.findIndex((t) => t.key === 'boda')
+    const corazonesIdx = sorted.findIndex((t) => t.key === 'corazones')
+    const dinosauriosIdx = sorted.findIndex((t) => t.key === 'dinosaurios')
+    expect(bodaIdx).toBeLessThan(2)
+    expect(corazonesIdx).toBeLessThan(dinosauriosIdx)
+  })
+
+  it('picks up a seasonal keyword from the title for a personalizado event', () => {
+    const event = makeEvent({ type: 'personalizado', title: 'Fiesta de Halloween de Eric' })
+    const sorted = sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event)
+    const halloweenIdx = sorted.findIndex((t) => t.key === 'halloween_calabaza')
+    const bodaIdx = sorted.findIndex((t) => t.key === 'boda')
+    expect(halloweenIdx).toBeLessThan(bodaIdx)
   })
 })
 

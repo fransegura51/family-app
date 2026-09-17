@@ -907,6 +907,7 @@ export const INVITATION_SHAPES: { key: string; label: string }[] = [
   { key: 'estrella', label: '⭐ Estrella' },
   { key: 'confeti', label: '🎊 Confeti' },
   { key: 'ondas', label: '〰️ Ondas' },
+  { key: 'brillos', label: '✨ Brillos' },
 ]
 
 export const INVITATION_EMOJI_SUGGESTIONS = ['🎉', '🎂', '🎈', '⛪', '👶', '💍', '🥂', '🌸', '✨', '🎁']

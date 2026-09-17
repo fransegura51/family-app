@@ -805,6 +805,8 @@ export interface EventDayPlanItem {
 // el diseño, solo qué líneas de ubicación se muestran al compartir.
 export type InvitationLayerType = 'background' | 'shape' | 'photo' | 'text' | 'emoji' | 'event_data'
 
+export type InvitationTextStyle = 'normal' | '3d' | 'sparkle' | 'rainbow_static' | 'rainbow_animated' | 'iridescent'
+
 export interface InvitationLayer {
   id: string
   type: InvitationLayerType
@@ -819,11 +821,14 @@ export interface InvitationLayer {
   fontFamily?: string
   fontSize?: number
   // Petición real: "que al texto se le pueda dar formato 3D y que se
-  // pueda poner en una curva" — effect3d añade relieve (capas de sombra
-  // en tono más oscuro); curve (-100..100, 0 recto) solo se usa en
+  // pueda poner en una curva" (relieve), "letras de brillos... como si
+  // fuese purpurina", y "un color arcoíris... uno fijo y otro que vaya
+  // cambiando... y otro estilo iridiscente" — son rellenos alternativos
+  // del texto, no se combinan entre sí (si acaso con curve, que es la
+  // forma, no el relleno). curve (-100..100, 0 recto) solo se usa en
   // capas de tipo "text" (una línea), no en "event_data" (varias
   // líneas, no tiene sentido curvarlo).
-  effect3d?: boolean
+  textStyle?: InvitationTextStyle
   curve?: number
   // forma decorativa genérica (sin personajes con copyright)
   shapeKey?: string

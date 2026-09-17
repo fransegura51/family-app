@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import {
   addEventActivity,
@@ -122,6 +122,7 @@ import type {
   FamilyEvent,
   InvitationCanvas,
   InvitationLayer,
+  InvitationTextStyle,
 } from '@/domain/types'
 import { shareText } from '@/services/share'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -2828,6 +2829,31 @@ function InvitationShapeGraphic({ shapeKey, color, size }: { shapeKey?: string; 
           <path d="M0,20 Q12,0 25,20 T50,20 T75,20 T100,20" fill="none" stroke={c} strokeWidth="6" />
         </svg>
       )
+    case 'brillos':
+      // Petición real: "una capa de brillos, elementos de brillos... como
+      // si fuese purpurina" — varios destellos de 4 puntas (forma ✨) a
+      // distinto tamaño, cada uno parpadeando con su propio desfase
+      // (animate nativo de SVG, sin CSS global ni imagen de textura).
+      return (
+        <svg width={size} height={size} viewBox="0 0 100 100">
+          {[
+            [22, 28, 16, 0],
+            [70, 20, 11, 0.4],
+            [50, 55, 20, 0.8],
+            [80, 68, 13, 1.2],
+            [18, 75, 12, 1.6],
+          ].map(([cx, cy, r, delay], i) => (
+            <g key={i} transform={`translate(${cx},${cy})`}>
+              <path
+                d={`M0,${-r} Q${r * 0.15},${-r * 0.15} ${r},0 Q${r * 0.15},${r * 0.15} 0,${r} Q${-r * 0.15},${r * 0.15} ${-r},0 Q${-r * 0.15},${-r * 0.15} 0,${-r} Z`}
+                fill={c}
+              >
+                <animate attributeName="opacity" values="0.25;1;0.25" dur="1.6s" begin={`${delay}s`} repeatCount="indefinite" />
+              </path>
+            </g>
+          ))}
+        </svg>
+      )
     case 'circulo':
     default:
       return (
@@ -2858,6 +2884,54 @@ function text3dShadow(color: string): string {
   return [...steps, '6px 6px 10px rgba(0,0,0,0.35)'].join(', ')
 }
 
+const RAINBOW_STOPS = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#AF52DE', '#FF3B30']
+const IRIDESCENT_STOPS = ['#FFD1E8', '#C9F0FF', '#E0C9FF', '#FFF3C4', '#C9FFE0', '#FFD1E8']
+
+// Estilo → clase CSS (relleno plano, capa "text"/"event_data" sin
+// curvar) — ver .invitation-*-text en styles.css para cada animación.
+const TEXT_STYLE_CLASS: Partial<Record<InvitationTextStyle, string>> = {
+  sparkle: 'invitation-glitter-text',
+  rainbow_static: 'invitation-rainbow-static-text',
+  rainbow_animated: 'invitation-rainbow-animated-text',
+  iridescent: 'invitation-iridescent-text',
+}
+
+// Mismos estilos que TEXT_STYLE_CLASS pero para la variante curvada
+// (SVG con textPath, que no puede usar background-clip). "sparkle"
+// anima el hueco entre dos franjas del propio color; el resto recorre
+// una paleta fija de colores.
+function TextGradientDef({ id, style, color }: { id: string; style: InvitationTextStyle; color: string }) {
+  if (style === 'sparkle') {
+    return (
+      <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stopColor={color} />
+        <stop offset="45%" stopColor={color} />
+        <stop offset="50%" stopColor="#ffffff" />
+        <stop offset="55%" stopColor={color} />
+        <stop offset="100%" stopColor={color} />
+        <animate attributeName="x1" values="-1;1" dur="2.2s" repeatCount="indefinite" />
+        <animate attributeName="x2" values="0;2" dur="2.2s" repeatCount="indefinite" />
+      </linearGradient>
+    )
+  }
+  const isRainbow = style === 'rainbow_static' || style === 'rainbow_animated'
+  const stops = isRainbow ? RAINBOW_STOPS : IRIDESCENT_STOPS
+  const animated = style === 'rainbow_animated' || style === 'iridescent'
+  return (
+    <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
+      {stops.map((c, i) => (
+        <stop key={i} offset={`${(i / (stops.length - 1)) * 100}%`} stopColor={c} />
+      ))}
+      {animated && (
+        <>
+          <animate attributeName="x1" values="0;-2;0" dur={style === 'iridescent' ? '7s' : '5s'} repeatCount="indefinite" />
+          <animate attributeName="x2" values="1;-1;1" dur={style === 'iridescent' ? '7s' : '5s'} repeatCount="indefinite" />
+        </>
+      )}
+    </linearGradient>
+  )
+}
+
 // "fontSize" se reutiliza como tamaño base en píxeles para foto/forma,
 // no solo para texto — evita añadir un campo más al tipo por algo tan
 // parecido (ver domain/types.ts, InvitationLayer).
@@ -2869,6 +2943,8 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
       const fontSize = layer.fontSize ?? 16
       const fontFamily = layer.fontFamily || 'inherit'
       const fontWeight = layer.type === 'text' ? 700 : 400
+      const style = layer.textStyle ?? 'normal'
+      const hasGradientFill = style !== 'normal' && style !== '3d'
 
       // Curvar solo tiene sentido en una línea — "event_data" (varias
       // líneas de fecha/ubicación) siempre se queda recto.
@@ -2876,15 +2952,22 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
         const text = (layer.text ?? '').replace(/\n/g, ' ')
         const bend = clamp(layer.curve, -100, 100)
         const pathId = `curve-${layer.id}`
+        const gradientId = `fill-${layer.id}`
         const width = Math.max(220, text.length * fontSize * 0.62)
         const height = Math.max(80, Math.abs(bend) * 0.9 + fontSize * 1.6)
         const midY = height / 2
         const d = `M 10 ${midY} Q ${width / 2} ${midY - bend} ${width - 10} ${midY}`
         const dark = darkenHexColor(color, 70)
+        const fill = hasGradientFill ? `url(#${gradientId})` : color
         return (
           <svg width={width} height={height} style={{ overflow: 'visible', display: 'block' }}>
             <path id={pathId} d={d} fill="none" />
-            {layer.effect3d &&
+            {hasGradientFill && (
+              <defs>
+                <TextGradientDef id={gradientId} style={style} color={color} />
+              </defs>
+            )}
+            {style === '3d' &&
               [5, 4, 3, 2, 1].map((i) => (
                 <text key={i} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={dark} transform={`translate(${i}, ${i})`}>
                   <textPath href={`#${pathId}`} xlinkHref={`#${pathId}`} startOffset="50%" textAnchor="middle">
@@ -2892,7 +2975,7 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
                   </textPath>
                 </text>
               ))}
-            <text fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={color}>
+            <text fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={fill}>
               <textPath href={`#${pathId}`} xlinkHref={`#${pathId}`} startOffset="50%" textAnchor="middle">
                 {text}
               </textPath>
@@ -2901,17 +2984,22 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
         )
       }
 
+      const className = TEXT_STYLE_CLASS[style]
       return (
         <div
-          style={{
-            color,
-            fontSize,
-            fontFamily,
-            fontWeight,
-            whiteSpace: 'pre-line',
-            textAlign: 'center',
-            textShadow: layer.effect3d ? text3dShadow(color) : '0 1px 4px rgba(0,0,0,0.25)',
-          }}
+          className={className}
+          style={
+            {
+              color: className ? undefined : color,
+              fontSize,
+              fontFamily,
+              fontWeight,
+              whiteSpace: 'pre-line',
+              textAlign: 'center',
+              textShadow: className ? 'none' : style === '3d' ? text3dShadow(color) : '0 1px 4px rgba(0,0,0,0.25)',
+              '--glitter-base': color,
+            } as CSSProperties
+          }
         >
           {layer.text}
         </div>
@@ -3708,6 +3796,14 @@ const LAYER_FONT_OPTIONS: { value: string; label: string }[] = [
   { value: '"Brush Script MT", cursive', label: 'Manuscrita' },
 ]
 
+const TEXT_STYLE_OPTIONS: { value: InvitationTextStyle; label: string }[] = [
+  { value: '3d', label: '🧊 3D' },
+  { value: 'sparkle', label: '✨ Purpurina' },
+  { value: 'rainbow_static', label: '🌈 Arcoíris fijo' },
+  { value: 'rainbow_animated', label: '🌈 Arcoíris animado' },
+  { value: 'iridescent', label: '🌟 Iridiscente' },
+]
+
 interface DragState {
   mode: 'move' | 'transform'
   layerId: string
@@ -4285,19 +4381,28 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
                     </select>
                   </label>
                 )}
-                {/* Petición real: "que al texto se le pueda dar formato
-                    3D y que se pueda poner en una curva" — el relieve
-                    vale para texto y fecha/ubicación, pero curvar solo
-                    tiene sentido en una línea (una capa de texto). */}
+                {/* Petición real: "formato 3D", "letras de brillos...
+                    purpurina", "un color arcoíris... uno fijo [que
+                    cambia a lo largo de lo escrito, no con el tiempo] y
+                    otro que vaya cambiando conforme lo mires", "otro
+                    estilo iridiscente" — todos rellenos alternativos del
+                    texto; tocar el que ya está activo lo quita (vuelve
+                    a "normal"). Curvar (más abajo) es la forma, no el
+                    relleno, y sí se puede combinar con cualquiera de
+                    estos. */}
                 {(selected.type === 'text' || selected.type === 'event_data') && (
-                  <button
-                    type="button"
-                    className={'chip' + (selected.effect3d ? ' chip-active' : '')}
-                    style={{ marginTop: 8 }}
-                    onClick={() => updateSelected({ effect3d: !selected.effect3d })}
-                  >
-                    🧊 Efecto 3D
-                  </button>
+                  <div className="filter-row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                    {TEXT_STYLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={'chip' + ((selected.textStyle ?? 'normal') === opt.value ? ' chip-active' : '')}
+                        onClick={() => updateSelected({ textStyle: (selected.textStyle ?? 'normal') === opt.value ? 'normal' : opt.value })}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 )}
                 {selected.type === 'text' && (
                   <label style={{ marginTop: 8, display: 'block' }}>

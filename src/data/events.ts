@@ -45,7 +45,7 @@ async function currentFamilyId(): Promise<string> {
 }
 
 const EVENT_SELECT =
-  'id, family_id, type, subtype, title, date_status, event_date, event_time, venue_label, venue_type, ceremony_location_label, ceremony_location_latitude, ceremony_location_longitude, ceremony_time, celebration_location_label, celebration_location_latitude, celebration_location_longitude, theme, details, enabled_modules, status, tag_id, calendar_event_id, rsvp_deadline, rsvp_deadline_calendar_event_id, open_rsvp_token, created_by, created_at, updated_at'
+  'id, family_id, type, subtype, title, date_status, event_date, event_time, venue_label, venue_type, venue_latitude, venue_longitude, ceremony_location_label, ceremony_location_latitude, ceremony_location_longitude, ceremony_time, celebration_location_label, celebration_location_latitude, celebration_location_longitude, theme, details, enabled_modules, status, tag_id, calendar_event_id, rsvp_deadline, rsvp_deadline_calendar_event_id, open_rsvp_token, created_by, created_at, updated_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapEvent(r: any): FamilyEvent {
@@ -60,6 +60,8 @@ function mapEvent(r: any): FamilyEvent {
     eventTime: r.event_time,
     venueLabel: r.venue_label,
     venueType: r.venue_type,
+    venueLatitude: r.venue_latitude,
+    venueLongitude: r.venue_longitude,
     ceremonyLocationLabel: r.ceremony_location_label,
     ceremonyLocationLatitude: r.ceremony_location_latitude,
     ceremonyLocationLongitude: r.ceremony_location_longitude,
@@ -175,12 +177,18 @@ export async function updateEvent(
     eventTime: string | null
     venueLabel: string | null
     venueType: string | null
+    venueLatitude: number | null
+    venueLongitude: number | null
     theme: string | null
     details: Record<string, unknown>
     enabledModules: EventModuleKey[]
     ceremonyLocationLabel: string | null
+    ceremonyLocationLatitude: number | null
+    ceremonyLocationLongitude: number | null
     ceremonyTime: string | null
     celebrationLocationLabel: string | null
+    celebrationLocationLatitude: number | null
+    celebrationLocationLongitude: number | null
     rsvpDeadline: string | null
   }>,
 ): Promise<void> {
@@ -191,12 +199,18 @@ export async function updateEvent(
   if (patch.eventTime !== undefined) update.event_time = patch.eventTime
   if (patch.venueLabel !== undefined) update.venue_label = patch.venueLabel
   if (patch.venueType !== undefined) update.venue_type = patch.venueType
+  if (patch.venueLatitude !== undefined) update.venue_latitude = patch.venueLatitude
+  if (patch.venueLongitude !== undefined) update.venue_longitude = patch.venueLongitude
   if (patch.theme !== undefined) update.theme = patch.theme
   if (patch.details !== undefined) update.details = patch.details
   if (patch.enabledModules !== undefined) update.enabled_modules = patch.enabledModules
   if (patch.ceremonyLocationLabel !== undefined) update.ceremony_location_label = patch.ceremonyLocationLabel
+  if (patch.ceremonyLocationLatitude !== undefined) update.ceremony_location_latitude = patch.ceremonyLocationLatitude
+  if (patch.ceremonyLocationLongitude !== undefined) update.ceremony_location_longitude = patch.ceremonyLocationLongitude
   if (patch.ceremonyTime !== undefined) update.ceremony_time = patch.ceremonyTime
   if (patch.celebrationLocationLabel !== undefined) update.celebration_location_label = patch.celebrationLocationLabel
+  if (patch.celebrationLocationLatitude !== undefined) update.celebration_location_latitude = patch.celebrationLocationLatitude
+  if (patch.celebrationLocationLongitude !== undefined) update.celebration_location_longitude = patch.celebrationLocationLongitude
   if (patch.rsvpDeadline !== undefined) update.rsvp_deadline = patch.rsvpDeadline
   const { error } = await supabase.from('events').update(update).eq('id', id)
   if (error) throw error

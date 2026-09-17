@@ -396,25 +396,48 @@ export function eventLocationLines(
 // picker de mapa (ni geocodificar, que sería de pago): un enlace de
 // búsqueda de Google Maps con el nombre/dirección que ya se escribe en
 // "Ubicación" ya abre la app de mapas y da indicaciones.
-export function buildMapsUrl(label: string): string {
+// Petición real: "¿Y qué va a buscar si pongo en mi casa?" — un enlace
+// hecho solo con el texto de "Lugar" falla si ese texto es informal
+// ("en mi casa"). Con coordenadas reales (elegidas con el buscador de
+// sitios, ver EventLocationCoordsPicker) el enlace va directo a esas
+// coordenadas, sin depender de que el texto sea buscable; sin
+// coordenadas, cae al texto tal cual (como antes).
+export function buildMapsUrl(label: string, coords?: { latitude: number; longitude: number } | null): string {
+  if (coords) return `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`
 }
 
 export function eventLocationMapLines(
-  event: Pick<FamilyEvent, 'type' | 'venueLabel' | 'ceremonyLocationLabel' | 'celebrationLocationLabel'>,
+  event: Pick<
+    FamilyEvent,
+    | 'type'
+    | 'venueLabel'
+    | 'venueLatitude'
+    | 'venueLongitude'
+    | 'ceremonyLocationLabel'
+    | 'ceremonyLocationLatitude'
+    | 'ceremonyLocationLongitude'
+    | 'celebrationLocationLabel'
+    | 'celebrationLocationLatitude'
+    | 'celebrationLocationLongitude'
+  >,
   guest: { inviteScope: EventGuestInviteScope | null },
 ): string[] {
   const lines: string[] = []
   if (DUAL_LOCATION_EVENT_TYPES.includes(event.type)) {
     const scope = guest.inviteScope ?? 'ambas'
     if (scope !== 'solo_celebracion' && event.ceremonyLocationLabel) {
-      lines.push(`🕊️ Cómo llegar a la ceremonia: ${buildMapsUrl(event.ceremonyLocationLabel)}`)
+      const coords = event.ceremonyLocationLatitude != null && event.ceremonyLocationLongitude != null ? { latitude: event.ceremonyLocationLatitude, longitude: event.ceremonyLocationLongitude } : null
+      lines.push(`🕊️ Cómo llegar a la ceremonia: ${buildMapsUrl(event.ceremonyLocationLabel, coords)}`)
     }
     if (scope !== 'solo_ceremonia' && event.celebrationLocationLabel) {
-      lines.push(`🎉 Cómo llegar a la celebración: ${buildMapsUrl(event.celebrationLocationLabel)}`)
+      const coords =
+        event.celebrationLocationLatitude != null && event.celebrationLocationLongitude != null ? { latitude: event.celebrationLocationLatitude, longitude: event.celebrationLocationLongitude } : null
+      lines.push(`🎉 Cómo llegar a la celebración: ${buildMapsUrl(event.celebrationLocationLabel, coords)}`)
     }
   } else if (event.venueLabel) {
-    lines.push(`📍 Cómo llegar: ${buildMapsUrl(event.venueLabel)}`)
+    const coords = event.venueLatitude != null && event.venueLongitude != null ? { latitude: event.venueLatitude, longitude: event.venueLongitude } : null
+    lines.push(`📍 Cómo llegar: ${buildMapsUrl(event.venueLabel, coords)}`)
   }
   return lines
 }

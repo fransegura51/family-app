@@ -78,10 +78,12 @@ import {
 } from '@/data/events'
 import { listExpenses } from '@/data/finance'
 import { errorMessage } from '@/domain/errorMessage'
+import { searchPlaces, type PlaceResult } from '@/services/geocoding'
 import {
   autoArrangeLayers,
   buildInvitationMessage,
   buildInvitationTemplateLayers,
+  buildMapsUrl,
   CELEBRATION_SUBTYPES,
   computeEventConclusions,
   DUAL_LOCATION_EVENT_TYPES,
@@ -789,11 +791,101 @@ function EventDetail({
   )
 }
 
+// Petición real: "Y que va a buscar si pongo en mi casa?" — un enlace
+// de mapa hecho con el texto de "Lugar" tal cual no sirve si ese texto
+// es informal ("en mi casa"). "Creo que es menos trabajo eligiendo
+// directamente la ubicación del sitio en el mapa, como en el
+// calendario. Se puede poner Lugar para que aparezca en la invitación
+// y Ubicación para enviar a todos" — mismo buscador que ya usa
+// Calendario (Nominatim/OpenStreetMap, gratis), pero como campo aparte
+// de "Lugar": elegir aquí una sugerencia solo guarda coordenadas, sin
+// tocar el texto que se ve en la invitación.
+function EventLocationCoordsPicker({
+  coords,
+  onCoordsChange,
+}: {
+  coords: { latitude: number; longitude: number } | null
+  onCoordsChange: (c: { latitude: number; longitude: number } | null) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [suggestions, setSuggestions] = useState<PlaceResult[]>([])
+  const [pickedLabel, setPickedLabel] = useState<string | null>(null)
+
+  async function handleSearch() {
+    if (!query.trim()) return
+    setSearching(true)
+    try {
+      setSuggestions(await searchPlaces(query.trim()))
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  function pick(s: PlaceResult) {
+    onCoordsChange({ latitude: s.latitude, longitude: s.longitude })
+    setPickedLabel(s.label)
+    setSuggestions([])
+    setQuery('')
+  }
+
+  return (
+    <div>
+      <label>
+        Ubicación (para el enlace del mapa que reciben los invitados)
+        <div className="inline-fields">
+          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Busca la dirección o el nombre del sitio" style={{ flex: 1 }} />
+          <button type="button" className="link-button" onClick={handleSearch} disabled={!query.trim() || searching}>
+            {searching ? 'Buscando…' : '🔍 Buscar'}
+          </button>
+        </div>
+      </label>
+      {suggestions.length > 0 && (
+        <div className="card" style={{ padding: 8 }}>
+          {suggestions.map((s, i) => (
+            <button key={i} type="button" className="link-button" style={{ display: 'block', textAlign: 'left', width: '100%', padding: '4px 0' }} onClick={() => pick(s)}>
+              📍 {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {coords && (
+        <div className="filter-row" style={{ marginTop: 4, alignItems: 'center' }}>
+          <span className="muted" style={{ fontSize: 12 }}>✓ {pickedLabel ?? 'Ubicación real guardada'}</span>
+          {/* Petición real: "esa ubicación se puede abrir también en
+              Google Maps?" — para comprobar que el punto elegido es el
+              correcto antes de guardar, no solo cuando lo reciben los
+              invitados. */}
+          <a href={buildMapsUrl(pickedLabel ?? '', coords)} target="_blank" rel="noopener noreferrer" className="link-button" style={{ textDecoration: 'none' }}>
+            🔍 Ver en Google Maps
+          </a>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              onCoordsChange(null)
+              setPickedLabel(null)
+            }}
+          >
+            Quitar
+          </button>
+        </div>
+      )}
+      <p className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+        "Lugar" es lo que verán en la invitación (puede ser "en mi casa" o cualquier cosa); esta búsqueda es solo para que el enlace del mapa lleve a la dirección real.
+      </p>
+    </div>
+  )
+}
+
 function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState(event.title)
   const [dateStatus, setDateStatus] = useState(event.dateStatus)
   const [eventDate, setEventDate] = useState(event.eventDate ?? '')
   const [venueLabel, setVenueLabel] = useState(event.venueLabel ?? '')
+  const [venueCoords, setVenueCoords] = useState(
+    event.venueLatitude != null && event.venueLongitude != null ? { latitude: event.venueLatitude, longitude: event.venueLongitude } : null,
+  )
   const [theme, setTheme] = useState(event.theme ?? '')
   const [rsvpDeadline, setRsvpDeadline] = useState(event.rsvpDeadline ?? '')
   const [saving, setSaving] = useState(false)
@@ -810,6 +902,8 @@ function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClo
         dateStatus,
         eventDate: nextDate,
         venueLabel: venueLabel || null,
+        venueLatitude: venueCoords?.latitude ?? null,
+        venueLongitude: venueCoords?.longitude ?? null,
         theme: theme || null,
         rsvpDeadline: rsvpDeadline || null,
       })
@@ -862,9 +956,10 @@ function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClo
             </label>
           )}
           <label>
-            Sitio
-            <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} />
+            Lugar (como se ve en la invitación)
+            <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} placeholder="Ej. en mi casa, Restaurante La Terraza…" />
           </label>
+          <EventLocationCoordsPicker coords={venueCoords} onCoordsChange={setVenueCoords} />
           <label>
             Tema
             <input type="text" value={theme} onChange={(e) => setTheme(e.target.value)} />
@@ -930,8 +1025,18 @@ function ModulesModal({ event, onClose, onSaved }: { event: FamilyEvent; onClose
 
 function CeremoniaSection({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
   const [ceremonyLocationLabel, setCeremonyLocationLabel] = useState(event.ceremonyLocationLabel ?? '')
+  const [ceremonyCoords, setCeremonyCoords] = useState(
+    event.ceremonyLocationLatitude != null && event.ceremonyLocationLongitude != null
+      ? { latitude: event.ceremonyLocationLatitude, longitude: event.ceremonyLocationLongitude }
+      : null,
+  )
   const [ceremonyTime, setCeremonyTime] = useState(event.ceremonyTime ?? '')
   const [celebrationLocationLabel, setCelebrationLocationLabel] = useState(event.celebrationLocationLabel ?? '')
+  const [celebrationCoords, setCelebrationCoords] = useState(
+    event.celebrationLocationLatitude != null && event.celebrationLocationLongitude != null
+      ? { latitude: event.celebrationLocationLatitude, longitude: event.celebrationLocationLongitude }
+      : null,
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -941,8 +1046,12 @@ function CeremoniaSection({ event, onChanged }: { event: FamilyEvent; onChanged:
     try {
       await updateEvent(event.id, {
         ceremonyLocationLabel: ceremonyLocationLabel || null,
+        ceremonyLocationLatitude: ceremonyCoords?.latitude ?? null,
+        ceremonyLocationLongitude: ceremonyCoords?.longitude ?? null,
         ceremonyTime: ceremonyTime || null,
         celebrationLocationLabel: celebrationLocationLabel || null,
+        celebrationLocationLatitude: celebrationCoords?.latitude ?? null,
+        celebrationLocationLongitude: celebrationCoords?.longitude ?? null,
       })
       onChanged()
     } catch (err) {
@@ -961,17 +1070,19 @@ function CeremoniaSection({ event, onChanged }: { event: FamilyEvent; onChanged:
       {error && <p className="error">{error}</p>}
       <div className="card member-form">
         <label>
-          Iglesia / lugar de la ceremonia
+          Iglesia / lugar de la ceremonia (como se ve en la invitación)
           <input type="text" value={ceremonyLocationLabel} onChange={(e) => setCeremonyLocationLabel(e.target.value)} />
         </label>
+        <EventLocationCoordsPicker coords={ceremonyCoords} onCoordsChange={setCeremonyCoords} />
         <label>
           Hora de la ceremonia
           <input type="time" value={ceremonyTime} onChange={(e) => setCeremonyTime(e.target.value)} />
         </label>
         <label>
-          Lugar de la celebración
+          Lugar de la celebración (como se ve en la invitación)
           <input type="text" value={celebrationLocationLabel} onChange={(e) => setCelebrationLocationLabel(e.target.value)} />
         </label>
+        <EventLocationCoordsPicker coords={celebrationCoords} onCoordsChange={setCelebrationCoords} />
         <button type="button" onClick={handleSave} disabled={saving}>
           {saving ? 'Guardando…' : 'Guardar'}
         </button>

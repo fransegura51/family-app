@@ -15,6 +15,8 @@ function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
     eventTime: null,
     venueLabel: null,
     venueType: null,
+    venueLatitude: null,
+    venueLongitude: null,
     ceremonyLocationLabel: null,
     ceremonyLocationLatitude: null,
     ceremonyLocationLongitude: null,
@@ -375,6 +377,24 @@ describe('eventLocationMapLines', () => {
     const event = makeEvent({ type: 'cumpleanos', venueLabel: null })
     expect(eventLocationMapLines(event, { inviteScope: null })).toHaveLength(0)
   })
+
+  it('uses real coordinates instead of searching the label text when they are set', () => {
+    // Petición real: "¿Y qué va a buscar si pongo en mi casa?" — un
+    // texto informal como "en mi casa" no es buscable; con
+    // coordenadas elegidas en el buscador, el enlace va directo a
+    // ellas y no depende del texto de "Lugar".
+    const event = makeEvent({ type: 'cumpleanos', venueLabel: 'en mi casa', venueLatitude: 40.4168, venueLongitude: -3.7038 })
+    const lines = eventLocationMapLines(event, { inviteScope: null })
+    expect(lines[0]).toContain('https://www.google.com/maps?q=40.4168,-3.7038')
+    expect(lines[0]).not.toContain('en+mi+casa')
+    expect(lines[0]).not.toContain(encodeURIComponent('en mi casa'))
+  })
+
+  it('falls back to searching the label text when no coordinates were picked', () => {
+    const event = makeEvent({ type: 'cumpleanos', venueLabel: 'en mi casa', venueLatitude: null, venueLongitude: null })
+    const lines = eventLocationMapLines(event, { inviteScope: null })
+    expect(lines[0]).toContain('https://www.google.com/maps/search/?api=1&query=')
+  })
 })
 
 describe('buildMapsUrl', () => {
@@ -382,5 +402,10 @@ describe('buildMapsUrl', () => {
     const url = buildMapsUrl('Calle Mayor 5, 2ºB, Madrid')
     expect(url).not.toContain(' ')
     expect(url).not.toContain('º')
+  })
+
+  it('prefers real coordinates over the label text when both are given', () => {
+    const url = buildMapsUrl('en mi casa', { latitude: 40.4168, longitude: -3.7038 })
+    expect(url).toBe('https://www.google.com/maps?q=40.4168,-3.7038')
   })
 })

@@ -584,6 +584,13 @@ export interface FamilyEvent {
   eventTime: string | null
   venueLabel: string | null
   venueType: string | null
+  // "Lugar" (venueLabel) es lo que se ve en la invitación — puede ser
+  // algo informal como "en mi casa". Estas coordenadas son la
+  // ubicación real elegida con el buscador (Nominatim), para el
+  // enlace de mapa que reciben los invitados — independiente del
+  // texto de Lugar, que se queda tal cual lo escribas.
+  venueLatitude: number | null
+  venueLongitude: number | null
   ceremonyLocationLabel: string | null
   ceremonyLocationLatitude: number | null
   ceremonyLocationLongitude: number | null

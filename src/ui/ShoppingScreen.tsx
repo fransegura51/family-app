@@ -1766,11 +1766,38 @@ function HistoryTab() {
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [purchases, currentMonth, previousMonth, productById])
 
+  // El buscador es para encontrar cualquier producto que añadir a la
+  // lista, no solo los de `comparisons` (que solo lleva lo comprado
+  // ESTE mes, para poder compararlo con el anterior) — bug real: "por
+  // qué el Roti no sale abajo en productos, mientras que el bizcocho
+  // sí" — Roti no se había comprado este mes, así que no estaba ni en
+  // la lista ni al alcance del buscador, aunque sí en Sugerencias (que
+  // mira todo el histórico). Al buscar, se amplía a todo el catálogo
+  // con precio conocido; sin buscar, se seguye viendo solo este mes.
+  const allProductsForSearch = useMemo(
+    () =>
+      withStats
+        .map(({ product, stats }) => {
+          const inThisMonth = comparisons.find((c) => c.productId === product.id)
+          return (
+            inThisMonth ?? {
+              productId: product.id,
+              name: product.displayName,
+              currentPrice: stats!.lastPrice,
+              previousPrice: null,
+              deltaPercent: null,
+            }
+          )
+        })
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [withStats, comparisons],
+  )
+
   const filteredComparisons = useMemo(() => {
     const q = normalizeProductName(query)
     if (!q) return comparisons
-    return comparisons.filter((c) => normalizeProductName(c.name).includes(q))
-  }, [comparisons, query])
+    return allProductsForSearch.filter((c) => normalizeProductName(c.name).includes(q))
+  }, [comparisons, allProductsForSearch, query])
 
   const currentBasket = useMemo(() => basketTotal(purchases, currentMonth), [purchases, currentMonth])
   const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
@@ -1941,9 +1968,9 @@ function HistoryTab() {
         ))}
         {filteredComparisons.length === 0 && (
           <p className="muted">
-            {comparisons.length === 0
-              ? 'No hay productos con precio registrado este mes (tickets o lista de la compra).'
-              : 'Ningún producto coincide con esa búsqueda.'}
+            {query.trim()
+              ? 'Ningún producto coincide con esa búsqueda.'
+              : 'No hay productos con precio registrado este mes (tickets o lista de la compra).'}
           </p>
         )}
       </div>

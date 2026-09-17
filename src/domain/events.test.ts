@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildInvitationMessage, computeEventConclusions, generateEventPlan, INVITATION_TEMPLATES, sortInvitationTemplatesForEvent } from '@/domain/events'
+import { buildInvitationMessage, buildInvitationTemplateLayers, computeEventConclusions, generateEventPlan, INVITATION_TEMPLATES, sortInvitationTemplatesForEvent } from '@/domain/events'
+import type { InvitationTemplateMeta } from '@/domain/events'
 import type { FamilyEvent } from '@/domain/types'
 
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
@@ -303,5 +304,45 @@ describe('buildInvitationMessage', () => {
     const text = buildInvitationMessage(event)
     expect(text).not.toContain('null')
     expect(text).not.toContain('undefined')
+  })
+})
+
+describe('buildInvitationTemplateLayers', () => {
+  function makeTemplate(textArea?: InvitationTemplateMeta['textArea']): InvitationTemplateMeta {
+    return { key: 't1', label: 'Test', gradient: 'linear-gradient(0deg, #000, #fff)', text: '#fff', artKey: 'confeti', textArea }
+  }
+
+  it('positions the three default layers inside the template textArea, not at the old fixed spots', () => {
+    // Petición real: "me refiero a esa parte de cada tarjeta (círculo
+    // azul) no las tarjetas enteras... habrá que ajustarlo tarjeta por
+    // tarjeta" — antes las tres capas usaban siempre 0.22/0.42/0.65
+    // sin importar el tema; ahora deben caer dentro del hueco real.
+    const event = makeEvent({ title: 'Cumpleaños de Alvaro' })
+    const template = makeTemplate({ x: 0.3, y: 0.1, width: 0.4, height: 0.3 })
+    const layers = buildInvitationTemplateLayers(event, template)
+    expect(layers).toHaveLength(3)
+    for (const layer of layers) {
+      expect(layer.x).toBeGreaterThanOrEqual(0.3)
+      expect(layer.x).toBeLessThanOrEqual(0.7)
+      expect(layer.y).toBeGreaterThanOrEqual(0.1)
+      expect(layer.y).toBeLessThanOrEqual(0.4)
+    }
+  })
+
+  it('uses a smaller font size for a compact textArea so the text does not overflow it', () => {
+    const event = makeEvent({ title: 'Cumpleaños de Alvaro' })
+    const compact = buildInvitationTemplateLayers(event, makeTemplate({ x: 0.3, y: 0.1, width: 0.3, height: 0.3 }))
+    const roomy = buildInvitationTemplateLayers(event, makeTemplate({ x: 0.1, y: 0.1, width: 0.8, height: 0.8 }))
+    expect(compact[0].fontSize).toBeLessThan(roomy[0].fontSize!)
+  })
+
+  it('falls back to a generic centered box when the template has no textArea', () => {
+    const event = makeEvent({ title: 'Cumpleaños de Alvaro' })
+    const layers = buildInvitationTemplateLayers(event, makeTemplate(undefined))
+    expect(layers).toHaveLength(3)
+    for (const layer of layers) {
+      expect(layer.x).toBeGreaterThan(0)
+      expect(layer.x).toBeLessThan(1)
+    }
   })
 })

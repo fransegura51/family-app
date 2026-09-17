@@ -3892,7 +3892,7 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
           })
           setPhotoUrls(map)
         } else {
-          setLayers(buildInvitationTemplateLayers(event))
+          setLayers(buildInvitationTemplateLayers(event, sortedTemplates[0]))
         }
       })
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar el diseño')))
@@ -3956,7 +3956,7 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
 
   function handleRestoreTemplate() {
     pushHistory()
-    setLayers(buildInvitationTemplateLayers(event))
+    setLayers(buildInvitationTemplateLayers(event, INVITATION_TEMPLATES.find((t) => t.key === templateKey)))
     setSelectedId(null)
     setBackgroundImagePath(null)
     setBackgroundImageUrl(null)
@@ -4163,6 +4163,16 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
               onSelect={(t) => {
                 setTemplateKey(t.key)
                 setBackgroundGradient(t.gradient)
+                // Petición real: "no quiero que el texto se salga de
+                // ese área, habrá que ajustarlo tarjeta por tarjeta" —
+                // si todavía son las 3 capas por defecto sin tocar,
+                // recolocarlas en el hueco de la plantilla nueva;
+                // si ya hay capas propias (añadidas, movidas, borradas...
+                // el recuento ya no cuadra), se respetan tal cual.
+                if (layers.length === 3) {
+                  pushHistory()
+                  setLayers(buildInvitationTemplateLayers(event, t))
+                }
               }}
             />
             <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>

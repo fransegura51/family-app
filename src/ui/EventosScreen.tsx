@@ -80,6 +80,7 @@ import { listExpenses } from '@/data/finance'
 import { errorMessage } from '@/domain/errorMessage'
 import {
   autoArrangeLayers,
+  buildInvitationMessage,
   buildInvitationTemplateLayers,
   CELEBRATION_SUBTYPES,
   computeEventConclusions,
@@ -4283,8 +4284,8 @@ function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEven
                 {uploadingPhoto ? 'Subiendo…' : '+ Foto'}
                 <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} disabled={uploadingPhoto} />
               </label>
-              <button type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('event_data', { text: [eventDateLine(event), ...eventLocationLines(event, { inviteScope: null })].join('\n'), color: '#ffffff', fontSize: 14 }))}>
-                + Datos del evento
+              <button type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('event_data', { text: buildInvitationMessage(event), color: '#ffffff', fontSize: 14 }))}>
+                + Texto de invitación
               </button>
             </div>
             {addMenu === 'emoji' && (

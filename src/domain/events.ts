@@ -389,6 +389,65 @@ export function eventLocationLines(
   return lines
 }
 
+function invitationDateClause(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate' | 'eventTime'>): string {
+  if (event.dateStatus === 'pendiente' || !event.eventDate) return 'en una fecha que anunciaremos pronto'
+  const nice = new Date(event.eventDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+  const time = event.eventTime ? ` a las ${event.eventTime.slice(0, 5)}` : ''
+  const suffix = event.dateStatus === 'provisional' ? ' (fecha provisional)' : ''
+  return `el ${nice}${time}${suffix}`
+}
+
+// Petición real: "definir un texto genérico de invitación para cada
+// clase de evento que se ajuste bien en cada plantilla... y los campos
+// de datos de cada evento se inserten" — un párrafo corto (2 líneas
+// casi siempre, para caber en el hueco de la plantilla) en vez de la
+// lista de hechos a secas (esa sigue existiendo en eventDateLine/
+// eventLocationLines, usada en la vista rápida por invitado). Los
+// tipos con dos ubicaciones (DUAL_LOCATION_EVENT_TYPES) tienen versión
+// para cuando están las dos y para cuando solo hay una rellena — no se
+// inventa una ubicación que el evento todavía no tiene.
+export function buildInvitationMessage(event: FamilyEvent): string {
+  const when = invitationDateClause(event)
+  const title = event.title.trim()
+  const ceremony = event.ceremonyLocationLabel
+  const celebration = event.celebrationLocationLabel
+  const venue = event.venueLabel
+
+  switch (event.type) {
+    case 'cumpleanos': {
+      const where = venue ? ` en ${venue}` : ''
+      return `Os esperamos ${when}${where} para celebrar ${title}.\n¡Queremos pasarlo en grande con vosotros!`
+    }
+    case 'comunion': {
+      if (ceremony && celebration) return `Celebramos ${title} ${when}.\n🕊️ ${ceremony}   🎉 ${celebration}`
+      if (ceremony) return `Celebramos ${title} ${when} en ${ceremony}.\n¡Nos encantaría compartir este día con vosotros!`
+      if (celebration) return `Celebramos ${title} ${when}.\nOs esperamos en ${celebration} para disfrutarlo juntos.`
+      return `Celebramos ${title} ${when}.\n¡Nos encantaría compartir este día con vosotros!`
+    }
+    case 'bautizo': {
+      if (ceremony && celebration) return `Celebramos ${title} ${when}.\n🕊️ ${ceremony}   🎉 ${celebration}`
+      if (ceremony) return `Celebramos ${title} ${when} en ${ceremony}.\nQueremos compartir este momento con vosotros.`
+      if (celebration) return `Celebramos ${title} ${when}.\nOs esperamos en ${celebration} para disfrutarlo juntos.`
+      return `Celebramos ${title} ${when}.\nQueremos compartir este momento con vosotros.`
+    }
+    case 'boda': {
+      if (ceremony && celebration) return `Nos casamos ${when}.\n💍 ${ceremony}   🥂 ${celebration}`
+      if (ceremony) return `Nos casamos ${when} en ${ceremony}.\n¡Queremos compartir este día con quienes más queremos!`
+      if (celebration) return `Nos casamos ${when}.\nOs esperamos en ${celebration} para celebrarlo juntos.`
+      return `Nos casamos ${when}.\n¡Queremos compartir este día con quienes más queremos!`
+    }
+    case 'celebracion': {
+      const where = venue ? ` en ${venue}` : ''
+      return `Celebramos ${title} ${when}${where}.\n¡Nos encantaría contar con vosotros!`
+    }
+    case 'personalizado':
+    default: {
+      const where = venue ? ` en ${venue}` : ''
+      return `${title}\nOs esperamos ${when}${where}.\n¡No os lo podéis perder!`
+    }
+  }
+}
+
 // Plantillas — cada una es color + una ilustración decorativa propia
 // (ver INVITATION_ART en EventosScreen.tsx, ahí vive el JSX porque este
 // archivo es .ts sin JSX). Petición real: "no quiero un simple fondo
@@ -922,7 +981,6 @@ function newLayerId(): string {
 // Skill) — se usan tanto al abrir el editor por primera vez como en
 // "Restaurar plantilla".
 export function buildInvitationTemplateLayers(event: FamilyEvent): InvitationLayer[] {
-  const infoLines = [eventDateLine(event), ...eventLocationLines(event, { inviteScope: null })]
   return [
     { id: newLayerId(), type: 'emoji', x: 0.5, y: 0.22, rotation: 0, scale: 1, zIndex: 1, text: EVENT_TYPE_META[event.type].icon, fontSize: 56 },
     { id: newLayerId(), type: 'text', x: 0.5, y: 0.42, rotation: 0, scale: 1, zIndex: 2, text: event.title, color: '#ffffff', fontSize: 24, fontFamily: 'inherit' },
@@ -938,7 +996,7 @@ export function buildInvitationTemplateLayers(event: FamilyEvent): InvitationLay
       rotation: 0,
       scale: 1,
       zIndex: 3,
-      text: infoLines.join('\n'),
+      text: buildInvitationMessage(event),
       color: '#ffffff',
       fontSize: 14,
       fontFamily: 'inherit',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeEventConclusions, generateEventPlan, INVITATION_TEMPLATES, sortInvitationTemplatesForEvent } from '@/domain/events'
+import { buildInvitationMessage, computeEventConclusions, generateEventPlan, INVITATION_TEMPLATES, sortInvitationTemplatesForEvent } from '@/domain/events'
 import type { FamilyEvent } from '@/domain/types'
 
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
@@ -242,5 +242,66 @@ describe('generateEventPlan', () => {
     expect(plan.decorationItems).toHaveLength(0)
     expect(plan.activities).toHaveLength(0)
     expect(plan.budgetItems.length).toBeGreaterThan(0)
+  })
+})
+
+describe('buildInvitationMessage', () => {
+  it('mentions the title and venue for a simple birthday', () => {
+    const event = makeEvent({ type: 'cumpleanos', title: 'Cumpleaños Alvaro', venueLabel: 'Casa de la abuela', eventDate: '2026-10-18' })
+    const text = buildInvitationMessage(event)
+    expect(text).toContain('Cumpleaños Alvaro')
+    expect(text).toContain('Casa de la abuela')
+    expect(text.split('\n')).toHaveLength(2)
+  })
+
+  it('shows a placeholder instead of a raw date when the date is still pending', () => {
+    const event = makeEvent({ type: 'cumpleanos', dateStatus: 'pendiente', eventDate: null })
+    expect(buildInvitationMessage(event)).toContain('anunciaremos pronto')
+  })
+
+  it('mentions both locations when a dual-location event has both filled in', () => {
+    const event = makeEvent({
+      type: 'comunion',
+      title: 'Comunión de Eric',
+      eventDate: '2026-05-10',
+      ceremonyLocationLabel: 'Parroquia San Juan',
+      celebrationLocationLabel: 'Restaurante El Roble',
+    })
+    const text = buildInvitationMessage(event)
+    expect(text).toContain('Parroquia San Juan')
+    expect(text).toContain('Restaurante El Roble')
+  })
+
+  it('only mentions the ceremony when the celebration venue is not set yet', () => {
+    const event = makeEvent({
+      type: 'comunion',
+      title: 'Comunión de Eric',
+      eventDate: '2026-05-10',
+      ceremonyLocationLabel: 'Parroquia San Juan',
+      celebrationLocationLabel: null,
+    })
+    const text = buildInvitationMessage(event)
+    expect(text).toContain('Parroquia San Juan')
+    expect(text).not.toContain('🎉')
+  })
+
+  it('only mentions the celebration when the ceremony is not set yet', () => {
+    const event = makeEvent({
+      type: 'boda',
+      title: 'Boda de Ana y Luis',
+      eventDate: '2026-06-20',
+      ceremonyLocationLabel: null,
+      celebrationLocationLabel: 'Finca Los Almendros',
+    })
+    const text = buildInvitationMessage(event)
+    expect(text).toContain('Finca Los Almendros')
+    expect(text).not.toContain('💍')
+  })
+
+  it('never invents a location the event does not have', () => {
+    const event = makeEvent({ type: 'bautizo', title: 'Bautizo de Vera', eventDate: '2026-03-01', ceremonyLocationLabel: null, celebrationLocationLabel: null })
+    const text = buildInvitationMessage(event)
+    expect(text).not.toContain('null')
+    expect(text).not.toContain('undefined')
   })
 })

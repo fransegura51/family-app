@@ -44,7 +44,8 @@ import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts } from '@/data/products'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
-import { classifyFoodType, FOOD_TYPES } from '@/domain/foodTypes'
+import { classifyFoodType } from '@/domain/foodTypes'
+import { listFamilyFoodTypes, type FamilyFoodType } from '@/data/foodTypes'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import { balanceTrend, earliestTransactionDate } from '@/domain/balanceTrend'
 import {
@@ -5471,6 +5472,11 @@ export function BudgetsTab({
   // Presupuesto Generales no los necesita, así que se quedan vacíos ahí.
   const [prices, setPrices] = useState<ProductPrice[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  // Excepción manual por producto (ver Historial de precios, ⚙️
+  // Clasificaciones de alimentos) — el icono de cada clase, para
+  // pintar el dónut/lista aunque sea una clase propia de la familia,
+  // no una de las 11 de fábrica.
+  const [foodTypes, setFoodTypes] = useState<FamilyFoodType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // Petición real: "que una cosa filtre por mes físico y la otra por
@@ -5513,8 +5519,9 @@ export function BudgetsTab({
       listFamilyMembers(),
       group === 'alimentacion' ? listAllProductPrices() : Promise.resolve([]),
       group === 'alimentacion' ? listProducts() : Promise.resolve([]),
+      group === 'alimentacion' ? listFamilyFoodTypes() : Promise.resolve([]),
     ])
-      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod]) => {
+      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, types]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
         // propias todavía — se dan de alta las sugeridas solas, sin
         // pedirlo (petición real: "me pones todas esas categorías").
@@ -5533,6 +5540,7 @@ export function BudgetsTab({
         setMembers(m)
         setPrices(p)
         setProducts(prod)
+        setFoodTypes(types)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -5637,26 +5645,35 @@ export function BudgetsTab({
   // producto se despliegue el detalle de los productos que
   // constituyen esa clase con precio y porcentaje" — se agrupa a la
   // vez por tipo y, dentro de cada tipo, por producto exacto.
-  const foodTypeProductTotals = new Map<string, Map<string, { name: string; total: number }>>()
+  // Excepción manual por producto (ver Historial de precios, ⚙️
+  // Clasificaciones de alimentos): si `category` ya tiene una clase
+  // elegida a mano, gana sobre la que habría adivinado classifyFoodType
+  // por el nombre — se agrupa por el NOMBRE de la clase (no por un key
+  // fijo) para que una clase propia de la familia también tenga sitio,
+  // no solo las 11 de fábrica.
+  const foodTypeIconByName = new Map(foodTypes.map((t) => [t.name, t.icon]))
+  const foodTypeProductTotals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }> }>()
   for (const pr of periodFoodPrices) {
-    const name = productById.get(pr.productId)?.displayName ?? '?'
-    const type = classifyFoodType(name)
+    const product = productById.get(pr.productId)
+    const name = product?.displayName ?? '?'
+    const auto = classifyFoodType(name)
+    const typeName = product?.category?.trim() || auto.label
+    const typeIcon = foodTypeIconByName.get(typeName) ?? (typeName === auto.label ? auto.icon : '🍽️')
     const qty = Number(pr.quantity)
     const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
-    const byProduct = foodTypeProductTotals.get(type.key) ?? new Map<string, { name: string; total: number }>()
-    const entry = byProduct.get(pr.productId) ?? { name, total: 0 }
+    const group = foodTypeProductTotals.get(typeName) ?? { icon: typeIcon, products: new Map<string, { name: string; total: number }>() }
+    const entry = group.products.get(pr.productId) ?? { name, total: 0 }
     entry.total += amount
-    byProduct.set(pr.productId, entry)
-    foodTypeProductTotals.set(type.key, byProduct)
+    group.products.set(pr.productId, entry)
+    foodTypeProductTotals.set(typeName, group)
   }
-  const foodTypeBreakdown = FOOD_TYPES.filter((t) => foodTypeProductTotals.has(t.key))
-    .map((t) => {
-      const byProduct = foodTypeProductTotals.get(t.key)!
-      const productList = [...byProduct.entries()]
+  const foodTypeBreakdown = [...foodTypeProductTotals.entries()]
+    .map(([typeName, group]) => {
+      const productList = [...group.products.entries()]
         .map(([productId, p]) => ({ productId, name: p.name, total: p.total }))
         .sort((a, b) => b.total - a.total)
       const total = productList.reduce((sum, p) => sum + p.total, 0)
-      return { key: t.key, label: t.label, icon: t.icon, total, count: productList.length, products: productList }
+      return { key: typeName, label: typeName, icon: group.icon, total, count: productList.length, products: productList }
     })
     .sort((a, b) => b.total - a.total)
   const foodTypePieGroups: BreakdownSlice[] = foodTypeBreakdown.map((t) => ({

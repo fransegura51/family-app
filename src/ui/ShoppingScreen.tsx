@@ -23,6 +23,15 @@ import {
 } from '@/data/shopping'
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import {
+  createFamilyFoodType,
+  deleteFamilyFoodType,
+  listFamilyFoodTypes,
+  seedFamilyFoodTypes,
+  setProductFoodType,
+  type FamilyFoodType,
+} from '@/data/foodTypes'
+import { classifyFoodType, FOOD_TYPES } from '@/domain/foodTypes'
+import {
   createShoppingStore,
   deleteShoppingStore,
   listShoppingStores,
@@ -1649,11 +1658,111 @@ function PriceDelta({ percent }: { percent: number | null }) {
   )
 }
 
+// Petición real: "botón de engranaje con el cual se abre una ventana
+// emergente con las clasificaciones de alimentos y arriba, debajo del
+// enunciado, pon un campo para crear nueva clase de alimentos con un
+// botón detrás crear". Empieza con las 11 de fábrica (sembradas solas
+// la primera vez) y se pueden añadir/borrar las que hagan falta.
+function FoodTypesModal({
+  types,
+  onClose,
+  onCreated,
+  onDeleted,
+}: {
+  types: FamilyFoodType[]
+  onClose: () => void
+  onCreated: () => Promise<void>
+  onDeleted: () => Promise<void>
+}) {
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleCreate(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await createFamilyFoodType(name.trim(), '🍽️')
+      setName('')
+      await onCreated()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo crear'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteFamilyFoodType(id)
+      await onDeleted()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar'))
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            ⚙️ Clasificaciones de alimentos
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Son las clases que puedes elegir para cada producto en Historial de precios — empieza con las 11 de
+          siempre, y puedes añadir las tuyas.
+        </p>
+        <form onSubmit={handleCreate} className="inline-fields">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nueva clase (p. ej. Especias)"
+            style={{ flex: 1 }}
+          />
+          <button type="submit" disabled={saving || !name.trim()}>
+            Crear
+          </button>
+        </form>
+        {error && <p className="error">{error}</p>}
+        <div className="event-list" style={{ marginTop: 12 }}>
+          {types.map((t) => (
+            <div key={t.id} className="card task-card">
+              <div className="task-card-main">
+                <strong>
+                  {t.icon} {t.name}
+                </strong>
+              </div>
+              <ConfirmIconButton
+                icon="✕"
+                className="link-button"
+                ariaLabel={`Eliminar clase ${t.name}`}
+                onConfirm={() => handleDelete(t.id)}
+              />
+            </div>
+          ))}
+          {types.length === 0 && <p className="muted">Todavía no hay ninguna.</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface ProductDetail {
   productId: string
   name: string
   lines: string[]
   nonFood: boolean
+  // Clasificación de alimento actual (nombre exacto de family_food_types,
+  // o cadena vacía si todavía no se ha elegido ninguna a mano) — para
+  // el desplegable editable junto al botón 🚫.
+  foodType: string
 }
 
 // Petición real: "en Historial de precios vamos a fusionar Alimentos y
@@ -1691,15 +1800,41 @@ function HistoryTab() {
   const [addingToList, setAddingToList] = useState<{ productId: string; name: string; price: number | null } | null>(
     null,
   )
+  // Petición real: "botón de engranaje con el cual se abre una
+  // ventana emergente con las clasificaciones de alimentos".
+  const [foodTypes, setFoodTypes] = useState<FamilyFoodType[]>([])
+  const [showFoodTypesModal, setShowFoodTypesModal] = useState(false)
+  const seededFoodTypesRef = useRef(false)
+
+  function reloadFoodTypes() {
+    return listFamilyFoodTypes().then(setFoodTypes)
+  }
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([listAllProductPrices(), listProducts(), listShoppingStores(), listReceipts(), listBudgetCategories()])
-      .then(([p, prod, st, receipts, categories]) => {
+    Promise.all([
+      listAllProductPrices(),
+      listProducts(),
+      listShoppingStores(),
+      listReceipts(),
+      listBudgetCategories(),
+      listFamilyFoodTypes(),
+    ])
+      .then(async ([p, prod, st, receipts, categories, types]) => {
+        // Primera vez que se abre esto y la familia no tiene ninguna
+        // clase propia todavía — se dan de alta las 11 de fábrica
+        // solas, sin pedirlo (mismo patrón que las categorías de
+        // Presupuesto Generales).
+        if (!seededFoodTypesRef.current && types.length === 0) {
+          seededFoodTypesRef.current = true
+          await seedFamilyFoodTypes(FOOD_TYPES.map((t) => ({ name: t.label, icon: t.icon })))
+          types = await listFamilyFoodTypes()
+        }
         setPrices(p)
         setProducts(prod)
         setStores(st)
         setFoodReceiptIds(buildFoodReceiptIds(receipts, categories))
+        setFoodTypes(types)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -1846,7 +1981,8 @@ function HistoryTab() {
       lines.push(`Comprado en ${storeEntries[0][0]}.`)
     }
 
-    setDetail({ productId, name, lines, nonFood: productsById.get(productId)?.nonFood ?? false })
+    const product = productsById.get(productId)
+    setDetail({ productId, name, lines, nonFood: product?.nonFood ?? false, foodType: product?.category ?? '' })
   }
 
   // Excepción manual a la regla de tienda (ver isFoodPurchase) —
@@ -1861,6 +1997,20 @@ function HistoryTab() {
       await setProductNonFood(detail.productId, nextNonFood)
       setProducts((prev) => prev.map((p) => (p.id === detail.productId ? { ...p, nonFood: nextNonFood } : p)))
       setDetail(null)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo cambiar la clasificación'))
+    }
+  }
+
+  // Petición real: "en cada alimento su clasificación editable en un
+  // desplegable" — vacío ("Automático") borra la excepción manual y
+  // vuelve a dejar que decida classifyFoodType por el nombre.
+  async function handleChangeFoodType(nextType: string) {
+    if (!detail) return
+    try {
+      await setProductFoodType(detail.productId, nextType || null)
+      setProducts((prev) => prev.map((p) => (p.id === detail.productId ? { ...p, category: nextType || null } : p)))
+      setDetail({ ...detail, foodType: nextType })
     } catch (err) {
       setError(errorMessage(err, 'No se pudo cambiar la clasificación'))
     }
@@ -1922,13 +2072,24 @@ function HistoryTab() {
         {suggestions.length === 0 && <p className="muted">Sin sugerencias todavía.</p>}
       </div>
 
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar un producto para añadirlo a la lista…"
-        style={{ margin: '8px 0' }}
-      />
+      <div className="inline-fields" style={{ margin: '8px 0' }}>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar un producto para añadirlo a la lista…"
+          style={{ flex: 1 }}
+        />
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => setShowFoodTypesModal(true)}
+          title="Clasificaciones de alimentos"
+          aria-label="Clasificaciones de alimentos"
+        >
+          ⚙️
+        </button>
+      </div>
 
       <div className="card event-card">
         <strong>Total de la compra</strong>
@@ -1994,17 +2155,39 @@ function HistoryTab() {
                 {line}
               </p>
             ))}
-            <button
-              type="button"
-              className="link-button"
-              style={{ marginTop: 8 }}
-              onClick={handleToggleNonFood}
-              title={detail.nonFood ? 'Quitar marca de Otros' : 'Marcar como Otros'}
-            >
-              {detail.nonFood ? '✅' : '🚫'}
-            </button>
+            <div className="inline-fields" style={{ marginTop: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                className="link-button"
+                onClick={handleToggleNonFood}
+                title={detail.nonFood ? 'Quitar marca de Otros' : 'Marcar como Otros'}
+              >
+                {detail.nonFood ? '✅' : '🚫'}
+              </button>
+              {/* Petición real: "en cada alimento su clasificación
+                  editable en un desplegable al lado del símbolo no
+                  alimento" — vacío = automático (se ve entre
+                  paréntesis lo que classifyFoodType habría elegido). */}
+              <select value={detail.foodType} onChange={(e) => handleChangeFoodType(e.target.value)}>
+                <option value="">Automático ({classifyFoodType(detail.name).label})</option>
+                {foodTypes.map((t) => (
+                  <option key={t.id} value={t.name}>
+                    {t.icon} {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
+      )}
+
+      {showFoodTypesModal && (
+        <FoodTypesModal
+          types={foodTypes}
+          onClose={() => setShowFoodTypesModal(false)}
+          onCreated={reloadFoodTypes}
+          onDeleted={reloadFoodTypes}
+        />
       )}
 
       {addingToList && (

@@ -5563,22 +5563,16 @@ export function BudgetsTab({
   const scopedExpenses = scopingActive ? expenses.filter((e) => (scope === 'comun' ? e.shared : !e.shared)) : expenses
   const scopedBudgets = scopingActive ? budgets.filter((b) => (scope === 'comun' ? b.ownerMemberId === null : b.ownerMemberId !== null)) : budgets
   const groupBudgets = scopedBudgets.filter((b) => b.budgetGroup === group)
-  // Tickets del periodo elegido — bug real: "en reparto por gasto de
-  // tienda hay algún fallo, si filtro por este mes me sale que solo
-  // hemos comprado en Mercadona, pero si filtro por esta semana me
-  // salen tres tiendas". Antes se usaba SIEMPRE el mes de calendario
-  // completo del `periodFrom` (`.startsWith(visibleMonth)`), ignorando
-  // el filtro Día/Semana/Año — ahora respeta el rango real elegido.
+  // Tickets del periodo elegido, usados para saber qué gastos vienen
+  // de un ticket no-Alimentación (ver nonFoodReceiptExpenseIds, más
+  // abajo) — el desglose por tienda YA NO sale de aquí (ver
+  // storePieSlices): bug real: "el reparto de gasto por tienda para
+  // todo el año no me cuadra" — sumaba solo receipts.total_amount de
+  // los TICKETS escaneados, así que un gasto de Alimentación llegado
+  // del banco sin ticket subido (o metido a mano) se quedaba fuera del
+  // dónut aunque sí contara en el total de Alimentación de arriba.
   const periodReceipts = receipts.filter((r) => r.receiptDate >= periodFrom && r.receiptDate <= periodTo)
-  // Solo los tickets clasificados como Alimentación cuentan aquí —
-  // petición real: "ahora también hay tickets que no son de
-  // Alimentación (Amazon...), esos no se deberían detallar en el
-  // registro de Alimentación". El resto (Casa y Jardín, Amazon sin
-  // clasificar...) no aparece ni en este desglose por tienda ni en el
-  // total.
-  const foodReceipts = periodReceipts.filter((r) => isFoodCategory(r.category, categories))
   const nonFoodReceipts = periodReceipts.filter((r) => !isFoodCategory(r.category, categories))
-  const pieGroups = groupReceiptsByStore(foodReceipts, knownStores)
 
   // El total de Alimentación (y el de cada categoría) sale SIEMPRE de
   // `expenses`, nunca sumando receipts.total_amount aparte — cada
@@ -5706,17 +5700,29 @@ export function BudgetsTab({
     total: t.total,
     count: t.count,
   }))
-  // Mismo enlace "Ver movimientos →" para el dónut por tienda — cada
-  // grupo ya trae sus propios tickets (groupReceiptsByStore), de ahí
-  // se sacan los ids de gasto reales.
-  const storePieSlices: (BreakdownSlice & { expenseIds: string[] })[] = pieGroups.map((g, i) => ({
-    key: g.store,
-    label: g.store,
-    color: STORE_COLORS[i % STORE_COLORS.length],
-    total: g.total,
-    count: g.receipts.length,
-    expenseIds: g.receipts.map((r) => r.expenseId).filter((id): id is string => id != null),
-  }))
+  // Sale de `alimentacionExpenses` (no de los tickets) para que el
+  // total del dónut cuadre SIEMPRE con el de "Alimentación" de arriba
+  // — cada gasto ya lleva su propia tienda (`store`), tenga ticket
+  // subido o no.
+  const storeExpenseGroups = new Map<string, { total: number; expenseIds: string[] }>()
+  for (const e of alimentacionExpenses) {
+    const store = canonicalStoreName(e.store, knownStores)
+    const g = storeExpenseGroups.get(store) ?? { total: 0, expenseIds: [] }
+    g.total += e.amount
+    g.expenseIds.push(e.id)
+    storeExpenseGroups.set(store, g)
+  }
+  const storePieSlices: (BreakdownSlice & { expenseIds: string[] })[] = [...storeExpenseGroups.entries()]
+    .map(([store, g]) => ({ store, total: g.total, expenseIds: g.expenseIds }))
+    .sort((a, b) => b.total - a.total)
+    .map((g, i) => ({
+      key: g.store,
+      label: g.store,
+      color: STORE_COLORS[i % STORE_COLORS.length],
+      total: g.total,
+      count: g.expenseIds.length,
+      expenseIds: g.expenseIds,
+    }))
   const catColors = categoryColors(groupCategories)
   // Petición real: "quiero que estén ordenados por categorías
   // principales, todas las subcategorías de una categoría juntas" —

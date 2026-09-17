@@ -820,36 +820,40 @@ function ShoppingListTab() {
 
       <h2 className="section-title">Pendientes</h2>
       {storeGroups.map(([store, storeItems]) => {
-        const collapsed = storeGroups.length > 1 && collapsedStores.has(store)
+        // Petición real: "si solo hay un producto de una tienda quiero
+        // que también salga el nombre de la tienda y su logotipo" —
+        // antes la cabecera (nombre, logo, plegar, compartir) solo
+        // aparecía con más de una tienda en la lista; con una sola
+        // (aunque fuera un único producto) se quedaba sin decir de
+        // dónde era.
+        const collapsed = collapsedStores.has(store)
         return (
         <div key={store} id={`shopping-store-${normalize(store)}`}>
-          {storeGroups.length > 1 && (
-            <h3
-              className="shopping-store-heading shopping-store-heading-toggle"
-              role="button"
-              tabIndex={0}
-              onClick={() => toggleStoreCollapsed(store)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') toggleStoreCollapsed(store)
+          <h3
+            className="shopping-store-heading shopping-store-heading-toggle"
+            role="button"
+            tabIndex={0}
+            onClick={() => toggleStoreCollapsed(store)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') toggleStoreCollapsed(store)
+            }}
+          >
+            <span className="shopping-store-chevron">{collapsed ? '▸' : '▾'}</span>
+            {store === 'Sin tienda' ? '🏬' : <StoreIconBadge name={store} size={20} />} {store}
+            <span className="muted"> ({storeItems.length})</span>
+            <button
+              type="button"
+              className="icon-button-share"
+              style={{ marginLeft: 'auto' }}
+              aria-label={`Compartir lista de ${store}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleShareStore(store, storeItems)
               }}
             >
-              <span className="shopping-store-chevron">{collapsed ? '▸' : '▾'}</span>
-              {store === 'Sin tienda' ? '🏬' : <StoreIconBadge name={store} size={20} />} {store}
-              <span className="muted"> ({storeItems.length})</span>
-              <button
-                type="button"
-                className="icon-button-share"
-                style={{ marginLeft: 'auto' }}
-                aria-label={`Compartir lista de ${store}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleShareStore(store, storeItems)
-                }}
-              >
-                📤
-              </button>
-            </h3>
-          )}
+              📤
+            </button>
+          </h3>
           {!collapsed && (
             <>
               <DraggableStoreGroup

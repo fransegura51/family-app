@@ -20,7 +20,11 @@ function normalize(name: string): string {
 
 export async function listProducts(): Promise<Product[]> {
   const data = await fetchAllRows((from, to) =>
-    supabase.from('products').select('id, family_id, normalized_name, display_name, category, brand').order('id').range(from, to),
+    supabase
+      .from('products')
+      .select('id, family_id, normalized_name, display_name, category, brand, non_food')
+      .order('id')
+      .range(from, to),
   )
   return data.map((r) => ({
     id: r.id,
@@ -29,7 +33,18 @@ export async function listProducts(): Promise<Product[]> {
     displayName: r.display_name,
     category: r.category,
     brand: r.brand,
+    nonFood: r.non_food,
   }))
+}
+
+// Excepción manual por producto a la regla "compra en tienda física =
+// alimentación" (ver isFoodPurchase) — petición real: "Bombona y
+// Plantas aparecen como Alimentación", productos sueltos que no son
+// comida aunque se compraran en Mercadona/Hiperber junto con la
+// compra normal.
+export async function setProductNonFood(productId: string, nonFood: boolean): Promise<void> {
+  const { error } = await supabase.from('products').update({ non_food: nonFood }).eq('id', productId)
+  if (error) throw error
 }
 
 export interface ReceiptLineDetail {

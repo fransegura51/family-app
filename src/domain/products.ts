@@ -39,7 +39,17 @@ export function isLikelyAlcohol(displayName: string): boolean {
 // así que cuenta entera como alimentación aunque alguna línea suelta
 // no lo sea del todo (petición real: "al ser todo compra en tienda y
 // no online los dejamos dentro de esa clasificación").
-export function isFoodPurchase(price: { store: string | null; receiptId: string | null }, foodReceiptIds: Set<string>): boolean {
+// `nonFoodProductIds` es la excepción manual por producto (petición
+// real: "Bombona y Plantas aparecen como Alimentación" — un producto
+// suelto que no es comida aunque se comprara en tienda física junto
+// con la compra normal); se comprueba antes que la regla de tienda,
+// así que gana siempre que esté marcado.
+export function isFoodPurchase(
+  price: { productId: string; store: string | null; receiptId: string | null },
+  foodReceiptIds: Set<string>,
+  nonFoodProductIds: Set<string> = new Set(),
+): boolean {
+  if (nonFoodProductIds.has(price.productId)) return false
   if (price.store !== 'Amazon') return true
   return price.receiptId != null && foodReceiptIds.has(price.receiptId)
 }

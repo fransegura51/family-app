@@ -4,7 +4,7 @@
 // alimentacionMenu.ts: menos riesgo que tocar una pantalla ya en
 // producción para generalizarla.
 
-export type FixedComprasMenuItemKey = 'Inicio' | 'Lista' | 'Historial' | 'No alimentos' | 'Tickets' | 'Registro Alimentación'
+export type FixedComprasMenuItemKey = 'Inicio' | 'Lista' | 'Historial' | 'No alimentos' | 'Tickets' | 'Estadística compras'
 export type ComprasMenuItemKey = FixedComprasMenuItemKey | `custom:${string}`
 
 export function isCustomComprasMenuKey(key: ComprasMenuItemKey): boolean {
@@ -29,7 +29,7 @@ export const COMPRAS_MENU_ITEM_META: Record<FixedComprasMenuItemKey, { icon: str
   Historial: { icon: '📈', label: 'Historial de precios' },
   'No alimentos': { icon: '🧴', label: 'No alimentos' },
   Tickets: { icon: '🧾', label: 'Tickets' },
-  'Registro Alimentación': { icon: '🍎', label: 'Registro Alimentación' },
+  'Estadística compras': { icon: '🍎', label: 'Estadística compras' },
 }
 
 export function comprasMenuEntryMeta(entry: ComprasMenuEntry): { icon: string; label: string } {
@@ -37,7 +37,7 @@ export function comprasMenuEntryMeta(entry: ComprasMenuEntry): { icon: string; l
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
-const DEFAULT_KEYS: FixedComprasMenuItemKey[] = ['Inicio', 'Lista', 'Historial', 'No alimentos', 'Tickets', 'Registro Alimentación']
+const DEFAULT_KEYS: FixedComprasMenuItemKey[] = ['Inicio', 'Lista', 'Historial', 'No alimentos', 'Tickets', 'Estadística compras']
 
 const KEY = 'familyapp:compras-menu-layout'
 

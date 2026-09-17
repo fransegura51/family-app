@@ -20,7 +20,7 @@ import {
   updateShoppingItem,
   updateShoppingItemStatus,
 } from '@/data/shopping'
-import { listAllProductPrices, listProducts } from '@/data/products'
+import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import {
   createShoppingStore,
   deleteShoppingStore,
@@ -79,11 +79,12 @@ function buildSuggestions(
   prices: ProductPrice[],
   foodReceiptIds: Set<string>,
 ): ProductSuggestion[] {
+  const nonFoodProductIds = new Set(products.filter((p) => p.nonFood).map((p) => p.id))
   return products.map((p) => {
     // Un pedido de Amazon que no sea de alimentación no cuenta como "lo
     // sueles comprar" de la lista de la compra — mismo criterio que
     // Historial (uno que sí sea de alimentación, como un café, sí cuenta).
-    const ownPrices = prices.filter((pr) => pr.productId === p.id && isFoodPurchase(pr, foodReceiptIds))
+    const ownPrices = prices.filter((pr) => pr.productId === p.id && isFoodPurchase(pr, foodReceiptIds, nonFoodProductIds))
     const stats = computeProductStats(ownPrices)
     const last = [...ownPrices].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))[0]
     return {
@@ -104,7 +105,7 @@ function buildSuggestions(
 // qué se ha comprado que con el dinero en sí). Sus componentes siguen
 // definidos en FinanceScreen.tsx y se importan desde ahí, en vez de
 // duplicar todo el código de tickets/categorías en dos archivos.
-const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'No alimentos', 'Tickets', 'Registro Alimentación'] as const
+const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'No alimentos', 'Tickets', 'Estadística compras'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 function isComprasSubTab(key: ComprasMenuItemKey): key is SubTab {
@@ -210,7 +211,7 @@ export function ShoppingScreen() {
       {tab === 'Historial' && <HistoryTab mode="alimentacion" />}
       {tab === 'No alimentos' && <HistoryTab mode="no_alimentos" />}
       {tab === 'Tickets' && <ReceiptsTab />}
-      {tab === 'Registro Alimentación' && <BudgetsTab group="alimentacion" seedCategories={[]} />}
+      {tab === 'Estadística compras' && <BudgetsTab group="alimentacion" seedCategories={[]} />}
     </div>
   )
 }
@@ -221,7 +222,7 @@ function ComprasInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void })
     { tab: 'Historial', body: 'Precios de lo que sueles comprar, mes a mes y por tienda.' },
     { tab: 'No alimentos', body: 'Ropa, electrónica y demás compras que no son de comida.' },
     { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.' },
-    { tab: 'Registro Alimentación', body: 'Presupuesto y gasto de comida del mes.' },
+    { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en No alimentos, y en qué.' },
   ]
   return (
     <div className="event-list">
@@ -1635,8 +1636,10 @@ function PriceDelta({ percent }: { percent: number | null }) {
 }
 
 interface ProductDetail {
+  productId: string
   name: string
   lines: string[]
+  nonFood: boolean
 }
 
 function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
@@ -1690,14 +1693,19 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
   }, [visibleMonth])
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
+  const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
+  const nonFoodProductIds = useMemo(() => new Set(products.filter((p) => p.nonFood).map((p) => p.id)), [products])
 
   // Cada pestaña ve solo lo suyo — Historial nunca mezcla ropa/electrónica
   // de Amazon, y "No alimentos" no arrastra nada de comida. Un pedido
   // de Amazon marcado como "Alimentación" (p. ej. café) sí cuenta como
-  // comida — no todo lo de Amazon es "no alimentos" por defecto.
+  // comida — no todo lo de Amazon es "no alimentos" por defecto. Un
+  // producto marcado a mano como No alimentos (ver "Marcar como No
+  // alimentos" en su ficha) nunca cuenta como comida, sea cual sea la
+  // tienda.
   const scopedPrices = useMemo(
-    () => prices.filter((p) => isFoodPurchase(p, foodReceiptIds) === (mode === 'alimentacion')),
-    [prices, mode, foodReceiptIds],
+    () => prices.filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds) === (mode === 'alimentacion')),
+    [prices, mode, foodReceiptIds, nonFoodProductIds],
   )
 
   const purchases = useMemo(
@@ -1788,7 +1796,24 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
       lines.push(`Comprado en ${storeEntries[0][0]}.`)
     }
 
-    setDetail({ name, lines })
+    setDetail({ productId, name, lines, nonFood: productsById.get(productId)?.nonFood ?? false })
+  }
+
+  // Excepción manual a la regla de tienda (ver isFoodPurchase) —
+  // petición real: "Bombona y Plantas aparecen como Alimentación". Al
+  // cambiarlo el producto se mueve de pestaña (Alimentación ↔ No
+  // alimentos), así que se cierra la ficha en vez de dejarla abierta
+  // sobre un producto que ya no pertenece a esta lista.
+  async function handleToggleNonFood() {
+    if (!detail) return
+    const nextNonFood = !detail.nonFood
+    try {
+      await setProductNonFood(detail.productId, nextNonFood)
+      setProducts((prev) => prev.map((p) => (p.id === detail.productId ? { ...p, nonFood: nextNonFood } : p)))
+      setDetail(null)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo cambiar la clasificación'))
+    }
   }
 
   async function confirmAddToList(store: string | null) {
@@ -1912,6 +1937,15 @@ function HistoryTab({ mode }: { mode: 'alimentacion' | 'no_alimentos' }) {
                 {line}
               </p>
             ))}
+            <button
+              type="button"
+              className="link-button"
+              style={{ marginTop: 8 }}
+              onClick={handleToggleNonFood}
+              title={detail.nonFood ? 'Quitar marca de No alimentos' : 'Marcar como No alimentos'}
+            >
+              {detail.nonFood ? '✅' : '🚫'}
+            </button>
           </div>
         </div>
       )}

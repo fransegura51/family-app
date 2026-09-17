@@ -48,6 +48,20 @@ export function isFoodCategory(category: string, categories: BudgetCategory[]): 
   return categories.find((c) => c.id === cat.parentId)?.name === 'Alimentación'
 }
 
+// "Compras no alimentos" (Registro Alimentación → Estadística compras)
+// — aparte de los tickets/pedidos ya clasificados como no-comida,
+// petición real: "aparte de tickets también se puede basar en Gastos
+// Categorizados como Compras y familia" — cualquier gasto metido a
+// mano bajo "Compras y familia" (Ropa, Niños, Casa y jardín,
+// Tecnología, Mascotas, Regalos...) cuenta igual, aunque no tenga
+// ningún ticket escaneado detrás.
+export function isComprasFamiliaCategory(category: string, categories: BudgetCategory[]): boolean {
+  if (category === 'Compras y familia') return true
+  const cat = categories.find((c) => c.name === category)
+  if (!cat?.parentId) return false
+  return categories.find((c) => c.id === cat.parentId)?.name === 'Compras y familia'
+}
+
 // Petición real: "Categoría Movimientos internos debe estar también
 // en Ingresos" — una transferencia entre cuentas propias no lleva
 // isIncome=true (el banco la apunta como cualquier otro movimiento),

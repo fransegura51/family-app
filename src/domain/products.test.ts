@@ -65,11 +65,17 @@ describe('isFoodPurchase / buildFoodReceiptIds', () => {
   it('un ticket de Amazon solo es comida si su categoría lo es', () => {
     expect(foodIds.has('r-cafe')).toBe(true)
     expect(foodIds.has('r-tec')).toBe(false)
-    expect(isFoodPurchase({ store: 'Amazon', receiptId: 'r-cafe' }, foodIds)).toBe(true)
-    expect(isFoodPurchase({ store: 'Amazon', receiptId: 'r-tec' }, foodIds)).toBe(false)
-    expect(isFoodPurchase({ store: 'Amazon', receiptId: null }, foodIds)).toBe(false)
+    expect(isFoodPurchase({ productId: 'p', store: 'Amazon', receiptId: 'r-cafe' }, foodIds)).toBe(true)
+    expect(isFoodPurchase({ productId: 'p', store: 'Amazon', receiptId: 'r-tec' }, foodIds)).toBe(false)
+    expect(isFoodPurchase({ productId: 'p', store: 'Amazon', receiptId: null }, foodIds)).toBe(false)
   })
   it('cualquier otra tienda cuenta entera como compra física de alimentación', () => {
-    expect(isFoodPurchase({ store: 'Mercadona', receiptId: null }, foodIds)).toBe(true)
+    expect(isFoodPurchase({ productId: 'p', store: 'Mercadona', receiptId: null }, foodIds)).toBe(true)
+  })
+  it('un producto marcado a mano como No alimentos anula la regla de tienda', () => {
+    const nonFoodProductIds = new Set(['bombona'])
+    expect(isFoodPurchase({ productId: 'bombona', store: 'Mercadona', receiptId: null }, foodIds, nonFoodProductIds)).toBe(false)
+    expect(isFoodPurchase({ productId: 'bombona', store: 'Amazon', receiptId: 'r-cafe' }, foodIds, nonFoodProductIds)).toBe(false)
+    expect(isFoodPurchase({ productId: 'otro', store: 'Mercadona', receiptId: null }, foodIds, nonFoodProductIds)).toBe(true)
   })
 })

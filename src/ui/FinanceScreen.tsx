@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   addExpense,
@@ -21,7 +21,6 @@ import {
   listGoals,
   listTags,
   listWalletTransactions,
-  reorderBudgetCategories,
   updateBudgetCategory,
   updateExpense,
   updateTag,
@@ -56,6 +55,7 @@ import {
   budgetPeriodRange,
   budgetSpent,
   categoryColors,
+  isComprasFamiliaCategory,
   isFoodCategory,
   isInternalTransferCategory,
   resolveCategoryClassification,
@@ -2506,12 +2506,15 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         setTags(t)
         setMonthStartDay(monthStart)
         const foodReceiptIds = buildFoodReceiptIds(receipts, c)
+        const nonFoodProductIds = new Set(products.filter((pr) => pr.nonFood).map((pr) => pr.id))
         setPurchases(
           // Un pedido de Amazon que no sea de alimentación no debe
           // entrar en el análisis de "¿por qué ha cambiado mi gasto?"
           // de la cesta de tickets — uno que sí lo sea (café...) sí cuenta.
+          // Un producto marcado a mano como No alimentos tampoco cuenta,
+          // aunque se comprara en tienda física.
           prices
-            .filter((p) => isFoodPurchase(p, foodReceiptIds))
+            .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds))
             .map((p) => {
               const qty = Number(p.quantity)
               return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
@@ -3942,6 +3945,20 @@ function groupReceiptsByStore<T extends Receipt>(
     .sort((a, b) => b.total - a.total)
 }
 
+// Mismo agrupado que groupReceiptsByStore pero por categoría de gasto
+// — para los dónuts "por tipo de alimento" y "en no alimentos" de
+// Estadística compras (Alimentación).
+function groupExpensesByCategory(list: Expense[], allCategories: BudgetCategory[]): { store: string; total: number }[] {
+  const map = new Map<string, number>()
+  for (const e of list) map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
+  return [...map.entries()]
+    .map(([name, total]) => {
+      const icon = allCategories.find((c) => c.name === name)?.icon
+      return { store: icon ? `${icon} ${name}` : name, total }
+    })
+    .sort((a, b) => b.total - a.total)
+}
+
 // Petición real: "tienes que poner una pestaña para añadir
 // supermercado, para añadir tienda" — directamente aquí, sin tener que
 // ir a Compras para dar de alta una tienda nueva antes de poder
@@ -5349,10 +5366,6 @@ export function BudgetsTab({
   if (loading) return <p className="muted">Cargando presupuestos…</p>
 
   const [periodFrom, periodTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
-  // Solo para el desglose por tienda de Alimentación (rama que ya no se
-  // usa desde que Alimentación vive dentro de 'generales' — ver
-  // comentario en CategoriesModal).
-  const visibleMonth = periodFrom.slice(0, 7)
   const periodTitle = periodLabelForTitle(preset, periodFrom, periodTo)
   const groupCategories = categories.filter((c) => c.budgetGroup === group)
   // Piso compartido: Individual = lo tuyo (owner_member_id no nulo, RLS
@@ -5361,15 +5374,21 @@ export function BudgetsTab({
   const scopedExpenses = scopingActive ? expenses.filter((e) => (scope === 'comun' ? e.shared : !e.shared)) : expenses
   const scopedBudgets = scopingActive ? budgets.filter((b) => (scope === 'comun' ? b.ownerMemberId === null : b.ownerMemberId !== null)) : budgets
   const groupBudgets = scopedBudgets.filter((b) => b.budgetGroup === group)
+  // Tickets del periodo elegido — bug real: "en reparto por gasto de
+  // tienda hay algún fallo, si filtro por este mes me sale que solo
+  // hemos comprado en Mercadona, pero si filtro por esta semana me
+  // salen tres tiendas". Antes se usaba SIEMPRE el mes de calendario
+  // completo del `periodFrom` (`.startsWith(visibleMonth)`), ignorando
+  // el filtro Día/Semana/Año — ahora respeta el rango real elegido.
+  const periodReceipts = receipts.filter((r) => r.receiptDate >= periodFrom && r.receiptDate <= periodTo)
   // Solo los tickets clasificados como Alimentación cuentan aquí —
   // petición real: "ahora también hay tickets que no son de
   // Alimentación (Amazon...), esos no se deberían detallar en el
   // registro de Alimentación". El resto (Casa y Jardín, Amazon sin
   // clasificar...) no aparece ni en este desglose por tienda ni en el
   // total.
-  const foodReceipts = receipts.filter(
-    (r) => r.receiptDate.startsWith(visibleMonth) && isFoodCategory(r.category, categories),
-  )
+  const foodReceipts = periodReceipts.filter((r) => isFoodCategory(r.category, categories))
+  const nonFoodReceipts = periodReceipts.filter((r) => !isFoodCategory(r.category, categories))
   const pieGroups = groupReceiptsByStore(foodReceipts, knownStores)
 
   // El total de Alimentación (y el de cada categoría) sale SIEMPRE de
@@ -5401,6 +5420,27 @@ export function BudgetsTab({
   const alimentacionTotal = monthRealExpenses
     .filter((e) => isFoodCategory(e.category, categories))
     .reduce((sum, e) => sum + e.amount, 0)
+  // "No alimentos" (Estadística compras): gastos de tickets/pedidos no
+  // clasificados como Alimentación, más cualquier gasto metido a mano
+  // bajo "Compras y familia" (Ropa, Niños, Casa y jardín, Tecnología,
+  // Mascotas, Regalos...) — petición real: "aparte de tickets también
+  // se puede basar en Gastos Categorizados como Compras y familia". No
+  // incluye alquiler, luz ni otros gastos que no sean compras.
+  const nonFoodReceiptExpenseIds = new Set(
+    nonFoodReceipts.map((r) => r.expenseId).filter((id): id is string => id != null),
+  )
+  const noAlimentosExpenses = monthRealExpenses.filter(
+    (e) => nonFoodReceiptExpenseIds.has(e.id) || isComprasFamiliaCategory(e.category, categories),
+  )
+  const noAlimentosTotal = noAlimentosExpenses.reduce((sum, e) => sum + e.amount, 0)
+  const comprasTotal = alimentacionTotal + noAlimentosTotal
+  const totalGastadoPeriodo = monthRealExpenses.reduce((sum, e) => sum + e.amount, 0)
+  const pctOf = (part: number, total: number) => (total > 0 ? (part / total) * 100 : 0)
+  const foodCategoryPieGroups = groupExpensesByCategory(
+    monthRealExpenses.filter((e) => isFoodCategory(e.category, categories)),
+    categories,
+  )
+  const noAlimentosCategoryPieGroups = groupExpensesByCategory(noAlimentosExpenses, categories)
   const catColors = categoryColors(groupCategories)
   // Petición real: "quiero que estén ordenados por categorías
   // principales, todas las subcategorías de una categoría juntas" —
@@ -5441,11 +5481,31 @@ export function BudgetsTab({
     <div>
       {error && <p className="error">{error}</p>}
 
+      {/* Petición real: "Arriba donde pone total registrado en
+          Alimentación cambiamos a Total Registrado en Compras" — el
+          total ya no es solo Alimentación, es Alimentación + No
+          alimentos, con el peso de cada uno debajo. */}
       {group === 'alimentacion' && (
         <div className="card event-card">
-          <strong>Total registrado en Alimentación</strong>
-          <p style={{ margin: '4px 0' }}>{alimentacionTotal.toFixed(2)} €</p>
-          <p className="muted" style={{ margin: 0 }}>
+          <strong>Total Registrado en Compras</strong>
+          <p style={{ margin: '4px 0' }}>{comprasTotal.toFixed(2)} €</p>
+          <div style={{ marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>🛒 Alimentación</span>
+              <strong>{alimentacionTotal.toFixed(2)} €</strong>
+            </div>
+            <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+              {pctOf(alimentacionTotal, comprasTotal).toFixed(0)}% de las compras · {pctOf(alimentacionTotal, totalGastadoPeriodo).toFixed(0)}% del gasto total
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>🛍️ No alimentos</span>
+              <strong>{noAlimentosTotal.toFixed(2)} €</strong>
+            </div>
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              {pctOf(noAlimentosTotal, comprasTotal).toFixed(0)}% de las compras · {pctOf(noAlimentosTotal, totalGastadoPeriodo).toFixed(0)}% del gasto total
+            </p>
+          </div>
+          <p className="muted" style={{ margin: '8px 0 0' }}>
             Solo registro — no resta de ningún presupuesto. Cuenta para el Presupuesto General.
           </p>
         </div>
@@ -5500,34 +5560,34 @@ export function BudgetsTab({
         />
       )}
 
-      <BudgetsOverview
-        allExpenses={scopedExpenses}
-        allCategories={categories}
-        budgets={scopedBudgets}
-        group={group}
-        from={periodFrom}
-        to={periodTo}
-        preset={preset}
-        hasBankAccounts={hasBankAccounts}
-        onChanged={reload}
-      />
+      {/* Petición real: "de esta página quitamos Resumen Gastado
+          -3207.47 por completo" — para Alimentación era solo esa cifra
+          repetida (sin presupuesto ni ingresos propios), ya cubierta
+          por el desglose de arriba; para Presupuesto Generales sigue
+          igual que siempre. */}
+      {group !== 'alimentacion' && (
+        <BudgetsOverview
+          allExpenses={scopedExpenses}
+          allCategories={categories}
+          budgets={scopedBudgets}
+          group={group}
+          from={periodFrom}
+          to={periodTo}
+          preset={preset}
+          hasBankAccounts={hasBankAccounts}
+          onChanged={reload}
+        />
+      )}
 
       {group === 'alimentacion' && <StorePieChart groups={pieGroups} monthLabel={periodTitle} />}
       {group === 'generales' && categoryPieSlices.length > 0 && (
         <StorePieChart groups={categoryPieSlices} monthLabel={periodTitle} title="Reparto del gasto por categoría" />
       )}
-
-      {/* Petición real: "la lista larga de categorías abajo en
-          Presupuesto General, bórrala. Es repetir información" —
-          quitaba lugar por duplicar el dónut de arriba y la lista de
-          Resumen (ver byParentCategory en BudgetsOverview). */}
-      {group === 'alimentacion' && (
-        <BudgetCategoriesSection
-          categories={groupCategories}
-          budgetGroup={group}
-          monthExpenses={monthRealExpenses}
-          onChanged={reload}
-        />
+      {group === 'alimentacion' && foodCategoryPieGroups.length > 0 && (
+        <StorePieChart groups={foodCategoryPieGroups} monthLabel={periodTitle} title="Reparto del gasto por tipo de alimento" />
+      )}
+      {group === 'alimentacion' && noAlimentosCategoryPieGroups.length > 0 && (
+        <StorePieChart groups={noAlimentosCategoryPieGroups} monthLabel={periodTitle} title="Reparto del gasto en no alimentos" />
       )}
     </div>
   )
@@ -6322,308 +6382,6 @@ function openBudgetReport(report: {
   win.document.close()
   win.focus()
   win.print()
-}
-
-// Categorías de presupuesto con icono — petición real: "en la pestaña
-// de presupuestos que se puedan crear categorías, algo como lo de la
-// foto" (captura de referencia: Salario 👔, Comestibles 🛒,
-// Entretenimiento 🍿, Vivienda 🏠, cada una con su icono). Mismas
-// carpetas de colores que en Documentos. Tocar una categoría abre un
-// formulario rápido para apuntarle un gasto — petición real: "quiero
-// poder apuntar en cada categoría los gastos de cada cosa, en agua,
-// en gastos escolares, hipoteca...".
-// Debe coincidir con las columnas de .doc-folder-grid (repeat(3, 1fr)).
-const CATEGORY_GRID_COLS = 3
-const CATEGORY_DRAG_TAP_THRESHOLD_PX = 8
-
-function BudgetCategoriesSection({
-  categories,
-  budgetGroup,
-  monthExpenses,
-  onChanged,
-}: {
-  categories: BudgetCategory[]
-  budgetGroup: string
-  monthExpenses: Expense[]
-  onChanged: () => void
-}) {
-  const [adding, setAdding] = useState(false)
-  const [loggingCategory, setLoggingCategory] = useState<BudgetCategory | null>(null)
-
-  // Arrastrar con el dedo para reordenar los iconos — petición real:
-  // "que se puedan mover y organizar como queramos, arrastrándolos con
-  // el dedo". Mismo mecanismo que ya usan la lista de la compra y los
-  // botones de Pepa: la lista local sigue a las props salvo mientras se
-  // arrastra, y solo se guarda de verdad (reorderBudgetCategories) si
-  // el gesto fue un arrastre real, no un toque corto.
-  const [order, setOrder] = useState(categories)
-  const dragRef = useRef<{
-    id: string
-    startX: number
-    startY: number
-    startIndex: number
-    cellW: number
-    cellH: number
-    moved: number
-  } | null>(null)
-  const [draggingId, setDraggingId] = useState<string | null>(null)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
-  const wasDraggedRef = useRef(false)
-
-  useEffect(() => {
-    if (!dragRef.current) setOrder(categories)
-  }, [categories])
-
-  function handleDragStart(e: ReactPointerEvent, id: string, el: HTMLElement) {
-    if (e.pointerType === 'mouse' && e.button !== 0) return
-    el.setPointerCapture(e.pointerId)
-    wasDraggedRef.current = false
-    const index = order.findIndex((c) => c.id === id)
-    const style = getComputedStyle(el.parentElement as HTMLElement)
-    const gap = parseFloat(style.columnGap || style.gap || '0') || 0
-    dragRef.current = { id, startX: e.clientX, startY: e.clientY, startIndex: index, cellW: el.offsetWidth + gap, cellH: el.offsetHeight + gap, moved: 0 }
-    setDraggingId(id)
-  }
-
-  function handleDragMove(e: ReactPointerEvent) {
-    const drag = dragRef.current
-    if (!drag) return
-    const dx = e.clientX - drag.startX
-    const dy = e.clientY - drag.startY
-    drag.moved = Math.max(drag.moved, Math.abs(dx), Math.abs(dy))
-    if (drag.moved >= CATEGORY_DRAG_TAP_THRESHOLD_PX) wasDraggedRef.current = true
-    setDragOffset({ x: dx, y: dy })
-    const startRow = Math.floor(drag.startIndex / CATEGORY_GRID_COLS)
-    const startCol = drag.startIndex % CATEGORY_GRID_COLS
-    const newCol = Math.min(CATEGORY_GRID_COLS - 1, Math.max(0, startCol + Math.round(dx / drag.cellW)))
-    const newRow = Math.max(0, startRow + Math.round(dy / drag.cellH))
-    const newIndex = Math.min(order.length - 1, newRow * CATEGORY_GRID_COLS + newCol)
-    setOrder((prev) => {
-      const currentIndex = prev.findIndex((c) => c.id === drag.id)
-      if (currentIndex === -1 || currentIndex === newIndex) return prev
-      const next = [...prev]
-      const [moved] = next.splice(currentIndex, 1)
-      next.splice(newIndex, 0, moved)
-      return next
-    })
-  }
-
-  function handleDragEnd() {
-    const drag = dragRef.current
-    dragRef.current = null
-    setDraggingId(null)
-    setDragOffset({ x: 0, y: 0 })
-    if (drag && drag.moved >= CATEGORY_DRAG_TAP_THRESHOLD_PX) {
-      reorderBudgetCategories(order.map((c) => c.id)).then(onChanged)
-    }
-  }
-
-  function handleCardClick(c: BudgetCategory) {
-    if (wasDraggedRef.current) {
-      wasDraggedRef.current = false
-      return
-    }
-    setLoggingCategory(c)
-  }
-
-  return (
-    <>
-      <h2 className="section-title">Categorías</h2>
-      <p className="muted" style={{ marginTop: -8 }}>
-        Toca una categoría para apuntarle un gasto, o arrástrala para moverla.
-      </p>
-      <div className="doc-folder-grid">
-        {order.map((c) => {
-          const spent = monthExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0)
-          const isDragging = draggingId === c.id
-          return (
-            <div
-              key={c.id}
-              className={
-                'doc-folder-card doc-folder-card-draggable' + (isDragging ? ' doc-folder-card-dragging' : '')
-              }
-              style={{
-                position: 'relative',
-                cursor: 'pointer',
-                ...(isDragging ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` } : {}),
-              }}
-              role="button"
-              tabIndex={0}
-              onClick={() => handleCardClick(c)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') handleCardClick(c)
-              }}
-              onPointerDown={(e) => handleDragStart(e, c.id, e.currentTarget)}
-              onPointerMove={handleDragMove}
-              onPointerUp={handleDragEnd}
-              onPointerCancel={handleDragEnd}
-            >
-              <span className="doc-folder-icon" style={{ background: 'var(--primary)' }}>
-                {c.icon}
-              </span>
-              <strong className="doc-folder-name">{c.name}</strong>
-              <span className="muted doc-folder-count">{spent > 0 ? `${spent.toFixed(2)} €` : 'Sin gastos'}</span>
-              <span style={{ position: 'absolute', top: -4, right: 4 }} onClick={(e) => e.stopPropagation()}>
-                <ConfirmIconButton
-                  icon="✕"
-                  className="link-button"
-                  ariaLabel={`Eliminar categoría ${c.name}`}
-                  onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
-                />
-              </span>
-            </div>
-          )
-        })}
-        <button
-          type="button"
-          className={'doc-folder-card doc-folder-card-add' + (adding ? ' doc-folder-card-active' : '')}
-          onClick={() => setAdding((v) => !v)}
-        >
-          <span className="doc-folder-icon doc-folder-icon-add">➕</span>
-          <strong className="doc-folder-name">Nueva categoría</strong>
-        </button>
-      </div>
-      {categories.length === 0 && !adding && (
-        <p className="muted">Todavía no hay categorías — crea alguna para elegirla al hacer un presupuesto.</p>
-      )}
-      {adding && (
-        <AddBudgetCategoryInline
-          budgetGroup={budgetGroup}
-          onAdded={() => {
-            setAdding(false)
-            onChanged()
-          }}
-        />
-      )}
-      {loggingCategory && (
-        <LogCategoryExpenseModal
-          category={loggingCategory}
-          expenses={monthExpenses.filter((e) => e.category === loggingCategory.name)}
-          onClose={() => setLoggingCategory(null)}
-          onChanged={onChanged}
-        />
-      )}
-    </>
-  )
-}
-
-// Además de apuntar, se ven los gastos ya guardados de ESTE mes en la
-// categoría, con editar/eliminar — petición real: "también quiero
-// poder eliminarlo o editarlo por si me he equivocado".
-function LogCategoryExpenseModal({
-  category,
-  expenses,
-  onClose,
-  onChanged,
-}: {
-  category: BudgetCategory
-  expenses: Expense[]
-  onClose: () => void
-  onChanged: () => void
-}) {
-  const [date, setDate] = useState(toDateStr(new Date()))
-  const [amount, setAmount] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      await addExpense({
-        date,
-        amount: Number(amount),
-        category: category.name,
-        store: '',
-        kind: 'real',
-        isIncome: false,
-        budgetGroup: category.budgetGroup,
-      })
-      setAmount('')
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDelete(id: string) {
-    try {
-      await deleteExpense(id)
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo eliminar'))
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            {category.icon} {category.name}
-          </h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-
-        {expenses.length > 0 && (
-          <div className="event-list" style={{ marginBottom: 12 }}>
-            {expenses.map((exp) =>
-              editingId === exp.id ? (
-                <EditCategoryExpenseRow
-                  key={exp.id}
-                  expense={exp}
-                  onDone={() => {
-                    setEditingId(null)
-                    onChanged()
-                  }}
-                  onCancel={() => setEditingId(null)}
-                />
-              ) : (
-                <div key={exp.id} className="card task-card">
-                  <div className="task-card-main">
-                    <strong>{exp.amount.toFixed(2)} €</strong>
-                    <p className="muted">{exp.expenseDate}</p>
-                  </div>
-                  <button type="button" className="link-button" onClick={() => setEditingId(exp.id)}>
-                    Editar
-                  </button>
-                  <ConfirmButton label="Eliminar" onConfirm={() => handleDelete(exp.id)} />
-                </div>
-              ),
-            )}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="member-form">
-          <label>
-            Fecha
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-          </label>
-          <label>
-            Importe (€)
-            <input
-              type="number"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-              autoFocus
-            />
-          </label>
-          {error && <p className="error">{error}</p>}
-          <button type="submit" disabled={saving}>
-            {saving ? 'Guardando…' : 'Apuntar gasto'}
-          </button>
-        </form>
-      </div>
-    </div>
-  )
 }
 
 function EditCategoryExpenseRow({

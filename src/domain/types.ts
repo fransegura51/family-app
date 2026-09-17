@@ -390,6 +390,7 @@ export interface Product {
   displayName: string
   category: string | null
   brand: string | null
+  nonFood: boolean
 }
 
 export interface ProductPrice {

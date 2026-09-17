@@ -45,7 +45,7 @@ import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceip
 import { listAllProductPrices, listProducts } from '@/data/products'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
-import { listFamilyFoodTypes, type FamilyFoodType } from '@/data/foodTypes'
+import { listFamilyFoodTypes, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import { balanceTrend, earliestTransactionDate } from '@/domain/balanceTrend'
 import {
@@ -3976,26 +3976,73 @@ function groupReceiptsByStore<T extends Receipt>(
     .sort((a, b) => b.total - a.total)
 }
 
-// Mismo agrupado que groupReceiptsByStore pero por categoría de gasto
-// — para los dónuts "por tipo de alimento" y "en no alimentos" de
-// Estadística compras (Alimentación). Lleva `expenseIds` para que
-// "Ver movimientos →" (BreakdownDonut) reproduzca exactamente la misma
-// porción tocada, no solo la misma categoría.
-function groupExpensesByCategory(
-  list: Expense[],
-  allCategories: BudgetCategory[],
-): (BreakdownSlice & { expenseIds: string[] })[] {
-  const map = new Map<string, Expense[]>()
-  for (const e of list) map.set(e.category, [...(map.get(e.category) ?? []), e])
-  return [...map.entries()]
-    .map(([name, es]) => ({
-      key: name,
-      label: name,
-      icon: allCategories.find((c) => c.name === name)?.icon,
-      total: es.reduce((sum, e) => sum + e.amount, 0),
-      count: es.length,
-      expenseIds: es.map((e) => e.id),
+// Mismo agrupado por tienda que ya usaba "Reparto del gasto por
+// tienda" para Alimentación, reutilizable también para Otros —
+// petición real: "falta otro de Otros. Se podría usar el mismo dónut
+// con botón Alimentación/Otros". Sale de los propios `expenses` (no
+// de los tickets) para que el total del dónut cuadre SIEMPRE con el
+// del total de arriba — cada gasto ya lleva su propia tienda, tenga
+// ticket subido o no (mismo motivo que el arreglo del dónut de
+// Alimentación).
+function buildStorePieSlices(list: Expense[], knownStores: string[]): (BreakdownSlice & { expenseIds: string[] })[] {
+  const groups = new Map<string, { total: number; expenseIds: string[] }>()
+  for (const e of list) {
+    const store = canonicalStoreName(e.store, knownStores)
+    const g = groups.get(store) ?? { total: 0, expenseIds: [] }
+    g.total += e.amount
+    g.expenseIds.push(e.id)
+    groups.set(store, g)
+  }
+  return [...groups.entries()]
+    .map(([store, g]) => ({ store, total: g.total, expenseIds: g.expenseIds }))
+    .sort((a, b) => b.total - a.total)
+    .map((g, i) => ({
+      key: g.store,
+      label: g.store,
+      color: STORE_COLORS[i % STORE_COLORS.length],
+      total: g.total,
+      count: g.expenseIds.length,
+      expenseIds: g.expenseIds,
     }))
+}
+
+// Agrupado por CLASIFICACIÓN de producto (ver Historial de precios,
+// ⚙️ Clasificaciones de productos) — comparte la lógica de sumar por
+// producto y colorear sin repetirse entre el dónut "por tipo de
+// alimento" y el nuevo "en Otros por clasificación"; solo cambia cómo
+// se resuelve el nombre/icono de cada porción (con adivinador
+// automático en Alimentos, siempre a mano en Otros).
+function buildProductTypeBreakdown(
+  periodPrices: ProductPrice[],
+  productById: Map<string, Product>,
+  resolveType: (product: Product | undefined, displayName: string) => { name: string; icon: string },
+): FoodTypeBreakdownEntry[] {
+  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }> }>()
+  for (const pr of periodPrices) {
+    const product = productById.get(pr.productId)
+    const name = product?.displayName ?? '?'
+    const resolved = resolveType(product, name)
+    const qty = Number(pr.quantity)
+    const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
+    const group = totals.get(resolved.name) ?? { icon: resolved.icon, products: new Map<string, { name: string; total: number }>() }
+    const entry = group.products.get(pr.productId) ?? { name, total: 0 }
+    entry.total += amount
+    group.products.set(pr.productId, entry)
+    totals.set(resolved.name, group)
+  }
+  const namesAlpha = [...totals.keys()].sort((a, b) => a.localeCompare(b, 'es'))
+  function colorFor(name: string): string {
+    const p = CATEGORY_PALETTE[namesAlpha.indexOf(name) % CATEGORY_PALETTE.length]
+    return `hsl(${p.h}, ${p.s}%, ${p.l}%)`
+  }
+  return [...totals.entries()]
+    .map(([name, group]) => {
+      const productList = [...group.products.entries()]
+        .map(([productId, p]) => ({ productId, name: p.name, total: p.total }))
+        .sort((a, b) => b.total - a.total)
+      const total = productList.reduce((sum, p) => sum + p.total, 0)
+      return { key: name, label: name, icon: group.icon, color: colorFor(name), total, count: productList.length, products: productList }
+    })
     .sort((a, b) => b.total - a.total)
 }
 
@@ -5130,7 +5177,7 @@ function StorePieChart({
 // las estadísticas de compras los enlaces para filtrar los
 // movimientos igual que en economía". `expenseIds` de cada porción
 // viene ya calculado (mismos gastos que produjeron esa cifra, ver
-// groupExpensesByCategory/storePieSlices en BudgetsTab).
+// buildStorePieSlices en BudgetsTab).
 function LinkedDonutCard({
   title,
   monthLabel,
@@ -5176,6 +5223,7 @@ interface FoodTypeBreakdownEntry {
   key: string
   label: string
   icon: string
+  color: string
   total: number
   count: number
   products: { productId: string; name: string; total: number }[]
@@ -5460,9 +5508,13 @@ export function BudgetsTab({
   // deja fuera del modo Separado, ver 0098_shared_accounts_mode.sql).
   const scopingActive = group === 'generales' && accountsMode === 'separado'
   const [scope, setScope] = useState<'personal' | 'comun'>('personal')
-  // Qué tipo de alimento está desplegado en la lista bajo su dónut —
-  // ver FoodTypeBreakdownList más abajo.
+  // Qué tipo de alimento (o de Otros) está desplegado en la lista bajo
+  // su dónut — ver FoodTypeBreakdownList más abajo.
   const [expandedFoodType, setExpandedFoodType] = useState<string | null>(null)
+  const [expandedNoAlimentosType, setExpandedNoAlimentosType] = useState<string | null>(null)
+  // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
+  // usar el mismo dónut con botón Alimentación/Otros".
+  const [storeDonutScope, setStoreDonutScope] = useState<FoodTypeKind>('alimentacion')
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -5521,8 +5573,9 @@ export function BudgetsTab({
       group === 'alimentacion' ? listAllProductPrices() : Promise.resolve([]),
       group === 'alimentacion' ? listProducts() : Promise.resolve([]),
       group === 'alimentacion' ? listFamilyFoodTypes('alimentacion') : Promise.resolve([]),
+      group === 'alimentacion' ? listFamilyFoodTypes('no_alimentos') : Promise.resolve([]),
     ])
-      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, types]) => {
+      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, foodKindTypes, noFoodKindTypes]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
         // propias todavía — se dan de alta las sugeridas solas, sin
         // pedirlo (petición real: "me pones todas esas categorías").
@@ -5541,7 +5594,7 @@ export function BudgetsTab({
         setMembers(m)
         setPrices(p)
         setProducts(prod)
-        setFoodTypes(types)
+        setFoodTypes([...foodKindTypes, ...noFoodKindTypes])
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -5618,80 +5671,42 @@ export function BudgetsTab({
   const comprasTotal = alimentacionTotal + noAlimentosTotal
   const totalGastadoPeriodo = monthRealExpenses.reduce((sum, e) => sum + e.amount, 0)
   const pctOf = (part: number, total: number) => (total > 0 ? (part / total) * 100 : 0)
-  const noAlimentosCategoryPieGroups = groupExpensesByCategory(noAlimentosExpenses, categories)
   // Petición real: "la estadística de tipos de alimentos no sirve para
   // mucho así por categoría, puedes clasificar los alimentos... verdura,
-  // fruta, carne, etc" — la categoría del gasto (Supermercado/
-  // Restaurantes) es casi siempre la misma para todo, así que hace
+  // fruta, carne, etc" y luego "el de reparto de gastos en Otros
+  // cámbialo de Categorías a Clasificación" — la categoría de Economía
+  // del gasto entero es casi siempre la misma para todo, así que hace
   // falta bajar al PRODUCTO de cada ticket (product_prices), no al
-  // gasto entero. Por eso este dónut no lleva "Ver movimientos" como
-  // los otros dos: un ticket mezcla varios tipos de alimento a la vez,
-  // no hay un gasto 1:1 con "Verdura" o "Carne".
+  // gasto. Ninguno de los dos dónuts de clasificación lleva "Ver
+  // movimientos": un ticket mezcla varios tipos a la vez, no hay un
+  // gasto 1:1 con "Verdura" o "Ropa".
   const productById = new Map(products.map((p) => [p.id, p]))
   const nonFoodProductIds = new Set(products.filter((p) => p.nonFood).map((p) => p.id))
   const foodReceiptIdsForPrices = buildFoodReceiptIds(receipts, categories)
-  const periodFoodPrices = prices.filter(
-    (pr) =>
-      pr.recordedDate >= periodFrom &&
-      pr.recordedDate <= periodTo &&
-      isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds),
-  )
+  const periodPrices = prices.filter((pr) => pr.recordedDate >= periodFrom && pr.recordedDate <= periodTo)
+  const periodFoodPrices = periodPrices.filter((pr) => isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds))
+  const periodNonFoodPrices = periodPrices.filter((pr) => !isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds))
+
+  // Excepción manual por producto (ver Historial de precios, ⚙️
+  // Clasificaciones de productos): si `category` ya tiene una clase
+  // elegida a mano, gana sobre la que habría adivinado classifyFoodType
+  // por el nombre (solo existe ese adivinador para Alimentos); en Otros
+  // no hay ninguno, así que sin elegir cae en "Sin clasificar".
+  const foodTypeIconByName = new Map(foodTypes.filter((t) => t.kind === 'alimentacion').map((t) => [t.name, t.icon]))
+  const noAlimentosTypeIconByName = new Map(foodTypes.filter((t) => t.kind === 'no_alimentos').map((t) => [t.name, t.icon]))
+
   // Petición real: "debajo del dónut haz una lista... que dando al
   // producto se despliegue el detalle de los productos que
   // constituyen esa clase con precio y porcentaje" — se agrupa a la
-  // vez por tipo y, dentro de cada tipo, por producto exacto.
-  // Excepción manual por producto (ver Historial de precios, ⚙️
-  // Clasificaciones de alimentos): si `category` ya tiene una clase
-  // elegida a mano, gana sobre la que habría adivinado classifyFoodType
-  // por el nombre — se agrupa por el NOMBRE de la clase (no por un key
-  // fijo) para que una clase propia de la familia también tenga sitio,
-  // no solo las 11 de fábrica.
-  const foodTypeIconByName = new Map(foodTypes.map((t) => [t.name, t.icon]))
-  const foodTypeProductTotals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }> }>()
-  for (const pr of periodFoodPrices) {
-    const product = productById.get(pr.productId)
-    const name = product?.displayName ?? '?'
-    const auto = classifyFoodType(name)
+  // vez por tipo y, dentro de cada tipo, por producto exacto (ver
+  // buildProductTypeBreakdown, coloreado sin repetirse igual que
+  // categoryColors).
+  const foodTypeBreakdown = buildProductTypeBreakdown(periodFoodPrices, productById, (product, displayName) => {
+    const auto = classifyFoodType(displayName)
     const typeName = product?.category?.trim() || auto.label
-    const typeIcon = foodTypeIconByName.get(typeName) ?? (typeName === auto.label ? auto.icon : '🍽️')
-    const qty = Number(pr.quantity)
-    const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
-    const group = foodTypeProductTotals.get(typeName) ?? { icon: typeIcon, products: new Map<string, { name: string; total: number }>() }
-    const entry = group.products.get(pr.productId) ?? { name, total: 0 }
-    entry.total += amount
-    group.products.set(pr.productId, entry)
-    foodTypeProductTotals.set(typeName, group)
-  }
-  // Petición real: "en el dónut tipo de alimentos se repiten colores...
-  // azul viene 3 veces, verde dos" — antes se coloreaba por POSICIÓN
-  // (colors[i % colors.length]) con solo 10 colores, así que con 11
-  // tipos (o más, con clases propias) se repetía seguro. Mismo criterio
-  // que categoryColors: un color por NOMBRE (orden alfabético, no por
-  // el total de cada uno, para que además no cambien de un mes a
-  // otro), sacado de la misma paleta de 16 tonos ya pensada para no
-  // dejar huecos ni parecerse entre sí.
-  const foodTypeNamesAlpha = [...foodTypeProductTotals.keys()].sort((a, b) => a.localeCompare(b, 'es'))
-  function colorForFoodType(name: string): string {
-    const p = CATEGORY_PALETTE[foodTypeNamesAlpha.indexOf(name) % CATEGORY_PALETTE.length]
-    return `hsl(${p.h}, ${p.s}%, ${p.l}%)`
-  }
-  const foodTypeBreakdown = [...foodTypeProductTotals.entries()]
-    .map(([typeName, group]) => {
-      const productList = [...group.products.entries()]
-        .map(([productId, p]) => ({ productId, name: p.name, total: p.total }))
-        .sort((a, b) => b.total - a.total)
-      const total = productList.reduce((sum, p) => sum + p.total, 0)
-      return {
-        key: typeName,
-        label: typeName,
-        icon: group.icon,
-        color: colorForFoodType(typeName),
-        total,
-        count: productList.length,
-        products: productList,
-      }
-    })
-    .sort((a, b) => b.total - a.total)
+    const icon = foodTypeIconByName.get(typeName) ?? (typeName === auto.label ? auto.icon : '🍽️')
+    return { name: typeName, icon }
+  })
   const foodTypePieGroups: BreakdownSlice[] = foodTypeBreakdown.map((t) => ({
     key: t.key,
     label: t.label,
@@ -5700,29 +5715,26 @@ export function BudgetsTab({
     total: t.total,
     count: t.count,
   }))
-  // Sale de `alimentacionExpenses` (no de los tickets) para que el
-  // total del dónut cuadre SIEMPRE con el de "Alimentación" de arriba
-  // — cada gasto ya lleva su propia tienda (`store`), tenga ticket
-  // subido o no.
-  const storeExpenseGroups = new Map<string, { total: number; expenseIds: string[] }>()
-  for (const e of alimentacionExpenses) {
-    const store = canonicalStoreName(e.store, knownStores)
-    const g = storeExpenseGroups.get(store) ?? { total: 0, expenseIds: [] }
-    g.total += e.amount
-    g.expenseIds.push(e.id)
-    storeExpenseGroups.set(store, g)
-  }
-  const storePieSlices: (BreakdownSlice & { expenseIds: string[] })[] = [...storeExpenseGroups.entries()]
-    .map(([store, g]) => ({ store, total: g.total, expenseIds: g.expenseIds }))
-    .sort((a, b) => b.total - a.total)
-    .map((g, i) => ({
-      key: g.store,
-      label: g.store,
-      color: STORE_COLORS[i % STORE_COLORS.length],
-      total: g.total,
-      count: g.expenseIds.length,
-      expenseIds: g.expenseIds,
-    }))
+
+  const noAlimentosTypeBreakdown = buildProductTypeBreakdown(periodNonFoodPrices, productById, (product) => {
+    const typeName = product?.category?.trim() || 'Sin clasificar'
+    const icon = noAlimentosTypeIconByName.get(typeName) ?? '❓'
+    return { name: typeName, icon }
+  })
+  const noAlimentosTypePieGroups: BreakdownSlice[] = noAlimentosTypeBreakdown.map((t) => ({
+    key: t.key,
+    label: t.label,
+    icon: t.icon,
+    color: t.color,
+    total: t.total,
+    count: t.count,
+  }))
+
+  // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
+  // usar el mismo dónut con botón Alimentación/Otros" — un solo dónut
+  // (ver storeDonutScope), el botón decide qué gastos lo alimentan.
+  const storePieSlicesAlimentacion = buildStorePieSlices(alimentacionExpenses, knownStores)
+  const storePieSlicesOtros = buildStorePieSlices(noAlimentosExpenses, knownStores)
   const catColors = categoryColors(groupCategories)
   // Petición real: "quiero que estén ordenados por categorías
   // principales, todas las subcategorías de una categoría juntas" —
@@ -5902,12 +5914,33 @@ export function BudgetsTab({
       )}
 
       {group === 'alimentacion' && (
-        <LinkedDonutCard
-          title="Reparto del gasto por tienda"
-          monthLabel={periodTitle}
-          slices={storePieSlices}
-          onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
-        />
+        <>
+          {/* Petición real: "falta otro [dónut por tienda] de Otros. Se
+              podría usar el mismo Dónut con botón Alimentación/Otros" —
+              mismo componente, el chip decide qué gastos lo alimentan. */}
+          <div className="filter-row">
+            <button
+              type="button"
+              className={'chip' + (storeDonutScope === 'alimentacion' ? ' chip-active' : '')}
+              onClick={() => setStoreDonutScope('alimentacion')}
+            >
+              Alimentación
+            </button>
+            <button
+              type="button"
+              className={'chip' + (storeDonutScope === 'no_alimentos' ? ' chip-active' : '')}
+              onClick={() => setStoreDonutScope('no_alimentos')}
+            >
+              Otros
+            </button>
+          </div>
+          <LinkedDonutCard
+            title="Reparto del gasto por tienda"
+            monthLabel={periodTitle}
+            slices={storeDonutScope === 'alimentacion' ? storePieSlicesAlimentacion : storePieSlicesOtros}
+            onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
+          />
+        </>
       )}
       {group === 'generales' && categoryPieSlices.length > 0 && (
         <StorePieChart groups={categoryPieSlices} monthLabel={periodTitle} title="Reparto del gasto por categoría" />
@@ -5923,12 +5956,18 @@ export function BudgetsTab({
         </>
       )}
       {group === 'alimentacion' && (
-        <LinkedDonutCard
-          title="Reparto del gasto en Otros"
-          monthLabel={periodTitle}
-          slices={noAlimentosCategoryPieGroups}
-          onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
-        />
+        <>
+          {/* Petición real: "el de reparto de gastos en Otros cámbialo
+              de Categorías a Clasificación" — mismo patrón que "por
+              tipo de alimento": por producto, no por categoría de
+              Economía del gasto entero. */}
+          <LinkedDonutCard title="Reparto del gasto en Otros por clasificación" monthLabel={periodTitle} slices={noAlimentosTypePieGroups} />
+          <FoodTypeBreakdownList
+            types={noAlimentosTypeBreakdown}
+            expandedKey={expandedNoAlimentosType}
+            onToggle={(key) => setExpandedNoAlimentosType((prev) => (prev === key ? null : key))}
+          />
+        </>
       )}
     </div>
   )

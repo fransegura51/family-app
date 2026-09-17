@@ -5170,6 +5170,83 @@ function LinkedDonutCard({
   )
 }
 
+interface FoodTypeBreakdownEntry {
+  key: string
+  label: string
+  icon: string
+  total: number
+  count: number
+  products: { productId: string; name: string; total: number }[]
+}
+
+// Petición real: "debajo del dónut haz una lista como esta y que dando
+// al producto se despliegue el detalle de los productos que
+// constituyen esa clase con precio y porcentaje" — mismo patrón que
+// byParentCategory en BudgetsOverview (fila padre con total, toca para
+// desplegar), pero aquí el "padre" es el tipo de alimento y los
+// "hijos" son los productos concretos que lo componen, con el % que
+// representa cada uno DENTRO de su tipo (no del total general).
+function FoodTypeBreakdownList({
+  types,
+  expandedKey,
+  onToggle,
+}: {
+  types: FoodTypeBreakdownEntry[]
+  expandedKey: string | null
+  onToggle: (key: string) => void
+}) {
+  if (types.length === 0) return null
+  const grandTotal = types.reduce((sum, t) => sum + t.total, 0)
+  return (
+    <div className="price-row-list" style={{ marginTop: 8 }}>
+      {types.map((t) => {
+        const isOpen = expandedKey === t.key
+        return (
+          <div key={t.key}>
+            <button
+              type="button"
+              className="price-row"
+              style={{
+                width: '100%',
+                background: 'none',
+                border: 'none',
+                textAlign: 'left',
+                color: 'var(--text)',
+                fontWeight: 400,
+                fontSize: 14,
+                padding: '6px 4px',
+                cursor: 'pointer',
+              }}
+              onClick={() => onToggle(t.key)}
+            >
+              <span className="price-row-name">
+                {t.icon} {t.label} {isOpen ? '▾' : '▸'}
+              </span>
+              <span className="price-row-price">
+                {t.total.toFixed(2)} €{' '}
+                <span className="muted">({grandTotal > 0 ? ((t.total / grandTotal) * 100).toFixed(0) : 0}%)</span>
+              </span>
+            </button>
+            {isOpen && (
+              <div style={{ paddingLeft: 20 }}>
+                {t.products.map((p) => (
+                  <div key={p.productId} className="price-row">
+                    <span className="price-row-name">{p.name}</span>
+                    <span className="price-row-price">
+                      {p.total.toFixed(2)} €{' '}
+                      <span className="muted">({t.total > 0 ? ((p.total / t.total) * 100).toFixed(0) : 0}%)</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // Petición real: "cuando termina el mes, guardamos el presupuesto en
 // el mes que corresponda... con lo que hemos gastado, como en un
 // historial para poder consultarlo" — no hace falta "archivar" nada a
@@ -5381,6 +5458,9 @@ export function BudgetsTab({
   // deja fuera del modo Separado, ver 0098_shared_accounts_mode.sql).
   const scopingActive = group === 'generales' && accountsMode === 'separado'
   const [scope, setScope] = useState<'personal' | 'comun'>('personal')
+  // Qué tipo de alimento está desplegado en la lista bajo su dónut —
+  // ver FoodTypeBreakdownList más abajo.
+  const [expandedFoodType, setExpandedFoodType] = useState<string | null>(null)
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -5553,23 +5633,39 @@ export function BudgetsTab({
       pr.recordedDate <= periodTo &&
       isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds),
   )
-  const foodTypeTotals = new Map<string, { total: number; count: number }>()
+  // Petición real: "debajo del dónut haz una lista... que dando al
+  // producto se despliegue el detalle de los productos que
+  // constituyen esa clase con precio y porcentaje" — se agrupa a la
+  // vez por tipo y, dentro de cada tipo, por producto exacto.
+  const foodTypeProductTotals = new Map<string, Map<string, { name: string; total: number }>>()
   for (const pr of periodFoodPrices) {
-    const name = productById.get(pr.productId)?.displayName ?? ''
+    const name = productById.get(pr.productId)?.displayName ?? '?'
     const type = classifyFoodType(name)
     const qty = Number(pr.quantity)
     const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
-    const entry = foodTypeTotals.get(type.key) ?? { total: 0, count: 0 }
+    const byProduct = foodTypeProductTotals.get(type.key) ?? new Map<string, { name: string; total: number }>()
+    const entry = byProduct.get(pr.productId) ?? { name, total: 0 }
     entry.total += amount
-    entry.count += 1
-    foodTypeTotals.set(type.key, entry)
+    byProduct.set(pr.productId, entry)
+    foodTypeProductTotals.set(type.key, byProduct)
   }
-  const foodTypePieGroups: BreakdownSlice[] = FOOD_TYPES.filter((t) => foodTypeTotals.has(t.key))
+  const foodTypeBreakdown = FOOD_TYPES.filter((t) => foodTypeProductTotals.has(t.key))
     .map((t) => {
-      const entry = foodTypeTotals.get(t.key)!
-      return { key: t.key, label: t.label, icon: t.icon, total: entry.total, count: entry.count }
+      const byProduct = foodTypeProductTotals.get(t.key)!
+      const productList = [...byProduct.entries()]
+        .map(([productId, p]) => ({ productId, name: p.name, total: p.total }))
+        .sort((a, b) => b.total - a.total)
+      const total = productList.reduce((sum, p) => sum + p.total, 0)
+      return { key: t.key, label: t.label, icon: t.icon, total, count: productList.length, products: productList }
     })
     .sort((a, b) => b.total - a.total)
+  const foodTypePieGroups: BreakdownSlice[] = foodTypeBreakdown.map((t) => ({
+    key: t.key,
+    label: t.label,
+    icon: t.icon,
+    total: t.total,
+    count: t.count,
+  }))
   // Mismo enlace "Ver movimientos →" para el dónut por tienda — cada
   // grupo ya trae sus propios tickets (groupReceiptsByStore), de ahí
   // se sacan los ids de gasto reales.
@@ -5771,7 +5867,14 @@ export function BudgetsTab({
         <StorePieChart groups={categoryPieSlices} monthLabel={periodTitle} title="Reparto del gasto por categoría" />
       )}
       {group === 'alimentacion' && (
-        <LinkedDonutCard title="Reparto del gasto por tipo de alimento" monthLabel={periodTitle} slices={foodTypePieGroups} />
+        <>
+          <LinkedDonutCard title="Reparto del gasto por tipo de alimento" monthLabel={periodTitle} slices={foodTypePieGroups} />
+          <FoodTypeBreakdownList
+            types={foodTypeBreakdown}
+            expandedKey={expandedFoodType}
+            onToggle={(key) => setExpandedFoodType((prev) => (prev === key ? null : key))}
+          />
+        </>
       )}
       {group === 'alimentacion' && (
         <LinkedDonutCard

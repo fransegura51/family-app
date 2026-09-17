@@ -33,6 +33,50 @@ export const FOOD_TYPES: FoodType[] = [
 
 const OTROS: FoodType = FOOD_TYPES[FOOD_TYPES.length - 1]
 
+// Clases de fábrica para "Otros" (todo lo que no es comida: ropa,
+// electrónica, limpieza...) — petición real: "reestructuramos la
+// creación de clases y la hacemos para todos los productos, misma
+// separación por un botón Alimentos y Otros". A diferencia de
+// FOOD_TYPES, no hay ningún classifyFoodType equivalente para estas
+// (es un catálogo demasiado heterogéneo para adivinar por palabra
+// clave con fiabilidad) — se eligen siempre a mano, nunca solas.
+export const NO_FOOD_TYPES: FoodType[] = [
+  { key: 'ropa', label: 'Ropa y calzado', icon: '👕' },
+  { key: 'electronica', label: 'Electrónica y hogar', icon: '📺' },
+  { key: 'limpieza', label: 'Limpieza del hogar', icon: '🧽' },
+  { key: 'papeleria', label: 'Papelería y oficina', icon: '📓' },
+  { key: 'juguetes', label: 'Juguetes', icon: '🧸' },
+  { key: 'mascotas', label: 'Mascotas', icon: '🐾' },
+  { key: 'bricolaje', label: 'Ferretería y bricolaje', icon: '🔧' },
+  { key: 'cuidado_personal', label: 'Cuidado personal', icon: '🧴' },
+  { key: 'salud', label: 'Farmacia y salud', icon: '💊' },
+  { key: 'otros_no_alimentos', label: 'Otros', icon: '🛍️' },
+]
+
+// Petición real: "de paso si puedes poner una gama más amplia de
+// emojis estaría bien" — para elegir el icono de una clase (nueva o
+// editada) sin depender de que el teclado de emoji del móvil esté a
+// mano. No pretende ser exhaustivo, solo cubrir bien comida y compras
+// no-alimentos a la vez.
+export const ICON_CHOICES: string[] = [
+  '🍎', '🍌', '🍊', '🍇', '🍓', '🍍', '🥝', '🍑', '🍉', '🥭',
+  '🥦', '🥕', '🥔', '🍅', '🥒', '🧄', '🧅', '🌽', '🥬', '🍄',
+  '🥩', '🍗', '🥓', '🌭', '🍔', '🍕', '🥚', '🧀', '🥛', '🧈',
+  '🐟', '🍤', '🦐', '🦀', '🦑', '🐙',
+  '🍞', '🥐', '🥖', '🧁', '🍰', '🍩', '🍪', '🍫', '🍬', '🍭',
+  '🥤', '☕', '🍵', '🍺', '🍷', '🥂', '🧃', '💧',
+  '🧊', '🥫', '🍚', '🍝', '🫒', '🧂',
+  '🛍️', '👕', '👖', '👗', '👟', '🧦', '🧣', '👜',
+  '📺', '💻', '📱', '🔌', '💡', '🔋',
+  '🧽', '🧴', '🧻', '🧹', '🪥', '🧼',
+  '📓', '✏️', '📎', '🖊️',
+  '🧸', '🎲', '⚽', '🎈',
+  '🐾', '🦴',
+  '🔧', '🔨', '🪛', '🔩',
+  '💊', '🩹', '💅', '🪒',
+  '🎁', '🌸', '🕯️', '🍽️',
+]
+
 // Orden de comprobación = prioridad: "bebidas" y "zero" se miran antes
 // que "fruta" para que "Naranja Zero" (refresco) no caiga en Fruta
 // solo por llevar "naranja" en el nombre.

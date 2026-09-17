@@ -5520,7 +5520,7 @@ export function BudgetsTab({
       listFamilyMembers(),
       group === 'alimentacion' ? listAllProductPrices() : Promise.resolve([]),
       group === 'alimentacion' ? listProducts() : Promise.resolve([]),
-      group === 'alimentacion' ? listFamilyFoodTypes() : Promise.resolve([]),
+      group === 'alimentacion' ? listFamilyFoodTypes('alimentacion') : Promise.resolve([]),
     ])
       .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, types]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías

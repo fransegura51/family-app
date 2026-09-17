@@ -1129,6 +1129,26 @@ select {
   }
 }
 
+/* Petición real: "quiero también un estilo metalizado para las
+   letras" — banda de brillo plateado (gris oscuro/gris claro/blanco)
+   en vez de color, que se desliza como un reflejo real sobre metal
+   pulido. */
+.invitation-metallic-text {
+  background-image: linear-gradient(100deg, #6e6e73, #f5f5f7, #8e8e93, #ffffff, #5a5a5e, #d1d1d6, #6e6e73);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: invitation-glitter-shimmer 5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .invitation-metallic-text {
+    animation: none;
+  }
+}
+
 /* Selector de plantilla de invitación — con ~96 temas, una fila de
    chips que se envuelve obliga a repasarlos todos. En su lugar, un
    botón abre una rueda horizontal de miniaturas que se desliza con el

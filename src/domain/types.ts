@@ -813,7 +813,7 @@ export interface EventDayPlanItem {
 // el diseño, solo qué líneas de ubicación se muestran al compartir.
 export type InvitationLayerType = 'background' | 'shape' | 'photo' | 'text' | 'emoji' | 'event_data'
 
-export type InvitationTextStyle = 'normal' | '3d' | 'sparkle' | 'rainbow_static' | 'rainbow_animated' | 'iridescent'
+export type InvitationTextStyle = 'normal' | '3d' | 'sparkle' | 'rainbow_static' | 'rainbow_animated' | 'iridescent' | 'metallic'
 
 export interface InvitationLayer {
   id: string

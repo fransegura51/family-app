@@ -2989,6 +2989,7 @@ function text3dShadow(color: string): string {
 
 const RAINBOW_STOPS = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#AF52DE', '#FF3B30']
 const IRIDESCENT_STOPS = ['#FFD1E8', '#C9F0FF', '#E0C9FF', '#FFF3C4', '#C9FFE0', '#FFD1E8']
+const METALLIC_STOPS = ['#6E6E73', '#F5F5F7', '#8E8E93', '#FFFFFF', '#5A5A5E', '#D1D1D6', '#6E6E73']
 
 // Estilo → clase CSS (relleno plano, capa "text"/"event_data" sin
 // curvar) — ver .invitation-*-text en styles.css para cada animación.
@@ -2997,6 +2998,7 @@ const TEXT_STYLE_CLASS: Partial<Record<InvitationTextStyle, string>> = {
   rainbow_static: 'invitation-rainbow-static-text',
   rainbow_animated: 'invitation-rainbow-animated-text',
   iridescent: 'invitation-iridescent-text',
+  metallic: 'invitation-metallic-text',
 }
 
 // Mismos estilos que TEXT_STYLE_CLASS pero para la variante curvada
@@ -3018,8 +3020,8 @@ function TextGradientDef({ id, style, color }: { id: string; style: InvitationTe
     )
   }
   const isRainbow = style === 'rainbow_static' || style === 'rainbow_animated'
-  const stops = isRainbow ? RAINBOW_STOPS : IRIDESCENT_STOPS
-  const animated = style === 'rainbow_animated' || style === 'iridescent'
+  const stops = isRainbow ? RAINBOW_STOPS : style === 'metallic' ? METALLIC_STOPS : IRIDESCENT_STOPS
+  const animated = style === 'rainbow_animated' || style === 'iridescent' || style === 'metallic'
   return (
     <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
       {stops.map((c, i) => (
@@ -3905,6 +3907,7 @@ const TEXT_STYLE_OPTIONS: { value: InvitationTextStyle; label: string }[] = [
   { value: 'rainbow_static', label: '🌈 Arcoíris fijo' },
   { value: 'rainbow_animated', label: '🌈 Arcoíris animado' },
   { value: 'iridescent', label: '🌟 Iridiscente' },
+  { value: 'metallic', label: '🥈 Metalizado' },
 ]
 
 interface DragState {

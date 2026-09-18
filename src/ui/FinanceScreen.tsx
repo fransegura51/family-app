@@ -2559,6 +2559,16 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   const [tags, setTags] = useState<Tag[]>([])
   const [purchases, setPurchases] = useState<RawPurchase[]>([])
   const [productNames, setProductNames] = useState<Map<string, string>>(new Map())
+  // Petición real: "no me gusta que no cuadren Alimentación en Economía
+  // y en Compras... es por los productos no alimenticios que se compran
+  // en supermercados" — sin tocar la taxonomía de categorías (ver
+  // opinión: el desajuste es correcto, mide dos niveles distintos),
+  // solo se explica: cuánto del total "Alimentación" de este dónut es
+  // en realidad producto no-alimenticio según sus tickets, calculado
+  // igual que en Estadística compras (ver BudgetsTab).
+  const [allPrices, setAllPrices] = useState<ProductPrice[]>([])
+  const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [allReceipts, setAllReceipts] = useState<Receipt[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
@@ -2582,6 +2592,9 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         setCategories(c)
         setTags(t)
         setMonthStartDay(monthStart)
+        setAllPrices(prices)
+        setAllProducts(products)
+        setAllReceipts(receipts)
         const foodReceiptIds = buildFoodReceiptIds(receipts, c)
         const nonFoodProductIds = new Set(products.filter((pr) => pr.nonFood).map((pr) => pr.id))
         setPurchases(
@@ -2615,6 +2628,28 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
     (e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories) && e.expenseDate >= from && e.expenseDate <= to,
   )
   const totalReal = real.reduce((s, e) => s + e.amount, 0)
+
+  // Cuánto del total "Alimentación" de este periodo es, según sus
+  // propios tickets, producto NO alimenticio (mismo criterio que
+  // Estadística compras: nonFood del producto, o Amazon fuera de
+  // Alimentación) — solo para explicar por qué esta cifra no cuadra con
+  // el "🛒 Alimentación" de Compras, sin tener que fusionar categorías.
+  const alimentacionNonFoodReceiptIds = buildFoodReceiptIds(allReceipts, categories)
+  const alimentacionNonFoodProductIds = new Set(allProducts.filter((p) => p.nonFood).map((p) => p.id))
+  const receiptByExpenseId = new Map(allReceipts.filter((r) => r.expenseId).map((r) => [r.expenseId as string, r]))
+  const alimentacionHiddenNonFood = real
+    .filter((e) => isFoodCategory(e.category, categories))
+    .reduce((sum, e) => {
+      const receipt = receiptByExpenseId.get(e.id)
+      if (!receipt) return sum
+      const nonFoodTotal = allPrices
+        .filter((p) => p.receiptId === receipt.id && !isFoodPurchase(p, alimentacionNonFoodReceiptIds, alimentacionNonFoodProductIds))
+        .reduce((s, p) => {
+          const qty = Number(p.quantity)
+          return s + p.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
+        }, 0)
+      return sum + nonFoodTotal
+    }, 0)
 
   function viewFor(extra: Partial<MovementsFilter>, label: string) {
     onViewMovements({ label, from, to, isIncome: false, ...extra })
@@ -2734,6 +2769,13 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         <strong>Gastos — {periodLabel}</strong>
         <p style={{ margin: '4px 0' }}>{totalReal.toFixed(2)} €</p>
         {body}
+        {view === 'categorias' && alimentacionHiddenNonFood > 0.005 && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            ℹ️ {alimentacionHiddenNonFood.toFixed(2)} € de "Alimentación" son, según tus tickets, producto no
+            alimenticio (p. ej. un champú comprado en el súper) — por eso no cuadra con el total de Compras →
+            Estadística compras, que sí lo cuenta como "Otros".
+          </p>
+        )}
       </div>
 
       <EvolucionTemporal expenses={expenses} monthStartDay={monthStartDay} onViewMovements={onViewMovements} />

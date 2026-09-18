@@ -16,6 +16,7 @@ import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
 import agendaBg from '@/assets/home/agenda-background.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { pastelPalette } from '@/domain/colors'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -34,30 +35,37 @@ interface HomeCardDef {
 // el usuario: se renombró "Alimentación" a "La cocina de Pepa" en
 // navTabs.ts, pero esta pantalla seguía diciendo "Alimentación" porque
 // tenía su propia copia del nombre, sin actualizar. Solo lo que de
-// verdad es propio de esta pantalla (la frase corta y el color de
-// fondo) vive en este mapa.
-const HOME_CARD_EXTRAS: Record<string, { body: string; color: string }> = {
-  familia: { body: 'Miembros y perfiles', color: '#ffe3d6' },
-  calendario: { body: 'Eventos de hoy', color: '#dbeafe' },
-  eventos: { body: 'Cumpleaños, comuniones y más', color: '#fce7f3' },
-  puntos: { body: 'Recompensas de la familia', color: '#dcfce7' },
-  compras: { body: 'Lista actual', color: '#fef3c7' },
-  alimentacion: { body: 'Menú, registro y peso', color: '#d1fae5' },
-  dinero: { body: 'Resumen del mes', color: '#dcfce7' },
-  ubicacion: { body: 'Opcional, desactivado por defecto', color: '#e0e7ff' },
-  cumpleanos: { body: 'Próximos en la familia', color: '#fed7aa' },
-  contactos: { body: 'Colegio, médico, emergencias', color: '#ede9fe' },
-  galeria: { body: 'Fotos de la familia', color: '#fef9c3' },
-  documentos: { body: 'Por cada miembro', color: '#dbeafe' },
+// verdad es propio de esta pantalla (la frase corta) vive en este mapa
+// — el color ya no se elige a mano por tarjeta (petición real: "las
+// tarjetas... que sean de los colores del arcoíris y que no se repita
+// ninguno" — dos colores coincidían de verdad, dinero/puntos en el
+// mismo verde y calendario/documentos en el mismo azul).
+const HOME_CARD_BODY: Record<string, string> = {
+  familia: 'Miembros y perfiles',
+  calendario: 'Eventos de hoy',
+  eventos: 'Cumpleaños, comuniones y más',
+  puntos: 'Recompensas de la familia',
+  compras: 'Lista actual',
+  alimentacion: 'Menú, registro y peso',
+  dinero: 'Resumen del mes',
+  ubicacion: 'Opcional, desactivado por defecto',
+  cumpleanos: 'Próximos en la familia',
+  contactos: 'Colegio, médico, emergencias',
+  galeria: 'Fotos de la familia',
+  documentos: 'Por cada miembro',
 }
 
-const HOME_CARDS: HomeCardDef[] = NAV_TABS.filter((t) => t.to !== '/')
-  .map((t) => {
-    const id = navSectionId(t)
-    const extra = HOME_CARD_EXTRAS[id]
-    return extra ? { id, title: t.label, body: extra.body, to: t.to, icon: t.icon, color: extra.color } : null
-  })
-  .filter((c): c is HomeCardDef => c !== null)
+const HOME_CARDS: HomeCardDef[] = (() => {
+  const withoutColor = NAV_TABS.filter((t) => t.to !== '/')
+    .map((t) => {
+      const id = navSectionId(t)
+      const body = HOME_CARD_BODY[id]
+      return body ? { id, title: t.label, body, to: t.to, icon: t.icon } : null
+    })
+    .filter((c): c is Omit<HomeCardDef, 'color'> => c !== null)
+  const palette = pastelPalette(withoutColor.length)
+  return withoutColor.map((c, i) => ({ ...c, color: palette[i] }))
+})()
 const HOME_CARDS_BY_ID = new Map(HOME_CARDS.map((c) => [c.id, c]))
 
 // Junta el orden guardado con las tarjetas que existan de verdad hoy —

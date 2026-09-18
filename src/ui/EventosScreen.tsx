@@ -1,4 +1,5 @@
 import { ChangeEvent, type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import {
   addEventActivity,
@@ -86,6 +87,7 @@ import {
   buildMapsUrl,
   CELEBRATION_SUBTYPES,
   computeEventConclusions,
+  daysUntil,
   DUAL_LOCATION_EVENT_TYPES,
   type EventConclusion as EventConclusionType,
   EVENT_MODULES,
@@ -101,9 +103,12 @@ import {
   type InvitationTemplateMeta,
   isToday,
   makeInvitationLayer,
+  rankUpcomingTasks,
   RECOMMENDED_MODULES,
   sortInvitationTemplatesForEvent,
 } from '@/domain/events'
+import { pastelPalette } from '@/domain/colors'
+import { listShoppingItems } from '@/data/shopping'
 import type {
   EventActivity,
   EventBudgetItem,
@@ -124,6 +129,7 @@ import type {
   EventTemplate,
   EventType,
   FamilyEvent,
+  ShoppingItem,
   InvitationCanvas,
   InvitationLayer,
   InvitationTextStyle,
@@ -146,35 +152,6 @@ const DATE_STATUS_OPTIONS: { value: FamilyEvent['dateStatus']; label: string }[]
   { value: 'provisional', label: 'Fecha provisional' },
   { value: 'confirmada', label: 'Fecha confirmada' },
 ]
-
-const MODULE_GROUPS: { title: string; keys: EventModuleKey[] }[] = [
-  { title: 'Organización', keys: ['invitados', 'tareas', 'ceremonia', 'mesas', 'proveedores', 'plan_dia'] },
-  { title: 'Dinero y necesidades', keys: ['presupuesto', 'pagos', 'menu_compra', 'detalles'] },
-  { title: 'Celebración', keys: ['invitaciones', 'decoracion', 'actividades', 'regalos'] },
-]
-
-// Módulos con sección funcional propia ya construida — el resto se
-// queda como chip "próximamente" dentro de su grupo.
-const READY_MODULE_KEYS = new Set<EventModuleKey>([
-  'tareas',
-  'invitados',
-  // Invitaciones/RSVP no tiene sección propia aparte — el botón "💌
-  // Invitación" de cada invitado (dentro de Invitados) ya cubre la
-  // Fase 2 completa (plantilla, autorrelleno, compartir, enlace de
-  // RSVP público, recordatorio a pendientes).
-  'invitaciones',
-  'presupuesto',
-  'menu_compra',
-  'proveedores',
-  'pagos',
-  'ceremonia',
-  'decoracion',
-  'actividades',
-  'mesas',
-  'detalles',
-  'regalos',
-  'plan_dia',
-])
 
 // Ceremonia (dos ubicaciones) solo tiene sentido en estos tipos —
 // aunque el módulo esté activado, en otros tipos no se muestra.
@@ -508,6 +485,15 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
   )
 }
 
+// Petición real: "reorganizar Eventos con este aspecto o similar" —
+// antes EventDetail apilaba las 12+ secciones de un evento, todas
+// visibles a la vez, en una sola página larguísima. Ahora es un
+// dashboard compacto (cabecera con cuenta atrás, "Preparación del
+// evento", "Pepa te recomienda" con las tareas más urgentes, y una
+// rejilla de tarjetas — una por módulo activado) y cada tarjeta abre
+// SU sección a pantalla completa (openModule) en vez de tenerlas todas
+// desplegadas. Los 12 componentes de sección de abajo (GuestsSection,
+// BudgetSection...) no cambian nada por dentro, solo CUÁNDO se montan.
 function EventDetail({
   event,
   onBack,
@@ -529,6 +515,8 @@ function EventDetail({
   const [showPlan, setShowPlan] = useState(false)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [showEndSummary, setShowEndSummary] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const [openModule, setOpenModule] = useState<EventModuleKey | 'compras' | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [linkingCalendar, setLinkingCalendar] = useState(false)
@@ -597,27 +585,298 @@ function EventDetail({
     }
   }
 
+  // ---------------------------------------------------------------
+  // Datos "de un vistazo" para el dashboard — una carga ligera propia,
+  // aparte de la que hace cada sección al abrirse (mismo patrón que ya
+  // usan PepaConclusions/BudgetSection/EndSummaryModal, cada una con
+  // su propio fetch independiente en vez de compartir un estado
+  // central). Cada lista solo se pide si el módulo correspondiente
+  // está activado en ESTE evento.
+  // ---------------------------------------------------------------
+  const [guests, setGuests] = useState<EventGuest[]>([])
+  const [budgetItems, setBudgetItems] = useState<EventBudgetItem[]>([])
+  const [budgetSpent, setBudgetSpent] = useState<number | null>(null)
+  const [menuItems, setMenuItems] = useState<EventMenuItem[]>([])
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([])
+  const [decorationItems, setDecorationItems] = useState<EventDecorationItem[]>([])
+  const [activities, setActivities] = useState<EventActivity[]>([])
+  const [tables, setTables] = useState<EventTableSeat[]>([])
+  const [providers, setProviders] = useState<EventProvider[]>([])
+  const [payments, setPayments] = useState<EventPayment[]>([])
+  const [favorItems, setFavorItems] = useState<EventFavorItem[]>([])
+  const [specialDetails, setSpecialDetails] = useState<EventSpecialDetail[]>([])
+  const [gifts, setGifts] = useState<EventGiftReceived[]>([])
+  const [dayPlan, setDayPlan] = useState<EventDayPlanItem[]>([])
+
+  function reloadDashboardStats() {
+    const has = (k: EventModuleKey) => event.enabledModules.includes(k)
+    if (has('invitados')) listEventGuests(event.id).then(setGuests).catch(() => {})
+    if (has('presupuesto')) {
+      listEventBudgetItems(event.id).then(setBudgetItems).catch(() => {})
+      if (event.tagId) {
+        Promise.all([listExpenses(), listBudgetCategories()])
+          .then(([expenses, categories]) =>
+            setBudgetSpent(
+              expenses
+                .filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories))
+                .reduce((sum, e) => sum + e.amount, 0),
+            ),
+          )
+          .catch(() => setBudgetSpent(null))
+      }
+    }
+    if (has('menu_compra')) {
+      listEventMenuItems(event.id).then(setMenuItems).catch(() => {})
+      listShoppingItems()
+        .then((items) => setShoppingItems(items.filter((i) => i.eventId === event.id)))
+        .catch(() => {})
+    }
+    if (has('decoracion')) listEventDecorationItems(event.id).then(setDecorationItems).catch(() => {})
+    if (has('actividades')) listEventActivities(event.id).then(setActivities).catch(() => {})
+    if (has('mesas')) listEventTables(event.id).then(setTables).catch(() => {})
+    if (has('proveedores')) listEventProviders(event.id).then(setProviders).catch(() => {})
+    if (has('pagos')) listEventPayments(event.id).then(setPayments).catch(() => {})
+    if (has('detalles')) {
+      listEventFavorItems(event.id).then(setFavorItems).catch(() => {})
+      listEventSpecialDetails(event.id).then(setSpecialDetails).catch(() => {})
+    }
+    if (has('regalos')) listEventGifts(event.id).then(setGifts).catch(() => {})
+    if (has('plan_dia')) listEventDayPlan(event.id).then(setDayPlan).catch(() => {})
+  }
+  useEffect(reloadDashboardStats, [event.id, event.enabledModules, event.tagId, refreshKey])
+
+  // "Preparación del evento" — media de tareas completadas% e
+  // invitados confirmados% (los dos indicadores de "cuánto queda por
+  // hacer" de verdad); el presupuesto se enseña aparte, como cifra
+  // informativa — gastar más no es "estar más preparado".
+  const hasGuestsModule = event.enabledModules.includes('invitados')
+  const hasBudgetModule = event.enabledModules.includes('presupuesto')
+  const taskDoneCount = tasks.filter((t) => t.done).length
+  const taskPct = tasks.length > 0 ? (taskDoneCount / tasks.length) * 100 : null
+  const guestTotalPeople = guests.reduce((sum, g) => sum + g.adultsCount + g.childrenCount, 0)
+  const guestConfirmedPeople = guests
+    .filter((g) => g.rsvpStatus === 'confirmado')
+    .reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0)
+  const guestPct = guestTotalPeople > 0 ? (guestConfirmedPeople / guestTotalPeople) * 100 : null
+  const readinessParts = [taskPct, guestPct].filter((p): p is number => p !== null)
+  const readinessPct = readinessParts.length > 0 ? Math.round(readinessParts.reduce((sum, p) => sum + p, 0) / readinessParts.length) : null
+  const budgetPlanned = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
+
+  // "Pepa te recomienda" — hasta 3 tareas pendientes, vencidas primero
+  // y luego las más próximas (rankUpcomingTasks, domain/events.ts).
+  const upcomingTasks = rankUpcomingTasks(tasks).slice(0, 3)
+
+  // Cuenta atrás — solo si hay fecha puesta (un evento "pendiente" sin
+  // fecha no tiene nada que contar).
+  const daysToEvent = event.eventDate ? daysUntil(event.eventDate) : null
+
+  // Rejilla de tarjetas: una por módulo activado con sección propia —
+  // "invitaciones" no tiene sección aparte (el botón 💌 de cada
+  // invitado, dentro de Invitados, ya la cubre entera) y "ceremonia"
+  // solo aplica a los tipos con dos ubicaciones (Comunión/Bautizo/
+  // Boda). "Compras" es una clave propia (no un EventModuleKey real)
+  // ligada al mismo módulo que "Menú y compra": las dos aparecen o
+  // desaparecen juntas.
+  interface ModuleCardDef {
+    key: EventModuleKey | 'compras'
+    icon: string
+    label: string
+    stat: string
+  }
+  const moduleCards: ModuleCardDef[] = []
+  for (const mod of EVENT_MODULES) {
+    if (!event.enabledModules.includes(mod.key)) continue
+    if (mod.key === 'invitaciones') continue
+    if (mod.key === 'ceremonia' && !DUAL_LOCATION_EVENT_TYPES.includes(event.type)) continue
+    let stat = ''
+    switch (mod.key) {
+      case 'tareas':
+        stat = tasks.length > 0 ? `${taskDoneCount} de ${tasks.length} completadas` : 'Sin tareas'
+        break
+      case 'invitados':
+        stat = guests.length > 0 ? `${guestTotalPeople} personas · ${guestConfirmedPeople} confirmadas` : 'Sin invitados'
+        break
+      case 'presupuesto':
+        stat = budgetSpent !== null ? `${budgetSpent.toFixed(2)} € de ${budgetPlanned.toFixed(2)} €` : `Planeado: ${budgetPlanned.toFixed(2)} €`
+        break
+      case 'menu_compra': {
+        const pending = menuItems.filter((i) => !i.transferred).length
+        stat = menuItems.length === 0 ? 'Sin elementos' : pending > 0 ? `${pending} sin traspasar` : 'Todo traspasado'
+        break
+      }
+      case 'decoracion': {
+        const comprados = decorationItems.filter((i) => i.status === 'comprado').length
+        stat = decorationItems.length === 0 ? 'Sin ideas' : `${decorationItems.length} ideas · ${comprados} compradas`
+        break
+      }
+      case 'actividades':
+        stat = activities.length > 0 ? `${activities.length} preparadas` : 'Sin actividades'
+        break
+      case 'mesas':
+        stat = tables.length > 0 ? `${tables.length} mesas` : 'Sin mesas'
+        break
+      case 'ceremonia':
+        stat = 'Toca para configurar'
+        break
+      case 'proveedores':
+        stat = providers.length > 0 ? `${providers.length} proveedores` : 'Sin proveedores'
+        break
+      case 'pagos': {
+        const pending = payments.filter((p) => p.status !== 'pagado').length
+        stat = payments.length === 0 ? 'Sin pagos' : pending > 0 ? `${pending} pendientes` : 'Todo pagado'
+        break
+      }
+      case 'detalles': {
+        const count = favorItems.length + specialDetails.length
+        stat = count > 0 ? `${count} detalles` : 'Sin detalles'
+        break
+      }
+      case 'regalos':
+        stat = gifts.length > 0 ? `${gifts.length} registrados` : 'Sin regalos'
+        break
+      case 'plan_dia':
+        stat = dayPlan.length > 0 ? `${dayPlan.length} momentos planeados` : 'Sin preparar'
+        break
+    }
+    moduleCards.push({ key: mod.key, icon: mod.icon, label: mod.label, stat })
+    if (mod.key === 'menu_compra') {
+      const pendingShopping = shoppingItems.filter((i) => i.status === 'pendiente').length
+      moduleCards.push({
+        key: 'compras',
+        icon: '🛍️',
+        label: 'Compras',
+        stat: shoppingItems.length === 0 ? 'Nada pendiente' : pendingShopping > 0 ? `${pendingShopping} pendientes` : 'Todo comprado',
+      })
+    }
+  }
+  const cardColors = pastelPalette(moduleCards.length)
+
+  function renderOpenModule() {
+    switch (openModule) {
+      case 'tareas':
+        return (
+          <div className="card event-card">
+            <strong>{EVENT_MODULES.find((m) => m.key === 'tareas')?.icon} Preparativos</strong>
+            {pendingTasks.length === 0 && <p className="muted">No hay nada pendiente.</p>}
+            <div className="event-list">
+              {visibleTasks.map((t) => (
+                <div key={t.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                  <input type="checkbox" checked={t.done} onChange={() => updateEventTask(t.id, { done: true }).then(reloadTasks)} />
+                  <span style={{ flex: 1 }}>
+                    {t.title}
+                    {t.dueDate ? ` · ${t.dueDate}` : ''}
+                  </span>
+                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar tarea" onConfirm={() => deleteEventTask(t.id).then(reloadTasks)} />
+                </div>
+              ))}
+            </div>
+            {pendingTasks.length > 5 && (
+              <button type="button" className="link-button" onClick={() => setShowAllTasks((v) => !v)}>
+                {showAllTasks ? 'Ver menos' : `Ver todas (${pendingTasks.length})`}
+              </button>
+            )}
+            <form onSubmit={handleAddTask} className="inline-fields" style={{ marginTop: 8 }}>
+              <input type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="+ Añadir tarea" style={{ flex: 1 }} />
+              <button type="submit">Añadir</button>
+            </form>
+          </div>
+        )
+      case 'ceremonia':
+        return <CeremoniaSection key={`ceremonia-${refreshKey}`} event={event} onChanged={onChanged} />
+      case 'invitados':
+        return <GuestsSection key={`invitados-${refreshKey}`} event={event} />
+      case 'mesas':
+        return <TablesSection key={`mesas-${refreshKey}`} event={event} />
+      case 'presupuesto':
+        return <BudgetSection key={`presupuesto-${refreshKey}`} event={event} />
+      case 'menu_compra':
+        return <MenuSection key={`menu-${refreshKey}`} eventId={event.id} />
+      case 'compras':
+        return <EventShoppingSection items={shoppingItems} />
+      case 'decoracion':
+        return <DecorationSection key={`decoracion-${refreshKey}`} eventId={event.id} />
+      case 'actividades':
+        return <ActivitiesSection key={`actividades-${refreshKey}`} eventId={event.id} />
+      case 'proveedores':
+        return <ProvidersSection eventId={event.id} />
+      case 'pagos':
+        return <PaymentsSection event={event} />
+      case 'detalles':
+        return <DetailsSection eventId={event.id} />
+      case 'regalos':
+        return <GiftsSection eventId={event.id} />
+      case 'plan_dia':
+        return <DayPlanSection eventId={event.id} />
+      default:
+        return null
+    }
+  }
+
+  if (openModule !== null) {
+    return (
+      <div>
+        <button type="button" className="link-button" onClick={() => setOpenModule(null)}>
+          ‹ {EVENT_TYPE_META[event.type].icon} {event.title}
+        </button>
+        {error && <p className="error">{error}</p>}
+        <div style={{ marginTop: 8 }}>{renderOpenModule()}</div>
+      </div>
+    )
+  }
+
   return (
     <div>
-      <button type="button" className="link-button" onClick={onBack}>
-        ← Todos los eventos
-      </button>
-      {error && <p className="error">{error}</p>}
-
-      <div className="card event-card" style={{ marginTop: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <strong style={{ fontSize: 18 }}>
-            {EVENT_TYPE_META[event.type].icon} {event.title}
-          </strong>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button type="button" className="link-button" onClick={onBack}>
+          ← Todos los eventos
+        </button>
+        <div className="filter-row" style={{ gap: 4 }}>
           <button type="button" className="link-button" onClick={() => setShowEdit(true)}>
             Editar
           </button>
+          <button type="button" className="link-button" onClick={() => setShowMoreMenu(true)} aria-label="Más opciones">
+            •••
+          </button>
         </div>
-        <p className="muted" style={{ margin: '4px 0 0' }}>
-          {eventDateLabel(event)}
-          {event.venueLabel ? ` · ${event.venueLabel}` : ''}
-        </p>
-        {event.status === 'archivado' && <p className="muted">📦 Archivado</p>}
+      </div>
+      {error && <p className="error">{error}</p>}
+
+      <div className="card event-card event-hero-card" style={{ marginTop: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <strong style={{ fontSize: 18 }}>
+              {EVENT_TYPE_META[event.type].icon} {event.title}
+            </strong>
+            <p className="muted" style={{ margin: '4px 0 0' }}>
+              {eventDateLabel(event)}
+              {event.venueLabel ? ` · ${event.venueLabel}` : ''}
+            </p>
+            {event.status === 'archivado' && <p className="muted">📦 Archivado</p>}
+          </div>
+          {/* Petición real: cuenta atrás "30 días para celebrarlo" junto
+              al título — solo tiene sentido con fecha puesta y evento
+              todavía en marcha. */}
+          {event.status === 'planificacion' && daysToEvent !== null && (
+            <div className="event-countdown">
+              {daysToEvent > 0 ? (
+                <>
+                  <strong className="event-countdown-number">{daysToEvent}</strong>
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    días para celebrarlo 🎉
+                  </span>
+                </>
+              ) : daysToEvent === 0 ? (
+                <strong className="event-countdown-number" style={{ fontSize: 22 }}>
+                  ¡Hoy! 🎉
+                </strong>
+              ) : (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  Ya pasó
+                </span>
+              )}
+            </div>
+          )}
+        </div>
         {/* Petición de la Skill: nunca crear un compromiso firme en
             Calendario mientras la fecha no esté confirmada, y siempre
             como acción explícita del usuario, no automática. */}
@@ -645,69 +904,92 @@ function EventDetail({
       {event.status === 'planificacion' && event.dateStatus === 'confirmada' && isToday(event.eventDate) && <EventDayBanner event={event} />}
       {event.status === 'planificacion' && <PepaConclusions event={event} />}
 
-      {hasTasksModule && (
+      {/* "Preparación del evento" — petición real: rediseño del
+          dashboard, con la referencia de otra app de planificación de
+          fiestas ("mantendría nuestros iconos habituales pero lo demás
+          me gusta mucho"). */}
+      {readinessPct !== null && (
         <div className="card event-card" style={{ marginTop: 8 }}>
-          <strong>Pendiente ahora</strong>
-          {pendingTasks.length === 0 && <p className="muted">No hay nada pendiente.</p>}
-          <div className="event-list">
-            {visibleTasks.map((t) => (
-              <div key={t.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                <input type="checkbox" checked={t.done} onChange={() => updateEventTask(t.id, { done: true }).then(reloadTasks)} />
-                <span style={{ flex: 1 }}>
-                  {t.title}
-                  {t.dueDate ? ` · ${t.dueDate}` : ''}
-                </span>
-                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar tarea" onConfirm={() => deleteEventTask(t.id).then(reloadTasks)} />
-              </div>
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>Preparación del evento</strong>
+            <strong>{readinessPct} %</strong>
           </div>
-          {pendingTasks.length > 5 && (
-            <button type="button" className="link-button" onClick={() => setShowAllTasks((v) => !v)}>
-              {showAllTasks ? 'Ver menos' : `Ver todas (${pendingTasks.length})`}
-            </button>
-          )}
-          <form onSubmit={handleAddTask} className="inline-fields" style={{ marginTop: 8 }}>
-            <input type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="+ Añadir tarea" style={{ flex: 1 }} />
-            <button type="submit">Añadir</button>
-          </form>
+          <div className="progress-bar" style={{ marginTop: 6 }}>
+            <div className="progress-bar-fill" style={{ width: `${readinessPct}%` }} />
+          </div>
+          <div className="event-readiness-stats">
+            {hasTasksModule && tasks.length > 0 && (
+              <div>
+                <strong>
+                  {taskDoneCount} de {tasks.length}
+                </strong>
+                <span className="muted"> tareas completadas</span>
+              </div>
+            )}
+            {hasGuestsModule && guests.length > 0 && (
+              <div>
+                <strong>
+                  {guestConfirmedPeople} de {guestTotalPeople}
+                </strong>
+                <span className="muted"> invitados confirmados</span>
+              </div>
+            )}
+            {hasBudgetModule && budgetSpent !== null && (
+              <div>
+                <strong>{budgetSpent.toFixed(2)} €</strong>
+                <span className="muted"> de {budgetPlanned.toFixed(2)} €</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {event.enabledModules.includes('ceremonia') && DUAL_LOCATION_EVENT_TYPES.includes(event.type) && (
-        <CeremoniaSection key={`ceremonia-${refreshKey}`} event={event} onChanged={onChanged} />
-      )}
-      {event.enabledModules.includes('invitados') && <GuestsSection key={`invitados-${refreshKey}`} event={event} />}
-      {event.enabledModules.includes('mesas') && <TablesSection key={`mesas-${refreshKey}`} event={event} />}
-      {event.enabledModules.includes('presupuesto') && <BudgetSection key={`presupuesto-${refreshKey}`} event={event} />}
-      {event.enabledModules.includes('menu_compra') && <MenuSection key={`menu-${refreshKey}`} eventId={event.id} />}
-      {event.enabledModules.includes('decoracion') && <DecorationSection key={`decoracion-${refreshKey}`} eventId={event.id} />}
-      {event.enabledModules.includes('actividades') && <ActivitiesSection key={`actividades-${refreshKey}`} eventId={event.id} />}
-      {event.enabledModules.includes('proveedores') && <ProvidersSection eventId={event.id} />}
-      {event.enabledModules.includes('pagos') && <PaymentsSection event={event} />}
-      {event.enabledModules.includes('detalles') && <DetailsSection eventId={event.id} />}
-      {event.enabledModules.includes('regalos') && <GiftsSection eventId={event.id} />}
-      {event.enabledModules.includes('plan_dia') && <DayPlanSection eventId={event.id} />}
-
-      {MODULE_GROUPS.map((group) => {
-        const groupModules = group.keys.filter((k) => event.enabledModules.includes(k) && !READY_MODULE_KEYS.has(k))
-        if (groupModules.length === 0) return null
-        return (
-          <div key={group.title} className="card event-card" style={{ marginTop: 8 }}>
-            <strong>{group.title}</strong>
-            <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
-              {groupModules.map((key) => {
-                const meta = EVENT_MODULES.find((m) => m.key === key)
-                if (!meta) return null
-                return (
-                  <span key={key} className="chip" style={{ opacity: 0.6 }}>
-                    {meta.icon} {meta.label} · próximamente
+      {hasTasksModule && upcomingTasks.length > 0 && (
+        <div className="card event-card event-recommend-card" style={{ marginTop: 8 }}>
+          <strong>💡 Pepa te recomienda</strong>
+          <p className="muted" style={{ margin: '2px 0 8px', fontSize: 13 }}>
+            Estas son las próximas tareas importantes:
+          </p>
+          <div className="event-list">
+            {upcomingTasks.map(({ task, priority, daysUntil: d }) => (
+              <div key={task.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                <span className={`event-priority-dot event-priority-${priority}`} aria-hidden="true" />
+                <input type="checkbox" checked={task.done} onChange={() => updateEventTask(task.id, { done: true }).then(reloadTasks)} />
+                <span style={{ flex: 1 }}>{task.title}</span>
+                {task.dueDate && (
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {d !== null && d < 0 ? `Venció ${task.dueDate}` : `Vence ${task.dueDate}`}
                   </span>
-                )
-              })}
-            </div>
+                )}
+              </div>
+            ))}
           </div>
-        )
-      })}
+          <button type="button" className="link-button" onClick={() => setOpenModule('tareas')}>
+            Ver todas →
+          </button>
+        </div>
+      )}
+
+      <div className="card-grid" style={{ marginTop: 8 }}>
+        {moduleCards.map((card, i) => (
+          <button
+            key={card.key}
+            type="button"
+            className="card event-module-card"
+            style={{ background: cardColors[i] }}
+            onClick={() => setOpenModule(card.key)}
+          >
+            <div className="event-module-card-top">
+              <span className="event-module-card-icon">{card.icon}</span>
+              <span className="muted">›</span>
+            </div>
+            <strong>{card.label}</strong>
+            <p className="muted" style={{ margin: '2px 0 0', fontSize: 13 }}>
+              {card.stat}
+            </p>
+          </button>
+        ))}
+      </div>
 
       {event.status === 'planificacion' && (
         <div className="card event-card" style={{ marginTop: 8 }}>
@@ -720,31 +1002,33 @@ function EventDetail({
         </div>
       )}
 
-      <div className="card event-card" style={{ marginTop: 8 }}>
-        <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-          <button type="button" className="link-button" onClick={() => setShowModules(true)}>
-            ⚙️ Gestionar módulos
-          </button>
-          <button type="button" className="link-button" onClick={() => setShowSaveTemplate(true)}>
-            💾 Guardar como plantilla
-          </button>
-        </div>
-        <div className="filter-row" style={{ marginTop: 8 }}>
-          {event.status === 'planificacion' ? (
-            <button type="button" className="link-button" onClick={() => setShowEndSummary(true)}>
-              📦 Finalizar y archivar
-            </button>
-          ) : (
-            <button type="button" className="link-button" onClick={() => unarchiveEvent(event.id).then(onChanged)}>
-              Reactivar
-            </button>
-          )}
-          <button type="button" className="link-button" onClick={() => duplicateEvent(event.id).then(onDuplicated)}>
-            Duplicar
-          </button>
-          <ConfirmButton label="Borrar evento" confirmLabel="Borrar" className="link-button" onConfirm={() => deleteEvent(event.id).then(onArchivedOrDeleted)} />
-        </div>
-      </div>
+      {showMoreMenu && (
+        <EventMoreMenu
+          event={event}
+          onClose={() => setShowMoreMenu(false)}
+          onModules={() => {
+            setShowMoreMenu(false)
+            setShowModules(true)
+          }}
+          onSaveTemplate={() => {
+            setShowMoreMenu(false)
+            setShowSaveTemplate(true)
+          }}
+          onArchive={() => {
+            setShowMoreMenu(false)
+            setShowEndSummary(true)
+          }}
+          onReactivate={() => {
+            setShowMoreMenu(false)
+            unarchiveEvent(event.id).then(onChanged)
+          }}
+          onDuplicate={() => {
+            setShowMoreMenu(false)
+            duplicateEvent(event.id).then(onDuplicated)
+          }}
+          onDelete={() => deleteEvent(event.id).then(onArchivedOrDeleted)}
+        />
+      )}
 
       {showEdit && (
         <EditEventModal
@@ -788,6 +1072,114 @@ function EventDetail({
           }}
         />
       )}
+    </div>
+  )
+}
+
+// Petición real: rediseño del dashboard de un evento — todas las
+// acciones que antes iban sueltas en una tarjeta al final (Gestionar
+// módulos, Guardar como plantilla, Finalizar/Reactivar, Duplicar,
+// Borrar) se agrupan aquí, detrás del botón "•••" de la cabecera.
+// "Editar" se queda fuera, como enlace directo (acceso más frecuente).
+function EventMoreMenu({
+  event,
+  onClose,
+  onModules,
+  onSaveTemplate,
+  onArchive,
+  onReactivate,
+  onDuplicate,
+  onDelete,
+}: {
+  event: FamilyEvent
+  onClose: () => void
+  onModules: () => void
+  onSaveTemplate: () => void
+  onArchive: () => void
+  onReactivate: () => void
+  onDuplicate: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Más opciones
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="event-list">
+          <button type="button" className="link-button" onClick={onModules} style={{ display: 'block' }}>
+            ⚙️ Gestionar módulos
+          </button>
+          <button type="button" className="link-button" onClick={onSaveTemplate} style={{ display: 'block' }}>
+            💾 Guardar como plantilla
+          </button>
+          {event.status === 'planificacion' ? (
+            <button type="button" className="link-button" onClick={onArchive} style={{ display: 'block' }}>
+              📦 Finalizar y archivar
+            </button>
+          ) : (
+            <button type="button" className="link-button" onClick={onReactivate} style={{ display: 'block' }}>
+              Reactivar
+            </button>
+          )}
+          <button type="button" className="link-button" onClick={onDuplicate} style={{ display: 'block' }}>
+            Duplicar
+          </button>
+          <ConfirmButton label="Borrar evento" confirmLabel="Borrar" className="link-button" onConfirm={onDelete} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Petición real: "Compras" en la rejilla del dashboard — mini-vista de
+// solo lectura con los pendientes de ESTE evento (shopping_items.
+// event_id, hasta ahora escrito pero nunca leído de vuelta, ver
+// listShoppingItems). La gestión de verdad (marcar comprado, añadir,
+// borrar) se sigue haciendo en Compras — aquí solo se ve qué falta y
+// se enlaza allí.
+function EventShoppingSection({ items }: { items: ShoppingItem[] }) {
+  const pending = items.filter((i) => i.status === 'pendiente')
+  const bought = items.filter((i) => i.status === 'comprado')
+  return (
+    <div className="card event-card">
+      <strong>🛍️ Compras</strong>
+      <p className="muted" style={{ fontSize: 12, margin: '2px 0 8px' }}>
+        Lo que se ha traspasado a la lista de la compra para este evento — márcalo como comprado o añade más desde
+        Compras → Lista de la compra.
+      </p>
+      {items.length === 0 ? (
+        <p className="muted">Todavía no hay nada traspasado a Compras.</p>
+      ) : (
+        <div className="price-row-list">
+          {pending.map((i) => (
+            <div key={i.id} className="price-row">
+              <span className="price-row-name">{i.name}</span>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Pendiente
+              </span>
+            </div>
+          ))}
+          {bought.map((i) => (
+            <div key={i.id} className="price-row">
+              <span className="price-row-name" style={{ textDecoration: 'line-through' }}>
+                {i.name}
+              </span>
+              <span className="muted" style={{ fontSize: 12 }}>
+                ✓
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <Link to="/compras" className="link-button" style={{ display: 'inline-block', marginTop: 8 }}>
+        Ver todo en Compras →
+      </Link>
     </div>
   )
 }

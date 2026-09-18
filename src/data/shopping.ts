@@ -28,13 +28,14 @@ async function currentFamilyId(): Promise<string> {
 export async function listShoppingItems(): Promise<ShoppingItem[]> {
   const { data, error } = await supabase
     .from('shopping_items')
-    .select('id, family_id, trip_id, name, quantity, unit, priority, status, store, sort_order, price')
+    .select('id, family_id, trip_id, event_id, name, quantity, unit, priority, status, store, sort_order, price')
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
     familyId: r.family_id,
     tripId: r.trip_id,
+    eventId: r.event_id,
     name: r.name,
     quantity: r.quantity,
     unit: r.unit,

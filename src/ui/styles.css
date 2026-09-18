@@ -1322,6 +1322,89 @@ select {
   gap: 4px;
 }
 
+/* Rediseño del dashboard de un evento (petición real: "reorganizar
+   Eventos con este aspecto o similar", con una app de planificación de
+   fiestas como referencia) — cabecera con cuenta atrás, "Preparación
+   del evento", "Pepa te recomienda" y la rejilla de tarjetas por
+   módulo. */
+.event-hero-card {
+  background: linear-gradient(135deg, #eef2ff, #fdf4ff);
+}
+
+.event-countdown {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-width: 64px;
+}
+
+.event-countdown-number {
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.event-readiness-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.event-recommend-card {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.event-priority-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.event-priority-alta {
+  background: #e64980;
+}
+
+.event-priority-media {
+  background: #f08c00;
+}
+
+.event-priority-baja {
+  background: #adb5bd;
+}
+
+/* Una tarjeta por módulo — mismo .card-grid de 2 columnas que ya usa
+   Inicio, pero como <button> (petición real: "cada tarjeta se toca
+   para entrar en el módulo") en vez de <Link>, porque Eventos navega
+   con estado local (openModule), no con rutas. */
+.event-module-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  color: var(--text);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.event-module-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.event-module-card-icon {
+  font-size: 22px;
+}
+
 .member-chips {
   display: flex;
   gap: 4px;

@@ -940,7 +940,10 @@ export function isToday(dateStr: string | null): boolean {
   return dateStr === new Date().toISOString().slice(0, 10)
 }
 
-function daysUntil(dateStr: string): number {
+// Exportada (petición real: rediseño del dashboard de un evento —
+// cuenta atrás "X días para celebrarlo" junto al título, reutilizando
+// este mismo cálculo en vez de reescribirlo).
+export function daysUntil(dateStr: string): number {
   const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`)
   const target = new Date(`${dateStr}T00:00:00`)
   return Math.round((target.getTime() - today.getTime()) / 86400000)
@@ -1014,6 +1017,35 @@ export function computeEventConclusions(input: {
   }
 
   return conclusions
+}
+
+// Petición real: dashboard nuevo, widget "Pepa recomienda" — a
+// diferencia de computeEventConclusions (un aviso de texto por evento
+// entero), aquí hace falta CADA tarea pendiente por separado, con su
+// propia urgencia, para poder ordenarlas y pintar el punto de color
+// correcto (🔴 vencida, 🟠 próxima, ⚪ sin prisa/sin fecha).
+export interface RankedEventTask {
+  task: EventTask
+  priority: 'alta' | 'media' | 'baja'
+  daysUntil: number | null
+}
+
+export function rankUpcomingTasks(tasks: EventTask[]): RankedEventTask[] {
+  return tasks
+    .filter((t) => !t.done)
+    .map((task) => {
+      const days = task.dueDate ? daysUntil(task.dueDate) : null
+      const priority: RankedEventTask['priority'] = days !== null && days < 0 ? 'alta' : days !== null && days <= 7 ? 'media' : 'baja'
+      return { task, priority, daysUntil: days }
+    })
+    .sort((a, b) => {
+      // Sin fecha se queda al final; con fecha, la más próxima (o la
+      // más vencida) va primero.
+      if (a.daysUntil === null && b.daysUntil === null) return 0
+      if (a.daysUntil === null) return 1
+      if (b.daysUntil === null) return -1
+      return a.daysUntil - b.daysUntil
+    })
 }
 
 // ---------------------------------------------------------------------

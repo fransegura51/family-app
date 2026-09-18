@@ -96,6 +96,11 @@ export interface ShoppingItem {
   id: string
   familyId: string
   tripId: string | null
+  // La columna ya existía (addShoppingItem la escribe al traspasar
+  // desde Eventos) pero nunca se leía de vuelta — petición real:
+  // dashboard de Eventos, tarjeta "Compras" con los pendientes de ESE
+  // evento en concreto.
+  eventId: string | null
   name: string
   quantity: string | null
   unit: string | null

@@ -34,7 +34,7 @@ export async function listExpenses(): Promise<Expense[]> {
     supabase
       .from('expenses')
       .select(
-        'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id, shared, shared_from_expense_id',
+        'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id, shared, shared_from_expense_id, product_classification',
       )
       .order('expense_date', { ascending: false })
       .order('id')
@@ -57,6 +57,7 @@ export async function listExpenses(): Promise<Expense[]> {
     ownerMemberId: r.owner_member_id,
     shared: r.shared,
     sharedFromExpenseId: r.shared_from_expense_id,
+    productClassification: r.product_classification,
   }))
 }
 
@@ -157,6 +158,7 @@ export async function updateExpense(
     tagId?: string | null
     isFixedOverride?: boolean | null
     notes?: string | null
+    productClassification?: string | null
   },
 ): Promise<void> {
   const update: Record<string, unknown> = {}
@@ -173,6 +175,10 @@ export async function updateExpense(
   // anotar yo qué es cada gasto" — antes notes no tenía forma de
   // actualizarse desde la app aunque el dato ya se leía.
   if (patch.notes !== undefined) update.notes = patch.notes || null
+  // Petición real: "¿qué tal si a los movimientos que se categorizan
+  // como compra se les abre otro campo para clasificar el producto?"
+  // — para un cobro de banco sin ticket detrás.
+  if (patch.productClassification !== undefined) update.product_classification = patch.productClassification || null
   const { error } = await supabase.from('expenses').update(update).eq('id', id)
   if (error) throw error
 }

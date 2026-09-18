@@ -1,0 +1,12 @@
+-- Petición real: "¿qué tal si a los movimientos que se categorizan
+-- como compra se les abre otro campo para clasificar el producto?" —
+-- un cobro de banco sin ticket detrás (C&A, H&M...) no tiene ninguna
+-- fila en product_prices, así que "Reparto por clasificación" no podía
+-- desglosarlo aunque sí contara en "Reparto por tienda" (mismo dato,
+-- dos orígenes distintos: gasto entero vs producto). Reutiliza el
+-- mismo criterio que products.category (0112): un nombre de clase de
+-- family_food_types, sin FK — el gasto puede pertenecer a Alimentos o
+-- a Otros según su propia categoría de Economía, así que no hace falta
+-- guardar el `kind` aquí tampoco (ver isFoodCategory/
+-- isComprasFamiliaCategory).
+alter table expenses add column product_classification text null;

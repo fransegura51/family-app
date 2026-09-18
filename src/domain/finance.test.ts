@@ -45,6 +45,7 @@ function exp(over: Partial<Expense> & Pick<Expense, 'expenseDate' | 'amount' | '
     ownerMemberId: null,
     shared: false,
     sharedFromExpenseId: null,
+    productClassification: null,
     ...over,
   }
 }

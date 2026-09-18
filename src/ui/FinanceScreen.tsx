@@ -3387,6 +3387,37 @@ function EditExpenseInline({
   // siendo solo por categoría, Fijo/Variable ya se puede pisar aquí.
   const classification = resolveCategoryClassification(category, categories)
 
+  // Petición real: "¿qué tal si a los movimientos que se categorizan
+  // como compra se les abre otro campo para clasificar el producto?"
+  // — un cobro de banco sin ticket detrás (C&A, H&M...) no tiene
+  // ninguna fila en product_prices, así que "Reparto por
+  // clasificación" (Estadística compras) no podía desglosarlo aunque
+  // sí contara en "Reparto por tienda". Solo tiene sentido para gastos
+  // de Alimentación o de "Compras y familia" — el resto de categorías
+  // no entra en esas estadísticas.
+  const classificationKind: FoodTypeKind | null = isFoodCategory(category, categories)
+    ? 'alimentacion'
+    : isComprasFamiliaCategory(category, categories)
+      ? 'no_alimentos'
+      : null
+  const [productClassification, setProductClassification] = useState(expense.productClassification ?? '')
+  const [classificationOptions, setClassificationOptions] = useState<FamilyFoodType[]>([])
+  useEffect(() => {
+    if (!classificationKind) {
+      setClassificationOptions([])
+      return
+    }
+    let cancelled = false
+    listFamilyFoodTypes(classificationKind)
+      .then((list) => {
+        if (!cancelled) setClassificationOptions(list)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [classificationKind])
+
   async function handleSave() {
     setSaving(true)
     setError(null)
@@ -3398,6 +3429,7 @@ function EditExpenseInline({
         tagId: tagId || null,
         isFixedOverride,
         notes,
+        productClassification: classificationKind ? productClassification || null : expense.productClassification,
         ...(expense.isIncome ? {} : { store }),
       })
       onDone()
@@ -3436,6 +3468,23 @@ function EditExpenseInline({
         <label>
           Establecimiento (opcional)
           <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
+        </label>
+      )}
+      {classificationKind && (
+        <label>
+          Clasificación (opcional)
+          <select value={productClassification} onChange={(e) => setProductClassification(e.target.value)}>
+            <option value="">Sin clasificar</option>
+            {classificationOptions.map((t) => (
+              <option key={t.id} value={t.name}>
+                {t.icon} {t.name}
+              </option>
+            ))}
+          </select>
+          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por
+            clasificación" de Estadística compras.
+          </p>
         </label>
       )}
       <label>
@@ -3984,15 +4033,22 @@ function groupReceiptsByStore<T extends Receipt>(
 // de los tickets) para que el total del dónut cuadre SIEMPRE con el
 // del total de arriba — cada gasto ya lleva su propia tienda, tenga
 // ticket subido o no (mismo motivo que el arreglo del dónut de
-// Alimentación).
-function buildStorePieSlices(list: Expense[], knownStores: string[]): (BreakdownSlice & { expenseIds: string[] })[] {
+// Alimentación). Recibe el importe YA resuelto por el que llama (no
+// `Expense[]` directo): petición real: "los productos Otros que se
+// han comprado en Mercadona en el reparto de tiendas no se ha
+// incluido porque la compra en sí está categorizada como
+// alimentación" — un mismo ticket puede repartirse entre Alimentación
+// y Otros según sus productos (ver el reparto por producto en
+// BudgetsTab), así que ya no vale coger `expense.amount` entero.
+function buildStorePieSlices(
+  entries: { expenseId: string; store: string; amount: number }[],
+): (BreakdownSlice & { expenseIds: string[] })[] {
   const groups = new Map<string, { total: number; expenseIds: string[] }>()
-  for (const e of list) {
-    const store = canonicalStoreName(e.store, knownStores)
-    const g = groups.get(store) ?? { total: 0, expenseIds: [] }
+  for (const e of entries) {
+    const g = groups.get(e.store) ?? { total: 0, expenseIds: [] }
     g.total += e.amount
-    g.expenseIds.push(e.id)
-    groups.set(store, g)
+    g.expenseIds.push(e.expenseId)
+    groups.set(e.store, g)
   }
   const sorted = [...groups.entries()]
     .map(([store, g]) => ({ store, total: g.total, expenseIds: g.expenseIds }))
@@ -4011,26 +4067,29 @@ function buildStorePieSlices(list: Expense[], knownStores: string[]): (Breakdown
 // Agrupado por CLASIFICACIÓN de producto (ver Historial de precios,
 // ⚙️ Clasificaciones de productos) — comparte la lógica de sumar por
 // producto y colorear sin repetirse entre el dónut "por tipo de
-// alimento" y el nuevo "en Otros por clasificación"; solo cambia cómo
-// se resuelve el nombre/icono de cada porción (con adivinador
-// automático en Alimentos, siempre a mano en Otros).
-function buildProductTypeBreakdown(
-  periodPrices: ProductPrice[],
-  productById: Map<string, Product>,
-  resolveType: (product: Product | undefined, displayName: string) => { name: string; icon: string },
-): FoodTypeBreakdownEntry[] {
+// alimento" y el nuevo "en Otros por clasificación". Cada entrada
+// llega YA resuelta (nombre/icono de su clase decididos por quien
+// llama, con o sin producto real detrás) — petición real: "un cobro
+// de banco sin ticket detrás no cuenta en Reparto por clasificación
+// aunque sí en Reparto por tienda": junto a los `product_prices` de
+// siempre, BudgetsTab añade una entrada sintética por cada gasto sin
+// ningún producto detallado (clasificado a mano o "Sin clasificar"),
+// para que el total de este dónut cuadre con el de "por tienda".
+interface ClassifiableEntry {
+  itemId: string
+  displayName: string
+  amount: number
+  type: { name: string; icon: string }
+}
+
+function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakdownEntry[] {
   const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }> }>()
-  for (const pr of periodPrices) {
-    const product = productById.get(pr.productId)
-    const name = product?.displayName ?? '?'
-    const resolved = resolveType(product, name)
-    const qty = Number(pr.quantity)
-    const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
-    const group = totals.get(resolved.name) ?? { icon: resolved.icon, products: new Map<string, { name: string; total: number }>() }
-    const entry = group.products.get(pr.productId) ?? { name, total: 0 }
-    entry.total += amount
-    group.products.set(pr.productId, entry)
-    totals.set(resolved.name, group)
+  for (const entry of entries) {
+    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number }>() }
+    const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0 }
+    p.total += entry.amount
+    group.products.set(entry.itemId, p)
+    totals.set(entry.type.name, group)
   }
   const namesAlpha = [...totals.keys()].sort((a, b) => a.localeCompare(b, 'es'))
   const palette = distinctPaletteEntries(namesAlpha.length)
@@ -5622,17 +5681,6 @@ export function BudgetsTab({
   const scopedExpenses = scopingActive ? expenses.filter((e) => (scope === 'comun' ? e.shared : !e.shared)) : expenses
   const scopedBudgets = scopingActive ? budgets.filter((b) => (scope === 'comun' ? b.ownerMemberId === null : b.ownerMemberId !== null)) : budgets
   const groupBudgets = scopedBudgets.filter((b) => b.budgetGroup === group)
-  // Tickets del periodo elegido, usados para saber qué gastos vienen
-  // de un ticket no-Alimentación (ver nonFoodReceiptExpenseIds, más
-  // abajo) — el desglose por tienda YA NO sale de aquí (ver
-  // storePieSlices): bug real: "el reparto de gasto por tienda para
-  // todo el año no me cuadra" — sumaba solo receipts.total_amount de
-  // los TICKETS escaneados, así que un gasto de Alimentación llegado
-  // del banco sin ticket subido (o metido a mano) se quedaba fuera del
-  // dónut aunque sí contara en el total de Alimentación de arriba.
-  const periodReceipts = receipts.filter((r) => r.receiptDate >= periodFrom && r.receiptDate <= periodTo)
-  const nonFoodReceipts = periodReceipts.filter((r) => !isFoodCategory(r.category, categories))
-
   // El total de Alimentación (y el de cada categoría) sale SIEMPRE de
   // `expenses`, nunca sumando receipts.total_amount aparte — cada
   // ticket con importe ya crea su propio gasto real con la misma
@@ -5659,40 +5707,36 @@ export function BudgetsTab({
   const monthSharedDeposits = scopedExpenses.filter(
     (e) => e.expenseDate >= periodFrom && e.expenseDate <= periodTo && e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, categories),
   )
-  const alimentacionExpenses = monthRealExpenses.filter((e) => isFoodCategory(e.category, categories))
-  const alimentacionTotal = alimentacionExpenses.reduce((sum, e) => sum + e.amount, 0)
-  // "No alimentos" (Estadística compras): gastos de tickets/pedidos no
-  // clasificados como Alimentación, más cualquier gasto metido a mano
-  // bajo "Compras y familia" (Ropa, Niños, Casa y jardín, Tecnología,
-  // Mascotas, Regalos...) — petición real: "aparte de tickets también
-  // se puede basar en Gastos Categorizados como Compras y familia". No
-  // incluye alquiler, luz ni otros gastos que no sean compras.
-  const nonFoodReceiptExpenseIds = new Set(
-    nonFoodReceipts.map((r) => r.expenseId).filter((id): id is string => id != null),
-  )
-  const noAlimentosExpenses = monthRealExpenses.filter(
-    (e) => nonFoodReceiptExpenseIds.has(e.id) || isComprasFamiliaCategory(e.category, categories),
-  )
-  const noAlimentosTotal = noAlimentosExpenses.reduce((sum, e) => sum + e.amount, 0)
-  const comprasTotal = alimentacionTotal + noAlimentosTotal
-  const totalGastadoPeriodo = monthRealExpenses.reduce((sum, e) => sum + e.amount, 0)
-  const pctOf = (part: number, total: number) => (total > 0 ? (part / total) * 100 : 0)
-  // Petición real: "la estadística de tipos de alimentos no sirve para
-  // mucho así por categoría, puedes clasificar los alimentos... verdura,
-  // fruta, carne, etc" y luego "el de reparto de gastos en Otros
-  // cámbialo de Categorías a Clasificación" — la categoría de Economía
-  // del gasto entero es casi siempre la misma para todo, así que hace
-  // falta bajar al PRODUCTO de cada ticket (product_prices), no al
-  // gasto. Ninguno de los dos dónuts de clasificación lleva "Ver
-  // movimientos": un ticket mezcla varios tipos a la vez, no hay un
-  // gasto 1:1 con "Verdura" o "Ropa".
+  // Petición real: "porque partimos de que todos los alimentos se
+  // compran en supermercados y aunque en parte es correcto también hay
+  // otros productos que se compran allí" — antes un ticket entero
+  // contaba como 100% Alimentación o 100% Otros según su categoría, así
+  // que un producto "Otros" suelto en un ticket de Mercadona no
+  // cuadraba entre "por tienda" y "por clasificación" (y al revés: un
+  // cobro de C&A/H&M sin ticket detrás, todo Otros por tienda, no
+  // aparecía en absoluto en "por clasificación" por no tener ningún
+  // product_price). Ahora cada gasto se reparte por lo que de verdad
+  // sabe de sus productos, no por una única etiqueta de todo el ticket:
+  // - Sin ticket detrás: 100% al lado que diga su categoría de
+  //   Economía, salvo que se haya clasificado a mano desde Movimientos
+  //   (ver product_classification / EditExpenseInline) — entonces manda
+  //   esa clase.
+  // - Con ticket: se suma el precio de cada línea según SU propia
+  //   clasificación (automática en Alimentos, manual en Otros); lo que
+  //   no esté desglosado en el ticket (o el ticket no tiene ninguna
+  //   línea) cae también al lado de su categoría, como "Sin
+  //   clasificar" — así el total de "por clasificación" cuadra siempre
+  //   con el de "por tienda", aunque no todo esté desglosado.
   const productById = new Map(products.map((p) => [p.id, p]))
   const nonFoodProductIds = new Set(products.filter((p) => p.nonFood).map((p) => p.id))
   const foodReceiptIdsForPrices = buildFoodReceiptIds(receipts, categories)
   const periodPrices = prices.filter((pr) => pr.recordedDate >= periodFrom && pr.recordedDate <= periodTo)
-  const periodFoodPrices = periodPrices.filter((pr) => isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds))
-  const periodNonFoodPrices = periodPrices.filter((pr) => !isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds))
-
+  const receiptByExpenseId = new Map(receipts.filter((r) => r.expenseId).map((r) => [r.expenseId as string, r]))
+  const pricesByReceiptId = new Map<string, ProductPrice[]>()
+  for (const pr of periodPrices) {
+    if (!pr.receiptId) continue
+    pricesByReceiptId.set(pr.receiptId, [...(pricesByReceiptId.get(pr.receiptId) ?? []), pr])
+  }
   // Excepción manual por producto (ver Historial de precios, ⚙️
   // Clasificaciones de productos): si `category` ya tiene una clase
   // elegida a mano, gana sobre la que habría adivinado classifyFoodType
@@ -5700,6 +5744,85 @@ export function BudgetsTab({
   // no hay ninguno, así que sin elegir cae en "Sin clasificar".
   const foodTypeIconByName = new Map(foodTypes.filter((t) => t.kind === 'alimentacion').map((t) => [t.name, t.icon]))
   const noAlimentosTypeIconByName = new Map(foodTypes.filter((t) => t.kind === 'no_alimentos').map((t) => [t.name, t.icon]))
+  const foodTypeKindByName = new Map(foodTypes.map((t) => [t.name, t.kind]))
+
+  const SIN_CLASIFICAR = { name: 'Sin clasificar', icon: '❓' }
+  interface ExpenseSplit {
+    expense: Expense
+    store: string
+    foodAmount: number
+    nonFoodAmount: number
+  }
+  const foodClassEntries: ClassifiableEntry[] = []
+  const noAlimentosClassEntries: ClassifiableEntry[] = []
+  const splits: ExpenseSplit[] = []
+  for (const e of monthRealExpenses) {
+    const receipt = receiptByExpenseId.get(e.id)
+    const isTicketNonFood = receipt != null && !isFoodCategory(receipt.category, categories)
+    const baseIsFood = isFoodCategory(e.category, categories)
+    if (!baseIsFood && !isComprasFamiliaCategory(e.category, categories) && !isTicketNonFood) continue
+    const store = canonicalStoreName(e.store, knownStores)
+    const lines = receipt ? (pricesByReceiptId.get(receipt.id) ?? []) : []
+    let foodAmount = 0
+    let nonFoodAmount = 0
+    if (lines.length > 0) {
+      let itemizedFood = 0
+      let itemizedNonFood = 0
+      for (const pr of lines) {
+        const product = productById.get(pr.productId)
+        const displayName = product?.displayName ?? '?'
+        const qty = Number(pr.quantity)
+        const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
+        if (isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds)) {
+          itemizedFood += amount
+          const auto = classifyFoodType(displayName)
+          const typeName = product?.category?.trim() || auto.label
+          const icon = foodTypeIconByName.get(typeName) ?? (typeName === auto.label ? auto.icon : '🍽️')
+          foodClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon } })
+        } else {
+          itemizedNonFood += amount
+          const typeName = product?.category?.trim() || SIN_CLASIFICAR.name
+          const icon = noAlimentosTypeIconByName.get(typeName) ?? SIN_CLASIFICAR.icon
+          noAlimentosClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon } })
+        }
+      }
+      foodAmount = itemizedFood
+      nonFoodAmount = itemizedNonFood
+      const remainder = e.amount - itemizedFood - itemizedNonFood
+      if (remainder > 0.005) {
+        const target = baseIsFood ? foodClassEntries : noAlimentosClassEntries
+        target.push({ itemId: `sin-detalle:${e.id}`, displayName: e.store ?? 'Compra', amount: remainder, type: SIN_CLASIFICAR })
+        if (baseIsFood) foodAmount += remainder
+        else nonFoodAmount += remainder
+      }
+    } else {
+      const manualKind = e.productClassification ? foodTypeKindByName.get(e.productClassification) : undefined
+      if (manualKind === 'alimentacion' && e.productClassification) {
+        foodAmount = e.amount
+        const icon = foodTypeIconByName.get(e.productClassification) ?? '🍽️'
+        foodClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: { name: e.productClassification, icon } })
+      } else if (manualKind === 'no_alimentos' && e.productClassification) {
+        nonFoodAmount = e.amount
+        const icon = noAlimentosTypeIconByName.get(e.productClassification) ?? '❓'
+        noAlimentosClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: { name: e.productClassification, icon } })
+      } else if (baseIsFood) {
+        foodAmount = e.amount
+        foodClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: SIN_CLASIFICAR })
+      } else {
+        nonFoodAmount = e.amount
+        noAlimentosClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: SIN_CLASIFICAR })
+      }
+    }
+    splits.push({ expense: e, store, foodAmount, nonFoodAmount })
+  }
+
+  const alimentacionExpenses = splits.filter((s) => s.foodAmount > 0).map((s) => s.expense)
+  const noAlimentosExpenses = splits.filter((s) => s.nonFoodAmount > 0).map((s) => s.expense)
+  const alimentacionTotal = splits.reduce((sum, s) => sum + s.foodAmount, 0)
+  const noAlimentosTotal = splits.reduce((sum, s) => sum + s.nonFoodAmount, 0)
+  const comprasTotal = alimentacionTotal + noAlimentosTotal
+  const totalGastadoPeriodo = monthRealExpenses.reduce((sum, e) => sum + e.amount, 0)
+  const pctOf = (part: number, total: number) => (total > 0 ? (part / total) * 100 : 0)
 
   // Petición real: "debajo del dónut haz una lista... que dando al
   // producto se despliegue el detalle de los productos que
@@ -5707,12 +5830,7 @@ export function BudgetsTab({
   // vez por tipo y, dentro de cada tipo, por producto exacto (ver
   // buildProductTypeBreakdown, coloreado sin repetirse igual que
   // categoryColors).
-  const foodTypeBreakdown = buildProductTypeBreakdown(periodFoodPrices, productById, (product, displayName) => {
-    const auto = classifyFoodType(displayName)
-    const typeName = product?.category?.trim() || auto.label
-    const icon = foodTypeIconByName.get(typeName) ?? (typeName === auto.label ? auto.icon : '🍽️')
-    return { name: typeName, icon }
-  })
+  const foodTypeBreakdown = buildProductTypeBreakdown(foodClassEntries)
   const foodTypePieGroups: BreakdownSlice[] = foodTypeBreakdown.map((t) => ({
     key: t.key,
     label: t.label,
@@ -5722,11 +5840,7 @@ export function BudgetsTab({
     count: t.count,
   }))
 
-  const noAlimentosTypeBreakdown = buildProductTypeBreakdown(periodNonFoodPrices, productById, (product) => {
-    const typeName = product?.category?.trim() || 'Sin clasificar'
-    const icon = noAlimentosTypeIconByName.get(typeName) ?? '❓'
-    return { name: typeName, icon }
-  })
+  const noAlimentosTypeBreakdown = buildProductTypeBreakdown(noAlimentosClassEntries)
   const noAlimentosTypePieGroups: BreakdownSlice[] = noAlimentosTypeBreakdown.map((t) => ({
     key: t.key,
     label: t.label,
@@ -5739,8 +5853,12 @@ export function BudgetsTab({
   // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
   // usar el mismo dónut con botón Alimentación/Otros" — un solo dónut
   // (ver storeDonutScope), el botón decide qué gastos lo alimentan.
-  const storePieSlicesAlimentacion = buildStorePieSlices(alimentacionExpenses, knownStores)
-  const storePieSlicesOtros = buildStorePieSlices(noAlimentosExpenses, knownStores)
+  const storePieSlicesAlimentacion = buildStorePieSlices(
+    splits.filter((s) => s.foodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.foodAmount })),
+  )
+  const storePieSlicesOtros = buildStorePieSlices(
+    splits.filter((s) => s.nonFoodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.nonFoodAmount })),
+  )
   const catColors = categoryColors(groupCategories)
   // Petición real: "quiero que estén ordenados por categorías
   // principales, todas las subcategorías de una categoría juntas" —

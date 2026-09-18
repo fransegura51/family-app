@@ -236,6 +236,12 @@ export interface Expense {
   // que se copió — solo informativo (evita copias duplicadas), nunca
   // sincroniza cambios entre las dos filas.
   sharedFromExpenseId: string | null
+  // Clase de producto (Ropa y calzado, Verdura...) puesta a mano
+  // directamente sobre el gasto — para un cobro de banco sin ticket
+  // detrás (sin filas en product_prices), donde no hay ningún producto
+  // al que atribuírsela. Ver family_food_types / setProductFoodType,
+  // mismo criterio pero a nivel de gasto entero en vez de producto.
+  productClassification: string | null
 }
 
 // "alimentacion" | "generales" — separa las dos pestañas de

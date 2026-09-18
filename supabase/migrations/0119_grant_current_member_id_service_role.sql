@@ -1,0 +1,14 @@
+-- Bug real: el ticket digital de Mercadona que llega por email (Outlook
+-- → Pipedream → mercadona-ticket-webhook) fallaba siempre con 500 al
+-- insertar en expenses. private.current_member_id() (usada como valor
+-- por defecto de expenses.owner_member_id y budgets.owner_member_id)
+-- solo tenía EXECUTE concedido a postgres/authenticated, nunca a
+-- service_role — y ese webhook, sin sesión de usuario posible, se
+-- autentica con la service role key. Como la función solo hace
+-- "select id from family_members where linked_profile_id = auth.uid()"
+-- (STABLE, sin escribir nada), con auth.uid() a NULL bajo service role
+-- simplemente no encuentra fila y devuelve NULL — mismo "sin dueño
+-- concreto" que ya usan otras entradas automáticas (🏠 Común). Conceder
+-- el EXECUTE no cambia ningún comportamiento para usuarios normales,
+-- solo desbloquea el valor por defecto para llamadas de service role.
+grant execute on function private.current_member_id() to service_role;

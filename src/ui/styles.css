@@ -681,24 +681,30 @@ button {
 }
 
 .bottom-nav {
-  position: fixed;
+  /* Bug real reportado en iPhone, dos veces: "al hacer scroll a menudo
+     el menú se me desplaza, no se queda fijo abajo" — primero se quitó
+     `-webkit-overflow-scrolling: touch` (chocaba con position: fixed),
+     pero el aviso siguió repitiéndose. `position: fixed` en iOS Safari
+     tiene un bug de fondo, más viejo y más terco: en páginas largas/
+     pesadas (como el detalle de un evento, con muchas tarjetas), el
+     compositor no siempre consigue recalcular la posición "fija" a
+     tiempo durante el scroll rápido, y la barra se ve flotar en medio
+     de la página un instante. `position: sticky` no tiene ese problema
+     — participa del scroll normal en vez de recalcularse aparte — y
+     aquí se comporta igual (app-shell es una columna flex de toda la
+     altura de la página, con .bottom-nav como su último hijo, así que
+     "pegado abajo" coincide con el fondo de la pantalla mientras se
+     hace scroll). */
+  position: sticky;
   bottom: 0;
   left: 0;
   right: 0;
+  z-index: 40;
   display: flex;
   background: var(--card-bg);
   border-top: 1px solid #e5e7eb;
   padding: 6px 4px;
   overflow-x: auto;
-  /* Bug real reportado en iPhone: "al hacer scroll a menudo el menú se
-     me desplaza, no se queda fijo abajo" — `-webkit-overflow-scrolling:
-     touch` en un elemento que ADEMÁS es `position: fixed` es un choque
-     conocido de WebKit/iOS (fuerza su propia capa de scroll con inercia
-     que interfiere con el posicionamiento fijo, y la barra se ve flotar
-     o "despegarse" del fondo mientras se hace scroll de la página).
-     Ya no hace falta para el scroll horizontal en sí: iOS lleva desde
-     la versión 13 con scroll con inercia nativo en cualquier
-     overflow:auto, sin esta propiedad. */
   transform: translateZ(0);
 }
 

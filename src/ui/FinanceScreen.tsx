@@ -6300,7 +6300,14 @@ export function BudgetsTab({
       {group === 'alimentacion' && (
         <div className="card event-card">
           <strong>Total Registrado en Compras</strong>
-          <p style={{ margin: '4px 0' }}>{comprasTotal.toFixed(2)} €</p>
+          <p style={{ margin: '4px 0' }}>
+            {comprasTotal.toFixed(2)} €{' '}
+            {/* Petición real: "detrás del total quiero en paréntesis el
+                porcentaje del total gastado" — mismo pctOf que ya usan
+                Alimentación/Otros justo debajo, aplicado ahora también
+                al total conjunto. */}
+            <span className="muted">({pctOf(comprasTotal, totalGastadoPeriodo).toFixed(0)}% del gasto total)</span>
+          </p>
           <div style={{ marginTop: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>🛒 Alimentación</span>

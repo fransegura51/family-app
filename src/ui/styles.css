@@ -3549,14 +3549,21 @@ textarea {
   font-size: 13px;
   padding: 4px 6px;
   flex: 0 0 auto;
+  /* Un <input type="number"> tiene un ancho mínimo de fábrica del
+     navegador (min-width: auto se resuelve a su tamaño de contenido,
+     ~180px) que gana a un flex-basis más pequeño si no se anula — sin
+     esto, el flex de abajo no tenía ningún efecto visible. */
+  min-width: 0;
 }
 
 .receipt-line-row-secondary input.receipt-line-qty {
   flex: 0 0 44px;
+  width: 44px;
 }
 
 .receipt-line-row-secondary input[type='number']:not(.receipt-line-qty) {
   flex: 0 0 72px;
+  width: 72px;
 }
 
 .receipt-line-new-badge {

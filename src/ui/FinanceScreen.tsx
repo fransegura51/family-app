@@ -4080,15 +4080,21 @@ interface ClassifiableEntry {
   displayName: string
   amount: number
   type: { name: string; icon: string }
+  // Gasto de origen de la línea (aunque venga de un ticket desglosado
+  // por producto) — petición real: "quiero aquí los mismos enlaces a
+  // los movimientos que en las otras estadísticas", igual que ya tenía
+  // el dónut por tienda (buildStorePieSlices).
+  expenseId: string
 }
 
 function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakdownEntry[] {
-  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }> }>()
+  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }>; expenseIds: Set<string> }>()
   for (const entry of entries) {
-    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number }>() }
+    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number }>(), expenseIds: new Set<string>() }
     const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0 }
     p.total += entry.amount
     group.products.set(entry.itemId, p)
+    group.expenseIds.add(entry.expenseId)
     totals.set(entry.type.name, group)
   }
   const namesAlpha = [...totals.keys()].sort((a, b) => a.localeCompare(b, 'es'))
@@ -4103,7 +4109,16 @@ function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakd
         .map(([productId, p]) => ({ productId, name: p.name, total: p.total }))
         .sort((a, b) => b.total - a.total)
       const total = productList.reduce((sum, p) => sum + p.total, 0)
-      return { key: name, label: name, icon: group.icon, color: colorFor(name), total, count: productList.length, products: productList }
+      return {
+        key: name,
+        label: name,
+        icon: group.icon,
+        color: colorFor(name),
+        total,
+        count: productList.length,
+        products: productList,
+        expenseIds: [...group.expenseIds],
+      }
     })
     .sort((a, b) => b.total - a.total)
 }
@@ -5458,6 +5473,7 @@ interface FoodTypeBreakdownEntry {
   total: number
   count: number
   products: { productId: string; name: string; total: number }[]
+  expenseIds: string[]
 }
 
 // Petición real: "debajo del dónut haz una lista como esta y que dando
@@ -5471,10 +5487,16 @@ function FoodTypeBreakdownList({
   types,
   expandedKey,
   onToggle,
+  onViewRecords,
 }: {
   types: FoodTypeBreakdownEntry[]
   expandedKey: string | null
   onToggle: (key: string) => void
+  // Petición real: "quiero aquí los mismos enlaces a los movimientos
+  // que en las otras estadísticas" — cada fila ya sabe qué gastos la
+  // componen (ver buildProductTypeBreakdown), igual que el dónut de
+  // arriba.
+  onViewRecords?: (expenseIds: string[], label: string) => void
 }) {
   if (types.length === 0) return null
   const grandTotal = types.reduce((sum, t) => sum + t.total, 0)
@@ -5508,6 +5530,13 @@ function FoodTypeBreakdownList({
                 <span className="muted">({grandTotal > 0 ? ((t.total / grandTotal) * 100).toFixed(0) : 0}%)</span>
               </span>
             </button>
+            {onViewRecords && t.expenseIds.length > 0 && (
+              <p className="muted" style={{ margin: '0 4px 4px', fontSize: 12, textAlign: 'right' }}>
+                <button type="button" className="link-button" onClick={() => onViewRecords(t.expenseIds, `${t.icon} ${t.label}`)}>
+                  Ver movimientos →
+                </button>
+              </p>
+            )}
             {isOpen && (
               <div style={{ paddingLeft: 20 }}>
                 {t.products.map((p) => (
@@ -5949,12 +5978,12 @@ export function BudgetsTab({
           const auto = classifyFoodType(displayName)
           const typeName = product?.category?.trim() || auto.label
           const icon = foodTypeIconByName.get(typeName) ?? (typeName === auto.label ? auto.icon : '🍽️')
-          foodClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon } })
+          foodClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon }, expenseId: e.id })
         } else {
           itemizedNonFood += amount
           const typeName = product?.category?.trim() || SIN_CLASIFICAR.name
           const icon = noAlimentosTypeIconByName.get(typeName) ?? SIN_CLASIFICAR.icon
-          noAlimentosClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon } })
+          noAlimentosClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon }, expenseId: e.id })
         }
       }
       foodAmount = itemizedFood
@@ -5962,7 +5991,7 @@ export function BudgetsTab({
       const remainder = e.amount - itemizedFood - itemizedNonFood
       if (remainder > 0.005) {
         const target = baseIsFood ? foodClassEntries : noAlimentosClassEntries
-        target.push({ itemId: `sin-detalle:${e.id}`, displayName: e.store ?? 'Compra', amount: remainder, type: SIN_CLASIFICAR })
+        target.push({ itemId: `sin-detalle:${e.id}`, displayName: e.store ?? 'Compra', amount: remainder, type: SIN_CLASIFICAR, expenseId: e.id })
         if (baseIsFood) foodAmount += remainder
         else nonFoodAmount += remainder
       }
@@ -5971,17 +6000,17 @@ export function BudgetsTab({
       if (manualKind === 'alimentacion' && e.productClassification) {
         foodAmount = e.amount
         const icon = foodTypeIconByName.get(e.productClassification) ?? '🍽️'
-        foodClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: { name: e.productClassification, icon } })
+        foodClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: { name: e.productClassification, icon }, expenseId: e.id })
       } else if (manualKind === 'no_alimentos' && e.productClassification) {
         nonFoodAmount = e.amount
         const icon = noAlimentosTypeIconByName.get(e.productClassification) ?? '❓'
-        noAlimentosClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: { name: e.productClassification, icon } })
+        noAlimentosClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: { name: e.productClassification, icon }, expenseId: e.id })
       } else if (baseIsFood) {
         foodAmount = e.amount
-        foodClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: SIN_CLASIFICAR })
+        foodClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: SIN_CLASIFICAR, expenseId: e.id })
       } else {
         nonFoodAmount = e.amount
-        noAlimentosClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: SIN_CLASIFICAR })
+        noAlimentosClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: SIN_CLASIFICAR, expenseId: e.id })
       }
     }
     splits.push({ expense: e, store, foodAmount, nonFoodAmount })
@@ -6002,23 +6031,25 @@ export function BudgetsTab({
   // buildProductTypeBreakdown, coloreado sin repetirse igual que
   // categoryColors).
   const foodTypeBreakdown = buildProductTypeBreakdown(foodClassEntries)
-  const foodTypePieGroups: BreakdownSlice[] = foodTypeBreakdown.map((t) => ({
+  const foodTypePieGroups: (BreakdownSlice & { expenseIds: string[] })[] = foodTypeBreakdown.map((t) => ({
     key: t.key,
     label: t.label,
     icon: t.icon,
     color: t.color,
     total: t.total,
     count: t.count,
+    expenseIds: t.expenseIds,
   }))
 
   const noAlimentosTypeBreakdown = buildProductTypeBreakdown(noAlimentosClassEntries)
-  const noAlimentosTypePieGroups: BreakdownSlice[] = noAlimentosTypeBreakdown.map((t) => ({
+  const noAlimentosTypePieGroups: (BreakdownSlice & { expenseIds: string[] })[] = noAlimentosTypeBreakdown.map((t) => ({
     key: t.key,
     label: t.label,
     icon: t.icon,
     color: t.color,
     total: t.total,
     count: t.count,
+    expenseIds: t.expenseIds,
   }))
 
   // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
@@ -6243,11 +6274,17 @@ export function BudgetsTab({
             title={storeDonutScope === 'alimentacion' ? 'Reparto del gasto por tipo de alimento' : 'Reparto del gasto en Otros por clasificación'}
             monthLabel={periodTitle}
             slices={storeDonutScope === 'alimentacion' ? foodTypePieGroups : noAlimentosTypePieGroups}
+            onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
           />
           <FoodTypeBreakdownList
             types={storeDonutScope === 'alimentacion' ? foodTypeBreakdown : noAlimentosTypeBreakdown}
             expandedKey={expandedClassType}
             onToggle={(key) => setExpandedClassType((prev) => (prev === key ? null : key))}
+            onViewRecords={
+              onViewMovements
+                ? (expenseIds, label) => onViewMovements({ label: `${label} — ${periodTitle}`, from: periodFrom, to: periodTo, isIncome: false, expenseIds })
+                : undefined
+            }
           />
         </>
       )}

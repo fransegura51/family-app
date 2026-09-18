@@ -2290,6 +2290,30 @@ function SvgDonut({
   )
 }
 
+// Petición real: "una vez elegida una sección ya no consigo que vuelva
+// a su vista general... ¿no puedes hacer que si tocamos fuera del
+// dónut vuelva a su estado original?" — además del botón explícito
+// "✕ Ver todo" (más descubrible, y necesario en móvil donde no hay
+// "fuera" mientras el dedo sigue en pantalla), tocar en cualquier otro
+// sitio de la página también deselecciona, como un desplegable/popover
+// cualquiera. Un solo listener en `document` (no uno por dónut) activo
+// solo mientras haya algo seleccionado, para no gastar nada el resto
+// del tiempo.
+function useOutsideClickReset(active: boolean, onOutside: () => void) {
+  const ref = useRef<HTMLDivElement>(null)
+  const onOutsideRef = useRef(onOutside)
+  onOutsideRef.current = onOutside
+  useEffect(() => {
+    if (!active) return
+    function handlePointerDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onOutsideRef.current()
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [active])
+  return ref
+}
+
 // Un solo nivel (etiquetas, Debo/Necesito/Quiero, Fijo/variable) — antes
 // tocar una porción llevaba DIRECTO a "Ver registros" saltando de
 // pestaña sin avisar. Petición real: "al tocar un área del dónut no
@@ -2312,9 +2336,10 @@ function BreakdownDonut({
 }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const selected = slices.find((s) => s.key === selectedKey)
+  const containerRef = useOutsideClickReset(!!selected, () => setSelectedKey(null))
 
   return (
-    <div>
+    <div ref={containerRef}>
       <SvgDonut
         slices={slices}
         centerLabel={selected ? { name: selected.label, total: selected.total } : centerLabel}
@@ -2332,6 +2357,16 @@ function BreakdownDonut({
               </button>
             </>
           )}
+          {' — '}
+          {/* Bug real reportado: "una vez elegida una sección ya no
+              consigo que vuelva a su vista general" — tocar la MISMA
+              porción otra vez también deselecciona (ver onSliceClick),
+              pero no es nada descubrible; un botón explícito, como el
+              "✕ Cerrar" que ya tiene el segundo dónut de
+              CategoryDonutExplorer. */}
+          <button type="button" className="link-button" onClick={() => setSelectedKey(null)}>
+            ✕ Ver todo
+          </button>
         </p>
       )}
     </div>
@@ -2417,12 +2452,16 @@ function CategoryDonutExplorer({
   const highlightedSub = subSlices.find((s) => s.key === highlightSub)
   const subCenter = highlightedSub ? { name: highlightedSub.label, total: highlightedSub.total } : { name: 'Todo', total: subGrandTotal }
 
+  function resetTop() {
+    setHighlightTop(null)
+    setSelectedTopId(null)
+    setHighlightSub(null)
+  }
+
   function selectTop(key: string) {
     if (key === highlightTop) {
       // Segundo toque en la misma porción: la deselecciona y cierra el subdónut.
-      setHighlightTop(null)
-      setSelectedTopId(null)
-      setHighlightSub(null)
+      resetTop()
       return
     }
     setHighlightTop(key)
@@ -2430,6 +2469,8 @@ function CategoryDonutExplorer({
     const slice = topSlices.find((s) => s.key === key)
     setSelectedTopId(slice?.hasChildren ? key : null)
   }
+
+  const containerRef = useOutsideClickReset(!!highlightTop, resetTop)
 
   function selectSub(key: string) {
     setHighlightSub((prev) => (prev === key ? null : key))
@@ -2445,7 +2486,7 @@ function CategoryDonutExplorer({
   }
 
   return (
-    <div className="donut-explorer">
+    <div className="donut-explorer" ref={containerRef}>
       <SvgDonut slices={topSlices} centerLabel={topCenter} highlightedKey={highlightTop} onSliceClick={selectTop} />
       {highlightedTop && (
         <p className="muted" style={{ textAlign: 'center', marginTop: 4 }}>
@@ -2468,6 +2509,14 @@ function CategoryDonutExplorer({
             }}
           >
             Ver movimientos →
+          </button>
+          {' — '}
+          {/* Mismo bug real que en BreakdownDonut: "una vez elegida una
+              sección ya no consigo que vuelva a su vista general" —
+              botón explícito además del toque fuera (useOutsideClickReset,
+              ver resetTop) y de tocar otra vez la misma porción. */}
+          <button type="button" className="link-button" onClick={resetTop}>
+            ✕ Ver todo
           </button>
         </p>
       )}
@@ -3145,6 +3194,19 @@ function ExpensesTab({
         {monthTotal.toFixed(2)} € gastados
         {monthIncome > 0 && ` · +${monthIncome.toFixed(2)} € ingresados`}
       </p>
+
+      {/* Petición real: "pondría en algún lugar bien visible que la
+          clasificación de productos y movimientos bancarios son
+          sugerencias" — un movimiento importado del banco lleva
+          categoría puesta automáticamente por el nombre del comercio
+          (ver MERCHANT_CATEGORY_RULES en enable-banking-sync-
+          transactions); es un acierto frecuente, no una certeza. */}
+      {accounts.length > 0 && (
+        <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+          ℹ️ La categoría de los movimientos importados del banco se asigna por sugerencia, según el comercio —
+          revísala y corrígela si no encaja (toca el movimiento para editarlo).
+        </p>
+      )}
 
       <div style={{ marginTop: 8 }}>
         <DropdownFilter label="Filtrar por" value={typeFilter} onChange={(k) => setTypeFilter(k as typeof typeFilter)} options={TYPE_FILTER_OPTIONS} />
@@ -6154,6 +6216,16 @@ export function BudgetsTab({
           </div>
           <p className="muted" style={{ margin: '8px 0 0' }}>
             Solo registro — no resta de ningún presupuesto. Cuenta para el Presupuesto General.
+          </p>
+          {/* Petición real: "pondría en algún lugar bien visible que la
+              clasificación de productos... son sugerencias y que
+              aconsejamos revisarlos" — las familias nuevas arrancan con
+              clasificaciones ya heredadas (ver is_seed_template) o
+              adivinadas por nombre (classifyFoodType); ambas pueden
+              venir mal para un producto o una tienda concretos. */}
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+            ℹ️ La clasificación de cada producto es una sugerencia (heredada o adivinada por su nombre) — revísala y
+            corrígela si no encaja, tocando el icono en Tickets o el nombre en Historial de precios.
           </p>
         </div>
       )}

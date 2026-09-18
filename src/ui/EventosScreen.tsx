@@ -76,7 +76,8 @@ import {
   updateRsvpDeadlineReminder,
   uploadInvitationPhoto,
 } from '@/data/events'
-import { listExpenses } from '@/data/finance'
+import { listExpenses, listBudgetCategories } from '@/data/finance'
+import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
 import {
   autoArrangeLayers,
@@ -1460,8 +1461,20 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
       .then(setItems)
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar el presupuesto')))
     if (event.tagId) {
-      listExpenses()
-        .then((expenses) => setSpent(expenses.filter((e) => e.tagId === event.tagId && !e.isIncome).reduce((sum, e) => sum + e.amount, 0)))
+      // Petición real: "no sé en qué circunstancias se podría dar que
+      // se haga un traspaso entre cuentas por un cumpleaños pero más
+      // vale prevenir así que inclúyelo" — mismo criterio que ya usa
+      // toda Economía (isInternalTransferCategory): un traspaso entre
+      // cuentas propias, si alguna vez llevara esta etiqueta por error,
+      // no debe contar como gasto real del evento.
+      Promise.all([listExpenses(), listBudgetCategories()])
+        .then(([expenses, categories]) =>
+          setSpent(
+            expenses
+              .filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories))
+              .reduce((sum, e) => sum + e.amount, 0),
+          ),
+        )
         .catch(() => setSpent(null))
     }
   }
@@ -2858,9 +2871,14 @@ function PepaConclusions({ event }: { event: FamilyEvent }) {
       event.enabledModules.includes('pagos') ? listEventPayments(event.id) : Promise.resolve([]),
       event.enabledModules.includes('presupuesto') ? listEventBudgetItems(event.id) : Promise.resolve([]),
       event.tagId && event.enabledModules.includes('presupuesto') ? listExpenses() : Promise.resolve(null),
-    ]).then(([guests, tasks, payments, budgetItems, expenses]) => {
+      event.tagId && event.enabledModules.includes('presupuesto') ? listBudgetCategories() : Promise.resolve([]),
+    ]).then(([guests, tasks, payments, budgetItems, expenses, categories]) => {
       const plannedBudget = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
-      const spentBudget = expenses ? expenses.filter((e) => e.tagId === event.tagId && !e.isIncome).reduce((sum, e) => sum + e.amount, 0) : null
+      const spentBudget = expenses
+        ? expenses
+            .filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories))
+            .reduce((sum, e) => sum + e.amount, 0)
+        : null
       setConclusions(
         computeEventConclusions({
           rsvpDeadline: event.rsvpDeadline,
@@ -4827,13 +4845,20 @@ function EndSummaryModal({ event, onClose, onConfirmed }: { event: FamilyEvent; 
       event.enabledModules.includes('presupuesto') ? listEventBudgetItems(event.id) : Promise.resolve([]),
       event.tagId && event.enabledModules.includes('presupuesto') ? listExpenses() : Promise.resolve(null),
       event.enabledModules.includes('regalos') ? listEventGifts(event.id) : Promise.resolve([]),
-    ]).then(([guests, tasks, budgetItems, expenses, gifts]) => {
+      event.tagId && event.enabledModules.includes('presupuesto') ? listBudgetCategories() : Promise.resolve([]),
+    ]).then(([guests, tasks, budgetItems, expenses, gifts, categories]) => {
       const confirmed = guests.filter((g) => g.rsvpStatus === 'confirmado')
       setConfirmedPeople(confirmed.reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0))
       setTaskStats({ done: tasks.filter((t) => t.done).length, total: tasks.length })
       if (event.enabledModules.includes('presupuesto')) {
         setPlannedBudget(budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0))
-        setSpentBudget(expenses ? expenses.filter((e) => e.tagId === event.tagId && !e.isIncome).reduce((sum, e) => sum + e.amount, 0) : null)
+        setSpentBudget(
+          expenses
+            ? expenses
+                .filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories))
+                .reduce((sum, e) => sum + e.amount, 0)
+            : null,
+        )
       }
       if (event.enabledModules.includes('regalos')) {
         setCashGifts(gifts.reduce((sum, g) => sum + (g.cashAmount ?? 0), 0))

@@ -102,8 +102,17 @@ export async function getEvent(id: string): Promise<FamilyEvent> {
 // evita chocar con el unique(family_id, name) si el usuario ya tenía
 // una etiqueta igual (p. ej. al duplicar un evento de años anteriores
 // con el mismo título).
-async function findOrCreateEventTag(familyId: string, name: string): Promise<string> {
-  const trimmed = name.trim().slice(0, 60)
+//
+// Petición real: "les pondría el año porque si no al año siguiente se
+// juntarían los gastos con los de este año" — el mismo cumpleaños
+// duplicado un año después (ver duplicateEvent) tendría el mismo
+// título y, sin el año, la misma etiqueta de Economía que el del año
+// anterior. Solo afecta a etiquetas NUEVAS a partir de ahora — las que
+// ya existían (p. ej. "Cumpleaños Alvaro") no se renombran solas, para
+// no romper lo que ya se haya etiquetado con ellas.
+async function findOrCreateEventTag(familyId: string, name: string, year: number): Promise<string> {
+  const yearSuffix = ` ${year}`
+  const trimmed = `${name.trim().slice(0, 60 - yearSuffix.length)}${yearSuffix}`
   const { data: existing } = await supabase.from('tags').select('id').eq('family_id', familyId).eq('name', trimmed).maybeSingle()
   if (existing) return existing.id
   const { data: created, error } = await supabase
@@ -129,7 +138,8 @@ export async function createEvent(input: {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
 
-  const tagId = await findOrCreateEventTag(familyId, input.title)
+  const tagYear = input.eventDate ? new Date(input.eventDate).getFullYear() : new Date().getFullYear()
+  const tagId = await findOrCreateEventTag(familyId, input.title, tagYear)
 
   const { data: event, error } = await supabase
     .from('events')
@@ -243,9 +253,28 @@ export async function unarchiveEvent(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Petición real: "las etiquetas de un evento borrado no se borran,
+// habría que borrarlas" — la etiqueta que se creó sola al dar de alta
+// el evento (findOrCreateEventTag) se queda huérfana si nadie la
+// limpia. Solo se borra si de verdad no la usa nada más: ni otro
+// evento con el mismo nombre (findOrCreateEventTag reutiliza por
+// nombre exacto, así que dos eventos podrían compartirla) ni ningún
+// gasto ya etiquetado — borrar una etiqueta con gastos reales detrás
+// los dejaría "Sin etiqueta" en silencio (expenses.tag_id es ON DELETE
+// SET NULL), y eso sí perdería información real.
 export async function deleteEvent(id: string): Promise<void> {
+  const { data: existing } = await supabase.from('events').select('tag_id').eq('id', id).maybeSingle()
   const { error } = await supabase.from('events').delete().eq('id', id)
   if (error) throw error
+  const tagId = existing?.tag_id
+  if (!tagId) return
+  const [{ count: otherEvents }, { count: taggedExpenses }] = await Promise.all([
+    supabase.from('events').select('id', { count: 'exact', head: true }).eq('tag_id', tagId),
+    supabase.from('expenses').select('id', { count: 'exact', head: true }).eq('tag_id', tagId),
+  ])
+  if (!otherEvents && !taggedExpenses) {
+    await supabase.from('tags').delete().eq('id', tagId)
+  }
 }
 
 // Duplicar — petición de la Skill: copia la estructura (tipo, título,

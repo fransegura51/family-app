@@ -5330,10 +5330,6 @@ function ReceiptForm({
       {mode === 'add' && (
         <>
           <h2>Subir ticket</h2>
-          <p className="muted">
-            La foto del ticket se guarda solo los últimos 3 meses; pasado ese tiempo se borra la foto
-            (la tienda, la fecha y el importe se quedan igual).
-          </p>
           <label>Foto o archivo</label>
           <FileOrPdfPicker
             file={file}
@@ -5343,6 +5339,13 @@ function ReceiptForm({
               setOcrStatus('idle')
             }}
           />
+          {/* Petición real: "lo de subir ticket, ¿se puede poner algo más
+              compacto?" — el aviso de que la foto se borra a los 3 meses
+              sigue aquí, pero como nota pequeña bajo el propio picker de
+              foto, no como párrafo aparte arriba de todo el formulario. */}
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            La foto se borra a los 3 meses (tienda, fecha e importe se quedan).
+          </p>
 
           {file && (
             <button type="button" className="voice-mic-button" onClick={handleReadTicket} disabled={ocrStatus === 'reading'}>
@@ -5360,10 +5363,13 @@ function ReceiptForm({
           la pantalla con muchas tiendas — petición real: "ahí me haces
           un desplegable y me pones todas las tiendas que hay arriba me
           las metes dentro del desplegable, así damos con la aplicación
-          más ordenada". */}
-      {existingFolders.length > 0 && (
+          más ordenada". Solo en editar: al SUBIR uno nuevo, ese mismo
+          desplegable duplicaba "Establecimiento" (que ya autocompleta
+          con las mismas tiendas vía datalist) — petición real: "lo de
+          subir ticket, ¿se puede poner algo más compacto?". */}
+      {mode === 'edit' && existingFolders.length > 0 && (
         <label>
-          {mode === 'add' ? '¿Dónde guardo este ticket?' : 'Mover a esta carpeta'}
+          Mover a esta carpeta
           <select value={existingFolders.includes(store) ? store : ''} onChange={(e) => e.target.value && setStore(e.target.value)}>
             <option value="">— Elegir tienda —</option>
             {existingFolders.map((f) => (
@@ -5384,29 +5390,33 @@ function ReceiptForm({
           placeholder="Mercadona"
         />
       </label>
-      <label>
-        Fecha
-        <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} required />
-      </label>
-      <label>
-        Importe total (€)
-        <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
-      </label>
-      <label>
-        Categoría
-        <CategorySelect value={category} onChange={setCategory} categories={categories} />
-      </label>
-      <label>
-        ¿Quién hizo la compra? (opcional)
-        <select value={purchasedByMemberId} onChange={(e) => setPurchasedByMemberId(e.target.value)}>
-          <option value="">—</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="inline-fields">
+        <label>
+          Fecha
+          <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} required />
+        </label>
+        <label>
+          Importe total (€)
+          <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
+        </label>
+      </div>
+      <div className="inline-fields">
+        <label>
+          Categoría
+          <CategorySelect value={category} onChange={setCategory} categories={categories} />
+        </label>
+        <label>
+          ¿Quién? (opcional)
+          <select value={purchasedByMemberId} onChange={(e) => setPurchasedByMemberId(e.target.value)}>
+            <option value="">—</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {loadingLines && <p className="muted">Cargando productos leídos…</p>}
       {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0) && (

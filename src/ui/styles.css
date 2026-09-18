@@ -3534,13 +3534,29 @@ textarea {
   flex: 0 0 56px;
 }
 
+/* Petición real: "el campo de unidad como el de precio no hace falta
+   que sean tan anchos, que entre ambos tengan la misma anchura que el
+   nombre del producto" — antes "Precio total" llevaba flex: 1 y
+   estiraba hasta el borde de la tarjeta; ahora los dos tienen un ancho
+   fijo y compacto, sin estirarse, en vez de repartirse todo el resto
+   de la fila. */
 .receipt-line-row-secondary {
   padding-left: 36px;
+  justify-content: flex-start;
 }
 
 .receipt-line-row-secondary input[type='number'] {
   font-size: 13px;
   padding: 4px 6px;
+  flex: 0 0 auto;
+}
+
+.receipt-line-row-secondary input.receipt-line-qty {
+  flex: 0 0 44px;
+}
+
+.receipt-line-row-secondary input[type='number']:not(.receipt-line-qty) {
+  flex: 0 0 72px;
 }
 
 .receipt-line-new-badge {

@@ -4927,7 +4927,13 @@ function resolveDraftLineClass(
     classification = line.classOverride.classification
   } else if (existing) {
     kind = existing.nonFood ? 'no_alimentos' : 'alimentacion'
-    classification = existing.category?.trim() || ''
+    const stored = existing.category?.trim() || ''
+    // Un producto ya conocido pero sin clasificar a mano (frecuente:
+    // "muchas clasificaciones las he tenido que retocar") se enseña
+    // igual que en Historial de precios — "Automático" por el nombre —
+    // en vez de dejarlo en blanco, para no tener que adivinarlo dos
+    // veces.
+    classification = stored || (kind === 'alimentacion' ? classifyFoodType(existing.displayName).label : '')
   } else {
     const defaultIsFood = ticketStore.trim().toLowerCase() !== 'amazon' || isFoodCategory(ticketCategory, categories)
     kind = defaultIsFood ? 'alimentacion' : 'no_alimentos'

@@ -1,4 +1,5 @@
 import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import {
   addExpense,
@@ -81,6 +82,7 @@ import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { StoreIcon } from '@/ui/StoreIcon'
+import { ProductTypesModal } from '@/ui/ProductTypesModal'
 import type {
   BankAccount,
   BankConnection,
@@ -5185,10 +5187,22 @@ function ReceiptForm({
     alimentacion: [],
     no_alimentos: [],
   })
+  // Petición real: "en la parte que emerge al leer un ticket debería
+  // estar accesible el botón engranaje de crear nuevas clases de
+  // productos" — antes solo se podía crear una clase nueva yendo a
+  // Historial de precios y volviendo; ahora el mismo ⚙️ está aquí
+  // mismo, junto a "Productos leídos".
+  const [showFoodTypesModal, setShowFoodTypesModal] = useState(false)
   const productByNormalizedName = useMemo(
     () => new Map(allProducts.map((p) => [p.normalizedName, p])),
     [allProducts],
   )
+
+  function reloadFoodTypes() {
+    return Promise.all([listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')]).then(
+      ([foodKinds, noFoodKinds]) => setFoodTypesByKind({ alimentacion: foodKinds, no_alimentos: noFoodKinds }),
+    )
+  }
 
   useEffect(() => {
     Promise.all([listProducts(), listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')])
@@ -5429,12 +5443,24 @@ function ReceiptForm({
       {loadingLines && <p className="muted">Cargando productos leídos…</p>}
       {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0) && (
         <div className="day-modal-group">
-          <p className="muted">
-            Productos leídos — revisa y corrige antes de guardar. El símbolo de la izquierda es la
-            clasificación del producto (toca para cambiarla); "Nuevo" marca los que no reconoce de antes, para
-            que repases si la ha adivinado bien. "Cant." es cuántas unidades se compraron y "Precio" el
-            importe total de esa línea, no el precio de una sola unidad.
-          </p>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <p className="muted" style={{ flex: 1, margin: 0 }}>
+              Productos leídos — revisa y corrige antes de guardar. El símbolo de la izquierda es la
+              clasificación del producto (toca para cambiarla); "Nuevo" marca los que no reconoce de antes, para
+              que repases si la ha adivinado bien. "Cant." es cuántas unidades se compraron y "Precio" el
+              importe total de esa línea, no el precio de una sola unidad.
+            </p>
+            <button
+              type="button"
+              className="link-button"
+              style={{ fontSize: 20, flex: 'none' }}
+              onClick={() => setShowFoodTypesModal(true)}
+              title="Clasificaciones de productos"
+              aria-label="Clasificaciones de productos"
+            >
+              ⚙️
+            </button>
+          </div>
           {lines.map((line, i) => {
             const resolved = resolveDraftLineClass(line, productByNormalizedName, foodTypesByKind, store, category, categories)
             return (
@@ -5501,6 +5527,22 @@ function ReceiptForm({
           </button>
         )}
       </div>
+      {/* Portal, no inline: ProductTypesModal lleva su propio <form> (el
+          alta de una clase nueva), y este componente entero ya vive
+          dentro de un <form> (Guardar ticket) — dos <form> anidados es
+          HTML inválido (el de dentro podría acabar enviando el de
+          fuera al pulsar Intro). Montado aparte, en document.body, se
+          evita el anidado sin tocar ProductTypesModal. */}
+      {showFoodTypesModal &&
+        createPortal(
+          <ProductTypesModal
+            types={[...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos]}
+            initialKind={isFoodCategory(category, categories) ? 'alimentacion' : 'no_alimentos'}
+            onClose={() => setShowFoodTypesModal(false)}
+            onChanged={reloadFoodTypes}
+          />,
+          document.body,
+        )}
     </form>
   )
 }

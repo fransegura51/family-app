@@ -238,7 +238,7 @@ export function ShoppingScreen() {
 
 function ComprasInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void }) {
   const shortcuts: { tab: SubTab; body: string }[] = [
-    { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda.' },
+    { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.' },
     { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.' },
     { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.' },
     { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.' },
@@ -603,6 +603,16 @@ function ShoppingListTab() {
   const [items, setItems] = useState<ShoppingItem[]>([])
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
+  // Petición real: "vamos a organizarla por clases de alimentos...
+  // conforme se apunten que la app vaya organizándolas por clases
+  // conforme a las clases que ya tenemos" — mismo catálogo de
+  // clasificación que Tickets/Historial de precios, para agrupar cada
+  // tienda por pasillo en vez de una lista suelta.
+  const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [foodTypesByKind, setFoodTypesByKind] = useState<Record<FoodTypeKind, FamilyFoodType[]>>({
+    alimentacion: [],
+    no_alimentos: [],
+  })
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -676,11 +686,22 @@ function ShoppingListTab() {
   // deja puesta a propósito entre productos seguidos.
   function reload() {
     setLoading(true)
-    Promise.all([listShoppingItems(), listProducts(), listAllProductPrices(), listShoppingStores(), listReceipts(), listBudgetCategories()])
-      .then(([shoppingItems, products, prices, shoppingStores, receipts, categories]) => {
+    Promise.all([
+      listShoppingItems(),
+      listProducts(),
+      listAllProductPrices(),
+      listShoppingStores(),
+      listReceipts(),
+      listBudgetCategories(),
+      listFamilyFoodTypes('alimentacion'),
+      listFamilyFoodTypes('no_alimentos'),
+    ])
+      .then(([shoppingItems, products, prices, shoppingStores, receipts, categories, foodKinds, noFoodKinds]) => {
         setItems(shoppingItems)
         setSuggestions(buildSuggestions(products, prices, buildFoodReceiptIds(receipts, categories)))
         setStores(shoppingStores)
+        setAllProducts(products)
+        setFoodTypesByKind({ alimentacion: foodKinds, no_alimentos: noFoodKinds })
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => {
@@ -778,6 +799,64 @@ function ShoppingListTab() {
     return a[0].localeCompare(b[0])
   })
 
+  // Petición real: "vamos a organizarla por clases de alimentos...
+  // conforme se apunten que la app vaya organizándolas por clases
+  // conforme a las clases que ya tenemos. De esa manera en la tienda
+  // será más fácil comprar porque productos similares suelen estar
+  // juntos" — dentro de CADA tienda, un segundo nivel de agrupación por
+  // clase (mismo criterio que resolveDraftLineClass en Tickets: la
+  // clase ya guardada del producto si se conoce, si no se adivina por
+  // el nombre). El arrastre para reordenar a mano sigue existiendo,
+  // pero dentro de cada clase — entre clases ya no tiene sentido, las
+  // decide la propia app.
+  const productByNormalizedName = new Map(allProducts.map((p) => [p.normalizedName, p]))
+
+  function resolveItemClass(item: ShoppingItem): { kind: FoodTypeKind; label: string; icon: string } {
+    const existing = productByNormalizedName.get(normalizeProductName(item.name))
+    let kind: FoodTypeKind
+    let classification: string
+    if (existing) {
+      kind = existing.nonFood ? 'no_alimentos' : 'alimentacion'
+      classification = existing.category?.trim() || (kind === 'alimentacion' ? classifyFoodType(item.name).label : '')
+    } else {
+      // Sin producto conocido todavía: mismo criterio de "tienda física
+      // = Alimentos por defecto" que ya usa el resto de la app — se
+      // adivina por el nombre, nunca se deja "Sin tienda"/"Sin clase"
+      // solo por ser nuevo.
+      kind = 'alimentacion'
+      classification = classifyFoodType(item.name).label
+    }
+    const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined
+    const label = classification || 'Sin clasificar'
+    const icon = known?.icon ?? (classification ? (kind === 'alimentacion' ? classifyFoodType(item.name).icon : '❓') : '❓')
+    return { kind, label, icon }
+  }
+
+  const FOOD_TYPE_ORDER = FOOD_TYPES.map((t) => t.label)
+  const NO_FOOD_TYPE_ORDER = NO_FOOD_TYPES.map((t) => t.label)
+  function classGroupRank(kind: FoodTypeKind, label: string): number {
+    if (label === 'Sin clasificar') return 1000
+    const canonical = kind === 'alimentacion' ? FOOD_TYPE_ORDER : NO_FOOD_TYPE_ORDER
+    const idx = canonical.indexOf(label)
+    const kindOffset = kind === 'alimentacion' ? 0 : 500
+    return kindOffset + (idx >= 0 ? idx : 400)
+  }
+
+  function classGroupsFor(storeItems: ShoppingItem[]) {
+    const groups = new Map<string, { kind: FoodTypeKind; label: string; icon: string; items: ShoppingItem[] }>()
+    for (const item of storeItems) {
+      const resolved = resolveItemClass(item)
+      const key = `${resolved.kind}:${resolved.label}`
+      const group = groups.get(key) ?? { kind: resolved.kind, label: resolved.label, icon: resolved.icon, items: [] }
+      group.items.push(item)
+      groups.set(key, group)
+    }
+    return [...groups.values()].sort((a, b) => {
+      const rankDiff = classGroupRank(a.kind, a.label) - classGroupRank(b.kind, b.label)
+      return rankDiff !== 0 ? rankDiff : a.label.localeCompare(b.label, 'es')
+    })
+  }
+
   async function setStatus(id: string, status: ShoppingItemStatus) {
     try {
       await updateShoppingItemStatus(id, status)
@@ -865,15 +944,22 @@ function ShoppingListTab() {
           </h3>
           {!collapsed && (
             <>
-              <DraggableStoreGroup
-                items={storeItems}
-                suggestions={suggestions}
-                shoppingMode={shoppingMode}
-                onSetStatus={setStatus}
-                onDeleted={reload}
-                onReordered={reload}
-                onEdit={setEditingItem}
-              />
+              {classGroupsFor(storeItems).map((group) => (
+                <div key={`${store}:${group.kind}:${group.label}`} className="shopping-class-group">
+                  <p className="shopping-class-heading">
+                    {group.icon} {group.label}
+                  </p>
+                  <DraggableStoreGroup
+                    items={group.items}
+                    suggestions={suggestions}
+                    shoppingMode={shoppingMode}
+                    onSetStatus={setStatus}
+                    onDeleted={reload}
+                    onReordered={reload}
+                    onEdit={setEditingItem}
+                  />
+                </div>
+              ))}
               {/* Los comprados se quedan tachados a la vista; solo se
                   limpia la tienda entera al terminar de comprar allí. */}
               <ConfirmButton

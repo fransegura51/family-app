@@ -1421,6 +1421,23 @@ select {
   color: var(--muted);
 }
 
+/* Petición real: "vamos a organizarla por clases de alimentos...
+   productos similares suelen estar juntos" — subcabecera por clase
+   dentro de cada tienda, más pequeña y sin peso que la de la tienda
+   (esa manda; esta solo separa visualmente los "pasillos"). */
+.shopping-class-group {
+  margin-top: 10px;
+}
+
+.shopping-class-heading {
+  margin: 0 0 2px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .points-badge {
   display: inline-block;
   background: #fff3cd;

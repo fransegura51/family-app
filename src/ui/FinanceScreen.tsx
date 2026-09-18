@@ -5742,12 +5742,14 @@ export function BudgetsTab({
   // deja fuera del modo Separado, ver 0098_shared_accounts_mode.sql).
   const scopingActive = group === 'generales' && accountsMode === 'separado'
   const [scope, setScope] = useState<'personal' | 'comun'>('personal')
-  // Qué tipo de alimento (o de Otros) está desplegado en la lista bajo
-  // su dónut — ver FoodTypeBreakdownList más abajo.
-  const [expandedFoodType, setExpandedFoodType] = useState<string | null>(null)
-  const [expandedNoAlimentosType, setExpandedNoAlimentosType] = useState<string | null>(null)
+  // Qué tipo/clase está desplegado en la lista bajo el dónut "por
+  // clasificación" — ver FoodTypeBreakdownList más abajo. Uno solo,
+  // porque ahora Alimentos y Otros comparten el mismo dónut (ver
+  // storeDonutScope) en vez de mostrarse los dos a la vez.
+  const [expandedClassType, setExpandedClassType] = useState<string | null>(null)
   // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
-  // usar el mismo dónut con botón Alimentación/Otros".
+  // usar el mismo dónut con botón Alimentación/Otros" — luego extendido
+  // también al dónut "por clasificación": un solo chip gobierna los dos.
   const [storeDonutScope, setStoreDonutScope] = useState<FoodTypeKind>('alimentacion')
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
@@ -6209,7 +6211,12 @@ export function BudgetsTab({
         <>
           {/* Petición real: "falta otro [dónut por tienda] de Otros. Se
               podría usar el mismo Dónut con botón Alimentación/Otros" —
-              mismo componente, el chip decide qué gastos lo alimentan. */}
+              y después: "vamos a fusionar las dos estadísticas [por
+              tipo de alimento / por clasificación en Otros] como la de
+              arriba, y las vamos a amarrar a los mismos dos botones de
+              Alimentación y Otros" — un único chip gobierna ahora los
+              DOS dónuts (por tienda y por clasificación) a la vez, en
+              vez de mostrar siempre los dos lados de golpe. */}
           <div className="filter-row">
             <button
               type="button"
@@ -6232,34 +6239,20 @@ export function BudgetsTab({
             slices={storeDonutScope === 'alimentacion' ? storePieSlicesAlimentacion : storePieSlicesOtros}
             onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
           />
+          <LinkedDonutCard
+            title={storeDonutScope === 'alimentacion' ? 'Reparto del gasto por tipo de alimento' : 'Reparto del gasto en Otros por clasificación'}
+            monthLabel={periodTitle}
+            slices={storeDonutScope === 'alimentacion' ? foodTypePieGroups : noAlimentosTypePieGroups}
+          />
+          <FoodTypeBreakdownList
+            types={storeDonutScope === 'alimentacion' ? foodTypeBreakdown : noAlimentosTypeBreakdown}
+            expandedKey={expandedClassType}
+            onToggle={(key) => setExpandedClassType((prev) => (prev === key ? null : key))}
+          />
         </>
       )}
       {group === 'generales' && categoryPieSlices.length > 0 && (
         <StorePieChart groups={categoryPieSlices} monthLabel={periodTitle} title="Reparto del gasto por categoría" />
-      )}
-      {group === 'alimentacion' && (
-        <>
-          <LinkedDonutCard title="Reparto del gasto por tipo de alimento" monthLabel={periodTitle} slices={foodTypePieGroups} />
-          <FoodTypeBreakdownList
-            types={foodTypeBreakdown}
-            expandedKey={expandedFoodType}
-            onToggle={(key) => setExpandedFoodType((prev) => (prev === key ? null : key))}
-          />
-        </>
-      )}
-      {group === 'alimentacion' && (
-        <>
-          {/* Petición real: "el de reparto de gastos en Otros cámbialo
-              de Categorías a Clasificación" — mismo patrón que "por
-              tipo de alimento": por producto, no por categoría de
-              Economía del gasto entero. */}
-          <LinkedDonutCard title="Reparto del gasto en Otros por clasificación" monthLabel={periodTitle} slices={noAlimentosTypePieGroups} />
-          <FoodTypeBreakdownList
-            types={noAlimentosTypeBreakdown}
-            expandedKey={expandedNoAlimentosType}
-            onToggle={(key) => setExpandedNoAlimentosType((prev) => (prev === key ? null : key))}
-          />
-        </>
       )}
     </div>
   )

@@ -5487,16 +5487,10 @@ function FoodTypeBreakdownList({
   types,
   expandedKey,
   onToggle,
-  onViewRecords,
 }: {
   types: FoodTypeBreakdownEntry[]
   expandedKey: string | null
   onToggle: (key: string) => void
-  // Petición real: "quiero aquí los mismos enlaces a los movimientos
-  // que en las otras estadísticas" — cada fila ya sabe qué gastos la
-  // componen (ver buildProductTypeBreakdown), igual que el dónut de
-  // arriba.
-  onViewRecords?: (expenseIds: string[], label: string) => void
 }) {
   if (types.length === 0) return null
   const grandTotal = types.reduce((sum, t) => sum + t.total, 0)
@@ -5530,13 +5524,6 @@ function FoodTypeBreakdownList({
                 <span className="muted">({grandTotal > 0 ? ((t.total / grandTotal) * 100).toFixed(0) : 0}%)</span>
               </span>
             </button>
-            {onViewRecords && t.expenseIds.length > 0 && (
-              <p className="muted" style={{ margin: '0 4px 4px', fontSize: 12, textAlign: 'right' }}>
-                <button type="button" className="link-button" onClick={() => onViewRecords(t.expenseIds, `${t.icon} ${t.label}`)}>
-                  Ver movimientos →
-                </button>
-              </p>
-            )}
             {isOpen && (
               <div style={{ paddingLeft: 20 }}>
                 {t.products.map((p) => (
@@ -6280,11 +6267,6 @@ export function BudgetsTab({
             types={storeDonutScope === 'alimentacion' ? foodTypeBreakdown : noAlimentosTypeBreakdown}
             expandedKey={expandedClassType}
             onToggle={(key) => setExpandedClassType((prev) => (prev === key ? null : key))}
-            onViewRecords={
-              onViewMovements
-                ? (expenseIds, label) => onViewMovements({ label: `${label} — ${periodTitle}`, from: periodFrom, to: periodTo, isIncome: false, expenseIds })
-                : undefined
-            }
           />
         </>
       )}

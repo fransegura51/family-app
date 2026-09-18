@@ -776,13 +776,27 @@ export async function deleteEventPayment(id: string): Promise<void> {
 
 // ---------------------------------------------------------------------
 // RSVP público — enlace personalizado por invitado, sin cuenta PEPA
-// (ver supabase/functions/event-rsvp). El token se genera bajo demanda,
-// no al crear el invitado.
-// ---------------------------------------------------------------------
+// (ver supabase/functions/event-rsvp, que ahora solo sirve JSON, y
+// src/ui/RsvpScreen.tsx, que lo renderiza). El token se genera bajo
+// demanda, no al crear el invitado.
+//
+// Bug real: el enlace apuntaba antes directo a la función edge
+// (*.supabase.co/functions/v1/event-rsvp), que sirve HTML — pero
+// Supabase fuerza Content-Type: text/plain + una CSP en modo sandbox
+// en toda función edge (para que ninguna pueda servir HTML "de
+// verdad" bajo su dominio compartido), así que el móvil lo descargaba
+// como archivo en vez de abrirlo. Ahora el enlace es la propia app,
+// por la RAÍZ ("/?rsvp=TOKEN") — un archivo real en GitHub Pages, sin
+// el truco de 404.html de por medio (mismo motivo que el regreso del
+// banco vuelve siempre a "/": ese salto doble es el más frágil justo
+// tras un enlace externo largo en móvil) — App.tsx la reconoce y
+// bypasa el login por completo.
+function appBaseUrl(): string {
+  return window.location.origin + import.meta.env.BASE_URL
+}
 
 function rsvpUrlFromToken(token: string): string {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-  return `${supabaseUrl}/functions/v1/event-rsvp?token=${token}`
+  return `${appBaseUrl()}?rsvp=${token}`
 }
 
 export async function getGuestRsvpUrl(guestId: string): Promise<string> {
@@ -805,8 +819,7 @@ export async function regenerateGuestRsvpUrl(guestId: string): Promise<string> {
 // ---------------------------------------------------------------------
 
 function openRsvpUrlFromToken(token: string): string {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-  return `${supabaseUrl}/functions/v1/event-rsvp?open=${token}`
+  return `${appBaseUrl()}?rsvp_open=${token}`
 }
 
 export async function getEventOpenRsvpUrl(eventId: string): Promise<string> {

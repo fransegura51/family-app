@@ -6,6 +6,8 @@ import { OnboardingScreen } from '@/ui/OnboardingScreen'
 import { HomeScreen } from '@/ui/HomeScreen'
 import { NavShell } from '@/ui/NavShell'
 
+const RsvpScreen = lazy(() => import('@/ui/RsvpScreen').then((m) => ({ default: m.RsvpScreen })))
+
 // Preparación de escala / "que sea la mejor": el bundle único pesaba
 // ~1 MB (Vite avisaba en cada build) y en un móvil con datos eso es la
 // primera pantalla tardando segundos. Cada sección se descarga solo al
@@ -60,7 +62,32 @@ function HomeOrBankReturn({ profile }: { profile: Parameters<typeof HomeScreen>[
   return <HomeScreen profile={profile} />
 }
 
+// Página pública de RSVP (Módulo Eventos) — un invitado nunca tiene
+// cuenta PEPA, así que se reconoce ANTES que nada (sin llamar siquiera
+// a useSession) para que jamás vea la pantalla de login. Enlace por la
+// RAÍZ ("/?rsvp=TOKEN"), no una ruta nueva como "/rsvp" — "/" es un
+// archivo real en GitHub Pages, sin el truco de 404.html de por medio
+// (mismo motivo que el regreso del banco vuelve siempre a "/", ver
+// HomeOrBankReturn más abajo: ese salto doble es el más frágil de
+// todos justo tras un enlace externo largo en el móvil).
+function rsvpParamsFromLocation(): { token: string | null; openToken: string | null } {
+  const params = new URLSearchParams(window.location.search)
+  return { token: params.get('rsvp'), openToken: params.get('rsvp_open') }
+}
+
 export function App() {
+  const { token: rsvpToken, openToken: rsvpOpenToken } = rsvpParamsFromLocation()
+  if (rsvpToken || rsvpOpenToken) {
+    return (
+      <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
+        <RsvpScreen token={rsvpToken} openToken={rsvpOpenToken} />
+      </Suspense>
+    )
+  }
+  return <AuthedApp />
+}
+
+function AuthedApp() {
   const { session, profile, loading, refreshProfile } = useSession()
 
   if (loading) return <div className="screen screen-centered">Cargando…</div>

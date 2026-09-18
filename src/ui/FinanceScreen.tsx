@@ -4751,6 +4751,7 @@ function CategorySelect({
   onChange,
   categories,
   allowGeneral,
+  compact,
 }: {
   value: string
   onChange: (v: string) => void
@@ -4760,6 +4761,13 @@ function CategorySelect({
   // pueda elegir General" — solo lo pide Nuevo presupuesto (donde
   // value === '' significa "sin categoría concreta, cuenta todo").
   allowGeneral?: boolean
+  // Petición real: "disminuye la letra de la categoría para que se
+  // ajuste todo a una línea" — al ir ahora a media anchura (Tickets, en
+  // fila con "¿Quién?"), el nombre más largo (p. ej. "Alimentación")
+  // partía en dos líneas y empujaba la flecha ▼ a una tercera. Solo
+  // afecta a quien pase esta prop, el resto de usos (a ancho completo)
+  // se quedan con el tamaño de siempre.
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -4797,7 +4805,7 @@ function CategorySelect({
 
   return (
     <div>
-      <button type="button" className="category-picker-toggle" onClick={openPicker}>
+      <button type="button" className="category-picker-toggle" style={compact ? { fontSize: 14, padding: '10px 12px' } : undefined} onClick={openPicker}>
         <span>
           {selected ? `${selected.icon} ${selected.name}` : allowGeneral && !value ? '🗂️ General' : value || 'Elige una categoría'}
         </span>
@@ -5403,7 +5411,7 @@ function ReceiptForm({
       <div className="inline-fields">
         <label>
           Categoría
-          <CategorySelect value={category} onChange={setCategory} categories={categories} />
+          <CategorySelect value={category} onChange={setCategory} categories={categories} compact />
         </label>
         <label>
           ¿Quién? (opcional)

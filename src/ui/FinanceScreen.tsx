@@ -4366,12 +4366,11 @@ export function ReceiptsTab() {
           todo" — antes iba al final de la lista. */}
       <ReceiptForm mode="add" onDone={reload} knownStores={knownStores} existingFolders={storeNames} categories={categories} members={members} />
 
-      {/* Petición real: "reparto del gasto por tienda, eso me lo hace
-          del total, y no quiero que me lo haga del total... que las
-          estadísticas se ajusten al selector que tenemos arriba" — un
-          único selector de fecha (arriba del todo) para el total, el
-          reparto por tienda y el gasto mensual, en vez de uno nuevo en
-          cada apartado. */}
+      {/* Petición real: "las estadísticas en Tickets... trasládalas a
+          Estadísticas para que todo esté en el mismo sitio" — el reparto
+          por tienda y el gasto mensual se mudan a Compras → Estadística
+          compras (sección "Solo con ticket subido"); aquí se queda solo
+          el total rápido mientras repasas las carpetas de abajo. */}
       <ReceiptSpendSummary
         receipts={displayReceipts}
         knownStores={knownStores}
@@ -4383,12 +4382,10 @@ export function ReceiptsTab() {
         customTo={rangeCustomTo}
         onCustomToChange={setRangeCustomTo}
       />
-
       {displayReceipts.length > 0 && (
-        <>
-          <StoreBreakdownChart groups={rangeGrouped} />
-          <StoreMonthlyChart receipts={rangeFilteredReceipts} knownStores={knownStores} storeNames={storeNames} from={rangeFrom} to={rangeTo} />
-        </>
+        <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
+          Para el reparto por tienda y la evolución mensual, ver Compras → Estadística compras.
+        </p>
       )}
 
       {/* Petición real: "créame una carpeta dentro de ticket por cada
@@ -4541,13 +4538,24 @@ function ReceiptSpendSummary({
 // todos los supermercados... Mercadona el setenta por ciento de las
 // compras... Hiperber el treinta por ciento" — barras horizontales,
 // una por tienda, con el importe y el % sobre el total de todas.
-function StoreBreakdownChart({ groups }: { groups: { store: string; receipts: Receipt[]; total: number }[] }) {
+function StoreBreakdownChart({
+  groups,
+  title = 'Reparto del gasto por tienda',
+}: {
+  groups: { store: string; receipts: Receipt[]; total: number }[]
+  // Petición real: "las estadísticas en Tickets... trasládalas a
+  // Estadísticas... dejar claro que son los totales de los tickets, que
+  // son similares pero no iguales" — al vivir ahora junto al dónut "por
+  // tienda" (que sí cuenta TODO lo registrado), el título por defecto
+  // se presta a confusión repetido dos veces en la misma pantalla.
+  title?: string
+}) {
   const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
   const maxTotal = Math.max(...groups.map((g) => g.total), 1)
   const palette = distinctPaletteEntries(groups.length)
   return (
     <div className="card event-card">
-      <strong>Reparto del gasto por tienda</strong>
+      <strong>{title}</strong>
       <div className="price-row-list" style={{ marginTop: 8 }}>
         {groups.map((g, i) => {
           const pct = grandTotal > 0 ? (g.total / grandTotal) * 100 : 0
@@ -6152,6 +6160,39 @@ export function BudgetsTab({
   const storePieSlicesOtros = buildStorePieSlices(
     splits.filter((s) => s.nonFoodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.nonFoodAmount })),
   )
+
+  // Petición real: "las estadísticas en Tickets... trasládalas a
+  // Estadísticas para que todo esté en el mismo sitio... dejar claro
+  // que son los totales de los tickets, que son similares pero no
+  // iguales" — mismo cálculo que tenía ReceiptsTab (receipts + el hueco
+  // que rellena un cargo de banco de Alimentación sin ticket todavía),
+  // solo movido aquí. A propósito NO usa storeDonutScope (Alimentación/
+  // Otros): antes en Tickets se veían todas las tiendas juntas, de
+  // cualquier tipo, y cambiar eso ahora sería alterar el dato, no solo
+  // el sitio donde vive.
+  const ticketBankOnlyExpenses = expenses.filter((e) => e.source === 'banco' && !e.isIncome && isFoodCategory(e.category, categories))
+  const ticketDisplayReceipts: DisplayReceipt[] = [
+    ...receipts.map((r) => ({ ...r, hasTicket: true })),
+    ...ticketBankOnlyExpenses.map(
+      (e): DisplayReceipt => ({
+        id: `bank:${e.id}`,
+        familyId: e.familyId,
+        storagePath: null,
+        store: e.store,
+        receiptDate: e.expenseDate,
+        totalAmount: e.amount,
+        expenseId: e.id,
+        notes: e.notes,
+        category: e.category,
+        purchasedByMemberId: null,
+        hasTicket: false,
+      }),
+    ),
+  ]
+  const ticketRangeFiltered = ticketDisplayReceipts.filter((r) => r.receiptDate >= periodFrom && r.receiptDate <= periodTo)
+  const ticketRangeGrouped = groupReceiptsByStore(ticketRangeFiltered, knownStores)
+  const ticketStoreNames = groupReceiptsByStore(ticketDisplayReceipts, knownStores).map((g) => g.store)
+
   const catColors = categoryColors(groupCategories)
   // Petición real: "quiero que estén ordenados por categorías
   // principales, todas las subcategorías de una categoría juntas" —
@@ -6382,6 +6423,20 @@ export function BudgetsTab({
             expandedKey={expandedClassType}
             onToggle={(key) => setExpandedClassType((prev) => (prev === key ? null : key))}
           />
+          {ticketDisplayReceipts.length > 0 && (
+            <>
+              <h2 className="section-title" style={{ marginTop: 16 }}>
+                Solo con ticket subido
+              </h2>
+              <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
+                ℹ️ Estos dos de aquí abajo cuentan solo lo que tiene foto de ticket subida (o, si no hay ticket, un
+                cargo de banco de Alimentación sin ticket todavía) — parecido pero NO igual a "Total Registrado en
+                Compras" y "Reparto del gasto por tienda" de arriba, que cuentan todo lo registrado tenga ticket o no.
+              </p>
+              <StoreBreakdownChart groups={ticketRangeGrouped} title="Reparto por tienda — solo con ticket" />
+              <StoreMonthlyChart receipts={ticketRangeFiltered} knownStores={knownStores} storeNames={ticketStoreNames} from={periodFrom} to={periodTo} />
+            </>
+          )}
         </>
       )}
       {group === 'generales' && categoryPieSlices.length > 0 && (

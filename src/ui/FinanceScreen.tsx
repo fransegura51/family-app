@@ -42,10 +42,10 @@ import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
-import { listAllProductPrices, listProducts } from '@/data/products'
+import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
-import { listFamilyFoodTypes, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
+import { listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import { balanceTrend, earliestTransactionDate } from '@/domain/balanceTrend'
 import {
@@ -4878,9 +4878,127 @@ interface DraftLine {
   name: string
   quantity: string
   price: string // importe TOTAL de la línea (cantidad × precio unitario), no el precio por unidad
+  // Si el usuario toca el símbolo de clasificación y elige una, gana
+  // sobre lo que hubiera adivinado resolveDraftLineClass — undefined
+  // deja que se seguisa recalculando sola mientras cambia el nombre.
+  classOverride?: { kind: FoodTypeKind; classification: string }
 }
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
+
+// Petición real: "quiero que integres el símbolo de la clasificación de
+// cada producto... cuando es un producto nuevo quiero que le pongas una
+// marca de Nuevo... muchas clasificaciones las he tenido que retocar" —
+// antes de este cambio, las líneas leídas de un ticket (OCR o a mano) no
+// mostraban ninguna clasificación; se corregía después, producto a
+// producto, desde Historial de precios. Ahora se resuelve aquí mismo,
+// en el momento de revisar el ticket: si el nombre ya coincide con un
+// producto conocido de la familia, se usa su clasificación real (y
+// nunca lleva "Nuevo"); si no, se adivina con el mismo criterio de
+// siempre — classifyFoodType por el nombre si la tienda es física (regla
+// "tienda física = Alimentos por defecto" de isFoodPurchase), o "Sin
+// clasificar" si es Amazon y el ticket no es de Alimentación — y se
+// marca "Nuevo" para que se revise.
+function normalizeProductName(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+interface ResolvedDraftLine {
+  isNew: boolean
+  kind: FoodTypeKind
+  classification: string
+  icon: string
+}
+
+function resolveDraftLineClass(
+  line: DraftLine,
+  productByNormalizedName: Map<string, Product>,
+  foodTypesByKind: Record<FoodTypeKind, FamilyFoodType[]>,
+  ticketStore: string,
+  ticketCategory: string,
+  categories: BudgetCategory[],
+): ResolvedDraftLine {
+  const existing = productByNormalizedName.get(normalizeProductName(line.name))
+  const isNew = !existing
+  let kind: FoodTypeKind
+  let classification: string
+  if (line.classOverride) {
+    kind = line.classOverride.kind
+    classification = line.classOverride.classification
+  } else if (existing) {
+    kind = existing.nonFood ? 'no_alimentos' : 'alimentacion'
+    classification = existing.category?.trim() || ''
+  } else {
+    const defaultIsFood = ticketStore.trim().toLowerCase() !== 'amazon' || isFoodCategory(ticketCategory, categories)
+    kind = defaultIsFood ? 'alimentacion' : 'no_alimentos'
+    const auto = defaultIsFood && line.name.trim() ? classifyFoodType(line.name) : null
+    classification = auto?.label ?? ''
+  }
+  const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined
+  const icon = known?.icon ?? (classification ? (kind === 'alimentacion' ? '🍽️' : '❓') : kind === 'alimentacion' ? '🍽️' : '❓')
+  return { isNew, kind, classification, icon }
+}
+
+// Petición real: "que al tocar el símbolo se abra el menú de clases
+// para poder modificarlo" — mismo desplegable Alimentos/Otros que
+// "Clasificaciones de productos" (ShoppingScreen), condensado para caber
+// bajo una línea de ticket.
+function ReceiptLineClassPicker({
+  resolved,
+  foodTypesByKind,
+  onChange,
+}: {
+  resolved: ResolvedDraftLine
+  foodTypesByKind: Record<FoodTypeKind, FamilyFoodType[]>
+  onChange: (next: { kind: FoodTypeKind; classification: string }) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ flex: '0 0 auto' }}>
+      <button
+        type="button"
+        className="receipt-line-class-icon"
+        onClick={() => setOpen((v) => !v)}
+        title={resolved.classification || 'Sin clasificar — toca para elegir'}
+      >
+        {resolved.icon}
+      </button>
+      {open && (
+        <div className="category-picker-panel" style={{ marginTop: 4 }}>
+          <div className="filter-row" style={{ padding: '6px 8px 0' }}>
+            <button
+              type="button"
+              className={'chip' + (resolved.kind === 'alimentacion' ? ' chip-active' : '')}
+              onClick={() => onChange({ kind: 'alimentacion', classification: '' })}
+            >
+              Alimentos
+            </button>
+            <button
+              type="button"
+              className={'chip' + (resolved.kind === 'no_alimentos' ? ' chip-active' : '')}
+              onClick={() => onChange({ kind: 'no_alimentos', classification: '' })}
+            >
+              Otros
+            </button>
+          </div>
+          {foodTypesByKind[resolved.kind].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={'category-picker-row' + (resolved.classification === t.name ? ' chip-active' : '')}
+              onClick={() => {
+                onChange({ kind: resolved.kind, classification: t.name })
+                setOpen(false)
+              }}
+            >
+              {t.icon} {t.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Mismo formulario para subir un ticket nuevo y para editar uno ya
 // guardado (petición real: "cuando se quiera editar el ticket debe
@@ -4918,6 +5036,27 @@ function ReceiptForm({
   const [loadingLines, setLoadingLines] = useState(mode === 'edit')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Catálogo de la familia (productos ya conocidos + sus clases), para
+  // resolver el icono/"Nuevo" de cada línea leída — ver
+  // resolveDraftLineClass.
+  const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [foodTypesByKind, setFoodTypesByKind] = useState<Record<FoodTypeKind, FamilyFoodType[]>>({
+    alimentacion: [],
+    no_alimentos: [],
+  })
+  const productByNormalizedName = useMemo(
+    () => new Map(allProducts.map((p) => [p.normalizedName, p])),
+    [allProducts],
+  )
+
+  useEffect(() => {
+    Promise.all([listProducts(), listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')])
+      .then(([products, foodKinds, noFoodKinds]) => {
+        setAllProducts(products)
+        setFoodTypesByKind({ alimentacion: foodKinds, no_alimentos: noFoodKinds })
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (mode !== 'edit' || !receipt) return
@@ -4976,7 +5115,7 @@ function ReceiptForm({
     await Promise.all(
       lines
         .filter((line) => line.name.trim() && !Number.isNaN(Number(line.price)))
-        .map((line) => {
+        .map(async (line) => {
           // "Precio" es el importe TOTAL de la línea ("3 cervezas,
           // 3,30€"), no el precio de una — bug real reportado: se
           // guardaba tal cual y la Memoria de precios enseñaba 3,30€
@@ -4984,7 +5123,7 @@ function ReceiptForm({
           // las unidades para guardar siempre precio por unidad.
           const units = Number(line.quantity)
           const unitPrice = Number.isFinite(units) && units > 0 ? Number(line.price) / units : Number(line.price)
-          return recordProductPurchase({
+          const { productId } = await recordProductPurchase({
             name: line.name.trim(),
             price: unitPrice,
             quantity: line.quantity || '1',
@@ -4993,6 +5132,15 @@ function ReceiptForm({
             date: receiptDate,
             receiptId,
           })
+          // La clasificación (adivinada o elegida a mano al revisar el
+          // ticket, ver resolveDraftLineClass) se guarda ya en el
+          // producto — así no hace falta ir luego a Historial de
+          // precios a corregirla producto a producto.
+          const resolved = resolveDraftLineClass(line, productByNormalizedName, foodTypesByKind, store, category, categories)
+          await Promise.all([
+            setProductFoodType(productId, resolved.classification || null),
+            setProductNonFood(productId, resolved.kind === 'no_alimentos'),
+          ])
         }),
     )
   }
@@ -5131,44 +5279,59 @@ function ReceiptForm({
       {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0) && (
         <div className="day-modal-group">
           <p className="muted">
-            Productos leídos — revisa y corrige antes de guardar. "Cant." es cuántas unidades se compraron
-            (p. ej. 2 bolsas) y "Precio" el importe total de esa línea, no el precio de una sola unidad.
+            Productos leídos — revisa y corrige antes de guardar. El símbolo de la izquierda es la
+            clasificación del producto (toca para cambiarla); "Nuevo" marca los que no reconoce de antes, para
+            que repases si la ha adivinado bien. "Cant." es cuántas unidades se compraron y "Precio" el
+            importe total de esa línea, no el precio de una sola unidad.
           </p>
-          {lines.map((line, i) => (
-            <div key={i} className="receipt-line-row">
-              <input
-                type="text"
-                value={line.name}
-                onChange={(e) => updateLine(i, { name: e.target.value })}
-                placeholder="Producto"
-              />
-              <input
-                type="number"
-                className="receipt-line-qty"
-                min={1}
-                step={1}
-                value={line.quantity}
-                onChange={(e) => updateLine(i, { quantity: e.target.value })}
-                placeholder="Cant."
-                title="Cantidad comprada"
-              />
-              <input
-                type="number"
-                step="0.01"
-                value={line.price}
-                onChange={(e) => updateLine(i, { price: e.target.value })}
-                placeholder="Precio total"
-              />
-              <button type="button" className="link-button" onClick={() => removeLine(i)}>
-                ✕
-              </button>
-              {/* Mismo cálculo que se guarda de verdad — para pillar un
-                  fallo de lectura antes de guardar, no después. */}
-              {Number(line.quantity) > 1 && !Number.isNaN(Number(line.price)) && (
-                <span className="muted">= {(Number(line.price) / Number(line.quantity)).toFixed(2)} €/ud</span>
-              )}
-            </div>
-          ))}
+          {lines.map((line, i) => {
+            const resolved = resolveDraftLineClass(line, productByNormalizedName, foodTypesByKind, store, category, categories)
+            return (
+              <div key={i} className="receipt-line-card">
+                <div className="receipt-line-row">
+                  <ReceiptLineClassPicker
+                    resolved={resolved}
+                    foodTypesByKind={foodTypesByKind}
+                    onChange={(next) => updateLine(i, { classOverride: next })}
+                  />
+                  <input
+                    type="text"
+                    value={line.name}
+                    onChange={(e) => updateLine(i, { name: e.target.value, classOverride: undefined })}
+                    placeholder="Producto"
+                  />
+                  {resolved.isNew && <span className="receipt-line-new-badge">Nuevo</span>}
+                  <button type="button" className="link-button" onClick={() => removeLine(i)}>
+                    ✕
+                  </button>
+                </div>
+                <div className="receipt-line-row receipt-line-row-secondary">
+                  <input
+                    type="number"
+                    className="receipt-line-qty"
+                    min={1}
+                    step={1}
+                    value={line.quantity}
+                    onChange={(e) => updateLine(i, { quantity: e.target.value })}
+                    placeholder="Cant."
+                    title="Cantidad comprada"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={line.price}
+                    onChange={(e) => updateLine(i, { price: e.target.value })}
+                    placeholder="Precio total"
+                  />
+                  {/* Mismo cálculo que se guarda de verdad — para pillar un
+                      fallo de lectura antes de guardar, no después. */}
+                  {Number(line.quantity) > 1 && !Number.isNaN(Number(line.price)) && (
+                    <span className="muted">= {(Number(line.price) / Number(line.quantity)).toFixed(2)} €/ud</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
           {lines.length === 0 && <p className="muted">No se ha reconocido ningún producto.</p>}
           <button type="button" className="link-button" onClick={addBlankLine}>
             + Añadir línea

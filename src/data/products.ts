@@ -112,7 +112,7 @@ export async function recordProductPurchase(input: {
   store: string
   date?: string
   receiptId?: string
-}): Promise<void> {
+}): Promise<{ productId: string }> {
   const familyId = await currentFamilyId()
   const normalizedName = normalize(input.name)
 
@@ -136,4 +136,5 @@ export async function recordProductPurchase(input: {
     ...(input.date ? { recorded_date: input.date } : {}),
   })
   if (priceError) throw priceError
+  return { productId: product.id }
 }

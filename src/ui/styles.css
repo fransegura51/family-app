@@ -3499,11 +3499,27 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+/* Petición real: "quiero que el formato de los datos leídos del
+   ticket... sea más compacto y profesional" — una tarjeta por
+   producto (fondo/borde suave) en vez de una fila suelta, con la
+   clasificación y cantidad/precio en su propia línea más pequeña
+   debajo, para que no se amontone todo en una fila ancha. */
+.receipt-line-card {
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: #fafafa;
+}
+
 .receipt-line-row {
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-bottom: 6px;
+}
+
+.receipt-line-row + .receipt-line-row {
+  margin-top: 4px;
 }
 
 .receipt-line-row input[type='text'] {
@@ -3516,6 +3532,45 @@ textarea {
 
 .receipt-line-row input.receipt-line-qty {
   flex: 0 0 56px;
+}
+
+.receipt-line-row-secondary {
+  padding-left: 36px;
+}
+
+.receipt-line-row-secondary input[type='number'] {
+  font-size: 13px;
+  padding: 4px 6px;
+}
+
+.receipt-line-new-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: #2f9e44;
+  border-radius: 999px;
+  padding: 2px 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Petición real: "que integres el símbolo de la clasificación de cada
+   producto. Quiero que al tocar el símbolo se abra el menú de clases" */
+.receipt-line-class-icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
 }
 
 /* Fila de un ticket guardado (rediseño): fecha/total/categoría en una

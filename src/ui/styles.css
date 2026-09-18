@@ -683,7 +683,16 @@ button {
   border-top: 1px solid #e5e7eb;
   padding: 6px 4px;
   overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  /* Bug real reportado en iPhone: "al hacer scroll a menudo el menú se
+     me desplaza, no se queda fijo abajo" — `-webkit-overflow-scrolling:
+     touch` en un elemento que ADEMÁS es `position: fixed` es un choque
+     conocido de WebKit/iOS (fuerza su propia capa de scroll con inercia
+     que interfiere con el posicionamiento fijo, y la barra se ve flotar
+     o "despegarse" del fondo mientras se hace scroll de la página).
+     Ya no hace falta para el scroll horizontal en sí: iOS lleva desde
+     la versión 13 con scroll con inercia nativo en cualquier
+     overflow:auto, sin esta propiedad. */
+  transform: translateZ(0);
 }
 
 /* Petición real: "un botón flotante con una flecha para arriba para

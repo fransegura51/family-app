@@ -74,6 +74,13 @@ body {
 
 .card {
   background: var(--card-bg);
+  /* Bug real: la tarjeta de cada evento en la lista de Eventos es un
+     <button className="card ..."> — el título salía en blanco sobre
+     blanco porque el selector global `button { color: white }` ganaba
+     y ni .card ni .event-card fijaban su propio color. Se corrige aquí
+     (no solo en Eventos) para que ningún .card futuro que sea <button>
+     herede el blanco del botón por defecto. */
+  color: var(--text);
   border-radius: 16px;
   padding: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -2456,21 +2463,6 @@ textarea {
   border: none;
   border-top: 1px solid #eee;
   margin: 4px 4px;
-}
-
-/* Mismo menú ☰ desplegable de Economía (sacar/meter/editar), aplicado
-   a otras secciones con varias pestañas — petición real: "todas estas
-   pestañas... quiero que hagamos como en economía... el mismo formato
-   que el menú de economía", ampliado después a "toda la aplicación que
-   tenga menús en ese formato". Estas secciones no tienen la cabecera
-   azul de Economía (esa lleva las tarjetas de cuenta bancaria, no
-   aplica aquí) — mismo desplegable (.economia-menu-*, reutilizado tal
-   cual), fila de título más sencilla. */
-.section-title-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
 }
 
 .section-menu-fab {

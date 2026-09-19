@@ -60,3 +60,30 @@ Variantes registradas
 
 - src/assets/brand/variants/pepa-family-app-logo-slogan.png — variante oficial del logotipo con el eslogan "Pepa te lo soluciona!". Deriva del logotipo maestro sin modificarlo.
 - src/assets/brand/variants/pepa-slogan-official.png — eslogan visual oficial independiente de PEPA Family App: "Pepa te lo soluciona!".
+
+8. Paleta y tipografía oficial de marca
+
+Colores digitales de referencia
+
+* Rosa PEPA: #E81856 — RGB 232, 24, 86
+* Gris PEPA: #3C4550 — RGB 60, 69, 80
+* Rosa pastel PEPA: #FBE2E4 — RGB 251, 226, 228
+* Blanco de interfaz: #FFFFFF — RGB 255, 255, 255
+
+Estos colores son referencias para interfaz, comunicación y nuevos elementos gráficos. No sustituyen los colores originales contenidos en los archivos oficiales del logotipo.
+
+El logotipo maestro utiliza variaciones y degradados de rosa. Sus colores originales deben conservarse exactamente y nunca deben sustituirse por el Rosa PEPA plano.
+
+Lettering oficial
+
+Las formas gráficas de "Pepa", "Family App" y "Pepa te lo soluciona!" contenidas en los recursos oficiales forman parte de la identidad visual.
+
+Actualmente no existe evidencia suficiente para identificar con certeza las tipografías originales utilizadas para esos elementos. Por tanto, no debe asignarse ninguna tipografía aproximada como tipografía oficial del logotipo.
+
+Para reproducir esos elementos deben utilizarse los recursos gráficos oficiales existentes, no recrearlos escribiendo el texto con una fuente similar.
+
+Tipografías de interfaz
+
+Las fuentes utilizadas actualmente por pepa-web (Baloo 2, Plus Jakarta Sans y Caveat) son tipografías de interfaz/web y no deben considerarse automáticamente tipografías oficiales del logotipo.
+
+Cualquier cambio futuro que establezca una tipografía corporativa oficial deberá documentarse expresamente en este archivo.

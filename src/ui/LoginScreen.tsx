@@ -1,8 +1,17 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { supabase } from '@/data/supabaseClient'
+import { forgetSignupOrigin, parseSignupOrigin, recallSignupOrigin, rememberSignupOrigin } from '@/domain/signupOrigin'
 
 export function LoginScreen() {
-  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin')
+  // Quien llega desde el botón "Crear mi familia" de la demo pública de
+  // la web (?origen=demo) ya ha decidido registrarse: se abre directo en
+  // "Crear cuenta" en vez de en "Entrar".
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(() =>
+    parseSignupOrigin(window.location.search) ? 'signup' : 'signin',
+  )
+  useEffect(() => {
+    rememberSignupOrigin(window.location.search)
+  }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -50,11 +59,18 @@ export function LoginScreen() {
       // "/family-app" (el campo no se queda con la ruta completa) —
       // se fija aquí mismo, calculado con la URL real desde la que se
       // esté usando la app, en vez de depender de esa configuración.
+      // Etiqueta de origen (solo "demo", lista cerrada, sin datos
+      // personales) para medir cuánta gente llega desde la demo de la web.
+      const origin = recallSignupOrigin()
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
+        options: {
+          emailRedirectTo: window.location.origin + import.meta.env.BASE_URL,
+          ...(origin ? { data: { signup_origin: origin } } : {}),
+        },
       })
+      if (!error) forgetSignupOrigin()
       if (error) {
         setError(error.message)
       } else if (!data.session) {

@@ -6380,9 +6380,29 @@ export function BudgetsTab({
           .filter((s) => s.total > 0)
       : []
 
+  // Petición real: "pon un filtro que se aplique a toda la página en
+  // formato de botón con desplegable... 'mes contable' y 'mes real'"
+  // — un único filtro para Resumen y el dónut, en vez de los dos
+  // controles independientes de antes. En Estadística compras va ARRIBA
+  // DEL TODO (petición real: "para que sea más claro que se aplica a
+  // toda la página", antes quedaba debajo del Total Registrado, que
+  // también depende de él); en Presupuesto Generales sigue donde estaba.
+  const dateFilter = (
+    <DateFilterTab
+      preset={preset}
+      onPresetChange={setPreset}
+      customFrom={customFrom}
+      onCustomFromChange={setCustomFrom}
+      customTo={customTo}
+      onCustomToChange={setCustomTo}
+    />
+  )
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
+
+      {group === 'alimentacion' && dateFilter}
 
       {/* Petición real: "Arriba donde pone total registrado en
           Alimentación cambiamos a Total Registrado en Compras" — el
@@ -6471,19 +6491,7 @@ export function BudgetsTab({
         </div>
       )}
 
-      {/* Petición real: "pon un filtro que se aplique a toda la
-          página en formato de botón con desplegable... 'mes contable'
-          y 'mes real'" — un único filtro para Resumen y el dónut, en
-          vez de los dos controles independientes de antes (navegación
-          por mes + "Fecha" propio de Resumen). */}
-      <DateFilterTab
-        preset={preset}
-        onPresetChange={setPreset}
-        customFrom={customFrom}
-        onCustomFromChange={setCustomFrom}
-        customTo={customTo}
-        onCustomToChange={setCustomTo}
-      />
+      {group !== 'alimentacion' && dateFilter}
 
       {/* Piso compartido, modo Separado: Individual (tu presupuesto) /
           Común (el de todos) — mismas pestañas de siempre, cambia solo

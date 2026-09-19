@@ -2,7 +2,7 @@ import { FormEvent, useState } from 'react'
 import { supabase } from '@/data/supabaseClient'
 
 export function LoginScreen() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -14,6 +14,31 @@ export function LoginScreen() {
     setLoading(true)
     setError(null)
     setInfo(null)
+
+    if (mode === 'reset') {
+      // Petición real: "se me ha borrado la cuenta de administrador no
+      // tengo la contraseña" — la cuenta seguía existiendo, lo que
+      // faltaba era una forma de recuperar la contraseña sin tener que
+      // pedírmelo a mí. Mismo redirectTo que la confirmación de alta
+      // (la raíz real de la app, nunca una ruta que necesite el truco
+      // de 404.html de GitHub Pages — un enlace de email es justo el
+      // caso más frágil para ese doble salto, ver HomeOrBankReturn en
+      // App.tsx) — ahí, ResetPasswordScreen reconoce el enlace de
+      // recuperación por su hash (#type=recovery) antes de nada.
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + import.meta.env.BASE_URL,
+      })
+      if (error) {
+        setError(error.message)
+      } else {
+        // Nunca se confirma si ese email tiene cuenta o no (evita que
+        // alguien use este formulario para comprobar qué emails están
+        // registrados) — el mensaje es el mismo se encuentre o no.
+        setInfo('Si ese email tiene una cuenta, te hemos mandado un enlace para elegir una contraseña nueva.')
+      }
+      setLoading(false)
+      return
+    }
 
     if (mode === 'signin') {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -48,22 +73,37 @@ export function LoginScreen() {
           Email
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
-        <label>
-          Contraseña
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={6}
-            required
-          />
-        </label>
+        {mode !== 'reset' && (
+          <label>
+            Contraseña
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={6}
+              required
+            />
+          </label>
+        )}
         {error && <p className="error">{error}</p>}
         {info && <p className="muted">{info}</p>}
         <button type="submit" disabled={loading}>
-          {loading ? 'Procesando…' : mode === 'signin' ? 'Entrar' : 'Crear cuenta'}
+          {loading ? 'Procesando…' : mode === 'signin' ? 'Entrar' : mode === 'signup' ? 'Crear cuenta' : 'Mandar enlace'}
         </button>
       </form>
+      {mode === 'signin' && (
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => {
+            setMode('reset')
+            setError(null)
+            setInfo(null)
+          }}
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
+      )}
       <button
         type="button"
         className="link-button"

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
 import { useSession } from '@/auth/useSession'
 import { LoginScreen } from '@/ui/LoginScreen'
+import { ResetPasswordScreen } from '@/ui/ResetPasswordScreen'
 import { OnboardingScreen } from '@/ui/OnboardingScreen'
 import { HomeScreen } from '@/ui/HomeScreen'
 import { NavShell } from '@/ui/NavShell'
@@ -75,7 +76,20 @@ function rsvpParamsFromLocation(): { token: string | null; openToken: string | n
   return { token: params.get('rsvp'), openToken: params.get('rsvp_open') }
 }
 
+// Enlace de "¿Olvidaste tu contraseña?" (LoginScreen) — Supabase
+// vuelve aquí con #access_token=...&type=recovery en el hash. Se
+// reconoce ANTES que nada (como RsvpScreen más abajo), para no pasar
+// por useSession/OnboardingScreen/AppLockGate — el candado de la app
+// (PIN) no tiene sentido de por medio si es justo la contraseña lo
+// que se ha perdido.
+function isPasswordRecoveryLink(): boolean {
+  return window.location.hash.includes('type=recovery')
+}
+
 export function App() {
+  if (isPasswordRecoveryLink()) {
+    return <ResetPasswordScreen />
+  }
   const { token: rsvpToken, openToken: rsvpOpenToken } = rsvpParamsFromLocation()
   if (rsvpToken || rsvpOpenToken) {
     return (

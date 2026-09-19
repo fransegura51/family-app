@@ -4,10 +4,10 @@ import type { ShoppingStoreEntry } from '@/domain/types'
 export async function listShoppingStores(): Promise<ShoppingStoreEntry[]> {
   const { data, error } = await supabase
     .from('shopping_stores')
-    .select('id, family_id, name')
+    .select('id, family_id, name, created_at')
     .order('sort_order', { ascending: true })
   if (error) throw error
-  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name }))
+  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, createdAt: r.created_at }))
 }
 
 // Arrastrar con el dedo para cambiar el orden de las tiendas (petición

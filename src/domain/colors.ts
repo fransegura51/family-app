@@ -79,13 +79,17 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
 // instante y es SIEMPRE el mismo en todas las pantallas. Se normaliza
 // (minúsculas, sin acentos ni espacios de más) para que "MERCADONA" y
 // "Mercadona" coincidan.
-function hashName(name: string): number {
-  const key = name
+function nameKey(name: string): string {
+  return name
     .trim()
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/\s+/g, ' ')
+}
+
+function hashName(name: string): number {
+  const key = nameKey(name)
   let hash = 2166136261
   for (let i = 0; i < key.length; i++) {
     hash ^= key.charCodeAt(i)
@@ -96,6 +100,35 @@ function hashName(name: string): number {
 
 export function colorForName(name: string): string {
   return `hsl(${hashName(name) % 360}, 70%, 90%)`
+}
+
+// Petición real: "el color de Mercadona y Hiperber es tan similar que
+// parece el mismo" — con colorForName (hash del nombre) dos tiendas
+// pueden caer en tonos casi iguales por pura casualidad (Mercadona 223°
+// y Hiperber 226°) y ningún hash lo evita del todo. Las tiendas DADAS
+// DE ALTA se reparten por orden de alta con el ángulo dorado
+// (pastelPalette), así que son distintas entre sí por construcción, y
+// añadir una tienda nueva nunca cambia el color de las anteriores. Las
+// que llegan sueltas del banco o de un ticket (sin dar de alta) siguen
+// teniendo color automático por su nombre.
+export function storeColorResolver(registered: { name: string; createdAt: string }[]): (name: string) => string {
+  const ordered = [...registered].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  const palette = pastelPalette(ordered.length)
+  const byKey = new Map(ordered.map((s, i) => [nameKey(s.name), palette[i]]))
+  const takenHues = palette.map((c) => Number(/hsl\((\d+)/.exec(c)![1]))
+  const tooClose = (hue: number) =>
+    takenHues.some((t) => Math.min(Math.abs(t - hue), 360 - Math.abs(t - hue)) < 30)
+  return (name) => {
+    const registeredColor = byKey.get(nameKey(name))
+    if (registeredColor) return registeredColor
+    // Una tienda suelta (del banco o de un ticket) esquiva los tonos de
+    // las dadas de alta para no parecerse a ellas (p. ej. Repsol junto
+    // a Hiperber); sigue siendo automático y estable por nombre, porque
+    // la lista de tiendas dadas de alta es la misma en todas las pantallas.
+    let hue = hashName(name) % 360
+    for (let i = 0; i < 9 && tooClose(hue); i++) hue = (hue + 40) % 360
+    return `hsl(${hue}, 70%, 90%)`
+  }
 }
 
 // Petición real: los colores de las clases de producto (Carne, Lácteos,

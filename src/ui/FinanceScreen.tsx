@@ -39,7 +39,7 @@ import {
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
-import { colorForClass, colorForName, pastelFromHsl, pastelPalette, toPastel } from '@/domain/colors'
+import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel } from '@/domain/colors'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -100,6 +100,7 @@ import type {
   ProductPrice,
   Profile,
   Receipt,
+  ShoppingStoreEntry,
   Tag,
   WalletTransactionType,
 } from '@/domain/types'
@@ -4195,11 +4196,12 @@ function groupReceiptsByStore<T extends Receipt>(
 // Petición real: "que la tienda dé siempre el mismo color" — antes
 // venía de distinctPaletteEntries por posición en el ranking de gasto,
 // así que un cambio de mes a mes en qué tienda gasta más recolocaba
-// los colores. Ahora sale del propio nombre (colorForName): cualquier
-// tienda, esté dada de alta o no, tiene color y es el mismo en Tickets,
-// Estadísticas y la Lista de la compra.
+// los colores. Ahora lo decide storeColorResolver (tiendas dadas de alta:
+// distintas entre sí; el resto: color por su nombre) y es el mismo en
+// Tickets, Estadísticas y Compras.
 function buildStorePieSlices(
   entries: { expenseId: string; store: string; amount: number }[],
+  storeColor: (name: string) => string,
 ): (BreakdownSlice & { expenseIds: string[] })[] {
   const groups = new Map<string, { total: number; expenseIds: string[] }>()
   for (const e of entries) {
@@ -4214,7 +4216,7 @@ function buildStorePieSlices(
   return sorted.map((g) => ({
     key: g.store,
     label: g.store,
-    color: colorForName(g.store),
+    color: storeColor(g.store),
     total: g.total,
     count: g.expenseIds.length,
     expenseIds: g.expenseIds,
@@ -4317,6 +4319,7 @@ export function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
   const [knownStores, setKnownStores] = useState<string[]>([])
+  const [storeEntries, setStoreEntries] = useState<ShoppingStoreEntry[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [loading, setLoading] = useState(true)
@@ -4358,7 +4361,10 @@ export function ReceiptsTab() {
   useEffect(() => {
     reload()
     listShoppingStores()
-      .then((rows) => setKnownStores(rows.map((s) => s.name)))
+      .then((rows) => {
+        setKnownStores(rows.map((s) => s.name))
+        setStoreEntries(rows)
+      })
       .catch(() => {})
     listFamilyMembers().then(setMembers).catch(() => {})
   }, [])
@@ -4402,6 +4408,7 @@ export function ReceiptsTab() {
   const [rangeFrom, rangeTo] = rangeForPreset(rangePreset, rangeCustomFrom, rangeCustomTo)
   const rangeFilteredReceipts = displayReceipts.filter((r) => r.receiptDate >= rangeFrom && r.receiptDate <= rangeTo)
   const rangeGrouped = groupReceiptsByStore(rangeFilteredReceipts, knownStores)
+  const storeColorOf = storeColorResolver(storeEntries)
 
   return (
     <div>
@@ -4459,12 +4466,17 @@ export function ReceiptsTab() {
       <p className="muted" style={{ marginTop: -8 }}>
         Se filtran con el selector de arriba ({PRESET_LABELS[rangePreset]}).
       </p>
-      <AddStoreInline onAdded={() => listShoppingStores().then((rows) => setKnownStores(rows.map((s) => s.name)))} />
+      <AddStoreInline onAdded={() =>
+          listShoppingStores().then((rows) => {
+            setKnownStores(rows.map((s) => s.name))
+            setStoreEntries(rows)
+          })
+        } />
       <div className="store-folder-grid">
         {rangeGrouped.map(({ store, receipts: storeReceipts, total }) => {
           const isOpen = expandedStore === store
           return (
-            <div key={store} className="store-folder" style={{ background: colorForName(store) }}>
+            <div key={store} className="store-folder" style={{ background: storeColorOf(store) }}>
               <button
                 type="button"
                 className="store-folder-header"
@@ -4590,9 +4602,11 @@ function ReceiptSpendSummary({
 // una por tienda, con el importe y el % sobre el total de todas.
 function StoreBreakdownChart({
   groups,
+  storeColor,
   title = 'Reparto del gasto por tienda',
 }: {
   groups: { store: string; receipts: Receipt[]; total: number }[]
+  storeColor: (name: string) => string
   // Petición real: "las estadísticas en Tickets... trasládalas a
   // Estadísticas... dejar claro que son los totales de los tickets, que
   // son similares pero no iguales" — al vivir ahora junto al dónut "por
@@ -4614,7 +4628,7 @@ function StoreBreakdownChart({
               <div className="store-bar-track">
                 <div
                   className="store-bar-fill"
-                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: colorForName(g.store) }}
+                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: storeColor(g.store) }}
                 />
               </div>
               <span className="store-bar-value">
@@ -5994,6 +6008,7 @@ export function BudgetsTab({
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [knownStores, setKnownStores] = useState<string[]>([])
+  const [storeEntries, setStoreEntries] = useState<ShoppingStoreEntry[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   // Solo para Estadística compras (group === 'alimentacion') — precio
   // por producto, para el dónut "por tipo de alimento" (ver más abajo).
@@ -6063,6 +6078,7 @@ export function BudgetsTab({
         setExpenses(e)
         setReceipts(r)
         setKnownStores(stores.map((s) => s.name))
+        setStoreEntries(stores)
         setCategories(cats)
         setMonthStartDay(monthStart)
         setHasBankAccounts(accounts.length > 0)
@@ -6265,11 +6281,14 @@ export function BudgetsTab({
   // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
   // usar el mismo dónut con botón Alimentación/Otros" — un solo dónut
   // (ver storeDonutScope), el botón decide qué gastos lo alimentan.
+  const storeColorOf = storeColorResolver(storeEntries)
   const storePieSlicesAlimentacion = buildStorePieSlices(
     splits.filter((s) => s.foodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.foodAmount })),
+    storeColorOf,
   )
   const storePieSlicesOtros = buildStorePieSlices(
     splits.filter((s) => s.nonFoodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.nonFoodAmount })),
+    storeColorOf,
   )
 
   // Petición real: "las estadísticas en Tickets... trasládalas a
@@ -6551,7 +6570,7 @@ export function BudgetsTab({
                 cargo de banco de Alimentación sin ticket todavía) — parecido pero NO igual a "Total Registrado en
                 Compras" y "Reparto del gasto por tienda" de arriba, que cuentan todo lo registrado tenga ticket o no.
               </p>
-              <StoreBreakdownChart groups={ticketRangeGrouped} title="Reparto por tienda — solo con ticket" />
+              <StoreBreakdownChart groups={ticketRangeGrouped} storeColor={storeColorOf} title="Reparto por tienda — solo con ticket" />
               <StoreMonthlyChart receipts={ticketRangeFiltered} knownStores={knownStores} storeNames={ticketStoreNames} from={periodFrom} to={periodTo} />
             </>
           )}

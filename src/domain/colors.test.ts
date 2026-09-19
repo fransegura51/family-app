@@ -1,5 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass } from './colors'
+import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass, storeColorResolver } from './colors'
+
+describe('storeColorResolver', () => {
+  const stores = [
+    { name: 'Mercadona', createdAt: '2026-01-01' },
+    { name: 'Hiperber', createdAt: '2026-01-02' },
+    { name: 'Aldi', createdAt: '2026-01-03' },
+  ]
+
+  it('gives registered stores clearly different colors', () => {
+    const colorOf = storeColorResolver(stores)
+    const hue = (n: string) => Number(colorOf(n).match(/hsl\((\d+)/)![1])
+    const gap = Math.abs(hue('Mercadona') - hue('Hiperber'))
+    expect(Math.min(gap, 360 - gap)).toBeGreaterThan(60)
+  })
+
+  it('does not change existing colors when a new store is added later', () => {
+    const before = storeColorResolver(stores)('Mercadona')
+    const after = storeColorResolver([...stores, { name: 'Lidl', createdAt: '2026-02-01' }])('Mercadona')
+    expect(after).toBe(before)
+  })
+
+  it('colors a store that is not registered, away from the registered hues', () => {
+    const colorOf = storeColorResolver(stores)
+    const hueOf = (c: string) => Number(c.match(/hsl\((\d+)/)![1])
+    const repsol = hueOf(colorOf('Repsol'))
+    expect(colorOf('Repsol')).toBe(colorOf('repsol '))
+    for (const s of stores) {
+      const gap = Math.abs(hueOf(colorOf(s.name)) - repsol)
+      expect(Math.min(gap, 360 - gap)).toBeGreaterThanOrEqual(30)
+    }
+  })
+})
 
 describe('colorForClass', () => {
   it('is always the same for the same class, regardless of case or accents', () => {

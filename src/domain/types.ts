@@ -120,6 +120,7 @@ export interface ShoppingStoreEntry {
   id: string
   familyId: string
   name: string
+  createdAt: string
 }
 
 export interface InventoryItem {

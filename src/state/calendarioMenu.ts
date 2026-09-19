@@ -45,6 +45,20 @@ export function calendarioMenuEntryMeta(entry: CalendarioMenuEntry): { icon: str
 
 const DEFAULT_KEYS: FixedCalendarioMenuItemKey[] = ['Vista general', 'Mes', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal', 'Externos']
 
+// Petición real: "que en su menú se pueda establecer cuál de las vistas
+// se quiere ver nada más abrir Calendario... como se pueden reordenar,
+// que el primero de la lista sea el que salga por defecto" — no hay un
+// ajuste aparte: la vista que se abre es la primera vista real del menú
+// (los accesos personalizados no son una vista, se saltan).
+export function firstCalendarioView(layout: CalendarioMenuGroup[]): FixedCalendarioMenuItemKey {
+  for (const g of layout) {
+    for (const it of g.items) {
+      if ((DEFAULT_KEYS as readonly string[]).includes(it.key)) return it.key as FixedCalendarioMenuItemKey
+    }
+  }
+  return 'Vista general'
+}
+
 const KEY = 'familyapp:calendario-menu-layout'
 
 function defaultLayout(): CalendarioMenuGroup[] {

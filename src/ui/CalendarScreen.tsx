@@ -3,6 +3,7 @@ import { findMemberInText } from '@/domain/voiceQuery'
 import {
   calendarioMenuEntryMeta,
   isCustomCalendarioMenuKey,
+  firstCalendarioView,
   loadCalendarioMenuLayout,
   loadCalendarioPinnedItems,
   saveCalendarioMenuLayout,
@@ -201,7 +202,7 @@ export function CalendarScreen() {
     setTimeout(() => setShareNotice(null), 5000)
   }
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [view, setView] = useState<ViewMode>('Vista general')
+  const [view, setView] = useState<ViewMode>(() => firstCalendarioView(loadCalendarioMenuLayout()))
   // Petición real: "esas pestañas las metes en una con tres rayas
   // igual, un desplegable... con el mismo formato que economía, que se
   // puedan sacar, que se puedan quitar, que se puedan editar" — mismo
@@ -3573,6 +3574,14 @@ function AddFeedForm({ members, onAdded }: { members: FamilyMember[]; onAdded: (
 
 // Copia de EconomiaMenuDropdown adaptada a las claves de Calendario —
 // mismas clases CSS .economia-menu-* (genéricas).
+function OpensFirstBadge() {
+  return (
+    <span className="muted" style={{ fontSize: 11, marginLeft: 8, fontWeight: 400 }}>
+      ⭐ Al abrir
+    </span>
+  )
+}
+
 function CalendarioMenuDropdown({
   activeTab,
   layout,
@@ -3590,6 +3599,7 @@ function CalendarioMenuDropdown({
   onActivate: (key: CalendarioMenuItemKey) => void
   onClose: () => void
 }) {
+  const openFirstKey = firstCalendarioView(layout)
   const [editMode, setEditMode] = useState(false)
   const [addingGroup, setAddingGroup] = useState(false)
   const [addingGroupName, setAddingGroupName] = useState('')
@@ -3762,11 +3772,13 @@ function CalendarioMenuDropdown({
                   <span className="economia-menu-item">
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
+                    {entry.key === openFirstKey && <OpensFirstBadge />}
                   </span>
                 ) : (
                   <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
+                    {entry.key === openFirstKey && <OpensFirstBadge />}
                   </button>
                 )}
 

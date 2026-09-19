@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { pastelPalette, toPastel, paletteByName, pastelFromHsl } from './colors'
+import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName } from './colors'
+
+describe('colorForName', () => {
+  it('gives any name a color, always the same one for the same name', () => {
+    expect(colorForName('Repsol')).toBe(colorForName('Repsol'))
+    expect(colorForName('Repsol')).toMatch(/^hsl\(\d+, 70%, 90%\)$/)
+  })
+
+  it('ignores case, accents and extra spaces', () => {
+    expect(colorForName('  MERCADONA ')).toBe(colorForName('Mercadona'))
+    expect(colorForName('Panadería')).toBe(colorForName('panaderia'))
+  })
+
+  it('does not depend on which other names exist', () => {
+    const alone = colorForName('Aldi')
+    paletteByName(['Amazon', 'Aldi', 'Zara'])
+    expect(colorForName('Aldi')).toBe(alone)
+  })
+})
 
 describe('pastelPalette', () => {
   it('never repeats a color, however many are requested', () => {

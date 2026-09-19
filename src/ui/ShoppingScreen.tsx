@@ -30,7 +30,7 @@ import {
   type FoodTypeKind,
 } from '@/data/foodTypes'
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
-import { paletteByName, pastelPalette } from '@/domain/colors'
+import { colorForName, paletteByName, pastelPalette } from '@/domain/colors'
 import {
   createShoppingStore,
   deleteShoppingStore,
@@ -806,7 +806,7 @@ function ShoppingListTab() {
   // (`stores`, no solo las que tienen algo pendiente hoy) para que el
   // color de una tienda coincida siempre con el que se ve en Tickets
   // y Estadísticas.
-  const storeColors = useMemo(() => paletteByName(stores.map((s) => s.name)), [stores])
+  const storeColors = useMemo(() => new Map(stores.map((s) => [s.name, colorForName(s.name)])), [stores])
   // Mismo criterio, para las clases — incluye tanto las de fábrica
   // como las creadas a mano por la familia (ver classColorsFromFamilyTypes).
   const classColors = useMemo(

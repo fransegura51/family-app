@@ -76,6 +76,32 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
 // color: se ordena la lista alfabéticamente (estable aunque cambie el
 // orden de creación) y se reparte pastelPalette() por índice. Calcular
 // esto UNA vez por pantalla (no por fila) y consultar el mapa.
+// Petición real (Tickets): "¿por qué la mayoría de las tiendas no tienen
+// color? Habría que definir algo para que a cualquier tienda nueva se
+// le adjudique un color automáticamente" — paletteByName solo colorea
+// los nombres que se le pasan, y una tienda que llega del banco o de un
+// ticket sin haberla dado de alta (Amazon, Repsol...) quedaba fuera.
+// Aquí el color sale del PROPIO nombre (hash → tono), sin depender de
+// qué otras tiendas haya: cualquier tienda, nueva o no, tiene color al
+// instante y es SIEMPRE el mismo en todas las pantallas. Se normaliza
+// (minúsculas, sin acentos ni espacios de más) para que "MERCADONA" y
+// "Mercadona" coincidan.
+export function colorForName(name: string): string {
+  const key = name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+  let hash = 2166136261
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  const hue = (hash >>> 0) % 360
+  return `hsl(${hue}, 70%, 90%)`
+}
+
 export function paletteByName(names: Iterable<string>): Map<string, string> {
   const sorted = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, 'es'))
   const palette = pastelPalette(sorted.length)

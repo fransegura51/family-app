@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { paletteByName, pastelPalette } from '@/domain/colors'
 import {
   ALIMENTACION_MENU_ITEM_META,
   alimentacionMenuEntryMeta,
@@ -73,6 +74,17 @@ const MEAL_TYPES: { value: MealType; label: string }[] = [
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Petición real: extender el pastel al menú semanal — un color POR
+// DÍA DE LA SEMANA (lunes=0..domingo=6, calculado del propio dateStr,
+// no de su posición en weekDates()) para que el lunes sea siempre el
+// mismo color de una semana a otra, en vez de cambiar según qué día
+// caiga primero en la vista de "próximos 7 días".
+const WEEKDAY_COLORS = pastelPalette(7)
+function weekdayColor(dateStr: string): string {
+  const jsDay = new Date(dateStr + 'T00:00').getDay()
+  return WEEKDAY_COLORS[(jsDay + 6) % 7]
 }
 
 function weekDates(): string[] {
@@ -593,7 +605,7 @@ function MenuTab() {
     <div>
       {error && <p className="error">{error}</p>}
       {dates.map((date) => (
-        <div key={date} className="card menu-day">
+        <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }}>
           <strong>
             {new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
           </strong>
@@ -805,6 +817,11 @@ function RecipesTab() {
   if (loading) return <p className="muted">Cargando recetas…</p>
 
   const availableTags = collectRecipeTags(recipes)
+  // Las etiquetas de receta son texto libre por familia (sin color
+  // guardado) — mismo criterio determinista que clases de producto y
+  // tiendas en Compras (paletteByName): mismo nombre, siempre el mismo
+  // color, en los chips de filtro y en la fila de cada receta.
+  const tagColors = paletteByName(availableTags)
   const filteredRecipes = recipes
     .filter((r) => tagFilter === 'Todas' || r.tags.includes(tagFilter))
     .sort((a, b) => a.title.localeCompare(b.title))
@@ -844,6 +861,7 @@ function RecipesTab() {
               key={r.id}
               type="button"
               className="recipe-list-row"
+              style={{ background: r.tags[0] ? tagColors.get(r.tags[0]) : undefined }}
               onClick={() => {
                 setViewingId(r.id)
                 setRecipeSearch('')
@@ -862,7 +880,13 @@ function RecipesTab() {
           Todas
         </button>
         {availableTags.map((tag) => (
-          <button key={tag} type="button" className={'chip' + (tagFilter === tag ? ' chip-active' : '')} onClick={() => setTagFilter(tag)}>
+          <button
+            key={tag}
+            type="button"
+            className={'chip' + (tagFilter === tag ? ' chip-active' : '')}
+            style={{ background: tagColors.get(tag) }}
+            onClick={() => setTagFilter(tag)}
+          >
             {tag}
           </button>
         ))}
@@ -870,7 +894,13 @@ function RecipesTab() {
 
       <div className="event-list">
         {filteredRecipes.map((r) => (
-          <button key={r.id} type="button" className="recipe-list-row" onClick={() => setViewingId(r.id)}>
+          <button
+            key={r.id}
+            type="button"
+            className="recipe-list-row"
+            style={{ background: r.tags[0] ? tagColors.get(r.tags[0]) : undefined }}
+            onClick={() => setViewingId(r.id)}
+          >
             <RecipeImage imagePath={r.imagePath} alt="" />
             <span>{r.title}</span>
           </button>
@@ -923,7 +953,7 @@ function RecipesTab() {
             {viewing.tags.length > 0 && (
               <div className="filter-row" style={{ marginTop: 8 }}>
                 {viewing.tags.map((t) => (
-                  <span key={t} className="chip">
+                  <span key={t} className="chip" style={{ background: tagColors.get(t) }}>
                     {t}
                   </span>
                 ))}

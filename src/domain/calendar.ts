@@ -218,6 +218,15 @@ export function occurrenceAt(
   return { startAt: occStart.toISOString(), endAt: occEnd.toISOString() }
 }
 
+// Petición real: "en todo el calendario los fines de semana
+// diferenciarlos con un color" — a partir del propio dateStr (no de la
+// posición en la rejilla), para que valga igual en Mes, Semana, 3 días
+// y Día sin depender de en qué columna caiga.
+export function isWeekend(dateStr: string): boolean {
+  const day = new Date(`${dateStr}T00:00`).getDay()
+  return day === 0 || day === 6
+}
+
 export const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 export const MONTH_LABELS = [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expandOccurrences, occurrenceAt } from '@/domain/calendar'
+import { expandOccurrences, occurrenceAt, isWeekend } from '@/domain/calendar'
 
 // Hora LOCAL a propósito (10:00): expandOccurrences lee la fecha en hora
 // local (bug real: recortar el ISO UTC desplazaba un día). Así el test
@@ -77,5 +77,17 @@ describe('occurrenceAt', () => {
     const occ = occurrenceAt(ev, '2026-09-20')
     expect(occ.endAt).toBeNull()
     expect(new Date(occ.startAt).getDate()).toBe(20)
+  })
+})
+
+describe('isWeekend', () => {
+  it('sábado y domingo son fin de semana', () => {
+    expect(isWeekend('2026-09-19')).toBe(true) // sábado
+    expect(isWeekend('2026-09-20')).toBe(true) // domingo
+  })
+
+  it('el resto de la semana no lo es', () => {
+    expect(isWeekend('2026-09-21')).toBe(false) // lunes
+    expect(isWeekend('2026-09-25')).toBe(false) // viernes
   })
 })

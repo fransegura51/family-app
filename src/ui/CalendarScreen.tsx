@@ -58,11 +58,13 @@ import {
   eventDotColors,
   expandOccurrences,
   getMonthGridDays,
+  isWeekend,
   MONTH_LABELS,
   occurrenceAt,
   readableTextColor,
   WEEKDAY_LABELS,
 } from '@/domain/calendar'
+import { toPastel } from '@/domain/colors'
 import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import {
@@ -822,7 +824,8 @@ export function CalendarScreen() {
                     'month-grid-day month-grid-day-bars' +
                     (day.inMonth ? '' : ' month-grid-day-out') +
                     (day.isToday ? ' month-grid-day-today' : '') +
-                    (selectedDate === day.dateStr ? ' month-grid-day-selected' : '')
+                    (selectedDate === day.dateStr ? ' month-grid-day-selected' : '') +
+                    (isWeekend(day.dateStr) ? ' month-grid-day-weekend' : '')
                   }
                   onClick={() => setSelectedDate(day.dateStr)}
                 >
@@ -910,7 +913,8 @@ export function CalendarScreen() {
                     'month-grid-day' +
                     (day.inMonth ? '' : ' month-grid-day-out') +
                     (day.isToday ? ' month-grid-day-today' : '') +
-                    (selectedDate === day.dateStr ? ' month-grid-day-selected' : '')
+                    (selectedDate === day.dateStr ? ' month-grid-day-selected' : '') +
+                    (isWeekend(day.dateStr) ? ' month-grid-day-weekend' : '')
                   }
                   onClick={() => setSelectedDate(day.dateStr)}
                 >
@@ -1335,7 +1339,7 @@ function FamilyDayView({
       </div>
       <div className="family-view-columns">
         {columns.map((col) => (
-          <div key={col.key} className="family-view-column">
+          <div key={col.key} className="family-view-column" style={{ background: toPastel(col.member?.color ?? '#9ca3af') }}>
             <div className="family-view-column-header">
               {col.member && <MemberAvatar member={col.member} size={28} />}
               <strong>{col.label}</strong>
@@ -1612,6 +1616,13 @@ function TimeGridView({
                 onClick={() => onSelectDate(d.dateStr)}
               >
                 {Array.from({ length: maxHour - minHour }).map((_, i) => (
+                  <div
+                    key={`bg-${i}`}
+                    className={'time-grid-hour-bg' + (i % 2 === 1 ? ' time-grid-hour-bg-alt' : '')}
+                    style={{ top: i * HOUR_HEIGHT, height: HOUR_HEIGHT }}
+                  />
+                ))}
+                {Array.from({ length: maxHour - minHour }).map((_, i) => (
                   <div key={i} className="time-grid-hour-line" style={{ top: i * HOUR_HEIGHT }} />
                 ))}
                 {blocks.map((b) => (
@@ -1820,6 +1831,11 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
       <div
         className={'agenda-row-inner' + (entry.done ? ' agenda-row-done' : '')}
         style={{
+          // Petición real: "en los chips de los apuntes... pondría el
+          // fondo de la tarjeta en una versión pastel del color
+          // distintivo de cada usuario" — la franja de la izquierda
+          // (.agenda-stripe) se queda con el color sólido de acento.
+          background: toPastel(entry.color),
           transform: translateX !== 0 ? `translateX(${translateX}px)` : undefined,
           transition: liveX == null ? undefined : 'none',
         }}
@@ -3204,7 +3220,7 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
         </p>
         {feeds.length === 0 && !loading && <p className="muted">Todavía no has enlazado ningún calendario.</p>}
         {feeds.map((f) => (
-          <div key={f.id} className="card event-card">
+          <div key={f.id} className="card event-card" style={{ background: toPastel(dotColorForFeed(f.id)) }}>
             <strong>{f.name}</strong>
             {f.isHolidayCalendar && <span className="muted"> · 🎌 festivos</span>}
             {f.memberId && memberById.get(f.memberId) && <MemberAvatar member={memberById.get(f.memberId)!} size={24} />}
@@ -3262,7 +3278,8 @@ function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
                 (day.inMonth ? '' : ' month-grid-day-out') +
                 (day.isToday ? ' month-grid-day-today' : '') +
                 (isSelected ? ' month-grid-day-selected' : '') +
-                (fillColor && !isSelected ? ' month-grid-day-filled' : '')
+                (fillColor && !isSelected ? ' month-grid-day-filled' : '') +
+                (isWeekend(day.dateStr) ? ' month-grid-day-weekend' : '')
               }
               style={
                 fillColor && !isSelected

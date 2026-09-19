@@ -2133,6 +2133,13 @@ textarea {
   background: #fafafb;
 }
 
+/* Petición real: "en todo el calendario los fines de semana
+   diferenciarlos con un color" — pastel suave, cede ante "hoy" (borde)
+   y "seleccionado" (más abajo en la cascada, gana el fondo sólido). */
+.month-grid-day-weekend {
+  background: hsl(280, 60%, 96%);
+}
+
 .month-grid-day-today {
   border-color: var(--primary);
   font-weight: 700;
@@ -3847,6 +3854,11 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Petición real: "las tarjetas de cada miembro la versión pastel de
+     su color de usuario" — el color llega por style (toPastel(m.color)
+     en CalendarScreen.tsx), aquí solo el hueco visual para que se note. */
+  border-radius: 14px;
+  padding: 10px;
 }
 
 .family-view-column-header {
@@ -3953,6 +3965,17 @@ textarea {
   left: 0;
   right: 0;
   border-top: 1px solid #f1f1f1;
+}
+
+.time-grid-hour-bg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: #fff9e0;
+}
+
+.time-grid-hour-bg-alt {
+  background: transparent;
 }
 
 .time-grid-block {

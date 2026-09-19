@@ -63,13 +63,24 @@ import { shareText } from '@/services/share'
 
 // Petición real: "vamos a organizarla por clases de alimentos..." con
 // colores — la clase de un producto (Fruta, Lácteos, Limpieza…) no
-// tiene un color guardado en la base de datos, así que se deriva del
-// mismo catálogo fijo FOOD_TYPES/NO_FOOD_TYPES (igual en Lista,
-// Historial, Tickets y Estadísticas) en vez de solo lo que haya en la
-// lista en ese momento — así el mismo nombre de clase da SIEMPRE el
-// mismo color aunque cambie lo que se está comprando hoy.
-const ALL_CLASS_LABELS = [...FOOD_TYPES.map((t) => t.label), ...NO_FOOD_TYPES.map((t) => t.label), 'Sin clasificar']
-export const CLASS_COLORS = paletteByName(ALL_CLASS_LABELS)
+// tiene un color guardado en la base de datos, así que se deriva de
+// TODAS las clases de la familia (igual en Lista e Historial) en vez
+// de solo lo que haya en la lista en ese momento — así el mismo
+// nombre de clase da SIEMPRE el mismo color aunque cambie lo que se
+// está comprando hoy.
+//
+// Bug real reportado: "las clases que he creado yo no se han incluido
+// en el reparto de colores" — antes este mapa salía del catálogo fijo
+// FOOD_TYPES/NO_FOOD_TYPES (domain/foodTypes.ts), que solo trae las
+// clases de fábrica; una clase nueva creada a mano en "Clasificaciones
+// de productos" (family_food_types en la base de datos) no estaba en
+// esa lista y se quedaba sin color. Ahora se calcula a partir de las
+// clases REALES de la familia (foodTypesByKind / foodTypes, ya
+// cargadas para el propio desplegable de clasificación), de fábrica y
+// creadas a mano por igual.
+function classColorsFromFamilyTypes(types: FamilyFoodType[]): Map<string, string> {
+  return paletteByName([...types.map((t) => t.name), 'Sin clasificar'])
+}
 
 function todayStr(): string {
   const d = new Date()
@@ -791,11 +802,17 @@ function ShoppingListTab() {
     [suggestions],
   )
   // Tiendas sin color propio en la base de datos: mismo criterio que
-  // CLASS_COLORS — se deriva de TODAS las tiendas de la familia
+  // classColorsFromFamilyTypes — se deriva de TODAS las tiendas de la familia
   // (`stores`, no solo las que tienen algo pendiente hoy) para que el
   // color de una tienda coincida siempre con el que se ve en Tickets
   // y Estadísticas.
   const storeColors = useMemo(() => paletteByName(stores.map((s) => s.name)), [stores])
+  // Mismo criterio, para las clases — incluye tanto las de fábrica
+  // como las creadas a mano por la familia (ver classColorsFromFamilyTypes).
+  const classColors = useMemo(
+    () => classColorsFromFamilyTypes([...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos]),
+    [foodTypesByKind],
+  )
   function knownPriceFor(item: ShoppingItem): number | null {
     if (item.price != null) return item.price
     return suggestionByName.get(normalizeProductName(item.name))?.lastPrice ?? null
@@ -972,14 +989,14 @@ function ShoppingListTab() {
             <>
               {classGroupsFor(storeItems).map((group) => (
                 <div key={`${store}:${group.kind}:${group.label}`} className="shopping-class-group">
-                  <p className="shopping-class-heading" style={{ background: CLASS_COLORS.get(group.label) }}>
+                  <p className="shopping-class-heading" style={{ background: classColors.get(group.label) }}>
                     {group.icon} {group.label}
                   </p>
                   <DraggableStoreGroup
                     items={group.items}
                     suggestions={suggestions}
                     shoppingMode={shoppingMode}
-                    rowColor={CLASS_COLORS.get(group.label)}
+                    rowColor={classColors.get(group.label)}
                     onSetStatus={setStatus}
                     onDeleted={reload}
                     onReordered={reload}
@@ -1823,6 +1840,21 @@ function HistoryTab() {
   // sigue haciendo igual, solo que siempre contra el mes real actual
   // en vez de dejar navegar a un mes distinto.
   const [query, setQuery] = useState('')
+  // Petición real: "que las clases de Alimentos se puedan plegar al
+  // tocar y se pueda filtrar también por ellos" — mismo patrón de
+  // plegado que las tiendas en la Lista de la compra (chevron +
+  // toggle), más un filtro de chips igual al de Alimentos/Otros de
+  // arriba, pero por clase.
+  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set())
+  const [classFilter, setClassFilter] = useState<string>('Todas')
+  function toggleClassCollapsed(label: string) {
+    setCollapsedClasses((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }
   // Petición real: "vamos a añadir un botón... añadir a la lista de la
   // compra... con el precio que hay marcado" — un solo toque para
   // apuntarlo, con el último precio ya puesto. "added" evita mandarlo
@@ -2084,16 +2116,23 @@ function HistoryTab() {
 
   // Petición real: "que se agrupe por clase, igual que en la Lista de
   // la compra" — mismo catálogo/colores que ShoppingListTab
-  // (CLASS_COLORS), para que la clase de un producto luzca igual en
-  // Lista e Historial. Sin producto ya clasificado, se adivina por el
-  // nombre igual que resolveItemClass.
+  // (classColorsFromFamilyTypes), para que la clase de un producto
+  // luzca igual en Lista e Historial. Sin producto ya clasificado, se
+  // adivina por el nombre igual que resolveItemClass.
+  // Bug real: usaba el catálogo fijo FOOD_TYPES/NO_FOOD_TYPES en vez de
+  // las clases reales de la familia (foodTypes, cargadas más arriba) —
+  // una clase creada a mano en "Clasificaciones de productos" nunca
+  // encontraba su icono aquí y se quedaba con el ❓ genérico.
   function classForProduct(productId: string, name: string): { label: string; icon: string } {
     const product = productsById.get(productId)
-    const catalog = mode === 'alimentacion' ? FOOD_TYPES : NO_FOOD_TYPES
+    const catalog = foodTypes.filter((t) => t.kind === mode)
     const classification = product?.category?.trim() || (mode === 'alimentacion' ? classifyFoodType(name).label : '')
-    const known = classification ? catalog.find((t) => t.label === classification) : undefined
+    const known = classification ? catalog.find((t) => t.name === classification) : undefined
     return { label: classification || 'Sin clasificar', icon: known?.icon ?? '❓' }
   }
+  // Mismas clases (de fábrica y creadas a mano) que en la Lista de la
+  // compra, para que el color de una clase coincida en las dos pantallas.
+  const classColors = useMemo(() => classColorsFromFamilyTypes(foodTypes), [foodTypes])
   const catalogOrder = (mode === 'alimentacion' ? FOOD_TYPES : NO_FOOD_TYPES).map((t) => t.label)
   function classRank(label: string): number {
     if (label === 'Sin clasificar') return 1000
@@ -2120,13 +2159,45 @@ function HistoryTab() {
       <p className="muted">Se construye solo: cada vez que guardas el precio de un producto comprado, queda aquí.</p>
 
       <div className="filter-row">
-        <button type="button" className={'chip' + (mode === 'alimentacion' ? ' chip-active' : '')} onClick={() => setMode('alimentacion')}>
+        <button
+          type="button"
+          className={'chip' + (mode === 'alimentacion' ? ' chip-active' : '')}
+          onClick={() => {
+            setMode('alimentacion')
+            setClassFilter('Todas')
+          }}
+        >
           Alimentos
         </button>
-        <button type="button" className={'chip' + (mode === 'no_alimentos' ? ' chip-active' : '')} onClick={() => setMode('no_alimentos')}>
+        <button
+          type="button"
+          className={'chip' + (mode === 'no_alimentos' ? ' chip-active' : '')}
+          onClick={() => {
+            setMode('no_alimentos')
+            setClassFilter('Todas')
+          }}
+        >
           Otros
         </button>
       </div>
+
+      {groupedProducts.length > 0 && (
+        <div className="filter-row" style={{ marginTop: 8 }}>
+          <button type="button" className={'chip' + (classFilter === 'Todas' ? ' chip-active' : '')} onClick={() => setClassFilter('Todas')}>
+            Todas
+          </button>
+          {groupedProducts.map((group) => (
+            <button
+              key={group.label}
+              type="button"
+              className={'chip' + (classFilter === group.label ? ' chip-active' : '')}
+              onClick={() => setClassFilter(group.label)}
+            >
+              {group.icon} {group.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <h2 className="section-title">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">
@@ -2134,7 +2205,7 @@ function HistoryTab() {
           <div
             key={product.id}
             className="price-row"
-            style={{ background: CLASS_COLORS.get(classForProduct(product.id, product.displayName).label) }}
+            style={{ background: classColors.get(classForProduct(product.id, product.displayName).label) }}
           >
             <button
               type="button"
@@ -2194,17 +2265,31 @@ function HistoryTab() {
         cuánto lo compras y comparar precio entre tiendas.
       </p>
 
-      {groupedProducts.map((group) => (
-        <div key={group.label} className="shopping-class-group">
-          <p className="shopping-class-heading" style={{ background: CLASS_COLORS.get(group.label) }}>
-            {group.icon} {group.label}
-          </p>
+      {groupedProducts
+        .filter((group) => classFilter === 'Todas' || group.label === classFilter)
+        .map((group) => {
+          const collapsed = collapsedClasses.has(group.label)
+          return (
+          <div key={group.label} className="shopping-class-group">
+            <p
+              className="shopping-class-heading shopping-class-heading-toggle"
+              role="button"
+              tabIndex={0}
+              style={{ background: classColors.get(group.label) }}
+              onClick={() => toggleClassCollapsed(group.label)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') toggleClassCollapsed(group.label)
+              }}
+            >
+              <span className="shopping-store-chevron">{collapsed ? '▸' : '▾'}</span> {group.icon} {group.label}
+            </p>
+            {!collapsed && (
           <div className="price-row-list">
             {group.rows.map((c, i) => (
               <div
                 key={c.productId}
                 className="price-row"
-                style={{ background: i % 2 === 1 ? CLASS_COLORS.get(group.label) : undefined }}
+                style={{ background: i % 2 === 1 ? classColors.get(group.label) : undefined }}
               >
                 <button
                   type="button"
@@ -2228,8 +2313,10 @@ function HistoryTab() {
               </div>
             ))}
           </div>
-        </div>
-      ))}
+            )}
+          </div>
+          )
+        })}
       {filteredProducts.length === 0 && (
         <p className="muted">
           {query.trim()

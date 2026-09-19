@@ -1562,6 +1562,20 @@ select {
   padding: 2px 8px;
 }
 
+/* Petición real: "que las clases de Alimentos se puedan plegar al
+   tocar" (Historial de precios) — mismo patrón que .shopping-store-
+   heading-toggle, pero declarado después para ganarle a display:
+   inline-block/padding de .shopping-class-heading en la cascada
+   (misma especificidad, gana quien va después). */
+.shopping-class-heading-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+}
+
 .points-badge {
   display: inline-block;
   background: #fff3cd;

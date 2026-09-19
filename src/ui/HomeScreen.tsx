@@ -11,12 +11,11 @@ import { listShoppingItems } from '@/data/shopping'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
-import { NAV_TABS, navSectionId } from '@/domain/navTabs'
+import { NAV_TABS, navSectionId, NAV_SECTION_COLORS } from '@/domain/navTabs'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
 import agendaBg from '@/assets/home/agenda-background.jpg'
 import { errorMessage } from '@/domain/errorMessage'
-import { pastelPalette } from '@/domain/colors'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -55,17 +54,14 @@ const HOME_CARD_BODY: Record<string, string> = {
   documentos: 'Por cada miembro',
 }
 
-const HOME_CARDS: HomeCardDef[] = (() => {
-  const withoutColor = NAV_TABS.filter((t) => t.to !== '/')
-    .map((t) => {
-      const id = navSectionId(t)
-      const body = HOME_CARD_BODY[id]
-      return body ? { id, title: t.label, body, to: t.to, icon: t.icon } : null
-    })
-    .filter((c): c is Omit<HomeCardDef, 'color'> => c !== null)
-  const palette = pastelPalette(withoutColor.length)
-  return withoutColor.map((c, i) => ({ ...c, color: palette[i] }))
-})()
+const HOME_CARDS: HomeCardDef[] = NAV_TABS.filter((t) => t.to !== '/')
+  .map((t) => {
+    const id = navSectionId(t)
+    const body = HOME_CARD_BODY[id]
+    const color = NAV_SECTION_COLORS.get(id)
+    return body && color ? { id, title: t.label, body, to: t.to, icon: t.icon, color } : null
+  })
+  .filter((c): c is HomeCardDef => c !== null)
 const HOME_CARDS_BY_ID = new Map(HOME_CARDS.map((c) => [c.id, c]))
 
 // Junta el orden guardado con las tarjetas que existan de verdad hoy —

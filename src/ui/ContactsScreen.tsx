@@ -10,6 +10,7 @@ import contactosHeaderImg from '@/assets/contactos/contactos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
+import { paletteByName } from '@/domain/colors'
 
 // Categorías de partida — ya no es una lista cerrada: cualquier
 // contacto puede llevar una categoría nueva escrita a mano (petición
@@ -107,6 +108,11 @@ export function ContactsScreen() {
   if (loading) return <div className="screen">Cargando contactos…</div>
 
   const availableCategories = collectCategories(contacts)
+  // Petición real: "Contactos ya tienen clasificación, ponemos un
+  // color por clase" — mismo criterio que las clases de producto de
+  // Compras (paletteByName): nombre de categoría -> color estable,
+  // calculado una vez aquí, no por tarjeta.
+  const categoryColors = paletteByName(availableCategories)
   const normalizedSearch = normalize(search)
   const filteredContacts = contacts.filter((c) => {
     if (categoryFilter !== 'Todas' && (c.category ?? 'Otros') !== categoryFilter) return false
@@ -178,6 +184,7 @@ export function ContactsScreen() {
           <ContactCard
             key={c.id}
             contact={c}
+            color={categoryColors.get(c.category || 'Otros')}
             onChanged={reload}
             selecting={selecting}
             selected={selectedIds.has(c.id)}
@@ -261,6 +268,7 @@ async function shareContacts(contacts: Contact[]): Promise<ShareOutcome> {
 
 function ContactCard({
   contact: c,
+  color,
   onChanged,
   selecting,
   selected,
@@ -270,6 +278,7 @@ function ContactCard({
   onManualShare,
 }: {
   contact: Contact
+  color?: string
   onChanged: () => void
   selecting: boolean
   selected: boolean
@@ -326,7 +335,7 @@ function ContactCard({
   }
 
   return (
-    <div className="card task-card contact-card">
+    <div className="card task-card contact-card" style={{ background: color }}>
       {selecting && (
         <input
           type="checkbox"

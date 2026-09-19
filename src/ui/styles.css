@@ -184,7 +184,10 @@ body {
   border-radius: 14px;
   overflow: hidden;
   margin: 14px 0;
-  background: linear-gradient(135deg, var(--primary), #6366f1);
+  /* Petición real: "el fondo... ahora es un azul fuerte, ponle color
+     pastel" — se ve cuando la foto no llega a ocupar el hueco entero
+     (object-fit: contain). Mismo estilo suave que .event-hero-card. */
+  background: linear-gradient(135deg, #eef2ff, #fdf4ff);
   cursor: pointer;
 }
 

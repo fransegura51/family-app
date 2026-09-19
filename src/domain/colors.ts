@@ -20,3 +20,52 @@ export function pastelPalette(count: number): string[] {
     return `hsl(${hue}, 70%, 90%)`
   })
 }
+
+// Petición real: extender el pastel a Calendario/Economía, donde el
+// color de partida no sale de pastelPalette() sino que ya existe (el
+// color que cada miembro elige a mano, m.color) — conserva su tono
+// pero fuerza saturación/luminosidad a un pastel, en vez de generar
+// uno nuevo sin relación con "su" color.
+export function toPastel(hex: string): string {
+  const { h } = hexToHsl(hex)
+  return `hsl(${h}, 65%, 88%)`
+}
+
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const clean = hex.replace('#', '')
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean.padEnd(6, '0').slice(0, 6)
+  const r = parseInt(full.slice(0, 2), 16) / 255
+  const g = parseInt(full.slice(2, 4), 16) / 255
+  const b = parseInt(full.slice(4, 6), 16) / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  if (max === min) return { h: 0, s: 0, l: Math.round(l * 100) }
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  let h: number
+  switch (max) {
+    case r:
+      h = ((g - b) / d + (g < b ? 6 : 0)) * 60
+      break
+    case g:
+      h = ((b - r) / d + 2) * 60
+      break
+    default:
+      h = ((r - g) / d + 4) * 60
+  }
+  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) }
+}
+
+// Petición real: clases de producto, tiendas y etiquetas de receta no
+// tienen un color guardado en la base de datos, y cada familia puede
+// crear/renombrar las suyas — en vez de una migración nueva y una
+// pantalla para fijarlo a mano, mismo nombre da SIEMPRE el mismo
+// color: se ordena la lista alfabéticamente (estable aunque cambie el
+// orden de creación) y se reparte pastelPalette() por índice. Calcular
+// esto UNA vez por pantalla (no por fila) y consultar el mapa.
+export function paletteByName(names: Iterable<string>): Map<string, string> {
+  const sorted = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, 'es'))
+  const palette = pastelPalette(sorted.length)
+  return new Map(sorted.map((name, i) => [name, palette[i]]))
+}

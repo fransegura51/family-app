@@ -1,3 +1,5 @@
+import { pastelPalette } from '@/domain/colors'
+
 // Las 12 secciones de la navegación inferior — en un módulo aparte
 // (no dentro de NavShell.tsx) para que la pantalla de "Organizar
 // menú" (MenuSettingsScreen) pueda usar la misma lista sin depender
@@ -38,3 +40,14 @@ export function isActiveNavPath(pathname: string, tab: NavTab): boolean {
 export function navSectionId(tab: NavTab): string {
   return tab.to.replace(/^\//, '')
 }
+
+// Petición real: "el menú ☰... pondría los mismos colores que en el
+// menú de inicio" — un único mapa, calculado aquí, para que Inicio y
+// el desplegable ☰ (NavShell) repartan el mismo pastel por sección en
+// vez de cada uno calcular su propia paleta por separado (que
+// coincidiría por casualidad, no lo garantizaría).
+export const NAV_SECTION_COLORS: ReadonlyMap<string, string> = (() => {
+  const sections = NAV_TABS.filter((t) => t.to !== '/')
+  const palette = pastelPalette(sections.length)
+  return new Map(sections.map((t, i) => [navSectionId(t), palette[i]]))
+})()

@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
 import { SocialMenuFab, type SocialMenuItem } from '@/ui/SocialMenuFab'
 import { ScrollToTopFab } from '@/ui/ScrollToTopFab'
-import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, type NavTab } from '@/domain/navTabs'
+import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, NAV_SECTION_COLORS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
 import type { Profile } from '@/domain/types'
 
@@ -133,6 +133,7 @@ export function NavShell({ profile }: { profile: Profile }) {
               key={tab.to}
               type="button"
               className={'nav-menu-item' + (isActiveNavPath(location.pathname, tab) ? ' active' : '')}
+              style={{ background: NAV_SECTION_COLORS.get(navSectionId(tab)) }}
               onClick={() => go(tab.to)}
             >
               <span className="nav-item-icon">{tab.icon}</span>

@@ -31,6 +31,18 @@ export function toPastel(hex: string): string {
   return `hsl(${h}, 65%, 88%)`
 }
 
+// Igual que toPastel, pero a partir de un color que ya viene como
+// "hsl(...)" (p. ej. categoryColors() en finance.ts, pensado para
+// gráficas — tonos vivos, no pastel) en vez de un hex: conserva el
+// tono para que la categoría se reconozca igual entre el dónut y el
+// fondo pastel de su tarjeta, sin inventar una asignación de color
+// distinta para cada sitio.
+export function pastelFromHsl(hsl: string): string {
+  const match = /hsl\((\d+(?:\.\d+)?)/.exec(hsl)
+  const h = match ? Number(match[1]) : 0
+  return `hsl(${h}, 65%, 88%)`
+}
+
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const clean = hex.replace('#', '')
   const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean.padEnd(6, '0').slice(0, 6)

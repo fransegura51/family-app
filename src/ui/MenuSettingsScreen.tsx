@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
+import { loadMovementColorMode, saveMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import {
   getAccountsMode,
   getFamilyName,
@@ -218,6 +219,40 @@ function AccountsModeSection() {
       </div>
       {saving && <span className="muted">Guardando…</span>}
       {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+// Petición real: extender el pastel a Movimientos — por dispositivo
+// (localStorage, no Supabase, mismo motivo que el orden de pestañas:
+// cada persona de la familia puede preferir una vista distinta), no
+// hace falta cargar/guardar nada async como en AccountsModeSection.
+function MovementColorModeSection() {
+  const [mode, setMode] = useState<MovementColorMode>(() => loadMovementColorMode())
+
+  function handleChange(next: MovementColorMode) {
+    setMode(next)
+    saveMovementColorMode(next)
+  }
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>🎨 Colorear movimientos por</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        La lista de Movimientos puede colorear cada fila según su categoría, según su etiqueta, o quedarse sin
+        colorear.
+      </p>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" className={'chip' + (mode === 'categoria' ? ' chip-active' : '')} onClick={() => handleChange('categoria')}>
+          Categoría
+        </button>
+        <button type="button" className={'chip' + (mode === 'etiqueta' ? ' chip-active' : '')} onClick={() => handleChange('etiqueta')}>
+          Etiqueta
+        </button>
+        <button type="button" className={'chip' + (mode === 'ninguno' ? ' chip-active' : '')} onClick={() => handleChange('ninguno')}>
+          Sin color
+        </button>
+      </div>
     </div>
   )
 }
@@ -541,6 +576,7 @@ export function MenuSettingsScreen() {
       <FamilyNameSection />
       <AccountingMonthSection />
       <AccountsModeSection />
+      <MovementColorModeSection />
       <BankAccountsSection />
       <AdminUsageLink />
       <AppLockSection />

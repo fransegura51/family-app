@@ -39,7 +39,8 @@ import {
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
-import { paletteByName } from '@/domain/colors'
+import { paletteByName, pastelFromHsl, pastelPalette, toPastel } from '@/domain/colors'
+import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -901,11 +902,13 @@ function EconomiaMenuDropdown({
 // lo trae la propia sincronización (enable-banking-sync-transactions →
 // syncBalance) — si una cuenta todavía no se ha sincronizado nunca, se
 // avisa en vez de inventar un 0.
-// Petición real, con captura de referencia exacta (app Wallet, pantalla
-// "Mis cuentas en Wallet"): rejilla de 2 columnas, cada cuenta en un
-// color sólido distinto (no una tira que se desliza de lado, ni todas
-// del mismo azul degradado como antes).
-const ACCOUNT_CARD_COLORS = ['#2f6e6e', '#4a5568', '#0f6b4c', '#4a90d9', '#8854d0', '#c0392b']
+// Petición real: "las tarjetas de cuenta con el mismo pastel que el
+// resto de la app" — en vez de un array fijo de colores sólidos
+// indexado por posición (cambiaba si se reordenaban las cuentas), el
+// pastel del dueño de la cuenta (mismo criterio que Calendario:
+// toPastel sobre el color que ya tiene ese miembro). Una cuenta Común
+// (sin dueño) usa un pastel neutro fijo (ver COMMON_OWNER_COLOR).
+const COMMON_ACCOUNT_COLOR = toPastel('#868e96')
 
 // Petición real: "quiero una etiqueta que sea toda la familia o común,
 // mejor común, porque es más corto, que es para las cosas que son de
@@ -945,14 +948,12 @@ function AccountBalanceCards({
   onViewAll: () => void
 }) {
   const [accounts, setAccounts] = useState<BankAccount[]>([])
-  const [connections, setConnections] = useState<BankConnection[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
 
   function reload() {
-    Promise.all([listBankAccounts(), listBankConnections(), listFamilyMembers()])
-      .then(([a, c, m]) => {
+    Promise.all([listBankAccounts(), listFamilyMembers()])
+      .then(([a, m]) => {
         setAccounts(a)
-        setConnections(c)
         setMembers(m)
       })
       .catch(() => {})
@@ -980,35 +981,33 @@ function AccountBalanceCards({
         </button>
       </div>
       <div className="account-cards-grid">
-        {accounts.map((a, i) => {
-          const bankName = connections.find((c) => c.id === a.connectionId)?.aspspName ?? 'Banco'
+        {accounts.map((a) => {
           const owner = a.ownerMemberId ? (members.find((m) => m.id === a.ownerMemberId) ?? null) : null
           return (
             <button
               key={a.id}
               type="button"
               className="account-card"
-              style={{ background: ACCOUNT_CARD_COLORS[i % ACCOUNT_CARD_COLORS.length] }}
+              style={{ background: owner ? toPastel(owner.color) : COMMON_ACCOUNT_COLOR, color: 'var(--text)' }}
               onClick={() => onSelectAccount(a.id)}
             >
-              {/* De quién es la cuenta (asignado en Banco) — petición
-                  real: "quiero definir a cada pestaña de banco el nombre
-                  de quien es la cuenta". En fila junto al nombre del
-                  banco (no superpuesto encima) para que no se solapen —
-                  bug real reportado: "la etiqueta de la cuenta se
-                  solapa con el nombre del banco". */}
-              <div className="account-card-header">
-                <div className="account-card-bank">🏦 {bankName}</div>
-                <OwnerBadge owner={owner} size={20} ring />
-              </div>
-              <div className="account-card-name">{a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'}</div>
-              {/* Piso compartido, modo Separado: el saldo de una cuenta
-                  que no es tuya ni Común llega null a propósito desde
-                  bank_accounts_with_visibility — candado en vez de
-                  "Sincronizando…" para no dar a entender que falta un
-                  dato que en realidad está oculto aposta. */}
-              <div className="account-card-balance">
-                {!a.balanceVisible ? '🔒' : a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}
+              {/* Petición real: "quita el nombre del banco y el
+                  número/IBAN, deja solo de quién es" — el saldo de una
+                  cuenta ya no necesita el banco/IBAN para identificarse,
+                  con el dueño basta. */}
+              <div className="account-card-name">{owner ? `Cuenta de «${owner.name}»` : 'Cuenta común'}</div>
+              {/* Icono grande, en la misma línea que el importe (petición
+                  real) — antes era un badge pequeño arriba a solas. */}
+              <div className="account-card-bottom">
+                <OwnerBadge owner={owner} size={36} />
+                {/* Piso compartido, modo Separado: el saldo de una cuenta
+                    que no es tuya ni Común llega null a propósito desde
+                    bank_accounts_with_visibility — candado en vez de
+                    "Sincronizando…" para no dar a entender que falta un
+                    dato que en realidad está oculto aposta. */}
+                <div className="account-card-balance">
+                  {!a.balanceVisible ? '🔒' : a.balance != null ? `${a.balance.toFixed(2)} €` : 'Sincronizando…'}
+                </div>
               </div>
             </button>
           )
@@ -1358,6 +1357,8 @@ function BankTab({
   const [searchQuery, setSearchQuery] = useState('')
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [visibleCount, setVisibleCount] = useState(50)
+  const movementColorMode = useMovementColorMode()
+  const catColors = categoryColors(categories)
 
   // Petición real: "no me has puesto para poder agregar cuentas a esa
   // pantalla" — el botón "+ Añadir cuenta" de las tarjetas de saldo
@@ -1658,6 +1659,7 @@ function BankTab({
                   tag={tags.find((t) => t.id === e.tagId)}
                   onClick={() => setEditingId(e.id)}
                   ownerMember={activeAccountId ? undefined : ownerMemberForExpense(e.id)}
+                  rowColor={movementRowColor(movementColorMode, categories.find((c) => c.name === e.category), tags.find((t) => t.id === e.tagId), catColors)}
                 />
               ),
             )}
@@ -2975,6 +2977,8 @@ function ExpensesTab({
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [expenseAccountId, setExpenseAccountId] = useState<Map<string, string>>(new Map())
+  const movementColorMode = useMovementColorMode()
+  const catColors = categoryColors(categories)
   // Petición real: "quiero que quites el filtro mensual... y pongas
   // los mismos filtros temporales desplegables que en el resto de
   // Economía en el mismo sitio" — mismo componente (DateFilterTab,
@@ -3300,6 +3304,7 @@ function ExpensesTab({
               tag={tags.find((t) => t.id === e.tagId)}
               ownerMember={ownerMemberForExpense(e.id)}
               onClick={() => setEditingId(e.id)}
+              rowColor={movementRowColor(movementColorMode, categories.find((c) => c.name === e.category), tags.find((t) => t.id === e.tagId), catColors)}
               extraAction={
                 <>
                   {/* Piso compartido — petición real: "que el que haya
@@ -3377,6 +3382,25 @@ const SOURCE_META: Record<ExpenseSource, { icon: string; label: string }> = {
 // 3 líneas para verlo todo de un vistazo sin abrir el movimiento:
 // categoría+importe, fecha/establecimiento/etiqueta/origen, y el
 // concepto (editable tocando la fila, como todo lo demás).
+// Resuelve el fondo de una fila de Movimientos según el ajuste
+// "Colorear movimientos por" (Configuración) — categoría reutiliza
+// categoryColors() pasado a pastel (mismo criterio que Presupuestos y
+// el selector de categorías); etiqueta reutiliza el color ya elegido a
+// mano para esa etiqueta (toPastel, igual que Calendario).
+function movementRowColor(
+  mode: MovementColorMode,
+  category: BudgetCategory | undefined,
+  tag: Tag | undefined,
+  catColors: Map<string, string>,
+): string | undefined {
+  if (mode === 'categoria' && category) {
+    const c = catColors.get(category.id)
+    return c ? pastelFromHsl(c) : undefined
+  }
+  if (mode === 'etiqueta' && tag) return toPastel(tag.color)
+  return undefined
+}
+
 function MovementRow({
   expense: e,
   category,
@@ -3384,6 +3408,7 @@ function MovementRow({
   onClick,
   extraAction,
   ownerMember,
+  rowColor,
 }: {
   expense: Expense
   category: BudgetCategory | undefined
@@ -3395,10 +3420,15 @@ function MovementRow({
   // filtrar una a una) — el avatar/color ya asignado a esa cuenta en
   // "De quién es la cuenta".
   ownerMember?: FamilyMember | null
+  // Ajuste "Colorear movimientos por" (Configuración) — fondo de toda
+  // la fila, no solo el puntito; ya resuelto por quien llama (por
+  // categoría o por etiqueta, según el ajuste) para no repetir el
+  // cálculo de categoryColors() en cada fila.
+  rowColor?: string
 }) {
   const source = SOURCE_META[e.source]
   return (
-    <div className="movement-row" onClick={onClick}>
+    <div className="movement-row" onClick={onClick} style={{ background: rowColor }}>
       <span
         className="movement-row-dot"
         style={{ background: tag ? tag.color : 'transparent' }}
@@ -3674,6 +3704,14 @@ function CategoriesModal({
 
   const generales = categories.filter((c) => c.budgetGroup === 'generales')
   const ingresos = categories.filter((c) => c.budgetGroup === 'ingresos')
+  // Mismo color por categoría que ya usan los dónuts (categoryColors),
+  // pasado a pastel — así se reconoce la misma categoría entre el
+  // gráfico y esta lista sin inventar una asignación nueva.
+  const catColors = categoryColors(categories)
+  function catBg(id: string): string | undefined {
+    const c = catColors.get(id)
+    return c ? pastelFromHsl(c) : undefined
+  }
 
   function renderClassification(c: BudgetCategory) {
     return (
@@ -3714,7 +3752,12 @@ function CategoriesModal({
             const expanded = expandedId === c.id
             return (
               <div key={c.id}>
-                <button type="button" className="category-picker-row" onClick={() => setExpandedId(expanded ? null : c.id)}>
+                <button
+                  type="button"
+                  className="category-picker-row"
+                  style={{ background: catBg(c.id) }}
+                  onClick={() => setExpandedId(expanded ? null : c.id)}
+                >
                   <span style={{ flex: 1 }}>
                     {c.icon} {c.name}
                   </span>
@@ -3730,7 +3773,10 @@ function CategoriesModal({
                       onConfirm={() => deleteBudgetCategory(c.id).then(onChanged)}
                     />
                     {children.map((child) => (
-                      <div key={child.id} style={{ borderTop: '1px solid #f1f1f1', paddingTop: 8, marginTop: 4 }}>
+                      <div
+                        key={child.id}
+                        style={{ background: catBg(child.id), borderRadius: 8, borderTop: '1px solid #f1f1f1', paddingTop: 8, marginTop: 4, paddingLeft: 6, paddingRight: 6 }}
+                      >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <strong style={{ flex: 1, fontSize: 14 }}>
                             {child.icon} {child.name}
@@ -6743,12 +6789,18 @@ function BudgetsSection({
   const currentBudgets = budgets.filter((b) => sameLabel(budgetPeriodRange(b).start))
   const pastBudgets = budgets.filter((b) => !sameLabel(budgetPeriodRange(b).start))
 
+  // Mismo color por categoría que ya usan los dónuts (categoryColors),
+  // pasado a pastel — reutiliza el mismo criterio que CategoriesModal,
+  // en vez de dejar estas tarjetas siempre grises.
+  const catColors = categoryColors(categories)
   function renderBudgetRow(b: Budget) {
     const spent = budgetSpent(b, expenses, { categories })
     const pct = Math.min(100, Math.round((spent / b.amount) * 100))
-    const icon = categories.find((c) => c.name === b.category)?.icon
+    const category = categories.find((c) => c.name === b.category)
+    const icon = category?.icon
+    const bg = category ? catColors.get(category.id) : undefined
     return (
-      <div key={b.id} className="card task-card">
+      <div key={b.id} className="card task-card" style={{ background: bg ? pastelFromHsl(bg) : undefined }}>
         <div className="task-card-main">
           <strong>
             {icon && `${icon} `}
@@ -7710,6 +7762,11 @@ const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: strin
   { key: 'impuesto', label: 'Impuestos', formLabel: 'impuesto' },
 ]
 
+// Petición real: extender el pastel a Educación financiera — sin una
+// categoría real detrás (son solo 4 tipos fijos de hucha), un color
+// por índice basta y así nunca cambia entre visitas.
+const WALLET_TAB_COLORS = pastelPalette(WALLET_TABS.length)
+
 function KidsFinanceTab() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
@@ -7774,10 +7831,11 @@ function KidsFinanceTab() {
       </p>
 
       <div className="filter-row">
-        {WALLET_TABS.map((t) => (
+        {WALLET_TABS.map((t, i) => (
           <button
             key={t.key}
             className={'chip' + (walletTab === t.key ? ' chip-active' : '')}
+            style={{ background: WALLET_TAB_COLORS[i] }}
             onClick={() => setWalletTab(t.key)}
           >
             {t.label}
@@ -7793,10 +7851,10 @@ function KidsFinanceTab() {
         <>
           <h3>Objetivos de ahorro</h3>
           <div className="event-list">
-            {memberGoals.map((goal) => {
+            {memberGoals.map((goal, i) => {
               const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
               return (
-                <div key={goal.id} className="card task-card">
+                <div key={goal.id} className="card task-card" style={{ background: pastelPalette(memberGoals.length)[i] }}>
                   <div className="task-card-main">
                     <strong>{goal.title}</strong>
                     <p className="muted">

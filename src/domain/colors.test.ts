@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pastelPalette, toPastel, paletteByName } from './colors'
+import { pastelPalette, toPastel, paletteByName, pastelFromHsl } from './colors'
 
 describe('pastelPalette', () => {
   it('never repeats a color, however many are requested', () => {
@@ -25,6 +25,13 @@ describe('toPastel', () => {
 
   it('handles a color already close to gray without crashing', () => {
     expect(toPastel('#808080')).toBe('hsl(0, 65%, 88%)')
+  })
+})
+
+describe('pastelFromHsl', () => {
+  it('keeps the hue of an existing hsl(...) color but forces pastel lightness/saturation', () => {
+    expect(pastelFromHsl('hsl(4, 75%, 46%)')).toBe('hsl(4, 65%, 88%)')
+    expect(pastelFromHsl('hsl(221, 70%, 56%)')).toBe('hsl(221, 65%, 88%)')
   })
 })
 

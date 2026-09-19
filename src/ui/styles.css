@@ -2767,33 +2767,20 @@ textarea {
   border-radius: 14px;
   padding: 12px 14px;
   min-height: 74px;
-  color: white;
+  color: var(--text);
   text-align: left;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   cursor: pointer;
 }
 
-/* De quién es la cuenta (petición real) — en fila con el nombre del
-   banco, nunca superpuesto encima (bug real: "la etiqueta de la cuenta
-   se solapa con el nombre del banco"). min-width:0 en el nombre es lo
-   que deja que la elipsis (text-overflow) funcione dentro de un flex
-   item en vez de desbordar por debajo del avatar. */
-.account-card-header {
+/* Icono grande + importe en la misma línea (petición real) — antes el
+   icono del dueño vivía solo arriba, pequeño, sin relación visual con
+   el saldo. */
+.account-card-bottom {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.account-card-bank {
-  flex: 1;
-  min-width: 0;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  opacity: 0.9;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 /* Icono neutro para una cuenta "Común" (sin miembro asignado) — mismo
@@ -2815,9 +2802,9 @@ textarea {
 }
 
 .account-card-name {
-  font-size: 11px;
-  opacity: 0.75;
-  margin: 2px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
 }
 
 .account-card-balance {
@@ -3209,8 +3196,9 @@ textarea {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 4px;
+  padding: 8px;
   border-bottom: 1px solid #eee;
+  border-radius: 10px;
   font-size: 14px;
   cursor: pointer;
 }

@@ -993,18 +993,15 @@ function EventDetail({
           <button
             key={card.key}
             type="button"
-            className="card event-module-card"
+            className="card event-module-card home-card"
             style={{ background: cardColors[i] }}
             onClick={() => setOpenModule(card.key)}
           >
-            <div className="event-module-card-top">
-              <span className="event-module-card-icon">{card.icon}</span>
-              <span className="muted">›</span>
+            <div>
+              <h2>{card.label}</h2>
+              <p className="muted">{card.stat}</p>
             </div>
-            <strong>{card.label}</strong>
-            <p className="muted" style={{ margin: '2px 0 0', fontSize: 13 }}>
-              {card.stat}
-            </p>
+            <span className="home-card-icon">{card.icon}</span>
           </button>
         ))}
       </div>

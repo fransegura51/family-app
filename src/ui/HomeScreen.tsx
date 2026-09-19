@@ -241,14 +241,15 @@ function PhotoBanner() {
       .catch(() => {})
   }, [])
 
+  // Petición real: "quiero esas dos diapositivas por defecto en todos
+  // los usuarios" — antes solo aparecían si había algo pendiente/hoy;
+  // ahora siempre están, con su propio estado vacío si no hay nada
+  // (ver "Sin nada pendiente todavía" / "Nada apuntado para hoy" en el
+  // renderizado de cada diapositiva).
   const slides: Slide[] = [
     ...photos.map((p): Slide => ({ kind: 'photo', id: p.id, url: urls[p.id] ?? '', caption: p.caption || 'Fotos de la familia' })),
-    ...(agendaItems.length > 0
-      ? [{ kind: 'info', id: 'agenda', icon: '📅', title: 'Hoy en el calendario', items: agendaItems, art: 'tarea' } as const]
-      : []),
-    ...(shoppingItems.length > 0
-      ? [{ kind: 'info', id: 'compra', icon: '🛒', title: 'Compra pendiente', items: shoppingItems, art: 'compra' } as const]
-      : []),
+    { kind: 'info', id: 'agenda', icon: '📅', title: 'Hoy en el calendario', items: agendaItems, art: 'tarea' },
+    { kind: 'info', id: 'compra', icon: '🛒', title: 'Compra pendiente', items: shoppingItems, art: 'compra' },
   ]
 
   useEffect(() => {
@@ -332,13 +333,19 @@ function PhotoBanner() {
       <div className="home-photo-banner home-shopping-banner" aria-label={current.title} {...slideInteractionProps}>
         <div className="home-shopping-note">
           <img src={shoppingListBg} alt="" className="home-shopping-note-img" />
-          {current.items.slice(0, 4).map((item, i) => (
-            <div key={i} className={`home-shopping-note-line home-shopping-note-line-${i + 1}`}>
-              {item}
-            </div>
-          ))}
-          {current.items.length > 4 && (
-            <div className="home-shopping-note-line home-shopping-note-line-5">+{current.items.length - 4} más</div>
+          {current.items.length === 0 ? (
+            <div className="home-shopping-note-line home-shopping-note-line-1">Nada pendiente todavía 🎉</div>
+          ) : (
+            <>
+              {current.items.slice(0, 4).map((item, i) => (
+                <div key={i} className={`home-shopping-note-line home-shopping-note-line-${i + 1}`}>
+                  {item}
+                </div>
+              ))}
+              {current.items.length > 4 && (
+                <div className="home-shopping-note-line home-shopping-note-line-5">+{current.items.length - 4} más</div>
+              )}
+            </>
           )}
         </div>
         {dots}
@@ -354,13 +361,19 @@ function PhotoBanner() {
       <div className="home-photo-banner home-agenda-banner" aria-label={current.title} {...slideInteractionProps}>
         <div className="home-agenda-note">
           <img src={agendaBg} alt="" className="home-agenda-note-img" />
-          {current.items.slice(0, 4).map((item, i) => (
-            <div key={i} className={`home-agenda-note-line home-agenda-note-line-${i + 1}`}>
-              {item}
-            </div>
-          ))}
-          {current.items.length > 4 && (
-            <div className="home-agenda-note-line home-agenda-note-line-5">+{current.items.length - 4} más</div>
+          {current.items.length === 0 ? (
+            <div className="home-agenda-note-line home-agenda-note-line-1">Nada apuntado para hoy</div>
+          ) : (
+            <>
+              {current.items.slice(0, 4).map((item, i) => (
+                <div key={i} className={`home-agenda-note-line home-agenda-note-line-${i + 1}`}>
+                  {item}
+                </div>
+              ))}
+              {current.items.length > 4 && (
+                <div className="home-agenda-note-line home-agenda-note-line-5">+{current.items.length - 4} más</div>
+              )}
+            </>
           )}
         </div>
         {dots}
@@ -442,14 +455,12 @@ function HomeCard({
   onMoveDown?: () => void
 }) {
   const content = (
-    <div className="card home-card">
+    <div className="card home-card" style={{ background: color }}>
       <div>
         <h2>{title}</h2>
         <p className="muted">{body}</p>
       </div>
-      <span className="home-card-icon" style={{ background: color }}>
-        {icon}
-      </span>
+      <span className="home-card-icon">{icon}</span>
       {organizing && (
         <div className="home-card-move">
           <button

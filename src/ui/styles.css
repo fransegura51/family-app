@@ -158,6 +158,12 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 17px;
+  /* Petición real: "las tarjetas de inicio enteras del color que
+     llevan ahora los emojis solos" — la tarjeta entera pasa a llevar
+     el pastel (ver style={{background: color}} en HomeCard), así que
+     el icono necesita su propio fondo translúcido para no fundirse
+     con la tarjeta. */
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .card-grid {
@@ -1405,31 +1411,18 @@ select {
   background: #adb5bd;
 }
 
-/* Una tarjeta por módulo — mismo .card-grid de 2 columnas que ya usa
-   Inicio, pero como <button> (petición real: "cada tarjeta se toca
-   para entrar en el módulo") en vez de <Link>, porque Eventos navega
-   con estado local (openModule), no con rutas. */
+/* Una tarjeta por módulo — mismo .card-grid de 2 columnas y mismo
+   reparto que las tarjetas de Inicio (.home-card: texto a la
+   izquierda, icono a la derecha, sin flechita) — petición real: "a
+   las tarjetas dentro de los eventos les pongas ese mismo formato de
+   distribución". Sigue siendo <button>, no <Link>, porque Eventos
+   navega con estado local (openModule), no con rutas — solo se
+   resetean aquí los estilos de <button> que .home-card no cubre. */
 .event-module-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
   text-align: left;
   color: var(--text);
   font-weight: 400;
   cursor: pointer;
-}
-
-.event-module-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  margin-bottom: 4px;
-}
-
-.event-module-card-icon {
-  font-size: 22px;
 }
 
 .member-chips {

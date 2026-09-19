@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { supabase } from '@/data/supabaseClient'
-import { forgetSignupOrigin, parseSignupOrigin, recallSignupOrigin, rememberSignupOrigin } from '@/domain/signupOrigin'
+import { forgetSignupOrigin, parseSignupOrigin, rememberSignupOrigin, signupMetadata } from '@/domain/signupOrigin'
 
 export function LoginScreen() {
   // Quien llega desde el botón "Crear mi familia" de la demo pública de
@@ -59,15 +59,16 @@ export function LoginScreen() {
       // "/family-app" (el campo no se queda con la ruta completa) —
       // se fija aquí mismo, calculado con la URL real desde la que se
       // esté usando la app, en vez de depender de esa configuración.
-      // Etiqueta de origen (solo "demo", lista cerrada, sin datos
-      // personales) para medir cuánta gente llega desde la demo de la web.
-      const origin = recallSignupOrigin()
+      // Etiquetas de origen (origen "demo" y, si venía de una guía de la
+      // web, su slug; formato estricto, sin datos personales) para medir
+      // cuánta gente llega desde la demo y qué guía la trajo.
+      const metadata = signupMetadata()
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: window.location.origin + import.meta.env.BASE_URL,
-          ...(origin ? { data: { signup_origin: origin } } : {}),
+          ...(metadata ? { data: metadata } : {}),
         },
       })
       if (!error) forgetSignupOrigin()

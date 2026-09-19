@@ -1,4 +1,4 @@
-import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -1257,9 +1257,90 @@ function BalanceTrendChart({ series }: { series: BalanceSeries[] }) {
   const yTicks = [minY, minY + span / 2, maxY]
   const dateTickIndices = n > 2 ? [0, Math.floor((n - 1) / 2), n - 1] : [0, n - 1]
 
+  // Petición real (captura de Wallet): al tocar el gráfico sale una raya
+  // punteada con casillas de importe exacto — una por cuenta (marco del
+  // color de la cuenta) y otra del total (marco negro) — que se apagan
+  // solas a los pocos segundos. Las casillas se reparten en vertical para
+  // que nunca se solapen.
+  const [cursor, setCursor] = useState<{ idx: number; visible: boolean } | null>(null)
+  const hideTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(hideTimer.current), [])
+
+  function showAt(e: ReactPointerEvent<SVGSVGElement>) {
+    if (n === 0) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const scale = Math.min(rect.width / width, rect.height / height)
+    const offX = (rect.width - width * scale) / 2
+    const vx = (e.clientX - rect.left - offX) / scale
+    const raw = n > 1 ? Math.round(((vx - padLeft) / plotW) * (n - 1)) : 0
+    setCursor({ idx: Math.max(0, Math.min(n - 1, raw)), visible: true })
+    window.clearTimeout(hideTimer.current)
+    hideTimer.current = window.setTimeout(() => setCursor((c) => (c ? { ...c, visible: false } : c)), 3000)
+  }
+
+  // de-DE y no es-ES: es-ES no pone el punto de millar en 4 cifras (3213,00).
+  const fmtEur = (v: number) => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+  const fmtDate = (d: string) => {
+    const [y, m, day] = d.split('-').map(Number)
+    return `${day}/${m}/${y}`
+  }
+
+  interface TipBox {
+    key: string
+    text: string
+    sub?: string
+    color: string
+    h: number
+    desiredY: number
+    y: number
+  }
+  let tipBoxes: TipBox[] = []
+  let tipX = 0
+  let tipLeft = false
+  let tipW = 0
+  if (cursor) {
+    const i = cursor.idx
+    tipX = xAt(i)
+    const total = grandTotal[i] ?? 0
+    const date = series[0]?.points[i]?.date ?? ''
+    const boxes: TipBox[] = [
+      { key: 'total', text: fmtEur(total), sub: fmtDate(date), color: '#111827', h: 22, desiredY: yAt(total) - 11, y: 0 },
+    ]
+    if (bands.length > 1) {
+      for (const b of [...bands].reverse()) {
+        const mid = ((b.bottom[i] ?? 0) + (b.top[i] ?? 0)) / 2
+        boxes.push({ key: b.accountId, text: fmtEur(b.points[i]?.balance ?? 0), color: b.color, h: 14, desiredY: yAt(mid) - 7, y: 0 })
+      }
+    }
+    boxes.sort((a, b) => a.desiredY - b.desiredY)
+    const gap = 2
+    const minTop = padTop
+    const maxBottom = padTop + plotH
+    let cursorY = minTop
+    for (const b of boxes) {
+      b.y = Math.max(b.desiredY, cursorY)
+      cursorY = b.y + b.h + gap
+    }
+    let limit = maxBottom
+    for (let k = boxes.length - 1; k >= 0; k--) {
+      boxes[k].y = Math.min(boxes[k].y, limit - boxes[k].h)
+      limit = boxes[k].y - gap
+    }
+    tipBoxes = boxes
+    tipW = 6 + Math.max(...boxes.map((b) => Math.max(b.text.length, b.sub?.length ?? 0))) * 4.8
+    tipLeft = tipX > padLeft + plotW / 2
+  }
+
   return (
     <div>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        height={height}
+        style={{ touchAction: 'pan-y' }}
+        onPointerDown={showAt}
+        onPointerMove={showAt}
+      >
         {/* Eje de € — 3 líneas guía (mínimo, mitad, máximo del total). */}
         {yTicks.map((v, i) => {
           const y = yAt(v)
@@ -1306,6 +1387,28 @@ function BalanceTrendChart({ series }: { series: BalanceSeries[] }) {
             {series[0]?.points[i]?.date}
           </text>
         ))}
+        {cursor && (
+          <g style={{ opacity: cursor.visible ? 1 : 0, transition: 'opacity 0.4s', pointerEvents: 'none' }}>
+            <line x1={tipX} y1={padTop} x2={tipX} y2={padTop + plotH} stroke="#495057" strokeWidth={0.8} strokeDasharray="2 2" />
+            <circle cx={tipX} cy={yAt(grandTotal[cursor.idx] ?? 0)} r={2.5} fill="#111827" stroke="#fff" strokeWidth={1} />
+            {tipBoxes.map((b) => {
+              const bx = tipLeft ? tipX - 5 - tipW : tipX + 5
+              return (
+                <g key={b.key}>
+                  <rect x={bx} y={b.y} width={tipW} height={b.h} rx={3} fill="#fff" stroke={b.color} strokeWidth={1.4} />
+                  <text x={bx + tipW / 2} y={b.y + (b.sub ? 9 : 10)} textAnchor="middle" fontSize="9" fontWeight="700" fill="#111827">
+                    {b.text}
+                  </text>
+                  {b.sub && (
+                    <text x={bx + tipW / 2} y={b.y + 18} textAnchor="middle" fontSize="7.5" fill="#6b7280">
+                      {b.sub}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
+          </g>
+        )}
       </svg>
       {series.length > 1 && (
         <div className="filter-row" style={{ marginTop: 4 }}>

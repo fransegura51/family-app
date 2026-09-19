@@ -2153,7 +2153,7 @@ textarea {
    diferenciarlos con un color" — pastel suave, cede ante "hoy" (borde)
    y "seleccionado" (más abajo en la cascada, gana el fondo sólido). */
 .month-grid-day-weekend {
-  background: hsl(280, 60%, 96%);
+  background: hsl(30, 70%, 94%);
 }
 
 .month-grid-day-today {
@@ -3975,7 +3975,7 @@ textarea {
   position: absolute;
   left: 0;
   right: 0;
-  background: #fff9e0;
+  background: #ffffff;
 }
 
 .time-grid-hour-bg-alt {

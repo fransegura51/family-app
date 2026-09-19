@@ -1,5 +1,5 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   COMPRAS_MENU_ITEM_META,
   comprasMenuEntryMeta,
@@ -146,7 +146,13 @@ function isComprasSubTab(key: ComprasMenuItemKey): key is SubTab {
 
 export function ShoppingScreen() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<SubTab>('Inicio')
+  // Al volver desde Movimientos (Economía) se abre directamente la
+  // pestaña de la que se salió — llega como estado de la navegación.
+  const location = useLocation()
+  const [tab, setTab] = useState<SubTab>(() => {
+    const requested = (location.state as { tab?: string } | null)?.tab
+    return SUB_TABS.find((t) => t === requested) ?? 'Inicio'
+  })
   // Petición real: "todas estas pestañas... quiero que hagamos como en
   // economía... el mismo formato que el menú de economía" — mismo
   // desplegable ☰ con sacar/meter/editar (ver economiaMenu.ts /
@@ -178,7 +184,7 @@ export function ShoppingScreen() {
   // son rutas distintas, así que el filtro viaja por pendingMovementsFilter
   // (ver ese archivo) en vez de por props.
   function handleViewMovements(filter: MovementsFilter) {
-    setPendingMovementsFilter(filter)
+    setPendingMovementsFilter({ ...filter, returnTo: { path: '/compras', tab: 'Estadística compras', label: 'Compras' } })
     navigate('/dinero')
   }
 

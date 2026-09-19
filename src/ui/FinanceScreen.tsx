@@ -1,6 +1,6 @@
 import { FormEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   addExpense,
   addWalletTransaction,
@@ -182,6 +182,12 @@ function saveEconomiaPinnedItems(items: EconomiaMenuItemKey[]) {
 // vez de duplicar la lógica de filtrado en cada estadística.
 export interface MovementsFilter {
   label: string
+  // Petición real: "cuando desde Estadísticas de Compras voy a
+  // Movimientos, Volver me manda a Resumen de Economía en vez de a
+  // Compras — que devuelva siempre al sitio de donde venías". Quien
+  // salta desde OTRA ruta (Compras) anota aquí a dónde volver; el salto
+  // entre pestañas de la propia Economía sigue usando previousTab.
+  returnTo?: { path: string; tab?: string; label: string }
   from?: string
   to?: string
   category?: string
@@ -276,6 +282,8 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   // desde qué pestaña se saltó para poder deshacer el salto, no solo
   // quitar el filtro (que te deja en Movimientos igualmente).
   const [previousTab, setPreviousTab] = useState<SubTab | null>(null)
+  const [returnTo, setReturnTo] = useState<MovementsFilter['returnTo'] | null>(null)
+  const navigate = useNavigate()
   // Categorías y etiquetas se cargan aquí, una vez, para que los 3
   // botones flotantes (Categorías / Etiquetas / Nuevo movimiento) estén
   // disponibles en cualquier pestaña de Economía — petición real: "cada
@@ -382,7 +390,13 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   }
 
   function viewMovements(filter: MovementsFilter) {
-    setPreviousTab((prev) => (tab === 'Movimientos' ? prev : tab))
+    if (filter.returnTo) {
+      setReturnTo(filter.returnTo)
+      setPreviousTab(null)
+    } else {
+      setReturnTo(null)
+      setPreviousTab((prev) => (tab === 'Movimientos' ? prev : tab))
+    }
     setMovementsFilter(filter)
     setTab('Movimientos')
   }
@@ -504,9 +518,16 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           key={refreshKey}
           filter={movementsFilter}
           onClearFilter={() => setMovementsFilter(null)}
-          previousTabLabel={previousTab}
+          previousTabLabel={returnTo ? returnTo.label : previousTab}
           onBack={
-            previousTab
+            returnTo
+              ? () => {
+                  const back = returnTo
+                  setReturnTo(null)
+                  setMovementsFilter(null)
+                  navigate(back.path, { state: back.tab ? { tab: back.tab } : undefined })
+                }
+              : previousTab
               ? () => {
                   setTab(previousTab)
                   setPreviousTab(null)
@@ -2956,7 +2977,7 @@ function ExpensesTab({
 }: {
   filter?: MovementsFilter | null
   onClearFilter?: () => void
-  previousTabLabel?: SubTab | null
+  previousTabLabel?: string | null
   onBack?: () => void
   accountsMode?: AccountsMode
   myMemberId?: string | null

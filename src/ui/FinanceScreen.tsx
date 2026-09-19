@@ -932,6 +932,9 @@ function EconomiaMenuDropdown({
 // COMMON_OWNER_COLOR). Bug real: toPastel('#868e96') lo dejaba azul
 // (fuerza 65 % de saturación a cualquier tono), no gris.
 const COMMON_ACCOUNT_COLOR = '#e9ecef'
+const GENERAL_BUDGET_COLOR = 'hsl(175, 55%, 88%)'
+// Arcoíris por mes del año (enero rojo → diciembre rosa): agosto es siempre el mismo color, sea el año que sea.
+const MONTH_FOLDER_COLORS = Array.from({ length: 12 }, (_, i) => `hsl(${i * 30}, 70%, 90%)`)
 
 // Petición real: "quiero una etiqueta que sea toda la familia o común,
 // mejor común, porque es más corto, que es para las cosas que son de
@@ -6838,8 +6841,11 @@ function BudgetsSection({
     const category = categories.find((c) => c.name === b.category)
     const icon = category?.icon
     const bg = category ? catColors.get(category.id) : undefined
+    // "General" (sin categoría) no tiene color de dónut del que partir:
+    // pastel fijo propio para que tampoco se quede en blanco.
+    const cardBg = bg ? pastelFromHsl(bg) : GENERAL_BUDGET_COLOR
     return (
-      <div key={b.id} className="card task-card" style={{ background: bg ? pastelFromHsl(bg) : undefined }}>
+      <div key={b.id} className="card task-card" style={{ background: cardBg }}>
         <div className="task-card-main">
           <strong>
             {icon && `${icon} `}
@@ -6925,7 +6931,7 @@ function BudgetsSection({
             const isOpen = openMonth === month
             const totalBudgeted = monthBudgets.reduce((sum, b) => sum + b.amount, 0)
             return (
-              <div key={month} className="store-folder">
+              <div key={month} className="store-folder" style={{ background: MONTH_FOLDER_COLORS[m - 1] }}>
                 <button type="button" className="store-folder-header" onClick={() => setOpenMonth(isOpen ? null : month)}>
                   <span className="store-folder-icon">📅</span>
                   <span className="store-folder-info">

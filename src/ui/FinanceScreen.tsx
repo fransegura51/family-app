@@ -928,8 +928,10 @@ function EconomiaMenuDropdown({
 // indexado por posición (cambiaba si se reordenaban las cuentas), el
 // pastel del dueño de la cuenta (mismo criterio que Calendario:
 // toPastel sobre el color que ya tiene ese miembro). Una cuenta Común
-// (sin dueño) usa un pastel neutro fijo (ver COMMON_OWNER_COLOR).
-const COMMON_ACCOUNT_COLOR = toPastel('#868e96')
+// (sin dueño) usa un gris claro fijo, el mismo del icono 🏠 (ver
+// COMMON_OWNER_COLOR). Bug real: toPastel('#868e96') lo dejaba azul
+// (fuerza 65 % de saturación a cualquier tono), no gris.
+const COMMON_ACCOUNT_COLOR = '#e9ecef'
 
 // Petición real: "quiero una etiqueta que sea toda la familia o común,
 // mejor común, porque es más corto, que es para las cosas que son de

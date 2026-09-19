@@ -39,7 +39,7 @@ import {
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
-import { colorForName, pastelFromHsl, pastelPalette, toPastel } from '@/domain/colors'
+import { colorForClass, colorForName, pastelFromHsl, pastelPalette, toPastel } from '@/domain/colors'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -61,7 +61,6 @@ import {
   budgetPeriodRange,
   budgetSpent,
   categoryColors,
-  distinctPaletteEntries,
   isComprasFamiliaCategory,
   isFoodCategory,
   isInternalTransferCategory,
@@ -4255,12 +4254,9 @@ function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakd
     group.expenseIds.add(entry.expenseId)
     totals.set(entry.type.name, group)
   }
-  const namesAlpha = [...totals.keys()].sort((a, b) => a.localeCompare(b, 'es'))
-  const palette = distinctPaletteEntries(namesAlpha.length)
-  function colorFor(name: string): string {
-    const p = palette[namesAlpha.indexOf(name)]
-    return `hsl(${p.h}, ${p.s}%, ${p.l}%)`
-  }
+  // Mismo color por clase que en Lista e Historial de compras (pastel,
+  // sale del propio nombre — ver colorForClass), no por posición.
+  const colorFor = colorForClass
   return [...totals.entries()]
     .map(([name, group]) => {
       const productList = [...group.products.entries()]

@@ -69,13 +69,6 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
   return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) }
 }
 
-// Petición real: clases de producto, tiendas y etiquetas de receta no
-// tienen un color guardado en la base de datos, y cada familia puede
-// crear/renombrar las suyas — en vez de una migración nueva y una
-// pantalla para fijarlo a mano, mismo nombre da SIEMPRE el mismo
-// color: se ordena la lista alfabéticamente (estable aunque cambie el
-// orden de creación) y se reparte pastelPalette() por índice. Calcular
-// esto UNA vez por pantalla (no por fila) y consultar el mapa.
 // Petición real (Tickets): "¿por qué la mayoría de las tiendas no tienen
 // color? Habría que definir algo para que a cualquier tienda nueva se
 // le adjudique un color automáticamente" — paletteByName solo colorea
@@ -86,7 +79,7 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
 // instante y es SIEMPRE el mismo en todas las pantallas. Se normaliza
 // (minúsculas, sin acentos ni espacios de más) para que "MERCADONA" y
 // "Mercadona" coincidan.
-export function colorForName(name: string): string {
+function hashName(name: string): number {
   const key = name
     .trim()
     .toLowerCase()
@@ -98,10 +91,36 @@ export function colorForName(name: string): string {
     hash ^= key.charCodeAt(i)
     hash = Math.imul(hash, 16777619)
   }
-  const hue = (hash >>> 0) % 360
-  return `hsl(${hue}, 70%, 90%)`
+  return hash >>> 0
 }
 
+export function colorForName(name: string): string {
+  return `hsl(${hashName(name) % 360}, 70%, 90%)`
+}
+
+// Petición real: los colores de las clases de producto (Carne, Lácteos,
+// Postres...) tienen que ser SIEMPRE los mismos en todas las pantallas
+// (Lista, Historial, Estadísticas), igual que las tiendas, y también
+// pastel — pero hay muchas más clases que tiendas y con solo el tono se
+// parecerían entre sí, así que además del tono el propio nombre elige
+// uno de tres matices (90/85/80 % de luminosidad): mismo estilo pastel,
+// con el matiz más fuerte cuando se acaban los tonos bien separados.
+export function colorForClass(name: string): string {
+  const hash = hashName(name)
+  const tier = (hash >>> 12) % 3
+  const lightness = [90, 85, 80][tier]
+  const saturation = [70, 74, 78][tier]
+  return `hsl(${hash % 360}, ${saturation}%, ${lightness}%)`
+}
+
+// Petición real: etiquetas de receta no tienen un color guardado en la
+// base de datos, y cada familia puede crear/renombrar las suyas — en
+// vez de una migración nueva y una pantalla para fijarlo a mano, mismo
+// nombre da SIEMPRE el mismo color dentro de la lista que se le pasa:
+// se ordena alfabéticamente y se reparte pastelPalette() por índice.
+// Calcular esto UNA vez por pantalla (no por fila) y consultar el mapa.
+// (Tiendas y clases de producto usan colorForName/colorForClass, que
+// no dependen de qué otros nombres haya.)
 export function paletteByName(names: Iterable<string>): Map<string, string> {
   const sorted = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, 'es'))
   const palette = pastelPalette(sorted.length)

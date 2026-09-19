@@ -30,7 +30,7 @@ import {
   type FoodTypeKind,
 } from '@/data/foodTypes'
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
-import { colorForName, paletteByName, pastelPalette } from '@/domain/colors'
+import { colorForClass, colorForName, pastelPalette } from '@/domain/colors'
 import {
   createShoppingStore,
   deleteShoppingStore,
@@ -79,7 +79,7 @@ import { shareText } from '@/services/share'
 // cargadas para el propio desplegable de clasificación), de fábrica y
 // creadas a mano por igual.
 function classColorsFromFamilyTypes(types: FamilyFoodType[]): Map<string, string> {
-  return paletteByName([...types.map((t) => t.name), 'Sin clasificar'])
+  return new Map([...types.map((t) => t.name), 'Sin clasificar'].map((name) => [name, colorForClass(name)]))
 }
 
 function todayStr(): string {
@@ -1846,7 +1846,6 @@ function HistoryTab() {
   // toggle), más un filtro de chips igual al de Alimentos/Otros de
   // arriba, pero por clase.
   const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set())
-  const [classFilter, setClassFilter] = useState<string>('Todas')
   function toggleClassCollapsed(label: string) {
     setCollapsedClasses((prev) => {
       const next = new Set(prev)
@@ -2019,8 +2018,15 @@ function HistoryTab() {
   const filteredProducts = useMemo(() => {
     const q = normalizeProductName(query)
     if (!q) return allProducts
-    return allProducts.filter((c) => normalizeProductName(c.name).includes(q))
-  }, [allProducts, query])
+    // Petición real: el buscador de Historial también busca por el
+    // nombre de la clase (p. ej. "postres" enseña todos los postres).
+    return allProducts.filter(
+      (c) =>
+        normalizeProductName(c.name).includes(q) ||
+        normalizeProductName(classForProduct(c.productId, c.name).label).includes(q),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allProducts, query, foodTypes, productsById, mode])
 
   const currentBasket = useMemo(() => basketTotal(purchases, currentMonth), [purchases, currentMonth])
   const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
@@ -2162,42 +2168,18 @@ function HistoryTab() {
         <button
           type="button"
           className={'chip' + (mode === 'alimentacion' ? ' chip-active' : '')}
-          onClick={() => {
-            setMode('alimentacion')
-            setClassFilter('Todas')
-          }}
+          onClick={() => setMode('alimentacion')}
         >
           Alimentos
         </button>
         <button
           type="button"
           className={'chip' + (mode === 'no_alimentos' ? ' chip-active' : '')}
-          onClick={() => {
-            setMode('no_alimentos')
-            setClassFilter('Todas')
-          }}
+          onClick={() => setMode('no_alimentos')}
         >
           Otros
         </button>
       </div>
-
-      {groupedProducts.length > 0 && (
-        <div className="filter-row" style={{ marginTop: 8 }}>
-          <button type="button" className={'chip' + (classFilter === 'Todas' ? ' chip-active' : '')} onClick={() => setClassFilter('Todas')}>
-            Todas
-          </button>
-          {groupedProducts.map((group) => (
-            <button
-              key={group.label}
-              type="button"
-              className={'chip' + (classFilter === group.label ? ' chip-active' : '')}
-              onClick={() => setClassFilter(group.label)}
-            >
-              {group.icon} {group.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       <h2 className="section-title">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">
@@ -2266,7 +2248,6 @@ function HistoryTab() {
       </p>
 
       {groupedProducts
-        .filter((group) => classFilter === 'Todas' || group.label === classFilter)
         .map((group) => {
           const collapsed = collapsedClasses.has(group.label)
           return (

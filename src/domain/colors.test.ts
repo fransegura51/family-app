@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName } from './colors'
+import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass } from './colors'
+
+describe('colorForClass', () => {
+  it('is always the same for the same class, regardless of case or accents', () => {
+    expect(colorForClass('Lácteos y huevos')).toBe(colorForClass('lacteos Y huevos'))
+    expect(colorForClass('Postres')).toMatch(/^hsl\(\d+, (70|74|78)%, (90|85|80)%\)$/)
+  })
+
+  it('keeps the same hue as colorForName, only the shade may be stronger', () => {
+    const hue = (c: string) => c.match(/hsl\((\d+)/)![1]
+    expect(hue(colorForClass('Carne'))).toBe(hue(colorForName('Carne')))
+  })
+})
 
 describe('colorForName', () => {
   it('gives any name a color, always the same one for the same name', () => {

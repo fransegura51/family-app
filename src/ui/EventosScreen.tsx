@@ -843,14 +843,14 @@ function EventDetail({
 
       <div className="card event-card event-hero-card" style={{ marginTop: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <strong style={{ fontSize: 18 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <strong style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
               {EVENT_TYPE_META[event.type].icon} {event.title}
             </strong>
             <p className="muted" style={{ margin: '4px 0 0' }}>
-              {eventDateLabel(event)}
-              {event.venueLabel ? ` · ${event.venueLabel}` : ''}
+              📅 {eventDateLabel(event)}
             </p>
+            {event.venueLabel && <p className="muted" style={{ margin: '2px 0 0' }}>🏠 {event.venueLabel}</p>}
             {event.status === 'archivado' && <p className="muted">📦 Archivado</p>}
           </div>
           {/* Petición real: cuenta atrás "30 días para celebrarlo" junto

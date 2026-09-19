@@ -1329,8 +1329,13 @@ select {
    módulo. */
 .event-hero-card {
   background: linear-gradient(135deg, #eef2ff, #fdf4ff);
+  padding: 16px;
 }
 
+/* Petición real: la cuenta atrás se veía como texto suelto en vez de
+   la tarjeta con fuerza visual que tiene el resto del dashboard —
+   mismo tratamiento que .event-hero-card (fondo suave + número
+   grande), ahora en una "píldora" propia dentro de la cabecera. */
 .event-countdown {
   flex: none;
   display: flex;
@@ -1338,11 +1343,21 @@ select {
   align-items: center;
   justify-content: center;
   text-align: center;
-  min-width: 64px;
+  min-width: 76px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--primary), #7c8ef7);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(76, 110, 245, 0.3);
+}
+
+.event-countdown .muted {
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .event-countdown-number {
-  font-size: 28px;
+  font-size: 32px;
+  font-weight: 700;
   line-height: 1.1;
 }
 

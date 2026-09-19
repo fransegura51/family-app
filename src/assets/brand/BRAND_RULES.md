@@ -55,3 +55,7 @@ Los cambios estacionales se consideran variantes y nunca sustituyen los archivos
 Ningún agente de IA, desarrollador, automatización o proceso debe sobrescribir, eliminar o modificar los archivos contenidos en master/ o las referencias oficiales sin una instrucción humana explícita para cambiar oficialmente la identidad de marca.
 
 Antes de modificar cualquiera de estos recursos oficiales se debe advertir que se trata de un archivo protegido de identidad de marca.
+
+Variantes registradas
+
+- src/assets/brand/variants/pepa-family-app-logo-slogan.png — variante oficial del logotipo con el eslogan "Pepa te lo soluciona!". Deriva del logotipo maestro sin modificarlo.

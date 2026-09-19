@@ -59,3 +59,4 @@ Antes de modificar cualquiera de estos recursos oficiales se debe advertir que s
 Variantes registradas
 
 - src/assets/brand/variants/pepa-family-app-logo-slogan.png — variante oficial del logotipo con el eslogan "Pepa te lo soluciona!". Deriva del logotipo maestro sin modificarlo.
+- src/assets/brand/variants/pepa-slogan-official.png — eslogan visual oficial independiente de PEPA Family App: "Pepa te lo soluciona!".

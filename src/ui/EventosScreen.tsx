@@ -173,7 +173,13 @@ const INVITE_SCOPE_OPTIONS: { value: EventGuestInviteScope; label: string }[] = 
 
 function eventDateLabel(ev: FamilyEvent): string {
   if (ev.dateStatus === 'pendiente' || !ev.eventDate) return 'Sin fecha todavía'
-  return `${ev.dateStatus === 'provisional' ? 'Provisional' : 'Confirmada'} · ${ev.eventDate}`
+  const label = new Date(`${ev.eventDate}T00:00`).toLocaleDateString('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+  return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
 function ModulePickerChips({ modules, onChange }: { modules: EventModuleKey[]; onChange: (next: EventModuleKey[]) => void }) {
@@ -842,36 +848,48 @@ function EventDetail({
       {error && <p className="error">{error}</p>}
 
       <div className="card event-card event-hero-card" style={{ marginTop: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <strong style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
               {EVENT_TYPE_META[event.type].icon} {event.title}
             </strong>
-            <p className="muted" style={{ margin: '4px 0 0' }}>
+            <p className="muted" style={{ margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Petición real: el estado (confirmada/provisional/sin
+                  fecha) ya no se lee como texto delante de la fecha —
+                  es un botón con icono que abre la edición directamente. */}
+              {event.eventDate && (
+                <button
+                  type="button"
+                  className="event-status-badge"
+                  onClick={() => setShowEdit(true)}
+                  title={event.dateStatus === 'confirmada' ? 'Fecha confirmada — tocar para editar' : 'Fecha provisional — tocar para editar'}
+                  aria-label={event.dateStatus === 'confirmada' ? 'Fecha confirmada' : 'Fecha provisional'}
+                >
+                  {event.dateStatus === 'confirmada' ? '✔️' : '❓'}
+                </button>
+              )}
               📅 {eventDateLabel(event)}
             </p>
             {event.venueLabel && <p className="muted" style={{ margin: '2px 0 0' }}>🏠 {event.venueLabel}</p>}
             {event.status === 'archivado' && <p className="muted">📦 Archivado</p>}
           </div>
           {/* Petición real: cuenta atrás "30 días para celebrarlo" junto
-              al título — solo tiene sentido con fecha puesta y evento
-              todavía en marcha. */}
+              al título, en un círculo pastel — solo tiene sentido con
+              fecha puesta y evento todavía en marcha. */}
           {event.status === 'planificacion' && daysToEvent !== null && (
-            <div className="event-countdown">
-              {daysToEvent > 0 ? (
-                <>
+            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 68 }}>
+              <div className="event-countdown">
+                {daysToEvent > 0 ? (
                   <strong className="event-countdown-number">{daysToEvent}</strong>
-                  <span className="muted" style={{ fontSize: 11 }}>
-                    días para celebrarlo 🎉
-                  </span>
-                </>
-              ) : daysToEvent === 0 ? (
-                <strong className="event-countdown-number" style={{ fontSize: 22 }}>
-                  ¡Hoy! 🎉
-                </strong>
-              ) : (
-                <span className="muted" style={{ fontSize: 12 }}>
-                  Ya pasó
+                ) : daysToEvent === 0 ? (
+                  <strong className="event-countdown-number" style={{ fontSize: 15 }}>¡Hoy!</strong>
+                ) : (
+                  <span style={{ fontSize: 11 }}>Ya pasó</span>
+                )}
+              </div>
+              {daysToEvent >= 0 && (
+                <span className="muted" style={{ fontSize: 10, textAlign: 'center', lineHeight: 1.2 }}>
+                  {daysToEvent === 0 ? '¡Celebrarlo hoy! 🎉' : 'días para celebrarlo 🎉'}
                 </span>
               )}
             </div>

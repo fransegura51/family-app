@@ -1334,31 +1334,43 @@ select {
 
 /* Petición real: la cuenta atrás se veía como texto suelto en vez de
    la tarjeta con fuerza visual que tiene el resto del dashboard —
-   mismo tratamiento que .event-hero-card (fondo suave + número
-   grande), ahora en una "píldora" propia dentro de la cabecera. */
+   ahora es un círculo pastel (nada de colores fuertes, a petición
+   explícita) con el número dentro y "días para celebrarlo" debajo,
+   fuera del círculo para que quepa sin agrandarlo. */
 .event-countdown {
   flex: none;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  min-width: 76px;
-  padding: 10px 14px;
-  border-radius: 18px;
-  background: linear-gradient(135deg, var(--primary), #7c8ef7);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(76, 110, 245, 0.3);
-}
-
-.event-countdown .muted {
-  color: rgba(255, 255, 255, 0.85);
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #dbe4ff;
+  color: var(--primary);
 }
 
 .event-countdown-number {
-  font-size: 32px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
+}
+
+/* Botón de estado de la fecha (✔️ confirmada / ❓ provisional), junto
+   a la fecha en la cabecera del evento — tocarlo abre la edición. */
+.event-status-badge {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .event-readiness-stats {

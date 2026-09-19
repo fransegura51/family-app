@@ -30,7 +30,7 @@ import {
   type FoodTypeKind,
 } from '@/data/foodTypes'
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
-import { paletteByName } from '@/domain/colors'
+import { paletteByName, pastelPalette } from '@/domain/colors'
 import {
   createShoppingStore,
   deleteShoppingStore,
@@ -254,12 +254,21 @@ function ComprasInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void })
     { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.' },
     { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.' },
   ]
+  // Petición real: extender el pastel también a estas tarjetas de
+  // acceso rápido, igual que Inicio/Eventos — un color por tarjeta.
+  const cardColors = pastelPalette(shortcuts.length)
   return (
     <div className="event-list">
-      {shortcuts.map((s) => {
+      {shortcuts.map((s, i) => {
         const meta = COMPRAS_MENU_ITEM_META[s.tab]
         return (
-          <button key={s.tab} type="button" className="section-shortcut-card" onClick={() => onNavigate(s.tab)}>
+          <button
+            key={s.tab}
+            type="button"
+            className="section-shortcut-card"
+            style={{ background: cardColors[i] }}
+            onClick={() => onNavigate(s.tab)}
+          >
             <span className="section-shortcut-card-icon" aria-hidden="true">
               {meta.icon}
             </span>
@@ -938,7 +947,6 @@ function ShoppingListTab() {
             className="shopping-store-heading shopping-store-heading-toggle"
             role="button"
             tabIndex={0}
-            style={{ background: store === 'Sin tienda' ? undefined : storeColors.get(store) }}
             onClick={() => toggleStoreCollapsed(store)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') toggleStoreCollapsed(store)
@@ -1007,7 +1015,7 @@ function ShoppingListTab() {
       {/* Petición real: "pondría las tiendas que Pepa reconoce por voz
           debajo de la lista de pendientes" — antes iba justo encima,
           delante de lo que de verdad se mira primero al entrar. */}
-      <StoreManager stores={stores} onChanged={reload} />
+      <StoreManager stores={stores} storeColors={storeColors} onChanged={reload} />
 
       {!shoppingMode && (
         <button type="button" className="screen-fab" onClick={() => setAddingItem(true)}>
@@ -1107,7 +1115,15 @@ function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
 // abajo, no como chips en fila). Mismo mecanismo, asa y persistencia
 // (sort_order en la base de datos) que DraggableStoreGroup, para que
 // se comporte exactamente igual que la lista de la compra.
-function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onChanged: () => void }) {
+function StoreManager({
+  stores,
+  storeColors,
+  onChanged,
+}: {
+  stores: ShoppingStoreEntry[]
+  storeColors: Map<string, string>
+  onChanged: () => void
+}) {
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
@@ -1224,7 +1240,7 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
       <div className="event-list">
         {order.map((s) =>
           editingId === s.id ? (
-            <div key={s.id} className="card task-card">
+            <div key={s.id} className="card task-card" style={{ background: storeColors.get(s.name) }}>
               <input
                 type="text"
                 value={editingName}
@@ -1243,7 +1259,10 @@ function StoreManager({ stores, onChanged }: { stores: ShoppingStoreEntry[]; onC
             <div
               key={s.id}
               className={'card task-card' + (draggingId === s.id ? ' shopping-item-dragging' : '')}
-              style={draggingId === s.id ? { transform: `translateY(${dragOffset}px)` } : undefined}
+              style={{
+                background: storeColors.get(s.name),
+                transform: draggingId === s.id ? `translateY(${dragOffset}px)` : undefined,
+              }}
             >
               <span
                 className="shopping-drag-handle"

@@ -39,6 +39,7 @@ import {
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
+import { paletteByName } from '@/domain/colors'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -4146,8 +4147,15 @@ function groupReceiptsByStore<T extends Receipt>(
 // alimentación" — un mismo ticket puede repartirse entre Alimentación
 // y Otros según sus productos (ver el reparto por producto en
 // BudgetsTab), así que ya no vale coger `expense.amount` entero.
+// Petición real: "que la tienda dé siempre el mismo color" — antes
+// venía de distinctPaletteEntries por posición en el ranking de gasto,
+// así que un cambio de mes a mes en qué tienda gasta más recolocaba
+// los colores. Recibe el mismo mapa determinista por nombre
+// (paletteByName sobre TODAS las tiendas de la familia) que ya usa la
+// Lista de la compra y Tickets, para que coincida en los tres sitios.
 function buildStorePieSlices(
   entries: { expenseId: string; store: string; amount: number }[],
+  storeColors: Map<string, string>,
 ): (BreakdownSlice & { expenseIds: string[] })[] {
   const groups = new Map<string, { total: number; expenseIds: string[] }>()
   for (const e of entries) {
@@ -4159,11 +4167,10 @@ function buildStorePieSlices(
   const sorted = [...groups.entries()]
     .map(([store, g]) => ({ store, total: g.total, expenseIds: g.expenseIds }))
     .sort((a, b) => b.total - a.total)
-  const palette = distinctPaletteEntries(sorted.length)
-  return sorted.map((g, i) => ({
+  return sorted.map((g) => ({
     key: g.store,
     label: g.store,
-    color: `hsl(${palette[i].h}, ${palette[i].s}%, ${palette[i].l}%)`,
+    color: storeColors.get(g.store) ?? 'hsl(0, 0%, 90%)',
     total: g.total,
     count: g.expenseIds.length,
     expenseIds: g.expenseIds,
@@ -4354,6 +4361,11 @@ export function ReceiptsTab() {
   const [rangeFrom, rangeTo] = rangeForPreset(rangePreset, rangeCustomFrom, rangeCustomTo)
   const rangeFilteredReceipts = displayReceipts.filter((r) => r.receiptDate >= rangeFrom && r.receiptDate <= rangeTo)
   const rangeGrouped = groupReceiptsByStore(rangeFilteredReceipts, knownStores)
+  // Mismo criterio que la Lista de la compra (ShoppingScreen): color
+  // determinista por nombre a partir de TODAS las tiendas de la
+  // familia, no solo las que tienen tickets en este rango — así
+  // coincide siempre con el color que se ve en la Lista.
+  const storeColors = paletteByName(knownStores)
 
   return (
     <div>
@@ -4416,7 +4428,7 @@ export function ReceiptsTab() {
         {rangeGrouped.map(({ store, receipts: storeReceipts, total }) => {
           const isOpen = expandedStore === store
           return (
-            <div key={store} className="store-folder">
+            <div key={store} className="store-folder" style={{ background: storeColors.get(store) }}>
               <button
                 type="button"
                 className="store-folder-header"
@@ -4542,9 +4554,12 @@ function ReceiptSpendSummary({
 // una por tienda, con el importe y el % sobre el total de todas.
 function StoreBreakdownChart({
   groups,
+  storeColors,
   title = 'Reparto del gasto por tienda',
 }: {
   groups: { store: string; receipts: Receipt[]; total: number }[]
+  // Mismo mapa determinista por nombre que Tickets/Lista de la compra.
+  storeColors: Map<string, string>
   // Petición real: "las estadísticas en Tickets... trasládalas a
   // Estadísticas... dejar claro que son los totales de los tickets, que
   // son similares pero no iguales" — al vivir ahora junto al dónut "por
@@ -4554,12 +4569,11 @@ function StoreBreakdownChart({
 }) {
   const grandTotal = groups.reduce((sum, g) => sum + g.total, 0)
   const maxTotal = Math.max(...groups.map((g) => g.total), 1)
-  const palette = distinctPaletteEntries(groups.length)
   return (
     <div className="card event-card">
       <strong>{title}</strong>
       <div className="price-row-list" style={{ marginTop: 8 }}>
-        {groups.map((g, i) => {
+        {groups.map((g) => {
           const pct = grandTotal > 0 ? (g.total / grandTotal) * 100 : 0
           return (
             <div key={g.store} className="store-bar-row">
@@ -4567,7 +4581,7 @@ function StoreBreakdownChart({
               <div className="store-bar-track">
                 <div
                   className="store-bar-fill"
-                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: `hsl(${palette[i].h}, ${palette[i].s}%, ${palette[i].l}%)` }}
+                  style={{ width: `${(g.total / maxTotal) * 100}%`, background: storeColors.get(g.store) ?? 'hsl(0, 0%, 90%)' }}
                 />
               </div>
               <span className="store-bar-value">
@@ -5677,8 +5691,9 @@ function FoodTypeBreakdownList({
               className="price-row"
               style={{
                 width: '100%',
-                background: 'none',
+                background: t.color,
                 border: 'none',
+                borderRadius: 10,
                 textAlign: 'left',
                 color: 'var(--text)',
                 fontWeight: 400,
@@ -5698,8 +5713,11 @@ function FoodTypeBreakdownList({
             </button>
             {isOpen && (
               <div style={{ paddingLeft: 20 }}>
-                {t.products.map((p) => (
-                  <div key={p.productId} className="price-row">
+                {/* Zebra blanco/color de la propia clase — mismo criterio
+                    que Historial de precios, para diferenciar filas sin
+                    depender solo del texto. */}
+                {t.products.map((p, i) => (
+                  <div key={p.productId} className="price-row" style={{ background: i % 2 === 1 ? t.color : undefined }}>
                     <span className="price-row-name">{p.name}</span>
                     <span className="price-row-price">
                       {p.total.toFixed(2)} €{' '}
@@ -6211,14 +6229,20 @@ export function BudgetsTab({
     expenseIds: t.expenseIds,
   }))
 
+  // Mismo mapa determinista por nombre que la Lista de la compra y
+  // Tickets (paletteByName sobre TODAS las tiendas de la familia).
+  const storeColors = paletteByName(knownStores)
+
   // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
   // usar el mismo dónut con botón Alimentación/Otros" — un solo dónut
   // (ver storeDonutScope), el botón decide qué gastos lo alimentan.
   const storePieSlicesAlimentacion = buildStorePieSlices(
     splits.filter((s) => s.foodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.foodAmount })),
+    storeColors,
   )
   const storePieSlicesOtros = buildStorePieSlices(
     splits.filter((s) => s.nonFoodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.nonFoodAmount })),
+    storeColors,
   )
 
   // Petición real: "las estadísticas en Tickets... trasládalas a
@@ -6500,7 +6524,7 @@ export function BudgetsTab({
                 cargo de banco de Alimentación sin ticket todavía) — parecido pero NO igual a "Total Registrado en
                 Compras" y "Reparto del gasto por tienda" de arriba, que cuentan todo lo registrado tenga ticket o no.
               </p>
-              <StoreBreakdownChart groups={ticketRangeGrouped} title="Reparto por tienda — solo con ticket" />
+              <StoreBreakdownChart groups={ticketRangeGrouped} storeColors={storeColors} title="Reparto por tienda — solo con ticket" />
               <StoreMonthlyChart receipts={ticketRangeFiltered} knownStores={knownStores} storeNames={ticketStoreNames} from={periodFrom} to={periodTo} />
             </>
           )}

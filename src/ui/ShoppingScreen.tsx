@@ -30,6 +30,7 @@ import {
   type FoodTypeKind,
 } from '@/data/foodTypes'
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
+import { paletteByName } from '@/domain/colors'
 import {
   createShoppingStore,
   deleteShoppingStore,
@@ -59,6 +60,16 @@ import comprasHeaderImg from '@/assets/compras/compras-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { shoppingListText } from '@/domain/share'
 import { shareText } from '@/services/share'
+
+// Petición real: "vamos a organizarla por clases de alimentos..." con
+// colores — la clase de un producto (Fruta, Lácteos, Limpieza…) no
+// tiene un color guardado en la base de datos, así que se deriva del
+// mismo catálogo fijo FOOD_TYPES/NO_FOOD_TYPES (igual en Lista,
+// Historial, Tickets y Estadísticas) en vez de solo lo que haya en la
+// lista en ese momento — así el mismo nombre de clase da SIEMPRE el
+// mismo color aunque cambie lo que se está comprando hoy.
+const ALL_CLASS_LABELS = [...FOOD_TYPES.map((t) => t.label), ...NO_FOOD_TYPES.map((t) => t.label), 'Sin clasificar']
+export const CLASS_COLORS = paletteByName(ALL_CLASS_LABELS)
 
 function todayStr(): string {
   const d = new Date()
@@ -770,6 +781,12 @@ function ShoppingListTab() {
     () => new Map(suggestions.map((s) => [s.normalizedName, s])),
     [suggestions],
   )
+  // Tiendas sin color propio en la base de datos: mismo criterio que
+  // CLASS_COLORS — se deriva de TODAS las tiendas de la familia
+  // (`stores`, no solo las que tienen algo pendiente hoy) para que el
+  // color de una tienda coincida siempre con el que se ve en Tickets
+  // y Estadísticas.
+  const storeColors = useMemo(() => paletteByName(stores.map((s) => s.name)), [stores])
   function knownPriceFor(item: ShoppingItem): number | null {
     if (item.price != null) return item.price
     return suggestionByName.get(normalizeProductName(item.name))?.lastPrice ?? null
@@ -921,6 +938,7 @@ function ShoppingListTab() {
             className="shopping-store-heading shopping-store-heading-toggle"
             role="button"
             tabIndex={0}
+            style={{ background: store === 'Sin tienda' ? undefined : storeColors.get(store) }}
             onClick={() => toggleStoreCollapsed(store)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') toggleStoreCollapsed(store)
@@ -946,13 +964,14 @@ function ShoppingListTab() {
             <>
               {classGroupsFor(storeItems).map((group) => (
                 <div key={`${store}:${group.kind}:${group.label}`} className="shopping-class-group">
-                  <p className="shopping-class-heading">
+                  <p className="shopping-class-heading" style={{ background: CLASS_COLORS.get(group.label) }}>
                     {group.icon} {group.label}
                   </p>
                   <DraggableStoreGroup
                     items={group.items}
                     suggestions={suggestions}
                     shoppingMode={shoppingMode}
+                    rowColor={CLASS_COLORS.get(group.label)}
                     onSetStatus={setStatus}
                     onDeleted={reload}
                     onReordered={reload}
@@ -1278,6 +1297,7 @@ function DraggableStoreGroup({
   items,
   suggestions,
   shoppingMode,
+  rowColor,
   onSetStatus,
   onDeleted,
   onReordered,
@@ -1286,6 +1306,7 @@ function DraggableStoreGroup({
   items: ShoppingItem[]
   suggestions: ProductSuggestion[]
   shoppingMode: boolean
+  rowColor?: string
   onSetStatus: (id: string, status: ShoppingItemStatus) => void
   onDeleted: () => void
   onReordered: () => void
@@ -1373,6 +1394,7 @@ function DraggableStoreGroup({
             dragging={draggingId === item.id}
             dragOffsetY={dragOffset}
             shoppingMode={shoppingMode}
+            rowColor={rowColor}
             onSetStatus={onSetStatus}
             onDelete={(id) => deleteShoppingItem(id).then(onDeleted)}
             onEdit={onEdit}
@@ -1401,6 +1423,7 @@ function ShoppingItemRow({
   dragging,
   dragOffsetY,
   shoppingMode,
+  rowColor,
   onSetStatus,
   onDelete,
   onEdit,
@@ -1414,6 +1437,7 @@ function ShoppingItemRow({
   dragging: boolean
   dragOffsetY: number
   shoppingMode: boolean
+  rowColor?: string
   onSetStatus: (id: string, status: ShoppingItemStatus) => void
   onDelete: (id: string) => void
   onEdit: (item: ShoppingItem) => void
@@ -1464,10 +1488,16 @@ function ShoppingItemRow({
         </div>
       )}
       <div
-        className={'price-row shopping-row-inner' + (dragging ? ' shopping-item-dragging' : '') + (done ? ' shopping-item-done' : '')}
+        className={
+          'price-row shopping-row-inner' +
+          (dragging ? ' shopping-item-dragging' : '') +
+          (done ? ' shopping-item-done' : '') +
+          (shoppingMode ? (done ? ' shopping-mode-done' : ' shopping-mode-pending') : '')
+        }
         style={{
           transform: dragging ? `translateY(${dragOffsetY}px)` : translateX !== 0 ? `translateX(${translateX}px)` : undefined,
           transition: liveX == null ? undefined : 'none',
+          background: shoppingMode ? undefined : rowColor,
         }}
         onPointerDown={handleSwipeStart}
         onPointerMove={handleSwipeMove}
@@ -2033,6 +2063,36 @@ function HistoryTab() {
     }
   }
 
+  // Petición real: "que se agrupe por clase, igual que en la Lista de
+  // la compra" — mismo catálogo/colores que ShoppingListTab
+  // (CLASS_COLORS), para que la clase de un producto luzca igual en
+  // Lista e Historial. Sin producto ya clasificado, se adivina por el
+  // nombre igual que resolveItemClass.
+  function classForProduct(productId: string, name: string): { label: string; icon: string } {
+    const product = productsById.get(productId)
+    const catalog = mode === 'alimentacion' ? FOOD_TYPES : NO_FOOD_TYPES
+    const classification = product?.category?.trim() || (mode === 'alimentacion' ? classifyFoodType(name).label : '')
+    const known = classification ? catalog.find((t) => t.label === classification) : undefined
+    return { label: classification || 'Sin clasificar', icon: known?.icon ?? '❓' }
+  }
+  const catalogOrder = (mode === 'alimentacion' ? FOOD_TYPES : NO_FOOD_TYPES).map((t) => t.label)
+  function classRank(label: string): number {
+    if (label === 'Sin clasificar') return 1000
+    const idx = catalogOrder.indexOf(label)
+    return idx >= 0 ? idx : 500
+  }
+  const groupedProducts = useMemo(() => {
+    const groups = new Map<string, { label: string; icon: string; rows: typeof filteredProducts }>()
+    for (const row of filteredProducts) {
+      const cls = classForProduct(row.productId, row.name)
+      const group = groups.get(cls.label) ?? { label: cls.label, icon: cls.icon, rows: [] }
+      group.rows.push(row)
+      groups.set(cls.label, group)
+    }
+    return [...groups.values()].sort((a, b) => classRank(a.label) - classRank(b.label) || a.label.localeCompare(b.label, 'es'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredProducts, productsById, mode])
+
   if (loading) return <p className="muted">Cargando historial…</p>
 
   return (
@@ -2052,7 +2112,11 @@ function HistoryTab() {
       <h2 className="section-title">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">
         {suggestions.map(({ product, stats }) => (
-          <div key={product.id} className="price-row">
+          <div
+            key={product.id}
+            className="price-row"
+            style={{ background: CLASS_COLORS.get(classForProduct(product.id, product.displayName).label) }}
+          >
             <button
               type="button"
               className="price-row-name price-row-name-button"
@@ -2111,38 +2175,49 @@ function HistoryTab() {
         cuánto lo compras y comparar precio entre tiendas.
       </p>
 
-      <div className="price-row-list">
-        {filteredProducts.map((c) => (
-          <div key={c.productId} className="price-row">
-            <button
-              type="button"
-              className="price-row-name price-row-name-button"
-              onClick={() => openDetail(c.productId, c.name)}
-            >
-              {c.name}
-            </button>
-            <span className="price-row-price">
-              {c.currentPrice!.toFixed(2)} €<PriceDelta percent={c.deltaPercent} />
-            </span>
-            <button
-              type="button"
-              className="link-button"
-              disabled={added.has(c.productId)}
-              onClick={() => setAddingToList({ productId: c.productId, name: c.name, price: c.currentPrice })}
-              title="Añadir a la lista de la compra"
-            >
-              {added.has(c.productId) ? '✓' : '🛒'}
-            </button>
-          </div>
-        ))}
-        {filteredProducts.length === 0 && (
-          <p className="muted">
-            {query.trim()
-              ? 'Ningún producto coincide con esa búsqueda.'
-              : 'Todavía no hay ningún producto con precio registrado (tickets o lista de la compra).'}
+      {groupedProducts.map((group) => (
+        <div key={group.label} className="shopping-class-group">
+          <p className="shopping-class-heading" style={{ background: CLASS_COLORS.get(group.label) }}>
+            {group.icon} {group.label}
           </p>
-        )}
-      </div>
+          <div className="price-row-list">
+            {group.rows.map((c, i) => (
+              <div
+                key={c.productId}
+                className="price-row"
+                style={{ background: i % 2 === 1 ? CLASS_COLORS.get(group.label) : undefined }}
+              >
+                <button
+                  type="button"
+                  className="price-row-name price-row-name-button"
+                  onClick={() => openDetail(c.productId, c.name)}
+                >
+                  {c.name}
+                </button>
+                <span className="price-row-price">
+                  {c.currentPrice!.toFixed(2)} €<PriceDelta percent={c.deltaPercent} />
+                </span>
+                <button
+                  type="button"
+                  className="link-button"
+                  disabled={added.has(c.productId)}
+                  onClick={() => setAddingToList({ productId: c.productId, name: c.name, price: c.currentPrice })}
+                  title="Añadir a la lista de la compra"
+                >
+                  {added.has(c.productId) ? '✓' : '🛒'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {filteredProducts.length === 0 && (
+        <p className="muted">
+          {query.trim()
+            ? 'Ningún producto coincide con esa búsqueda.'
+            : 'Todavía no hay ningún producto con precio registrado (tickets o lista de la compra).'}
+        </p>
+      )}
 
       {detail && (
         <div className="modal-overlay" onClick={() => setDetail(null)}>

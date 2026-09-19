@@ -4429,7 +4429,10 @@ export function ReceiptsTab() {
   const [rangeFrom, rangeTo] = rangeForPreset(rangePreset, rangeCustomFrom, rangeCustomTo)
   const rangeFilteredReceipts = displayReceipts.filter((r) => r.receiptDate >= rangeFrom && r.receiptDate <= rangeTo)
   const rangeGrouped = groupReceiptsByStore(rangeFilteredReceipts, knownStores)
-  const storeColorOf = storeColorResolver(storeEntries)
+  const storeColorOf = storeColorResolver(
+    storeEntries,
+    grouped.map((g) => g.store),
+  )
 
   return (
     <div>
@@ -6302,7 +6305,12 @@ export function BudgetsTab({
   // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
   // usar el mismo dónut con botón Alimentación/Otros" — un solo dónut
   // (ver storeDonutScope), el botón decide qué gastos lo alimentan.
-  const storeColorOf = storeColorResolver(storeEntries)
+  // Mismo reparto de colores en el dónut y en las barras por tienda:
+  // las tiendas dadas de alta más todas las que aparecen en gastos y tickets.
+  const storeColorOf = storeColorResolver(storeEntries, [
+    ...splits.map((s) => s.store),
+    ...receipts.map((r) => canonicalStoreName(r.store, knownStores)),
+  ])
   const storePieSlicesAlimentacion = buildStorePieSlices(
     splits.filter((s) => s.foodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.foodAmount })),
     storeColorOf,

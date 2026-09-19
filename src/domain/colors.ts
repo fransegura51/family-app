@@ -111,23 +111,48 @@ export function colorForName(name: string): string {
 // añadir una tienda nueva nunca cambia el color de las anteriores. Las
 // que llegan sueltas del banco o de un ticket (sin dar de alta) siguen
 // teniendo color automático por su nombre.
-export function storeColorResolver(registered: { name: string; createdAt: string }[]): (name: string) => string {
+//
+// Petición real: "son 8 tiendas las que se parecen de color" — las
+// tiendas sueltas (banco/tickets) esquivaban los tonos de las dadas de
+// alta, pero todas acababan en el mismo hueco libre (azul/lila). Ahora
+// `otherNames` (las tiendas sueltas que salen en esa pantalla) se
+// reparten entre sí Y frente a las dadas de alta: cada una coge el tono
+// más alejado de todos los ya usados, alternando dos luminosidades para
+// separar aún más las vecinas. El orden no depende de cómo lleguen los
+// nombres (se ordenan por su hash), solo de qué tiendas hay.
+export function storeColorResolver(
+  registered: { name: string; createdAt: string }[],
+  otherNames: Iterable<string> = [],
+): (name: string) => string {
   const ordered = [...registered].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   const palette = pastelPalette(ordered.length)
   const byKey = new Map(ordered.map((s, i) => [nameKey(s.name), palette[i]]))
-  const takenHues = palette.map((c) => Number(/hsl\((\d+)/.exec(c)![1]))
-  const tooClose = (hue: number) =>
-    takenHues.some((t) => Math.min(Math.abs(t - hue), 360 - Math.abs(t - hue)) < 30)
+  const taken = palette.map((c) => Number(/hsl\((\d+)/.exec(c)![1]))
+  const circ = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b))
+
+  const extras = [...new Set([...otherNames].map(nameKey))]
+    .filter((k) => k && !byKey.has(k))
+    .sort((a, b) => hashName(a) - hashName(b))
+  const assigned = new Map<string, string>()
+  extras.forEach((key, i) => {
+    const preferred = hashName(key) % 360
+    let bestHue = preferred
+    let bestScore = -Infinity
+    for (let h = 0; h < 360; h += 3) {
+      const gap = taken.length ? Math.min(...taken.map((t) => circ(t, h))) : 360
+      const score = gap - circ(h, preferred) * 0.001
+      if (score > bestScore) {
+        bestScore = score
+        bestHue = h
+      }
+    }
+    taken.push(bestHue)
+    assigned.set(key, `hsl(${bestHue}, 70%, ${i % 2 === 0 ? 90 : 84}%)`)
+  })
+
   return (name) => {
-    const registeredColor = byKey.get(nameKey(name))
-    if (registeredColor) return registeredColor
-    // Una tienda suelta (del banco o de un ticket) esquiva los tonos de
-    // las dadas de alta para no parecerse a ellas (p. ej. Repsol junto
-    // a Hiperber); sigue siendo automático y estable por nombre, porque
-    // la lista de tiendas dadas de alta es la misma en todas las pantallas.
-    let hue = hashName(name) % 360
-    for (let i = 0; i < 9 && tooClose(hue); i++) hue = (hue + 40) % 360
-    return `hsl(${hue}, 70%, 90%)`
+    const key = nameKey(name)
+    return byKey.get(key) ?? assigned.get(key) ?? colorForName(name)
   }
 }
 

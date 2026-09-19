@@ -21,15 +21,30 @@ describe('storeColorResolver', () => {
     expect(after).toBe(before)
   })
 
-  it('colors a store that is not registered, away from the registered hues', () => {
-    const colorOf = storeColorResolver(stores)
+  it('spreads many loose stores apart from each other and from the registered ones', () => {
+    const loose = ['Amazon', 'Repsol', 'MACRO ASIA', 'Charter', 'ADEO LEROY MERLIN', 'H M-Barcelona', 'C A MODE GMBH', 'E.S. POLIGONO']
+    const colorOf = storeColorResolver(stores, loose)
     const hueOf = (c: string) => Number(c.match(/hsl\((\d+)/)![1])
-    const repsol = hueOf(colorOf('Repsol'))
-    expect(colorOf('Repsol')).toBe(colorOf('repsol '))
-    for (const s of stores) {
-      const gap = Math.abs(hueOf(colorOf(s.name)) - repsol)
-      expect(Math.min(gap, 360 - gap)).toBeGreaterThanOrEqual(30)
-    }
+    const all = [...stores.map((s) => s.name), ...loose]
+    const hues = all.map((n) => hueOf(colorOf(n)))
+    let minGap = 360
+    for (let i = 0; i < hues.length; i++)
+      for (let j = i + 1; j < hues.length; j++) {
+        const gap = Math.abs(hues[i] - hues[j])
+        minGap = Math.min(minGap, gap, 360 - gap)
+      }
+    expect(minGap).toBeGreaterThanOrEqual(20)
+    expect(colorOf('repsol ')).toBe(colorOf('Repsol'))
+  })
+
+  it('does not depend on the order the loose names arrive in', () => {
+    const a = storeColorResolver(stores, ['Amazon', 'Repsol', 'Charter'])
+    const b = storeColorResolver(stores, ['Charter', 'Amazon', 'Repsol'])
+    for (const n of ['Amazon', 'Repsol', 'Charter']) expect(a(n)).toBe(b(n))
+  })
+
+  it('still colors a name it was never told about', () => {
+    expect(storeColorResolver(stores)('Repsol')).toBe(colorForName('Repsol'))
   })
 })
 

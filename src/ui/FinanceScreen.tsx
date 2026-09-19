@@ -7249,6 +7249,8 @@ function BudgetsOverview({
   // partía el mismo gasto en varias filas idénticas visualmente. Un
   // "root" puede así representar a más de un id real (`rootIds`).
   const groupCategories = useMemo(() => allCategories.filter((c) => c.budgetGroup === group), [allCategories, group])
+  // Mismos colores por categoría/subcategoría que los dónuts, en pastel.
+  const groupCatColors = useMemo(() => categoryColors(groupCategories), [groupCategories])
   const byParentCategory = useMemo(() => {
     const totals = new Map<string, { name: string; icon?: string; rootIds: string[]; total: number }>()
     for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, allCategories))) {
@@ -7367,6 +7369,7 @@ function BudgetsOverview({
           {byParentCategory.map(({ name, icon, rootIds, total }) => {
             const children = groupCategories.filter((c) => c.parentId && rootIds.includes(c.parentId))
             const isOpen = expandedParentId === name
+            const parentColor = groupCatColors.get(rootIds[0])
             // El gasto puesto directamente en la categoría padre (sin
             // elegir subcategoría) no aparece dentro de ninguna hija —
             // se muestra aparte para que la suma de lo desplegado
@@ -7381,13 +7384,14 @@ function BudgetsOverview({
                   className="price-row"
                   style={{
                     width: '100%',
-                    background: 'none',
+                    background: parentColor ? pastelFromHsl(parentColor) : 'none',
                     border: 'none',
+                    borderRadius: 8,
                     textAlign: 'left',
                     color: 'var(--text)',
                     fontWeight: 400,
                     fontSize: 14,
-                    padding: '6px 4px',
+                    padding: '8px 8px',
                     cursor: children.length > 0 ? 'pointer' : 'default',
                   }}
                   onClick={() => children.length > 0 && setExpandedParentId(isOpen ? null : name)}
@@ -7405,6 +7409,7 @@ function BudgetsOverview({
                       .map((c) => ({
                         name: c.name,
                         icon: c.icon,
+                        color: groupCatColors.get(c.id),
                         total: inRange
                           .filter((e) => !e.isIncome && e.kind === 'real' && e.category === c.name)
                           .reduce((s, e) => s + e.amount, 0),
@@ -7412,7 +7417,11 @@ function BudgetsOverview({
                       .filter((c) => c.total > 0)
                       .sort((a, b) => b.total - a.total)
                       .map((c) => (
-                        <div key={c.name} className="price-row">
+                        <div
+                          key={c.name}
+                          className="price-row"
+                          style={{ background: c.color ? pastelFromHsl(c.color) : undefined, borderRadius: 8, padding: '6px 8px', marginTop: 4 }}
+                        >
                           <span className="price-row-name">
                             {c.icon} {c.name}
                           </span>
@@ -7420,7 +7429,7 @@ function BudgetsOverview({
                         </div>
                       ))}
                     {directTotal > 0 && (
-                      <div className="price-row">
+                      <div className="price-row" style={{ background: parentColor ? pastelFromHsl(parentColor) : undefined, borderRadius: 8, padding: '6px 8px', marginTop: 4 }}>
                         <span className="price-row-name">(sin subcategoría)</span>
                         <span className="price-row-price">{directTotal.toFixed(2)} €</span>
                       </div>

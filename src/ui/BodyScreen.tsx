@@ -9,7 +9,9 @@ import {
   uploadBodyPhoto,
 } from '@/data/bodyTracking'
 import { listFamilyMembers } from '@/data/family'
+import { ageInMonths } from '@/domain/growth'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { BabyGrowthView } from '@/ui/BabyGrowthView'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { errorMessage } from '@/domain/errorMessage'
 import type { BodyMeasurement, BodyPhoto, FamilyMember } from '@/domain/types'
@@ -18,14 +20,22 @@ function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Qué vista le toca a cada persona: los bebés (y los niños pequeños con
+// fecha de nacimiento y sexo) ven percentiles de la OMS; el resto, la vista
+// de peso y medidas.
+type BodyVariant = 'baby' | 'other'
+
+function variantFor(member: FamilyMember): BodyVariant {
+  const months = member.birthDate ? ageInMonths(member.birthDate, toDateStr(new Date())) : null
+  if (member.memberType === 'baby') return 'baby'
+  if (months != null && months <= 60 && member.memberType !== 'admin' && member.memberType !== 'adult') return 'baby'
+  return 'other'
+}
+
 // Petición real: Peso y medidas sale de "La cocina de Pepa" y es una
 // sección propia dentro de Familia (pestaña "Peso y medidas"), no ligada
 // a las fichas de los miembros.
 export function BodyTab() {
-  return <WeightTab />
-}
-
-function WeightTab() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([])
@@ -69,10 +79,8 @@ function WeightTab() {
     reload()
   }
 
-  const withWeight = measurements.filter((m) => m.weightKg != null)
-  const first = withWeight[0]
-  const latest = withWeight[withWeight.length - 1]
-  const weightDiff = latest && first && latest.id !== first.id ? latest.weightKg! - first.weightKg! : null
+  const member = members.find((m) => m.id === activeMemberId)
+  const variant = member ? variantFor(member) : 'other'
 
   return (
     <div>
@@ -91,62 +99,24 @@ function WeightTab() {
         ))}
       </div>
 
-      {loading ? (
+      {loading || !member ? (
         <p className="muted">Cargando…</p>
       ) : (
         <>
-          {withWeight.length >= 2 && (
-            <div className="card">
-              <h2>Evolución del peso</h2>
-              {weightDiff != null && (
-                <p className="muted">
-                  {weightDiff <= 0
-                    ? `Ha perdido ${Math.abs(weightDiff).toFixed(1)} kg desde el `
-                    : `Ha ganado ${weightDiff.toFixed(1)} kg desde el `}
-                  {new Date(first.measuredDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
-                </p>
-              )}
-              <WeightChart measurements={withWeight} />
-            </div>
+          {variant === 'baby' ? (
+            <BabyGrowthView member={member} measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
+          ) : (
+            <GeneralWeightView measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
           )}
 
-          <div className="event-list">
-            {[...measurements].reverse().map((m) => (
-              <div key={m.id} className="card task-card">
-                <div className="task-card-main">
-                  <strong>
-                    {new Date(m.measuredDate + 'T00:00').toLocaleDateString('es-ES', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
-                  </strong>
-                  <p className="muted">
-                    {m.weightKg != null && `${m.weightKg} kg`}
-                    {m.waistCm != null && ` · Cintura ${m.waistCm} cm`}
-                    {m.abdomenCm != null && ` · Abdomen ${m.abdomenCm} cm`}
-                    {m.armCm != null && ` · Brazo ${m.armCm} cm`}
-                    {m.legCm != null && ` · Pierna ${m.legCm} cm`}
-                  </p>
-                </div>
-                <ConfirmButton label="Eliminar" onConfirm={() => handleDeleteMeasurement(m.id)} />
-              </div>
-            ))}
-            {measurements.length === 0 && <p className="muted">Todavía no hay medidas registradas.</p>}
-          </div>
-
-          {activeMemberId && <AddMeasurementForm memberId={activeMemberId} onAdded={reload} />}
+          <AddMeasurementForm memberId={member.id} mode={variant === 'baby' ? 'baby' : 'general'} onAdded={reload} />
 
           <h2>Fotos de evolución</h2>
           <div className="gallery-grid">
             {photos.map((p) => (
               <div key={p.id} className="gallery-item">
                 {photoUrls[p.id] && <img src={photoUrls[p.id]} alt={p.caption ?? ''} />}
-                <ConfirmIconButton
-                  className="gallery-item-delete"
-                  ariaLabel="Borrar foto"
-                  onConfirm={() => handleDeletePhoto(p)}
-                />
+                <ConfirmIconButton className="gallery-item-delete" ariaLabel="Borrar foto" onConfirm={() => handleDeletePhoto(p)} />
                 {p.caption && <p className="muted">{p.caption}</p>}
                 <p className="muted gallery-item-date">
                   {new Date(p.photoDate + 'T00:00').toLocaleDateString('es-ES', {
@@ -160,10 +130,66 @@ function WeightTab() {
             {photos.length === 0 && <p className="muted">Todavía no hay fotos de evolución.</p>}
           </div>
 
-          {activeMemberId && <AddPhotoFormBody memberId={activeMemberId} onAdded={reload} />}
+          <AddPhotoFormBody memberId={member.id} onAdded={reload} />
         </>
       )}
     </div>
+  )
+}
+
+function GeneralWeightView({
+  measurements,
+  onDeleteMeasurement,
+}: {
+  measurements: BodyMeasurement[]
+  onDeleteMeasurement: (id: string) => void
+}) {
+  const withWeight = measurements.filter((m) => m.weightKg != null)
+  const first = withWeight[0]
+  const latest = withWeight[withWeight.length - 1]
+  const weightDiff = latest && first && latest.id !== first.id ? latest.weightKg! - first.weightKg! : null
+
+  return (
+    <>
+      {withWeight.length >= 2 && (
+        <div className="card">
+          <h2>Evolución del peso</h2>
+          {weightDiff != null && (
+            <p className="muted">
+              {weightDiff <= 0 ? `Ha perdido ${Math.abs(weightDiff).toFixed(1)} kg desde el ` : `Ha ganado ${weightDiff.toFixed(1)} kg desde el `}
+              {new Date(first.measuredDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+            </p>
+          )}
+          <WeightChart measurements={withWeight} />
+        </div>
+      )}
+
+      <div className="event-list">
+        {[...measurements].reverse().map((m) => (
+          <div key={m.id} className="card task-card">
+            <div className="task-card-main">
+              <strong>
+                {new Date(m.measuredDate + 'T00:00').toLocaleDateString('es-ES', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </strong>
+              <p className="muted">
+                {m.weightKg != null && `${m.weightKg} kg`}
+                {m.heightCm != null && ` · Altura ${m.heightCm} cm`}
+                {m.waistCm != null && ` · Cintura ${m.waistCm} cm`}
+                {m.abdomenCm != null && ` · Abdomen ${m.abdomenCm} cm`}
+                {m.armCm != null && ` · Brazo ${m.armCm} cm`}
+                {m.legCm != null && ` · Pierna ${m.legCm} cm`}
+              </p>
+            </div>
+            <ConfirmButton label="Eliminar" onConfirm={() => onDeleteMeasurement(m.id)} />
+          </div>
+        ))}
+        {measurements.length === 0 && <p className="muted">Todavía no hay medidas registradas.</p>}
+      </div>
+    </>
   )
 }
 
@@ -205,13 +231,7 @@ function WeightChart({ measurements }: { measurements: BodyMeasurement[] }) {
           <g key={i}>
             <circle cx={c.x} cy={c.y} r="3" fill="var(--primary)" />
             {(showEveryDate || isEdge) && (
-              <text
-                x={c.x}
-                y={dateRowY}
-                fontSize="9"
-                fill="#6b7280"
-                textAnchor={i === 0 ? 'start' : i === coords.length - 1 ? 'end' : 'middle'}
-              >
+              <text x={c.x} y={dateRowY} fontSize="9" fill="#6b7280" textAnchor={i === 0 ? 'start' : i === coords.length - 1 ? 'end' : 'middle'}>
                 {shortDate(points[i].measuredDate)}
               </text>
             )}
@@ -228,15 +248,19 @@ function WeightChart({ measurements }: { measurements: BodyMeasurement[] }) {
   )
 }
 
-function AddMeasurementForm({ memberId, onAdded }: { memberId: string; onAdded: () => void }) {
+function AddMeasurementForm({ memberId, mode, onAdded }: { memberId: string; mode: 'baby' | 'general'; onAdded: () => void }) {
   const [date, setDate] = useState(() => toDateStr(new Date()))
   const [weightKg, setWeightKg] = useState('')
+  const [heightCm, setHeightCm] = useState('')
+  const [headCm, setHeadCm] = useState('')
   const [waistCm, setWaistCm] = useState('')
   const [abdomenCm, setAbdomenCm] = useState('')
   const [armCm, setArmCm] = useState('')
   const [legCm, setLegCm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  const num = (v: string) => (v.trim() ? Number(v.replace(',', '.')) : null)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -246,13 +270,17 @@ function AddMeasurementForm({ memberId, onAdded }: { memberId: string; onAdded: 
       await addBodyMeasurement({
         memberId,
         date,
-        weightKg: weightKg ? Number(weightKg) : null,
-        waistCm: waistCm ? Number(waistCm) : null,
-        abdomenCm: abdomenCm ? Number(abdomenCm) : null,
-        armCm: armCm ? Number(armCm) : null,
-        legCm: legCm ? Number(legCm) : null,
+        weightKg: num(weightKg),
+        heightCm: num(heightCm),
+        headCm: mode === 'baby' ? num(headCm) : null,
+        waistCm: mode === 'general' ? num(waistCm) : null,
+        abdomenCm: mode === 'general' ? num(abdomenCm) : null,
+        armCm: mode === 'general' ? num(armCm) : null,
+        legCm: mode === 'general' ? num(legCm) : null,
       })
       setWeightKg('')
+      setHeightCm('')
+      setHeadCm('')
       setWaistCm('')
       setAbdomenCm('')
       setArmCm('')
@@ -267,31 +295,44 @@ function AddMeasurementForm({ memberId, onAdded }: { memberId: string; onAdded: 
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Registrar peso y medidas</h2>
+      <h2>Registrar {mode === 'baby' ? 'una medida' : 'peso y medidas'}</h2>
       <label>
         Fecha
         <input type="date" value={date} max={toDateStr(new Date())} onChange={(e) => setDate(e.target.value)} required />
       </label>
       <label>
         Peso (kg)
-        <input type="number" step="0.1" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+        <input type="text" inputMode="decimal" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
       </label>
       <label>
-        Cintura (cm, opcional)
-        <input type="number" step="0.1" value={waistCm} onChange={(e) => setWaistCm(e.target.value)} />
+        Altura (cm, opcional)
+        <input type="text" inputMode="decimal" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
       </label>
-      <label>
-        Abdomen (cm, opcional)
-        <input type="number" step="0.1" value={abdomenCm} onChange={(e) => setAbdomenCm(e.target.value)} />
-      </label>
-      <label>
-        Brazo (cm, opcional)
-        <input type="number" step="0.1" value={armCm} onChange={(e) => setArmCm(e.target.value)} />
-      </label>
-      <label>
-        Pierna (cm, opcional)
-        <input type="number" step="0.1" value={legCm} onChange={(e) => setLegCm(e.target.value)} />
-      </label>
+      {mode === 'baby' ? (
+        <label>
+          Perímetro cefálico (cm, opcional)
+          <input type="text" inputMode="decimal" value={headCm} onChange={(e) => setHeadCm(e.target.value)} />
+        </label>
+      ) : (
+        <>
+          <label>
+            Cintura (cm, opcional)
+            <input type="text" inputMode="decimal" value={waistCm} onChange={(e) => setWaistCm(e.target.value)} />
+          </label>
+          <label>
+            Abdomen (cm, opcional)
+            <input type="text" inputMode="decimal" value={abdomenCm} onChange={(e) => setAbdomenCm(e.target.value)} />
+          </label>
+          <label>
+            Brazo (cm, opcional)
+            <input type="text" inputMode="decimal" value={armCm} onChange={(e) => setArmCm(e.target.value)} />
+          </label>
+          <label>
+            Pierna (cm, opcional)
+            <input type="text" inputMode="decimal" value={legCm} onChange={(e) => setLegCm(e.target.value)} />
+          </label>
+        </>
+      )}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Guardar'}

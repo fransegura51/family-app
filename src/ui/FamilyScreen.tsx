@@ -17,7 +17,7 @@ import { adminResetProfilePin } from '@/data/appLock'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
-import type { FamilyMember, MemberType, Profile } from '@/domain/types'
+import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
@@ -501,6 +501,7 @@ function EditMemberForm({
   const [memberType, setMemberType] = useState<MemberType>(member.memberType)
   const [color, setColor] = useState(member.color)
   const [birthDate, setBirthDate] = useState(member.birthDate ?? '')
+  const [sex, setSex] = useState<MemberSex | ''>(member.sex ?? '')
   const [allowedSections, setAllowedSections] = useState<string[]>(member.allowedSections ?? [])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -515,6 +516,7 @@ function EditMemberForm({
         memberType,
         color,
         birthDate: birthDate || null,
+        sex: sex || null,
         allowedSections: canRestrictSections(memberType) ? allowedSections : null,
       })
       onDone()
@@ -548,6 +550,14 @@ function EditMemberForm({
       <label>
         Fecha de nacimiento (opcional)
         <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+      </label>
+      <label>
+        Sexo (opcional, solo para las curvas de crecimiento)
+        <select value={sex} onChange={(e) => setSex(e.target.value as MemberSex | '')}>
+          <option value="">Sin indicar</option>
+          <option value="female">Mujer / niña</option>
+          <option value="male">Hombre / niño</option>
+        </select>
       </label>
       {canRestrictSections(memberType) && (
         <label>
@@ -631,6 +641,7 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
   const [memberType, setMemberType] = useState<MemberType>('child')
   const [color, setColor] = useState('#4C6EF5')
   const [birthDate, setBirthDate] = useState('')
+  const [sex, setSex] = useState<MemberSex | ''>('')
   const [allowedSections, setAllowedSections] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -652,6 +663,7 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
         memberType,
         color,
         birthDate: birthDate || null,
+        sex: sex || null,
         allowedSections: canRestrictSections(memberType) ? allowedSections : null,
       })
       setName('')
@@ -707,6 +719,14 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
       <label>
         Fecha de nacimiento (opcional)
         <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+      </label>
+      <label>
+        Sexo (opcional, solo para las curvas de crecimiento)
+        <select value={sex} onChange={(e) => setSex(e.target.value as MemberSex | '')}>
+          <option value="">Sin indicar</option>
+          <option value="female">Mujer / niña</option>
+          <option value="male">Hombre / niño</option>
+        </select>
       </label>
       {canRestrictSections(memberType) && (
         <label>

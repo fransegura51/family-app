@@ -21,7 +21,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listBodyMeasurements(memberId: string): Promise<BodyMeasurement[]> {
   const { data, error } = await supabase
     .from('body_measurements')
-    .select('id, family_id, member_id, measured_date, weight_kg, waist_cm, abdomen_cm, arm_cm, leg_cm')
+    .select('id, family_id, member_id, measured_date, weight_kg, waist_cm, abdomen_cm, arm_cm, leg_cm, height_cm, head_cm')
     .eq('member_id', memberId)
     .order('measured_date', { ascending: true })
   if (error) throw error
@@ -35,6 +35,8 @@ export async function listBodyMeasurements(memberId: string): Promise<BodyMeasur
     abdomenCm: r.abdomen_cm,
     armCm: r.arm_cm,
     legCm: r.leg_cm,
+    heightCm: r.height_cm,
+    headCm: r.head_cm,
   }))
 }
 
@@ -46,6 +48,8 @@ export async function addBodyMeasurement(input: {
   abdomenCm: number | null
   armCm: number | null
   legCm: number | null
+  heightCm?: number | null
+  headCm?: number | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('body_measurements').insert({
@@ -57,6 +61,8 @@ export async function addBodyMeasurement(input: {
     abdomen_cm: input.abdomenCm,
     arm_cm: input.armCm,
     leg_cm: input.legCm,
+    height_cm: input.heightCm ?? null,
+    head_cm: input.headCm ?? null,
   })
   if (error) throw error
 }

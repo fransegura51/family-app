@@ -4355,3 +4355,36 @@ textarea {
   padding: 13px;
   font-size: 16px;
 }
+
+/* Percentiles de crecimiento: tabla de medidas con el percentil de cada una. */
+.growth-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.growth-table th {
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 2px solid #e9ecef;
+}
+
+.growth-table td {
+  padding: 8px;
+  border-bottom: 1px solid #f0f0f3;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.percentile-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}

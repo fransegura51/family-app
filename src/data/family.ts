@@ -1,6 +1,6 @@
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
-import type { FamilyMember, MemberType } from '@/domain/types'
+import type { FamilyMember, MemberSex, MemberType } from '@/domain/types'
 
 // Crea la familia + el perfil admin del usuario actual, de forma atómica,
 // vía la función `create_family` (SECURITY DEFINER, ver
@@ -44,6 +44,7 @@ export async function addFamilyMember(input: {
   memberType: MemberType
   color: string
   birthDate: string | null
+  sex?: MemberSex | null
   allowedSections?: string[] | null
 }): Promise<void> {
   // family_id no se pasa desde el cliente: la política RLS de INSERT ya
@@ -65,6 +66,7 @@ export async function addFamilyMember(input: {
     member_type: input.memberType,
     color: input.color,
     birth_date: input.birthDate,
+    sex: input.sex ?? null,
     allowed_sections: input.allowedSections ?? null,
   })
   if (error) throw error
@@ -72,7 +74,7 @@ export async function addFamilyMember(input: {
 
 export async function updateFamilyMember(
   id: string,
-  input: { name: string; memberType: MemberType; color: string; birthDate: string | null; allowedSections?: string[] | null },
+  input: { name: string; memberType: MemberType; color: string; birthDate: string | null; sex?: MemberSex | null; allowedSections?: string[] | null },
 ): Promise<void> {
   const { error } = await supabase
     .from('family_members')
@@ -81,6 +83,7 @@ export async function updateFamilyMember(
       member_type: input.memberType,
       color: input.color,
       birth_date: input.birthDate,
+      sex: input.sex ?? null,
       allowed_sections: input.allowedSections ?? null,
     })
     .eq('id', id)
@@ -250,7 +253,7 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
   const { data, error } = await supabase
     .from('family_members')
     .select(
-      'id, family_id, name, avatar, color, member_type, birth_date, birthday_favorite, permissions, linked_profile_id, photo_path, allowed_sections, created_at',
+      'id, family_id, name, avatar, color, member_type, birth_date, sex, birthday_favorite, permissions, linked_profile_id, photo_path, allowed_sections, created_at',
     )
     .order('sort_order', { ascending: true })
 
@@ -264,6 +267,7 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
     color: row.color,
     memberType: row.member_type,
     birthDate: row.birth_date,
+    sex: row.sex,
     birthdayFavorite: row.birthday_favorite,
     permissions: row.permissions ?? {},
     linkedProfileId: row.linked_profile_id,

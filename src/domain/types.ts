@@ -31,6 +31,10 @@ export interface Profile {
   allowedSections: string[] | null
 }
 
+// Sexo del miembro — solo se usa para las curvas de crecimiento de la OMS
+// (las de niños y niñas son distintas). Opcional.
+export type MemberSex = 'female' | 'male'
+
 export interface FamilyMember {
   id: string
   familyId: string
@@ -39,6 +43,7 @@ export interface FamilyMember {
   color: string
   memberType: MemberType
   birthDate: string | null
+  sex: MemberSex | null
   birthdayFavorite: boolean
   permissions: Record<string, unknown>
   linkedProfileId: string | null
@@ -169,6 +174,8 @@ export interface BodyMeasurement {
   abdomenCm: number | null
   armCm: number | null
   legCm: number | null
+  heightCm: number | null
+  headCm: number | null
 }
 
 export interface BodyPhoto {

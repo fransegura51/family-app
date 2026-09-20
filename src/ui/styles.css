@@ -1390,17 +1390,28 @@ select {
   align-items: center;
   justify-content: center;
   text-align: center;
-  width: 60px;
-  height: 60px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   background: #dbe4ff;
   color: var(--primary);
 }
 
 .event-countdown-number {
-  font-size: 22px;
+  font-size: 38px;
   font-weight: 700;
   line-height: 1.1;
+}
+
+/* Fecha y lugar de la cabecera: una sola línea y mismo tamaño. */
+.event-hero-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Botón de estado de la fecha (✔️ confirmada / ❓ provisional), junto

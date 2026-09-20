@@ -182,6 +182,14 @@ function eventDateLabel(ev: FamilyEvent): string {
   return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
+// Fecha corta para la cabecera del evento ("Domingo, 18/10/2026"), para que quepa en una línea.
+function eventShortDateLabel(ev: FamilyEvent): string {
+  if (ev.dateStatus === 'pendiente' || !ev.eventDate) return 'Sin fecha todavía'
+  const [y, m, d] = ev.eventDate.split('-')
+  const weekday = new Date(`${ev.eventDate}T00:00`).toLocaleDateString('es-ES', { weekday: 'long' })
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${d}/${m}/${y}`
+}
+
 function ModulePickerChips({ modules, onChange }: { modules: EventModuleKey[]; onChange: (next: EventModuleKey[]) => void }) {
   return (
     <div className="filter-row" style={{ flexWrap: 'wrap' }}>
@@ -853,10 +861,13 @@ function EventDetail({
             <strong style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
               {EVENT_TYPE_META[event.type].icon} {event.title}
             </strong>
-            <p className="muted" style={{ margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-              {/* Petición real: el estado (confirmada/provisional/sin
-                  fecha) ya no se lee como texto delante de la fecha —
-                  es un botón con icono que abre la edición directamente. */}
+            {/* Petición real: fecha corta ("Domingo, 18/10/2026") en una sola
+                línea, con el estado (✔️ confirmada / ❓ provisional) DETRÁS de
+                la fecha —es un botón que abre la edición— y el lugar del
+                mismo tamaño que la fecha, para que la cuenta atrás pueda
+                ser más grande. */}
+            <p className="muted event-hero-line" style={{ margin: '6px 0 0' }}>
+              📅 {eventShortDateLabel(event)}
               {event.eventDate && (
                 <button
                   type="button"
@@ -868,27 +879,30 @@ function EventDetail({
                   {event.dateStatus === 'confirmada' ? '✔️' : '❓'}
                 </button>
               )}
-              📅 {eventDateLabel(event)}
             </p>
-            {event.venueLabel && <p className="muted" style={{ margin: '2px 0 0' }}>🏠 {event.venueLabel}</p>}
+            {event.venueLabel && (
+              <p className="muted event-hero-line" style={{ margin: '2px 0 0' }}>
+                🏠 {event.venueLabel}
+              </p>
+            )}
             {event.status === 'archivado' && <p className="muted">📦 Archivado</p>}
           </div>
           {/* Petición real: cuenta atrás "30 días para celebrarlo" junto
               al título, en un círculo pastel — solo tiene sentido con
               fecha puesta y evento todavía en marcha. */}
           {event.status === 'planificacion' && daysToEvent !== null && (
-            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 68 }}>
+            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 96 }}>
               <div className="event-countdown">
                 {daysToEvent > 0 ? (
                   <strong className="event-countdown-number">{daysToEvent}</strong>
                 ) : daysToEvent === 0 ? (
-                  <strong className="event-countdown-number" style={{ fontSize: 15 }}>¡Hoy!</strong>
+                  <strong className="event-countdown-number" style={{ fontSize: 22 }}>¡Hoy!</strong>
                 ) : (
                   <span style={{ fontSize: 11 }}>Ya pasó</span>
                 )}
               </div>
               {daysToEvent >= 0 && (
-                <span className="muted" style={{ fontSize: 10, textAlign: 'center', lineHeight: 1.2 }}>
+                <span className="muted" style={{ fontSize: 11, textAlign: 'center', lineHeight: 1.2 }}>
                   {daysToEvent === 0 ? '¡Celebrarlo hoy! 🎉' : 'días para celebrarlo 🎉'}
                 </span>
               )}

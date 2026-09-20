@@ -38,7 +38,15 @@ function yFor(meter: KidsMeter, cm: number): number {
   return meter.column.bottom - t * (meter.column.bottom - meter.column.top)
 }
 
-export function KidsMeterView({ member, measurements }: { member: FamilyMember; measurements: BodyMeasurement[] }) {
+export function KidsMeterView({
+  member,
+  measurements,
+  onEdit,
+}: {
+  member: FamilyMember
+  measurements: BodyMeasurement[]
+  onEdit: (id: string) => void
+}) {
   const [themeId, setThemeId] = useState(() => readStored(themeKey(member.id)) ?? DEFAULT_KIDS_THEME_ID)
   const [spriteKind, setSpriteKind] = useState<'boy' | 'girl'>(() => {
     const stored = readStored(spriteKey(member.id))
@@ -134,6 +142,9 @@ export function KidsMeterView({ member, measurements }: { member: FamilyMember; 
               <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1 }}>
                 {fmtCm(selected.cm)} <span style={{ fontSize: 18, fontWeight: 600 }}>cm</span>
               </div>
+              <button type="button" className="link-button" style={{ padding: '2px 0', fontSize: 13 }} onClick={() => onEdit(selected.id)}>
+                ✏️ Editar esta medida
+              </button>
             </div>
             {first && latest.id !== first.id && latest.cm > first.cm && (
               <div className="kids-grown">

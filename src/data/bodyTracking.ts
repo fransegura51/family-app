@@ -67,6 +67,44 @@ export async function addBodyMeasurement(input: {
   if (error) throw error
 }
 
+// Petición real: "que se puedan editar los registros en todos los sitios".
+export async function updateBodyMeasurement(
+  id: string,
+  input: {
+    date: string
+    weightKg: number | null
+    heightCm: number | null
+    headCm: number | null
+    waistCm: number | null
+    abdomenCm: number | null
+    armCm: number | null
+    legCm: number | null
+  },
+): Promise<void> {
+  const { error } = await supabase
+    .from('body_measurements')
+    .update({
+      measured_date: input.date,
+      weight_kg: input.weightKg,
+      height_cm: input.heightCm,
+      head_cm: input.headCm,
+      waist_cm: input.waistCm,
+      abdomen_cm: input.abdomenCm,
+      arm_cm: input.armCm,
+      leg_cm: input.legCm,
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function updateBodyPhoto(id: string, input: { date: string; caption: string }): Promise<void> {
+  const { error } = await supabase
+    .from('body_photos')
+    .update({ photo_date: input.date, caption: input.caption.trim() || null })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteBodyMeasurement(id: string): Promise<void> {
   const { error } = await supabase.from('body_measurements').delete().eq('id', id)
   if (error) throw error

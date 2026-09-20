@@ -4474,3 +4474,17 @@ textarea {
   padding: 5px 10px;
   font-size: 12px;
 }
+
+.gallery-item-edit {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}

@@ -220,10 +220,12 @@ export function BabyGrowthView({
   member,
   measurements,
   onDeleteMeasurement,
+  onEditMeasurement,
 }: {
   member: FamilyMember
   measurements: BodyMeasurement[]
   onDeleteMeasurement: (id: string) => void
+  onEditMeasurement: (id: string) => void
 }) {
   const [measure, setMeasure] = useState<GrowthMeasure>('weight')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -368,6 +370,9 @@ export function BabyGrowthView({
                   <td>{cell(m, 'length')}</td>
                   <td>{cell(m, 'head')}</td>
                   <td>
+                    <button type="button" className="link-button" aria-label="Editar medida" title="Editar" onClick={() => onEditMeasurement(m.id)}>
+                      ✏️
+                    </button>
                     <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Borrar medida" onConfirm={() => onDeleteMeasurement(m.id)} />
                   </td>
                 </tr>

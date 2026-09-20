@@ -9,7 +9,7 @@
 //   - Todo se decide con reglas (domain/dialogReply.ts). Ejecutar una acción sigue
 //     pasando por las funciones de siempre de cada tarjeta (validación + confirmación).
 //   - Si nadie responde en 10 minutos, la acción pendiente se cancela sola.
-import { interpretReply, isBareYesNo, type DialogKind, type ReplyIntent } from '@/domain/dialogReply'
+import { interpretReply, isBareYesNo, isControlOnly, type DialogKind, type ReplyIntent } from '@/domain/dialogReply'
 
 export type { DialogKind }
 
@@ -74,6 +74,27 @@ function storesText(stores: string[] | undefined): string {
   return stores && stores.length > 0 ? ` Tus tiendas: ${stores.join(', ')}. O di «sin tienda».` : ' Di «sin tienda» o usa los botones.'
 }
 
+const CONTROL_INTENTS = new Set<ReplyIntent['type']>(['yes', 'no', 'save', 'only-save', 'edit', 'store-ambiguous-no'])
+
+// Qué está pendiente y qué se puede decir, cuando la respuesta no encaja.
+function clarification(controller: DialogController): string {
+  switch (controller.kind) {
+    case 'action-card':
+      return 'Tengo una tarjeta pendiente. Di «sí» para confirmarla o «cancela».'
+    case 'recipe-offer':
+      return '¿Preparo la receta? Di «sí» o «no».'
+    case 'recipe-generating':
+      return BUSY
+    case 'recipe-draft':
+    case 'recipe-edit':
+      return 'Tengo la receta pendiente. Di «guárdala» o «cancela».'
+    case 'recipe-saved':
+      return '¿Quieres añadir los ingredientes a la lista de la compra? Di «sí» o «no».'
+    case 'store-question':
+      return `¿En qué tienda?${storesText(controller.stores)}`
+  }
+}
+
 async function apply(controller: DialogController, intent: ReplyIntent, spoken: string): Promise<DialogReplyResult> {
   const done = (message: string | null, fallback: string): DialogReplyResult => ({ handled: true, message: message ?? fallback })
 
@@ -109,6 +130,7 @@ async function apply(controller: DialogController, intent: ReplyIntent, spoken: 
         return done(controller.addIngredients ? await controller.addIngredients(store) : null, 'No he podido preparar la lista de la compra.')
       }
       if (intent.type === 'no' || intent.type === 'only-save') return done(controller.cancel(), 'Vale, solo la receta.')
+      if (intent.type === 'save') return { handled: true, message: 'La receta ya está guardada. ¿Quieres añadir los ingredientes a la lista de la compra?' }
       if (intent.type === 'store-unknown') return { handled: true, message: `No tengo ninguna tienda llamada «${intent.said}».${storesText(controller.stores)}` }
       return NOT_HANDLED
 
@@ -139,9 +161,20 @@ export async function handleDialogReply(text: string): Promise<DialogReplyResult
 
   const controller = controllers[0]
   const intent = interpretReply(text, { kind: controller.kind, stores: controller.stores })
-  if (!intent) return NOT_HANDLED
+  // Sin interpretación: solo una frase hecha de palabras de control ("añadir", "guardar",
+  // "vale"...) pertenece a la acción pendiente; cualquier otra cosa es una tarea nueva.
+  if (!intent) {
+    if (!isControlOnly(text)) return NOT_HANDLED
+    armExpiry()
+    return { handled: true, message: clarification(controller) }
+  }
   armExpiry()
-  return apply(controller, intent, text)
+  const result = await apply(controller, intent, text)
+  if (result.handled) return result
+  // Se ha entendido como respuesta (sí/no/guardar/editar) pero no encaja en ESTA acción:
+  // se pregunta, nunca se manda al router general (donde acabaría siendo un producto).
+  if (CONTROL_INTENTS.has(intent.type)) return { handled: true, message: clarification(controller) }
+  return result
 }
 
 // Solo para pruebas.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { interpretReply, isBareYesNo } from './dialogReply'
+import { interpretReply, isBareYesNo, isControlOnly } from './dialogReply'
 
 const STORES = ['Mercadona', 'Aldi', 'Carnicería López']
 const reply = (text: string, kind: Parameters<typeof interpretReply>[1]['kind'] = 'recipe-draft', stores = STORES) => interpretReply(text, { kind, stores })
@@ -47,7 +47,7 @@ describe('raciones', () => {
 describe('ingredientes a la compra', () => {
   it('sin tienda dicha', () => {
     expect(reply('Añade los ingredientes a la compra', 'recipe-saved')).toEqual({ type: 'add-ingredients', store: undefined })
-    expect(reply('añádelos', 'recipe-saved')).toEqual({ type: 'add-ingredients', store: undefined })
+    expect(reply('añádelos', 'recipe-saved')).toEqual({ type: 'yes' })
   })
 
   it('con tienda real dentro', () => {
@@ -134,7 +134,7 @@ describe('confirmación + tienda en una sola frase', () => {
 
   it('"Sí, a la lista de la compra" sin tienda dicha -> solo sí (se preguntará la tienda)', () => {
     expect(saved('Sí, a la lista de la compra')).toEqual({ type: 'yes' })
-    expect(saved('Sí, añádelos')).toEqual({ type: 'add-ingredients', store: undefined })
+    expect(saved('Sí, añádelos')).toEqual({ type: 'yes' })
   })
 
   it('una tienda que la familia no tiene no se inventa', () => {
@@ -152,5 +152,42 @@ describe('confirmación + tienda en una sola frase', () => {
     expect(saved('No, a Mercadona no')).not.toEqual({ type: 'add-ingredients', store: 'Mercadona' })
     expect(saved('Añade leche y pan a Mercadona')).toBeNull()
     expect(saved('Sí, pon tortilla el viernes para cenar')).toBeNull()
+  })
+})
+
+describe('palabras de control con una acción pendiente: el contexto manda', () => {
+  const CONFIRM_WORDS = ['Sí', 'Confirmar', 'Añadir', 'Añádelos', 'Añadirlos', 'Guarda', 'Guardar', 'Guárdalos', 'Hazlo', 'Vale', 'Ok', 'Aceptar', 'Continuar', 'Añadir a la lista', 'Añádelos a la compra']
+  const CANCEL_WORDS = ['No', 'Cancelar', 'Cancela', 'No los añadas', 'No lo añadas', 'Déjalo', 'Olvídalo', 'No lo apuntes', 'No lo guardes']
+
+  it('sobre la tarjeta de compra/evento/menú, todas confirman', () => {
+    for (const t of CONFIRM_WORDS) {
+      const i = reply(t, 'action-card')
+      expect(i && ['yes', 'save'].includes(i.type), `${t} -> ${JSON.stringify(i)}`).toBe(true)
+    }
+  })
+
+  it('sobre la tarjeta, todas las de cancelar cancelan', () => {
+    for (const t of CANCEL_WORDS) expect(reply(t, 'action-card'), t).toEqual({ type: 'no' })
+  })
+
+  it('sobre la receta propuesta, guardar/añadir/confirmar guardan', () => {
+    for (const t of ['Guardar', 'Añadir', 'Confirmar', 'Sí', 'Guárdala', 'Aceptar']) {
+      const i = reply(t, 'recipe-draft')
+      expect(i && ['yes', 'save'].includes(i.type), `${t} -> ${JSON.stringify(i)}`).toBe(true)
+    }
+  })
+
+  it('una palabra de control nunca acaba sin interpretar por una tienda o un dato', () => {
+    expect(reply('Añadir', 'store-question')).toEqual({ type: 'yes' })
+    expect(reply('Guardar', 'recipe-saved')).toEqual({ type: 'save' })
+  })
+
+  it('con datos de verdad ya no es una palabra de control', () => {
+    expect(isControlOnly('Añadir')).toBe(true)
+    expect(isControlOnly('Añádelos a la lista de la compra')).toBe(true)
+    expect(isControlOnly('Añadir leche')).toBe(false)
+    expect(isControlOnly('Guardar cita con el dentista')).toBe(false)
+    expect(isControlOnly('¿Qué tenemos mañana?')).toBe(false)
+    expect(isControlOnly('Pon tortilla para cenar el viernes')).toBe(false)
   })
 })

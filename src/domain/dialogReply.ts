@@ -41,10 +41,17 @@ const POLITE = /(?:\s+por favor|\s+porfa|\s+gracias)$/
 
 const CONFIRM = /^(?:hazlo|hazla|preparala|preparalo|prepara|adelante|confirma(?:lo|la|r)?|confirmo|dale|de acuerdo|perfecto|por supuesto|si|vale|ok|okey|claro)$/
 const SAVE =
-  /^(?:guarda(?:lo|la|r)?|guardala|guardalo|guardar(?: esta| la)? receta|guarda(?: esta| la)? receta|anade(?:la|lo)? a mis recetas|guarda(?:la|lo)? en mis recetas|anadela|anadelo)$/
+  /^(?:guarda(?:lo|la|r)?|guardala|guardalo|guardar(?: esta| la)? receta|guarda(?: esta| la)? receta|anade(?:la|lo)? a mis recetas|guarda(?:la|lo)? en mis recetas|guardalos|guardalas)$/
 const ONLY_SAVE = /^(?:no\s+)?solo (?:guarda(?:la|lo|r)?(?: la| esta)? ?(?:receta)?|la receta)$/
 const NO =
-  /^(?:no|nop|cancela(?:r|lo|la)?|dejalo|dejala|olvidalo|olvidala|anula(?:r|lo|la)?|no gracias|no lo hagas|no la hagas|no(?: lo| la)? (?:guardes|quiero|anadas|hagas|prepares)|no lo guardes|no la guardes|mejor no|para (?:eso|ya))$/
+  /^(?:no|nop|cancela(?:r|lo|la)?|dejalo|dejala|olvidalo|olvidala|anula(?:r|lo|la)?|no gracias|no lo hagas|no la hagas|no(?: lo| la| los| las)? (?:guardes|quiero|anadas|apuntes|agregues|pongas|metas|hagas|prepares)|mejor no|para (?:eso|ya))$/
+// Palabras de control que, con una acción pendiente, significan "sí, hazlo": "añadir", "añádelos",
+// "confirmar", "aceptar", "apuntar"... El contexto decide qué se confirma; nunca son datos.
+const CONFIRM_VERB =
+  /^(?:(?:anad(?:e|ir)|agreg(?:a|ar)|apunt(?:a|ar)|acept(?:a|ar)|guard(?:a|ar))(?:lo|la|los|las)?|acepto|continuar|continua|sigue|listo)$/
+// "añadir a la lista", "añádelos a la compra": el destino no cambia nada.
+const DESTINATION_SUFFIX = /\s+(?:a|en)\s+(?:la\s+|el\s+|mi\s+|mis\s+)?(?:lista(?: de la compra)?|compra|calendario|menu|recetas)$/
+
 const EDIT = /^(?:edita(?:la|lo|r)?|editar|corrige(?:la|lo)?|quiero editar(?:la)?|modifica(?:la|lo)?)$/
 const NO_STORE = /^(?:sin tienda|sin ninguna tienda|ninguna(?: tienda)?|ninguno|da igual|no importa|en ninguna|en ninguna tienda|sin especificar)$/
 const ADD_INGREDIENTS = /^(?:(?:anade|agrega|mete|pon|pasa|manda)(?:me)?\s+(?:los\s+)?ingredientes\b.*|anadelos\b.*|ponlos\b.*|meteles\b.*)$/
@@ -103,10 +110,28 @@ function storeOnlyReply(core: string, stores: string[] | undefined): { store: st
   return leftoverWords(withoutWord(core, normalize(store).trim())).length === 0 ? { store, said: true, leftover: [] } : null
 }
 
+// Frase compuesta SOLO por palabras de control ("añadir", "guardar", "confirmar", "sí", "vale"...)
+// y relleno ("los", "a la lista"). Con datos de verdad ("añadir leche") deja de serlo.
+const CONTROL_WORDS = new Set(
+  (
+    'si no vale ok okey claro perfecto listo adelante dale hazlo hazla confirmar confirma confirmalo confirmo aceptar acepta acepto continuar continua sigue ' +
+    'anadir anade anadelo anadela anadelos anadelas anadirlo anadirla anadirlos anadirlas agregar agrega agregalo agregala agregalos agregalas ' +
+    'apuntar apunta apuntalo apuntala apuntalos apuntalas guardar guarda guardalo guardala guardalos guardalas ' +
+    'cancelar cancela cancelalo cancelala dejalo dejala olvidalo olvidala anular anula nop gracias'
+  ).split(' '),
+)
+const CONTROL_FILLER = new Set('lo la los las todo todos todas a en al el mi mis lista compra calendario menu receta recetas tarjeta por favor porfa gracias de'.split(' '))
+
+export function isControlOnly(text: string): boolean {
+  const tokens = clean(text).split(' ').filter(Boolean)
+  if (tokens.length === 0 || tokens.length > 8) return false
+  return tokens.some((t) => CONTROL_WORDS.has(t)) && tokens.every((t) => CONTROL_WORDS.has(t) || CONTROL_FILLER.has(t))
+}
+
 export function isBareYesNo(text: string): boolean {
   const n = clean(text).replace(POLITE, '')
   const core = n.replace(LEAD, '').trim()
-  return n === 'si' || CONFIRM.test(n) || NO.test(n) || SAVE.test(core) || (LEAD.test(n) && core === '')
+  return n === 'si' || CONFIRM.test(n) || NO.test(n) || SAVE.test(core) || (LEAD.test(n) && core === '') || isControlOnly(text)
 }
 
 export function interpretReply(text: string, ctx: ReplyContext): ReplyIntent | null {
@@ -124,6 +149,7 @@ export function interpretReply(text: string, ctx: ReplyContext): ReplyIntent | n
   if (leadMatch && core === '') return { type: 'yes' }
   if (CONFIRM.test(core)) return { type: 'yes' }
   if (SAVE.test(core)) return { type: 'save' }
+  if (CONFIRM_VERB.test(core.replace(DESTINATION_SUFFIX, ''))) return { type: 'yes' }
   if (EDIT.test(core)) return { type: 'edit' }
 
   for (const re of SERVINGS_PATTERNS) {

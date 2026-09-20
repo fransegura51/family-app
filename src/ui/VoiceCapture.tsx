@@ -39,7 +39,7 @@ import { getSelectedCalendarDate } from '@/state/calendarSelection'
 import { showToast } from '@/state/toast'
 import { handleKitchenText, ingredientsFlowFor, type KitchenOutcome } from '@/pepa/kitchen'
 import { handleDialogReply, pendingDialogCount } from '@/pepa/dialog'
-import { runTalk, type TalkDeps, type TalkOutcome } from '@/pepa/talk'
+import { NOT_UNDERSTOOD, runTalk, type TalkDeps, type TalkOutcome } from '@/pepa/talk'
 import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
 import { ActionConfirmSheet } from '@/ui/ActionConfirmSheet'
@@ -824,10 +824,38 @@ export function VoiceCapture() {
   }
 
   // Respuesta escrita a una tarjeta abierta ("sí", "guárdala", "Mercadona"...).
-  async function replyFromSheet(text: string): Promise<string | null> {
+  // Un turno de "Hablar con PEPA". PRIORIDAD: si hay una acción pendiente, la frase se
+  // interpreta primero CONTRA ella (sí/añadir/guardar/cancelar... son órdenes, no datos); solo
+  // si claramente no le pertenece pasa al router general.
+  async function talkTurn(text: string): Promise<{ spoken: string; closedPending: boolean }> {
     const reply = await handleDialogReply(text)
-    if (reply.handled) return reply.message
-    return 'Eso no lo he entendido como respuesta. Usa los botones de la tarjeta o dime «sí», «no»…'
+    if (reply.handled) return { spoken: reply.message ?? '', closedPending: false }
+
+    const hadPending = pendingDialogCount() > 0
+    const outcome = await runTalk(text, talkDeps)
+    // Tarea nueva de verdad (una pregunta contestada, otra tarjeta...): lo que estaba pendiente
+    // se cierra sin guardar, para que un "sí" posterior no confirme algo ya olvidado. Si Pepa
+    // no ha entendido la frase, lo pendiente se queda como está.
+    let spoken = outcome.text
+    let closedPending = false
+    if (hadPending && outcome.kind === 'answer' && outcome.text !== NOT_UNDERSTOOD) {
+      closeTalkDialogs()
+      forgetRecentRecipes()
+      closedPending = true
+      spoken = `${outcome.text} He cerrado lo que tenía pendiente, sin guardar nada.`
+    }
+    applyTalkOutcome(outcome)
+    return { spoken, closedPending }
+  }
+
+  // Respuesta escrita en la barra de una tarjeta abierta.
+  async function replyFromSheet(text: string): Promise<string | null> {
+    const { spoken, closedPending } = await talkTurn(text)
+    if (closedPending) {
+      setMessage(spoken)
+      showToast(spoken, 6000)
+    }
+    return spoken
   }
 
   async function chooseStore(store: string | null): Promise<string | null> {
@@ -849,17 +877,9 @@ export function VoiceCapture() {
       // los botones de siempre. Consultar responde; escribir siempre sale como
       // tarjeta de confirmación.
       if (panelModeRef.current === 'talk') {
-        // Antes que nada: ¿es la respuesta a lo que hay pendiente ("sí", "guárdala"...)?
-        const reply = await handleDialogReply(text)
-        if (reply.handled) {
-          setStatus('done')
-          await respond(reply.message ?? '')
-          return
-        }
-        const outcome = await runTalk(text, talkDeps)
-        applyTalkOutcome(outcome)
+        const { spoken } = await talkTurn(text)
         setStatus('done')
-        await respond(outcome.text)
+        await respond(spoken)
         return
       }
 

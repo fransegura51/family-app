@@ -279,3 +279,86 @@ describe('oferta de ingredientes: "Sí, a Mercadona" en una sola frase', () => {
     expect(confirm).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('prioridad del contexto: las palabras de control nunca se convierten en datos', () => {
+  it('"Añadir" con la tarjeta de compra abierta la confirma (no es un producto)', async () => {
+    const card = controller('action-card')
+    registerDialog(() => card)
+    const r = await handleDialogReply('Añadir.')
+    expect(r).toEqual({ handled: true, message: 'Hecho.' })
+    expect(card.confirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('confirman: Sí / Añadir / Añádelos / Confirmar / Hazlo / Guardar; cancelan: No / Cancela / No los añadas', async () => {
+    for (const word of ['Sí', 'Añadir', 'Añádelos', 'Confirmar', 'Hazlo', 'Guardar', 'Ok', 'Vale']) {
+      resetDialogRegistry()
+      const c = controller('action-card')
+      registerDialog(() => c)
+      expect((await handleDialogReply(word)).handled, word).toBe(true)
+      expect(c.confirm, word).toHaveBeenCalledTimes(1)
+    }
+    for (const word of ['No', 'Cancela', 'Cancelar', 'No los añadas', 'Déjalo', 'Olvídalo']) {
+      resetDialogRegistry()
+      const c = controller('action-card')
+      registerDialog(() => c)
+      expect((await handleDialogReply(word)).handled, word).toBe(true)
+      expect(c.cancel, word).toHaveBeenCalledTimes(1)
+      expect(c.confirm, word).not.toHaveBeenCalled()
+    }
+  })
+
+  it('con una receta pendiente, Guardar / Añadir / Confirmar guardan ESA receta', async () => {
+    for (const word of ['Guardar', 'Añadir', 'Confirmar', 'Sí']) {
+      resetDialogRegistry()
+      const c = controller('recipe-draft')
+      registerDialog(() => c)
+      await handleDialogReply(word)
+      expect(c.save, word).toHaveBeenCalledWith({ offerIngredients: true })
+    }
+  })
+
+  it('una palabra de control que no encaja en esa acción se aclara y NO llega al router', async () => {
+    const q = controller('store-question')
+    registerDialog(() => q)
+    for (const word of ['Sí', 'Añadir', 'Confirmar', 'Vale']) {
+      const r = await handleDialogReply(word)
+      expect(r.handled, word).toBe(true)
+      expect(r.message, word).toContain('¿En qué tienda?')
+    }
+    expect(q.chooseStore).not.toHaveBeenCalled()
+
+    resetDialogRegistry()
+    const saved = controller('recipe-saved')
+    registerDialog(() => saved)
+    const g = await handleDialogReply('Guardar')
+    expect(g).toMatchObject({ handled: true })
+    expect(g.message).toContain('ya está guardada')
+    expect(saved.addIngredients).not.toHaveBeenCalled()
+  })
+
+  it('una tarea nueva de verdad sí pasa al router general', async () => {
+    const card = controller('action-card')
+    registerDialog(() => card)
+    for (const text of ['¿Qué tenemos mañana en el calendario?', 'Pon tortilla para cenar el viernes', 'Añade leche, huevos y pan a Mercadona', 'Añadir leche']) {
+      expect(await handleDialogReply(text), text).toEqual({ handled: false, message: null })
+    }
+    expect(card.confirm).not.toHaveBeenCalled()
+  })
+
+  it('sin nada pendiente, "Añadir" no se convierte en un producto: se dice que no hay nada', async () => {
+    for (const word of ['Añadir', 'Guardar', 'Confirmar', 'Añádelos']) {
+      expect(await handleDialogReply(word), word).toEqual({ handled: true, message: 'No tengo nada pendiente que confirmar.' })
+    }
+  })
+
+  it('después de confirmar, un "Sí" o "Añadir" no repite nada', async () => {
+    const confirm = vi.fn().mockResolvedValue('Añadido.')
+    let unregister = () => {}
+    unregister = registerDialog(() => controller('action-card', { confirm: async () => { unregister(); return confirm() } }))
+    await handleDialogReply('Añadir')
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect((await handleDialogReply('Sí')).message).toBe('No tengo nada pendiente que confirmar.')
+    expect((await handleDialogReply('Añadir')).message).toBe('No tengo nada pendiente que confirmar.')
+    expect(confirm).toHaveBeenCalledTimes(1)
+  })
+})

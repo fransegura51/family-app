@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listRecipes } from '@/data/food'
 import { errorMessage } from '@/domain/errorMessage'
 import {
@@ -16,11 +16,12 @@ import {
 } from '@/domain/recipeDraft'
 import { normalize } from '@/domain/voiceQuery'
 import { proposeAction } from '@/pepa/actions/registry'
-import type { ActionProposal } from '@/pepa/actions/types'
-import { ingredientsProposalFor } from '@/pepa/kitchen'
+import { registerDialog } from '@/pepa/dialog'
+import { ingredientsFlowFor, registeredStoreNames, type KitchenOutcome } from '@/pepa/kitchen'
 import type { RecipeRequest } from '@/pepa/recentContext'
 import { AiUnavailableError } from '@/services/aiClient'
 import { requestRecipeDraft } from '@/services/recipeGenerate'
+import { DialogReplyBar } from '@/ui/DialogReplyBar'
 
 // Receta propuesta por la IA — de ofrecerla a guardarla:
 //
@@ -33,9 +34,13 @@ import { requestRecipeDraft } from '@/services/recipeGenerate'
 //   saved      guardada; ofrece añadir los ingredientes a la lista de la compra
 //   error      la IA ha fallado o la propuesta no era válida: se dice y nada se rompe
 //
-// Nada se guarda hasta pulsar Guardar, y guardar pasa por la acción recipe.create
-// (validación estricta + la función de siempre). Un candado evita que un doble
-// toque cree dos recetas.
+// Nada se guarda hasta pulsar Guardar (o decir "guárdala" con esta receta pendiente), y
+// guardar pasa por la acción recipe.create (validación estricta + la función de siempre).
+// Un candado evita que un doble toque cree dos recetas.
+//
+// Conversación: esta tarjeta se registra como la acción pendiente (pepa/dialog.ts) y por
+// voz o texto se puede decir "sí, prepárala", "hazla para seis", "guárdala", "no la
+// guardes"... con exactamente el mismo efecto que los botones.
 
 type Step = 'offer' | 'generating' | 'draft' | 'edit' | 'error' | 'saved'
 
@@ -65,12 +70,15 @@ export function RecipeDraftSheet({
   request,
   onClose,
   onSaved,
-  onOfferIngredients,
+  onFollowUp,
+  onReply,
 }: {
   request: RecipeRequest
   onClose: () => void
   onSaved: (message: string) => void
-  onOfferIngredients: (proposal: ActionProposal) => void
+  // Después de guardar: pregunta de tienda o tarjeta de ingredientes (sustituye a esta tarjeta).
+  onFollowUp: (outcome: KitchenOutcome) => void
+  onReply: (text: string) => Promise<string | null>
 }) {
   const [step, setStep] = useState<Step>('offer')
   const [servings, setServings] = useState(request.servings)
@@ -80,8 +88,13 @@ export function RecipeDraftSheet({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [savedTitle, setSavedTitle] = useState('')
+  const [stores, setStores] = useState<string[]>([])
   const lockRef = useRef(false)
   const savedRef = useRef(false)
+
+  useEffect(() => {
+    void registeredStoreNames().then(setStores)
+  }, [])
 
   const servingChoices = [...new Set([...SERVING_OPTIONS, servings])].sort((a, b) => a - b)
   const scaled = draft ? scaleDraft(draft, viewServings) : null
@@ -104,8 +117,8 @@ export function RecipeDraftSheet({
     }
   }
 
-  async function save(params: RecipeCreateParams) {
-    if (lockRef.current || savedRef.current) return
+  async function save(params: RecipeCreateParams, offerIngredients = true): Promise<string | null> {
+    if (lockRef.current || savedRef.current) return null
     lockRef.current = true
     setBusy(true)
     setError(null)
@@ -116,10 +129,16 @@ export function RecipeDraftSheet({
       const message = await result.proposal.confirm(result.proposal.initialSelection)
       savedRef.current = true
       setSavedTitle(params.title)
-      setStep('saved')
       onSaved(message)
+      if (offerIngredients) {
+        setStep('saved')
+        return `${message} ¿Quieres añadir los ingredientes a la lista de la compra?`
+      }
+      onClose()
+      return message
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar la receta'))
+      return null
     } finally {
       lockRef.current = false
       setBusy(false)
@@ -172,15 +191,16 @@ export function RecipeDraftSheet({
     setStep('draft')
   }
 
-  function saveFromEdit() {
-    if (!fields) return
+  function saveFromEdit(offerIngredients = true): Promise<string | null> {
+    if (!fields) return Promise.resolve(null)
     const next = fieldsToDraft(fields)
-    if (!next) return
-    void save(draftToCreateParams(next))
+    if (!next) return Promise.resolve(null)
+    return save(draftToCreateParams(next), offerIngredients)
   }
 
-  async function offerIngredients() {
-    if (lockRef.current) return
+  // storeSpec: undefined = no dicha (se pregunta la tienda), texto = tienda real dicha, null = sin tienda.
+  async function offerIngredients(storeSpec: string | null | undefined): Promise<string | null> {
+    if (lockRef.current) return null
     lockRef.current = true
     setBusy(true)
     setError(null)
@@ -188,15 +208,85 @@ export function RecipeDraftSheet({
       const recipes = await listRecipes()
       const created = [...recipes].reverse().find((r) => normalize(r.title).trim() === normalize(savedTitle).trim())
       if (!created) throw new Error('No encuentro la receta que se acaba de guardar.')
-      const outcome = await ingredientsProposalFor(created, recipes, new Date())
-      if (outcome.kind !== 'proposal') throw new Error(outcome.text)
-      onOfferIngredients(outcome.proposal)
+      const outcome = await ingredientsFlowFor(created, recipes, new Date(), { conversation: true, store: storeSpec })
+      if (outcome.kind === 'answer') throw new Error(outcome.text)
+      onFollowUp(outcome)
+      return outcome.text
     } catch (err) {
       setError(errorMessage(err, 'No se pudo preparar la lista de la compra'))
       lockRef.current = false
       setBusy(false)
+      return null
     }
   }
+
+  // Lo que la voz o el texto pueden hacer en cada paso es lo mismo que hacen los botones.
+  const latest = useRef({ step, scaled, generate, save, saveFromEdit, startEdit, offerIngredients, setServings, setViewServings, onClose, stores })
+  latest.current = { step, scaled, generate, save, saveFromEdit, startEdit, offerIngredients, setServings, setViewServings, onClose, stores }
+  useEffect(
+    () =>
+      registerDialog(() => {
+        const l = latest.current
+        const close = (message: string) => () => {
+          l.onClose()
+          return message
+        }
+        switch (l.step) {
+          case 'offer':
+            return {
+              kind: 'recipe-offer',
+              confirm: async () => {
+                void l.generate()
+                return 'Preparando la receta…'
+              },
+              cancel: close('Vale, no preparo ninguna receta.'),
+              setServings: (n: number) => {
+                l.setServings(n)
+                return `Vale, para ${n} raciones. ¿Preparo la receta?`
+              },
+            }
+          case 'generating':
+            return { kind: 'recipe-generating', cancel: () => null }
+          case 'draft':
+            return {
+              kind: 'recipe-draft',
+              save: (o: { offerIngredients: boolean }) => (l.scaled ? l.save(draftToCreateParams(l.scaled), o.offerIngredients) : Promise.resolve(null)),
+              cancel: close('Vale, no la guardo.'),
+              setServings: (n: number) => {
+                l.setViewServings(n)
+                return `Vale, cantidades para ${n} raciones. ¿La guardo?`
+              },
+              edit: () => {
+                l.startEdit()
+                return 'Puedes editar la receta en la tarjeta.'
+              },
+            }
+          case 'edit':
+            return {
+              kind: 'recipe-edit',
+              save: (o: { offerIngredients: boolean }) => l.saveFromEdit(o.offerIngredients),
+              cancel: close('Vale, no la guardo.'),
+            }
+          case 'saved':
+            return {
+              kind: 'recipe-saved',
+              stores: l.stores,
+              addIngredients: (store: string | null | undefined) => l.offerIngredients(store),
+              cancel: close('Vale, solo la receta.'),
+            }
+          default:
+            return {
+              kind: 'action-card',
+              confirm: async () => {
+                void l.generate()
+                return 'Lo intento de nuevo.'
+              },
+              cancel: close('Vale.'),
+            }
+        }
+      }),
+    [],
+  )
 
   const canDismiss = step !== 'generating' && !busy
 
@@ -356,7 +446,7 @@ export function RecipeDraftSheet({
             </div>
             {error && <p className="error">{error}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
-              <button type="button" onClick={saveFromEdit} disabled={busy} style={{ flex: 1 }}>
+              <button type="button" onClick={() => void saveFromEdit()} disabled={busy} style={{ flex: 1 }}>
                 {busy ? 'Guardando…' : 'Guardar'}
               </button>
               <button type="button" className="link-button" onClick={backFromEdit} disabled={busy}>
@@ -376,7 +466,7 @@ export function RecipeDraftSheet({
             <p style={{ margin: '8px 0' }}>¿Quieres añadir los ingredientes a la lista de la compra?</p>
             {error && <p className="error">{error}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <button type="button" onClick={offerIngredients} disabled={busy} style={{ flex: 1 }}>
+              <button type="button" onClick={() => void offerIngredients(undefined)} disabled={busy} style={{ flex: 1 }}>
                 Sí, añadirlos
               </button>
               <button type="button" className="link-button" onClick={onClose} disabled={busy}>
@@ -385,6 +475,8 @@ export function RecipeDraftSheet({
             </div>
           </>
         )}
+
+        {step !== 'generating' && <DialogReplyBar onReply={onReply} />}
       </div>
     </div>
   )

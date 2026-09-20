@@ -3,6 +3,7 @@ import type { MenuEntry, Recipe } from '@/domain/types'
 
 const recipes: Recipe[] = []
 const menu: MenuEntry[] = []
+let storeNames: string[] = []
 let memberCount = 5
 
 vi.mock('@/data/food', () => ({
@@ -13,6 +14,7 @@ vi.mock('@/data/food', () => ({
   addRecipeIngredientsToShoppingList: vi.fn(),
   createRecipe: vi.fn(),
 }))
+vi.mock('@/data/shoppingStores', () => ({ listShoppingStores: vi.fn(async () => storeNames.map((name, i) => ({ id: `s${i}`, name }))) }))
 vi.mock('@/data/shopping', () => ({ listShoppingItems: vi.fn(async () => []), addShoppingItem: vi.fn() }))
 vi.mock('@/data/calendar', () => ({ createEvent: vi.fn() }))
 vi.mock('@/data/family', () => ({
@@ -44,6 +46,7 @@ beforeEach(() => {
   recipes.length = 0
   menu.length = 0
   memberCount = 5
+  storeNames = []
   forgetRecentRecipes()
   vi.stubGlobal('window', { dispatchEvent: vi.fn() })
 })
@@ -134,5 +137,52 @@ describe('Cocina: los botones de siempre no cambian', () => {
   it('las consultas siguen igual', async () => {
     const outcome = await handleKitchenText('¿qué cenamos hoy?', 'ask', TODAY, ON)
     expect(outcome).toEqual({ kind: 'answer', text: 'No hay nada apuntado para la cena de hoy.' })
+  })
+})
+
+const CONV = { recipeRequests: true, conversation: true }
+
+describe('Cocina: tienda al añadir ingredientes (Hablar con PEPA)', () => {
+  beforeEach(() => {
+    storeNames = ['Mercadona', 'Aldi']
+    recipes.push(recipe('r1', 'Lentejas con chorizo', ['Lentejas', 'Chorizo']))
+  })
+
+  it('sin tienda dicha pregunta con las tiendas REALES de la familia', async () => {
+    const outcome = await handleKitchenText('Añade los ingredientes de las lentejas a la compra', 'create', TODAY, CONV)
+    expect(outcome).toMatchObject({ kind: 'store-question', text: '¿En qué tienda quieres añadirlos?', stores: ['Mercadona', 'Aldi'] })
+  })
+
+  it('con tienda dicha y registrada no pregunta y la usa en la tarjeta', async () => {
+    const outcome = await handleKitchenText('Añade los ingredientes de las lentejas a Mercadona', 'create', TODAY, CONV)
+    if (!outcome || outcome.kind !== 'proposal') throw new Error('debería proponer directamente')
+    expect(outcome.text).toContain('(Mercadona)')
+    expect(outcome.proposal.actionId).toBe('menu.ingredients_to_shopping')
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(view.choices[0].options.map((o) => o.label)).toEqual(['Sin tienda', 'Mercadona', 'Aldi'])
+    expect(outcome.proposal.initialSelection.choices.store).toBe('Mercadona')
+  })
+
+  it('"sin tienda" dicho también salta la pregunta', async () => {
+    const outcome = await handleKitchenText('Añade los ingredientes de las lentejas a la compra sin tienda', 'create', TODAY, CONV)
+    expect(outcome?.kind).toBe('proposal')
+  })
+
+  it('no se inventa tiendas: una no registrada no se da por buena', async () => {
+    const outcome = await handleKitchenText('Añade los ingredientes de las lentejas a Carrefour', 'create', TODAY, CONV)
+    expect(outcome).toMatchObject({ kind: 'store-question', stores: ['Mercadona', 'Aldi'] })
+    expect(outcome?.text).toContain('No tengo ninguna tienda llamada «Carrefour»')
+  })
+
+  it('sin tiendas registradas no hay nada que preguntar', async () => {
+    storeNames = []
+    const outcome = await handleKitchenText('Añade los ingredientes de las lentejas a la compra', 'create', TODAY, CONV)
+    expect(outcome?.kind).toBe('proposal')
+  })
+
+  it('los botones de siempre (sin conversación) no preguntan ni ofrecen tiendas', async () => {
+    const outcome = await handleKitchenText('Añade los ingredientes de las lentejas a la compra', 'create', TODAY)
+    if (!outcome || outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).choices).toEqual([])
   })
 })

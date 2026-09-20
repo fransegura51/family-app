@@ -19,6 +19,8 @@ export interface ActionContext {
   menuEntries: MenuEntry[]
   shoppingItemNames: string[]
   members: { id: string; name: string }[]
+  // Tiendas dadas de alta por la familia (para elegir tienda en una tarjeta).
+  storeNames?: string[]
   today: Date
 }
 

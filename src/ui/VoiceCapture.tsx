@@ -37,13 +37,16 @@ import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocati
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 import { showToast } from '@/state/toast'
-import { handleKitchenText } from '@/pepa/kitchen'
-import { runTalk, type TalkDeps } from '@/pepa/talk'
+import { handleKitchenText, ingredientsFlowFor, type KitchenOutcome } from '@/pepa/kitchen'
+import { handleDialogReply, pendingDialogCount } from '@/pepa/dialog'
+import { runTalk, type TalkDeps, type TalkOutcome } from '@/pepa/talk'
 import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
 import { ActionConfirmSheet } from '@/ui/ActionConfirmSheet'
 import { RecipeDraftSheet } from '@/ui/RecipeDraftSheet'
-import type { RecipeRequest } from '@/pepa/recentContext'
+import { forgetRecentRecipes, type RecipeRequest } from '@/pepa/recentContext'
+import { StoreQuestionSheet } from '@/ui/StoreQuestionSheet'
+import type { Recipe } from '@/domain/types'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
 
 type ResponseMode = 'voice' | 'text'
@@ -678,7 +681,7 @@ async function handleCalendarEntry(text: string): Promise<string> {
 // respuestas de siempre a preguntas, y los mismos datos.
 const talkDeps: TalkDeps = {
   today: () => new Date(),
-  kitchen: (text) => handleKitchenText(text, 'create', new Date(), { recipeRequests: true }),
+  kitchen: (text) => handleKitchenText(text, 'create', new Date(), { recipeRequests: true, conversation: true }),
   storeNames: async () => (await listShoppingStores()).map((s) => s.name),
   members: () => listFamilyMembers(),
   answerCalendar: async (text) => {
@@ -725,6 +728,12 @@ export function VoiceCapture() {
   const [pendingProposal, setPendingProposal] = useState<ActionProposal | null>(null)
   // Petición de receta que no existe: la tarjeta ofrece prepararla con IA.
   const [pendingRecipe, setPendingRecipe] = useState<RecipeRequest | null>(null)
+  // Conversación con "Hablar con PEPA": la tarjeta de acción viene de ahí (admite respuestas
+  // por voz o texto) y, si falta, la pregunta de tienda al añadir ingredientes.
+  const [proposalFromTalk, setProposalFromTalk] = useState(false)
+  const [pendingStore, setPendingStore] = useState<{ recipe: Recipe; recipes: Recipe[]; stores: string[] } | null>(null)
+  // Una tarjeta a la vez: al abrir una, las demás se cierran (el contexto es siempre UNA cosa pendiente).
+  const [dialogKey, setDialogKey] = useState(0)
   const dictationOk = isDictationSupported()
 
   // Cuatro botones, cuatro usos, sin ambigüedad — antes dos botones
@@ -786,6 +795,51 @@ export function VoiceCapture() {
     await respond(`Abriendo el mapa para buscar: ${term}.`)
   }
 
+  function closeTalkDialogs() {
+    setPendingProposal(null)
+    setPendingRecipe(null)
+    setPendingStore(null)
+    setProposalFromTalk(false)
+  }
+
+  // Abre lo que ha devuelto Pepa en "Hablar": SIEMPRE una sola tarjeta pendiente.
+  function applyTalkOutcome(outcome: TalkOutcome | KitchenOutcome) {
+    if (outcome.kind === 'proposal') {
+      closeTalkDialogs()
+      setDialogKey((k) => k + 1)
+      setPendingProposal(outcome.proposal)
+      setProposalFromTalk(true)
+    } else if (outcome.kind === 'recipe-offer') {
+      closeTalkDialogs()
+      setDialogKey((k) => k + 1)
+      setPendingRecipe(outcome.request)
+    } else if (outcome.kind === 'store-question') {
+      closeTalkDialogs()
+      setDialogKey((k) => k + 1)
+      setPendingStore({ recipe: outcome.recipe, recipes: outcome.recipes, stores: outcome.stores })
+    } else if (outcome.kind === 'focus-store') {
+      navigate(DESTINATION_INFO.compras.path)
+      window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
+    }
+  }
+
+  // Respuesta escrita a una tarjeta abierta ("sí", "guárdala", "Mercadona"...).
+  async function replyFromSheet(text: string): Promise<string | null> {
+    const reply = await handleDialogReply(text)
+    if (reply.handled) return reply.message
+    return 'Eso no lo he entendido como respuesta. Usa los botones de la tarjeta o dime «sí», «no»…'
+  }
+
+  async function chooseStore(store: string | null): Promise<string | null> {
+    if (!pendingStore) return null
+    const outcome = await ingredientsFlowFor(pendingStore.recipe, pendingStore.recipes, new Date(), { conversation: true, store })
+    if (outcome.kind === 'proposal') {
+      applyTalkOutcome(outcome)
+      return outcome.text
+    }
+    return outcome.text
+  }
+
   async function processText(rawText: string) {
     setStatus('saving')
     try {
@@ -795,13 +849,15 @@ export function VoiceCapture() {
       // los botones de siempre. Consultar responde; escribir siempre sale como
       // tarjeta de confirmación.
       if (panelModeRef.current === 'talk') {
-        const outcome = await runTalk(text, talkDeps)
-        if (outcome.kind === 'proposal') setPendingProposal(outcome.proposal)
-        if (outcome.kind === 'recipe-offer') setPendingRecipe(outcome.request)
-        if (outcome.kind === 'focus-store') {
-          navigate(DESTINATION_INFO.compras.path)
-          window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
+        // Antes que nada: ¿es la respuesta a lo que hay pendiente ("sí", "guárdala"...)?
+        const reply = await handleDialogReply(text)
+        if (reply.handled) {
+          setStatus('done')
+          await respond(reply.message ?? '')
+          return
         }
+        const outcome = await runTalk(text, talkDeps)
+        applyTalkOutcome(outcome)
         setStatus('done')
         await respond(outcome.text)
         return
@@ -834,7 +890,10 @@ export function VoiceCapture() {
       // confirmación.
       const kitchen = await handleKitchenText(text, kind === 'ask' ? 'ask' : 'create')
       if (kitchen) {
-        if (kitchen.kind === 'proposal') setPendingProposal(kitchen.proposal)
+        if (kitchen.kind === 'proposal') {
+          setProposalFromTalk(false)
+          setPendingProposal(kitchen.proposal)
+        }
         setStatus('done')
         await respond(kitchen.text)
         return
@@ -1025,7 +1084,8 @@ export function VoiceCapture() {
     // no hay ninguna señal de que ya se ha leído la respuesta, así que
     // ahí se sigue escuchando como antes, para no hacerla desaparecer
     // sin darle tiempo a leerla.
-    if (mode === 'voice') {
+    const talkDialogPending = panelModeRef.current === 'talk' && pendingDialogCount() > 0
+    if (mode === 'voice' && !talkDialogPending) {
       close()
     } else if (openRef.current) {
       startListening()
@@ -1307,26 +1367,53 @@ export function VoiceCapture() {
 
       {pendingRecipe && (
         <RecipeDraftSheet
+          key={dialogKey}
           request={pendingRecipe}
-          onClose={() => setPendingRecipe(null)}
+          onClose={() => {
+            setPendingRecipe(null)
+            forgetRecentRecipes()
+          }}
+          onReply={replyFromSheet}
           onSaved={(savedMessage) => {
             setStatus('done')
             setMessage(savedMessage)
             showToast(`✅ ${savedMessage}`, 4000)
           }}
-          onOfferIngredients={(proposal) => {
+          onFollowUp={(outcome) => {
             setPendingRecipe(null)
-            setPendingProposal(proposal)
+            applyTalkOutcome(outcome)
           }}
+        />
+      )}
+
+      {pendingStore && (
+        <StoreQuestionSheet
+          key={dialogKey}
+          recipeTitle={pendingStore.recipe.title}
+          stores={pendingStore.stores}
+          onChoose={chooseStore}
+          onCancel={() => {
+            setPendingStore(null)
+            forgetRecentRecipes()
+          }}
+          onReply={replyFromSheet}
         />
       )}
 
       {pendingProposal && (
         <ActionConfirmSheet
+          key={dialogKey}
           proposal={pendingProposal}
-          onCancel={() => setPendingProposal(null)}
+          onReply={proposalFromTalk ? replyFromSheet : undefined}
+          onCancel={() => {
+            setPendingProposal(null)
+            if (proposalFromTalk) forgetRecentRecipes()
+            setProposalFromTalk(false)
+          }}
           onDone={(doneMessage) => {
             setPendingProposal(null)
+            if (proposalFromTalk) forgetRecentRecipes()
+            setProposalFromTalk(false)
             setStatus('done')
             setMessage(doneMessage)
             showToast(`✅ ${doneMessage}`, 4000)

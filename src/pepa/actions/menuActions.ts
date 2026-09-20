@@ -133,9 +133,13 @@ export const menuSetAction = defineAction<MenuSetParams>({
 export interface IngredientsToShoppingParams {
   recipeId: string
   ingredientIds: string[]
+  // Tienda para todos los ingredientes. null = sin tienda (como siempre). Solo sale de
+  // lo que dice la persona o de las tiendas dadas de alta: nunca se deduce ni se inventa.
+  store?: string | null
 }
 
-const INGREDIENTS_KEYS = ['recipeId', 'ingredientIds'] as const
+const INGREDIENTS_KEYS = ['recipeId', 'ingredientIds', 'store'] as const
+const NO_STORE = 'none'
 
 export const ingredientsToShoppingAction = defineAction<IngredientsToShoppingParams>({
   id: 'menu.ingredients_to_shopping',
@@ -151,7 +155,11 @@ export const ingredientsToShoppingAction = defineAction<IngredientsToShoppingPar
     const known = new Set(recipe.ingredients.map((i) => i.id))
     if (!rec.ingredientIds.every((id) => known.has(id))) return { ok: false, errors: ['Algún ingrediente no es de esa receta'] }
     if (rec.ingredientIds.length === 0) return { ok: false, errors: ['Elige al menos un ingrediente'] }
-    return { ok: true, params: { recipeId: recipe.id, ingredientIds: rec.ingredientIds } }
+    const store = rec.store === undefined || rec.store === null ? null : rec.store
+    if (store !== null && (typeof store !== 'string' || store.trim().length === 0 || store.trim().length > 60 || /[\n\r]/.test(store))) {
+      return { ok: false, errors: ['La tienda no es válida'] }
+    }
+    return { ok: true, params: { recipeId: recipe.id, ingredientIds: rec.ingredientIds, store: store === null ? null : store.trim() } }
   },
 
   initialSelection(params, ctx) {
@@ -161,21 +169,34 @@ export const ingredientsToShoppingAction = defineAction<IngredientsToShoppingPar
       const ingredient = recipe?.ingredients.find((i) => i.id === id)
       return ingredient ? !inList.has(normalize(ingredient.name)) : false
     })
-    return { choices: {}, checked }
+    const choices: Record<string, string> = ctx.storeNames && ctx.storeNames.length > 0 ? { store: params.store ?? NO_STORE } : {}
+    return { choices, checked }
   },
 
   applySelection(params, selection) {
-    return { ...params, ingredientIds: selection.checked }
+    const store = selection.choices.store
+    return { ...params, ingredientIds: selection.checked, store: store === undefined ? params.store : store === NO_STORE ? null : store }
   },
 
   present(params, ctx) {
     const recipe = ctx.recipes.find((r) => r.id === params.recipeId)
     const inList = new Set(ctx.shoppingItemNames.map((n) => normalize(n)))
+    const names = ctx.storeNames ?? []
+    const choices: Choice[] =
+      names.length > 0
+        ? [
+            {
+              id: 'store',
+              label: 'Tienda',
+              options: [{ key: NO_STORE, label: 'Sin tienda' }, ...[...new Set([...names, ...(params.store ? [params.store] : [])])].map((n) => ({ key: n, label: n }))],
+            },
+          ]
+        : []
     return {
       title: '🛒 Añadir a la lista de la compra',
-      lines: [`Receta: ${recipe?.title ?? ''}`],
+      lines: [`Receta: ${recipe?.title ?? ''}`, ...(names.length === 0 ? [params.store ? `Tienda: ${params.store}` : 'Sin tienda concreta'] : [])],
       warnings: [],
-      choices: [],
+      choices,
       checks: (recipe?.ingredients ?? []).map((i) => ({
         key: i.id,
         label: [i.name, [i.quantity, i.unit].filter(Boolean).join(' ')].filter(Boolean).join(' — '),
@@ -190,10 +211,10 @@ export const ingredientsToShoppingAction = defineAction<IngredientsToShoppingPar
     if (!recipe) throw new Error('La receta no existe')
     await addRecipeIngredientsToShoppingList(
       recipe,
-      params.ingredientIds.map((ingredientId) => ({ ingredientId, store: null })),
+      params.ingredientIds.map((ingredientId) => ({ ingredientId, store: params.store ?? null })),
     )
     window.dispatchEvent(new CustomEvent('family-app:compras-changed'))
     const names = params.ingredientIds.map((id) => recipe.ingredients.find((i) => i.id === id)?.name).filter(Boolean)
-    return `Añadido a la lista de la compra: ${names.join(', ')}.`
+    return `Añadido a la lista de la compra${params.store ? ` (${params.store})` : ''}: ${names.join(', ')}.`
   },
 })

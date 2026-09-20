@@ -89,18 +89,51 @@ describe('runTalk: escribir siempre con tarjeta', () => {
     expect(addShoppingItem).not.toHaveBeenCalled()
   })
 
-  it('una lista dictada de un tirón se separa con IA si hace falta', async () => {
-    const deps = makeDeps({ splitWithAi: vi.fn().mockResolvedValue(['patata', 'lechuga', 'lentejas']) })
+  it('productos habituales pegados se separan SIN IA', async () => {
+    const deps = makeDeps()
     const outcome = await runTalk('apunta patata lechuga lentejas en la lista de la compra', deps)
     if (outcome.kind !== 'proposal') throw new Error('debería proponer')
-    expect(deps.splitWithAi).toHaveBeenCalledWith('patata lechuga lentejas')
+    expect(deps.splitWithAi).not.toHaveBeenCalled()
     expect(outcome.text).toContain('patata, lechuga, lentejas')
   })
 
-  it('si la IA falla al separar, se deja como un producto y sigue con tarjeta', async () => {
-    const outcome = await runTalk('apunta patata lechuga en la lista de la compra', makeDeps())
+  it('"leche huevos y pan" (sin comas) son tres productos, sin IA', async () => {
+    const deps = makeDeps()
+    const outcome = await runTalk('Añade leche huevos y pan a Mercadona', deps)
     if (outcome.kind !== 'proposal') throw new Error('debería proponer')
-    expect(outcome.text).toContain('patata lechuga')
+    expect(outcome.text).toContain('de Mercadona: leche, huevos, pan')
+    expect(deps.splitWithAi).not.toHaveBeenCalled()
+    expect(deps.classifyWithAi).not.toHaveBeenCalled()
+  })
+
+  it('"leche huevo, pan" (la incidencia real) también son tres productos', async () => {
+    const deps = makeDeps()
+    const outcome = await runTalk('Añade leche huevo, pan a Mercadona', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.text).toContain('de Mercadona: leche, huevo, pan')
+    expect(deps.splitWithAi).not.toHaveBeenCalled()
+  })
+
+  it('con palabras desconocidas, una lista dictada de un tirón se separa con IA', async () => {
+    const deps = makeDeps({ splitWithAi: vi.fn().mockResolvedValue(['pan Bimbo', 'Puleva']) })
+    const outcome = await runTalk('apunta pan Bimbo Puleva en la lista de la compra', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(deps.splitWithAi).toHaveBeenCalledWith('pan Bimbo Puleva')
+    expect(outcome.text).toContain('pan Bimbo, Puleva')
+  })
+
+  it('una entrada dudosa entre varias no gasta IA', async () => {
+    const deps = makeDeps()
+    const outcome = await runTalk('apunta leche, pan Bimbo en la lista de la compra', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(deps.splitWithAi).not.toHaveBeenCalled()
+    expect(outcome.text).toContain('leche, pan Bimbo')
+  })
+
+  it('si la IA falla al separar, se deja como un producto y sigue con tarjeta', async () => {
+    const outcome = await runTalk('apunta cepillo dental en la lista de la compra', makeDeps())
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.text).toContain('cepillo dental')
   })
 
   it('solo la tienda abre su lista, sin escribir', async () => {

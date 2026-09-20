@@ -13,12 +13,14 @@
 // que hay que confirmar en la tarjeta; aquí no se escribe nada.
 import { extractShoppingStore } from '@/domain/voiceQuery'
 import { splitEntries } from '@/domain/quickCapture'
+import { expandEntries, shouldAskAi } from '@/domain/productSplit'
 import { isoDate, kitchenDateLabel } from '@/domain/kitchenQuery'
 import { routeTalk } from '@/domain/talkRoute'
 import { cleanShoppingText, extractTrailingStore, prepareCalendarFromText } from '@/domain/talkParse'
 import type { KitchenOutcome } from '@/pepa/kitchen'
 import { proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
+import type { Recipe } from '@/domain/types'
 import type { RecipeRequest } from '@/pepa/recentContext'
 
 export type TalkOutcome =
@@ -27,6 +29,8 @@ export type TalkOutcome =
   | { kind: 'focus-store'; store: string; text: string }
   // Receta que no existe: ofrece prepararla (la IA solo se llama si la persona acepta).
   | { kind: 'recipe-offer'; text: string; request: RecipeRequest }
+  // Pregunta de tienda al añadir los ingredientes de una receta.
+  | { kind: 'store-question'; text: string; recipe: Recipe; recipes: Recipe[]; stores: string[] }
 
 export interface AiQuestion {
   intent: 'tasks_today' | 'next_calendar_event' | 'shopping_list' | 'none'
@@ -71,18 +75,26 @@ async function shoppingProposal(text: string, storeNames: string[], deps: TalkDe
     store = trailing.store
     rest = trailing.text
   }
-  let entries = splitEntries(cleanShoppingText(rest))
+  // Primero reglas: comas, " y " y, si la transcripción ha pegado productos
+  // ("leche huevo"), el reconocimiento de productos habituales.
+  const expanded = expandEntries(splitEntries(cleanShoppingText(rest)))
+  let entries = expanded.entries
   if (entries.length === 0) {
     // Solo se ha dicho la tienda ("Mercadona"): se abre su lista, sin escribir.
     if (store) return { kind: 'focus-store', store, text: `Aquí tienes la lista de la compra de ${store}.` }
     return { kind: 'answer', text: NOT_UNDERSTOOD }
   }
-  // Una lista dictada de un tirón, sin comas: se prueba a separarla con IA
-  // (mismo respaldo de siempre); si falla se deja como un solo producto.
-  if (entries.length === 1 && entries[0].includes(' ')) {
+  // La IA de separación (mismo respaldo de siempre, con su cuota y su interruptor)
+  // solo entra si tras las reglas queda algo dudoso que puede ser varios productos
+  // (palabras que no reconoce). Como mucho dos consultas; si falla, se deja tal cual.
+  let aiCalls = 0
+  for (const dubious of expanded.ambiguous) {
+    if (aiCalls >= 2 || !shouldAskAi(dubious, entries.length)) continue
+    aiCalls++
     try {
-      const split = await deps.splitWithAi(entries[0])
-      if (split.length > 1) entries = split
+      const split = await deps.splitWithAi(dubious)
+      const at = entries.indexOf(dubious)
+      if (split.length > 1 && at >= 0) entries = [...entries.slice(0, at), ...split, ...entries.slice(at + 1)]
     } catch {
       // Sin IA no pasa nada.
     }

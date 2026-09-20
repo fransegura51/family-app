@@ -218,12 +218,12 @@ const NUMBER_WORDS: Record<string, number> = {
   dieciseis: 16,
   veinte: 20,
 }
-const NUMBER_PATTERN = '(\\d{1,2}|' + Object.keys(NUMBER_WORDS).join('|') + ')'
+export const NUMBER_PATTERN = '(\\d{1,2}|' + Object.keys(NUMBER_WORDS).join('|') + ')'
 const PEOPLE_TAIL = '(?:\\s+(?:personas|persona|raciones|comensales|adultos|gente))?'
 const SERVINGS_RE = new RegExp('\\b(?:para|somos|seremos|seamos)\\s+' + NUMBER_PATTERN + PEOPLE_TAIL + '\\b')
 const SERVINGS_ONLY_RE = new RegExp('^(?:somos|seremos|seamos|para|somos un total de)\\s+' + NUMBER_PATTERN + PEOPLE_TAIL + '$')
 
-function servingsFrom(word: string): number | null {
+export function servingsFrom(word: string): number | null {
   const value = /^\d+$/.test(word) ? Number(word) : NUMBER_WORDS[word]
   return value !== undefined && value >= 1 && value <= 20 ? value : null
 }

@@ -4738,3 +4738,28 @@ textarea {
   color: #7a5b00;
   font-size: 14px;
 }
+
+/* Barra para responder por escrito a la tarjeta abierta (Hablar con PEPA). */
+.dialog-reply-bar {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #eef1f6;
+}
+
+.dialog-reply-note {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eef2ff;
+  font-size: 14px;
+}
+
+.dialog-reply-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dialog-reply-row input {
+  flex: 1;
+  min-width: 0;
+}

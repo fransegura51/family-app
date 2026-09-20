@@ -948,15 +948,6 @@ function EventDetail({
             </div>
           )}
         </div>
-        {/* Petición de la Skill: nunca crear un compromiso firme en
-            Calendario mientras la fecha no esté confirmada (ver
-            syncEventToCalendar). */}
-        {event.calendarEventId && (
-          <p className="muted" style={{ marginTop: 4 }}>
-            ✓ En el calendario
-          </p>
-        )}
-        {event.rsvpDeadline && event.rsvpDeadlineCalendarEventId && <p className="muted" style={{ marginTop: 4 }}>🔔 Recordatorio de plazo puesto</p>}
       </div>
 
       {event.status === 'planificacion' && event.dateStatus === 'confirmada' && isToday(event.eventDate) && <EventDayBanner event={event} />}

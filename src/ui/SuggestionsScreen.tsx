@@ -17,6 +17,7 @@ import { supabase } from '@/data/supabaseClient'
 import { errorMessage } from '@/domain/errorMessage'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import type { Suggestion } from '@/domain/types'
+import sugerenciasHeaderImg from '@/assets/sugerencias/sugerencias-header.jpg'
 
 const OWNER_FAMILY_ID = '011429a4-4fd8-4341-9c04-ec6b2f585196'
 
@@ -83,7 +84,9 @@ export function SuggestionsScreen() {
 
   return (
     <div className="screen">
-      <h1>💡 Buzón de sugerencias</h1>
+      <div className="kitchen-header kitchen-header-familia">
+        <img src={sugerenciasHeaderImg} alt="Buzón de sugerencias" className="kitchen-header-img" />
+      </div>
       <p className="muted">
         {isOwner
           ? 'Aquí llegan las sugerencias de todas las familias que usan la app.'

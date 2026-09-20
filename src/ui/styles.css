@@ -3331,6 +3331,11 @@ textarea {
   background: var(--primary);
 }
 
+/* "Hablar con PEPA": el botón general, en verde para distinguirlo de los demás. */
+.voice-fab-talk {
+  background: #12b886;
+}
+
 .voice-mic-button {
   width: 100%;
   padding: 16px;
@@ -4690,8 +4695,15 @@ textarea {
 
 .action-confirm-checks label {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
+  text-align: left;
+}
+
+.action-confirm-checks input[type='checkbox'] {
+  flex: none;
+  width: auto;
 }
 
 .action-confirm-warning {

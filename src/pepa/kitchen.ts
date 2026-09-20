@@ -38,7 +38,7 @@ async function handleMenuSet(intent: Extract<KitchenIntent, { kind: 'menu_set' }
   if (!intent.explicit && !matches.some((m) => m.score >= 2)) return null
 
   const entries = await listMenuEntries(intent.date, intent.date)
-  const context: ActionContext = { recipes, menuEntries: entries, shoppingItemNames: [], today }
+  const context: ActionContext = { recipes, menuEntries: entries, shoppingItemNames: [], members: [], today }
   const best = matches[0]?.recipe ?? null
   const dishText = capitalize(intent.dish)
   const result = proposeAction(
@@ -94,7 +94,7 @@ async function handleIngredients(intent: Extract<KitchenIntent, { kind: 'ingredi
 
   const items = await listShoppingItems()
   const shoppingItemNames = items.filter((i) => i.status !== 'comprado').map((i) => i.name)
-  const context: ActionContext = { recipes, menuEntries: [], shoppingItemNames, today }
+  const context: ActionContext = { recipes, menuEntries: [], shoppingItemNames, members: [], today }
   const result = proposeAction('menu.ingredients_to_shopping', { recipeId: recipe.id, ingredientIds: recipe.ingredients.map((i) => i.id) }, context)
   if (!result.ok) return { kind: 'answer', text: `No he podido preparar eso: ${result.errors[0]}` }
   rememberRecipes([recipe.id])

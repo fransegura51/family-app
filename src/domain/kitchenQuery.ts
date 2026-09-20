@@ -74,6 +74,13 @@ function findDateRef(n: string, today: Date, fromTomorrow: boolean): DateRef | n
   return null
 }
 
+// Para reutilizarlo fuera de Cocina (Hablar con PEPA): fecha relativa (hoy,
+// mañana, pasado mañana, un día de la semana) o dicha ("el 9 de octubre")
+// dentro de un texto YA normalizado, con su posición.
+export function findDateInText(n: string, today: Date, fromTomorrow: boolean): { date: string; start: number; end: number } | null {
+  return findDateRef(n, today, fromTomorrow)
+}
+
 const MEAL_WORDS: [RegExp, MealType][] = [
   [/\b(?:desayuno|desayunar|desayunamos|desayunaremos)\b/, 'desayuno'],
   [/\b(?:comida|comer|comemos|comeremos|almuerzo|almorzar|almorzamos)\b/, 'comida'],

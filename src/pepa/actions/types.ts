@@ -18,6 +18,7 @@ export interface ActionContext {
   recipes: Recipe[]
   menuEntries: MenuEntry[]
   shoppingItemNames: string[]
+  members: { id: string; name: string }[]
   today: Date
 }
 

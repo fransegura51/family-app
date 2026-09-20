@@ -38,6 +38,8 @@ import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 import { showToast } from '@/state/toast'
 import { handleKitchenText } from '@/pepa/kitchen'
+import { runTalk, type TalkDeps } from '@/pepa/talk'
+import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
 import { ActionConfirmSheet } from '@/ui/ActionConfirmSheet'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
@@ -112,11 +114,20 @@ const CREATE_CALENDARIO_EXAMPLES = [
 const CREATE_COMPRAS_EXAMPLES = ['Leche y pan', 'Mercadona, patatas', 'Aldi, arenques, queso']
 
 // Skill pepa-busqueda-voz, Fase 1: "búscame un restaurante cercano".
+const TALK_EXAMPLES = [
+  '¿Qué tengo mañana?',
+  'Añade leche, huevos y pan a Mercadona',
+  'El viernes a las cinco dentista de Eric',
+  '¿Qué cenamos hoy?',
+  'Pon tortilla el viernes para cenar',
+  'Añade los ingredientes de la tortilla a la compra',
+]
+
 const SEARCH_PLACE_EXAMPLES = ['Un restaurante cercano', 'Una farmacia de guardia', 'Un supermercado cerca de aquí', 'Una gasolinera']
 
 type Destination = 'calendario' | 'compras'
-type PanelMode = 'ask-calendario' | 'ask-compras' | 'create-calendario' | 'create-compras' | 'search-place'
-const PANEL_MODES: PanelMode[] = ['ask-calendario', 'ask-compras', 'create-calendario', 'create-compras', 'search-place']
+type PanelMode = 'ask-calendario' | 'ask-compras' | 'create-calendario' | 'create-compras' | 'search-place' | 'talk'
+const PANEL_MODES: PanelMode[] = ['ask-calendario', 'ask-compras', 'create-calendario', 'create-compras', 'search-place', 'talk']
 const BUTTON_TAP_THRESHOLD_PX = 8
 
 // Los 4 botones se pueden arrastrar a cualquier sitio de la pantalla,
@@ -132,8 +143,11 @@ interface FabPosition {
   top: number
   left: number
 }
+// "Hablar con PEPA" sale al final de la fila, dejando sitio al botón de redes
+// sociales; como todos, se puede arrastrar donde se quiera.
+const TALK_DEFAULT_SLOT = 6
 const DEFAULT_FAB_POSITIONS: Record<PanelMode, FabPosition> = Object.fromEntries(
-  PANEL_MODES.map((m, i) => [m, { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + i * (FAB_SIZE + FAB_GAP) }]),
+  PANEL_MODES.map((m, i) => [m, { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + (m === 'talk' ? TALK_DEFAULT_SLOT : i) * (FAB_SIZE + FAB_GAP) }]),
 ) as Record<PanelMode, FabPosition>
 
 const FAB_POSITIONS_KEY = 'familyapp:pepa-fab-positions'
@@ -238,6 +252,18 @@ const PANEL_INFO: Record<
     ],
     submitLabel: 'Buscar',
     examples: SEARCH_PLACE_EXAMPLES,
+  },
+  talk: {
+    icon: '💬',
+    title: '💬 Hablar con PEPA',
+    instructions: [
+      'Un solo botón para todo: pregunta lo que tienes en el calendario, en la lista de la compra o en el menú, o pídele que apunte algo.',
+      'Las preguntas se contestan directamente. Todo lo que hay que APUNTAR (calendario, compra, menú) te lo enseña primero en una tarjeta y solo se guarda cuando pulsas el botón de guardar.',
+      'Si Pepa no lo entiende, te lo dice — los otros botones de siempre siguen ahí, con su forma de funcionar de siempre.',
+      'Se cierra sola al contestarte — para volver a hablar, toca este icono otra vez.',
+    ],
+    submitLabel: 'Enviar',
+    examples: TALK_EXAMPLES,
   },
 }
 
@@ -644,6 +670,37 @@ async function handleCalendarEntry(text: string): Promise<string> {
   return `Apuntado en el calendario: ${title} — ${dateLabel}${timeLabel}${endTimeLabel}${memberLabel}${recurrenceText}${reminderText}`
 }
 
+// Lo que necesita "Hablar con PEPA" del resto de la app: las mismas
+// respuestas de siempre a preguntas, y los mismos datos.
+const talkDeps: TalkDeps = {
+  today: () => new Date(),
+  kitchen: (text) => handleKitchenText(text, 'create'),
+  storeNames: async () => (await listShoppingStores()).map((s) => s.name),
+  members: () => listFamilyMembers(),
+  answerCalendar: async (text) => {
+    const query = parseCalendarQuery(text, new Date())
+    return query.type === 'next_calendar_event'
+      ? answerNextCalendarEvent()
+      : query.type === 'week_range'
+        ? answerWeekRangeQuery(null, text, query.from, query.to, query.label)
+        : answerAgendaQuery(query.memberHint, text, query.when, query.nowOnly, query.explicitDate)
+  },
+  answerShopping: async (text, storeNames) => {
+    const { storeHint, general } = parseShoppingQuery(text, storeNames)
+    return answerShoppingQuery(storeHint, general)
+  },
+  classifyWithAi: classifyQuestionWithAi,
+  answerFromAi: async (question, text) => {
+    if (question.intent === 'tasks_today') {
+      return answerAgendaQuery(question.memberHint, text, question.when, question.nowOnly, question.explicitDate)
+    }
+    if (question.intent === 'next_calendar_event') return answerNextCalendarEvent()
+    if (question.intent === 'shopping_list') return answerShoppingQuery(question.storeHint, !question.storeHint)
+    return null
+  },
+  splitWithAi: splitGroceryListWithAi,
+}
+
 type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'
 
 // Botón flotante disponible en toda la app (Skill: dictado por voz).
@@ -727,6 +784,21 @@ export function VoiceCapture() {
     setStatus('saving')
     try {
       const text = stripWakeWord(rawText)
+
+      // "Hablar con PEPA": botón general, con su propio camino — no toca el de
+      // los botones de siempre. Consultar responde; escribir siempre sale como
+      // tarjeta de confirmación.
+      if (panelModeRef.current === 'talk') {
+        const outcome = await runTalk(text, talkDeps)
+        if (outcome.kind === 'proposal') setPendingProposal(outcome.proposal)
+        if (outcome.kind === 'focus-store') {
+          navigate(DESTINATION_INFO.compras.path)
+          window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
+        }
+        setStatus('done')
+        await respond(outcome.text)
+        return
+      }
 
       // No encaja en el esquema destino(calendario/compras) ×
       // kind(ask/create) del resto de botones, así que se resuelve
@@ -1096,7 +1168,7 @@ export function VoiceCapture() {
           <button
             key={m}
             type="button"
-            className={'voice-fab-round ' + (kindOf(m) === 'ask' ? 'voice-fab-ask' : 'voice-fab-create') + (isDragging ? ' voice-fab-dragging' : '')}
+            className={'voice-fab-round ' + (kindOf(m) === 'ask' ? 'voice-fab-ask' : 'voice-fab-create') + (m === 'talk' ? ' voice-fab-talk' : '') + (isDragging ? ' voice-fab-dragging' : '')}
             style={{
               top: pos.top + (isDragging ? buttonDragOffset.y : 0),
               left: pos.left + (isDragging ? buttonDragOffset.x : 0),
@@ -1116,6 +1188,11 @@ export function VoiceCapture() {
               <>
                 <img src={pepaAvatar} alt="Pepa" className="voice-fab-avatar" />
                 <span className="voice-fab-badge">{destinationOf(m) === 'calendario' ? '📅' : '🛒'}</span>
+              </>
+            ) : m === 'talk' ? (
+              <>
+                <img src={pepaAvatar} alt="Pepa" className="voice-fab-avatar" />
+                <span className="voice-fab-badge">💬</span>
               </>
             ) : (
               PANEL_INFO[m].icon

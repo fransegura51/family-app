@@ -225,3 +225,57 @@ describe('ambigüedad y vida del contexto', () => {
     expect(c.cancel).not.toHaveBeenCalled()
   })
 })
+
+describe('oferta de ingredientes: "Sí, a Mercadona" en una sola frase', () => {
+  it('lleva la tienda dicha, sin ejecutar nada por su cuenta', async () => {
+    const saved = controller('recipe-saved')
+    registerDialog(() => saved)
+    await handleDialogReply('Sí, a la lista de la compra de Mercadona.')
+    expect(saved.addIngredients).toHaveBeenCalledTimes(1)
+    expect(saved.addIngredients).toHaveBeenCalledWith('Mercadona')
+    expect(saved.confirm).not.toHaveBeenCalled()
+  })
+
+  it('"Sí, pero sin tienda" pasa null (sin tienda)', async () => {
+    const saved = controller('recipe-saved')
+    registerDialog(() => saved)
+    await handleDialogReply('Sí, pero sin tienda.')
+    expect(saved.addIngredients).toHaveBeenCalledWith(null)
+  })
+
+  it('una tienda que no existe se dice y no se ejecuta', async () => {
+    const saved = controller('recipe-saved')
+    registerDialog(() => saved)
+    const r = await handleDialogReply('Sí, a Carrefour')
+    expect(r.message).toContain('No tengo ninguna tienda llamada «carrefour»')
+    expect(saved.addIngredients).not.toHaveBeenCalled()
+  })
+
+  it('cadena completa: oferta -> tarjeta final -> "Sí" guarda UNA vez -> otro "Sí" ya no hace nada', async () => {
+    const confirm = vi.fn().mockResolvedValue('Añadido a la lista de la compra (Mercadona).')
+    let unregisterSaved = () => {}
+    let unregisterCard = () => {}
+    const saved = controller('recipe-saved', {
+      addIngredients: vi.fn(async () => {
+        unregisterSaved()
+        unregisterCard = registerDialog(() => controller('action-card', { confirm: async () => {
+          unregisterCard()
+          return confirm()
+        } }))
+        return 'Voy a añadir los ingredientes (Mercadona).'
+      }),
+    })
+    unregisterSaved = registerDialog(() => saved)
+
+    await handleDialogReply('Sí, a la lista de la compra de Mercadona.')
+    expect(confirm).not.toHaveBeenCalled() // preparar la tarjeta no guarda
+    expect(pendingDialogCount()).toBe(1)
+
+    await handleDialogReply('Sí')
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(pendingDialogCount()).toBe(0)
+
+    expect((await handleDialogReply('Sí')).message).toBe('No tengo nada pendiente que confirmar.')
+    expect(confirm).toHaveBeenCalledTimes(1)
+  })
+})

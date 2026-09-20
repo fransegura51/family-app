@@ -109,6 +109,7 @@ async function apply(controller: DialogController, intent: ReplyIntent, spoken: 
         return done(controller.addIngredients ? await controller.addIngredients(store) : null, 'No he podido preparar la lista de la compra.')
       }
       if (intent.type === 'no' || intent.type === 'only-save') return done(controller.cancel(), 'Vale, solo la receta.')
+      if (intent.type === 'store-unknown') return { handled: true, message: `No tengo ninguna tienda llamada «${intent.said}».${storesText(controller.stores)}` }
       return NOT_HANDLED
 
     case 'store-question':

@@ -69,6 +69,40 @@ function storeIn(n: string, stores: string[]): string | null {
   return null
 }
 
+// Palabras de relleno que acompañan a una tienda en una respuesta hablada: "a la lista de la
+// compra de Mercadona", "ponlo en Mercadona", "pero sin tienda"... Si tras quitar la tienda
+// (o "sin tienda") solo quedan estas palabras, la frase es exactamente eso: una tienda.
+const FILLER_WORDS = new Set(
+  (
+    'a en de del para por la el los las mi tu lista listado compra compras tienda ingredientes ' +
+    'pon ponlo ponlos ponme anade anadelo anadelos mete metelo metelos meteles manda mandalo mandalos pasa pasalo pasalos ' +
+    'apunta apuntalo apuntalos pero y que quiero lo todo todos vale ok si claro favor porfa gracias hazlo'
+  ).split(' '),
+)
+
+const NO_STORE_PHRASE = /(?:^|\s)sin (?:ninguna )?tienda(?=\s|$)/
+
+function leftoverWords(n: string): string[] {
+  return n.split(' ').filter((w) => w && !FILLER_WORDS.has(w))
+}
+
+function withoutWord(n: string, phrase: string): string {
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return n.replace(new RegExp('(?:^|\\s)' + escaped + '(?=\\s|$)'), ' ').replace(/\s+/g, ' ').trim()
+}
+
+// ¿La frase dice solo una tienda (con relleno)? Devuelve la tienda real, null = "sin tienda".
+// `leftover`: lo que sobra si no dice ninguna tienda reconocible.
+function storeOnlyReply(core: string, stores: string[] | undefined): { store: string | null; said: boolean; leftover: string[] } | null {
+  if (NO_STORE_PHRASE.test(core)) {
+    const rest = leftoverWords(core.replace(NO_STORE_PHRASE, ' '))
+    return rest.length === 0 ? { store: null, said: true, leftover: [] } : null
+  }
+  const store = stores ? storeIn(core, stores) : null
+  if (!store) return { store: null, said: false, leftover: leftoverWords(core) }
+  return leftoverWords(withoutWord(core, normalize(store).trim())).length === 0 ? { store, said: true, leftover: [] } : null
+}
+
 export function isBareYesNo(text: string): boolean {
   const n = clean(text).replace(POLITE, '')
   const core = n.replace(LEAD, '').trim()
@@ -103,6 +137,21 @@ export function interpretReply(text: string, ctx: ReplyContext): ReplyIntent | n
   if (ADD_INGREDIENTS.test(core)) {
     const store = ctx.stores ? storeIn(core, ctx.stores) : null
     return { type: 'add-ingredients', store: store ?? (/\bsin tienda\b/.test(core) ? null : undefined) }
+  }
+
+  // "Sí, a la lista de la compra de Mercadona" / "Sí, pero sin tienda": confirmación y tienda
+  // en la misma frase, contestando a la oferta de ingredientes o a la pregunta de tienda.
+  if (ctx.kind === 'recipe-saved' || ctx.kind === 'store-question') {
+    const only = storeOnlyReply(core, ctx.stores)
+    if (only?.said) {
+      return ctx.kind === 'store-question' ? { type: 'store', store: only.store } : { type: 'add-ingredients', store: only.store }
+    }
+    if (ctx.kind === 'recipe-saved' && leadMatch && only) {
+      // "Sí, a la lista de la compra": quiere los ingredientes, sin tienda dicha (se preguntará).
+      if (only.leftover.length === 0) return { type: 'yes' }
+      // "Sí, a Carrefour": una tienda que la familia no tiene; no se inventa.
+      if (only.leftover.length <= 2 && /^(?:a|en)\s/.test(core)) return { type: 'store-unknown', said: only.leftover.join(' ') }
+    }
   }
 
   if (ctx.kind === 'store-question') {

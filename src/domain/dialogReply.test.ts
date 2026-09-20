@@ -108,3 +108,49 @@ describe('isBareYesNo', () => {
     expect(isBareYesNo('qué tengo mañana')).toBe(false)
   })
 })
+
+describe('confirmación + tienda en una sola frase', () => {
+  const saved = (t: string) => reply(t, 'recipe-saved')
+  const question = (t: string) => reply(t, 'store-question')
+
+  it('a la oferta de ingredientes: "Sí, a Mercadona" y variantes -> ingredientes CON tienda', () => {
+    for (const t of [
+      'Sí, a la lista de la compra de Mercadona.',
+      'Sí, a Mercadona',
+      'Sí, ponlo en Mercadona',
+      'Sí, a la lista de Mercadona',
+      'sí, ponlos en la lista de Mercadona por favor',
+      'Vale, a Mercadona',
+    ]) {
+      expect(saved(t), t).toEqual({ type: 'add-ingredients', store: 'Mercadona' })
+    }
+  })
+
+  it('"Sí, pero sin tienda" -> ingredientes sin tienda', () => {
+    for (const t of ['Sí, pero sin tienda.', 'Sí, sin tienda', 'sí, a la lista de la compra sin tienda']) {
+      expect(saved(t), t).toEqual({ type: 'add-ingredients', store: null })
+    }
+  })
+
+  it('"Sí, a la lista de la compra" sin tienda dicha -> solo sí (se preguntará la tienda)', () => {
+    expect(saved('Sí, a la lista de la compra')).toEqual({ type: 'yes' })
+    expect(saved('Sí, añádelos')).toEqual({ type: 'add-ingredients', store: undefined })
+  })
+
+  it('una tienda que la familia no tiene no se inventa', () => {
+    expect(saved('Sí, a Carrefour')).toEqual({ type: 'store-unknown', said: 'carrefour' })
+  })
+
+  it('las mismas frases a la pregunta de tienda eligen la tienda', () => {
+    expect(question('Sí, a Mercadona')).toEqual({ type: 'store', store: 'Mercadona' })
+    expect(question('a la lista de la compra de Aldi')).toEqual({ type: 'store', store: 'Aldi' })
+    expect(question('Sí, pero sin tienda')).toEqual({ type: 'store', store: null })
+    expect(question('en Carnicería López')).toEqual({ type: 'store', store: 'Carnicería López' })
+  })
+
+  it('no confunde negaciones ni otras peticiones', () => {
+    expect(saved('No, a Mercadona no')).not.toEqual({ type: 'add-ingredients', store: 'Mercadona' })
+    expect(saved('Añade leche y pan a Mercadona')).toBeNull()
+    expect(saved('Sí, pon tortilla el viernes para cenar')).toBeNull()
+  })
+})

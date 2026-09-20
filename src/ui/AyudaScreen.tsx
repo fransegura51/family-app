@@ -44,7 +44,7 @@ interface HelpItem {
 const HELP_DETAILS: Record<string, HelpItem[]> = {
   '/': [
     { title: 'Portada de fotos', text: 'Va pasando las últimas fotos de la Galería como un carrusel; se detiene si la tocas.' },
-    { title: 'Avisos del día', text: 'Si hoy hay algo en el Calendario o compra pendiente, aparece una diapositiva extra que te lleva directo allí.' },
+    { title: 'Avisos del día', text: 'Al final del carrusel hay dos diapositivas fijas: "Hoy en el calendario" y "Compra pendiente" (con su propio aviso si no hay nada). Cada una lleva abajo a la izquierda un enlace — "Ir a Calendario →" o "Ir a la Lista →" — que te lleva directo allí; tocar el resto de la diapositiva solo la detiene para que la leas.' },
     { title: 'Accesos rápidos', text: 'Una tarjeta por sección con un resumen de una línea — tócala para entrar directamente.' },
     { title: 'Organizar', text: 'Botón para reordenar las tarjetas de Inicio a tu gusto; cada uno puede tener su propio orden en su móvil.' },
     { title: 'Notificaciones', text: 'Aviso para activar los recordatorios push, para que te lleguen aunque tengas la app cerrada. Al tocar una notificación se abre directamente el Calendario (también si la app ya estaba abierta en otra pantalla).' },

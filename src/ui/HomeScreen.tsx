@@ -344,6 +344,10 @@ function PhotoBanner() {
             </>
           )}
         </div>
+        {/* Petición real: la diapositiva tiene que llevar de verdad a la Lista. */}
+        <Link to="/compras" state={{ tab: 'Lista' }} className="home-slide-link">
+          Ir a la Lista →
+        </Link>
         {dots}
       </div>
     )
@@ -372,6 +376,9 @@ function PhotoBanner() {
             </>
           )}
         </div>
+        <Link to="/calendario" className="home-slide-link">
+          Ir a Calendario →
+        </Link>
         {dots}
       </div>
     )

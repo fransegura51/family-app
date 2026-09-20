@@ -25,7 +25,6 @@ export const NAV_TABS: NavTab[] = [
   { to: '/contactos', label: 'Contactos', icon: '📇' },
   { to: '/galeria', label: 'Galería', icon: '📷' },
   { to: '/documentos', label: 'Documentos', icon: '📁' },
-  { to: '/peso', label: 'Peso y medidas', icon: '⚖️' },
 ]
 
 export const NAV_TAB_PATHS = NAV_TABS.map((t) => t.to)

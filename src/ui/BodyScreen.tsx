@@ -18,16 +18,11 @@ function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// Petición real: Peso y medidas sale de "La cocina de Pepa" y tiene su
-// propia sección — el peso de cada persona no tiene que ver con las
-// recetas ni el menú.
-export function BodyScreen() {
-  return (
-    <div className="screen">
-      <h1>⚖️ Peso y medidas</h1>
-      <WeightTab />
-    </div>
-  )
+// Petición real: Peso y medidas sale de "La cocina de Pepa" y es una
+// sección propia dentro de Familia (pestaña "Peso y medidas"), no ligada
+// a las fichas de los miembros.
+export function BodyTab() {
+  return <WeightTab />
 }
 
 function WeightTab() {

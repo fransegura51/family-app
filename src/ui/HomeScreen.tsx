@@ -40,7 +40,7 @@ interface HomeCardDef {
 // ninguno" — dos colores coincidían de verdad, dinero/puntos en el
 // mismo verde y calendario/documentos en el mismo azul).
 const HOME_CARD_BODY: Record<string, string> = {
-  familia: 'Miembros y perfiles',
+  familia: 'Miembros, peso y medidas',
   calendario: 'Eventos de hoy',
   eventos: 'Cumpleaños, comuniones y más',
   puntos: 'Recompensas de la familia',
@@ -52,7 +52,6 @@ const HOME_CARD_BODY: Record<string, string> = {
   contactos: 'Colegio, médico, emergencias',
   galeria: 'Fotos de la familia',
   documentos: 'Por cada miembro',
-  peso: 'Peso, talla y crecimiento',
 }
 
 const HOME_CARDS: HomeCardDef[] = NAV_TABS.filter((t) => t.to !== '/')

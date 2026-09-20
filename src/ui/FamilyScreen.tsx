@@ -1,5 +1,5 @@
-import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { ChangeEvent, FormEvent, lazy, PointerEvent as ReactPointerEvent, Suspense, useEffect, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import {
   addFamilyMember,
   deleteFamilyMember,
@@ -72,7 +72,14 @@ function SectionsChecklist({ value, onChange }: { value: string[]; onChange: (ne
   )
 }
 
+type FamilyTab = 'Miembros' | 'Peso y medidas'
+
+// Peso y medidas se descarga solo al abrir esa pestaña.
+const BodyTab = lazy(() => import('@/ui/BodyScreen').then((m) => ({ default: m.BodyTab })))
+
 export function FamilyScreen({ profile }: { profile: Profile }) {
+  const location = useLocation()
+  const [tab, setTab] = useState<FamilyTab>(() => ((location.state as { tab?: FamilyTab } | null)?.tab === 'Peso y medidas' ? 'Peso y medidas' : 'Miembros'))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -158,6 +165,22 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       <div className="kitchen-header kitchen-header-familia">
         <img src={familiaHeaderImg} alt="Familia" className="kitchen-header-img" />
       </div>
+      <div className="segmented" role="tablist" style={{ margin: '4px 0 12px' }}>
+        {(['Miembros', 'Peso y medidas'] as const).map((t) => (
+          <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'segmented-active' : ''} onClick={() => setTab(t)}>
+            {t === 'Miembros' ? '👨‍👩‍👧‍👦 Miembros' : '⚖️ Peso y medidas'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'Peso y medidas' && (
+        <Suspense fallback={<p className="muted">Cargando…</p>}>
+          <BodyTab />
+        </Suspense>
+      )}
+
+      {tab === 'Miembros' && (
+        <>
       <div className="family-toolbar">
         <Link to="/actividad" className="link-button">
           🕘 Actividad reciente
@@ -262,6 +285,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
           <summary>⚙️ Automatizaciones de tickets por email</summary>
           <AmazonWebhookSettings />
         </details>
+      )}
+        </>
       )}
     </div>
   )

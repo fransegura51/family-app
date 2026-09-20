@@ -48,7 +48,7 @@ import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/price
 import { BudgetsTab, ReceiptsTab, type MovementsFilter } from '@/ui/FinanceScreen'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
 import { setPendingMovementsFilter } from '@/state/pendingMovementsFilter'
-import { onManagersChanged } from '@/state/managers'
+import { onManagersChanged, openManager } from '@/state/managers'
 import type {
   Product,
   ProductPrice,
@@ -1045,6 +1045,12 @@ function ShoppingListTab() {
       {/* Petición real: "pondría las tiendas que Pepa reconoce por voz
           debajo de la lista de pendientes" — antes iba justo encima,
           delante de lo que de verdad se mira primero al entrar. */}
+      {!shoppingMode && (
+        <button type="button" className="link-button" style={{ fontSize: 13 }} onClick={() => openManager('clases')}>
+          ⚙️ Gestionar clases de productos
+        </button>
+      )}
+
       <StoreManager stores={stores} storeColors={storeColors} onChanged={reload} />
 
       {!shoppingMode && (

@@ -32,6 +32,10 @@ function writeStored(key: string, value: string): void {
 const fmtCm = (v: number) => v.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
 const fmtDate = (d: string) => new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 
+// Color fijo de las marcas del historial: un violeta intenso que se ve bien sobre la regla
+// crema de cualquier diseño (el color de cada persona, si era claro como el amarillo, se perdía).
+const MARK_COLOR = '#5f3dc4'
+
 function yFor(meter: KidsMeter, cm: number): number {
   const clamped = Math.min(meter.maxCm, Math.max(meter.minCm, cm))
   const t = (clamped - meter.minCm) / (meter.maxCm - meter.minCm)
@@ -102,6 +106,7 @@ export function KidsMeterView({
   const viewW = meter.sceneWidth + SPRITE_AREA
   const viewH = meter.sceneHeight
   const col = meter.column
+  const mark = MARK_COLOR
   const labelSize = Math.min(24, col.width * 0.28)
   const ticks: { cm: number; major: boolean }[] = []
   for (let cm = meter.minCm; cm <= meter.maxCm; cm += 5) ticks.push({ cm, major: cm % 10 === 0 })
@@ -184,9 +189,9 @@ export function KidsMeterView({
             const isSel = p.id === selected?.id
             return (
               <g key={p.id} onClick={() => setSelectedId(p.id)} style={{ cursor: 'pointer' }}>
-                <rect x={col.x} y={y - 4} width={col.width} height={8} rx={4} fill={member.color} fillOpacity={isSel ? 1 : 0.75} stroke="#fff" strokeWidth={2} />
+                <rect x={col.x} y={y - 4} width={col.width} height={8} rx={4} fill={mark} fillOpacity={isSel ? 1 : 0.85} stroke="#24336b" strokeWidth={1.5} />
                 <circle cx={col.x + col.width + 16} cy={y} r={28} fill="transparent" />
-                <circle cx={col.x + col.width + 16} cy={y} r={isSel ? 14 : 10} fill={member.color} stroke="#fff" strokeWidth={3} />
+                <circle cx={col.x + col.width + 16} cy={y} r={isSel ? 14 : 10} fill={mark} stroke="#fff" strokeWidth={3} />
               </g>
             )
           })}

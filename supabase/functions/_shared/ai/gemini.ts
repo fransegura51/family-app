@@ -11,7 +11,7 @@ export function createGeminiProvider(apiKey: string): AiProvider {
   return {
     name: 'gemini',
     async generate(req: AiGenerateRequest): Promise<AiGenerateResult> {
-      const body = {
+      const body: Record<string, unknown> = {
         contents: [
           {
             parts: req.parts.map((p) =>
@@ -19,6 +19,13 @@ export function createGeminiProvider(apiKey: string): AiProvider {
             ),
           },
         ],
+      }
+
+      if (req.responseSchema !== undefined || req.maxOutputTokens !== undefined) {
+        body.generationConfig = {
+          ...(req.responseSchema !== undefined ? { responseMimeType: 'application/json', responseSchema: req.responseSchema } : {}),
+          ...(req.maxOutputTokens !== undefined ? { maxOutputTokens: req.maxOutputTokens } : {}),
+        }
       }
 
       let res: Response

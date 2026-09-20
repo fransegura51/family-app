@@ -16,6 +16,10 @@ export type KitchenIntent =
   | { kind: 'menu_query'; date: string; meals: MealType[] }
   | { kind: 'menu_set'; date: string; meal: MealType | null; dish: string; explicit: boolean }
   | { kind: 'ingredients'; recipeText: string | null; date: string | null; meal: MealType | null }
+  // "Quiero hacer lentejas con chorizo y no tengo la receta", "dame una receta de paella para seis".
+  | { kind: 'recipe_request'; dish: string; servings: number | null; preferences: string[] }
+  // "Somos dos", "para cuatro personas": solo cambia las raciones de una petición reciente.
+  | { kind: 'servings_only'; servings: number }
 
 const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
 
@@ -115,7 +119,7 @@ function parseMenuQuery(n: string, today: Date): KitchenIntent | null {
 const SET_VERB = /^(?:pon|poner|ponme|ponnos|apunta|apuntame|apuntar|anota|anotar|anade|anadir|agrega|agregar|mete|meter|planifica|planificar|programa|programar)\b\s*/
 const MEAL_PHRASE =
   /\b(?:(?:para|de|en|a)\s+(?:la\s+|el\s+|las\s+|los\s+)?(?:comida|cena|desayuno|merienda|almuerzo|comer|cenar|desayunar|merendar|almorzar|menu)|(?:en|al|del|para)\s+(?:el\s+)?menu|comida|cena|desayuno|merienda|almuerzo|comer|cenar|desayunar|merendar|almorzar|menu|esta noche)\b/g
-const EDGE_STOPWORDS = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'para', 'de', 'del', 'al', 'a', 'en', 'que', 'sea', 'como'])
+const EDGE_STOPWORDS = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'para', 'de', 'del', 'al', 'a', 'en', 'que', 'sea', 'como'])
 
 function removeRanges(text: string, ranges: Range[]): string {
   const asc = [...ranges].sort((a, b) => a.start - b.start)
@@ -189,11 +193,131 @@ function parseIngredients(n: string, today: Date): KitchenIntent {
   return { kind: 'ingredients', recipeText, date: dateRef?.date ?? null, meal }
 }
 
+// ---------------------------------------------------------------------
+// Peticiones de receta y raciones
+// ---------------------------------------------------------------------
+
+const NUMBER_WORDS: Record<string, number> = {
+  un: 1,
+  una: 1,
+  uno: 1,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
+  once: 11,
+  doce: 12,
+  trece: 13,
+  catorce: 14,
+  quince: 15,
+  dieciseis: 16,
+  veinte: 20,
+}
+const NUMBER_PATTERN = '(\\d{1,2}|' + Object.keys(NUMBER_WORDS).join('|') + ')'
+const PEOPLE_TAIL = '(?:\\s+(?:personas|persona|raciones|comensales|adultos|gente))?'
+const SERVINGS_RE = new RegExp('\\b(?:para|somos|seremos|seamos)\\s+' + NUMBER_PATTERN + PEOPLE_TAIL + '\\b')
+const SERVINGS_ONLY_RE = new RegExp('^(?:somos|seremos|seamos|para|somos un total de)\\s+' + NUMBER_PATTERN + PEOPLE_TAIL + '$')
+
+function servingsFrom(word: string): number | null {
+  const value = /^\d+$/.test(word) ? Number(word) : NUMBER_WORDS[word]
+  return value !== undefined && value >= 1 && value <= 20 ? value : null
+}
+
+// Solo lo que la persona ha pedido de forma expresa; nada más viaja a la IA.
+const PREFERENCE_PATTERNS: [RegExp, string][] = [
+  [/\b(?:sin gluten|para celiacos?|celiac[oa]s?)\b/, 'sin gluten'],
+  [/\bsin lactosa\b/, 'sin lactosa'],
+  [/\bsin huevos?\b/, 'sin huevo'],
+  [/\bsin frutos secos\b/, 'sin frutos secos'],
+  [/\bsin marisco\b/, 'sin marisco'],
+  [/\b(?:sin picante|poco picante)\b/, 'poco picante'],
+  [/\bvegetarian[oa]s?\b/, 'vegetariana'],
+  [/\bvegan[oa]s?\b/, 'vegana'],
+  [/\b(?:ligero|ligera|light|bajo en calorias|baja en calorias)\b/, 'ligera'],
+]
+
+const NON_FOOD_WORDS = /\b(?:deporte|ejercicio|llamada|llamar|viaje|cita|reunion|tarea|tareas|deberes|limpieza|excursion|cumpleanos|cumple|fiesta|gimnasio|paseo)\b/
+
+const RECIPE_PATTERNS: RegExp[] = [
+  /\b(?:quiero|queremos|voy a|vamos a|me apetece|nos apetece|tengo ganas de|quisiera)\s+(?:hacer|cocinar|preparar)\s+(.+)$/d,
+  /\b(?:dame|dime|dadme|busca|buscame|necesito|necesitamos|quiero|queremos|pasame|escribeme|prepara|preparame|hazme)\s+(?:una|la|esa)?\s*receta\s+(?:de|del|para hacer|para preparar)\s+(.+)$/d,
+  /^(?:una\s+)?receta\s+(?:de|del)\s+(.+)$/d,
+]
+// "Hazme lentejas con chorizo para cuatro": solo cuenta como receta si se dice para cuántos.
+const SERVINGS_REQUIRED_PATTERN = /^(?:hazme|preparame|cocinamos|hacemos|cocina|prepara)\s+(.+)$/d
+
+const NO_RECIPE_TAIL = /\b(?:y|pero|que|porque)?\s*no (?:tengo|tenemos|se|encuentro) (?:la|esa|ninguna|su)?\s*receta\b.*$/
+const POLITE = /\b(?:por favor|porfa|gracias)\b/g
+
+function parseRecipeRequest(orig: string, n: string, today: Date): KitchenIntent | null {
+  if (SHOPPING_WORDS.test(n) || TIME_EXPR.test(n)) return null
+
+  let captured: { start: number; end: number } | null = null
+  const hasServings = SERVINGS_RE.test(n)
+  for (const re of RECIPE_PATTERNS) {
+    const m = re.exec(n)
+    if (m && m.indices) {
+      captured = { start: m.indices[1][0], end: m.indices[1][1] }
+      break
+    }
+  }
+  if (!captured && hasServings) {
+    const m = SERVINGS_REQUIRED_PATTERN.exec(n)
+    if (m && m.indices) captured = { start: m.indices[1][0], end: m.indices[1][1] }
+  }
+  if (!captured) return null
+
+  // Se trabaja sobre el texto normalizado de esa parte y, si se puede, se
+  // recorta el original —con sus acentos— por las mismas posiciones.
+  const phraseN = n.slice(captured.start, captured.end)
+  const source = orig.length === n.length ? orig.slice(captured.start, captured.end) : phraseN
+  const ranges: Range[] = []
+
+  const servingsMatch = SERVINGS_RE.exec(phraseN)
+  const servings = servingsMatch ? servingsFrom(servingsMatch[1]) : null
+  if (servingsMatch) ranges.push({ start: servingsMatch.index, end: servingsMatch.index + servingsMatch[0].length })
+
+  const preferences: string[] = []
+  for (const [re, label] of PREFERENCE_PATTERNS) {
+    const m = re.exec(phraseN)
+    if (m) {
+      if (!preferences.includes(label)) preferences.push(label)
+      ranges.push({ start: m.index, end: m.index + m[0].length })
+    }
+  }
+
+  const tail = NO_RECIPE_TAIL.exec(phraseN)
+  if (tail) ranges.push({ start: tail.index, end: phraseN.length })
+  for (const m of phraseN.matchAll(POLITE)) ranges.push({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length })
+  const dateRef = findDateRef(phraseN, today, true)
+  if (dateRef) ranges.push({ start: dateRef.start, end: dateRef.end })
+  MEAL_PHRASE.lastIndex = 0
+  let mm: RegExpExecArray | null
+  while ((mm = MEAL_PHRASE.exec(phraseN)) !== null) ranges.push({ start: mm.index, end: mm.index + mm[0].length })
+
+  const dish = tidyDish(removeRanges(source, ranges))
+  if (dish.length < 2 || dish.length > 80 || NON_FOOD_WORDS.test(normalize(dish))) return null
+  return { kind: 'recipe_request', dish, servings, preferences: preferences.slice(0, 3) }
+}
+
+function parseServingsOnly(n: string): KitchenIntent | null {
+  const m = SERVINGS_ONLY_RE.exec(n)
+  if (!m) return null
+  const servings = servingsFrom(m[1])
+  return servings === null ? null : { kind: 'servings_only', servings }
+}
+
 export function parseKitchenIntent(text: string, today: Date): KitchenIntent | null {
   const orig = text.normalize('NFC').trim()
   const n = normalize(orig)
   if (!n) return null
 
   if (/\bingredientes\b/.test(n) && INGREDIENT_VERB.test(n)) return parseIngredients(n, today)
-  return parseMenuQuery(n, today) ?? parseMenuSet(orig, n, today)
+  // Lo nuevo va al final: no cambia el resultado de nada que ya se entendía.
+  return parseMenuQuery(n, today) ?? parseMenuSet(orig, n, today) ?? parseRecipeRequest(orig, n, today) ?? parseServingsOnly(n)
 }

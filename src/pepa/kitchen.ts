@@ -2,6 +2,7 @@
 // menú semanal; no hay inventario). Consultar responde sin confirmar;
 // cualquier cosa que escriba se convierte en una propuesta que el usuario
 // tiene que confirmar en la tarjeta (ver pepa/actions).
+import { listFamilyMembers } from '@/data/family'
 import { listMenuEntries, listRecipes } from '@/data/food'
 import { listShoppingItems } from '@/data/shopping'
 import { buildMenuAnswer, findRecipeMatches, MEAL_LABELS } from '@/domain/kitchenMenu'
@@ -9,9 +10,13 @@ import { kitchenDateLabel, parseKitchenIntent, type KitchenIntent } from '@/doma
 import type { MealType, MenuEntry, Recipe } from '@/domain/types'
 import { proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
-import { recentRecipeIds, rememberRecipes } from '@/pepa/recentContext'
+import { pendingRecipeRequest, recentRecipeIds, rememberRecipeRequest, rememberRecipes, type RecipeRequest } from '@/pepa/recentContext'
 
-export type KitchenOutcome = { kind: 'answer'; text: string } | { kind: 'proposal'; text: string; proposal: ActionProposal }
+export type KitchenOutcome =
+  | { kind: 'answer'; text: string }
+  | { kind: 'proposal'; text: string; proposal: ActionProposal }
+  // "No tienes esa receta guardada. ¿Quieres que te prepare una?": abre la tarjeta de receta propuesta.
+  | { kind: 'recipe-offer'; text: string; request: RecipeRequest }
 
 function pickDefaultMeal(entries: MenuEntry[], date: string): MealType {
   const busy = (meal: MealType) => entries.some((e) => e.entryDate === date && e.mealType === meal)
@@ -89,7 +94,11 @@ async function handleIngredients(intent: Extract<KitchenIntent, { kind: 'ingredi
   if (candidates.length > 1) {
     return { kind: 'answer', text: `Tengo varias recetas posibles: ${candidates.map((r) => r.title).join(', ')}. Dime de cuál.` }
   }
-  const recipe = candidates[0]
+  return ingredientsProposalFor(candidates[0], recipes, today)
+}
+
+// La tarjeta de ingredientes → compra de una receta que ya existe (la de siempre).
+export async function ingredientsProposalFor(recipe: Recipe, recipes: Recipe[], today: Date, intro?: string): Promise<KitchenOutcome> {
   if (recipe.ingredients.length === 0) return { kind: 'answer', text: `«${recipe.title}» no tiene ingredientes apuntados.` }
 
   const items = await listShoppingItems()
@@ -101,8 +110,48 @@ async function handleIngredients(intent: Extract<KitchenIntent, { kind: 'ingredi
   return {
     kind: 'proposal',
     proposal: result.proposal,
-    text: `Voy a añadir a la lista de la compra los ingredientes de «${recipe.title}». Revisa cuáles en la tarjeta y pulsa Añadir.`,
+    text: intro ?? `Voy a añadir a la lista de la compra los ingredientes de «${recipe.title}». Revisa cuáles en la tarjeta y pulsa Añadir.`,
   }
+}
+
+// Raciones por defecto cuando no se dicen: las personas de la familia (entre 2 y 8).
+// Es solo un número; se puede cambiar antes de pedir y antes de guardar.
+const FALLBACK_SERVINGS = 4
+async function defaultServings(): Promise<number> {
+  try {
+    const members = await listFamilyMembers()
+    return members.length >= 2 ? Math.min(8, members.length) : FALLBACK_SERVINGS
+  } catch {
+    return FALLBACK_SERVINGS
+  }
+}
+
+// "Quiero hacer lentejas con chorizo y no tengo la receta": primero busca entre las
+// recetas de la familia; solo si no hay ninguna que encaje se ofrece prepararla con IA
+// (y la IA solo se llama cuando la persona acepta en la tarjeta).
+async function handleRecipeRequest(intent: Extract<KitchenIntent, { kind: 'recipe_request' }>, today: Date): Promise<KitchenOutcome> {
+  const recipes = await listRecipes()
+  const best = findRecipeMatches(intent.dish, recipes).find((m) => m.score >= 2)
+  if (best) {
+    return ingredientsProposalFor(
+      best.recipe,
+      recipes,
+      today,
+      `Ya tienes «${best.recipe.title}» en tus recetas. Si quieres, añade sus ingredientes a la lista de la compra desde la tarjeta.`,
+    )
+  }
+  const request: RecipeRequest = { dish: intent.dish, servings: intent.servings ?? (await defaultServings()), preferences: intent.preferences }
+  rememberRecipeRequest(request)
+  return { kind: 'recipe-offer', request, text: 'No tienes esa receta guardada. ¿Quieres que te prepare una?' }
+}
+
+// "Somos dos": solo cuenta si hay una petición de receta reciente.
+function handleServingsOnly(intent: Extract<KitchenIntent, { kind: 'servings_only' }>): KitchenOutcome | null {
+  const pending = pendingRecipeRequest()
+  if (!pending) return null
+  const request: RecipeRequest = { ...pending, servings: intent.servings }
+  rememberRecipeRequest(request)
+  return { kind: 'recipe-offer', request, text: `Vale, para ${intent.servings}. ¿Quieres que te prepare la receta de «${request.dish}»?` }
 }
 
 // mode 'ask': viene de un botón "🐣 Pepa" (solo preguntas) — solo se
@@ -110,10 +159,22 @@ async function handleIngredients(intent: Extract<KitchenIntent, { kind: 'ingredi
 // mode 'create': viene de un botón "🎤 Apuntar" — además, lo que escribiría
 // se prepara como propuesta.
 // Devuelve null si la frase no es de Cocina: todo sigue como antes.
-export async function handleKitchenText(text: string, mode: 'ask' | 'create', today: Date = new Date()): Promise<KitchenOutcome | null> {
+//
+// options.recipeRequests: solo el botón "Hablar con PEPA" lo activa; con los botones de
+// siempre las peticiones de receta no se tratan (se comportan como antes).
+export async function handleKitchenText(
+  text: string,
+  mode: 'ask' | 'create',
+  today: Date = new Date(),
+  options: { recipeRequests?: boolean } = {},
+): Promise<KitchenOutcome | null> {
   const intent = parseKitchenIntent(text, today)
   if (!intent) return null
   if (intent.kind === 'menu_query') return handleMenuQuery(intent, today)
+  if (intent.kind === 'recipe_request' || intent.kind === 'servings_only') {
+    if (!options.recipeRequests) return null
+    return intent.kind === 'recipe_request' ? handleRecipeRequest(intent, today) : handleServingsOnly(intent)
+  }
   if (mode === 'ask') return null
   return intent.kind === 'menu_set' ? handleMenuSet(intent, today) : handleIngredients(intent, today)
 }

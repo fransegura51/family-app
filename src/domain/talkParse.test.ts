@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanShoppingText, prepareCalendarFromText } from './talkParse'
+import { cleanShoppingText, extractTrailingStore, prepareCalendarFromText } from './talkParse'
 import { splitEntries } from './quickCapture'
 import { extractShoppingStore } from './voiceQuery'
 
@@ -106,5 +106,28 @@ describe('calendario por voz', () => {
   it('el aviso "al terminar" sin hora de fin pasa a "al empezar"', () => {
     const p = prepareCalendarFromText('recoger a Hugo mañana a las 17:30 aviso una hora antes de que termine', TODAY, MEMBERS)
     expect(p.reminders).toEqual([{ minutesBefore: 60, anchor: 'start' }])
+  })
+})
+
+describe('tienda al final sin dar de alta', () => {
+  const NAMES = ['Eric', 'Jennifer']
+
+  it('añade leche, huevos y pan a Mercadona', () => {
+    const { store, text } = extractTrailingStore('Añade leche, huevos y pan a Mercadona', NAMES)
+    expect(store).toBe('Mercadona')
+    expect(splitEntries(cleanShoppingText(text))).toEqual(['leche', 'huevos', 'pan'])
+  })
+
+  it('tiendas de dos palabras', () => {
+    expect(extractTrailingStore('añade pan a Carrefour Express', NAMES)).toEqual({ store: 'Carrefour Express', text: 'añade pan' })
+  })
+
+  it('sin mayúscula no es una tienda', () => {
+    expect(extractTrailingStore('añade leche a la compra', NAMES).store).toBeNull()
+    expect(extractTrailingStore('añade leche y pan', NAMES).store).toBeNull()
+  })
+
+  it('el nombre de alguien de la familia no es una tienda', () => {
+    expect(extractTrailingStore('añade leche a Eric', NAMES).store).toBeNull()
   })
 })

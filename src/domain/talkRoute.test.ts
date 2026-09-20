@@ -65,3 +65,20 @@ describe('routeTalk: borrar', () => {
     expect(route('elimina el evento del viernes')).toBe('delete')
   })
 })
+
+describe('routeTalk: añadir sin tienda dada de alta', () => {
+  it('añade/agrega/mete sin fecha ni hora es la lista de la compra', () => {
+    expect(routeTalk('Añade leche, huevos y pan a Mercadona', [], TODAY)).toBe('add_shopping')
+    expect(routeTalk('agrega detergente', [], TODAY)).toBe('add_shopping')
+    expect(routeTalk('mete pan y leche', [], TODAY)).toBe('add_shopping')
+  })
+
+  it('con fecha u hora sigue siendo del calendario', () => {
+    expect(routeTalk('añade dentista el viernes', [], TODAY)).toBe('add_calendar')
+    expect(routeTalk('añade reunión a las 10:30', [], TODAY)).toBe('add_calendar')
+  })
+
+  it('apunta/pon sin pistas siguen sin adivinarse', () => {
+    expect(routeTalk('apunta cosas raras', [], TODAY)).toBe('unknown')
+  })
+})

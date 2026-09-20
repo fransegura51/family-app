@@ -136,3 +136,85 @@ describe('kitchenDateLabel', () => {
     expect(kitchenDateLabel('2026-09-25', TODAY)).toBe('el viernes, 25 de septiembre')
   })
 })
+
+describe('kitchenQuery: peticiones de receta', () => {
+  const request = (text: string) => parseKitchenIntent(text, TODAY)
+
+  it('quiero hacer lentejas con chorizo y no tengo la receta', () => {
+    expect(request('Quiero hacer lentejas con chorizo y no tengo la receta')).toEqual({
+      kind: 'recipe_request',
+      dish: 'lentejas con chorizo',
+      servings: null,
+      preferences: [],
+    })
+    expect(request('Pepa, quiero hacer lentejas con chorizo y no tengo la receta')).toMatchObject({ dish: 'lentejas con chorizo' })
+  })
+
+  it('dame una receta de lentejas con chorizo para cuatro', () => {
+    expect(request('Dame una receta de lentejas con chorizo para cuatro')).toEqual({
+      kind: 'recipe_request',
+      dish: 'lentejas con chorizo',
+      servings: 4,
+      preferences: [],
+    })
+  })
+
+  it('quiero hacer una paella para seis', () => {
+    expect(request('Quiero hacer una paella para seis')).toEqual({ kind: 'recipe_request', dish: 'paella', servings: 6, preferences: [] })
+    expect(request('quiero una receta de paella para seis')).toMatchObject({ dish: 'paella', servings: 6 })
+  })
+
+  it('hazme lentejas con chorizo para cuatro (solo con raciones)', () => {
+    expect(request('Hazme lentejas con chorizo para cuatro')).toMatchObject({ kind: 'recipe_request', dish: 'lentejas con chorizo', servings: 4 })
+    expect(request('hazme la cena')).toBeNull()
+  })
+
+  it('raciones con cifras y con "personas"', () => {
+    expect(request('quiero hacer una tortilla para 3 personas')).toMatchObject({ dish: 'tortilla', servings: 3 })
+    expect(request('receta de gazpacho para ocho')).toMatchObject({ dish: 'gazpacho', servings: 8 })
+  })
+
+  it('somos dos: solo cambia las raciones', () => {
+    expect(request('Somos dos')).toEqual({ kind: 'servings_only', servings: 2 })
+    expect(request('para cuatro personas')).toEqual({ kind: 'servings_only', servings: 4 })
+    expect(request('somos 5')).toEqual({ kind: 'servings_only', servings: 5 })
+    expect(request('somos muchos')).toBeNull()
+  })
+
+  it('las preferencias expresas se separan del plato', () => {
+    expect(request('quiero hacer una lasaña vegetariana sin gluten para tres')).toEqual({
+      kind: 'recipe_request',
+      dish: 'lasaña',
+      servings: 3,
+      preferences: ['sin gluten', 'vegetariana'],
+    })
+  })
+
+  it('conserva los acentos del plato', () => {
+    expect(request('Quiero cocinar unas croquetas de jamón')).toMatchObject({ dish: 'croquetas de jamón' })
+  })
+
+  it('quita el día y la comida de la frase', () => {
+    expect(request('quiero hacer lentejas para cenar mañana')).toMatchObject({ dish: 'lentejas' })
+  })
+
+  it('no confunde otras frases', () => {
+    expect(request('quiero hacer deporte')).toBeNull()
+    expect(request('quiero hacer la compra')).toBeNull()
+    expect(request('quiero hacer una llamada a las 5')).toBeNull()
+    expect(request('hazme una lista de la compra para cuatro')).toBeNull()
+    expect(request('quiero hacer')).toBeNull()
+  })
+
+  it('lo que ya se entendía sigue igual', () => {
+    expect(request('Pon tortilla de patatas para cenar el viernes')).toEqual({
+      kind: 'menu_set',
+      date: '2026-09-25',
+      meal: 'cena',
+      dish: 'tortilla de patatas',
+      explicit: true,
+    })
+    expect(request('¿qué cocinamos hoy?')).toMatchObject({ kind: 'menu_query' })
+    expect(request('añade los ingredientes de la tortilla a la compra')).toMatchObject({ kind: 'ingredients' })
+  })
+})

@@ -92,7 +92,12 @@ export function createAiHandler<TInput, TOutput>(spec: AiPurposeSpec<TInput, TOu
       let rawText = ""
       let failed = false
       try {
-        const result = await provider.generate({ model, parts: spec.buildParts(read.input) })
+        const result = await provider.generate({
+          model,
+          parts: spec.buildParts(read.input),
+          responseSchema: spec.responseSchema,
+          maxOutputTokens: spec.maxOutputTokens,
+        })
         rawText = result.text
         tokensIn = result.tokensIn
         tokensOut = result.tokensOut
@@ -114,7 +119,13 @@ export function createAiHandler<TInput, TOutput>(spec: AiPurposeSpec<TInput, TOu
 
       if (failed) return json({ error: "ai_provider_error" }, 502)
 
-      return json(spec.parseOutput(rawText, read.input))
+      // Un propósito que exige un formato estricto puede rechazar la respuesta:
+      // se informa sin romper nada.
+      try {
+        return json(spec.parseOutput(rawText, read.input))
+      } catch {
+        return json({ error: "ai_invalid_output" }, 502)
+      }
     } catch (err) {
       console.error("[ai] error inesperado:", spec.purpose, String(err))
       return json({ error: "internal_error" }, 500)

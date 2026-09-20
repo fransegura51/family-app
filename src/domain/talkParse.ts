@@ -29,6 +29,20 @@ export function cleanShoppingText(text: string): string {
   return result.replace(/^[,;:.]\s*/, '').replace(/[,;:.]\s*$/, '').trim()
 }
 
+// Tienda al final ("...pan a Mercadona") cuando NO está dada de alta: el móvil dicta los
+// nombres propios con mayúscula, y solo así se distingue de un producto. Si la palabra es el
+// nombre de alguien de la familia ("añade leche a Eric") no se toma por tienda.
+const TRAILING_STORE = /\s+(?:a|en)\s+((?:[A-ZÁÉÍÓÚÑ][\p{L}'-]+)(?:\s+[A-ZÁÉÍÓÚÑ][\p{L}'-]+)?)\s*[.,;]?\s*$/u
+
+export function extractTrailingStore(text: string, memberNames: string[]): { store: string | null; text: string } {
+  const m = TRAILING_STORE.exec(text)
+  if (!m || m.index === 0) return { store: null, text }
+  const store = m[1]
+  const isMember = memberNames.some((name) => normalize(name).trim() === normalize(store).trim() || normalize(name).split(' ')[0] === normalize(store))
+  if (isMember) return { store: null, text }
+  return { store, text: text.slice(0, m.index).trim() }
+}
+
 // ---------------------------------------------------------------------
 // Calendario
 // ---------------------------------------------------------------------

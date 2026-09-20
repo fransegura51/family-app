@@ -810,6 +810,12 @@ function RecipesTab() {
 
   useEffect(reload, [])
 
+  // Pepa (VoiceCapture) puede guardar una receta desde cualquier pantalla.
+  useEffect(() => {
+    window.addEventListener('family-app:recipes-changed', reload)
+    return () => window.removeEventListener('family-app:recipes-changed', reload)
+  }, [])
+
   if (loading) return <p className="muted">Cargando recetas…</p>
 
   const availableTags = collectRecipeTags(recipes)

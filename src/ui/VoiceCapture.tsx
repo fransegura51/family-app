@@ -42,6 +42,8 @@ import { runTalk, type TalkDeps } from '@/pepa/talk'
 import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
 import { ActionConfirmSheet } from '@/ui/ActionConfirmSheet'
+import { RecipeDraftSheet } from '@/ui/RecipeDraftSheet'
+import type { RecipeRequest } from '@/pepa/recentContext'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
 
 type ResponseMode = 'voice' | 'text'
@@ -121,6 +123,8 @@ const TALK_EXAMPLES = [
   '¿Qué cenamos hoy?',
   'Pon tortilla el viernes para cenar',
   'Añade los ingredientes de la tortilla a la compra',
+  'Quiero hacer lentejas con chorizo y no tengo la receta',
+  'Hazme una paella para seis',
 ]
 
 const SEARCH_PLACE_EXAMPLES = ['Un restaurante cercano', 'Una farmacia de guardia', 'Un supermercado cerca de aquí', 'Una gasolinera']
@@ -674,7 +678,7 @@ async function handleCalendarEntry(text: string): Promise<string> {
 // respuestas de siempre a preguntas, y los mismos datos.
 const talkDeps: TalkDeps = {
   today: () => new Date(),
-  kitchen: (text) => handleKitchenText(text, 'create'),
+  kitchen: (text) => handleKitchenText(text, 'create', new Date(), { recipeRequests: true }),
   storeNames: async () => (await listShoppingStores()).map((s) => s.name),
   members: () => listFamilyMembers(),
   answerCalendar: async (text) => {
@@ -719,6 +723,8 @@ export function VoiceCapture() {
   // Acción que Pepa ha preparado y espera confirmación (tarjeta). Nada se
   // escribe hasta que se confirma allí.
   const [pendingProposal, setPendingProposal] = useState<ActionProposal | null>(null)
+  // Petición de receta que no existe: la tarjeta ofrece prepararla con IA.
+  const [pendingRecipe, setPendingRecipe] = useState<RecipeRequest | null>(null)
   const dictationOk = isDictationSupported()
 
   // Cuatro botones, cuatro usos, sin ambigüedad — antes dos botones
@@ -791,6 +797,7 @@ export function VoiceCapture() {
       if (panelModeRef.current === 'talk') {
         const outcome = await runTalk(text, talkDeps)
         if (outcome.kind === 'proposal') setPendingProposal(outcome.proposal)
+        if (outcome.kind === 'recipe-offer') setPendingRecipe(outcome.request)
         if (outcome.kind === 'focus-store') {
           navigate(DESTINATION_INFO.compras.path)
           window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
@@ -1296,6 +1303,22 @@ export function VoiceCapture() {
             </div>
           </div>
         </div>
+      )}
+
+      {pendingRecipe && (
+        <RecipeDraftSheet
+          request={pendingRecipe}
+          onClose={() => setPendingRecipe(null)}
+          onSaved={(savedMessage) => {
+            setStatus('done')
+            setMessage(savedMessage)
+            showToast(`✅ ${savedMessage}`, 4000)
+          }}
+          onOfferIngredients={(proposal) => {
+            setPendingRecipe(null)
+            setPendingProposal(proposal)
+          }}
+        />
       )}
 
       {pendingProposal && (

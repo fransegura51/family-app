@@ -19,6 +19,9 @@ const BUY_STATEMENT = /\b(?:tengo que|hay que|necesito|necesitamos|quiero|tenemo
 const SHOP_WORDS = /\b(?:compra|compras|comprar|lista|supermercado)\b/
 const CAL_QUESTION_WORDS = /\b(?:hoy|manana|semana|proxim[oa]|siguiente|agenda|calendario|cita|citas|evento|eventos|tareas|hacer|ahora|tengo|tenemos|tiene|toca|pendiente)\b/
 const DATE_WORDS = /\b(?:hoy|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/
+// "Añade leche y pan a Mercadona": aunque la tienda no esté dada de alta ni se diga "compra",
+// añadir/agregar/meter algo sin fecha ni hora es, casi siempre, la lista de la compra.
+const SHOPPING_VERBS = /^(?:anade(?:me)?|agrega(?:me)?|mete)\b/
 const TIME_WORDS = /\ba las\b|\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s*horas?\b/
 
 export function routeTalk(text: string, knownStores: string[], today: Date): TalkRoute {
@@ -38,5 +41,6 @@ export function routeTalk(text: string, knownStores: string[], today: Date): Tal
   }
   if (shopping) return 'add_shopping'
   if (DATE_WORDS.test(n) || TIME_WORDS.test(n) || extractSpokenDate(n, today) || /\bcalendario\b/.test(n)) return 'add_calendar'
+  if (SHOPPING_VERBS.test(n)) return 'add_shopping'
   return 'unknown'
 }

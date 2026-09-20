@@ -15,15 +15,18 @@ import { extractShoppingStore } from '@/domain/voiceQuery'
 import { splitEntries } from '@/domain/quickCapture'
 import { isoDate, kitchenDateLabel } from '@/domain/kitchenQuery'
 import { routeTalk } from '@/domain/talkRoute'
-import { cleanShoppingText, prepareCalendarFromText } from '@/domain/talkParse'
+import { cleanShoppingText, extractTrailingStore, prepareCalendarFromText } from '@/domain/talkParse'
 import type { KitchenOutcome } from '@/pepa/kitchen'
 import { proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
+import type { RecipeRequest } from '@/pepa/recentContext'
 
 export type TalkOutcome =
   | { kind: 'answer'; text: string }
   | { kind: 'proposal'; text: string; proposal: ActionProposal }
   | { kind: 'focus-store'; store: string; text: string }
+  // Receta que no existe: ofrece prepararla (la IA solo se llama si la persona acepta).
+  | { kind: 'recipe-offer'; text: string; request: RecipeRequest }
 
 export interface AiQuestion {
   intent: 'tasks_today' | 'next_calendar_event' | 'shopping_list' | 'none'
@@ -58,7 +61,16 @@ function baseContext(today: Date, members: { id: string; name: string }[] = []):
 }
 
 async function shoppingProposal(text: string, storeNames: string[], deps: TalkDeps, today: Date): Promise<TalkOutcome> {
-  const { store, text: rest } = extractShoppingStore(text, storeNames)
+  const known = extractShoppingStore(text, storeNames)
+  let store = known.store
+  let rest = known.text
+  // Una tienda que todavía no está dada de alta, dicha al final: "...pan a Mercadona".
+  if (!store) {
+    const memberNames = (await deps.members()).map((m) => m.name)
+    const trailing = extractTrailingStore(rest, memberNames)
+    store = trailing.store
+    rest = trailing.text
+  }
   let entries = splitEntries(cleanShoppingText(rest))
   if (entries.length === 0) {
     // Solo se ha dicho la tienda ("Mercadona"): se abre su lista, sin escribir.

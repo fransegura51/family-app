@@ -8,6 +8,11 @@ export type AiPart = { text: string } | { inlineData: { mimeType: string; data: 
 export interface AiGenerateRequest {
   model: string
   parts: AiPart[]
+  // Salida estructurada: el proveedor obliga al modelo a devolver JSON con
+  // esta forma. Sigue haciendo falta validar el resultado en código.
+  responseSchema?: unknown
+  // Tope de palabras que puede generar el modelo (control de coste).
+  maxOutputTokens?: number
 }
 
 export interface AiGenerateResult {
@@ -35,7 +40,12 @@ export class AiProviderError extends Error {
 // nada por sí mismo: solo rellena un formato que el código vuelve a validar.
 export interface AiPurposeSpec<TInput, TOutput> {
   purpose: string
+  // Opcionales: solo los propósitos que piden JSON estructurado los usan.
+  responseSchema?: unknown
+  maxOutputTokens?: number
   readInput(body: Record<string, unknown>): { ok: true; input: TInput } | { ok: false; error: string }
   buildParts(input: TInput): AiPart[]
+  // Si la respuesta no es válida puede lanzar un error: la puerta lo traduce en
+  // "no se ha podido preparar" (502) sin romper nada.
   parseOutput(rawText: string, input: TInput): TOutput
 }

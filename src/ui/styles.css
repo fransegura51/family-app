@@ -1390,20 +1390,52 @@ select {
   align-items: center;
   justify-content: center;
   text-align: center;
-  width: 88px;
-  height: 88px;
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
   background: #dbe4ff;
   color: var(--primary);
 }
 
+/* Petición real: a 2 semanas la cuenta atrás se pone amarilla y a la semana roja. */
+.event-countdown-warn {
+  background: #fff0a8;
+  color: #8a5a00;
+}
+
+.event-countdown-alert {
+  background: #ffc9c9;
+  color: #c92a2a;
+}
+
 .event-countdown-number {
-  font-size: 38px;
+  font-size: 44px;
   font-weight: 700;
   line-height: 1.1;
 }
 
-/* Fecha y lugar de la cabecera: una sola línea y mismo tamaño. */
+/* Título de la cabecera: emoji grande repartido entre dos filas (tipo y nombre). */
+.event-hero-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.event-hero-emoji {
+  flex: none;
+  font-size: 44px;
+  line-height: 1;
+}
+
+.event-hero-title strong {
+  display: block;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Fecha, lugar y tema de la cabecera: una sola línea y mismo tamaño. */
 .event-hero-line {
   display: flex;
   align-items: center;

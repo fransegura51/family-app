@@ -1,4 +1,4 @@
-import { ChangeEvent, type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, type CSSProperties, FormEvent, type ReactNode, PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import {
@@ -178,6 +178,49 @@ function eventDateLabel(ev: FamilyEvent): string {
     year: 'numeric',
   })
   return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+// Una línea que reduce su letra (hasta un mínimo) para que el texto quepa entero en vez
+// de cortarse con "…" — petición real: "el tamaño del campo se ajusta al texto".
+function FitText({ as: Tag, maxSize, minSize = 10, className, style, children }: { as: 'p' | 'strong'; maxSize: number; minSize?: number; className?: string; style?: CSSProperties; children: ReactNode }) {
+  const ref = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const fit = () => {
+      let size = maxSize
+      el.style.fontSize = `${size}px`
+      while (el.scrollWidth > el.clientWidth + 0.5 && size > minSize) {
+        size -= 0.5
+        el.style.fontSize = `${size}px`
+      }
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(el)
+    return () => observer.disconnect()
+  })
+  return (
+    <Tag ref={ref as never} className={className} style={style}>
+      {children}
+    </Tag>
+  )
+}
+
+// Cabecera en dos filas: el tipo ("Cumpleaños") y debajo el nombre. Si el título ya
+// empieza por el tipo ("Cumpleaños de Hugo") se le quita para no repetirlo → "Hugo".
+function eventNameWithoutType(ev: FamilyEvent): string {
+  const typeWord = EVENT_TYPE_META[ev.type].label.split(' ')[0]
+  const stripped = ev.title.replace(new RegExp(`^${typeWord}\\s*(?:de la |del |de los |de las |de |:|-)?\\s*`, 'i'), '').trim()
+  return stripped
+}
+
+// Cuenta atrás: a 2 semanas se pone amarilla y a la semana roja.
+function countdownTone(days: number | null): 'normal' | 'warn' | 'alert' {
+  if (days === null || days < 0) return 'normal'
+  if (days <= 7) return 'alert'
+  if (days <= 14) return 'warn'
+  return 'normal'
 }
 
 // Fecha corta para la cabecera del evento ("Domingo, 18/10/2026"), para que quepa en una línea.
@@ -839,15 +882,27 @@ function EventDetail({
       <div className="card event-card event-hero-card" style={{ marginTop: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <strong style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-              {EVENT_TYPE_META[event.type].icon} {event.title}
-            </strong>
+            {/* Petición real: dos filas —el tipo y debajo el nombre— con el
+                emoji más grande repartido entre las dos, para todos los eventos. */}
+            <div className="event-hero-title">
+              <span className="event-hero-emoji">{EVENT_TYPE_META[event.type].icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <FitText as="strong" maxSize={18}>
+                  {EVENT_TYPE_META[event.type].label}
+                </FitText>
+                {eventNameWithoutType(event) && (
+                  <FitText as="strong" maxSize={18}>
+                    {eventNameWithoutType(event)}
+                  </FitText>
+                )}
+              </div>
+            </div>
             {/* Petición real: fecha corta ("Domingo, 18/10/2026") en una sola
                 línea, con el estado (✔️ confirmada / ❓ provisional) DETRÁS de
                 la fecha —es un botón que abre la edición— y el lugar del
                 mismo tamaño que la fecha, para que la cuenta atrás pueda
                 ser más grande. */}
-            <p className="muted event-hero-line" style={{ margin: '6px 0 0' }}>
+            <FitText as="p" maxSize={14} className="muted event-hero-line" style={{ margin: '6px 0 0' }}>
               📅 {eventShortDateLabel(event)}
               {event.eventDate && (
                 <button
@@ -860,20 +915,23 @@ function EventDetail({
                   {event.dateStatus === 'confirmada' ? '✔️' : '❓'}
                 </button>
               )}
-            </p>
+            </FitText>
             {event.venueLabel && (
-              <p className="muted event-hero-line" style={{ margin: '2px 0 0' }}>
+              <FitText as="p" maxSize={14} className="muted event-hero-line" style={{ margin: '2px 0 0' }}>
                 🏠 {event.venueLabel}
-              </p>
+              </FitText>
             )}
+            <FitText as="p" maxSize={14} className="muted event-hero-line" style={{ margin: '2px 0 0' }}>
+              🎨 Tema: {event.theme || 'no'}
+            </FitText>
             {event.status === 'archivado' && <p className="muted">📦 Archivado</p>}
           </div>
           {/* Petición real: cuenta atrás "30 días para celebrarlo" junto
               al título, en un círculo pastel — solo tiene sentido con
               fecha puesta y evento todavía en marcha. */}
           {event.status === 'planificacion' && daysToEvent !== null && (
-            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 96 }}>
-              <div className="event-countdown">
+            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 104 }}>
+              <div className={`event-countdown event-countdown-${countdownTone(daysToEvent)}`}>
                 {daysToEvent > 0 ? (
                   <strong className="event-countdown-number">{daysToEvent}</strong>
                 ) : daysToEvent === 0 ? (

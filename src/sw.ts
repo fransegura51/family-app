@@ -59,6 +59,15 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim())
 })
 
+// Bug real: "cuando se toca la notificación del calendario quiero que se abra
+// el calendario, no la página de inicio de Pepa" — las rutas eran absolutas
+// ("/calendario", "/pwa-192.png"), pero en producción la app no vive en la
+// raíz del dominio sino en "/family-app/" (GitHub Pages), así que apuntaban
+// a otro sitio. Todo se calcula desde el ámbito real del service worker.
+function scopeUrl(path: string): string {
+  return new URL(path, self.registration.scope).href
+}
+
 // Recordatorios con la app cerrada: el payload lo manda
 // supabase/functions/send-due-reminders vía Web Push. Esto es lo que
 // permite que la notificación aparezca aunque no haya ninguna pestaña
@@ -76,15 +85,17 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title ?? 'Family App', {
       body: payload.body ?? '',
-      icon: '/pwa-192.png',
-      badge: '/pwa-192.png',
+      icon: scopeUrl('pwa-192.png'),
+      badge: scopeUrl('pwa-192.png'),
     }),
   )
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const targetUrl = '/calendario'
+  // "?/calendario" es la forma que index.html descodifica a la ruta real
+  // (ver 404.html): entra directo, sin depender del salto por el 404 de GitHub Pages.
+  const targetUrl = scopeUrl('?/calendario')
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
       const existing = clients.find((c) => 'focus' in c) as WindowClient | undefined

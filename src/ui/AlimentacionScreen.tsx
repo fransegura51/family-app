@@ -219,12 +219,20 @@ function AlimentacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => vo
     { tab: 'Registro', body: 'Apunta lo que ha comido cada uno, con calorías y macros si quieres.' },
     { tab: 'Peso', body: 'Evolución del peso y las medidas de cada miembro.' },
   ]
+  // Un color pastel por tarjeta, igual que Compras Inicio.
+  const cardColors = pastelPalette(shortcuts.length)
   return (
     <div className="event-list">
-      {shortcuts.map((s) => {
+      {shortcuts.map((s, i) => {
         const meta = ALIMENTACION_MENU_ITEM_META[s.tab]
         return (
-          <button key={s.tab} type="button" className="section-shortcut-card" onClick={() => onNavigate(s.tab)}>
+          <button
+            key={s.tab}
+            type="button"
+            className="section-shortcut-card"
+            style={{ background: cardColors[i] }}
+            onClick={() => onNavigate(s.tab)}
+          >
             <span className="section-shortcut-card-icon" aria-hidden="true">
               {meta.icon}
             </span>

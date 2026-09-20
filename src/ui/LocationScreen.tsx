@@ -53,6 +53,7 @@ import type {
 } from '@/domain/types'
 import ubicacionHeaderImg from '@/assets/ubicacion/ubicacion-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { pastelPalette } from '@/domain/colors'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -169,12 +170,20 @@ function UbicacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void 
     { tab: 'Ubicación', body: 'Mapa en vivo con dónde está cada uno que lo comparte, y lugares frecuentes guardados.' },
     { tab: 'Reglas', body: 'Avisos automáticos al llegar o salir de un sitio, o todos los días a una hora.' },
   ]
+  // Un color pastel por tarjeta, igual que Compras Inicio.
+  const cardColors = pastelPalette(shortcuts.length)
   return (
     <div className="event-list">
-      {shortcuts.map((s) => {
+      {shortcuts.map((s, i) => {
         const meta = UBICACION_MENU_ITEM_META[s.tab]
         return (
-          <button key={s.tab} type="button" className="section-shortcut-card" onClick={() => onNavigate(s.tab)}>
+          <button
+            key={s.tab}
+            type="button"
+            className="section-shortcut-card"
+            style={{ background: cardColors[i] }}
+            onClick={() => onNavigate(s.tab)}
+          >
             <span className="section-shortcut-card-icon" aria-hidden="true">
               {meta.icon}
             </span>

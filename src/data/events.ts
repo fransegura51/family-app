@@ -7,6 +7,7 @@ import { addShoppingItem } from '@/data/shopping'
 import { supabase } from '@/data/supabaseClient'
 import { distinctTagColor } from '@/domain/colors'
 import { generateAutoTasks } from '@/domain/events'
+import { showToast } from '@/state/toast'
 import type { EventReminder } from '@/domain/reminders'
 import type {
   EventActivity,
@@ -178,6 +179,8 @@ export async function createEvent(input: {
     if (tasksError) throw tasksError
   }
 
+  if (input.dateStatus === 'confirmada' && input.eventDate) await syncEventToCalendarSafely(event.id)
+
   return event.id
 }
 
@@ -227,6 +230,13 @@ export async function updateEvent(
   if (patch.rsvpDeadline !== undefined) update.rsvp_deadline = patch.rsvpDeadline
   const { error } = await supabase.from('events').update(update).eq('id', id)
   if (error) throw error
+
+  // Petición real: con la fecha confirmada se apunta sola en el Calendario, y si
+  // después cambia (fecha, hora, título o lugar) se actualiza sola.
+  const touchesCalendar = patch.title !== undefined || patch.dateStatus !== undefined || patch.eventDate !== undefined || patch.eventTime !== undefined || patch.venueLabel !== undefined
+  if (touchesCalendar) await syncEventToCalendarSafely(id)
+  // Igual con el recordatorio del plazo de RSVP (se pone, se mueve o se quita solo).
+  if (patch.rsvpDeadline !== undefined || patch.title !== undefined) await syncRsvpDeadlineReminderSafely(id)
 }
 
 // Petición de la Skill: "relative tasks update when event date
@@ -354,8 +364,8 @@ export async function deleteEventTask(id: string): Promise<void> {
 
 // ---------------------------------------------------------------------
 // Calendario — petición de la Skill: no crear ningún compromiso firme
-// mientras la fecha no esté confirmada; al confirmarla, el enlace es
-// una acción explícita del usuario, nunca automática.
+// mientras la fecha no esté confirmada; al confirmarla se apunta sola
+// (ver syncEventToCalendar más abajo).
 // ---------------------------------------------------------------------
 
 export async function linkEventToCalendar(event: FamilyEvent): Promise<void> {
@@ -386,9 +396,7 @@ export async function linkEventToCalendar(event: FamilyEvent): Promise<void> {
 }
 
 // Cuando la fecha/hora cambia y el evento ya tenía un enlace de
-// Calendario, actualiza SOLO ese compromiso ya creado — el usuario
-// decide cuándo llamarla (mismo "nunca en silencio" que crear el
-// enlace la primera vez), no se dispara sola al editar el evento.
+// Calendario, actualiza SOLO ese compromiso ya creado.
 export async function updateLinkedCalendarEvent(event: FamilyEvent): Promise<void> {
   if (!event.calendarEventId) return
   if (!event.eventDate) throw new Error('Este evento ya no tiene fecha')
@@ -396,16 +404,69 @@ export async function updateLinkedCalendarEvent(event: FamilyEvent): Promise<voi
   const startAt = allDay ? `${event.eventDate}T00:00:00` : `${event.eventDate}T${event.eventTime}:00`
   const { error } = await supabase
     .from('calendar_events')
-    .update({ title: event.title, start_at: startAt, all_day: allDay })
+    .update({ title: event.title, start_at: startAt, all_day: allDay, location_label: event.venueLabel })
     .eq('id', event.calendarEventId)
   if (error) throw error
+}
+
+// Petición real: "definimos por defecto que si se confirma la fecha se apunta
+// en el calendario y si se modifica la fecha una vez confirmado se actualiza" —
+// ya no hay botones manuales. Con la fecha confirmada: si el evento no está en el
+// Calendario se apunta (nota "Fecha anotada en el calendario"), y si ya estaba y
+// algo ha cambiado (fecha, hora, título o lugar) se actualiza (nota "Fecha
+// actualizada en el calendario"). Devuelve qué ha pasado, o null si nada.
+export type CalendarSyncResult = 'created' | 'updated' | null
+
+const syncing = new Set<string>()
+
+export async function syncEventToCalendar(id: string): Promise<CalendarSyncResult> {
+  if (syncing.has(id)) return null
+  syncing.add(id)
+  try {
+    const event = await getEvent(id)
+    if (event.status === 'archivado' || event.dateStatus !== 'confirmada' || !event.eventDate) return null
+
+    if (event.calendarEventId) {
+      const { data } = await supabase
+        .from('calendar_events')
+        .select('start_at, title, location_label')
+        .eq('id', event.calendarEventId)
+        .maybeSingle()
+      if (data) {
+        const desiredStart = event.eventTime ? `${event.eventDate}T${event.eventTime}:00` : `${event.eventDate}T00:00:00`
+        const unchanged =
+          String(data.start_at).slice(0, 19) === desiredStart &&
+          data.title === event.title &&
+          (data.location_label ?? null) === (event.venueLabel ?? null)
+        if (unchanged) return null
+        await updateLinkedCalendarEvent(event)
+        showToast('📅 Fecha actualizada en el calendario')
+        return 'updated'
+      }
+      // El compromiso enlazado ya no existe (se borró en Calendario): se vuelve a apuntar.
+    }
+    await linkEventToCalendar(event)
+    showToast('📅 Fecha anotada en el calendario')
+    return 'created'
+  } finally {
+    syncing.delete(id)
+  }
+}
+
+// Igual, pero un fallo del Calendario nunca impide guardar el evento: solo se avisa.
+async function syncEventToCalendarSafely(id: string): Promise<void> {
+  try {
+    await syncEventToCalendar(id)
+  } catch {
+    showToast('⚠️ No se pudo anotar la fecha en el calendario')
+  }
 }
 
 // Recordatorio push del plazo de RSVP — mismo patrón que el
 // vencimiento de un documento (member_documents.expiryDate): una fila
 // normal en calendar_events con sus propios recordatorios, para que el
 // pipeline de avisos ya existente (send-due-reminders) funcione sin
-// tocar nada. Acción explícita del usuario, nunca automática.
+// tocar nada. Automático: se pone solo al fijar el plazo (ver syncRsvpDeadlineReminder).
 // Los recordatorios de un calendar_event NO son una columna suya —
 // viven en la tabla aparte calendar_event_reminders (event_id,
 // minutes_before, anchor), igual que hace src/data/calendar.ts.
@@ -441,18 +502,57 @@ export async function linkRsvpDeadlineReminder(event: FamilyEvent): Promise<void
   if (linkError) throw linkError
 }
 
-export async function updateRsvpDeadlineReminder(event: FamilyEvent): Promise<void> {
-  if (!event.rsvpDeadlineCalendarEventId) return
-  if (!event.rsvpDeadline) {
-    const { error } = await supabase.from('calendar_events').delete().eq('id', event.rsvpDeadlineCalendarEventId)
-    if (error) throw error
-    return
+// Petición real: el recordatorio del plazo también es automático. Con plazo de RSVP
+// y evento en planificación se pone solo ("Recordatorio del plazo puesto"); si el
+// plazo o el título cambian se mueve solo ("Recordatorio del plazo actualizado"); si
+// se quita el plazo, se borra. Devuelve qué ha pasado, o null si nada.
+export type ReminderSyncResult = 'created' | 'updated' | 'removed' | null
+
+const syncingReminders = new Set<string>()
+
+export async function syncRsvpDeadlineReminder(id: string): Promise<ReminderSyncResult> {
+  if (syncingReminders.has(id)) return null
+  syncingReminders.add(id)
+  try {
+    const event = await getEvent(id)
+    const linkedId = event.rsvpDeadlineCalendarEventId
+
+    if (!event.rsvpDeadline || event.status === 'archivado') {
+      if (!linkedId) return null
+      const { error } = await supabase.from('calendar_events').delete().eq('id', linkedId)
+      if (error) throw error
+      const { error: unlinkError } = await supabase.from('events').update({ rsvp_deadline_calendar_event_id: null }).eq('id', id)
+      if (unlinkError) throw unlinkError
+      return 'removed'
+    }
+
+    const desiredTitle = `Plazo de RSVP: ${event.title}`
+    const desiredStart = `${event.rsvpDeadline}T00:00:00`
+    if (linkedId) {
+      const { data } = await supabase.from('calendar_events').select('start_at, title').eq('id', linkedId).maybeSingle()
+      if (data) {
+        if (String(data.start_at).slice(0, 19) === desiredStart && data.title === desiredTitle) return null
+        const { error } = await supabase.from('calendar_events').update({ title: desiredTitle, start_at: desiredStart }).eq('id', linkedId)
+        if (error) throw error
+        showToast('🔔 Recordatorio del plazo actualizado')
+        return 'updated'
+      }
+      // El recordatorio enlazado ya no existe: se vuelve a poner.
+    }
+    await linkRsvpDeadlineReminder(event)
+    showToast('🔔 Recordatorio del plazo puesto')
+    return 'created'
+  } finally {
+    syncingReminders.delete(id)
   }
-  const { error } = await supabase
-    .from('calendar_events')
-    .update({ title: `Plazo de RSVP: ${event.title}`, start_at: `${event.rsvpDeadline}T00:00:00` })
-    .eq('id', event.rsvpDeadlineCalendarEventId)
-  if (error) throw error
+}
+
+async function syncRsvpDeadlineReminderSafely(id: string): Promise<void> {
+  try {
+    await syncRsvpDeadlineReminder(id)
+  } catch {
+    showToast('⚠️ No se pudo poner el recordatorio del plazo')
+  }
 }
 
 export async function linkPaymentReminder(payment: EventPayment, eventTitle: string): Promise<void> {

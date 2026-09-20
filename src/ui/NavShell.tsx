@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
 import { SocialMenuFab, type SocialMenuItem } from '@/ui/SocialMenuFab'
 import { ScrollToTopFab } from '@/ui/ScrollToTopFab'
+import { ToastHost } from '@/ui/ToastHost'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, NAV_SECTION_COLORS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
 import { onOpenManager, type ManagerKind } from '@/state/managers'
@@ -128,6 +129,7 @@ export function NavShell({ profile }: { profile: Profile }) {
         <Outlet />
       </main>
       <VoiceCapture />
+      <ToastHost />
       {manager && (
         <Suspense fallback={null}>
           <ManagersHost kind={manager} onClose={() => setManager(null)} />

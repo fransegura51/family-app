@@ -39,9 +39,9 @@ import {
   getEventOpenRsvpUrl,
   getGuestRsvpUrl,
   getInvitationPhotoUrl,
-  linkEventToCalendar,
+  syncEventToCalendar,
   linkPaymentReminder,
-  linkRsvpDeadlineReminder,
+  syncRsvpDeadlineReminder,
   listEventActivities,
   listEventBudgetItems,
   listEventDayPlan,
@@ -73,8 +73,6 @@ import {
   updateEventPayment,
   updateEventSpecialDetail,
   updateEventTask,
-  updateLinkedCalendarEvent,
-  updateRsvpDeadlineReminder,
   uploadInvitationPhoto,
 } from '@/data/events'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
@@ -533,48 +531,31 @@ function EventDetail({
   const [openModule, setOpenModule] = useState<EventModuleKey | 'compras' | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [linkingCalendar, setLinkingCalendar] = useState(false)
-
-  async function handleLinkCalendar() {
-    setLinkingCalendar(true)
-    setError(null)
-    try {
-      await linkEventToCalendar(event)
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir al calendario'))
-    } finally {
-      setLinkingCalendar(false)
+  // Un evento con la fecha confirmada que todavía no está en el Calendario (p. ej. uno
+  // confirmado antes de que esto fuera automático) se apunta al abrirlo.
+  useEffect(() => {
+    if (event.status === 'planificacion' && event.dateStatus === 'confirmada' && event.eventDate && !event.calendarEventId) {
+      syncEventToCalendar(event.id)
+        .then((result) => {
+          if (result) onChanged()
+        })
+        .catch(() => {})
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id, event.dateStatus, event.eventDate])
 
-  async function handleUpdateLinkedCalendar() {
-    setLinkingCalendar(true)
-    setError(null)
-    try {
-      await updateLinkedCalendarEvent(event)
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo actualizar el calendario'))
-    } finally {
-      setLinkingCalendar(false)
+  // Igual con el recordatorio del plazo de RSVP: un evento con plazo y sin recordatorio
+  // (puesto antes de que esto fuera automático) lo recibe al abrirlo.
+  useEffect(() => {
+    if (event.status === 'planificacion' && event.rsvpDeadline && !event.rsvpDeadlineCalendarEventId) {
+      syncRsvpDeadlineReminder(event.id)
+        .then((result) => {
+          if (result) onChanged()
+        })
+        .catch(() => {})
     }
-  }
-
-  const [linkingReminder, setLinkingReminder] = useState(false)
-
-  async function handleLinkRsvpReminder() {
-    setLinkingReminder(true)
-    setError(null)
-    try {
-      await linkRsvpDeadlineReminder(event)
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo poner el recordatorio'))
-    } finally {
-      setLinkingReminder(false)
-    }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id, event.rsvpDeadline])
 
   function reloadTasks() {
     listEventTasks(event.id)
@@ -910,25 +891,12 @@ function EventDetail({
           )}
         </div>
         {/* Petición de la Skill: nunca crear un compromiso firme en
-            Calendario mientras la fecha no esté confirmada, y siempre
-            como acción explícita del usuario, no automática. */}
-        {event.dateStatus === 'confirmada' && event.eventDate && !event.calendarEventId && (
-          <button type="button" className="link-button" onClick={handleLinkCalendar} disabled={linkingCalendar} style={{ marginTop: 4 }}>
-            {linkingCalendar ? 'Añadiendo…' : '📅 Añadir al calendario'}
-          </button>
-        )}
+            Calendario mientras la fecha no esté confirmada (ver
+            syncEventToCalendar). */}
         {event.calendarEventId && (
           <p className="muted" style={{ marginTop: 4 }}>
-            ✓ En el calendario ·{' '}
-            <button type="button" className="link-button" onClick={handleUpdateLinkedCalendar} disabled={linkingCalendar}>
-              {linkingCalendar ? 'Actualizando…' : 'Actualizar'}
-            </button>
+            ✓ En el calendario
           </p>
-        )}
-        {event.rsvpDeadline && !event.rsvpDeadlineCalendarEventId && (
-          <button type="button" className="link-button" onClick={handleLinkRsvpReminder} disabled={linkingReminder} style={{ marginTop: 4, display: 'block' }}>
-            {linkingReminder ? 'Poniendo recordatorio…' : `🔔 Recordarme el plazo de RSVP (${event.rsvpDeadline})`}
-          </button>
         )}
         {event.rsvpDeadline && event.rsvpDeadlineCalendarEventId && <p className="muted" style={{ marginTop: 4 }}>🔔 Recordatorio de plazo puesto</p>}
       </div>
@@ -1316,10 +1284,6 @@ function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClo
       // Petición de la Skill: "relative tasks update when event date
       // changes" — solo se recalcula si la fecha de verdad ha cambiado.
       if (nextDate !== event.eventDate) await recalculateAutoTasks(event.id, event.type, nextDate)
-      const nextDeadline = rsvpDeadline || null
-      if (nextDeadline !== event.rsvpDeadline && event.rsvpDeadlineCalendarEventId) {
-        await updateRsvpDeadlineReminder({ ...event, rsvpDeadline: nextDeadline })
-      }
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))

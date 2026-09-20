@@ -39,6 +39,7 @@ import { getSelectedCalendarDate } from '@/state/calendarSelection'
 import { showToast } from '@/state/toast'
 import { handleKitchenText, ingredientsFlowFor, type KitchenOutcome } from '@/pepa/kitchen'
 import { handleDialogReply, pendingDialogCount } from '@/pepa/dialog'
+import { forgetFinanceContext, handleFinanceText } from '@/pepa/finance'
 import { NOT_UNDERSTOOD, runTalk, type TalkDeps, type TalkOutcome } from '@/pepa/talk'
 import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
@@ -682,6 +683,8 @@ async function handleCalendarEntry(text: string): Promise<string> {
 const talkDeps: TalkDeps = {
   today: () => new Date(),
   kitchen: (text) => handleKitchenText(text, 'create', new Date(), { recipeRequests: true, conversation: true }),
+  finance: (text) => handleFinanceText(text),
+  forgetFinance: forgetFinanceContext,
   storeNames: async () => (await listShoppingStores()).map((s) => s.name),
   members: () => listFamilyMembers(),
   answerCalendar: async (text) => {
@@ -1360,7 +1363,11 @@ export function VoiceCapture() {
               </button>
             </form>
 
-            {message && <p className={status === 'error' ? 'error' : 'muted'}>{message}</p>}
+            {message && (
+              <p className={status === 'error' ? 'error' : 'muted'} style={{ whiteSpace: 'pre-line' }}>
+                {message}
+              </p>
+            )}
 
             <div className="day-modal-group">
               <p className="muted">¿Cómo prefieres que responda la app?</p>

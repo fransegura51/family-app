@@ -44,6 +44,9 @@ export interface AiQuestion {
 export interface TalkDeps {
   today(): Date
   kitchen(text: string): Promise<KitchenOutcome | null>
+  // Economía (solo consulta): devuelve la respuesta, o null si la frase no es de Economía.
+  finance?(text: string): Promise<string | null>
+  forgetFinance?(): void
   storeNames(): Promise<string[]>
   members(): Promise<{ id: string; name: string }[]>
   // Las respuestas a preguntas las construye el código de siempre.
@@ -154,6 +157,14 @@ async function askWithAi(text: string, deps: TalkDeps, today: Date): Promise<Tal
 
 export async function runTalk(text: string, deps: TalkDeps): Promise<TalkOutcome> {
   const today = deps.today()
+
+  // Economía primero: sus preguntas ("cuánto hemos gastado en Mercadona") llevan palabras que el
+  // router de compra/calendario confundiría. Si no es de Economía, su contexto corto se olvida.
+  if (deps.finance) {
+    const finance = await deps.finance(text)
+    if (finance !== null) return { kind: 'answer', text: finance }
+    deps.forgetFinance?.()
+  }
 
   const kitchen = await deps.kitchen(text)
   if (kitchen) return kitchen

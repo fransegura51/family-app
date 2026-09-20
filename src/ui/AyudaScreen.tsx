@@ -27,7 +27,8 @@ const SUMMARIES: Record<string, string> = {
   '/eventos': 'Organiza cumpleaños, comuniones, bautizos, celebraciones, bodas íntimas o cualquier evento personalizado: invitados con invitación y confirmación de asistencia por enlace (sin que el invitado necesite la app), presupuesto ligado a Economía, menú con traspaso a Compras, ceremonia, mesas, decoración, actividades, proveedores, pagos, detalles/recuerdos, regalos recibidos y plan del día.',
   '/puntos': 'Puntos y recompensas por tareas hechas — pensado sobre todo para los más pequeños.',
   '/compras': 'Lista de la compra, recetas, historial de precios y tickets — desde apuntar algo suelto hasta llevar la compra semanal.',
-  '/alimentacion': 'Menú semanal, registro de comidas y seguimiento de peso/medidas de la familia.',
+  '/alimentacion': 'Menú semanal y recetas de la familia.',
+  '/peso': 'Peso, medidas y fotos de evolución de cada miembro de la familia.',
   '/dinero': 'Economía familiar: resumen, estadísticas, movimientos y presupuesto — con todo trazable hasta el ticket o gasto exacto.',
   '/ubicacion': 'Dónde está cada miembro ahora mismo (con su permiso) y avisos automáticos de llegada/salida de sitios guardados.',
   '/cumpleanos': 'Próximos cumpleaños de la familia y de los contactos, con recordatorios.',
@@ -120,8 +121,9 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Menú ☰ e Inicio', text: 'El botón ☰, flotante junto al título ("La cocina de Pepa"), abre un desplegable con todas las pestañas — puedes sacar las que uses más para verlas siempre en pantalla, agruparlas y crear accesos nuevos (botón "✏️ Editar" dentro del desplegable), igual que en Economía.' },
     { title: 'Menú semanal', text: 'Planifica desayuno, comida, merienda y cena de toda la semana, con una receta guardada o texto libre. Una vez guardado, "Editar" cambia la receta o el texto sin tener que quitarlo primero — "Quitar" sigue ahí para borrarlo del todo.' },
     { title: 'Recetas', text: 'Con foto, etiquetas (Postres, Favoritos, Fáciles de preparar...), ingredientes y notas; un buscador arriba te lleva directo a las que ya tienes guardadas, y también puedes buscarla en internet (el campo Título recuerda tus búsquedas anteriores y las autocompleta) o importarla pegando su URL, y mandar los ingredientes que quieras a la lista de la compra. Al abrir una receta, arriba a la altura de las etiquetas están sus acciones, solo con símbolos: 🛒 añadir a la lista de la compra, 📤 compartir (manda el título, los ingredientes, la preparación y la foto, si tiene, al menú de compartir del móvil), ✏️ editar y ✕ borrar (pide confirmación). Al importar por URL, si la página ya numeraba los pasos, no se repite el número.' },
-    { title: 'Registro', text: 'Apunta lo que ha comido cada uno (puedes marcar a varios a la vez), con calorías y macronutrientes si quieres.' },
-    { title: 'Peso', text: 'Evolución del peso y las medidas de cada miembro, con gráfico y fotos de seguimiento.' },
+  ],
+  '/peso': [
+    { title: 'Peso y medidas', text: 'Elige a la persona arriba y registra su peso y medidas (cintura, abdomen, brazo, pierna): verás la evolución en un gráfico. También puedes subir fotos de evolución. Antes vivía dentro de La cocina de Pepa (Registro de comidas se eliminó).' },
   ],
   '/dinero': [
     { title: 'Resumen', text: 'Ingresos, gastos y ahorro del mes, más las "Conclusiones de Pepa": en su bocadillo se ve una frase a la vez señalando algo distinto (la categoría que más ha crecido, la tienda más frecuente...) — cambia sola cada vez que abres la pantalla, o deslizando con el dedo sobre la imagen para ver las demás. Cuando la conclusión se apoya en un criterio propio de la app (tasa de ahorro, Fijo/Variable, Debo/Necesito/Quiero, comparación con el periodo anterior), debajo de la imagen aparece un cuadro "💡" explicando qué significa y por qué importa. Su filtro "📅 Fecha" (como en el resto de Economía) incluye "Mes contable" y "Mes real" — ver Presupuesto(s) para la diferencia. Un traspaso entre vuestras propias cuentas (p. ej. a la de un hijo) no cuenta como Ingreso ni como Gasto ni afecta a la Tasa de ahorro — solo dinero real que entra o sale de la familia. Debajo de las tarjetas de "Mis cuentas", "⚙️ Configuración cuentas" lleva directo a conectar/desconectar bancos o decir de quién es cada cuenta, sin tener que buscarlo en ☰ Menú.' },

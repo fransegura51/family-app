@@ -7,7 +7,7 @@
 // está en producción y probada — tocarla para generalizarla es más
 // riesgo que las ~80 líneas que se repiten aquí.
 
-export type FixedAlimentacionMenuItemKey = 'Inicio' | 'Menú' | 'Recetas' | 'Registro' | 'Peso'
+export type FixedAlimentacionMenuItemKey = 'Inicio' | 'Menú' | 'Recetas'
 export type AlimentacionMenuItemKey = FixedAlimentacionMenuItemKey | `custom:${string}`
 
 export function isCustomAlimentacionMenuKey(key: AlimentacionMenuItemKey): boolean {
@@ -32,8 +32,6 @@ export const ALIMENTACION_MENU_ITEM_META: Record<FixedAlimentacionMenuItemKey, {
   Inicio: { icon: '🏠', label: 'Inicio' },
   Menú: { icon: '📅', label: 'Menú semanal' },
   Recetas: { icon: '📖', label: 'Recetas' },
-  Registro: { icon: '📝', label: 'Registro' },
-  Peso: { icon: '⚖️', label: 'Peso' },
 }
 
 export function alimentacionMenuEntryMeta(entry: AlimentacionMenuEntry): { icon: string; label: string } {
@@ -41,7 +39,11 @@ export function alimentacionMenuEntryMeta(entry: AlimentacionMenuEntry): { icon:
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
-const DEFAULT_KEYS: FixedAlimentacionMenuItemKey[] = ['Inicio', 'Menú', 'Recetas', 'Registro', 'Peso']
+const DEFAULT_KEYS: FixedAlimentacionMenuItemKey[] = ['Inicio', 'Menú', 'Recetas']
+
+// Registro de comidas se eliminó y Peso y medidas tiene su propia sección:
+// se quitan de los menús ya guardados en cada móvil.
+const RETIRED_KEYS = ['Registro', 'Peso']
 
 const KEY = 'familyapp:alimentacion-menu-layout'
 
@@ -58,9 +60,9 @@ export function loadAlimentacionMenuLayout(): AlimentacionMenuGroup[] {
     const groups: AlimentacionMenuGroup[] = (parsed as { id: string; name: string | null; items: unknown[] }[]).map((g) => ({
       id: g.id,
       name: g.name,
-      items: g.items.map((item) =>
-        typeof item === 'string' ? { key: item as AlimentacionMenuItemKey } : (item as AlimentacionMenuEntry),
-      ),
+      items: g.items
+        .map((item) => (typeof item === 'string' ? { key: item as AlimentacionMenuItemKey } : (item as AlimentacionMenuEntry)))
+        .filter((item) => !RETIRED_KEYS.includes(item.key)),
     }))
     // Si en el futuro se añade una clave fija nueva, que aparezca sola
     // (al final del primer grupo) en vez de desaparecer del

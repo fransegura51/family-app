@@ -45,13 +45,14 @@ const HOME_CARD_BODY: Record<string, string> = {
   eventos: 'Cumpleaños, comuniones y más',
   puntos: 'Recompensas de la familia',
   compras: 'Lista actual',
-  alimentacion: 'Menú, registro y peso',
+  alimentacion: 'Menú y recetas',
   dinero: 'Resumen del mes',
   ubicacion: 'Opcional, desactivado por defecto',
   cumpleanos: 'Próximos en la familia',
   contactos: 'Colegio, médico, emergencias',
   galeria: 'Fotos de la familia',
   documentos: 'Por cada miembro',
+  peso: 'Peso, talla y crecimiento',
 }
 
 const HOME_CARDS: HomeCardDef[] = NAV_TABS.filter((t) => t.to !== '/')

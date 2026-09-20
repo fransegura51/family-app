@@ -159,20 +159,6 @@ export interface MenuEntry {
   freeText: string | null
 }
 
-export interface FoodLog {
-  id: string
-  familyId: string
-  memberId: string
-  logDate: string
-  mealType: MealType
-  description: string
-  calories: number | null
-  proteinG: number | null
-  carbsG: number | null
-  fatG: number | null
-  isEstimated: boolean
-}
-
 export interface BodyMeasurement {
   id: string
   familyId: string

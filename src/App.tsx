@@ -41,6 +41,7 @@ const DocumentsScreen = lazy(() => import('@/ui/DocumentsScreen').then((m) => ({
 const MenuSettingsScreen = lazy(() => import('@/ui/MenuSettingsScreen').then((m) => ({ default: m.MenuSettingsScreen })))
 const AyudaScreen = lazy(() => import('@/ui/AyudaScreen').then((m) => ({ default: m.AyudaScreen })))
 const SuggestionsScreen = lazy(() => import('@/ui/SuggestionsScreen').then((m) => ({ default: m.SuggestionsScreen })))
+const BodyScreen = lazy(() => import('@/ui/BodyScreen').then((m) => ({ default: m.BodyScreen })))
 const AdminUsageScreen = lazy(() => import('@/ui/AdminUsageScreen').then((m) => ({ default: m.AdminUsageScreen })))
 
 // Bug real reportado varias veces ("se queda la pantalla en gris/
@@ -139,6 +140,7 @@ function AuthedApp() {
             <Route path="/contactos" element={<ContactsScreen />} />
             <Route path="/galeria" element={<GalleryScreen />} />
             <Route path="/documentos" element={<DocumentsScreen />} />
+            <Route path="/peso" element={<BodyScreen />} />
             <Route path="/menu-organizar" element={<MenuSettingsScreen />} />
             <Route path="/admin-uso" element={<AdminUsageScreen />} />
             <Route path="/ayuda" element={<AyudaScreen />} />

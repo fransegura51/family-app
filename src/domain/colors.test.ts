@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass, storeColorResolver } from './colors'
+import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass, storeColorResolver, distinctTagColor } from './colors'
+
+describe('distinctTagColor', () => {
+  it('gives valid, different hex colors for consecutive tags', () => {
+    const colors = Array.from({ length: 12 }, (_, i) => distinctTagColor(i))
+    for (const c of colors) expect(c).toMatch(/^#[0-9a-f]{6}$/)
+    expect(new Set(colors).size).toBe(12)
+  })
+})
 
 describe('storeColorResolver', () => {
   const stores = [

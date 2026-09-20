@@ -140,15 +140,15 @@ export function NavShell({ profile }: { profile: Profile }) {
               {tab.label}
             </button>
           ))}
-          <button type="button" className="nav-menu-item nav-menu-settings" onClick={() => go('/ayuda')}>
+          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('ayuda') }} onClick={() => go('/ayuda')}>
             <span className="nav-item-icon">❓</span>
             Ayuda
           </button>
-          <button type="button" className="nav-menu-item nav-menu-settings" onClick={() => go('/sugerencias')}>
+          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('sugerencias') }} onClick={() => go('/sugerencias')}>
             <span className="nav-item-icon">💡</span>
             Sugerencias
           </button>
-          <button type="button" className="nav-menu-item nav-menu-settings" onClick={() => go('/menu-organizar')}>
+          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('menu-organizar') }} onClick={() => go('/menu-organizar')}>
             <span className="nav-item-icon">⚙️</span>
             Configuración
           </button>

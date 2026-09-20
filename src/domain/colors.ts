@@ -171,6 +171,27 @@ export function colorForClass(name: string): string {
   return `hsl(${hash % 360}, ${saturation}%, ${lightness}%)`
 }
 
+// Petición real: "las etiquetas generadas automáticamente que tengan
+// colores diferentes, no todos iguales" — las etiquetas que crea un
+// evento salían todas con el mismo azul. Un tono por número de orden
+// (ángulo dorado, como pastelPalette) en hex, porque la columna
+// tags.color guarda hex y la etiqueta se ve viva (punto) o pastel
+// (fondo) según dónde.
+export function distinctTagColor(index: number): string {
+  const h = (index * GOLDEN_ANGLE) % 360
+  const s = 0.72
+  const l = 0.55
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x]
+  const hex = (v: number) =>
+    Math.round((v + m) * 255)
+      .toString(16)
+      .padStart(2, '0')
+  return `#${hex(r)}${hex(g)}${hex(b)}`
+}
+
 // Petición real: etiquetas de receta no tienen un color guardado en la
 // base de datos, y cada familia puede crear/renombrar las suyas — en
 // vez de una migración nueva y una pantalla para fijarlo a mano, mismo

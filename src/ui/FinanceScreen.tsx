@@ -60,7 +60,7 @@ import {
 import {
   budgetPeriodRange,
   budgetSpent,
-  categoryColors,
+  stableCategoryColors,
   isComprasFamiliaCategory,
   isFoodCategory,
   isInternalTransferCategory,
@@ -932,6 +932,19 @@ function EconomiaMenuDropdown({
 // COMMON_OWNER_COLOR). Bug real: toPastel('#868e96') lo dejaba azul
 // (fuerza 65 % de saturación a cualquier tono), no gris.
 const COMMON_ACCOUNT_COLOR = '#e9ecef'
+// Colores pastel fijos de los dónuts de Debo/Necesito/Quiero y Fijo/variable (siempre los mismos).
+const NECESSITY_PASTEL: Record<'debo' | 'necesito' | 'quiero' | 'sin_clasificar', string> = {
+  debo: 'hsl(0, 70%, 90%)',
+  necesito: 'hsl(45, 85%, 88%)',
+  quiero: 'hsl(280, 60%, 90%)',
+  sin_clasificar: '#e9ecef',
+}
+const FIXED_PASTEL: Record<'fijo' | 'variable' | 'sin_clasificar', string> = {
+  fijo: 'hsl(200, 70%, 88%)',
+  variable: 'hsl(150, 55%, 86%)',
+  sin_clasificar: '#e9ecef',
+}
+const pastelOf = (hsl: string | undefined) => (hsl ? pastelFromHsl(hsl) : undefined)
 const GENERAL_BUDGET_COLOR = 'hsl(175, 55%, 88%)'
 // Arcoíris por mes del año (enero rojo → diciembre rosa): agosto es siempre el mismo color, sea el año que sea.
 const MONTH_FOLDER_COLORS = Array.from({ length: 12 }, (_, i) => `hsl(${i * 30}, 70%, 90%)`)
@@ -1487,7 +1500,7 @@ function BankTab({
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [visibleCount, setVisibleCount] = useState(50)
   const movementColorMode = useMovementColorMode()
-  const catColors = categoryColors(categories)
+  const catColors = stableCategoryColors(categories)
 
   // Petición real: "no me has puesto para poder agregar cuentas a esa
   // pantalla" — el botón "+ Añadir cuenta" de las tarjetas de saldo
@@ -2295,6 +2308,7 @@ interface BreakdownSlice {
   hasChildren?: boolean
 }
 
+const PASTEL_DONUT_FALLBACK = pastelPalette(10)
 const DONUT_COLORS = ['#4C6EF5', '#e8590c', '#2f9e44', '#ae3ec9', '#f08c00', '#1098ad', '#e64980', '#748ffc', '#20c997', '#fa5252']
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
@@ -2334,7 +2348,7 @@ function SvgDonut({
   highlightedKey,
   onSliceClick,
   size = 190,
-  colors = DONUT_COLORS,
+  colors = PASTEL_DONUT_FALLBACK,
 }: {
   slices: { key: string; total: number; color?: string; label?: string }[]
   centerLabel: { name: string; total: number }
@@ -2373,7 +2387,7 @@ function SvgDonut({
       <div className="donut-legend">
         {legendEntries.map((s) => (
           <span key={s.key} className="donut-legend-item">
-            <span className="donut-legend-dot" style={{ background: s.color }} />
+            <span className="donut-legend-dot" style={{ background: s.color, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.12)' }} />
             {s.label}
           </span>
         ))}
@@ -2401,6 +2415,8 @@ function SvgDonut({
                 key={s.key}
                 d={donutSlicePath(cx, cy, rOuter, rInner, start, start + pct)}
                 fill={s.color ?? colors[i % colors.length]}
+                stroke="#fff"
+                strokeWidth={1}
                 fillOpacity={dimmed ? 0.45 : 1}
                 onClick={() => onSliceClick(s.key)}
                 style={{ cursor: 'pointer' }}
@@ -2534,7 +2550,7 @@ function CategoryDonutExplorer({
 
   // Un color estable por categoría (no por posición en la lista de este
   // mes) — ver domain/finance.ts (categoryColors) para el porqué.
-  const catColors = categoryColors(categories)
+  const catColors = stableCategoryColors(categories)
 
   const topLevel = categories.filter((c) => !c.parentId)
   const topSlices: BreakdownSlice[] = topLevel
@@ -2545,7 +2561,7 @@ function CategoryDonutExplorer({
         key: c.id,
         label: c.name,
         icon: c.icon,
-        color: catColors.get(c.id),
+        color: pastelOf(catColors.get(c.id)),
         total: matched.reduce((s, e) => s + e.amount, 0),
         count: matched.length,
         hasChildren: childNames.length > 0,
@@ -2562,7 +2578,7 @@ function CategoryDonutExplorer({
         .filter((c) => c.parentId === selectedTop.id)
         .map((c): BreakdownSlice => {
           const matched = expenses.filter((e) => e.category === c.name)
-          return { key: c.id, label: c.name, icon: c.icon, color: catColors.get(c.id), total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+          return { key: c.id, label: c.name, icon: c.icon, color: pastelOf(catColors.get(c.id)), total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
         })
         .concat(
           (() => {
@@ -2572,7 +2588,7 @@ function CategoryDonutExplorer({
                   {
                     key: `directo:${selectedTop.id}`,
                     label: '(sin subcategoría)',
-                    color: catColors.get(selectedTop.id),
+                    color: pastelOf(catColors.get(selectedTop.id)),
                     total: direct.reduce((s, e) => s + e.amount, 0),
                     count: direct.length,
                   } as BreakdownSlice,
@@ -2804,7 +2820,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
     const slices: BreakdownSlice[] = tags
       .map((t) => {
         const matched = real.filter((e) => e.tagId === t.id)
-        return { key: t.id, label: t.name, icon: '🏷️', color: t.color, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+        return { key: t.id, label: t.name, icon: '🏷️', color: toPastel(t.color), total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
       })
       .filter((s) => s.total > 0)
     body =
@@ -2828,7 +2844,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
     const slices: BreakdownSlice[] = groups
       .map((g) => {
         const matched = real.filter((e) => (g.key === 'sin_clasificar' ? !necessityByExpense.get(e.id) : necessityByExpense.get(e.id) === g.key))
-        return { key: g.key, label: g.label, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+        return { key: g.key, label: g.label, color: NECESSITY_PASTEL[g.key], total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
       })
       .filter((s) => s.total > 0)
     body = (
@@ -2854,7 +2870,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         const matched = real.filter((e) =>
           g.key === 'sin_clasificar' ? isFixedByExpense.get(e.id) == null : isFixedByExpense.get(e.id) === (g.key === 'fijo'),
         )
-        return { key: g.key, label: g.label, total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+        return { key: g.key, label: g.label, color: FIXED_PASTEL[g.key], total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
       })
       .filter((s) => s.total > 0)
     body = (
@@ -2960,10 +2976,10 @@ function EvolucionTemporal({
               <span className={r.ahorro >= 0 ? 'muted' : 'error'}>Ahorro: {r.ahorro.toFixed(2)} €</span>
             </div>
             <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 3 }}>
-              <div style={{ width: `${(r.income / maxAmount) * 100}%`, background: '#2f9e44', borderRadius: 3 }} />
+              <div style={{ width: `${(r.income / maxAmount) * 100}%`, background: 'hsl(140, 50%, 72%)', borderRadius: 3 }} />
             </div>
             <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 2 }}>
-              <div style={{ width: `${(r.spent / maxAmount) * 100}%`, background: '#e64980', borderRadius: 3 }} />
+              <div style={{ width: `${(r.spent / maxAmount) * 100}%`, background: 'hsl(340, 75%, 82%)', borderRadius: 3 }} />
             </div>
             <button
               type="button"
@@ -3107,7 +3123,7 @@ function ExpensesTab({
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [expenseAccountId, setExpenseAccountId] = useState<Map<string, string>>(new Map())
   const movementColorMode = useMovementColorMode()
-  const catColors = categoryColors(categories)
+  const catColors = stableCategoryColors(categories)
   // Petición real: "quiero que quites el filtro mensual... y pongas
   // los mismos filtros temporales desplegables que en el resto de
   // Economía en el mismo sitio" — mismo componente (DateFilterTab,
@@ -3836,7 +3852,7 @@ function CategoriesModal({
   // Mismo color por categoría que ya usan los dónuts (categoryColors),
   // pasado a pastel — así se reconoce la misma categoría entre el
   // gráfico y esta lista sin inventar una asignación nueva.
-  const catColors = categoryColors(categories)
+  const catColors = stableCategoryColors(categories)
   function catBg(id: string): string | undefined {
     const c = catColors.get(id)
     return c ? pastelFromHsl(c) : undefined
@@ -6460,7 +6476,7 @@ export function BudgetsTab({
   const ticketRangeGrouped = groupReceiptsByStore(ticketRangeFiltered, knownStores)
   const ticketStoreNames = groupReceiptsByStore(ticketDisplayReceipts, knownStores).map((g) => g.store)
 
-  const catColors = categoryColors(groupCategories)
+  const catColors = stableCategoryColors(groupCategories)
   // Petición real: "quiero que estén ordenados por categorías
   // principales, todas las subcategorías de una categoría juntas" —
   // sin este orden explícito, las porciones/leyenda salían en el orden
@@ -6937,7 +6953,7 @@ function BudgetsSection({
   // Mismo color por categoría que ya usan los dónuts (categoryColors),
   // pasado a pastel — reutiliza el mismo criterio que CategoriesModal,
   // en vez de dejar estas tarjetas siempre grises.
-  const catColors = categoryColors(categories)
+  const catColors = stableCategoryColors(categories)
   function renderBudgetRow(b: Budget) {
     const spent = budgetSpent(b, expenses, { categories })
     const pct = Math.min(100, Math.round((spent / b.amount) * 100))
@@ -7250,7 +7266,7 @@ function BudgetsOverview({
   // "root" puede así representar a más de un id real (`rootIds`).
   const groupCategories = useMemo(() => allCategories.filter((c) => c.budgetGroup === group), [allCategories, group])
   // Mismos colores por categoría/subcategoría que los dónuts, en pastel.
-  const groupCatColors = useMemo(() => categoryColors(groupCategories), [groupCategories])
+  const groupCatColors = useMemo(() => stableCategoryColors(groupCategories), [groupCategories])
   const byParentCategory = useMemo(() => {
     const totals = new Map<string, { name: string; icon?: string; rootIds: string[]; total: number }>()
     for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, allCategories))) {

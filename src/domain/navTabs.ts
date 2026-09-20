@@ -48,6 +48,12 @@ export function navSectionId(tab: NavTab): string {
 // coincidiría por casualidad, no lo garantizaría).
 export const NAV_SECTION_COLORS: ReadonlyMap<string, string> = (() => {
   const sections = NAV_TABS.filter((t) => t.to !== '/')
-  const palette = pastelPalette(sections.length)
-  return new Map(sections.map((t, i) => [navSectionId(t), palette[i]]))
+  // Ayuda, Sugerencias y Configuración siguen a las secciones (los tonos
+  // son por índice, así que añadirlos no cambia el color de ninguna).
+  const extras = ['ayuda', 'sugerencias', 'menu-organizar']
+  const palette = pastelPalette(sections.length + extras.length)
+  return new Map([
+    ...sections.map((t, i): [string, string] => [navSectionId(t), palette[i]]),
+    ...extras.map((id, i): [string, string] => [id, palette[sections.length + i]]),
+  ])
 })()

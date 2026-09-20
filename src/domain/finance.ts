@@ -160,6 +160,22 @@ export function distinctPaletteEntries(count: number): { h: number; s: number; l
 // de competir por dos tonos para "lo mismo"). Sus subcategorías
 // comparten el tono, variando la luminosidad en un rango amplio para
 // que se distingan bien entre ellas.
+// Petición real: "que las estadísticas de categorías tengan su color
+// pastel fijo... los mismos colores que la lista de Presupuesto" —
+// categoryColors reparte los tonos según QUÉ categorías le llegan, y
+// unas pantallas le pasaban todas las categorías y otras solo las de un
+// grupo, así que la misma categoría salía de otro color según la
+// pantalla. Aquí cada grupo (generales, ingresos...) se calcula por
+// separado, con lo que da igual si se le pasa la lista entera o solo un
+// grupo: el color de una categoría es siempre el mismo.
+export function stableCategoryColors(categories: BudgetCategory[]): Map<string, string> {
+  const groups = new Map<string, BudgetCategory[]>()
+  for (const c of categories) groups.set(c.budgetGroup, [...(groups.get(c.budgetGroup) ?? []), c])
+  const colors = new Map<string, string>()
+  for (const list of groups.values()) for (const [id, color] of categoryColors(list)) colors.set(id, color)
+  return colors
+}
+
 export function categoryColors(categories: BudgetCategory[]): Map<string, string> {
   const colors = new Map<string, string>()
   const topLevel = categories.filter((c) => !c.parentId)

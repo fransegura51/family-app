@@ -5,6 +5,7 @@
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
 import { addShoppingItem } from '@/data/shopping'
 import { supabase } from '@/data/supabaseClient'
+import { distinctTagColor } from '@/domain/colors'
 import { generateAutoTasks } from '@/domain/events'
 import type { EventReminder } from '@/domain/reminders'
 import type {
@@ -115,9 +116,11 @@ async function findOrCreateEventTag(familyId: string, name: string, year: number
   const trimmed = `${name.trim().slice(0, 60 - yearSuffix.length)}${yearSuffix}`
   const { data: existing } = await supabase.from('tags').select('id').eq('family_id', familyId).eq('name', trimmed).maybeSingle()
   if (existing) return existing.id
+  // Un color distinto por etiqueta (según cuántas tiene ya la familia), no siempre el mismo azul.
+  const { count } = await supabase.from('tags').select('id', { count: 'exact', head: true }).eq('family_id', familyId)
   const { data: created, error } = await supabase
     .from('tags')
-    .insert({ family_id: familyId, name: trimmed, color: '#4C6EF5', sort_order: Date.now() })
+    .insert({ family_id: familyId, name: trimmed, color: distinctTagColor(count ?? 0), sort_order: Date.now() })
     .select('id')
     .single()
   if (error) throw error

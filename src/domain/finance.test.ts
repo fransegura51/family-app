@@ -3,6 +3,7 @@ import {
   budgetPeriodRange,
   budgetSpent,
   categoryColors,
+  stableCategoryColors,
   isFoodCategory,
   isInternalTransferCategory,
   resolveCategoryClassification,
@@ -216,5 +217,14 @@ describe('hucha de los niños', () => {
     expect(walletBalance('eric', tx)).toBe(4)
     expect(walletBalance('fernando', tx)).toBe(50)
     expect(walletCategoryTotal('eric', 'ahorro', tx)).toBe(3)
+  })
+})
+
+describe('stableCategoryColors', () => {
+  it('gives a category the same color whether it gets every group or only its own', () => {
+    const generales = categories.filter((c) => c.budgetGroup === 'generales')
+    const all = stableCategoryColors(categories)
+    const own = stableCategoryColors(generales)
+    for (const c of generales) expect(all.get(c.id)).toBe(own.get(c.id))
   })
 })

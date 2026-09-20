@@ -240,6 +240,25 @@ export async function getAccountsMode(): Promise<AccountsMode> {
   return data.accounts_mode as AccountsMode
 }
 
+// Edad (en meses) a la que un "Bebé" pasa a ser "Niño/a" solo — ajuste de
+// familia, por defecto 24 (2 años). Un proceso diario de la base de datos
+// (promote_babies_to_children) guarda el cambio, y mientras tanto la app
+// ya lo muestra como niño en cuanto se cumple.
+export const DEFAULT_BABY_UNTIL_MONTHS = 24
+
+export async function getBabyUntilMonths(): Promise<number> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase.from('families').select('baby_until_months').eq('id', familyId).single()
+  if (error) throw error
+  return data.baby_until_months ?? DEFAULT_BABY_UNTIL_MONTHS
+}
+
+export async function updateBabyUntilMonths(months: number): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('families').update({ baby_until_months: months }).eq('id', familyId)
+  if (error) throw error
+}
+
 export async function updateAccountsMode(mode: AccountsMode): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('families').update({ accounts_mode: mode }).eq('id', familyId)

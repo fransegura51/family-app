@@ -2,8 +2,10 @@ import { ChangeEvent, FormEvent, lazy, PointerEvent as ReactPointerEvent, Suspen
 import { Link, useLocation } from 'react-router-dom'
 import {
   addFamilyMember,
+  DEFAULT_BABY_UNTIL_MONTHS,
   deleteFamilyMember,
   generateMemberInviteCode,
+  getBabyUntilMonths,
   getAmazonWebhookToken,
   listFamilyMembers,
   regenerateAmazonWebhookToken,
@@ -14,6 +16,7 @@ import {
   type AccountsMode,
 } from '@/data/family'
 import { adminResetProfilePin } from '@/data/appLock'
+import { effectiveMemberType } from '@/domain/growth'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
@@ -85,6 +88,12 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [addingMember, setAddingMember] = useState(false)
+  const [babyUntilMonths, setBabyUntilMonths] = useState(DEFAULT_BABY_UNTIL_MONTHS)
+  useEffect(() => {
+    getBabyUntilMonths()
+      .then(setBabyUntilMonths)
+      .catch(() => {})
+  }, [])
   const isAdmin = profile.role === 'admin'
 
   // Orden arrastrable con el dedo — petición real: "los miembros de la
@@ -226,7 +235,9 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
               <MemberAvatar member={m} size={38} />
               <div className="member-row-body">
                 <strong>{m.name}</strong>
-                <span className="member-role-pill">{memberTypeLabel(m.memberType)}</span>
+                <span className="member-role-pill">
+                  {memberTypeLabel(effectiveMemberType(m.memberType, m.birthDate, babyUntilMonths, new Date().toISOString().slice(0, 10)))}
+                </span>
               </div>
               {isAdmin && (
                 <button

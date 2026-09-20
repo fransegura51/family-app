@@ -8,8 +8,8 @@ import {
   listBodyPhotos,
   uploadBodyPhoto,
 } from '@/data/bodyTracking'
-import { listFamilyMembers } from '@/data/family'
-import { ageInMonths } from '@/domain/growth'
+import { DEFAULT_BABY_UNTIL_MONTHS, getBabyUntilMonths, listFamilyMembers } from '@/data/family'
+import { effectiveMemberType } from '@/domain/growth'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { BabyGrowthView } from '@/ui/BabyGrowthView'
 import { KidsMeterView } from '@/ui/KidsMeterView'
@@ -26,14 +26,14 @@ function toDateStr(d: Date): string {
 // de peso y medidas.
 type BodyVariant = 'baby' | 'kid' | 'other'
 
-// Bebés (menos de 2 años): percentiles. Niños: medidor visual de altura (y, hasta
-// los 5 años, también sus percentiles). Adultos e invitados: peso y medidas.
-function variantFor(member: FamilyMember): BodyVariant {
-  const months = member.birthDate ? ageInMonths(member.birthDate, toDateStr(new Date())) : null
-  if (member.memberType === 'baby') return 'baby'
-  if (member.memberType === 'admin' || member.memberType === 'adult' || member.memberType === 'guest') return 'other'
-  if (months != null && months < 24) return 'baby'
-  return 'kid'
+// Bebés: percentiles (solo aquí). Niños: medidor visual de altura. Adultos e
+// invitados: peso y medidas. Un bebé pasa solo a niño a la edad configurada en
+// la familia (por defecto 2 años).
+function variantFor(member: FamilyMember, babyUntilMonths: number): BodyVariant {
+  const type = effectiveMemberType(member.memberType, member.birthDate, babyUntilMonths, toDateStr(new Date()))
+  if (type === 'baby') return 'baby'
+  if (type === 'child') return 'kid'
+  return 'other'
 }
 
 // Petición real: Peso y medidas sale de "La cocina de Pepa" y es una
@@ -47,6 +47,7 @@ export function BodyTab() {
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [babyUntilMonths, setBabyUntilMonths] = useState(DEFAULT_BABY_UNTIL_MONTHS)
   // Solo se muestra "Cargando…" la primera vez que se abre cada persona; al guardar una medida
   // la pantalla se queda como está (así el medidor infantil puede celebrar la medida nueva).
   const loadedFor = useRef<string | null>(null)
@@ -58,6 +59,9 @@ export function BodyTab() {
         if (m.length > 0) setActiveMemberId(m[0].id)
       })
       .catch((e: Error) => setError(e.message))
+    getBabyUntilMonths()
+      .then(setBabyUntilMonths)
+      .catch(() => {})
   }, [])
 
   function reload() {
@@ -91,7 +95,7 @@ export function BodyTab() {
   }
 
   const member = members.find((m) => m.id === activeMemberId)
-  const variant = member ? variantFor(member) : 'other'
+  const variant = member ? variantFor(member, babyUntilMonths) : 'other'
 
   return (
     <div>
@@ -119,11 +123,7 @@ export function BodyTab() {
           ) : variant === 'kid' ? (
             <>
               <KidsMeterView key={member.id} member={member} measurements={measurements} />
-              {member.birthDate && member.sex && ageInMonths(member.birthDate, toDateStr(new Date())) <= 60 ? (
-                <BabyGrowthView member={member} measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
-              ) : (
-                <GeneralWeightView measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
-              )}
+              <GeneralWeightView measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
             </>
           ) : (
             <GeneralWeightView measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageInMonths, curvePoints, lmsAt, normalCdf, percentileBand, percentileFor, valueAtZ, formatPercentile } from './growth'
+import { ageInMonths, curvePoints, effectiveMemberType, lmsAt, normalCdf, percentileBand, percentileFor, valueAtZ, formatPercentile } from './growth'
 
 describe('normalCdf', () => {
   it('matches known values', () => {
@@ -60,5 +60,15 @@ describe('helpers', () => {
     expect(percentileBand(99).band).toBe('muy-alto')
     expect(formatPercentile(35.7)).toBe('36')
     expect(formatPercentile(0.2)).toBe('<1')
+  })
+})
+
+describe('effectiveMemberType', () => {
+  it('turns a baby into a child at the configured age, and leaves other types alone', () => {
+    expect(effectiveMemberType('baby', '2026-09-01', 24, '2027-09-01')).toBe('baby')
+    expect(effectiveMemberType('baby', '2024-09-01', 24, '2026-09-02')).toBe('child')
+    expect(effectiveMemberType('baby', '2025-09-01', 12, '2026-09-02')).toBe('child')
+    expect(effectiveMemberType('baby', null, 24, '2030-01-01')).toBe('baby')
+    expect(effectiveMemberType('adult', '2000-01-01', 24, '2026-09-02')).toBe('adult')
   })
 })

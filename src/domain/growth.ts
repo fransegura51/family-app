@@ -11,6 +11,13 @@ export type GrowthMeasure = 'weight' | 'length' | 'head'
 
 export const MAX_GROWTH_MONTHS = 60
 
+// Tipo de ficha que se muestra: un "Bebé" pasa solo a "Niño/a" cuando cumple la
+// edad configurada en la familia (por defecto 2 años).
+export function effectiveMemberType<T extends string>(memberType: T | 'baby' | 'child', birthDate: string | null, babyUntilMonths: number, today: string): T | 'baby' | 'child' {
+  if (memberType !== 'baby' || !birthDate) return memberType
+  return ageInMonths(birthDate, today) >= babyUntilMonths ? 'child' : 'baby'
+}
+
 const TABLES: Record<GrowthMeasure, LmsTable> = {
   weight: WHO_WEIGHT_FOR_AGE,
   length: WHO_LENGTH_FOR_AGE,

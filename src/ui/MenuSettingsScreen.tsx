@@ -14,6 +14,9 @@ import {
 } from '@/state/colorTheme'
 import { pastelPalette } from '@/domain/colors'
 import {
+  DEFAULT_BABY_UNTIL_MONTHS,
+  getBabyUntilMonths,
+  updateBabyUntilMonths,
   getAccountsMode,
   getFamilyName,
   getFinanceMonthStartDay,
@@ -662,6 +665,62 @@ function ColorThemeSection() {
   )
 }
 
+// Petición real: "una configuración que a los 2 años cambie la ficha
+// automáticamente a niño" — los percentiles solo son de bebés, y el resto
+// de niños usa el medidor ilustrado.
+const BABY_UNTIL_OPTIONS = [12, 18, 24, 30, 36]
+
+function BabyUntilSection() {
+  const [months, setMonths] = useState(DEFAULT_BABY_UNTIL_MONTHS)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getBabyUntilMonths()
+      .then(setMonths)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function choose(next: number) {
+    if (next === months) return
+    const previous = months
+    setMonths(next)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateBabyUntilMonths(next)
+    } catch (err) {
+      setMonths(previous)
+      setError(errorMessage(err, 'No se pudo guardar — puede que solo un admin de la familia pueda cambiarlo.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+  const label = (m: number) => (m % 12 === 0 ? `${m / 12} ${m === 12 ? 'año' : 'años'}` : `${m} meses`)
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 12 }}>
+      <strong>👶 De bebé a niño</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Los percentiles de crecimiento son solo para bebés. Cuando un bebé cumple esta edad, su ficha pasa sola a niño/a (con el medidor de altura ilustrado).
+      </p>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        {BABY_UNTIL_OPTIONS.map((m) => (
+          <button key={m} type="button" className={'chip' + (months === m ? ' chip-active' : '')} onClick={() => choose(m)}>
+            {label(m)}
+          </button>
+        ))}
+      </div>
+      {saving && <span className="muted">Guardando…</span>}
+      {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
 // Gestión de categorías, etiquetas y clases de alimentos — petición real:
 // "categorías y etiquetas de Economía [y] las clases de alimentos... a
 // Configuración, pero es imprescindible que en cada lugar donde se
@@ -796,7 +855,7 @@ function MenuOrderSection() {
   )
 }
 
-type SettingsGroupId = 'menu' | 'colores' | 'economia' | 'compras' | 'seguridad'
+type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'economia' | 'compras' | 'seguridad'
 
 export function MenuSettingsScreen() {
   // Un solo tema abierto a la vez — la pantalla queda como una lista
@@ -807,7 +866,7 @@ export function MenuSettingsScreen() {
   )
   const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
   // Un color por tema, con el estilo elegido en Colores.
-  const groupColors = pastelPalette(5)
+  const groupColors = pastelPalette(6)
 
   return (
     <div className="screen">
@@ -823,6 +882,17 @@ export function MenuSettingsScreen() {
 
       <SettingsGroup color={groupColors[1]} icon="🎨" title="Colores" summary="Estilo de las pantallas y de las estadísticas" open={openGroup === 'colores'} onToggle={() => toggle('colores')}>
         <ColorThemeSection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        color={groupColors[5]}
+        icon="👨‍👩‍👧‍👦"
+        title="Familia"
+        summary="Cuándo un bebé pasa a niño"
+        open={openGroup === 'familia'}
+        onToggle={() => toggle('familia')}
+      >
+        <BabyUntilSection />
       </SettingsGroup>
 
       <SettingsGroup

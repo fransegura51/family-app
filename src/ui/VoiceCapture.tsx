@@ -36,6 +36,10 @@ import { isDictationSupported, isSpeechSupported, listenContinuous, speakAsync }
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
+import { showToast } from '@/state/toast'
+import { handleKitchenText } from '@/pepa/kitchen'
+import type { ActionProposal } from '@/pepa/actions/types'
+import { ActionConfirmSheet } from '@/ui/ActionConfirmSheet'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
 
 type ResponseMode = 'voice' | 'text'
@@ -655,6 +659,9 @@ export function VoiceCapture() {
   const [message, setMessage] = useState('')
   const [typedText, setTypedText] = useState('')
   const [mode, setMode] = useState<ResponseMode>(loadResponseMode)
+  // Acción que Pepa ha preparado y espera confirmación (tarjeta). Nada se
+  // escribe hasta que se confirma allí.
+  const [pendingProposal, setPendingProposal] = useState<ActionProposal | null>(null)
   const dictationOk = isDictationSupported()
 
   // Cuatro botones, cuatro usos, sin ambigüedad — antes dos botones
@@ -738,6 +745,19 @@ export function VoiceCapture() {
       if (isUnsupportedDelete(text)) {
         setStatus('done')
         await respond('Todavía no puedo borrar citas hablando — ábrela en el calendario y pulsa "Borrar".')
+        return
+      }
+
+      // Cocina ("¿qué cenamos hoy?", "pon tortilla el viernes", "añade los
+      // ingredientes a la compra"): reglas + datos que ya existen, sin botón
+      // nuevo. Devuelve null si la frase no es de Cocina y entonces todo sigue
+      // exactamente como antes. Lo que escriba pasa por la tarjeta de
+      // confirmación.
+      const kitchen = await handleKitchenText(text, kind === 'ask' ? 'ask' : 'create')
+      if (kitchen) {
+        if (kitchen.kind === 'proposal') setPendingProposal(kitchen.proposal)
+        setStatus('done')
+        await respond(kitchen.text)
         return
       }
 
@@ -1199,6 +1219,19 @@ export function VoiceCapture() {
             </div>
           </div>
         </div>
+      )}
+
+      {pendingProposal && (
+        <ActionConfirmSheet
+          proposal={pendingProposal}
+          onCancel={() => setPendingProposal(null)}
+          onDone={(doneMessage) => {
+            setPendingProposal(null)
+            setStatus('done')
+            setMessage(doneMessage)
+            showToast(`✅ ${doneMessage}`, 4000)
+          }}
+        />
       )}
     </>
   )

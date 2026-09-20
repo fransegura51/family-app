@@ -589,6 +589,12 @@ function MenuTab() {
 
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pepa (VoiceCapture) puede apuntar un plato desde cualquier pantalla.
+  useEffect(() => {
+    window.addEventListener('family-app:menu-changed', reload)
+    return () => window.removeEventListener('family-app:menu-changed', reload)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (loading) return <p className="muted">Cargando menú…</p>
 
   return (

@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { createFamilyFoodType, deleteFamilyFoodType, updateFamilyFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
+import { colorForClass } from '@/domain/colors'
 import { ICON_CHOICES } from '@/domain/foodTypes'
 import { errorMessage } from '@/domain/errorMessage'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -140,7 +141,8 @@ export function ProductTypesModal({
         </div>
         <p className="muted" style={{ marginTop: 0 }}>
           Son las clases que puedes elegir para cada producto en Historial de precios — Alimentos y Otros tienen
-          cada uno las suyas.
+          cada uno las suyas. Cada clase tiene siempre su color (el que ves en la lista, el historial y las
+          estadísticas), que sale de su nombre.
         </p>
         <div className="filter-row">
           <button
@@ -174,7 +176,7 @@ export function ProductTypesModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={kind === 'alimentacion' ? 'Nueva clase (p. ej. Especias)' : 'Nueva clase (p. ej. Deporte)'}
-            style={{ flex: 1 }}
+            style={{ flex: 1, background: name.trim() ? colorForClass(name) : undefined }}
           />
           <button type="submit" disabled={saving || !name.trim()}>
             Crear
@@ -192,7 +194,7 @@ export function ProductTypesModal({
         <div style={{ marginTop: 12 }}>
           {visibleTypes.map((t) =>
             editingId === t.id ? (
-              <div key={t.id} style={{ padding: '6px 4px', borderBottom: '1px solid #eee' }}>
+              <div key={t.id} style={{ padding: '6px 8px', borderRadius: 8, marginBottom: 4, background: colorForClass(t.name) }}>
                 <div className="inline-fields">
                   <button
                     type="button"
@@ -227,8 +229,10 @@ export function ProductTypesModal({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '6px 4px',
-                  borderBottom: '1px solid #eee',
+                  padding: '6px 8px',
+                  borderRadius: 8,
+                  marginBottom: 4,
+                  background: colorForClass(t.name),
                   fontSize: 14,
                 }}
               >

@@ -171,7 +171,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
           menú ☰ (no tiene varias pestañas), así que solo se sustituye
           el <h1> de texto plano por la foto (ya trae el título
           "Familia" dibujado), sin botón encima. */}
-      <div className="kitchen-header kitchen-header-familia">
+      <div className="kitchen-header">
         <img src={familiaHeaderImg} alt="Familia" className="kitchen-header-img" />
       </div>
       <div className="segmented" role="tablist" style={{ margin: '4px 0 12px' }}>

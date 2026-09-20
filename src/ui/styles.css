@@ -2834,6 +2834,11 @@ textarea {
   aspect-ratio: 1774 / 887;
 }
 
+/* Cabeceras 16:9 (Contactos, Puntos y recompensas) — se ven enteras, sin recortar. */
+.kitchen-header-wide {
+  aspect-ratio: 16 / 9;
+}
+
 .kitchen-header-img {
   width: 100%;
   height: 100%;

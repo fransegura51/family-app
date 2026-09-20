@@ -122,7 +122,7 @@ export function ContactsScreen() {
 
   return (
     <div className="screen">
-      <div className="kitchen-header kitchen-header-familia">
+      <div className="kitchen-header kitchen-header-wide">
         <img src={contactosHeaderImg} alt="Contactos" className="kitchen-header-img" />
       </div>
       {error && <p className="error">{error}</p>}

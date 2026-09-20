@@ -60,7 +60,7 @@ export function RewardsScreen() {
 
   return (
     <div className="screen">
-      <div className="kitchen-header kitchen-header-familia">
+      <div className="kitchen-header kitchen-header-wide">
         <img src={puntosHeaderImg} alt="Puntos y recompensas" className="kitchen-header-img" />
       </div>
       <p className="muted">

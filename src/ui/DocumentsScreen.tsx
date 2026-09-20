@@ -111,7 +111,7 @@ export function DocumentsScreen() {
 
   return (
     <div className="screen">
-      <div className="kitchen-header kitchen-header-familia">
+      <div className="kitchen-header">
         <img src={documentosHeaderImg} alt="Documentos" className="kitchen-header-img" />
       </div>
       {error && <p className="error">{error}</p>}

@@ -76,6 +76,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [addingMember, setAddingMember] = useState(false)
   const isAdmin = profile.role === 'admin'
 
   // Orden arrastrable con el dedo — petición real: "los miembros de la
@@ -156,17 +158,19 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       <div className="kitchen-header kitchen-header-familia">
         <img src={familiaHeaderImg} alt="Familia" className="kitchen-header-img" />
       </div>
-      <Link to="/actividad" className="link-button">
-        Ver actividad reciente
-      </Link>
+      <div className="family-toolbar">
+        <Link to="/actividad" className="link-button">
+          🕘 Actividad reciente
+        </Link>
       {/* Hace falta para que cada persona pueda tener su PROPIA cuenta en
           su propio móvil en vez de compartir el login de otra (p. ej.
           Paco entrando siempre como Jennifer, lo que confundía su
           ubicación con la de ella) — cierra esta sesión para poder
           entrar con la cuenta nueva creada con el código de invitación. */}
-      <button type="button" className="link-button" onClick={() => supabase.auth.signOut()}>
-        Cerrar sesión ({profile.displayName})
-      </button>
+        <button type="button" className="link-button" onClick={() => supabase.auth.signOut()}>
+          Cerrar sesión ({profile.displayName})
+        </button>
+      </div>
       {error && <p className="error">{error}</p>}
       <div className="event-list">
         {order.map((m) =>
@@ -183,8 +187,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
           ) : (
             <div
               key={m.id}
-              className={'card member-card' + (draggingId === m.id ? ' shopping-item-dragging' : '')}
-              style={{ borderColor: m.color, ...(draggingId === m.id ? { transform: `translateY(${dragOffset}px)` } : {}) }}
+              className={'card member-row' + (draggingId === m.id ? ' shopping-item-dragging' : '')}
+              style={{ borderLeftColor: m.color, ...(draggingId === m.id ? { transform: `translateY(${dragOffset}px)` } : {}) }}
             >
               <span
                 className="shopping-drag-handle"
@@ -196,37 +200,69 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
               >
                 ⠿
               </span>
-              <MemberAvatar member={m} size={40} />
-              <div className="member-card-body">
+              <MemberAvatar member={m} size={38} />
+              <div className="member-row-body">
                 <strong>{m.name}</strong>
-                <p className="muted">{memberTypeLabel(m.memberType)}</p>
+                <span className="member-role-pill">{memberTypeLabel(m.memberType)}</span>
               </div>
               {isAdmin && (
-                <div className="member-card-actions">
+                <button
+                  type="button"
+                  className="member-row-more"
+                  aria-label={`Acciones de ${m.name}`}
+                  aria-expanded={menuOpenId === m.id}
+                  onClick={() => setMenuOpenId((cur) => (cur === m.id ? null : m.id))}
+                >
+                  ⋯
+                </button>
+              )}
+              {isAdmin && menuOpenId === m.id && (
+                <div className="member-row-actions">
                   <PhotoUploadButton memberId={m.id} onUploaded={reload} />
                   <button type="button" className="link-button" onClick={() => setEditingId(m.id)}>
-                    Editar
+                    ✏️ Editar
                   </button>
                   {m.linkedProfileId && <ResetPinButton profileId={m.linkedProfileId} />}
-                  {m.linkedProfileId !== profile.id && (
-                    <ConfirmButton label="Borrar" onConfirm={() => handleDelete(m.id)} />
-                  )}
+                  {/* Solo tiene sentido para quien todavía no tiene su
+                      propia cuenta — ligado hoy a la sesión de otro (p. ej.
+                      Paco entrando siempre como Jennifer). El código enlaza
+                      la cuenta nueva a ESTE perfil ya existente, en vez de
+                      crear una familia aparte. */}
+                  {!m.linkedProfileId && <InviteCodeButton memberId={m.id} memberName={m.name} />}
+                  {m.linkedProfileId !== profile.id && <ConfirmButton label="🗑 Borrar" onConfirm={() => handleDelete(m.id)} />}
                 </div>
               )}
-              {/* Solo tiene sentido para quien todavía no tiene su
-                  propia cuenta — ligado hoy a la sesión de otro (p. ej.
-                  Paco entrando siempre como Jennifer). El código enlaza
-                  la cuenta nueva a ESTE perfil ya existente, en vez de
-                  crear una familia aparte. */}
-              {isAdmin && !m.linkedProfileId && <InviteCodeButton memberId={m.id} memberName={m.name} />}
             </div>
           ),
         )}
         {order.length === 0 && <p className="muted">Todavía no hay miembros.</p>}
       </div>
 
-      {isAdmin && <AddMemberForm onAdded={reload} existingMembers={order} />}
-      {isAdmin && <AmazonWebhookSettings />}
+      {isAdmin &&
+        (addingMember ? (
+          <>
+            <AddMemberForm
+              onAdded={() => {
+                setAddingMember(false)
+                reload()
+              }}
+              existingMembers={order}
+            />
+            <button type="button" className="link-button" onClick={() => setAddingMember(false)}>
+              Cancelar
+            </button>
+          </>
+        ) : (
+          <button type="button" className="family-add-btn" onClick={() => setAddingMember(true)}>
+            + Añadir miembro
+          </button>
+        ))}
+      {isAdmin && (
+        <details className="family-advanced">
+          <summary>⚙️ Automatizaciones de tickets por email</summary>
+          <AmazonWebhookSettings />
+        </details>
+      )}
     </div>
   )
 }

@@ -1544,6 +1544,98 @@ select {
   font-size: 13px;
 }
 
+/* Familia: fichas compactas — nombre, rol y "⋯" que despliega las acciones. */
+.family-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 4px 0 10px;
+}
+
+.family-toolbar .link-button {
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.member-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-left-width: 5px;
+  border-left-style: solid;
+}
+
+.member-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.member-role-pill {
+  align-self: flex-start;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: #eef0f4;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.member-row-more {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.member-row-actions {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+
+.family-add-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  border: 2px dashed #ced4da;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.family-advanced {
+  margin-top: 14px;
+}
+
+.family-advanced summary {
+  cursor: pointer;
+  padding: 10px 2px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.member-row-actions .link-button {
+  padding: 4px 0;
+  font-size: 13px;
+}
+
 .form-actions {
   display: flex;
   align-items: center;

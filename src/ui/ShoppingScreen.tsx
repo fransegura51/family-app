@@ -48,6 +48,7 @@ import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/price
 import { BudgetsTab, ReceiptsTab, type MovementsFilter } from '@/ui/FinanceScreen'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
 import { setPendingMovementsFilter } from '@/state/pendingMovementsFilter'
+import { onManagersChanged } from '@/state/managers'
 import type {
   Product,
   ProductPrice,
@@ -756,6 +757,9 @@ function ShoppingListTab() {
     window.addEventListener('family-app:compras-changed', reload)
     return () => window.removeEventListener('family-app:compras-changed', reload)
   }, [])
+
+  // Las clases de alimentos también se gestionan desde Configuración (ventana global, ver state/managers.ts).
+  useEffect(() => onManagersChanged(reload), [])
 
   // "Pepa, Mercadona" (sin producto) navega aquí y pide ver esa tienda
   // directamente — petición real: "cuando le diga Aldi, que me abra
@@ -1888,6 +1892,8 @@ function HistoryTab() {
   const [foodTypes, setFoodTypes] = useState<FamilyFoodType[]>([])
   const [showFoodTypesModal, setShowFoodTypesModal] = useState(false)
   const seededKindsRef = useRef(new Set<FoodTypeKind>())
+
+  useEffect(() => onManagersChanged(() => void reloadFoodTypes()), [])
 
   function reloadFoodTypes() {
     return Promise.all([listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')]).then(([a, b]) =>

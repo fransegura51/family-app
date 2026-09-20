@@ -48,6 +48,7 @@ import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceip
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
+import { onManagersChanged, openManager } from '@/state/managers'
 import { listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import { balanceTrend, earliestTransactionDate } from '@/domain/balanceTrend'
@@ -145,7 +146,7 @@ function isEconomiaSubTab(key: EconomiaMenuItemKey): key is SubTab {
 // acceso del desplegable se puede sacar. Guardado en el dispositivo
 // (como el orden del menú), no por familia.
 const ECONOMIA_PINNED_KEY = 'familyapp:economia-pinned-tabs'
-const ECONOMIA_FIXED_KEYS: readonly string[] = [...SUB_TABS, 'accion:categorias', 'accion:etiquetas', 'accion:movimiento']
+const ECONOMIA_FIXED_KEYS: readonly string[] = [...SUB_TABS, 'accion:movimiento']
 
 // Los accesos personalizados ("custom:<id>") no están en ninguna lista
 // fija — se validan por forma en vez de por pertenencia, para que
@@ -293,10 +294,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   // pestaña activa a remontarse (y recargar sus datos) cuando algo
   // cambia desde uno de estos 3 modales.
   const [categories, setCategories] = useState<BudgetCategory[]>([])
-  const [tags, setTags] = useState<Tag[]>([])
   const [refreshKey, setRefreshKey] = useState(0)
-  const [showCategories, setShowCategories] = useState(false)
-  const [showTags, setShowTags] = useState(false)
   const [showNewMovement, setShowNewMovement] = useState(false)
   // Petición real: "no me has puesto para poder agregar cuentas a esa
   // pantalla" — "+ Añadir cuenta" en las tarjetas de saldo manda a
@@ -364,9 +362,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   }
 
   function handleEconomiaAction(key: EconomiaMenuItemKey) {
-    if (key === 'accion:categorias') setShowCategories(true)
-    else if (key === 'accion:etiquetas') setShowTags(true)
-    else if (key === 'accion:movimiento') setShowNewMovement(true)
+    if (key === 'accion:movimiento') setShowNewMovement(true)
     else if (isEconomiaSubTab(key)) setTab(key)
     // Un acceso personalizado no lleva a ningún sitio todavía — el
     // propio EconomiaMenuDropdown enseña el aviso "aún no hay nada
@@ -376,10 +372,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   const flatMenuEntries = menuLayout.flatMap((g) => g.items)
 
   function reloadShared() {
-    Promise.all([listBudgetCategories(), listTags()]).then(([c, t]) => {
-      setCategories(c)
-      setTags(t)
-    })
+    listBudgetCategories().then(setCategories)
   }
 
   useEffect(reloadShared, [])
@@ -388,6 +381,10 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
     reloadShared()
     setRefreshKey((k) => k + 1)
   }
+
+  // Categorías/etiquetas se gestionan en una ventana global (ver
+  // state/managers.ts): al cambiar algo, esta pantalla recarga sus listas.
+  useEffect(() => onManagersChanged(handleChanged))
 
   function viewMovements(filter: MovementsFilter) {
     if (filter.returnTo) {
@@ -551,10 +548,6 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
       {tab === 'Banco' && <BankTab key={refreshKey} openConnectSignal={openConnectSignal} focusAccountId={focusAccountId} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
 
-      {showCategories && (
-        <CategoriesModal categories={categories} onClose={() => setShowCategories(false)} onChanged={handleChanged} />
-      )}
-      {showTags && <TagsModal tags={tags} onClose={() => setShowTags(false)} onChanged={handleChanged} />}
       {showNewMovement && (
         <NewMovementModal
           categories={categories}
@@ -1064,7 +1057,7 @@ function AccountBalanceCards({
           configuración" — conectar/desconectar/asignar dueño vive ahora
           en Configuración (ver BankAccountsModal), así que desde aquí
           mismo se puede ir directo sin buscarlo en ☰ Menú. */}
-      <Link to="/menu-organizar" className="link-button" style={{ display: 'block', marginTop: 8 }}>
+      <Link to="/menu-organizar" state={{ group: 'economia' }} className="link-button" style={{ display: 'block', marginTop: 8 }}>
         ⚙️ Configuración cuentas
       </Link>
     </div>
@@ -3620,14 +3613,19 @@ function MovementRow({
 // disponible (Skill de Pepa: una etiqueta por movimiento, opcional).
 function TagSelect({ value, onChange, tags }: { value: string; onChange: (v: string) => void; tags: Tag[] }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">Sin etiqueta</option>
-      {tags.map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.name}
-        </option>
-      ))}
-    </select>
+    <div>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Sin etiqueta</option>
+        {tags.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+      <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => openManager('etiquetas')}>
+        ⚙️ Gestionar etiquetas
+      </button>
+    </div>
   )
 }
 
@@ -3830,7 +3828,7 @@ function EditExpenseInline({
 // CategorySelect). El orden manual (↑/↓) se sustituye por alfabético
 // aquí — más fácil de encontrar una categoría concreta que recordar en
 // qué orden se fueron creando.
-function CategoriesModal({
+export function CategoriesModal({
   categories,
   onClose,
   onChanged,
@@ -4006,7 +4004,7 @@ function CategoriesModal({
 
 // Gestión de etiquetas — mismo patrón que CategoriesModal (crear
 // arriba, lista alfabética debajo).
-function TagsModal({ tags, onClose, onChanged }: { tags: Tag[]; onClose: () => void; onChanged: () => void }) {
+export function TagsModal({ tags, onClose, onChanged }: { tags: Tag[]; onClose: () => void; onChanged: () => void | Promise<void> }) {
   const [addingTag, setAddingTag] = useState(false)
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState(DONUT_COLORS[0])
@@ -5077,6 +5075,17 @@ function CategorySelect({
                   })}
                 </>
               )}
+              <button
+                type="button"
+                className="link-button"
+                style={{ padding: '10px 4px', fontSize: 13 }}
+                onClick={() => {
+                  close()
+                  openManager('categorias')
+                }}
+              >
+                ⚙️ Gestionar categorías
+              </button>
             </div>
           </div>
         </div>
@@ -5406,6 +5415,8 @@ function ReceiptForm({
     () => new Map(allProducts.map((p) => [p.normalizedName, p])),
     [allProducts],
   )
+
+  useEffect(() => onManagersChanged(() => void reloadFoodTypes()), [])
 
   function reloadFoodTypes() {
     return Promise.all([listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')]).then(

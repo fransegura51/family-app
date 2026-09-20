@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
 import { SocialMenuFab, type SocialMenuItem } from '@/ui/SocialMenuFab'
 import { ScrollToTopFab } from '@/ui/ScrollToTopFab'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, NAV_SECTION_COLORS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
+import { onOpenManager, type ManagerKind } from '@/state/managers'
 import type { Profile } from '@/domain/types'
+
+// Ventanas de gestión (categorías, etiquetas, clases de alimentos):
+// solo se descargan la primera vez que alguien las abre.
+const ManagersHost = lazy(() => import('@/ui/ManagersHost'))
 
 // Cuántos iconos se quedan fijos abajo, siempre a la vista — el resto
 // vive detrás del botón "Menú". Son los primeros N del orden guardado
@@ -76,6 +81,8 @@ export function NavShell({ profile }: { profile: Profile }) {
   const navigate = useNavigate()
   const [order, setOrder] = useState(() => resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav')))
   const [menuOpen, setMenuOpen] = useState(false)
+  const [manager, setManager] = useState<ManagerKind | null>(null)
+  useEffect(() => onOpenManager(setManager), [])
 
   // MenuSettingsScreen vive en otra pantalla (no se remonta NavShell
   // al navegar allí y volver, es la propia estructura) — sin este
@@ -121,6 +128,11 @@ export function NavShell({ profile }: { profile: Profile }) {
         <Outlet />
       </main>
       <VoiceCapture />
+      {manager && (
+        <Suspense fallback={null}>
+          <ManagersHost kind={manager} onClose={() => setManager(null)} />
+        </Suspense>
+      )}
       <SocialMenuFab items={SOCIAL_MENU_ITEMS} />
       <ScrollToTopFab />
 

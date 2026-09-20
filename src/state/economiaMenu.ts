@@ -21,8 +21,6 @@ export type FixedEconomiaMenuItemKey =
   | 'Presupuesto Generales'
   | 'Banco'
   | 'Educación financiera'
-  | 'accion:categorias'
-  | 'accion:etiquetas'
   | 'accion:movimiento'
 
 export type EconomiaMenuItemKey = FixedEconomiaMenuItemKey | `custom:${string}`
@@ -54,8 +52,6 @@ export const ECONOMIA_MENU_ITEM_META: Record<FixedEconomiaMenuItemKey, { icon: s
   'Presupuesto Generales': { icon: '💰', label: 'Presupuesto(s)' },
   Banco: { icon: '🏦', label: 'Banco' },
   'Educación financiera': { icon: '🎓', label: 'Educación financiera' },
-  'accion:categorias': { icon: '🗂️', label: 'Categorías' },
-  'accion:etiquetas': { icon: '🏷️', label: 'Etiquetas' },
   'accion:movimiento': { icon: '➕', label: 'Nuevo movimiento' },
 }
 
@@ -72,12 +68,14 @@ const DEFAULT_KEYS: FixedEconomiaMenuItemKey[] = [
   'Presupuesto Generales',
   'Banco',
   'Educación financiera',
-  'accion:categorias',
-  'accion:etiquetas',
   'accion:movimiento',
 ]
 
 const KEY = 'familyapp:economia-menu-layout'
+
+// Categorías y Etiquetas se gestionan ahora desde Configuración (y con un
+// atajo en cada sitio donde se usan): se quitan de los menús ya guardados.
+const RETIRED_KEYS = ['accion:categorias', 'accion:etiquetas']
 
 function defaultLayout(): EconomiaMenuGroup[] {
   return [{ id: 'default', name: null, items: DEFAULT_KEYS.map((key) => ({ key })) }]
@@ -95,7 +93,9 @@ export function loadEconomiaMenuLayout(): EconomiaMenuGroup[] {
     const groups: EconomiaMenuGroup[] = (parsed as { id: string; name: string | null; items: unknown[] }[]).map((g) => ({
       id: g.id,
       name: g.name,
-      items: g.items.map((item) => (typeof item === 'string' ? { key: item as EconomiaMenuItemKey } : (item as EconomiaMenuEntry))),
+      items: g.items
+        .map((item) => (typeof item === 'string' ? { key: item as EconomiaMenuItemKey } : (item as EconomiaMenuEntry)))
+        .filter((item) => !RETIRED_KEYS.includes(item.key)),
     }))
     // Si en una actualización futura se añade una clave fija nueva,
     // que aparezca sola (al final del primer grupo) en vez de

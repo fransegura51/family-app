@@ -1634,6 +1634,18 @@ select {
   gap: 10px;
 }
 
+/* Configuración: las tarjetas de dentro de un tema desplegado van sobre
+   fondo suave, sin sombra, para no apilar tarjeta blanca sobre tarjeta blanca. */
+.settings-group-body {
+  gap: 0;
+  padding-top: 12px;
+}
+
+.settings-group-body > .card {
+  background: #f7f8fb;
+  box-shadow: none;
+}
+
 .ayuda-detail-item {
   padding-top: 10px;
   border-radius: 8px;

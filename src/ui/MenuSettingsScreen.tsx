@@ -1,7 +1,8 @@
-import { FormEvent, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { FormEvent, ReactNode, useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
+import { openManager, type ManagerKind } from '@/state/managers'
 import { loadMovementColorMode, saveMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import {
   getAccountsMode,
@@ -299,7 +300,7 @@ function AdminUsageLink() {
   if (!visible) return null
 
   return (
-    <Link to="/admin-uso" className="link-button" style={{ display: 'block', marginBottom: 16 }}>
+    <Link to="/admin-uso" className="link-button" style={{ display: 'block', margin: '12px 0 16px' }}>
       📊 Panel de uso de la app
     </Link>
   )
@@ -545,6 +546,63 @@ function AppLockSection() {
   )
 }
 
+// Gestión de categorías, etiquetas y clases de alimentos — petición real:
+// "categorías y etiquetas de Economía [y] las clases de alimentos... a
+// Configuración, pero es imprescindible que en cada lugar donde se
+// utilicen haya un acceso directo a la gestión". Aquí solo está el botón
+// (la ventana de gestión es global, ver state/managers.ts).
+function ManagerLinkSection({ icon, title, text, kind }: { icon: string; title: string; text: string; kind: ManagerKind }) {
+  return (
+    <div className="card event-card" style={{ marginBottom: 12 }}>
+      <strong>
+        {icon} {title}
+      </strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        {text}
+      </p>
+      <button type="button" className="link-button" style={{ marginTop: 8 }} onClick={() => openManager(kind)}>
+        Gestionar
+      </button>
+    </div>
+  )
+}
+
+// Un tema de Configuración: una fila que al tocarla despliega su
+// contenido (misma mecánica que las tarjetas de Ayuda).
+function SettingsGroup({
+  icon,
+  title,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  icon: string
+  title: string
+  summary: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="card ayuda-card" style={{ marginBottom: 8 }}>
+      <button type="button" className="ayuda-card-header" onClick={onToggle} aria-expanded={open}>
+        <span style={{ fontSize: 22 }} aria-hidden="true">
+          {icon}
+        </span>
+        <div className="ayuda-card-main">
+          <strong>{title}</strong>
+          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+            {summary}
+          </p>
+        </div>
+        <span className="ayuda-card-chevron">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && <div className="ayuda-card-detail settings-group-body">{children}</div>}
+    </div>
+  )
+}
+
 // Reordenar el menú con flechas arriba/abajo en vez de arrastrar con
 // el dedo — petición real, tras varios intentos de arrastre táctil
 // poco fiable justo en esta barra (compite con los propios gestos del
@@ -554,7 +612,11 @@ function AppLockSection() {
 // depende de un gesto que aquí llevaba todo el día fallando. Los
 // primeros 4 de esta lista son los que se quedan fijos abajo; el
 // resto vive detrás del botón "Menú".
-export function MenuSettingsScreen() {
+//
+// Petición real: "la organización del menú principal debe ser más
+// compacta, arriba, lo primero justo debajo del nombre de familia" —
+// filas de una línea en vez de una tarjeta grande por sección.
+function MenuOrderSection() {
   const [order, setOrder] = useState(() => resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav')))
   const orderedTabs = order.map((path) => NAV_TAB_BY_PATH.get(path)).filter((t): t is NavTab => !!t)
 
@@ -568,53 +630,117 @@ export function MenuSettingsScreen() {
   }
 
   return (
+    <div>
+      <p className="muted" style={{ margin: '10px 0 4px', fontSize: 12 }}>
+        Los {PINNED_COUNT} primeros se quedan fijos abajo del todo; el resto aparece al tocar "☰ Menú".
+      </p>
+      {orderedTabs.map((tab, i) => (
+        <div
+          key={tab.to}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '4px 0',
+            borderTop: i === PINNED_COUNT ? '2px solid var(--primary)' : i > 0 ? '1px solid #f0f0f0' : undefined,
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 18, width: 24, textAlign: 'center' }}>
+            {tab.icon}
+          </span>
+          <span style={{ flex: 1, fontSize: 14, fontWeight: i < PINNED_COUNT ? 600 : 400 }}>
+            {tab.label}
+            {i < PINNED_COUNT && <span title="Fijo abajo"> 📌</span>}
+          </span>
+          <button
+            type="button"
+            className="link-button"
+            style={{ padding: '2px 10px' }}
+            disabled={i === 0}
+            onClick={() => move(i, -1)}
+            aria-label={`Subir ${tab.label}`}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="link-button"
+            style={{ padding: '2px 10px' }}
+            disabled={i === orderedTabs.length - 1}
+            onClick={() => move(i, 1)}
+            aria-label={`Bajar ${tab.label}`}
+          >
+            ↓
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+type SettingsGroupId = 'menu' | 'economia' | 'compras' | 'seguridad'
+
+export function MenuSettingsScreen() {
+  // Un solo tema abierto a la vez — la pantalla queda como una lista
+  // limpia y recogida, y al tocar un tema se abre su sección.
+  const location = useLocation()
+  const [openGroup, setOpenGroup] = useState<SettingsGroupId | null>(
+    () => (location.state as { group?: SettingsGroupId } | null)?.group ?? null,
+  )
+  const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
+
+  return (
     <div className="screen">
       <div className="kitchen-header kitchen-header-familia">
         <img src={configuracionHeaderImg} alt="Configuración" className="kitchen-header-img" />
       </div>
 
       <FamilyNameSection />
-      <AccountingMonthSection />
-      <AccountsModeSection />
-      <MovementColorModeSection />
-      <BankAccountsSection />
-      <AdminUsageLink />
-      <AppLockSection />
 
-      <p className="muted">
-        Los 4 primeros se quedan fijos abajo del todo; el resto aparece al tocar el botón "☰ Menú".
-      </p>
-      <div className="event-list">
-        {orderedTabs.map((tab, i) => (
-          <div key={tab.to} className="card task-card">
-            <span className="nav-item-icon" style={{ fontSize: 22 }}>
-              {tab.icon}
-            </span>
-            <div className="task-card-main">
-              <strong>{tab.label}</strong>
-              <p className="muted">{i < PINNED_COUNT ? 'Fijo abajo' : 'Dentro del menú'}</p>
-            </div>
-            <button
-              type="button"
-              className="link-button"
-              disabled={i === 0}
-              onClick={() => move(i, -1)}
-              aria-label={`Subir ${tab.label}`}
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              className="link-button"
-              disabled={i === orderedTabs.length - 1}
-              onClick={() => move(i, 1)}
-              aria-label={`Bajar ${tab.label}`}
-            >
-              ↓
-            </button>
-          </div>
-        ))}
-      </div>
+      <SettingsGroup icon="🧭" title="Organizar menú" summary="Qué secciones van fijas abajo y en qué orden" open={openGroup === 'menu'} onToggle={() => toggle('menu')}>
+        <MenuOrderSection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        icon="💶"
+        title="Economía"
+        summary="Mes contable, cuentas, categorías, etiquetas y colores"
+        open={openGroup === 'economia'}
+        onToggle={() => toggle('economia')}
+      >
+        <AccountingMonthSection />
+        <AccountsModeSection />
+        <BankAccountsSection />
+        <ManagerLinkSection
+          icon="🗂️"
+          title="Categorías"
+          text="Crea, renombra o ordena las categorías y subcategorías de gasto e ingreso."
+          kind="categorias"
+        />
+        <ManagerLinkSection icon="🏷️" title="Etiquetas" text="Crea, cambia de color o borra las etiquetas de los movimientos." kind="etiquetas" />
+        <MovementColorModeSection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        icon="🛒"
+        title="Compras y cocina"
+        summary="Clases de alimentos y de otros productos"
+        open={openGroup === 'compras'}
+        onToggle={() => toggle('compras')}
+      >
+        <ManagerLinkSection
+          icon="🥕"
+          title="Clases de productos"
+          text="Crea o edita las clases (Fruta, Lácteos, Limpieza…) con las que se agrupan los productos de la lista, el historial y los tickets."
+          kind="clases"
+        />
+      </SettingsGroup>
+
+      <SettingsGroup icon="🔒" title="Seguridad" summary="PIN, huella y Face ID" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')}>
+        <AppLockSection />
+      </SettingsGroup>
+
+      <AdminUsageLink />
     </div>
   )
 }

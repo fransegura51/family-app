@@ -11,6 +11,16 @@ export type GrowthMeasure = 'weight' | 'length' | 'head'
 
 export const MAX_GROWTH_MONTHS = 60
 
+// La altura se guarda siempre en centímetros. Si alguien escribe 1,12 (metros)
+// se entiende como 112 cm; lo que no tiene sentido como altura (p. ej. 5 o 900)
+// devuelve null para poder avisar en vez de guardar un dato que descuadra el medidor.
+export function normalizeHeightCm(value: number): number | null {
+  if (!Number.isFinite(value)) return null
+  if (value >= 0.3 && value <= 2.6) return Math.round(value * 1000) / 10
+  if (value >= 30 && value <= 250) return value
+  return null
+}
+
 // Tipo de ficha que se muestra: un "Bebé" pasa solo a "Niño/a" cuando cumple la
 // edad configurada en la familia (por defecto 2 años).
 export function effectiveMemberType<T extends string>(memberType: T | 'baby' | 'child', birthDate: string | null, babyUntilMonths: number, today: string): T | 'baby' | 'child' {

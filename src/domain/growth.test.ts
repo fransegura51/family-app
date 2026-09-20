@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageInMonths, curvePoints, effectiveMemberType, lmsAt, normalCdf, percentileBand, percentileFor, valueAtZ, formatPercentile } from './growth'
+import { ageInMonths, curvePoints, effectiveMemberType, normalizeHeightCm, lmsAt, normalCdf, percentileBand, percentileFor, valueAtZ, formatPercentile } from './growth'
 
 describe('normalCdf', () => {
   it('matches known values', () => {
@@ -70,5 +70,17 @@ describe('effectiveMemberType', () => {
     expect(effectiveMemberType('baby', '2025-09-01', 12, '2026-09-02')).toBe('child')
     expect(effectiveMemberType('baby', null, 24, '2030-01-01')).toBe('baby')
     expect(effectiveMemberType('adult', '2000-01-01', 24, '2026-09-02')).toBe('adult')
+  })
+})
+
+describe('normalizeHeightCm', () => {
+  it('accepts centimetres, converts metres and rejects nonsense', () => {
+    expect(normalizeHeightCm(112)).toBe(112)
+    expect(normalizeHeightCm(1.12)).toBe(112)
+    expect(normalizeHeightCm(1.1)).toBe(110)
+    expect(normalizeHeightCm(48.5)).toBe(48.5)
+    expect(normalizeHeightCm(5)).toBeNull()
+    expect(normalizeHeightCm(900)).toBeNull()
+    expect(normalizeHeightCm(NaN)).toBeNull()
   })
 })

@@ -4462,3 +4462,15 @@ textarea {
   max-width: 430px;
   margin: 0 auto;
 }
+
+.kids-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.kids-history .chip {
+  padding: 5px 10px;
+  font-size: 12px;
+}

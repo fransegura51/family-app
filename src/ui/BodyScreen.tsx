@@ -9,7 +9,7 @@ import {
   uploadBodyPhoto,
 } from '@/data/bodyTracking'
 import { DEFAULT_BABY_UNTIL_MONTHS, getBabyUntilMonths, listFamilyMembers } from '@/data/family'
-import { effectiveMemberType } from '@/domain/growth'
+import { effectiveMemberType, normalizeHeightCm } from '@/domain/growth'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { BabyGrowthView } from '@/ui/BabyGrowthView'
 import { KidsMeterView } from '@/ui/KidsMeterView'
@@ -284,14 +284,20 @@ function AddMeasurementForm({ memberId, mode, onAdded }: { memberId: string; mod
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    setSaving(true)
     setError(null)
+    const rawHeight = num(heightCm)
+    const height = rawHeight == null ? null : normalizeHeightCm(rawHeight)
+    if (rawHeight != null && height == null) {
+      setError('La altura tiene que estar en centímetros (por ejemplo 112) o en metros (1,12).')
+      return
+    }
+    setSaving(true)
     try {
       await addBodyMeasurement({
         memberId,
         date,
         weightKg: num(weightKg),
-        heightCm: num(heightCm),
+        heightCm: height,
         headCm: mode === 'baby' ? num(headCm) : null,
         waistCm: mode === 'general' ? num(waistCm) : null,
         abdomenCm: mode === 'general' ? num(abdomenCm) : null,
@@ -325,7 +331,7 @@ function AddMeasurementForm({ memberId, mode, onAdded }: { memberId: string; mod
         <input type="text" inputMode="decimal" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
       </label>
       <label>
-        Altura (cm, opcional)
+        Altura (en cm, p. ej. 112 — también vale 1,12 m — opcional)
         <input type="text" inputMode="decimal" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
       </label>
       {mode === 'baby' ? (

@@ -135,9 +135,9 @@ export function KidsMeterView({ member, measurements }: { member: FamilyMember; 
                 {fmtCm(selected.cm)} <span style={{ fontSize: 18, fontWeight: 600 }}>cm</span>
               </div>
             </div>
-            {first && latest.id !== first.id && (
+            {first && latest.id !== first.id && latest.cm > first.cm && (
               <div className="kids-grown">
-                🌟 ¡{latest.cm - first.cm >= 0 ? 'Has crecido' : 'Cambio'} {fmtCm(Math.abs(latest.cm - first.cm))} cm desde el {fmtDate(first.date)}!
+                🌟 ¡Has crecido {fmtCm(latest.cm - first.cm)} cm desde el {fmtDate(first.date)}!
               </div>
             )}
           </div>
@@ -167,13 +167,15 @@ export function KidsMeterView({ member, measurements }: { member: FamilyMember; 
             cm
           </text>
 
+          {/* Historial: cada medida es una franja del color de la persona sobre la regla, con su punto al lado. */}
           {points.map((p) => {
             const y = yFor(meter, p.cm)
             const isSel = p.id === selected?.id
             return (
               <g key={p.id} onClick={() => setSelectedId(p.id)} style={{ cursor: 'pointer' }}>
-                <circle cx={col.x + col.width + 14} cy={y} r={26} fill="transparent" />
-                <circle cx={col.x + col.width + 14} cy={y} r={isSel ? 13 : 9} fill={member.color} stroke="#fff" strokeWidth={3} />
+                <rect x={col.x} y={y - 4} width={col.width} height={8} rx={4} fill={member.color} fillOpacity={isSel ? 1 : 0.75} stroke="#fff" strokeWidth={2} />
+                <circle cx={col.x + col.width + 16} cy={y} r={28} fill="transparent" />
+                <circle cx={col.x + col.width + 16} cy={y} r={isSel ? 14 : 10} fill={member.color} stroke="#fff" strokeWidth={3} />
               </g>
             )
           })}
@@ -208,6 +210,26 @@ export function KidsMeterView({ member, measurements }: { member: FamilyMember; 
             </g>
           )}
         </svg>
+        {points.length > 0 && (
+          <div className="kids-history" role="list" aria-label="Historial de alturas">
+            {[...points].reverse().map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="listitem"
+                className={'chip' + (p.id === selected?.id ? ' chip-active' : '')}
+                onClick={() => setSelectedId(p.id)}
+              >
+                {new Date(p.date + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} · {fmtCm(p.cm)} cm
+              </button>
+            ))}
+          </div>
+        )}
+        {points.some((p) => p.cm < meter.minCm || p.cm > meter.maxCm) && (
+          <p className="error" style={{ fontSize: 12, margin: '6px 0 0' }}>
+            Alguna altura queda fuera de la regla ({meter.minCm}–{meter.maxCm} cm): revisa que esté en centímetros (o bórrala abajo y vuelve a apuntarla).
+          </p>
+        )}
         <p className="muted" style={{ fontSize: 11, margin: '4px 0 0' }}>
           Toca un punto de colores para ver una medida anterior, o al personaje para cambiar entre niño y niña.
         </p>

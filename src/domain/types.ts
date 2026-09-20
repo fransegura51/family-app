@@ -44,6 +44,7 @@ export interface FamilyMember {
   memberType: MemberType
   birthDate: string | null
   sex: MemberSex | null
+  weightGoalKg: number | null
   birthdayFavorite: boolean
   permissions: Record<string, unknown>
   linkedProfileId: string | null

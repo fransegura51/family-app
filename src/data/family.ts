@@ -92,6 +92,11 @@ export async function updateFamilyMember(
 
 // Edición rápida solo de la fecha, para el botón "Editar" de la
 // pestaña Cumpleaños — sin pasar por el formulario completo de Familia.
+export async function updateMemberWeightGoal(id: string, goalKg: number | null): Promise<void> {
+  const { error } = await supabase.from('family_members').update({ weight_goal_kg: goalKg }).eq('id', id)
+  if (error) throw error
+}
+
 export async function updateFamilyMemberBirthDate(id: string, birthDate: string | null): Promise<void> {
   const { error } = await supabase.from('family_members').update({ birth_date: birthDate }).eq('id', id)
   if (error) throw error
@@ -272,7 +277,7 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
   const { data, error } = await supabase
     .from('family_members')
     .select(
-      'id, family_id, name, avatar, color, member_type, birth_date, sex, birthday_favorite, permissions, linked_profile_id, photo_path, allowed_sections, created_at',
+      'id, family_id, name, avatar, color, member_type, birth_date, sex, weight_goal_kg, birthday_favorite, permissions, linked_profile_id, photo_path, allowed_sections, created_at',
     )
     .order('sort_order', { ascending: true })
 
@@ -287,6 +292,7 @@ export async function listFamilyMembers(): Promise<FamilyMember[]> {
     memberType: row.member_type,
     birthDate: row.birth_date,
     sex: row.sex,
+    weightGoalKg: row.weight_goal_kg == null ? null : Number(row.weight_goal_kg),
     birthdayFavorite: row.birthday_favorite,
     permissions: row.permissions ?? {},
     linkedProfileId: row.linked_profile_id,

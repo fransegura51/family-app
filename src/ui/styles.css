@@ -4488,3 +4488,99 @@ textarea {
   font-size: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
+
+/* Vista de adultos de Peso y medidas. */
+.adult-hero {
+  padding: 16px;
+}
+
+.adult-trend {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.adult-progress {
+  height: 10px;
+  border-radius: 5px;
+  background: #e9ecef;
+  overflow: hidden;
+}
+
+.adult-progress > div {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #74c69d, #2f9e44);
+  transition: width 0.4s;
+}
+
+.adult-ranges {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: #eceef3;
+}
+
+.adult-ranges button {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.adult-ranges button.adult-range-active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.adult-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f3;
+}
+
+.adult-row:last-child {
+  border-bottom: none;
+}
+
+.adult-measures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.adult-measure {
+  margin: 0;
+  padding: 12px;
+}
+
+.adult-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.adult-compare-img {
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f0f0f3;
+  margin-bottom: 6px;
+}
+
+.adult-compare-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

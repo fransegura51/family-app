@@ -15,6 +15,7 @@ import { effectiveMemberType, normalizeHeightCm } from '@/domain/growth'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { BabyGrowthView } from '@/ui/BabyGrowthView'
 import { KidsMeterView } from '@/ui/KidsMeterView'
+import { AdultBodyView } from '@/ui/AdultBodyView'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { errorMessage } from '@/domain/errorMessage'
 import type { BodyMeasurement, BodyPhoto, FamilyMember } from '@/domain/types'
@@ -126,6 +127,35 @@ export function BodyTab() {
     }
   }
 
+  // Galería + subida de fotos: al final de la pantalla (bebés y niños) o dentro de la pestaña Fotos (adultos).
+  const photosSection = member ? (
+    <>
+  <h2>Fotos de evolución</h2>
+  <div className="gallery-grid">
+    {photos.map((p) => (
+      <div key={p.id} className="gallery-item">
+        {photoUrls[p.id] && <img src={photoUrls[p.id]} alt={p.caption ?? ''} />}
+        <ConfirmIconButton className="gallery-item-delete" ariaLabel="Borrar foto" onConfirm={() => handleDeletePhoto(p)} />
+        <button type="button" className="gallery-item-edit" aria-label="Editar foto" title="Editar" onClick={() => setEditingPhoto(p)}>
+          ✏️
+        </button>
+        {p.caption && <p className="muted">{p.caption}</p>}
+        <p className="muted gallery-item-date">
+          {new Date(p.photoDate + 'T00:00').toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          })}
+        </p>
+      </div>
+    ))}
+    {photos.length === 0 && <p className="muted">Todavía no hay fotos de evolución.</p>}
+  </div>
+
+  <AddPhotoFormBody memberId={member.id} onAdded={reload} />
+    </>
+  ) : null
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
@@ -172,7 +202,16 @@ export function BodyTab() {
               <GeneralWeightView measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} onEditMeasurement={setEditingMeasurementId} />
             </>
           ) : (
-            <GeneralWeightView measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} onEditMeasurement={setEditingMeasurementId} />
+            <AdultBodyView
+              member={member}
+              measurements={measurements}
+              photos={photos}
+              photoUrls={photoUrls}
+              photosSlot={photosSection}
+              onDeleteMeasurement={handleDeleteMeasurement}
+              onEditMeasurement={setEditingMeasurementId}
+              onGoalSaved={(kg) => setMembers((list) => list.map((x) => (x.id === member.id ? { ...x, weightGoalKg: kg } : x)))}
+            />
           )}
 
           <MeasurementForm memberId={member.id} mode={variant === 'baby' ? 'baby' : variant === 'kid' ? 'kid' : 'general'} onSaved={reload} />
@@ -202,29 +241,7 @@ export function BodyTab() {
             </div>
           )}
 
-          <h2>Fotos de evolución</h2>
-          <div className="gallery-grid">
-            {photos.map((p) => (
-              <div key={p.id} className="gallery-item">
-                {photoUrls[p.id] && <img src={photoUrls[p.id]} alt={p.caption ?? ''} />}
-                <ConfirmIconButton className="gallery-item-delete" ariaLabel="Borrar foto" onConfirm={() => handleDeletePhoto(p)} />
-                <button type="button" className="gallery-item-edit" aria-label="Editar foto" title="Editar" onClick={() => setEditingPhoto(p)}>
-                  ✏️
-                </button>
-                {p.caption && <p className="muted">{p.caption}</p>}
-                <p className="muted gallery-item-date">
-                  {new Date(p.photoDate + 'T00:00').toLocaleDateString('es-ES', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </p>
-              </div>
-            ))}
-            {photos.length === 0 && <p className="muted">Todavía no hay fotos de evolución.</p>}
-          </div>
-
-          <AddPhotoFormBody memberId={member.id} onAdded={reload} />
+          {variant !== 'other' && photosSection}
 
           {editingPhoto && (
             <div className="modal-overlay" onClick={() => setEditingPhoto(null)}>

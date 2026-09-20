@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import {
   addBodyMeasurement,
   deleteBodyMeasurement,
@@ -12,6 +12,7 @@ import { listFamilyMembers } from '@/data/family'
 import { ageInMonths } from '@/domain/growth'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { BabyGrowthView } from '@/ui/BabyGrowthView'
+import { KidsMeterView } from '@/ui/KidsMeterView'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { errorMessage } from '@/domain/errorMessage'
 import type { BodyMeasurement, BodyPhoto, FamilyMember } from '@/domain/types'
@@ -23,13 +24,16 @@ function toDateStr(d: Date): string {
 // Qué vista le toca a cada persona: los bebés (y los niños pequeños con
 // fecha de nacimiento y sexo) ven percentiles de la OMS; el resto, la vista
 // de peso y medidas.
-type BodyVariant = 'baby' | 'other'
+type BodyVariant = 'baby' | 'kid' | 'other'
 
+// Bebés (menos de 2 años): percentiles. Niños: medidor visual de altura (y, hasta
+// los 5 años, también sus percentiles). Adultos e invitados: peso y medidas.
 function variantFor(member: FamilyMember): BodyVariant {
   const months = member.birthDate ? ageInMonths(member.birthDate, toDateStr(new Date())) : null
   if (member.memberType === 'baby') return 'baby'
-  if (months != null && months <= 60 && member.memberType !== 'admin' && member.memberType !== 'adult') return 'baby'
-  return 'other'
+  if (member.memberType === 'admin' || member.memberType === 'adult' || member.memberType === 'guest') return 'other'
+  if (months != null && months < 24) return 'baby'
+  return 'kid'
 }
 
 // Petición real: Peso y medidas sale de "La cocina de Pepa" y es una
@@ -43,6 +47,9 @@ export function BodyTab() {
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Solo se muestra "Cargando…" la primera vez que se abre cada persona; al guardar una medida
+  // la pantalla se queda como está (así el medidor infantil puede celebrar la medida nueva).
+  const loadedFor = useRef<string | null>(null)
 
   useEffect(() => {
     listFamilyMembers()
@@ -55,7 +62,8 @@ export function BodyTab() {
 
   function reload() {
     if (!activeMemberId) return
-    setLoading(true)
+    if (loadedFor.current !== activeMemberId) setLoading(true)
+    const requested = activeMemberId
     Promise.all([listBodyMeasurements(activeMemberId), listBodyPhotos(activeMemberId)])
       .then(async ([m, p]) => {
         setMeasurements(m)
@@ -64,7 +72,10 @@ export function BodyTab() {
         setPhotoUrls(Object.fromEntries(entries))
       })
       .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        loadedFor.current = requested
+        setLoading(false)
+      })
   }
 
   useEffect(reload, [activeMemberId])
@@ -105,11 +116,20 @@ export function BodyTab() {
         <>
           {variant === 'baby' ? (
             <BabyGrowthView member={member} measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
+          ) : variant === 'kid' ? (
+            <>
+              <KidsMeterView key={member.id} member={member} measurements={measurements} />
+              {member.birthDate && member.sex && ageInMonths(member.birthDate, toDateStr(new Date())) <= 60 ? (
+                <BabyGrowthView member={member} measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
+              ) : (
+                <GeneralWeightView measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
+              )}
+            </>
           ) : (
             <GeneralWeightView measurements={measurements} onDeleteMeasurement={handleDeleteMeasurement} />
           )}
 
-          <AddMeasurementForm memberId={member.id} mode={variant === 'baby' ? 'baby' : 'general'} onAdded={reload} />
+          <AddMeasurementForm memberId={member.id} mode={variant === 'baby' ? 'baby' : variant === 'kid' ? 'kid' : 'general'} onAdded={reload} />
 
           <h2>Fotos de evolución</h2>
           <div className="gallery-grid">
@@ -248,7 +268,7 @@ function WeightChart({ measurements }: { measurements: BodyMeasurement[] }) {
   )
 }
 
-function AddMeasurementForm({ memberId, mode, onAdded }: { memberId: string; mode: 'baby' | 'general'; onAdded: () => void }) {
+function AddMeasurementForm({ memberId, mode, onAdded }: { memberId: string; mode: 'baby' | 'kid' | 'general'; onAdded: () => void }) {
   const [date, setDate] = useState(() => toDateStr(new Date()))
   const [weightKg, setWeightKg] = useState('')
   const [heightCm, setHeightCm] = useState('')
@@ -295,7 +315,7 @@ function AddMeasurementForm({ memberId, mode, onAdded }: { memberId: string; mod
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Registrar {mode === 'baby' ? 'una medida' : 'peso y medidas'}</h2>
+      <h2>Registrar {mode === 'baby' || mode === 'kid' ? 'una medida' : 'peso y medidas'}</h2>
       <label>
         Fecha
         <input type="date" value={date} max={toDateStr(new Date())} onChange={(e) => setDate(e.target.value)} required />
@@ -313,7 +333,7 @@ function AddMeasurementForm({ memberId, mode, onAdded }: { memberId: string; mod
           Perímetro cefálico (cm, opcional)
           <input type="text" inputMode="decimal" value={headCm} onChange={(e) => setHeadCm(e.target.value)} />
         </label>
-      ) : (
+      ) : mode === 'kid' ? null : (
         <>
           <label>
             Cintura (cm, opcional)

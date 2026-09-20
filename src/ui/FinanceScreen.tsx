@@ -40,6 +40,7 @@ import {
 } from '@/state/economiaMenu'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
+import { getChartColorTheme } from '@/state/colorTheme'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -927,17 +928,18 @@ function EconomiaMenuDropdown({
 const COMMON_ACCOUNT_COLOR = '#e9ecef'
 // Colores pastel fijos de los dónuts de Debo/Necesito/Quiero y Fijo/variable (siempre los mismos).
 const NECESSITY_PASTEL: Record<'debo' | 'necesito' | 'quiero' | 'sin_clasificar', string> = {
-  debo: tone(0, 70, 90),
-  necesito: tone(45, 85, 88),
-  quiero: tone(280, 60, 90),
+  debo: tone(0, 70, 90, 'chart'),
+  necesito: tone(45, 85, 88, 'chart'),
+  quiero: tone(280, 60, 90, 'chart'),
   sin_clasificar: '#e9ecef',
 }
 const FIXED_PASTEL: Record<'fijo' | 'variable' | 'sin_clasificar', string> = {
-  fijo: tone(200, 70, 88),
-  variable: tone(150, 55, 86),
+  fijo: tone(200, 70, 88, 'chart'),
+  variable: tone(150, 55, 86, 'chart'),
   sin_clasificar: '#e9ecef',
 }
-const pastelOf = (hsl: string | undefined) => (hsl ? pastelFromHsl(hsl) : undefined)
+// Solo para porciones de dónut (gráfico): sigue el estilo de estadísticas.
+const pastelOf = (hsl: string | undefined) => (hsl ? pastelFromHsl(hsl, 'chart') : undefined)
 const GENERAL_BUDGET_COLOR = tone(175, 55, 88)
 // Arcoíris por mes del año (enero rojo → diciembre rosa): agosto es siempre el mismo color, sea el año que sea.
 const MONTH_FOLDER_COLORS = Array.from({ length: 12 }, (_, i) => tone(i * 30))
@@ -2301,7 +2303,7 @@ interface BreakdownSlice {
   hasChildren?: boolean
 }
 
-const PASTEL_DONUT_FALLBACK = pastelPalette(10)
+const PASTEL_DONUT_FALLBACK = pastelPalette(10, getChartColorTheme())
 const DONUT_COLORS = ['#4C6EF5', '#e8590c', '#2f9e44', '#ae3ec9', '#f08c00', '#1098ad', '#e64980', '#748ffc', '#20c997', '#fa5252']
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
@@ -2813,7 +2815,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
     const slices: BreakdownSlice[] = tags
       .map((t) => {
         const matched = real.filter((e) => e.tagId === t.id)
-        return { key: t.id, label: t.name, icon: '🏷️', color: toPastel(t.color), total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
+        return { key: t.id, label: t.name, icon: '🏷️', color: toPastel(t.color, 'chart'), total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
       })
       .filter((s) => s.total > 0)
     body =
@@ -2969,10 +2971,10 @@ function EvolucionTemporal({
               <span className={r.ahorro >= 0 ? 'muted' : 'error'}>Ahorro: {r.ahorro.toFixed(2)} €</span>
             </div>
             <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 3 }}>
-              <div style={{ width: `${(r.income / maxAmount) * 100}%`, background: tone(140, 50, 72), borderRadius: 3 }} />
+              <div style={{ width: `${(r.income / maxAmount) * 100}%`, background: tone(140, 50, 72, 'chart'), borderRadius: 3 }} />
             </div>
             <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 2 }}>
-              <div style={{ width: `${(r.spent / maxAmount) * 100}%`, background: tone(340, 75, 82), borderRadius: 3 }} />
+              <div style={{ width: `${(r.spent / maxAmount) * 100}%`, background: tone(340, 75, 82, 'chart'), borderRadius: 3 }} />
             </div>
             <button
               type="button"
@@ -4401,7 +4403,7 @@ function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakd
   }
   // Mismo color por clase que en Lista e Historial de compras (pastel,
   // sale del propio nombre — ver colorForClass), no por posición.
-  const colorFor = colorForClass
+  const colorFor = (name: string) => colorForClass(name, 'chart')
   return [...totals.entries()]
     .map(([name, group]) => {
       const productList = [...group.products.entries()]
@@ -6442,10 +6444,11 @@ export function BudgetsTab({
   // (ver storeDonutScope), el botón decide qué gastos lo alimentan.
   // Mismo reparto de colores en el dónut y en las barras por tienda:
   // las tiendas dadas de alta más todas las que aparecen en gastos y tickets.
-  const storeColorOf = storeColorResolver(storeEntries, [
-    ...splits.map((s) => s.store),
-    ...receipts.map((r) => canonicalStoreName(r.store, knownStores)),
-  ])
+  const storeColorOf = storeColorResolver(
+    storeEntries,
+    [...splits.map((s) => s.store), ...receipts.map((r) => canonicalStoreName(r.store, knownStores))],
+    'chart',
+  )
   const storePieSlicesAlimentacion = buildStorePieSlices(
     splits.filter((s) => s.foodAmount > 0).map((s) => ({ expenseId: s.expense.id, store: s.store, amount: s.foodAmount })),
     storeColorOf,
@@ -6517,7 +6520,7 @@ export function BudgetsTab({
             return {
               store: `${c.icon} ${c.name}${hasChildren ? ' (sin subcategoría)' : ''}`,
               total: monthRealExpenses.filter((e) => e.category === c.name).reduce((sum, e) => sum + e.amount, 0),
-              color: catColors.get(c.id),
+              color: pastelOf(catColors.get(c.id)),
             }
           })
           .filter((s) => s.total > 0)

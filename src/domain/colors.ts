@@ -1,4 +1,4 @@
-import { getColorTheme, type ColorTheme } from '@/state/colorTheme'
+import { getChartColorTheme, getColorTheme, type ColorTheme } from '@/state/colorTheme'
 
 // Petición real: "las tarjetas de color pastel que sean de los colores
 // del arcoíris (pastel) y que no se repita ninguno. Esa misma idea de
@@ -17,13 +17,29 @@ const GOLDEN_ANGLE = 137.508
 // la luminosidad baja 20 puntos y la saturación sube a un mínimo del 80 %
 // (nunca por debajo del 58 % de luminosidad, para que el texto oscuro se
 // siga leyendo encima de cualquier tono).
+// En el estilo "neutro" el fondo es un gris muy claro con una franja fina
+// del color de siempre a la izquierda: sigue reconociéndose qué categoría,
+// tienda o clase es cada fila, sin pintarla entera. (Es un degradado, así
+// que solo vale como fondo — los gráficos usan siempre pastel o vivo.)
 export function toneFor(theme: ColorTheme, h: number, s = 70, l = 90): string {
+  if (theme === 'neutro') {
+    const stripe = `hsl(${h}, 65%, 62%)`
+    return `linear-gradient(90deg, ${stripe} 0, ${stripe} 5px, #f3f4f6 5px, #f3f4f6 100%) border-box`
+  }
   if (theme === 'vivo') return `hsl(${h}, ${Math.max(s, 80)}%, ${Math.max(58, l - 20)}%)`
   return `hsl(${h}, ${s}%, ${l}%)`
 }
 
-export function tone(h: number, s = 70, l = 90): string {
-  return toneFor(getColorTheme(), h, s, l)
+// 'ui' = menús, tarjetas y filas (ajuste de interfaz); 'chart' = dónuts,
+// leyendas y barras (ajuste de estadísticas, nunca neutro).
+export type ColorUse = 'ui' | 'chart'
+
+function themeFor(use: ColorUse): ColorTheme {
+  return use === 'chart' ? getChartColorTheme() : getColorTheme()
+}
+
+export function tone(h: number, s = 70, l = 90, use: ColorUse = 'ui'): string {
+  return toneFor(themeFor(use), h, s, l)
 }
 
 // Petición real (Inicio): hoy varias tarjetas comparten color por
@@ -43,9 +59,9 @@ export function pastelPalette(count: number, theme: ColorTheme = getColorTheme()
 // color que cada miembro elige a mano, m.color) — conserva su tono
 // pero fuerza saturación/luminosidad a un pastel, en vez de generar
 // uno nuevo sin relación con "su" color.
-export function toPastel(hex: string): string {
+export function toPastel(hex: string, use: ColorUse = 'ui'): string {
   const { h } = hexToHsl(hex)
-  return tone(h, 65, 88)
+  return tone(h, 65, 88, use)
 }
 
 // Igual que toPastel, pero a partir de un color que ya viene como
@@ -54,10 +70,10 @@ export function toPastel(hex: string): string {
 // tono para que la categoría se reconozca igual entre el dónut y el
 // fondo pastel de su tarjeta, sin inventar una asignación de color
 // distinta para cada sitio.
-export function pastelFromHsl(hsl: string): string {
+export function pastelFromHsl(hsl: string, use: ColorUse = 'ui'): string {
   const match = /hsl\((\d+(?:\.\d+)?)/.exec(hsl)
   const h = match ? Number(match[1]) : 0
-  return tone(h, 65, 88)
+  return tone(h, 65, 88, use)
 }
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
@@ -115,8 +131,8 @@ function hashName(name: string): number {
   return hash >>> 0
 }
 
-export function colorForName(name: string): string {
-  return tone(hashName(name) % 360)
+export function colorForName(name: string, use: ColorUse = 'ui'): string {
+  return tone(hashName(name) % 360, 70, 90, use)
 }
 
 // Petición real: "el color de Mercadona y Hiperber es tan similar que
@@ -140,9 +156,10 @@ export function colorForName(name: string): string {
 export function storeColorResolver(
   registered: { name: string; createdAt: string }[],
   otherNames: Iterable<string> = [],
+  use: ColorUse = 'ui',
 ): (name: string) => string {
   const ordered = [...registered].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  const palette = pastelPalette(ordered.length)
+  const palette = pastelPalette(ordered.length, themeFor(use))
   const byKey = new Map(ordered.map((s, i) => [nameKey(s.name), palette[i]]))
   const taken = palette.map((c) => Number(/hsl\((\d+)/.exec(c)![1]))
   const circ = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b))
@@ -164,12 +181,12 @@ export function storeColorResolver(
       }
     }
     taken.push(bestHue)
-    assigned.set(key, tone(bestHue, 70, i % 2 === 0 ? 90 : 84))
+    assigned.set(key, tone(bestHue, 70, i % 2 === 0 ? 90 : 84, use))
   })
 
   return (name) => {
     const key = nameKey(name)
-    return byKey.get(key) ?? assigned.get(key) ?? colorForName(name)
+    return byKey.get(key) ?? assigned.get(key) ?? colorForName(name, use)
   }
 }
 
@@ -180,12 +197,12 @@ export function storeColorResolver(
 // parecerían entre sí, así que además del tono el propio nombre elige
 // uno de tres matices (90/85/80 % de luminosidad): mismo estilo pastel,
 // con el matiz más fuerte cuando se acaban los tonos bien separados.
-export function colorForClass(name: string): string {
+export function colorForClass(name: string, use: ColorUse = 'ui'): string {
   const hash = hashName(name)
   const tier = (hash >>> 12) % 3
   const lightness = [90, 85, 80][tier]
   const saturation = [70, 74, 78][tier]
-  return tone(hash % 360, saturation, lightness)
+  return tone(hash % 360, saturation, lightness, use)
 }
 
 // Petición real: "las etiquetas generadas automáticamente que tengan

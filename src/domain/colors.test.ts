@@ -9,6 +9,13 @@ describe('toneFor', () => {
     expect(toneFor('vivo', 10, 50, 72)).toBe('hsl(10, 80%, 58%)')
   })
 
+  it('neutro is a light gray background with a thin stripe of the usual hue', () => {
+    const t = toneFor('neutro', 120)
+    expect(t).toContain('linear-gradient')
+    expect(t).toContain('hsl(120, 65%, 62%)')
+    expect(t).toContain('#f3f4f6')
+  })
+
   it('still gives every palette entry a different hue in the vivo style', () => {
     expect(new Set(pastelPalette(20, 'vivo')).size).toBe(20)
   })

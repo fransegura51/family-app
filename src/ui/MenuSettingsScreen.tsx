@@ -4,7 +4,14 @@ import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { openManager, type ManagerKind } from '@/state/managers'
 import { loadMovementColorMode, saveMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
-import { getColorTheme, saveColorTheme, type ColorTheme } from '@/state/colorTheme'
+import {
+  getChartColorTheme,
+  getColorTheme,
+  saveChartColorTheme,
+  saveColorTheme,
+  type ChartColorTheme,
+  type ColorTheme,
+} from '@/state/colorTheme'
 import { pastelPalette } from '@/domain/colors'
 import {
   getAccountsMode,
@@ -553,45 +560,61 @@ function AppLockSection() {
 // colores de la app". Cambiar de estilo recarga la app (los colores se
 // calculan al cargar cada pantalla, y esa es la única forma de que TODO
 // se repinte a la vez).
-const COLOR_THEME_OPTIONS: { key: ColorTheme; label: string; text: string }[] = [
+type ColorOption<T extends ColorTheme> = { key: T; label: string; text: string }
+
+const UI_THEME_OPTIONS: ColorOption<ColorTheme>[] = [
   { key: 'pastel', label: 'Pastel', text: 'Suave y clarito (el de siempre).' },
   { key: 'vivo', label: 'Vivo', text: 'Más saturado, colores con más presencia.' },
+  { key: 'neutro', label: 'Neutro', text: 'Fondos casi grises, con una franja fina de color para reconocer cada cosa.' },
 ]
 
-function ColorThemeSection() {
-  const [theme] = useState<ColorTheme>(() => getColorTheme())
+const CHART_THEME_OPTIONS: ColorOption<ChartColorTheme>[] = [
+  { key: 'pastel', label: 'Pastel', text: 'Porciones y barras en tonos suaves.' },
+  { key: 'vivo', label: 'Vivo', text: 'Porciones y barras más saturadas, se distinguen mejor.' },
+]
 
-  function choose(next: ColorTheme) {
-    if (next === theme) return
-    saveColorTheme(next)
-    window.location.reload()
-  }
-
+// Selector con una muestra de cada estilo. Cambiar de estilo recarga la app
+// (los colores se calculan al cargar cada pantalla, y esa es la única forma
+// de que TODO se repinte a la vez).
+function ColorThemePicker<T extends ColorTheme>({
+  title,
+  text,
+  options,
+  current,
+  onChoose,
+}: {
+  title: string
+  text: string
+  options: ColorOption<T>[]
+  current: T
+  onChoose: (next: T) => void
+}) {
   return (
     <div className="card event-card" style={{ marginBottom: 12 }}>
-      <strong>🎨 Estilo de color</strong>
+      <strong>{title}</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-        Cambia los colores de toda la app en este móvil (calendario, compras, economía, cocina, menús...). Al elegir otro
-        estilo la app se recarga.
+        {text}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-        {COLOR_THEME_OPTIONS.map((o) => (
+        {options.map((o) => (
           <button
             key={o.key}
             type="button"
-            onClick={() => choose(o.key)}
-            aria-pressed={theme === o.key}
+            onClick={() => {
+              if (o.key !== current) onChoose(o.key)
+            }}
+            aria-pressed={current === o.key}
             style={{
               textAlign: 'left',
               background: '#fff',
               color: 'var(--text)',
-              border: theme === o.key ? '2px solid var(--primary)' : '1px solid #dee2e6',
+              border: current === o.key ? '2px solid var(--primary)' : '1px solid #dee2e6',
               borderRadius: 12,
               padding: '10px 12px',
             }}
           >
             <strong>
-              {theme === o.key ? '✓ ' : ''}
+              {current === o.key ? '✓ ' : ''}
               {o.label}
             </strong>
             <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 2, fontWeight: 400 }}>
@@ -606,6 +629,36 @@ function ColorThemeSection() {
         ))}
       </div>
     </div>
+  )
+}
+
+function ColorThemeSection() {
+  const [uiTheme] = useState<ColorTheme>(() => getColorTheme())
+  const [chartTheme] = useState<ChartColorTheme>(() => getChartColorTheme())
+
+  return (
+    <>
+      <ColorThemePicker
+        title="🎨 Menús y pantallas"
+        text="Los colores de Inicio, los menús ☰, tarjetas, filas, calendario, compras y cocina en este móvil. Al elegir otro estilo la app se recarga."
+        options={UI_THEME_OPTIONS}
+        current={uiTheme}
+        onChoose={(next) => {
+          saveColorTheme(next)
+          window.location.reload()
+        }}
+      />
+      <ColorThemePicker
+        title="📊 Estadísticas y gráficos"
+        text="Los colores de los dónuts, sus leyendas y las barras (Economía y Estadística compras), aparte del estilo de las pantallas."
+        options={CHART_THEME_OPTIONS}
+        current={chartTheme}
+        onChoose={(next) => {
+          saveChartColorTheme(next)
+          window.location.reload()
+        }}
+      />
+    </>
   )
 }
 
@@ -764,7 +817,7 @@ export function MenuSettingsScreen() {
         <MenuOrderSection />
       </SettingsGroup>
 
-      <SettingsGroup icon="🎨" title="Colores" summary="Pastel o vivo, para toda la app" open={openGroup === 'colores'} onToggle={() => toggle('colores')}>
+      <SettingsGroup icon="🎨" title="Colores" summary="Estilo de las pantallas y de las estadísticas" open={openGroup === 'colores'} onToggle={() => toggle('colores')}>
         <ColorThemeSection />
       </SettingsGroup>
 

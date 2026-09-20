@@ -13,6 +13,13 @@
   color-scheme: light;
 }
 
+/* Estilo "neutro": fondos casi sin color (la franja de color de cada fila la pone el propio JS). */
+:root[data-color-theme='neutro'] {
+  --tone-pending: #f8f9fa;
+  --tone-done: #e9ecef;
+  --tone-weekend: #f1f3f5;
+}
+
 /* Estilo "vivo": tonos más saturados; el texto secundario y los enlaces
    se oscurecen para seguir leyéndose encima. */
 :root[data-color-theme='vivo'] {

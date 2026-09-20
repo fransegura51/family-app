@@ -1163,6 +1163,26 @@ type RecipeCandidate =
 // Petición real: "hay que poder editar las recetas no solo comprar o
 // borrar" — mismo formulario para crear y editar (mode), como ya se
 // hace con el ticket de Compras (ReceiptForm mode="add"|"edit").
+// Filas del formulario de receta: cada ingrediente y cada paso es su propia
+// fila (petición real: "el aspecto del formulario de nueva receta no me
+// gusta... darle un aspecto más profesional"), y al guardar se convierten
+// al mismo texto de siempre (una línea "nombre, cantidad, unidad" por
+// ingrediente y "1. paso" por paso), así que no cambia nada en la base de datos.
+interface IngredientRow {
+  id: string
+  name: string
+  quantity: string
+  unit: string
+}
+interface StepRow {
+  id: string
+  text: string
+}
+let formRowSeq = 0
+const newIngredientRow = (over: Partial<IngredientRow> = {}): IngredientRow => ({ id: `ing-${++formRowSeq}`, name: '', quantity: '', unit: '', ...over })
+const newStepRow = (text = ''): StepRow => ({ id: `step-${++formRowSeq}`, text })
+const UNIT_SUGGESTIONS = ['g', 'kg', 'ml', 'l', 'unidades', 'cucharadas', 'cucharaditas', 'tazas', 'pizca', 'dientes', 'lonchas']
+
 function RecipeForm({
   mode,
   recipe,
@@ -1177,10 +1197,27 @@ function RecipeForm({
   onCancel?: () => void
 }) {
   const [title, setTitle] = useState(recipe?.title ?? '')
+  // Si las notas de una receta ya guardada no son una lista numerada de
+  // pasos (texto libre), se editan tal cual en un solo cuadro en vez de
+  // convertirlas a pasos — no se estropea lo que ya había.
+  const legacyNotes =
+    !!recipe?.notes && !recipe.notes.split('\n').filter((l) => l.trim()).every((l) => /^\d+\.\s/.test(l.trim()))
   const [notes, setNotes] = useState(recipe?.notes ?? '')
-  const [ingredients, setIngredients] = useState(
-    recipe ? recipe.ingredients.map((i) => [i.name, i.quantity ?? '', i.unit ?? ''].join(', ')).join('\n') : '',
+  const [steps, setSteps] = useState<StepRow[]>(() =>
+    recipe?.notes && !legacyNotes
+      ? recipe.notes
+          .split('\n')
+          .filter((l) => l.trim())
+          .map((l) => newStepRow(dedupeStepNumbers(l.trim()).replace(/^\d+\.\s*/, '')))
+      : [newStepRow(), newStepRow()],
   )
+  const [ingRows, setIngRows] = useState<IngredientRow[]>(() =>
+    recipe && recipe.ingredients.length > 0
+      ? recipe.ingredients.map((i) => newIngredientRow({ name: i.name, quantity: i.quantity ?? '', unit: i.unit ?? '' }))
+      : [newIngredientRow(), newIngredientRow(), newIngredientRow()],
+  )
+  const [startMode, setStartMode] = useState<'manual' | 'search' | 'url'>('manual')
+  const [showImageUrl, setShowImageUrl] = useState(false)
   const [tags, setTags] = useState<string[]>(recipe?.tags ?? [])
   const [newTag, setNewTag] = useState('')
   // Petición real: "que las recetas tengan una imagen en la cabecera...
@@ -1382,8 +1419,9 @@ function RecipeForm({
   function useFoundRecipe() {
     if (!found) return
     if (found.title && !title.trim()) setTitle(found.title)
-    setIngredients(found.ingredients.map((i) => `${i}, ,`).join('\n'))
-    setNotes(found.steps.map((s, i) => `${i + 1}. ${s}`).join('\n'))
+    setIngRows(found.ingredients.length > 0 ? found.ingredients.map((i) => newIngredientRow({ name: i })) : [newIngredientRow()])
+    setSteps(found.steps.length > 0 ? found.steps.map((st) => newStepRow(dedupeStepNumbers(st).replace(/^\d+\.\s*/, ''))) : [newStepRow()])
+    setStartMode('manual')
     if (foundImagePath) setImagePath(foundImagePath)
     setFound(null)
     setFoundImagePath(null)
@@ -1394,7 +1432,17 @@ function RecipeForm({
     setSaving(true)
     setError(null)
     try {
-      const input = { title, notes, ingredientLines: ingredients.split('\n'), tags, imagePath }
+      const ingredientLines = ingRows
+        .filter((r) => r.name.trim())
+        .map((r) => [r.name.replace(/,/g, ' ').trim(), r.quantity.trim(), r.unit.trim()].join(', '))
+      const notesOut = legacyNotes
+        ? notes
+        : steps
+            .map((st) => st.text.trim())
+            .filter(Boolean)
+            .map((t, i) => `${i + 1}. ${t}`)
+            .join('\n')
+      const input = { title, notes: notesOut, ingredientLines, tags, imagePath }
       if (mode === 'edit' && recipe) {
         await updateRecipe(recipe.id, input)
       } else {
@@ -1408,138 +1456,270 @@ function RecipeForm({
     }
   }
 
+  function updateIngredient(id: string, patch: Partial<IngredientRow>) {
+    setIngRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  }
+
+  function addIngredientAfter(id: string | null) {
+    setIngRows((rows) => {
+      const at = id ? rows.findIndex((r) => r.id === id) + 1 : rows.length
+      return [...rows.slice(0, at), newIngredientRow(), ...rows.slice(at)]
+    })
+  }
+
+  function moveStep(index: number, direction: -1 | 1) {
+    setSteps((rows) => {
+      const target = index + direction
+      if (target < 0 || target >= rows.length) return rows
+      const next = [...rows]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="member-form">
-      <label>
-        Título
+    <form onSubmit={handleSubmit} className="recipe-form">
+      <div className="recipe-field">
         <input
+          className="recipe-title-input"
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
-          placeholder="Tortilla de patatas"
+          placeholder="Nombre de la receta (p. ej. Tortilla de patatas)"
           list="recipe-search-history"
           autoComplete="off"
+          aria-label="Título"
         />
         <datalist id="recipe-search-history">
           {searchHistory.map((q) => (
             <option key={q} value={q} />
           ))}
         </datalist>
-      </label>
+      </div>
 
       {mode === 'add' && (
-        <>
-          <button type="button" className="link-button" onClick={handleSearch} disabled={!title.trim() || searchStatus === 'searching'}>
-            {searchStatus === 'searching' ? 'Buscando en Internet…' : '🔍 Buscar receta en Internet'}
-          </button>
-          {searchResults.length > 0 && (
-            <div className="card" style={{ padding: 8 }}>
-              <p className="muted" style={{ margin: '4px 8px' }}>
-                Elige cuál es la tuya:
-              </p>
-              {searchResults.map((r) => {
-                const key = r.source === 'wikibooks' ? `wb-${r.title}` : `${r.source}-${r.id}`
-                const label = r.source === 'wikibooks' ? r.displayName : r.source === 'fatsecret' ? r.name : r.title
-                const sourceLabel =
-                  r.source === 'cookpad'
-                    ? 'Cookpad (español, con foto)'
-                    : r.source === 'fatsecret'
-                      ? 'FatSecret (en inglés, con foto)'
-                      : 'Wikibooks (en español)'
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    className="recipe-list-row"
-                    onClick={() => handleSelectCandidate(r)}
-                    disabled={searchStatus === 'searching'}
-                  >
-                    {r.source !== 'wikibooks' && r.imageUrl && <img src={r.imageUrl} alt="" className="recipe-image" />}
-                    <span>
-                      {label}
-                      <span className="muted" style={{ display: 'block', fontSize: 11 }}>
-                        {sourceLabel}
-                      </span>
-                    </span>
-                  </button>
-                )
-              })}
+        <div className="recipe-field">
+          <span className="recipe-field-label">¿Cómo quieres empezar?</span>
+          <div className="segmented" role="tablist">
+            {(
+              [
+                ['manual', '✍️ Escribirla'],
+                ['search', '🔍 Buscar'],
+                ['url', '🔗 Enlace'],
+              ] as const
+            ).map(([key, label]) => (
+              <button key={key} type="button" role="tab" aria-selected={startMode === key} className={startMode === key ? 'segmented-active' : ''} onClick={() => setStartMode(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {startMode === 'search' && (
+            <div className="recipe-start-panel">
+              <p className="muted">Busca por el nombre de arriba en Cookpad, FatSecret y Wikibooks y elige la que más se parezca.</p>
+              <button type="button" onClick={handleSearch} disabled={!title.trim() || searchStatus === 'searching'}>
+                {searchStatus === 'searching' ? 'Buscando en Internet…' : 'Buscar receta'}
+              </button>
+              {searchResults.length > 0 && (
+                <div className="card" style={{ padding: 8 }}>
+                  <p className="muted" style={{ margin: '4px 8px' }}>
+                    Elige cuál es la tuya:
+                  </p>
+                  {searchResults.map((r) => {
+                    const key = r.source === 'wikibooks' ? `wb-${r.title}` : `${r.source}-${r.id}`
+                    const label = r.source === 'wikibooks' ? r.displayName : r.source === 'fatsecret' ? r.name : r.title
+                    const sourceLabel =
+                      r.source === 'cookpad'
+                        ? 'Cookpad (español, con foto)'
+                        : r.source === 'fatsecret'
+                          ? 'FatSecret (en inglés, con foto)'
+                          : 'Wikibooks (en español)'
+                    return (
+                      <button key={key} type="button" className="recipe-list-row" onClick={() => handleSelectCandidate(r)} disabled={searchStatus === 'searching'}>
+                        {r.source !== 'wikibooks' && r.imageUrl && <img src={r.imageUrl} alt="" className="recipe-image" />}
+                        <span>
+                          {label}
+                          <span className="muted" style={{ display: 'block', fontSize: 11 }}>
+                            {sourceLabel}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {searchStatus === 'not-found' && <p className="muted">No he encontrado "{title}" en Cookpad, Wikibooks ni FatSecret — puedes escribirla tú.</p>}
+              {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
             </div>
           )}
-          {searchStatus === 'not-found' && (
-            <p className="muted">No he encontrado "{title}" en Cookpad, Wikibooks ni FatSecret — escríbela a mano abajo.</p>
-          )}
-          {searchStatus === 'error' && <p className="error">No se pudo buscar ahora mismo, inténtalo de nuevo.</p>}
 
-          <label>
-            O importar desde la URL de otra web de recetas
-            <input type="url" value={recipeUrl} onChange={(e) => setRecipeUrl(e.target.value)} placeholder="https://..." />
-          </label>
-          <button
-            type="button"
-            className="link-button"
-            onClick={handleImportUrl}
-            disabled={!recipeUrl.trim() || urlImportStatus === 'importing'}
-          >
-            {urlImportStatus === 'importing' ? 'Leyendo la página…' : '🔗 Importar desde esa URL'}
-          </button>
-          {urlImportStatus === 'error' && <p className="error">{urlImportError}</p>}
-        </>
+          {startMode === 'url' && (
+            <div className="recipe-start-panel">
+              <p className="muted">Pega el enlace de una receta de otra web y la leo por ti.</p>
+              <input type="url" value={recipeUrl} onChange={(e) => setRecipeUrl(e.target.value)} placeholder="https://..." aria-label="Enlace de la receta" />
+              <button type="button" onClick={handleImportUrl} disabled={!recipeUrl.trim() || urlImportStatus === 'importing'}>
+                {urlImportStatus === 'importing' ? 'Leyendo la página…' : 'Importar receta'}
+              </button>
+              {urlImportStatus === 'error' && <p className="error">{urlImportError}</p>}
+            </div>
+          )}
+        </div>
       )}
 
-      <label style={{ marginBottom: 0 }}>Imagen de cabecera (opcional)</label>
-      {imagePath && <RecipeImage imagePath={imagePath} alt="" />}
-      <div className="inline-fields">
-        <label className="link-button" style={{ cursor: 'pointer' }}>
-          {imageBusy ? 'Subiendo…' : '📷 Subir foto'}
-          <input type="file" accept="image/*" onChange={handleUploadImage} style={{ display: 'none' }} disabled={imageBusy} />
-        </label>
-        {imagePath && (
-          <button type="button" className="link-button" onClick={() => setImagePath(null)}>
-            ✕ Quitar imagen
-          </button>
+      <div className="recipe-field">
+        <span className="recipe-field-label">Foto</span>
+        {imagePath ? (
+          <div className="recipe-photo">
+            <RecipeImage imagePath={imagePath} alt="" />
+            <div className="recipe-photo-actions">
+              <label className="recipe-photo-btn">
+                {imageBusy ? 'Subiendo…' : 'Cambiar'}
+                <input type="file" accept="image/*" onChange={handleUploadImage} style={{ display: 'none' }} disabled={imageBusy} />
+              </label>
+              <button type="button" className="recipe-photo-btn" onClick={() => setImagePath(null)}>
+                Quitar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <label className="recipe-photo-drop">
+            <span aria-hidden="true" style={{ fontSize: 28 }}>
+              📷
+            </span>
+            <strong>{imageBusy ? 'Subiendo…' : 'Añadir foto'}</strong>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Sale en la cabecera de la receta
+            </span>
+            <input type="file" accept="image/*" onChange={handleUploadImage} style={{ display: 'none' }} disabled={imageBusy} />
+          </label>
         )}
+        <button type="button" className="link-button" style={{ fontSize: 13, alignSelf: 'flex-start' }} onClick={() => setShowImageUrl((v) => !v)}>
+          🌐 Usar una foto de internet
+        </button>
+        {showImageUrl && (
+          <div className="recipe-inline-row">
+            <input type="url" value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder="Pega el enlace de la foto" aria-label="Enlace de la foto" />
+            <button type="button" onClick={handleFetchImageUrl} disabled={!imageUrlInput.trim() || imageBusy}>
+              {imageBusy ? '…' : 'Usar'}
+            </button>
+          </div>
+        )}
+        {imageError && <p className="error">{imageError}</p>}
       </div>
-      <label>
-        O pegar la URL de una foto encontrada en internet
-        <input type="url" value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder="https://..." />
-      </label>
-      <button type="button" className="link-button" onClick={handleFetchImageUrl} disabled={!imageUrlInput.trim() || imageBusy}>
-        {imageBusy ? 'Descargando…' : '🌐 Usar esa foto'}
-      </button>
-      {imageError && <p className="error">{imageError}</p>}
 
-      <label style={{ marginBottom: 0 }}>Etiquetas (opcional)</label>
-      <div className="filter-row">
-        {availableTags.map((tag) => (
-          <button key={tag} type="button" className={'chip' + (tags.includes(tag) ? ' chip-active' : '')} onClick={() => toggleTag(tag)}>
-            {tag}
+      <div className="recipe-field">
+        <span className="recipe-field-label">Etiquetas</span>
+        <div className="filter-row">
+          {availableTags.map((tag) => (
+            <button key={tag} type="button" className={'chip' + (tags.includes(tag) ? ' chip-active' : '')} onClick={() => toggleTag(tag)}>
+              {tag}
+            </button>
+          ))}
+          {tags
+            .filter((t) => !availableTags.includes(t))
+            .map((tag) => (
+              <button key={tag} type="button" className="chip chip-active" onClick={() => toggleTag(tag)}>
+                {tag} ✕
+              </button>
+            ))}
+        </div>
+        <div className="recipe-inline-row">
+          <input
+            type="text"
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleAddNewTag()
+              }
+            }}
+            placeholder="Nueva etiqueta"
+            aria-label="Nueva etiqueta"
+          />
+          <button type="button" onClick={handleAddNewTag} disabled={!newTag.trim()}>
+            Añadir
           </button>
-        ))}
+        </div>
       </div>
-      <div className="inline-fields">
-        <input type="text" value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="Nueva etiqueta" />
-        <button type="button" className="link-button" onClick={handleAddNewTag} disabled={!newTag.trim()}>
-          + Añadir
+
+      <div className="recipe-field">
+        <span className="recipe-field-label">Ingredientes</span>
+        {ingRows.map((r) => (
+          <div key={r.id} className="recipe-ing-row">
+            <input
+              className="recipe-ing-name"
+              type="text"
+              value={r.name}
+              onChange={(e) => updateIngredient(r.id, { name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addIngredientAfter(r.id)
+                }
+              }}
+              placeholder="Ingrediente"
+              aria-label="Ingrediente"
+            />
+            <input className="recipe-ing-qty" type="text" inputMode="decimal" value={r.quantity} onChange={(e) => updateIngredient(r.id, { quantity: e.target.value })} placeholder="Cant." aria-label="Cantidad" />
+            <input className="recipe-ing-unit" type="text" list="recipe-units" value={r.unit} onChange={(e) => updateIngredient(r.id, { unit: e.target.value })} placeholder="Unidad" aria-label="Unidad" />
+            <button type="button" className="recipe-row-remove" aria-label="Quitar ingrediente" onClick={() => setIngRows((rows) => (rows.length > 1 ? rows.filter((x) => x.id !== r.id) : [newIngredientRow()]))}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <datalist id="recipe-units">
+          {UNIT_SUGGESTIONS.map((u) => (
+            <option key={u} value={u} />
+          ))}
+        </datalist>
+        <button type="button" className="link-button" style={{ alignSelf: 'flex-start' }} onClick={() => addIngredientAfter(null)}>
+          + Añadir ingrediente
         </button>
       </div>
 
-      <label>
-        Ingredientes (uno por línea: nombre, cantidad, unidad)
-        <textarea
-          rows={4}
-          value={ingredients}
-          onChange={(e) => setIngredients(e.target.value)}
-          placeholder={'Tomate, 4, unidades\nAceite, 2, cucharadas'}
-        />
-      </label>
-      <label>
-        Preparación / notas
-        <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </label>
+      {legacyNotes ? (
+        <div className="recipe-field">
+          <span className="recipe-field-label">Preparación / notas</span>
+          <textarea rows={6} value={notes} onChange={(e) => setNotes(e.target.value)} aria-label="Preparación / notas" />
+        </div>
+      ) : (
+        <div className="recipe-field">
+          <span className="recipe-field-label">Preparación</span>
+          {steps.map((st, i) => (
+            <div key={st.id} className="recipe-step-row">
+              <span className="recipe-step-num" aria-hidden="true">
+                {i + 1}
+              </span>
+              <textarea
+                rows={2}
+                value={st.text}
+                onChange={(e) => setSteps((rows) => rows.map((x) => (x.id === st.id ? { ...x, text: e.target.value } : x)))}
+                placeholder={i === 0 ? 'Describe el primer paso…' : 'Siguiente paso…'}
+                aria-label={`Paso ${i + 1}`}
+              />
+              <div className="recipe-step-actions">
+                <button type="button" className="recipe-row-remove" aria-label="Subir paso" disabled={i === 0} onClick={() => moveStep(i, -1)}>
+                  ↑
+                </button>
+                <button type="button" className="recipe-row-remove" aria-label="Bajar paso" disabled={i === steps.length - 1} onClick={() => moveStep(i, 1)}>
+                  ↓
+                </button>
+                <button type="button" className="recipe-row-remove" aria-label="Quitar paso" onClick={() => setSteps((rows) => (rows.length > 1 ? rows.filter((x) => x.id !== st.id) : [newStepRow()]))}>
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="link-button" style={{ alignSelf: 'flex-start' }} onClick={() => setSteps((rows) => [...rows, newStepRow()])}>
+            + Añadir paso
+          </button>
+        </div>
+      )}
+
       {error && <p className="error">{error}</p>}
-      <div className="form-actions">
+      <div className="recipe-form-footer">
         <button type="submit" disabled={saving}>
           {saving ? 'Guardando…' : mode === 'edit' ? 'Guardar cambios' : 'Crear receta'}
         </button>

@@ -4058,3 +4058,208 @@ textarea {
   overflow: hidden;
   cursor: pointer;
 }
+
+/* Formulario de receta (nueva/editar): secciones con etiqueta pequeña,
+   foto grande, ingredientes y pasos como filas propias. */
+.recipe-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.recipe-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recipe-field-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.recipe-title-input {
+  font-size: 20px;
+  font-weight: 700;
+  padding: 12px 14px;
+}
+
+.recipe-form input,
+.recipe-form textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #eceef3;
+}
+
+.segmented button {
+  flex: 1;
+  padding: 9px 6px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.segmented button.segmented-active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.recipe-start-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f7f8fb;
+}
+
+.recipe-start-panel p {
+  margin: 0;
+}
+
+.recipe-photo-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 22px 12px;
+  border: 2px dashed #ced4da;
+  border-radius: 14px;
+  background: #f7f8fb;
+  cursor: pointer;
+  text-align: center;
+}
+
+.recipe-photo {
+  position: relative;
+}
+
+.recipe-photo-actions {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.recipe-photo-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.recipe-inline-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.recipe-inline-row button {
+  flex: none;
+}
+
+.recipe-ing-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.recipe-ing-name {
+  flex: 1 1 0;
+}
+
+.recipe-form .recipe-ing-qty {
+  flex: none;
+  width: 58px;
+}
+
+.recipe-form .recipe-ing-unit {
+  flex: none;
+  width: 100px;
+}
+
+.recipe-row-remove {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.recipe-row-remove:disabled {
+  opacity: 0.3;
+}
+
+.recipe-step-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.recipe-step-num {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recipe-step-actions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.recipe-step-actions .recipe-row-remove {
+  height: 26px;
+}
+
+.recipe-form-footer {
+  /* El hueco de 20px es el relleno de .modal-sheet: el pie llega hasta el borde. */
+  position: sticky;
+  bottom: -20px;
+  margin-bottom: -20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0 20px;
+  background: linear-gradient(to top, #fff 75%, rgba(255, 255, 255, 0));
+}
+
+.recipe-form-footer button[type='submit'] {
+  width: 100%;
+  padding: 13px;
+  font-size: 16px;
+}

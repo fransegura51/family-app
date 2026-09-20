@@ -689,6 +689,7 @@ function SettingsGroup({
   icon,
   title,
   summary,
+  color,
   open,
   onToggle,
   children,
@@ -696,12 +697,13 @@ function SettingsGroup({
   icon: string
   title: string
   summary: string
+  color: string
   open: boolean
   onToggle: () => void
   children: ReactNode
 }) {
   return (
-    <div className="card ayuda-card" style={{ marginBottom: 8 }}>
+    <div className="card ayuda-card" style={{ marginBottom: 8, background: color }}>
       <button type="button" className="ayuda-card-header" onClick={onToggle} aria-expanded={open}>
         <span style={{ fontSize: 22 }} aria-hidden="true">
           {icon}
@@ -804,6 +806,8 @@ export function MenuSettingsScreen() {
     () => (location.state as { group?: SettingsGroupId } | null)?.group ?? null,
   )
   const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
+  // Un color por tema, con el estilo elegido en Colores.
+  const groupColors = pastelPalette(5)
 
   return (
     <div className="screen">
@@ -813,15 +817,16 @@ export function MenuSettingsScreen() {
 
       <FamilyNameSection />
 
-      <SettingsGroup icon="🧭" title="Organizar menú" summary="Qué secciones van fijas abajo y en qué orden" open={openGroup === 'menu'} onToggle={() => toggle('menu')}>
+      <SettingsGroup color={groupColors[0]} icon="🧭" title="Organizar menú" summary="Qué secciones van fijas abajo y en qué orden" open={openGroup === 'menu'} onToggle={() => toggle('menu')}>
         <MenuOrderSection />
       </SettingsGroup>
 
-      <SettingsGroup icon="🎨" title="Colores" summary="Estilo de las pantallas y de las estadísticas" open={openGroup === 'colores'} onToggle={() => toggle('colores')}>
+      <SettingsGroup color={groupColors[1]} icon="🎨" title="Colores" summary="Estilo de las pantallas y de las estadísticas" open={openGroup === 'colores'} onToggle={() => toggle('colores')}>
         <ColorThemeSection />
       </SettingsGroup>
 
       <SettingsGroup
+        color={groupColors[2]}
         icon="💶"
         title="Economía"
         summary="Mes contable, cuentas, categorías, etiquetas y colores"
@@ -842,6 +847,7 @@ export function MenuSettingsScreen() {
       </SettingsGroup>
 
       <SettingsGroup
+        color={groupColors[3]}
         icon="🛒"
         title="Compras y cocina"
         summary="Clases de alimentos y de otros productos"
@@ -856,7 +862,7 @@ export function MenuSettingsScreen() {
         />
       </SettingsGroup>
 
-      <SettingsGroup icon="🔒" title="Seguridad" summary="PIN, huella y Face ID" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')}>
+      <SettingsGroup color={groupColors[4]} icon="🔒" title="Seguridad" summary="PIN, huella y Face ID" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')}>
         <AppLockSection />
       </SettingsGroup>
 

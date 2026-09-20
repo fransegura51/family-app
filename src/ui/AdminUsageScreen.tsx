@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { listAppUsage, type AppUsageRow } from '@/data/appUsage'
 import { deleteClientErrors, listClientErrors, type ClientErrorRow } from '@/data/errorReports'
 import { deleteFamilyInvite, generateFamilyInvite, listFamilyInvites, type FamilyInvite } from '@/data/familyInvites'
@@ -21,6 +22,7 @@ function formatDate(iso: string | null): string {
 // se llega desde el enlace que aparece en Ajustes solo si list_app_usage()
 // devuelve algo.
 export function AdminUsageScreen() {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<AppUsageRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -105,7 +107,12 @@ export function AdminUsageScreen() {
 
   return (
     <div className="screen">
-      <h1>Uso de la app</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <h1 style={{ margin: 0 }}>Uso de la app</h1>
+        <button type="button" className="modal-close" onClick={() => navigate('/menu-organizar')} aria-label="Cerrar">
+          ✕
+        </button>
+      </div>
 
       <h2 className="section-title">
         🚨 Errores de la app {clientErrors.length > 0 && <span className="muted">({clientErrors.length})</span>}

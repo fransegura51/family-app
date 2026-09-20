@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { paletteByName, pastelPalette } from '@/domain/colors'
+import { dedupeStepNumbers } from '@/domain/recipeSteps'
 import {
   ALIMENTACION_MENU_ITEM_META,
   alimentacionMenuEntryMeta,
@@ -958,15 +959,61 @@ function RecipesTab() {
               </button>
             </div>
             <RecipeImage imagePath={viewing.imagePath} alt={viewing.title} />
-            {viewing.tags.length > 0 && (
-              <div className="filter-row" style={{ marginTop: 8 }}>
+            {/* Petición real: las acciones de la receta, arriba a la altura de
+                las etiquetas y solo con símbolos (compra, compartir, editar,
+                borrar), en vez de una fila de texto al final de todo. */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
+              <div className="filter-row" style={{ margin: 0 }}>
                 {viewing.tags.map((t) => (
                   <span key={t} className="chip" style={{ background: tagColors.get(t) }}>
                     {t}
                   </span>
                 ))}
               </div>
-            )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 'none', marginLeft: 'auto' }}>
+                <button
+                  type="button"
+                  className="link-button"
+                  style={{ fontSize: 20 }}
+                  onClick={() => setPickingFor(viewing)}
+                  title="Añadir a la lista de la compra"
+                  aria-label="Añadir a la lista de la compra"
+                >
+                  🛒
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  style={{ fontSize: 20 }}
+                  onClick={() => handleShareRecipe(viewing)}
+                  title="Compartir receta"
+                  aria-label="Compartir receta"
+                >
+                  📤
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  style={{ fontSize: 20 }}
+                  onClick={() => setEditing(viewing)}
+                  title="Editar receta"
+                  aria-label="Editar receta"
+                >
+                  ✏️
+                </button>
+                <ConfirmIconButton
+                  icon="✕"
+                  className="link-button"
+                  ariaLabel="Borrar receta"
+                  onConfirm={() =>
+                    deleteRecipe(viewing.id).then(() => {
+                      setViewingId(null)
+                      reload()
+                    })
+                  }
+                />
+              </div>
+            </div>
             {viewing.ingredients.length > 0 && (
               <div className="day-modal-group">
                 <h3>Ingredientes</h3>
@@ -983,28 +1030,9 @@ function RecipesTab() {
             {viewing.notes && (
               <div className="day-modal-group">
                 <h3>Preparación / notas</h3>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{viewing.notes}</p>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{dedupeStepNumbers(viewing.notes)}</p>
               </div>
             )}
-            <div className="task-card-actions">
-              <button type="button" className="link-button" onClick={() => setPickingFor(viewing)}>
-                Añadir a la lista de la compra
-              </button>
-              <button type="button" className="link-button" onClick={() => handleShareRecipe(viewing)} aria-label="Compartir receta">
-                📤 Compartir
-              </button>
-              <button type="button" className="link-button" onClick={() => setEditing(viewing)} aria-label="Editar">
-                ✏️ Editar
-              </button>
-              <ConfirmButton
-                onConfirm={() =>
-                  deleteRecipe(viewing.id).then(() => {
-                    setViewingId(null)
-                    reload()
-                  })
-                }
-              />
-            </div>
           </div>
         </div>
       )}

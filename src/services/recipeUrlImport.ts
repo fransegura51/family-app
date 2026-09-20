@@ -2,6 +2,7 @@
 // receta estándar (schema.org/Recipe) que casi toda web de recetas
 // incluye, sin IA ni servicio de pago. El fetch se hace en el servidor
 // porque la mayoría de esas webs no permiten CORS desde el navegador.
+import { dedupeStepNumbers } from '@/domain/recipeSteps'
 import { supabase } from '@/data/supabaseClient'
 
 export interface RecipeUrlImportResult {
@@ -41,7 +42,7 @@ export async function importRecipeFromUrl(url: string): Promise<RecipeUrlImportR
   return {
     title: typeof json.title === 'string' ? json.title : '',
     ingredients: Array.isArray(json.ingredients) ? json.ingredients.filter((i: unknown) => typeof i === 'string') : [],
-    instructions: typeof json.instructions === 'string' ? json.instructions : '',
+    instructions: typeof json.instructions === 'string' ? dedupeStepNumbers(json.instructions) : '',
     sourceUrl: typeof json.sourceUrl === 'string' ? json.sourceUrl : url,
     imagePath: typeof json.imagePath === 'string' ? json.imagePath : null,
   }

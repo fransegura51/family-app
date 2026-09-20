@@ -4,6 +4,8 @@ import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
 import { openManager, type ManagerKind } from '@/state/managers'
 import { loadMovementColorMode, saveMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
+import { getColorTheme, saveColorTheme, type ColorTheme } from '@/state/colorTheme'
+import { pastelPalette } from '@/domain/colors'
 import {
   getAccountsMode,
   getFamilyName,
@@ -546,6 +548,67 @@ function AppLockSection() {
   )
 }
 
+// Petición real: "darle al usuario a elegir qué clases de tonos quiere:
+// pastel, saturados... y según la elección general cambiar todos los
+// colores de la app". Cambiar de estilo recarga la app (los colores se
+// calculan al cargar cada pantalla, y esa es la única forma de que TODO
+// se repinte a la vez).
+const COLOR_THEME_OPTIONS: { key: ColorTheme; label: string; text: string }[] = [
+  { key: 'pastel', label: 'Pastel', text: 'Suave y clarito (el de siempre).' },
+  { key: 'vivo', label: 'Vivo', text: 'Más saturado, colores con más presencia.' },
+]
+
+function ColorThemeSection() {
+  const [theme] = useState<ColorTheme>(() => getColorTheme())
+
+  function choose(next: ColorTheme) {
+    if (next === theme) return
+    saveColorTheme(next)
+    window.location.reload()
+  }
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 12 }}>
+      <strong>🎨 Estilo de color</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Cambia los colores de toda la app en este móvil (calendario, compras, economía, cocina, menús...). Al elegir otro
+        estilo la app se recarga.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+        {COLOR_THEME_OPTIONS.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => choose(o.key)}
+            aria-pressed={theme === o.key}
+            style={{
+              textAlign: 'left',
+              background: '#fff',
+              color: 'var(--text)',
+              border: theme === o.key ? '2px solid var(--primary)' : '1px solid #dee2e6',
+              borderRadius: 12,
+              padding: '10px 12px',
+            }}
+          >
+            <strong>
+              {theme === o.key ? '✓ ' : ''}
+              {o.label}
+            </strong>
+            <span className="muted" style={{ display: 'block', fontSize: 12, marginTop: 2, fontWeight: 400 }}>
+              {o.text}
+            </span>
+            <span style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+              {pastelPalette(8, o.key).map((c) => (
+                <span key={c} style={{ flex: 1, height: 18, borderRadius: 6, background: c }} />
+              ))}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Gestión de categorías, etiquetas y clases de alimentos — petición real:
 // "categorías y etiquetas de Economía [y] las clases de alimentos... a
 // Configuración, pero es imprescindible que en cada lugar donde se
@@ -678,7 +741,7 @@ function MenuOrderSection() {
   )
 }
 
-type SettingsGroupId = 'menu' | 'economia' | 'compras' | 'seguridad'
+type SettingsGroupId = 'menu' | 'colores' | 'economia' | 'compras' | 'seguridad'
 
 export function MenuSettingsScreen() {
   // Un solo tema abierto a la vez — la pantalla queda como una lista
@@ -699,6 +762,10 @@ export function MenuSettingsScreen() {
 
       <SettingsGroup icon="🧭" title="Organizar menú" summary="Qué secciones van fijas abajo y en qué orden" open={openGroup === 'menu'} onToggle={() => toggle('menu')}>
         <MenuOrderSection />
+      </SettingsGroup>
+
+      <SettingsGroup icon="🎨" title="Colores" summary="Pastel o vivo, para toda la app" open={openGroup === 'colores'} onToggle={() => toggle('colores')}>
+        <ColorThemeSection />
       </SettingsGroup>
 
       <SettingsGroup

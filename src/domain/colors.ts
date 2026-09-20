@@ -1,3 +1,5 @@
+import { getColorTheme, type ColorTheme } from '@/state/colorTheme'
+
 // Petición real: "las tarjetas de color pastel que sean de los colores
 // del arcoíris (pastel) y que no se repita ninguno. Esa misma idea de
 // colores pasteles la aplicaremos a la página de inicio de la App" —
@@ -9,15 +11,30 @@
 // pastel (muy clara) en vez de los tonos vivos de un gráfico.
 const GOLDEN_ANGLE = 137.508
 
+// Petición real: elegir entre pastel y colores vivos para TODA la app.
+// Cada color de la app sale de aquí: tono (hue) + la saturación y
+// luminosidad de un pastel; en el estilo "vivo" se conserva el tono pero
+// la luminosidad baja 20 puntos y la saturación sube a un mínimo del 80 %
+// (nunca por debajo del 58 % de luminosidad, para que el texto oscuro se
+// siga leyendo encima de cualquier tono).
+export function toneFor(theme: ColorTheme, h: number, s = 70, l = 90): string {
+  if (theme === 'vivo') return `hsl(${h}, ${Math.max(s, 80)}%, ${Math.max(58, l - 20)}%)`
+  return `hsl(${h}, ${s}%, ${l}%)`
+}
+
+export function tone(h: number, s = 70, l = 90): string {
+  return toneFor(getColorTheme(), h, s, l)
+}
+
 // Petición real (Inicio): hoy varias tarjetas comparten color por
 // casualidad (dos verdes iguales, dos azules iguales) porque cada una
 // llevaba un hex elegido a mano por separado. Un solo color POR
 // ÍNDICE, repartido por ángulo dorado, nunca coincide dos veces por
 // mucho que crezca la lista.
-export function pastelPalette(count: number): string[] {
+export function pastelPalette(count: number, theme: ColorTheme = getColorTheme()): string[] {
   return Array.from({ length: count }, (_, i) => {
     const hue = Math.round((i * GOLDEN_ANGLE) % 360)
-    return `hsl(${hue}, 70%, 90%)`
+    return toneFor(theme, hue)
   })
 }
 
@@ -28,7 +45,7 @@ export function pastelPalette(count: number): string[] {
 // uno nuevo sin relación con "su" color.
 export function toPastel(hex: string): string {
   const { h } = hexToHsl(hex)
-  return `hsl(${h}, 65%, 88%)`
+  return tone(h, 65, 88)
 }
 
 // Igual que toPastel, pero a partir de un color que ya viene como
@@ -40,7 +57,7 @@ export function toPastel(hex: string): string {
 export function pastelFromHsl(hsl: string): string {
   const match = /hsl\((\d+(?:\.\d+)?)/.exec(hsl)
   const h = match ? Number(match[1]) : 0
-  return `hsl(${h}, 65%, 88%)`
+  return tone(h, 65, 88)
 }
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
@@ -99,7 +116,7 @@ function hashName(name: string): number {
 }
 
 export function colorForName(name: string): string {
-  return `hsl(${hashName(name) % 360}, 70%, 90%)`
+  return tone(hashName(name) % 360)
 }
 
 // Petición real: "el color de Mercadona y Hiperber es tan similar que
@@ -147,7 +164,7 @@ export function storeColorResolver(
       }
     }
     taken.push(bestHue)
-    assigned.set(key, `hsl(${bestHue}, 70%, ${i % 2 === 0 ? 90 : 84}%)`)
+    assigned.set(key, tone(bestHue, 70, i % 2 === 0 ? 90 : 84))
   })
 
   return (name) => {
@@ -168,7 +185,7 @@ export function colorForClass(name: string): string {
   const tier = (hash >>> 12) % 3
   const lightness = [90, 85, 80][tier]
   const saturation = [70, 74, 78][tier]
-  return `hsl(${hash % 360}, ${saturation}%, ${lightness}%)`
+  return tone(hash % 360, saturation, lightness)
 }
 
 // Petición real: "las etiquetas generadas automáticamente que tengan

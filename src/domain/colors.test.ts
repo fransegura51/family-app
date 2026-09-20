@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass, storeColorResolver, distinctTagColor } from './colors'
+import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass, storeColorResolver, distinctTagColor, toneFor } from './colors'
+
+describe('toneFor', () => {
+  it('keeps the hue in both styles; vivo is more saturated and darker but never below 58% lightness', () => {
+    expect(toneFor('pastel', 200)).toBe('hsl(200, 70%, 90%)')
+    expect(toneFor('vivo', 200)).toBe('hsl(200, 80%, 70%)')
+    expect(toneFor('vivo', 10, 65, 88)).toBe('hsl(10, 80%, 68%)')
+    expect(toneFor('vivo', 10, 50, 72)).toBe('hsl(10, 80%, 58%)')
+  })
+
+  it('still gives every palette entry a different hue in the vivo style', () => {
+    expect(new Set(pastelPalette(20, 'vivo')).size).toBe(20)
+  })
+})
 
 describe('distinctTagColor', () => {
   it('gives valid, different hex colors for consecutive tags', () => {

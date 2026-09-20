@@ -5,7 +5,22 @@
   --text: #1c1f26;
   --muted: #6b7280;
   --error: #d64545;
+  /* Fondos con "significado" (modo compra, fin de semana del calendario):
+     cambian con el estilo de color elegido en Configuración → Colores. */
+  --tone-pending: hsl(0, 75%, 95%);
+  --tone-done: hsl(140, 55%, 93%);
+  --tone-weekend: hsl(30, 70%, 94%);
   color-scheme: light;
+}
+
+/* Estilo "vivo": tonos más saturados; el texto secundario y los enlaces
+   se oscurecen para seguir leyéndose encima. */
+:root[data-color-theme='vivo'] {
+  --primary: #364fc7;
+  --muted: #495057;
+  --tone-pending: hsl(0, 80%, 78%);
+  --tone-done: hsl(140, 60%, 68%);
+  --tone-weekend: hsl(30, 85%, 74%);
 }
 
 * {
@@ -1772,11 +1787,11 @@ select {
    opacidad — de un vistazo se ve qué falta y qué ya está en el
    carrito, sin tener que leer el tachado. */
 .shopping-mode-pending {
-  background: hsl(0, 75%, 95%);
+  background: var(--tone-pending);
 }
 
 .shopping-mode-done {
-  background: hsl(140, 55%, 93%);
+  background: var(--tone-done);
 }
 
 /* Check ligero: círculo vacío que solo se rellena al marcar — antes
@@ -2179,7 +2194,7 @@ textarea {
    diferenciarlos con un color" — pastel suave, cede ante "hoy" (borde)
    y "seleccionado" (más abajo en la cascada, gana el fondo sólido). */
 .month-grid-day-weekend {
-  background: hsl(30, 70%, 94%);
+  background: var(--tone-weekend);
 }
 
 .month-grid-day-today {

@@ -39,7 +39,7 @@ import {
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
-import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel } from '@/domain/colors'
+import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -927,20 +927,20 @@ function EconomiaMenuDropdown({
 const COMMON_ACCOUNT_COLOR = '#e9ecef'
 // Colores pastel fijos de los dónuts de Debo/Necesito/Quiero y Fijo/variable (siempre los mismos).
 const NECESSITY_PASTEL: Record<'debo' | 'necesito' | 'quiero' | 'sin_clasificar', string> = {
-  debo: 'hsl(0, 70%, 90%)',
-  necesito: 'hsl(45, 85%, 88%)',
-  quiero: 'hsl(280, 60%, 90%)',
+  debo: tone(0, 70, 90),
+  necesito: tone(45, 85, 88),
+  quiero: tone(280, 60, 90),
   sin_clasificar: '#e9ecef',
 }
 const FIXED_PASTEL: Record<'fijo' | 'variable' | 'sin_clasificar', string> = {
-  fijo: 'hsl(200, 70%, 88%)',
-  variable: 'hsl(150, 55%, 86%)',
+  fijo: tone(200, 70, 88),
+  variable: tone(150, 55, 86),
   sin_clasificar: '#e9ecef',
 }
 const pastelOf = (hsl: string | undefined) => (hsl ? pastelFromHsl(hsl) : undefined)
-const GENERAL_BUDGET_COLOR = 'hsl(175, 55%, 88%)'
+const GENERAL_BUDGET_COLOR = tone(175, 55, 88)
 // Arcoíris por mes del año (enero rojo → diciembre rosa): agosto es siempre el mismo color, sea el año que sea.
-const MONTH_FOLDER_COLORS = Array.from({ length: 12 }, (_, i) => `hsl(${i * 30}, 70%, 90%)`)
+const MONTH_FOLDER_COLORS = Array.from({ length: 12 }, (_, i) => tone(i * 30))
 
 // Petición real: "quiero una etiqueta que sea toda la familia o común,
 // mejor común, porque es más corto, que es para las cosas que son de
@@ -2969,10 +2969,10 @@ function EvolucionTemporal({
               <span className={r.ahorro >= 0 ? 'muted' : 'error'}>Ahorro: {r.ahorro.toFixed(2)} €</span>
             </div>
             <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 3 }}>
-              <div style={{ width: `${(r.income / maxAmount) * 100}%`, background: 'hsl(140, 50%, 72%)', borderRadius: 3 }} />
+              <div style={{ width: `${(r.income / maxAmount) * 100}%`, background: tone(140, 50, 72), borderRadius: 3 }} />
             </div>
             <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 2 }}>
-              <div style={{ width: `${(r.spent / maxAmount) * 100}%`, background: 'hsl(340, 75%, 82%)', borderRadius: 3 }} />
+              <div style={{ width: `${(r.spent / maxAmount) * 100}%`, background: tone(340, 75, 82), borderRadius: 3 }} />
             </div>
             <button
               type="button"

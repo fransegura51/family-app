@@ -4,6 +4,9 @@ import { App } from '@/App'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import { reportClientError } from '@/data/errorReports'
 import '@/ui/styles.css'
+import { applyColorTheme } from '@/state/colorTheme'
+
+applyColorTheme()
 
 // El registro básico (registerSW.js, autoinyectado) instala el service
 // worker nuevo pero la pestaña ya abierta se queda corriendo el código

@@ -70,15 +70,16 @@ export async function runFinanceQuery(query: FinanceQuery, data: FinanceData, to
   // Un filtro de categoría/tienda dicho tras un análisis ("¿y solo alimentación?").
   if (query.metric === 'category_focus') {
     const target = query.target ? resolveTarget(query.target, data) : ({ kind: 'none' } as const)
-    if (target.kind === 'store') {
+    // Una tienda o un concepto no tienen "subcategorías": se contesta con la cifra de gasto de siempre.
+    if (target.kind === 'store' || target.kind === 'concept') {
       const answer = answerFinanceQuery({ ...query, metric: 'spent', period: spec }, data, today)
-      return { text: answer.text, query: { ...remembered, metric: 'spent', target: target.name }, usedAi: false, fn: 'finance.spent' }
+      return { text: answer.text, query: answer.query, usedAi: false, fn: 'finance.spent' }
     }
     if (target.kind !== 'category') {
       const text =
         target.kind === 'ambiguous'
           ? `«${query.target}» puede ser varias cosas: ${target.options.join(', ')}. ¿Cuál quieres?`
-          : `No encuentro ninguna categoría ni tienda llamada «${query.target}» en tus datos, así que no lo calculo.`
+          : `No encuentro ninguna categoría, tienda ni concepto llamado «${query.target}» en tus datos, así que no lo calculo.`
       return { text, query: remembered, usedAi: false, fn: 'finance.category_focus' }
     }
     const a = buildAnalysis(data, resolved, today, { baseline, full: query.full })

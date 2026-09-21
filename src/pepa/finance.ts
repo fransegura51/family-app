@@ -12,6 +12,9 @@ import { listReceipts } from '@/data/receipts'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { supabase } from '@/data/supabaseClient'
 import { requestFinanceAnalysis } from '@/services/financeAnalysis'
+import { classifyFinanceIntent } from '@/services/financeIntent'
+import { queryFromIntent } from '@/domain/financeIntent'
+import type { IntentOutput } from '../../supabase/functions/_shared/ai/purposes/financeIntentCore.ts'
 import { recordPepaAnswer } from '@/services/pepaUsage'
 import { runFinanceQuery, type AiAnalyzer } from '@/domain/financeAnswer'
 import type { FinanceData } from '@/domain/financeCompute'
@@ -40,6 +43,9 @@ export interface FinanceDeps {
   load(needTickets: boolean): Promise<FinanceData>
   // Solo el análisis abierto la usa (hechos agregados -> respuesta validada, o null).
   ai?: AiAnalyzer
+  // Solo cuando las reglas no entienden la frase con seguridad: la IA la ESTRUCTURA (intención, periodo, filtro).
+  // Nunca calcula ni ve datos; lo que devuelve se valida y el código lo resuelve contra los datos reales.
+  interpret?(text: string, today: Date): Promise<IntentOutput | null>
   // Contador de respuestas (solo números): función usada y si necesitó IA.
   record?(fn: string, usedAi: boolean): void
 }
@@ -79,7 +85,7 @@ async function loadFinanceData(needTickets: boolean): Promise<FinanceData> {
   }
 }
 
-const defaultDeps: FinanceDeps = { canAccess: canAccessFinance, load: loadFinanceData, ai: requestFinanceAnalysis, record: recordPepaAnswer }
+const defaultDeps: FinanceDeps = { canAccess: canAccessFinance, load: loadFinanceData, ai: requestFinanceAnalysis, interpret: classifyFinanceIntent, record: recordPepaAnswer }
 
 const NEEDS_TICKETS = new Set(['why_changed', 'price_up', 'price_down', 'cheapest_store', 'analyze', 'changes', 'attention', 'where_money', 'simpler', 'category_focus'])
 
@@ -89,6 +95,7 @@ export async function handleFinanceText(text: string, today: Date = new Date(), 
   const previous = financeContextQuery()
 
   let query: FinanceQuery | null = null
+  let interpretedByAi = false
   if (parsed) {
     if (parsed.kind === 'write-refused') return FINANCE_WRITE_REFUSED
     if (parsed.kind === 'unsupported') {
@@ -96,8 +103,22 @@ export async function handleFinanceText(text: string, today: Date = new Date(), 
         ? 'Los presupuestos todavía no los consulto desde aquí; míralos en la pantalla de Economía.'
         : 'Los saldos de las cuentas todavía no los consulto desde aquí; míralos en la pantalla de Economía.'
     }
-    if (parsed.kind === 'not-understood') return FINANCE_NOT_UNDERSTOOD
-    query = parsed.query
+    if (parsed.kind === 'not-understood' || (parsed.kind === 'query' && parsed.uncertain)) {
+      // Las reglas no ubican la frase con seguridad. Antes de rendirse, la IA puede ESTRUCTURARLA (nunca calcular).
+      try {
+        if (!(await deps.canAccess())) return FINANCE_NO_ACCESS
+        const out = deps.interpret ? await deps.interpret(text, today) : null
+        if (out && out.intent === 'none') return null // no es de economía: sigue su camino
+        const fromAi = out ? queryFromIntent(out, today) : null
+        if (!fromAi) return FINANCE_NOT_UNDERSTOOD
+        query = fromAi
+        interpretedByAi = true
+      } catch {
+        return FINANCE_FAILED
+      }
+    } else {
+      query = parsed.query
+    }
     // "¿Y cuánto hemos ingresado?" justo después de hablar de agosto: se mantiene el periodo. Igual con
     // un análisis seguido de otra pregunta de análisis ("¿qué podríamos recortar?"): mismo periodo y misma referencia.
     const analysis = ANALYSIS_METRICS.includes(query.metric) || query.metric === 'why_changed'
@@ -114,7 +135,7 @@ export async function handleFinanceText(text: string, today: Date = new Date(), 
     // El contexto recuerda la consulta, salvo "explícamelo más sencillo": eso reformula, no cambia de tema.
     if (query.metric !== 'simpler') context = { query: run.query, at: Date.now() }
     else if (context) context = { query: context.query, at: Date.now() }
-    deps.record?.(run.fn, run.usedAi)
+    deps.record?.(run.fn, run.usedAi || interpretedByAi)
     return run.text
   } catch {
     return FINANCE_FAILED

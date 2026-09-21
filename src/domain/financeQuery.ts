@@ -1,6 +1,20 @@
-// Economía por voz, SOLO CONSULTA: entender la pregunta con reglas. Aquí no se calcula nada ni se
-// toca ningún dato; el resultado es una consulta estructurada que ejecutan financeCompute (cifras) y
+// Economía por voz, SOLO CONSULTA: entender la pregunta. Aquí no se calcula nada ni se toca ningún
+// dato; el resultado es una consulta estructurada que ejecutan financeCompute (cifras) y
 // financeAnalysis (análisis y conclusiones).
+//
+// ARQUITECTURA (en este orden, nunca al revés):
+//   1. NORMALIZAR: sin acentos, sin signos, sin "Pepa" ni muletillas.
+//   2. INTENCIÓN: se detectan SEÑALES léxicas de la frase completa (gastar, analizar, comparar, por qué,
+//      recortar...) y una tabla de decisión elige la métrica. Todavía no se mira ningún filtro.
+//   3. PERIODO: se extrae y se QUITA el periodo ("este mes", "el mes pasado", "en agosto"...).
+//   4. CANDIDATO DE FILTRO: de lo que queda se descartan las palabras vacías (artículos, preposiciones,
+//      verbos y palabras de la propia pregunta). Lo que sobra, si sobra algo, es el candidato ("luz",
+//      "restaurantes", "mercadona"). NUNCA se le pasa "el resto de la frase" al resolvedor.
+//   5. RESOLUCIÓN contra los datos reales (categorías, tiendas, conceptos): en financeCompute.
+//
+// Si con esto no hay seguridad suficiente (no hay intención clara o quedan demasiadas palabras sueltas),
+// la consulta se marca `uncertain` y quien llama puede pedir a la IA que ESTRUCTURE la frase (nunca que
+// calcule); el resultado se vuelve a validar (ver financeIntent).
 //
 // También aquí: las frases que piden ESCRIBIR en Economía (borrar, cambiar, crear, transferir...) se
 // reconocen para rechazarlas con claridad y no convertirlas en consultas por accidente.
@@ -38,8 +52,8 @@ export type AnalysisFocus = 'overview' | 'conclusions' | 'explain'
 export interface FinanceQuery {
   metric: FinanceMetric
   period: PeriodSpec | null
-  // Lo que se ha dicho tras "en/de" ("alimentación", "Mercadona", "restaurantes"); se resuelve contra
-  // las categorías y tiendas REALES de la familia.
+  // El CANDIDATO de filtro ("luz", "alimentacion", "mercadona"): solo las palabras con contenido, ya sin
+  // verbos ni relleno. Se resuelve contra las categorías, tiendas y conceptos REALES de la familia.
   target: string | null
   // Solo para cheapest_store.
   product: string | null
@@ -54,13 +68,16 @@ export interface FinanceQuery {
 }
 
 export type FinanceParse =
-  | { kind: 'query'; query: FinanceQuery }
+  // `uncertain`: la intención está, pero la frase trae más cosas de las que las reglas saben ubicar.
+  | { kind: 'query'; query: FinanceQuery; uncertain?: boolean }
   // Escribir en Economía no está habilitado desde Hablar con PEPA.
   | { kind: 'write-refused' }
   // Es de economía pero todavía no se responde desde aquí (presupuestos, saldos...).
   | { kind: 'unsupported'; what: 'budgets' | 'balances' }
-  // Suena a economía pero las reglas no lo entienden: se dice, sin mandarlo a la IA.
+  // Suena a economía pero las reglas no la entienden: se dice o se estructura con IA, nunca se adivina.
   | { kind: 'not-understood' }
+
+// ─── 1. Normalizar ───
 
 export function cleanFinanceText(text: string): string {
   return normalize(text)
@@ -68,6 +85,16 @@ export function cleanFinanceText(text: string): string {
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+// "Pepa," / "oye Pepa" / "vale Pepa" al principio o en medio de lo dictado. No es parte de la pregunta.
+function withoutWakeWord(cleaned: string): string {
+  return cleaned
+    .replace(/\b(?:oye|vale|hola|hey)?\s*pep[ae]\b\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// ─── Escribir en Economía: rechazado ───
 
 const FINANCE_NOUNS =
   /\b(?:gasto|gastos|movimiento|movimientos|presupuesto|presupuestos|ingreso|ingresos|cuenta|cuentas|categoria|categorias|ticket|tickets|transferencia|transferencias|precio|precios|banco|bancaria|bancario)\b/
@@ -78,70 +105,146 @@ const RECLASSIFY_VERBS = /^(?:por favor\s+)?(?:cambia|cambiar|mueve|mover|pasa|p
 const CATEGORY_WORDS = /\b(?:restaurantes?|ocio|alimentacion|transporte|vivienda|hogar|salud|ropa|regalos?|supermercados?|suscripciones)\b/
 const MONEY_AMOUNT = /\b\d+(?:[.,]\d+)?\s*(?:€|euros?)/
 
-// Palabras que hacen que una frase "suene" a economía (para no mandarla a la IA ni al calendario).
-const FINANCE_TOPIC =
-  /\b(?:gast\w*|ingres\w*|ahorr\w*|presupuest\w*|sald[oa]s?|barato|barata|baratos|baratas|subido|bajado|subid[oa]s?|bajad[oa]s?|precio|precios|econom\w*|analiz\w*|conclusion\w*|recort\w*|llam\w+ la atencion|categoria|categorias)\b|\b(?:se nos va|se nos esta yendo|esta yendo el dinero|que ha cambiado)\b/
-
 export function isWriteRequest(cleaned: string): boolean {
   if (/\bcuanto\b/.test(cleaned) || /^(?:que|como|donde|por que|cual)\b/.test(cleaned)) return false
   if (WRITE_VERBS.test(cleaned) && (FINANCE_NOUNS.test(cleaned) || MONEY_AMOUNT.test(cleaned))) return true
   return RECLASSIFY_VERBS.test(cleaned) && CATEGORY_WORDS.test(cleaned)
 }
 
+// Palabras que hacen que una frase "suene" a economía (para no mandarla al calendario ni a la compra).
+const FINANCE_TOPIC =
+  /\b(?:gast\w*|ingres\w*|ahorr\w*|presupuest\w*|sald[oa]s?|barato|barata|baratos|baratas|subido|bajado|subid[oa]s?|bajad[oa]s?|precio|precios|econom\w*|anali[zc]\w*|conclusion\w*|recort\w*|llam\w+ la atencion|categoria|categorias)\b|\b(?:se nos va|se nos esta yendo|esta yendo el dinero|que ha cambiado)\b|\bcuanto\b.*\b(?:pagad[oa]s?|pagamos|pagas|pagais)\b/
+
 export function looksLikeFinance(cleaned: string): boolean {
   return FINANCE_TOPIC.test(cleaned)
 }
 
-const GENERIC_TARGETS = new Set(['total', 'todo', 'general', 'conjunto', 'nosotros', 'familia', 'casa', 'todos'])
+// ─── 2. Intención: señales léxicas + tabla de decisión ───
 
-function stripLead(s: string): string {
-  return s
-    .replace(/^(?:por favor\s+|dime\s+|dime cuanto\s+|me dices\s+|sabes\s+)/, '')
-    .replace(/^(?:cuanto|cuantos|cuanta|cuantas|que|cual)\s+(?:dinero\s+|plata\s+)?/, '')
-    .replace(/^(?:hemos|has|he|habeis|han|llevamos|llevais|se ha|se han|estamos|estan|estais|vamos|hay)\s+/, '')
-    .replace(/^(?:gastado|gastamos|gastando|gastais|gasto|gastos|ingresado|ingresamos|ingresos|ahorrado|ahorramos|ahorrando|ahorro)\s*/, '')
-    .replace(/^(?:dinero|plata)\s+/, '')
-    .trim()
+interface Signals {
+  why: boolean
+  explain: boolean
+  spend: boolean
+  save: boolean
+  saveNow: boolean // ahorrando / ahorramos
+  saveInf: boolean // ahorrar
+  income: boolean
+  change: boolean
+  rise: boolean
+  fall: boolean
+  price: boolean
+  productWord: boolean
+  cheap: boolean
+  where: boolean
+  analyze: boolean
+  economy: boolean
+  whatsHappening: boolean
+  cut: boolean
+  attention: boolean
+  goingWhere: boolean
+  categoryWord: boolean
+  more: boolean
+  less: boolean
+  enQue: boolean
 }
 
-// "en alimentacion" / "de comida" / "con mercadona" -> "alimentacion".
-function targetFrom(rest: string): string | null {
-  let s = stripLead(rest)
-  s = s.replace(/^(?:\w+\s+)?(?:en|de|del|con|a)\s+/, (m) => (/^(?:en|de|del|con|a)\s+$/.test(m) ? '' : m))
-  s = s.replace(/^(?:en|de|del|con|a)\s+/, '')
-  s = s.replace(/^(?:la|el|los|las|mi|nuestro|nuestra|nuestros|nuestras|tienda|categoria|supermercado)\s+(?=\S)/, '')
-  s = s.replace(/\s+(?:en total|en general|en conjunto)$/, '')
-  s = s.replace(/^(?:en|de)\s+/, '').trim()
-  if (!s || GENERIC_TARGETS.has(s)) return null
-  return s
+function signalsOf(n: string): Signals {
+  const t = (re: RegExp) => re.test(n)
+  return {
+    why: t(/\bpor que\b/),
+    explain: t(/\bexplic\w+/),
+    spend: t(/\bgast\w*|\bpagad[oa]s?\b|\bpagamos\b|\bdesembols\w+/),
+    save: t(/\bahorr\w+/),
+    saveNow: t(/\bahorr(?:ando|amos)\b/),
+    saveInf: t(/\bahorrar\b/),
+    income: t(/\bingres\w+|\bcobrad[oa]s?\b|\bsueldos?\b|\bnominas?\b/),
+    change: t(/\bcambiado\b|\bcambios\b|\bque cambia\b/),
+    rise: t(/\bsubid[oa]s?\b|\bsuben\b|\bsubir\b|\baument\w+|\bencarec\w+|\bcrec\w+/),
+    fall: t(/\bbajad[oa]s?\b|\bbajan\b|\babarat\w+/),
+    price: t(/\bprecios?\b/),
+    productWord: t(/\b(?:productos?|cosas|articulos?|alimentos?)\b/),
+    cheap: t(/\bbarat[oa]s?\b|\beconomic[oa]s?\b/),
+    where: t(/\b(?:donde|en que tienda|que tienda|en que supermercado)\b/),
+    analyze: t(/\banali[zc]\w*|\banalisis\b|\bconclusion\w*|\bsituacion\b|\bpanorama\b|\bresum\w+/),
+    economy: t(/\beconomia\b|\bfinanzas\b|\bdinero\b/),
+    whatsHappening: t(/\bque esta pasando\b|\bque pasa con\b|\bcomo (?:vamos|va|esta|estamos)\b/),
+    cut: t(/\brecort\w+|\breduc\w+/),
+    attention: t(/\bllam\w+ la atencion\b|\balgo raro\b|\bextran\w+/),
+    goingWhere: t(/\bse nos (?:esta )?(?:va|yendo)\b|\bestamos perdiendo\b|\byendo el dinero\b|\bdemasiado\b/),
+    categoryWord: t(/\bcategorias?\b/),
+    more: t(/\bmas\b/),
+    less: t(/\bmenos\b/),
+    enQue: t(/\ben que\b/),
+  }
 }
-
-const PRODUCT_STOP =
-  /\b(?:donde|en que|que|tienda|tiendas|supermercado|compramos|compro|comprais|comprar|se|sale|es|esta|estan|mas|barato|barata|baratos|baratas|economico|economica|el|la|los|las|un|una|de|del|en|cuesta)\b/g
 
 function metricOf(n: string): FinanceMetric | null {
-  if (/\bpor que\b.*\bahorr\w*/.test(n)) return 'why_savings'
-  if (/\bpor que\b.*\b(?:gast\w*|cambiado|subido|aumentado)\b|\bpor que ha cambiado (?:mi|el|nuestro)\b|\bexplic\w+\b.*\bgast\w*/.test(n)) return 'why_changed'
-  if (/\b(?:productos?|cosas|articulos?|alimentos?)\b.*\b(?:subid[oa]s?|suben|subir|aumentad[oa]s?|encarecid[oa]s?)\b|\b(?:subid[oa]s?|suben)\b.*\bprecios?\b|\bmas caros?\b/.test(n)) return 'price_up'
-  if (/\b(?:productos?|cosas|articulos?|alimentos?)\b.*\b(?:bajad[oa]s?|bajan|abaratad[oa]s?)\b|\b(?:bajad[oa]s?|bajan)\b.*\bprecios?\b/.test(n)) return 'price_down'
-  if (/\b(?:donde|en que tienda|que tienda|en que supermercado)\b.*\b(?:barat[oa]s?|economic[oa]s?)\b|\bmas barat[oa]s?\b/.test(n)) return 'cheapest_store'
+  const s = signalsOf(n)
 
-  // Fase 2: análisis y conclusiones.
-  if (/\b(?:analiza\w*|analisis|conclusiones|explicame (?:nuestra |la )?(?:economia|situacion)|resumen (?:de )?(?:nuestra |la )?economia|que esta pasando|que pasa con (?:nuestros|los) gastos|como (?:vamos|va|esta) (?:de dinero|nuestra economia|la economia))\b/.test(n)) return 'analyze'
-  if (/\b(?:recort\w+|reducir|podemos ahorrar|podriamos ahorrar|ahorrar (?:un poco )?mas|como ahorrar|donde ahorrar)\b/.test(n)) return 'cuts'
-  if (/\bahorr(?:ando|amos)\b/.test(n) && /\b(?:mas|menos)\b/.test(n)) return 'savings_trend'
-  if (/\bllam\w+ la atencion\b|\balgo raro\b/.test(n)) return 'attention'
-  if (/\bse nos (?:esta )?(?:va|yendo)\b|\besta yendo el dinero\b|\bdemasiado\b/.test(n)) return 'where_money'
-  if (/\bque categoria\b.*\b(?:aument|sub|crec)\w*|\bque (?:ha )?(?:aumentado|subido) mas\b/.test(n)) return 'top_increase'
-  if (/\bque ha cambiado\b|\bque cambios\b/.test(n)) return 'changes'
+  if (s.why && s.save) return 'why_savings'
+  if ((s.why && (s.spend || s.change || s.rise)) || (s.explain && s.spend) || /\bpor que ha cambiado\b/.test(n)) return 'why_changed'
 
-  if (/\ben que\b.*\b(?:gast\w+)\b.*\bmas\b|\ben que\b.*\bgast\w+\b|\bque\b.*\bgast\w+\b.*\bmas\b|\bdonde\b.*\bgast\w+\b.*\bmas\b/.test(n)) return 'top_categories'
-  if (/\bgast\w*\b.*\b(?:mas|menos)\b.*\bque\b|\b(?:mas|menos)\b.*\bque\b.*\b(?:mes|semana|ano)\b.*\bgast/.test(n) || /\bcomparad?\w*\b.*\bgast/.test(n) || /\bcompar\w+\b/.test(n)) return 'compare'
-  if (/\bahorr\w+\b/.test(n)) return 'saved'
-  if (/\bingres\w+\b/.test(n) && !/\bgast/.test(n)) return 'income'
-  if (/\bgast\w*\b/.test(n)) return 'spent'
+  // Precios de productos (tickets)
+  if ((s.rise && (s.productWord || s.price)) || /\bmas caros?\b/.test(n)) return 'price_up'
+  if (s.fall && (s.productWord || s.price)) return 'price_down'
+  if (s.cheap && (s.where || /\bmas barat[oa]s?\b/.test(n))) return 'cheapest_store'
+
+  // Análisis y conclusiones
+  if (s.analyze || (s.explain && s.economy) || (s.whatsHappening && (s.spend || s.economy || s.analyze))) return 'analyze'
+  if (s.cut || s.saveInf) return 'cuts'
+  if (s.saveNow && (s.more || s.less)) return 'savings_trend'
+  if (s.attention) return 'attention'
+  if (s.goingWhere) return 'where_money'
+  if ((s.categoryWord && s.rise) || (s.rise && s.more && !s.productWord && !s.price)) return 'top_increase'
+  if (s.change) return 'changes'
+
+  // Cifras
+  if ((s.enQue && s.spend) || /\bque\b.*\bgast\w+\b.*\bmas\b|\bdonde\b.*\bgast\w+\b.*\bmas\b/.test(n)) return 'top_categories'
+  if (/\bgast\w*\b.*\b(?:mas|menos)\b.*\bque\b|\b(?:mas|menos)\b.*\bque\b.*\b(?:mes|semana|ano)\b.*\bgast/.test(n) || /\bcompar\w+\b/.test(n)) return 'compare'
+  if (s.save) return 'saved'
+  if (s.income && !s.spend) return 'income'
+  if (s.spend) return 'spent'
   return null
 }
+
+// ─── 4. Candidato de filtro: solo lo que tiene contenido ───
+
+// Palabras funcionales del español y palabras propias de la pregunta. No son frases hechas: es el
+// vocabulario que NUNCA puede ser el nombre de una categoría, tienda o concepto.
+const FUNCTION_WORDS = new Set(
+  (
+    'a al algo alguien alguna alguno algunos algunas ante aqui asi aun aunque bien cada casi como con contra cual cuales cuando cuanto cuanta cuantos cuantas ' +
+    'de del dentro desde donde dos el ella ellas ello ellos en entre era eran eres es esa esas ese eso esos esta estaba estado estamos estan estais estar estas este esto estos estoy ' +
+    'fue fueron fui ha habeis haber habia han has hasta hay he hemos hizo la las le les lo los mas me mi mis mucho mucha muy nada ni no nos nosotros nosotras ' +
+    'nuestra nuestras nuestro nuestros o os otra otro para pero poco por porque pues que quien quienes se sea segun ser si sido sin sobre solo somos son soy su sus tambien tanto te ' +
+    'tengo tenemos tiene tienen todo toda todos todas tu tus un una uno unos unas vamos ver vosotros y ya ' +
+    'dime dimelo dinos decir decirme saber sepamos quiero queremos quisiera quisieramos puedes puedo podrias podeis podemos pepa pepe oye vale hola hey favor porfa gracias ' +
+    'total totales dinero plata euro euros importe cantidad mes meses semana semanas dia dias ano anos pasado pasada anterior proximo proxima siguiente hoy ayer ultimo ultima ultimos ultimas ' +
+    'actual actuales cosa cosas lado vez veces general conjunto familia casa nosotros ' +
+    'llevamos llevais llevado llevo van va ido vamos estado estamos tenido ' +
+    'cuenta cuentas movimiento movimientos gasto gastos ingreso ingresos ahorro ahorros'
+  ).split(' '),
+)
+// Verbos y palabras de la propia pregunta, por raíz: gastar, ingresar, ahorrar, analizar, pagar, cobrar...
+const QUESTION_STEMS = /^(?:gast\w*|ingres\w*|ahorr\w*|analiz\w*|pag\w*|cobr\w*|recort\w*|reduc\w*|compar\w*|explic\w*|resum\w*|dec\w*|cuent\w*|calcul\w*|mostr\w*|ense\w*|dime\w*|muestr\w*)$/
+
+const MAX_CANDIDATE_WORDS = 4
+
+function contentWords(text: string): string[] {
+  return text
+    .split(' ')
+    .map((w) => w.replace(/[^a-z0-9ñ]/g, ''))
+    .filter((w) => w.length > 1 && !/^\d+$/.test(w) && !FUNCTION_WORDS.has(w) && !QUESTION_STEMS.test(w))
+}
+
+// "lo que gaste el mes pasado en luz" -> (sin el periodo) "lo que gaste en luz" -> ["luz"].
+// "analiza nuestros gastos de este mes" -> (sin el periodo) "analiza nuestros gastos de" -> [].
+export function filterCandidate(restWithoutPeriod: string): { candidate: string | null; words: string[] } {
+  const words = contentWords(restWithoutPeriod)
+  return { candidate: words.length > 0 && words.length <= MAX_CANDIDATE_WORDS ? words.join(' ') : null, words }
+}
+
+// ─── Otras señales de la frase ───
 
 const BASELINE_CLAUSE = /\b(?:respecto (?:a|al|del?)|frente (?:a|al)|comparad[oa] (?:con|a|al)|comparando con|en comparacion (?:con|al)|contra)\s+(.+)$/
 
@@ -164,8 +267,11 @@ export function baseQuery(metric: FinanceMetric, over: Partial<FinanceQuery> = {
   return { metric, period: null, target: null, product: null, full: false, baseline: null, premise: null, focus: null, ...over }
 }
 
+// Palabras que sobran en la frase del producto ("dónde compramos más barato el queso" -> "queso").
+const PRODUCT_NOISE = new Set('donde compramos compro comprais comprar tienda tiendas supermercado supermercados sale esta estan barato barata baratos baratas economico economica cuesta'.split(' '))
+
 export function parseFinanceQuestion(text: string, today: Date): FinanceParse | null {
-  const n = cleanFinanceText(text)
+  const n = withoutWakeWord(cleanFinanceText(text))
   if (!n) return null
 
   if (isWriteRequest(n)) return { kind: 'write-refused' }
@@ -178,7 +284,7 @@ export function parseFinanceQuestion(text: string, today: Date): FinanceParse | 
   if (!metric) return { kind: 'not-understood' }
   const analysis = ANALYSIS_METRICS.includes(metric) || metric === 'why_changed'
 
-  // Un periodo de referencia dicho con "respecto a / frente a / comparado con" no es el periodo consultado.
+  // 3. Periodo. Uno dicho con "respecto a / frente a / comparado con" no es el consultado, es la referencia.
   let subjectText = n
   let baseline: PeriodSpec | null = null
   if (analysis) {
@@ -201,17 +307,25 @@ export function parseFinanceQuestion(text: string, today: Date): FinanceParse | 
   const full = /\bcomplet[oa]s?\b/.test(n)
 
   if (metric === 'cheapest_store') {
-    // Lo que queda sin las palabras de la pregunta es el producto: "queso", "queso rallado".
-    const term = rest.replace(PRODUCT_STOP, ' ').replace(/\s+/g, ' ').trim()
-    if (!term) return { kind: 'not-understood' }
-    return { kind: 'query', query: baseQuery(metric, { product: term }) }
+    // Producto = las palabras con contenido que quedan sin las de la propia pregunta.
+    const words = contentWords(rest).filter((w) => !PRODUCT_NOISE.has(w))
+    if (words.length === 0) return { kind: 'not-understood' }
+    return { kind: 'query', query: baseQuery(metric, { product: words.join(' ') }), uncertain: words.length > MAX_CANDIDATE_WORDS }
   }
 
-  const target = metric === 'spent' ? targetFrom(rest) : null
+  // 4. Candidato de filtro: solo aplica a preguntas de cifras ("gasto en luz"); un análisis no lleva filtro.
+  let target: string | null = null
+  let uncertain = false
+  if (metric === 'spent') {
+    const { candidate, words } = filterCandidate(rest)
+    target = candidate
+    uncertain = words.length > MAX_CANDIDATE_WORDS
+  }
   const premise = metric === 'savings_trend' || metric === 'why_savings' ? premiseOf(n) : null
   return {
     kind: 'query',
     query: baseQuery(metric, { period, target, full, baseline, premise, focus: metric === 'analyze' ? focusOf(n) : null }),
+    uncertain: uncertain || undefined,
   }
 }
 
@@ -231,8 +345,13 @@ function isAnalysisMetric(m: FinanceMetric): boolean {
   return ANALYSIS_METRICS.includes(m)
 }
 
+// "¿Y solo alimentación?" -> "alimentacion": mismo criterio que la pregunta completa (solo palabras con contenido).
+function followUpTarget(raw: string): string | null {
+  return filterCandidate(raw).candidate
+}
+
 export function parseFinanceFollowUp(text: string, previous: FinanceQuery, today: Date): FinanceQuery | null {
-  const n = cleanFinanceText(text)
+  const n = withoutWakeWord(cleanFinanceText(text))
   if (!n) return null
   const prevIsAnalysis = isAnalysisMetric(previous.metric) || previous.metric === 'why_changed'
 
@@ -268,11 +387,14 @@ export function parseFinanceFollowUp(text: string, previous: FinanceQuery, today
   // "¿Solo alimentación?" / "¿Y Mercadona?": mismo periodo, otro filtro.
   const filterMetric = (): FinanceMetric => (prevIsAnalysis ? 'category_focus' : previous.metric === 'top_categories' ? 'spent' : previous.metric)
   const only = ONLY.exec(n)
-  if (only) return { ...previous, target: only[1].replace(/^(?:la|el|los|las)\s+/, ''), metric: filterMetric() }
+  if (only) {
+    const t = followUpTarget(only[1])
+    if (t) return { ...previous, target: t, metric: filterMetric() }
+  }
   const and = AND_TARGET.exec(n)
   if (and && !extractPeriod(and[1], today)) {
-    const t = and[1].replace(/^(?:la|el|los|las)\s+/, '').trim()
-    if (t && t.split(' ').length <= 4) return { ...previous, target: t, metric: filterMetric() }
+    const t = followUpTarget(and[1])
+    if (t) return { ...previous, target: t, metric: filterMetric() }
   }
   return null
 }

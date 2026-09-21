@@ -172,12 +172,14 @@ describe('categorías y tiendas REALES', () => {
     expect(ask('¿Cuánto gastamos en Mercadona este mes?')).toContain('100,00 € en Mercadona')
   })
   it('una tienda o categoría que no existe no se inventa', () => {
-    expect(ask('¿Cuánto gastamos en Carrefour este mes?')).toBe('No encuentro ninguna categoría ni tienda llamada «carrefour» en tus datos, así que no lo calculo.')
-    expect(ask('¿Cuánto hemos gastado en gasolina este mes?')).toContain('No encuentro ninguna categoría ni tienda')
+    expect(ask('¿Cuánto gastamos en Carrefour este mes?')).toBe('No encuentro ninguna categoría, tienda ni concepto llamado «carrefour» en tus datos, así que no lo calculo.')
+    expect(ask('¿Cuánto hemos gastado en gasolina este mes?')).toContain('No encuentro ninguna categoría, tienda ni concepto')
   })
   it('sin la categoría en los datos, "supermercados" no se inventa', () => {
     const bare = data({ categories: CATEGORIES.filter((c) => !c.name.startsWith('Supermercado')), storeNames: [] })
-    expect(ask('¿Cuánto hemos gastado en supermercados este año?', bare)).toContain('No encuentro ninguna categoría ni tienda')
+    // Sin la categoría en la lista, se dice honestamente que es una coincidencia por texto del movimiento.
+    expect(ask('¿Cuánto hemos gastado en supermercados este año?', bare)).toContain('movimientos cuya categoría, comercio o concepto lo mencionan')
+    expect(ask('¿Cuánto hemos gastado en gasolina este año?', bare)).toContain('No encuentro ninguna categoría, tienda ni concepto')
   })
   it('un nombre ambiguo se pregunta', () => {
     const two = data({ categories: [...CATEGORIES, cat('x1', 'Ocio en casa'), cat('x2', 'Ocio y viajes')] })

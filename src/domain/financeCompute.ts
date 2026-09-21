@@ -107,6 +107,8 @@ const CATEGORY_ALIASES: Record<string, string> = { comida: 'alimentacion', alime
 export type TargetResolution =
   | { kind: 'category'; name: string }
   | { kind: 'store'; name: string }
+  // Un concepto: aparece en el nombre de la categoría, el comercio o el texto del movimiento ("luz").
+  | { kind: 'concept'; stems: string[]; label: string }
   | { kind: 'ambiguous'; options: string[] }
   | { kind: 'none' }
 
@@ -117,32 +119,53 @@ function storeMatches(store: string | null, target: string): boolean {
   return want.length > 0 && want.every((w) => have.has(w))
 }
 
-// "alimentación", "comida", "restaurantes", "supermercados", "Mercadona": contra lo que existe de verdad.
+// ¿El movimiento "habla" de eso? Mira la categoría, el comercio y el texto del movimiento, por palabras enteras.
+export function conceptMatches(e: Pick<Expense, 'category' | 'store' | 'notes'>, stems: string[]): boolean {
+  if (stems.length === 0) return false
+  const have = new Set([...words(e.category), ...words(e.store ?? ''), ...words(e.notes ?? '')].map(stem))
+  return stems.every((w) => have.has(w))
+}
+
+// "alimentación", "comida", "restaurantes", "supermercados", "Mercadona", "luz": contra lo que existe de verdad.
 export function resolveTarget(target: string, data: Pick<FinanceData, 'categories' | 'expenses' | 'storeNames'>): TargetResolution {
   const wanted = words(target).map((w) => stem(CATEGORY_ALIASES[w] ?? w))
   if (wanted.length === 0) return { kind: 'none' }
 
+  // 1) Una CATEGORÍA real: todas las palabras pedidas están en su nombre ("restaurantes" -> "Restaurantes,
+  //    bares y cafeterías"), o el nombre entero está dentro de lo pedido ("luz electrica" -> "Luz").
   const names = [...new Set(data.categories.map((c) => c.name))]
   const scored = names
     .map((name) => {
       const nameWords = words(name).map(stem)
-      const all = wanted.every((w) => nameWords.includes(w))
-      const exact = normalize(name) === normalize(target) || (nameWords.length === wanted.length && all)
-      return { name, all, exact, top: !data.categories.find((c) => c.name === name)?.parentId }
+      const contains = wanted.every((w) => nameWords.includes(w))
+      const insideRequest = nameWords.length > 0 && nameWords.length <= 3 && nameWords.every((w) => wanted.includes(w))
+      const exact = normalize(name) === normalize(target) || (nameWords.length === wanted.length && contains)
+      return { name, contains, insideRequest, exact, size: nameWords.length, top: !data.categories.find((c) => c.name === name)?.parentId }
     })
-    .filter((s) => s.all)
+    .filter((c) => c.contains || c.insideRequest)
   if (scored.length > 0) {
-    const exact = scored.filter((s) => s.exact)
-    const pool = exact.length > 0 ? exact : scored
-    const tops = pool.filter((s) => s.top)
+    const exact = scored.filter((c) => c.exact)
+    const containing = scored.filter((c) => c.contains)
+    // Preferencia: exacta, luego las que contienen lo pedido, luego las que caben dentro de lo pedido (la más larga).
+    let pool = exact.length > 0 ? exact : containing.length > 0 ? containing : scored
+    if (exact.length === 0 && containing.length === 0) {
+      const longest = Math.max(...pool.map((c) => c.size))
+      pool = pool.filter((c) => c.size === longest)
+    }
+    const tops = pool.filter((c) => c.top)
     const best = tops.length > 0 ? tops : pool
     if (best.length === 1) return { kind: 'category', name: best[0].name }
     return { kind: 'ambiguous', options: best.map((b) => b.name) }
   }
 
+  // 2) Una TIENDA real (dada de alta o vista en los movimientos).
   const registered = data.storeNames.find((s) => storeMatches(s, target))
   const inLedger = data.expenses.find((e) => storeMatches(e.store, target))
   if (registered || inLedger) return { kind: 'store', name: registered ?? target }
+
+  // 3) Un CONCEPTO: las palabras aparecen en el nombre de la categoría, el comercio o el texto del movimiento
+  //    ("recibo de la luz"). Se busca en local; ese texto no sale nunca del dispositivo.
+  if (data.expenses.some((e) => conceptMatches(e, wanted))) return { kind: 'concept', stems: wanted, label: words(target).join(' ') }
   return { kind: 'none' }
 }
 
@@ -161,6 +184,7 @@ export function isUnderCategory(expenseCategory: string, name: string, categorie
 export interface Filter {
   category?: string
   store?: string
+  concept?: string[]
 }
 
 export function spendingRows(data: FinanceData, from: string, to: string, filter: Filter = {}): Expense[] {
@@ -168,6 +192,7 @@ export function spendingRows(data: FinanceData, from: string, to: string, filter
     if (!isRealSpending(e, data.categories) || !inRange(e, from, to)) return false
     if (filter.category && !isUnderCategory(e.category, filter.category, data.categories)) return false
     if (filter.store && !storeMatches(e.store, filter.store)) return false
+    if (filter.concept && !conceptMatches(e, filter.concept)) return false
     return true
   })
 }
@@ -218,17 +243,21 @@ export function spanText(from: string, to: string): string {
 }
 
 function targetPhrase(target: TargetResolution): string {
+  if (target.kind === 'concept') return ` en «${target.label}» (movimientos cuya categoría, comercio o concepto lo mencionan)`
   return target.kind === 'category' || target.kind === 'store' ? ` en ${target.name}` : ''
 }
 
 function answerTargetProblem(target: TargetResolution, raw: string): string | null {
   if (target.kind === 'ambiguous') return `«${raw}» puede ser varias cosas: ${target.options.join(', ')}. ¿Cuál quieres?`
-  if (target.kind === 'none') return `No encuentro ninguna categoría ni tienda llamada «${raw}» en tus datos, así que no lo calculo.`
+  if (target.kind === 'none') return `No encuentro ninguna categoría, tienda ni concepto llamado «${raw}» en tus datos, así que no lo calculo.`
   return null
 }
 
 function filterOf(target: TargetResolution): Filter {
-  return target.kind === 'category' ? { category: target.name } : target.kind === 'store' ? { store: target.name } : {}
+  if (target.kind === 'category') return { category: target.name }
+  if (target.kind === 'store') return { store: target.name }
+  if (target.kind === 'concept') return { concept: target.stems }
+  return {}
 }
 
 export function hasAnyExpense(data: FinanceData, from: string, to: string): boolean {
@@ -266,7 +295,7 @@ function answerSpent(query: FinanceQuery, data: FinanceData, today: Date): Finan
       text += diff === 0 ? ` Es lo mismo que en el mismo periodo del ${same}.` : ` Son ${formatEuros(Math.abs(diff))} ${diff > 0 ? 'más' : 'menos'} que en el mismo periodo del ${same}.`
     }
   }
-  return { text: text + staleNote(data), query: { ...q, target: target.kind === 'category' || target.kind === 'store' ? target.name : query.target } }
+  return { text: text + staleNote(data), query: { ...q, target: target.kind === 'category' || target.kind === 'store' ? target.name : target.kind === 'concept' ? target.label : query.target } }
 }
 
 function answerIncome(query: FinanceQuery, data: FinanceData, today: Date): FinanceAnswer {

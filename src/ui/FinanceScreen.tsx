@@ -48,7 +48,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
-import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
 import { partitionTicketLines } from '@/domain/ticketLines'
@@ -2745,7 +2745,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         setAllProducts(products)
         setAllReceipts(receipts)
         const foodReceiptIds = buildFoodReceiptIds(receipts, c)
-        const nonFoodProductIds = new Set(products.filter((pr) => pr.nonFood).map((pr) => pr.id))
+        const { nonFoodProductIds, foodProductIds } = buildProductKindSets(products)
         setPurchases(
           // Un pedido de Amazon que no sea de alimentación no debe
           // entrar en el análisis de "¿por qué ha cambiado mi gasto?"
@@ -2753,7 +2753,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
           // Un producto marcado a mano como No alimentos tampoco cuenta,
           // aunque se comprara en tienda física.
           prices
-            .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds))
+            .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds, foodProductIds))
             .map((p) => {
               const qty = Number(p.quantity)
               return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
@@ -2784,7 +2784,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   // Alimentación) — solo para explicar por qué esta cifra no cuadra con
   // el "🛒 Alimentación" de Compras, sin tener que fusionar categorías.
   const alimentacionNonFoodReceiptIds = buildFoodReceiptIds(allReceipts, categories)
-  const alimentacionNonFoodProductIds = new Set(allProducts.filter((p) => p.nonFood).map((p) => p.id))
+  const { nonFoodProductIds: alimentacionNonFoodProductIds, foodProductIds: alimentacionFoodProductIds } = buildProductKindSets(allProducts)
   const receiptByExpenseId = new Map(allReceipts.filter((r) => r.expenseId).map((r) => [r.expenseId as string, r]))
   const alimentacionHiddenNonFood = real
     .filter((e) => isFoodCategory(e.category, categories))
@@ -2792,7 +2792,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
       const receipt = receiptByExpenseId.get(e.id)
       if (!receipt) return sum
       const nonFoodTotal = allPrices
-        .filter((p) => p.receiptId === receipt.id && !isFoodPurchase(p, alimentacionNonFoodReceiptIds, alimentacionNonFoodProductIds))
+        .filter((p) => p.receiptId === receipt.id && !isFoodPurchase(p, alimentacionNonFoodReceiptIds, alimentacionNonFoodProductIds, alimentacionFoodProductIds))
         .reduce((s, p) => {
           const qty = Number(p.quantity)
           return s + p.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
@@ -5294,7 +5294,9 @@ function resolveDraftLineClass(
     // ticket → clase histórica → reglas por nombre. Un producto ya conocido pero sin clasificar a mano se enseña igual que en
     // Historial de precios ("Automático") en vez de dejarlo en blanco.
     const defaultIsFood = ticketStore.trim().toLowerCase() !== 'amazon' || isFoodCategory(ticketCategory, categories)
-    kind = existing ? (existing.nonFood ? 'no_alimentos' : 'alimentacion') : defaultIsFood ? 'alimentacion' : 'no_alimentos'
+    // Producto conocido: manda el conjunto de SU clase (Fase 6C: la tienda no decide qué es un producto); sin clase conocida, la marca
+    // heredada non_food. La suposición por ticket/tienda de arriba solo se aplica a un producto NUEVO (residual pendiente de la 6C).
+    kind = existing ? (existing.classKind ?? (existing.nonFood ? 'no_alimentos' : 'alimentacion')) : defaultIsFood ? 'alimentacion' : 'no_alimentos'
     const resolved = resolveProductClassSafe({
       name: existing?.displayName ?? line.name,
       product: existing ?? null,
@@ -5547,7 +5549,7 @@ function ReceiptForm({
             sharedHintFor(lineShared, store, line.name.trim()),
           )
           await Promise.all([
-            ...(line.classOverride ? [setProductFoodType(productId, line.classOverride.classification || null)] : []),
+            ...(line.classOverride ? [setProductFoodType(productId, line.classOverride.classification || null, line.classOverride.kind)] : []),
             setProductNonFood(productId, resolved.kind === 'no_alimentos'),
           ])
         }),
@@ -6387,7 +6389,7 @@ export function BudgetsTab({
   //   clasificar" — así el total de "por clasificación" cuadra siempre
   //   con el de "por tienda", aunque no todo esté desglosado.
   const productById = new Map(products.map((p) => [p.id, p]))
-  const nonFoodProductIds = new Set(products.filter((p) => p.nonFood).map((p) => p.id))
+  const { nonFoodProductIds, foodProductIds } = buildProductKindSets(products)
   const foodReceiptIdsForPrices = buildFoodReceiptIds(receipts, categories)
   const periodPrices = prices.filter((pr) => pr.recordedDate >= periodFrom && pr.recordedDate <= periodTo)
   const receiptByExpenseId = new Map(receipts.filter((r) => r.expenseId).map((r) => [r.expenseId as string, r]))
@@ -6432,7 +6434,7 @@ export function BudgetsTab({
         const displayName = product?.displayName ?? '?'
         const qty = Number(pr.quantity)
         const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
-        if (isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds)) {
+        if (isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds, foodProductIds)) {
           itemizedFood += amount
           // Resolutor central; la tienda es la de ESTA compra (product_price), nunca una atribuida al producto en general.
           const auto = classifyFoodType(displayName)

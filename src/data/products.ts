@@ -1,5 +1,6 @@
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
+import { storedClassKind, type ProductClassKind } from '@/domain/productClass'
 import { isProductLine } from '@/domain/ticketLines'
 import type { Product, ProductPrice } from '@/domain/types'
 
@@ -20,13 +21,19 @@ function normalize(name: string): string {
 }
 
 export async function listProducts(): Promise<Product[]> {
-  const data = await fetchAllRows((from, to) =>
-    supabase
-      .from('products')
-      .select('id, family_id, normalized_name, display_name, category, brand, non_food, class_confirmed_at')
-      .order('id')
-      .range(from, to),
-  )
+  const [data, classes] = await Promise.all([
+    fetchAllRows((from, to) =>
+      supabase
+        .from('products')
+        .select('id, family_id, normalized_name, display_name, category, brand, non_food, class_confirmed_at')
+        .order('id')
+        .range(from, to),
+    ),
+    // Clases de la familia (RLS): el `kind` de la clase guardada de cada producto es lo que decide Alimentos / Otros (Fase 6C).
+    supabase.from('family_food_types').select('name, kind'),
+  ])
+  if (classes.error) throw classes.error
+  const familyClasses = (classes.data ?? []).map((c) => ({ name: c.name as string, kind: c.kind as ProductClassKind }))
   return data.map((r) => ({
     id: r.id,
     familyId: r.family_id,
@@ -36,6 +43,7 @@ export async function listProducts(): Promise<Product[]> {
     brand: r.brand,
     nonFood: r.non_food,
     classConfirmedAt: r.class_confirmed_at ?? null,
+    classKind: storedClassKind(r.category, familyClasses),
   }))
 }
 

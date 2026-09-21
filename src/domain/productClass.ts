@@ -148,6 +148,17 @@ export function resolveProductClass(input: ResolveProductClassInput): ResolvedPr
   return { className: '', foodTypeKey: null, kind: input.kind, source: 'fallback', sharedOutcome, classKnown: false }
 }
 
+/**
+ * FASE 6C — Conjunto (alimentación / no alimentos) de la clase GUARDADA de un producto (manual o histórica), o null si no hay clase
+ * o ya no existe entre las de la familia. TIENDA != TIPO DE PRODUCTO: aquí la tienda no participa; la clase dice QUÉ es el producto
+ * y su `kind` manda sobre la marca heredada `non_food` (que solo vale cuando la clase es desconocida).
+ */
+export function storedClassKind(category: string | null | undefined, familyClasses: readonly Pick<FamilyClassRef, 'name' | 'kind'>[]): ProductClassKind | null {
+  const stored = category?.trim() || ''
+  if (stored === '') return null
+  return familyClasses.find((c) => c.name === stored)?.kind ?? null
+}
+
 /** El comportamiento ANTERIOR a la Fase 5, tal cual: clase guardada, o la adivinada por el nombre en Alimentos. */
 export function legacyProductClass(input: { name: string; product?: { category: string | null } | null; kind: ProductClassKind }): string {
   const stored = input.product?.category?.trim() || ''

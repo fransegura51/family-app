@@ -43,7 +43,7 @@ import {
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { listReceipts } from '@/data/receipts'
 import { listBudgetCategories } from '@/data/finance'
-import { buildFoodReceiptIds, computeProductStats, isFoodPurchase, isLikelyAlcohol } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodPurchase, isLikelyAlcohol } from '@/domain/products'
 import { normalize } from '@/domain/voiceQuery'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
@@ -114,12 +114,12 @@ function buildSuggestions(
   prices: ProductPrice[],
   foodReceiptIds: Set<string>,
 ): ProductSuggestion[] {
-  const nonFoodProductIds = new Set(products.filter((p) => p.nonFood).map((p) => p.id))
+  const { nonFoodProductIds, foodProductIds } = buildProductKindSets(products)
   return products.map((p) => {
     // Un pedido de Amazon que no sea de alimentación no cuenta como "lo
     // sueles comprar" de la lista de la compra — mismo criterio que
     // Historial (uno que sí sea de alimentación, como un café, sí cuenta).
-    const ownPrices = prices.filter((pr) => pr.productId === p.id && isFoodPurchase(pr, foodReceiptIds, nonFoodProductIds))
+    const ownPrices = prices.filter((pr) => pr.productId === p.id && isFoodPurchase(pr, foodReceiptIds, nonFoodProductIds, foodProductIds))
     const stats = computeProductStats(ownPrices)
     const last = [...ownPrices].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))[0]
     return {
@@ -880,7 +880,8 @@ function ShoppingListTab() {
   function resolveItemClass(item: ShoppingItem): { kind: FoodTypeKind; label: string; icon: string } {
     const existing = productByNormalizedName.get(normalizeProductName(item.name))
     // Sin producto conocido todavía: mismo criterio de "tienda física = Alimentos por defecto" que ya usa el resto de la app.
-    const contextKind: FoodTypeKind = existing?.nonFood ? 'no_alimentos' : 'alimentacion'
+    // Producto conocido: manda el conjunto de SU clase (Fase 6C; nunca la tienda); sin clase conocida, la marca heredada non_food.
+    const contextKind: FoodTypeKind = existing?.classKind ?? (existing?.nonFood ? 'no_alimentos' : 'alimentacion')
     const resolved = resolveProductClassSafe({
       name: item.name,
       product: existing ?? null,
@@ -1843,6 +1844,9 @@ interface ProductDetail {
   name: string
   lines: string[]
   nonFood: boolean
+  // La clase guardada existe entre las de la familia: su conjunto (Alimentos/Otros) manda sobre la marca heredada non_food, así que
+  // «Marcar como Otros» no se ofrece (se cambia eligiendo la clase). Sin clase conocida, non_food sigue siendo la decisión explícita.
+  classKnown: boolean
   // Clasificación de alimento actual (nombre exacto de family_food_types,
   // o cadena vacía si todavía no se ha elegido ninguna a mano) — para
   // el desplegable editable junto al botón 🚫.
@@ -1964,7 +1968,7 @@ function HistoryTab() {
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
-  const nonFoodProductIds = useMemo(() => new Set(products.filter((p) => p.nonFood).map((p) => p.id)), [products])
+  const { nonFoodProductIds, foodProductIds } = useMemo(() => buildProductKindSets(products), [products])
 
   // Aprendizaje compartido: un producto comprado en VARIAS tiendas (o con alguna compra sin tienda) no tiene una cadena
   // inequívoca, así que no se le atribuye ninguna arbitraria — el aprendizaje compartido se salta para él.
@@ -1994,8 +1998,8 @@ function HistoryTab() {
   // mano como Otros (ver el botón 🚫 en su ficha) nunca cuenta como
   // comida, sea cual sea la tienda.
   const scopedPrices = useMemo(
-    () => prices.filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds) === (mode === 'alimentacion')),
-    [prices, mode, foodReceiptIds, nonFoodProductIds],
+    () => prices.filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds, foodProductIds) === (mode === 'alimentacion')),
+    [prices, mode, foodReceiptIds, nonFoodProductIds, foodProductIds],
   )
 
   const purchases = useMemo(
@@ -2125,7 +2129,7 @@ function HistoryTab() {
     }
 
     const product = productsById.get(productId)
-    setDetail({ productId, name, lines, nonFood: product?.nonFood ?? false, foodType: product?.category ?? '' })
+    setDetail({ productId, name, lines, nonFood: product?.nonFood ?? false, classKnown: product?.classKind != null, foodType: product?.category ?? '' })
   }
 
   // Excepción manual a la regla de tienda (ver isFoodPurchase) —
@@ -2153,13 +2157,26 @@ function HistoryTab() {
     try {
       // Elegir una clase = decisión explícita de la familia (queda confirmada y manda sobre todo lo demás);
       // «Automático» (vacío) borra la clase y su confirmación: vuelve a resolverse sola.
-      await setProductFoodType(detail.productId, nextType || null)
+      // La clase elegida puede ser del OTRO conjunto (Alimentos ↔ Otros): su conjunto manda y la marca heredada non_food se
+      // actualiza en la misma escritura (Fase 6C). Nunca depende de la tienda.
+      const chosen = nextType ? foodTypes.find((t) => t.name === nextType) : undefined
+      await setProductFoodType(detail.productId, nextType || null, chosen?.kind)
       setProducts((prev) =>
         prev.map((p) =>
-          p.id === detail.productId ? { ...p, category: nextType || null, classConfirmedAt: nextType ? new Date().toISOString() : null } : p,
+          p.id === detail.productId
+            ? {
+                ...p,
+                category: nextType || null,
+                classConfirmedAt: nextType ? new Date().toISOString() : null,
+                classKind: chosen?.kind ?? null,
+                nonFood: chosen ? chosen.kind === 'no_alimentos' : p.nonFood,
+              }
+            : p,
         ),
       )
-      setDetail({ ...detail, foodType: nextType })
+      // Si la clase es del otro conjunto, el producto se ha movido de pestaña: se cierra la ficha (igual que al marcarlo como Otros).
+      if (chosen && chosen.kind !== mode) setDetail(null)
+      else setDetail({ ...detail, foodType: nextType, classKnown: chosen != null })
     } catch (err) {
       setError(errorMessage(err, 'No se pudo cambiar la clasificación'))
     }
@@ -2399,14 +2416,16 @@ function HistoryTab() {
               </p>
             ))}
             <div className="inline-fields" style={{ marginTop: 8, alignItems: 'center' }}>
-              <button
-                type="button"
-                className="link-button"
-                onClick={handleToggleNonFood}
-                title={detail.nonFood ? 'Quitar marca de Otros' : 'Marcar como Otros'}
-              >
-                {detail.nonFood ? '✅' : '🚫'}
-              </button>
+              {!detail.classKnown && (
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={handleToggleNonFood}
+                  title={detail.nonFood ? 'Quitar marca de Otros' : 'Marcar como Otros'}
+                >
+                  {detail.nonFood ? '✅' : '🚫'}
+                </button>
+              )}
               {/* Petición real: "en cada alimento su clasificación
                   editable en un desplegable al lado del símbolo no
                   alimento" — solo las clases del conjunto de esta
@@ -2421,12 +2440,18 @@ function HistoryTab() {
                     ? `Automático (${autoLabelFor(detail.productId, detail.name)})`
                     : 'Sin clasificar'}
                 </option>
-                {foodTypes
-                  .filter((t) => t.kind === mode)
-                  .map((t) => (
-                    <option key={t.id} value={t.name}>
-                      {t.icon} {t.name}
-                    </option>
+                {/* Las clases de los DOS conjuntos: elegir una del otro mueve el producto (su clase manda, no la tienda). */}
+                {(mode === 'alimentacion' ? (['alimentacion', 'no_alimentos'] as const) : (['no_alimentos', 'alimentacion'] as const))
+                  .map((k) => (
+                    <optgroup key={k} label={k === 'alimentacion' ? 'Alimentos' : 'Otros'}>
+                      {foodTypes
+                        .filter((t) => t.kind === k)
+                        .map((t) => (
+                          <option key={t.id} value={t.name}>
+                            {t.icon} {t.name}
+                          </option>
+                        ))}
+                    </optgroup>
                   ))}
               </select>
             </div>

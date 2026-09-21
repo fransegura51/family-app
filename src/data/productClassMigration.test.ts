@@ -130,7 +130,8 @@ describe('Fase 5: escritura — la clasificación automática NO se guarda como 
       .map(([file]) => file)
     expect(writers).toEqual(['/src/data/foodTypes.ts'])
     const src = APP['/src/data/foodTypes.ts']
-    expect(src).toContain('category: name, class_confirmed_at: name ? new Date().toISOString() : null')
+    // (Fase 6C añade, en la MISMA escritura, la marca non_food derivada del kind de la clase elegida; category y class_confirmed_at siguen juntos)
+    expect(src).toMatch(/category: name,\s+class_confirmed_at: name \? new Date\(\)\.toISOString\(\) : null/)
     // «Automático» = setProductFoodType(id, null): category NULL y class_confirmed_at NULL a la vez (sin clase histórica que conservar)
     expect(src).toContain("const name = typeName?.trim() || null")
     // el alta/compra de un producto no escribe la clase ni la confirmación
@@ -141,14 +142,14 @@ describe('Fase 5: escritura — la clasificación automática NO se guarda como 
 
   it('guardar un ticket solo escribe la clase si la familia la eligió en esa línea (classOverride); la clase resuelta nunca se persiste', () => {
     const src = APP['/src/ui/FinanceScreen.tsx']
-    expect(src).toContain('...(line.classOverride ? [setProductFoodType(productId, line.classOverride.classification || null)] : [])')
+    expect(src).toContain('...(line.classOverride ? [setProductFoodType(productId, line.classOverride.classification || null, line.classOverride.kind)] : [])')
     expect(src).not.toMatch(/setProductFoodType\(productId,\s*resolved\./)
     expect(src.match(/setProductFoodType\(/g)).toHaveLength(1)
   })
 
   it('en Historial, elegir una clase la guarda confirmada y «Automático» la borra (restablecer)', () => {
     const src = APP['/src/ui/ShoppingScreen.tsx']
-    expect(src).toContain('await setProductFoodType(detail.productId, nextType || null)')
+    expect(src).toContain('await setProductFoodType(detail.productId, nextType || null, chosen?.kind)')
     expect(src).toContain('classConfirmedAt: nextType ? new Date().toISOString() : null')
     expect(src.match(/setProductFoodType\(/g)).toHaveLength(1)
   })

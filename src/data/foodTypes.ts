@@ -76,11 +76,20 @@ export async function deleteFamilyFoodType(id: string): Promise<void> {
 // vuelve a resolverse dinámicamente (compartida → reglas → respaldo).
 // NUNCA se llama con una clasificación automática (compartida, reglas o respaldo): esas se resuelven al leer, no se guardan.
 // Solo afecta a la familia del usuario (RLS) y no toca el aprendizaje compartido. Vale igual para Alimentos que para Otros.
-export async function setProductFoodType(productId: string, typeName: string | null): Promise<void> {
+//
+// FASE 6C: al elegir una clase, `kind` (el de ESA clase) mantiene la marca heredada `non_food` coherente EN LA MISMA escritura
+// (atómica): clase de alimentación → non_food=false, clase de no alimentos → non_food=true. Se deriva SIEMPRE de la clase elegida,
+// nunca de la tienda. «Automático» (null) no cambia non_food: sin clase conocida sigue valiendo la última marca de Alimentos/Otros y
+// la familia puede cambiarla con «Marcar como Otros».
+export async function setProductFoodType(productId: string, typeName: string | null, kind?: FoodTypeKind): Promise<void> {
   const name = typeName?.trim() || null
   const { error } = await supabase
     .from('products')
-    .update({ category: name, class_confirmed_at: name ? new Date().toISOString() : null })
+    .update({
+      category: name,
+      class_confirmed_at: name ? new Date().toISOString() : null,
+      ...(name && kind ? { non_food: kind === 'no_alimentos' } : {}),
+    })
     .eq('id', productId)
   if (error) throw error
 }

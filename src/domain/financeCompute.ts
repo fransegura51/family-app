@@ -22,7 +22,7 @@ import { isInternalTransferCategory } from '@/domain/finance'
 import { comparableAgainst, comparablePrevious, resolvePeriod, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
 import type { FinanceQuery } from '@/domain/financeQuery'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase, type SpendChangeBreakdown } from '@/domain/priceTrends'
-import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
 import type { Budget, BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
 import { normalize } from '@/domain/voiceQuery'
 
@@ -381,9 +381,9 @@ const SYN_CUR = '2000-02'
 
 function ticketPurchases(data: FinanceData): (RawPurchase & { store: string | null })[] {
   const foodReceiptIds = buildFoodReceiptIds(data.receipts, data.categories)
-  const nonFood = new Set(data.products.filter((p) => p.nonFood).map((p) => p.id))
+  const { nonFoodProductIds: nonFood, foodProductIds } = buildProductKindSets(data.products)
   return data.prices
-    .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFood))
+    .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFood, foodProductIds))
     .map((p) => {
       const qty = Number(p.quantity)
       return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate, store: p.store }

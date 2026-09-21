@@ -400,6 +400,10 @@ export interface Product {
   // NOT NULL = `category` es una decisión explícita de la familia (manual); NULL = la clase se resuelve dinámicamente
   // (aprendizaje compartido → clase histórica → reglas). Ver domain/productClass.ts.
   classConfirmedAt: string | null
+  // Conjunto (alimentación / no alimentos) de la clase guardada en `category`, SOLO si esa clase existe entre las de la familia;
+  // null/undefined = sin clase conocida (entonces `nonFood` es solo la marca heredada). La TIENDA nunca entra aquí. La deriva
+  // listProducts (data/products.ts); ver buildProductKindSets (domain/products.ts).
+  classKind?: 'alimentacion' | 'no_alimentos' | null
 }
 
 export interface ProductPrice {

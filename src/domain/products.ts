@@ -1,4 +1,4 @@
-import type { BudgetCategory, ProductPrice, Receipt } from '@/domain/types'
+import type { BudgetCategory, Product, ProductPrice, Receipt } from '@/domain/types'
 import { isFoodCategory } from '@/domain/finance'
 
 export interface ProductStats {
@@ -44,14 +44,36 @@ export function isLikelyAlcohol(displayName: string): boolean {
 // suelto que no es comida aunque se comprara en tienda física junto
 // con la compra normal); se comprueba antes que la regla de tienda,
 // así que gana siempre que esté marcado.
+//
+// FASE 6C — TIENDA != TIPO DE PRODUCTO. Un producto con CLASE CONOCIDA (manual o histórica, que existe entre las de la familia)
+// se cuenta según el `kind` de esa clase, SEA CUAL SEA la tienda (`foodProductIds` = clase de alimentación, `nonFoodProductIds`
+// = clase de no alimentos o marca heredada sin clase). Solo si la clase es desconocida sigue aplicándose lo de antes (regla de
+// Amazon por la categoría del ticket) — pendiente de retirar cuando exista «Pendiente de clasificar» (ver decisión de la 6C).
 export function isFoodPurchase(
   price: { productId: string; store: string | null; receiptId: string | null },
   foodReceiptIds: Set<string>,
   nonFoodProductIds: Set<string> = new Set(),
+  foodProductIds: Set<string> = new Set(),
 ): boolean {
+  if (foodProductIds.has(price.productId)) return true
   if (nonFoodProductIds.has(price.productId)) return false
   if (price.store !== 'Amazon') return true
   return price.receiptId != null && foodReceiptIds.has(price.receiptId)
+}
+
+// Conjuntos de productos por su TIPO REAL (Fase 6C): la clase conocida manda (también sobre un non_food antiguo y contradictorio);
+// sin clase conocida, la marca heredada non_food. La tienda no interviene.
+export function buildProductKindSets(products: Pick<Product, 'id' | 'nonFood' | 'classKind'>[]): {
+  nonFoodProductIds: Set<string>
+  foodProductIds: Set<string>
+} {
+  const nonFoodProductIds = new Set<string>()
+  const foodProductIds = new Set<string>()
+  for (const p of products) {
+    if (p.classKind === 'alimentacion') foodProductIds.add(p.id)
+    else if (p.classKind === 'no_alimentos' || p.nonFood) nonFoodProductIds.add(p.id)
+  }
+  return { nonFoodProductIds, foodProductIds }
 }
 
 // Construye de una vez el conjunto de tickets que cuentan como

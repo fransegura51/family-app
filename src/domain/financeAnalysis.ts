@@ -28,7 +28,7 @@ import {
 import { comparableAgainst, comparablePrevious, type ComparePeriods, type ResolvedPeriod } from '@/domain/financePeriod'
 import type { Expense } from '@/domain/types'
 import { averagePricesByMonth, compareMonths } from '@/domain/priceTrends'
-import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
 import type { AnalysisFact, FactKind } from '../../supabase/functions/_shared/ai/purposes/financeAnalysisCore.ts'
 
 // Mismos umbrales que Conclusiones de Pepa (FinanceScreen → ResumenTab).
@@ -160,13 +160,13 @@ export function buildAnalysis(data: FinanceData, period: ResolvedPeriod, today: 
 
   // Precios y cambio de cesta (solo tickets; mismas funciones que Economía).
   const foodReceiptIds = buildFoodReceiptIds(data.receipts, data.categories)
-  const nonFood = new Set(data.products.filter((p) => p.nonFood).map((p) => p.id))
+  const { nonFoodProductIds: nonFood, foodProductIds } = buildProductKindSets(data.products)
   const change = ticketChange(data, cp)
   let priceAnalysis = { available: false, compared: 0, risen: 0, fallen: 0 }
   if (change) {
     const inWindow = (d: string, r: { from: string; to: string }) => d >= r.from && d <= r.to
     const raw = data.prices
-      .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFood) && (inWindow(p.recordedDate, cp.current) || inWindow(p.recordedDate, cp.previous)))
+      .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFood, foodProductIds) && (inWindow(p.recordedDate, cp.current) || inWindow(p.recordedDate, cp.previous)))
       .map((p) => ({ productId: p.productId, price: p.price, quantity: 1, recordedDate: inWindow(p.recordedDate, cp.current) ? '2000-02-01' : '2000-01-01' }))
     const moves = compareMonths(averagePricesByMonth(raw), '2000-02', '2000-01').filter((c) => c.previousPrice != null && c.deltaPercent != null)
     priceAnalysis = {

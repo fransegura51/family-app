@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseFinanceFollowUp, parseFinanceQuestion, type FinanceQuery } from './financeQuery'
+import { baseQuery, parseFinanceFollowUp, parseFinanceQuestion, type FinanceQuery } from './financeQuery'
 
 const TODAY = new Date(2026, 8, 20)
 beforeEach(() => {
@@ -102,7 +102,7 @@ describe('Economía es solo de consulta', () => {
 })
 
 describe('continuaciones con contexto', () => {
-  const spentThisMonth: FinanceQuery = { metric: 'spent', period: { t: 'month', offset: 0 }, target: null, product: null, full: false }
+  const spentThisMonth: FinanceQuery = baseQuery('spent', { period: { t: 'month', offset: 0 } })
 
   it('"¿En qué?" pide el desglose del MISMO periodo', () => {
     for (const t of ['¿En qué?', 'Desglósamelo', 'desglose', '¿Y en qué?', 'En qué hemos gastado']) {
@@ -125,5 +125,88 @@ describe('continuaciones con contexto', () => {
     for (const t of ['Añade leche a Mercadona', '¿Qué tenemos mañana?', 'Sí', 'Guardar']) {
       expect(parseFinanceFollowUp(t, spentThisMonth, TODAY), t).toBeNull()
     }
+  })
+})
+
+describe('fase 2: preguntas naturales de análisis', () => {
+  const metric = (t: string) => query(t).metric
+
+  it('las preguntas del enunciado', () => {
+    expect(metric('Pepa, ¿en qué se nos está yendo el dinero?')).toBe('where_money')
+    expect(metric('Analiza nuestros gastos de este mes.')).toBe('analyze')
+    expect(query('Analiza nuestros gastos de este mes.')).toMatchObject({ period: { t: 'month', offset: 0 }, focus: 'overview' })
+    expect(metric('¿Qué está pasando con nuestros gastos?')).toBe('analyze')
+    expect(metric('¿Dónde estamos gastando demasiado?')).toBe('where_money')
+    expect(metric('¿Qué gastos podríamos recortar?')).toBe('cuts')
+    expect(metric('¿Hay algún gasto que te llame la atención?')).toBe('attention')
+    expect(metric('¿Estamos ahorrando más o menos?')).toBe('savings_trend')
+    expect(metric('¿Qué podríamos hacer para ahorrar un poco más?')).toBe('cuts')
+    expect(metric('Dame tus conclusiones de Economía.')).toBe('analyze')
+    expect(query('Dame tus conclusiones de Economía.').focus).toBe('conclusions')
+    expect(metric('Explícame nuestra economía de este mes.')).toBe('analyze')
+    expect(query('Explícame nuestra economía de este mes.').focus).toBe('explain')
+    expect(metric('¿Qué categoría ha aumentado más?')).toBe('top_increase')
+    expect(metric('Analiza nuestra economía y dime qué te llama la atención.')).toBe('analyze')
+    expect(metric('¿Han subido los precios de la compra?')).toBe('price_up')
+  })
+
+  it('"respecto al mes pasado" es la referencia, no el periodo consultado', () => {
+    expect(query('¿Qué ha cambiado respecto al mes pasado?')).toMatchObject({ metric: 'changes', period: null, baseline: { t: 'month', offset: -1 } })
+    expect(query('¿Qué ha cambiado este mes frente a agosto?')).toMatchObject({ metric: 'changes', period: { t: 'month', offset: 0 }, baseline: { t: 'month_named', month0: 7 } })
+  })
+
+  it('la premisa de la pregunta se recoge (para corregirla si es falsa)', () => {
+    expect(query('¿Por qué estamos ahorrando menos?')).toMatchObject({ metric: 'why_savings', premise: 'less' })
+    expect(query('¿Por qué estamos ahorrando más?')).toMatchObject({ metric: 'why_savings', premise: 'more' })
+    expect(query('¿Estamos ahorrando menos?')).toMatchObject({ metric: 'savings_trend', premise: 'less' })
+    expect(query('¿Estamos ahorrando más o menos?').premise).toBeNull()
+  })
+
+  it('las fases anteriores no cambian', () => {
+    expect(metric('¿Por qué hemos gastado más este mes?')).toBe('why_changed')
+    expect(metric('¿Cuánto hemos ahorrado este mes?')).toBe('saved')
+    expect(metric('¿En qué hemos gastado más este mes?')).toBe('top_categories')
+  })
+
+  it('escribir en Economía se rechaza: también con verbos de recortar, reducir, cambiar de categoría o transferir', () => {
+    for (const t of ['Borra los gastos que no necesito.', 'Reduce mi presupuesto de comida.', 'Cambia todos los restaurantes a ocio.', 'Transfiere 500 € a ahorro.', 'Recorta el gasto de comida', 'Invierte 200 euros', 'Aumenta el presupuesto de ocio']) {
+      expect(parseFinanceQuestion(t, TODAY), t).toEqual({ kind: 'write-refused' })
+    }
+  })
+
+  it('las preguntas que empiezan por qué/cómo/dónde no se toman por órdenes', () => {
+    for (const t of ['¿Qué gastos podríamos recortar?', '¿Cómo podemos reducir los gastos?', '¿Dónde podemos ahorrar?']) {
+      expect(parseFinanceQuestion(t, TODAY), t).toMatchObject({ kind: 'query' })
+    }
+  })
+})
+
+describe('fase 2: continuaciones', () => {
+  const analyze: FinanceQuery = baseQuery('analyze', { period: { t: 'month', offset: 0 }, focus: 'overview' })
+
+  it('"¿Por qué?" y "¿En qué categoría?"', () => {
+    expect(parseFinanceFollowUp('¿Por qué?', analyze, TODAY)).toMatchObject({ metric: 'why_changed', period: { t: 'month', offset: 0 } })
+    expect(parseFinanceFollowUp('¿En qué categoría?', analyze, TODAY)).toMatchObject({ metric: 'top_increase' })
+    const savings = baseQuery('savings_trend', { period: { t: 'month', offset: 0 }, premise: 'less' })
+    expect(parseFinanceFollowUp('¿Por qué?', savings, TODAY)).toMatchObject({ metric: 'why_savings', premise: 'less' })
+  })
+  it('"¿Y comparado con agosto?" cambia solo la referencia', () => {
+    expect(parseFinanceFollowUp('¿Y comparado con agosto?', analyze, TODAY)).toMatchObject({ metric: 'analyze', baseline: { t: 'month_named', month0: 7 }, period: { t: 'month', offset: 0 } })
+    expect(parseFinanceFollowUp('¿Y comparado con agosto?', baseQuery('spent', { period: { t: 'month', offset: 0 } }), TODAY)).toMatchObject({ metric: 'changes', baseline: { t: 'month_named', month0: 7 } })
+  })
+  it('"¿Y solo alimentación?" y "¿Y alimentación?" tras un análisis', () => {
+    expect(parseFinanceFollowUp('¿Y solo alimentación?', analyze, TODAY)).toMatchObject({ metric: 'category_focus', target: 'alimentacion' })
+    expect(parseFinanceFollowUp('¿Y alimentación?', analyze, TODAY)).toMatchObject({ metric: 'category_focus', target: 'alimentacion' })
+  })
+  it('"¿Y el mes pasado?" tras un análisis', () => {
+    expect(parseFinanceFollowUp('¿Y el mes pasado?', analyze, TODAY)).toMatchObject({ metric: 'analyze', period: { t: 'month', offset: -1 } })
+  })
+  it('"Explícamelo más sencillo"', () => {
+    for (const t of ['Explícamelo más sencillo', 'explícamelo más fácil', 'Dímelo más claro', 'Más sencillo']) {
+      expect(parseFinanceFollowUp(t, analyze, TODAY), t).toMatchObject({ metric: 'simpler' })
+    }
+  })
+  it('sin contexto no hay continuaciones: pasan a otro sitio', () => {
+    expect(parseFinanceQuestion('Explícamelo más sencillo', TODAY)).toBeNull()
   })
 })

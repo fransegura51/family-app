@@ -19,9 +19,9 @@
 //   - "¿Por qué ha cambiado?": la cesta de tickets (es un análisis por producto) se dice aparte del
 //     gasto total del ledger, sin sumarlos.
 import { isInternalTransferCategory } from '@/domain/finance'
-import { comparablePrevious, resolvePeriod, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
+import { comparableAgainst, comparablePrevious, resolvePeriod, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
 import type { FinanceQuery } from '@/domain/financeQuery'
-import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
+import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase, type SpendChangeBreakdown } from '@/domain/priceTrends'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
 import type { BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
 import { normalize } from '@/domain/voiceQuery'
@@ -48,12 +48,12 @@ export function formatEuros(amount: number): string {
   return `${amount < 0 && rounded !== 0 ? '-' : ''}${grouped},${dec} €`
 }
 
-function formatPercent(p: number): string {
+export function formatPercent(p: number): string {
   const rounded = Math.round(p * 10) / 10
   return `${rounded > 0 ? '+' : ''}${String(rounded).replace('.', ',')} %`
 }
 
-function capitalize(s: string): string {
+export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
@@ -69,7 +69,7 @@ function whenOf(period: ResolvedPeriod): string {
   return t === 'month_named' || t === 'last_days' || t === 'last_months' ? `en ${period.label}` : period.label
 }
 
-function dayOf(date: string): number {
+export function dayOf(date: string): number {
   return Number(date.slice(8, 10))
 }
 
@@ -146,7 +146,7 @@ export function resolveTarget(target: string, data: Pick<FinanceData, 'categorie
   return { kind: 'none' }
 }
 
-function categoryParentName(category: string, categories: BudgetCategory[]): string | null {
+export function categoryParentName(category: string, categories: BudgetCategory[]): string | null {
   const cat = categories.find((c) => c.name === category)
   if (!cat?.parentId) return null
   return categories.find((c) => c.id === cat.parentId)?.name ?? null
@@ -158,12 +158,12 @@ export function isUnderCategory(expenseCategory: string, name: string, categorie
   return categoryParentName(expenseCategory, categories) === name
 }
 
-interface Filter {
+export interface Filter {
   category?: string
   store?: string
 }
 
-function spendingRows(data: FinanceData, from: string, to: string, filter: Filter = {}): Expense[] {
+export function spendingRows(data: FinanceData, from: string, to: string, filter: Filter = {}): Expense[] {
   return data.expenses.filter((e) => {
     if (!isRealSpending(e, data.categories) || !inRange(e, from, to)) return false
     if (filter.category && !isUnderCategory(e.category, filter.category, data.categories)) return false
@@ -172,7 +172,7 @@ function spendingRows(data: FinanceData, from: string, to: string, filter: Filte
   })
 }
 
-function sum(rows: Expense[]): number {
+export function sum(rows: Expense[]): number {
   return Math.round(rows.reduce((t, e) => t + e.amount, 0) * 100) / 100
 }
 
@@ -184,7 +184,7 @@ export function totalIncome(data: FinanceData, from: string, to: string): number
   return sum(data.expenses.filter((e) => isRealIncome(e, data.categories) && inRange(e, from, to)))
 }
 
-function groupSpending(rows: Expense[], data: FinanceData, category?: string): { name: string; amount: number }[] {
+export function groupSpending(rows: Expense[], data: FinanceData, category?: string): { name: string; amount: number }[] {
   const by = new Map<string, number>()
   for (const e of rows) {
     let key = e.category
@@ -204,7 +204,7 @@ export interface FinanceAnswer {
 
 const NO_DATA = (label: string) => `No tengo gastos registrados ${label}.`
 
-function staleNote(data: FinanceData): string {
+export function staleNote(data: FinanceData): string {
   return data.bankStale ? ' Ojo: hay una conexión bancaria caducada, así que puede faltar gasto reciente.' : ''
 }
 
@@ -213,7 +213,7 @@ function periodOf(query: FinanceQuery, data: FinanceData, today: Date, fallback:
   return { spec, resolved: resolvePeriod(spec, today, data.monthStartDay) }
 }
 
-function spanText(from: string, to: string): string {
+export function spanText(from: string, to: string): string {
   return from === to ? `el ${dayOf(from)}` : `del ${dayOf(from)} al ${dayOf(to)}`
 }
 
@@ -231,7 +231,7 @@ function filterOf(target: TargetResolution): Filter {
   return target.kind === 'category' ? { category: target.name } : target.kind === 'store' ? { store: target.name } : {}
 }
 
-function hasAnyExpense(data: FinanceData, from: string, to: string): boolean {
+export function hasAnyExpense(data: FinanceData, from: string, to: string): boolean {
   return data.expenses.some((e) => e.kind === 'real' && inRange(e, from, to))
 }
 
@@ -367,18 +367,39 @@ function windowPurchases(all: RawPurchase[], cp: { current: { from: string; to: 
   return out
 }
 
-function productName(data: FinanceData, id: string): string {
+export function productName(data: FinanceData, id: string): string {
   return data.products.find((p) => p.id === id)?.displayName ?? '?'
 }
 
-function signedEuros(n: number): string {
+export function signedEuros(n: number): string {
   return `${n >= 0 ? '+' : '-'}${formatEuros(Math.abs(n))}`
+}
+
+// Cambio de la cesta de tickets entre dos tramos: la MISMA decomposeSpendChange que usa Economía.
+// Devuelve null si no hay tickets en los dos tramos (no se puede afirmar nada).
+export function ticketChange(
+  data: FinanceData,
+  cp: { current: { from: string; to: string }; previous: { from: string; to: string } },
+): { bd: SpendChangeBreakdown; movers: { productId: string; deltaPercent: number }[] } | null {
+  const purchases = windowPurchases(ticketPurchases(data), cp)
+  const hasCur = purchases.some((p) => p.recordedDate.startsWith(SYN_CUR))
+  const hasPrev = purchases.some((p) => p.recordedDate.startsWith(SYN_PREV))
+  if (!hasCur || !hasPrev) return null
+  const bd = decomposeSpendChange(purchases, SYN_CUR, SYN_PREV)
+  const movers = compareMonths(averagePricesByMonth(purchases), SYN_CUR, SYN_PREV)
+    .filter((c) => c.previousPrice != null && c.deltaPercent != null && Math.abs(c.deltaPercent) >= 0.5)
+    .map((c) => ({ productId: c.productId, deltaPercent: c.deltaPercent as number }))
+    .sort((x, y) => Math.abs(y.deltaPercent) - Math.abs(x.deltaPercent))
+  return { bd, movers }
 }
 
 function answerWhy(query: FinanceQuery, data: FinanceData, today: Date): FinanceAnswer {
   const { spec, resolved } = periodOf(query, data, today)
   const q = { ...query, period: spec, target: null }
-  const cp = comparablePrevious(resolved, today, data.monthStartDay, query.full)
+  // "¿Y comparado con agosto?": contra el periodo elegido, con la misma regla de corte.
+  const cp = query.baseline
+    ? comparableAgainst(resolved, resolvePeriod(query.baseline, today, data.monthStartDay), today, query.full)
+    : comparablePrevious(resolved, today, data.monthStartDay, query.full)
   const nowRows = spendingRows(data, cp.current.from, cp.current.to)
   const prevRows = spendingRows(data, cp.previous.from, cp.previous.to)
   if (prevRows.length === 0 || nowRows.length === 0) {
@@ -406,19 +427,14 @@ function answerWhy(query: FinanceQuery, data: FinanceData, today: Date): Finance
   if (deltas.length > 0) lines.push(`Por categorías: ${deltas.map((d) => `${d.name} ${signedEuros(d.delta)}`).join(', ')}.`)
 
   // Análisis de la cesta de tickets (misma función que Economía): precio, cantidad, nuevos, dejados.
-  const purchases = windowPurchases(ticketPurchases(data), cp)
-  const hasCur = purchases.some((p) => p.recordedDate.startsWith(SYN_CUR))
-  const hasPrev = purchases.some((p) => p.recordedDate.startsWith(SYN_PREV))
-  if (hasCur && hasPrev) {
-    const bd = decomposeSpendChange(purchases, SYN_CUR, SYN_PREV)
+  const change = ticketChange(data, cp)
+  if (change) {
+    const { bd, movers } = change
     const basketDelta = bd.currentTotal - bd.previousTotal
     lines.push(`Solo en la cesta de tickets (${formatEuros(bd.previousTotal)} → ${formatEuros(bd.currentTotal)}, ${signedEuros(basketDelta)}):`)
     lines.push(`Por precios ${signedEuros(bd.priceEffect)} · por cantidades ${signedEuros(bd.quantityEffect)} · productos nuevos ${signedEuros(bd.newProductsEffect)} · dejados de comprar ${signedEuros(bd.droppedProductsEffect)}.`)
-    const movers = compareMonths(averagePricesByMonth(purchases), SYN_CUR, SYN_PREV)
-      .filter((c) => c.previousPrice != null && c.deltaPercent != null && Math.abs(c.deltaPercent) >= 0.5)
-      .sort((x, y) => Math.abs(y.deltaPercent!) - Math.abs(x.deltaPercent!))
-      .slice(0, 3)
-    if (movers.length > 0) lines.push(`Precios que más han cambiado: ${movers.map((m) => `${productName(data, m.productId)} ${formatPercent(m.deltaPercent!)}`).join(', ')}.`)
+    const top = movers.slice(0, 3)
+    if (top.length > 0) lines.push(`Precios que más han cambiado: ${top.map((m) => `${productName(data, m.productId)} ${formatPercent(m.deltaPercent)}`).join(', ')}.`)
     lines.push('El análisis de tickets puede no coincidir con el banco.')
   } else {
     lines.push('No tengo tickets suficientes en los dos periodos para separar precio y cantidad.')
@@ -533,6 +549,9 @@ export function answerFinanceQuery(query: FinanceQuery, data: FinanceData, today
       return answerPrices(query, data, today, 'down')
     case 'cheapest_store':
       return answerCheapest(query, data)
+    default:
+      // Las consultas de análisis las responde financeAnswer (motor de análisis), no estas cifras sueltas.
+      return { text: 'Esa consulta se responde con el análisis de Economía.', query }
   }
 }
 

@@ -232,3 +232,21 @@ export function comparablePrevious(period: ResolvedPeriod, today: Date, monthSta
   }
   return { current, previous: prev, previousLabel, cutoff }
 }
+
+// Comparar contra un periodo concreto elegido por la persona ("¿y comparado con agosto?"), con la misma
+// regla de corte: si el actual no ha terminado, se compara el mismo tramo de días del periodo elegido.
+export function comparableAgainst(period: ResolvedPeriod, baseline: ResolvedPeriod, today: Date, full = false): ComparePeriods {
+  const todayStr = toDateStr(today)
+  let current = { from: period.from, to: period.to }
+  let previous = { from: baseline.from, to: baseline.to }
+  let cutoff = false
+  const t = period.spec.t
+  if (!full && period.ongoing && (t === 'month' || t === 'month_named' || t === 'week' || t === 'year')) {
+    const elapsed = daysBetween(period.from, todayStr)
+    current = { from: period.from, to: todayStr }
+    const end = addDays(baseline.from, elapsed)
+    previous = { from: baseline.from, to: end < baseline.to ? end : baseline.to }
+    cutoff = true
+  }
+  return { current, previous, previousLabel: baseline.label, cutoff }
+}

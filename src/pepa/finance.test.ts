@@ -119,7 +119,7 @@ describe('conversación de Economía (contexto corto)', () => {
 
   it('el contexto guarda solo la consulta estructurada, no datos', async () => {
     await handleFinanceText('¿Cuánto hemos gastado este mes?', TODAY, deps())
-    expect(Object.keys(financeContextQuery()!).sort()).toEqual(['full', 'metric', 'period', 'product', 'target'])
+    expect(Object.keys(financeContextQuery()!).sort()).toEqual(['baseline', 'focus', 'full', 'metric', 'period', 'premise', 'product', 'target'])
   })
 })
 
@@ -232,5 +232,14 @@ describe('integración en Hablar con PEPA (runTalk)', () => {
 describe('mensajes', () => {
   it('constantes legibles', () => {
     expect(FINANCE_NOT_UNDERSTOOD).toContain('cuánto hemos gastado este mes')
+  })
+})
+
+describe('un fallo de red no es "sin acceso"', () => {
+  it('si no se puede comprobar el perfil, PEPA dice que no ha podido consultar (no que no tienes acceso)', async () => {
+    const d = deps({ canAccess: vi.fn().mockRejectedValue(new Error('sin red')) })
+    const out = await handleFinanceText('¿Cuánto hemos gastado este mes?', TODAY, d)
+    expect(out).toContain('No he podido consultar Economía')
+    expect(out).not.toBe(FINANCE_NO_ACCESS)
   })
 })

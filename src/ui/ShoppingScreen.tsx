@@ -30,6 +30,8 @@ import {
   type FoodTypeKind,
 } from '@/data/foodTypes'
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
+import { resolveProductClassSafe, unambiguousStore } from '@/domain/productClass'
+import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
 import { colorForClass, pastelPalette, storeColorResolver } from '@/domain/colors'
 import {
   createShoppingStore,
@@ -651,6 +653,12 @@ function ShoppingListTab() {
     alimentacion: [],
     no_alimentos: [],
   })
+  // Aprendizaje compartido de las tiendas de los elementos de la lista (una sola consulta por lote, con caché).
+  const listSharedPairs = useMemo(
+    () => items.filter((i) => i.store).map((i) => ({ store: i.store as string, text: i.name })),
+    [items],
+  )
+  const listShared = useSharedClasses(listSharedPairs)
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -867,21 +875,22 @@ function ShoppingListTab() {
   // decide la propia app.
   const productByNormalizedName = new Map(allProducts.map((p) => [p.normalizedName, p]))
 
+  // La clase la decide el resolutor central (domain/productClass.ts): la elegida por la familia manda; si no, el aprendizaje
+  // compartido de la TIENDA de este elemento de la lista (sin tienda → se salta); si no, la clase histórica y las reglas por nombre.
   function resolveItemClass(item: ShoppingItem): { kind: FoodTypeKind; label: string; icon: string } {
     const existing = productByNormalizedName.get(normalizeProductName(item.name))
-    let kind: FoodTypeKind
-    let classification: string
-    if (existing) {
-      kind = existing.nonFood ? 'no_alimentos' : 'alimentacion'
-      classification = existing.category?.trim() || (kind === 'alimentacion' ? classifyFoodType(item.name).label : '')
-    } else {
-      // Sin producto conocido todavía: mismo criterio de "tienda física
-      // = Alimentos por defecto" que ya usa el resto de la app — se
-      // adivina por el nombre, nunca se deja "Sin tienda"/"Sin clase"
-      // solo por ser nuevo.
-      kind = 'alimentacion'
-      classification = classifyFoodType(item.name).label
-    }
+    // Sin producto conocido todavía: mismo criterio de "tienda física = Alimentos por defecto" que ya usa el resto de la app.
+    const contextKind: FoodTypeKind = existing?.nonFood ? 'no_alimentos' : 'alimentacion'
+    const resolved = resolveProductClassSafe({
+      name: item.name,
+      product: existing ?? null,
+      kind: contextKind,
+      kindIsDefault: !existing, // producto nuevo: «Alimentos» es solo una suposición; lo compartido aprobado puede fijar el conjunto
+      familyClasses: [...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos],
+      shared: sharedHintFor(listShared, item.store, item.name),
+    })
+    const classification = resolved.className
+    const kind: FoodTypeKind = resolved.source === 'shared' ? resolved.kind : contextKind
     const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined
     const label = classification || 'Sin clasificar'
     const icon = known?.icon ?? (classification ? (kind === 'alimentacion' ? classifyFoodType(item.name).icon : '❓') : '❓')
@@ -1957,6 +1966,27 @@ function HistoryTab() {
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
   const nonFoodProductIds = useMemo(() => new Set(products.filter((p) => p.nonFood).map((p) => p.id)), [products])
 
+  // Aprendizaje compartido: un producto comprado en VARIAS tiendas (o con alguna compra sin tienda) no tiene una cadena
+  // inequívoca, así que no se le atribuye ninguna arbitraria — el aprendizaje compartido se salta para él.
+  const storeByProductId = useMemo(() => {
+    const byProduct = new Map<string, ProductPrice[]>()
+    for (const p of prices) {
+      const list = byProduct.get(p.productId)
+      if (list) list.push(p)
+      else byProduct.set(p.productId, [p])
+    }
+    return new Map([...byProduct.entries()].map(([id, list]) => [id, unambiguousStore(list)] as const))
+  }, [prices])
+  const historyPairs = useMemo(
+    () =>
+      products.flatMap((p) => {
+        const store = storeByProductId.get(p.id)
+        return store ? [{ store, text: p.displayName }] : []
+      }),
+    [products, storeByProductId],
+  )
+  const historyShared = useSharedClasses(historyPairs)
+
   // Cada vista ve solo lo suyo — Alimentos nunca mezcla ropa/electrónica
   // de Amazon, y Otros no arrastra nada de comida. Un pedido de Amazon
   // marcado como "Alimentación" (p. ej. café) sí cuenta como comida —
@@ -2047,7 +2077,7 @@ function HistoryTab() {
         normalizeProductName(classForProduct(c.productId, c.name).label).includes(q),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allProducts, query, foodTypes, productsById, mode])
+  }, [allProducts, query, foodTypes, productsById, mode, historyShared, storeByProductId])
 
   const currentBasket = useMemo(() => basketTotal(purchases, currentMonth), [purchases, currentMonth])
   const previousBasket = useMemo(() => basketTotal(purchases, previousMonth), [purchases, previousMonth])
@@ -2121,8 +2151,14 @@ function HistoryTab() {
   async function handleChangeFoodType(nextType: string) {
     if (!detail) return
     try {
+      // Elegir una clase = decisión explícita de la familia (queda confirmada y manda sobre todo lo demás);
+      // «Automático» (vacío) borra la clase y su confirmación: vuelve a resolverse sola.
       await setProductFoodType(detail.productId, nextType || null)
-      setProducts((prev) => prev.map((p) => (p.id === detail.productId ? { ...p, category: nextType || null } : p)))
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === detail.productId ? { ...p, category: nextType || null, classConfirmedAt: nextType ? new Date().toISOString() : null } : p,
+        ),
+      )
       setDetail({ ...detail, foodType: nextType })
     } catch (err) {
       setError(errorMessage(err, 'No se pudo cambiar la clasificación'))
@@ -2153,9 +2189,28 @@ function HistoryTab() {
   function classForProduct(productId: string, name: string): { label: string; icon: string } {
     const product = productsById.get(productId)
     const catalog = foodTypes.filter((t) => t.kind === mode)
-    const classification = product?.category?.trim() || (mode === 'alimentacion' ? classifyFoodType(name).label : '')
+    // Resolutor central: clase elegida por la familia → aprendizaje compartido (solo con cadena inequívoca) → clase histórica →
+    // reglas por nombre.
+    const classification = resolveProductClassSafe({
+      name,
+      product: product ?? null,
+      kind: mode,
+      familyClasses: foodTypes,
+      shared: sharedHintFor(historyShared, storeByProductId.get(productId), name),
+    }).className
     const known = classification ? catalog.find((t) => t.name === classification) : undefined
     return { label: classification || 'Sin clasificar', icon: known?.icon ?? '❓' }
+  }
+  // Lo que resolvería la app SIN clase guardada («Automático»): aprendizaje compartido → reglas → respaldo.
+  function autoLabelFor(productId: string, name: string): string {
+    return resolveProductClassSafe({
+      name,
+      product: productsById.get(productId) ?? null,
+      kind: mode,
+      familyClasses: foodTypes,
+      shared: sharedHintFor(historyShared, storeByProductId.get(productId), name),
+      ignoreStored: true,
+    }).className
   }
   // Mismas clases (de fábrica y creadas a mano) que en la Lista de la
   // compra, para que el color de una clase coincida en las dos pantallas.
@@ -2176,7 +2231,7 @@ function HistoryTab() {
     }
     return [...groups.values()].sort((a, b) => classRank(a.label) - classRank(b.label) || a.label.localeCompare(b.label, 'es'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredProducts, productsById, mode])
+  }, [filteredProducts, productsById, mode, historyShared, storeByProductId])
 
   if (loading) return <p className="muted">Cargando historial…</p>
 
@@ -2362,7 +2417,9 @@ function HistoryTab() {
                   clasificar". */}
               <select value={detail.foodType} onChange={(e) => handleChangeFoodType(e.target.value)}>
                 <option value="">
-                  {mode === 'alimentacion' ? `Automático (${classifyFoodType(detail.name).label})` : 'Sin clasificar'}
+                  {autoLabelFor(detail.productId, detail.name)
+                    ? `Automático (${autoLabelFor(detail.productId, detail.name)})`
+                    : 'Sin clasificar'}
                 </option>
                 {foodTypes
                   .filter((t) => t.kind === mode)

@@ -12,16 +12,19 @@ export interface FamilyFoodType {
   name: string
   icon: string
   kind: FoodTypeKind
+  // Clave estable de la clase en el catálogo PEPA (null = clase personal de la familia). La usa el resolutor de clases
+  // para traducir lo que aprende el conocimiento compartido al nombre que la familia le dio.
+  catalogKey: string | null
 }
 
 export async function listFamilyFoodTypes(kind: FoodTypeKind): Promise<FamilyFoodType[]> {
   const { data, error } = await supabase
     .from('family_food_types')
-    .select('id, family_id, name, icon, kind')
+    .select('id, family_id, name, icon, kind, catalog_key')
     .eq('kind', kind)
     .order('created_at', { ascending: true })
   if (error) throw error
-  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, icon: r.icon, kind: r.kind }))
+  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, icon: r.icon, kind: r.kind, catalogKey: r.catalog_key ?? null }))
 }
 
 async function currentFamilyId(): Promise<string> {
@@ -67,13 +70,17 @@ export async function deleteFamilyFoodType(id: string): Promise<void> {
   if (error) throw error
 }
 
-// Excepción manual a la clasificación de un producto (automática solo
-// para Alimentos, ver domain/foodTypes.ts) — reutiliza la columna
-// `category`, ya presente en products y sin ningún otro uso hasta
-// ahora. Vale igual para Alimentos que para Otros: un producto solo
-// pertenece a un conjunto a la vez (ver isFoodPurchase), así que no
-// hace falta guardar también el `kind` aquí.
+// DECISIÓN EXPLÍCITA de la familia sobre la clase de un producto — reutiliza la columna `category`. Es lo ÚNICO que escribe
+// products.category desde la Fase 5: una clase elegida a mano queda guardada CON su marca `class_confirmed_at` (LA FAMILIA MANDA:
+// ni el aprendizaje compartido ni las reglas la sustituyen). `null` = «Automático»: borra la clase y la confirmación, y la clase
+// vuelve a resolverse dinámicamente (compartida → reglas → respaldo).
+// NUNCA se llama con una clasificación automática (compartida, reglas o respaldo): esas se resuelven al leer, no se guardan.
+// Solo afecta a la familia del usuario (RLS) y no toca el aprendizaje compartido. Vale igual para Alimentos que para Otros.
 export async function setProductFoodType(productId: string, typeName: string | null): Promise<void> {
-  const { error } = await supabase.from('products').update({ category: typeName }).eq('id', productId)
+  const name = typeName?.trim() || null
+  const { error } = await supabase
+    .from('products')
+    .update({ category: name, class_confirmed_at: name ? new Date().toISOString() : null })
+    .eq('id', productId)
   if (error) throw error
 }

@@ -101,10 +101,11 @@ describe('Fase 2: rollback y aislamiento', () => {
     expect(ROLLBACK).not.toMatch(/\bdelete from\b|\btruncate\b|\bdrop table\b|catalog_categories|catalog_food_types/i)
   })
 
-  it('la app todavía no usa catalog_key (fase de datos: sin cambios de comportamiento)', () => {
+  it('solo la lectura de clases (Fase 5) usa catalog_key: la capa de datos de clases y el resolutor de clases', () => {
     const users = Object.entries(APP)
       .filter(([, text]) => /catalog_key|catalogKey/.test(text))
       .map(([file]) => file)
-    expect(users).toEqual([])
+      .sort()
+    expect(users).toEqual(['/src/data/foodTypes.ts', '/src/domain/productClass.ts'])
   })
 })

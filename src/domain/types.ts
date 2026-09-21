@@ -397,6 +397,9 @@ export interface Product {
   category: string | null
   brand: string | null
   nonFood: boolean
+  // NOT NULL = `category` es una decisión explícita de la familia (manual); NULL = la clase se resuelve dinámicamente
+  // (aprendizaje compartido → clase histórica → reglas). Ver domain/productClass.ts.
+  classConfirmedAt: string | null
 }
 
 export interface ProductPrice {

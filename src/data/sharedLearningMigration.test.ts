@@ -164,11 +164,12 @@ describe('Fase 4: aislamiento, rollback y app sin conectar', () => {
     expect(statements).not.toMatch(/drop table if exists public\.products/i)
   })
 
-  it('la app todavía NO usa el aprendizaje compartido: nada lo importa ni lo consulta', () => {
+  it('solo la capa de datos de la Fase 5 consulta el aprendizaje compartido (por la RPC, nunca por las tablas); nada lo importa', () => {
     const users = Object.entries(APP)
       .filter(([file, text]) => file !== '/src/domain/sharedLearning.ts' && /shared_product_learning|resolve_shared_product_class|shared_learning_batches|pepa_seed_v1|sharedLearning/.test(text))
       .map(([file]) => file)
-    expect(users).toEqual([])
+    expect(users).toEqual(['/src/data/sharedClasses.ts'])
+    expect(APP['/src/data/sharedClasses.ts']).not.toMatch(/from\('shared_/)
   })
 
   it('el clasificador actual, los productos y los tickets siguen sin conocer las cadenas ni el aprendizaje', () => {

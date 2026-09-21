@@ -50,6 +50,8 @@ import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceip
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
+import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
+import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
 import { onManagersChanged, openManager } from '@/state/managers'
 import { listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
@@ -5275,28 +5277,34 @@ function resolveDraftLineClass(
   ticketStore: string,
   ticketCategory: string,
   categories: BudgetCategory[],
+  // Resultado del aprendizaje compartido para (tienda de ESTE ticket, texto de esta línea); null si no hay o no está cargado.
+  shared: SharedClassHint | null = null,
 ): ResolvedDraftLine {
   const existing = productByNormalizedName.get(normalizeProductName(line.name))
   const isNew = !existing
   let kind: FoodTypeKind
   let classification: string
   if (line.classOverride) {
+    // Elección explícita de la familia al revisar el ticket: manda sobre todo lo demás.
     kind = line.classOverride.kind
     classification = line.classOverride.classification
-  } else if (existing) {
-    kind = existing.nonFood ? 'no_alimentos' : 'alimentacion'
-    const stored = existing.category?.trim() || ''
-    // Un producto ya conocido pero sin clasificar a mano (frecuente:
-    // "muchas clasificaciones las he tenido que retocar") se enseña
-    // igual que en Historial de precios — "Automático" por el nombre —
-    // en vez de dejarlo en blanco, para no tener que adivinarlo dos
-    // veces.
-    classification = stored || (kind === 'alimentacion' ? classifyFoodType(existing.displayName).label : '')
   } else {
+    // Resolutor central (domain/productClass.ts): clase elegida por la familia → aprendizaje compartido de la tienda del
+    // ticket → clase histórica → reglas por nombre. Un producto ya conocido pero sin clasificar a mano se enseña igual que en
+    // Historial de precios ("Automático") en vez de dejarlo en blanco.
     const defaultIsFood = ticketStore.trim().toLowerCase() !== 'amazon' || isFoodCategory(ticketCategory, categories)
-    kind = defaultIsFood ? 'alimentacion' : 'no_alimentos'
-    const auto = defaultIsFood && line.name.trim() ? classifyFoodType(line.name) : null
-    classification = auto?.label ?? ''
+    kind = existing ? (existing.nonFood ? 'no_alimentos' : 'alimentacion') : defaultIsFood ? 'alimentacion' : 'no_alimentos'
+    const resolved = resolveProductClassSafe({
+      name: existing?.displayName ?? line.name,
+      product: existing ?? null,
+      kind,
+      kindIsDefault: !existing, // producto nuevo: el conjunto es solo una suposición por tienda; lo compartido aprobado puede fijarlo
+      familyClasses: [...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos],
+      shared: line.name.trim() ? shared : null,
+    })
+    // Sin nombre todavía no hay nada que adivinar (igual que antes).
+    classification = existing || line.name.trim() ? resolved.className : ''
+    if (resolved.source === 'shared') kind = resolved.kind
   }
   const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined
   const icon = known?.icon ?? (classification ? (kind === 'alimentacion' ? '🍽️' : '❓') : kind === 'alimentacion' ? '🍽️' : '❓')
@@ -5418,6 +5426,12 @@ function ReceiptForm({
     () => new Map(allProducts.map((p) => [p.normalizedName, p])),
     [allProducts],
   )
+  // Aprendizaje compartido de la tienda de ESTE ticket para cada línea leída (un solo lote, con espera al teclear).
+  const lineSharedPairs = useMemo(
+    () => (store.trim() ? lines.filter((l) => l.name.trim()).map((l) => ({ store, text: l.name })) : []),
+    [lines, store],
+  )
+  const lineShared = useSharedClasses(lineSharedPairs, 350)
 
   useEffect(() => onManagersChanged(() => void reloadFoodTypes()), [])
 
@@ -5510,13 +5524,21 @@ function ReceiptForm({
             date: receiptDate,
             receiptId,
           })
-          // La clasificación (adivinada o elegida a mano al revisar el
-          // ticket, ver resolveDraftLineClass) se guarda ya en el
-          // producto — así no hace falta ir luego a Historial de
-          // precios a corregirla producto a producto.
-          const resolved = resolveDraftLineClass(line, productByNormalizedName, foodTypesByKind, store, category, categories)
+          // LA FAMILIA MANDA: solo la clase ELEGIDA A MANO al revisar este ticket se guarda en el producto (y queda confirmada).
+          // La clase que resuelven solos el aprendizaje compartido, la clase histórica o las reglas NO se guarda: se resuelve al
+          // leer (domain/productClass.ts), para no convertir una clasificación automática en una decisión falsamente humana.
+          // Un producto ya confirmado y sin cambios en esta línea se deja tal cual.
+          const resolved = resolveDraftLineClass(
+            line,
+            productByNormalizedName,
+            foodTypesByKind,
+            store,
+            category,
+            categories,
+            sharedHintFor(lineShared, store, line.name.trim()),
+          )
           await Promise.all([
-            setProductFoodType(productId, resolved.classification || null),
+            ...(line.classOverride ? [setProductFoodType(productId, line.classOverride.classification || null)] : []),
             setProductNonFood(productId, resolved.kind === 'no_alimentos'),
           ])
         }),
@@ -5685,7 +5707,15 @@ function ReceiptForm({
             </button>
           </div>
           {lines.map((line, i) => {
-            const resolved = resolveDraftLineClass(line, productByNormalizedName, foodTypesByKind, store, category, categories)
+            const resolved = resolveDraftLineClass(
+              line,
+              productByNormalizedName,
+              foodTypesByKind,
+              store,
+              category,
+              categories,
+              sharedHintFor(lineShared, store, line.name.trim()),
+            )
             return (
               <div key={i} className="receipt-line-card">
                 <div className="receipt-line-row">
@@ -6266,6 +6296,24 @@ export function BudgetsTab({
   reloadRef.current = reload
   useEffect(() => subscribeBudgetsChanged(() => reloadRef.current()), [])
 
+  // Aprendizaje compartido para las líneas de compra de Estadística compras: el (tienda de CADA precio, texto del producto),
+  // en un solo lote. Un producto comprado en varias tiendas se resuelve por fila con la tienda de esa fila.
+  const priceSharedPairs = useMemo(() => {
+    const nameById = new Map(products.map((p) => [p.id, p.displayName]))
+    const seen = new Set<string>()
+    const pairs: { store: string; text: string }[] = []
+    for (const pr of prices) {
+      const name = nameById.get(pr.productId)
+      if (!name || !pr.store) continue
+      const key = `${pr.store}${name}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      pairs.push({ store: pr.store, text: name })
+    }
+    return pairs
+  }, [prices, products])
+  const priceShared = useSharedClasses(priceSharedPairs)
+
   if (loading) return <p className="muted">Cargando presupuestos…</p>
 
   const [periodFrom, periodTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
@@ -6371,13 +6419,27 @@ export function BudgetsTab({
         const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
         if (isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds)) {
           itemizedFood += amount
+          // Resolutor central; la tienda es la de ESTA compra (product_price), nunca una atribuida al producto en general.
           const auto = classifyFoodType(displayName)
-          const typeName = product?.category?.trim() || auto.label
+          const typeName = resolveProductClassSafe({
+            name: displayName,
+            product: product ?? null,
+            kind: 'alimentacion',
+            familyClasses: foodTypes,
+            shared: sharedHintFor(priceShared, pr.store, displayName),
+          }).className
           const icon = foodTypeIconByName.get(typeName) ?? (typeName === auto.label ? auto.icon : '🍽️')
           foodClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon }, expenseId: e.id })
         } else {
           itemizedNonFood += amount
-          const typeName = product?.category?.trim() || SIN_CLASIFICAR.name
+          const typeName =
+            resolveProductClassSafe({
+              name: displayName,
+              product: product ?? null,
+              kind: 'no_alimentos',
+              familyClasses: foodTypes,
+              shared: sharedHintFor(priceShared, pr.store, displayName),
+            }).className || SIN_CLASIFICAR.name
           const icon = noAlimentosTypeIconByName.get(typeName) ?? SIN_CLASIFICAR.icon
           noAlimentosClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon }, expenseId: e.id })
         }

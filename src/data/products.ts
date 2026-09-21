@@ -22,7 +22,7 @@ export async function listProducts(): Promise<Product[]> {
   const data = await fetchAllRows((from, to) =>
     supabase
       .from('products')
-      .select('id, family_id, normalized_name, display_name, category, brand, non_food')
+      .select('id, family_id, normalized_name, display_name, category, brand, non_food, class_confirmed_at')
       .order('id')
       .range(from, to),
   )
@@ -34,6 +34,7 @@ export async function listProducts(): Promise<Product[]> {
     category: r.category,
     brand: r.brand,
     nonFood: r.non_food,
+    classConfirmedAt: r.class_confirmed_at ?? null,
   }))
 }
 

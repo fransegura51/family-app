@@ -71,9 +71,9 @@ const EXPENSES: Expense[] = [
 ]
 
 const PRODUCTS: Product[] = [
-  { id: 'q1', familyId: 'f', normalizedName: 'queso rallado', displayName: 'Queso rallado', category: null, brand: null, nonFood: false },
-  { id: 'l1', familyId: 'f', normalizedName: 'leche entera', displayName: 'Leche entera', category: null, brand: null, nonFood: false },
-  { id: 'p1', familyId: 'f', normalizedName: 'pan', displayName: 'Pan', category: null, brand: null, nonFood: false },
+  { id: 'q1', familyId: 'f', normalizedName: 'queso rallado', displayName: 'Queso rallado', category: null, brand: null, nonFood: false, classConfirmedAt: null },
+  { id: 'l1', familyId: 'f', normalizedName: 'leche entera', displayName: 'Leche entera', category: null, brand: null, nonFood: false, classConfirmedAt: null },
+  { id: 'p1', familyId: 'f', normalizedName: 'pan', displayName: 'Pan', category: null, brand: null, nonFood: false, classConfirmedAt: null },
 ]
 let pid = 0
 function price(productId: string, date: string, priceValue: number, store: string | null): ProductPrice {

@@ -40,6 +40,7 @@ import {
 } from '@/state/economiaMenu'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
+import { subscribeBudgetsChanged } from '@/state/budgetsChanged'
 import { getChartColorTheme } from '@/state/colorTheme'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
@@ -6210,9 +6211,9 @@ export function BudgetsTab({
   // inicio de la página" — ver mismo arreglo en la pestaña Banco.
   const hasLoadedOnceRef = useRef(false)
 
-  function reload() {
+  function reload(): Promise<void> {
     if (!hasLoadedOnceRef.current) setLoading(true)
-    Promise.all([
+    return Promise.all([
       listBudgets(),
       listExpenses(),
       listReceipts(),
@@ -6255,7 +6256,15 @@ export function BudgetsTab({
       })
   }
 
-  useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void reload()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Un presupuesto creado o cambiado desde fuera de esta pantalla (Hablar con PEPA) llega por aviso y se vuelve a
+  // cargar aquí, sin cambiar de página. Siempre la última versión de reload (no la del primer render).
+  const reloadRef = useRef(reload)
+  reloadRef.current = reload
+  useEffect(() => subscribeBudgetsChanged(() => reloadRef.current()), [])
 
   if (loading) return <p className="muted">Cargando presupuestos…</p>
 

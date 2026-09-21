@@ -1,5 +1,6 @@
 import { BUDGET_GROUP, findBudget } from '@/domain/financeBudget'
 import { formatEuros } from '@/domain/financeCompute'
+import { notifyBudgetsChanged } from '@/state/budgetsChanged'
 import { defineAction, type Choice, type Selection } from '@/pepa/actions/types'
 import { asRecord, isRealIsoDate, unknownKeys } from '@/pepa/actions/validators'
 import { validAmount } from '../../../supabase/functions/_shared/ai/purposes/financeBudgetIntentCore.ts'
@@ -126,7 +127,7 @@ export const budgetSetAction = defineAction<BudgetSetActionParams>({
     if (match) {
       if (match.amount === params.amount) return `Ya estaba así: ${what}, ${formatEuros(match.amount)} al mes (${params.periodLabel}). No he cambiado nada.`
       await updateBudgetAmount(match.id, params.amount)
-      notifyChanged()
+      notifyBudgetsChanged()
       return `Presupuesto de ${what} cambiado a ${formatEuros(params.amount)} al mes (antes ${formatEuros(match.amount)}) para ${params.periodLabel}.`
     }
     await createBudget({
@@ -138,11 +139,7 @@ export const budgetSetAction = defineAction<BudgetSetActionParams>({
       // Común = sin dueño; Individual (o modo Compartido) deja que la base de datos lo asigne, como la pantalla.
       ...(scope === 'comun' ? { ownerMemberId: null } : {}),
     })
-    notifyChanged()
+    notifyBudgetsChanged()
     return `Presupuesto creado: ${what}, ${formatEuros(params.amount)} al mes (${params.periodLabel}).`
   },
 })
-
-function notifyChanged(): void {
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('family-app:budgets-changed'))
-}

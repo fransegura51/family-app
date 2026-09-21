@@ -113,8 +113,8 @@ describe('formulario y datos de tickets: un NULL no se convierte en Alimentació
   it('un ticket existente se abre con SU categoría (NULL → sin categoría); solo un ticket nuevo parte de «Alimentación»', () => {
     expect(form).toContain("useState(receipt ? (receipt.category ?? '') : 'Alimentación')")
     expect(form).not.toMatch(/receipt\?\.category \?\? 'Alimentación'/)
-    // al guardar: vacío → null, nunca «Alimentación»
-    expect((form.match(/category: category \|\| null,/g) ?? []).length).toBe(2)
+    // al crear: vacío → null, nunca «Alimentación». Al editar (6C.2C) la categoría ya no se manda: solo cambia por classify_purchase
+    expect((form.match(/category: category \|\| null,/g) ?? []).length).toBe(1)
   })
 
   it('un ticket sin categoría no pisa la categoría real del gasto enlazado ni la de un gasto del banco', () => {
@@ -123,12 +123,13 @@ describe('formulario y datos de tickets: un NULL no se convierte en Alimentació
   })
 
   it('la fila del ticket no deja un « · » suelto cuando no hay categoría', () => {
-    expect(form).toContain('{receipt.category && <span> · {receipt.category}</span>}')
+    // (6C.2C: un ticket pendiente muestra «Pendiente de clasificar»; nunca un hueco ni «null»)
+    expect(form).toContain('{isPendingCategory(receipt.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : receipt.category}')
   })
 
   it('editar un gasto sin categoría no le inventa una: el estado conserva null hasta que se elija una', () => {
     expect(form).toContain('useState<string | null>(expense.category)')
-    expect(form).toContain("<CategorySelect value={category ?? ''} onChange={setCategory} categories={categories} />")
+    expect(form).toContain("<CategorySelect value={category ?? ''} onChange={setCategory} categories={categories} emptyLabel=")
   })
 })
 

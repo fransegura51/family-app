@@ -48,7 +48,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
-import { isPendingCategory } from '@/domain/pending'
+import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase, purchaseNature } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
@@ -114,6 +114,9 @@ import type {
 import economiaHeaderImg from '@/assets/economia/economia-header.jpg'
 import pepaConclusionsImg from '@/assets/economia/pepa-conclusiones.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { classifyPurchase } from '@/data/classifyPurchase'
+import { reportClientError } from '@/data/errorReports'
+import { CLASSIFY_FAILED_MESSAGE, classifyMessage, classifyOk, pendingSignalText } from '@/domain/classifyPurchase'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
@@ -223,6 +226,9 @@ export interface MovementsFilter {
   // única forma de reproducir EXACTAMENTE el mismo conjunto que
   // produjo la cifra es la lista de ids que ya se calculó para ella.
   expenseIds?: string[]
+  // Solo gastos reales SIN categoría (category NULL, «Pendiente de clasificar»). Filtro lógico: no es una categoría ni se busca en
+  // budget_categories. Sin fechas: un pendiente sigue pendiente aunque pase el mes.
+  pendingOnly?: boolean
 }
 
 // Petición real: "no solo queríamos dar datos, sino también ayudar a
@@ -1494,7 +1500,7 @@ function BankTab({
   // ingresos... para saber cuánto tenemos de cada" — Fijo/Variable se
   // resuelve por movimiento (resolveExpenseFixed: categoría, o el
   // propio movimiento si lo has marcado a mano en su edición).
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'categoria' | 'busqueda'>('todos')
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'categoria' | 'busqueda' | 'pendientes'>('todos')
   const [categoryFilterValue, setCategoryFilterValue] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [monthStartDay, setMonthStartDay] = useState(1)
@@ -1624,6 +1630,7 @@ function BankTab({
     if (typeFilter === 'todos') return true
     if (typeFilter === 'categoria') return !categoryFilterValue || e.category === categoryFilterValue
     if (typeFilter === 'busqueda') return matchesFreeSearch(e, searchQuery)
+    if (typeFilter === 'pendientes') return isPendingSpendingRow(e)
     // Bug real: "en Banco si filtro por Ingresos me salen 4549,63€,
     // pero en Presupuesto/Resumen 4241,63€" — este filtro sumaba
     // también el LADO DE SALIDA de un traspaso entre cuentas propias
@@ -1900,6 +1907,18 @@ function DateFilterTab({
   )
 }
 
+// Señal DISCRETA de gastos pendientes de clasificar (category NULL): "3 pendientes de clasificar · 245,30 €". Tocable → Movimientos con el
+// filtro Pendientes. Sin pendientes no se pinta nada; nunca es un modal, un banner ni bloquea Economía. (Fase 6C.2C)
+function PendingSignal({ signal, onOpen }: { signal: PendingSpending; onOpen: () => void }) {
+  const text = pendingSignalText(signal)
+  if (!text) return null
+  return (
+    <button type="button" className="pending-signal" onClick={onOpen}>
+      <span aria-hidden>⏳</span> {text} <span aria-hidden>→</span>
+    </button>
+  )
+}
+
 function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
@@ -2142,6 +2161,8 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
         customTo={customTo}
         onCustomToChange={setCustomTo}
       />
+
+      <PendingSignal signal={pendingSignal(expenses)} onOpen={() => onViewMovements({ label: PENDING_LABEL, pendingOnly: true })} />
 
       <div className="card event-card">
         <strong>Resumen — {PRESET_LABELS[preset]}</strong>
@@ -2539,14 +2560,21 @@ function BreakdownDonut({
 // debe haber un botón". Ahora los dos anillos van apilados en
 // vertical (el de arriba nunca desaparece) y tocar una porción solo
 // selecciona — ver movimientos es un botón aparte, explícito.
+// Color neutro del bucket «Pendiente de clasificar» en repartos: es un aviso, no una categoría (no sale de la paleta de categorías).
+const PENDING_SLICE_COLOR = '#cfd4dc'
+const PENDING_SLICE_KEY = 'pendiente-de-clasificar'
+
 function CategoryDonutExplorer({
   categories,
   expenses,
   onViewRecords,
+  onViewPending,
 }: {
   categories: BudgetCategory[]
   expenses: Expense[]
   onViewRecords: (category: string | string[], label: string) => void
+  // El bucket «Pendiente de clasificar» no es una categoría (no se busca en budget_categories): lleva al filtro Pendientes.
+  onViewPending?: () => void
 }) {
   const [selectedTopId, setSelectedTopId] = useState<string | null>(null)
   const [highlightTop, setHighlightTop] = useState<string | null>(null)
@@ -2557,7 +2585,7 @@ function CategoryDonutExplorer({
   const catColors = stableCategoryColors(categories)
 
   const topLevel = categories.filter((c) => !c.parentId)
-  const topSlices: BreakdownSlice[] = topLevel
+  const categorySlices: BreakdownSlice[] = topLevel
     .map((c) => {
       const childNames = categories.filter((x) => x.parentId === c.id).map((x) => x.name)
       const matched = expenses.filter((e) => e.category === c.name || (e.category != null && childNames.includes(e.category)))
@@ -2572,6 +2600,13 @@ function CategoryDonutExplorer({
       }
     })
     .filter((s) => s.total > 0)
+  // Categorías reales + pendiente = gasto total aplicable. El pendiente va aparte, sin subcategorías ni drill-down por categoría.
+  const pendingNow = pendingSpending(expenses)
+  const pendingSlices: BreakdownSlice[] =
+    pendingNow.count > 0 && pendingNow.amount > 0
+      ? [{ key: PENDING_SLICE_KEY, label: PENDING_LABEL, icon: '⏳', color: PENDING_SLICE_COLOR, total: pendingNow.amount, count: pendingNow.count, hasChildren: false }]
+      : []
+  const topSlices: BreakdownSlice[] = [...categorySlices, ...pendingSlices]
   const topGrandTotal = topSlices.reduce((s, x) => s + x.total, 0)
   const highlightedTop = topSlices.find((s) => s.key === highlightTop)
   const topCenter = highlightedTop ? { name: highlightedTop.label, total: highlightedTop.total } : { name: 'Todo', total: topGrandTotal }
@@ -2654,7 +2689,9 @@ function CategoryDonutExplorer({
               // propio nombre exacto — hay que incluir toda la familia
               // (padre + subcategorías), si no "Ver movimientos" enseña
               // 0 registros aunque el dónut sí sume su importe.
-              if (highlightedTop.hasChildren) {
+              if (highlightedTop.key === PENDING_SLICE_KEY) {
+                onViewPending?.()
+              } else if (highlightedTop.hasChildren) {
                 const childNames = categories.filter((c) => c.parentId === highlightedTop.key).map((c) => c.name)
                 onViewRecords([highlightedTop.label, ...childNames], highlightedTop.label)
               } else {
@@ -2819,6 +2856,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         onViewRecords={(cat, label) =>
           viewFor(Array.isArray(cat) ? { categoryGroup: cat } : { category: cat }, `${label} — ${periodLabel}`)
         }
+        onViewPending={() => viewFor({ pendingOnly: true }, `${PENDING_LABEL} — ${periodLabel}`)}
       />
     )
   } else if (view === 'etiquetas') {
@@ -3145,7 +3183,7 @@ function ExpensesTab({
   // que dejar Movimientos preparado... ponle los mismos filtros que a
   // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
   // chip row y mismo criterio que ya usa BankTab.
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'categoria' | 'busqueda'>('todos')
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'categoria' | 'busqueda' | 'pendientes'>('todos')
   const [categoryFilterValue, setCategoryFilterValue] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   // Base para "Piso compartido/cuentas separadas": poder ver solo la
@@ -3210,6 +3248,7 @@ function ExpensesTab({
       if (filter.category !== undefined && e.category !== filter.category) return false
       if (filter.categoryGroup !== undefined && (e.category == null || !filter.categoryGroup.includes(e.category))) return false
       if (filter.expenseIds !== undefined && !filter.expenseIds.includes(e.id)) return false
+      if (filter.pendingOnly && !isPendingSpendingRow(e)) return false
       if (filter.store !== undefined && e.store !== filter.store) return false
       if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
       if (filter.necessity !== undefined || filter.necessityUnclassified || filter.isFixed !== undefined || filter.isFixedUnclassified) {
@@ -3284,6 +3323,7 @@ function ExpensesTab({
         if (typeFilter === 'todos') return true
         if (typeFilter === 'categoria') return !categoryFilterValue || e.category === categoryFilterValue
         if (typeFilter === 'busqueda') return matchesFreeSearch(e, searchQuery)
+        if (typeFilter === 'pendientes') return isPendingSpendingRow(e)
         if (typeFilter === 'ingresos') return e.isIncome && !isInternalTransferCategory(e.category, categories)
         if (e.isIncome) return false
         const isFixed = resolveExpenseFixed(e, categories)
@@ -3594,7 +3634,8 @@ function MovementRow({
               muestra igual que un gasto: icono + nombre de la categoría
               elegida (Sueldo, Regalo, Ingreso genérico...). */}
           <span className="movement-row-category">
-            {ownerMember !== undefined && <OwnerBadge owner={ownerMember} size={16} />} {category?.icon} {e.category}
+            {ownerMember !== undefined && <OwnerBadge owner={ownerMember} size={16} />} {category?.icon}{' '}
+            {isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}
           </span>
           <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
             {e.isIncome ? '+' : ''}
@@ -3715,10 +3756,28 @@ function EditExpenseInline({
     setSaving(true)
     setError(null)
     try {
+      // La categoría de un GASTO (y la de su ticket vinculado) se cambia SOLO con classify_purchase: una sola transacción, sin dejar un
+      // lado clasificado y el otro no, y sin pisar en silencio si gasto y ticket ya tienen categorías distintas (Fase 6C.2C).
+      // Un ingreso no tiene ticket ni «pendiente»: sigue por updateExpense.
+      const categoryChanged = !expense.isIncome && category != null && category !== expense.category
+      if (categoryChanged && category != null) {
+        let result
+        try {
+          result = await classifyPurchase({ expenseId: expense.id, category })
+        } catch (err) {
+          void reportClientError(err) // el detalle técnico se registra; la persona ve un mensaje comprensible
+          setError(CLASSIFY_FAILED_MESSAGE)
+          return
+        }
+        if (!classifyOk(result)) {
+          setError(classifyMessage(result)) // conflicto / rechazo: nada se ha cambiado
+          return
+        }
+      }
       await updateExpense(expense.id, {
         date,
         amount: Number(amount),
-        category,
+        ...(expense.isIncome && category != null ? { category } : {}),
         tagId: tagId || null,
         isFixedOverride,
         notes,
@@ -3750,7 +3809,7 @@ function EditExpenseInline({
       ) : (
         <label>
           Categoría
-          <CategorySelect value={category ?? ''} onChange={setCategory} categories={categories} />
+          <CategorySelect value={category ?? ''} onChange={setCategory} categories={categories} emptyLabel={expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined} />
         </label>
       )}
       <div className="inline-fields">
@@ -4886,6 +4945,8 @@ const TYPE_FILTER_OPTIONS = [
   { key: 'ingresos', label: 'Ingresos' },
   { key: 'categoria', label: 'Categoría' },
   { key: 'busqueda', label: 'Búsqueda libre' },
+  // Gasto real SIN categoría (category NULL). No es una categoría: es un filtro lógico y no existe en budget_categories.
+  { key: 'pendientes', label: 'Pendientes' },
 ]
 
 // Petición real: "Búsqueda libre, que se pueda poner una palabra y
@@ -4974,10 +5035,13 @@ function CategorySelect({
   categories,
   allowGeneral,
   compact,
+  emptyLabel,
 }: {
   value: string
   onChange: (v: string) => void
   categories: BudgetCategory[]
+  // Texto cuando no hay categoría elegida (p. ej. «Pendiente de clasificar» para un gasto o ticket con category NULL).
+  emptyLabel?: string
   // Petición real: "el desplegable de presupuesto, el mismo que el de
   // categorías del banco pero con la diferencia de que también se
   // pueda elegir General" — solo lo pide Nuevo presupuesto (donde
@@ -5029,7 +5093,7 @@ function CategorySelect({
     <div>
       <button type="button" className="category-picker-toggle" style={compact ? { fontSize: 14, padding: '10px 12px' } : undefined} onClick={openPicker}>
         <span>
-          {selected ? `${selected.icon} ${selected.name}` : allowGeneral && !value ? '🗂️ General' : value || 'Elige una categoría'}
+          {selected ? `${selected.icon} ${selected.name}` : allowGeneral && !value ? '🗂️ General' : value || emptyLabel || 'Elige una categoría'}
         </span>
         <span className="muted">▼</span>
       </button>
@@ -5183,7 +5247,7 @@ function ReceiptRow({
         <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
           <span>{receipt.receiptDate}</span>
           {receipt.totalAmount != null && <span> · {receipt.totalAmount.toFixed(2)} €</span>}
-          {receipt.category && <span> · {receipt.category}</span>}
+          <span> · {isPendingCategory(receipt.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : receipt.category}</span>
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
           {/* Petición real: "que marque con un símbolo 'falta ticket'
               los que no se haya subido el ticket" — este gasto se sabe
@@ -5599,11 +5663,27 @@ function ReceiptForm({
         setLines([])
         setOcrStatus('idle')
       } else if (receipt) {
+        // La categoría de un ticket (y la de su gasto vinculado) se cambia SOLO con classify_purchase: atómica gasto ↔ ticket y sin pisar
+        // en silencio (Fase 6C.2C). Un ticket sin gasto se clasifica solo a sí mismo; nunca se crea un gasto para clasificarlo. Un ticket
+        // pendiente (NULL) que se guarda sin elegir categoría SIGUE pendiente: no se convierte en Alimentación.
+        if (category !== '' && category !== (receipt.category ?? '')) {
+          let result
+          try {
+            result = await classifyPurchase({ receiptId: receipt.id, category })
+          } catch (err) {
+            void reportClientError(err) // el detalle técnico se registra; la persona ve un mensaje comprensible
+            setError(CLASSIFY_FAILED_MESSAGE)
+            return
+          }
+          if (!classifyOk(result)) {
+            setError(classifyMessage(result)) // conflicto / rechazo: nada se ha cambiado
+            return
+          }
+        }
         await updateReceipt(receipt.id, {
           store,
           receiptDate,
           totalAmount: totalAmount ? Number(totalAmount) : null,
-          category: category || null,
           purchasedByMemberId: purchasedByMemberId || null,
         })
         // Se sustituyen todas las líneas por las editadas, en vez de
@@ -5697,7 +5777,7 @@ function ReceiptForm({
       <div className="inline-fields">
         <label>
           Categoría
-          <CategorySelect value={category} onChange={setCategory} categories={categories} compact />
+          <CategorySelect value={category} onChange={setCategory} categories={categories} compact emptyLabel={receipt && receipt.category == null ? `⏳ ${PENDING_LABEL}` : undefined} />
         </label>
         <label>
           ¿Quién? (opcional)
@@ -6634,6 +6714,8 @@ export function BudgetsTab({
   // solo aparece si tiene gasto puesto DIRECTAMENTE en ella (sin elegir
   // subcategoría), y se etiqueta como tal para que no parezca una
   // subcategoría más.
+  // Categorías reales + «Pendiente de clasificar» (category NULL, bucket aparte y gris) = gasto total aplicable.
+  const pendingInMonth = pendingSpending(monthRealExpenses)
   const categoryPieSlices =
     group === 'generales'
       ? sortedGroupCategories
@@ -6646,6 +6728,7 @@ export function BudgetsTab({
             }
           })
           .filter((s) => s.total > 0)
+          .concat(pendingInMonth.amount > 0 ? [{ store: `⏳ ${PENDING_LABEL}`, total: pendingInMonth.amount, color: PENDING_SLICE_COLOR }] : [])
       : []
 
   // Petición real: "pon un filtro que se aplique a toda la página en
@@ -7387,6 +7470,12 @@ function BudgetsOverview({
   // el gasto) — se queda así para el informe imprimible, que quiere el
   // detalle fino. La lista EN PANTALLA (más abajo) es otra: agrupada
   // por categoría padre, ver `byParentCategory`.
+  // Gasto pendiente de clasificar del periodo (category NULL): ya está en el total gastado, pero no en ninguna categoría. Aparte y sin color de
+  // categoría. Solo en presupuestos con categorías (Generales): el de Alimentación no tiene categorías propias.
+  const pendingInRange = useMemo(
+    () => (group === 'alimentacion' ? { amount: 0, count: 0 } : pendingSpending(inRange.filter((e) => !e.isIncome && e.kind === 'real'))),
+    [inRange, group],
+  )
   const byCategoryFlat = useMemo(() => {
     const map = new Map<string, number>()
     for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, allCategories))) {
@@ -7524,7 +7613,7 @@ function BudgetsOverview({
         </p>
       )}
 
-      {byParentCategory.length > 0 && (
+      {(byParentCategory.length > 0 || pendingInRange.count > 0) && (
         <div className="price-row-list" style={{ marginTop: 8 }}>
           {byParentCategory.map(({ name, icon, rootIds, total }) => {
             const children = groupCategories.filter((c) => c.parentId && rootIds.includes(c.parentId))
@@ -7599,6 +7688,12 @@ function BudgetsOverview({
               </div>
             )
           })}
+          {pendingInRange.count > 0 && (
+            <div className="price-row" style={{ background: PENDING_SLICE_COLOR, borderRadius: 8, padding: '8px 8px', marginTop: 4, color: '#1c1f26' }}>
+              <span className="price-row-name">⏳ {PENDING_LABEL}</span>
+              <span className="price-row-price">{pendingInRange.amount.toFixed(2)} €</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -7608,6 +7703,7 @@ function BudgetsOverview({
         style={{ marginTop: 8 }}
         onClick={() =>
           openBudgetReport({
+            pending: pendingInRange.count > 0 ? pendingInRange : undefined,
             rangeLabel,
             totalIncome,
             totalSpent,
@@ -7633,6 +7729,8 @@ function openBudgetReport(report: {
   totalIncome: number
   totalSpent: number
   byCategory: { name: string; icon?: string; amount: number }[]
+  // Gasto pendiente de clasificar: se muestra SEPARADO de las categorías reales (no es una categoría).
+  pending?: { amount: number; count: number }
 }) {
   const win = window.open('', '_blank')
   if (!win) return
@@ -7642,7 +7740,8 @@ function openBudgetReport(report: {
         (c) =>
           `<tr><td>${c.icon ?? ''} ${c.name}</td><td style="text-align:right">${c.amount.toFixed(2)} €</td></tr>`,
       )
-      .join('') || '<tr><td colspan="2">Sin movimientos en este periodo</td></tr>'
+      .join('') + (report.pending ? `<tr><td>⏳ ${PENDING_LABEL}</td><td style="text-align:right">${report.pending.amount.toFixed(2)} €</td></tr>` : '')
+  const reportRows = rows || '<tr><td colspan="2">Sin movimientos en este periodo</td></tr>'
   win.document.write(`<!doctype html>
 <html lang="es">
 <head>
@@ -7689,7 +7788,7 @@ function openBudgetReport(report: {
     <p><strong>Balance: ${(report.totalIncome - report.totalSpent).toFixed(2)} €</strong></p>
   </div>
   <h2>Por categoría</h2>
-  <table>${rows}</table>
+  <table>${reportRows}</table>
 </body>
 </html>`)
   win.document.close()

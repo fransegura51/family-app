@@ -158,13 +158,15 @@ export async function updateReceipt(
     store: string
     receiptDate: string
     totalAmount: number | null
-    category: string | null
+    // `undefined` = NO tocar la categoría (ni la del ticket ni la de su gasto): la categoría de una compra solo cambia a través de
+    // classify_purchase (atómica gasto ↔ ticket, Fase 6C.2C). null/string se conservan por compatibilidad con quien aún la manda.
+    category?: string | null
     purchasedByMemberId: string | null
   },
 ): Promise<void> {
   const { data: existing, error: fetchError } = await supabase
     .from('receipts')
-    .select('expense_id')
+    .select('expense_id, category')
     .eq('id', id)
     .single()
   if (fetchError) throw fetchError
@@ -192,7 +194,8 @@ export async function updateReceipt(
           family_id: familyId,
           expense_date: input.receiptDate,
           amount: input.totalAmount,
-          category: input.category,
+          // Un gasto nuevo hereda la categoría del ticket (o la que se mande); un ticket pendiente (NULL) da un gasto pendiente, sin inventar nada.
+          category: input.category !== undefined ? input.category : existing.category,
           store: input.store || null,
           kind: 'real',
           source: 'ticket',
@@ -215,7 +218,7 @@ export async function updateReceipt(
       receipt_date: input.receiptDate,
       total_amount: input.totalAmount,
       expense_id: expenseId,
-      category: input.category,
+      ...(input.category !== undefined ? { category: input.category } : {}),
       purchased_by_member_id: input.purchasedByMemberId,
     })
     .eq('id', id)

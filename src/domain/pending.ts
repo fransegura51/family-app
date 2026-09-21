@@ -52,3 +52,18 @@ export function isPendingRelevant(pending: PendingSpending, total: number): bool
   if (pending.count === 0 || total <= 0) return false
   return pending.amount >= PENDING_RELEVANT_MIN_EUR && (pending.amount / total) * 100 >= PENDING_RELEVANT_MIN_SHARE
 }
+
+/** Etiqueta con la que se MUESTRA una categoría: la real, o «Pendiente de clasificar» si es NULL. Nunca «null» ni un hueco. */
+export function categoryLabel(category: string | null | undefined): string {
+  return category == null ? PENDING_LABEL : category
+}
+
+/** Un GASTO pendiente en el sentido de la señal de Economía: gasto real (no ingreso, no previsto) sin categoría. */
+export function isPendingSpendingRow(e: Pick<Expense, 'category' | 'isIncome' | 'kind'>): boolean {
+  return isPendingCategory(e.category) && !e.isIncome && e.kind === 'real'
+}
+
+/** Nº e importe de los gastos pendientes de clasificar (de TODAS las fechas: un pendiente sigue pendiente aunque pase el mes). */
+export function pendingSignal(expenses: readonly Pick<Expense, 'category' | 'isIncome' | 'kind' | 'amount'>[]): PendingSpending {
+  return pendingSpending(expenses.filter(isPendingSpendingRow))
+}

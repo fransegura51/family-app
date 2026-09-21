@@ -4763,3 +4763,31 @@ textarea {
   flex: 1;
   min-width: 0;
 }
+
+/* «Pendiente de clasificar» (category NULL, Fase 6C.2C): señal discreta en Resumen y etiqueta en filas de movimiento/ticket.
+   No es una categoría: son solo estilos de presentación. Colores translúcidos para que valgan en claro y en oscuro. */
+.pending-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 140, 0, 0.55);
+  background: rgba(255, 176, 0, 0.16);
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pending-tag {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px dashed rgba(214, 140, 0, 0.7);
+  background: rgba(255, 176, 0, 0.14);
+  font-size: 0.85em;
+  font-weight: 600;
+  white-space: nowrap;
+}

@@ -173,18 +173,57 @@ export function listenContinuous(handlers: {
   }
 }
 
+// Safari/iOS solo deja hablar a la página cuando se ha "desbloqueado" la síntesis desde un toque. Un
+// enunciado vacío y mudo, lanzado dentro del toque (abrir Pepa, tocar el micrófono, enviar), la
+// desbloquea; después se puede hablar sin toque, que es lo que pasa al contestar a lo dictado.
+export function primeSpeech(): void {
+  if (!isSpeechSupported()) return
+  try {
+    const synth = window.speechSynthesis
+    if (synth.speaking || synth.pending) return
+    const silent = new SpeechSynthesisUtterance('')
+    silent.volume = 0
+    silent.lang = 'es-ES'
+    synth.speak(silent)
+  } catch {
+    // Sin síntesis o bloqueada: no pasa nada, solo no habrá voz.
+  }
+}
+
 // Habla y avisa cuando termina — hace falta saber el momento exacto en
 // que acaba para no reanudar la escucha mientras Pepa todavía está
 // hablando (si no, el propio micrófono se oiría a sí misma por el
-// altavoz y lo tomaría como un encargo nuevo).
+// altavoz y lo tomaría como un encargo nuevo). Nunca se queda colgada: si el
+// navegador no avisa del final, se da por terminada al pasar un tiempo
+// razonable para el texto.
 export function speakAsync(text: string): Promise<void> {
   if (!isSpeechSupported()) return Promise.resolve()
   return new Promise((resolve) => {
+    const synth = window.speechSynthesis
+    let finished = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const finish = () => {
+      if (finished) return
+      finished = true
+      if (timer) clearTimeout(timer)
+      resolve()
+    }
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = 'es-ES'
-    utterance.onend = () => resolve()
-    utterance.onerror = () => resolve()
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(utterance)
+    utterance.onend = finish
+    utterance.onerror = finish
+    const start = () => {
+      if (synth.paused) synth.resume()
+      synth.speak(utterance)
+    }
+    timer = setTimeout(finish, Math.min(90000, 6000 + text.length * 110))
+    // cancel() seguido de speak() en el mismo instante hace que iOS descarte el enunciado nuevo:
+    // solo se corta lo que suena de verdad y se espera un momento antes de hablar.
+    if (synth.speaking || synth.pending) {
+      synth.cancel()
+      setTimeout(start, 80)
+    } else {
+      start()
+    }
   })
 }

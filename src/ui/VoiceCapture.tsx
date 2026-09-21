@@ -32,7 +32,8 @@ import {
   stripWakeWord,
 } from '@/domain/voiceQuery'
 import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
-import { isDictationSupported, isSpeechSupported, listenContinuous, speakAsync } from '@/services/voice'
+import { isDictationSupported, isSpeechSupported, listenContinuous, primeSpeech, speakAsync } from '@/services/voice'
+import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/output'
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
@@ -50,7 +51,7 @@ import { StoreQuestionSheet } from '@/ui/StoreQuestionSheet'
 import type { Recipe } from '@/domain/types'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
 
-type ResponseMode = 'voice' | 'text'
+const speechEngine: SpeechEngine = { supported: isSpeechSupported, speak: speakAsync, prime: primeSpeech }
 const STORAGE_KEY = 'familyapp:voice-response-mode'
 // Cuánto se espera en silencio antes de apuntar/preguntar sola —
 // petición real: "que espere solamente tres segundos" (antes 5s, se
@@ -726,6 +727,10 @@ export function VoiceCapture() {
   const [message, setMessage] = useState('')
   const [typedText, setTypedText] = useState('')
   const [mode, setMode] = useState<ResponseMode>(loadResponseMode)
+  // El modo se consulta en el momento de contestar: las funciones que dejó escuchando un render anterior
+  // no deben usar una copia vieja.
+  const modeRef = useRef(mode)
+  modeRef.current = mode
   // Acción que Pepa ha preparado y espera confirmación (tarjeta). Nada se
   // escribe hasta que se confirma allí.
   const [pendingProposal, setPendingProposal] = useState<ActionProposal | null>(null)
@@ -765,10 +770,11 @@ export function VoiceCapture() {
   // así se sabe el momento exacto en que es seguro volver a escuchar sin
   // que el propio móvil se oiga a sí mismo por el altavoz y se lo tome
   // como un encargo nuevo.
-  async function respond(text: string) {
-    setMessage(text)
-    if (mode === 'voice' && isSpeechSupported()) await speakAsync(text)
-  }
+  // Toda respuesta final sale por la capa única de salida (pepa/output): texto y, en modo Hablando, voz.
+  const outputRef = useRef<ReturnType<typeof createPepaOutput> | null>(null)
+  if (!outputRef.current) outputRef.current = createPepaOutput({ getMode: () => modeRef.current, show: (text) => setMessage(text), engine: speechEngine })
+  const output = outputRef.current
+  const respond = output.say
 
   // Skill pepa-busqueda-voz, Fase 1: "búscame un restaurante cercano"
   // — enlace directo a Google Maps (sin API de pago todavía, tal como
@@ -858,16 +864,15 @@ export function VoiceCapture() {
       setMessage(spoken)
       showToast(spoken, 6000)
     }
+    void output.speakOnly(spoken ?? '')
     return spoken
   }
 
   async function chooseStore(store: string | null): Promise<string | null> {
     if (!pendingStore) return null
     const outcome = await ingredientsFlowFor(pendingStore.recipe, pendingStore.recipes, new Date(), { conversation: true, store })
-    if (outcome.kind === 'proposal') {
-      applyTalkOutcome(outcome)
-      return outcome.text
-    }
+    if (outcome.kind === 'proposal') applyTalkOutcome(outcome)
+    void output.speakOnly(outcome.text)
     return outcome.text
   }
 
@@ -1035,6 +1040,7 @@ export function VoiceCapture() {
   const sessionRef = useRef<{ stop: () => void } | null>(null)
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastHeardRef = useRef('')
+  const submittingRef = useRef(false)
   const [listening, setListening] = useState(false)
 
   function clearSilenceTimer() {
@@ -1065,6 +1071,7 @@ export function VoiceCapture() {
     setMessage('Pepa te escucha… habla cuando quieras, se apunta sola al quedarte callado')
     sessionRef.current = listenContinuous({
       onTranscript: (text) => {
+        if (submittingRef.current) return
         const { activated, text: cleaned } = stripActivateCommand(text)
         setTypedText(activated ? cleaned : text)
         if (activated) {
@@ -1087,6 +1094,16 @@ export function VoiceCapture() {
   }
 
   async function submitFromVoice(text: string) {
+    if (submittingRef.current) return
+    submittingRef.current = true
+    try {
+      await submitFromVoiceNow(text)
+    } finally {
+      submittingRef.current = false
+    }
+  }
+
+  async function submitFromVoiceNow(text: string) {
     stopListening()
     const trimmed = text.trim()
     setTypedText('')
@@ -1118,14 +1135,17 @@ export function VoiceCapture() {
   function handleTypedSubmit(e: FormEvent) {
     e.preventDefault()
     if (!typedText.trim()) return
+    output.prime()
     stopListening()
     processText(typedText)
     setTypedText('')
   }
 
   function changeMode(next: ResponseMode) {
+    modeRef.current = next
     setMode(next)
     saveResponseMode(next)
+    output.prime()
   }
 
   // Activación por voz sin tocar nada probada y descartada: la propia
@@ -1136,6 +1156,7 @@ export function VoiceCapture() {
   // solo con los botones"). Solo botón/frase dicha DENTRO de un panel
   // ya abierto, nunca escucha en segundo plano.
   function openPanel(nextMode: PanelMode) {
+    output.prime()
     setPanelMode(nextMode)
     setOpen(true)
     openedAtRef.current = Date.now()
@@ -1307,7 +1328,11 @@ export function VoiceCapture() {
               <button
                 type="button"
                 className={'voice-mic-button' + (listening ? ' voice-mic-listening' : '')}
-                onClick={() => (listening ? stopListening() : startListening())}
+                onClick={() => {
+                  output.prime()
+                  if (listening) stopListening()
+                  else startListening()
+                }}
                 disabled={status === 'saving'}
               >
                 {status === 'saving'
@@ -1403,7 +1428,7 @@ export function VoiceCapture() {
           onReply={replyFromSheet}
           onSaved={(savedMessage) => {
             setStatus('done')
-            setMessage(savedMessage)
+            void output.say(savedMessage)
             showToast(`✅ ${savedMessage}`, 4000)
           }}
           onFollowUp={(outcome) => {
@@ -1442,7 +1467,7 @@ export function VoiceCapture() {
             if (proposalFromTalk) forgetRecentRecipes()
             setProposalFromTalk(false)
             setStatus('done')
-            setMessage(doneMessage)
+            void output.say(doneMessage)
             showToast(`✅ ${doneMessage}`, 4000)
           }}
         />

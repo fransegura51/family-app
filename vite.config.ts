@@ -5,6 +5,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 // GitHub Pages sirve el repo bajo /family-app/, no en la raíz — en local
 // (dev/preview) seguimos en '/' para no complicar la URL de trabajo.
 export default defineConfig(({ command }) => ({
+  // Los tests corren SIN el .env local (igual que en GitHub Actions, donde no existe): un módulo que necesite
+  // Supabase al importarse falla también aquí, en vez de pasar solo porque la máquina de desarrollo tiene claves.
+  envDir: process.env.VITEST ? './.no-env-in-tests' : undefined,
   base: command === 'build' ? '/family-app/' : '/',
   plugins: [
     react(),

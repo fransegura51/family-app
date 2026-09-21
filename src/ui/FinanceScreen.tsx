@@ -51,6 +51,7 @@ import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/pr
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
+import { partitionTicketLines } from '@/domain/ticketLines'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
 import { onManagersChanged, openManager } from '@/state/managers'
 import { listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
@@ -5404,6 +5405,8 @@ function ReceiptForm({
   const [category, setCategory] = useState(receipt?.category ?? 'Alimentación')
   const [purchasedByMemberId, setPurchasedByMemberId] = useState(receipt?.purchasedByMemberId ?? '')
   const [lines, setLines] = useState<DraftLine[]>([])
+  // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
+  const [skippedLines, setSkippedLines] = useState<string[]>([])
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>('idle')
   const [loadingLines, setLoadingLines] = useState(mode === 'edit')
   const [error, setError] = useState<string | null>(null)
@@ -5476,10 +5479,14 @@ function ReceiptForm({
       // Lleva "MERCADONA, S.A." al nombre ya dado de alta en Compras
       // ("Mercadona") cuando coincide, para no crear un grupo de
       // tickets distinto por cada variante del mismo nombre.
-      if (parsed.store) setStore(findKnownStore(parsed.store, knownStores)?.store ?? parsed.store)
+      const readStore = parsed.store ? (findKnownStore(parsed.store, knownStores)?.store ?? parsed.store) : store
+      if (parsed.store) setStore(readStore)
       if (parsed.date) setReceiptDate(parsed.date)
       if (parsed.total != null) setTotalAmount(String(parsed.total))
-      setLines(parsed.items.map((l) => ({ name: l.name, quantity: String(l.quantity), price: l.price.toFixed(2) })))
+      // Las líneas que no son productos (PARKING de Mercadona...) no llegan ni a la revisión: el ticket conserva su total y su foto.
+      const { products: productLines, skipped } = partitionTicketLines(readStore, parsed.items)
+      setSkippedLines(skipped.map((s) => s.line.name.trim()))
+      setLines(productLines.map((l) => ({ name: l.name, quantity: String(l.quantity), price: l.price.toFixed(2) })))
       setOcrStatus('done')
     } catch (err) {
       setOcrStatus('error')
@@ -5524,6 +5531,8 @@ function ReceiptForm({
             date: receiptDate,
             receiptId,
           })
+          // Una línea que no es un producto (PARKING en Mercadona...) se descarta antes de persistir: sin producto, sin precio, sin clase.
+          if (productId == null) return
           // LA FAMILIA MANDA: solo la clase ELEGIDA A MANO al revisar este ticket se guarda en el producto (y queda confirmada).
           // La clase que resuelven solos el aprendizaje compartido, la clase histórica o las reglas NO se guarda: se resuelve al
           // leer (domain/productClass.ts), para no convertir una clasificación automática en una decisión falsamente humana.
@@ -5686,6 +5695,12 @@ function ReceiptForm({
       </div>
 
       {loadingLines && <p className="muted">Cargando productos leídos…</p>}
+      {skippedLines.length > 0 && (
+        <p className="muted">
+          Se {skippedLines.length === 1 ? 'ha omitido 1 línea que no es' : 'han omitido ' + skippedLines.length + ' líneas que no son'} un producto
+          ({[...new Set(skippedLines)].join(', ')}): no se guarda en Historial de precios ni cuenta en las estadísticas.
+        </p>
+      )}
       {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0) && (
         <div className="day-modal-group">
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>

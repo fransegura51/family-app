@@ -333,3 +333,47 @@ describe('contexto de tienda: nunca se atribuye una cadena arbitraria', () => {
     expect(unambiguousStore([])).toBeNull()
   })
 })
+
+describe('«Automático» (restablecer): sin clase histórica guardada NO puede resolver por legacy', () => {
+  // Al elegir «Automático» la app guarda category = NULL y class_confirmed_at = NULL (setProductFoodType(id, null)).
+  const RESET = { category: null, classConfirmedAt: null, nonFood: false }
+  const KINDS: ProductClassKind[] = ['alimentacion', 'no_alimentos']
+
+  it('antes de restablecer, una clase histórica sin confirmar resolvía por legacy; después ya no', () => {
+    const before = resolve({ name: 'LECHE SEMI P-6', product: { category: 'Carne', classConfirmedAt: null, nonFood: false }, shared: null })
+    expect(before.source).toBe('legacy')
+    const after = resolve({ name: 'LECHE SEMI P-6', product: RESET, shared: null })
+    expect(after.source).not.toBe('legacy')
+    expect(after.className).not.toBe('Carne')
+  })
+
+  it('desde manual: elegir «Automático» borra la decisión y el producto continúa por shared → rule → fallback', () => {
+    const manual = { category: 'Mascotas', classConfirmedAt: '2026-09-21', nonFood: false }
+    expect(resolve({ name: 'LECHE SEMI P-6', product: manual, shared: matched('food.lacteos_huevos') }).source).toBe('manual')
+    // tras restablecer:
+    expect(resolve({ name: 'LECHE SEMI P-6', product: RESET, shared: matched('food.lacteos_huevos') })).toMatchObject({ className: 'Lácteos y huevos', source: 'shared' })
+    expect(resolve({ name: 'BERENJENA RAYADA GR', product: RESET, shared: { status: 'not_found', foodTypeKey: null } })).toMatchObject({ className: 'Verdura y hortalizas', source: 'rule' })
+    expect(resolve({ name: 'BENTO MIX', product: RESET, shared: null })).toMatchObject({ className: 'Otros alimentos', source: 'fallback' })
+  })
+
+  it('nunca legacy con category NULL o en blanco, sea cual sea lo compartido y el conjunto', () => {
+    const blanks = [null, '', '   ']
+    const shareds = [null, undefined, matched('food.fruta'), { status: 'ambiguous', foodTypeKey: null }, { status: 'not_found', foodTypeKey: null }, { status: 'chain_not_learnable', foodTypeKey: null }]
+    for (const category of blanks)
+      for (const shared of shareds)
+        for (const kind of KINDS)
+          for (const name of ['LECHE ENTERA', 'BENTO MIX', 'GEL WC']) {
+            const r = resolve({ name, kind, product: { category, classConfirmedAt: null, nonFood: kind === 'no_alimentos' }, shared })
+            expect(['shared', 'rule', 'fallback'], `${name}|${category}|${kind}`).toContain(r.source)
+          }
+  })
+
+  it('la opción «Automático» de la interfaz (ignoreStored) equivale a un producto ya restablecido', () => {
+    const stored = { category: 'Mascotas', classConfirmedAt: 'x', nonFood: false }
+    for (const shared of [null, matched('food.lacteos_huevos')]) {
+      const ignoring = resolve({ name: 'LECHE SEMI P-6', product: stored, shared, ignoreStored: true })
+      const reset = resolve({ name: 'LECHE SEMI P-6', product: RESET, shared })
+      expect({ ...ignoring, classKnown: 0 }).toEqual({ ...reset, classKnown: 0 })
+    }
+  })
+})

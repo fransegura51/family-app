@@ -131,6 +131,8 @@ describe('Fase 5: escritura — la clasificación automática NO se guarda como 
     expect(writers).toEqual(['/src/data/foodTypes.ts'])
     const src = APP['/src/data/foodTypes.ts']
     expect(src).toContain('category: name, class_confirmed_at: name ? new Date().toISOString() : null')
+    // «Automático» = setProductFoodType(id, null): category NULL y class_confirmed_at NULL a la vez (sin clase histórica que conservar)
+    expect(src).toContain("const name = typeName?.trim() || null")
     // el alta/compra de un producto no escribe la clase ni la confirmación
     const upsert = APP['/src/data/products.ts'].match(/\.upsert\(\s*\{[^}]*\}/)?.[0] ?? ''
     expect(upsert).toContain('display_name')

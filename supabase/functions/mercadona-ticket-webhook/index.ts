@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { partitionTicketLines } from "./ticketLines.ts"
 
 // Recibe el ticket digital de Mercadona que llega por email (PDF
 // adjunto) — un workflow externo (Outlook reenvía el correo de
@@ -212,7 +213,12 @@ Deno.serve(async (req) => {
       .single()
     if (receiptError) throw receiptError
 
-    for (const item of items) {
+    // Las líneas que no son productos (PARKING de Mercadona...) se descartan ANTES de crear producto o precio. El ticket (archivo,
+    // gasto y total) se guarda íntegro. La regla es la misma que usa la app (ticketLines.ts, copia idéntica) y la base de datos la refuerza
+    // con un trigger en product_prices.
+    const { products: productItems, skipped: skippedItems } = partitionTicketLines("Mercadona", items)
+
+    for (const item of productItems) {
       const normalizedName = item.name.trim().toLowerCase()
       const { data: product, error: productError } = await admin
         .from("products")
@@ -241,7 +247,7 @@ Deno.serve(async (req) => {
       if (priceError) throw priceError
     }
 
-    return json({ ok: true, receiptId: receipt.id, itemsSaved: items.length })
+    return json({ ok: true, receiptId: receipt.id, itemsSaved: productItems.length, itemsSkippedNonProduct: skippedItems.length })
   } catch (err) {
     return json({ error: String(err) }, 500)
   }

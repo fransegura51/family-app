@@ -1,5 +1,6 @@
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
+import { isProductLine } from '@/domain/ticketLines'
 import type { Product, ProductPrice } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -105,6 +106,10 @@ export async function listAllProductPrices(): Promise<ProductPrice[]> {
 // Reconoce productos equivalentes por nombre normalizado, sin perder el
 // texto original que escribió la familia (Skill 11). Registra un punto
 // más de historial de precio cada vez que se llama (Skill 09).
+//
+// Es el ÚNICO camino del cliente que crea products/product_prices: aquí se descartan, ANTES de persistir nada, las líneas que no son
+// productos (p. ej. PARKING en Mercadona, ver domain/ticketLines.ts). Devuelve productId=null cuando la línea se ha descartado.
+// (Los webhooks del servidor aplican la misma regla y la base de datos la refuerza con un trigger en product_prices.)
 export async function recordProductPurchase(input: {
   name: string
   price: number
@@ -113,7 +118,8 @@ export async function recordProductPurchase(input: {
   store: string
   date?: string
   receiptId?: string
-}): Promise<{ productId: string }> {
+}): Promise<{ productId: string | null }> {
+  if (!isProductLine(input.store, input.name)) return { productId: null }
   const familyId = await currentFamilyId()
   const normalizedName = normalize(input.name)
 

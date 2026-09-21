@@ -7,6 +7,8 @@ const FILES = import.meta.glob(
     '/supabase/migrations/0141_catalog_link_families.sql',
     '/supabase/migrations/0146_retire_taller_migrate_gasolinera.sql',
     '/supabase/rollbacks/0146_retire_taller_migrate_gasolinera_down.sql',
+    '/supabase/migrations/0147_close_gasolinera_reference.sql',
+    '/supabase/rollbacks/0147_close_gasolinera_reference_down.sql',
   ],
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
@@ -14,11 +16,15 @@ const CATALOG = FILES['/supabase/migrations/0139_catalog_base.sql']
 const LINK = FILES['/supabase/migrations/0141_catalog_link_families.sql']
 const MIGRATION = FILES['/supabase/migrations/0146_retire_taller_migrate_gasolinera.sql']
 const ROLLBACK = FILES['/supabase/rollbacks/0146_retire_taller_migrate_gasolinera_down.sql']
+const CLOSE = FILES['/supabase/migrations/0147_close_gasolinera_reference.sql']
+const CLOSE_ROLLBACK = FILES['/supabase/rollbacks/0147_close_gasolinera_reference_down.sql']
 const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const FUNCTIONS = import.meta.glob('/supabase/functions/**/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 const SQL = MIGRATION.replace(/--[^\n]*/g, '')
 const ROLLBACK_SQL = ROLLBACK.replace(/--[^\n]*/g, '')
+const CLOSE_SQL = CLOSE.replace(/--[^\n]*/g, '')
+const CLOSE_ROLLBACK_SQL = CLOSE_ROLLBACK.replace(/--[^\n]*/g, '')
 const HEPBURN = "'011429a4-4fd8-4341-9c04-ec6b2f585196'"
 
 describe('Fase 6B: alcance — solo Familia Hepburn, solo lo inequívoco', () => {
@@ -122,14 +128,21 @@ describe('Fase 6B: reversibilidad', () => {
     expect(SQL).not.toMatch(/create policy/i)
   })
 
-  it('el rollback recrea Taller con sus mismas propiedades e id y devuelve los gastos a Gasolinera (sin pisar cambios posteriores)', () => {
+  it('el rollback COMPLETO de la 6B restaura Taller y Gasolinera (mismas propiedades e id), los 2 gastos y el ticket de Repsol, sin pisar cambios posteriores', () => {
     expect(ROLLBACK_SQL).toContain('jsonb_populate_record(null::public.budget_categories, l.before)')
     expect(ROLLBACK_SQL).toContain("set category = l.before ->> 'category'")
     expect(ROLLBACK_SQL).toContain("e.category = l.after ->> 'category'")
+    expect(ROLLBACK_SQL).toContain("x.category = l.after ->> 'category'")
+    expect(ROLLBACK_SQL.match(/l\.phase in \('6B', '6B-cierre'\)/g)).toHaveLength(3) // gastos, tickets y categorías de las dos fases
+    expect(ROLLBACK_SQL).toContain("l.entity = 'expense'")
+    expect(ROLLBACK_SQL).toContain("l.entity = 'receipt'")
+    expect(ROLLBACK_SQL).toContain("l.entity = 'budget_category'")
     expect(ROLLBACK_SQL).toContain('alter table public.expenses disable trigger trg_log_expenses')
     expect(ROLLBACK_SQL).toContain('alter table public.expenses enable trigger trg_log_expenses')
     expect(ROLLBACK_SQL.indexOf('drop table if exists public.category_migration_log')).toBeGreaterThan(ROLLBACK_SQL.indexOf('insert into public.budget_categories'))
-    expect(ROLLBACK_SQL).not.toMatch(/delete from|truncate|receipts|budgets|products|catalog_|shared_/i)
+    expect(ROLLBACK_SQL).not.toMatch(/delete from|truncate/i)
+    // solo restaura categorías: no toca productos, precios, presupuestos, catálogo ni aprendizaje compartido
+    expect(ROLLBACK_SQL).not.toMatch(/(insert into|update|alter table|drop table)\s+(public\.)?(products|product_prices|budgets|catalog_\w+|shared_\w+|families|family_food_types)/i)
   })
 })
 
@@ -177,5 +190,82 @@ describe('Fase 6B: NO hay asociaciones automáticas por comercio (Repsol != Comb
       expect(APP[file], file).not.toMatch(/Combustible/)
     }
     expect(APP['/src/domain/storeChains.ts']).toContain('Repsol != Combustible')
+  })
+})
+
+describe('Fase 6B (cierre): el ticket de la bombona a Suministros y retirada de Gasolinera', () => {
+  it('las ÚNICAS escrituras: la categoría de ese ticket (por su id), el borrado de la fila Gasolinera y el registro de reversibilidad', () => {
+    const updates = [...CLOSE_SQL.matchAll(/update\s+public\.(\w+)\s+set\s+([^;]+);/gi)].map((m) => `${m[1]}: ${m[2].replace(/\s+/g, ' ').trim()}`)
+    expect(updates).toEqual(["receipts: category = 'Suministros' where id = c_receipt"])
+    const deletes = [...CLOSE_SQL.matchAll(/delete from\s+(public\.\w+)[^;]*;/gi)].map((m) => m[0].replace(/\s+/g, ' '))
+    expect(deletes).toEqual(['delete from public.budget_categories where id = v_gas.id;'])
+    expect([...CLOSE_SQL.matchAll(/insert into\s+(public\.\w+)/gi)].map((m) => m[1])).toEqual(['public.category_migration_log', 'public.category_migration_log'])
+    expect(CLOSE_SQL).not.toMatch(/\btruncate\b|\bdrop table\b/i)
+    expect(CLOSE_SQL).toContain("c_receipt constant uuid := '889adc91-4b72-43fa-99ba-3225d2f6bb8a'")
+  })
+
+  it('el cambio es por el id del ticket y por su contenido: NO hay ninguna regla por comercio (Repsol != Suministros, Repsol != Combustible)', () => {
+    const update = CLOSE_SQL.match(/update public\.receipts[^;]*;/i)?.[0] ?? ''
+    expect(update).not.toMatch(/store|repsol|like|in \(/i)
+    // Repsol solo aparece como comprobación de que el ticket es el esperado y en mensajes de error, nunca como criterio de cambio
+    const withoutChecks = CLOSE_SQL.replace(/v_receipt\.store is distinct from 'Repsol'/g, '').replace(/raise exception '[^']*'/g, '')
+    expect(withoutChecks).not.toMatch(/repsol/i)
+    // sin reglas nuevas en el código de la aplicación
+    const rule = /(repsol|gasolinera)[^\n]{0,80}(=>|:)\s*['"](Suministros|Combustible)['"]/i
+    expect(Object.values(APP).some((t) => rule.test(t))).toBe(false)
+  })
+
+  it('precondiciones: Suministros estándar única; ticket exacto (Repsol, 44 €, gasto vinculado en Suministros por 44 €, 1 línea Bombona); ninguna otra referencia', () => {
+    for (const piece of [
+      "v_sum.catalog_key is distinct from 'g.vivienda_hogar.suministros'",
+      "v_receipt.category is distinct from 'Gasolinera'",
+      "v_receipt.store is distinct from 'Repsol'",
+      'v_receipt.total_amount <> 44',
+      "category = 'Suministros' and amount = 44",
+      '(select count(*) from public.product_prices where receipt_id = c_receipt) <> 1',
+      "p.display_name = 'Bombona' and pp.price = 44",
+      "(select count(*) from public.receipts where family_id = c_family and category = 'Gasolinera') <> 1",
+      "exists (select 1 from public.expenses where family_id = c_family and category = 'Gasolinera')",
+      'Gasolinera tiene subcategorías',
+    ]) {
+      expect(CLOSE_SQL, piece).toContain(piece)
+    }
+  })
+
+  it('invariantes finales: gastos, productos, precios, presupuestos y datos ajenos idénticos; tickets solo cambian de categoría; sin Gasolinera ni Taller', () => {
+    for (const piece of [
+      'is distinct from v_exp_h',
+      'is distinct from v_prod_h',
+      'is distinct from v_prices_h',
+      'is distinct from v_budgets_h',
+      "(to_jsonb(x) - 'category')",
+      'is distinct from v_cats_others_h',
+      'is distinct from v_exp_others_h',
+      '(select sum(total_amount) from public.receipts) <> v_rec_sum',
+      '(select sum(amount) from public.expenses) <> v_exp_sum',
+      '(select count(*) from public.activity_log) <> v_activity',
+      "name in ('Gasolinera', 'Taller')",
+      "name in ('Combustible', 'Suministros', 'Mantenimiento y reparaciones')) <> 3",
+      'se revierte todo',
+    ]) {
+      expect(CLOSE_SQL, piece).toContain(piece)
+    }
+  })
+
+  it('no toca el producto Bombona, sus precios, los gastos, Demo, el catálogo ni create_family', () => {
+    expect(CLOSE_SQL).not.toMatch(/(update|delete from|insert into|alter table)\s+public\.(products|product_prices|expenses|budgets|catalog_\w+|family_food_types|families|shared_\w+|store_chain\w*)\b/i)
+    for (const other of ['72296108-f334-4098-95aa-91bf489c7ac2', '223ea7b0-bd93-4e6d-9acb-46d4aa60817b', 'e98546ca-3240-48db-bf7b-c64e548de8b0']) expect(CLOSE_SQL).not.toContain(other)
+    expect(CLOSE_SQL).not.toMatch(/create or replace function|create_family/i)
+  })
+
+  it('copia antes de cambiar (ticket y categoría) y el rollback de cierre restaura Gasolinera y el ticket, dejando el registro de la 0146 intacto', () => {
+    expect(CLOSE_SQL.indexOf("values ('6B-cierre', 'receipt'")).toBeLessThan(CLOSE_SQL.indexOf('update public.receipts'))
+    expect(CLOSE_SQL.indexOf("values ('6B-cierre', 'budget_category'")).toBeLessThan(CLOSE_SQL.indexOf('delete from public.budget_categories'))
+    expect(CLOSE_SQL).toContain("check (entity in ('expense', 'receipt', 'budget_category'))")
+    expect(CLOSE_ROLLBACK_SQL).toContain("l.phase = '6B-cierre' and l.entity = 'budget_category'")
+    expect(CLOSE_ROLLBACK_SQL).toContain("l.phase = '6B-cierre' and l.entity = 'receipt'")
+    expect(CLOSE_ROLLBACK_SQL).toContain("x.category = l.after ->> 'category'")
+    expect(CLOSE_ROLLBACK_SQL).toContain("delete from public.category_migration_log where phase = '6B-cierre'")
+    expect(CLOSE_ROLLBACK_SQL).not.toMatch(/drop table/i)
   })
 })

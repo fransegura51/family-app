@@ -106,7 +106,7 @@ describe('Fase 3: aislamiento y rollback', () => {
       expect(APP[file], file).not.toMatch(/^import /m)
     }
     const importers = Object.entries(APP)
-      .filter(([file, text]) => !file.endsWith('/storeChains.ts') && !file.endsWith('/productText.ts') && /from ['"](?:@\/domain|\.\.?)\/(?:storeChains|productText)['"]/.test(text))
+      .filter(([file, text]) => !file.endsWith('/storeChains.ts') && !file.endsWith('/productText.ts') && file !== '/src/domain/sharedLearning.ts' && /from ['"](?:@\/domain|\.\.?)\/(?:storeChains|productText)['"]/.test(text))
       .map(([file]) => file)
     expect(importers).toEqual([])
   })

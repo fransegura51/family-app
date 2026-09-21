@@ -28,7 +28,7 @@ export const FINANCE_NO_ACCESS = 'Economía no está disponible para tu perfil.'
 const FINANCE_FAILED = 'No he podido consultar Economía ahora mismo. Inténtalo de nuevo en un momento.'
 
 const CONTEXT_TTL_MS = 10 * 60 * 1000
-let context: { query: FinanceQuery; at: number } | null = null
+let context: { query: FinanceQuery; at: number; items: string[] } | null = null
 
 export function forgetFinanceContext(): void {
   context = null
@@ -36,6 +36,11 @@ export function forgetFinanceContext(): void {
 
 export function financeContextQuery(): FinanceQuery | null {
   return context && Date.now() - context.at <= CONTEXT_TTL_MS ? context.query : null
+}
+
+// Lo último que PEPA nombró por orden (categorías): permite "¿y cuál es la segunda?". Solo nombres, en memoria.
+function contextItems(): string[] {
+  return context && Date.now() - context.at <= CONTEXT_TTL_MS ? context.items : []
 }
 
 export interface FinanceDeps {
@@ -124,7 +129,7 @@ export async function handleFinanceText(text: string, today: Date = new Date(), 
     const analysis = ANALYSIS_METRICS.includes(query.metric) || query.metric === 'why_changed'
     if (previous && !query.period && (/^\s*[¿¡]?\s*y\b/i.test(text) || analysis)) query = { ...query, period: previous.period, baseline: query.baseline ?? (analysis ? previous.baseline : null) }
   } else if (previous) {
-    query = parseFinanceFollowUp(text, previous, today)
+    query = parseFinanceFollowUp(text, previous, today, contextItems())
   }
   if (!query) return null
 
@@ -133,8 +138,8 @@ export async function handleFinanceText(text: string, today: Date = new Date(), 
     const data = await deps.load(NEEDS_TICKETS.has(query.metric))
     const run = await runFinanceQuery(query, data, today, deps.ai)
     // El contexto recuerda la consulta, salvo "explícamelo más sencillo": eso reformula, no cambia de tema.
-    if (query.metric !== 'simpler') context = { query: run.query, at: Date.now() }
-    else if (context) context = { query: context.query, at: Date.now() }
+    if (query.metric !== 'simpler') context = { query: run.query, at: Date.now(), items: run.items ?? contextItems() }
+    else if (context) context = { query: context.query, at: Date.now(), items: context.items }
     deps.record?.(run.fn, run.usedAi || interpretedByAi)
     return run.text
   } catch {

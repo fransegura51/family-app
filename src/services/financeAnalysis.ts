@@ -13,13 +13,13 @@ import type { AnalysisFact } from '@/domain/financeAnalysis'
 import { validateAiAnalysis, type AiAnalysisOutput, type AnalysisFocus } from '@/domain/financeAnalysisAi'
 import { callAiFunction, loadAliasMap } from '@/services/aiClient'
 
-export async function requestFinanceAnalysis(focus: AnalysisFocus, facts: AnalysisFact[]): Promise<AiAnalysisOutput | null> {
+export async function requestFinanceAnalysis(focus: AnalysisFocus, facts: AnalysisFact[], detail: 'brief' | 'full' = 'brief'): Promise<AiAnalysisOutput | null> {
   try {
     const alias = await loadAliasMap()
     const sent = facts.map((f) => (f.kind === 'text' ? { ...f, value: alias.aliasize(String(f.value)) } : f))
-    const json = await callAiFunction('finance-analysis', { focus, facts: sent })
+    const json = await callAiFunction('finance-analysis', { focus, detail, facts: sent })
     // Segunda comprobación en la app, con el mismo núcleo que el servidor y con los hechos ORIGINALES.
-    return validateAiAnalysis(json, facts)
+    return validateAiAnalysis(json, facts, detail)
   } catch {
     return null
   }

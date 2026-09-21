@@ -21,8 +21,8 @@ export { FINDING_TYPES } from '../../supabase/functions/_shared/ai/purposes/fina
 export type { AiAnalysisOutput, AiFinding, AnalysisFocus, FindingType }
 export { tokensIn }
 
-export function validateAiAnalysis(raw: unknown, facts: AnalysisFact[]): AiAnalysisOutput | null {
-  return validateAnalysisOutput(raw, new Set(facts.map((f) => f.ref)), numericRefsOf(facts))
+export function validateAiAnalysis(raw: unknown, facts: AnalysisFact[], detail: 'brief' | 'full' = 'full'): AiAnalysisOutput | null {
+  return validateAnalysisOutput(raw, new Set(facts.map((f) => f.ref)), { numericRefs: numericRefsOf(facts), brief: detail === 'brief' })
 }
 
 export function formatFactValue(fact: AnalysisFact): string {
@@ -57,8 +57,15 @@ function fill(text: string, byRef: Map<string, AnalysisFact>): string {
 }
 
 // El texto final: la IA aporta la selección y la redacción; las cifras las pone el código.
-export function composeAiAnalysis(output: AiAnalysisOutput, facts: AnalysisFact[]): string {
+export function composeAiAnalysis(output: AiAnalysisOutput, facts: AnalysisFact[], detail: 'brief' | 'full' = 'full'): string {
   const byRef = new Map(facts.map((f) => [f.ref, f]))
+  if (detail === 'brief') {
+    // Conversacional: la conclusión, hasta dos frases de apoyo y una sugerencia, sin títulos ni listas.
+    const lines = [fill(output.summary, byRef), ...output.findings.slice(0, 2).map((f) => fill(f.explanation, byRef))]
+    if (output.suggestions[0]) lines.push(fill(output.suggestions[0], byRef))
+    lines.push('Si quieres las cifras, dímelo.')
+    return lines.join(' ')
+  }
   const lines: string[] = [fill(output.summary, byRef)]
   for (const f of output.findings.slice(0, 4)) lines.push(`• ${fill(f.title, byRef)}: ${fill(f.explanation, byRef)}`)
   if (output.suggestions.length > 0) {

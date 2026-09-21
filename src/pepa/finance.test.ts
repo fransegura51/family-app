@@ -119,7 +119,7 @@ describe('conversación de Economía (contexto corto)', () => {
 
   it('el contexto guarda solo la consulta estructurada, no datos', async () => {
     await handleFinanceText('¿Cuánto hemos gastado este mes?', TODAY, deps())
-    expect(Object.keys(financeContextQuery()!).sort()).toEqual(['baseline', 'focus', 'full', 'metric', 'period', 'premise', 'product', 'target'])
+    expect(Object.keys(financeContextQuery()!).sort()).toEqual(['baseline', 'detail', 'focus', 'full', 'metric', 'period', 'premise', 'product', 'target'])
   })
 })
 

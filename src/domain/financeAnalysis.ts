@@ -236,7 +236,7 @@ function who(a: Analysis): string {
   return a.period.ongoing ? 'lleváis' : 'habéis gastado'
 }
 
-function whenLead(a: Analysis): string {
+export function whenLead(a: Analysis): string {
   const t = a.period.spec.t
   const label = a.period.label
   const cap = label.charAt(0).toUpperCase() + label.slice(1)
@@ -251,12 +251,12 @@ function tramoLabel(cp: ComparePeriods): string {
   return `el mismo tramo de ${cp.previousLabel}`
 }
 
-function baselineLabel(a: Analysis): string {
+export function baselineLabel(a: Analysis): string {
   return tramoLabel(a.cp)
 }
 
 // "a el mismo tramo" -> "al mismo tramo"; "a agosto" se queda.
-function aLabel(label: string): string {
+export function aLabel(label: string): string {
   return label.startsWith('el ') ? `al ${label.slice(3)}` : `a ${label}`
 }
 
@@ -272,12 +272,12 @@ export function categoryMovers(a: Analysis): { rise: CategoryChange | null; fall
   return { rise, fall }
 }
 
-function dataWarnings(a: Analysis, only: 'bank' | 'all' = 'all'): Finding[] {
+export function dataWarnings(a: Analysis, only: 'bank' | 'all' = 'all'): Finding[] {
   const list = only === 'bank' ? a.dataQuality.warnings.filter((w) => w.startsWith('Hay una conexión')) : a.dataQuality.warnings
   return list.map((text) => ({ kind: 'warning' as const, text }))
 }
 
-function noData(a: Analysis): Finding[] | null {
+export function noData(a: Analysis): Finding[] | null {
   if (a.expenses.total === 0 && !a.hasPrevious) return [{ kind: 'warning', text: `No tengo gastos registrados ${a.period.label} para analizar.` }, ...dataWarnings(a, 'bank')]
   return null
 }
@@ -436,13 +436,18 @@ export function savingsTrendFindings(a: Analysis, premise: 'more' | 'less' | nul
 
 // "¿Qué gastos podríamos recortar?" — SOLO señala qué categorías REVISAR: variables o "quiero" primero,
 // nunca fijas, nunca una orden. No es asesoramiento financiero.
+// Qué categorías se ven "revisables": variables o no imprescindibles, nunca fijas. Primero lo "quiero"; a igual
+// clase, lo más alto. Lo usan el texto completo y el breve, para que digan siempre lo mismo.
+export function rankCutCandidates(a: Analysis, limit = 2): LeafCategory[] {
+  const candidates = a.leaf.filter((l) => l.fixed !== true && l.necessity !== 'debo' && l.amount > 0)
+  return [...candidates].sort((x, y) => Number(y.necessity === 'quiero') - Number(x.necessity === 'quiero') || y.amount - x.amount).slice(0, limit)
+}
+
 export function cutsFindings(a: Analysis): Finding[] {
   const empty = noData(a)
   if (empty) return empty
   const classified = a.leaf.some((l) => l.necessity !== null || l.fixed !== null)
-  const candidates = a.leaf.filter((l) => l.fixed !== true && l.necessity !== 'debo' && l.amount > 0)
-  // Primero lo "quiero"; a igual clase, lo más alto.
-  const ranked = [...candidates].sort((x, y) => Number(y.necessity === 'quiero') - Number(x.necessity === 'quiero') || y.amount - x.amount).slice(0, 2)
+  const ranked = rankCutCandidates(a)
   if (ranked.length === 0) return [{ kind: 'fact', text: `Con los datos de ${a.period.label} no veo categorías variables que revisar: casi todo es gasto fijo o necesario.` }]
   const total = round2(ranked.reduce((s, l) => s + l.amount, 0))
   const share = a.expenses.total > 0 ? Math.round((total / a.expenses.total) * 100) : 0

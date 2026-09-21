@@ -39,13 +39,14 @@ export type FinanceMetric =
   | 'changes'
   | 'savings_trend'
   | 'why_savings'
+  | 'why_cuts' // "¿por qué?" tras una sugerencia de dónde ajustar
   | 'cuts'
   | 'attention'
   | 'simpler'
   | 'category_focus'
 
 // Las que usa el motor de análisis (financeAnalysis) en vez de las cifras sueltas de la fase 1.
-export const ANALYSIS_METRICS: readonly FinanceMetric[] = ['analyze', 'where_money', 'top_increase', 'changes', 'savings_trend', 'why_savings', 'cuts', 'attention', 'simpler', 'category_focus']
+export const ANALYSIS_METRICS: readonly FinanceMetric[] = ['analyze', 'where_money', 'top_increase', 'changes', 'savings_trend', 'why_savings', 'why_cuts', 'cuts', 'attention', 'simpler', 'category_focus']
 
 export type AnalysisFocus = 'overview' | 'conclusions' | 'explain'
 
@@ -65,6 +66,9 @@ export interface FinanceQuery {
   premise: 'more' | 'less' | null
   // Para el análisis abierto: qué se pide (solo orienta el tono; no lleva texto de la persona).
   focus: AnalysisFocus | null
+  // Cómo se cuenta: 'brief' (por defecto: corto, natural, casi sin cifras) o 'full' (importes, diferencias,
+  // porcentajes y desglose). Solo cambia la PRESENTACIÓN; el cálculo es el mismo.
+  detail: 'brief' | 'full'
 }
 
 export type FinanceParse =
@@ -264,7 +268,7 @@ function focusOf(n: string): AnalysisFocus {
 }
 
 export function baseQuery(metric: FinanceMetric, over: Partial<FinanceQuery> = {}): FinanceQuery {
-  return { metric, period: null, target: null, product: null, full: false, baseline: null, premise: null, focus: null, ...over }
+  return { metric, period: null, target: null, product: null, full: false, baseline: null, premise: null, focus: null, detail: 'brief', ...over }
 }
 
 // Palabras que sobran en la frase del producto ("dónde compramos más barato el queso" -> "queso").
@@ -321,7 +325,7 @@ export function parseFinanceQuestion(text: string, today: Date): FinanceParse | 
     target = candidate
     uncertain = words.length > MAX_CANDIDATE_WORDS
   }
-  const premise = metric === 'savings_trend' || metric === 'why_savings' ? premiseOf(n) : null
+  const premise = metric === 'savings_trend' || metric === 'why_savings' || metric === 'why_changed' ? premiseOf(n) : null
   return {
     kind: 'query',
     query: baseQuery(metric, { period, target, full, baseline, premise, focus: metric === 'analyze' ? focusOf(n) : null }),
@@ -336,6 +340,9 @@ const BREAKDOWN = /^(?:y\s+)?(?:en que(?:\s+(?:lo\s+)?(?:hemos|habeis|has|he)?\s
 const ONLY = /^(?:y\s+)?(?:solo|solamente|unicamente|y solo)\s+(?:en\s+|de\s+|con\s+)?(.+)$/
 const AND_TARGET = /^y\s+(?:en\s+|de\s+|con\s+|a\s+)?(.+)$/
 const WHY = /^(?:y\s+)?por que(?:\s+(?:ha\s+pasado|es|ha\s+sido|pasa|ha\s+cambiado))?$/
+const DETAIL = /^(?:y\s+)?(?:(?:dame|dime|ensename|muestrame|quiero|me das|puedes darme|necesito)\s+)?(?:(?:las|los|el|mas)\s+)*(?:cifras|numeros|importes|datos|detalles?|detalle)(?:\s+(?:exactas?|completas?|por favor))?$|^(?:cuanto|cuantos euros|de cuanto)\s+(?:es\s+|son\s+|seria\s+|fue\s+|fueron\s+|suma\s+)?(?:exactamente|exacto|en concreto|en total|en euros)$|^exactamente cuanto$|^con (?:cifras|numeros)$|^(?:dame|dime) mas detalles?$/
+const ORDINAL = /^(?:y\s+)?(?:(?:cual|que) (?:es|seria|fue) )?(?:la|el) (primera|segunda|tercera|ultima|primero|segundo|tercero|ultimo)$/
+const ORDINAL_INDEX: Record<string, number> = { primera: 0, primero: 0, segunda: 1, segundo: 1, tercera: 2, tercero: 2, ultima: -1, ultimo: -1 }
 const WHICH_CATEGORY = /^(?:y\s+)?(?:en\s+)?que categoria(?:\s+(?:ha\s+sido|es|fue))?$/
 const SIMPLER =
   /^(?:explicamelo|explicamela|dimelo|dilo|explicalo|resumemelo|resumelo)(?:\s+(?:de forma|de manera|mas|un poco mas|algo mas))*\s*(?:sencill[oa]|facil|simple|claro|corto|breve|resumido)?$|^(?:mas sencillo|en sencillo|mas simple|mas facil|mas claro|mas corto|resumido)$/
@@ -350,14 +357,31 @@ function followUpTarget(raw: string): string | null {
   return filterCandidate(raw).candidate
 }
 
-export function parseFinanceFollowUp(text: string, previous: FinanceQuery, today: Date): FinanceQuery | null {
+// `items`: lo último que PEPA nombró por orden (categorías), para "¿y cuál es la segunda?".
+export function parseFinanceFollowUp(text: string, previous: FinanceQuery, today: Date, items: string[] = []): FinanceQuery | null {
   const n = withoutWakeWord(cleanFinanceText(text))
   if (!n) return null
   const prevIsAnalysis = isAnalysisMetric(previous.metric) || previous.metric === 'why_changed'
 
-  if (SIMPLER.test(n)) return { ...previous, metric: 'simpler' }
+  if (SIMPLER.test(n)) return { ...previous, metric: 'simpler', detail: 'brief' }
+
+  // "¿Y cuál es la segunda?": el elemento que PEPA nombró en esa posición, sin volver a empezar el análisis.
+  const ordinal = ORDINAL.exec(n)
+  if (ordinal && items.length > 0) {
+    const at = ORDINAL_INDEX[ordinal[1]]
+    const name = at === -1 ? items[items.length - 1] : items[at]
+    if (name) return { ...previous, metric: 'category_focus', target: name, detail: 'brief' }
+  }
+
+  // Nivel 2, bajo petición: "dame las cifras", "¿cuánto exactamente?", "enséñame los números"...
+  if (DETAIL.test(n)) {
+    if (prevIsAnalysis) return { ...previous, detail: 'full' }
+    if (previous.metric === 'spent' || previous.metric === 'income' || previous.metric === 'compare') return { ...previous, metric: 'top_categories', detail: 'full' }
+    return null
+  }
 
   if (WHY.test(n)) {
+    if (previous.metric === 'cuts' || previous.metric === 'why_cuts') return { ...previous, metric: 'why_cuts' }
     if (previous.metric === 'savings_trend' || previous.metric === 'why_savings') return { ...previous, metric: 'why_savings' }
     if (previous.metric === 'price_up' || previous.metric === 'price_down' || previous.metric === 'cheapest_store') return null
     return { ...previous, metric: 'why_changed', target: null }
@@ -365,7 +389,9 @@ export function parseFinanceFollowUp(text: string, previous: FinanceQuery, today
   if (WHICH_CATEGORY.test(n)) return { ...previous, metric: 'top_increase', target: null }
 
   if (BREAKDOWN.test(n) && (previous.metric === 'spent' || previous.metric === 'income' || previous.metric === 'compare' || previous.metric === 'top_categories' || prevIsAnalysis)) {
-    return { ...previous, metric: prevIsAnalysis && previous.metric !== 'category_focus' ? 'where_money' : 'top_categories' }
+    // Tras un análisis, "desglósamelo"/"¿en qué?" pide el detalle por categorías (con cifras).
+    if (previous.metric === 'cuts' || previous.metric === 'why_cuts') return { ...previous, metric: 'cuts', detail: 'full' }
+    return { ...previous, metric: prevIsAnalysis && previous.metric !== 'category_focus' ? 'where_money' : 'top_categories', detail: prevIsAnalysis ? 'full' : previous.detail }
   }
 
   // "¿Y comparado con agosto?": otro periodo de referencia.

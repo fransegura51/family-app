@@ -29,7 +29,7 @@ describe('requestFinanceAnalysis', () => {
     expect(out?.summary).toContain('{{expenses.total}}')
     const [name, body] = callAiFunction.mock.calls[0] as [string, { focus: string; facts: AnalysisFact[] }]
     expect(name).toBe('finance-analysis')
-    expect(Object.keys(body).sort()).toEqual(['facts', 'focus'])
+    expect(Object.keys(body).sort()).toEqual(['detail', 'facts', 'focus'])
     expect(body.facts.find((f) => f.ref === 'cat.1.name')!.value).toBe('Colegio de Persona A')
     expect(JSON.stringify(body)).not.toContain('Eric')
     // Los números no se tocan.

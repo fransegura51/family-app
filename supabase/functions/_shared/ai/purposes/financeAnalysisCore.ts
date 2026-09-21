@@ -38,6 +38,10 @@ export interface AiAnalysisOutput {
 
 export const MAX_FACTS = 90
 
+// Nivel de detalle pedido: breve (por defecto, conversacional, casi sin cifras) o completo.
+export const ANALYSIS_DETAILS = ['brief', 'full'] as const
+export type AnalysisDetail = (typeof ANALYSIS_DETAILS)[number]
+
 // Las referencias que son cifras (todo salvo los textos).
 export function numericRefsOf(facts: AnalysisFact[]): Set<string> {
   return new Set(facts.filter((f) => f.kind !== 'text').map((f) => f.ref))
@@ -91,13 +95,23 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 }
 
 // Lo que la IA devuelve. null = no válido (se descarta entero y PEPA contesta con código).
-// `numericRefs`: las referencias que son cifras (importes, porcentajes, contadores). Un resumen sin ninguna
-// cifra citada no aporta nada sobre lo que ya calcula el código: se rechaza y contesta el análisis de código.
-export function validateAnalysisOutput(raw: unknown, refs: Set<string>, numericRefs: Set<string> = new Set()): AiAnalysisOutput | null {
+// `numericRefs`: las referencias que son cifras (importes, porcentajes, contadores).
+//  - Modo COMPLETO: un resumen sin ninguna cifra citada no aporta nada sobre lo que ya calcula el código: se rechaza.
+//  - Modo BREVE (por defecto en la conversación): pocas cifras. El resumen lleva como mucho 2, cada hallazgo como
+//    mucho 1 (si no, se descarta), como mucho 2 hallazgos y 1 sugerencia sin cifras.
+export function validateAnalysisOutput(
+  raw: unknown,
+  refs: Set<string>,
+  opts: { numericRefs?: Set<string>; brief?: boolean } = {},
+): AiAnalysisOutput | null {
+  const numericRefs = opts.numericRefs ?? new Set<string>()
+  const brief = opts.brief === true
+  const numericTokens = (text: string) => tokensIn(text).filter((t) => numericRefs.has(t)).length
   const rec = asRecord(raw)
   if (!rec) return null
   if (!textIsSafe(rec.summary, refs, MAX_SUMMARY, 10)) return null
-  if (numericRefs.size > 0 && !tokensIn(rec.summary).some((t) => numericRefs.has(t))) return null
+  if (!brief && numericRefs.size > 0 && numericTokens(rec.summary) === 0) return null
+  if (brief && numericTokens(rec.summary) > 2) return null
 
   // Cada hallazgo y cada sugerencia se comprueba por separado: los que no valen se descartan (nunca se
   // enseñan) y el resto se aprovecha. La respuesta solo se rechaza entera si el resumen no es válido.
@@ -107,6 +121,7 @@ export function validateAnalysisOutput(raw: unknown, refs: Set<string>, numericR
     const f = asRecord(item)
     if (!f || typeof f.type !== 'string' || !(FINDING_TYPES as readonly string[]).includes(f.type)) continue
     if (!textIsSafe(f.title, refs, MAX_TITLE) || !textIsSafe(f.explanation, refs, MAX_EXPLANATION, 10)) continue
+    if (brief && numericTokens(f.explanation) > 1) continue
     // Las referencias de la evidencia pueden venir con llaves ("{{a.b}}"): se limpian y solo quedan las que existen.
     const evidence = (Array.isArray(f.evidence) ? f.evidence : [])
       .filter((e): e is string => typeof e === 'string')
@@ -118,9 +133,9 @@ export function validateAnalysisOutput(raw: unknown, refs: Set<string>, numericR
 
   const suggestions: string[] = []
   for (const item of Array.isArray(rec.suggestions) ? rec.suggestions.slice(0, 6) : []) {
-    if (textIsSafe(item, refs, MAX_SUGGESTION, 10) && REVIEW_WORDS.test(plain(item))) suggestions.push(item.trim())
+    if (textIsSafe(item, refs, MAX_SUGGESTION, 10) && REVIEW_WORDS.test(plain(item)) && (!brief || numericTokens(item) === 0)) suggestions.push(item.trim())
   }
-  return { summary: (rec.summary as string).trim(), findings: findings.slice(0, 4), suggestions: suggestions.slice(0, 2) }
+  return { summary: (rec.summary as string).trim(), findings: findings.slice(0, brief ? 2 : 4), suggestions: suggestions.slice(0, brief ? 1 : 2) }
 }
 
 const IBAN_RE = /\b[A-Za-z]{2}\d{2}[A-Za-z0-9]{10,30}\b/
@@ -129,7 +144,10 @@ const LONG_NUMBER_RE = /\d{9,}/
 
 // Lo que se acepta que llegue a la IA: SOLO hechos agregados con referencia. Se rechaza cualquier cosa que
 // parezca un IBAN, un correo o un identificador largo, aunque el cliente se equivocara y lo enviara.
-export function readAnalysisRequest(body: Record<string, unknown>): { ok: true; focus: AnalysisFocus; facts: AnalysisFact[] } | { ok: false; error: string } {
+export function readAnalysisRequest(
+  body: Record<string, unknown>,
+): { ok: true; focus: AnalysisFocus; detail: AnalysisDetail; facts: AnalysisFact[] } | { ok: false; error: string } {
+  const detail: AnalysisDetail = body.detail === 'full' ? 'full' : 'brief'
   const focus = typeof body.focus === 'string' && (ANALYSIS_FOCUSES as readonly string[]).includes(body.focus) ? (body.focus as AnalysisFocus) : null
   if (!focus) return { ok: false, error: 'invalid focus' }
   if (!Array.isArray(body.facts) || body.facts.length < 1 || body.facts.length > MAX_FACTS) return { ok: false, error: 'invalid facts' }
@@ -156,5 +174,5 @@ export function readAnalysisRequest(body: Record<string, unknown>): { ok: true; 
     seen.add(f.ref)
     facts.push({ ref: f.ref, label: f.label, value, kind: f.kind as FactKind })
   }
-  return { ok: true, focus, facts }
+  return { ok: true, focus, detail, facts }
 }

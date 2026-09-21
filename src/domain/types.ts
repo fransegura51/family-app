@@ -203,7 +203,9 @@ export interface Expense {
   familyId: string
   expenseDate: string
   amount: number
-  category: string
+  // NULL = categoría financiera todavía desconocida («Pendiente de clasificar»). Sigue siendo un gasto REAL: cuenta en los totales,
+  // pero no pertenece a ninguna categoría (ni «Otros»). Fase 6C.2A: la base ya lo admite; aún nada lo produce.
+  category: string | null
   store: string | null
   kind: ExpenseKind
   notes: string | null
@@ -426,7 +428,9 @@ export interface Receipt {
   totalAmount: number | null
   expenseId: string | null
   notes: string | null
-  category: string
+  // NULL = categoría financiera todavía desconocida («Pendiente de clasificar»); un ticket sin categoría sigue siendo válido
+  // (archivo, tienda, fecha, total y líneas no dependen de ella). Fase 6C.2A.
+  category: string | null
   purchasedByMemberId: string | null
 }
 

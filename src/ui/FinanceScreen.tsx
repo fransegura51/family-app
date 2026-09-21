@@ -2014,9 +2014,10 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
     // primeros apartados salen iguales varios días seguidos.
     const nonIncome = real.filter((e) => !e.isIncome)
     const categoryTotals = new Map<string, number>()
-    for (const e of nonIncome) categoryTotals.set(e.category, (categoryTotals.get(e.category) ?? 0) + e.amount)
+    // Un gasto pendiente (category NULL) cuenta en los totales, pero no se atribuye a ninguna categoría (Fase 6C.2B lo mostrará aparte).
+    for (const e of nonIncome) if (e.category != null) categoryTotals.set(e.category, (categoryTotals.get(e.category) ?? 0) + e.amount)
     const prevCategoryTotals = new Map<string, number>()
-    for (const e of prevReal.filter((e) => !e.isIncome)) prevCategoryTotals.set(e.category, (prevCategoryTotals.get(e.category) ?? 0) + e.amount)
+    for (const e of prevReal.filter((e) => !e.isIncome)) if (e.category != null) prevCategoryTotals.set(e.category, (prevCategoryTotals.get(e.category) ?? 0) + e.amount)
 
     let topCategoryCandidate: Conclusion | null = null
     if (categoryTotals.size > 0) {
@@ -2071,8 +2072,11 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
     if (nonIncome.length > 0) {
       const biggest = [...nonIncome].sort((a, b) => b.amount - a.amount)[0]
       biggestExpenseCandidate = {
-        text: `El gasto más alto del periodo ha sido ${biggest.category}${biggest.store ? ` en ${biggest.store}` : ''}: ${biggest.amount.toFixed(2)} € el ${biggest.expenseDate}.`,
-        filter: { label: `${biggest.category} — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, category: biggest.category },
+        text: `El gasto más alto del periodo ha sido${biggest.category ? ` ${biggest.category}` : ''}${biggest.store ? ` en ${biggest.store}` : ''}: ${biggest.amount.toFixed(2)} € el ${biggest.expenseDate}.`,
+        // Con categoría, se filtra por ella (como siempre); sin categoría (pendiente), por ese gasto concreto.
+        filter: biggest.category
+          ? { label: `${biggest.category} — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, category: biggest.category }
+          : { label: `Gasto más alto — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, expenseIds: [biggest.id] },
       }
     }
 
@@ -2555,7 +2559,7 @@ function CategoryDonutExplorer({
   const topSlices: BreakdownSlice[] = topLevel
     .map((c) => {
       const childNames = categories.filter((x) => x.parentId === c.id).map((x) => x.name)
-      const matched = expenses.filter((e) => e.category === c.name || childNames.includes(e.category))
+      const matched = expenses.filter((e) => e.category === c.name || (e.category != null && childNames.includes(e.category)))
       return {
         key: c.id,
         label: c.name,
@@ -3202,7 +3206,7 @@ function ExpensesTab({
       if (filter.from && e.expenseDate < filter.from) return false
       if (filter.to && e.expenseDate > filter.to) return false
       if (filter.category !== undefined && e.category !== filter.category) return false
-      if (filter.categoryGroup !== undefined && !filter.categoryGroup.includes(e.category)) return false
+      if (filter.categoryGroup !== undefined && (e.category == null || !filter.categoryGroup.includes(e.category))) return false
       if (filter.expenseIds !== undefined && !filter.expenseIds.includes(e.id)) return false
       if (filter.store !== undefined && e.store !== filter.store) return false
       if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
@@ -3656,7 +3660,8 @@ function EditExpenseInline({
 }) {
   const [date, setDate] = useState(expense.expenseDate)
   const [amount, setAmount] = useState(String(expense.amount))
-  const [category, setCategory] = useState(expense.category)
+  // NULL (pendiente de clasificar) se conserva tal cual mientras no se elija una categoría: abrir y guardar no inventa ninguna.
+  const [category, setCategory] = useState<string | null>(expense.category)
   const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
   const [store, setStore] = useState(expense.store ?? '')
   const [tagId, setTagId] = useState(expense.tagId ?? '')
@@ -3731,7 +3736,7 @@ function EditExpenseInline({
       {expense.isIncome ? (
         <label>
           Categoría
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <select value={category ?? ''} onChange={(e) => setCategory(e.target.value)}>
             {incomeCategories.length === 0 && <option value="Ingreso">Ingreso</option>}
             {incomeCategories.map((c) => (
               <option key={c.id} value={c.name}>
@@ -3743,7 +3748,7 @@ function EditExpenseInline({
       ) : (
         <label>
           Categoría
-          <CategorySelect value={category} onChange={setCategory} categories={categories} />
+          <CategorySelect value={category ?? ''} onChange={setCategory} categories={categories} />
         </label>
       )}
       <div className="inline-fields">
@@ -5176,7 +5181,7 @@ function ReceiptRow({
         <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
           <span>{receipt.receiptDate}</span>
           {receipt.totalAmount != null && <span> · {receipt.totalAmount.toFixed(2)} €</span>}
-          <span> · {receipt.category}</span>
+          {receipt.category && <span> · {receipt.category}</span>}
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
           {/* Petición real: "que marque con un símbolo 'falta ticket'
               los que no se haya subido el ticket" — este gasto se sabe
@@ -5404,7 +5409,9 @@ function ReceiptForm({
   const [store, setStore] = useState(receipt?.store ?? '')
   const [receiptDate, setReceiptDate] = useState(receipt?.receiptDate ?? toDateStr(new Date()))
   const [totalAmount, setTotalAmount] = useState(receipt?.totalAmount != null ? String(receipt.totalAmount) : '')
-  const [category, setCategory] = useState(receipt?.category ?? 'Alimentación')
+  // Un ticket nuevo parte de «Alimentación» (preselección visible, como siempre). Uno existente sin categoría (NULL, pendiente) se abre
+  // SIN categoría: abrirlo o guardarlo no lo convierte en Alimentación.
+  const [category, setCategory] = useState(receipt ? (receipt.category ?? '') : 'Alimentación')
   const [purchasedByMemberId, setPurchasedByMemberId] = useState(receipt?.purchasedByMemberId ?? '')
   const [lines, setLines] = useState<DraftLine[]>([])
   // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
@@ -5571,7 +5578,7 @@ function ReceiptForm({
           store,
           receiptDate,
           totalAmount: totalAmount ? Number(totalAmount) : null,
-          category,
+          category: category || null,
           purchasedByMemberId: purchasedByMemberId || null,
         })
         await saveLines(receiptId)
@@ -5587,7 +5594,7 @@ function ReceiptForm({
           store,
           receiptDate,
           totalAmount: totalAmount ? Number(totalAmount) : null,
-          category,
+          category: category || null,
           purchasedByMemberId: purchasedByMemberId || null,
         })
         // Se sustituyen todas las líneas por las editadas, en vez de
@@ -6419,7 +6426,8 @@ export function BudgetsTab({
   const splits: ExpenseSplit[] = []
   for (const e of monthRealExpenses) {
     const receipt = receiptByExpenseId.get(e.id)
-    const isTicketNonFood = receipt != null && !isFoodCategory(receipt.category, categories)
+    // Un ticket SIN categoría (NULL, pendiente) no es «no alimentación»: simplemente no se sabe (Fase 6C.2B decidirá cómo mostrarlo).
+    const isTicketNonFood = receipt != null && receipt.category != null && !isFoodCategory(receipt.category, categories)
     const baseIsFood = isFoodCategory(e.category, categories)
     if (!baseIsFood && !isComprasFamiliaCategory(e.category, categories) && !isTicketNonFood) continue
     const store = canonicalStoreName(e.store, knownStores)
@@ -7349,6 +7357,7 @@ function BudgetsOverview({
   const byCategoryFlat = useMemo(() => {
     const map = new Map<string, number>()
     for (const e of inRange.filter((e) => !e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, allCategories))) {
+      if (e.category == null) continue // pendiente: cuenta en los totales, pero no en el detalle por categoría (Fase 6C.2B)
       map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1])

@@ -278,7 +278,7 @@ export function briefAttention(a: Analysis): BriefAnswer {
 
 // Un solo bloque de categoría ("¿y solo alimentación?", "¿y cuál es la segunda?").
 export function briefCategoryFocus(a: Analysis, name: string, data: FinanceData): BriefAnswer {
-  const under = (e: { category: string }) => e.category === name || categoryParentName(e.category, data.categories) === name
+  const under = (e: { category: string | null }) => e.category === name || categoryParentName(e.category, data.categories) === name
   const nowRows = spendingRows(data, a.cp.current.from, a.cp.current.to).filter(under)
   const prevRows = spendingRows(data, a.cp.previous.from, a.cp.previous.to).filter(under)
   const amount = sum(nowRows)
@@ -292,7 +292,7 @@ export function briefCategoryFocus(a: Analysis, name: string, data: FinanceData)
     parts.push(`En ${name} ${a.period.ongoing ? 'lleváis' : 'habéis gastado'} ${roughEuros(amount)}, pero no tengo periodo anterior con el que compararlo.`)
   }
   const inside = new Map<string, number>()
-  for (const e of nowRows) inside.set(e.category, (inside.get(e.category) ?? 0) + e.amount)
+  for (const e of nowRows) if (e.category != null) inside.set(e.category, (inside.get(e.category) ?? 0) + e.amount)
   const top = [...inside.entries()].sort((x, y) => y[1] - x[1])[0]
   if (inside.size > 1 && top) parts.push(`Lo que más pesa dentro es ${top[0]}.`)
   parts.push(OFFER_FIGURES + bankNote(a))

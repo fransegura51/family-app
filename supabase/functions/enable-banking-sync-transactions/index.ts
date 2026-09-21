@@ -339,7 +339,9 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
         .eq("family_id", familyId)
         .in("source", ["banco", "ticket_banco"])
         .eq("is_income", false)
-        .neq("category", "Cobro anulado")
+        // Null-safe: en SQL «NULL <> 'x'» no es verdadero, así que un cargo SIN categoría (pendiente de clasificar) se perdería como
+        // candidato a original de una anulación. Hoy este sync no produce categorías NULL; se prepara el consumidor (Fase 6C.2A).
+        .or("category.is.null,category.neq.Cobro anulado")
         .gte("expense_date", from.toISOString().slice(0, 10))
         .lte("expense_date", bt.transaction_date as string)
 

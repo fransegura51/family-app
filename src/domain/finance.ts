@@ -41,7 +41,9 @@ export function budgetPeriodRange(budget: Pick<Budget, 'periodType' | 'periodSta
 // documento maestro). "Es de Alimentación" ahora se resuelve por el
 // propio árbol: la categoría "Alimentación" en sí, o cualquiera de sus
 // subcategorías reales (Supermercado, Restaurantes...).
-export function isFoodCategory(category: string, categories: BudgetCategory[]): boolean {
+// (category NULL = pendiente de clasificar: no pertenece a ninguna categoría, así que nunca es de Alimentación.)
+export function isFoodCategory(category: string | null, categories: BudgetCategory[]): boolean {
+  if (category == null) return false
   if (category === 'Alimentación') return true
   const cat = categories.find((c) => c.name === category)
   if (!cat?.parentId) return false
@@ -55,7 +57,8 @@ export function isFoodCategory(category: string, categories: BudgetCategory[]): 
 // mano bajo "Compras y familia" (Ropa, Niños, Casa y jardín,
 // Tecnología, Mascotas, Regalos...) cuenta igual, aunque no tenga
 // ningún ticket escaneado detrás.
-export function isComprasFamiliaCategory(category: string, categories: BudgetCategory[]): boolean {
+export function isComprasFamiliaCategory(category: string | null, categories: BudgetCategory[]): boolean {
+  if (category == null) return false
   if (category === 'Compras y familia') return true
   const cat = categories.find((c) => c.name === category)
   if (!cat?.parentId) return false
@@ -67,7 +70,8 @@ export function isComprasFamiliaCategory(category: string, categories: BudgetCat
 // isIncome=true (el banco la apunta como cualquier otro movimiento),
 // pero desde el punto de vista de "dinero que entra" tiene que
 // aparecer igual al filtrar por Ingresos en Banco.
-export function isInternalTransferCategory(category: string, categories: BudgetCategory[]): boolean {
+export function isInternalTransferCategory(category: string | null, categories: BudgetCategory[]): boolean {
+  if (category == null) return false
   if (category === 'Movimientos internos') return true
   const cat = categories.find((c) => c.name === category)
   if (!cat?.parentId) return false
@@ -85,7 +89,8 @@ export interface CategoryClassification {
   isFixed: boolean | null
 }
 
-export function resolveCategoryClassification(categoryName: string, categories: BudgetCategory[]): CategoryClassification {
+export function resolveCategoryClassification(categoryName: string | null, categories: BudgetCategory[]): CategoryClassification {
+  if (categoryName == null) return { necessity: null, isFixed: null }
   const cat = categories.find((c) => c.name === categoryName)
   if (!cat) return { necessity: null, isFixed: null }
   const parent = cat.parentId ? categories.find((c) => c.id === cat.parentId) : undefined
@@ -246,7 +251,7 @@ export function budgetSpent(
     const budgetCat = cats.find((c) => c.name === budget.category)
     const childNames = budgetCat ? cats.filter((c) => c.parentId === budgetCat.id).map((c) => c.name) : []
     return periodExpenses
-      .filter((e) => e.category === budget.category || childNames.includes(e.category))
+      .filter((e) => e.category === budget.category || (e.category != null && childNames.includes(e.category)))
       .reduce((sum, e) => sum + e.amount, 0)
   }
   if (!context) {
@@ -263,7 +268,7 @@ export function budgetSpent(
   // aparte (como se hacía) contaba dos veces cada euro de comida en el
   // gastado de Presupuesto Generales — bug real destapado por
   // finance.test.ts al preparar los tests.
-  const inOwnGroup = (e: Expense) => categories.some((c) => c.budgetGroup === budget.budgetGroup && c.name === e.category)
+  const inOwnGroup = (e: Expense) => e.category != null && categories.some((c) => c.budgetGroup === budget.budgetGroup && c.name === e.category)
   return periodExpenses.filter((e) => inOwnGroup(e) || isFood(e)).reduce((sum, e) => sum + e.amount, 0)
 }
 

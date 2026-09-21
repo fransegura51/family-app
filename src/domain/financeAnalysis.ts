@@ -70,7 +70,7 @@ export interface Analysis {
   fixedVariable: { fixed: number; variable: number }
   // Solo se usa en local: nunca viaja a la IA.
   topStore: { name: string; count: number; amount: number } | null
-  biggestExpense: { category: string; amount: number; date: string } | null
+  biggestExpense: { category: string | null; amount: number; date: string } | null
   priceAnalysis: { available: boolean; compared: number; risen: number; fallen: number }
   purchaseChange: { available: boolean; priceEffect: number; quantityEffect: number; newProducts: number; removedProducts: number; basketBefore: number; basketNow: number }
   dataQuality: { bankStale: boolean; foodTicketCoverage: number | null; warnings: string[] }
@@ -88,13 +88,16 @@ function round2(n: number): number {
 
 function leafTotals(rows: Expense[]): Map<string, number> {
   const by = new Map<string, number>()
-  for (const e of rows) by.set(e.category, (by.get(e.category) ?? 0) + e.amount)
+  // Un gasto SIN categoría (pendiente de clasificar, NULL) sigue contando en todos los totales, pero no se atribuye a ninguna categoría
+  // (ni «Otros»): el reparto por categorías lo omite. Mostrarlo aparte es la Fase 6C.2B; hasta entonces ningún productor lo genera.
+  for (const e of rows) if (e.category != null) by.set(e.category, (by.get(e.category) ?? 0) + e.amount)
   return by
 }
 
 function topLevelTotals(rows: Expense[], data: FinanceData): Map<string, number> {
   const by = new Map<string, number>()
   for (const e of rows) {
+    if (e.category == null) continue // pendiente: fuera del reparto por categorías (ver leafTotals)
     const key = categoryParentName(e.category, data.categories) ?? e.category
     by.set(key, (by.get(key) ?? 0) + e.amount)
   }
@@ -471,7 +474,7 @@ export function attentionFindings(a: Analysis): Finding[] {
   if (rise) out.push({ kind: 'comparison', text: `${rise.name} ha subido ${formatEuros(rise.difference)} respecto ${aLabel(baselineLabel(a))} (de ${formatEuros(rise.previous)} a ${formatEuros(rise.amount)}).` })
   if (fall) out.push({ kind: 'comparison', text: `${fall.name} ha bajado ${formatEuros(Math.abs(fall.difference))} respecto ${aLabel(baselineLabel(a))}.` })
   if (a.newCategories.length > 0) out.push({ kind: 'fact', text: `Aparece gasto en ${a.newCategories.slice(0, 2).join(' y ')} que no había en el periodo anterior.` })
-  if (a.biggestExpense) out.push({ kind: 'fact', text: `El gasto individual más alto ha sido de ${formatEuros(a.biggestExpense.amount)} en ${a.biggestExpense.category}.` })
+  if (a.biggestExpense) out.push({ kind: 'fact', text: `El gasto individual más alto ha sido de ${formatEuros(a.biggestExpense.amount)}${a.biggestExpense.category ? ` en ${a.biggestExpense.category}` : ''}.` })
   if (a.necessity.quieroShare !== null) out.push({ kind: 'fact', text: `Un ${Math.round(a.necessity.quieroShare)} % del gasto (${formatEuros(a.necessity.quiero)}) está en categorías marcadas como "quiero" (no esenciales).` })
   if (a.topStore) out.push({ kind: 'fact', text: `${a.topStore.name} es el comercio más repetido: ${a.topStore.count} compras.` })
   if (out.length === 0) return [{ kind: 'fact', text: `Con los datos de ${a.period.label} no destaca nada especial: ningún cambio de más de ${formatEuros(MOVER_MIN_EUR)} entre categorías.` }, ...dataWarnings(a, 'bank')]

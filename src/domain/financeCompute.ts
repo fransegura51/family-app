@@ -98,8 +98,9 @@ function stem(word: string): string {
   return word.length > 4 && word.endsWith('es') ? word.slice(0, -2) : word.length > 3 && word.endsWith('s') ? word.slice(0, -1) : word
 }
 
-function words(text: string): string[] {
-  return normalize(text)
+// Acepta null/undefined (p. ej. una categoría pendiente de clasificar): sin texto no hay palabras, nunca una excepción.
+function words(text: string | null | undefined): string[] {
+  return normalize(text ?? '')
     .replace(/[^a-z0-9ñ]+/g, ' ')
     .split(' ')
     .filter((w) => w.length > 1)
@@ -125,7 +126,7 @@ function storeMatches(store: string | null, target: string): boolean {
 // ¿El movimiento "habla" de eso? Mira la categoría, el comercio y el texto del movimiento, por palabras enteras.
 export function conceptMatches(e: Pick<Expense, 'category' | 'store' | 'notes'>, stems: string[]): boolean {
   if (stems.length === 0) return false
-  const have = new Set([...words(e.category), ...words(e.store ?? ''), ...words(e.notes ?? '')].map(stem))
+  const have = new Set([...words(e.category ?? ''), ...words(e.store ?? ''), ...words(e.notes ?? '')].map(stem))
   return stems.every((w) => have.has(w))
 }
 
@@ -172,14 +173,16 @@ export function resolveTarget(target: string, data: Pick<FinanceData, 'categorie
   return { kind: 'none' }
 }
 
-export function categoryParentName(category: string, categories: BudgetCategory[]): string | null {
+export function categoryParentName(category: string | null, categories: BudgetCategory[]): string | null {
+  if (category == null) return null
   const cat = categories.find((c) => c.name === category)
   if (!cat?.parentId) return null
   return categories.find((c) => c.id === cat.parentId)?.name ?? null
 }
 
 // Misma regla que isFoodCategory (la categoría o una hija suya), para cualquier categoría.
-export function isUnderCategory(expenseCategory: string, name: string, categories: BudgetCategory[]): boolean {
+export function isUnderCategory(expenseCategory: string | null, name: string, categories: BudgetCategory[]): boolean {
+  if (expenseCategory == null) return false // pendiente de clasificar: no está en ninguna categoría
   if (expenseCategory === name) return true
   return categoryParentName(expenseCategory, categories) === name
 }
@@ -215,6 +218,7 @@ export function totalIncome(data: FinanceData, from: string, to: string): number
 export function groupSpending(rows: Expense[], data: FinanceData, category?: string): { name: string; amount: number }[] {
   const by = new Map<string, number>()
   for (const e of rows) {
+    if (e.category == null) continue // pendiente (NULL): sigue en los totales, pero no se atribuye a una categoría; lo muestra la 6C.2B
     let key = e.category
     if (!category) key = categoryParentName(e.category, data.categories) ?? e.category
     by.set(key, (by.get(key) ?? 0) + e.amount)

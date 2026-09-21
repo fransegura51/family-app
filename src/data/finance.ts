@@ -151,7 +151,7 @@ export async function updateExpense(
   patch: {
     date?: string
     amount?: number
-    category?: string
+    category?: string | null
     store?: string
     kind?: ExpenseKind
     isIncome?: boolean

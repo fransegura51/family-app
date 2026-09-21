@@ -58,7 +58,8 @@ export async function uploadReceipt(input: {
   store: string
   receiptDate: string
   totalAmount: number | null
-  category: string
+  // null = categoría todavía desconocida (pendiente de clasificar): el ticket es igualmente válido. Nunca se sustituye por una inventada.
+  category: string | null
   purchasedByMemberId: string | null
 }): Promise<string> {
   const familyId = await currentFamilyId()
@@ -101,7 +102,8 @@ export async function uploadReceipt(input: {
       if (!alreadyLinked) {
         const { error: updateExpenseError } = await supabase
           .from('expenses')
-          .update({ source: 'ticket_banco', category: input.category, store: input.store || null })
+          // Sin categoría en el ticket (NULL) no se pisa la que ya tenga el gasto del banco.
+          .update({ source: 'ticket_banco', ...(input.category != null ? { category: input.category } : {}), store: input.store || null })
           .eq('id', match.id)
         if (updateExpenseError) throw updateExpenseError
         expenseId = match.id
@@ -156,7 +158,7 @@ export async function updateReceipt(
     store: string
     receiptDate: string
     totalAmount: number | null
-    category: string
+    category: string | null
     purchasedByMemberId: string | null
   },
 ): Promise<void> {
@@ -176,7 +178,8 @@ export async function updateReceipt(
         .update({
           expense_date: input.receiptDate,
           amount: input.totalAmount,
-          category: input.category,
+          // Sin categoría en el ticket (NULL) no se borra la categoría real que pueda tener su gasto.
+          ...(input.category != null ? { category: input.category } : {}),
           store: input.store || null,
         })
         .eq('id', expenseId)

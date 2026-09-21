@@ -28,6 +28,7 @@ import {
   type Finding,
 } from '@/domain/financeAnalysis'
 import { composeAiAnalysis, type AiAnalysisOutput } from '@/domain/financeAnalysisAi'
+import { budgetLeft } from '@/domain/financeBudget'
 import {
   briefAttention,
   briefCategoryFocus,
@@ -69,6 +70,12 @@ function analysisNeedsIa(a: { expenses: { total: number } }): boolean {
 }
 
 export async function runFinanceQuery(query: FinanceQuery, data: FinanceData, today: Date, ai?: AiAnalyzer): Promise<FinanceRun> {
+  // Presupuestos: cuánto queda de los del mes (lo calcula el código con la misma regla que la pantalla).
+  if (query.metric === 'budget_left') {
+    const left = budgetLeft(query.target, data)
+    return { text: left.text, query, usedAi: false, fn: 'finance.budget_left', items: left.items }
+  }
+
   const brief = query.detail !== 'full'
   const isAnalysis = ANALYSIS_METRICS.includes(query.metric)
 

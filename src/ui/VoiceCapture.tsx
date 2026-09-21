@@ -39,8 +39,9 @@ import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 import { showToast } from '@/state/toast'
 import { handleKitchenText, ingredientsFlowFor, type KitchenOutcome } from '@/pepa/kitchen'
-import { handleDialogReply, pendingDialogCount } from '@/pepa/dialog'
+import { handleDialogReply, pendingBlockingCount, pendingDialogCount } from '@/pepa/dialog'
 import { forgetFinanceContext, handleFinanceText } from '@/pepa/finance'
+import { forgetBudgetActions, handleBudgetAction } from '@/pepa/financeActions'
 import { NOT_UNDERSTOOD, runTalk, type TalkDeps, type TalkOutcome } from '@/pepa/talk'
 import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
@@ -684,8 +685,12 @@ async function handleCalendarEntry(text: string): Promise<string> {
 const talkDeps: TalkDeps = {
   today: () => new Date(),
   kitchen: (text) => handleKitchenText(text, 'create', new Date(), { recipeRequests: true, conversation: true }),
+  financeAction: (text) => handleBudgetAction(text),
   finance: (text) => handleFinanceText(text),
-  forgetFinance: forgetFinanceContext,
+  forgetFinance: () => {
+    forgetFinanceContext()
+    forgetBudgetActions()
+  },
   storeNames: async () => (await listShoppingStores()).map((s) => s.name),
   members: () => listFamilyMembers(),
   answerCalendar: async (text) => {
@@ -840,14 +845,14 @@ export function VoiceCapture() {
     const reply = await handleDialogReply(text)
     if (reply.handled) return { spoken: reply.message ?? '', closedPending: false }
 
-    const hadPending = pendingDialogCount() > 0
+    const hadPending = pendingBlockingCount() > 0
     const outcome = await runTalk(text, talkDeps)
     // Tarea nueva de verdad (una pregunta contestada, otra tarjeta...): lo que estaba pendiente
     // se cierra sin guardar, para que un "sí" posterior no confirme algo ya olvidado. Si Pepa
     // no ha entendido la frase, lo pendiente se queda como está.
     let spoken = outcome.text
     let closedPending = false
-    if (hadPending && outcome.kind === 'answer' && outcome.text !== NOT_UNDERSTOOD) {
+    if (hadPending && outcome.kind === 'answer' && !outcome.keepPending && outcome.text !== NOT_UNDERSTOOD) {
       closeTalkDialogs()
       forgetRecentRecipes()
       closedPending = true

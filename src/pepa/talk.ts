@@ -24,7 +24,9 @@ import type { Recipe } from '@/domain/types'
 import type { RecipeRequest } from '@/pepa/recentContext'
 
 export type TalkOutcome =
-  | { kind: 'answer'; text: string }
+  // keepPending: la respuesta aclara algo sobre lo que hay abierto (p. ej. un importe dudoso ante la tarjeta de
+  // presupuesto) y NO lo cierra.
+  | { kind: 'answer'; text: string; keepPending?: boolean }
   | { kind: 'proposal'; text: string; proposal: ActionProposal }
   | { kind: 'focus-store'; store: string; text: string }
   // Receta que no existe: ofrece prepararla (la IA solo se llama si la persona acepta).
@@ -44,6 +46,8 @@ export interface AiQuestion {
 export interface TalkDeps {
   today(): Date
   kitchen(text: string): Promise<KitchenOutcome | null>
+  // Economía, presupuestos: prepara (nunca guarda) una tarjeta de confirmación o hace una pregunta. null = no es de eso.
+  financeAction?(text: string): Promise<TalkOutcome | null>
   // Economía (solo consulta): devuelve la respuesta, o null si la frase no es de Economía.
   finance?(text: string): Promise<string | null>
   forgetFinance?(): void
@@ -157,6 +161,12 @@ async function askWithAi(text: string, deps: TalkDeps, today: Date): Promise<Tal
 
 export async function runTalk(text: string, deps: TalkDeps): Promise<TalkOutcome> {
   const today = deps.today()
+
+  // Presupuestos por voz (preparar, con confirmación) antes que las consultas: son órdenes, no preguntas.
+  if (deps.financeAction) {
+    const action = await deps.financeAction(text)
+    if (action) return action
+  }
 
   // Economía primero: sus preguntas ("cuánto hemos gastado en Mercadona") llevan palabras que el
   // router de compra/calendario confundiría. Si no es de Economía, su contexto corto se olvida.

@@ -7,7 +7,7 @@
 import { NUMBER_PATTERN, servingsFrom } from '@/domain/kitchenQuery'
 import { normalize } from '@/domain/voiceQuery'
 
-export type DialogKind = 'action-card' | 'recipe-offer' | 'recipe-generating' | 'recipe-draft' | 'recipe-edit' | 'recipe-saved' | 'store-question'
+export type DialogKind = 'action-card' | 'recipe-offer' | 'recipe-generating' | 'recipe-draft' | 'recipe-edit' | 'recipe-saved' | 'store-question' | 'finance-clarify'
 
 export type ReplyIntent =
   | { type: 'yes' }

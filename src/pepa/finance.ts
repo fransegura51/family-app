@@ -5,8 +5,8 @@
 // se recuerda ÚNICAMENTE la última consulta estructurada (métrica, periodo, filtro), en memoria del
 // navegador y solo 10 minutos. Se borra al pasar a otra tarea. No se guarda ni se envía a ningún sitio.
 import { listBankConnections } from '@/data/bank'
-import { getFinanceMonthStartDay } from '@/data/family'
-import { listBudgetCategories, listExpenses } from '@/data/finance'
+import { getAccountsMode, getFinanceMonthStartDay } from '@/data/family'
+import { listBudgetCategories, listBudgets, listExpenses } from '@/data/finance'
 import { listAllProductPrices, listProducts } from '@/data/products'
 import { listReceipts } from '@/data/receipts'
 import { listShoppingStores } from '@/data/shoppingStores'
@@ -21,7 +21,7 @@ import type { FinanceData } from '@/domain/financeCompute'
 import { ANALYSIS_METRICS, parseFinanceFollowUp, parseFinanceQuestion, type FinanceQuery } from '@/domain/financeQuery'
 
 export const FINANCE_WRITE_REFUSED =
-  'Economía es solo de consulta desde 💬 Hablar con PEPA por ahora: no puedo borrar, cambiar ni crear gastos, ingresos, presupuestos, categorías ni movimientos. Puedes hacerlo tú desde la pantalla de Economía.'
+  'Desde 💬 Hablar con PEPA solo puedo preparar presupuestos (con tu confirmación). No puedo borrar ni cambiar gastos, ingresos, categorías ni movimientos, y nunca hago transferencias ni pagos. Puedes hacerlo tú desde la pantalla de Economía.'
 export const FINANCE_NOT_UNDERSTOOD =
   'No he entendido esa consulta de Economía. Prueba, por ejemplo: «cuánto hemos gastado este mes», «en qué hemos gastado más», «estamos gastando más que el mes pasado» o «qué productos han subido de precio».'
 export const FINANCE_NO_ACCESS = 'Economía no está disponible para tu perfil.'
@@ -32,6 +32,11 @@ let context: { query: FinanceQuery; at: number; items: string[] } | null = null
 
 export function forgetFinanceContext(): void {
   context = null
+}
+
+// Tras guardar un presupuesto, "¿cuánto me queda?" se refiere a él.
+export function rememberFinanceQuery(query: FinanceQuery): void {
+  context = { query, at: Date.now(), items: [] }
 }
 
 export function financeContextQuery(): FinanceQuery | null {
@@ -45,7 +50,7 @@ function contextItems(): string[] {
 
 export interface FinanceDeps {
   canAccess(): Promise<boolean>
-  load(needTickets: boolean): Promise<FinanceData>
+  load(needTickets: boolean, needBudgets?: boolean): Promise<FinanceData>
   // Solo el análisis abierto la usa (hechos agregados -> respuesta validada, o null).
   ai?: AiAnalyzer
   // Solo cuando las reglas no entienden la frase con seguridad: la IA la ESTRUCTURA (intención, periodo, filtro).
@@ -59,7 +64,7 @@ export interface FinanceDeps {
 // está entre ellas, Economía no se enseña (ni se consulta por voz).
 // Un fallo de red o de sesión NO es "sin acceso": se lanza y PEPA dice que no ha podido consultar. Solo un
 // perfil leído correctamente con las secciones limitadas devuelve false.
-async function canAccessFinance(): Promise<boolean> {
+export async function canAccessFinance(): Promise<boolean> {
   const { data: userResult, error: userError } = await supabase.auth.getUser()
   if (userError || !userResult.user) throw new Error('sin sesión')
   const { data, error } = await supabase.from('profiles').select('allowed_sections').eq('id', userResult.user.id).maybeSingle()
@@ -68,7 +73,7 @@ async function canAccessFinance(): Promise<boolean> {
   return sections == null || sections.includes('dinero')
 }
 
-async function loadFinanceData(needTickets: boolean): Promise<FinanceData> {
+async function loadFinanceData(needTickets: boolean, needBudgets = false): Promise<FinanceData> {
   const [expenses, categories, monthStartDay, stores, connections] = await Promise.all([
     listExpenses(),
     listBudgetCategories(),
@@ -77,8 +82,11 @@ async function loadFinanceData(needTickets: boolean): Promise<FinanceData> {
     listBankConnections().catch(() => []),
   ])
   const [prices, products, receipts] = needTickets ? await Promise.all([listAllProductPrices(), listProducts(), listReceipts()]) : [[], [], []]
+  const [budgets, accountsMode] = needBudgets ? await Promise.all([listBudgets(), getAccountsMode()]) : [undefined, undefined]
   const today = new Date().toISOString().slice(0, 10)
   return {
+    budgets,
+    accountsMode,
     expenses,
     categories,
     receipts,
@@ -135,7 +143,7 @@ export async function handleFinanceText(text: string, today: Date = new Date(), 
 
   try {
     if (!(await deps.canAccess())) return FINANCE_NO_ACCESS
-    const data = await deps.load(NEEDS_TICKETS.has(query.metric))
+    const data = await deps.load(NEEDS_TICKETS.has(query.metric), query.metric === 'budget_left')
     const run = await runFinanceQuery(query, data, today, deps.ai)
     // El contexto recuerda la consulta, salvo "explícamelo más sencillo": eso reformula, no cambia de tema.
     if (query.metric !== 'simpler') context = { query: run.query, at: Date.now(), items: run.items ?? contextItems() }

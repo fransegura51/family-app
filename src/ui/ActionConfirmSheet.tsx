@@ -61,13 +61,14 @@ export function ActionConfirmSheet({
     if (!listening) return undefined
     return registerDialog(() => ({
       kind: 'action-card',
+      actionId: proposal.actionId,
       confirm: () => latest.current.confirmNow(),
       cancel: () => {
         latest.current.onCancel()
         return 'Vale, no lo guardo.'
       },
     }))
-  }, [listening])
+  }, [listening, proposal.actionId])
 
   return (
     <div className="modal-overlay action-confirm-overlay" onClick={busy ? undefined : onCancel}>
@@ -97,6 +98,19 @@ export function ActionConfirmSheet({
               ))}
             </div>
           </div>
+        ))}
+
+        {view.fields?.map((field) => (
+          <label key={field.id} className="action-confirm-choice" style={{ display: 'block' }}>
+            <span className="muted">{field.label}</span>
+            <input
+              type="text"
+              inputMode={field.inputMode}
+              value={selection.values?.[field.id] ?? ''}
+              onChange={(e) => setSelection((prev) => ({ ...prev, values: { ...prev.values, [field.id]: e.target.value } }))}
+              disabled={busy}
+            />
+          </label>
         ))}
 
         {view.checks.length > 0 && (

@@ -15,6 +15,9 @@ export type { DialogKind }
 
 export interface DialogController {
   kind: DialogKind
+  // Solo las tarjetas de acción: cuál es (p. ej. 'budget.set'), para que un ajuste hablado ("mejor 250") solo
+  // toque SU tarjeta.
+  actionId?: string
   // Tiendas REALES de la familia, para reconocer una tienda dicha en voz alta.
   stores?: string[]
   // Ejecutan lo mismo que el botón correspondiente y devuelven el mensaje a decir
@@ -66,6 +69,22 @@ export function pendingDialogCount(): number {
   return [...registry.values()].filter((get) => get() !== null).length
 }
 
+// Lo pendiente que se cierra al empezar otra tarea: todo salvo una pregunta de aclaración de Economía, que
+// se responde con la frase siguiente ("sí", "300"...), no se abandona con ella.
+export function pendingBlockingCount(): number {
+  return [...registry.values()].filter((get) => {
+    const c = get()
+    return c !== null && c.kind !== 'finance-clarify'
+  }).length
+}
+
+export function pendingActionIds(): string[] {
+  return [...registry.values()]
+    .map((get) => get())
+    .filter((c): c is DialogController => c !== null && c.kind === 'action-card' && !!c.actionId)
+    .map((c) => c.actionId as string)
+}
+
 const NOTHING_PENDING = 'No tengo nada pendiente que confirmar.'
 const SEVERAL_PENDING = 'Tengo varias cosas pendientes y no quiero equivocarme: ciérralas o elige con los botones y luego me lo dices.'
 const BUSY = 'Un momento, sigo preparándolo.'
@@ -92,6 +111,8 @@ function clarification(controller: DialogController): string {
       return '¿Quieres añadir los ingredientes a la lista de la compra? Di «sí» o «no».'
     case 'store-question':
       return `¿En qué tienda?${storesText(controller.stores)}`
+    case 'finance-clarify':
+      return 'Te he hecho una pregunta sobre el presupuesto. Contéstame o di «cancela».'
   }
 }
 
@@ -144,6 +165,9 @@ async function apply(controller: DialogController, intent: ReplyIntent, spoken: 
       if (intent.type === 'no') return done(controller.cancel(), 'Vale, no añado nada.')
       void spoken
       return NOT_HANDLED
+
+    case 'finance-clarify':
+      return NOT_HANDLED
   }
 }
 
@@ -160,6 +184,8 @@ export async function handleDialogReply(text: string): Promise<DialogReplyResult
   }
 
   const controller = controllers[0]
+  // Una pregunta de aclaración de Economía la contesta la propia Economía con la frase siguiente.
+  if (controller.kind === 'finance-clarify') return NOT_HANDLED
   const intent = interpretReply(text, { kind: controller.kind, stores: controller.stores })
   // Sin interpretación: solo una frase hecha de palabras de control ("añadir", "guardar",
   // "vale"...) pertenece a la acción pendiente; cualquier otra cosa es una tarea nueva.

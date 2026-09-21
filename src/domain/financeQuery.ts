@@ -44,6 +44,8 @@ export type FinanceMetric =
   | 'attention'
   | 'simpler'
   | 'category_focus'
+  // Presupuestos: cuánto queda del presupuesto del mes (consulta; los cambios van por pepa/financeActions).
+  | 'budget_left'
 
 // Las que usa el motor de análisis (financeAnalysis) en vez de las cifras sueltas de la fase 1.
 export const ANALYSIS_METRICS: readonly FinanceMetric[] = ['analyze', 'where_money', 'top_increase', 'changes', 'savings_trend', 'why_savings', 'why_cuts', 'cuts', 'attention', 'simpler', 'category_focus']
@@ -91,7 +93,7 @@ export function cleanFinanceText(text: string): string {
 }
 
 // "Pepa," / "oye Pepa" / "vale Pepa" al principio o en medio de lo dictado. No es parte de la pregunta.
-function withoutWakeWord(cleaned: string): string {
+export function withoutWakeWord(cleaned: string): string {
   return cleaned
     .replace(/\b(?:oye|vale|hola|hey)?\s*pep[ae]\b\s*/g, ' ')
     .replace(/\s+/g, ' ')
@@ -103,7 +105,7 @@ function withoutWakeWord(cleaned: string): string {
 const FINANCE_NOUNS =
   /\b(?:gasto|gastos|movimiento|movimientos|presupuesto|presupuestos|ingreso|ingresos|cuenta|cuentas|categoria|categorias|ticket|tickets|transferencia|transferencias|precio|precios|banco|bancaria|bancario)\b/
 const WRITE_VERBS =
-  /^(?:por favor\s+)?(?:(?:puedes|podrias|quiero que|necesito que)\s+)?(?:borra|borrar|borrame|elimina|eliminar|quita|quitar|cambia|cambiar|cambiame|modifica|modificar|edita|editar|pon|ponme|poner|crea|crear|anade|anadir|agrega|agregar|apunta|apuntame|apuntar|registra|registrar|mueve|mover|transfiere|transferir|traspasa|traspasar|paga|pagar|ingresa|ingresar|recategoriza|reclasifica|asigna|asignar|sube|baja|reduce|reducir|recorta|recortar|aumenta|aumentar|incrementa|limita|limitar|ajusta|ajustar|define|fija|activa|desactiva|invierte|invertir|cancela|cancelar|deja de pagar)\b/
+  /^(?:por favor\s+)?(?:(?:puedes|podrias|quiero que|necesito que)\s+)?(?:borra|borrar|borrame|elimina|eliminar|quita|quitar|cambia|cambiar|cambiame|modifica|modificar|edita|editar|pon|ponme|poner|crea|crear|anade|anadir|agrega|agregar|apunta|apuntame|apuntar|registra|registrar|mueve|mover|transfiere|transferir|traspasa|traspasar|paga|pagar|ingresa|ingresar|recategoriza|reclasifica|asigna|asignar|sube|baja|reduce|reducir|recorta|recortar|aumenta|aumentar|incrementa|limita|limitar|ajusta|ajustar|define|fija|activa|desactiva|invierte|invertir|cancela|cancelar|deja de pagar|etiqueta|etiquetar|marca|marcar|clasifica|clasificar|categoriza|categorizar)\b/
 // Cambiar de categoría: "cambia todos los restaurantes a ocio".
 const RECLASSIFY_VERBS = /^(?:por favor\s+)?(?:cambia|cambiar|mueve|mover|pasa|pasar|recategoriza|reclasifica|asigna|asignar|convierte|convertir)\b/
 const CATEGORY_WORDS = /\b(?:restaurantes?|ocio|alimentacion|transporte|vivienda|hogar|salud|ropa|regalos?|supermercados?|suscripciones)\b/
@@ -281,7 +283,7 @@ export function parseFinanceQuestion(text: string, today: Date): FinanceParse | 
   if (isWriteRequest(n)) return { kind: 'write-refused' }
   if (!looksLikeFinance(n)) return null
 
-  if (/\bpresupuest\w*\b/.test(n)) return { kind: 'unsupported', what: 'budgets' }
+  if (/\bpresupuest\w*\b/.test(n)) return { kind: 'query', query: baseQuery('budget_left', { target: budgetTarget(n) }) }
   if (/\bsald[oa]s?\b/.test(n) || /\bcuanto (?:dinero )?(?:tenemos|tengo|hay|queda)\b.*\b(?:cuenta|cuentas|banco)\b/.test(n)) return { kind: 'unsupported', what: 'balances' }
 
   const metric = metricOf(n)
@@ -333,6 +335,16 @@ export function parseFinanceQuestion(text: string, today: Date): FinanceParse | 
   }
 }
 
+// "¿Cuánto me queda del presupuesto de restaurantes?": lo que queda tras quitar las palabras de la pregunta.
+const BUDGET_NOISE = new Set(
+  'cuanto cuanta cuantos me nos queda quedan falta faltan sobra sobran llevamos llevo llevas gastado gastados gastada del de el la los las presupuesto presupuestos que como va van vamos estamos dentro ya este esta mes en para tengo tenemos hay dime dame mira mirame y por favor a con'.split(' '),
+)
+function budgetTarget(n: string): string | null {
+  const words = n.split(' ').filter((w) => w && !BUDGET_NOISE.has(w))
+  return words.length > 0 && words.length <= 3 ? words.join(' ') : null
+}
+const BUDGET_REMAINING = /^(?:y\s+)?cuanto (?:me|nos) (?:queda|falta|sobra|quedan)(?: en total| ahi| de eso)?$/
+
 // ─── Continuaciones cortas: "¿En qué?", "¿Y el mes pasado?", "¿Solo alimentación?", "¿Y Mercadona?",
 // "¿Por qué?", "¿En qué categoría?", "¿Y comparado con agosto?", "Explícamelo más sencillo" ───
 // Solo se interpretan con una consulta anterior VIVA (contexto corto, con caducidad; ver pepa/finance).
@@ -362,6 +374,8 @@ export function parseFinanceFollowUp(text: string, previous: FinanceQuery, today
   const n = withoutWakeWord(cleanFinanceText(text))
   if (!n) return null
   const prevIsAnalysis = isAnalysisMetric(previous.metric) || previous.metric === 'why_changed'
+
+  if (previous.metric === 'budget_left' && BUDGET_REMAINING.test(n)) return { ...previous }
 
   if (SIMPLER.test(n)) return { ...previous, metric: 'simpler', detail: 'brief' }
 

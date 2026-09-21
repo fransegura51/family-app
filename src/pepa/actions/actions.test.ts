@@ -50,7 +50,7 @@ beforeEach(() => {
 
 describe('registro de acciones', () => {
   it('solo existen las acciones registradas', () => {
-    expect(actionIds()).toEqual(['menu.set', 'menu.ingredients_to_shopping', 'shopping.add', 'calendar.create', 'recipe.create'])
+    expect(actionIds()).toEqual(['menu.set', 'menu.ingredients_to_shopping', 'shopping.add', 'calendar.create', 'recipe.create', 'budget.set'])
     expect(proposeAction('calendar.deleteEverything', {}, ctx())).toEqual({ ok: false, errors: ['Acción no permitida'] })
   })
 })

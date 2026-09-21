@@ -23,7 +23,7 @@ import { comparableAgainst, comparablePrevious, resolvePeriod, type PeriodSpec, 
 import type { FinanceQuery } from '@/domain/financeQuery'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase, type SpendChangeBreakdown } from '@/domain/priceTrends'
 import { buildFoodReceiptIds, isFoodPurchase } from '@/domain/products'
-import type { BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
+import type { Budget, BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
 import { normalize } from '@/domain/voiceQuery'
 
 export interface FinanceData {
@@ -37,6 +37,9 @@ export interface FinanceData {
   monthStartDay: number
   // Hay alguna conexión bancaria caducada o revocada: puede faltar gasto reciente.
   bankStale: boolean
+  // Solo para consultas de presupuesto (se cargan únicamente entonces).
+  budgets?: Budget[]
+  accountsMode?: 'compartido' | 'separado'
 }
 
 // ─── Formato ───

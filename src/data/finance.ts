@@ -229,6 +229,14 @@ export async function createBudget(input: {
   if (error) throw error
 }
 
+// Cambiar SOLO el importe de un presupuesto ya creado (la pantalla solo lo crea o lo elimina; borrar y volver
+// a crear no es atómico y dejaría la fila duplicada o perdida si algo falla a medias). Mismo permiso de siempre
+// (RLS de budgets); el periodo, la categoría y el dueño no se tocan.
+export async function updateBudgetAmount(id: string, amount: number): Promise<void> {
+  const { error } = await supabase.from('budgets').update({ amount }).eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteBudget(id: string): Promise<void> {
   const { error } = await supabase.from('budgets').delete().eq('id', id)
   if (error) throw error

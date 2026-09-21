@@ -36,6 +36,13 @@ export interface CheckOption {
   note?: string
 }
 
+// Un campo de texto editable en la tarjeta (p. ej. el importe de un presupuesto).
+export interface FieldSpec {
+  id: string
+  label: string
+  inputMode: 'decimal' | 'text'
+}
+
 // Lo que se enseña en la tarjeta de confirmación.
 export interface Presentation {
   title: string
@@ -43,6 +50,8 @@ export interface Presentation {
   warnings: string[]
   choices: Choice[]
   checks: CheckOption[]
+  // Solo las acciones con campos editables la rellenan.
+  fields?: FieldSpec[]
   confirmLabel: string
 }
 
@@ -50,6 +59,8 @@ export interface Presentation {
 export interface Selection {
   choices: Record<string, string>
   checked: string[]
+  // Lo escrito en los campos editables, tal cual (se valida al proponer y otra vez al confirmar).
+  values?: Record<string, string>
 }
 
 export type ParamsCheck<P> = { ok: true; params: P } | { ok: false; errors: string[] }

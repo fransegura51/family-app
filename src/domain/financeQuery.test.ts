@@ -95,8 +95,9 @@ describe('Economía es solo de consulta', () => {
       expect(parseFinanceQuestion(t, TODAY), t).toBeNull()
     }
   })
-  it('presupuestos y saldos: consulta todavía no soportada, no inventada', () => {
-    expect(parseFinanceQuestion('¿Cuánto presupuesto me queda?', TODAY)).toEqual({ kind: 'unsupported', what: 'budgets' })
+  it('presupuestos: cuánto queda es una consulta; saldos: todavía no soportada, no inventada', () => {
+    expect(parseFinanceQuestion('¿Cuánto presupuesto me queda?', TODAY)).toEqual({ kind: 'query', query: baseQuery('budget_left') })
+    expect(parseFinanceQuestion('¿Cuánto me queda del presupuesto de restaurantes?', TODAY)).toEqual({ kind: 'query', query: baseQuery('budget_left', { target: 'restaurantes' }) })
     expect(parseFinanceQuestion('¿Cuál es el saldo de la cuenta?', TODAY)).toEqual({ kind: 'unsupported', what: 'balances' })
   })
 })

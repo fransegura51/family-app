@@ -1,5 +1,3 @@
-import { getAccountsMode } from '@/data/family'
-import { createBudget, listBudgetCategories, listBudgets, updateBudgetAmount } from '@/data/finance'
 import { BUDGET_GROUP, findBudget } from '@/domain/financeBudget'
 import { formatEuros } from '@/domain/financeCompute'
 import { defineAction, type Choice, type Selection } from '@/pepa/actions/types'
@@ -114,6 +112,9 @@ export const budgetSetAction = defineAction<BudgetSetActionParams>({
   },
 
   async execute(params) {
+    // Las funciones de datos se cargan al escribir (no al importar el registro), como el resto del acceso a Supabase.
+    const { getAccountsMode } = await import('@/data/family')
+    const { createBudget, listBudgetCategories, listBudgets, updateBudgetAmount } = await import('@/data/finance')
     const [categories, budgets, mode] = await Promise.all([listBudgetCategories(), listBudgets(), getAccountsMode()])
     // Se vuelve a comprobar contra lo real justo antes de escribir (por si algo cambió mientras se pensaba).
     if (params.category !== null && !categories.some((c) => c.name === params.category && c.budgetGroup === BUDGET_GROUP)) {

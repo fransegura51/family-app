@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildFoodReceiptIds, computeProductStats, isFoodPurchase, isLikelyAlcohol } from '@/domain/products'
+import { buildFoodReceiptIds, computeProductStats, isFoodPurchase, isLikelyAlcohol, purchaseNature } from '@/domain/products'
 import type { BudgetCategory, ProductPrice } from '@/domain/types'
 
 function price(recordedDate: string, amount: number): ProductPrice {
@@ -62,20 +62,23 @@ describe('isFoodPurchase / buildFoodReceiptIds', () => {
     categories,
   )
 
-  it('un ticket de Amazon solo es comida si su categoría lo es', () => {
+  it('sin clase, solo un ticket de Alimentación (evidencia histórica) da comida; una categoría no alimenticia NO prueba "no alimentos": queda desconocido', () => {
     expect(foodIds.has('r-cafe')).toBe(true)
     expect(foodIds.has('r-tec')).toBe(false)
-    expect(isFoodPurchase({ productId: 'p', store: 'Amazon', receiptId: 'r-cafe' }, foodIds)).toBe(true)
-    expect(isFoodPurchase({ productId: 'p', store: 'Amazon', receiptId: 'r-tec' }, foodIds)).toBe(false)
-    expect(isFoodPurchase({ productId: 'p', store: 'Amazon', receiptId: null }, foodIds)).toBe(false)
+    expect(isFoodPurchase({ productId: 'p', receiptId: 'r-cafe' }, foodIds)).toBe(true)
+    expect(purchaseNature({ productId: 'p', receiptId: 'r-cafe' }, foodIds)).toBe('alimentacion')
+    expect(purchaseNature({ productId: 'p', receiptId: 'r-tec' }, foodIds)).toBe('desconocido')
+    expect(purchaseNature({ productId: 'p', receiptId: null }, foodIds)).toBe('desconocido')
   })
-  it('cualquier otra tienda cuenta entera como compra física de alimentación', () => {
-    expect(isFoodPurchase({ productId: 'p', store: 'Mercadona', receiptId: null }, foodIds)).toBe(true)
+  it('la TIENDA ya no decide nada: sin clase ni ticket de Alimentación, una tienda física tampoco es comida (desconocido)', () => {
+    // (la firma ni siquiera recibe la tienda)
+    expect(purchaseNature({ productId: 'p', receiptId: null }, foodIds)).toBe('desconocido')
+    expect(isFoodPurchase({ productId: 'p', receiptId: null }, foodIds)).toBe(false)
   })
-  it('un producto marcado a mano como No alimentos anula la regla de tienda', () => {
+  it('un producto marcado a mano como No alimentos gana a la evidencia del ticket', () => {
     const nonFoodProductIds = new Set(['bombona'])
-    expect(isFoodPurchase({ productId: 'bombona', store: 'Mercadona', receiptId: null }, foodIds, nonFoodProductIds)).toBe(false)
-    expect(isFoodPurchase({ productId: 'bombona', store: 'Amazon', receiptId: 'r-cafe' }, foodIds, nonFoodProductIds)).toBe(false)
-    expect(isFoodPurchase({ productId: 'otro', store: 'Mercadona', receiptId: null }, foodIds, nonFoodProductIds)).toBe(true)
+    expect(purchaseNature({ productId: 'bombona', receiptId: 'r-cafe' }, foodIds, nonFoodProductIds)).toBe('no_alimentos')
+    expect(purchaseNature({ productId: 'bombona', receiptId: null }, foodIds, nonFoodProductIds)).toBe('no_alimentos')
+    expect(purchaseNature({ productId: 'otro', receiptId: 'r-cafe' }, foodIds, nonFoodProductIds)).toBe('alimentacion')
   })
 })

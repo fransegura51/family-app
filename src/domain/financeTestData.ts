@@ -1,6 +1,6 @@
 // Datos de prueba controlados para los tests de Economía (solo lo importan los tests).
 import type { FinanceData } from '@/domain/financeCompute'
-import type { BudgetCategory, Expense, Product, ProductPrice } from '@/domain/types'
+import type { BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
 
 // Hoy = 20 de septiembre de 2026.
 export const TODAY = new Date(2026, 8, 20)
@@ -64,10 +64,12 @@ export const PRODUCTS: Product[] = [
   { id: 'l1', familyId: 'f', normalizedName: 'leche entera', displayName: 'Leche entera', category: null, brand: null, nonFood: false, classConfirmedAt: null },
 ]
 
+// Los precios de estos tests son líneas de un TICKET de supermercado categorizado como Alimentación (la evidencia de comida para un producto sin clase).
+export const FOOD_RECEIPT = { id: 'r-food', familyId: 'f', storagePath: null, store: 'Mercadona', receiptDate: '2026-09-01', totalAmount: null, expenseId: null, notes: null, category: 'Alimentación', purchasedByMemberId: null } as Receipt
 let pid = 0
 export function price(productId: string, date: string, value: number, store: string | null): ProductPrice {
   pid++
-  return { id: `p${pid}`, productId, price: value, store, quantity: '1', unit: null, recordedDate: date, receiptId: null }
+  return { id: `p${pid}`, productId, price: value, store, quantity: '1', unit: null, recordedDate: date, receiptId: 'r-food' }
 }
 
 export const PRICES: ProductPrice[] = [
@@ -78,5 +80,5 @@ export const PRICES: ProductPrice[] = [
 ]
 
 export function financeData(over: Partial<FinanceData> = {}): FinanceData {
-  return { expenses: EXPENSES, categories: CATEGORIES, receipts: [], prices: PRICES, products: PRODUCTS, storeNames: ['Mercadona', 'Aldi'], monthStartDay: 1, bankStale: false, ...over }
+  return { expenses: EXPENSES, categories: CATEGORIES, receipts: [FOOD_RECEIPT], prices: PRICES, products: PRODUCTS, storeNames: ['Mercadona', 'Aldi'], monthStartDay: 1, bankStale: false, ...over }
 }

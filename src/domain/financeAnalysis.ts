@@ -26,6 +26,7 @@ import {
   type FinanceData,
 } from '@/domain/financeCompute'
 import { comparableAgainst, comparablePrevious, type ComparePeriods, type ResolvedPeriod } from '@/domain/financePeriod'
+import { isPendingRelevant, pendingSpending } from '@/domain/pending'
 import type { Expense } from '@/domain/types'
 import { averagePricesByMonth, compareMonths } from '@/domain/priceTrends'
 import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
@@ -74,6 +75,9 @@ export interface Analysis {
   priceAnalysis: { available: boolean; compared: number; risen: number; fallen: number }
   purchaseChange: { available: boolean; priceEffect: number; quantityEffect: number; newProducts: number; removedProducts: number; basketBefore: number; basketNow: number }
   dataQuality: { bankStale: boolean; foodTicketCoverage: number | null; warnings: string[] }
+  // Gasto REAL sin categoría todavía (category NULL, «pendiente de clasificar»). Ya está dentro de expenses.total; NO es una categoría: no
+  // aparece en categories/leaf/newCategories. `share` = % sobre el gasto total del periodo.
+  pending: { amount: number; count: number; share: number }
 }
 
 export interface AnalysisOptions {
@@ -111,6 +115,7 @@ export function buildAnalysis(data: FinanceData, period: ResolvedPeriod, today: 
   const hasPrevious = hasAnyExpense(data, cp.previous.from, cp.previous.to)
 
   const total = sum(nowRows)
+  const pendingNow = pendingSpending(nowRows)
   const previous = hasPrevious ? sum(prevRows) : null
   const difference = previous === null ? null : round2(total - previous)
   const percentChange = previous !== null && previous > 0 ? ((total - previous) / previous) * 100 : null
@@ -220,6 +225,7 @@ export function buildAnalysis(data: FinanceData, period: ResolvedPeriod, today: 
     priceAnalysis,
     purchaseChange,
     dataQuality: { bankStale: data.bankStale, foodTicketCoverage, warnings },
+    pending: { ...pendingNow, share: total > 0 ? (pendingNow.amount / total) * 100 : 0 },
   }
 }
 
@@ -278,6 +284,17 @@ export function categoryMovers(a: Analysis): { rise: CategoryChange | null; fall
 export function dataWarnings(a: Analysis, only: 'bank' | 'all' = 'all'): Finding[] {
   const list = only === 'bank' ? a.dataQuality.warnings.filter((w) => w.startsWith('Hay una conexión')) : a.dataQuality.warnings
   return list.map((text) => ({ kind: 'warning' as const, text }))
+}
+
+// Aviso PROPORCIONAL sobre lo pendiente de clasificar: solo si pesa de verdad (2 € sobre 3.000 € no convierte cada respuesta en una advertencia).
+export function pendingFindings(a: Analysis): Finding[] {
+  if (!isPendingRelevant(a.pending, a.expenses.total)) return []
+  return [
+    {
+      kind: 'warning',
+      text: `Hay ${formatEuros(a.pending.amount)} en ${a.pending.count} ${a.pending.count === 1 ? 'movimiento' : 'movimientos'} sin clasificar (${Math.round(a.pending.share)} % del gasto): cuentan en el total, pero no puedo asignarlos a ninguna categoría, así que lo que digo por categorías es menos preciso.`,
+    },
+  ]
 }
 
 export function noData(a: Analysis): Finding[] | null {
@@ -362,7 +379,7 @@ export function overviewFindings(a: Analysis): Finding[] {
   out.push(...interpretation(a))
   out.push(savingsLine(a))
   out.push(ticketLine(a))
-  out.push(...dataWarnings(a, 'bank'))
+  out.push(...pendingFindings(a), ...dataWarnings(a, 'bank'))
   return out
 }
 
@@ -376,7 +393,7 @@ export function whereMoneyFindings(a: Analysis): Finding[] {
   const lead = a.leaf[0]
   if (lead && lead.name !== top[0]?.name) out.push({ kind: 'fact', text: `Dentro de eso, lo más alto es ${lead.name}, con ${formatEuros(lead.amount)}.` })
   if (a.topStore) out.push({ kind: 'fact', text: `El comercio más frecuente es ${a.topStore.name}: ${a.topStore.count} compras (${formatEuros(a.topStore.amount)}).` })
-  out.push(...dataWarnings(a, 'bank'))
+  out.push(...pendingFindings(a), ...dataWarnings(a, 'bank'))
   return out
 }
 
@@ -405,7 +422,7 @@ export function changesFindings(a: Analysis): Finding[] {
     const d = round2(a.savings.total - a.savings.previous)
     out.push({ kind: 'comparison', text: `Ahorro: ${formatEuros(a.savings.total)} frente a ${formatEuros(a.savings.previous)} (${d === 0 ? 'igual' : `${formatEuros(Math.abs(d))} ${d > 0 ? 'más' : 'menos'}`}).` })
   }
-  out.push(ticketLine(a), ...dataWarnings(a, 'bank'))
+  out.push(ticketLine(a), ...pendingFindings(a), ...dataWarnings(a, 'bank'))
   return out
 }
 
@@ -461,7 +478,7 @@ export function cutsFindings(a: Analysis): Finding[] {
   if (!classified) out.push({ kind: 'warning', text: 'Vuestras categorías no están clasificadas como fijas/variables o "quiero/necesito", así que me baso solo en el importe.' })
   const rises = a.categories.filter((c) => c.difference >= MOVER_MIN_EUR).sort((x, y) => y.difference - x.difference)[0]
   if (rises) out.push({ kind: 'comparison', text: `Además, ${rises.name} ha subido ${formatEuros(rises.difference)} respecto ${aLabel(baselineLabel(a))}.` })
-  out.push(...dataWarnings(a, 'bank'))
+  out.push(...pendingFindings(a), ...dataWarnings(a, 'bank'))
   return out
 }
 
@@ -546,6 +563,12 @@ export function analysisFacts(a: Analysis): AnalysisFact[] {
     add(`cat.${n}.difference`, `Cambio de la categoría ${n} (positivo = más gasto)`, a.hasPrevious ? c.difference : null, 'eur_signed')
     add(`cat.${n}.share`, `Peso de la categoría ${n} en el gasto total`, c.share, 'pct')
   })
+  // Lo pendiente NUNCA sale como una categoría (cat.N.*): son hechos aparte, y ya están incluidos en expenses.total.
+  if (a.pending.count > 0) {
+    add('pending.amount', 'Gasto pendiente de clasificar (NO es una categoría; ya está incluido en el gasto total)', a.pending.amount, 'eur')
+    add('pending.count', 'Nº de movimientos pendientes de clasificar', a.pending.count, 'num')
+    add('pending.share', 'Peso del gasto pendiente de clasificar en el gasto total', a.pending.share, 'pct')
+  }
   add('necessity.quiero', 'Gasto en categorías "quiero" (no esenciales)', a.necessity.quiero > 0 ? a.necessity.quiero : null, 'eur')
   add('necessity.quiero_share', 'Peso del gasto "quiero" en el total', a.necessity.quieroShare, 'pct')
   add('fixed.total', 'Gasto fijo', a.fixedVariable.fixed > 0 ? a.fixedVariable.fixed : null, 'eur')

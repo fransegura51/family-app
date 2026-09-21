@@ -22,6 +22,7 @@ import { isInternalTransferCategory } from '@/domain/finance'
 import { comparableAgainst, comparablePrevious, resolvePeriod, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
 import type { FinanceQuery } from '@/domain/financeQuery'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase, type SpendChangeBreakdown } from '@/domain/priceTrends'
+import { pendingSpending, type PendingSpending } from '@/domain/pending'
 import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
 import type { Budget, BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
 import { normalize } from '@/domain/voiceQuery'
@@ -226,6 +227,16 @@ export function groupSpending(rows: Expense[], data: FinanceData, category?: str
   return [...by.entries()].map(([name, amount]) => ({ name, amount: Math.round(amount * 100) / 100 })).sort((a, b) => b.amount - a.amount)
 }
 
+// Reparto por categorías REALES + los pendientes de clasificar APARTE (category NULL): nunca se mezclan ni se atribuyen a una categoría.
+// Invariante: suma(groups) + pending.amount = sum(rows) (salvo redondeos de céntimos), porque groupSpending solo omite los pendientes.
+export function spendingBreakdown(
+  rows: Expense[],
+  data: FinanceData,
+  category?: string,
+): { groups: { name: string; amount: number }[]; pending: PendingSpending } {
+  return { groups: groupSpending(rows, data, category), pending: pendingSpending(rows) }
+}
+
 // ─── Respuestas ───
 
 export interface FinanceAnswer {
@@ -289,6 +300,9 @@ function answerSpent(query: FinanceQuery, data: FinanceData, today: Date): Finan
   }
   const lead = resolved.ongoing ? `${subjectOf(resolved)} lleváis` : `${subjectOf(resolved)} habéis gastado`
   let text = `${lead} ${formatEuros(total)}${where || ' de gastos registrados'}.`
+  // Un gasto pendiente de clasificar SÍ está en ese total (es gasto real); solo se aclara cuánto de él aún no tiene categoría.
+  const pending = pendingSpending(spendingRows(data, resolved.from, resolved.to, filter))
+  if (pending.count > 0) text += ` De ese total, ${formatEuros(pending.amount)} están pendientes de clasificar.`
 
   // Comparación útil solo con periodos en curso, contra el MISMO tramo del anterior.
   if (resolved.ongoing && (spec.t === 'month' || spec.t === 'month_named' || spec.t === 'week' || spec.t === 'year')) {
@@ -349,7 +363,32 @@ function answerTopCategories(query: FinanceQuery, data: FinanceData, today: Date
   const groups = groupSpending(rows, data, target.kind === 'category' ? target.name : undefined).slice(0, 5)
   const lines = groups.map((g) => `${g.name}: ${formatEuros(g.amount)} (${Math.round((g.amount / total) * 100)} %)`)
   const head = `${subjectOf(resolved)}${targetPhrase(target)}, ${formatEuros(total)} en total. Lo que más:`
-  return { text: `${head}\n${lines.join('\n')}` + staleNote(data), query: q }
+  // Los pendientes NO son una categoría: no entran en el ranking; se informan aparte (siguen dentro del total).
+  const pending = pendingSpending(rows)
+  const pendingLine =
+    pending.count > 0
+      ? `\nHay ${formatEuros(pending.amount)} en ${pending.count === 1 ? '1 movimiento pendiente' : `${pending.count} movimientos pendientes`} de clasificar, que no están en ninguna categoría.`
+      : ''
+  return { text: `${head}\n${lines.join('\n')}${pendingLine}` + staleNote(data), query: q }
+}
+
+// "¿Qué tengo pendiente de clasificar?": gasto real con category NULL. Sin periodo dicho se cuentan TODOS (un pendiente sigue pendiente
+// aunque pase el mes); con periodo, solo ese.
+function answerPending(query: FinanceQuery, data: FinanceData, today: Date): FinanceAnswer {
+  const hasPeriod = query.period !== null
+  const { spec, resolved } = periodOf(query, data, today)
+  const q = { ...query, period: hasPeriod ? spec : null, target: null }
+  const rows = spendingRows(data, hasPeriod ? resolved.from : '0000-01-01', hasPeriod ? resolved.to : '9999-12-31')
+  const pending = pendingSpending(rows)
+  const when = hasPeriod ? ` ${whenOf(resolved)}` : ''
+  if (pending.count === 0) return { text: `No tenéis gastos pendientes de clasificar${when}.` + staleNote(data), query: q }
+  const total = sum(rows)
+  const share = total > 0 ? ` (el ${Math.round((pending.amount / total) * 100)} % del gasto registrado)` : ''
+  const movs = pending.count === 1 ? '1 movimiento pendiente' : `${pending.count} movimientos pendientes`
+  return {
+    text: `Tenéis ${movs} de clasificar${when}: ${formatEuros(pending.amount)} en total${share}. Siguen contando en el gasto total; solo falta decir en qué categoría van.` + staleNote(data),
+    query: q,
+  }
 }
 
 function answerCompare(query: FinanceQuery, data: FinanceData, today: Date): FinanceAnswer {
@@ -575,6 +614,8 @@ export function answerFinanceQuery(query: FinanceQuery, data: FinanceData, today
       return answerSaved(query, data, today)
     case 'top_categories':
       return answerTopCategories(query, data, today)
+    case 'pending':
+      return answerPending(query, data, today)
     case 'compare':
       return answerCompare(query, data, today)
     case 'why_changed':

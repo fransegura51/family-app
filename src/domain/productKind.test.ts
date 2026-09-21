@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveProductClass, storedClassKind, type FamilyClassRef, type ProductClassKind } from './productClass'
-import { buildProductKindSets, isFoodPurchase } from './products'
+import { buildProductKindSets, isFoodPurchase, purchaseNature, type ProductNature } from './products'
 import { resolveStoreChain, type StoreChainAliasRow, type StoreChainKind, type StoreChainRow } from './storeChains'
 import type { Product } from './types'
 
@@ -30,7 +30,16 @@ function product(id: string, category: string | null, opts: { nonFood?: boolean;
 // ¿Cuenta como alimentación esta compra? `receiptIsFood` = la categoría FINANCIERA del ticket (que no depende del producto).
 function counts(p: Product, store: string | null, receiptIsFood: boolean): boolean {
   const { nonFoodProductIds, foodProductIds } = buildProductKindSets([p])
-  return isFoodPurchase({ productId: p.id, store, receiptId: 'r1' }, new Set(receiptIsFood ? ['r1'] : []), nonFoodProductIds, foodProductIds)
+  void store // la tienda NO participa en la decisión: se conserva en los tests solo para demostrarlo
+  return isFoodPurchase({ productId: p.id, receiptId: 'r1' }, new Set(receiptIsFood ? ['r1'] : []), nonFoodProductIds, foodProductIds)
+}
+
+// La naturaleza (triestado) de una compra. `receipt`: 'food' = ticket en Alimentación; 'other' = ticket en una categoría real que no es Alimentación
+// (p. ej. Regalos y compras varias); 'null' = ticket pendiente de clasificar (category NULL); 'none' = sin ticket.
+function natureOf(p: Product, receipt: 'food' | 'other' | 'null' | 'none'): ProductNature {
+  const { nonFoodProductIds, foodProductIds } = buildProductKindSets([p])
+  const receiptId = receipt === 'none' ? null : 'r1'
+  return purchaseNature({ productId: p.id, receiptId }, new Set(receipt === 'food' ? ['r1'] : []), nonFoodProductIds, foodProductIds)
 }
 
 describe('storedClassKind: el conjunto lo da la CLASE, nunca la tienda', () => {
@@ -84,9 +93,9 @@ describe('G/H: otras tiendas con clase conocida — comportamiento intacto', () 
   it('H. Mercadona + producto de no alimentos → otros', () => {
     expect(counts(product('camiseta', 'Ropa y calzado', { nonFood: true }), 'Mercadona', true)).toBe(false)
   })
-  it('sin clase conocida, una tienda física sigue igual que antes (alimentación salvo la marca non_food)', () => {
-    expect(counts(product('leche', null), 'Mercadona', false)).toBe(true)
-    expect(counts(product('bombona', null, { nonFood: true }), 'Mercadona', true)).toBe(false)
+  it('sin clase conocida, un producto de Mercadona con ticket de Alimentación sigue siendo comida; con la marca non_food, otros', () => {
+    expect(natureOf(product('leche', null), 'food')).toBe('alimentacion')
+    expect(natureOf(product('bombona', null, { nonFood: true }), 'food')).toBe('no_alimentos')
   })
 })
 
@@ -138,17 +147,47 @@ describe('K/L: Automático y marca antigua', () => {
   })
 })
 
-describe('PENDIENTE DE DECISIÓN (F, Q, R): producto realmente desconocido y «Pendiente de clasificar»', () => {
-  // Con clase desconocida sigue aplicándose la regla heredada de Amazon (por la categoría del TICKET). Retirarla sin más haría que un
-  // producto desconocido pasara a Alimentos; hace falta el estado «Pendiente de clasificar», que se ha detenido a la espera de decisión.
-  it('residual documentado: producto Amazon sin clase → lo decide la categoría del ticket (no una clase)', () => {
-    const unknown = product('u', null)
-    expect(counts(unknown, 'Amazon', false)).toBe(false)
-    expect(counts(unknown, 'Amazon', true)).toBe(true)
+describe('TRIESTADO (6C.2B): clase conocida manda; sin clase y sin evidencia = DESCONOCIDO; la tienda y la categoría genérica del ticket no deciden', () => {
+  it('N/O. clase de alimentación → FOOD; clase de no alimentos → OTHER, sea cual sea el ticket', () => {
+    for (const receipt of ['food', 'other', 'null', 'none'] as const) {
+      expect(natureOf(product('carne', 'Carne'), receipt)).toBe('alimentacion')
+      expect(natureOf(product('ropa', 'Ropa y calzado', { nonFood: true }), receipt)).toBe('no_alimentos')
+    }
   })
-  it.todo('F. Amazon + producto realmente desconocido → Amazon NO decide FOOD/OTHER (bloqueado: requiere el estado «Pendiente de clasificar»)')
-  it.todo('Q. pedido Amazon sin categoría fiable → pendiente de clasificar (bloqueado a la espera de decisión)')
-  it.todo('R. el usuario clasifica un pendiente → clasificado (bloqueado a la espera de decisión)')
+
+  it('P/J. ticket NULL (pendiente) + producto desconocido → DESCONOCIDO (ni comida ni no comida)', () => {
+    expect(natureOf(product('x', null), 'null')).toBe('desconocido')
+  })
+
+  it('S/F. Amazon + producto desconocido: la tienda NO decide (con ticket no alimenticio o pendiente → desconocido, nunca «otros»)', () => {
+    const unknown = product('u', null)
+    expect(natureOf(unknown, 'other')).toBe('desconocido')
+    expect(natureOf(unknown, 'null')).toBe('desconocido')
+    expect(natureOf(unknown, 'none')).toBe('desconocido')
+    // y la tienda ni se consulta: cualquier tienda da lo mismo
+    expect(counts(unknown, 'Amazon', false)).toBe(false)
+    expect(counts(unknown, 'Mercadona', false)).toBe(false)
+  })
+
+  it('una categoría financiera genérica del ticket (Regalos y compras varias, Otros, «Amazon»...) nunca convierte un producto sin clase en «no alimentos»', () => {
+    expect(natureOf(product('regalo', null), 'other')).not.toBe('no_alimentos')
+  })
+
+  it('B. la marca explícita non_food=true (sin clase) sigue valiendo: otros', () => {
+    expect(natureOf(product('bombona', null, { nonFood: true }), 'none')).toBe('no_alimentos')
+    expect(natureOf(product('bombona', null, { nonFood: true }), 'null')).toBe('no_alimentos')
+  })
+
+  it('evidencia histórica conservada: sin clase, un ticket en Alimentación da comida (transitorio, identificado como ticket_alimentacion)', () => {
+    expect(natureOf(product('leche', null), 'food')).toBe('alimentacion')
+  })
+
+  it('un desconocido NO cuenta como Alimentos (isFoodPurchase solo es true para FOOD)', () => {
+    expect(isFoodPurchase({ productId: 'x', receiptId: 'r1' }, new Set())).toBe(false)
+  })
+
+  it.todo('Q. pedido Amazon sin categoría fiable → pendiente de clasificar (webhook: 6C.2D)')
+  it.todo('R. el usuario clasifica un pendiente → clasificado (6C.2C)')
 })
 
 // ── Las cadenas se leen de la propia migración (lo que de verdad se siembra) ──

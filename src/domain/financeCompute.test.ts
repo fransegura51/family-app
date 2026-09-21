@@ -75,10 +75,12 @@ const PRODUCTS: Product[] = [
   { id: 'l1', familyId: 'f', normalizedName: 'leche entera', displayName: 'Leche entera', category: null, brand: null, nonFood: false, classConfirmedAt: null },
   { id: 'p1', familyId: 'f', normalizedName: 'pan', displayName: 'Pan', category: null, brand: null, nonFood: false, classConfirmedAt: null },
 ]
+// Los precios de estos tests son líneas de un TICKET de supermercado categorizado como Alimentación (la evidencia de comida para un producto sin clase).
+const FOOD_RECEIPT = { id: 'r-food', familyId: 'f', storagePath: null, store: 'Mercadona', receiptDate: '2026-09-01', totalAmount: null, expenseId: null, notes: null, category: 'Alimentación', purchasedByMemberId: null } as Receipt
 let pid = 0
 function price(productId: string, date: string, priceValue: number, store: string | null): ProductPrice {
   pid++
-  return { id: `p${pid}`, productId, price: priceValue, store, quantity: '1', unit: null, recordedDate: date, receiptId: null }
+  return { id: `p${pid}`, productId, price: priceValue, store, quantity: '1', unit: null, recordedDate: date, receiptId: 'r-food' }
 }
 const PRICES: ProductPrice[] = [
   price('q1', '2026-08-05', 2.0, 'Mercadona'),
@@ -91,7 +93,7 @@ const PRICES: ProductPrice[] = [
 ]
 
 function data(over: Partial<FinanceData> = {}): FinanceData {
-  return { expenses: EXPENSES, categories: CATEGORIES, receipts: [], prices: PRICES, products: PRODUCTS, storeNames: ['Mercadona', 'Aldi'], monthStartDay: 1, bankStale: false, ...over }
+  return { expenses: EXPENSES, categories: CATEGORIES, receipts: [FOOD_RECEIPT], prices: PRICES, products: PRODUCTS, storeNames: ['Mercadona', 'Aldi'], monthStartDay: 1, bankStale: false, ...over }
 }
 
 function ask(text: string, d: FinanceData = data()): string {

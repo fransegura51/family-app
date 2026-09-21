@@ -16,6 +16,7 @@ import {
   type CategoryChange,
 } from '@/domain/financeAnalysis'
 import { categoryParentName, formatEuros, spendingRows, sum, type FinanceData } from '@/domain/financeCompute'
+import { isPendingRelevant } from '@/domain/pending'
 
 export interface BriefAnswer {
   text: string
@@ -72,8 +73,11 @@ function listNames(names: string[]): string {
   return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`
 }
 
+// Avisos al final de una respuesta hablada: banco caducado y, solo si pesa de verdad, dinero todavía sin clasificar (Fase 6C.2B).
 function bankNote(a: Analysis): string {
-  return a.dataQuality.bankStale ? ' Ojo: la conexión del banco está caducada, así que puede faltar gasto reciente.' : ''
+  const bank = a.dataQuality.bankStale ? ' Ojo: la conexión del banco está caducada, así que puede faltar gasto reciente.' : ''
+  const pending = isPendingRelevant(a.pending, a.expenses.total) ? ` Ojo: hay unos ${roughEuros(a.pending.amount)} sin clasificar, así que esto por categorías es menos preciso.` : ''
+  return bank + pending
 }
 
 function emptyText(a: Analysis): string | null {

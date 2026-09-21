@@ -43,7 +43,7 @@ import {
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { listReceipts } from '@/data/receipts'
 import { listBudgetCategories } from '@/data/finance'
-import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodPurchase, isLikelyAlcohol } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodPurchase, isLikelyAlcohol, purchaseNature } from '@/domain/products'
 import { normalize } from '@/domain/voiceQuery'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
@@ -1997,23 +1997,32 @@ function HistoryTab() {
   // no todo lo de Amazon es Otros por defecto. Un producto marcado a
   // mano como Otros (ver el botón 🚫 en su ficha) nunca cuenta como
   // comida, sea cual sea la tienda.
+  // Fase 6C.2B: la naturaleza es un TRIESTADO (comida / no comida / desconocida). Un producto de naturaleza DESCONOCIDA no es Alimentos ni
+  // Otros: aquí se ENSEÑA en la vista Otros (bajo «Sin clasificar») solo para que no desaparezca del historial, pero NO se cuenta en los
+  // totales ni en las comparaciones de Otros (ver `purchases`). La UI definitiva de «sin clasificar» se decide en 6C.2C.
   const scopedPrices = useMemo(
-    () => prices.filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds, foodProductIds) === (mode === 'alimentacion')),
+    () =>
+      prices.filter((p) => {
+        const nature = purchaseNature(p, foodReceiptIds, nonFoodProductIds, foodProductIds)
+        return mode === 'alimentacion' ? nature === 'alimentacion' : nature !== 'alimentacion'
+      }),
     [prices, mode, foodReceiptIds, nonFoodProductIds, foodProductIds],
   )
 
   const purchases = useMemo(
     () =>
-      scopedPrices.map((p) => {
-        const qty = Number(p.quantity)
-        return {
-          productId: p.productId,
-          price: p.price,
-          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
-          recordedDate: p.recordedDate,
-        }
-      }),
-    [scopedPrices],
+      scopedPrices
+        .filter((p) => purchaseNature(p, foodReceiptIds, nonFoodProductIds, foodProductIds) !== 'desconocido')
+        .map((p) => {
+          const qty = Number(p.quantity)
+          return {
+            productId: p.productId,
+            price: p.price,
+            quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+            recordedDate: p.recordedDate,
+          }
+        }),
+    [scopedPrices, foodReceiptIds, nonFoodProductIds, foodProductIds],
   )
 
   const withStats = useMemo(

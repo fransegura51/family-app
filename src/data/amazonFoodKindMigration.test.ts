@@ -152,10 +152,12 @@ describe('Fase 6C — guardas de código: la tienda no decide qué es un product
 
   it('la clase conocida manda: isFoodPurchase comprueba primero los conjuntos por clase, antes que cualquier regla de tienda', () => {
     const src = APP['/src/domain/products.ts']
-    const body = src.slice(src.indexOf('export function isFoodPurchase'), src.indexOf('export function buildProductKindSets'))
-    expect(body.indexOf('foodProductIds.has')).toBeGreaterThan(-1)
-    expect(body.indexOf('foodProductIds.has')).toBeLessThan(body.indexOf("price.store !== 'Amazon'"))
-    expect(body.indexOf('nonFoodProductIds.has')).toBeLessThan(body.indexOf("price.store !== 'Amazon'"))
+    const body = src.slice(src.indexOf('export function resolvePurchaseNature'), src.indexOf('export function purchaseNature'))
+    expect(body.indexOf('foodProductIds?.has')).toBeGreaterThan(-1)
+    expect(body.indexOf('foodProductIds?.has')).toBeLessThan(body.indexOf('nonFoodProductIds?.has'))
+    expect(body.indexOf('nonFoodProductIds?.has')).toBeLessThan(body.indexOf('foodReceiptIds.has'))
+    // la tienda no aparece en la decisión (6C.2B: ni siquiera es un dato de entrada)
+    expect(body).not.toMatch(/store|Amazon/)
   })
 
   it('todos los puntos de lectura Alimentos/Otros usan los conjuntos por clase (buildProductKindSets), no products.filter(nonFood)', () => {

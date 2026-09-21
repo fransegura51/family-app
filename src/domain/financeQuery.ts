@@ -46,6 +46,8 @@ export type FinanceMetric =
   | 'category_focus'
   // Presupuestos: cuánto queda del presupuesto del mes (consulta; los cambios van por pepa/financeActions).
   | 'budget_left'
+  // «¿Qué tengo pendiente de clasificar?»: gasto real con category NULL (Fase 6C.2B). No es una búsqueda contra categorías.
+  | 'pending'
 
 // Las que usa el motor de análisis (financeAnalysis) en vez de las cifras sueltas de la fase 1.
 export const ANALYSIS_METRICS: readonly FinanceMetric[] = ['analyze', 'where_money', 'top_increase', 'changes', 'savings_trend', 'why_savings', 'why_cuts', 'cuts', 'attention', 'simpler', 'category_focus']
@@ -121,8 +123,12 @@ export function isWriteRequest(cleaned: string): boolean {
 const FINANCE_TOPIC =
   /\b(?:gast\w*|ingres\w*|ahorr\w*|presupuest\w*|sald[oa]s?|barato|barata|baratos|baratas|subido|bajado|subid[oa]s?|bajad[oa]s?|precio|precios|econom\w*|anali[zc]\w*|conclusion\w*|recort\w*|llam\w+ la atencion|categoria|categorias)\b|\b(?:se nos va|se nos esta yendo|esta yendo el dinero|que ha cambiado)\b|\bcuanto\b.*\b(?:pagad[oa]s?|pagamos|pagas|pagais)\b/
 
+// «¿Qué tengo pendiente de clasificar?», «¿cuánto tengo sin clasificar?», «¿hay gastos pendientes?», «¿cuántos movimientos quedan por clasificar?».
+// Es la consulta sobre category NULL; nunca se resuelve contra los nombres de las categorías.
+const PENDING_ASK = /\b(?:pendientes?|sin|por)\s+(?:de\s+)?clasificar\b|\b(?:gastos?|movimientos?)\s+(?:sin\s+categori[az]\w*|pendientes?)\b|\bsin\s+categoria\b/
+
 export function looksLikeFinance(cleaned: string): boolean {
-  return FINANCE_TOPIC.test(cleaned)
+  return FINANCE_TOPIC.test(cleaned) || PENDING_ASK.test(cleaned)
 }
 
 // ─── 2. Intención: señales léxicas + tabla de decisión ───
@@ -187,6 +193,8 @@ function signalsOf(n: string): Signals {
 function metricOf(n: string): FinanceMetric | null {
   const s = signalsOf(n)
 
+  // Lo primero: preguntar por lo pendiente de clasificar no es analizar ni buscar una categoría con ese nombre.
+  if (PENDING_ASK.test(n) && !s.why && !s.save && !s.cut) return 'pending'
   if (s.why && s.save) return 'why_savings'
   if ((s.why && (s.spend || s.change || s.rise)) || (s.explain && s.spend) || /\bpor que ha cambiado\b/.test(n)) return 'why_changed'
 

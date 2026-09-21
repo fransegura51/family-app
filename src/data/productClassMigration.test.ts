@@ -142,7 +142,8 @@ describe('Fase 5: escritura — la clasificación automática NO se guarda como 
 
   it('guardar un ticket solo escribe la clase si la familia la eligió en esa línea (classOverride); la clase resuelta nunca se persiste', () => {
     const src = APP['/src/ui/FinanceScreen.tsx']
-    expect(src).toContain('...(line.classOverride ? [setProductFoodType(productId, line.classOverride.classification || null, line.classOverride.kind)] : [])')
+    expect(src).toContain('...(line.classOverride ? [setProductFoodType(productId, explicitClass, line.classOverride.kind)] : [])')
+    expect(src).toContain('const explicitClass = line.classOverride?.classification || null')
     expect(src).not.toMatch(/setProductFoodType\(productId,\s*resolved\./)
     expect(src.match(/setProductFoodType\(/g)).toHaveLength(1)
   })

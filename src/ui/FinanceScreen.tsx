@@ -48,7 +48,8 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
-import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
+import { isPendingCategory } from '@/domain/pending'
+import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase, purchaseNature } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
 import { partitionTicketLines } from '@/domain/ticketLines'
@@ -2796,7 +2797,8 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
       const receipt = receiptByExpenseId.get(e.id)
       if (!receipt) return sum
       const nonFoodTotal = allPrices
-        .filter((p) => p.receiptId === receipt.id && !isFoodPurchase(p, alimentacionNonFoodReceiptIds, alimentacionNonFoodProductIds, alimentacionFoodProductIds))
+        // Solo lo que se SABE que no es comida: un producto sin clasificar (desconocido) no se da por «no alimenticio».
+        .filter((p) => p.receiptId === receipt.id && purchaseNature(p, alimentacionNonFoodReceiptIds, alimentacionNonFoodProductIds, alimentacionFoodProductIds) === 'no_alimentos')
         .reduce((s, p) => {
           const qty = Number(p.quantity)
           return s + p.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
@@ -5261,10 +5263,9 @@ type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
 // en el momento de revisar el ticket: si el nombre ya coincide con un
 // producto conocido de la familia, se usa su clasificación real (y
 // nunca lleva "Nuevo"); si no, se adivina con el mismo criterio de
-// siempre — classifyFoodType por el nombre si la tienda es física (regla
-// "tienda física = Alimentos por defecto" de isFoodPurchase), o "Sin
-// clasificar" si es Amazon y el ticket no es de Alimentación — y se
-// marca "Nuevo" para que se revise.
+// siempre — classifyFoodType por el nombre (misma suposición de comida
+// para TODAS las tiendas: la tienda no decide qué es un producto; no se
+// guarda como decisión) — y se marca "Nuevo" para que se revise.
 function normalizeProductName(name: string): string {
   return name.trim().toLowerCase()
 }
@@ -5274,15 +5275,15 @@ interface ResolvedDraftLine {
   kind: FoodTypeKind
   classification: string
   icon: string
+  // De dónde sale `kind`: 'override' = elección explícita de la familia; 'shared' = aprendizaje compartido aprobado; 'default' = solo la
+  // suposición de un producto NUEVO (comida) o lo ya guardado del producto. Solo las dos primeras son evidencia que se puede guardar.
+  kindSource: 'override' | 'shared' | 'default'
 }
 
 function resolveDraftLineClass(
   line: DraftLine,
   productByNormalizedName: Map<string, Product>,
   foodTypesByKind: Record<FoodTypeKind, FamilyFoodType[]>,
-  ticketStore: string,
-  ticketCategory: string,
-  categories: BudgetCategory[],
   // Resultado del aprendizaje compartido para (tienda de ESTE ticket, texto de esta línea); null si no hay o no está cargado.
   shared: SharedClassHint | null = null,
 ): ResolvedDraftLine {
@@ -5290,18 +5291,20 @@ function resolveDraftLineClass(
   const isNew = !existing
   let kind: FoodTypeKind
   let classification: string
+  let kindSource: ResolvedDraftLine['kindSource'] = 'default'
   if (line.classOverride) {
     // Elección explícita de la familia al revisar el ticket: manda sobre todo lo demás.
     kind = line.classOverride.kind
     classification = line.classOverride.classification
+    kindSource = 'override'
   } else {
     // Resolutor central (domain/productClass.ts): clase elegida por la familia → aprendizaje compartido de la tienda del
     // ticket → clase histórica → reglas por nombre. Un producto ya conocido pero sin clasificar a mano se enseña igual que en
     // Historial de precios ("Automático") en vez de dejarlo en blanco.
-    const defaultIsFood = ticketStore.trim().toLowerCase() !== 'amazon' || isFoodCategory(ticketCategory, categories)
-    // Producto conocido: manda el conjunto de SU clase (Fase 6C: la tienda no decide qué es un producto); sin clase conocida, la marca
-    // heredada non_food. La suposición por ticket/tienda de arriba solo se aplica a un producto NUEVO (residual pendiente de la 6C).
-    kind = existing ? (existing.classKind ?? (existing.nonFood ? 'no_alimentos' : 'alimentacion')) : defaultIsFood ? 'alimentacion' : 'no_alimentos'
+    // Producto conocido: manda el conjunto de SU clase (la tienda no decide qué es un producto); sin clase conocida, la marca heredada
+    // non_food. Un producto NUEVO parte de la suposición de comida en el borrador (igual en TODAS las tiendas, Amazon incluida; ni la tienda
+    // ni la categoría del ticket lo deciden) y NO se guarda como decisión: solo una elección de la familia o el aprendizaje compartido.
+    kind = existing ? (existing.classKind ?? (existing.nonFood ? 'no_alimentos' : 'alimentacion')) : 'alimentacion'
     const resolved = resolveProductClassSafe({
       name: existing?.displayName ?? line.name,
       product: existing ?? null,
@@ -5312,11 +5315,14 @@ function resolveDraftLineClass(
     })
     // Sin nombre todavía no hay nada que adivinar (igual que antes).
     classification = existing || line.name.trim() ? resolved.className : ''
-    if (resolved.source === 'shared') kind = resolved.kind
+    if (resolved.source === 'shared') {
+      kind = resolved.kind
+      kindSource = 'shared'
+    }
   }
   const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined
   const icon = known?.icon ?? (classification ? (kind === 'alimentacion' ? '🍽️' : '❓') : kind === 'alimentacion' ? '🍽️' : '❓')
-  return { isNew, kind, classification, icon }
+  return { isNew, kind, classification, icon, kindSource }
 }
 
 // Petición real: "que al tocar el símbolo se abra el menú de clases
@@ -5550,14 +5556,17 @@ function ReceiptForm({
             line,
             productByNormalizedName,
             foodTypesByKind,
-            store,
-            category,
-            categories,
             sharedHintFor(lineShared, store, line.name.trim()),
           )
+          // La marca heredada non_food solo se guarda cuando hay EVIDENCIA: una elección de la familia (con clase → atómico en
+          // setProductFoodType) o el aprendizaje compartido aprobado. Nunca una suposición por defecto, por la tienda o por la categoría
+          // del ticket: un producto sin clase ni evidencia queda DESCONOCIDO (Fase 6C.2B).
+          const explicitClass = line.classOverride?.classification || null
           await Promise.all([
-            ...(line.classOverride ? [setProductFoodType(productId, line.classOverride.classification || null, line.classOverride.kind)] : []),
-            setProductNonFood(productId, resolved.kind === 'no_alimentos'),
+            ...(line.classOverride ? [setProductFoodType(productId, explicitClass, line.classOverride.kind)] : []),
+            ...(resolved.kindSource === 'shared' || (resolved.kindSource === 'override' && !explicitClass)
+              ? [setProductNonFood(productId, resolved.kind === 'no_alimentos')]
+              : []),
           ])
         }),
     )
@@ -5735,9 +5744,6 @@ function ReceiptForm({
               line,
               productByNormalizedName,
               foodTypesByKind,
-              store,
-              category,
-              categories,
               sharedHintFor(lineShared, store, line.name.trim()),
             )
             return (
@@ -6420,6 +6426,8 @@ export function BudgetsTab({
     store: string
     foodAmount: number
     nonFoodAmount: number
+    // Producto SIN CLASIFICAR (naturaleza desconocida): no es Alimentos ni Otros. No confundir con «pendiente de clasificar» (categoría NULL).
+    unknownAmount: number
   }
   const foodClassEntries: ClassifiableEntry[] = []
   const noAlimentosClassEntries: ClassifiableEntry[] = []
@@ -6429,20 +6437,28 @@ export function BudgetsTab({
     // Un ticket SIN categoría (NULL, pendiente) no es «no alimentación»: simplemente no se sabe (Fase 6C.2B decidirá cómo mostrarlo).
     const isTicketNonFood = receipt != null && receipt.category != null && !isFoodCategory(receipt.category, categories)
     const baseIsFood = isFoodCategory(e.category, categories)
-    if (!baseIsFood && !isComprasFamiliaCategory(e.category, categories) && !isTicketNonFood) continue
+    // Un gasto PENDIENTE de clasificar (category NULL) con ticket también entra: sus productos se reparten por su propia naturaleza.
+    const isPending = isPendingCategory(e.category)
+    if (!baseIsFood && !isComprasFamiliaCategory(e.category, categories) && !isTicketNonFood && !(isPending && receipt != null)) continue
     const store = canonicalStoreName(e.store, knownStores)
     const lines = receipt ? (pricesByReceiptId.get(receipt.id) ?? []) : []
     let foodAmount = 0
     let nonFoodAmount = 0
+    let unknownAmount = 0
     if (lines.length > 0) {
       let itemizedFood = 0
       let itemizedNonFood = 0
+      let itemizedUnknown = 0
       for (const pr of lines) {
         const product = productById.get(pr.productId)
         const displayName = product?.displayName ?? '?'
         const qty = Number(pr.quantity)
         const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
-        if (isFoodPurchase(pr, foodReceiptIdsForPrices, nonFoodProductIds, foodProductIds)) {
+        const nature = purchaseNature(pr, foodReceiptIdsForPrices, nonFoodProductIds, foodProductIds)
+        if (nature === 'desconocido') {
+          // Ni Alimentos ni Otros: se contabiliza aparte como «Productos sin clasificar».
+          itemizedUnknown += amount
+        } else if (nature === 'alimentacion') {
           itemizedFood += amount
           // Resolutor central; la tienda es la de ESTA compra (product_price), nunca una atribuida al producto en general.
           const auto = classifyFoodType(displayName)
@@ -6471,12 +6487,18 @@ export function BudgetsTab({
       }
       foodAmount = itemizedFood
       nonFoodAmount = itemizedNonFood
-      const remainder = e.amount - itemizedFood - itemizedNonFood
+      unknownAmount = itemizedUnknown
+      const remainder = e.amount - itemizedFood - itemizedNonFood - itemizedUnknown
       if (remainder > 0.005) {
-        const target = baseIsFood ? foodClassEntries : noAlimentosClassEntries
-        target.push({ itemId: `sin-detalle:${e.id}`, displayName: e.store ?? 'Compra', amount: remainder, type: SIN_CLASIFICAR, expenseId: e.id })
-        if (baseIsFood) foodAmount += remainder
-        else nonFoodAmount += remainder
+        if (isPending) {
+          // Lo que el ticket no desglosa, en un gasto pendiente, no se atribuye a Otros: no se sabe qué es.
+          unknownAmount += remainder
+        } else {
+          const target = baseIsFood ? foodClassEntries : noAlimentosClassEntries
+          target.push({ itemId: `sin-detalle:${e.id}`, displayName: e.store ?? 'Compra', amount: remainder, type: SIN_CLASIFICAR, expenseId: e.id })
+          if (baseIsFood) foodAmount += remainder
+          else nonFoodAmount += remainder
+        }
       }
     } else {
       const manualKind = e.productClassification ? foodTypeKindByName.get(e.productClassification) : undefined
@@ -6491,19 +6513,23 @@ export function BudgetsTab({
       } else if (baseIsFood) {
         foodAmount = e.amount
         foodClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: SIN_CLASIFICAR, expenseId: e.id })
+      } else if (isPending) {
+        unknownAmount = e.amount // pendiente y sin desglose: no se atribuye ni a Alimentos ni a Otros
       } else {
         nonFoodAmount = e.amount
         noAlimentosClassEntries.push({ itemId: e.id, displayName: e.store ?? 'Compra', amount: e.amount, type: SIN_CLASIFICAR, expenseId: e.id })
       }
     }
-    splits.push({ expense: e, store, foodAmount, nonFoodAmount })
+    splits.push({ expense: e, store, foodAmount, nonFoodAmount, unknownAmount })
   }
 
   const alimentacionExpenses = splits.filter((s) => s.foodAmount > 0).map((s) => s.expense)
   const noAlimentosExpenses = splits.filter((s) => s.nonFoodAmount > 0).map((s) => s.expense)
   const alimentacionTotal = splits.reduce((sum, s) => sum + s.foodAmount, 0)
   const noAlimentosTotal = splits.reduce((sum, s) => sum + s.nonFoodAmount, 0)
-  const comprasTotal = alimentacionTotal + noAlimentosTotal
+  // Productos SIN CLASIFICAR (naturaleza desconocida): forman parte de lo registrado en compras, pero no son Alimentos ni Otros.
+  const sinClasificarTotal = splits.reduce((sum, s) => sum + s.unknownAmount, 0)
+  const comprasTotal = alimentacionTotal + noAlimentosTotal + sinClasificarTotal
   const totalGastadoPeriodo = monthRealExpenses.reduce((sum, e) => sum + e.amount, 0)
   const pctOf = (part: number, total: number) => (total > 0 ? (part / total) * 100 : 0)
 
@@ -6716,6 +6742,13 @@ export function BudgetsTab({
                 </>
               )}
             </p>
+            {/* Productos cuya naturaleza no se sabe (ni comida ni no comida): no se cuentan ni en Alimentos ni en Otros. Solo aparece si hay. */}
+            {sinClasificarTotal > 0.005 && (
+              <p className="muted" style={{ margin: '8px 0 0', fontSize: 12 }}>
+                ❔ Productos sin clasificar: {sinClasificarTotal.toFixed(2)} € ({pctOf(sinClasificarTotal, comprasTotal).toFixed(0)}% de las compras) — no cuentan
+                ni en Alimentación ni en Otros hasta que les pongas una clase.
+              </p>
+            )}
           </div>
           <p className="muted" style={{ margin: '8px 0 0' }}>
             Solo registro — no resta de ningún presupuesto. Cuenta para el Presupuesto General.

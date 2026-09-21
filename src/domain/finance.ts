@@ -1,3 +1,4 @@
+import { isPendingCategory } from '@/domain/pending'
 import type { Budget, BudgetCategory, Expense, KidWalletTransaction } from '@/domain/types'
 
 function toDateStr(d: Date): string {
@@ -269,7 +270,9 @@ export function budgetSpent(
   // gastado de Presupuesto Generales — bug real destapado por
   // finance.test.ts al preparar los tests.
   const inOwnGroup = (e: Expense) => e.category != null && categories.some((c) => c.budgetGroup === budget.budgetGroup && c.name === e.category)
-  return periodExpenses.filter((e) => inOwnGroup(e) || isFood(e)).reduce((sum, e) => sum + e.amount, 0)
+  // Un gasto PENDIENTE de clasificar (category NULL) es gasto real: el presupuesto General (el de todo el gasto) lo cuenta. Los de categoría
+  // concreta y el de Alimentación (arriba) NO: no pertenece a ninguna categoría. (Fase 6C.2B)
+  return periodExpenses.filter((e) => inOwnGroup(e) || isFood(e) || isPendingCategory(e.category)).reduce((sum, e) => sum + e.amount, 0)
 }
 
 // Lo que el niño/a tiene DISPONIBLE ahora mismo — no lo mismo que lo

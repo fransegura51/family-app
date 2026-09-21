@@ -32,33 +32,67 @@ export function isLikelyAlcohol(displayName: string): boolean {
   return ALCOHOL_KEYWORDS.some((k) => name.includes(k))
 }
 
-// Un artículo de Amazon solo cuenta como alimentación si la propia
-// familia le puso una categoría de Alimentación (la general o alguna
-// de sus subcategorías, p. ej. un café) al ticket al revisarlo — el
-// resto de tiendas (Mercadona, Hiperber...) es siempre compra física,
-// así que cuenta entera como alimentación aunque alguna línea suelta
-// no lo sea del todo (petición real: "al ser todo compra en tienda y
-// no online los dejamos dentro de esa clasificación").
-// `nonFoodProductIds` es la excepción manual por producto (petición
-// real: "Bombona y Plantas aparecen como Alimentación" — un producto
-// suelto que no es comida aunque se comprara en tienda física junto
-// con la compra normal); se comprueba antes que la regla de tienda,
-// así que gana siempre que esté marcado.
+// FASE 6C.2B — NATURALEZA DE UN PRODUCTO COMPRADO: TRIESTADO, no un booleano.
 //
-// FASE 6C — TIENDA != TIPO DE PRODUCTO. Un producto con CLASE CONOCIDA (manual o histórica, que existe entre las de la familia)
-// se cuenta según el `kind` de esa clase, SEA CUAL SEA la tienda (`foodProductIds` = clase de alimentación, `nonFoodProductIds`
-// = clase de no alimentos o marca heredada sin clase). Solo si la clase es desconocida sigue aplicándose lo de antes (regla de
-// Amazon por la categoría del ticket) — pendiente de retirar cuando exista «Pendiente de clasificar» (ver decisión de la 6C).
+//   'alimentacion'  → es comida (FOOD)
+//   'no_alimentos'  → no es comida (OTHER)
+//   'desconocido'   → NO SE SABE («Producto sin clasificar»): no entra ni en Alimentos ni en Otros
+//
+// TIENDA != TIPO DE PRODUCTO: la tienda (Amazon, Mercadona, la que sea) NO decide nada aquí. Precedencia, única para todos los consumidores:
+//   A. clase conocida del producto (manual o histórica, que existe entre las de la familia) → manda el `kind` de esa clase
+//      (también sobre una marca non_food antigua y contradictoria);
+//   B. sin clase conocida, marca explícita heredada non_food = true (p. ej. «Bombona» marcada como Otros) → no alimentos;
+//   C. sin clase conocida y sin marca: solo hay UNA evidencia histórica que se conserva de forma transitoria — el ticket está en la categoría
+//      financiera «Alimentación» (o una subcategoría suya) → alimentación. Sin ella → DESCONOCIDO. Se midió antes de conservarla: hoy hay 263
+//      líneas / 112 productos / 1.014,64 € que dependen EXCLUSIVAMENTE de esa evidencia; retirarla las sacaría de Alimentos sin prueba de que
+//      no lo sean, así que se mantiene y queda identificada (basis 'ticket_alimentacion') para poder retirarla cuando se decida.
+//
+// Una categoría financiera GENÉRICA del ticket (Regalos y compras varias, Otros, «Amazon»...) NUNCA prueba que un producto sea «no alimentos»:
+// un mismo ticket puede mezclar cosas de distinto tipo. Un ticket sin categoría (NULL, pendiente) tampoco prueba nada → desconocido.
+//
+// NO confundir con «Pendiente de clasificar» (category NULL de un gasto o ticket): aquello es la categoría FINANCIERA; esto es la
+// naturaleza del PRODUCTO. Son conceptos y banderas distintos.
+export type ProductNature = 'alimentacion' | 'no_alimentos' | 'desconocido'
+export type ProductNatureBasis = 'class' | 'non_food' | 'ticket_alimentacion' | 'none'
+
+export interface PurchaseNatureContext {
+  /** Tickets cuya categoría financiera es Alimentación (o una subcategoría): ver buildFoodReceiptIds. */
+  foodReceiptIds: Set<string>
+  /** Productos de no alimentos: clase de no alimentos, o marca heredada non_food sin clase (ver buildProductKindSets). */
+  nonFoodProductIds?: Set<string>
+  /** Productos con clase conocida de alimentación (ver buildProductKindSets). */
+  foodProductIds?: Set<string>
+}
+
+/** La naturaleza de una compra (línea de product_prices) y en qué se apoya. La tienda no entra. */
+export function resolvePurchaseNature(
+  price: { productId: string; receiptId: string | null },
+  ctx: PurchaseNatureContext,
+): { nature: ProductNature; basis: ProductNatureBasis } {
+  if (ctx.foodProductIds?.has(price.productId)) return { nature: 'alimentacion', basis: 'class' }
+  if (ctx.nonFoodProductIds?.has(price.productId)) return { nature: 'no_alimentos', basis: 'non_food' }
+  if (price.receiptId != null && ctx.foodReceiptIds.has(price.receiptId)) return { nature: 'alimentacion', basis: 'ticket_alimentacion' }
+  return { nature: 'desconocido', basis: 'none' }
+}
+
+export function purchaseNature(
+  price: { productId: string; receiptId: string | null },
+  foodReceiptIds: Set<string>,
+  nonFoodProductIds: Set<string> = new Set(),
+  foodProductIds: Set<string> = new Set(),
+): ProductNature {
+  return resolvePurchaseNature(price, { foodReceiptIds, nonFoodProductIds, foodProductIds }).nature
+}
+
+// ¿Es comida? Solo el estado FOOD del triestado: «no alimentos» y «desconocido» dan false (por eso NO usar `!isFoodPurchase` como
+// «Otros»: un desconocido no es Otros; usa purchaseNature).
 export function isFoodPurchase(
-  price: { productId: string; store: string | null; receiptId: string | null },
+  price: { productId: string; receiptId: string | null },
   foodReceiptIds: Set<string>,
   nonFoodProductIds: Set<string> = new Set(),
   foodProductIds: Set<string> = new Set(),
 ): boolean {
-  if (foodProductIds.has(price.productId)) return true
-  if (nonFoodProductIds.has(price.productId)) return false
-  if (price.store !== 'Amazon') return true
-  return price.receiptId != null && foodReceiptIds.has(price.receiptId)
+  return purchaseNature(price, foodReceiptIds, nonFoodProductIds, foodProductIds) === 'alimentacion'
 }
 
 // Conjuntos de productos por su TIPO REAL (Fase 6C): la clase conocida manda (también sobre un non_food antiguo y contradictorio);

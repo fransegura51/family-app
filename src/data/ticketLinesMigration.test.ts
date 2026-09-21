@@ -134,7 +134,7 @@ describe('Fase 6A: TODOS los caminos que crean products / product_prices filtran
   it('el guardado del ticket no hace nada más con una línea descartada (sin clase, sin non_food, sin shared)', () => {
     const src = APP['/src/ui/FinanceScreen.tsx']
     const start = src.indexOf('const { productId } = await recordProductPurchase')
-    const after = src.slice(start, start + 1600)
+    const after = src.slice(start, start + 3200)
     expect(after.indexOf('if (productId == null) return')).toBeGreaterThan(-1)
     expect(after.indexOf('if (productId == null) return')).toBeLessThan(after.indexOf('setProductNonFood'))
     expect(after.indexOf('if (productId == null) return')).toBeLessThan(after.indexOf('resolveDraftLineClass'))

@@ -114,7 +114,7 @@ describe('B. un pendiente nunca aparece como una categoría («null», «Otros»
   })
 })
 
-describe('C. presupuestos: la lógica actual no cambia con un NULL (el General se decide en 6C.2B)', () => {
+describe('C/D/E. presupuestos: el General SÍ cuenta el pendiente; categoría concreta y Alimentación NO', () => {
   const budget = (over: Partial<Budget>): Budget =>
     ({ id: 'b', familyId: 'f', periodType: 'mensual', periodStart: '2026-09-01', category: null, amount: 1000, budgetGroup: 'generales', ownerMemberId: null, ...over }) as Budget
 
@@ -131,10 +131,18 @@ describe('C. presupuestos: la lógica actual no cambia con un NULL (el General s
     expect(budgetSpent(b, [PENDING(100), ...base.expenses], { categories: CATEGORIES })).toBe(budgetSpent(b, base.expenses, { categories: CATEGORIES }))
   })
 
-  it('el presupuesto General se calcula exactamente como hoy (no lanza; el pendiente entrará en la 6C.2B)', () => {
+  it('el presupuesto General SÍ cuenta el gasto pendiente (es gasto real)', () => {
     const base = financeData()
     const b = budget({})
-    expect(() => budgetSpent(b, [PENDING(100), ...base.expenses], { categories: CATEGORIES })).not.toThrow()
-    expect(budgetSpent(b, [PENDING(100), ...base.expenses], { categories: CATEGORIES })).toBe(budgetSpent(b, base.expenses, { categories: CATEGORIES }))
+    expect(budgetSpent(b, [PENDING(100), ...base.expenses], { categories: CATEGORIES })).toBe(budgetSpent(b, base.expenses, { categories: CATEGORIES }) + 100)
+  })
+
+  it('las exclusiones existentes del General se conservan: un pendiente que además es ingreso, previsto o fuera del periodo NO cuenta', () => {
+    const base = financeData()
+    const b = budget({})
+    const ref = budgetSpent(b, base.expenses, { categories: CATEGORIES })
+    expect(budgetSpent(b, [PENDING(100, { isIncome: true }), ...base.expenses], { categories: CATEGORIES })).toBe(ref)
+    expect(budgetSpent(b, [PENDING(100, { kind: 'previsto' }), ...base.expenses], { categories: CATEGORIES })).toBe(ref)
+    expect(budgetSpent(b, [PENDING(100, { expenseDate: '2026-07-15' }), ...base.expenses], { categories: CATEGORIES })).toBe(ref)
   })
 })

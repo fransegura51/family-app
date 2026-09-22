@@ -59,6 +59,32 @@ describe('routeTalk: apuntar', () => {
   })
 })
 
+describe('routeTalk: colisión Calendario/Compras ("comprar" con fecha/hora)', () => {
+  it('un aviso con fecha/hora y el verbo "comprar" es del calendario, no de la compra', () => {
+    expect(route('Apunta mañana a las seis de la tarde comprar pan')).toBe('add_calendar')
+    expect(route('Mañana a las seis de la tarde tengo que comprar pan')).toBe('add_calendar')
+    expect(route('Mañana a las seis de la tarde tengo dentista')).toBe('add_calendar') // control: ya funcionaba
+    expect(route('El viernes a las cinco dentista de Eric')).toBe('add_calendar')
+  })
+
+  it('una petición de añadir productos sigue siendo de la compra, con o sin fecha', () => {
+    expect(route('Añade pan a la compra')).toBe('add_shopping')
+    expect(route('Añade leche, huevos y pan a Mercadona')).toBe('add_shopping')
+    expect(route('Pon huevos en la lista de la compra')).toBe('add_shopping')
+    expect(route('Añade pan para mañana a la lista de la compra')).toBe('add_shopping')
+  })
+
+  it('variantes sueltas de "comprar" sin fecha/hora siguen siendo de la compra (sin cambios)', () => {
+    expect(route('comprar')).toBe('add_shopping')
+    expect(route('compra')).toBe('add_shopping')
+    expect(route('comprar pan')).toBe('add_shopping')
+    expect(route('comprar leche')).toBe('add_shopping')
+    expect(route('tengo que comprar')).toBe('add_shopping')
+    expect(route('recuerda comprar')).toBe('add_shopping')
+    expect(route('apunta comprar')).toBe('add_shopping')
+  })
+})
+
 describe('routeTalk: borrar', () => {
   it('borrar sigue sin estar soportado', () => {
     expect(route('borra la cita del nueve de septiembre')).toBe('delete')

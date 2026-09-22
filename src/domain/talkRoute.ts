@@ -23,6 +23,14 @@ const DATE_WORDS = /\b(?:hoy|manana|pasado manana|lunes|martes|miercoles|jueves|
 // añadir/agregar/meter algo sin fecha ni hora es, casi siempre, la lista de la compra.
 const SHOPPING_VERBS = /^(?:anade(?:me)?|agrega(?:me)?|mete)\b/
 const TIME_WORDS = /\ba las\b|\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s*horas?\b/
+// "compra"/"compras" (sustantivo/imperativo), "lista" o "supermercado", o una tienda YA DADA DE ALTA: señal
+// FUERTE de Compras, gana siempre aunque la frase también tenga fecha ("añade pan para mañana a la lista
+// de la compra" sigue siendo Compras). A propósito NO incluye "comprar" (el verbo en infinitivo): ese verbo
+// es AMBIGUO, aparece igual en un encargo sin fecha ("tengo que comprar pan") que en un aviso de Calendario
+// con fecha/hora clara ("apunta mañana a las seis de la tarde comprar pan") — bug real reportado: estos dos
+// últimos se apuntaban en Compras con el texto entero como nombre de producto. Por eso "comprar" a secas
+// solo decide Compras cuando, más abajo, no hay ninguna fecha/hora (ver el orden de comprobaciones).
+const STRONG_SHOP_WORDS = /\b(?:compra|compras|lista|supermercado)\b/
 
 export function routeTalk(text: string, knownStores: string[], today: Date): TalkRoute {
   if (isUnsupportedDelete(text)) return 'delete'
@@ -39,8 +47,10 @@ export function routeTalk(text: string, knownStores: string[], today: Date): Tal
     if (CAL_QUESTION_WORDS.test(n) || DATE_WORDS.test(n) || extractSpokenDate(n, today)) return 'ask_calendar'
     return 'unknown'
   }
-  if (shopping) return 'add_shopping'
+  const strongShopping = STRONG_SHOP_WORDS.test(n) || findKnownStore(text, knownStores) !== null
+  if (strongShopping) return 'add_shopping'
   if (DATE_WORDS.test(n) || TIME_WORDS.test(n) || extractSpokenDate(n, today) || /\bcalendario\b/.test(n)) return 'add_calendar'
+  if (shopping) return 'add_shopping'
   if (SHOPPING_VERBS.test(n)) return 'add_shopping'
   return 'unknown'
 }

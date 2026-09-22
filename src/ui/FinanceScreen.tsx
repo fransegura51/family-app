@@ -49,6 +49,9 @@ import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
+// FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
+import { isRealIncome } from '@/domain/financeCompute'
+import { isRefund } from '@/domain/refunds'
 import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase, purchaseNature } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
@@ -229,6 +232,8 @@ export interface MovementsFilter {
   // Solo gastos reales SIN categoría (category NULL, «Pendiente de clasificar»). Filtro lógico: no es una categoría ni se busca en
   // budget_categories. Sin fechas: un pendiente sigue pendiente aunque pase el mes.
   pendingOnly?: boolean
+  // FASE 6D.3 — solo devoluciones reales (isRefund, domain/refunds.ts). Como pendingOnly: filtro lógico, no una categoría más.
+  refundsOnly?: boolean
 }
 
 // Petición real: "no solo queríamos dar datos, sino también ayudar a
@@ -1500,7 +1505,7 @@ function BankTab({
   // ingresos... para saber cuánto tenemos de cada" — Fijo/Variable se
   // resuelve por movimiento (resolveExpenseFixed: categoría, o el
   // propio movimiento si lo has marcado a mano en su edición).
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'categoria' | 'busqueda' | 'pendientes'>('todos')
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'devoluciones' | 'categoria' | 'busqueda' | 'pendientes'>('todos')
   const [categoryFilterValue, setCategoryFilterValue] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [monthStartDay, setMonthStartDay] = useState(1)
@@ -1638,7 +1643,10 @@ function BankTab({
     // `||` de abajo no miraba is_income para esa categoría. Un traspaso
     // no cuenta como Ingreso en ningún otro sitio de la app — tampoco
     // aquí, ni saliendo ni entrando.
-    if (typeFilter === 'ingresos') return e.isIncome && !isInternalTransferCategory(e.category, categories)
+    // FASE 6D.3 — una devolución (isRefund) no es Ingresos: es dinero recuperado de un gasto anterior, no ingreso nuevo. Sigue
+    // siendo un movimiento real, consultable aparte con su propio filtro (nunca se oculta de "Todos"/"Búsqueda libre").
+    if (typeFilter === 'ingresos') return isRealIncome(e, categories)
+    if (typeFilter === 'devoluciones') return isRefund(e, categories)
     if (e.isIncome) return false
     const isFixed = resolveExpenseFixed(e, categories)
     return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
@@ -1781,7 +1789,9 @@ function BankTab({
           )}
           {typeFilter !== 'todos' && (
             <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-              Total {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : typeFilter === 'ingresos' ? 'de ingresos' : 'filtrado'}:{' '}
+              Total{' '}
+              {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : typeFilter === 'ingresos' ? 'de ingresos' : typeFilter === 'devoluciones' ? 'de devoluciones' : 'filtrado'}
+              :{' '}
               <strong>{typeFilterTotal.toFixed(2)} €</strong>
             </p>
           )}
@@ -1955,9 +1965,14 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   // se inflan por igual (el Ahorro no cambia, pero la Tasa de ahorro
   // sale más baja de lo real al hincharse el denominador).
   const real = inRange.filter((e) => e.kind === 'real' && !isInternalTransferCategory(e.category, categories))
-  const totalIncome = real.filter((e) => e.isIncome).reduce((s, e) => s + e.amount, 0)
+  // FASE 6D.3 — Modelo C de devoluciones (ver domain/refunds.ts, domain/financeCompute.ts): una devolución (isRefund) no es un
+  // ingreso nuevo, así que totalIncome la excluye (isRealIncome); totalSpent sigue siendo el gasto BRUTO de siempre (una
+  // devolución nunca cuenta ahí, es una fila is_income=true); refundsTotal/netSpent son nuevos, para explicar la diferencia.
+  const totalIncome = real.filter((e) => isRealIncome(e, categories)).reduce((s, e) => s + e.amount, 0)
   const totalSpent = real.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
-  const ahorro = totalIncome - totalSpent
+  const refundsTotal = real.filter((e) => isRefund(e, categories)).reduce((s, e) => s + e.amount, 0)
+  const netSpent = totalSpent - refundsTotal
+  const ahorro = totalIncome - netSpent
   // Skill de Pepa, punto 1: no se inventa una tasa de ahorro sin
   // ingresos con los que calcularla.
   const tasaAhorro = totalIncome > 0 ? (ahorro / totalIncome) * 100 : null
@@ -2178,8 +2193,24 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
             Ver registros →
           </button>
         </p>
+        {/* FASE 6D.3 — solo si hubo devoluciones este periodo: si no, la tarjeta se queda exactamente como estaba (regla del
+            proyecto: "si refunds = 0, mantener la interfaz actual"). El gasto neto es la cifra que de verdad ha salido de la
+            cuenta; el bruto de arriba se conserva tal cual, sin tocar el histórico. */}
+        {refundsTotal > 0 && (
+          <>
+            <p style={{ color: '#1e8449', margin: '4px 0' }}>
+              Devoluciones: +{refundsTotal.toFixed(2)} €{' '}
+              <button type="button" className="link-button" onClick={() => onViewMovements({ label: `Devoluciones — ${PRESET_LABELS[preset]}`, from, to, refundsOnly: true })}>
+                Ver registros →
+              </button>
+            </p>
+            <p className="muted" style={{ margin: '4px 0', fontSize: 13 }}>
+              Gasto neto: <strong>{netSpent.toFixed(2)} €</strong>
+            </p>
+          </>
+        )}
         <p style={{ margin: '4px 0' }}>
-          <strong>Ahorro: {ahorro.toFixed(2)} €</strong>
+          <strong>{ahorro >= 0 ? 'Ahorro' : 'Balance'}: {ahorro.toFixed(2)} €</strong>
           {tasaAhorro !== null && <span className="muted"> · Tasa de ahorro {tasaAhorro.toFixed(0)}%</span>}
         </p>
       </div>
@@ -2971,7 +3002,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         )}
       </div>
 
-      <EvolucionTemporal expenses={expenses} monthStartDay={monthStartDay} onViewMovements={onViewMovements} />
+      <EvolucionTemporal expenses={expenses} categories={categories} monthStartDay={monthStartDay} onViewMovements={onViewMovements} />
       <PorQueHaCambiadoMiGasto purchases={purchases} productNames={productNames} onViewMovements={onViewMovements} />
     </div>
   )
@@ -2984,10 +3015,12 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
 // día de inicio elegido en Configuración.
 function EvolucionTemporal({
   expenses,
+  categories,
   monthStartDay,
   onViewMovements,
 }: {
   expenses: Expense[]
+  categories: BudgetCategory[]
   monthStartDay: number
   onViewMovements: (f: MovementsFilter) => void
 }) {
@@ -3000,11 +3033,14 @@ function EvolucionTemporal({
     }))
   }, [monthStartDay])
 
+  // FASE 6D.3 — mismo criterio que Resumen: una devolución no es ingreso nuevo (isRealIncome la excluye); el gasto sigue siendo
+  // el bruto de siempre (nunca incluye una devolución, es una fila is_income=true), y el ahorro/balance usa el neto.
   const rows = months.map((m) => {
     const inMonth = expenses.filter((e) => e.kind === 'real' && e.expenseDate >= m.from && e.expenseDate <= m.to)
-    const income = inMonth.filter((e) => e.isIncome).reduce((s, e) => s + e.amount, 0)
+    const income = inMonth.filter((e) => isRealIncome(e, categories)).reduce((s, e) => s + e.amount, 0)
     const spent = inMonth.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
-    return { ...m, income, spent, ahorro: income - spent, count: inMonth.length }
+    const refunds = inMonth.filter((e) => isRefund(e, categories)).reduce((s, e) => s + e.amount, 0)
+    return { ...m, income, spent, ahorro: income - (spent - refunds), count: inMonth.length }
   })
   const maxAmount = Math.max(1, ...rows.map((r) => Math.max(r.income, r.spent)))
 
@@ -3016,7 +3052,7 @@ function EvolucionTemporal({
           <div key={r.key}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
               <span>{r.label}</span>
-              <span className={r.ahorro >= 0 ? 'muted' : 'error'}>Ahorro: {r.ahorro.toFixed(2)} €</span>
+              <span className={r.ahorro >= 0 ? 'muted' : 'error'}>{r.ahorro >= 0 ? 'Ahorro' : 'Balance'}: {r.ahorro.toFixed(2)} €</span>
             </div>
             <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 3 }}>
               <div style={{ width: `${(r.income / maxAmount) * 100}%`, background: tone(140, 50, 72, 'chart'), borderRadius: 3 }} />
@@ -3183,7 +3219,7 @@ function ExpensesTab({
   // que dejar Movimientos preparado... ponle los mismos filtros que a
   // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
   // chip row y mismo criterio que ya usa BankTab.
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'categoria' | 'busqueda' | 'pendientes'>('todos')
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'devoluciones' | 'categoria' | 'busqueda' | 'pendientes'>('todos')
   const [categoryFilterValue, setCategoryFilterValue] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   // Base para "Piso compartido/cuentas separadas": poder ver solo la
@@ -3249,6 +3285,7 @@ function ExpensesTab({
       if (filter.categoryGroup !== undefined && (e.category == null || !filter.categoryGroup.includes(e.category))) return false
       if (filter.expenseIds !== undefined && !filter.expenseIds.includes(e.id)) return false
       if (filter.pendingOnly && !isPendingSpendingRow(e)) return false
+      if (filter.refundsOnly && !isRefund(e, categories)) return false
       if (filter.store !== undefined && e.store !== filter.store) return false
       if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
       if (filter.necessity !== undefined || filter.necessityUnclassified || filter.isFixed !== undefined || filter.isFixedUnclassified) {
@@ -3263,6 +3300,8 @@ function ExpensesTab({
       // se excluye aquí también para que "Ver registros →" sume
       // exactamente la misma cifra que se tocó para llegar aquí.
       if (filter.isIncome !== undefined && isInternalTransferCategory(e.category, categories)) return false
+      // FASE 6D.3 — una devolución tampoco cuenta como Ingreso (isRealIncome ya la excluye); sí sigue contando en "Todos".
+      if (filter.isIncome === true && isRefund(e, categories)) return false
       if (filter.isIncome !== undefined && e.isIncome !== filter.isIncome) return false
       return true
     })
@@ -3309,14 +3348,12 @@ function ExpensesTab({
   // marcado al revés. Se crean desde el "Resumen" de cada presupuesto
   // (Skill: ingresos separados por pestaña), pero se ven aquí también
   // para tener el listado completo por fecha.
-  const monthIncome = useMemo(
-    () => accountFilteredExpenses.filter((e) => e.isIncome && !isInternalTransferCategory(e.category, categories)).reduce((sum, e) => sum + e.amount, 0),
-    [accountFilteredExpenses, categories],
-  )
+  // FASE 6D.3 — igual que en Resumen/PEPA: una devolución no es un ingreso nuevo, es dinero recuperado de un gasto anterior.
+  const monthIncome = useMemo(() => accountFilteredExpenses.filter((e) => isRealIncome(e, categories)).reduce((sum, e) => sum + e.amount, 0), [accountFilteredExpenses, categories])
 
   // Mismo criterio que BankTab: "Ingresos" no cuenta un traspaso entre
-  // cuentas propias ni entrando ni saliendo; Fijos/Variables ignora los
-  // ingresos (no tienen esa clasificación).
+  // cuentas propias ni entrando ni saliendo, ni una devolución (Fase
+  // 6D.3); Fijos/Variables ignora los ingresos (no tienen esa clasificación).
   const typeFilteredExpenses = useMemo(
     () =>
       accountFilteredExpenses.filter((e) => {
@@ -3324,7 +3361,8 @@ function ExpensesTab({
         if (typeFilter === 'categoria') return !categoryFilterValue || e.category === categoryFilterValue
         if (typeFilter === 'busqueda') return matchesFreeSearch(e, searchQuery)
         if (typeFilter === 'pendientes') return isPendingSpendingRow(e)
-        if (typeFilter === 'ingresos') return e.isIncome && !isInternalTransferCategory(e.category, categories)
+        if (typeFilter === 'ingresos') return isRealIncome(e, categories)
+        if (typeFilter === 'devoluciones') return isRefund(e, categories)
         if (e.isIncome) return false
         const isFixed = resolveExpenseFixed(e, categories)
         return typeFilter === 'fijos' ? isFixed === true : isFixed !== true
@@ -3467,7 +3505,9 @@ function ExpensesTab({
       )}
       {typeFilter !== 'todos' && (
         <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-          Total {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : typeFilter === 'ingresos' ? 'de ingresos' : 'filtrado'}:{' '}
+          Total{' '}
+          {typeFilter === 'fijos' ? 'fijo' : typeFilter === 'variables' ? 'variable' : typeFilter === 'ingresos' ? 'de ingresos' : typeFilter === 'devoluciones' ? 'de devoluciones' : 'filtrado'}
+          :{' '}
           <strong>{typeFilterTotal.toFixed(2)} €</strong>
         </p>
       )}
@@ -4943,6 +4983,9 @@ const TYPE_FILTER_OPTIONS = [
   { key: 'fijos', label: 'Gastos fijos' },
   { key: 'variables', label: 'Gastos variables' },
   { key: 'ingresos', label: 'Ingresos' },
+  // FASE 6D.3 — una devolución (dinero recuperado de una compra anterior) no es "Ingresos" (isRealIncome ya la excluye), pero
+  // sigue siendo un movimiento real: se puede consultar aparte, igual que Pendientes.
+  { key: 'devoluciones', label: 'Devoluciones' },
   { key: 'categoria', label: 'Categoría' },
   { key: 'busqueda', label: 'Búsqueda libre' },
   // Gasto real SIN categoría (category NULL). No es una categoría: es un filtro lógico y no existe en budget_categories.
@@ -6458,6 +6501,9 @@ export function BudgetsTab({
   // SharedBalanceCard para cómo se combinan con los gastos en "Saldo
   // entre personas" — dos rondas de feedback real hasta dar con la
   // cuenta correcta).
+  // FASE 6D.3 — auditoría: esto NO es "ingreso real familiar" (isRealIncome), es "cuánto ha depositado cada miembro en la cuenta
+  // común" para el reparto justo del piso compartido. Si una devolución cae en la cuenta común, sigue siendo dinero que reduce lo
+  // que ese miembro debe — se queda intencionalmente fuera de isRealIncome/isRefund, no se toca.
   const monthSharedDeposits = scopedExpenses.filter(
     (e) => e.expenseDate >= periodFrom && e.expenseDate <= periodTo && e.isIncome && e.kind === 'real' && !isInternalTransferCategory(e.category, categories),
   )
@@ -7442,8 +7488,10 @@ function BudgetsOverview({
   // cualquier categoría — es dinero real, no depende del budget_group
   // que le haya puesto la sincronización); sin banco, sigue siendo la
   // suma de lo apuntado a mano, como siempre.
+  // FASE 6D.3 — una devolución (dinero recuperado de un gasto anterior) no es Ingresos aquí tampoco, sea apuntada a mano o
+  // conciliada del banco: mismo criterio que Resumen/Movimientos/Banco (isRefund, domain/refunds.ts).
   const manualIncomeEntries = inRange
-    .filter((e) => e.isIncome && e.budgetGroup === group && e.source === 'manual')
+    .filter((e) => e.isIncome && e.budgetGroup === group && e.source === 'manual' && !isRefund(e, allCategories))
     .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
   const manualIncomeTotal = manualIncomeEntries.reduce((sum, e) => sum + e.amount, 0)
   // Petición real: "el dinero traspasado de nuestras cuentas a las de
@@ -7453,7 +7501,7 @@ function BudgetsOverview({
   // excluirlo aquí explícitamente; el lado de salida ya se excluye de
   // totalSpent más abajo por el mismo motivo.
   const bankIncomeTotal = inRange
-    .filter((e) => e.isIncome && (e.source === 'banco' || e.source === 'ticket_banco') && !isInternalTransferCategory(e.category, allCategories))
+    .filter((e) => e.isIncome && (e.source === 'banco' || e.source === 'ticket_banco') && !isInternalTransferCategory(e.category, allCategories) && !isRefund(e, allCategories))
     .reduce((sum, e) => sum + e.amount, 0)
   const totalIncome = hasBankAccounts ? bankIncomeTotal : manualIncomeTotal
   const incomeEntries = manualIncomeEntries

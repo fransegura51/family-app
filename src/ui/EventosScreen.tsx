@@ -652,6 +652,9 @@ function EventDetail({
     if (has('presupuesto')) {
       listEventBudgetItems(event.id).then(setBudgetItems).catch(() => {})
       if (event.tagId) {
+        // FASE 6D.3 — auditoría: este `!e.isIncome && !isInternalTransferCategory(...)` (y sus 3 réplicas en este archivo) es el
+        // LADO DEL GASTO de un evento (cuánto se ha gastado con su etiqueta), no "ingreso real": una devolución (is_income=true)
+        // ya queda fuera por `!e.isIncome`, sin necesidad de isRealIncome. No es el mismo caso que FinanceScreen.tsx — no se toca.
         Promise.all([listExpenses(), listBudgetCategories()])
           .then(([expenses, categories]) =>
             setBudgetSpent(

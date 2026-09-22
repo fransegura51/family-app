@@ -44,10 +44,13 @@ describe('isRealIncome: TODOS sus consumidores usan la nueva semántica (sin exc
     expect(FINANCE_ANALYSIS).toMatch(/import\s*\{[^}]*isRealIncome[^}]*\}\s*from\s*'@\/domain\/financeCompute'/)
   })
 
-  it('auditoría: 2 pantallas de UI reimplementan su propio filtro de ingresos (no pasan por isRealIncome/isRefund) — documentado, fuera de alcance de 6D.1 (NO UI)', () => {
-    // FinanceScreen.tsx (filtro «Ingresos» de Movimientos/Banco) y EventosScreen.tsx (presupuesto de evento) calculan "es ingreso real"
-    // inline con e.isIncome + isInternalTransferCategory, sin pasar por el isRealIncome ya corregido: hoy siguen sin excluir una
-    // devolución. Es una duplicación PREEXISTENTE (no introducida por esta fase) y su corrección es de UI, reservada para 6D.2/6D.3.
+  // RESUELTO EN 6D.3 (ver src/ui/financeUiRefunds.test.ts): los sitios de FinanceScreen.tsx/EventosScreen.tsx que SÍ representaban
+  // "ingreso real" ahora pasan por isRealIncome/isRefund. Este texto sigue apareciendo en los dos archivos, pero por motivos
+  // correctos y distintos: en FinanceScreen.tsx son el lado del GASTO (`!e.isIncome`, nunca necesitó isRealIncome) salvo
+  // `monthSharedDeposits` (documentado aparte: "depósito en la cuenta común" de piso compartido, no ingreso familiar); en
+  // EventosScreen.tsx las 4 apariciones son también el lado del gasto de un evento (documentado in situ). Se deja como
+  // constancia de que la búsqueda por texto NO basta para auditar esto — hace falta leer qué calcula cada una.
+  it('auditoría: lo que queda con este patrón de texto ya no es un filtro de ingresos sin corregir', () => {
     const offenders = Object.entries(APP)
       .filter(([f, t]) => !['/src/domain/financeCompute.ts', '/src/domain/financeAnalysis.ts'].includes(f) && /e\.isIncome\s*&&[^\n]*isInternalTransferCategory/.test(t))
       .map(([f]) => f)

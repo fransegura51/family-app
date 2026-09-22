@@ -102,10 +102,8 @@ describe('lo que esta fase NO toca', () => {
     expect(bank).not.toMatch(/isRefund|REFUND_CATALOG_KEY|i\.ingreso\.devoluciones/)
   })
 
-  it('sin frases nuevas de PEPA sobre devoluciones ni métrica "refunds" todavía (reservado para 6D.2)', () => {
-    expect(Object.values(APP).some((t) => /'refunds'/.test(t) && /FinanceMetric|metric:/.test(t))).toBe(false)
-    expect(FINANCE_COMPUTE).not.toMatch(/pendientes? de clasificar['"]?\s*\+\s*.*refund/i)
-  })
+  // La métrica 'refunds' y las frases de PEPA sobre devoluciones ya no están reservadas: las implementa la Fase 6D.2
+  // (domain/financeQuery.ts, domain/financeCompute.ts) — ver src/domain/refundsPepa.test.ts.
 
   it('no se ha tocado ningún archivo de UI (.tsx)', () => {
     // Esta fase es dominio/cálculo puro: ni un solo componente cambia.

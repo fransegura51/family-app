@@ -119,7 +119,7 @@ describe('conversación de Economía (contexto corto)', () => {
 
   it('el contexto guarda solo la consulta estructurada, no datos', async () => {
     await handleFinanceText('¿Cuánto hemos gastado este mes?', TODAY, deps())
-    expect(Object.keys(financeContextQuery()!).sort()).toEqual(['baseline', 'detail', 'focus', 'full', 'metric', 'period', 'premise', 'product', 'target'])
+    expect(Object.keys(financeContextQuery()!).sort()).toEqual(['baseline', 'detail', 'focus', 'full', 'metric', 'period', 'premise', 'product', 'spendMode', 'target'])
   })
 })
 
@@ -241,5 +241,30 @@ describe('un fallo de red no es "sin acceso"', () => {
     const out = await handleFinanceText('¿Cuánto hemos gastado este mes?', TODAY, d)
     expect(out).toContain('No he podido consultar Economía')
     expect(out).not.toBe(FINANCE_NO_ACCESS)
+  })
+})
+
+// FASE 6D.2 — devoluciones: el mismo sistema de contexto de siempre (sin uno paralelo), de extremo a extremo.
+describe('devoluciones (Fase 6D.2)', () => {
+  const REFUND_CATEGORIES: BudgetCategory[] = [...CATEGORIES, { id: 'd', familyId: 'f', name: 'Devoluciones', icon: '', budgetGroup: 'ingresos', sortOrder: 0, parentId: null, necessity: null, isFixed: null, catalogKey: 'i.ingreso.devoluciones' }]
+  const REFUND_DATA: FinanceData = {
+    ...DATA,
+    categories: REFUND_CATEGORIES,
+    expenses: [
+      ...DATA.expenses,
+      exp('2026-09-10', 10, 'Devoluciones', { isIncome: true, budgetGroup: 'ingresos', store: 'Mercadona' }),
+    ],
+  }
+
+  it('"¿Qué devoluciones hemos tenido este mes?" -> "¿Cuáles fueron?" mantiene el mismo contexto corto', async () => {
+    const d = deps({ load: vi.fn().mockResolvedValue(REFUND_DATA) })
+    expect(await handleFinanceText('¿Qué devoluciones hemos tenido este mes?', TODAY, d)).toContain('10,00 € en 1 devolución')
+    expect(await handleFinanceText('¿Cuáles fueron?', TODAY, d)).toContain('Mercadona')
+  })
+
+  it('"¿Cuánto hemos gastado este mes?" -> "¿Y cuánto nos han devuelto?" hereda el periodo ya consultado', async () => {
+    const d = deps({ load: vi.fn().mockResolvedValue(REFUND_DATA) })
+    await handleFinanceText('¿Cuánto hemos gastado este mes?', TODAY, d)
+    expect(await handleFinanceText('¿Y cuánto nos han devuelto?', TODAY, d)).toContain('10,00 € en 1 devolución')
   })
 })

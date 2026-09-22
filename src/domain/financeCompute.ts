@@ -23,8 +23,9 @@ import { comparableAgainst, comparablePrevious, resolvePeriod, type PeriodSpec, 
 import type { FinanceQuery } from '@/domain/financeQuery'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase, type SpendChangeBreakdown } from '@/domain/priceTrends'
 import { pendingSpending, type PendingSpending } from '@/domain/pending'
-import { isRefund } from '@/domain/refunds'
+import { isRefund, refundLabel } from '@/domain/refunds'
 import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
+import { MONTHS } from '@/domain/spokenDate'
 import type { Budget, BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
 import { normalize } from '@/domain/voiceQuery'
 
@@ -225,8 +226,12 @@ export function totalIncome(data: FinanceData, from: string, to: string): number
 //               ese vínculo hoy, y aunque existiera no se aplicaría retroactivamente).
 // netSpending:  grossSpending (totalSpending, SIN CAMBIOS — sigue sin incluir nunca una devolución, que es una fila is_income=true) menos
 //               las devoluciones del mismo periodo. Puede ser negativo (se recupera más de lo gastado en ese periodo): no se recorta a 0.
+export function refundRows(data: FinanceData, from: string, to: string): Expense[] {
+  return data.expenses.filter((e) => isRefund(e, data.categories) && inRange(e, from, to))
+}
+
 export function totalRefunds(data: FinanceData, from: string, to: string): number {
-  return sum(data.expenses.filter((e) => isRefund(e, data.categories) && inRange(e, from, to)))
+  return sum(refundRows(data, from, to))
 }
 
 export function netSpending(data: FinanceData, from: string, to: string, filter: Filter = {}): number {
@@ -315,8 +320,25 @@ function answerSpent(query: FinanceQuery, data: FinanceData, today: Date): Finan
   if (total === 0 && !hasAnyExpense(data, resolved.from, resolved.to)) {
     return { text: NO_DATA(whenOf(resolved)) + staleNote(data), query: q }
   }
-  const lead = resolved.ongoing ? `${subjectOf(resolved)} lleváis` : `${subjectOf(resolved)} habéis gastado`
-  let text = `${lead} ${formatEuros(total)}${where || ' de gastos registrados'}.`
+
+  // FASE 6D.2 — bruto/neto: una devolución no se atribuye a ninguna categoría/tienda/concepto (no hay vínculo fiable con el gasto
+  // original, ver domain/refunds.ts), así que el gasto NETO solo tiene sentido para el total sin filtrar. Con filtro, o pidiendo
+  // explícitamente el bruto ("¿cuál fue el gasto bruto?"), la respuesta es la de siempre (gasto real, sin tocar). Sin devoluciones
+  // en el periodo, "neto" y "bruto" son el mismo número: se contesta igual que siempre, sin añadir nada que explicar.
+  const hasFilter = filter.category != null || filter.store != null || filter.concept != null
+  const mode = query.spendMode ?? 'auto'
+  const refunds = !hasFilter && mode !== 'gross' ? totalRefunds(data, resolved.from, resolved.to) : 0
+  const net = Math.round((total - refunds) * 100) / 100
+
+  let text: string
+  if (refunds > 0 && (mode === 'net' || mode === 'auto')) {
+    const netLead = resolved.ongoing ? `${subjectOf(resolved)} lleváis un gasto neto de ${formatEuros(net)}` : `${subjectOf(resolved)} el gasto neto fue ${formatEuros(net)}`
+    const grossClause = resolved.ongoing ? `Habéis gastado ${formatEuros(total)} y recuperado ${formatEuros(refunds)} en devoluciones.` : `Se gastaron ${formatEuros(total)} y recuperasteis ${formatEuros(refunds)} en devoluciones.`
+    text = `${netLead}. ${grossClause}`
+  } else {
+    const lead = resolved.ongoing ? `${subjectOf(resolved)} lleváis` : `${subjectOf(resolved)} habéis gastado`
+    text = `${lead} ${formatEuros(total)}${where || ' de gastos registrados'}.`
+  }
   // Un gasto pendiente de clasificar SÍ está en ese total (es gasto real); solo se aclara cuánto de él aún no tiene categoría.
   const pending = pendingSpending(spendingRows(data, resolved.from, resolved.to, filter))
   if (pending.count > 0) text += ` De ese total, ${formatEuros(pending.amount)} están pendientes de clasificar.`
@@ -353,18 +375,33 @@ function answerSaved(query: FinanceQuery, data: FinanceData, today: Date): Finan
   const spent = totalSpending(data, resolved.from, resolved.to)
   const anyIncome = data.expenses.some((e) => isRealIncome(e, data.categories) && inRange(e, resolved.from, resolved.to))
   if (!anyIncome) {
-    return { text: `No tengo ingresos registrados ${whenOf(resolved)}, así que no puedo calcular el ahorro. Gastos registrados: ${formatEuros(spent)}.` + staleNote(data), query: q }
+    // FASE 6D.2 — seguimos sin inventar un ahorro cuando no hay ingresos reales registrados (podría faltar el dato, no ser
+    // literalmente cero): eso no cambia. Pero si hubo devoluciones ese periodo, se dice el gasto NETO (lo que de verdad ha salido de
+    // la cuenta), no solo el bruto: si no, "gastos registrados: 3.866,60 €" sería engañoso habiendo recuperado 46,94 €.
+    const refundsNoIncome = totalRefunds(data, resolved.from, resolved.to)
+    const gastoTexto =
+      refundsNoIncome > 0
+        ? `Gasto neto: ${formatEuros(netSpending(data, resolved.from, resolved.to))} (gastasteis ${formatEuros(spent)} y recuperasteis ${formatEuros(refundsNoIncome)} en devoluciones).`
+        : `Gastos registrados: ${formatEuros(spent)}.`
+    return { text: `No tengo ingresos registrados ${whenOf(resolved)}, así que no puedo calcular el ahorro. ${gastoTexto}` + staleNote(data), query: q }
   }
-  // El ahorro se calcula sobre el gasto NETO (menos las devoluciones del periodo), aunque `spent` (arriba, mostrado tal cual) siga
-  // siendo el gasto bruto de siempre: income ya excluye las devoluciones (isRealIncome), así que income - netSpending da EXACTAMENTE
-  // el mismo ahorro que antes de la Fase 6D.1 — solo cambia income cuando hay devoluciones en el periodo. Ver domain/refunds.ts.
-  const saved = Math.round((income - netSpending(data, resolved.from, resolved.to)) * 100) / 100
-  const head = `${subjectOf(resolved)}: ingresos ${formatEuros(income)}, gastos ${formatEuros(spent)}.`
+  // El ahorro se calcula sobre el gasto NETO (menos las devoluciones del periodo): income ya excluye las devoluciones (isRealIncome),
+  // así que income - netSpending da EXACTAMENTE el mismo ahorro que antes de la Fase 6D.1 — solo cambia income cuando hay
+  // devoluciones en el periodo. Ver domain/refunds.ts. Con devoluciones, "ingresos X, gastos Y" (Y = bruto) mezclaría un gasto bruto
+  // con un ahorro ya neto: se explica aparte para que la cifra del ahorro cuadre con lo que se acaba de decir.
+  const refunds = totalRefunds(data, resolved.from, resolved.to)
+  const net = netSpending(data, resolved.from, resolved.to)
+  const saved = Math.round((income - net) * 100) / 100
+  const head =
+    refunds > 0
+      ? `${subjectOf(resolved)}: ingresos ${formatEuros(income)}, gasto neto ${formatEuros(net)} (gastasteis ${formatEuros(spent)} y recuperasteis ${formatEuros(refunds)} en devoluciones).`
+      : `${subjectOf(resolved)}: ingresos ${formatEuros(income)}, gastos ${formatEuros(spent)}.`
   if (saved >= 0) {
     const rate = income > 0 ? ` (${String(Math.round((saved / income) * 1000) / 10).replace('.', ',')} % de lo ingresado)` : ''
     return { text: `${head} Ahorro: ${formatEuros(saved)}${rate}.` + staleNote(data), query: q }
   }
-  return { text: `${head} Habéis gastado ${formatEuros(Math.abs(saved))} más de lo que habéis ingresado.` + staleNote(data), query: q }
+  const netNote = refunds > 0 ? ' en términos netos' : ''
+  return { text: `${head} Habéis gastado ${formatEuros(Math.abs(saved))} más de lo que habéis ingresado${netNote}.` + staleNote(data), query: q }
 }
 
 function answerTopCategories(query: FinanceQuery, data: FinanceData, today: Date): FinanceAnswer {
@@ -409,6 +446,52 @@ function answerPending(query: FinanceQuery, data: FinanceData, today: Date): Fin
     text: `Tenéis ${movs} de clasificar${when}: ${formatEuros(pending.amount)} en total${share}. Siguen contando en el gasto total; solo falta decir en qué categoría van.` + staleNote(data),
     query: q,
   }
+}
+
+function joinList(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? ''
+  return `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`
+}
+
+function spokenDay(date: string): string {
+  return `${dayOf(date)} de ${MONTHS[Number(date.slice(5, 7)) - 1]}`
+}
+
+// FASE 6D.2 — «¿Qué devoluciones hemos tenido?», «¿cuánto nos han devuelto?», «¿nos han devuelto algo?»: SIEMPRE el periodo en que
+// se REGISTRA la devolución (nunca el mes de la compra original: no existe ese vínculo). Nunca incluye la pareja «Cobro anulado»
+// (6D.0): isRefund/refundRows ya la excluyen, no es una devolución. El detalle (fecha + comercio) nunca enseña IDs, IBAN, cuenta ni
+// el texto bancario en bruto: se limpia con refundLabel (domain/refunds.ts). Sin periodo dicho, como en pending, se cuentan TODAS.
+function answerRefunds(query: FinanceQuery, data: FinanceData, today: Date): FinanceAnswer {
+  const hasPeriod = query.period !== null
+  const { spec, resolved } = periodOf(query, data, today)
+  const q = { ...query, period: hasPeriod ? spec : null, target: null }
+  const rows = refundRows(data, hasPeriod ? resolved.from : '0000-01-01', hasPeriod ? resolved.to : '9999-12-31')
+  const when = hasPeriod ? ` ${whenOf(resolved)}` : ''
+  if (rows.length === 0) return { text: `No hubo devoluciones registradas${when}.` + staleNote(data), query: q }
+
+  const sorted = [...rows].sort((x, y) => (x.expenseDate < y.expenseDate ? -1 : x.expenseDate > y.expenseDate ? 1 : 0))
+  const total = sum(sorted)
+  const movs = sorted.length === 1 ? '1 devolución' : `${sorted.length} devoluciones`
+
+  if (query.detail === 'full') {
+    // "¿Cuáles fueron?": el detalle completo, solo fecha + importe + comercio limpio (nunca IDs ni datos bancarios en bruto).
+    const lines = sorted.map((e) => {
+      const label = refundLabel(e)
+      return `${formatEuros(e.amount)}${label ? ` de ${label}` : ''}, ${spokenDay(e.expenseDate)}`
+    })
+    return { text: `Recuperasteis${when} ${formatEuros(total)} en ${movs}:\n${lines.join('\n')}` + staleNote(data), query: q }
+  }
+
+  const lead = hasPeriod ? (resolved.ongoing ? `${subjectOf(resolved)} lleváis recuperados` : `${subjectOf(resolved)} recuperasteis`) : 'Habéis recuperado'
+  let text = `${lead} ${formatEuros(total)} en ${movs}`
+  // Listado breve solo cuando son pocas y todas tienen con qué identificarlas (requisito 4): si no, mejor no enseñar una lista a medias.
+  const labels = sorted.map((e) => ({ e, label: refundLabel(e) }))
+  if (sorted.length <= 3 && labels.every((l) => l.label)) {
+    text += `: ${joinList(labels.map((l) => `${formatEuros(l.e.amount)} de ${l.label}`))}.`
+  } else {
+    text += '.'
+  }
+  return { text: text + staleNote(data), query: q }
 }
 
 function answerCompare(query: FinanceQuery, data: FinanceData, today: Date): FinanceAnswer {
@@ -520,6 +603,11 @@ function answerWhy(query: FinanceQuery, data: FinanceData, today: Date): Finance
     .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
     .slice(0, 3)
   if (deltas.length > 0) lines.push(`Por categorías: ${deltas.map((d) => `${d.name} ${signedEuros(d.delta)}`).join(', ')}.`)
+
+  // FASE 6D.2 — esto es el gasto BRUTO por categorías: una devolución no se atribuye a ninguna categoría (no hay vínculo fiable con
+  // el gasto original). Si hubo devoluciones en el periodo consultado, se dice aparte, sin mezclarlo con el cambio por categorías.
+  const refundsNow = totalRefunds(data, cp.current.from, cp.current.to)
+  if (refundsNow > 0) lines.push(`Esto es sobre el gasto bruto, sin contar devoluciones: además, recuperasteis ${formatEuros(refundsNow)} en devoluciones ${whenOf(resolved)}.`)
 
   // Análisis de la cesta de tickets (misma función que Economía): precio, cantidad, nuevos, dejados.
   const change = ticketChange(data, cp)
@@ -636,6 +724,8 @@ export function answerFinanceQuery(query: FinanceQuery, data: FinanceData, today
       return answerTopCategories(query, data, today)
     case 'pending':
       return answerPending(query, data, today)
+    case 'refunds':
+      return answerRefunds(query, data, today)
     case 'compare':
       return answerCompare(query, data, today)
     case 'why_changed':

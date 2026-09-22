@@ -63,6 +63,9 @@ export interface Analysis {
   hasPrevious: boolean
   expenses: { total: number; previous: number | null; difference: number | null; percentChange: number | null }
   income: { total: number; previous: number | null; registered: boolean; previousRegistered: boolean }
+  // FASE 6D.2 — devoluciones del periodo (y del de comparación): NUNCA se atribuyen a una categoría (no hay vínculo fiable con el
+  // gasto original). `expenses.total` sigue siendo el gasto BRUTO de siempre; el gasto NETO es `expenses.total - refunds.total`.
+  refunds: { total: number; previous: number | null }
   // null = no se puede calcular (sin ingresos registrados en ese tramo).
   savings: { total: number | null; previous: number | null; rate: number | null }
   categories: CategoryChange[]
@@ -220,6 +223,7 @@ export function buildAnalysis(data: FinanceData, period: ResolvedPeriod, today: 
     hasPrevious,
     expenses: { total, previous, difference, percentChange },
     income: { total: incomeNow, previous: incomePrevRows.length > 0 ? incomePrev : null, registered: incomeNowRows.length > 0, previousRegistered: incomePrevRows.length > 0 },
+    refunds: { total: refundsNow, previous: hasPrevious ? refundsPrev : null },
     savings: { total: savingsNow, previous: savingsPrev, rate: savingsNow !== null && incomeNow > 0 ? (savingsNow / incomeNow) * 100 : null },
     categories,
     newCategories,
@@ -359,7 +363,12 @@ function interpretation(a: Analysis): Finding[] {
 function savingsLine(a: Analysis): Finding {
   if (a.savings.total === null) return { kind: 'warning', text: `No tengo ingresos registrados ${a.period.label}: no calculo el ahorro.` }
   const s = a.savings.total
-  const base = `Ingresos ${formatEuros(a.income.total)} y gastos ${formatEuros(a.expenses.total)}: ${s >= 0 ? `ahorro de ${formatEuros(s)}` : `habéis gastado ${formatEuros(Math.abs(s))} más de lo ingresado`}.`
+  // FASE 6D.2 — con devoluciones en el periodo, "gastos X" (bruto) no cuadraría con un ahorro ya calculado sobre el gasto NETO:
+  // se dice el gasto neto y de dónde sale (gastasteis Y, recuperasteis Z), para que la frase sea coherente de principio a fin.
+  const refunds = a.refunds.total
+  const gastoTexto = refunds > 0 ? `gasto neto ${formatEuros(round2(a.expenses.total - refunds))} (gastasteis ${formatEuros(a.expenses.total)} y recuperasteis ${formatEuros(refunds)} en devoluciones)` : `gastos ${formatEuros(a.expenses.total)}`
+  const netNote = refunds > 0 ? ' en términos netos' : ''
+  const base = `Ingresos ${formatEuros(a.income.total)} y ${gastoTexto}: ${s >= 0 ? `ahorro de ${formatEuros(s)}` : `habéis gastado ${formatEuros(Math.abs(s))} más de lo ingresado${netNote}`}.`
   return { kind: 'fact', text: base }
 }
 
@@ -558,7 +567,11 @@ export function analysisFacts(a: Analysis): AnalysisFact[] {
   add('expenses.percent', 'Cambio porcentual del gasto', a.expenses.percentChange, 'pct_signed')
   add('income.total', 'Ingresos del periodo', a.income.registered ? a.income.total : null, 'eur')
   add('income.previous', 'Ingresos del periodo de comparación', a.income.previous, 'eur')
-  add('savings.total', 'Ahorro del periodo (ingresos menos gastos)', a.savings.total, 'eur')
+  // Devoluciones (Fase 6D.2): dinero recuperado de compras anteriores, NUNCA un ingreso nuevo ni atribuible a una categoría.
+  add('refunds.total', 'Devoluciones del periodo (dinero recuperado de compras anteriores; no es un ingreso nuevo)', a.refunds.total > 0 ? a.refunds.total : null, 'eur')
+  add('refunds.previous', 'Devoluciones del periodo de comparación', a.hasPrevious && a.refunds.previous !== null && a.refunds.previous > 0 ? a.refunds.previous : null, 'eur')
+  add('expenses.net', 'Gasto neto del periodo (gasto menos devoluciones)', a.refunds.total > 0 ? round2(a.expenses.total - a.refunds.total) : null, 'eur')
+  add('savings.total', 'Ahorro del periodo (ingresos menos gasto neto)', a.savings.total, 'eur')
   add('savings.previous', 'Ahorro del periodo de comparación', a.savings.previous, 'eur')
   add('savings.rate', 'Tasa de ahorro sobre ingresos', a.savings.rate, 'pct')
   a.categories.slice(0, TOP_CATEGORIES).forEach((c, i) => {

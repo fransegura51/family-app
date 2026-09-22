@@ -48,6 +48,9 @@ export type FinanceMetric =
   | 'budget_left'
   // «¿Qué tengo pendiente de clasificar?»: gasto real con category NULL (Fase 6C.2B). No es una búsqueda contra categorías.
   | 'pending'
+  // «¿Qué devoluciones hemos tenido?», «¿cuánto nos han devuelto?»: devoluciones reales del periodo (Fase 6D.2, domain/refunds.ts).
+  // Nunca se resuelve contra categorías/tiendas: es un concepto propio, no una búsqueda con target.
+  | 'refunds'
 
 // Las que usa el motor de análisis (financeAnalysis) en vez de las cifras sueltas de la fase 1.
 export const ANALYSIS_METRICS: readonly FinanceMetric[] = ['analyze', 'where_money', 'top_increase', 'changes', 'savings_trend', 'why_savings', 'why_cuts', 'cuts', 'attention', 'simpler', 'category_focus']
@@ -73,6 +76,10 @@ export interface FinanceQuery {
   // Cómo se cuenta: 'brief' (por defecto: corto, natural, casi sin cifras) o 'full' (importes, diferencias,
   // porcentajes y desglose). Solo cambia la PRESENTACIÓN; el cálculo es el mismo.
   detail: 'brief' | 'full'
+  // Solo para 'spent' (Fase 6D.2): 'auto' (por defecto — si hay devoluciones en el periodo, prioriza el gasto NETO y explica el
+  // bruto), 'gross' ("¿cuál fue el gasto bruto?", "antes de devoluciones": siempre el gasto de siempre, sin tocar) o 'net' ("¿cuál
+  // fue el gasto neto?", "después de devoluciones": el gasto ya descontadas las devoluciones, explicado).
+  spendMode: 'auto' | 'gross' | 'net'
 }
 
 export type FinanceParse =
@@ -127,8 +134,20 @@ const FINANCE_TOPIC =
 // Es la consulta sobre category NULL; nunca se resuelve contra los nombres de las categorías.
 const PENDING_ASK = /\b(?:pendientes?|sin|por)\s+(?:de\s+)?clasificar\b|\b(?:gastos?|movimientos?)\s+(?:sin\s+categori[az]\w*|pendientes?)\b|\bsin\s+categoria\b/
 
+// «¿Qué devoluciones hemos tenido?», «¿cuánto nos han devuelto?», «¿nos han devuelto algo?», «¿cuánto hemos recuperado en
+// devoluciones?» (Fase 6D.2). Cubre el sustantivo ("devolución/devoluciones") y las formas de pasado de "devolver" (devuelto,
+// devolvieron): NO el presente/infinitivo ("devuelve", "devolver"), para no confundir una orden ajena a Economía ("devuelve el
+// libro") con una pregunta de dinero. Nunca se confunde con «Cobro anulado» (eso no es una devolución, ver domain/refunds.ts).
+const REFUNDS_ASK = /\bdevoluc\w*\b|\bdevuelto\b|\bdevolvieron\b/
+
+// «¿cuál fue el gasto bruto?», «¿cuánto gastamos antes de devoluciones?»: el gasto SIN descontar devoluciones, aunque las haya.
+// «¿cuál fue el gasto neto?», «¿cuánto gastamos realmente después de devoluciones?»: el gasto YA descontadas las devoluciones.
+// (Fase 6D.2; solo matizan la métrica 'spent', nunca cambian de intención.)
+const GROSS_SPENT_ASK = /\bgasto bruto\b|\ben bruto\b|\bbruto\b|\bantes de (?:las )?devoluciones\b|\bsin (?:contar|descontar) (?:las )?devoluciones\b/
+const NET_SPENT_ASK = /\bgasto neto\b|\ben neto\b|\bneto\b|\bdespues de (?:las )?devoluciones\b/
+
 export function looksLikeFinance(cleaned: string): boolean {
-  return FINANCE_TOPIC.test(cleaned) || PENDING_ASK.test(cleaned)
+  return FINANCE_TOPIC.test(cleaned) || PENDING_ASK.test(cleaned) || REFUNDS_ASK.test(cleaned)
 }
 
 // ─── 2. Intención: señales léxicas + tabla de decisión ───
@@ -158,6 +177,7 @@ interface Signals {
   more: boolean
   less: boolean
   enQue: boolean
+  refund: boolean
 }
 
 function signalsOf(n: string): Signals {
@@ -187,6 +207,7 @@ function signalsOf(n: string): Signals {
     more: t(/\bmas\b/),
     less: t(/\bmenos\b/),
     enQue: t(/\ben que\b/),
+    refund: t(REFUNDS_ASK),
   }
 }
 
@@ -195,6 +216,9 @@ function metricOf(n: string): FinanceMetric | null {
 
   // Lo primero: preguntar por lo pendiente de clasificar no es analizar ni buscar una categoría con ese nombre.
   if (PENDING_ASK.test(n) && !s.why && !s.save && !s.cut) return 'pending'
+  // Ni una devolución es analizarla, ahorrar o recortar: es un concepto propio (Fase 6D.2). Si además hay una señal de gasto
+  // ("¿cuánto gastamos antes/después de devoluciones?"), NO es una pregunta de devoluciones: es 'spent' con matiz bruto/neto.
+  if (s.refund && !s.why && !s.save && !s.cut && !s.spend) return 'refunds'
   if (s.why && s.save) return 'why_savings'
   if ((s.why && (s.spend || s.change || s.rise)) || (s.explain && s.spend) || /\bpor que ha cambiado\b/.test(n)) return 'why_changed'
 
@@ -236,7 +260,7 @@ const FUNCTION_WORDS = new Set(
     'total totales dinero plata euro euros importe cantidad mes meses semana semanas dia dias ano anos pasado pasada anterior proximo proxima siguiente hoy ayer ultimo ultima ultimos ultimas ' +
     'actual actuales cosa cosas lado vez veces general conjunto familia casa nosotros ' +
     'llevamos llevais llevado llevo van va ido vamos estado estamos tenido ' +
-    'cuenta cuentas movimiento movimientos gasto gastos ingreso ingresos ahorro ahorros'
+    'cuenta cuentas movimiento movimientos gasto gastos ingreso ingresos ahorro ahorros bruto neto devolucion devoluciones descontar antes despues realmente'
   ).split(' '),
 )
 // Verbos y palabras de la propia pregunta, por raíz: gastar, ingresar, ahorrar, analizar, pagar, cobrar...
@@ -278,7 +302,7 @@ function focusOf(n: string): AnalysisFocus {
 }
 
 export function baseQuery(metric: FinanceMetric, over: Partial<FinanceQuery> = {}): FinanceQuery {
-  return { metric, period: null, target: null, product: null, full: false, baseline: null, premise: null, focus: null, detail: 'brief', ...over }
+  return { metric, period: null, target: null, product: null, full: false, baseline: null, premise: null, focus: null, detail: 'brief', spendMode: 'auto', ...over }
 }
 
 // Palabras que sobran en la frase del producto ("dónde compramos más barato el queso" -> "queso").
@@ -336,9 +360,11 @@ export function parseFinanceQuestion(text: string, today: Date): FinanceParse | 
     uncertain = words.length > MAX_CANDIDATE_WORDS
   }
   const premise = metric === 'savings_trend' || metric === 'why_savings' || metric === 'why_changed' ? premiseOf(n) : null
+  // «¿cuál fue el gasto bruto/neto?»: solo matiza 'spent'; en cualquier otra métrica no significa nada distinto.
+  const spendMode = metric === 'spent' ? (GROSS_SPENT_ASK.test(n) ? 'gross' : NET_SPENT_ASK.test(n) ? 'net' : 'auto') : 'auto'
   return {
     kind: 'query',
-    query: baseQuery(metric, { period, target, full, baseline, premise, focus: metric === 'analyze' ? focusOf(n) : null }),
+    query: baseQuery(metric, { period, target, full, baseline, premise, focus: metric === 'analyze' ? focusOf(n) : null, spendMode }),
     uncertain: uncertain || undefined,
   }
 }
@@ -364,6 +390,8 @@ const DETAIL = /^(?:y\s+)?(?:(?:dame|dime|ensename|muestrame|quiero|me das|puede
 const ORDINAL = /^(?:y\s+)?(?:(?:cual|que) (?:es|seria|fue) )?(?:la|el) (primera|segunda|tercera|ultima|primero|segundo|tercero|ultimo)$/
 const ORDINAL_INDEX: Record<string, number> = { primera: 0, primero: 0, segunda: 1, segundo: 1, tercera: 2, tercero: 2, ultima: -1, ultimo: -1 }
 const WHICH_CATEGORY = /^(?:y\s+)?(?:en\s+)?que categoria(?:\s+(?:ha\s+sido|es|fue))?$/
+// "¿Cuáles fueron?" tras una respuesta de devoluciones: el listado (Fase 6D.2). Solo tiene sentido tras 'refunds'.
+const WHICH_ONES = /^(?:y\s+)?(?:cuales fueron|cuales son|cual(?:es)? han sido|que devoluciones (?:fueron|hubo)|dime cuales(?: fueron)?)$/
 const SIMPLER =
   /^(?:explicamelo|explicamela|dimelo|dilo|explicalo|resumemelo|resumelo)(?:\s+(?:de forma|de manera|mas|un poco mas|algo mas))*\s*(?:sencill[oa]|facil|simple|claro|corto|breve|resumido)?$|^(?:mas sencillo|en sencillo|mas simple|mas facil|mas claro|mas corto|resumido)$/
 const VS_BASELINE = /^(?:y\s+)?(?:comparad[oa] (?:con|a|al)|frente a|respecto a|contra|en comparacion con)\s+(.+)$/
@@ -386,6 +414,9 @@ export function parseFinanceFollowUp(text: string, previous: FinanceQuery, today
   if (previous.metric === 'budget_left' && BUDGET_REMAINING.test(n)) return { ...previous }
 
   if (SIMPLER.test(n)) return { ...previous, metric: 'simpler', detail: 'brief' }
+
+  // "¿Cuáles fueron?" tras «¿qué devoluciones hubo?»: el listado de esas devoluciones (Fase 6D.2), mismo periodo.
+  if (previous.metric === 'refunds' && WHICH_ONES.test(n)) return { ...previous, detail: 'full' }
 
   // "¿Y cuál es la segunda?": el elemento que PEPA nombró en esa posición, sin volver a empezar el análisis.
   const ordinal = ORDINAL.exec(n)

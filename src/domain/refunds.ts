@@ -40,3 +40,36 @@ export function isRefundCategory(category: string | null | undefined, categories
 export function isRefund(e: Pick<Expense, 'category' | 'kind'>, categories: readonly Pick<BudgetCategory, 'name' | 'catalogKey'>[]): boolean {
   return e.kind === 'real' && isRefundCategory(e.category, categories)
 }
+
+// FASE 6D.2 — nombre limpio de una devolución para que PEPA lo diga en voz alta: NUNCA el texto bancario en bruto (máscara de
+// tarjeta, fecha duplicada, sufijos de sociedad/ciudad). Es solo para MOSTRAR; la identidad de la devolución sigue siendo isRefund
+// (por catalogKey) — esto no decide nada, solo limpia lo que ya se sabe que es una devolución.
+const CORP_SUFFIXES = new Set(['GMBH', 'CO', 'SPAIN', 'SL', 'SA', 'SLU', 'LTD', 'LLC', 'INC', 'PLC', 'GROUP', 'LIMITED', 'EUROPE', 'IBERIA', 'ESPANA', 'COM'])
+
+function titleCase(words: string[]): string {
+  return words.map((w) => (w.length === 0 ? w : w.charAt(0) + w.slice(1).toLowerCase())).join(' ')
+}
+
+export function refundLabel(e: Pick<Expense, 'store' | 'notes'>): string | null {
+  // La tienda, si está registrada como campo estructurado, es la fuente de confianza.
+  if (e.store && e.store.trim()) return titleCase(e.store.trim().split(/\s+/))
+  if (!e.notes) return null
+  const cleaned = e.notes
+    .replace(/TAR\.?\s*\d[\dX]*/gi, ' ') // máscara de tarjeta ("TAR.5402XXXXXXXX4041")
+    .replace(/\b\d[\dX]{7,}\b/g, ' ') // máscara de tarjeta sin prefijo ("5402XXXXXXXX4041")
+    .replace(/^\s*devolucion\b/i, ' ') // la propia palabra "DEVOLUCION" al principio
+    .replace(/\b\d{1,2}\.\d{1,2}\b/g, ' ') // la fecha del movimiento ("15.06"): ya la dice PEPA por el periodo
+  let tokens = cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((t) => !/^[a-zñ]+$/.test(t)) // anotación libre en minúsculas ("cable"): no es el nombre del comercio
+  if (tokens.length > 1 && tokens[tokens.length - 1].includes('-')) tokens = tokens.slice(0, -1) // sufijo de ciudad ("COM-VIGO")
+  while (tokens.length > 1 && CORP_SUFFIXES.has(tokens[tokens.length - 1])) tokens = tokens.slice(0, -1) // razón social ("GMBH", "CO"...)
+  tokens = tokens
+    .join(' ')
+    .replace(/\*/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((t, i, all) => i === 0 || t !== all[i - 1]) // sin repetir palabra consecutiva ("GOOGLE*GOOGLE")
+  return tokens.length > 0 ? titleCase(tokens) : null
+}

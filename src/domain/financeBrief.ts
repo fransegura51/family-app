@@ -125,6 +125,8 @@ export function briefOverview(a: Analysis): BriefAnswer {
     const up = (a.expenses.difference ?? 0) > 0
     parts.push(a.savings.total >= 0 ? (up ? 'Aun así seguís ahorrando.' : 'Y seguís ahorrando.') : 'Y estáis gastando más de lo que ingresáis.')
   }
+  // FASE 6D.2 — las devoluciones, si pesan, se mencionan como CONTEXTO (nunca como ingreso ni atribuidas a una categoría).
+  if (a.refunds.total >= MOVER_MIN_EUR) parts.push(`Además, recuperasteis ${roughEuros(a.refunds.total)} en devoluciones.`)
   const { rise, fall, explains } = driverOf(a)
   const top = a.categories[0]
   if (rise && explains) parts.push(`Lo que más ha subido es ${rise.name}${fall ? `, y ${fall.name} ha bajado` : ''}.`)

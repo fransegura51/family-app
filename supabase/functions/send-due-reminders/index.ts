@@ -128,6 +128,96 @@ function collectDueForecastReminders(
   return due
 }
 
+// ============================================================
+// Avance automático de la proyección visual de Previsión en Calendario. Hallazgo de la certificación
+// Fase 1B.1: data/forecast.ts solo (re)calcula el evento derivado al crear/editar/activar un
+// forecast_payment — nada lo movía a la siguiente ocurrencia cuando la actual quedaba atrás en el
+// tiempo. Se resuelve aquí, aprovechando este mismo cron (ya corre cada minuto) en vez de crear uno
+// nuevo. Algoritmo idéntico ("primera ocurrencia con vencimiento >= hoy, saltando skipped, aplicando
+// due_date_override") al de domain/forecast.ts::nextForecastOccurrence — cubierto por los tests
+// "nextForecastOccurrence" de src/domain/forecast.test.ts (YEARLY normal, YEARLY 29/02, MONTHLY 31,
+// MONTHLY 30, skipped, due_date_override). Nunca materializa la serie completa: solo recalcula UNA
+// fecha y, si difiere de la que ya tiene el evento, actualiza ESE MISMO calendar_event (no crea uno
+// nuevo, no toca sync_to_google ni ningún otro campo).
+function findNextRecurringDueDateOnOrAfter(
+  dueDateAnchor: string,
+  rule: ForecastRule,
+  overrides: Map<string, { due_date_override: string | null; skipped: boolean }>,
+  today: string,
+): string | null {
+  for (let n = 0; n < FORECAST_MAX_CYCLES_GUARD; n++) {
+    const occurrenceDate = occurrenceForCycle(dueDateAnchor, rule, n)
+    if (rule.until && occurrenceDate > rule.until) return null
+    const override = overrides.get(occurrenceDate)
+    if (override?.skipped) continue
+    const effectiveDueDate = override?.due_date_override ?? occurrenceDate
+    if (effectiveDueDate >= today) return effectiveDueDate
+  }
+  return null
+}
+
+async function advanceForecastCalendarProjections(): Promise<{ checked: number; updated: number }> {
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Solo pagos activos, recurrentes, con proyección visual activa y ya vinculados a un evento — un pago
+  // puntual (sin recurrence_rule) no tiene "siguiente ocurrencia" a la que avanzar, y active=false o
+  // show_in_calendar=false ya se resuelven de forma síncrona en data/forecast.ts (el evento se borra en
+  // el momento mismo de desactivar/ocultar, no hace falta que este cron lo repita).
+  const { data: payments, error: paymentsError } = await supabaseAdmin
+    .from("forecast_payments")
+    .select("id, due_date, recurrence_rule, calendar_event_id")
+    .eq("active", true)
+    .eq("show_in_calendar", true)
+    .not("recurrence_rule", "is", null)
+    .not("calendar_event_id", "is", null)
+  if (paymentsError) throw paymentsError
+  if (!payments || payments.length === 0) return { checked: 0, updated: 0 }
+
+  const paymentIds = payments.map((p) => p.id as string)
+  const eventIds = payments.map((p) => p.calendar_event_id as string)
+  const [{ data: overrides, error: overridesError }, { data: events, error: eventsError }] = await Promise.all([
+    supabaseAdmin.from("forecast_occurrences").select("forecast_payment_id, occurrence_date, due_date_override, skipped").in("forecast_payment_id", paymentIds),
+    supabaseAdmin.from("calendar_events").select("id, start_at").in("id", eventIds),
+  ])
+  if (overridesError) throw overridesError
+  if (eventsError) throw eventsError
+
+  const overridesByPayment = new Map<string, Map<string, { due_date_override: string | null; skipped: boolean }>>()
+  for (const o of overrides ?? []) {
+    const byDate = overridesByPayment.get(o.forecast_payment_id as string) ?? new Map()
+    byDate.set(o.occurrence_date as string, { due_date_override: o.due_date_override as string | null, skipped: o.skipped as boolean })
+    overridesByPayment.set(o.forecast_payment_id as string, byDate)
+  }
+  // Medianoche UTC explícita en ambos lados (ver data/forecast.ts) — slice(0, 10) recupera exactamente
+  // la fecha que se escribió, sin ambigüedad de zona horaria.
+  const eventStartDateById = new Map((events ?? []).map((e) => [e.id as string, (e.start_at as string).slice(0, 10)]))
+
+  let updated = 0
+  for (const payment of payments) {
+    const rule = parseForecastRecurrenceRule(payment.recurrence_rule as string)
+    if (!rule) continue
+    const overridesForPayment = overridesByPayment.get(payment.id as string) ?? new Map()
+
+    const nextDue = findNextRecurringDueDateOnOrAfter(payment.due_date as string, rule, overridesForPayment, today)
+    if (!nextDue) continue // la serie ya superó su UNTIL — se deja la última ocurrencia real tal cual, no es una fecha falsa
+
+    const currentStart = eventStartDateById.get(payment.calendar_event_id as string)
+    if (currentStart === nextDue) continue // ya está en la ocurrencia correcta — idempotente, no reescribe sin necesidad
+
+    const { error: updateError } = await supabaseAdmin
+      .from("calendar_events")
+      .update({ start_at: `${nextDue}T00:00:00.000Z`, end_at: null, updated_at: new Date().toISOString() })
+      .eq("id", payment.calendar_event_id as string)
+    if (updateError) {
+      console.error("advance forecast projection failed", payment.id, updateError)
+      continue
+    }
+    updated++
+  }
+
+  return { checked: payments.length, updated }
+}
+
 async function sendDueForecastReminders(): Promise<{ checked: number; sent: number; expired: number }> {
   const today = new Date().toISOString().slice(0, 10)
 
@@ -258,9 +348,9 @@ Deno.serve(async (req) => {
       vapidPrivateKey as string,
     )
 
-    // Dos pipelines independientes, combinados en el mismo Promise.all: si uno falla, el otro no debe
-    // quedarse sin correr — cada uno atrapa sus propios errores y se reporta por separado.
-    const [calendarResult, forecastResult] = await Promise.all([
+    // Tres pipelines independientes, combinados en el mismo Promise.all: si uno falla, los demás no
+    // deben quedarse sin correr — cada uno atrapa sus propios errores y se reporta por separado.
+    const [calendarResult, forecastResult, forecastProjectionResult] = await Promise.all([
       sendDueCalendarReminders().catch((err) => {
         console.error("calendar reminders failed", err)
         return { checked: 0, sent: 0, expired: 0, error: true }
@@ -268,6 +358,10 @@ Deno.serve(async (req) => {
       sendDueForecastReminders().catch((err) => {
         console.error("forecast reminders failed", err)
         return { checked: 0, sent: 0, expired: 0, error: true }
+      }),
+      advanceForecastCalendarProjections().catch((err) => {
+        console.error("advance forecast projections failed", err)
+        return { checked: 0, updated: 0, error: true }
       }),
     ])
 
@@ -277,6 +371,7 @@ Deno.serve(async (req) => {
       expired: calendarResult.expired + forecastResult.expired,
       calendar: calendarResult,
       forecast: forecastResult,
+      forecastProjection: forecastProjectionResult,
     })
   } catch (err) {
     console.error(err)

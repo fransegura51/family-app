@@ -109,7 +109,12 @@ async function syncForecastCalendarProjection(
   const targetDate = next?.dueDate ?? payment.dueDate
   const eventInput = {
     title: `Vence: ${payment.title}`,
-    startAt: new Date(`${targetDate}T00:00:00`).toISOString(),
+    // Medianoche UTC explícita (no `new Date(\`${targetDate}T00:00:00\`)`, que se interpreta en la zona
+    // local del navegador): send-due-reminders/index.ts (Deno, UTC) reprograma este mismo evento a la
+    // siguiente ocurrencia cuando pasa la actual (ver advanceForecastCalendarProjections) y necesita
+    // escribir/comparar exactamente el mismo formato — si un lado usara hora local y el otro UTC, la
+    // fecha efectiva podría desincronizarse un día según la zona horaria de quien creó el evento.
+    startAt: `${targetDate}T00:00:00.000Z`,
     endAt: null,
     allDay: true,
     recurrenceRule: null,

@@ -267,4 +267,72 @@ describe('nextForecastOccurrence', () => {
     const next = nextForecastOccurrence(p, [], '2026-06-01')
     expect(next?.dueDate).toBe('2026-06-15')
   })
+
+  // Fase 1B.1 — certificación: casos exigidos para el avance automático de la proyección visual en
+  // Calendario (send-due-reminders/index.ts duplica esta misma búsqueda "siguiente ocurrencia desde
+  // hoy" en Deno; este es el algoritmo de referencia, ya cubierto por estos tests).
+
+  it('YEARLY normal: la siguiente ocurrencia tras pasar la actual', () => {
+    const p = payment({ dueDate: '2026-03-31', recurrenceRule: 'FREQ=YEARLY' })
+    expect(nextForecastOccurrence(p, [], '2026-03-31')?.dueDate).toBe('2026-03-31') // el mismo día, aún no ha pasado
+    expect(nextForecastOccurrence(p, [], '2027-04-01')?.dueDate).toBe('2028-03-31') // pasó -> siguiente año
+  })
+
+  it('YEARLY 29/02: recorta a 28 en años no bisiestos, sin desplazar el ancla', () => {
+    const p = payment({ dueDate: '2024-02-29', recurrenceRule: 'FREQ=YEARLY' })
+    expect(nextForecastOccurrence(p, [], '2026-01-01')?.dueDate).toBe('2026-02-28')
+    expect(nextForecastOccurrence(p, [], '2027-03-01')?.dueDate).toBe('2028-02-29') // vuelve a 29 en el siguiente bisiesto
+  })
+
+  it('MONTHLY día 31: cada mes corto recorta, pero el mes siguiente vuelve a 31 (nunca se queda en día 3)', () => {
+    const p = payment({ dueDate: '2026-01-31', recurrenceRule: 'FREQ=MONTHLY' })
+    expect(nextForecastOccurrence(p, [], '2026-02-01')?.dueDate).toBe('2026-02-28')
+    expect(nextForecastOccurrence(p, [], '2026-03-01')?.dueDate).toBe('2026-03-31')
+    expect(nextForecastOccurrence(p, [], '2026-04-01')?.dueDate).toBe('2026-04-30')
+  })
+
+  it('MONTHLY día 30: idéntico patrón, sin drift', () => {
+    const p = payment({ dueDate: '2026-01-30', recurrenceRule: 'FREQ=MONTHLY' })
+    expect(nextForecastOccurrence(p, [], '2026-02-01')?.dueDate).toBe('2026-02-28')
+    expect(nextForecastOccurrence(p, [], '2026-03-01')?.dueDate).toBe('2026-03-30')
+  })
+
+  it('skipped: salta directamente a la siguiente ocurrencia real, nunca muestra la saltada', () => {
+    // 31 enero / 28 febrero (skipped) / 31 marzo — tras pasar el 31 de enero debe ir a marzo, no a febrero.
+    const p = payment({ dueDate: '2026-01-31', recurrenceRule: 'FREQ=MONTHLY' })
+    const overrides: ForecastOccurrenceOverride[] = [
+      {
+        id: 'ov-skip',
+        forecastPaymentId: 'fp-1',
+        occurrenceDate: '2026-02-28',
+        dueDateOverride: null,
+        expectedPaymentDateOverride: null,
+        amountStatus: null,
+        amount: null,
+        amountEstimatedBasis: null,
+        skipped: true,
+        matchedExpenseId: null,
+      },
+    ]
+    expect(nextForecastOccurrence(p, overrides, '2026-02-01')?.dueDate).toBe('2026-03-31')
+  })
+
+  it('due_date_override: la proyección de esa ocurrencia usa la fecha del override, no la de la regla pura', () => {
+    const p = payment({ dueDate: '2026-01-31', recurrenceRule: 'FREQ=MONTHLY' })
+    const overrides: ForecastOccurrenceOverride[] = [
+      {
+        id: 'ov-date',
+        forecastPaymentId: 'fp-1',
+        occurrenceDate: '2026-03-31',
+        dueDateOverride: '2026-03-28',
+        expectedPaymentDateOverride: null,
+        amountStatus: null,
+        amount: null,
+        amountEstimatedBasis: null,
+        skipped: false,
+        matchedExpenseId: null,
+      },
+    ]
+    expect(nextForecastOccurrence(p, overrides, '2026-03-01')?.dueDate).toBe('2026-03-28')
+  })
 })

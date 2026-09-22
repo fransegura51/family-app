@@ -121,10 +121,15 @@ describe('Fase 1: aislada y reversible', () => {
     expect(ROLLBACK).not.toMatch(/budget_categories|family_food_types|products|expenses|families/)
   })
 
-  it('la app todavía no usa el catálogo (se conectará en fases posteriores)', () => {
+  it('la app no lee directamente las tablas del catálogo (solo cita su nombre en un comentario explicativo, Fase 6D.1)', () => {
     const users = Object.entries(APP)
       .filter(([, text]) => /catalog_categories|catalog_food_types|catalog_release|catalog_audit|catalog_norm_name/.test(text))
       .map(([file]) => file)
-    expect(users).toEqual([])
+    // domain/refunds.ts documenta de dónde sale REFUND_CATALOG_KEY (catalog_categories) en un comentario; no la consulta desde el
+    // cliente — sigue sin haber ningún .from('catalog_...') ni RPC directa a esas tablas.
+    expect(users).toEqual(['/src/domain/refunds.ts'])
+    for (const [file, text] of Object.entries(APP)) {
+      if (users.includes(file)) expect(text, file).not.toMatch(/from\(['"]catalog_/)
+    }
   })
 })

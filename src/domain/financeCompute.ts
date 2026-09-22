@@ -23,6 +23,7 @@ import { comparableAgainst, comparablePrevious, resolvePeriod, type PeriodSpec, 
 import type { FinanceQuery } from '@/domain/financeQuery'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase, type SpendChangeBreakdown } from '@/domain/priceTrends'
 import { pendingSpending, type PendingSpending } from '@/domain/pending'
+import { isRefund } from '@/domain/refunds'
 import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
 import type { Budget, BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
 import { normalize } from '@/domain/voiceQuery'
@@ -85,8 +86,11 @@ export function isRealSpending(e: Expense, categories: BudgetCategory[]): boolea
   return e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)
 }
 
+// FASE 6D.1 — una devolución (isRefund, domain/refunds.ts) tampoco es ingreso real: es dinero recuperado de un gasto anterior, no
+// dinero nuevo. Centralizado aquí para que TODOS los consumidores de isRealIncome/totalIncome usen la misma semántica — nunca uno
+// solo sumándolas y otro no.
 export function isRealIncome(e: Expense, categories: BudgetCategory[]): boolean {
-  return e.kind === 'real' && e.isIncome && !isInternalTransferCategory(e.category, categories)
+  return e.kind === 'real' && e.isIncome && !isInternalTransferCategory(e.category, categories) && !isRefund(e, categories)
 }
 
 function inRange(e: Expense, from: string, to: string): boolean {
@@ -216,6 +220,19 @@ export function totalIncome(data: FinanceData, from: string, to: string): number
   return sum(data.expenses.filter((e) => isRealIncome(e, data.categories) && inRange(e, from, to)))
 }
 
+// ─── Devoluciones (Fase 6D.1, Modelo C) ───
+// refunds:      suma de devoluciones reales del periodo en que se REGISTRAN (nunca atribuidas al mes de la compra original: no existe
+//               ese vínculo hoy, y aunque existiera no se aplicaría retroactivamente).
+// netSpending:  grossSpending (totalSpending, SIN CAMBIOS — sigue sin incluir nunca una devolución, que es una fila is_income=true) menos
+//               las devoluciones del mismo periodo. Puede ser negativo (se recupera más de lo gastado en ese periodo): no se recorta a 0.
+export function totalRefunds(data: FinanceData, from: string, to: string): number {
+  return sum(data.expenses.filter((e) => isRefund(e, data.categories) && inRange(e, from, to)))
+}
+
+export function netSpending(data: FinanceData, from: string, to: string, filter: Filter = {}): number {
+  return Math.round((totalSpending(data, from, to, filter) - totalRefunds(data, from, to)) * 100) / 100
+}
+
 export function groupSpending(rows: Expense[], data: FinanceData, category?: string): { name: string; amount: number }[] {
   const by = new Map<string, number>()
   for (const e of rows) {
@@ -338,7 +355,10 @@ function answerSaved(query: FinanceQuery, data: FinanceData, today: Date): Finan
   if (!anyIncome) {
     return { text: `No tengo ingresos registrados ${whenOf(resolved)}, así que no puedo calcular el ahorro. Gastos registrados: ${formatEuros(spent)}.` + staleNote(data), query: q }
   }
-  const saved = Math.round((income - spent) * 100) / 100
+  // El ahorro se calcula sobre el gasto NETO (menos las devoluciones del periodo), aunque `spent` (arriba, mostrado tal cual) siga
+  // siendo el gasto bruto de siempre: income ya excluye las devoluciones (isRealIncome), así que income - netSpending da EXACTAMENTE
+  // el mismo ahorro que antes de la Fase 6D.1 — solo cambia income cuando hay devoluciones en el periodo. Ver domain/refunds.ts.
+  const saved = Math.round((income - netSpending(data, resolved.from, resolved.to)) * 100) / 100
   const head = `${subjectOf(resolved)}: ingresos ${formatEuros(income)}, gastos ${formatEuros(spent)}.`
   if (saved >= 0) {
     const rate = income > 0 ? ` (${String(Math.round((saved / income) * 1000) / 10).replace('.', ',')} % de lo ingresado)` : ''

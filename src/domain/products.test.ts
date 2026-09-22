@@ -50,9 +50,9 @@ describe('isLikelyAlcohol', () => {
 
 describe('isFoodPurchase / buildFoodReceiptIds', () => {
   const categories: BudgetCategory[] = [
-    { id: 'ali', familyId: 'f', name: 'Alimentación', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: null, necessity: null, isFixed: null },
-    { id: 'cafe', familyId: 'f', name: 'Café', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: 'ali', necessity: null, isFixed: null },
-    { id: 'tec', familyId: 'f', name: 'Tecnología', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: null, necessity: null, isFixed: null },
+    { id: 'ali', familyId: 'f', name: 'Alimentación', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: null, necessity: null, isFixed: null, catalogKey: null },
+    { id: 'cafe', familyId: 'f', name: 'Café', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: 'ali', necessity: null, isFixed: null, catalogKey: null },
+    { id: 'tec', familyId: 'f', name: 'Tecnología', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: null, necessity: null, isFixed: null, catalogKey: null },
   ]
   const foodIds = buildFoodReceiptIds(
     [

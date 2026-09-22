@@ -249,7 +249,7 @@ export async function deleteBudget(id: string): Promise<void> {
 export async function listBudgetCategories(): Promise<BudgetCategory[]> {
   const { data, error } = await supabase
     .from('budget_categories')
-    .select('id, family_id, name, icon, budget_group, sort_order, parent_id, necessity, is_fixed')
+    .select('id, family_id, name, icon, budget_group, sort_order, parent_id, necessity, is_fixed, catalog_key')
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -262,6 +262,7 @@ export async function listBudgetCategories(): Promise<BudgetCategory[]> {
     parentId: r.parent_id,
     necessity: r.necessity,
     isFixed: r.is_fixed,
+    catalogKey: r.catalog_key ?? null,
   }))
 }
 

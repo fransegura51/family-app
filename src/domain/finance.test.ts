@@ -14,7 +14,7 @@ import {
 import type { Budget, BudgetCategory, Expense, KidWalletTransaction } from '@/domain/types'
 
 function cat(over: Partial<BudgetCategory> & Pick<BudgetCategory, 'id' | 'name'>): BudgetCategory {
-  return { familyId: 'f', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: null, necessity: null, isFixed: null, ...over }
+  return { familyId: 'f', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: null, necessity: null, isFixed: null, catalogKey: null, ...over }
 }
 
 // Árbol parecido al real de la familia (taxonomía maestra, migración 0076):

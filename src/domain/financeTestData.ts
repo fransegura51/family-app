@@ -6,7 +6,7 @@ import type { BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/
 export const TODAY = new Date(2026, 8, 20)
 
 export function cat(id: string, name: string, parentId: string | null = null, over: Partial<BudgetCategory> = {}): BudgetCategory {
-  return { id, familyId: 'f', name, icon: '', budgetGroup: 'generales', sortOrder: 0, parentId, necessity: null, isFixed: null, ...over }
+  return { id, familyId: 'f', name, icon: '', budgetGroup: 'generales', sortOrder: 0, parentId, necessity: null, isFixed: null, catalogKey: null, ...over }
 }
 
 export const SUPER = 'Supermercado, carnicería y tiendas de alimentación'

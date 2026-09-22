@@ -13,7 +13,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 function cat(id: string, name: string, parentId: string | null = null): BudgetCategory {
-  return { id, familyId: 'f', name, icon: '', budgetGroup: 'generales', sortOrder: 0, parentId, necessity: null, isFixed: null }
+  return { id, familyId: 'f', name, icon: '', budgetGroup: 'generales', sortOrder: 0, parentId, necessity: null, isFixed: null, catalogKey: null }
 }
 const CATEGORIES: BudgetCategory[] = [
   cat('c1', 'Alimentación'),

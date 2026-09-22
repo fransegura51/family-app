@@ -284,6 +284,9 @@ export interface BudgetCategory {
   // Movimientos internos, Otros).
   necessity: 'debo' | 'necesito' | 'quiero' | null
   isFixed: boolean | null
+  // Clave estable del catálogo PEPA (null = categoría personal de la familia, sin equivalente en el catálogo). Identidad ESTABLE de
+  // una categoría más allá de su nombre visible — ver domain/refunds.ts (isRefundCategory) para el primer uso real.
+  catalogKey: string | null
 }
 
 // Etiquetas creadas por el usuario (Skill de Pepa, punto 11) —

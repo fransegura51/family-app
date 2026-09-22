@@ -25,7 +25,7 @@ import { NOT_UNDERSTOOD, runTalk, type TalkDeps } from '@/pepa/talk'
 const TODAY = new Date(2026, 8, 20)
 
 function cat(id: string, name: string, parentId: string | null = null): BudgetCategory {
-  return { id, familyId: 'f', name, icon: '', budgetGroup: 'generales', sortOrder: 0, parentId, necessity: null, isFixed: null }
+  return { id, familyId: 'f', name, icon: '', budgetGroup: 'generales', sortOrder: 0, parentId, necessity: null, isFixed: null, catalogKey: null }
 }
 const CATEGORIES = [cat('a', 'Alimentación'), cat('a1', 'Supermercado', 'a'), cat('t', 'Transporte')]
 let n = 0

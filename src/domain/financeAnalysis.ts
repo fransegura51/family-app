@@ -23,6 +23,7 @@ import {
   spendingRows,
   sum,
   ticketChange,
+  totalRefunds,
   type FinanceData,
 } from '@/domain/financeCompute'
 import { comparableAgainst, comparablePrevious, type ComparePeriods, type ResolvedPeriod } from '@/domain/financePeriod'
@@ -126,8 +127,13 @@ export function buildAnalysis(data: FinanceData, period: ResolvedPeriod, today: 
   const incomePrevRows = incomeRows(cp.previous.from, cp.previous.to)
   const incomeNow = sum(incomeNowRows)
   const incomePrev = sum(incomePrevRows)
-  const savingsNow = incomeNowRows.length > 0 ? round2(incomeNow - total) : null
-  const savingsPrev = incomePrevRows.length > 0 && previous !== null ? round2(incomePrev - previous) : null
+  // El ahorro se calcula sobre gasto NETO (Fase 6D.1): `total`/`previous` (arriba) siguen siendo gasto BRUTO, sin cambios — los usan
+  // expenses.total y el desglose por categorías. incomeNow/incomePrev ya excluyen las devoluciones (isRealIncome), así que restar las
+  // devoluciones también del lado del gasto da EXACTAMENTE el mismo ahorro que antes de esta fase. Ver domain/refunds.ts.
+  const refundsNow = totalRefunds(data, cp.current.from, cp.current.to)
+  const refundsPrev = totalRefunds(data, cp.previous.from, cp.previous.to)
+  const savingsNow = incomeNowRows.length > 0 ? round2(incomeNow - (total - refundsNow)) : null
+  const savingsPrev = incomePrevRows.length > 0 && previous !== null ? round2(incomePrev - (previous - refundsPrev)) : null
 
   // Categorías principales, con su cambio.
   const nowTop = topLevelTotals(nowRows, data)

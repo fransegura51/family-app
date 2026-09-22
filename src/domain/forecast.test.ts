@@ -18,6 +18,7 @@ import {
   type ForecastPayment,
   type ForecastOccurrence,
   type ForecastOccurrenceOverride,
+  type ForecastPaymentInstallment,
 } from './forecast'
 
 function payment(overrides: Partial<ForecastPayment> = {}): ForecastPayment {
@@ -175,6 +176,7 @@ describe('skipped, override de importe, override de fecha, snapshot conciliado, 
       id: 'ov-1',
       forecastPaymentId: 'fp-1',
       occurrenceDate: '2027-11-15',
+      installmentSequenceIndex: null,
       dueDateOverride: null,
       expectedPaymentDateOverride: null,
       amountStatus: null,
@@ -224,7 +226,7 @@ describe('skipped, override de importe, override de fecha, snapshot conciliado, 
 describe('forecastTotals — known/estimated/unknown, multidivisa (CASO F / §21)', () => {
   function occ(o: Partial<ForecastOccurrence>): ForecastOccurrence {
     return {
-      forecastPaymentId: 'fp', title: 't', occurrenceDate: '2026-10-01', dueDate: '2026-10-01', expectedPaymentDate: '2026-10-01',
+      forecastPaymentId: 'fp', title: 't', occurrenceDate: '2026-10-01', installmentSequenceIndex: null, dueDate: '2026-10-01', expectedPaymentDate: '2026-10-01',
       amountStatus: 'known', amount: 0, currency: 'EUR', categoryId: null, matchedExpenseId: null, ...o,
     }
   }
@@ -259,8 +261,8 @@ describe('forecastTotals — known/estimated/unknown, multidivisa (CASO F / §21
 describe('forecastByMonth', () => {
   it('agrupa por mes según el campo de fecha pedido', () => {
     const occs: ForecastOccurrence[] = [
-      { forecastPaymentId: 'a', title: 'A', occurrenceDate: '2026-10-01', dueDate: '2026-10-01', expectedPaymentDate: '2026-11-03', amountStatus: 'known', amount: 100, currency: 'EUR', categoryId: null, matchedExpenseId: null },
-      { forecastPaymentId: 'b', title: 'B', occurrenceDate: '2026-11-05', dueDate: '2026-11-05', expectedPaymentDate: '2026-11-05', amountStatus: 'known', amount: 50, currency: 'EUR', categoryId: null, matchedExpenseId: null },
+      { forecastPaymentId: 'a', title: 'A', occurrenceDate: '2026-10-01', installmentSequenceIndex: null, dueDate: '2026-10-01', expectedPaymentDate: '2026-11-03', amountStatus: 'known', amount: 100, currency: 'EUR', categoryId: null, matchedExpenseId: null },
+      { forecastPaymentId: 'b', title: 'B', occurrenceDate: '2026-11-05', installmentSequenceIndex: null, dueDate: '2026-11-05', expectedPaymentDate: '2026-11-05', amountStatus: 'known', amount: 50, currency: 'EUR', categoryId: null, matchedExpenseId: null },
     ]
     const byDue = forecastByMonth(occs, 'dueDate')
     expect([...byDue.keys()]).toEqual(['2026-10', '2026-11'])
@@ -314,6 +316,7 @@ describe('nextForecastOccurrence', () => {
         id: 'ov-skip',
         forecastPaymentId: 'fp-1',
         occurrenceDate: '2026-02-28',
+        installmentSequenceIndex: null,
         dueDateOverride: null,
         expectedPaymentDateOverride: null,
         amountStatus: null,
@@ -333,6 +336,7 @@ describe('nextForecastOccurrence', () => {
         id: 'ov-date',
         forecastPaymentId: 'fp-1',
         occurrenceDate: '2026-03-31',
+        installmentSequenceIndex: null,
         dueDateOverride: '2026-03-28',
         expectedPaymentDateOverride: null,
         amountStatus: null,
@@ -418,6 +422,7 @@ describe('Fase 1D-a — planes de cuotas finitos (sin entidad nueva: recurrence_
       id: 'ov-plan',
       forecastPaymentId: 'fp-ibi',
       occurrenceDate: '2027-11-08',
+      installmentSequenceIndex: null,
       dueDateOverride: null,
       expectedPaymentDateOverride: null,
       amountStatus: null,
@@ -658,6 +663,237 @@ describe('Fase 1D-a — planes de cuotas finitos (sin entidad nueva: recurrence_
       expect(occ[0].expectedPaymentDate).toBe('2027-06-10') // due y pago esperado siguen siendo anclas independientes
       expect(occ[0].amountStatus).toBe('estimated')
       expect(occ[0].amount).toBe(294.78)
+    })
+  })
+})
+
+describe('Fase 1D-c — cobro fraccionado POR CICLO (una obligación recurrente, cada renovación genera varios cargos)', () => {
+  // CASO REAL: seguro hogar, renovación anual 08/06, 2 cargos por renovación (10/06 y 10/07).
+  const seguro = payment({ id: 'fp-seguro', title: 'Seguro hogar', dueDate: '2027-06-08', recurrenceRule: 'FREQ=YEARLY', amountStatus: 'known', amount: 300 })
+  const installments: ForecastPaymentInstallment[] = [
+    { id: 'i1', forecastPaymentId: 'fp-seguro', sequenceIndex: 1, offsetDays: 2, amountStatus: 'known', amount: 300, amountEstimatedBasis: null },
+    { id: 'i2', forecastPaymentId: 'fp-seguro', sequenceIndex: 2, offsetDays: 32, amountStatus: 'known', amount: 300, amountEstimatedBasis: null },
+  ]
+
+  function splitOverride(o: Partial<ForecastOccurrenceOverride>): ForecastOccurrenceOverride {
+    return {
+      id: 'ov-split',
+      forecastPaymentId: 'fp-seguro',
+      occurrenceDate: '2027-06-08',
+      installmentSequenceIndex: null,
+      dueDateOverride: null,
+      expectedPaymentDateOverride: null,
+      amountStatus: null,
+      amount: null,
+      amountEstimatedBasis: null,
+      skipped: false,
+      matchedExpenseId: null,
+      ...o,
+    }
+  }
+
+  describe('generación por ciclo', () => {
+    it('ciclo 2027 genera exactamente 2 cargos, en junio y julio (offset cruza de mes)', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2027-12-31', installments)
+      expect(occ.map((o) => o.dueDate)).toEqual(['2027-06-10', '2027-07-10'])
+      expect(occ.map((o) => o.installmentSequenceIndex)).toEqual([1, 2])
+      expect(occ.every((o) => o.occurrenceDate === '2027-06-08')).toBe(true) // clave estable = la renovación, para los dos
+    })
+
+    it('ciclo 2028 TAMBIÉN genera exactamente 2 — no un tercero, no un cuarto', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2028-12-31', installments)
+      expect(occ.map((o) => o.dueDate)).toEqual(['2027-06-10', '2027-07-10', '2028-06-10', '2028-07-10'])
+      expect(occ).toHaveLength(4)
+      expect(occ.filter((o) => o.installmentSequenceIndex === 3)).toHaveLength(0)
+    })
+
+    it('offset cruzando de año', () => {
+      const finDeAño = payment({ id: 'fp-x', title: 'X', dueDate: '2027-12-20', recurrenceRule: 'FREQ=YEARLY', amountStatus: 'known', amount: 50 })
+      const inst: ForecastPaymentInstallment[] = [
+        { id: 'j1', forecastPaymentId: 'fp-x', sequenceIndex: 1, offsetDays: 0, amountStatus: 'known', amount: 50, amountEstimatedBasis: null },
+        { id: 'j2', forecastPaymentId: 'fp-x', sequenceIndex: 2, offsetDays: 20, amountStatus: 'known', amount: 50, amountEstimatedBasis: null },
+      ]
+      const occ = expandForecastOccurrences(finDeAño, [], '2027-01-01', '2029-01-31', inst)
+      expect(occ.map((o) => o.dueDate)).toEqual(['2027-12-20', '2028-01-09', '2028-12-20', '2029-01-09'])
+    })
+
+    it('renovación anclada en 29 de febrero + offsets: el recorte de fin de mes y el offset conviven sin romperse', () => {
+      const bisiesto = payment({ id: 'fp-feb29', title: 'Y', dueDate: '2024-02-29', recurrenceRule: 'FREQ=YEARLY', amountStatus: 'known', amount: 10 })
+      const inst: ForecastPaymentInstallment[] = [
+        { id: 'k1', forecastPaymentId: 'fp-feb29', sequenceIndex: 1, offsetDays: 0, amountStatus: 'known', amount: 10, amountEstimatedBasis: null },
+        { id: 'k2', forecastPaymentId: 'fp-feb29', sequenceIndex: 2, offsetDays: 1, amountStatus: 'known', amount: 10, amountEstimatedBasis: null },
+      ]
+      // 2025 no es bisiesto: la renovación recorta a 28/02; los cargos son 28/02 (offset 0) y 01/03 (offset 1).
+      const occ = expandForecastOccurrences(bisiesto, [], '2025-01-01', '2025-12-31', inst)
+      expect(occ.map((o) => o.dueDate)).toEqual(['2025-02-28', '2025-03-01'])
+    })
+
+    it('día 30/31 del ciclo con offsets: no se rompe la serie', () => {
+      const dia31 = payment({ id: 'fp-31', title: 'Z', dueDate: '2026-01-31', recurrenceRule: 'FREQ=MONTHLY', amountStatus: 'known', amount: 20 })
+      const inst: ForecastPaymentInstallment[] = [{ id: 'l1', forecastPaymentId: 'fp-31', sequenceIndex: 1, offsetDays: 3, amountStatus: 'known', amount: 20, amountEstimatedBasis: null }]
+      // Ene31+3=Feb3; Feb28(recortado)+3=Mar3; Mar31+3=Abr3 — cada ciclo se ancla en SU propia fecha de ciclo, el offset nunca se acumula mal.
+      const occ = expandForecastOccurrences(dia31, [], '2026-01-01', '2026-04-15', inst)
+      expect(occ.map((o) => o.dueDate)).toEqual(['2026-02-03', '2026-03-03', '2026-04-03'])
+    })
+  })
+
+  describe('identidad estable por sequence_index (hallazgo de la auditoría: dos cargos el mismo día)', () => {
+    const sameDayInstallments: ForecastPaymentInstallment[] = [
+      { id: 'm1', forecastPaymentId: 'fp-seguro', sequenceIndex: 1, offsetDays: 0, amountStatus: 'known', amount: 100, amountEstimatedBasis: null },
+      { id: 'm2', forecastPaymentId: 'fp-seguro', sequenceIndex: 2, offsetDays: 0, amountStatus: 'known', amount: 200, amountEstimatedBasis: null },
+    ]
+
+    it('dos cargos con el mismo offset producen dos ocurrencias distintas el mismo día, no se colapsan', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2027-12-31', sameDayInstallments)
+      expect(occ).toHaveLength(2)
+      expect(occ[0].dueDate).toBe(occ[1].dueDate)
+      expect(occ.map((o) => o.installmentSequenceIndex)).toEqual([1, 2])
+      expect(occ.map((o) => o.amount)).toEqual([100, 200])
+    })
+
+    it('un override dirigido a UN cargo (por sequence_index) no afecta al otro, aunque caigan el mismo día', () => {
+      const overrides = [splitOverride({ installmentSequenceIndex: 2, skipped: true })]
+      const occ = expandForecastOccurrences(seguro, overrides, '2027-01-01', '2027-12-31', sameDayInstallments)
+      expect(occ).toHaveLength(1)
+      expect(occ[0].installmentSequenceIndex).toBe(1)
+      expect(occ[0].amount).toBe(100)
+    })
+  })
+
+  describe('importes: iguales, distintos, known/estimated/unknown, basis', () => {
+    it('importes iguales en todos los cargos (caso por defecto)', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2027-12-31', installments)
+      expect(occ.map((o) => o.amount)).toEqual([300, 300])
+      expect(occ.every((o) => o.amountStatus === 'known')).toBe(true)
+    })
+
+    it('importes DISTINTOS por cargo — el dominio nunca obliga a que sean iguales', () => {
+      const distintos: ForecastPaymentInstallment[] = [
+        { id: 'n1', forecastPaymentId: 'fp-seguro', sequenceIndex: 1, offsetDays: 2, amountStatus: 'known', amount: 350, amountEstimatedBasis: null },
+        { id: 'n2', forecastPaymentId: 'fp-seguro', sequenceIndex: 2, offsetDays: 32, amountStatus: 'known', amount: 250, amountEstimatedBasis: null },
+      ]
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2027-12-31', distintos)
+      expect(occ.map((o) => o.amount)).toEqual([350, 250])
+    })
+
+    it('un cargo estimated con su propia basis, sin afectar al otro (known)', () => {
+      const mixto: ForecastPaymentInstallment[] = [
+        { id: 'o1', forecastPaymentId: 'fp-seguro', sequenceIndex: 1, offsetDays: 2, amountStatus: 'known', amount: 300, amountEstimatedBasis: null },
+        { id: 'o2', forecastPaymentId: 'fp-seguro', sequenceIndex: 2, offsetDays: 32, amountStatus: 'estimated', amount: 300, amountEstimatedBasis: 'recibo del año pasado' },
+      ]
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2027-12-31', mixto)
+      expect(occ[0].amountStatus).toBe('known')
+      expect(occ[1].amountStatus).toBe('estimated')
+    })
+
+    it('un cargo unknown nunca se cuenta como 0 en los totales', () => {
+      const conPendiente: ForecastPaymentInstallment[] = [
+        { id: 'p1', forecastPaymentId: 'fp-seguro', sequenceIndex: 1, offsetDays: 2, amountStatus: 'known', amount: 300, amountEstimatedBasis: null },
+        { id: 'p2', forecastPaymentId: 'fp-seguro', sequenceIndex: 2, offsetDays: 32, amountStatus: 'unknown', amount: null, amountEstimatedBasis: null },
+      ]
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2027-12-31', conPendiente)
+      const totals = forecastTotals(occ)
+      expect(totals[0].knownTotal).toBe(300)
+      expect(totals[0].unknownCount).toBe(1)
+      expect(totals[0].knownPlusEstimatedTotal).toBe(300) // nunca "300 + 0" presentado como si fuera el total real
+    })
+  })
+
+  describe('totales — junio 300 + julio 300 = 600, nunca "junio 600"', () => {
+    it('forecastTotals del ciclo completo suma los dos cargos, sin fusionarlos en una fecha', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2027-12-31', installments)
+      expect(forecastTotals(occ)).toEqual([{ currency: 'EUR', knownTotal: 600, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 600 }])
+    })
+
+    it('forecastByMonth mantiene junio y julio SEPARADOS (300 cada uno), nunca junio con 600', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2027-12-31', installments)
+      const byMonth = forecastByMonth(occ, 'dueDate')
+      expect(byMonth.get('2027-06')?.[0].knownTotal).toBe(300)
+      expect(byMonth.get('2027-07')?.[0].knownTotal).toBe(300)
+      expect(byMonth.get('2027-06')?.[0].knownTotal).not.toBe(600)
+    })
+
+    it('nunca mezcla divisas entre cargos del mismo ciclo', () => {
+      const dosDivisas: ForecastPaymentInstallment[] = [
+        { id: 'q1', forecastPaymentId: 'fp-seguro', sequenceIndex: 1, offsetDays: 2, amountStatus: 'known', amount: 300, amountEstimatedBasis: null },
+        { id: 'q2', forecastPaymentId: 'fp-seguro', sequenceIndex: 2, offsetDays: 32, amountStatus: 'known', amount: 300, amountEstimatedBasis: null },
+      ]
+      // currency vive en el PAGO, no en el cargo (a propósito, ver migración 0156) — los dos cargos heredan siempre la misma.
+      const seguroGBP = { ...seguro, currency: 'GBP' }
+      const occ = expandForecastOccurrences(seguroGBP, [], '2027-01-01', '2027-12-31', dosDivisas)
+      expect(occ.every((o) => o.currency === 'GBP')).toBe(true)
+    })
+  })
+
+  describe('horizonte estrecho: un cargo tardío sigue visible aunque la renovación ya haya pasado', () => {
+    it('hoy después de la renovación pero antes del 2º cargo: el 2º cargo sigue apareciendo en el horizonte', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2027-06-20', '2027-07-20', installments)
+      expect(occ).toHaveLength(1)
+      expect(occ[0].installmentSequenceIndex).toBe(2)
+      expect(occ[0].dueDate).toBe('2027-07-10')
+    })
+
+    it('un horizonte lejano solo trae los cargos de SU renovación, no arrastra los de años anteriores', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2029-01-01', '2029-12-31', installments)
+      expect(occ.map((o) => o.dueDate)).toEqual(['2029-06-10', '2029-07-10'])
+    })
+  })
+
+  describe('nextForecastOccurrence / isForecastPaymentFinished con cargos', () => {
+    it('nextForecastOccurrence con plantilla encuentra el cargo más próximo, no la renovación', () => {
+      expect(nextForecastOccurrence(seguro, [], '2027-06-15', 'dueDate', installments)?.dueDate).toBe('2027-07-10') // el 1 (10/06) ya pasó
+    })
+
+    it('nextForecastOccurrence SIN plantilla (Calendario) sigue mirando solo la renovación — decisión deliberada', () => {
+      // Sin pasar `installments`, el resultado es el próximo CICLO (2028), no el cargo 2 de este ciclo —
+      // así es como data/forecast.ts mantiene la proyección visual mostrando solo la renovación.
+      expect(nextForecastOccurrence(seguro, [], '2027-06-15', 'dueDate')?.dueDate).toBe('2028-06-08')
+    })
+
+    it('BUG REAL encontrado y corregido: sin cargos, un plan finito con un cargo tardío pendiente se marcaba "Finalizada" antes de tiempo', () => {
+      const seguroDeUnaVez = payment({ id: 'fp-seguro', title: 'Seguro hogar', dueDate: '2027-06-08', recurrenceRule: 'FREQ=YEARLY;UNTIL=2027-06-08' })
+      // Hoy: el cargo 1 (10/06) ya pasó, el cargo 2 (10/07) todavía no.
+      expect(isForecastPaymentFinished(seguroDeUnaVez, [], '2027-06-15')).toBe(true) // cycle-only (sin cargos) — YA marca terminado, incorrecto para este caso
+      expect(isForecastPaymentFinished(seguroDeUnaVez, [], '2027-06-15', installments)).toBe(false) // con cargos: el 2/2 aún no ha pasado
+      expect(isForecastPaymentFinished(seguroDeUnaVez, [], '2027-07-15', installments)).toBe(true) // y una vez pasan los dos, sí termina
+    })
+  })
+
+  describe('regresión — Seguro Coche Ibiza y el plan IBI (Fases 1B/1D-a/1D-b) siguen exactamente igual', () => {
+    const seguroCocheIbiza = payment({
+      id: 'd530b1e1-52b1-4c1f-9507-15c6eddc17bc',
+      title: 'Seguro Coche Ibiza',
+      amountStatus: 'estimated',
+      amount: 294.78,
+      amountEstimatedBasis: 'recibo del año anterior',
+      currency: 'EUR',
+      dueDate: '2027-06-08',
+      expectedPaymentDate: '2027-06-10',
+      recurrenceRule: 'FREQ=YEARLY',
+    })
+
+    it('sin installments (el caso real: 0 filas en forecast_payment_installments), sigue produciendo UNA ocurrencia por ciclo', () => {
+      const occ = expandForecastOccurrences(seguroCocheIbiza, [], '2027-01-01', '2030-01-01')
+      expect(occ.map((o) => o.dueDate)).toEqual(['2027-06-08', '2028-06-08', '2029-06-08'])
+      expect(occ.every((o) => o.installmentSequenceIndex === null)).toBe(true)
+      expect(occ[0].expectedPaymentDate).toBe('2027-06-10')
+      expect(occ[0].amountStatus).toBe('estimated')
+      expect(occ[0].amount).toBe(294.78)
+    })
+
+    it('pasar [] explícitamente en installments es indistinguible de omitir el parámetro', () => {
+      const conOmision = expandForecastOccurrences(seguroCocheIbiza, [], '2027-01-01', '2030-01-01')
+      const conArrayVacio = expandForecastOccurrences(seguroCocheIbiza, [], '2027-01-01', '2030-01-01', [])
+      expect(conArrayVacio).toEqual(conOmision)
+    })
+
+    it('el plan IBI (6 cuotas mensuales, Fase 1D-b) no lleva plantilla de plazos y sigue produciendo exactamente 6', () => {
+      const ibiUntil = computeInstallmentPlanUntil('2027-11-08', 'MONTHLY', 1, 6)
+      const ibi = payment({ id: 'fp-ibi', title: 'IBI + basura', amountStatus: 'known', amount: 141, dueDate: '2027-11-08', recurrenceRule: `FREQ=MONTHLY;UNTIL=${ibiUntil}` })
+      const occ = expandForecastOccurrences(ibi, [], '2020-01-01', '2035-01-01')
+      expect(occ).toHaveLength(6)
+      expect(occ.every((o) => o.installmentSequenceIndex === null)).toBe(true)
+      expect(totalInstallments(ibi)).toBe(6)
     })
   })
 })

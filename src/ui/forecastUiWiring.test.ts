@@ -174,6 +174,15 @@ describe('Ayuda actualizada (misma fase, mismo commit)', () => {
     expect(dineroBlock).toContain('Previsión de pagos')
     expect(dineroBlock).toContain('nunca se enseña como 0')
   })
+
+  it('cubre "Número de cuotas" (Fase 1D-b) y "¿Cómo se cobra cada vez?" / varios cobros (Fase 1D-c/d)', () => {
+    const dineroIdx = AYUDA.indexOf("'/dinero': [")
+    const dineroBlock = AYUDA.slice(dineroIdx, AYUDA.indexOf("\n  ],", dineroIdx))
+    expect(dineroBlock).toContain('Número de cuotas')
+    expect(dineroBlock).toContain('¿Cómo se cobra cada vez?')
+    expect(dineroBlock).toContain('En varios cobros')
+    expect(dineroBlock).not.toMatch(/RRULE|FREQ=|UNTIL=|INTERVAL=/) // sin jerga técnica, como en el resto de la app
+  })
 })
 
 describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
@@ -250,6 +259,86 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     expect(submitBody.match(/createForecastPayment\(/g)?.length).toBe(1)
     expect(submitBody.match(/updateForecastPayment\(/g)?.length).toBe(1)
     expect(submitBody).not.toMatch(/\.map\([^)]*(createForecastPayment|updateForecastPayment)/)
+  })
+})
+
+describe('Fase 1D-d — cobro fraccionado por ciclo en la UI', () => {
+  it('"¿Cómo se cobra cada vez?" es una pregunta aparte de "¿Se repite?" — no un tercer valor mezclado en la misma', () => {
+    expect(FS).toContain('¿Cómo se cobra cada vez?')
+    expect(FS).toContain('En un solo pago')
+    expect(FS).toContain('En varios cobros')
+  })
+
+  it('reutiliza el puente de dominio (forecastInstallmentSplitForm.ts) — nunca calcula offsets/fechas a mano en el componente', () => {
+    expect(FS).toContain("from '@/domain/forecastInstallmentSplitForm'")
+    expect(FS).toContain('buildInstallmentTemplatesFromForm')
+    expect(FS).toContain('parseInstallmentTemplatesToForm')
+    expect(FS).toContain('validateSplitChargeCount')
+  })
+
+  it('límites 2/12 reales del módulo de dominio, no inventados en la UI', () => {
+    const module = APP['/src/domain/forecastInstallmentSplitForm.ts']
+    expect(module).toContain('export const SPLIT_CHARGE_COUNT_MIN = 2')
+    expect(module).toContain('export const SPLIT_CHARGE_COUNT_MAX = 12')
+  })
+
+  it('cada cobro pide una fecha humana ("Fecha prevista"), nunca un "offset" visible en el JSX', () => {
+    const idx = FS.indexOf('Cobro {i + 1} de {splitCharges.length}')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 700)
+    expect(block).toContain('Fecha prevista')
+    expect(block).not.toMatch(/offset/i) // "offsetDays" es un detalle interno (domain/forecastInstallmentSplitForm.ts), nunca llega al JSX
+  })
+
+  it('"Mismo importe en todos" / "Importes diferentes" — el toggle pedido, implementado sin más alcance', () => {
+    expect(FS).toContain('Mismo importe en todos')
+    expect(FS).toContain('Importes diferentes')
+  })
+
+  it('la vista previa de cobros usa expandForecastOccurrences (motor real), no un bucle de fechas hecho a mano', () => {
+    const idx = FS.indexOf('const splitPreviewOccurrences =')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 900)
+    expect(block).toContain('expandForecastOccurrences(')
+  })
+
+  it('"Próxima renovación" se calcula con occurrenceForCycle (motor real), no sumando meses a mano', () => {
+    expect(FS).toContain('Próxima renovación')
+    expect(FS).toContain('const splitNextRenewal =')
+    const idx = FS.indexOf('const splitNextRenewal =')
+    const block = FS.slice(idx, idx + 300)
+    expect(block).toContain('occurrenceForCycle(')
+  })
+
+  it('el guardado sustituye la plantilla completa (replaceForecastPaymentInstallments) — nunca crea pagos independientes por cargo', () => {
+    expect(FS).toContain('replaceForecastPaymentInstallments(id, installmentsToSave)')
+  })
+
+  it('"un solo pago" guarda una plantilla vacía — vuelve exactamente al comportamiento sin fraccionar, sin hijos fantasma', () => {
+    const idx = FS.indexOf('let installmentsToSave')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 200)
+    expect(block).toMatch(/installmentsToSave:.*=\s*\[\]/)
+  })
+
+  it('la tarjeta de gestión de una obligación fraccionada muestra "cobros por ciclo" y "Se renueva", sin sobrecargarla con más', () => {
+    const idx = FS.indexOf('const hasSplit = p.installments.length > 0')
+    expect(idx).toBeGreaterThan(-1)
+    const nextFn = FS.indexOf('\n  function ', idx + 10)
+    const block = FS.slice(idx, nextFn > -1 ? nextFn : idx + 3000)
+    expect(block).toContain('cobros por ciclo')
+    expect(block).toContain('Se renueva')
+  })
+
+  it('"Próximos pagos" muestra "1/2", "2/2"... para cada cargo, usando el propio installmentSequenceIndex de la ocurrencia', () => {
+    expect(FS).toContain('o.installmentSequenceIndex != null && parent')
+  })
+
+  it('PrevisionPagosTab pasa p.installments a expandForecastOccurrences — si no, un pago fraccionado no se vería fraccionado en la lista', () => {
+    const idx = FS.indexOf('function PrevisionPagosTab')
+    const body = FS.slice(idx, FS.indexOf('function ForecastPaymentForm', idx))
+    expect(body).toContain('expandForecastOccurrences(p, overridesByPayment.get(p.id) ?? [], today, horizonEnd, p.installments)')
+    expect(body).toContain('expandForecastOccurrences(p, overridesByPayment.get(p.id) ?? [], today, twelveMonthEnd, p.installments)')
   })
 })
 

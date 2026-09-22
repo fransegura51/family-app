@@ -45,6 +45,11 @@ export interface ForecastOccurrenceOverride {
   id: string
   forecastPaymentId: string
   occurrenceDate: string // clave estable: el vencimiento que produce la regla PURA, nunca se sobrescribe a sí misma
+  // Fase 1D-c: null = el override es del CICLO completo (comportamiento de siempre, sin fraccionar);
+  // 1..N = de un cargo concreto dentro del ciclo (su sequence_index en forecast_payment_installments).
+  // Necesario porque forecastPaymentId+occurrenceDate por sí solos no bastan para distinguir dos cargos
+  // del mismo ciclo (podrían caer excepcionalmente el mismo día).
+  installmentSequenceIndex: number | null
   dueDateOverride: string | null
   expectedPaymentDateOverride: string | null
   amountStatus: ForecastAmountStatus | null // null = hereda del padre
@@ -59,6 +64,9 @@ export interface ForecastOccurrence {
   forecastPaymentId: string
   title: string
   occurrenceDate: string
+  // Fase 1D-c: null = ocurrencia del ciclo completo (sin fraccionar, comportamiento de siempre);
+  // 1..N = qué cargo concreto dentro del ciclo (para mostrar "1/2", "2/2"...).
+  installmentSequenceIndex: number | null
   dueDate: string
   expectedPaymentDate: string
   amountStatus: ForecastAmountStatus
@@ -66,6 +74,21 @@ export interface ForecastOccurrence {
   currency: string
   categoryId: string | null
   matchedExpenseId: string | null
+}
+
+// Fase 1D-c — plantilla de un cargo dentro de CADA ciclo de una obligación recurrente (p. ej. un seguro
+// que se renueva una vez al año pero se cobra en 2 plazos cada renovación). Vive en
+// forecast_payment_installments; NUNCA se materializa una fila por año — el motor la reaplica en cada
+// ciclo. Distinto del "plan finito de N cuotas" de Fase 1D-b (eso limita CUÁNTAS renovaciones hay, con
+// UNTIL; esto define CUÁNTOS cargos genera CADA renovación, con una plantilla fija por ciclo).
+export interface ForecastPaymentInstallment {
+  id: string
+  forecastPaymentId: string
+  sequenceIndex: number // 1-based — "1/2", "2/2"...
+  offsetDays: number // días desde el due_date del ciclo hasta este cargo — nunca negativo en esta fase
+  amountStatus: ForecastAmountStatus
+  amount: number | null
+  amountEstimatedBasis: string | null
 }
 
 // ── Aritmética de fechas (hora local, mismo criterio que domain/calendar.ts) ──
@@ -138,6 +161,12 @@ export function occurrenceForCycle(anchorDateStr: string, rule: ParsedForecastRu
 
 const MAX_CYCLES_GUARD = 5000
 
+// Clave de búsqueda de overrides: el ciclo (occurrenceDate) + qué cargo concreto (null = el ciclo
+// completo, sin fraccionar). Misma normalización null↔0 que la constraint de forecast_occurrences.
+function overrideKey(occurrenceDate: string, installmentSequenceIndex: number | null): string {
+  return `${occurrenceDate}:${installmentSequenceIndex ?? 0}`
+}
+
 function resolveOccurrence(
   payment: Pick<ForecastPayment, 'id' | 'title' | 'amountStatus' | 'amount' | 'currency' | 'categoryId'>,
   occurrenceDate: string,
@@ -151,6 +180,7 @@ function resolveOccurrence(
     forecastPaymentId: payment.id,
     title: payment.title,
     occurrenceDate,
+    installmentSequenceIndex: null,
     dueDate: override?.dueDateOverride ?? ruleDue,
     expectedPaymentDate: override?.expectedPaymentDateOverride ?? rulePayment,
     amountStatus: hasAmountOverride ? override!.amountStatus! : payment.amountStatus,
@@ -161,10 +191,43 @@ function resolveOccurrence(
   }
 }
 
+// Fase 1D-c: un cargo concreto dentro de un ciclo fraccionado. `cycleDueDate` es la clave ESTABLE del
+// ciclo (la renovación); `chargeDate` es due_date_del_ciclo + offset_days de la plantilla. Un cargo no
+// tiene distinción propia vencimiento/pago-esperado (esa distinción vive a nivel de la OBLIGACIÓN, no
+// del cargo individual): antes de cualquier override, dueDate === expectedPaymentDate === chargeDate.
+function resolveInstallmentOccurrence(
+  payment: Pick<ForecastPayment, 'id' | 'title' | 'currency' | 'categoryId'>,
+  installment: ForecastPaymentInstallment,
+  cycleDueDate: string,
+  chargeDate: string,
+  override: ForecastOccurrenceOverride | undefined,
+): ForecastOccurrence | null {
+  if (override?.skipped) return null
+  const hasAmountOverride = !!override?.amountStatus
+  return {
+    forecastPaymentId: payment.id,
+    title: payment.title,
+    occurrenceDate: cycleDueDate,
+    installmentSequenceIndex: installment.sequenceIndex,
+    dueDate: override?.dueDateOverride ?? chargeDate,
+    expectedPaymentDate: override?.expectedPaymentDateOverride ?? chargeDate,
+    amountStatus: hasAmountOverride ? override!.amountStatus! : installment.amountStatus,
+    amount: hasAmountOverride ? override!.amount : installment.amount,
+    currency: payment.currency,
+    categoryId: payment.categoryId,
+    matchedExpenseId: override?.matchedExpenseId ?? null,
+  }
+}
+
 // Expande un forecast_payment en sus ocurrencias dentro de [rangeStart, rangeEnd] (YYYY-MM-DD, ambos
 // incluidos), aplicando overrides y respetando `skipped` — mismo espíritu que expandOccurrences de
 // domain/calendar.ts, pero con motor propio (ver cabecera del archivo) y con due_date/expected_payment_date
 // como dos anclas independientes emparejadas por número de ciclo, nunca por posición de array.
+//
+// Fase 1D-c: `installments` (opcional, [] por defecto) — si el pago tiene plantilla de cargos por
+// ciclo, CADA ciclo genera una ForecastOccurrence por cargo en vez de una sola. Sin plantilla
+// (comportamiento de todos los pagos existentes, incluido Seguro Coche Ibiza): idéntico a antes, byte
+// a byte — el parámetro nuevo nunca cambia nada si se omite u omite vacío.
 export function expandForecastOccurrences(
   payment: Pick<
     ForecastPayment,
@@ -173,31 +236,51 @@ export function expandForecastOccurrences(
   overrides: ForecastOccurrenceOverride[],
   rangeStart: string,
   rangeEnd: string,
+  installments: ForecastPaymentInstallment[] = [],
 ): ForecastOccurrence[] {
   if (!payment.active) return []
-  const overrideByDate = new Map(overrides.map((o) => [o.occurrenceDate, o]))
+  const overrideByKey = new Map(overrides.map((o) => [overrideKey(o.occurrenceDate, o.installmentSequenceIndex), o]))
+  const sortedInstallments = installments.length > 0 ? [...installments].sort((a, b) => a.sequenceIndex - b.sequenceIndex) : []
+  // offset_days nunca es negativo (constraint de BD): el cargo más tardío de un ciclo marca cuánto hay
+  // que "mirar hacia atrás" desde rangeStart para no perder un ciclo cuya renovación ya pasó pero cuyo
+  // último cargo todavía cae dentro del horizonte pedido (p. ej. renovación 08/06, hoy 20/06, horizonte
+  // 30 días: el cargo 2/2 de 10/07 sigue siendo "próximo" aunque la renovación ya no lo sea).
+  const maxOffsetDays = sortedInstallments.reduce((max, i) => Math.max(max, i.offsetDays), 0)
   const results: ForecastOccurrence[] = []
 
-  if (!payment.recurrenceRule) {
-    if (payment.dueDate >= rangeStart && payment.dueDate <= rangeEnd) {
-      const resolved = resolveOccurrence(payment, payment.dueDate, payment.dueDate, payment.expectedPaymentDate ?? payment.dueDate, overrideByDate.get(payment.dueDate))
+  function pushCycle(cycleDueDate: string, cycleExpectedPayment: string) {
+    if (sortedInstallments.length === 0) {
+      if (cycleDueDate < rangeStart || cycleDueDate > rangeEnd) return
+      const resolved = resolveOccurrence(payment, cycleDueDate, cycleDueDate, cycleExpectedPayment, overrideByKey.get(overrideKey(cycleDueDate, null)))
+      if (resolved) results.push(resolved)
+      return
+    }
+    for (const installment of sortedInstallments) {
+      const chargeDate = stepDays(cycleDueDate, installment.offsetDays)
+      if (chargeDate < rangeStart || chargeDate > rangeEnd) continue
+      const override = overrideByKey.get(overrideKey(cycleDueDate, installment.sequenceIndex))
+      const resolved = resolveInstallmentOccurrence(payment, installment, cycleDueDate, chargeDate, override)
       if (resolved) results.push(resolved)
     }
+  }
+
+  if (!payment.recurrenceRule) {
+    pushCycle(payment.dueDate, payment.expectedPaymentDate ?? payment.dueDate)
     return results
   }
 
   const rule = parseForecastRecurrenceRule(payment.recurrenceRule)
   if (!rule) return results
   const paymentAnchor = payment.expectedPaymentDate ?? payment.dueDate
+  const earliestCycleDueToConsider = maxOffsetDays > 0 ? stepDays(rangeStart, -maxOffsetDays) : rangeStart
 
   for (let n = 0; n < MAX_CYCLES_GUARD; n++) {
     const due = occurrenceForCycle(payment.dueDate, rule, n)
     if (rule.until && due > rule.until) break
     if (due > rangeEnd) break
-    if (due >= rangeStart) {
+    if (due >= earliestCycleDueToConsider) {
       const expectedPayment = occurrenceForCycle(paymentAnchor, rule, n)
-      const resolved = resolveOccurrence(payment, due, due, expectedPayment, overrideByDate.get(due))
-      if (resolved) results.push(resolved)
+      pushCycle(due, expectedPayment)
     }
   }
   return results
@@ -209,9 +292,10 @@ export function nextForecastOccurrence(
   overrides: ForecastOccurrenceOverride[],
   today: string,
   dateField: 'dueDate' | 'expectedPaymentDate' = 'dueDate',
+  installments: ForecastPaymentInstallment[] = [],
 ): ForecastOccurrence | null {
   const rangeEnd = stepMonthsClamped(today, 120) // 10 años hacia delante: cubre cualquier UNTIL razonable o pago indefinido
-  const occurrences = expandForecastOccurrences(payment, overrides, today, rangeEnd)
+  const occurrences = expandForecastOccurrences(payment, overrides, today, rangeEnd, installments)
   const sorted = [...occurrences].sort((a, b) => a[dateField].localeCompare(b[dateField]))
   return sorted[0] ?? null
 }
@@ -330,9 +414,13 @@ export function isForecastPaymentFinished(
   payment: Parameters<typeof expandForecastOccurrences>[0],
   overrides: ForecastOccurrenceOverride[],
   today: string,
+  installments: ForecastPaymentInstallment[] = [],
 ): boolean {
   if (!payment.active) return false
-  return nextForecastOccurrence(payment, overrides, today, 'dueDate') === null
+  // Fase 1D-c: con cargos fraccionados, "queda algo futuro" tiene que mirar cada CARGO, no solo el
+  // ciclo — si no, un plan finito (UNTIL) cuyo último ciclo aún tiene un cargo pendiente (p. ej. el
+  // cargo 2/2 de julio de una renovación que venció en junio) se marcaría "Finalizada" antes de tiempo.
+  return nextForecastOccurrence(payment, overrides, today, 'dueDate', installments) === null
 }
 
 // ── Fase 1C — formato de importe consciente de divisa (formatEuros de domain/financeCompute.ts es

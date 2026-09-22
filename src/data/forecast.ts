@@ -2,7 +2,14 @@
 import { supabase } from '@/data/supabaseClient'
 import { createEvent, updateEvent, deleteEvent } from '@/data/calendar'
 import { nextForecastOccurrence } from '@/domain/forecast'
-import type { ForecastAmountStatus, ForecastOccurrenceOverride, ForecastPayment, ForecastReminder, ForecastReminderUnit } from '@/domain/forecast'
+import type {
+  ForecastAmountStatus,
+  ForecastOccurrenceOverride,
+  ForecastPayment,
+  ForecastPaymentInstallment,
+  ForecastReminder,
+  ForecastReminderUnit,
+} from '@/domain/forecast'
 
 interface ForecastPaymentRow {
   id: string
@@ -24,14 +31,16 @@ interface ForecastPaymentRow {
   calendar_event_id: string | null
   active: boolean
   forecast_reminders: { id: string; value: number; unit: string }[]
+  forecast_payment_installments: { id: string; sequence_index: number; offset_days: number; amount_status: string; amount: number | null; amount_estimated_basis: string | null }[]
 }
 
 const FORECAST_PAYMENT_COLUMNS =
   'id, family_id, title, category_id, provider, notes, amount_status, amount, amount_estimated_basis, currency, ' +
   'due_date, expected_payment_date, recurrence_rule, bank_account_id, owner_member_id, show_in_calendar, calendar_event_id, active, ' +
-  'forecast_reminders(id, value, unit)'
+  'forecast_reminders(id, value, unit), ' +
+  'forecast_payment_installments(id, sequence_index, offset_days, amount_status, amount, amount_estimated_basis)'
 
-export type ForecastPaymentWithReminders = ForecastPayment & { reminders: ForecastReminder[] }
+export type ForecastPaymentWithReminders = ForecastPayment & { reminders: ForecastReminder[]; installments: ForecastPaymentInstallment[] }
 
 function toForecastPayment(row: ForecastPaymentRow): ForecastPaymentWithReminders {
   return {
@@ -54,6 +63,17 @@ function toForecastPayment(row: ForecastPaymentRow): ForecastPaymentWithReminder
     calendarEventId: row.calendar_event_id,
     active: row.active,
     reminders: row.forecast_reminders.map((r) => ({ id: r.id, forecastPaymentId: row.id, value: r.value, unit: r.unit as ForecastReminderUnit })),
+    installments: row.forecast_payment_installments
+      .map((i) => ({
+        id: i.id,
+        forecastPaymentId: row.id,
+        sequenceIndex: i.sequence_index,
+        offsetDays: i.offset_days,
+        amountStatus: i.amount_status as ForecastAmountStatus,
+        amount: i.amount,
+        amountEstimatedBasis: i.amount_estimated_basis,
+      }))
+      .sort((a, b) => a.sequenceIndex - b.sequenceIndex),
   }
 }
 
@@ -260,10 +280,34 @@ export async function replaceForecastReminders(forecastPaymentId: string, remind
   }
 }
 
+// Fase 1D-c: sustituye la plantilla de cargos por ciclo a la vez — mismo patrón que
+// replaceForecastReminders. Lista vacía = "un solo pago" (sin fraccionar), comportamiento de siempre.
+export async function replaceForecastPaymentInstallments(
+  forecastPaymentId: string,
+  installments: { sequenceIndex: number; offsetDays: number; amountStatus: ForecastAmountStatus; amount: number | null; amountEstimatedBasis: string | null }[],
+): Promise<void> {
+  const { error: deleteError } = await supabase.from('forecast_payment_installments').delete().eq('forecast_payment_id', forecastPaymentId)
+  if (deleteError) throw deleteError
+  if (installments.length > 0) {
+    const { error: insertError } = await supabase.from('forecast_payment_installments').insert(
+      installments.map((i) => ({
+        forecast_payment_id: forecastPaymentId,
+        sequence_index: i.sequenceIndex,
+        offset_days: i.offsetDays,
+        amount_status: i.amountStatus,
+        amount: i.amount,
+        amount_estimated_basis: i.amountEstimatedBasis,
+      })),
+    )
+    if (insertError) throw insertError
+  }
+}
+
 interface ForecastOccurrenceRow {
   id: string
   forecast_payment_id: string
   occurrence_date: string
+  installment_sequence_index: number
   due_date_override: string | null
   expected_payment_date_override: string | null
   amount_status: string | null
@@ -278,6 +322,9 @@ function toForecastOverride(row: ForecastOccurrenceRow): ForecastOccurrenceOverr
     id: row.id,
     forecastPaymentId: row.forecast_payment_id,
     occurrenceDate: row.occurrence_date,
+    // 0 en BD = el override es del ciclo completo (sin fraccionar) — se traduce a null en el dominio,
+    // igual que el resto de campos "sin valor" de este mismo objeto.
+    installmentSequenceIndex: row.installment_sequence_index === 0 ? null : row.installment_sequence_index,
     dueDateOverride: row.due_date_override,
     expectedPaymentDateOverride: row.expected_payment_date_override,
     amountStatus: row.amount_status as ForecastAmountStatus | null,
@@ -295,10 +342,12 @@ export async function listForecastOccurrenceOverrides(forecastPaymentId: string)
 }
 
 // Crea o sustituye el override de UNA ocurrencia concreta (importe distinto solo esa vez, saltarla,
-// mover su fecha...) — nunca toca la regla del padre ni las demás ocurrencias.
+// mover su fecha, o — Fase 1D-c — de un cargo concreto dentro del ciclo) — nunca toca la regla del
+// padre ni las demás ocurrencias/cargos.
 export async function upsertForecastOccurrenceOverride(input: {
   forecastPaymentId: string
   occurrenceDate: string
+  installmentSequenceIndex?: number | null
   dueDateOverride?: string | null
   expectedPaymentDateOverride?: string | null
   amountStatus?: ForecastAmountStatus | null
@@ -313,6 +362,7 @@ export async function upsertForecastOccurrenceOverride(input: {
       {
         forecast_payment_id: input.forecastPaymentId,
         occurrence_date: input.occurrenceDate,
+        installment_sequence_index: input.installmentSequenceIndex ?? 0,
         due_date_override: input.dueDateOverride ?? null,
         expected_payment_date_override: input.expectedPaymentDateOverride ?? null,
         amount_status: input.amountStatus ?? null,
@@ -322,7 +372,7 @@ export async function upsertForecastOccurrenceOverride(input: {
         matched_expense_id: input.matchedExpenseId ?? null,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: 'forecast_payment_id,occurrence_date' },
+      { onConflict: 'forecast_payment_id,occurrence_date,installment_sequence_index' },
     )
   if (error) throw error
 }

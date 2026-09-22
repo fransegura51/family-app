@@ -75,7 +75,7 @@ function scopeUrl(path: string): string {
 // cubría.
 self.addEventListener('push', (event) => {
   if (!event.data) return
-  let payload: { title?: string; body?: string }
+  let payload: { title?: string; body?: string; url?: string }
   try {
     payload = event.data.json()
   } catch {
@@ -87,15 +87,20 @@ self.addEventListener('push', (event) => {
       body: payload.body ?? '',
       icon: scopeUrl('pwa-192.png'),
       badge: scopeUrl('pwa-192.png'),
+      // Deep-link opcional del payload (p. ej. "/dinero" para Previsión de pagos) — se guarda en
+      // notification.data para leerlo en notificationclick. Si no viene, el aviso sigue yendo a
+      // Calendario (comportamiento de siempre, sin romper los avisos ya existentes).
+      data: payload.url ?? null,
     }),
   )
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  // "?/calendario" es la forma que index.html descodifica a la ruta real
+  // "?/calendario" (o "?/dinero"...) es la forma que index.html descodifica a la ruta real
   // (ver 404.html): entra directo, sin depender del salto por el 404 de GitHub Pages.
-  const targetUrl = scopeUrl('?/calendario')
+  const path = (event.notification.data as string | null) ?? '/calendario'
+  const targetUrl = scopeUrl(`?${path}`)
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
       const existing = clients.find((c) => 'focus' in c) as WindowClient | undefined

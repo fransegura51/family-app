@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
           await Promise.all([
             admin
               .from("calendar_events")
-              .select("id, title, description, start_at, end_at, all_day, recurrence_rule, exception_dates, google_source_member_id")
+              .select("id, title, description, start_at, end_at, all_day, recurrence_rule, exception_dates, google_source_member_id, sync_to_google")
               .eq("family_id", familyId),
             admin.from("calendar_event_members").select("event_id, member_id"),
             admin.from("calendar_event_reminders").select("event_id, minutes_before, anchor"),
@@ -159,6 +159,12 @@ Deno.serve(async (req) => {
           // se vería duplicado. A los DEMÁS miembros conectados sí se
           // les manda, para que también lo vean.
           if (ev.google_source_member_id && ev.google_source_member_id === memberId) continue
+          // sync_to_google=false (p. ej. la proyección visual de Previsión de pagos, Economía) nunca
+          // sale a Google. Deliberadamente NO se marca en seenEventIds: si ya tenía un mapeo de una
+          // sincronización anterior (se acaba de desactivar), el bucle de huérfanos de más abajo lo
+          // borra de Google igual que cualquier evento eliminado de la app — mismo camino, sin duplicar
+          // lógica de borrado.
+          if (ev.sync_to_google === false) continue
 
           seenEventIds.add(ev.id as string)
           const allDay = ev.all_day as boolean
@@ -251,14 +257,23 @@ Deno.serve(async (req) => {
         }
 
         // Lo que ya no existe en la app pero seguía mapeado -> se borra
-        // también de Google, y se limpia el mapeo.
+        // también de Google, y se limpia el mapeo. Bug real encontrado
+        // (evento huérfano confirmado en Google, sin ningún rastro en
+        // la app): el mapeo se borraba SIN comprobar si el DELETE a
+        // Google había funcionado de verdad — un fallo puntual (red,
+        // cuota...) dejaba el evento vivo en Google para siempre, sin
+        // nada en la app que permitiera reintentarlo en la próxima
+        // pasada. Ahora el mapeo solo se limpia si Google confirma que
+        // ya no existe (200/204, o 404/410 si ya no estaba).
         for (const [eventId, googleEventId] of mappingByEvent) {
           if (seenEventIds.has(eventId)) continue
-          await fetch(`${gcalBase}/${encodeURIComponent(googleEventId)}`, {
+          const delRes = await fetch(`${gcalBase}/${encodeURIComponent(googleEventId)}`, {
             method: "DELETE",
             headers: { Authorization: `Bearer ${accessToken}` },
           })
-          await admin.from("calendar_event_google_sync").delete().eq("event_id", eventId).eq("member_id", memberId)
+          if (delRes.ok || delRes.status === 404 || delRes.status === 410) {
+            await admin.from("calendar_event_google_sync").delete().eq("event_id", eventId).eq("member_id", memberId)
+          }
         }
 
         await admin

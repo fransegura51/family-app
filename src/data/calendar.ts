@@ -138,6 +138,10 @@ export async function createEvent(input: {
   attachmentOriginalName?: string | null
   note?: string | null
   visibility?: 'shared' | 'private'
+  // Previsión de pagos: su evento derivado es puramente visual y nunca debe salir hacia el Google
+  // Calendar personal de nadie. Sin indicar, se sincroniza igual que siempre (comportamiento idéntico
+  // para todo lo que ya existía antes de esta columna).
+  syncToGoogle?: boolean
 }): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
@@ -168,6 +172,7 @@ export async function createEvent(input: {
       attachment_original_name: input.attachmentOriginalName ?? null,
       note: input.note ?? null,
       visibility: input.visibility ?? 'shared',
+      sync_to_google: input.syncToGoogle ?? true,
     })
     .select('id')
     .single()
@@ -209,6 +214,7 @@ export async function updateEvent(
     attachmentOriginalName?: string | null
     note?: string | null
     visibility?: 'shared' | 'private'
+    syncToGoogle?: boolean
   },
 ): Promise<void> {
   const { error } = await supabase
@@ -229,6 +235,7 @@ export async function updateEvent(
       attachment_original_name: input.attachmentOriginalName ?? null,
       note: input.note ?? null,
       visibility: input.visibility ?? 'shared',
+      sync_to_google: input.syncToGoogle ?? true,
     })
     .eq('id', id)
   if (error) throw error

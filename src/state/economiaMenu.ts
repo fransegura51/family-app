@@ -21,6 +21,7 @@ export type FixedEconomiaMenuItemKey =
   | 'Presupuesto Generales'
   | 'Banco'
   | 'Educación financiera'
+  | 'Previsión de pagos'
   | 'accion:movimiento'
 
 export type EconomiaMenuItemKey = FixedEconomiaMenuItemKey | `custom:${string}`
@@ -52,6 +53,7 @@ export const ECONOMIA_MENU_ITEM_META: Record<FixedEconomiaMenuItemKey, { icon: s
   'Presupuesto Generales': { icon: '💰', label: 'Presupuesto(s)' },
   Banco: { icon: '🏦', label: 'Banco' },
   'Educación financiera': { icon: '🎓', label: 'Educación financiera' },
+  'Previsión de pagos': { icon: '🔮', label: 'Previsión de pagos' },
   'accion:movimiento': { icon: '➕', label: 'Nuevo movimiento' },
 }
 
@@ -68,6 +70,7 @@ const DEFAULT_KEYS: FixedEconomiaMenuItemKey[] = [
   'Presupuesto Generales',
   'Banco',
   'Educación financiera',
+  'Previsión de pagos',
   'accion:movimiento',
 ]
 

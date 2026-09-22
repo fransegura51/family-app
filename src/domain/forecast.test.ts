@@ -6,6 +6,10 @@ import {
   forecastTotals,
   forecastByMonth,
   nextForecastOccurrence,
+  buildForecastRecurrenceRule,
+  parseForecastRecurrenceOption,
+  isForecastPaymentFinished,
+  formatForecastAmount,
   type ForecastPayment,
   type ForecastOccurrence,
   type ForecastOccurrenceOverride,
@@ -334,5 +338,71 @@ describe('nextForecastOccurrence', () => {
       },
     ]
     expect(nextForecastOccurrence(p, overrides, '2026-03-01')?.dueDate).toBe('2026-03-28')
+  })
+})
+
+describe('buildForecastRecurrenceRule / parseForecastRecurrenceOption (Fase 1C, selector amigable)', () => {
+  it('mapea las 4 opciones predefinidas + "no se repite"', () => {
+    expect(buildForecastRecurrenceRule('none', null)).toBeNull()
+    expect(buildForecastRecurrenceRule('monthly', null)).toBe('FREQ=MONTHLY')
+    expect(buildForecastRecurrenceRule('every_3_months', null)).toBe('FREQ=MONTHLY;INTERVAL=3')
+    expect(buildForecastRecurrenceRule('every_6_months', null)).toBe('FREQ=MONTHLY;INTERVAL=6')
+    expect(buildForecastRecurrenceRule('yearly', null)).toBe('FREQ=YEARLY')
+  })
+
+  it('personalizado: frecuencia + intervalo + fin opcional, nada más', () => {
+    expect(buildForecastRecurrenceRule('custom', { freq: 'WEEKLY', interval: 2, until: null })).toBe('FREQ=WEEKLY;INTERVAL=2')
+    expect(buildForecastRecurrenceRule('custom', { freq: 'MONTHLY', interval: 1, until: '2028-12-31' })).toBe('FREQ=MONTHLY;UNTIL=2028-12-31')
+    expect(buildForecastRecurrenceRule('custom', null)).toBeNull()
+  })
+
+  it('parseForecastRecurrenceOption es la inversa exacta para las predefinidas', () => {
+    expect(parseForecastRecurrenceOption(null)).toEqual({ option: 'none', custom: null })
+    expect(parseForecastRecurrenceOption('FREQ=MONTHLY')).toEqual({ option: 'monthly', custom: null })
+    expect(parseForecastRecurrenceOption('FREQ=MONTHLY;INTERVAL=3')).toEqual({ option: 'every_3_months', custom: null })
+    expect(parseForecastRecurrenceOption('FREQ=MONTHLY;INTERVAL=6')).toEqual({ option: 'every_6_months', custom: null })
+    expect(parseForecastRecurrenceOption('FREQ=YEARLY')).toEqual({ option: 'yearly', custom: null })
+  })
+
+  it('cualquier regla no predefinida (otro INTERVAL, UNTIL, WEEKLY/DAILY) se reconoce como "custom", nunca se aproxima', () => {
+    expect(parseForecastRecurrenceOption('FREQ=MONTHLY;INTERVAL=2')).toEqual({ option: 'custom', custom: { freq: 'MONTHLY', interval: 2, until: null } })
+    expect(parseForecastRecurrenceOption('FREQ=YEARLY;UNTIL=2030-01-01')).toEqual({ option: 'custom', custom: { freq: 'YEARLY', interval: 1, until: '2030-01-01' } })
+    expect(parseForecastRecurrenceOption('FREQ=WEEKLY')).toEqual({ option: 'custom', custom: { freq: 'WEEKLY', interval: 1, until: null } })
+  })
+})
+
+describe('isForecastPaymentFinished (Fase 1C, cierre de serie)', () => {
+  it('serie YEARLY con UNTIL ya superado: finalizada', () => {
+    const p = payment({ dueDate: '2024-03-31', recurrenceRule: 'FREQ=YEARLY;UNTIL=2026-03-31' })
+    expect(isForecastPaymentFinished(p, [], '2026-04-01')).toBe(true)
+    expect(isForecastPaymentFinished(p, [], '2026-03-31')).toBe(false) // la última ocurrencia real es justo hoy, todavía no ha pasado
+  })
+
+  it('pago puntual cuyo único vencimiento ya pasó: finalizado', () => {
+    const p = payment({ dueDate: '2026-01-10', recurrenceRule: null })
+    expect(isForecastPaymentFinished(p, [], '2026-01-11')).toBe(true)
+    expect(isForecastPaymentFinished(p, [], '2026-01-10')).toBe(false)
+  })
+
+  it('serie sin UNTIL: nunca finalizada', () => {
+    const p = payment({ dueDate: '2026-01-31', recurrenceRule: 'FREQ=MONTHLY' })
+    expect(isForecastPaymentFinished(p, [], '2030-01-01')).toBe(false)
+  })
+
+  it('pago inactivo: nunca se marca como "finalizado" (es un estado distinto, desactivado)', () => {
+    const p = payment({ dueDate: '2024-03-31', recurrenceRule: 'FREQ=YEARLY;UNTIL=2026-03-31', active: false })
+    expect(isForecastPaymentFinished(p, [], '2026-04-01')).toBe(false)
+  })
+})
+
+describe('formatForecastAmount (Fase 1C, multidivisa)', () => {
+  it('formatea EUR y GBP con su símbolo real, nunca sumados', () => {
+    expect(formatForecastAmount(1245, 'EUR')).toContain('€')
+    expect(formatForecastAmount(1245, 'EUR')).toContain('1245')
+    expect(formatForecastAmount(300, 'GBP')).toContain('300')
+  })
+
+  it('código de divisa mal formado: degrada con gracia en vez de reventar la pantalla', () => {
+    expect(formatForecastAmount(50, 'EU')).toBe('50.00 EU')
   })
 })

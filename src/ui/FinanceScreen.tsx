@@ -27,6 +27,34 @@ import {
   updateTag,
 } from '@/data/finance'
 import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTransactions } from '@/data/bank'
+import {
+  createForecastPayment,
+  deleteForecastPayment,
+  listForecastOccurrenceOverrides,
+  listForecastPayments,
+  replaceForecastReminders,
+  setForecastPaymentActive,
+  updateForecastPayment,
+  type ForecastPaymentInput,
+  type ForecastPaymentWithReminders,
+} from '@/data/forecast'
+import {
+  buildForecastRecurrenceRule,
+  expandForecastOccurrences,
+  forecastByMonth,
+  forecastTotals,
+  formatForecastAmount,
+  isForecastPaymentFinished,
+  parseForecastRecurrenceOption,
+  stepDays,
+  stepMonthsClamped,
+  type ForecastAmountStatus,
+  type ForecastCustomRecurrence,
+  type ForecastOccurrence,
+  type ForecastOccurrenceOverride,
+  type ForecastRecurrenceOption,
+  type ForecastReminderUnit,
+} from '@/domain/forecast'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import { getAccountsMode, getFinanceMonthStartDay, listFamilyMembers, type AccountsMode } from '@/data/family'
 import {
@@ -135,7 +163,7 @@ import { fetchAsShareableFile, shareFiles } from '@/services/share'
 // Financiera". Resumen y Conclusiones se combinan en una sola pestaña
 // (van siempre juntas, mismo periodo, misma pantalla) en vez de dos
 // pestañas casi vacías por separado.
-const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Banco', 'Educación financiera'] as const
+const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Banco', 'Educación financiera', 'Previsión de pagos'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 // El desplegable de Economía mezcla pestañas (SubTab) con accesos
@@ -563,6 +591,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
         />
       )}
       {tab === 'Banco' && <BankTab key={refreshKey} openConnectSignal={openConnectSignal} focusAccountId={focusAccountId} />}
+      {tab === 'Previsión de pagos' && <PrevisionPagosTab key={refreshKey} categories={categories} />}
       {tab === 'Educación financiera' && <KidsFinanceTab />}
 
       {showNewMovement && (
@@ -8204,6 +8233,610 @@ function AddBudgetForm({
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Crear presupuesto'}
+      </button>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Previsión de pagos (Fase 1C) — infraestructura de Fase 1B/1B.1 (src/data/forecast.ts,
+// src/domain/forecast.ts) ya construida y certificada; aquí solo su primera UI funcional. Nunca
+// recalcula recurrencias/totales por su cuenta (usa expandForecastOccurrences/forecastTotals/
+// forecastByMonth de domain/forecast.ts) ni escribe Supabase directamente (usa data/forecast.ts).
+// ---------------------------------------------------------------------
+
+type ForecastHorizon = '7d' | '30d' | '3m' | '12m'
+const HORIZON_OPTIONS: { key: ForecastHorizon; label: string }[] = [
+  { key: '7d', label: '7 días' },
+  { key: '30d', label: '30 días' },
+  { key: '3m', label: '3 meses' },
+  { key: '12m', label: '12 meses' },
+]
+const HORIZON_TITLES: Record<ForecastHorizon, string> = {
+  '7d': 'Próximos 7 días',
+  '30d': 'Próximos 30 días',
+  '3m': 'Próximos 3 meses',
+  '12m': 'Próximos 12 meses',
+}
+const RECURRENCE_OPTION_LABELS: Record<ForecastRecurrenceOption, string> = {
+  none: 'No se repite',
+  monthly: 'Mensual',
+  every_3_months: 'Cada 3 meses',
+  every_6_months: 'Cada 6 meses',
+  yearly: 'Anual',
+  custom: 'Personalizado',
+}
+const RECURRENCE_SHORT_LABEL: Record<ForecastRecurrenceOption, string> = {
+  none: '',
+  monthly: 'Mensual',
+  every_3_months: 'Trimestral',
+  every_6_months: 'Semestral',
+  yearly: 'Anual',
+  custom: 'Personalizado',
+}
+const AMOUNT_STATUS_LABELS: Record<ForecastAmountStatus, string> = { known: 'Conocido', estimated: 'Estimado', unknown: 'Pendiente' }
+const REMINDER_UNIT_LABELS: Record<ForecastReminderUnit, string> = { minutes: 'minutos', hours: 'horas', days: 'días', weeks: 'semanas', months: 'meses' }
+const REMINDER_QUICK_OPTIONS: { label: string; value: number; unit: ForecastReminderUnit }[] = [
+  { label: '1 semana antes', value: 1, unit: 'weeks' },
+  { label: '2 semanas antes', value: 2, unit: 'weeks' },
+  { label: '1 mes antes', value: 1, unit: 'months' },
+]
+const FORECAST_CURRENCY_OPTIONS = ['EUR', 'GBP', 'USD']
+
+function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
+  const [payments, setPayments] = useState<ForecastPaymentWithReminders[]>([])
+  const [overridesByPayment, setOverridesByPayment] = useState<Map<string, ForecastOccurrenceOverride[]>>(new Map())
+  const [members, setMembers] = useState<FamilyMember[]>([])
+  const [accounts, setAccounts] = useState<BankAccount[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [horizon, setHorizon] = useState<ForecastHorizon>('30d')
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [editingPayment, setEditingPayment] = useState<ForecastPaymentWithReminders | null>(null)
+  const [managementOpen, setManagementOpen] = useState(false)
+
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  function reload() {
+    setLoading(true)
+    setError(null)
+    listForecastPayments()
+      .then(async (list) => {
+        setPayments(list)
+        // Overrides por pago (puntuales, casi siempre vacíos) — necesarios para expandForecastOccurrences.
+        const entries = await Promise.all(list.map(async (p) => [p.id, await listForecastOccurrenceOverrides(p.id)] as const))
+        setOverridesByPayment(new Map(entries))
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar Previsión de pagos')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(reload, [])
+  useEffect(() => {
+    listFamilyMembers().then(setMembers).catch(() => {})
+    listBankAccounts().then(setAccounts).catch(() => {})
+  }, [])
+
+  function closeForm() {
+    setShowAddForm(false)
+    setEditingPayment(null)
+  }
+  function saveCommon() {
+    closeForm()
+    reload()
+  }
+
+  const activePayments = payments.filter((p) => p.active)
+  const horizonEnd =
+    horizon === '7d' ? stepDays(today, 7) : horizon === '30d' ? stepDays(today, 30) : horizon === '3m' ? stepMonthsClamped(today, 3) : stepMonthsClamped(today, 12)
+
+  // Una previsión Finalizada (serie que superó su UNTIL, o pago puntual ya pasado) no aporta ninguna
+  // ocurrencia futura — expandForecastOccurrences ya las excluye sola, sin necesidad de filtrarlas aquí.
+  const upcomingOccurrences: ForecastOccurrence[] = []
+  for (const p of activePayments) upcomingOccurrences.push(...expandForecastOccurrences(p, overridesByPayment.get(p.id) ?? [], today, horizonEnd))
+  upcomingOccurrences.sort((a, b) => a.expectedPaymentDate.localeCompare(b.expectedPaymentDate))
+  const totals = forecastTotals(upcomingOccurrences)
+
+  // Visión 12 meses — SIEMPRE los próximos 12 meses naturales desde el mes en curso, con independencia
+  // del selector de horizonte de arriba: detectar qué meses vienen más cargados es una vista aparte.
+  const twelveMonthEnd = stepMonthsClamped(today, 12)
+  const twelveMonthOccurrences: ForecastOccurrence[] = []
+  for (const p of activePayments) twelveMonthOccurrences.push(...expandForecastOccurrences(p, overridesByPayment.get(p.id) ?? [], today, twelveMonthEnd))
+  const monthTotals = forecastByMonth(twelveMonthOccurrences, 'expectedPaymentDate')
+  const [ty, tm] = today.split('-').map(Number)
+  const monthSlots = Array.from({ length: 12 }, (_, i) => {
+    const monthIndex0 = (tm - 1 + i) % 12
+    const year = ty + Math.floor((tm - 1 + i) / 12)
+    const key = `${year}-${String(monthIndex0 + 1).padStart(2, '0')}`
+    return { key, label: MONTH_LABELS[monthIndex0].slice(0, 3).toUpperCase(), totals: monthTotals.get(key) ?? [] }
+  })
+
+  function renderOccurrenceRow(o: ForecastOccurrence) {
+    const parent = payments.find((p) => p.id === o.forecastPaymentId)
+    const category = categories.find((c) => c.id === o.categoryId)
+    const sameDates = o.dueDate === o.expectedPaymentDate
+    const recurrenceLabel = parent?.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseForecastRecurrenceOption(parent.recurrenceRule).option] : ''
+    return (
+      <div key={`${o.forecastPaymentId}-${o.occurrenceDate}`} className="card task-card">
+        <div className="task-card-main">
+          <strong>{o.title}</strong>
+          {o.amountStatus === 'unknown' ? (
+            <p className="muted" style={{ margin: '2px 0' }}>Importe pendiente</p>
+          ) : (
+            <p style={{ margin: '2px 0' }}>
+              {o.amountStatus === 'estimated' ? '≈ ' : ''}
+              {formatForecastAmount(o.amount ?? 0, o.currency)}
+              {o.amountStatus === 'estimated' && parent?.amountEstimatedBasis && <span className="muted"> · {parent.amountEstimatedBasis}</span>}
+            </p>
+          )}
+          <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
+            {sameDates ? o.dueDate : `Pago previsto: ${o.expectedPaymentDate} · Vence: ${o.dueDate}`}
+          </p>
+          {(category || recurrenceLabel) && (
+            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+              {category ? `${category.icon} ${category.name}` : null}
+              {category && recurrenceLabel ? ' · ' : ''}
+              {recurrenceLabel}
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function renderManagementRow(p: ForecastPaymentWithReminders) {
+    const overrides = overridesByPayment.get(p.id) ?? []
+    const finished = isForecastPaymentFinished(p, overrides, today)
+    const category = categories.find((c) => c.id === p.categoryId)
+    const recurrenceLabel = p.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseForecastRecurrenceOption(p.recurrenceRule).option] : ''
+    return (
+      <div key={p.id} className="card task-card">
+        <div className="task-card-main">
+          <strong>
+            {category ? `${category.icon} ` : ''}
+            {p.title}
+            {!p.active && <span className="muted"> · Desactivada</span>}
+            {p.active && finished && <span className="muted"> · Finalizada</span>}
+          </strong>
+          <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
+            Vence: {p.dueDate}
+            {recurrenceLabel ? ` · ${recurrenceLabel}` : ''}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="link-button" onClick={() => setEditingPayment(p)}>
+            Editar
+          </button>
+          {p.active ? (
+            <ConfirmButton label="Desactivar" onConfirm={() => setForecastPaymentActive(p, false).then(reload)} />
+          ) : (
+            <button type="button" className="link-button" onClick={() => setForecastPaymentActive(p, true).then(reload)}>
+              Reactivar
+            </button>
+          )}
+          <ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(p.calendarEventId, p.id).then(reload)} />
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) return <p className="muted">Cargando Previsión de pagos…</p>
+
+  return (
+    <div>
+      <h2 className="section-title">🔮 Previsión de pagos</h2>
+      <p className="muted" style={{ marginTop: -8 }}>
+        Anticípate a los pagos que vienen.
+      </p>
+      {error && <p className="error">{error}</p>}
+
+      <button type="button" className="link-button" onClick={() => setShowAddForm(true)}>
+        + Añadir pago
+      </button>
+
+      {payments.length === 0 ? (
+        <div className="card event-card" style={{ marginTop: 12 }}>
+          <p className="muted" style={{ margin: 0 }}>Todavía no tienes pagos previstos.</p>
+          <p className="muted" style={{ marginTop: 4 }}>Empieza añadiendo cosas que sabes que llegarán: seguros, IBI, cuotas, impuestos…</p>
+          <button type="button" onClick={() => setShowAddForm(true)} style={{ marginTop: 8 }}>
+            + Añadir primer pago
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="filter-row" style={{ marginTop: 12 }}>
+            {HORIZON_OPTIONS.map((h) => (
+              <button key={h.key} type="button" className={'chip' + (horizon === h.key ? ' chip-active' : '')} onClick={() => setHorizon(h.key)}>
+                {h.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="card event-card" style={{ marginTop: 8 }}>
+            <strong>{HORIZON_TITLES[horizon]}</strong>
+            {totals.length === 0 && <p className="muted" style={{ margin: '6px 0 0' }}>Nada previsto en este periodo.</p>}
+            {totals.map((t) => (
+              <div key={t.currency} style={{ margin: '6px 0 0' }}>
+                <p style={{ color: '#1e8449', margin: 0 }}>{formatForecastAmount(t.knownTotal, t.currency)} conocidos</p>
+                {t.estimatedTotal > 0 && <p style={{ color: '#b9770e', margin: '2px 0 0' }}>≈ {formatForecastAmount(t.estimatedTotal, t.currency)} estimados</p>}
+                {t.unknownCount > 0 && (
+                  <p className="muted" style={{ margin: '2px 0 0' }}>
+                    {t.unknownCount} pago{t.unknownCount === 1 ? '' : 's'} pendiente{t.unknownCount === 1 ? '' : 's'} de importe
+                  </p>
+                )}
+                {t.estimatedTotal > 0 && (
+                  <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+                    {formatForecastAmount(t.knownPlusEstimatedTotal, t.currency)} con importe disponible
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <h2 className="section-title" style={{ marginTop: 16 }}>
+            Próximos pagos
+          </h2>
+          <div className="event-list">
+            {upcomingOccurrences.map(renderOccurrenceRow)}
+            {upcomingOccurrences.length === 0 && <p className="muted">Nada previsto en este periodo.</p>}
+          </div>
+
+          <h2 className="section-title" style={{ marginTop: 16 }}>
+            Visión 12 meses
+          </h2>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+            {monthSlots.map((m) => (
+              <div key={m.key} className="card" style={{ minWidth: 92, flexShrink: 0, padding: '10px 12px' }}>
+                <strong style={{ fontSize: 13 }}>{m.label}</strong>
+                {m.totals.length === 0 && (
+                  <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+                    —
+                  </p>
+                )}
+                {m.totals.map((t) => (
+                  <div key={t.currency} style={{ marginTop: 4 }}>
+                    {t.knownTotal > 0 && (
+                      <p style={{ margin: 0, fontSize: 13 }}>{formatForecastAmount(t.knownTotal, t.currency)}</p>
+                    )}
+                    {t.estimatedTotal > 0 && (
+                      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                        ≈ {formatForecastAmount(t.estimatedTotal, t.currency)}
+                      </p>
+                    )}
+                    {t.unknownCount > 0 && (
+                      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                        {t.unknownCount} pendiente{t.unknownCount === 1 ? '' : 's'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setManagementOpen((v) => !v)}>
+        {managementOpen ? '▾' : '▸'} Gestionar pagos previstos
+      </button>
+      {managementOpen && (
+        <div className="event-list" style={{ marginTop: 8 }}>
+          {payments.map(renderManagementRow)}
+          {payments.length === 0 && <p className="muted">Todavía no hay ningún pago previsto.</p>}
+        </div>
+      )}
+
+      {(showAddForm || editingPayment) && (
+        <div className="modal-overlay" onClick={closeForm}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                {editingPayment ? 'Editar pago previsto' : 'Nuevo pago previsto'}
+              </h2>
+              <button type="button" className="modal-close" aria-label="Cerrar" onClick={closeForm}>
+                ✕
+              </button>
+            </div>
+            <ForecastPaymentForm categories={categories} members={members} accounts={accounts} payment={editingPayment} onSaved={saveCommon} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ForecastPaymentForm({
+  categories,
+  members,
+  accounts,
+  payment,
+  onSaved,
+}: {
+  categories: BudgetCategory[]
+  members: FamilyMember[]
+  accounts: BankAccount[]
+  payment: ForecastPaymentWithReminders | null
+  onSaved: () => void
+}) {
+  const initialRecurrence = parseForecastRecurrenceOption(payment?.recurrenceRule ?? null)
+  const [title, setTitle] = useState(payment?.title ?? '')
+  const [categoryName, setCategoryName] = useState(() => categories.find((c) => c.id === payment?.categoryId)?.name ?? '')
+  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? 'known')
+  const [amount, setAmount] = useState(payment?.amount != null ? String(payment.amount) : '')
+  const [amountBasis, setAmountBasis] = useState(payment?.amountEstimatedBasis ?? '')
+  const [currency, setCurrency] = useState(payment?.currency ?? 'EUR')
+  const [dueDate, setDueDate] = useState(payment?.dueDate ?? '')
+  const [hasExpectedPaymentDate, setHasExpectedPaymentDate] = useState(!!payment?.expectedPaymentDate)
+  const [expectedPaymentDate, setExpectedPaymentDate] = useState(payment?.expectedPaymentDate ?? '')
+  const [recurrenceOption, setRecurrenceOption] = useState<ForecastRecurrenceOption>(initialRecurrence.option)
+  const [customFreq, setCustomFreq] = useState<ForecastCustomRecurrence['freq']>(initialRecurrence.custom?.freq ?? 'MONTHLY')
+  const [customInterval, setCustomInterval] = useState(String(initialRecurrence.custom?.interval ?? 1))
+  const [customUntil, setCustomUntil] = useState(initialRecurrence.custom?.until ?? '')
+  const [reminders, setReminders] = useState<{ value: number; unit: ForecastReminderUnit }[]>(
+    payment?.reminders.map((r) => ({ value: r.value, unit: r.unit })) ?? [],
+  )
+  const [customReminderValue, setCustomReminderValue] = useState('1')
+  const [customReminderUnit, setCustomReminderUnit] = useState<ForecastReminderUnit>('days')
+  const [showInCalendar, setShowInCalendar] = useState(payment?.showInCalendar ?? true)
+  const [bankAccountId, setBankAccountId] = useState(payment?.bankAccountId ?? '')
+  const [ownerMemberId, setOwnerMemberId] = useState(payment?.ownerMemberId ?? '')
+  const [notes, setNotes] = useState(payment?.notes ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  function hasReminder(value: number, unit: ForecastReminderUnit) {
+    return reminders.some((r) => r.value === value && r.unit === unit)
+  }
+  function toggleQuickReminder(value: number, unit: ForecastReminderUnit) {
+    setReminders((prev) =>
+      prev.some((r) => r.value === value && r.unit === unit) ? prev.filter((r) => !(r.value === value && r.unit === unit)) : [...prev, { value, unit }],
+    )
+  }
+  function addCustomReminder() {
+    const value = Math.max(1, Math.round(Number(customReminderValue) || 1))
+    if (hasReminder(value, customReminderUnit)) return
+    setReminders((prev) => [...prev, { value, unit: customReminderUnit }])
+  }
+  function removeReminder(value: number, unit: ForecastReminderUnit) {
+    setReminders((prev) => prev.filter((r) => !(r.value === value && r.unit === unit)))
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (!title.trim()) {
+      setError('Ponle un nombre a este pago.')
+      return
+    }
+    if (!dueDate) {
+      setError('Indica cuándo vence.')
+      return
+    }
+    if (amountStatus === 'estimated' && !amountBasis.trim()) {
+      setError('Indica en qué se basa la estimación.')
+      return
+    }
+    let amountValue: number | null = null
+    if (amountStatus !== 'unknown') {
+      const parsed = Number(amount)
+      if (amount.trim() === '' || !Number.isFinite(parsed) || parsed < 0) {
+        setError('Pon un importe válido.')
+        return
+      }
+      amountValue = parsed
+    }
+    const recurrenceRule = buildForecastRecurrenceRule(
+      recurrenceOption,
+      recurrenceOption === 'custom' ? { freq: customFreq, interval: Math.max(1, Math.round(Number(customInterval) || 1)), until: customUntil || null } : null,
+    )
+    setSaving(true)
+    try {
+      const input: ForecastPaymentInput = {
+        title: title.trim(),
+        categoryId: categories.find((c) => c.name === categoryName)?.id ?? null,
+        provider: null,
+        notes: notes.trim() || null,
+        amountStatus,
+        amount: amountValue,
+        amountEstimatedBasis: amountStatus === 'estimated' ? amountBasis.trim() : null,
+        currency,
+        dueDate,
+        expectedPaymentDate: hasExpectedPaymentDate ? expectedPaymentDate || null : null,
+        recurrenceRule,
+        bankAccountId: bankAccountId || null,
+        ownerMemberId: ownerMemberId || null,
+        showInCalendar,
+      }
+      let id: string
+      if (payment) {
+        await updateForecastPayment(payment.id, { ...input, active: payment.active, calendarEventId: payment.calendarEventId })
+        id = payment.id
+      } else {
+        id = await createForecastPayment(input)
+      }
+      await replaceForecastReminders(id, reminders)
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="member-form">
+      <label>
+        Concepto
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      </label>
+
+      <label>
+        Estado del importe
+        <select value={amountStatus} onChange={(e) => setAmountStatus(e.target.value as ForecastAmountStatus)}>
+          {(Object.keys(AMOUNT_STATUS_LABELS) as ForecastAmountStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {AMOUNT_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {amountStatus !== 'unknown' && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={{ flex: 1 }}>
+            Importe
+            <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          </label>
+          <label style={{ width: 90 }}>
+            Divisa
+            <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              {FORECAST_CURRENCY_OPTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      {amountStatus === 'estimated' && (
+        <label>
+          ¿En qué se basa?
+          <input type="text" value={amountBasis} onChange={(e) => setAmountBasis(e.target.value)} placeholder="Por ejemplo: recibo del año pasado" required />
+        </label>
+      )}
+
+      <label>
+        Categoría
+        <CategorySelect value={categoryName} onChange={setCategoryName} categories={categories} />
+      </label>
+
+      <label>
+        Vencimiento
+        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+      </label>
+
+      <label className="checkbox-label">
+        <input type="checkbox" checked={hasExpectedPaymentDate} onChange={(e) => setHasExpectedPaymentDate(e.target.checked)} />
+        ¿Esperas que se cobre otro día?
+      </label>
+      {hasExpectedPaymentDate && (
+        <label>
+          Fecha prevista de pago
+          <input type="date" value={expectedPaymentDate} onChange={(e) => setExpectedPaymentDate(e.target.value)} required />
+        </label>
+      )}
+
+      <label>
+        Recurrencia
+        <select value={recurrenceOption} onChange={(e) => setRecurrenceOption(e.target.value as ForecastRecurrenceOption)}>
+          {(Object.keys(RECURRENCE_OPTION_LABELS) as ForecastRecurrenceOption[]).map((o) => (
+            <option key={o} value={o}>
+              {RECURRENCE_OPTION_LABELS[o]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {recurrenceOption === 'custom' && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1 }}>
+            Frecuencia
+            <select value={customFreq} onChange={(e) => setCustomFreq(e.target.value as ForecastCustomRecurrence['freq'])}>
+              <option value="DAILY">Diaria</option>
+              <option value="WEEKLY">Semanal</option>
+              <option value="MONTHLY">Mensual</option>
+              <option value="YEARLY">Anual</option>
+            </select>
+          </label>
+          <label style={{ width: 90 }}>
+            Cada
+            <input type="number" min="1" step="1" value={customInterval} onChange={(e) => setCustomInterval(e.target.value)} />
+          </label>
+          <label style={{ flex: 1 }}>
+            Fin (opcional)
+            <input type="date" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)} />
+          </label>
+        </div>
+      )}
+
+      <div>
+        <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Avísame antes</p>
+        {REMINDER_QUICK_OPTIONS.map((r) => (
+          <label key={`${r.value}-${r.unit}`} className="checkbox-label">
+            <input type="checkbox" checked={hasReminder(r.value, r.unit)} onChange={() => toggleQuickReminder(r.value, r.unit)} />
+            {r.label}
+          </label>
+        ))}
+        {reminders
+          .filter((r) => !REMINDER_QUICK_OPTIONS.some((q) => q.value === r.value && q.unit === r.unit))
+          .map((r) => (
+            <p key={`${r.value}-${r.unit}`} className="muted" style={{ margin: '4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              ✓ {r.value} {REMINDER_UNIT_LABELS[r.unit]} antes
+              <button type="button" className="link-button" onClick={() => removeReminder(r.value, r.unit)}>
+                quitar
+              </button>
+            </p>
+          ))}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginTop: 6 }}>
+          <label style={{ width: 70 }}>
+            Personalizado
+            <input type="number" min="1" step="1" value={customReminderValue} onChange={(e) => setCustomReminderValue(e.target.value)} />
+          </label>
+          <select value={customReminderUnit} onChange={(e) => setCustomReminderUnit(e.target.value as ForecastReminderUnit)}>
+            {(Object.keys(REMINDER_UNIT_LABELS) as ForecastReminderUnit[]).map((u) => (
+              <option key={u} value={u}>
+                {REMINDER_UNIT_LABELS[u]}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="link-button" onClick={addCustomReminder}>
+            + Añadir
+          </button>
+        </div>
+      </div>
+
+      <label className="checkbox-label">
+        <input type="checkbox" checked={showInCalendar} onChange={(e) => setShowInCalendar(e.target.checked)} />
+        Mostrar en Calendario
+      </label>
+      <p className="muted" style={{ fontSize: 12, marginTop: -8 }}>
+        PEPA mostrará el próximo vencimiento en el calendario familiar.
+      </p>
+
+      {accounts.length > 0 && (
+        <label>
+          Cuenta prevista (opcional)
+          <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}>
+            <option value="">—</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {(a.ownerMemberId ? members.find((m) => m.id === a.ownerMemberId)?.name : null) ?? 'Común'} ({a.iban ? `•• ${a.iban.slice(-4)}` : a.name ?? 'Cuenta'})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {members.length > 0 && (
+        <label>
+          Relacionado con (opcional)
+          <select value={ownerMemberId} onChange={(e) => setOwnerMemberId(e.target.value)}>
+            <option value="">Toda la familia</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <label>
+        Notas (opcional)
+        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : payment ? 'Guardar cambios' : 'Crear pago previsto'}
       </button>
     </form>
   )

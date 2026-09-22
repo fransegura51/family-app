@@ -156,7 +156,7 @@ function findNextRecurringDueDateOnOrAfter(
   return null
 }
 
-async function advanceForecastCalendarProjections(): Promise<{ checked: number; updated: number }> {
+async function advanceForecastCalendarProjections(): Promise<{ checked: number; updated: number; retired: number }> {
   const today = new Date().toISOString().slice(0, 10)
 
   // Solo pagos activos, recurrentes, con proyección visual activa y ya vinculados a un evento — un pago
@@ -171,7 +171,7 @@ async function advanceForecastCalendarProjections(): Promise<{ checked: number; 
     .not("recurrence_rule", "is", null)
     .not("calendar_event_id", "is", null)
   if (paymentsError) throw paymentsError
-  if (!payments || payments.length === 0) return { checked: 0, updated: 0 }
+  if (!payments || payments.length === 0) return { checked: 0, updated: 0, retired: 0 }
 
   const paymentIds = payments.map((p) => p.id as string)
   const eventIds = payments.map((p) => p.calendar_event_id as string)
@@ -193,13 +193,29 @@ async function advanceForecastCalendarProjections(): Promise<{ checked: number; 
   const eventStartDateById = new Map((events ?? []).map((e) => [e.id as string, (e.start_at as string).slice(0, 10)]))
 
   let updated = 0
+  let retired = 0
   for (const payment of payments) {
     const rule = parseForecastRecurrenceRule(payment.recurrence_rule as string)
     if (!rule) continue
     const overridesForPayment = overridesByPayment.get(payment.id as string) ?? new Map()
 
     const nextDue = findNextRecurringDueDateOnOrAfter(payment.due_date as string, rule, overridesForPayment, today)
-    if (!nextDue) continue // la serie ya superó su UNTIL — se deja la última ocurrencia real tal cual, no es una fecha falsa
+    if (!nextDue) {
+      // La serie ya superó su UNTIL — certificación Fase 1B.1, hallazgo real: dejar el evento visual
+      // con la última fecha (ya pasada) para siempre parecería "el próximo vencimiento" indefinidamente,
+      // que es justo la fecha engañosa que esta fase prohíbe. Se retira la proyección (mismo borrado
+      // simple que deleteEvent — las tablas hijas tienen ON DELETE CASCADE) y se limpia el puntero; el
+      // historial de forecast_payments NUNCA se toca, solo su proyección puramente visual.
+      const { error: deleteError } = await supabaseAdmin.from("calendar_events").delete().eq("id", payment.calendar_event_id as string)
+      if (deleteError) {
+        console.error("retire finished forecast projection failed", payment.id, deleteError)
+        continue
+      }
+      const { error: clearError } = await supabaseAdmin.from("forecast_payments").update({ calendar_event_id: null }).eq("id", payment.id as string)
+      if (clearError) console.error("clear calendar_event_id after retiring projection failed", payment.id, clearError)
+      retired++
+      continue
+    }
 
     const currentStart = eventStartDateById.get(payment.calendar_event_id as string)
     if (currentStart === nextDue) continue // ya está en la ocurrencia correcta — idempotente, no reescribe sin necesidad
@@ -215,7 +231,7 @@ async function advanceForecastCalendarProjections(): Promise<{ checked: number; 
     updated++
   }
 
-  return { checked: payments.length, updated }
+  return { checked: payments.length, updated, retired }
 }
 
 async function sendDueForecastReminders(): Promise<{ checked: number; sent: number; expired: number }> {
@@ -361,7 +377,7 @@ Deno.serve(async (req) => {
       }),
       advanceForecastCalendarProjections().catch((err) => {
         console.error("advance forecast projections failed", err)
-        return { checked: 0, updated: 0, error: true }
+        return { checked: 0, updated: 0, retired: 0, error: true }
       }),
     ])
 

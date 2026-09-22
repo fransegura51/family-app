@@ -97,7 +97,7 @@ export function stepMonthsClamped(anchorDateStr: string, totalMonthsToAdd: numbe
   return formatDateStr(targetYear, targetMonthIndex0, targetDay)
 }
 
-function stepDays(anchorDateStr: string, totalDays: number): string {
+export function stepDays(anchorDateStr: string, totalDays: number): string {
   const a = parseDateStr(anchorDateStr)
   const d = new Date(a.year, a.monthIndex0, a.day + totalDays)
   return formatDateStr(d.getFullYear(), d.getMonth(), d.getDate())
@@ -111,7 +111,7 @@ interface ParsedForecastRule {
   until: string | null
 }
 
-function parseForecastRecurrenceRule(rule: string): ParsedForecastRule | null {
+export function parseForecastRecurrenceRule(rule: string): ParsedForecastRule | null {
   const parts = Object.fromEntries(rule.split(';').map((p) => p.split('=') as [string, string]))
   const freq = parts.FREQ
   if (freq !== 'DAILY' && freq !== 'WEEKLY' && freq !== 'MONTHLY' && freq !== 'YEARLY') return null
@@ -278,4 +278,70 @@ export function forecastByMonth(occurrences: ForecastOccurrence[], dateField: 'd
   const result = new Map<string, ForecastTotals>()
   for (const [key, list] of byMonth) result.set(key, forecastTotals(list))
   return result
+}
+
+// ── Fase 1C — opciones de recurrencia amigables para el formulario (nunca se pide al usuario escribir
+// RRULE a mano). "custom" cubre exactamente lo que el motor soporta: frecuencia + intervalo + fin
+// opcional — nada más. ──
+
+export type ForecastRecurrenceOption = 'none' | 'monthly' | 'every_3_months' | 'every_6_months' | 'yearly' | 'custom'
+
+export interface ForecastCustomRecurrence {
+  freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'
+  interval: number
+  until: string | null // YYYY-MM-DD, opcional
+}
+
+const RECURRENCE_OPTION_RULES: Record<Exclude<ForecastRecurrenceOption, 'none' | 'custom'>, string> = {
+  monthly: 'FREQ=MONTHLY',
+  every_3_months: 'FREQ=MONTHLY;INTERVAL=3',
+  every_6_months: 'FREQ=MONTHLY;INTERVAL=6',
+  yearly: 'FREQ=YEARLY',
+}
+
+export function buildForecastRecurrenceRule(option: ForecastRecurrenceOption, custom: ForecastCustomRecurrence | null): string | null {
+  if (option === 'none') return null
+  if (option !== 'custom') return RECURRENCE_OPTION_RULES[option]
+  if (!custom) return null
+  const parts = [`FREQ=${custom.freq}`]
+  if (custom.interval > 1) parts.push(`INTERVAL=${custom.interval}`)
+  if (custom.until) parts.push(`UNTIL=${custom.until}`)
+  return parts.join(';')
+}
+
+// Inversa de buildForecastRecurrenceRule, para precargar el formulario al editar un pago existente.
+// Cualquier regla que no coincida exactamente con una de las 4 predefinidas (otro INTERVAL, un UNTIL,
+// WEEKLY/DAILY) se trata como "custom" — nunca se pierde ni se aproxima a la predefinida más cercana.
+export function parseForecastRecurrenceOption(rule: string | null): { option: ForecastRecurrenceOption; custom: ForecastCustomRecurrence | null } {
+  if (!rule) return { option: 'none', custom: null }
+  const predefined = (Object.entries(RECURRENCE_OPTION_RULES) as [Exclude<ForecastRecurrenceOption, 'none' | 'custom'>, string][]).find(([, r]) => r === rule)
+  if (predefined) return { option: predefined[0], custom: null }
+  const parsed = parseForecastRecurrenceRule(rule)
+  if (!parsed) return { option: 'none', custom: null } // regla no reconocida por el motor — mismo criterio que el resto del dominio, nunca se inventa
+  return { option: 'custom', custom: { freq: parsed.freq, interval: parsed.interval, until: parsed.until } }
+}
+
+// ── Fase 1C — "¿queda alguna ocurrencia futura?" — un pago activo sin ninguna ocurrencia a partir de
+// hoy (serie recurrente que superó su UNTIL, o un pago puntual cuyo único vencimiento ya pasó) se
+// considera Finalizado: la última proyección real queda como historial, pero no debe seguir pareciendo
+// "el próximo vencimiento" en Calendario ni en la lista de próximos pagos. ──
+export function isForecastPaymentFinished(
+  payment: Parameters<typeof expandForecastOccurrences>[0],
+  overrides: ForecastOccurrenceOverride[],
+  today: string,
+): boolean {
+  if (!payment.active) return false
+  return nextForecastOccurrence(payment, overrides, today, 'dueDate') === null
+}
+
+// ── Fase 1C — formato de importe consciente de divisa (formatEuros de domain/financeCompute.ts es
+// EUR-only; Previsión admite multidivisa desde el diseño de Fase 1A, ver forecastTotals). ──
+export function formatForecastAmount(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(amount)
+  } catch {
+    // Código de divisa no reconocido por Intl (no debería pasar con datos reales) — degrada con
+    // gracia en vez de reventar la pantalla.
+    return `${amount.toFixed(2)} ${currency}`
+  }
 }

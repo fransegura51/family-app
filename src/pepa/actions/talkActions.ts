@@ -1,9 +1,10 @@
 import { createEvent } from '@/data/calendar'
 import { addShoppingItem } from '@/data/shopping'
+import { findScheduleWarnings, type ScheduleWarning } from '@/domain/calendar'
 import { kitchenDateLabel } from '@/domain/kitchenQuery'
 import { recurrenceLabel } from '@/domain/recurrence'
 import { reminderLabel } from '@/domain/reminders'
-import { defineAction, type Choice } from '@/pepa/actions/types'
+import { defineAction, type ActionContext, type Choice } from '@/pepa/actions/types'
 import { asRecord, isRealIsoDate, unknownKeys } from '@/pepa/actions/validators'
 
 // Acciones de "Hablar con PEPA": apuntar en la lista de la compra y crear un
@@ -105,6 +106,29 @@ function timeOrNull(value: unknown): string | null | undefined {
   return typeof value === 'string' && TIME_RE.test(value) ? value : undefined
 }
 
+// Posible duplicado/conflicto con lo que ya hay en el calendario — texto listo para enseñar en la
+// tarjeta (view.warnings ya existente, sin bloquear nada). "esa misma hora" en el aviso de conflicto se
+// refiere siempre al día/hora que se está creando ahora, así que no hace falta repetirlo.
+function formatScheduleWarning(w: ScheduleWarning, params: CalendarCreateParams, ctx: ActionContext): string {
+  if (w.kind === 'conflict') return `Ya tienes «${w.event.title}» a esa misma hora.`
+  const when = params.time ? `${kitchenDateLabel(params.date, ctx.today)} a las ${params.time}` : kitchenDateLabel(params.date, ctx.today)
+  const who =
+    w.event.memberIds.length > 0
+      ? ` para ${w.event.memberIds.map((id) => ctx.members.find((m) => m.id === id)?.name).filter((n): n is string => !!n).join(' y ')}`
+      : ' para toda la familia'
+  return `Parece que ya tienes «${w.event.title}» ${when}${who}.`
+}
+
+// Se recalcula CADA VEZ que se enseña la tarjeta (present se llama en cada preview, también al
+// cambiar el destinatario en "Para") — determinista, sin IA, sin volver a consultar Supabase: usa los
+// mismos eventos ya cargados en ctx.calendarEvents (una sola vez, al construir la propuesta en
+// pepa/talk.ts). Así un cambio de destinatario que deja de coincidir con lo existente hace desaparecer
+// el aviso, y uno que pasa a coincidir lo hace aparecer, sin ninguna consulta nueva.
+function scheduleWarningsFor(params: CalendarCreateParams, ctx: ActionContext): string[] {
+  const candidate = { title: params.title, date: params.date, time: params.time, endTime: params.endTime, memberIds: params.memberId ? [params.memberId] : [] }
+  return findScheduleWarnings(candidate, ctx.calendarEvents ?? []).map((w) => formatScheduleWarning(w, params, ctx))
+}
+
 export const calendarCreateAction = defineAction<CalendarCreateParams>({
   id: 'calendar.create',
 
@@ -186,7 +210,7 @@ export const calendarCreateAction = defineAction<CalendarCreateParams>({
         options: [{ key: 'none', label: 'Toda la familia' }, ...ctx.members.map((m) => ({ key: m.id, label: m.name }))],
       },
     ]
-    return { title: '📅 Apuntar en el calendario', lines, warnings: params.notes, choices, checks: [], confirmLabel: 'Guardar en el calendario' }
+    return { title: '📅 Apuntar en el calendario', lines, warnings: [...params.notes, ...scheduleWarningsFor(params, ctx)], choices, checks: [], confirmLabel: 'Guardar en el calendario' }
   },
 
   async execute(params, ctx) {

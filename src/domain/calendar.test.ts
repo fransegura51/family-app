@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { expandOccurrences, occurrenceAt, isWeekend } from '@/domain/calendar'
+import {
+  expandOccurrences,
+  occurrenceAt,
+  isWeekend,
+  normalizeEventTitleForCompare,
+  titlesLikelyDuplicate,
+  memberSetsEqual,
+  memberSetsMayCoincide,
+  intervalsOverlap,
+  findScheduleWarnings,
+  type ScheduleEvent,
+} from '@/domain/calendar'
 
 // Hora LOCAL a propósito (10:00): expandOccurrences lee la fecha en hora
 // local (bug real: recortar el ISO UTC desplazaba un día). Así el test
@@ -77,6 +88,195 @@ describe('occurrenceAt', () => {
     const occ = occurrenceAt(ev, '2026-09-20')
     expect(occ.endAt).toBeNull()
     expect(new Date(occ.startAt).getDate()).toBe(20)
+  })
+})
+
+describe('normalizeEventTitleForCompare', () => {
+  it('minúsculas, acentos, puntuación y artículos sueltos no cambian el resultado', () => {
+    expect(normalizeEventTitleForCompare('Sacar la basura')).toBe('sacar basura')
+    expect(normalizeEventTitleForCompare('sacar basura')).toBe('sacar basura')
+    expect(normalizeEventTitleForCompare('Sacar la basura.')).toBe('sacar basura')
+    expect(normalizeEventTitleForCompare('sacar LA basura')).toBe('sacar basura')
+  })
+})
+
+describe('titlesLikelyDuplicate', () => {
+  it('título idéntico', () => {
+    expect(titlesLikelyDuplicate('Sacar la basura', 'Sacar la basura')).toBe(true)
+  })
+
+  it('diferencias de mayúsculas/acentos/puntuación/artículos: siguen siendo el mismo título', () => {
+    expect(titlesLikelyDuplicate('Sacar la basura', 'sacar basura')).toBe(true)
+    expect(titlesLikelyDuplicate('Sacar la basura', 'Sacar la basura.')).toBe(true)
+    expect(titlesLikelyDuplicate('Sacar la basura', 'sacar LA basura')).toBe(true)
+  })
+
+  it('caso real: "Sacar basura" / "Saca basura" (distancia de edición 1)', () => {
+    expect(titlesLikelyDuplicate('Sacar basura', 'Saca basura')).toBe(true)
+  })
+
+  it('título parecido pero semánticamente distinto: NO es un falso duplicado', () => {
+    expect(titlesLikelyDuplicate('Dentista', 'Dentista Eric')).toBe(false)
+    expect(titlesLikelyDuplicate('Cita dentista', 'Cita dentista Eric')).toBe(false)
+  })
+})
+
+describe('memberSetsEqual / memberSetsMayCoincide', () => {
+  it('toda la familia ([]) contra toda la familia: iguales y coinciden', () => {
+    expect(memberSetsEqual([], [])).toBe(true)
+    expect(memberSetsMayCoincide([], [])).toBe(true)
+  })
+
+  it('toda la familia contra un miembro concreto: NO son el mismo conjunto, pero sí coinciden', () => {
+    expect(memberSetsEqual([], ['m-paco'])).toBe(false)
+    expect(memberSetsMayCoincide([], ['m-paco'])).toBe(true)
+  })
+
+  it('el mismo miembro contra sí mismo: iguales y coinciden', () => {
+    expect(memberSetsEqual(['m-paco'], ['m-paco'])).toBe(true)
+    expect(memberSetsMayCoincide(['m-paco'], ['m-paco'])).toBe(true)
+  })
+
+  it('miembros distintos: ni iguales ni coinciden', () => {
+    expect(memberSetsEqual(['m-eric'], ['m-paco'])).toBe(false)
+    expect(memberSetsMayCoincide(['m-eric'], ['m-paco'])).toBe(false)
+  })
+})
+
+describe('intervalsOverlap', () => {
+  it('19:00–20:00 contra 19:30–20:30: solapan', () => {
+    expect(intervalsOverlap('2026-09-23T19:00:00.000Z', '2026-09-23T20:00:00.000Z', '2026-09-23T19:30:00.000Z', '2026-09-23T20:30:00.000Z')).toBe(true)
+  })
+
+  it('19:00–20:00 contra 20:00–21:00: NO solapan (intervalo semiabierto)', () => {
+    expect(intervalsOverlap('2026-09-23T19:00:00.000Z', '2026-09-23T20:00:00.000Z', '2026-09-23T20:00:00.000Z', '2026-09-23T21:00:00.000Z')).toBe(false)
+  })
+})
+
+describe('findScheduleWarnings', () => {
+  function existing(overrides: Partial<ScheduleEvent> = {}): ScheduleEvent {
+    return {
+      id: 'existing-1',
+      title: 'Sacar basura',
+      startAt: new Date(2026, 8, 23, 19, 0).toISOString(), // 2026-09-23, 19:00 hora local
+      endAt: null,
+      allDay: false,
+      recurrenceRule: null,
+      exceptionDates: [],
+      memberIds: [],
+      ...overrides,
+    }
+  }
+  // Candidato base: mismo día/hora que `existing()`, toda la familia — se sobreescribe por caso.
+  const CANDIDATE_BASE = { title: 'Sacar basura', date: '2026-09-23', time: '19:00', endTime: null, memberIds: [] as string[] }
+
+  it('duplicado: título idéntico, misma fecha/hora/destinatarios', () => {
+    const warnings = findScheduleWarnings(CANDIDATE_BASE, [existing()])
+    expect(warnings).toEqual([{ kind: 'duplicate', event: existing() }])
+  })
+
+  it('duplicado: caso real "Sacar basura" (ya existía) / "Saca basura" (nuevo)', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Saca basura' }, [existing({ title: 'Sacar basura' })])
+    expect(warnings).toEqual([{ kind: 'duplicate', event: existing() }])
+  })
+
+  it('NO duplicado: mismo título, diferente hora (y sin solape) — ni duplicado ni conflicto', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, time: '09:00' }, [existing()])
+    expect(warnings).toEqual([])
+  })
+
+  it('NO duplicado: mismo título, diferente día', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, date: '2026-09-24' }, [existing()])
+    expect(warnings).toEqual([])
+  })
+
+  it('NO falso duplicado: título parecido pero distinto ("Dentista" / "Dentista Eric") aunque coincidan fecha/hora/destinatarios', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Dentista' }, [existing({ title: 'Dentista Eric' })])
+    // No es duplicado (título no coincide) — pero SÍ es la misma franja para los mismos destinatarios: conflicto.
+    expect(warnings).toEqual([{ kind: 'conflict', event: existing({ title: 'Dentista Eric' }) }])
+  })
+
+  it('conflicto: toda la familia contra toda la familia, títulos distintos, misma hora', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Dentista' }, [existing({ title: 'Sacar basura' })])
+    expect(warnings).toEqual([{ kind: 'conflict', event: existing({ title: 'Sacar basura' }) }])
+  })
+
+  it('conflicto: toda la familia contra un miembro concreto (Paco forma parte de toda la familia)', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Dentista', memberIds: ['m-paco'] }, [existing({ title: 'Sacar basura' })])
+    expect(warnings).toEqual([{ kind: 'conflict', event: existing({ title: 'Sacar basura' }) }])
+  })
+
+  it('conflicto: el mismo miembro concreto contra sí mismo', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Dentista', memberIds: ['m-paco'] }, [
+      existing({ title: 'Reunión', memberIds: ['m-paco'] }),
+    ])
+    expect(warnings).toEqual([{ kind: 'conflict', event: existing({ title: 'Reunión', memberIds: ['m-paco'] }) }])
+  })
+
+  it('NO conflicto: Eric contra Paco (destinatarios distintos, no se cruzan)', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Dentista', memberIds: ['m-eric'] }, [
+      existing({ title: 'Reunión', memberIds: ['m-paco'] }),
+    ])
+    expect(warnings).toEqual([])
+  })
+
+  it('conflicto por solape real de intervalos: 19:00–20:00 contra 19:30–20:30', () => {
+    const warnings = findScheduleWarnings(
+      { ...CANDIDATE_BASE, title: 'Dentista', endTime: '20:00' },
+      [existing({ title: 'Sacar basura', startAt: new Date(2026, 8, 23, 19, 30).toISOString(), endAt: new Date(2026, 8, 23, 20, 30).toISOString() })],
+    )
+    expect(warnings).toEqual([
+      { kind: 'conflict', event: existing({ title: 'Sacar basura', startAt: new Date(2026, 8, 23, 19, 30).toISOString(), endAt: new Date(2026, 8, 23, 20, 30).toISOString() }) },
+    ])
+  })
+
+  it('sin conflicto: 19:00–20:00 contra 20:00–21:00 (se tocan, no se solapan)', () => {
+    const warnings = findScheduleWarnings(
+      { ...CANDIDATE_BASE, title: 'Dentista', endTime: '20:00' },
+      [existing({ title: 'Sacar basura', startAt: new Date(2026, 8, 23, 20, 0).toISOString(), endAt: new Date(2026, 8, 23, 21, 0).toISOString() })],
+    )
+    expect(warnings).toEqual([])
+  })
+
+  it('end_at null: duración efectiva de 1 hora (misma convención que occurrenceAt)', () => {
+    // Existente a las 19:00 sin endAt (=> hasta las 20:00 efectivas); candidato a las 19:30, sin endTime.
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Dentista', time: '19:30' }, [existing({ title: 'Sacar basura', endAt: null })])
+    expect(warnings).toEqual([{ kind: 'conflict', event: existing({ title: 'Sacar basura', endAt: null }) }])
+  })
+
+  it('recurrencia: un evento recurrente existente con ocurrencia en la fecha candidata se detecta', () => {
+    // "Sacar la basura todos los martes a las 19:00" — 2026-09-22 es martes; la serie empezó ese día.
+    const weekly = existing({
+      title: 'Sacar la basura',
+      startAt: new Date(2026, 8, 22, 19, 0).toISOString(),
+      recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+    })
+    // El próximo martes, 2026-09-29, a la misma hora: cae en una ocurrencia de la serie.
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Sacar basura', date: '2026-09-29' }, [weekly])
+    expect(warnings).toEqual([{ kind: 'duplicate', event: weekly }])
+  })
+
+  it('recurrencia: exception_dates excluye esa ocurrencia concreta (no hay conflicto ese día)', () => {
+    const weekly = existing({
+      title: 'Sacar la basura',
+      startAt: new Date(2026, 8, 22, 19, 0).toISOString(),
+      recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+      exceptionDates: ['2026-09-29'],
+    })
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Sacar basura', date: '2026-09-29' }, [weekly])
+    expect(warnings).toEqual([])
+  })
+
+  it('todo el día: "Vacaciones" (all_day) no entra en conflicto automático con "Dentista" a las 17:00', () => {
+    const vacaciones = existing({ title: 'Vacaciones', allDay: true, startAt: new Date(2026, 8, 23).toISOString(), endAt: null })
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Dentista', time: '17:00' }, [vacaciones])
+    expect(warnings).toEqual([])
+  })
+
+  it('todo el día: dos eventos de todo el día, mismo título y destinatarios, sí avisan de posible duplicado', () => {
+    const vacaciones = existing({ title: 'Vacaciones', allDay: true, startAt: new Date(2026, 8, 23).toISOString(), endAt: null })
+    const warnings = findScheduleWarnings({ title: 'Vacaciones', date: '2026-09-23', time: null, endTime: null, memberIds: [] }, [vacaciones])
+    expect(warnings).toEqual([{ kind: 'duplicate', event: vacaciones }])
   })
 })
 

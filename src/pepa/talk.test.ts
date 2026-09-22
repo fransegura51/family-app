@@ -163,6 +163,176 @@ describe('runTalk: escribir siempre con tarjeta', () => {
   })
 })
 
+describe('runTalk: posibles duplicados/conflictos de calendario (aviso, nunca bloqueo)', () => {
+  it('sin nada parecido en el calendario: comportamiento normal, sin avisos', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([]) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista de Eric', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(view.warnings).toEqual([])
+    expect(view.confirmLabel).toBe('Guardar en el calendario')
+    await outcome.proposal.confirm(outcome.proposal.initialSelection)
+    expect(createEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('sin deps.calendarEvents (no disponible): no hay aviso, nunca bloquea', async () => {
+    const deps = makeDeps() // makeDeps() no pone calendarEvents por defecto
+    const outcome = await runTalk('el viernes a las 17:00 dentista de Eric', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).warnings).toEqual([])
+  })
+
+  it('posible duplicado: avisa en la tarjeta pero Guardar sigue disponible y escribe una sola vez', async () => {
+    const existingEvent = {
+      id: 'ev-1',
+      title: 'Dentista',
+      startAt: new Date(2026, 8, 25, 17, 0).toISOString(),
+      endAt: null,
+      allDay: false,
+      recurrenceRule: null,
+      exceptionDates: [],
+      memberIds: ['m-eric'],
+    }
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([existingEvent]) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista de Eric', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(view.warnings).toHaveLength(1)
+    expect(view.warnings[0]).toContain('Dentista')
+    expect(view.warnings[0]).toContain('Eric')
+    expect(view.confirmLabel).toBe('Guardar en el calendario') // el botón sigue ahí, nunca se bloquea
+
+    await outcome.proposal.confirm(outcome.proposal.initialSelection)
+    expect(createEvent).toHaveBeenCalledTimes(1)
+    expect(createEvent).toHaveBeenCalledWith(expect.objectContaining({ title: 'Dentista', memberIds: ['m-eric'] }))
+  })
+
+  it('conflicto horario (título distinto, misma hora y destinatarios): avisa pero Guardar sigue disponible', async () => {
+    const existingEvent = {
+      id: 'ev-2',
+      title: 'Reunión del cole',
+      startAt: new Date(2026, 8, 25, 17, 0).toISOString(),
+      endAt: null,
+      allDay: false,
+      recurrenceRule: null,
+      exceptionDates: [],
+      memberIds: ['m-eric'],
+    }
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([existingEvent]) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista de Eric', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(view.warnings).toEqual(['Ya tienes «Reunión del cole» a esa misma hora.'])
+    expect(view.confirmLabel).toBe('Guardar en el calendario')
+
+    await outcome.proposal.confirm(outcome.proposal.initialSelection)
+    expect(createEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('si deps.calendarEvents falla, no hay aviso pero la propuesta sigue funcionando (nunca bloquea)', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockRejectedValue(new Error('sin red')) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista de Eric', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).warnings).toEqual([])
+    await outcome.proposal.confirm(outcome.proposal.initialSelection)
+    expect(createEvent).toHaveBeenCalledTimes(1)
+  })
+})
+
+// El aviso no puede quedarse obsoleto si el usuario cambia el destinatario ("Para") DESPUÉS de que la
+// tarjeta ya se enseñó — se recalcula en cada `preview`/`confirm` (present() vuelve a llamar a
+// findScheduleWarnings con la selección actual), sin ninguna consulta nueva: los eventos ya están en
+// ctx.calendarEvents desde que se construyó la propuesta.
+describe('runTalk: el aviso de duplicado/conflicto se recalcula si cambia el destinatario en la tarjeta', () => {
+  // Evento existente de Jennifer — ni duplicado ni conflicto con algo de Eric, pero SÍ conflicto con
+  // "toda la familia" (Jennifer forma parte de toda la familia).
+  const jenniferEvent = {
+    id: 'ev-jen',
+    title: 'Reunión del cole',
+    startAt: new Date(2026, 8, 25, 17, 0).toISOString(),
+    endAt: null,
+    allDay: false,
+    recurrenceRule: null,
+    exceptionDates: [],
+    memberIds: ['m-jen'],
+  }
+
+  it('1. toda la familia tiene conflicto → cambiar el destinatario a un miembro sin conflicto hace desaparecer el aviso', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([jenniferEvent]) })
+    // Sin nombrar a nadie: "toda la familia".
+    const outcome = await runTalk('el viernes a las 17:00 dentista', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).warnings).toEqual(['Ya tienes «Reunión del cole» a esa misma hora.'])
+
+    const toEric = { ...outcome.proposal.initialSelection, choices: { member: 'm-eric' } }
+    expect(outcome.proposal.preview(toEric).warnings).toEqual([]) // Eric no forma parte del evento de Jennifer
+  })
+
+  it('2. miembro sin conflicto → cambiar a toda la familia hace aparecer el aviso', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([jenniferEvent]) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista de Eric', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).warnings).toEqual([]) // Eric ≠ Jennifer
+
+    const toWholeFamily = { ...outcome.proposal.initialSelection, choices: { member: 'none' } }
+    expect(outcome.proposal.preview(toWholeFamily).warnings).toEqual(['Ya tienes «Reunión del cole» a esa misma hora.'])
+  })
+
+  it('3. duplicado → cambiar a un destinatario distinto deja de clasificarse como duplicado', async () => {
+    const duplicateOfEric = { ...jenniferEvent, title: 'Dentista', memberIds: ['m-eric'] }
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([duplicateOfEric]) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista de Eric', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    const initial = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(initial.warnings).toHaveLength(1)
+    expect(initial.warnings[0]).toContain('Parece que ya tienes')
+
+    const toJennifer = { ...outcome.proposal.initialSelection, choices: { member: 'm-jen' } }
+    expect(outcome.proposal.preview(toJennifer).warnings).toEqual([]) // ya no coinciden los destinatarios: ni duplicado ni conflicto
+  })
+
+  it('4. tras cambiar el destinatario y confirmar con el botón: una sola escritura, con el destinatario nuevo', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([jenniferEvent]) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    const toEric = { ...outcome.proposal.initialSelection, choices: { member: 'm-eric' } }
+    expect(outcome.proposal.preview(toEric).warnings).toEqual([]) // el aviso ya no está antes de guardar
+    await outcome.proposal.confirm(toEric) // mismo confirm() que llama el botón "Guardar" (ActionConfirmSheet.confirmNow)
+    expect(createEvent).toHaveBeenCalledTimes(1)
+    expect(createEvent).toHaveBeenCalledWith(expect.objectContaining({ memberIds: ['m-eric'] }))
+  })
+
+  it('5. tras cambiar el destinatario y confirmar por voz "Sí": una sola escritura, con el destinatario nuevo', async () => {
+    // La voz "Sí" y el botón "Guardar" convergen en el mismo proposal.confirm(selection) — ver
+    // ActionConfirmSheet.confirmNow (F7-003, sin tocar aquí): el botón llama confirmNow() directo, y el
+    // registro de diálogo por voz llama exactamente esa misma función. No hay un segundo camino de
+    // escritura que probar aparte: confirmar aquí con la selección ya cambiada cubre los dos casos.
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([jenniferEvent]) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    const toEric = { ...outcome.proposal.initialSelection, choices: { member: 'm-eric' } }
+    await outcome.proposal.confirm(toEric) // equivalente a decir "sí" con la tarjeta ya en "Eric"
+    expect(createEvent).toHaveBeenCalledTimes(1)
+    expect(createEvent).toHaveBeenCalledWith(expect.objectContaining({ memberIds: ['m-eric'] }))
+  })
+
+  it('la tarjeta de calendario no permite editar fecha/hora (solo "Para"): no hace falta recalcular el aviso por eso', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([jenniferEvent]) })
+    const outcome = await runTalk('el viernes a las 17:00 dentista de Eric', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(view.fields).toBeUndefined()
+    expect(view.choices.map((c) => c.id)).toEqual(['member'])
+  })
+})
+
 describe('runTalk: IA solo si las reglas no bastan, y solo para preguntas', () => {
   it('una frase que las reglas no entienden se prueba con la IA', async () => {
     const deps = makeDeps({

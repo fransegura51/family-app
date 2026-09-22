@@ -218,6 +218,158 @@ export function occurrenceAt(
   return { startAt: occStart.toISOString(), endAt: occEnd.toISOString() }
 }
 
+// ── Posibles duplicados / conflictos horarios al crear un evento por voz ──
+// (solo "Hablar con PEPA" de momento). Determinista, sin IA: primero tiene
+// que coincidir la estructura (misma ocurrencia + misma hora de inicio +
+// mismos destinatarios exactos) — el título SOLO desempata dentro de eso,
+// nunca decide por sí solo (evita falsos positivos tipo "Dentista" /
+// "Dentista Eric", que no comparten ni hora ni destinatarios exactos por
+// definición si además de eso tuvieran que coincidir).
+
+const TITLE_SAFE_ARTICLES = new Set(['el', 'la', 'los', 'las', 'un', 'una'])
+// Distancia de edición MUY corta a propósito: solo para variaciones
+// mínimas de dictado ("Sacar basura" / "Saca basura", caso real
+// reportado, distancia 1) — nunca para títulos que simplemente se
+// parecen ("Dentista" / "Dentista Eric" está a distancia 5, no cuela).
+const TITLE_MAX_EDIT_DISTANCE = 2
+
+// Minúsculas, sin acentos, sin puntuación, sin artículos sueltos ("la",
+// "el"...) en cualquier posición — quitarlos es seguro porque nunca
+// cambian DE QUÉ trata el título ("sacar la basura" es lo mismo que
+// "sacar basura"), a diferencia de quitar cualquier otra palabra.
+export function normalizeEventTitleForCompare(title: string): string {
+  const stripped = title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[.,;:!¡?¿]/g, '')
+  return stripped
+    .split(/\s+/)
+    .filter((w) => w.length > 0 && !TITLE_SAFE_ARTICLES.has(w))
+    .join(' ')
+}
+
+// Distancia de edición clásica (Levenshtein) — copia local pequeña y sin
+// dependencias, igual criterio que ya usa matchMemberByHint en
+// domain/voiceQuery.ts para nombres dictados, pero aquí con un umbral
+// mucho más corto (ver TITLE_MAX_EDIT_DISTANCE).
+function editDistance(a: string, b: string): number {
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0))
+  for (let i = 0; i <= a.length; i++) dp[i][0] = i
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    }
+  }
+  return dp[a.length][b.length]
+}
+
+// Se llama SOLO después de que fecha/hora/destinatarios ya coinciden —
+// el título nunca decide un duplicado por sí solo.
+export function titlesLikelyDuplicate(a: string, b: string): boolean {
+  const na = normalizeEventTitleForCompare(a)
+  const nb = normalizeEventTitleForCompare(b)
+  if (na === nb) return true
+  if (Math.abs(na.length - nb.length) > TITLE_MAX_EDIT_DISTANCE) return false
+  return editDistance(na, nb) <= TITLE_MAX_EDIT_DISTANCE
+}
+
+// Para DUPLICADOS: mismos destinatarios EXACTOS ("Toda la familia" contra
+// "Toda la familia", o el mismo miembro contra sí mismo) — [] = toda la
+// familia, no es un valor especial, es la ausencia de miembros concretos.
+export function memberSetsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const setB = new Set(b)
+  return a.every((id) => setB.has(id))
+}
+
+// Para CONFLICTOS: basta con que los conjuntos se CRUCEN. "Toda la
+// familia" ([]) se trata como "incluye a cualquiera", así que: toda la
+// familia-toda la familia cruzan, toda la familia-Paco cruzan, Paco-Paco
+// cruzan, Eric-Paco NO cruzan.
+export function memberSetsMayCoincide(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return true
+  return a.some((id) => b.includes(id))
+}
+
+// Solapamiento real de intervalos semiabiertos [start, end) — 19:00–20:00
+// contra 20:00–21:00 NO solapan; 19:00–20:00 contra 19:30–20:30 sí.
+export function intervalsOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
+  return new Date(aStart).getTime() < new Date(bEnd).getTime() && new Date(bStart).getTime() < new Date(aEnd).getTime()
+}
+
+// Forma mínima de un evento ya existente que hace falta para comprobar
+// duplicados/conflictos — cualquier CalendarEvent real encaja aquí sin
+// conversión (estructural, no se importa el tipo para no acoplar este
+// archivo, que a propósito no depende de nada más, a domain/types).
+export interface ScheduleEvent {
+  id: string
+  title: string
+  startAt: string
+  endAt: string | null
+  allDay: boolean
+  recurrenceRule: string | null
+  exceptionDates?: string[]
+  memberIds: string[]
+}
+
+// El evento que se está a punto de crear, todavía sin guardar.
+export interface ScheduleCandidate {
+  title: string
+  date: string // YYYY-MM-DD
+  time: string | null // HH:mm; null = todo el día
+  endTime: string | null // HH:mm
+  memberIds: string[]
+}
+
+export type ScheduleWarning = { kind: 'duplicate' | 'conflict'; event: ScheduleEvent }
+
+// Busca posibles duplicados/conflictos entre `candidate` y los eventos ya
+// existentes de la familia — determinista, sin IA. Solo mira la fecha del
+// candidato: para eventos recurrentes existentes expande ÚNICAMENTE esa
+// fecha (expandOccurrences con rango de un solo día, nunca meses/años) y
+// reposiciona su hora con occurrenceAt, respetando exception_dates.
+//
+// "Todo el día" NUNCA entra en conflicto automático con un evento con
+// hora (dos cosas muy distintas: "Vacaciones" todo el día y "Dentista" a
+// las 17:00 no tienen por qué chocar) — solo se avisa de un posible
+// DUPLICADO cuando los dos son de todo el día.
+export function findScheduleWarnings(candidate: ScheduleCandidate, existingEvents: ScheduleEvent[]): ScheduleWarning[] {
+  const warnings: ScheduleWarning[] = []
+  const candidateAllDay = candidate.time === null
+  const candidateStartAt = candidate.time ? new Date(`${candidate.date}T${candidate.time}`).toISOString() : null
+  const candidateEndAt = candidateStartAt
+    ? candidate.endTime
+      ? new Date(`${candidate.date}T${candidate.endTime}`).toISOString()
+      : new Date(new Date(candidateStartAt).getTime() + 60 * 60 * 1000).toISOString() // misma convención que occurrenceAt: sin hora de fin, 1h
+    : null
+
+  for (const existing of existingEvents) {
+    if (expandOccurrences(existing, candidate.date, candidate.date).length === 0) continue
+    const sameRecipients = memberSetsEqual(candidate.memberIds, existing.memberIds)
+
+    if (candidateAllDay || existing.allDay) {
+      if (candidateAllDay && existing.allDay && sameRecipients && titlesLikelyDuplicate(candidate.title, existing.title)) {
+        warnings.push({ kind: 'duplicate', event: existing })
+      }
+      continue
+    }
+
+    const occ = occurrenceAt(existing, candidate.date)
+    if (!candidateStartAt || !candidateEndAt || !occ.endAt) continue // aquí ninguno es allDay: nunca debería faltar
+
+    if (occ.startAt === candidateStartAt && sameRecipients && titlesLikelyDuplicate(candidate.title, existing.title)) {
+      warnings.push({ kind: 'duplicate', event: existing })
+      continue // el mismo evento existente no cuenta también como conflicto aparte
+    }
+    if (memberSetsMayCoincide(candidate.memberIds, existing.memberIds) && intervalsOverlap(candidateStartAt, candidateEndAt, occ.startAt, occ.endAt)) {
+      warnings.push({ kind: 'conflict', event: existing })
+    }
+  }
+  return warnings
+}
+
 // Petición real: "en todo el calendario los fines de semana
 // diferenciarlos con un color" — a partir del propio dateStr (no de la
 // posición en la rejilla), para que valga igual en Mes, Semana, 3 días

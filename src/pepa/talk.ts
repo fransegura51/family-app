@@ -17,6 +17,7 @@ import { expandEntries, shouldAskAi } from '@/domain/productSplit'
 import { isoDate, kitchenDateLabel } from '@/domain/kitchenQuery'
 import { routeTalk } from '@/domain/talkRoute'
 import { cleanShoppingText, extractTrailingStore, prepareCalendarFromText } from '@/domain/talkParse'
+import type { ScheduleEvent } from '@/domain/calendar'
 import type { KitchenOutcome } from '@/pepa/kitchen'
 import { proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
@@ -53,6 +54,10 @@ export interface TalkDeps {
   forgetFinance?(): void
   storeNames(): Promise<string[]>
   members(): Promise<{ id: string; name: string }[]>
+  // Solo para el aviso de posibles duplicados/conflictos al crear un evento por voz (ver
+  // findScheduleWarnings) — opcional para no romper otros usos/tests de TalkDeps que no lo necesitan;
+  // si falta, o si falla, simplemente no hay aviso (nunca bloquea la propuesta).
+  calendarEvents?(): Promise<ScheduleEvent[]>
   // Las respuestas a preguntas las construye el código de siempre.
   answerCalendar(text: string): Promise<string>
   answerShopping(text: string, storeNames: string[]): Promise<string>
@@ -67,8 +72,8 @@ export const NOT_UNDERSTOOD =
 
 const DELETE_NOTICE = 'Todavía no puedo borrar citas hablando — ábrela en el calendario y pulsa "Borrar".'
 
-function baseContext(today: Date, members: { id: string; name: string }[] = []): ActionContext {
-  return { recipes: [], menuEntries: [], shoppingItemNames: [], members, today }
+function baseContext(today: Date, members: { id: string; name: string }[] = [], calendarEvents: ScheduleEvent[] = []): ActionContext {
+  return { recipes: [], menuEntries: [], shoppingItemNames: [], members, today, calendarEvents }
 }
 
 async function shoppingProposal(text: string, storeNames: string[], deps: TalkDeps, today: Date): Promise<TalkOutcome> {
@@ -116,10 +121,26 @@ async function shoppingProposal(text: string, storeNames: string[], deps: TalkDe
   }
 }
 
+// Eventos ya existentes de la familia, para el aviso de posibles duplicados/conflictos al crear un
+// evento por voz — se consultan UNA sola vez aquí, al construir la propuesta (nunca en cada cambio de
+// la tarjeta: el propio dominio, findScheduleWarnings, se vuelve a llamar con estos mismos datos ya en
+// memoria cada vez que cambia el destinatario — ver talkActions.ts, calendarCreateAction.present). Si
+// no hay forma de consultarlos (deps.calendarEvents no disponible, o falla) sencillamente no hay
+// aviso — nunca impide crear el evento.
+async function fetchCalendarEventsSafely(deps: TalkDeps): Promise<ScheduleEvent[]> {
+  if (!deps.calendarEvents) return []
+  try {
+    return await deps.calendarEvents()
+  } catch {
+    return []
+  }
+}
+
 async function calendarProposal(text: string, deps: TalkDeps, today: Date): Promise<TalkOutcome> {
   const members = await deps.members()
   const prepared = prepareCalendarFromText(text, today, members)
-  const context = baseContext(today, members)
+  const calendarEvents = await fetchCalendarEventsSafely(deps)
+  const context = baseContext(today, members, calendarEvents)
   const result = proposeAction(
     'calendar.create',
     {

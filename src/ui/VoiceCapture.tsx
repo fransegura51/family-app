@@ -693,6 +693,10 @@ const talkDeps: TalkDeps = {
   },
   storeNames: async () => (await listShoppingStores()).map((s) => s.name),
   members: () => listFamilyMembers(),
+  // Solo para el aviso de posibles duplicados/conflictos al crear un evento (ver
+  // buildScheduleWarnings en pepa/talk.ts) — reutiliza la misma consulta (respeta RLS: un evento
+  // privado de otro miembro nunca llega aquí) que ya usa answerAgendaQuery para contestar preguntas.
+  calendarEvents: () => listUpcomingEvents(),
   answerCalendar: async (text) => {
     const query = parseCalendarQuery(text, new Date())
     return query.type === 'next_calendar_event'

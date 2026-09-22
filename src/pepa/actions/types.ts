@@ -12,6 +12,7 @@
 //      las funciones de datos de siempre (sesión del usuario, permisos de
 //      siempre). La IA no tiene acceso a nada de esto.
 import type { Recipe, MenuEntry } from '@/domain/types'
+import type { ScheduleEvent } from '@/domain/calendar'
 
 // Datos ya cargados que las acciones necesitan para validar y describir.
 export interface ActionContext {
@@ -22,6 +23,12 @@ export interface ActionContext {
   // Tiendas dadas de alta por la familia (para elegir tienda en una tarjeta).
   storeNames?: string[]
   today: Date
+  // Eventos ya existentes de la familia (calendar.create): se consultan UNA vez al construir la
+  // propuesta (pepa/talk.ts) y se reutilizan aquí, sin volver a preguntar a Supabase, cada vez que
+  // present() se llama de nuevo — p. ej. al cambiar el destinatario en la tarjeta — para que el aviso
+  // de posible duplicado/conflicto (domain/calendar.ts, findScheduleWarnings) se recalcule con el
+  // dato actual en vez de quedarse con el de cuando se propuso.
+  calendarEvents?: ScheduleEvent[]
 }
 
 export interface Choice {

@@ -9,6 +9,7 @@ import {
   memberSetsMayCoincide,
   intervalsOverlap,
   findScheduleWarnings,
+  groupScheduleWarnings,
   type ScheduleEvent,
 } from '@/domain/calendar'
 
@@ -98,6 +99,11 @@ describe('normalizeEventTitleForCompare', () => {
     expect(normalizeEventTitleForCompare('Sacar la basura.')).toBe('sacar basura')
     expect(normalizeEventTitleForCompare('sacar LA basura')).toBe('sacar basura')
   })
+
+  it('el "se" reflexivo/impersonal suelto tampoco cambia el resultado (caso real: "Se saca basura")', () => {
+    expect(normalizeEventTitleForCompare('Se saca basura')).toBe('saca basura')
+    expect(normalizeEventTitleForCompare('Saca basura')).toBe('saca basura')
+  })
 })
 
 describe('titlesLikelyDuplicate', () => {
@@ -115,9 +121,38 @@ describe('titlesLikelyDuplicate', () => {
     expect(titlesLikelyDuplicate('Sacar basura', 'Saca basura')).toBe(true)
   })
 
+  it('caso real de producción: "Se saca basura" contra "Sacar basura" y contra "Saca basura"', () => {
+    expect(titlesLikelyDuplicate('Se saca basura', 'Sacar basura')).toBe(true)
+    expect(titlesLikelyDuplicate('Se saca basura', 'Saca basura')).toBe(true)
+  })
+
   it('título parecido pero semánticamente distinto: NO es un falso duplicado', () => {
     expect(titlesLikelyDuplicate('Dentista', 'Dentista Eric')).toBe(false)
     expect(titlesLikelyDuplicate('Cita dentista', 'Cita dentista Eric')).toBe(false)
+    expect(titlesLikelyDuplicate('Comprar pan', 'Comprar leche')).toBe(false)
+    expect(titlesLikelyDuplicate('Llevar Eric al colegio', 'Recoger Eric del colegio')).toBe(false)
+    expect(titlesLikelyDuplicate('Taller coche', 'Lavar coche')).toBe(false)
+  })
+})
+
+describe('groupScheduleWarnings', () => {
+  const dup1 = { id: 'e1', title: 'Saca basura', startAt: '', endAt: null, allDay: false, recurrenceRule: null, memberIds: [] }
+  const dup2 = { id: 'e2', title: 'Sacar basura', startAt: '', endAt: null, allDay: false, recurrenceRule: null, memberIds: [] }
+  const conflict1 = { id: 'e3', title: 'Dentista empaste', startAt: '', endAt: null, allDay: false, recurrenceRule: null, memberIds: [] }
+
+  it('separa duplicados y conflictos en dos listas', () => {
+    const grouped = groupScheduleWarnings([
+      { kind: 'duplicate', event: dup1 },
+      { kind: 'duplicate', event: dup2 },
+      { kind: 'conflict', event: conflict1 },
+    ])
+    expect(grouped.duplicateEvents).toEqual([dup1, dup2])
+    expect(grouped.conflictEvents).toEqual([conflict1])
+  })
+
+  it('listas vacías cuando no hay avisos de ese tipo', () => {
+    expect(groupScheduleWarnings([])).toEqual({ duplicateEvents: [], conflictEvents: [] })
+    expect(groupScheduleWarnings([{ kind: 'conflict', event: conflict1 }]).duplicateEvents).toEqual([])
   })
 })
 
@@ -180,9 +215,33 @@ describe('findScheduleWarnings', () => {
     expect(warnings).toEqual([{ kind: 'duplicate', event: existing() }])
   })
 
+  it('caso real de producción: "Se saca basura" contra "Saca basura" + "Sacar basura" (duplicados) y "Dentista empaste" (conflicto)', () => {
+    const sacaBasura = existing({ id: 'e-saca', title: 'Saca basura' })
+    const sacarBasura = existing({ id: 'e-sacar', title: 'Sacar basura' })
+    const dentistaEmpaste = existing({ id: 'e-dentista', title: 'Dentista empaste' })
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Se saca basura' }, [sacaBasura, sacarBasura, dentistaEmpaste])
+    expect(warnings).toEqual([
+      { kind: 'duplicate', event: sacaBasura },
+      { kind: 'duplicate', event: sacarBasura },
+      { kind: 'conflict', event: dentistaEmpaste },
+    ])
+  })
+
   it('NO duplicado: mismo título, diferente hora (y sin solape) — ni duplicado ni conflicto', () => {
     const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, time: '09:00' }, [existing()])
     expect(warnings).toEqual([])
+  })
+
+  it('NO duplicado: título equivalente ("Se saca basura") pero distinta hora, sin solape', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Se saca basura', time: '09:00' }, [existing({ title: 'Sacar basura' })])
+    expect(warnings).toEqual([])
+  })
+
+  it('NO duplicado: título equivalente ("Se saca basura") pero distintos destinatarios', () => {
+    const warnings = findScheduleWarnings({ ...CANDIDATE_BASE, title: 'Se saca basura', memberIds: ['m-eric'] }, [
+      existing({ title: 'Sacar basura', memberIds: ['m-paco'] }),
+    ])
+    expect(warnings).toEqual([]) // Eric y Paco no coinciden: ni siquiera conflicto
   })
 
   it('NO duplicado: mismo título, diferente día', () => {

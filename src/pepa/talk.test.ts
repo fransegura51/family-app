@@ -333,6 +333,57 @@ describe('runTalk: el aviso de duplicado/conflicto se recalcula si cambia el des
   })
 })
 
+// Caso real de producción (despliegue d27effa): "Mañana a las siete de la tarde sacar la basura" (aquí,
+// con la variante de dictado real "se saca basura") cuando ya existían "Saca basura", "Sacar basura" y
+// "Dentista empaste" mañana a las 19:00 para toda la familia. La detección de horario ya funcionaba
+// (avisaba 3 veces); lo que faltaba era reconocer que las dos primeras son la MISMA acción.
+describe('runTalk: caso real de producción — variantes casi iguales se agrupan en un solo aviso de duplicado', () => {
+  const TOMORROW_19H = new Date(2026, 8, 21, 19, 0).toISOString() // 2026-09-21, mañana respecto a TODAY (domingo 20)
+  const sacaBasura = { id: 'e-saca', title: 'Saca basura', startAt: TOMORROW_19H, endAt: null, allDay: false, recurrenceRule: null, exceptionDates: [], memberIds: [] }
+  const sacarBasura = { ...sacaBasura, id: 'e-sacar', title: 'Sacar basura' }
+  const dentistaEmpaste = { ...sacaBasura, id: 'e-dentista', title: 'Dentista empaste' }
+
+  it('un solo aviso de "ya tienes X" para las dos variantes de basura, y uno aparte para el conflicto real', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([sacaBasura, sacarBasura, dentistaEmpaste]) })
+    // Deterministamente, esta frase entera (sin "la") produce el título "Se saca basura" a través del
+    // parser real — no hace falta forzar el candidato a mano para reproducir el caso.
+    const outcome = await runTalk('Mañana a las 19:00 se saca basura', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(view.warnings).toHaveLength(2) // no 3: las dos variantes de basura cuentan como un solo aviso
+    expect(view.warnings[0]).toContain('Parece que ya tienes')
+    expect(view.warnings[0]).toMatch(/«Saca basura»|«Sacar basura»/)
+    expect(view.warnings[1]).toBe('Además tienes «Dentista empaste» a esa misma hora.')
+    expect(view.confirmLabel).toBe('Guardar en el calendario') // nunca bloquea
+
+    await outcome.proposal.confirm(outcome.proposal.initialSelection)
+    expect(createEvent).toHaveBeenCalledTimes(1) // ninguno de los 3 eventos existentes se toca
+  })
+
+  it('cambiar "Para" sigue recalculando bien incluso con el aviso agrupado', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([sacaBasura, sacarBasura, dentistaEmpaste]) })
+    const outcome = await runTalk('Mañana a las 19:00 se saca basura', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+
+    // Los 3 existentes son "toda la familia" ([]): un miembro concreto (Eric) SIGUE formando parte de
+    // "toda la familia", así que el horario sigue chocando con los 3 — pero al dejar de ser
+    // exactamente el mismo conjunto de destinatarios ([m-eric] ≠ []), ya no cuentan como duplicado
+    // exacto: los 3 pasan de "1 aviso agrupado + 1 conflicto" a "3 conflictos sueltos". Recalculado de
+    // verdad, no el aviso congelado de antes.
+    const toEric = { ...outcome.proposal.initialSelection, choices: { member: 'm-eric' } }
+    expect(outcome.proposal.preview(toEric).warnings).toEqual([
+      'Ya tienes «Saca basura» a esa misma hora.',
+      'Ya tienes «Sacar basura» a esa misma hora.',
+      'Ya tienes «Dentista empaste» a esa misma hora.',
+    ])
+
+    // Y volver a "toda la familia" recupera el aviso agrupado de siempre.
+    const backToWholeFamily = { ...outcome.proposal.initialSelection, choices: { member: 'none' } }
+    expect(outcome.proposal.preview(backToWholeFamily).warnings).toHaveLength(2)
+  })
+})
+
 describe('runTalk: IA solo si las reglas no bastan, y solo para preguntas', () => {
   it('una frase que las reglas no entienden se prueba con la IA', async () => {
     const deps = makeDeps({

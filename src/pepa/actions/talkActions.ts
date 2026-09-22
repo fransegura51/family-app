@@ -1,6 +1,6 @@
 import { createEvent } from '@/data/calendar'
 import { addShoppingItem } from '@/data/shopping'
-import { findScheduleWarnings, type ScheduleWarning } from '@/domain/calendar'
+import { findScheduleWarnings, groupScheduleWarnings, type ScheduleWarning } from '@/domain/calendar'
 import { kitchenDateLabel } from '@/domain/kitchenQuery'
 import { recurrenceLabel } from '@/domain/recurrence'
 import { reminderLabel } from '@/domain/reminders'
@@ -106,17 +106,33 @@ function timeOrNull(value: unknown): string | null | undefined {
   return typeof value === 'string' && TIME_RE.test(value) ? value : undefined
 }
 
+// Texto de "para X"/"para toda la familia" a partir de los destinatarios de un evento YA EXISTENTE
+// (el que causó el aviso) — no del candidato: el aviso habla de lo que ya había.
+function whoLabel(memberIds: string[], ctx: ActionContext): string {
+  return memberIds.length > 0
+    ? ` para ${memberIds.map((id) => ctx.members.find((m) => m.id === id)?.name).filter((n): n is string => !!n).join(' y ')}`
+    : ' para toda la familia'
+}
+
 // Posible duplicado/conflicto con lo que ya hay en el calendario — texto listo para enseñar en la
-// tarjeta (view.warnings ya existente, sin bloquear nada). "esa misma hora" en el aviso de conflicto se
-// refiere siempre al día/hora que se está creando ahora, así que no hace falta repetirlo.
-function formatScheduleWarning(w: ScheduleWarning, params: CalendarCreateParams, ctx: ActionContext): string {
-  if (w.kind === 'conflict') return `Ya tienes «${w.event.title}» a esa misma hora.`
-  const when = params.time ? `${kitchenDateLabel(params.date, ctx.today)} a las ${params.time}` : kitchenDateLabel(params.date, ctx.today)
-  const who =
-    w.event.memberIds.length > 0
-      ? ` para ${w.event.memberIds.map((id) => ctx.members.find((m) => m.id === id)?.name).filter((n): n is string => !!n).join(' y ')}`
-      : ' para toda la familia'
-  return `Parece que ya tienes «${w.event.title}» ${when}${who}.`
+// tarjeta (view.warnings ya existente, sin bloquear nada). Agrupado: si "Saca basura" y "Sacar basura"
+// ya existían las dos, es la MISMA acción dicha de formas ligeramente distintas — un solo aviso de
+// duplicado, no uno por variante (findScheduleWarnings ya las marca todas como 'duplicate';
+// groupScheduleWarnings las junta aquí). Un conflicto real con un evento DISTINTO nunca se oculta: sigue
+// su propia línea, aparte del duplicado.
+function formatScheduleWarnings(warnings: ScheduleWarning[], params: CalendarCreateParams, ctx: ActionContext): string[] {
+  const { duplicateEvents, conflictEvents } = groupScheduleWarnings(warnings)
+  const lines: string[] = []
+  if (duplicateEvents.length > 0) {
+    const representative = duplicateEvents[0] // el primero encontrado: elección simple y determinista, no se listan todas las variantes.
+    const when = params.time ? `${kitchenDateLabel(params.date, ctx.today)} a las ${params.time}` : kitchenDateLabel(params.date, ctx.today)
+    lines.push(`Parece que ya tienes «${representative.title}» ${when}${whoLabel(representative.memberIds, ctx)}.`)
+  }
+  // "Además tienes..." solo tiene sentido si ya se ha dicho el duplicado antes; sin duplicado, el
+  // conflicto sigue con el texto de siempre ("Ya tienes...").
+  const conflictVerb = duplicateEvents.length > 0 ? 'Además tienes' : 'Ya tienes'
+  for (const ev of conflictEvents) lines.push(`${conflictVerb} «${ev.title}» a esa misma hora.`)
+  return lines
 }
 
 // Se recalcula CADA VEZ que se enseña la tarjeta (present se llama en cada preview, también al
@@ -126,7 +142,7 @@ function formatScheduleWarning(w: ScheduleWarning, params: CalendarCreateParams,
 // el aviso, y uno que pasa a coincidir lo hace aparecer, sin ninguna consulta nueva.
 function scheduleWarningsFor(params: CalendarCreateParams, ctx: ActionContext): string[] {
   const candidate = { title: params.title, date: params.date, time: params.time, endTime: params.endTime, memberIds: params.memberId ? [params.memberId] : [] }
-  return findScheduleWarnings(candidate, ctx.calendarEvents ?? []).map((w) => formatScheduleWarning(w, params, ctx))
+  return formatScheduleWarnings(findScheduleWarnings(candidate, ctx.calendarEvents ?? []), params, ctx)
 }
 
 export const calendarCreateAction = defineAction<CalendarCreateParams>({

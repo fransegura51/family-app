@@ -226,17 +226,23 @@ export function occurrenceAt(
 // "Dentista Eric", que no comparten ni hora ni destinatarios exactos por
 // definición si además de eso tuvieran que coincidir).
 
-const TITLE_SAFE_ARTICLES = new Set(['el', 'la', 'los', 'las', 'un', 'una'])
+// Palabras GRAMATICALES sueltas que nunca cambian DE QUÉ trata el título —
+// artículos ("la", "el"...) y el "se" reflexivo/impersonal ("SE saca la
+// basura" = "sacar la basura", mismo encargo). Deliberadamente NO incluye
+// verbos, sustantivos ni nombres propios: quitar esto es seguro porque
+// ninguna de estas palabras aporta significado por sí sola; quitar
+// cualquier otra palabra no lo sería (cambiaría de qué se habla).
+const TITLE_SAFE_FILLERS = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'se'])
 // Distancia de edición MUY corta a propósito: solo para variaciones
-// mínimas de dictado ("Sacar basura" / "Saca basura", caso real
-// reportado, distancia 1) — nunca para títulos que simplemente se
-// parecen ("Dentista" / "Dentista Eric" está a distancia 5, no cuela).
+// mínimas de dictado — "Sacar basura" / "Saca basura" (distancia 1) o,
+// tras quitar "se", "Se saca basura" / "Sacar basura" (distancia 1, caso
+// real reportado: el dictado añadió un "se" impersonal que el título
+// normal no tenía) — nunca para títulos que simplemente se parecen
+// ("Dentista" / "Dentista Eric" está a distancia 5, no cuela).
 const TITLE_MAX_EDIT_DISTANCE = 2
 
-// Minúsculas, sin acentos, sin puntuación, sin artículos sueltos ("la",
-// "el"...) en cualquier posición — quitarlos es seguro porque nunca
-// cambian DE QUÉ trata el título ("sacar la basura" es lo mismo que
-// "sacar basura"), a diferencia de quitar cualquier otra palabra.
+// Minúsculas, sin acentos, sin puntuación, sin las palabras gramaticales
+// sueltas de TITLE_SAFE_FILLERS en cualquier posición.
 export function normalizeEventTitleForCompare(title: string): string {
   const stripped = title
     .toLowerCase()
@@ -245,7 +251,7 @@ export function normalizeEventTitleForCompare(title: string): string {
     .replace(/[.,;:!¡?¿]/g, '')
   return stripped
     .split(/\s+/)
-    .filter((w) => w.length > 0 && !TITLE_SAFE_ARTICLES.has(w))
+    .filter((w) => w.length > 0 && !TITLE_SAFE_FILLERS.has(w))
     .join(' ')
 }
 
@@ -368,6 +374,26 @@ export function findScheduleWarnings(candidate: ScheduleCandidate, existingEvent
     }
   }
   return warnings
+}
+
+export interface GroupedScheduleWarnings {
+  // Todos los eventos existentes que parecen ser la MISMA acción que el candidato (mismo título en
+  // esencia) — puede haber más de uno (p. ej. "Saca basura" y "Sacar basura" ya existían las dos): se
+  // agrupan en UN solo aviso en vez de repetir el mismo aviso una vez por cada variante encontrada.
+  duplicateEvents: ScheduleEvent[]
+  // Eventos DISTINTOS (otro título) que solo coinciden en horario/destinatarios — cada uno es un
+  // aviso de conflicto aparte: son cosas reales y diferentes, no se ocultan ni se funden entre sí.
+  conflictEvents: ScheduleEvent[]
+}
+
+// Agrupa el resultado de findScheduleWarnings para poder mostrar "ya tienes X" UNA vez aunque haya
+// varias variantes casi idénticas del mismo título, sin perder ningún conflicto real y distinto. Pura
+// reorganización de lo que ya devolvió findScheduleWarnings — no reclasifica nada.
+export function groupScheduleWarnings(warnings: ScheduleWarning[]): GroupedScheduleWarnings {
+  return {
+    duplicateEvents: warnings.filter((w) => w.kind === 'duplicate').map((w) => w.event),
+    conflictEvents: warnings.filter((w) => w.kind === 'conflict').map((w) => w.event),
+  }
 }
 
 // Petición real: "en todo el calendario los fines de semana

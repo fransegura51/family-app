@@ -10,6 +10,11 @@ import {
   parseForecastRecurrenceOption,
   isForecastPaymentFinished,
   formatForecastAmount,
+  computeInstallmentPlanUntil,
+  totalInstallments,
+  installmentIndexForOccurrence,
+  remainingInstallments,
+  remainingPlanAmount,
   type ForecastPayment,
   type ForecastOccurrence,
   type ForecastOccurrenceOverride,
@@ -404,5 +409,255 @@ describe('formatForecastAmount (Fase 1C, multidivisa)', () => {
 
   it('código de divisa mal formado: degrada con gracia en vez de reventar la pantalla', () => {
     expect(formatForecastAmount(50, 'EU')).toBe('50.00 EU')
+  })
+})
+
+describe('Fase 1D-a — planes de cuotas finitos (sin entidad nueva: recurrence_rule + UNTIL calculado)', () => {
+  function planOverride(o: Partial<ForecastOccurrenceOverride>): ForecastOccurrenceOverride {
+    return {
+      id: 'ov-plan',
+      forecastPaymentId: 'fp-ibi',
+      occurrenceDate: '2027-11-08',
+      dueDateOverride: null,
+      expectedPaymentDateOverride: null,
+      amountStatus: null,
+      amount: null,
+      amountEstimatedBasis: null,
+      skipped: false,
+      matchedExpenseId: null,
+      ...o,
+    }
+  }
+
+  // CASO REAL: IBI + basura, 6 cuotas mensuales de 141 €, empieza en noviembre, cruza de año, termina en abril.
+  const ibiUntil = computeInstallmentPlanUntil('2027-11-08', 'MONTHLY', 1, 6)
+  function ibiPayment(overrides: Partial<ForecastPayment> = {}): ForecastPayment {
+    return payment({
+      id: 'fp-ibi',
+      title: 'IBI + basura',
+      amountStatus: 'known',
+      amount: 141,
+      dueDate: '2027-11-08',
+      recurrenceRule: buildForecastRecurrenceRule('custom', { freq: 'MONTHLY', interval: 1, until: ibiUntil }),
+      ...overrides,
+    })
+  }
+
+  describe('computeInstallmentPlanUntil', () => {
+    it('IBI: 6 cuotas mensuales desde noviembre → UNTIL en abril, cruzando de año', () => {
+      expect(ibiUntil).toBe('2028-04-08')
+    })
+
+    it('2 cuotas', () => {
+      expect(computeInstallmentPlanUntil('2027-11-08', 'MONTHLY', 1, 2)).toBe('2027-12-08')
+    })
+
+    it('frecuencias distintas: YEARLY y WEEKLY', () => {
+      expect(computeInstallmentPlanUntil('2027-01-10', 'YEARLY', 1, 3)).toBe('2029-01-10')
+      expect(computeInstallmentPlanUntil('2027-01-10', 'WEEKLY', 1, 4)).toBe('2027-01-31')
+    })
+
+    it('día 31: cada mes corto recorta, la serie nunca se rompe', () => {
+      // Jan31 / Feb28 (no bisiesto) / Mar31 / Apr30 / May31 / Jun30 — 6 cuotas, nunca deriva al día 3.
+      expect(computeInstallmentPlanUntil('2026-01-31', 'MONTHLY', 1, 6)).toBe('2026-06-30')
+    })
+
+    it('día 30', () => {
+      expect(computeInstallmentPlanUntil('2026-01-30', 'MONTHLY', 1, 3)).toBe('2026-03-30')
+    })
+
+    it('29 de febrero: recorta en año no bisiesto, sin desplazar el ancla', () => {
+      expect(computeInstallmentPlanUntil('2024-01-29', 'MONTHLY', 1, 3)).toBe('2024-03-29') // 2024 es bisiesto: Feb29 existe
+    })
+
+    it('rechaza un número de cuotas inválido', () => {
+      expect(() => computeInstallmentPlanUntil('2027-11-08', 'MONTHLY', 1, 0)).toThrow()
+      expect(() => computeInstallmentPlanUntil('2027-11-08', 'MONTHLY', 1, -1)).toThrow()
+    })
+  })
+
+  describe('totalInstallments', () => {
+    it('IBI: 6 cuotas exactas', () => {
+      expect(totalInstallments(ibiPayment())).toBe(6)
+    })
+
+    it('pago puntual (sin recurrence_rule): 1', () => {
+      expect(totalInstallments(payment({ recurrenceRule: null }))).toBe(1)
+    })
+
+    it('serie SIN UNTIL (indefinida): null — nunca se le inventa un total', () => {
+      expect(totalInstallments(payment({ recurrenceRule: 'FREQ=YEARLY' }))).toBeNull()
+    })
+
+    it('no se ve afectado por cuotas skipped — la numeración del plan no se recalcula', () => {
+      const skippedOverride = [planOverride({ occurrenceDate: '2028-01-08', skipped: true })]
+      // totalInstallments no recibe overrides: sigue siendo puramente el tamaño del plan.
+      expect(totalInstallments(ibiPayment())).toBe(6)
+      expect(skippedOverride).toHaveLength(1) // (documentando que el override existe, no cambia el total)
+    })
+  })
+
+  describe('installmentIndexForOccurrence', () => {
+    it('IBI: las 6 fechas devuelven 1..6 en orden', () => {
+      const dates = ['2027-11-08', '2027-12-08', '2028-01-08', '2028-02-08', '2028-03-08', '2028-04-08']
+      expect(dates.map((d) => installmentIndexForOccurrence(ibiPayment(), d))).toEqual([1, 2, 3, 4, 5, 6])
+    })
+
+    it('NO existe cuota 7/6: una fecha más allá de UNTIL no pertenece a la serie', () => {
+      expect(installmentIndexForOccurrence(ibiPayment(), '2028-05-08')).toBeNull()
+    })
+
+    it('una fecha que no coincide con ningún ciclo real devuelve null', () => {
+      expect(installmentIndexForOccurrence(ibiPayment(), '2027-12-09')).toBeNull()
+    })
+
+    it('pago puntual: la propia due_date es la cuota 1, cualquier otra fecha es null', () => {
+      const p = payment({ recurrenceRule: null, dueDate: '2026-05-01' })
+      expect(installmentIndexForOccurrence(p, '2026-05-01')).toBe(1)
+      expect(installmentIndexForOccurrence(p, '2026-06-01')).toBeNull()
+    })
+
+    it('usa la clave ESTABLE (occurrenceDate de la regla), no la fecha ya movida por un override', () => {
+      // La cuota 4 (2028-02-08) se mueve a otro día — el índice se sigue resolviendo por su fecha de regla.
+      expect(installmentIndexForOccurrence(ibiPayment(), '2028-02-08')).toBe(4)
+    })
+  })
+
+  describe('NO existe cuota 7/6 (regresión explícita sobre el rango completo)', () => {
+    it('expandForecastOccurrences sobre un rango amplio produce exactamente 6, la última en abril', () => {
+      const occ = expandForecastOccurrences(ibiPayment(), [], '2020-01-01', '2035-01-01')
+      expect(occ).toHaveLength(6)
+      expect(occ[occ.length - 1].dueDate).toBe('2028-04-08')
+      expect(occ.map((o) => o.dueDate)).not.toContain('2028-05-08')
+    })
+  })
+
+  describe('remainingInstallments / remainingPlanAmount', () => {
+    it('plan todavía no iniciado: las 6 cuotas están por delante', () => {
+      expect(remainingInstallments(ibiPayment(), [], '2027-10-01')).toBe(6)
+      const totals = remainingPlanAmount(ibiPayment(), [], '2027-10-01')
+      expect(totals).toEqual([{ currency: 'EUR', knownTotal: 846, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 846 }]) // 141 × 6
+    })
+
+    it('serie ya terminada: 0 restantes, importe pendiente vacío (no null — el plan SÍ es finito, solo que ya acabó)', () => {
+      expect(remainingInstallments(ibiPayment(), [], '2028-05-01')).toBe(0)
+      expect(remainingPlanAmount(ibiPayment(), [], '2028-05-01')).toEqual([])
+    })
+
+    it('a mitad de plan: cuenta solo desde hoy en adelante', () => {
+      // Hoy = fecha de la cuota 3 (2028-01-08): quedan 3, 4, 5, 6 → 4 restantes.
+      expect(remainingInstallments(ibiPayment(), [], '2028-01-08')).toBe(4)
+    })
+
+    it('skipped: se excluye del recuento, nunca se cuenta como "pagada" ni como "restante"', () => {
+      const overrides = [planOverride({ occurrenceDate: '2028-01-08', skipped: true })] // cuota 3 omitida
+      expect(remainingInstallments(ibiPayment(), overrides, '2027-10-01')).toBe(5) // 6 - 1 omitida
+      expect(installmentIndexForOccurrence(ibiPayment(), '2028-01-08')).toBe(3) // su posición sigue siendo 3, aunque se omita
+    })
+
+    it('override de importe: una cuota distinta se refleja en el importe pendiente, nunca en el total de las demás', () => {
+      const overrides = [planOverride({ occurrenceDate: '2027-12-08', amountStatus: 'known', amount: 200 })] // cuota 2 = 200 €
+      const totals = remainingPlanAmount(ibiPayment(), overrides, '2027-10-01')
+      expect(totals?.[0].knownTotal).toBe(141 * 5 + 200)
+    })
+
+    it('override de fecha (due_date_override): no afecta a qué cuenta como "restante" por su clave estable', () => {
+      const overrides = [planOverride({ occurrenceDate: '2028-02-08', dueDateOverride: '2028-02-15' })] // cuota 4 movida
+      expect(remainingInstallments(ibiPayment(), overrides, '2027-10-01')).toBe(6) // sigue habiendo 6 cuotas reales
+    })
+
+    it('unknown: nunca se suma como 0 — cuenta aparte en unknownCount', () => {
+      const overrides = [planOverride({ occurrenceDate: '2027-11-08', amountStatus: 'unknown', amount: null })] // cuota 1 pendiente de importe
+      const totals = remainingPlanAmount(ibiPayment(), overrides, '2027-10-01')
+      expect(totals?.[0].unknownCount).toBe(1)
+      expect(totals?.[0].knownTotal).toBe(141 * 5) // las otras 5 cuotas conocidas, sin la pendiente
+    })
+
+    it('estimated: importe distinto y basis propios de esa cuota, sin tocar las demás', () => {
+      const overrides = [planOverride({ occurrenceDate: '2027-11-08', amountStatus: 'estimated', amount: 130, amountEstimatedBasis: 'recibo provisional' })]
+      const totals = remainingPlanAmount(ibiPayment(), overrides, '2027-10-01')
+      expect(totals?.[0].estimatedTotal).toBe(130)
+      expect(totals?.[0].knownTotal).toBe(141 * 5)
+    })
+
+    it('matched_expense_id: evidencia real de conciliación — se excluye de restantes y de importe pendiente, sin marcar el resto del plan', () => {
+      const overrides = [planOverride({ occurrenceDate: '2027-11-08', matchedExpenseId: 'exp-1' })] // cuota 1 ya conciliada
+      expect(remainingInstallments(ibiPayment(), overrides, '2027-10-01')).toBe(5)
+      const totals = remainingPlanAmount(ibiPayment(), overrides, '2027-10-01')
+      expect(totals?.[0].knownTotal).toBe(141 * 5) // la conciliada no cuenta en lo pendiente
+    })
+
+    it('no inventa estado de pago a partir de la fecha: una cuota pasada sin matched_expense_id no se declara ni pagada ni pendiente aquí', () => {
+      // Hoy es después de la cuota 1 (pasada) pero antes de la 2 — remainingInstallments cuenta desde
+      // HOY, no dice nada sobre si la cuota 1 (ya pasada, sin conciliar) está pagada o no.
+      const remaining = remainingInstallments(ibiPayment(), [], '2027-11-20')
+      expect(remaining).toBe(5) // cuotas 2..6 — la 1 ya no "queda por delante", pero eso no afirma que esté pagada
+    })
+
+    it('serie indefinida (sin UNTIL): null, no un número inventado', () => {
+      const indefinite = payment({ recurrenceRule: 'FREQ=YEARLY' })
+      expect(remainingInstallments(indefinite, [], '2026-01-01')).toBeNull()
+      expect(remainingPlanAmount(indefinite, [], '2026-01-01')).toBeNull()
+    })
+
+    it('pago puntual: null — no es un "plan" en el sentido de esta función', () => {
+      const single = payment({ recurrenceRule: null })
+      expect(remainingInstallments(single, [], '2026-01-01')).toBeNull()
+      expect(remainingPlanAmount(single, [], '2026-01-01')).toBeNull()
+    })
+  })
+
+  describe('composición: "importe total del plan" y "fecha de primera/última cuota" sin funciones nuevas', () => {
+    it('importe total del plan = forecastTotals + expandForecastOccurrences sobre todo el rango', () => {
+      const all = expandForecastOccurrences(ibiPayment(), [], ibiPayment().dueDate, ibiUntil)
+      expect(forecastTotals(all)).toEqual([{ currency: 'EUR', knownTotal: 846, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 846 }])
+    })
+
+    it('primera cuota = due_date; última cuota = UNTIL de la regla', () => {
+      const p = ibiPayment()
+      expect(p.dueDate).toBe('2027-11-08')
+      expect(p.recurrenceRule).toContain('UNTIL=2028-04-08')
+    })
+
+    it('próxima cuota ya existía en Fase 1B (nextForecastOccurrence) — sigue funcionando igual para un plan finito', () => {
+      expect(nextForecastOccurrence(ibiPayment(), [], '2027-12-01')?.dueDate).toBe('2027-12-08') // cuota 2, aún no ha pasado
+      expect(nextForecastOccurrence(ibiPayment(), [], '2027-12-09')?.dueDate).toBe('2028-01-08') // cuota 3
+    })
+  })
+
+  // REGRESIÓN OBLIGATORIA — dato real de producción, sin plantilla de plazos: debe seguir produciendo
+  // exactamente UNA ocurrencia por ciclo anual, sin ningún cambio de comportamiento.
+  describe('regresión: Seguro Coche Ibiza (dato real, sin cambios)', () => {
+    const seguro = payment({
+      id: 'd530b1e1-52b1-4c1f-9507-15c6eddc17bc',
+      title: 'Seguro Coche Ibiza',
+      amountStatus: 'estimated',
+      amount: 294.78,
+      amountEstimatedBasis: 'recibo del año anterior',
+      currency: 'EUR',
+      dueDate: '2027-06-08',
+      expectedPaymentDate: '2027-06-10',
+      recurrenceRule: 'FREQ=YEARLY',
+    })
+
+    it('serie indefinida: totalInstallments/remainingInstallments/remainingPlanAmount devuelven null, nunca un número inventado', () => {
+      expect(totalInstallments(seguro)).toBeNull()
+      expect(remainingInstallments(seguro, [], '2027-01-01')).toBeNull()
+      expect(remainingPlanAmount(seguro, [], '2027-01-01')).toBeNull()
+    })
+
+    it('installmentIndexForOccurrence numera los ciclos anuales sin necesitar un plan finito', () => {
+      expect(installmentIndexForOccurrence(seguro, '2027-06-08')).toBe(1)
+      expect(installmentIndexForOccurrence(seguro, stepMonthsClamped('2027-06-08', 12))).toBe(2)
+    })
+
+    it('sigue produciendo exactamente UNA ocurrencia por ciclo anual, sin plantilla de plazos', () => {
+      const occ = expandForecastOccurrences(seguro, [], '2027-01-01', '2030-01-01')
+      expect(occ.map((o) => o.dueDate)).toEqual(['2027-06-08', '2028-06-08', '2029-06-08'])
+      expect(occ.every((o) => o.expectedPaymentDate)).toBe(true)
+      expect(occ[0].expectedPaymentDate).toBe('2027-06-10') // due y pago esperado siguen siendo anclas independientes
+      expect(occ[0].amountStatus).toBe('estimated')
+      expect(occ[0].amount).toBe(294.78)
+    })
   })
 })

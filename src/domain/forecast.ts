@@ -121,8 +121,9 @@ export function parseForecastRecurrenceRule(rule: string): ParsedForecastRule | 
 
 // Ocurrencia número `cycleN` (0-indexado) de una serie anclada en `anchorDateStr` con la regla dada.
 // MONTHLY/YEARLY usan el recorte de stepMonthsClamped; DAILY/WEEKLY son aritmética de días exacta, sin
-// ninguna ambigüedad de calendario (nunca hace falta recortar).
-function occurrenceForCycle(anchorDateStr: string, rule: ParsedForecastRule, cycleN: number): string {
+// ninguna ambigüedad de calendario (nunca hace falta recortar). Exportada para Fase 1D-a (planes de
+// cuotas finitos): es la misma pieza que ya usa expandForecastOccurrences, sin duplicar la aritmética.
+export function occurrenceForCycle(anchorDateStr: string, rule: ParsedForecastRule, cycleN: number): string {
   switch (rule.freq) {
     case 'DAILY':
       return stepDays(anchorDateStr, rule.interval * cycleN)
@@ -344,4 +345,112 @@ export function formatForecastAmount(amount: number, currency: string): string {
     // gracia en vez de reventar la pantalla.
     return `${amount.toFixed(2)} ${currency}`
   }
+}
+
+// ── Fase 1D-a — planes de cuotas FINITOS, con el modelo actual (recurrence_rule con UNTIL,
+// forecast_occurrences para las excepciones puntuales). NO es una entidad nueva: un plan de N cuotas es
+// sencillamente una serie recurrente cuyo UNTIL se calcula a partir del número de cuotas en vez de
+// dejarse como fecha libre — así nunca se representa un plan finito con una recurrencia sin fin (ver
+// requisito 1 de la auditoría). No cubre el caso de una obligación que se renueva y cada renovación
+// genera varios cargos (Fase 1D-c, "seguro a plazos" — fuera de alcance aquí).
+//
+// "importe total del plan", "fecha de primera cuota", "fecha de última cuota" y "próxima cuota" NO
+// necesitan función nueva — ya son composición directa de piezas existentes:
+//   - primera cuota  → payment.dueDate
+//   - última cuota   → parseForecastRecurrenceRule(payment.recurrenceRule).until
+//   - importe total  → forecastTotals(expandForecastOccurrences(payment, overrides, payment.dueDate, until))
+//   - próxima cuota  → nextForecastOccurrence(payment, overrides, today, 'dueDate')  (ya existía en Fase 1B)
+
+// UNTIL determinista a partir de la primera cuota + frecuencia + número de cuotas — nunca se pide al
+// usuario (ni se deja) como fecha libre para un plan finito. La cuota `installmentCount` (1-indexada) es
+// el mismo cálculo que ya usa el motor para cualquier ciclo — mismo recorte de fin de mes/29 de febrero,
+// sin caso especial nuevo.
+export function computeInstallmentPlanUntil(
+  firstDate: string,
+  freq: ForecastCustomRecurrence['freq'],
+  interval: number,
+  installmentCount: number,
+): string {
+  if (!Number.isInteger(installmentCount) || installmentCount < 1) {
+    throw new Error('installmentCount debe ser un entero >= 1')
+  }
+  return occurrenceForCycle(firstDate, { freq, interval: Math.max(1, interval), until: null }, installmentCount - 1)
+}
+
+// Número total de cuotas de la serie:
+//  - pago puntual (sin recurrence_rule) → 1 (él mismo es su única "cuota")
+//  - serie SIN UNTIL (indefinida)       → null: una recurrencia sin fin no tiene un "total", y devolver
+//                                          un número aquí sería justo el hack que se quiere evitar
+//  - serie CON UNTIL (plan finito)      → número de ciclos desde due_date hasta UNTIL, ambos incluidos
+//
+// Deliberadamente NO tiene en cuenta `skipped`: la numeración "3/6" de un plan no se recalcula porque
+// una cuota se haya omitido — sigue siendo la cuota 3 de un plan de 6, solo que esa vez no se cobra.
+export function totalInstallments(payment: Pick<ForecastPayment, 'dueDate' | 'recurrenceRule'>): number | null {
+  if (!payment.recurrenceRule) return 1
+  const rule = parseForecastRecurrenceRule(payment.recurrenceRule)
+  if (!rule || !rule.until) return null
+  let count = 0
+  for (let n = 0; n < MAX_CYCLES_GUARD; n++) {
+    if (occurrenceForCycle(payment.dueDate, rule, n) > rule.until) break
+    count++
+  }
+  return count
+}
+
+// Posición (1-indexada) de una ocurrencia concreta dentro de la serie — `occurrenceDate` es SIEMPRE la
+// clave estable (la fecha que produce la regla pura, la misma que usa forecast_occurrences.occurrence_date),
+// nunca la fecha ya sobrescrita por un override — así "3/6" no cambia si esa cuota tiene la fecha movida.
+// No depende de UNTIL: funciona igual para una serie indefinida (sirve para "esta es la cuota número N",
+// no solo para planes finitos).
+export function installmentIndexForOccurrence(payment: Pick<ForecastPayment, 'dueDate' | 'recurrenceRule'>, occurrenceDate: string): number | null {
+  if (!payment.recurrenceRule) return occurrenceDate === payment.dueDate ? 1 : null
+  const rule = parseForecastRecurrenceRule(payment.recurrenceRule)
+  if (!rule) return null
+  for (let n = 0; n < MAX_CYCLES_GUARD; n++) {
+    const due = occurrenceForCycle(payment.dueDate, rule, n)
+    // Más allá de UNTIL (si el plan es finito) no es una cuota real de la serie — nunca se numera "7/6".
+    if (rule.until && due > rule.until) return null
+    if (due === occurrenceDate) return n + 1
+    if (due > occurrenceDate) return null // nos hemos pasado sin encontrarla: no pertenece a esta serie
+  }
+  return null
+}
+
+// Cuotas "restantes" de un plan finito: las que vencen desde `today` (inclusive) hasta UNTIL, sin contar
+// las omitidas (skipped, ya excluidas por expandForecastOccurrences) ni las ya conciliadas
+// (matched_expense_id no nulo en su fila de forecast_occurrences, evidencia real — nunca inventada).
+//
+// null cuando la serie no tiene UNTIL (indefinida): "restantes" no está definido para algo sin fin.
+//
+// LIMITACIÓN DOCUMENTADA (requisito 7/8 de la auditoría): esto es un recuento por FECHA, no por estado
+// de pago. Una cuota con fecha ya pasada que NO tiene matched_expense_id no se excluye de este cálculo
+// simplemente por haber pasado su fecha — esta función no la cuenta como "restante" tampoco, porque solo
+// mira fechas desde `today` en adelante; no afirma ni niega si esa cuota pasada está pagada. Distinguir
+// "pendiente" de "pagada sin conciliar todavía" para cuotas ya vencidas queda fuera de esta fase (Fase
+// 1D-e, conciliación bancaria) — aquí solo se responde con datos verificables, nunca se infiere.
+export function remainingInstallments(
+  payment: Parameters<typeof expandForecastOccurrences>[0],
+  overrides: ForecastOccurrenceOverride[],
+  today: string,
+): number | null {
+  if (!payment.recurrenceRule) return null
+  const rule = parseForecastRecurrenceRule(payment.recurrenceRule)
+  if (!rule || !rule.until) return null
+  const occurrences = expandForecastOccurrences(payment, overrides, today, rule.until)
+  return occurrences.filter((o) => !o.matchedExpenseId).length
+}
+
+// Importe pendiente de un plan finito — mismo conjunto que remainingInstallments (desde `today`, sin
+// omitidas ni conciliadas), agregado con forecastTotals: nunca suma unknown como 0, nunca mezcla
+// divisas — hereda esas garantías tal cual, sin repetir la lógica.
+export function remainingPlanAmount(
+  payment: Parameters<typeof expandForecastOccurrences>[0],
+  overrides: ForecastOccurrenceOverride[],
+  today: string,
+): ForecastTotals | null {
+  if (!payment.recurrenceRule) return null
+  const rule = parseForecastRecurrenceRule(payment.recurrenceRule)
+  if (!rule || !rule.until) return null
+  const occurrences = expandForecastOccurrences(payment, overrides, today, rule.until).filter((o) => !o.matchedExpenseId)
+  return forecastTotals(occurrences)
 }

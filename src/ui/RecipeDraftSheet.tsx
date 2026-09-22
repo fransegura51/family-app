@@ -75,7 +75,9 @@ export function RecipeDraftSheet({
 }: {
   request: RecipeRequest
   onClose: () => void
-  onSaved: (message: string) => void
+  // FASE 7.1 (F7-003) — opts.speak: false cuando se ha guardado por voz/texto (VoiceCapture ya dice el mismo
+  // mensaje que devuelve la llamada) — ver ActionConfirmSheet.onDone, mismo patrón.
+  onSaved: (message: string, opts?: { speak?: boolean }) => void
   // Después de guardar: pregunta de tienda o tarjeta de ingredientes (sustituye a esta tarjeta).
   onFollowUp: (outcome: KitchenOutcome) => void
   onReply: (text: string) => Promise<string | null>
@@ -117,7 +119,7 @@ export function RecipeDraftSheet({
     }
   }
 
-  async function save(params: RecipeCreateParams, offerIngredients = true): Promise<string | null> {
+  async function save(params: RecipeCreateParams, offerIngredients = true, opts: { speak?: boolean } = {}): Promise<string | null> {
     if (lockRef.current || savedRef.current) return null
     lockRef.current = true
     setBusy(true)
@@ -129,7 +131,7 @@ export function RecipeDraftSheet({
       const message = await result.proposal.confirm(result.proposal.initialSelection)
       savedRef.current = true
       setSavedTitle(params.title)
-      onSaved(message)
+      onSaved(message, opts)
       if (offerIngredients) {
         setStep('saved')
         return `${message} ¿Quieres añadir los ingredientes a la lista de la compra?`
@@ -191,11 +193,11 @@ export function RecipeDraftSheet({
     setStep('draft')
   }
 
-  function saveFromEdit(offerIngredients = true): Promise<string | null> {
+  function saveFromEdit(offerIngredients = true, opts: { speak?: boolean } = {}): Promise<string | null> {
     if (!fields) return Promise.resolve(null)
     const next = fieldsToDraft(fields)
     if (!next) return Promise.resolve(null)
-    return save(draftToCreateParams(next), offerIngredients)
+    return save(draftToCreateParams(next), offerIngredients, opts)
   }
 
   // storeSpec: undefined = no dicha (se pregunta la tienda), texto = tienda real dicha, null = sin tienda.
@@ -250,7 +252,8 @@ export function RecipeDraftSheet({
           case 'draft':
             return {
               kind: 'recipe-draft',
-              save: (o: { offerIngredients: boolean }) => (l.scaled ? l.save(draftToCreateParams(l.scaled), o.offerIngredients) : Promise.resolve(null)),
+              // speak:false — VoiceCapture ya dice el mensaje que devuelve esta llamada (F7-003).
+              save: (o: { offerIngredients: boolean }) => (l.scaled ? l.save(draftToCreateParams(l.scaled), o.offerIngredients, { speak: false }) : Promise.resolve(null)),
               cancel: close('Vale, no la guardo.'),
               setServings: (n: number) => {
                 l.setViewServings(n)
@@ -264,7 +267,8 @@ export function RecipeDraftSheet({
           case 'edit':
             return {
               kind: 'recipe-edit',
-              save: (o: { offerIngredients: boolean }) => l.saveFromEdit(o.offerIngredients),
+              // speak:false — VoiceCapture ya dice el mensaje que devuelve esta llamada (F7-003).
+              save: (o: { offerIngredients: boolean }) => l.saveFromEdit(o.offerIngredients, { speak: false }),
               cancel: close('Vale, no la guardo.'),
             }
           case 'saved':

@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createGeminiProvider } from '../../supabase/functions/_shared/ai/gemini.ts'
 import { pepaIntentSpec } from '../../supabase/functions/_shared/ai/purposes/pepaIntent.ts'
 import { splitGroceryListSpec } from '../../supabase/functions/_shared/ai/purposes/splitGroceryList.ts'
+import { receiptPhotoSpec, parseReceiptPhotoOutput } from '../../supabase/functions/_shared/ai/purposes/receiptPhoto.ts'
+import { documentExpirySpec } from '../../supabase/functions/_shared/ai/purposes/documentExpiry.ts'
+import { fridgePhotoSpec } from '../../supabase/functions/_shared/ai/purposes/fridgePhoto.ts'
+import { eventFromEmailSpec } from '../../supabase/functions/_shared/ai/purposes/eventFromEmail.ts'
 import { createProvider, secretNameFor } from '../../supabase/functions/_shared/ai/providers.ts'
 import { AiProviderError } from '../../supabase/functions/_shared/ai/types.ts'
 import { asCleanString, asIsoDate, asRecord, parseJsonLoose, pickEnum } from '../../supabase/functions/_shared/ai/validate.ts'
@@ -105,6 +109,108 @@ describe('split-grocery-list', () => {
   it('limita el número de productos', () => {
     const many = JSON.stringify({ items: Array.from({ length: 80 }, (_, i) => `p${i}`) })
     expect(splitGroceryListSpec.parseOutput(many, { text: 'x' }).items).toHaveLength(50)
+  })
+})
+
+// FASE 7.1 (F7-001) — analyze-receipt-photo, analyze-document-expiry, analyze-fridge-photo y
+// mercadona-ticket-webhook/import-event-email-webhook dejaron de llamar a Gemini directamente (sin
+// interruptor, sin tope diario, sin cuenta adulta, sin registro de uso) y ahora pasan por estos mismos
+// propósitos. El comportamiento de lectura/parseo es EXACTAMENTE el de antes (mismo prompt, misma tolerancia
+// a JSON mal formado) — solo cambia quién controla cuándo se puede llamar.
+describe('analyze-receipt-photo (y mercadona-ticket-webhook, mismo propósito)', () => {
+  it('valida la entrada', () => {
+    expect(receiptPhotoSpec.readInput({ imageBase64: 'AAA', mimeType: 'image/jpeg' })).toEqual({ ok: true, input: { imageBase64: 'AAA', mimeType: 'image/jpeg' } })
+    expect(receiptPhotoSpec.readInput({ imageBase64: '', mimeType: 'image/jpeg' })).toEqual({ ok: false, error: 'missing image' })
+    expect(receiptPhotoSpec.readInput({ mimeType: 'image/jpeg' })).toEqual({ ok: false, error: 'missing image' })
+    expect(receiptPhotoSpec.readInput({ imageBase64: 'AAA' })).toEqual({ ok: false, error: 'missing image' })
+  })
+
+  it('el prompt pide el formato de ticket español (columnas CANT/PVP/TOTAL, peso, cantidad)', () => {
+    const parts = receiptPhotoSpec.buildParts({ imageBase64: 'BBB', mimeType: 'image/png' })
+    expect(parts).toHaveLength(2)
+    expect('text' in parts[0] && parts[0].text).toContain('Lee este ticket de compra español')
+    expect(parts[1]).toEqual({ inlineData: { mimeType: 'image/png', data: 'BBB' } })
+  })
+
+  it('interpreta una respuesta correcta, redondeando la cantidad', () => {
+    const out = parseReceiptPhotoOutput('```json\n{"store":"Mercadona","date":"2026-09-16","total":7.33,"items":[{"name":"Leche","quantity":2.98,"price":2.40}]}\n```')
+    expect(out).toEqual({ store: 'Mercadona', date: '2026-09-16', total: 7.33, items: [{ name: 'Leche', quantity: 3, price: 2.4 }] })
+  })
+
+  it('un JSON inválido o vacío nunca lanza: devuelve el ticket vacío (el cliente avisa de revisar)', () => {
+    expect(parseReceiptPhotoOutput('lo siento, no puedo leer la imagen')).toEqual({ store: null, date: null, total: null, items: [] })
+    expect(() => receiptPhotoSpec.parseOutput('no es json', { imageBase64: '', mimeType: '' })).not.toThrow()
+  })
+
+  it('descarta líneas sin nombre o con precio no numérico; fecha con formato inválido se descarta', () => {
+    const out = parseReceiptPhotoOutput('{"date":"16-09-2026","items":[{"name":"","price":1},{"name":"Pan","price":"no numero"},{"name":"Agua","price":0.5}]}')
+    expect(out.date).toBeNull()
+    expect(out.items).toEqual([{ name: 'Agua', quantity: 1, price: 0.5 }])
+  })
+})
+
+describe('analyze-document-expiry', () => {
+  it('valida la entrada', () => {
+    expect(documentExpirySpec.readInput({ fileBase64: 'AAA', mimeType: 'application/pdf' }).ok).toBe(true)
+    expect(documentExpirySpec.readInput({ fileBase64: '', mimeType: 'application/pdf' })).toEqual({ ok: false, error: 'missing file' })
+  })
+
+  it('interpreta una fecha de caducidad válida', () => {
+    expect(documentExpirySpec.parseOutput('{"expiryDate":"2028-03-01","documentType":"DNI"}', { fileBase64: '', mimeType: '' })).toEqual({
+      expiryDate: '2028-03-01',
+      documentType: 'DNI',
+    })
+  })
+
+  it('nunca inventa una fecha: formato inválido o ausente da null, sin lanzar', () => {
+    expect(documentExpirySpec.parseOutput('{"expiryDate":"01/03/2028","documentType":"DNI"}', { fileBase64: '', mimeType: '' })).toEqual({ expiryDate: null, documentType: 'DNI' })
+    expect(documentExpirySpec.parseOutput('no puedo leerlo', { fileBase64: '', mimeType: '' })).toEqual({ expiryDate: null, documentType: null })
+  })
+})
+
+describe('analyze-fridge-photo', () => {
+  it('valida la entrada', () => {
+    expect(fridgePhotoSpec.readInput({ imageBase64: 'AAA', mimeType: 'image/jpeg' }).ok).toBe(true)
+    expect(fridgePhotoSpec.readInput({})).toEqual({ ok: false, error: 'missing image' })
+  })
+
+  it('devuelve los nombres de producto, descartando lo que no es texto', () => {
+    expect(fridgePhotoSpec.parseOutput('["leche", "huevos", 3, null, "  "]', { imageBase64: '', mimeType: '' })).toEqual({ items: ['leche', 'huevos'] })
+    expect(fridgePhotoSpec.parseOutput('no veo nada', { imageBase64: '', mimeType: '' })).toEqual({ items: [] })
+  })
+})
+
+describe('import-event-email-webhook', () => {
+  it('valida la entrada: hace falta asunto o cuerpo', () => {
+    expect(eventFromEmailSpec.readInput({ subject: 'Reunión', bodyText: '' }).ok).toBe(true)
+    expect(eventFromEmailSpec.readInput({ subject: '', bodyText: '' })).toEqual({ ok: false, error: 'missing subject/bodyText' })
+  })
+
+  it('un evento claro con hora de inicio y fin', () => {
+    const out = eventFromEmailSpec.parseOutput(
+      '{"found":true,"title":"Reunión de padres","date":"2026-10-02","allDay":false,"startTime":"17:00","endTime":"18:00","location":"Colegio"}',
+      { subject: 'x', bodyText: 'y', receivedDate: '2026-09-20' },
+    )
+    expect(out).toEqual({ found: true, title: 'Reunión de padres', date: '2026-10-02', allDay: false, startTime: '17:00', endTime: '18:00', location: 'Colegio' })
+  })
+
+  it('un evento de todo el día ignora startTime/endTime', () => {
+    const out = eventFromEmailSpec.parseOutput('{"found":true,"date":"2026-10-05","allDay":true,"startTime":"09:00","endTime":"10:00"}', {
+      subject: 'x',
+      bodyText: 'y',
+      receivedDate: '2026-09-20',
+    })
+    expect(out.allDay).toBe(true)
+    expect(out.startTime).toBeNull()
+    expect(out.endTime).toBeNull()
+  })
+
+  it('sin fecha clara, found:false o JSON inválido: nunca lanza, nunca inventa una fecha', () => {
+    const notFound = { found: false, title: null, date: null, allDay: false, startTime: null, endTime: null, location: null }
+    expect(eventFromEmailSpec.parseOutput('{"found":false}', { subject: '', bodyText: '', receivedDate: '2026-09-20' })).toEqual(notFound)
+    expect(eventFromEmailSpec.parseOutput('{"found":true,"date":"no es una fecha"}', { subject: '', bodyText: '', receivedDate: '2026-09-20' })).toEqual(notFound)
+    expect(() => eventFromEmailSpec.parseOutput('esto no es json', { subject: '', bodyText: '', receivedDate: '2026-09-20' })).not.toThrow()
+    expect(eventFromEmailSpec.parseOutput('esto no es json', { subject: '', bodyText: '', receivedDate: '2026-09-20' })).toEqual(notFound)
   })
 })
 

@@ -182,8 +182,11 @@ export function interpretReply(text: string, ctx: ReplyContext): ReplyIntent | n
 
   if (ctx.kind === 'store-question') {
     if (NO_STORE.test(core)) return { type: 'store', store: null }
-    const store = ctx.stores ? storeIn(core, ctx.stores) : null
-    if (store) return { type: 'store', store }
+    // FASE 7.1 (F7-002) — aquí NO se vuelve a buscar una tienda con storeIn(core, ...) sin más: eso hacía
+    // que cualquier frase que solo MENCIONARA una tienda registrada de pasada (p. ej. "¿cuánto hemos gastado
+    // en Mercadona este mes?", una pregunta de Economía sin relación con esta tarjeta) se leyera como "la
+    // tienda es Mercadona" y se tragara la pregunta real. storeOnlyReply (arriba) ya decidió si la frase es
+    // SOLO una tienda (con relleno) o no; si no lo era, no hay tienda que devolver aquí.
     // Una respuesta corta que no es ninguna tienda real: no se inventa.
     if (core.split(' ').length <= 4) return { type: 'store-unknown', said: text.trim() }
   }

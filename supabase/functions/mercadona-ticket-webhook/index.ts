@@ -1,6 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { partitionTicketLines } from "./ticketLines.ts"
+import { createProvider, secretNameFor } from "../_shared/ai/providers.ts"
+import { AiProviderError } from "../_shared/ai/types.ts"
+import { receiptPhotoSpec, parseReceiptPhotoOutput, type ReceiptPhotoItem } from "../_shared/ai/purposes/receiptPhoto.ts"
 
 // Recibe el ticket digital de Mercadona que llega por email (PDF
 // adjunto) — un workflow externo (Outlook reenvía el correo de
@@ -12,6 +15,15 @@ import { partitionTicketLines } from "./ticketLines.ts"
 // Amazon, aquí SÍ se guarda el archivo de verdad (como una foto de
 // ticket normal, con su borrado a los 3 meses ya existente) y se lee
 // con el mismo prompt de Gemini que "Subir ticket" (analyze-receipt-photo).
+//
+// FASE 7.1 (F7-001) — antes llamaba a Gemini directamente, sin ningún control (ni interruptor, ni tope
+// diario, ni registro de uso): ahora pasa por ai_gate_family (mismas reglas que ai_gate, EXCEPTO la
+// comprobación de cuenta adulta, que no aplica a una automatización sin usuario — ver 0153_ai_gate_family.sql).
+// El AUTH del webhook (token de familia) sigue siendo obligatorio y va SIEMPRE antes: ai_gate_family nunca lo
+// sustituye, solo decide si esa familia YA autenticada puede gastar una llamada de IA ahora mismo. Si no puede
+// (apagado, tope diario...), el ticket se guarda igual, sin leer — mismo comportamiento de siempre cuando
+// Gemini fallaba: nunca se pierde el archivo por un fallo de lectura. El prompt y el parseo son los mismos de
+// analyze-receipt-photo, compartidos desde _shared/ai/purposes/receiptPhoto.ts (un solo sitio, no dos copias).
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -23,27 +35,6 @@ const CORS_HEADERS = {
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } })
-}
-
-// gemini-flash-lite-latest da 1500 peticiones/día gratis, pero solo 15 por
-// MINUTO — compartidas entre las funciones que usan IA. Mismo reintento
-// que analyze-receipt-photo.
-async function fetchGeminiWithRetry(model: string, key: string, body: unknown): Promise<Response> {
-  const delaysMs = [4000, 8000]
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-    )
-    if (res.status !== 429 || attempt >= delaysMs.length) return res
-    await new Promise((r) => setTimeout(r, delaysMs[attempt]))
-  }
-}
-
-interface ReceiptItem {
-  name: string
-  quantity: number
-  price: number
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -79,6 +70,7 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
+    // 1) Autenticar el webhook (token -> familia). SIEMPRE antes de tocar la IA.
     const { data: family, error: familyError } = await admin
       .from("families")
       .select("id")
@@ -88,86 +80,52 @@ Deno.serve(async (req) => {
     if (!family) return json({ error: "invalid token" }, 401)
     const familyId = family.id
 
-    const { data: geminiKey, error: keyError } = await admin.rpc("get_app_secret", { p_name: "gemini_api_key" })
-    if (keyError || !geminiKey) return json({ error: "service not configured" }, 500)
-
-    const geminiRes = await fetchGeminiWithRetry("gemini-flash-lite-latest", geminiKey, {
-      contents: [
-        {
-          parts: [
-            {
-              text:
-                "Lee este ticket de compra español y extrae sus datos. Responde ÚNICAMENTE un objeto JSON " +
-                "con esta forma exacta, sin texto adicional ni markdown:\n" +
-                '{"store": "nombre del establecimiento o null", "date": "YYYY-MM-DD o null", ' +
-                '"total": numero_o_null, "items": [{"name": "producto", "quantity": numero, "price": numero}]}\n' +
-                "Incluye en items TODAS las líneas de producto que veas, una por cada producto comprado " +
-                "(no líneas de total, subtotal, IVA, cambio o forma de pago). " +
-                "IMPORTANTE — nunca calcules ni multipliques tú los números: usa siempre el importe en euros " +
-                "que aparece IMPRESO como el pagado por esa línea (normalmente el último número de la línea, " +
-                "el más a la derecha). Hay cuatro formatos típicos, y 'quantity' significa cosas distintas en cada uno:\n" +
-                "1) Línea simple, un solo precio (p. ej. 'Pan 1,80'): quantity=1, price=el precio impreso.\n" +
-                "2) Varias unidades del mismo producto, con cantidad ENTERA al principio (p. ej. " +
-                "'2 Bolsa patatas 3,00 6,00'): quantity=2 (el número entero de unidades), price=6.00 " +
-                "(el importe TOTAL de la línea, el último número), NUNCA el precio unitario (3,00).\n" +
-                "3) Ticket con columnas CANT | DESCRIPCION | PVP | TOTAL: la columna CANT suele venir " +
-                "escrita con coma y dos decimales AUNQUE sea un número entero de unidades (p. ej. " +
-                "'3,00  CERVEZA ESTRELLA  1,10  3,30' significa 3 unidades a 1,10€ cada una, 3,30€ en total) — " +
-                "quantity=el número de la columna CANT redondeado a entero (3, no 3,00), price=el importe de " +
-                "la columna TOTAL (el último número, 3,30), NUNCA el de la columna PVP (1,10, ese es el precio " +
-                "de una sola unidad, no lo uses como price). No confundas esta columna CANT con un precio: si " +
-                "el ticket tiene columnas CANT/PVP/TOTAL, el primer número de la línea es SIEMPRE cantidad, " +
-                "nunca dinero.\n" +
-                "4) Producto vendido por PESO, con un peso en kg y un precio por kg (p. ej. " +
-                "'Solomillo cerdo — 0,495 kg x 10,25 €/kg — 5,07'): esto NO es una cantidad de unidades — " +
-                "usa quantity=1 y price=el importe final en euros realmente cobrado (5,07 en ese ejemplo), " +
-                "IGNORA el peso en kg y el precio por kg, no los uses para calcular nada.\n" +
-                "Si tienes cualquier duda sobre una línea, usa quantity=1 y el último número en euros de la " +
-                "línea como price — es preferible eso a inventar una cantidad. Los precios en euros, como " +
-                "número con punto decimal.",
-            },
-            { inline_data: { mime_type: mimeType, data: fileBase64 } },
-          ],
-        },
-      ],
-    })
-
-    if (!geminiRes.ok) {
-      const detail = await geminiRes.text()
-      return json({ error: "gemini_error", detail }, 502)
-    }
-
-    const geminiJson = await geminiRes.json()
-    const rawText: string = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}"
-
+    // 2) ¿Puede esta familia gastar una llamada de IA ahora mismo? Si no, se sigue igual: el ticket se
+    // guarda sin leer (fecha de hoy, sin importe ni productos), nunca se pierde el archivo.
     let date: string | null = null
     let total: number | null = null
-    let items: ReceiptItem[] = []
-    try {
-      const cleaned = rawText.replace(/```json|```/g, "").trim()
-      const parsed = JSON.parse(cleaned)
-      date = typeof parsed.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) ? parsed.date : null
-      total = typeof parsed.total === "number" ? parsed.total : null
-      if (Array.isArray(parsed.items)) {
+    let items: ReceiptPhotoItem[] = []
+    const { data: gate, error: gateError } = await admin.rpc("ai_gate_family", {
+      p_family: familyId,
+      p_purpose: "mercadona-ticket-webhook",
+    })
+    const gateAllowed = !gateError && gate?.allowed === true
+    if (gateError) console.error("[mercadona-ticket-webhook] ai_gate_family no disponible, se sigue sin leer con IA:", gateError.message)
+
+    if (gateAllowed) {
+      const providerName = typeof gate.provider === "string" && gate.provider ? gate.provider : "gemini"
+      const model = typeof gate.model === "string" && gate.model ? gate.model : "gemini-flash-lite-latest"
+      const { data: geminiKey, error: keyError } = await admin.rpc("get_app_secret", { p_name: secretNameFor(providerName) })
+      if (keyError || !geminiKey) return json({ error: "service not configured" }, 500)
+
+      let tokensIn = 0
+      let tokensOut = 0
+      let aiFailed = false
+      try {
+        const provider = createProvider(providerName, geminiKey)
+        const result = await provider.generate({
+          model,
+          parts: receiptPhotoSpec.buildParts({ imageBase64: fileBase64, mimeType }),
+          maxOutputTokens: receiptPhotoSpec.maxOutputTokens,
+        })
+        tokensIn = result.tokensIn
+        tokensOut = result.tokensOut
+        const parsed = parseReceiptPhotoOutput(result.text)
+        date = parsed.date
+        total = parsed.total
         items = parsed.items
-          .filter(
-            (it: unknown): it is { name: unknown; quantity: unknown; price: unknown } =>
-              typeof it === "object" && it !== null,
-          )
-          .map((it: { name: unknown; quantity: unknown; price: unknown }) => {
-            const quantity = typeof it.quantity === "number" ? it.quantity : Number(it.quantity)
-            return {
-              name: typeof it.name === "string" ? it.name : "",
-              quantity: Number.isFinite(quantity) && quantity > 0 ? Math.round(quantity) : 1,
-              price: typeof it.price === "number" ? it.price : Number(it.price),
-            }
-          })
-          .filter((it: ReceiptItem) => it.name.trim() && Number.isFinite(it.price))
-          .slice(0, 200)
+      } catch (err) {
+        aiFailed = true
+        console.error("[mercadona-ticket-webhook] fallo del proveedor:", err instanceof AiProviderError ? err.status : "unknown")
       }
-    } catch {
-      // Se guarda el ticket igualmente (foto/PDF + fecha de hoy si no se
-      // pudo leer), para no perder el archivo aunque falle la lectura.
+      const { error: usageError } = await admin.rpc("ai_record_usage", {
+        p_family: familyId,
+        p_purpose: "mercadona-ticket-webhook",
+        p_tokens_in: tokensIn,
+        p_tokens_out: tokensOut,
+        p_error: aiFailed,
+      })
+      if (usageError) console.error("[mercadona-ticket-webhook] no se pudo anotar el uso:", usageError.message)
     }
 
     const receiptDate = date ?? new Date().toISOString().slice(0, 10)

@@ -1,5 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { createProvider, secretNameFor } from "../_shared/ai/providers.ts"
+import { AiProviderError } from "../_shared/ai/types.ts"
+import { eventFromEmailSpec, type EventFromEmailOutput } from "../_shared/ai/purposes/eventFromEmail.ts"
 
 // Reenviar correo → evento en el calendario (petición real: "Reenviar
 // correo... reenvía correos, PDF y mucho más, y crearemos los eventos
@@ -13,6 +16,13 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 // Si Gemini no encuentra una fecha con la que quedarse tranquilo, NO
 // se inventa un evento — se devuelve sin crear nada (mismo principio
 // que el resto de la app: no inventar datos que no están claros).
+//
+// FASE 7.1 (F7-001) — antes llamaba a Gemini directamente, sin ningún control (ni interruptor, ni tope
+// diario, ni registro de uso). Ahora pasa por ai_gate_family (mismas reglas que ai_gate, EXCEPTO la
+// comprobación de cuenta adulta, que no aplica a una automatización sin usuario — ver 0153_ai_gate_family.sql).
+// El AUTH del webhook (token de familia) sigue siendo obligatorio y va SIEMPRE antes: ai_gate_family nunca lo
+// sustituye. Si la familia no puede gastar una llamada de IA ahora mismo, no se crea ningún evento (igual que
+// si Gemini no encontrara una fecha clara) — nunca un error del webhook por eso.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -26,36 +36,20 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } })
 }
 
-async function fetchGeminiWithRetry(model: string, key: string, body: unknown): Promise<Response> {
-  const delaysMs = [4000, 8000]
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-    )
-    if (res.status !== 429 || attempt >= delaysMs.length) return res
-    await new Promise((r) => setTimeout(r, delaysMs[attempt]))
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS })
 
   try {
     const body = await req.json()
     const token: string | null = typeof body.token === "string" ? body.token : null
-    const subject: string = typeof body.subject === "string" ? body.subject : ""
-    const bodyText: string = typeof body.bodyText === "string" ? body.bodyText : ""
-    const receivedDate: string =
-      typeof body.receivedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.receivedDate)
-        ? body.receivedDate
-        : new Date().toISOString().slice(0, 10)
+    const read = eventFromEmailSpec.readInput(typeof body === "object" && body !== null ? body : {})
 
     if (!token) return json({ error: "missing token" }, 401)
-    if (!subject && !bodyText) return json({ error: "missing subject/bodyText" }, 400)
+    if (!read.ok) return json({ error: read.error }, 400)
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
+    // 1) Autenticar el webhook (token -> familia). SIEMPRE antes de tocar la IA.
     const { data: family, error: familyError } = await admin
       .from("families")
       .select("id")
@@ -65,56 +59,57 @@ Deno.serve(async (req) => {
     if (!family) return json({ error: "invalid token" }, 401)
     const familyId = family.id
 
-    const { data: geminiKey, error: keyError } = await admin.rpc("get_app_secret", { p_name: "gemini_api_key" })
+    // 2) ¿Puede esta familia gastar una llamada de IA ahora mismo? Si no, no se crea ningún evento — igual
+    // que si Gemini no encontrara una fecha clara, nunca un error.
+    const { data: gate, error: gateError } = await admin.rpc("ai_gate_family", {
+      p_family: familyId,
+      p_purpose: eventFromEmailSpec.purpose,
+    })
+    if (gateError) console.error("[import-event-email-webhook] ai_gate_family no disponible, se sigue sin leer con IA:", gateError.message)
+    if (gateError || gate?.allowed !== true) {
+      return json({ ok: true, created: false, reason: gate?.allowed === false ? String(gate.reason ?? "ai_not_allowed") : "ai_not_allowed" })
+    }
+
+    const providerName = typeof gate.provider === "string" && gate.provider ? gate.provider : "gemini"
+    const model = typeof gate.model === "string" && gate.model ? gate.model : "gemini-flash-lite-latest"
+    const { data: geminiKey, error: keyError } = await admin.rpc("get_app_secret", { p_name: secretNameFor(providerName) })
     if (keyError || !geminiKey) return json({ error: "service not configured" }, 500)
 
-    const geminiRes = await fetchGeminiWithRetry("gemini-flash-lite-latest", geminiKey, {
-      contents: [
-        {
-          parts: [
-            {
-              text:
-                `Hoy es ${receivedDate}. Lee este correo (boletín escolar, confirmación de reserva, ` +
-                "recordatorio de una cita...) y decide si describe UN evento con fecha concreta al que " +
-                "apuntarse en un calendario. Responde ÚNICAMENTE un objeto JSON con esta forma exacta, " +
-                "sin texto adicional ni markdown:\n" +
-                '{"found": true_o_false, "title": "texto corto o null", "date": "YYYY-MM-DD o null", ' +
-                '"allDay": true_o_false, "startTime": "HH:MM o null", "endTime": "HH:MM o null", ' +
-                '"location": "texto o null"}\n' +
-                'Pon "found":false si el correo no tiene una fecha concreta y clara (por ejemplo, es ' +
-                "publicidad, una factura sin evento, o solo habla en general). Nunca inventes una fecha u " +
-                "hora que no esté explícita o fácilmente deducible del texto (p. ej. \"mañana\", \"el " +
-                "viernes que viene\" sí se puede calcular a partir de hoy). Si el correo da hora de inicio " +
-                "pero no de fin, deja endTime a null y allDay a false. Si es un evento de todo el día " +
-                "(vacaciones, día no lectivo...), pon allDay true y deja startTime/endTime a null.\n\n" +
-                `Asunto: ${subject}\n\nCuerpo:\n${bodyText.slice(0, 6000)}`,
-            },
-          ],
-        },
-      ],
+    let parsed: EventFromEmailOutput = { found: false, title: null, date: null, allDay: false, startTime: null, endTime: null, location: null }
+    let tokensIn = 0
+    let tokensOut = 0
+    let aiFailed = false
+    try {
+      const provider = createProvider(providerName, geminiKey)
+      const result = await provider.generate({
+        model,
+        parts: eventFromEmailSpec.buildParts(read.input),
+        maxOutputTokens: eventFromEmailSpec.maxOutputTokens,
+      })
+      tokensIn = result.tokensIn
+      tokensOut = result.tokensOut
+      parsed = eventFromEmailSpec.parseOutput(result.text, read.input)
+    } catch (err) {
+      aiFailed = true
+      console.error("[import-event-email-webhook] fallo del proveedor:", err instanceof AiProviderError ? err.status : "unknown")
+    }
+    const { error: usageError } = await admin.rpc("ai_record_usage", {
+      p_family: familyId,
+      p_purpose: eventFromEmailSpec.purpose,
+      p_tokens_in: tokensIn,
+      p_tokens_out: tokensOut,
+      p_error: aiFailed,
     })
+    if (usageError) console.error("[import-event-email-webhook] no se pudo anotar el uso:", usageError.message)
 
-    if (!geminiRes.ok) {
-      const detail = await geminiRes.text()
-      return json({ error: "gemini_error", detail }, 502)
+    if (!parsed.found || !parsed.date) {
+      return json({ ok: true, created: false, reason: aiFailed ? "ai_provider_error" : "no_clear_event" })
     }
 
-    const geminiJson = await geminiRes.json()
-    const rawText: string = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}"
-    const cleaned = rawText.replace(/```json|```/g, "").trim()
-    const parsed = JSON.parse(cleaned)
-
-    if (!parsed.found || typeof parsed.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) {
-      return json({ ok: true, created: false, reason: "no_clear_event" })
-    }
-
-    const title = typeof parsed.title === "string" && parsed.title.trim() ? parsed.title.trim() : subject || "Evento importado"
-    const allDay = parsed.allDay === true || typeof parsed.startTime !== "string"
-    const startAt = allDay
-      ? new Date(`${parsed.date}T00:00:00`).toISOString()
-      : new Date(`${parsed.date}T${parsed.startTime}:00`).toISOString()
-    const endAt =
-      !allDay && typeof parsed.endTime === "string" ? new Date(`${parsed.date}T${parsed.endTime}:00`).toISOString() : null
+    const title = parsed.title ?? (read.input.subject || "Evento importado")
+    const allDay = parsed.allDay
+    const startAt = allDay ? new Date(`${parsed.date}T00:00:00`).toISOString() : new Date(`${parsed.date}T${parsed.startTime}:00`).toISOString()
+    const endAt = !allDay && parsed.endTime ? new Date(`${parsed.date}T${parsed.endTime}:00`).toISOString() : null
 
     const { data: event, error: eventError } = await admin
       .from("calendar_events")
@@ -124,7 +119,7 @@ Deno.serve(async (req) => {
         start_at: startAt,
         end_at: endAt,
         all_day: allDay,
-        location_label: typeof parsed.location === "string" ? parsed.location : null,
+        location_label: parsed.location,
         note: "Importado reenviando un correo.",
       })
       .select("id")

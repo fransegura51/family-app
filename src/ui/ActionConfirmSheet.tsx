@@ -15,7 +15,11 @@ export function ActionConfirmSheet({
   onReply,
 }: {
   proposal: ActionProposal
-  onDone: (message: string) => void
+  // FASE 7.1 (F7-003) — `opts.speak` distingue quién ha confirmado: al pulsar el botón, nadie más va a decir
+  // el mensaje, así que aquí se debe hablar (speak=true, o el parámetro ausente). Al confirmar por voz/texto
+  // dentro de la tarjeta (registerDialog más abajo), quien llama (VoiceCapture) YA va a decir el mismo mensaje
+  // que devuelve handleDialogReply — hablar aquí también lo duplicaría (se leía dos veces seguidas).
+  onDone: (message: string, opts?: { speak?: boolean }) => void
   onCancel: () => void
   // Solo "Hablar con PEPA": permite responder a la tarjeta escribiendo o hablando.
   onReply?: (text: string) => Promise<string | null>
@@ -36,14 +40,14 @@ export function ActionConfirmSheet({
 
   // Confirma con lo que hay elegido ahora mismo. El candado evita dos confirmaciones
   // a la vez (doble toque, o botón + voz).
-  async function confirmNow(): Promise<string | null> {
+  async function confirmNow(opts: { speak?: boolean } = {}): Promise<string | null> {
     if (lockRef.current) return null
     lockRef.current = true
     setBusy(true)
     setError(null)
     try {
       const message = await proposal.confirm(selection)
-      onDone(message)
+      onDone(message, opts)
       return message
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -62,7 +66,9 @@ export function ActionConfirmSheet({
     return registerDialog(() => ({
       kind: 'action-card',
       actionId: proposal.actionId,
-      confirm: () => latest.current.confirmNow(),
+      // speak:false — quien procesa esta respuesta (VoiceCapture) ya dice el mensaje que devuelve esta
+      // llamada; que ActionConfirmSheet lo dijera también sería la misma frase dos veces seguidas (F7-003).
+      confirm: () => latest.current.confirmNow({ speak: false }),
       cancel: () => {
         latest.current.onCancel()
         return 'Vale, no lo guardo.'

@@ -88,6 +88,14 @@ describe('respuesta a la pregunta de tienda', () => {
   it('una frase larga no relacionada no se toma por tienda', () => {
     expect(ask('qué tengo mañana en el calendario por favor')).toBeNull()
   })
+
+  // FASE 7.1 (F7-002) — una pregunta real que solo MENCIONA una tienda registrada no se confunde con la
+  // respuesta a "¿en qué tienda?": antes se tragaba la pregunta y elegía esa tienda para la tarjeta pendiente.
+  it('una pregunta real que menciona una tienda registrada no se toma por la respuesta (F7-002)', () => {
+    expect(ask('cuánto hemos gastado en Mercadona este mes')).toBeNull()
+    expect(ask('¿Qué tenemos que comprar en Aldi?')).toBeNull()
+    expect(ask('cuánto gastamos el mes pasado en Mercadona')).toBeNull()
+  })
 })
 
 describe('lo que NO es una respuesta', () => {

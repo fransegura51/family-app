@@ -1431,9 +1431,11 @@ export function VoiceCapture() {
             forgetRecentRecipes()
           }}
           onReply={replyFromSheet}
-          onSaved={(savedMessage) => {
+          onSaved={(savedMessage, opts) => {
             setStatus('done')
-            void output.say(savedMessage)
+            // FASE 7.1 (F7-003) — speak:false llega al guardar la receta por voz/texto: replyFromSheet/
+            // processText ya dicen este mismo mensaje, así que aquí no se repite.
+            if (opts?.speak !== false) void output.say(savedMessage)
             showToast(`✅ ${savedMessage}`, 4000)
           }}
           onFollowUp={(outcome) => {
@@ -1467,12 +1469,15 @@ export function VoiceCapture() {
             if (proposalFromTalk) forgetRecentRecipes()
             setProposalFromTalk(false)
           }}
-          onDone={(doneMessage) => {
+          onDone={(doneMessage, opts) => {
             setPendingProposal(null)
             if (proposalFromTalk) forgetRecentRecipes()
             setProposalFromTalk(false)
             setStatus('done')
-            void output.say(doneMessage)
+            // FASE 7.1 (F7-003) — speak:false llega cuando se ha confirmado por voz/texto dentro de la
+            // tarjeta: replyFromSheet/processText ya van a decir este mismo mensaje, así que aquí no se
+            // repite (antes se oía dos veces seguidas al confirmar por voz).
+            if (opts?.speak !== false) void output.say(doneMessage)
             showToast(`✅ ${doneMessage}`, 4000)
           }}
         />

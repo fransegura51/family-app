@@ -163,10 +163,11 @@ describe('28. no se reescribe PEPA 6D.2: solo se comparten los mismos helpers de
 
 describe('29/30. no banco, no migración, no cambios de datos', () => {
   it('sin migración posterior a 0152 (6D.0): 0 migraciones nuevas en 6D.2/6D.3', () => {
+    // 0153 (ai_gate_family) es de la Fase 7.1 (F7-001), no de 6D.2/6D.3 — autorizada aparte, no rompe esta guarda.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(152)
+    expect(Math.max(...numbers)).toBe(153)
   })
   it('sin tocar el sync bancario ni sus reglas de detección', () => {
     const bank = FUNCTIONS['/supabase/functions/enable-banking-sync-transactions/index.ts']

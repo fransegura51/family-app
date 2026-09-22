@@ -186,8 +186,8 @@ describe('TRIESTADO (6C.2B): clase conocida manda; sin clase y sin evidencia = D
     expect(isFoodPurchase({ productId: 'x', receiptId: 'r1' }, new Set())).toBe(false)
   })
 
-  it.todo('Q. pedido Amazon sin categoría fiable → pendiente de clasificar (webhook: 6C.2D)')
-  it.todo('R. el usuario clasifica un pendiente → clasificado (6C.2C)')
+  // Q y R (pedido Amazon → pendiente; el usuario lo clasifica) se resuelven en la Fase 6C.2D: guard sobre el webhook en
+  // src/data/amazonPendingMigration.test.ts y flujo completo de classify_purchase en src/domain/pendingSemantics.test.ts.
 })
 
 // ── Las cadenas se leen de la propia migración (lo que de verdad se siembra) ──

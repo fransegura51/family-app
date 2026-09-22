@@ -161,12 +161,13 @@ describe('interfaz: la categoría de una compra solo cambia por classify_purchas
     expect(FORM).toContain("<tr><td>⏳ ${PENDING_LABEL}</td>")
   })
 
-  it('nada clasifica productos: la RPC y su cliente no mencionan products/non_food; ningún productor automático genera NULL', () => {
+  it('nada clasifica productos: la RPC y su cliente no mencionan products/non_food; solo Amazon (6C.2D) genera NULL, y ningún webhook llama a classify_purchase', () => {
     expect(APP['/src/data/classifyPurchase.ts']).not.toMatch(/products|non_food|class_confirmed/i)
     for (const [file, text] of Object.entries(FUNCTIONS)) {
       if (!/enable-banking|amazon-order|mercadona-ticket/.test(file)) continue
-      expect(text, file).not.toMatch(/category:\s*null/)
-      expect(text, file).not.toContain('classify_purchase')
+      if (!/amazon-order/.test(file)) expect(text, file).not.toMatch(/category:\s*null/)
+      const code = text.replace(/\/\/[^\n]*/g, '') // classify_purchase se menciona solo en el comentario explicativo del webhook de Amazon
+      expect(code, file).not.toContain('classify_purchase')
     }
     // el formulario de ticket NUEVO sigue con su categoría de siempre
     expect(FORM).toContain("useState(receipt ? (receipt.category ?? '') : 'Alimentación')")

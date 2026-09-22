@@ -9,9 +9,14 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 // en vez de un login. Guarda lo mismo que "Subir ticket" a mano
 // (receipt + gasto real + product_prices por producto, con receipt_id
 // para que el borrado en cascada funcione igual), para que un pedido de
-// Amazon aparezca en Tickets/Historial/Gastos sin duplicar lógica —
-// categoría "Amazon" propia, fuera de los presupuestos por ahora
-// (petición real: no mezclarlo con Alimentación ni Generales todavía).
+// Amazon aparezca en Tickets/Historial/Gastos sin duplicar lógica.
+//
+// FASE 6C.2D — Amazon es una TIENDA (store), no una categoría financiera: un pedido nuevo no tiene evidencia financiera fiable (puede
+// mezclar comida, ropa, electrónica...), así que category queda NULL en el gasto y en el ticket — «Pendiente de clasificar», el mismo
+// estado que ya entiende toda la app (Fase 6C.2A/B/C). Nunca un fallback inventado ("Amazon", "Otros", "Regalos y compras varias",
+// "Alimentación"): eso sería fingir una certeza financiera que no existe. La familia lo clasifica desde Economía (classify_purchase),
+// que cambia el gasto y el ticket juntos. La clase de cada PRODUCTO es independiente (domain/products.ts, resolvePurchaseNature) y no
+// cambia por esto: la tienda nunca decide si algo es comida o no.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -93,7 +98,8 @@ Deno.serve(async (req) => {
           family_id: familyId,
           expense_date: orderDate,
           amount: total,
-          category: "Amazon",
+          // Pendiente de clasificar: ver nota de cabecera. Nunca el texto "Pendiente de clasificar" en la columna, solo NULL.
+          category: null,
           store: "Amazon",
           kind: "real",
           notes: itemsConcept ?? orderConcept,
@@ -115,7 +121,7 @@ Deno.serve(async (req) => {
         total_amount: total,
         expense_id: expenseId,
         notes: orderNumber ? `Pedido ${orderNumber}` : null,
-        category: "Amazon",
+        category: null,
       })
       .select("id")
       .single()

@@ -148,9 +148,9 @@ describe('NINGÚN productor genera NULL todavía (6C.2A no cambia el comportamie
     expect(BANK).not.toMatch(/category:\s*null/)
   })
 
-  it('el webhook de Amazon sigue escribiendo la categoría literal «Amazon» (gasto y ticket) — no se toca hasta la 6C.2D', () => {
-    expect((AMAZON.match(/category: "Amazon"/g) ?? []).length).toBe(2)
-    expect(AMAZON).not.toMatch(/category:\s*null/)
+  it('el webhook de Amazon deja de usar la categoría literal «Amazon»: escribe NULL (Fase 6C.2D)', () => {
+    expect(AMAZON).not.toMatch(/category:\s*"Amazon"/)
+    expect((AMAZON.match(/category: null,/g) ?? []).length).toBe(2)
   })
 
   it('el webhook de Mercadona sigue escribiendo «Alimentación» (gasto y ticket)', () => {
@@ -158,10 +158,10 @@ describe('NINGÚN productor genera NULL todavía (6C.2A no cambia el comportamie
     expect(MERCADONA).not.toMatch(/category:\s*null/)
   })
 
-  it('ninguna capa que escribe gastos o tickets (datos, importadores y webhooks) escribe category: null', () => {
+  it('salvo el webhook de Amazon (Fase 6C.2D, con evidencia insuficiente por diseño), ninguna otra capa escribe category: null', () => {
     const writers = ['/src/data/finance.ts', '/src/data/receipts.ts', '/src/data/bank.ts']
       .map((f) => [f, APP[f]] as const)
-      .concat(Object.entries(FUNCTIONS).filter(([f]) => /enable-banking|amazon-order|mercadona-ticket/.test(f)))
+      .concat(Object.entries(FUNCTIONS).filter(([f]) => /enable-banking|mercadona-ticket/.test(f)))
       .filter(([, t]) => t && /\bcategory:\s*null\b/.test(t))
     expect(writers.map(([f]) => f)).toEqual([])
   })

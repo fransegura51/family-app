@@ -81,21 +81,29 @@ describe('vencimiento vs fecha prevista de pago', () => {
 })
 
 describe('recurrencia amigable (nunca se pide escribir RRULE)', () => {
-  it('usa buildForecastRecurrenceRule/parseForecastRecurrenceOption del dominio, con las 6 opciones pedidas', () => {
-    expect(FS).toContain('buildForecastRecurrenceRule')
-    expect(FS).toContain('parseForecastRecurrenceOption')
-    for (const label of ['No se repite', 'Mensual', 'Cada 3 meses', 'Cada 6 meses', 'Anual', 'Personalizado']) {
+  it('usa buildRecurrenceRuleFromFormState/parseRecurrenceRuleToFormState (Fase 1D-b) del dominio, con las opciones pedidas', () => {
+    expect(FS).toContain('buildRecurrenceRuleFromFormState')
+    expect(FS).toContain('parseRecurrenceRuleToFormState')
+    for (const label of ['Mensual', 'Cada 3 meses', 'Cada 6 meses', 'Anual', 'Personalizado', '¿Se repite?', '¿Hasta cuándo?', 'Número de cuotas']) {
       expect(FS).toContain(label)
     }
   })
 
-  it('"Personalizado" solo expone frecuencia + intervalo + fin — nada de un editor RRULE', () => {
-    const idx = FS.indexOf("recurrenceOption === 'custom' && (")
+  it('"Personalizado" solo expone frecuencia + intervalo — nada de un editor RRULE, ni siquiera "Fin" (eso ahora es "¿Hasta cuándo?", independiente de la frecuencia)', () => {
+    const idx = FS.indexOf("freqOption === 'custom' && (")
     expect(idx).toBeGreaterThan(-1)
-    const block = FS.slice(idx, idx + 900)
-    expect(block).toContain('Frecuencia')
+    const block = FS.slice(idx, idx + 400)
+    expect(block).toContain('Cada cuánto')
     expect(block).toContain('Cada')
-    expect(block).toContain('Fin (opcional)')
+    expect(block).not.toContain('Fin (opcional)') // "Fin" ya no vive dentro de "Personalizado": es "¿Hasta cuándo?", para cualquier frecuencia
+  })
+
+  it('"¿Hasta cuándo?" es una pregunta aparte, con "Número de cuotas" calculando UNTIL solo (nunca se pide al usuario)', () => {
+    expect(FS).toContain('¿Hasta cuándo?')
+    expect(FS).toContain('Hasta que lo desactive')
+    expect(FS).toContain('Fecha concreta')
+    expect(FS).not.toMatch(/>\s*UNTIL\s*</)
+    expect(FS).not.toContain('>RRULE<')
   })
 })
 
@@ -165,6 +173,83 @@ describe('Ayuda actualizada (misma fase, mismo commit)', () => {
     const dineroBlock = AYUDA.slice(dineroIdx, AYUDA.indexOf("\n  ],", dineroIdx))
     expect(dineroBlock).toContain('Previsión de pagos')
     expect(dineroBlock).toContain('nunca se enseña como 0')
+  })
+})
+
+describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
+  it('reutiliza el puente de dominio (forecastInstallmentPlanForm.ts) — nunca calcula UNTIL/fechas a mano en el componente', () => {
+    expect(FS).toContain("from '@/domain/forecastInstallmentPlanForm'")
+    expect(FS).toContain('validateInstallmentCount')
+    expect(FS).toContain('INSTALLMENT_COUNT_MIN')
+    expect(FS).toContain('INSTALLMENT_COUNT_MAX')
+    expect(FS).toContain('formatSpanishDate')
+  })
+
+  it('los límites de validación son 2 y 60 (auditoría previa), no un número inventado en la UI', () => {
+    const module = APP['/src/domain/forecastInstallmentPlanForm.ts']
+    expect(module).toContain('export const INSTALLMENT_COUNT_MIN = 2')
+    expect(module).toContain('export const INSTALLMENT_COUNT_MAX = 60')
+  })
+
+  it('el mensaje de validación es humano, nunca jerga técnica (RRULE/UNTIL/FREQ/INTERVAL)', () => {
+    const module = APP['/src/domain/forecastInstallmentPlanForm.ts']
+    expect(module).toContain('El número de cuotas debe estar entre')
+    expect(module).not.toMatch(/RRULE/i)
+  })
+
+  it('la vista previa del plan usa expandForecastOccurrences (motor real), no un bucle de fechas hecho a mano', () => {
+    const idx = FS.indexOf('Vista previa del plan (Fase 1D-b)')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, FS.indexOf('return (', idx))
+    expect(block).toContain('expandForecastOccurrences(')
+    expect(block).not.toMatch(/setMonth|setDate|getMonth\(\)|getDate\(\)/) // sin aritmética de fechas manual en el componente
+  })
+
+  it('el total previsto se calcula con forecastTotals, no multiplicando importe × cuotas a mano en el JSX', () => {
+    expect(FS).toContain('forecastTotals(installmentPlanOccurrences)')
+  })
+
+  it('la previa NO se muestra para "Fecha concreta" — solo para "Número de cuotas" (alcance acotado a propósito)', () => {
+    const idx = FS.indexOf('installmentPlanPreviewCount != null && installmentPlanOccurrences.length > 0')
+    expect(idx).toBeGreaterThan(-1)
+    // installmentPlanRecurrenceRule solo se construye cuando untilMode === 'count'.
+    const ruleIdx = FS.indexOf('const installmentPlanRecurrenceRule =')
+    const ruleBlock = FS.slice(ruleIdx, ruleIdx + 300)
+    expect(ruleBlock).toContain("untilMode === 'count'")
+  })
+
+  it('la tarjeta de gestión de un plan finito muestra importe×cuotas, frecuencia y última cuota en español (DD/MM/YYYY)', () => {
+    expect(FS).toContain('cuotas')
+    expect(FS).toContain('Última cuota: ${formatSpanishDate(recurrenceForm.untilDate)}')
+  })
+
+  it('"N de M restantes" usa remainingInstallments/totalInstallments (Fase 1D-a) — nunca dice "pagadas"', () => {
+    const fnIdx = FS.indexOf('function renderManagementRow')
+    expect(fnIdx).toBeGreaterThan(-1)
+    const block = FS.slice(fnIdx, fnIdx + 3200)
+    expect(block).toContain('remainingInstallments(p, overrides, today)')
+    expect(block).toContain('{remaining} de {total} restantes')
+    // El JSX renderizado (no los comentarios del código, que SÍ explican legítimamente por qué nunca se
+    // afirma "pagada") no debe mostrar nunca esa palabra al usuario.
+    const jsxOnly = block.slice(block.indexOf('return ('))
+    expect(jsxOnly).not.toMatch(/\bpagad[ao]s?\b/i)
+  })
+
+  it('un pago único (totalInstallments=1) o una serie indefinida (totalInstallments=null) nunca se muestran como "plan"', () => {
+    expect(FS).toContain('total != null && total > 1')
+  })
+
+  it('el guardado sigue usando UNA fila de forecast_payments — no crea pagos independientes por cuota ni materializa forecast_occurrences en esta fase', () => {
+    const formIdx = FS.indexOf('function ForecastPaymentForm')
+    const submitIdx = FS.indexOf('async function handleSubmit', formIdx)
+    const submitEnd = FS.indexOf('\n  }\n', submitIdx)
+    const submitBody = FS.slice(submitIdx, submitEnd)
+    expect(submitBody).not.toMatch(/forecast_occurrences|upsertForecastOccurrenceOverride/)
+    // Una llamada de creación XOR una de actualización según la rama if/else — nunca ambas a la vez, y
+    // ninguna de las dos dentro de un bucle (serían pagos independientes por cuota, justo lo prohibido).
+    expect(submitBody.match(/createForecastPayment\(/g)?.length).toBe(1)
+    expect(submitBody.match(/updateForecastPayment\(/g)?.length).toBe(1)
+    expect(submitBody).not.toMatch(/\.map\([^)]*(createForecastPayment|updateForecastPayment)/)
   })
 })
 

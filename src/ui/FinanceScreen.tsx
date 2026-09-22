@@ -39,15 +39,16 @@ import {
   type ForecastPaymentWithReminders,
 } from '@/data/forecast'
 import {
-  buildForecastRecurrenceRule,
   expandForecastOccurrences,
   forecastByMonth,
   forecastTotals,
   formatForecastAmount,
   isForecastPaymentFinished,
-  parseForecastRecurrenceOption,
+  parseForecastRecurrenceRule,
+  remainingInstallments,
   stepDays,
   stepMonthsClamped,
+  totalInstallments,
   type ForecastAmountStatus,
   type ForecastCustomRecurrence,
   type ForecastOccurrence,
@@ -55,6 +56,14 @@ import {
   type ForecastRecurrenceOption,
   type ForecastReminderUnit,
 } from '@/domain/forecast'
+import {
+  buildRecurrenceRuleFromFormState,
+  formatSpanishDate,
+  INSTALLMENT_COUNT_MAX,
+  INSTALLMENT_COUNT_MIN,
+  parseRecurrenceRuleToFormState,
+  validateInstallmentCount,
+} from '@/domain/forecastInstallmentPlanForm'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import { getAccountsMode, getFinanceMonthStartDay, listFamilyMembers, type AccountsMode } from '@/data/family'
 import {
@@ -8354,7 +8363,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     const parent = payments.find((p) => p.id === o.forecastPaymentId)
     const category = categories.find((c) => c.id === o.categoryId)
     const sameDates = o.dueDate === o.expectedPaymentDate
-    const recurrenceLabel = parent?.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseForecastRecurrenceOption(parent.recurrenceRule).option] : ''
+    // parseRecurrenceRuleToFormState (Fase 1D-b) clasifica la frecuencia SIN mirar el UNTIL — así un
+    // plan finito ("FREQ=MONTHLY;UNTIL=...") sigue etiquetándose "Mensual", no "Personalizado".
+    const recurrenceLabel = parent?.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseRecurrenceRuleToFormState(parent.recurrenceRule, parent.dueDate).freqOption] : ''
     return (
       <div key={`${o.forecastPaymentId}-${o.occurrenceDate}`} className="card task-card">
         <div className="task-card-main">
@@ -8387,7 +8398,14 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     const overrides = overridesByPayment.get(p.id) ?? []
     const finished = isForecastPaymentFinished(p, overrides, today)
     const category = categories.find((c) => c.id === p.categoryId)
-    const recurrenceLabel = p.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseForecastRecurrenceOption(p.recurrenceRule).option] : ''
+    const recurrenceForm = p.recurrenceRule ? parseRecurrenceRuleToFormState(p.recurrenceRule, p.dueDate) : null
+    const recurrenceLabel = recurrenceForm ? RECURRENCE_SHORT_LABEL[recurrenceForm.freqOption] : ''
+    // Un plan finito de verdad (no un pago único —totalInstallments=1— ni una serie indefinida como
+    // Seguro Coche Ibiza —totalInstallments=null—): solo entonces se muestra la tarjeta compacta de plan.
+    const total = totalInstallments(p)
+    const isPlan = !!p.recurrenceRule && total != null && total > 1
+    // "N de M restantes" (Fase 1D-a): cuenta por fecha, nunca afirma que las pasadas están pagadas.
+    const remaining = isPlan ? remainingInstallments(p, overrides, today) : null
     return (
       <div key={p.id} className="card task-card">
         <div className="task-card-main">
@@ -8397,10 +8415,28 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
             {!p.active && <span className="muted"> · Desactivada</span>}
             {p.active && finished && <span className="muted"> · Finalizada</span>}
           </strong>
-          <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
-            Vence: {p.dueDate}
-            {recurrenceLabel ? ` · ${recurrenceLabel}` : ''}
-          </p>
+          {isPlan ? (
+            <>
+              <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
+                {p.amountStatus === 'unknown' ? 'Importe pendiente' : `${p.amountStatus === 'estimated' ? '≈ ' : ''}${formatForecastAmount(p.amount ?? 0, p.currency)}`} × {total}{' '}
+                cuotas
+              </p>
+              <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
+                {recurrenceLabel}
+                {recurrenceForm?.untilDate ? ` · Última cuota: ${formatSpanishDate(recurrenceForm.untilDate)}` : ''}
+              </p>
+              {remaining != null && (
+                <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                  {remaining} de {total} restantes
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
+              Vence: {p.dueDate}
+              {recurrenceLabel ? ` · ${recurrenceLabel}` : ''}
+            </p>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="link-button" onClick={() => setEditingPayment(p)}>
@@ -8557,7 +8593,6 @@ function ForecastPaymentForm({
   payment: ForecastPaymentWithReminders | null
   onSaved: () => void
 }) {
-  const initialRecurrence = parseForecastRecurrenceOption(payment?.recurrenceRule ?? null)
   const [title, setTitle] = useState(payment?.title ?? '')
   const [categoryName, setCategoryName] = useState(() => categories.find((c) => c.id === payment?.categoryId)?.name ?? '')
   const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? 'known')
@@ -8567,10 +8602,17 @@ function ForecastPaymentForm({
   const [dueDate, setDueDate] = useState(payment?.dueDate ?? '')
   const [hasExpectedPaymentDate, setHasExpectedPaymentDate] = useState(!!payment?.expectedPaymentDate)
   const [expectedPaymentDate, setExpectedPaymentDate] = useState(payment?.expectedPaymentDate ?? '')
-  const [recurrenceOption, setRecurrenceOption] = useState<ForecastRecurrenceOption>(initialRecurrence.option)
-  const [customFreq, setCustomFreq] = useState<ForecastCustomRecurrence['freq']>(initialRecurrence.custom?.freq ?? 'MONTHLY')
-  const [customInterval, setCustomInterval] = useState(String(initialRecurrence.custom?.interval ?? 1))
-  const [customUntil, setCustomUntil] = useState(initialRecurrence.custom?.until ?? '')
+  // Fase 1D-b: "¿Se repite?" / "Frecuencia" / "¿Hasta cuándo?" son 3 preguntas independientes — el
+  // estado inicial se reconstruye con parseRecurrenceRuleToFormState (domain/forecastInstallmentPlanForm.ts),
+  // que ya decide si un UNTIL guardado corresponde a "Número de pagos" o a una "Fecha concreta" suelta.
+  const initialRecurrence = parseRecurrenceRuleToFormState(payment?.recurrenceRule ?? null, payment?.dueDate ?? '')
+  const [repeats, setRepeats] = useState(initialRecurrence.repeats)
+  const [freqOption, setFreqOption] = useState<ForecastRecurrenceOption>(initialRecurrence.freqOption)
+  const [customFreq, setCustomFreq] = useState<ForecastCustomRecurrence['freq']>(initialRecurrence.customFreq)
+  const [customInterval, setCustomInterval] = useState(initialRecurrence.customInterval)
+  const [untilMode, setUntilMode] = useState<'forever' | 'count' | 'date'>(initialRecurrence.untilMode)
+  const [installmentCount, setInstallmentCount] = useState(initialRecurrence.installmentCount)
+  const [untilDate, setUntilDate] = useState(initialRecurrence.untilDate)
   const [reminders, setReminders] = useState<{ value: number; unit: ForecastReminderUnit }[]>(
     payment?.reminders.map((r) => ({ value: r.value, unit: r.unit })) ?? [],
   )
@@ -8624,10 +8666,16 @@ function ForecastPaymentForm({
       }
       amountValue = parsed
     }
-    const recurrenceRule = buildForecastRecurrenceRule(
-      recurrenceOption,
-      recurrenceOption === 'custom' ? { freq: customFreq, interval: Math.max(1, Math.round(Number(customInterval) || 1)), until: customUntil || null } : null,
-    )
+    let installmentCountValue: number | null = null
+    if (repeats && untilMode === 'count') {
+      const validated = validateInstallmentCount(installmentCount)
+      if (!validated.ok) {
+        setError(validated.message)
+        return
+      }
+      installmentCountValue = validated.count
+    }
+    const recurrenceRule = buildRecurrenceRuleFromFormState({ repeats, freqOption, customFreq, customInterval, untilMode, untilDate }, dueDate, installmentCountValue)
     setSaving(true)
     try {
       const input: ForecastPaymentInput = {
@@ -8661,6 +8709,38 @@ function ForecastPaymentForm({
       setSaving(false)
     }
   }
+
+  // Vista previa del plan (Fase 1D-b) — SOLO para "Número de cuotas" (el caso pedido: 6 cuotas de
+  // 141 €...): calculada con el motor determinista real (expandForecastOccurrences), nunca a mano en
+  // este componente. Para "Fecha concreta" no se muestra previa (una fecha suelta con una frecuencia
+  // corta podría generar cientos de filas) — decisión deliberada para no ampliar el alcance de esta fase.
+  const installmentPlanValidation = untilMode === 'count' ? validateInstallmentCount(installmentCount) : null
+  const installmentPlanPreviewCount = installmentPlanValidation?.ok ? installmentPlanValidation.count : null
+  const installmentPlanRecurrenceRule =
+    repeats && untilMode === 'count' && installmentPlanPreviewCount != null && dueDate
+      ? buildRecurrenceRuleFromFormState({ repeats, freqOption, customFreq, customInterval, untilMode, untilDate }, dueDate, installmentPlanPreviewCount)
+      : null
+  const installmentPlanUntil = installmentPlanRecurrenceRule ? parseForecastRecurrenceRule(installmentPlanRecurrenceRule)?.until ?? null : null
+  const installmentPlanOccurrences =
+    installmentPlanRecurrenceRule && installmentPlanUntil
+      ? expandForecastOccurrences(
+          {
+            id: 'preview',
+            title: title || 'Pago',
+            dueDate,
+            expectedPaymentDate: hasExpectedPaymentDate ? expectedPaymentDate || dueDate : null,
+            recurrenceRule: installmentPlanRecurrenceRule,
+            amountStatus,
+            amount: amountStatus === 'unknown' ? null : Number(amount) || 0,
+            currency,
+            categoryId: null,
+            active: true,
+          },
+          [],
+          dueDate,
+          installmentPlanUntil,
+        )
+      : []
 
   return (
     <form onSubmit={handleSubmit} className="member-form">
@@ -8725,36 +8805,96 @@ function ForecastPaymentForm({
         </label>
       )}
 
-      <label>
-        Recurrencia
-        <select value={recurrenceOption} onChange={(e) => setRecurrenceOption(e.target.value as ForecastRecurrenceOption)}>
-          {(Object.keys(RECURRENCE_OPTION_LABELS) as ForecastRecurrenceOption[]).map((o) => (
-            <option key={o} value={o}>
-              {RECURRENCE_OPTION_LABELS[o]}
-            </option>
-          ))}
-        </select>
+      <label className="checkbox-label">
+        <input type="checkbox" checked={repeats} onChange={(e) => setRepeats(e.target.checked)} />
+        ¿Se repite?
       </label>
-      {recurrenceOption === 'custom' && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <label style={{ flex: 1 }}>
+      {repeats && (
+        <>
+          <label>
             Frecuencia
-            <select value={customFreq} onChange={(e) => setCustomFreq(e.target.value as ForecastCustomRecurrence['freq'])}>
-              <option value="DAILY">Diaria</option>
-              <option value="WEEKLY">Semanal</option>
-              <option value="MONTHLY">Mensual</option>
-              <option value="YEARLY">Anual</option>
+            <select value={freqOption} onChange={(e) => setFreqOption(e.target.value as ForecastRecurrenceOption)}>
+              {(Object.keys(RECURRENCE_OPTION_LABELS) as ForecastRecurrenceOption[])
+                .filter((o) => o !== 'none')
+                .map((o) => (
+                  <option key={o} value={o}>
+                    {RECURRENCE_OPTION_LABELS[o]}
+                  </option>
+                ))}
             </select>
           </label>
-          <label style={{ width: 90 }}>
-            Cada
-            <input type="number" min="1" step="1" value={customInterval} onChange={(e) => setCustomInterval(e.target.value)} />
+          {freqOption === 'custom' && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ flex: 1 }}>
+                Cada cuánto
+                <select value={customFreq} onChange={(e) => setCustomFreq(e.target.value as ForecastCustomRecurrence['freq'])}>
+                  <option value="DAILY">Diaria</option>
+                  <option value="WEEKLY">Semanal</option>
+                  <option value="MONTHLY">Mensual</option>
+                  <option value="YEARLY">Anual</option>
+                </select>
+              </label>
+              <label style={{ width: 90 }}>
+                Cada
+                <input type="number" min="1" step="1" value={customInterval} onChange={(e) => setCustomInterval(e.target.value)} />
+              </label>
+            </div>
+          )}
+
+          <label>
+            ¿Hasta cuándo?
+            <select value={untilMode} onChange={(e) => setUntilMode(e.target.value as typeof untilMode)}>
+              <option value="forever">Hasta que lo desactive</option>
+              <option value="count">Número de cuotas</option>
+              <option value="date">Fecha concreta</option>
+            </select>
           </label>
-          <label style={{ flex: 1 }}>
-            Fin (opcional)
-            <input type="date" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)} />
-          </label>
-        </div>
+          {untilMode === 'count' && (
+            <label>
+              Número de cuotas
+              <input
+                type="number"
+                min={INSTALLMENT_COUNT_MIN}
+                max={INSTALLMENT_COUNT_MAX}
+                step="1"
+                value={installmentCount}
+                onChange={(e) => setInstallmentCount(e.target.value)}
+              />
+            </label>
+          )}
+          {untilMode === 'date' && (
+            <label>
+              Fecha final
+              <input type="date" value={untilDate} onChange={(e) => setUntilDate(e.target.value)} />
+            </label>
+          )}
+
+          {installmentPlanPreviewCount != null && installmentPlanOccurrences.length > 0 && (
+            <div className="card" style={{ padding: 12 }}>
+              <p style={{ margin: '0 0 4px', fontWeight: 600 }}>
+                {installmentPlanPreviewCount} cuotas
+                {amountStatus === 'unknown'
+                  ? ' — importe pendiente'
+                  : ` de ${amountStatus === 'estimated' ? '≈ ' : ''}${formatForecastAmount(Number(amount) || 0, currency)}`}
+              </p>
+              {amountStatus !== 'unknown' && (
+                <p className="muted" style={{ margin: '0 0 8px', fontSize: 13 }}>
+                  Total {amountStatus === 'estimated' ? 'previsto estimado' : 'previsto'}:{' '}
+                  {formatForecastAmount(forecastTotals(installmentPlanOccurrences)[0]?.knownPlusEstimatedTotal ?? 0, currency)}
+                </p>
+              )}
+              <p className="muted" style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 600 }}>
+                Plan de pagos
+              </p>
+              {installmentPlanOccurrences.map((o, i) => (
+                <p key={o.occurrenceDate} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                  {i + 1}/{installmentPlanOccurrences.length} — {o.amountStatus === 'unknown' ? 'Importe pendiente' : formatForecastAmount(o.amount ?? 0, o.currency)} —{' '}
+                  {formatSpanishDate(o.dueDate)}
+                </p>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <div>

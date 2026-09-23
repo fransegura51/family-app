@@ -12,6 +12,7 @@ const FS = APP['/src/ui/FinanceScreen.tsx']
 const ECONOMIA_MENU = APP['/src/state/economiaMenu.ts']
 const AYUDA = APP['/src/ui/AyudaScreen.tsx']
 const FS_DOMAIN_FORECAST = APP['/src/domain/forecast.ts']
+const RECURRENCE_DETECTION = APP['/src/domain/forecastRecurrenceDetection.ts']
 
 describe('entrada en el menú de Economía', () => {
   it('"Previsión de pagos" es una clave fija más, con su icono/nombre y en los pagos por defecto', () => {
@@ -558,5 +559,118 @@ describe('no se toca Hablar con PEPA en esta fase', () => {
     for (const [path, text] of Object.entries(talkFiles)) {
       expect(text.toLowerCase(), `${path} no debería mencionar forecast todavía`).not.toContain('forecast')
     }
+  })
+})
+
+describe('Fase 1D-g — posibles pagos recurrentes: sección discreta, propone, nunca crea', () => {
+  it('sección "💡 N posibles pagos recurrentes", colapsable como la de conciliación bancaria', () => {
+    expect(FS).toContain("💡 {recurrenceCandidates.length} posible")
+    expect(FS).toContain('setRecurrenceProposalsOpen((v) => !v)')
+    expect(FS).toContain('recurrenceProposalsOpen &&')
+  })
+
+  it('cada propuesta muestra importe habitual, base de la estimación y próximo cargo, con botones Revisar/No me interesa', () => {
+    const idx = FS.indexOf('{recurrenceCandidates.map((c) => {')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 2200)
+    expect(block).toContain('Importe habitual: ≈')
+    expect(block).toContain('c.estimatedBasisText')
+    expect(block).toContain('Próximo cargo estimado:')
+    expect(block).toContain('onClick={() => reviewRecurrenceCandidate(c)}')
+    expect(block).toContain('onClick={() => dismissRecurrenceCandidate(c)}')
+  })
+
+  it('usa findNewRecurrenceCandidates del dominio (motor determinista) — nunca recalcula la detección a mano en la pantalla', () => {
+    expect(FS).toContain(
+      'findNewRecurrenceCandidates(allBankMovementsForDetection, matchedExpenseIds, existingPaymentsForDedup, dismissedRecurrenceKeys)',
+    )
+  })
+
+  it('excluye transferencias internas con el mecanismo real ya existente (isInternalTransferCategory) — nunca una lista de comercios excluidos por nombre', () => {
+    const idx = FS.indexOf('const allBankMovementsForDetection')
+    const body = FS.slice(idx, FS.indexOf('const existingPaymentsForDedup', idx))
+    expect(body).toContain('isInternalTransferCategory(m.category, categories)')
+    expect(body).not.toMatch(/mercadona|hiperber|amazon/i)
+  })
+
+  it('la categoría de cada movimiento viene de un gasto real ya vinculado (expenseCategoryByExpenseId) — nunca duplica guessCategory', () => {
+    expect(FS).toContain('expenseCategoryByExpenseId.get(t.matchedExpenseId)')
+    expect(FS).not.toContain('function guessCategory')
+  })
+})
+
+describe('Fase 1D-g — "Revisar" reutiliza EXACTAMENTE el formulario existente, nunca un segundo formulario', () => {
+  it('solo existe UNA declaración de ForecastPaymentForm en todo el archivo', () => {
+    expect(FS.match(/function ForecastPaymentForm\(/g)?.length).toBe(1)
+  })
+
+  it('reviewRecurrenceCandidate abre el mismo showAddForm/modal que "Nuevo pago previsto" — no un modal paralelo', () => {
+    const idx = FS.indexOf('function reviewRecurrenceCandidate')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
+    expect(body).toContain('setEditingPayment(null)')
+    expect(body).toContain('setShowAddForm(true)')
+  })
+
+  it('el prefill nunca inventa relacionado con/recordatorios/notas — solo concepto, importe, categoría, fecha, recurrencia y cuenta', () => {
+    const idx = FS.indexOf('interface ForecastPaymentPrefill')
+    const body = FS.slice(idx, FS.indexOf('}', idx))
+    expect(body).toContain('title')
+    expect(body).toContain('amount')
+    expect(body).toContain('categoryName')
+    expect(body).toContain('dueDate')
+    expect(body).toContain('recurrenceRule')
+    expect(body).toContain('bankAccountId')
+    expect(body).not.toMatch(/ownerMemberId|reminders|notes/)
+  })
+
+  it('el importe SIEMPRE precarga como "Estimado" — un histórico idéntico nunca se vuelve "Conocido" automáticamente', () => {
+    expect(FS).toContain("useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? 'estimated' : 'known'))")
+  })
+
+  it('la recurrencia se reconstruye con parseRecurrenceRuleToFormState (el mismo motor de siempre) — nunca fija recurs/freqOption a mano por separado', () => {
+    expect(FS).toContain('parseRecurrenceRuleToFormState(payment?.recurrenceRule ?? prefill?.recurrenceRule ?? null, payment?.dueDate ?? prefill?.dueDate ?? \'\')')
+  })
+
+  it('cerrar el formulario (closeForm) limpia el prefill — reabrir "Nuevo pago previsto" a mano nunca arrastra una propuesta anterior', () => {
+    const idx = FS.indexOf('function closeForm')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
+    expect(body).toContain('setRecurrencePrefill(null)')
+  })
+
+  it('editar un pago YA existente nunca aplica el prefill de una propuesta (editingPayment manda)', () => {
+    expect(FS).toContain('prefill={editingPayment ? null : recurrencePrefill}')
+  })
+
+  it('la cuenta bancaria detectada precarga como "Cuenta prevista" (pedido explícito de la aprobación)', () => {
+    expect(FS).toContain("useState(payment?.bankAccountId ?? prefill?.bankAccountId ?? '')")
+  })
+})
+
+describe('Fase 1D-g — "No me interesa" persiste de verdad (nunca reaparece en cada carga)', () => {
+  it('dismissRecurrenceCandidate llama a dismissForecastRecurrence (persistencia real) y actualiza el estado local al momento', () => {
+    const idx = FS.indexOf('async function dismissRecurrenceCandidate')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
+    expect(body).toContain('await dismissForecastRecurrence(c.accountId, c.merchantKey)')
+    expect(body).toContain('setDismissedRecurrenceKeys')
+  })
+
+  it('los descartes se recargan desde la base de datos al entrar en Previsión de pagos (listForecastRecurrenceDismissals)', () => {
+    expect(FS).toContain('listForecastRecurrenceDismissals().then(setDismissedRecurrenceKeys)')
+  })
+})
+
+describe('Fase 1D-g — privacidad: ninguna IA/proveedor externo interviene en la detección', () => {
+  it('domain/forecastRecurrenceDetection.ts no importa ni llama a ningún proveedor de IA ni hace peticiones de red', () => {
+    // "ANTHROPIC" sí aparece en un comentario (COMPRA TARJ. ...ANTHROPIC* CLAUDE SUB-DUBLIN es un
+    // comercio REAL del histórico bancario de la familia, no una llamada a la API de Anthropic) — se
+    // comprueba la ausencia de un IMPORT o una LLAMADA real, no de la palabra suelta.
+    expect(RECURRENCE_DETECTION).not.toMatch(/^import .*(openai|gemini|aiGateway)/im)
+    expect(RECURRENCE_DETECTION).not.toContain('fetch(')
+    expect(RECURRENCE_DETECTION).not.toContain('aiGateway(')
+  })
+
+  it('FinanceScreen no pasa movimientos bancarios a ningún gateway de IA al detectar recurrencias', () => {
+    const idx = FS.indexOf('const recurrenceCandidates = findNewRecurrenceCandidates')
+    expect(idx).toBeGreaterThan(-1)
   })
 })

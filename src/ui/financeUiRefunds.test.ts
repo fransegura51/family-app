@@ -164,13 +164,14 @@ describe('28. no se reescribe PEPA 6D.2: solo se comparten los mismos helpers de
 describe('29/30. no banco, no migración, no cambios de datos', () => {
   it('sin migración posterior a 0152 (6D.0): 0 migraciones nuevas en 6D.2/6D.3', () => {
     // 0153 (ai_gate_family), 0154 (fix_recurring_reminder_occurrences), 0155 (forecast_payments),
-    // 0156 (forecast_payment_installments) y 0157 (forecast_reconciliation) son de fases posteriores
-    // (F7-001, el arreglo de avisos de calendario y Previsión de pagos Fases 1B/1D-c/1D-e), no de
-    // 6D.2/6D.3 — autorizadas aparte, no rompen esta guarda.
+    // 0156 (forecast_payment_installments), 0157 (forecast_reconciliation) y 0158
+    // (forecast_recurrence_dismissals) son de fases posteriores (F7-001, el arreglo de avisos de
+    // calendario y Previsión de pagos Fases 1B/1D-c/1D-e/1D-g), no de 6D.2/6D.3 — autorizadas aparte,
+    // no rompen esta guarda.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(157)
+    expect(Math.max(...numbers)).toBe(158)
   })
   it('sin tocar el sync bancario ni sus reglas de detección', () => {
     const bank = FUNCTIONS['/supabase/functions/enable-banking-sync-transactions/index.ts']

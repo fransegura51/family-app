@@ -31,9 +31,11 @@ import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTr
 import {
   createForecastPayment,
   deleteForecastPayment,
+  dismissForecastRecurrence,
   listAllMatchedForecastExpenseIds,
   listForecastOccurrenceOverrides,
   listForecastPayments,
+  listForecastRecurrenceDismissals,
   matchForecastOccurrence,
   replaceForecastPaymentInstallments,
   replaceForecastPlanOverrides,
@@ -45,6 +47,7 @@ import {
   type ForecastPaymentWithReminders,
 } from '@/data/forecast'
 import {
+  buildForecastRecurrenceRule,
   expandForecastOccurrences,
   forecastByMonth,
   forecastTotals,
@@ -70,6 +73,13 @@ import {
   type OccurrenceForMatching,
   type ReconciliationCandidate,
 } from '@/domain/forecastReconciliation'
+import {
+  findNewRecurrenceCandidates,
+  type BankMovementForDetection,
+  type ForecastPaymentForDedup,
+  type RecurrenceCandidate,
+  type RecurrencePeriodicity,
+} from '@/domain/forecastRecurrenceDetection'
 import {
   buildFinitePlanSubmission,
   buildRecurrenceRuleFromFormState,
@@ -8320,6 +8330,18 @@ const REMINDER_QUICK_OPTIONS: { label: string; value: number; unit: ForecastRemi
 ]
 const FORECAST_CURRENCY_OPTIONS = ['EUR', 'GBP', 'USD']
 
+// Fase 1D-g — periodicidad detectada (domain/forecastRecurrenceDetection.ts) -> {freq, interval} del
+// motor de recurrencia YA existente (domain/forecast.ts). Bimestral no tiene un freqOption predefinido
+// propio: buildForecastRecurrenceRule('custom', ...) + parseRecurrenceRuleToFormState ya reconstruyen
+// ese caso como "Personalizado" (Cada cuánto=Mensual, Cada=2) sin necesitar ningún código nuevo.
+const RECURRENCE_PERIODICITY_RRULE: Record<RecurrencePeriodicity, { freq: ForecastCustomRecurrence['freq']; interval: number }> = {
+  monthly: { freq: 'MONTHLY', interval: 1 },
+  bimonthly: { freq: 'MONTHLY', interval: 2 },
+  quarterly: { freq: 'MONTHLY', interval: 3 },
+  semiannual: { freq: 'MONTHLY', interval: 6 },
+  annual: { freq: 'YEARLY', interval: 1 },
+}
+
 function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [payments, setPayments] = useState<ForecastPaymentWithReminders[]>([])
   const [overridesByPayment, setOverridesByPayment] = useState<Map<string, ForecastOccurrenceOverride[]>>(new Map())
@@ -8345,6 +8367,17 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   // candidatos, porque en cuanto se concilia, esa ocurrencia deja de ser candidata (ya tiene matchedExpenseId).
   const [tags, setTags] = useState<Tag[]>([])
   const [managing, setManaging] = useState<{ expenseId: string; forecastCategoryId: string | null } | null>(null)
+  // Fase 1D-g — posibles pagos recurrentes detectados en el histórico bancario: SOLO propuestas, nunca
+  // se crea nada sin que la familia pulse "Revisar" y luego "Crear pago previsto" en el formulario normal.
+  // expenseCategoryByExpenseId es la única fuente real de categoría por movimiento (el detector nunca
+  // duplica guessCategory de la Edge Function) — se carga aparte porque el resto de la pestaña no
+  // necesita el listado completo de gastos para nada más.
+  const [expenseCategoryByExpenseId, setExpenseCategoryByExpenseId] = useState<Map<string, string | null>>(new Map())
+  const [dismissedRecurrenceKeys, setDismissedRecurrenceKeys] = useState<Set<string>>(new Set())
+  const [recurrenceProposalsOpen, setRecurrenceProposalsOpen] = useState(false)
+  const [recurrenceDismissBusyKey, setRecurrenceDismissBusyKey] = useState<string | null>(null)
+  const [recurrenceError, setRecurrenceError] = useState<string | null>(null)
+  const [recurrencePrefill, setRecurrencePrefill] = useState<ForecastPaymentPrefill | null>(null)
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -8365,8 +8398,17 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     listBankTransactions().then(setBankTransactions).catch(() => {})
     listAllMatchedForecastExpenseIds().then(setMatchedExpenseIds).catch(() => {})
   }
+  // Fase 1D-g — aparte de reloadReconciliation: la categoría de los movimientos y los descartes guardados
+  // solo hace falta recargarlos tras "No me interesa", nunca en cada confirmación/desconciliación normal.
+  function reloadRecurrenceProposalExtras() {
+    listExpenses()
+      .then((list) => setExpenseCategoryByExpenseId(new Map(list.map((e) => [e.id, e.category]))))
+      .catch(() => {})
+    listForecastRecurrenceDismissals().then(setDismissedRecurrenceKeys).catch(() => {})
+  }
   useEffect(reload, [])
   useEffect(reloadReconciliation, [])
+  useEffect(reloadRecurrenceProposalExtras, [])
   useEffect(() => {
     listFamilyMembers().then(setMembers).catch(() => {})
     listBankAccounts().then(setAccounts).catch(() => {})
@@ -8376,6 +8418,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   function closeForm() {
     setShowAddForm(false)
     setEditingPayment(null)
+    setRecurrencePrefill(null)
   }
   function saveCommon() {
     closeForm()
@@ -8445,6 +8488,68 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     (c) => !dismissedCandidateKeys.has(candidateKey(c)),
   )
   const reconciledRecently = reconciliationOccurrences.filter((o) => !!o.matchedExpenseId)
+
+  // Fase 1D-g — detección de posibles pagos recurrentes: TODO el histórico bancario real (nunca solo la
+  // ventana de conciliación de arriba, que es deliberadamente corta) porque el motor necesita ver varios
+  // meses para poder exigir un mínimo de evidencia. category viene de la MISMA fuente real que usa
+  // "Gestionar movimiento" (el gasto ya vinculado), nunca una adivinanza nueva.
+  const allBankMovementsForDetection: BankMovementForDetection[] = bankTransactions
+    .filter((t): t is BankTransaction & { transactionDate: string } => t.creditDebit === 'DBIT' && t.transactionDate != null)
+    .map((t) => ({
+      bankTransactionId: t.id,
+      expenseId: t.matchedExpenseId,
+      accountId: t.accountId,
+      date: t.transactionDate,
+      amount: Math.abs(t.amount),
+      currency: t.currency,
+      description: t.description,
+      isIncome: false,
+      category: t.matchedExpenseId ? (expenseCategoryByExpenseId.get(t.matchedExpenseId) ?? null) : null,
+    }))
+    // Una paga/transferencia entre miembros de la familia no es una "factura" — mismo criterio real ya
+    // usado en Movimientos/Presupuesto (categoría "Movimientos internos" o hija suya), nunca una regla
+    // nueva por nombre de comercio.
+    .filter((m) => !isInternalTransferCategory(m.category, categories))
+  const existingPaymentsForDedup: ForecastPaymentForDedup[] = payments.map((p) => ({
+    title: p.title,
+    provider: p.provider,
+    bankAccountId: p.bankAccountId,
+    active: p.active,
+  }))
+  const recurrenceCandidates = findNewRecurrenceCandidates(allBankMovementsForDetection, matchedExpenseIds, existingPaymentsForDedup, dismissedRecurrenceKeys)
+
+  function recurrenceCandidateKey(c: RecurrenceCandidate): string {
+    return `${c.accountId}::${c.merchantKey}`
+  }
+
+  function reviewRecurrenceCandidate(c: RecurrenceCandidate) {
+    const { freq, interval } = RECURRENCE_PERIODICITY_RRULE[c.periodicity]
+    setRecurrencePrefill({
+      title: c.displayName,
+      amount: c.estimatedAmountCents / 100,
+      amountEstimatedBasis: c.estimatedBasisText,
+      categoryName: c.suggestedCategoryName,
+      dueDate: c.nextDueDate,
+      recurrenceRule: buildForecastRecurrenceRule('custom', { freq, interval, until: null })!,
+      bankAccountId: c.accountId,
+    })
+    setEditingPayment(null)
+    setShowAddForm(true)
+  }
+
+  async function dismissRecurrenceCandidate(c: RecurrenceCandidate) {
+    const key = recurrenceCandidateKey(c)
+    setRecurrenceDismissBusyKey(key)
+    setRecurrenceError(null)
+    try {
+      await dismissForecastRecurrence(c.accountId, c.merchantKey)
+      setDismissedRecurrenceKeys((prev) => new Set(prev).add(key))
+    } catch (err) {
+      setRecurrenceError(errorMessage(err, 'No se pudo descartar la propuesta'))
+    } finally {
+      setRecurrenceDismissBusyKey(null)
+    }
+  }
 
   function candidateKey(c: ReconciliationCandidate): string {
     return `${c.occurrence.forecastPaymentId}:${c.occurrence.occurrenceDate}:${c.occurrence.installmentSequenceIndex ?? 0}:${c.movement.bankTransactionId}`
@@ -8757,6 +8862,52 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
             </>
           )}
 
+          {/* Fase 1D-g — igual de discreta que la conciliación bancaria de arriba: solo aparece si hay
+              algo que proponer, nunca un aviso al abrir Economía. PEPA nunca crea nada aquí — "Revisar"
+              solo abre el formulario normal de "Nuevo pago previsto" ya precargado. */}
+          {recurrenceCandidates.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="link-button section-title"
+                style={{ marginTop: 16, display: 'block' }}
+                onClick={() => setRecurrenceProposalsOpen((v) => !v)}
+              >
+                {recurrenceProposalsOpen ? '▾' : '▸'} 💡 {recurrenceCandidates.length} posible{recurrenceCandidates.length === 1 ? '' : 's'} pago
+                {recurrenceCandidates.length === 1 ? '' : 's'} recurrente{recurrenceCandidates.length === 1 ? '' : 's'}
+              </button>
+              {recurrenceProposalsOpen && (
+                <div style={{ marginTop: 8 }}>
+                  {recurrenceError && <p className="error">{recurrenceError}</p>}
+                  {recurrenceCandidates.map((c) => {
+                    const key = recurrenceCandidateKey(c)
+                    const busy = recurrenceDismissBusyKey === key
+                    const accountName = accounts.find((a) => a.id === c.accountId)?.name ?? 'una cuenta bancaria'
+                    return (
+                      <div key={key} className="card" style={{ padding: 12, marginBottom: 8 }}>
+                        <strong>{c.displayName}</strong>
+                        <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                          Se ha cobrado con periodicidad {c.periodicityLabel} desde {accountName}, en los últimos {c.occurrences.length} cargos.
+                        </p>
+                        <p style={{ margin: '2px 0' }}>Importe habitual: ≈ {formatForecastAmount(c.estimatedAmountCents / 100, c.currency)}</p>
+                        <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>{c.estimatedBasisText}</p>
+                        <p style={{ margin: '2px 0' }}>Próximo cargo estimado: {formatSpanishDate(c.nextDueDate)}</p>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <button type="button" disabled={busy} onClick={() => reviewRecurrenceCandidate(c)}>
+                            Revisar
+                          </button>
+                          <button type="button" className="link-button" disabled={busy} onClick={() => dismissRecurrenceCandidate(c)}>
+                            {busy ? 'Descartando…' : 'No me interesa'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
           {/* Independiente de si el acordeón de arriba está abierto/cerrado o de cuántos candidatos
               queden: "Gestionar movimiento" es un paso propio que sigue vivo aunque el resto de la
               sección de conciliación cambie de forma mientras se recarga. */}
@@ -8843,6 +8994,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               members={members}
               accounts={accounts}
               payment={editingPayment}
+              prefill={editingPayment ? null : recurrencePrefill}
               overrides={editingPayment ? (overridesByPayment.get(editingPayment.id) ?? []) : []}
               onSaved={saveCommon}
             />
@@ -9019,12 +9171,30 @@ function computeSplitChargesSignature(splitCount: string, dueDate: string, amoun
   ])
 }
 
+// Fase 1D-g — lo único que precarga una propuesta de posible recurrencia detectada: SOLO campos
+// respaldados de verdad por el propio análisis del histórico bancario (concepto, importe ESTIMADO,
+// categoría si es fiable, fecha, recurrencia, cuenta). Nunca "relacionado con", recordatorios ni notas
+// (pedido explícito: "NO inventar" esos datos) — se quedan en los valores por defecto de siempre del
+// formulario, exactamente como al crear un pago nuevo en blanco.
+export interface ForecastPaymentPrefill {
+  title: string
+  amount: number
+  amountEstimatedBasis: string
+  categoryName: string | null
+  dueDate: string
+  // Ya construida como texto (p. ej. "FREQ=MONTHLY") — reutiliza parseRecurrenceRuleToFormState tal cual
+  // reconstruye la recurrencia de un pago ya guardado, en vez de fijar recurs/freqOption a mano aquí.
+  recurrenceRule: string
+  bankAccountId: string
+}
+
 function ForecastPaymentForm({
   categories,
   members,
   accounts,
   payment,
   overrides,
+  prefill,
   onSaved,
 }: {
   categories: BudgetCategory[]
@@ -9032,21 +9202,27 @@ function ForecastPaymentForm({
   accounts: BankAccount[]
   payment: ForecastPaymentWithReminders | null
   overrides: ForecastOccurrenceOverride[]
+  prefill?: ForecastPaymentPrefill | null
   onSaved: () => void
 }) {
-  const [title, setTitle] = useState(payment?.title ?? '')
-  const [categoryName, setCategoryName] = useState(() => categories.find((c) => c.id === payment?.categoryId)?.name ?? '')
-  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? 'known')
-  const [amount, setAmount] = useState(payment?.amount != null ? String(payment.amount) : '')
-  const [amountBasis, setAmountBasis] = useState(payment?.amountEstimatedBasis ?? '')
+  const [title, setTitle] = useState(payment?.title ?? prefill?.title ?? '')
+  const [categoryName, setCategoryName] = useState(() => categories.find((c) => c.id === payment?.categoryId)?.name ?? prefill?.categoryName ?? '')
+  // Fase 1D-g — el estado del importe de una propuesta detectada SIEMPRE empieza en "Estimado", nunca
+  // "Conocido": un patrón histórico (aunque los últimos cargos hayan sido idénticos) no garantiza el
+  // importe futuro (decisión aprobada explícitamente). El usuario puede cambiarlo a mano si lo sabe fijo.
+  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? 'estimated' : 'known'))
+  const [amount, setAmount] = useState(payment?.amount != null ? String(payment.amount) : prefill ? String(prefill.amount) : '')
+  const [amountBasis, setAmountBasis] = useState(payment?.amountEstimatedBasis ?? prefill?.amountEstimatedBasis ?? '')
   const [currency, setCurrency] = useState(payment?.currency ?? 'EUR')
-  const [dueDate, setDueDate] = useState(payment?.dueDate ?? '')
+  const [dueDate, setDueDate] = useState(payment?.dueDate ?? prefill?.dueDate ?? '')
   const [hasExpectedPaymentDate, setHasExpectedPaymentDate] = useState(!!payment?.expectedPaymentDate)
   const [expectedPaymentDate, setExpectedPaymentDate] = useState(payment?.expectedPaymentDate ?? '')
   // Fase 1D-b: "¿Se repite?" / "Frecuencia" / "¿Hasta cuándo?" son 3 preguntas independientes — el
   // estado inicial se reconstruye con parseRecurrenceRuleToFormState (domain/forecastInstallmentPlanForm.ts),
   // que ya decide si un UNTIL guardado corresponde a "Número de pagos" o a una "Fecha concreta" suelta.
-  const initialRecurrence = parseRecurrenceRuleToFormState(payment?.recurrenceRule ?? null, payment?.dueDate ?? '')
+  // Fase 1D-g: una propuesta detectada reutiliza EXACTAMENTE la misma reconstrucción — nunca fija
+  // recurs/freqOption a mano por separado, para no duplicar esa lógica ya certificada.
+  const initialRecurrence = parseRecurrenceRuleToFormState(payment?.recurrenceRule ?? prefill?.recurrenceRule ?? null, payment?.dueDate ?? prefill?.dueDate ?? '')
   // Ajuste UX — "recurs" ("¿vuelve a repetirse?") es DISTINTO del viejo "repeats": un plan finito (Caso
   // A, IBI en 6 pagos) internamente SIGUE usando un recurrence_rule con FREQ+UNTIL (initialRecurrence.repeats
   // es true), pero conceptualmente NO "vuelve a repetirse" — termina. Por eso initialRecurrence.repeats
@@ -9127,7 +9303,7 @@ function ForecastPaymentForm({
   const [customReminderValue, setCustomReminderValue] = useState('1')
   const [customReminderUnit, setCustomReminderUnit] = useState<ForecastReminderUnit>('days')
   const [showInCalendar, setShowInCalendar] = useState(payment?.showInCalendar ?? true)
-  const [bankAccountId, setBankAccountId] = useState(payment?.bankAccountId ?? '')
+  const [bankAccountId, setBankAccountId] = useState(payment?.bankAccountId ?? prefill?.bankAccountId ?? '')
   const [ownerMemberId, setOwnerMemberId] = useState(payment?.ownerMemberId ?? '')
   const [notes, setNotes] = useState(payment?.notes ?? '')
   const [error, setError] = useState<string | null>(null)

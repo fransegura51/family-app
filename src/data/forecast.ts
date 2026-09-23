@@ -496,3 +496,27 @@ export async function listAllMatchedForecastExpenseIds(): Promise<Set<string>> {
   if (error) throw error
   return new Set((data ?? []).map((r) => r.matched_expense_id as string))
 }
+
+// ── Fase 1D-g — descartes de posibles pagos recurrentes ("No me interesa") ────────────────────────
+//
+// Clave `${accountId}::${merchantKey}` — la misma forma que ya usa domain/forecastRecurrenceDetection.ts
+// para comparar contra los descartes guardados, así el dato de la BD y la clave del motor de detección
+// nunca pueden desincronizarse por transformarse de dos formas distintas.
+export async function listForecastRecurrenceDismissals(): Promise<Set<string>> {
+  const { data, error } = await supabase.from('forecast_recurrence_dismissals').select('account_id, merchant_key')
+  if (error) throw error
+  return new Set((data ?? []).map((r) => `${r.account_id}::${r.merchant_key}`))
+}
+
+// Descartar el mismo patrón dos veces es idempotente (upsert por la unique de la migración 0158) —
+// nunca un error por volver a pulsar "No me interesa" en la misma propuesta.
+export async function dismissForecastRecurrence(accountId: string, merchantKey: string): Promise<void> {
+  const { familyId, userId } = await currentFamilyAndUser()
+  const { error } = await supabase
+    .from('forecast_recurrence_dismissals')
+    .upsert(
+      { family_id: familyId, account_id: accountId, merchant_key: merchantKey, dismissed_by: userId },
+      { onConflict: 'family_id,account_id,merchant_key' },
+    )
+  if (error) throw error
+}

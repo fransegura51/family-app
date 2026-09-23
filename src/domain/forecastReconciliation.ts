@@ -95,7 +95,9 @@ function daysBetween(fromDateStr: string, toDateStr: string): number {
 // Texto libre → palabras "útiles" (3+ letras, sin acentos) para una coincidencia de texto simple y
 // explicable — nunca IA, nunca similitud semántica inventada. Una palabra en común entre el concepto
 // bancario y el título/proveedor de la previsión es una señal secundaria, nunca obligatoria.
-function meaningfulWords(text: string): Set<string> {
+// Exportadas (Fase 1D-g): la detección de posibles recurrencias reutiliza EXACTAMENTE esta misma
+// comparación para no crear una cuarta normalización de texto en el repo (auditoría previa a esa fase).
+export function meaningfulWords(text: string): Set<string> {
   const normalized = text
     .toLowerCase()
     .normalize('NFD')
@@ -104,7 +106,7 @@ function meaningfulWords(text: string): Set<string> {
   return new Set(words.filter((w) => w.length >= 3))
 }
 
-function hasSharedWord(a: string, b: string): boolean {
+export function hasSharedWord(a: string, b: string): boolean {
   const wordsA = meaningfulWords(a)
   if (wordsA.size === 0) return false
   const wordsB = meaningfulWords(b)

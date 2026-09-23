@@ -670,6 +670,9 @@ export interface EventTask {
   source: 'auto' | 'manual'
   sortOrder: number
   createdAt: string
+  // Fase 6 — quién de la familia la hace. Nullable ("sin asignar"),
+  // nunca inferido — ver migración 0162_event_task_assignee.sql.
+  assignedMemberId: string | null
 }
 
 export interface EventBudgetItem {

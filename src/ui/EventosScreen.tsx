@@ -77,6 +77,7 @@ import {
   uploadInvitationPhoto,
 } from '@/data/events'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
+import { listFamilyMembers } from '@/data/family'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
 import {
@@ -129,6 +130,7 @@ import type {
   EventTemplate,
   EventType,
   FamilyEvent,
+  FamilyMember,
   ShoppingItem,
   InvitationCanvas,
   InvitationLayer,
@@ -682,6 +684,12 @@ function EventDetail({
   const [specialDetails, setSpecialDetails] = useState<EventSpecialDetail[]>([])
   const [gifts, setGifts] = useState<EventGiftReceived[]>([])
   const [dayPlan, setDayPlan] = useState<EventDayPlanItem[]>([])
+  // Fase 6 — responsable de una tarea: miembros reales de la familia,
+  // para el desplegable "Sin asignar" / miembro — nunca inferido.
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
+  useEffect(() => {
+    listFamilyMembers().then(setFamilyMembers).catch(() => {})
+  }, [])
 
   function reloadDashboardStats() {
     const has = (k: EventModuleKey) => event.enabledModules.includes(k)
@@ -832,12 +840,27 @@ function EventDetail({
             {pendingTasks.length === 0 && <p className="muted">No hay nada pendiente.</p>}
             <div className="event-list">
               {visibleTasks.map((t) => (
-                <div key={t.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                <div key={t.id} className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
                   <input type="checkbox" checked={t.done} onChange={() => updateEventTask(t.id, { done: true }).then(reloadTasks)} />
-                  <span style={{ flex: 1 }}>
+                  <span style={{ flex: 1, minWidth: 120 }}>
                     {t.title}
                     {t.dueDate ? ` · ${t.dueDate}` : ''}
                   </span>
+                  {/* Fase 6 — responsable: nunca inferido, "Sin asignar" es la opción
+                      por defecto y sigue siéndolo salvo que alguien elija a mano. */}
+                  <select
+                    value={t.assignedMemberId ?? ''}
+                    onChange={(e) => updateEventTask(t.id, { assignedMemberId: e.target.value || null }).then(reloadTasks)}
+                    style={{ fontSize: 12 }}
+                    aria-label={`Responsable de "${t.title}"`}
+                  >
+                    <option value="">Sin asignar</option>
+                    {familyMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
                   <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar tarea" onConfirm={() => deleteEventTask(t.id).then(reloadTasks)} />
                 </div>
               ))}
@@ -1045,18 +1068,29 @@ function EventDetail({
             Estas son las próximas tareas importantes:
           </p>
           <div className="event-list">
-            {upcomingTasks.map(({ task, priority, daysUntil: d }) => (
-              <div key={task.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                <span className={`event-priority-dot event-priority-${priority}`} aria-hidden="true" />
-                <input type="checkbox" checked={task.done} onChange={() => updateEventTask(task.id, { done: true }).then(reloadTasks)} />
-                <span style={{ flex: 1 }}>{task.title}</span>
-                {task.dueDate && (
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    {d !== null && d < 0 ? `Venció ${task.dueDate}` : `Vence ${task.dueDate}`}
+            {upcomingTasks.map(({ task, priority, daysUntil: d }) => {
+              const responsible = familyMembers.find((m) => m.id === task.assignedMemberId)
+              return (
+                <div key={task.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                  <span className={`event-priority-dot event-priority-${priority}`} aria-hidden="true" />
+                  <input type="checkbox" checked={task.done} onChange={() => updateEventTask(task.id, { done: true }).then(reloadTasks)} />
+                  <span style={{ flex: 1 }}>
+                    {task.title}
+                    {responsible && (
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {' '}
+                        · Responsable: {responsible.name}
+                      </span>
+                    )}
                   </span>
-                )}
-              </div>
-            ))}
+                  {task.dueDate && (
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {d !== null && d < 0 ? `Venció ${task.dueDate}` : `Vence ${task.dueDate}`}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <button type="button" className="link-button" onClick={() => setOpenModule('tareas')}>
             Ver todas →

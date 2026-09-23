@@ -368,7 +368,7 @@ export async function duplicateEvent(id: string): Promise<string> {
 // Preparativos / tareas
 // ---------------------------------------------------------------------
 
-const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at'
+const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapTask(r: any): EventTask {
@@ -382,6 +382,7 @@ function mapTask(r: any): EventTask {
     source: r.source,
     sortOrder: r.sort_order,
     createdAt: r.created_at,
+    assignedMemberId: r.assigned_member_id,
   }
 }
 
@@ -404,11 +405,18 @@ export async function addEventTask(eventId: string, title: string, dueDate: stri
   if (error) throw error
 }
 
-export async function updateEventTask(id: string, patch: { title?: string; done?: boolean; dueDate?: string | null }): Promise<void> {
+export async function updateEventTask(
+  id: string,
+  patch: { title?: string; done?: boolean; dueDate?: string | null; assignedMemberId?: string | null },
+): Promise<void> {
   const update: Record<string, unknown> = {}
   if (patch.title !== undefined) update.title = patch.title.trim()
   if (patch.done !== undefined) update.done = patch.done
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate
+  // Fase 6 — responsable de la tarea: nullable, nunca inferido (ver
+  // migración 0162_event_task_assignee.sql) — "sin asignar" es un
+  // patch explícito a null, igual que quitar la fecha.
+  if (patch.assignedMemberId !== undefined) update.assigned_member_id = patch.assignedMemberId
   const { error } = await supabase.from('event_tasks').update(update).eq('id', id)
   if (error) throw error
 }

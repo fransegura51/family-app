@@ -61,6 +61,41 @@ export async function listExpenses(): Promise<Expense[]> {
   }))
 }
 
+// Fase 1D-f (conciliación bancaria) — una fila suelta y FRESCA, nunca la de un listado ya cargado en
+// memoria: "Gestionar movimiento" necesita la categoría/etiqueta REALES en el momento de abrir ese paso
+// (pueden haber cambiado desde que se listó la pantalla), para poder mostrar de verdad qué había antes de
+// tocar nada — nunca decidir sobre un dato potencialmente obsoleto.
+export async function getExpenseById(id: string): Promise<Expense | null> {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select(
+      'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id, shared, shared_from_expense_id, product_classification',
+    )
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  return {
+    id: data.id,
+    familyId: data.family_id,
+    expenseDate: data.expense_date,
+    amount: Number(data.amount),
+    category: data.category,
+    store: data.store,
+    kind: data.kind as ExpenseKind,
+    notes: data.notes,
+    isIncome: data.is_income,
+    budgetGroup: data.budget_group,
+    tagId: data.tag_id,
+    source: data.source as ExpenseSource,
+    isFixedOverride: data.is_fixed_override,
+    ownerMemberId: data.owner_member_id,
+    shared: data.shared,
+    sharedFromExpenseId: data.shared_from_expense_id,
+    productClassification: data.product_classification,
+  }
+}
+
 // Piso compartido: "pasar una copia al listado común" — copia
 // INDEPENDIENTE del gasto (no un enlace ni una marca sobre el original),
 // para que editar uno no toque el otro. shared_from_expense_id es solo

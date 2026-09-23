@@ -258,6 +258,60 @@ describe('forecastTotals — known/estimated/unknown, multidivisa (CASO F / §21
   })
 })
 
+// Fase 1D-f — "Próximos X días"/"Visión 12 meses" representan dinero TODAVÍA pendiente: una ocurrencia
+// conciliada (matched_expense_id) ya no debe sumar ahí, pero SÍ debe poder volver a sumar si se desconcilia.
+describe('forecastTotals/forecastByMonth — cobrados no suman como pendientes (Fase 1D-f)', () => {
+  function occ(o: Partial<ForecastOccurrence>): ForecastOccurrence {
+    return {
+      forecastPaymentId: 'fp', title: 't', occurrenceDate: '2026-10-01', installmentSequenceIndex: null, dueDate: '2026-10-01', expectedPaymentDate: '2026-10-01',
+      amountStatus: 'known', amount: 0, currency: 'EUR', categoryId: null, matchedExpenseId: null, ...o,
+    }
+  }
+
+  it('una ocurrencia pendiente (matchedExpenseId null) suma con normalidad', () => {
+    const totals = forecastTotals([occ({ amount: 261.08 })])
+    expect(totals).toEqual([{ currency: 'EUR', knownTotal: 261.08, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 261.08 }])
+  })
+
+  it('CASO REAL: Endesa 261,08 € ya conciliada (matchedExpenseId no nulo) — 0 € pendientes para esa ocurrencia', () => {
+    const totals = forecastTotals([occ({ amount: 261.08, matchedExpenseId: 'exp-endesa' })])
+    expect(totals).toEqual([])
+  })
+
+  it('desconciliar (matchedExpenseId vuelve a null) hace que la misma ocurrencia vuelva a sumar automáticamente', () => {
+    const matched = occ({ amount: 261.08, matchedExpenseId: 'exp-endesa' })
+    const unmatched = { ...matched, matchedExpenseId: null } // exactamente lo que hace unmatchForecastOccurrence en la BD
+    expect(forecastTotals([matched])).toEqual([])
+    expect(forecastTotals([unmatched])).toEqual([{ currency: 'EUR', knownTotal: 261.08, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 261.08 }])
+  })
+
+  it('plan de 6 pagos con 1 conciliado: el total pendiente refleja solo los 5 restantes, sin tocar los importes de los demás', () => {
+    const lines = [144.54, 144.54, 144.54, 144.53, 144.54, 145.87]
+    const occurrences = lines.map((amount, i) => occ({ occurrenceDate: `2026-11-0${i + 1}`, amount, matchedExpenseId: i === 0 ? 'exp-1' : null }))
+    const totals = forecastTotals(occurrences)
+    const expectedPending = lines.slice(1).reduce((a, b) => a + b, 0)
+    expect(totals[0].knownTotal).toBeCloseTo(expectedPending, 2) // 868,56 - 144,54 = 724,02 — nunca los 868,56 completos
+  })
+
+  it('varias divisas se siguen sin mezclar aunque una de ellas ya esté totalmente conciliada', () => {
+    const totals = forecastTotals([occ({ amount: 500, currency: 'EUR', matchedExpenseId: 'exp-1' }), occ({ amount: 300, currency: 'GBP' })])
+    expect(totals).toEqual([{ currency: 'GBP', knownTotal: 300, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 300 }])
+  })
+
+  it('un importe con override histórico (p. ej. la línea real del IBI, distinta de la propuesta uniforme) se sigue respetando tal cual mientras esté pendiente', () => {
+    const totals = forecastTotals([occ({ amount: 145.87 })]) // la 6ª cuota real del IBI, no la propuesta uniforme
+    expect(totals[0].knownTotal).toBe(145.87)
+  })
+
+  it('forecastByMonth hereda la misma exclusión sin necesidad de filtrar aparte', () => {
+    const byMonth = forecastByMonth(
+      [occ({ occurrenceDate: '2026-10-01', expectedPaymentDate: '2026-10-01', amount: 100, matchedExpenseId: 'exp-1' }), occ({ occurrenceDate: '2026-10-15', expectedPaymentDate: '2026-10-15', amount: 50 })],
+      'expectedPaymentDate',
+    )
+    expect(byMonth.get('2026-10')).toEqual([{ currency: 'EUR', knownTotal: 50, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 50 }])
+  })
+})
+
 describe('forecastByMonth', () => {
   it('agrupa por mes según el campo de fecha pedido', () => {
     const occs: ForecastOccurrence[] = [

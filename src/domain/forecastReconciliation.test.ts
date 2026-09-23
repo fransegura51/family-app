@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { expandForecastOccurrences, type ForecastOccurrence, type ForecastOccurrenceOverride, type ForecastPayment } from './forecast'
+import { expandForecastOccurrences, forecastTotals, type ForecastOccurrence, type ForecastOccurrenceOverride, type ForecastPayment } from './forecast'
 import {
   findReconciliationCandidates,
   RECONCILIATION_CONFIDENCE_HIGH_MIN,
   RECONCILIATION_CONFIDENCE_MEDIUM_MIN,
   RECONCILIATION_DATE_WINDOW_DAYS,
+  resolveManagedExpenseCategory,
   scoreReconciliationCandidate,
   type BankMovementForMatching,
   type ForecastPaymentContextForMatching,
@@ -283,4 +284,100 @@ describe('22/23) regresiones — Seguro Coche Ibiza y CASO REAL IBI y Residuos 8
     // El motor es de solo lectura: la propia ocurrencia de entrada nunca se muta.
     expect(IBI_OCCURRENCE.amount).toBe(144.54)
   })
+})
+
+describe('resolveManagedExpenseCategory — Fase 1D-f: precedencia sin inventar un campo manual/automático que no existe', () => {
+  it('1) CASO REAL: categoría automática "Otros" → se propone "Suministros" (la de la previsión), marcando el conflicto', () => {
+    const r = resolveManagedExpenseCategory('Otros', 'Suministros')
+    expect(r).toEqual({ preselected: 'Suministros', hasConflict: true, currentCategory: 'Otros' })
+  })
+
+  it('2) una categoría manual existente NUNCA se pisa automáticamente: cuando hay conflicto, currentCategory siempre viaja para poder "Mantenerla" — nada se aplica sin que la pantalla lo muestre', () => {
+    const r = resolveManagedExpenseCategory('Vivienda', 'Suministros')
+    expect(r.hasConflict).toBe(true)
+    expect(r.currentCategory).toBe('Vivienda') // la pantalla puede ofrecer "Mantener Vivienda" con este valor
+    // preselected es solo el PUNTO DE PARTIDA de un <select> editable — nunca se guarda solo, hace falta
+    // pulsar "Guardar y finalizar" para que se escriba de verdad (eso lo hace el componente, no esta función).
+  })
+
+  it('3) "mantener categoría manual": el valor para hacerlo está siempre disponible en currentCategory cuando hay conflicto', () => {
+    const r = resolveManagedExpenseCategory('Vivienda', 'Suministros')
+    expect(r.currentCategory).not.toBeNull()
+  })
+
+  it('4) elegir la categoría de la previsión: es el preselected por defecto en caso de conflicto — un único paso (aceptar la propuesta)', () => {
+    const r = resolveManagedExpenseCategory('Otros', 'Suministros')
+    expect(r.preselected).toBe('Suministros')
+  })
+
+  it('sin conflicto cuando ya coinciden — no hay nada que resolver', () => {
+    const r = resolveManagedExpenseCategory('Suministros', 'Suministros')
+    expect(r).toEqual({ preselected: 'Suministros', hasConflict: false, currentCategory: 'Suministros' })
+  })
+
+  it('expense todavía "Pendiente de clasificar" (category null): se propone la de la previsión sin marcar conflicto — no hay nada manual que proteger', () => {
+    const r = resolveManagedExpenseCategory(null, 'Suministros')
+    expect(r).toEqual({ preselected: 'Suministros', hasConflict: false, currentCategory: null })
+  })
+
+  it('la previsión no tiene categoría asignada: se respeta lo que ya tuviera el expense tal cual, sin proponer nada', () => {
+    const r = resolveManagedExpenseCategory('Vivienda', null)
+    expect(r).toEqual({ preselected: 'Vivienda', hasConflict: false, currentCategory: 'Vivienda' })
+  })
+})
+
+describe('CASO REAL OBLIGATORIO — Endesa factura de luz (certificación móvil real)', () => {
+  const ENDESA_ACCOUNT = 'account-comun-7637'
+  const ENDESA_OCCURRENCE: ForecastOccurrence = {
+    forecastPaymentId: 'fp-endesa',
+    title: 'Endesa factura de luz',
+    occurrenceDate: '2026-09-23',
+    installmentSequenceIndex: null,
+    dueDate: '2026-09-23',
+    expectedPaymentDate: '2026-09-23',
+    amountStatus: 'known',
+    amount: 261.08,
+    currency: 'EUR',
+    categoryId: 'cat-suministros',
+    matchedExpenseId: null,
+  }
+  const ENDESA_PAYMENT: ForecastPaymentContextForMatching = { bankAccountId: ENDESA_ACCOUNT, title: 'Endesa factura de luz', provider: null }
+  const ENDESA_MOVEMENT: BankMovementForMatching = {
+    bankTransactionId: 'bt-endesa',
+    expenseId: 'expense-endesa',
+    accountId: ENDESA_ACCOUNT,
+    date: '2026-09-23',
+    amount: 261.08,
+    currency: 'EUR',
+    description: 'ENDESA ENERGIA S.A.',
+    isIncome: false,
+  }
+
+  it('1. PEPA detecta el candidato con confianza alta: misma cuenta + mismo importe + mismo día', () => {
+    const result = scoreReconciliationCandidate(ENDESA_OCCURRENCE, ENDESA_PAYMENT, ENDESA_MOVEMENT)
+    expect(result).not.toBeNull()
+    expect(result!.confidence).toBe('high')
+    expect(result!.reasons.map((r) => r.code)).toEqual(expect.arrayContaining(['same_account', 'amount_exact', 'date_exact']))
+  })
+
+  it('2. tras confirmar (matchedExpenseId puesto), la ocurrencia deja de sumar como pendiente: 0 € para esa ocurrencia', () => {
+    const reconciled: ForecastOccurrence = { ...ENDESA_OCCURRENCE, matchedExpenseId: 'expense-endesa' }
+    expect(forecastTotals([reconciled])).toEqual([])
+  })
+
+  it('3. Gestionar movimiento: categoría automática "Otros" del banco → PEPA propone "Suministros" (la de la previsión), sin pisarla sola', () => {
+    const resolution = resolveManagedExpenseCategory('Otros', 'Suministros')
+    expect(resolution.preselected).toBe('Suministros')
+    expect(resolution.hasConflict).toBe(true) // la pantalla debe mostrar que "Otros" era lo que había
+  })
+
+  it('4. si se desconcilia, la ocurrencia vuelve a sumar 261,08 € de pendiente, sin inventar ni perder el importe', () => {
+    const pending: ForecastOccurrence = { ...ENDESA_OCCURRENCE, matchedExpenseId: null } // exactamente lo que hace unmatchForecastOccurrence
+    expect(forecastTotals([pending])).toEqual([{ currency: 'EUR', knownTotal: 261.08, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 261.08 }])
+  })
+
+  // "Desconciliar nunca revierte categoría/etiqueta" se verifica al nivel correcto (el código real que
+  // hace el UPDATE) en src/data/forecastReconciliationMigration.test.ts — unmatchForecastOccurrence solo
+  // toca forecast_occurrences.matched_expense_id, nunca la tabla expenses: ambas quedan independientes
+  // por diseño, así que no hay nada que "revertir" — la categoría/etiqueta simplemente nunca se tocan.
 })

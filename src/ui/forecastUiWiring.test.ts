@@ -11,6 +11,7 @@ const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.
 const FS = APP['/src/ui/FinanceScreen.tsx']
 const ECONOMIA_MENU = APP['/src/state/economiaMenu.ts']
 const AYUDA = APP['/src/ui/AyudaScreen.tsx']
+const FS_DOMAIN_FORECAST = APP['/src/domain/forecast.ts']
 
 describe('entrada en el menú de Economía', () => {
   it('"Previsión de pagos" es una clave fija más, con su icono/nombre y en los pagos por defecto', () => {
@@ -467,6 +468,84 @@ describe('Ajuste UX — edición: reconstruir el nuevo formulario desde datos ya
 
   it('recursUntilDate inicial reconstruye una fecha final ya guardada (untilMode==="date") — abrir y guardar sin tocar nada no la convierte silenciosamente en "para siempre"', () => {
     expect(FS).toContain("const [recursUntilDate, setRecursUntilDate] = useState(initialRecurrence.untilMode === 'date')")
+  })
+})
+
+describe('Fase 1D-f — "Gestionar movimiento" reutiliza EXACTAMENTE el mecanismo real de Movimientos', () => {
+  it('la categoría se cambia con classifyPurchase (RPC atómica classify_purchase) — NUNCA un UPDATE directo de expenses.category', () => {
+    const idx = FS.indexOf('function ManageReconciledExpense')
+    expect(idx).toBeGreaterThan(-1)
+    const body = FS.slice(idx, FS.indexOf('\nfunction ', idx + 10))
+    expect(body).toContain('await classifyPurchase({ expenseId: expense.id, category })')
+    expect(body).not.toMatch(/from\(["']expenses["']\)/)
+  })
+
+  it('la etiqueta se cambia con updateExpense (el mismo mecanismo de Movimientos) — nunca escribe expenses.tag_id directamente', () => {
+    const idx = FS.indexOf('function ManageReconciledExpense')
+    const body = FS.slice(idx, FS.indexOf('\nfunction ', idx + 10))
+    expect(body).toContain('await updateExpense(expense.id, { tagId: tagId || null })')
+  })
+
+  it('reutiliza los MISMOS componentes CategorySelect/TagSelect que ya usa la edición real de un movimiento — nunca un selector paralelo', () => {
+    const idx = FS.indexOf('function ManageReconciledExpense')
+    const body = FS.slice(idx, FS.indexOf('\nfunction ', idx + 10))
+    expect(body).toContain('<CategorySelect')
+    expect(body).toContain('<TagSelect')
+    // Solo existe UNA declaración de cada uno en todo el archivo — no se duplica el componente.
+    expect(FS.match(/function CategorySelect\(/g)?.length).toBe(1)
+    expect(FS.match(/function TagSelect\(/g)?.length).toBe(1)
+  })
+
+  it('la categoría se precarga desde getExpenseById (fila fresca) — nunca de un listado ya en memoria que podría estar desactualizado', () => {
+    expect(FS).toContain('getExpenseById(expenseId)')
+  })
+
+  it('nada se guarda hasta pulsar "Guardar y finalizar" — cerrar ("Ahora no") no dispara ninguna escritura', () => {
+    const idx = FS.indexOf('function ManageReconciledExpense')
+    const body = FS.slice(idx, FS.indexOf('\nfunction ', idx + 10))
+    expect(body).toContain('Ahora no')
+    expect(body).toContain('onClick={onClose}')
+    const onCloseIdx = body.indexOf('onClick={onClose}')
+    // Nada de classifyPurchase/updateExpense entre "Ahora no" y el final del componente.
+    const afterClose = body.slice(onCloseIdx)
+    expect(afterClose).not.toContain('classifyPurchase(')
+    expect(afterClose).not.toContain('updateExpense(')
+  })
+
+  it('la conciliación (matchForecastOccurrence) y "Gestionar movimiento" son pasos SEPARADOS: confirmCandidate ya guarda la conciliación antes de abrir el paso de gestión', () => {
+    const idx = FS.indexOf('async function confirmCandidate')
+    const body = FS.slice(idx, FS.indexOf('\n  function ', idx))
+    const matchIdx = body.indexOf('await matchForecastOccurrence(')
+    const manageIdx = body.indexOf('setManaging(')
+    expect(matchIdx).toBeGreaterThan(-1)
+    expect(manageIdx).toBeGreaterThan(matchIdx) // la conciliación ya se ha guardado ANTES de abrir "Gestionar movimiento"
+  })
+
+  it('precedencia de categoría: resolveManagedExpenseCategory decide el punto de partida, nunca un UPDATE ciego con la categoría de la previsión', () => {
+    expect(FS).toContain('resolveManagedExpenseCategory(e.category, forecastCategoryName)')
+    expect(FS).not.toMatch(/category:\s*forecastCategoryName/) // nunca se asigna directo sin pasar por la resolución
+  })
+
+  it('"✓ Cobrado" en Próximos pagos ofrece Gestionar/Desconciliar como acciones separadas', () => {
+    expect(FS).toContain('✓ Cobrado')
+    const idx = FS.indexOf('o.matchedExpenseId && (')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 700)
+    expect(block).toContain('Gestionar')
+    expect(block).toContain('Desconciliar')
+  })
+})
+
+describe('Fase 1D-f — los totales pendientes excluyen lo ya conciliado', () => {
+  it('forecastTotals excluye ocurrencias con matchedExpenseId — verificado también a nivel de dominio en forecast.test.ts', () => {
+    const idx = FS_DOMAIN_FORECAST.indexOf('export function forecastTotals')
+    const body = FS_DOMAIN_FORECAST.slice(idx, FS_DOMAIN_FORECAST.indexOf('\n}', idx))
+    expect(body).toContain('if (o.matchedExpenseId) continue')
+  })
+
+  it('PrevisionPagosTab sigue calculando "Próximos X días"/"Visión 12 meses" con forecastTotals/forecastByMonth — la exclusión llega gratis, sin tener que filtrar aparte en la pantalla', () => {
+    expect(FS).toContain('const totals = forecastTotals(upcomingOccurrences)')
+    expect(FS).toContain("const monthTotals = forecastByMonth(twelveMonthOccurrences, 'expectedPaymentDate')")
   })
 })
 

@@ -337,9 +337,16 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+// Fase 1D-f — "Próximos X días"/"Visión 12 meses" representan dinero TODAVÍA PENDIENTE de pagar: una
+// ocurrencia ya conciliada (matched_expense_id, Fase 1D-e) es dinero que YA SALIÓ, así que nunca debe
+// seguir sumando aquí — mismo criterio que remainingInstallments/remainingPlanAmount, que ya excluían las
+// conciliadas desde que existe esa columna. Desconciliar (data/forecast.ts: unmatchForecastOccurrence)
+// vuelve a dejar matchedExpenseId en null, así que la ocurrencia vuelve a sumar aquí automáticamente en
+// el siguiente render — sin ningún estado adicional que sincronizar a mano.
 export function forecastTotals(occurrences: ForecastOccurrence[]): ForecastTotals {
   const byCurrency = new Map<string, ForecastCurrencyTotals>()
   for (const o of occurrences) {
+    if (o.matchedExpenseId) continue
     const t = byCurrency.get(o.currency) ?? { currency: o.currency, knownTotal: 0, estimatedTotal: 0, unknownCount: 0, knownPlusEstimatedTotal: 0 }
     if (o.amountStatus === 'known') t.knownTotal = round2(t.knownTotal + (o.amount ?? 0))
     else if (o.amountStatus === 'estimated') t.estimatedTotal = round2(t.estimatedTotal + (o.amount ?? 0))
@@ -351,7 +358,8 @@ export function forecastTotals(occurrences: ForecastOccurrence[]): ForecastTotal
 }
 
 // Agrupa por mes (clave "YYYY-MM") según `dateField` — "qué vence este mes" y "qué vamos a pagar este
-// mes" son dos vistas legítimas y distintas, por eso es parametrizable en vez de fijo.
+// mes" son dos vistas legítimas y distintas, por eso es parametrizable en vez de fijo. Hereda de
+// forecastTotals la exclusión de ocurrencias ya conciliadas (Fase 1D-f) sin duplicar el filtro aquí.
 export function forecastByMonth(occurrences: ForecastOccurrence[], dateField: 'dueDate' | 'expectedPaymentDate' = 'expectedPaymentDate'): Map<string, ForecastTotals> {
   const byMonth = new Map<string, ForecastOccurrence[]>()
   for (const o of occurrences) {

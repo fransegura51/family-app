@@ -244,3 +244,31 @@ export function findReconciliationCandidates(
 
   return [...bestByMovement.values()].sort((a, b) => b.score - a.score)
 }
+
+// ── Fase 1D-f — "Gestionar movimiento": qué categoría proponer al confirmar una conciliación ──────────
+//
+// Auditoría previa (sin código, antes de diseñar esto): expenses.category es una única columna de texto,
+// sobrescrita en el sitio tanto por el sync bancario (categoría adivinada) como por una edición manual
+// (classify_purchase) — no existe NINGÚN campo que distinga "todavía es la adivinada por el banco" de "el
+// usuario ya la confirmó a mano" (ni columna, ni timestamp, ni un valor centinela: se comprobó leyendo
+// TODAS las migraciones que tocan `expenses` y grepeando el repo entero). Inventar esa distinción sería
+// arriesgar un UPDATE que pise una decisión manual real sin poder saberlo con certeza — así que esta
+// función NUNCA decide sola: siempre expone `currentCategory` para que la pantalla pueda ofrecer
+// "Mantener {currentCategory}", y nada se guarda hasta que el usuario pulsa "Guardar y finalizar".
+export interface ManagedExpenseCategoryResolution {
+  // Qué debe llevar el selector nada más abrir "Gestionar movimiento" — nunca se aplica solo; solo es el
+  // punto de partida de un <select> que el usuario puede cambiar libremente antes de guardar.
+  preselected: string | null
+  // true cuando la categoría ya guardada del expense difiere de la propuesta por la previsión — la
+  // pantalla debe mostrar entonces las DOS claramente (nunca ocultar cuál había antes).
+  hasConflict: boolean
+  // La categoría que YA tenía el expense antes de abrir este paso (null = "Pendiente de clasificar") —
+  // siempre presente cuando hasConflict es true, para poder ofrecer "Mantener {currentCategory}".
+  currentCategory: string | null
+}
+
+export function resolveManagedExpenseCategory(currentCategory: string | null, forecastCategoryName: string | null): ManagedExpenseCategoryResolution {
+  if (forecastCategoryName == null) return { preselected: currentCategory, hasConflict: false, currentCategory }
+  if (currentCategory == null || currentCategory === forecastCategoryName) return { preselected: forecastCategoryName, hasConflict: false, currentCategory }
+  return { preselected: forecastCategoryName, hasConflict: true, currentCategory }
+}

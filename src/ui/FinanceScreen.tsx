@@ -16,6 +16,7 @@ import {
   deleteGoal,
   deleteTag,
   deleteWalletTransaction,
+  getExpenseById,
   listBudgetCategories,
   listBudgets,
   listExpenses,
@@ -64,6 +65,7 @@ import {
 } from '@/domain/forecast'
 import {
   findReconciliationCandidates,
+  resolveManagedExpenseCategory,
   type BankMovementForMatching,
   type OccurrenceForMatching,
   type ReconciliationCandidate,
@@ -8338,6 +8340,11 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [reconcileOpen, setReconcileOpen] = useState(false)
   const [reconcileBusyKey, setReconcileBusyKey] = useState<string | null>(null)
   const [reconcileError, setReconcileError] = useState<string | null>(null)
+  // Fase 1D-f — "Gestionar movimiento": mismas etiquetas que ya usa Movimientos (nunca un sistema
+  // paralelo). `managing` es el expense abierto en el paso de gestión — independiente de la lista de
+  // candidatos, porque en cuanto se concilia, esa ocurrencia deja de ser candidata (ya tiene matchedExpenseId).
+  const [tags, setTags] = useState<Tag[]>([])
+  const [managing, setManaging] = useState<{ expenseId: string; forecastCategoryId: string | null } | null>(null)
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -8363,6 +8370,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   useEffect(() => {
     listFamilyMembers().then(setMembers).catch(() => {})
     listBankAccounts().then(setAccounts).catch(() => {})
+    listTags().then(setTags).catch(() => {})
   }, [])
 
   function closeForm() {
@@ -8455,6 +8463,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       })
       reload()
       reloadReconciliation()
+      // La conciliación YA ha quedado guardada — "Gestionar movimiento" es un paso SEPARADO y opcional
+      // a continuación (si el usuario lo cierra sin guardar nada, la conciliación no se pierde).
+      setManaging({ expenseId: c.movement.expenseId, forecastCategoryId: c.occurrence.categoryId })
     } catch (err) {
       setReconcileError(errorMessage(err, 'No se pudo conciliar'))
     } finally {
@@ -8518,9 +8529,19 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
             </p>
           )}
           {o.matchedExpenseId && (
-            <button type="button" className="link-button" style={{ fontSize: 12, padding: 0, marginTop: 2 }} onClick={() => unmatchOccurrence(o)}>
-              Desconciliar
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              <button
+                type="button"
+                className="link-button"
+                style={{ fontSize: 12, padding: 0 }}
+                onClick={() => setManaging({ expenseId: o.matchedExpenseId!, forecastCategoryId: o.categoryId })}
+              >
+                Gestionar
+              </button>
+              <button type="button" className="link-button" style={{ fontSize: 12, padding: 0 }} onClick={() => unmatchOccurrence(o)}>
+                Desconciliar
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -8718,7 +8739,15 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                       {reconciledRecently.map((o) => (
                         <p key={`${o.forecastPaymentId}-${o.occurrenceDate}-${o.installmentSequenceIndex ?? 0}`} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
                           ✓ {o.title} · {formatSpanishDate(o.expectedPaymentDate)} ·{' '}
-                          {o.amountStatus === 'unknown' ? 'Importe pendiente' : formatForecastAmount(o.amount ?? 0, o.currency)}
+                          {o.amountStatus === 'unknown' ? 'Importe pendiente' : formatForecastAmount(o.amount ?? 0, o.currency)}{' '}
+                          <button
+                            type="button"
+                            className="link-button"
+                            style={{ fontSize: 12, padding: 0 }}
+                            onClick={() => setManaging({ expenseId: o.matchedExpenseId!, forecastCategoryId: o.categoryId })}
+                          >
+                            Gestionar
+                          </button>
                         </p>
                       ))}
                     </>
@@ -8726,6 +8755,23 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                 </div>
               )}
             </>
+          )}
+
+          {/* Independiente de si el acordeón de arriba está abierto/cerrado o de cuántos candidatos
+              queden: "Gestionar movimiento" es un paso propio que sigue vivo aunque el resto de la
+              sección de conciliación cambie de forma mientras se recarga. */}
+          {managing && (
+            <ManageReconciledExpense
+              expenseId={managing.expenseId}
+              forecastCategoryId={managing.forecastCategoryId}
+              categories={categories}
+              tags={tags}
+              onClose={() => setManaging(null)}
+              onDone={() => {
+                setManaging(null)
+                reloadReconciliation()
+              }}
+            />
           )}
 
           <h2 className="section-title" style={{ marginTop: 16 }}>
@@ -8803,6 +8849,130 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Fase 1D-f — "Gestionar movimiento": paso SEPARADO y opcional después de confirmar una conciliación
+// (nunca bloquea ni deshace la conciliación si se cierra sin guardar). Reutiliza EXACTAMENTE el mismo
+// mecanismo que ya usa Movimientos para editar un gasto real — classify_purchase (RPC atómica, Fase
+// 6C.2C) para la categoría, updateExpense para la etiqueta — nunca un camino paralelo ni un UPDATE
+// directo a expenses.category. category/tag_id son la única definición real de "movimiento gestionado"
+// que existe en esta base de datos (domain/pending.ts): no se inventa ningún estado nuevo.
+function ManageReconciledExpense({
+  expenseId,
+  forecastCategoryId,
+  categories,
+  tags,
+  onClose,
+  onDone,
+}: {
+  expenseId: string
+  forecastCategoryId: string | null
+  categories: BudgetCategory[]
+  tags: Tag[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [expense, setExpense] = useState<Expense | null>(null)
+  const [category, setCategory] = useState<string | null>(null)
+  const [tagId, setTagId] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const forecastCategoryName = categories.find((c) => c.id === forecastCategoryId)?.name ?? null
+
+  useEffect(() => {
+    let cancelled = false
+    getExpenseById(expenseId)
+      .then((e) => {
+        if (cancelled || !e) return
+        setExpense(e)
+        // resolveManagedExpenseCategory nunca decide sola: solo propone un punto de partida editable —
+        // no existe ningún campo que distinga "categoría automática" de "categoría confirmada a mano"
+        // (auditoría de esta fase), así que nada se aplica hasta que la persona pulse "Guardar".
+        setCategory(resolveManagedExpenseCategory(e.category, forecastCategoryName).preselected)
+        setTagId(e.tagId ?? '')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expenseId])
+
+  async function handleSave() {
+    if (!expense) return
+    setSaving(true)
+    setError(null)
+    try {
+      if (category != null && category !== expense.category) {
+        let result
+        try {
+          result = await classifyPurchase({ expenseId: expense.id, category })
+        } catch (err) {
+          void reportClientError(err)
+          setError(CLASSIFY_FAILED_MESSAGE)
+          return
+        }
+        if (!classifyOk(result)) {
+          setError(classifyMessage(result))
+          return
+        }
+      }
+      if ((tagId || null) !== expense.tagId) {
+        await updateExpense(expense.id, { tagId: tagId || null })
+      }
+      onDone()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="card" style={{ padding: 12, marginTop: 8 }}>
+        <p className="muted" style={{ margin: 0 }}>Cargando movimiento…</p>
+      </div>
+    )
+  }
+  if (!expense) return null // el expense ya no existe/no es accesible — nada que gestionar
+
+  const resolution = resolveManagedExpenseCategory(expense.category, forecastCategoryName)
+
+  return (
+    <div className="card" style={{ padding: 12, marginTop: 8 }}>
+      <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Gestionar movimiento</p>
+      <label>
+        Categoría
+        <CategorySelect value={category ?? ''} onChange={setCategory} categories={categories} emptyLabel={expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined} />
+      </label>
+      {resolution.hasConflict && (
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+          Categoría actual del movimiento: {resolution.currentCategory}.{' '}
+          <button type="button" className="link-button" style={{ fontSize: 12, padding: 0 }} onClick={() => setCategory(resolution.currentCategory)}>
+            Mantener {resolution.currentCategory}
+          </button>
+        </p>
+      )}
+      <label style={{ marginTop: 8, display: 'block' }}>
+        Etiqueta (opcional)
+        <TagSelect value={tagId} onChange={setTagId} tags={tags} />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button type="button" disabled={saving} onClick={handleSave}>
+          {saving ? 'Guardando…' : 'Guardar y finalizar'}
+        </button>
+        <button type="button" className="link-button" disabled={saving} onClick={onClose}>
+          Ahora no
+        </button>
+      </div>
     </div>
   )
 }

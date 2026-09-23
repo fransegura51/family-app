@@ -32,7 +32,14 @@ describe('12/13/15) forecast_recurrence_dismissals — RLS por familia, sin apre
     expect(SQL).toContain("private.has_section_access('dinero')")
   })
 
-  it('la policy además comprueba que account_id pertenece DE VERDAD a esa familia (join real bank_accounts→bank_connections) — nunca basta con que el cliente lo declare', () => {
+  // Fase 1E.0 — esta versión de la policy (0158, tal como se aplicó de verdad) tenía un bug real: el
+  // `family_id` sin cualificar dentro del EXISTS se resolvía a bank_connections.family_id (sombreado de
+  // nombre en el subquery correlacionado), no al family_id de la propia fila — quedaba
+  // "c.family_id = c.family_id", una tautología que nunca protegía nada. El texto de ESTE archivo es
+  // historia inmutable (la migración ya se aplicó tal cual) — la comprobación real de que account_id
+  // pertenece de verdad a la familia vive ahora en la policy corregida de la migración 0159, ver
+  // forecastRecurrenceDismissalsRlsFixMigration.test.ts.
+  it('el join bank_accounts→bank_connections existe en el texto original de 0158, aunque su condición de family_id tenía el bug corregido en 0159', () => {
     const policyIdx = SQL.indexOf('create policy "forecast_recurrence_dismissals: family crud"')
     const policyBody = SQL.slice(policyIdx)
     expect(policyBody).toContain('join bank_connections c on c.id = a.connection_id')

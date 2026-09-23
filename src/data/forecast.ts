@@ -4,6 +4,9 @@ import { createEvent, updateEvent, deleteEvent } from '@/data/calendar'
 import { nextForecastOccurrence } from '@/domain/forecast'
 import type {
   ForecastAmountStatus,
+  ForecastLoanDetails,
+  ForecastLoanInterestType,
+  ForecastLoanType,
   ForecastOccurrenceOverride,
   ForecastPayment,
   ForecastPaymentInstallment,
@@ -518,5 +521,150 @@ export async function dismissForecastRecurrence(accountId: string, merchantKey: 
       { family_id: familyId, account_id: accountId, merchant_key: merchantKey, dismissed_by: userId },
       { onConflict: 'family_id,account_id,merchant_key' },
     )
+  if (error) throw error
+}
+
+// ── Fase 1E.0/1E.1 — infraestructura de préstamos/hipotecas (forecast_loan_details) ────────────────
+//
+// Solo infraestructura: SIN UI todavía. La relación con forecast_payments es 1:1 opcional — un
+// forecast_payment sin fila aquí es simplemente un pago recurrente normal.
+interface ForecastLoanDetailsRow {
+  id: string
+  family_id: string
+  forecast_payment_id: string
+  loan_type: string | null
+  bank_reference: string | null
+  contract_reference: string | null
+  original_principal_cents: number | null
+  outstanding_principal_cents: number | null
+  principal_as_of_date: string | null
+  interest_rate_bps: number | null
+  interest_type: string | null
+  maturity_date: string | null
+  remaining_installments: number | null
+  last_verified_at: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+const FORECAST_LOAN_DETAILS_COLUMNS =
+  'id, family_id, forecast_payment_id, loan_type, bank_reference, contract_reference, original_principal_cents, ' +
+  'outstanding_principal_cents, principal_as_of_date, interest_rate_bps, interest_type, maturity_date, ' +
+  'remaining_installments, last_verified_at, notes, created_by, created_at, updated_at'
+
+function toForecastLoanDetails(row: ForecastLoanDetailsRow): ForecastLoanDetails {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    forecastPaymentId: row.forecast_payment_id,
+    loanType: row.loan_type as ForecastLoanType | null,
+    bankReference: row.bank_reference,
+    contractReference: row.contract_reference,
+    originalPrincipalCents: row.original_principal_cents,
+    outstandingPrincipalCents: row.outstanding_principal_cents,
+    principalAsOfDate: row.principal_as_of_date,
+    interestRateBps: row.interest_rate_bps,
+    interestType: row.interest_type as ForecastLoanInterestType | null,
+    maturityDate: row.maturity_date,
+    remainingInstallments: row.remaining_installments,
+    lastVerifiedAt: row.last_verified_at,
+    notes: row.notes,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+export interface ForecastLoanDetailsInput {
+  loanType: ForecastLoanType | null
+  bankReference: string | null
+  contractReference: string | null
+  originalPrincipalCents: number | null
+  outstandingPrincipalCents: number | null
+  principalAsOfDate: string | null
+  interestRateBps: number | null
+  interestType: ForecastLoanInterestType | null
+  maturityDate: string | null
+  remainingInstallments: number | null
+  lastVerifiedAt: string | null
+  notes: string | null
+}
+
+// null si el pago previsto todavía no está clasificado como préstamo (caso normal, la inmensa mayoría).
+export async function getLoanDetails(forecastPaymentId: string): Promise<ForecastLoanDetails | null> {
+  const { data, error } = await supabase.from('forecast_loan_details').select(FORECAST_LOAN_DETAILS_COLUMNS).eq('forecast_payment_id', forecastPaymentId).maybeSingle()
+  if (error) throw error
+  return data ? toForecastLoanDetails(data as unknown as ForecastLoanDetailsRow) : null
+}
+
+// Todos los préstamos/hipotecas de la familia (RLS ya acota) — para una futura sección "🏦 Préstamos e
+// hipotecas" que necesite listarlos todos de una vez, cruzados con sus forecast_payments.
+export async function listLoanDetails(): Promise<ForecastLoanDetails[]> {
+  const { data, error } = await supabase.from('forecast_loan_details').select(FORECAST_LOAN_DETAILS_COLUMNS)
+  if (error) throw error
+  return (data as unknown as ForecastLoanDetailsRow[] | null ?? []).map(toForecastLoanDetails)
+}
+
+// Marcar un pago previsto como préstamo — Nivel 1 (todos los campos de input en null, salvo quizá
+// loanType) es una llamada perfectamente válida: "sabemos que es un préstamo, no sabemos más todavía".
+export async function createLoanDetails(forecastPaymentId: string, input: ForecastLoanDetailsInput): Promise<string> {
+  const { familyId, userId } = await currentFamilyAndUser()
+  const { data, error } = await supabase
+    .from('forecast_loan_details')
+    .insert({
+      family_id: familyId,
+      forecast_payment_id: forecastPaymentId,
+      loan_type: input.loanType,
+      bank_reference: input.bankReference,
+      contract_reference: input.contractReference,
+      original_principal_cents: input.originalPrincipalCents,
+      outstanding_principal_cents: input.outstandingPrincipalCents,
+      principal_as_of_date: input.principalAsOfDate,
+      interest_rate_bps: input.interestRateBps,
+      interest_type: input.interestType,
+      maturity_date: input.maturityDate,
+      remaining_installments: input.remainingInstallments,
+      last_verified_at: input.lastVerifiedAt,
+      notes: input.notes,
+      created_by: userId,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id as string
+}
+
+// Actualización posterior de capital/interés/vencimiento/etc. — nunca resta la cuota del capital
+// pendiente anterior (eso vive en la UI/dominio que llame a esto, nunca aquí: una cuota mezcla
+// amortización de capital e interés en proporción variable, nunca calculable sin el cuadro de
+// amortización real).
+export async function updateLoanDetails(id: string, input: ForecastLoanDetailsInput): Promise<void> {
+  const { error } = await supabase
+    .from('forecast_loan_details')
+    .update({
+      loan_type: input.loanType,
+      bank_reference: input.bankReference,
+      contract_reference: input.contractReference,
+      original_principal_cents: input.originalPrincipalCents,
+      outstanding_principal_cents: input.outstandingPrincipalCents,
+      principal_as_of_date: input.principalAsOfDate,
+      interest_rate_bps: input.interestRateBps,
+      interest_type: input.interestType,
+      maturity_date: input.maturityDate,
+      remaining_installments: input.remainingInstallments,
+      last_verified_at: input.lastVerifiedAt,
+      notes: input.notes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
+// Quitar la clasificación de "préstamo" sin borrar el forecast_payment — el pago previsto sigue
+// existiendo normal, solo deja de tener detalle de préstamo asociado.
+export async function deleteLoanDetails(id: string): Promise<void> {
+  const { error } = await supabase.from('forecast_loan_details').delete().eq('id', id)
   if (error) throw error
 }

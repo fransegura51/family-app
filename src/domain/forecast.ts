@@ -41,6 +41,46 @@ export interface ForecastReminder {
   unit: ForecastReminderUnit
 }
 
+// Fase 1E.0 — infraestructura mínima de préstamos/hipotecas: información adicional OPCIONAL, relación
+// 1:1, de un ForecastPayment que la familia ha clasificado como préstamo. Su sola EXISTENCIA es lo que
+// marca "esto es un préstamo" — nunca un booleano aparte en ForecastPayment que pudiera desincronizarse.
+// forecast_payments sigue siendo el ÚNICO generador de compromisos futuros: esto nunca participa en
+// forecastTotals/forecastByMonth/expandForecastOccurrences, ni en absoluto en ningún cálculo financiero
+// (capital pendiente, interés, cuadro de amortización) — solo se guarda y se muestra tal cual.
+//
+// Nivel 1 (aprobado explícitamente): todos los campos financieros NULL, incluido loanType, es una fila
+// perfectamente válida — "sabemos que es un préstamo, no sabemos más todavía". NUNCA 0 como sustituto de
+// "no lo sabemos".
+export type ForecastLoanType = 'hipoteca' | 'prestamo_coche' | 'prestamo_moto' | 'prestamo_personal' | 'otro'
+export type ForecastLoanInterestType = 'fijo' | 'variable' | 'mixto'
+
+export interface ForecastLoanDetails {
+  id: string
+  familyId: string
+  forecastPaymentId: string
+  loanType: ForecastLoanType | null
+  // Identificador ESTABLE observado en los cargos bancarios (p. ej. "8078183410" de "PRESTAMOS ADEUDO
+  // CUOTA N.8078183410") — nunca el mismo concepto que contractReference, aunque a veces coincidan.
+  bankReference: string | null
+  // Referencia de contrato REAL — solo dato aportado por la familia o una fuente contractual fiable,
+  // nunca copiado automáticamente desde bankReference.
+  contractReference: string | null
+  originalPrincipalCents: number | null
+  outstandingPrincipalCents: number | null
+  // Invariante (constraint en BD): outstandingPrincipalCents y principalAsOfDate son ambos null o ambos
+  // no-null — un capital pendiente sin fecha de referencia es un dato que caduca en silencio.
+  principalAsOfDate: string | null
+  interestRateBps: number | null // 300 = 3,00 % — básicos puntos, nunca decimal flotante
+  interestType: ForecastLoanInterestType | null
+  maturityDate: string | null // dato contractual real — NUNCA derivado del UNTIL de recurrenceRule
+  remainingInstallments: number | null
+  lastVerifiedAt: string | null
+  notes: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ForecastOccurrenceOverride {
   id: string
   forecastPaymentId: string

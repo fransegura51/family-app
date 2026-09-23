@@ -580,10 +580,24 @@ describe('Fase 1D-g — posibles pagos recurrentes: sección discreta, propone, 
     expect(block).toContain('onClick={() => dismissRecurrenceCandidate(c)}')
   })
 
+  it('Fase 1D-g.1: la tarjeta ("Próximo cargo estimado") y el prefill del formulario (dueDate) leen la MISMA c.nextDueDate — nunca dos cálculos que puedan desincronizarse', () => {
+    const idx = FS.indexOf('{recurrenceCandidates.map((c) => {')
+    const block = FS.slice(idx, idx + 2200)
+    expect(block).toContain('{formatSpanishDate(c.nextDueDate)}')
+
+    const reviewIdx = FS.indexOf('function reviewRecurrenceCandidate')
+    const reviewBody = FS.slice(reviewIdx, FS.indexOf('\n  }', reviewIdx))
+    expect(reviewBody).toContain('dueDate: c.nextDueDate')
+  })
+
   it('usa findNewRecurrenceCandidates del dominio (motor determinista) — nunca recalcula la detección a mano en la pantalla', () => {
     expect(FS).toContain(
-      'findNewRecurrenceCandidates(allBankMovementsForDetection, matchedExpenseIds, existingPaymentsForDedup, dismissedRecurrenceKeys)',
+      'findNewRecurrenceCandidates(allBankMovementsForDetection, matchedExpenseIds, existingPaymentsForDedup, dismissedRecurrenceKeys, today)',
     )
+  })
+
+  it('Fase 1D-g.1: la fecha de referencia ("today") la pasa la pantalla — domain/forecastRecurrenceDetection.ts nunca lee el reloj del sistema por su cuenta', () => {
+    expect(RECURRENCE_DETECTION).not.toContain('new Date(')
   })
 
   it('excluye transferencias internas con el mecanismo real ya existente (isInternalTransferCategory) — nunca una lista de comercios excluidos por nombre', () => {

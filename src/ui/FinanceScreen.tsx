@@ -8516,7 +8516,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     bankAccountId: p.bankAccountId,
     active: p.active,
   }))
-  const recurrenceCandidates = findNewRecurrenceCandidates(allBankMovementsForDetection, matchedExpenseIds, existingPaymentsForDedup, dismissedRecurrenceKeys)
+  const recurrenceCandidates = findNewRecurrenceCandidates(allBankMovementsForDetection, matchedExpenseIds, existingPaymentsForDedup, dismissedRecurrenceKeys, today)
 
   function recurrenceCandidateKey(c: RecurrenceCandidate): string {
     return `${c.accountId}::${c.merchantKey}`

@@ -145,10 +145,36 @@ export interface RecurrenceCandidate {
   estimatedAmountCents: number // media de occurrences, en céntimos — nunca floats
   amountRangeCents: { min: number; max: number }
   estimatedBasisText: string // "Media de los últimos N cargos (X–Y €)", listo para mostrar/editar
+  // SIEMPRE estrictamente posterior a la referenceDate pasada a detectRecurrenceCandidates — nunca una
+  // fecha ya pasada ni "hoy" (Fase 1D-g.1). Ver nextFutureDueDate.
   nextDueDate: string
   // Solo cuando una categoría real es mayoritaria de verdad entre los expenses de esos cargos — "Otros"
   // NUNCA cuenta como fiable (pedido explícito): un expense sin categorizar de verdad no aporta señal.
   suggestedCategoryName: string | null
+}
+
+// ── Fase 1D-g.1 — "próximo cargo estimado" SIEMPRE estrictamente futuro ────────────────────────────
+//
+// stepMonthsClamped(lastChargeDate, monthStep) da UN ciclo por delante del último cargo real — si la
+// familia no ha certificado la app en un tiempo, ese ciclo puede ya haber pasado (o ser hoy). "Próximo"
+// significa posterior a referenceDate, nunca hoy ni una fecha ya pasada — se avanza ciclo a ciclo hasta
+// encontrar el primero que sea de verdad futuro.
+//
+// SIEMPRE se ancla en lastChargeDate multiplicando el ciclo (monthStep * cycle), nunca encadenando
+// stepMonthsClamped sobre su propio resultado: encadenar arrastraría drift de fin de mes (31 ene -> 28
+// feb -> 28 mar, en vez de 31 mar) — el mismo criterio de anclaje único que ya usa occurrenceForCycle
+// para el resto de Previsión. No es aritmética de fechas nueva: sigue siendo el mismo stepMonthsClamped
+// certificado, solo evaluado en más ciclos hasta pasar de referenceDate.
+const NEXT_FUTURE_DATE_CYCLE_GUARD = 2000 // ~166 años a paso mensual — cota de seguridad, nunca alcanzable con datos reales
+
+export function nextFutureDueDate(lastChargeDate: string, monthStep: number, referenceDate: string): string {
+  let cycle = 1
+  let candidate = stepMonthsClamped(lastChargeDate, monthStep * cycle)
+  while (candidate <= referenceDate && cycle < NEXT_FUTURE_DATE_CYCLE_GUARD) {
+    cycle += 1
+    candidate = stepMonthsClamped(lastChargeDate, monthStep * cycle)
+  }
+  return candidate
 }
 
 const NOT_A_RELIABLE_CATEGORY = 'Otros'
@@ -185,7 +211,11 @@ function dominantReliableCategory(run: BankMovementForDetection[]): string | nul
 // Detecta TODOS los patrones plausibles del histórico dado — sin comprobar todavía si ya existen como
 // previsión ni si la familia los descartó antes (eso es findNewRecurrenceCandidates, un paso aparte y
 // deliberadamente separado para poder auditar/testear cada cosa por su lado).
-export function detectRecurrenceCandidates(movements: BankMovementForDetection[]): RecurrenceCandidate[] {
+//
+// referenceDate ("hoy") SIEMPRE la da quien llama — este módulo nunca lee el reloj del sistema (new
+// Date()) por su cuenta, para poder probarse con fechas deterministas y para no dispersar la noción de
+// "hoy" en varias funciones (mismo criterio que today/expandForecastOccurrences en el resto de Previsión).
+export function detectRecurrenceCandidates(movements: BankMovementForDetection[], referenceDate: string): RecurrenceCandidate[] {
   const groups = groupByMerchant(movements)
   const candidates: RecurrenceCandidate[] = []
   for (const group of groups) {
@@ -204,7 +234,7 @@ export function detectRecurrenceCandidates(movements: BankMovementForDetection[]
         estimatedAmountCents,
         amountRangeCents,
         estimatedBasisText: basisText,
-        nextDueDate: stepMonthsClamped(run[run.length - 1].date, def.monthStep),
+        nextDueDate: nextFutureDueDate(run[run.length - 1].date, def.monthStep, referenceDate),
         suggestedCategoryName: dominantReliableCategory(run),
       })
       // Las ventanas de tolerancia de las periodicidades nunca se solapan (ver comentario de
@@ -253,8 +283,9 @@ export function findNewRecurrenceCandidates(
   matchedExpenseIds: ReadonlySet<string>,
   existingPayments: readonly ForecastPaymentForDedup[],
   dismissedMerchantKeys: ReadonlySet<string>,
+  referenceDate: string,
 ): RecurrenceCandidate[] {
-  return detectRecurrenceCandidates(movements).filter(
+  return detectRecurrenceCandidates(movements, referenceDate).filter(
     (c) => !isRecurrenceCandidateAlreadyKnown(c, matchedExpenseIds, existingPayments) && !dismissedMerchantKeys.has(`${c.accountId}::${c.merchantKey}`),
   )
 }

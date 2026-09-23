@@ -3,6 +3,7 @@ import {
   detectRecurrenceCandidates,
   findNewRecurrenceCandidates,
   isRecurrenceCandidateAlreadyKnown,
+  nextFutureDueDate,
   normalizeMerchantKey,
   RECURRENCE_MIN_OCCURRENCES,
   RECURRENCE_PERIODICITIES,
@@ -13,6 +14,10 @@ import {
 
 const ACCOUNT_A = 'account-aaaa'
 const ACCOUNT_B = 'account-bbbb'
+// referenceDate para todos los tests que NO son sobre "próximo cargo estimado" (Fase 1D-g.1) — muy
+// anterior a cualquier fecha real usada como fixture, así nextDueDate nunca necesita avanzar de ciclo y
+// el comportamiento/las aserciones de antes de 1D-g.1 quedan exactamente igual.
+const OLD_REFERENCE_DATE = '2020-01-01'
 
 function movement(overrides: Partial<BankMovementForDetection> & Pick<BankMovementForDetection, 'date' | 'amount'>): BankMovementForDetection {
   return {
@@ -61,7 +66,7 @@ describe('CASOS REALES (auditoría de datos reales, familia 011429a4…) — 3,5
   ]
 
   it('B) ORANGE — candidato mensual, importe variable, categoría fiable "Teléfono e Internet"', () => {
-    const [candidate] = detectRecurrenceCandidates(ORANGE)
+    const [candidate] = detectRecurrenceCandidates(ORANGE, OLD_REFERENCE_DATE)
     expect(candidate).toBeDefined()
     expect(candidate.periodicity).toBe('monthly')
     expect(candidate.occurrences).toHaveLength(4)
@@ -73,35 +78,35 @@ describe('CASOS REALES (auditoría de datos reales, familia 011429a4…) — 3,5
   })
 
   it('C) ANTHROPIC — importe idéntico las 3 veces, pero SIGUE proponiéndose como Estimado (nunca Conocido) y sin rango redundante en el texto', () => {
-    const [candidate] = detectRecurrenceCandidates(ANTHROPIC)
+    const [candidate] = detectRecurrenceCandidates(ANTHROPIC, OLD_REFERENCE_DATE)
     expect(candidate.estimatedAmountCents).toBe(2178)
     expect(candidate.estimatedBasisText).toBe('Media de los últimos 3 cargos') // sin "(21,78–21,78 €)": no aporta nada
   })
 
   it('D) BBVA — patrón mensual real, pero SIN categoría fiable (mayoría es "Otros", que nunca cuenta)', () => {
-    const [candidate] = detectRecurrenceCandidates(BBVA)
+    const [candidate] = detectRecurrenceCandidates(BBVA, OLD_REFERENCE_DATE)
     expect(candidate.periodicity).toBe('monthly')
     expect(candidate.suggestedCategoryName).toBeNull()
   })
 
   it('E) HIPERBER (compra irregular real) — NUNCA se propone, el propio patrón temporal lo descarta (nunca una lista negra por nombre)', () => {
-    expect(detectRecurrenceCandidates(HIPERBER)).toEqual([])
+    expect(detectRecurrenceCandidates(HIPERBER, OLD_REFERENCE_DATE)).toEqual([])
   })
 
   it('A) ENDESA — el motor SÍ lo detecta como patrón (evidencia real de 4 cargos mensuales)…', () => {
-    const [candidate] = detectRecurrenceCandidates(ENDESA)
+    const [candidate] = detectRecurrenceCandidates(ENDESA, OLD_REFERENCE_DATE)
     expect(candidate).toBeDefined()
     expect(candidate.periodicity).toBe('monthly')
     expect(candidate.occurrences).toHaveLength(4)
   })
 
   it('…pero NUNCA se propone: ya está conciliada con "Endesa factura de luz" (caso obligatorio del encargo)', () => {
-    const [candidate] = detectRecurrenceCandidates(ENDESA)
+    const [candidate] = detectRecurrenceCandidates(ENDESA, OLD_REFERENCE_DATE)
     const matchedExpenseIds = new Set(['exp-endesa-4']) // el cargo de septiembre, ya conciliado (Fase 1D-e/f)
     expect(isRecurrenceCandidateAlreadyKnown(candidate, matchedExpenseIds, [])).toBe(true)
 
     const allMovements = [...ENDESA, ...ORANGE, ...ANTHROPIC, ...BBVA, ...HIPERBER]
-    const results = findNewRecurrenceCandidates(allMovements, matchedExpenseIds, [], new Set())
+    const results = findNewRecurrenceCandidates(allMovements, matchedExpenseIds, [], new Set(), OLD_REFERENCE_DATE)
     expect(results.map((c) => c.displayName)).not.toContain('ENDESA ENERGIA S.A.')
     expect(results.map((c) => c.displayName).sort()).toEqual(['BANCO BILBAO VIZCAYA ARGENTARIA S.A.', 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN', 'ORANGE ESPAGNE SAU'])
   })
@@ -114,7 +119,7 @@ describe('DBIT sí / CRDT no — una previsión siempre es dinero que sale', () 
       movement({ date: '2026-07-15', amount: 100, isIncome: true }),
       movement({ date: '2026-08-14', amount: 100, isIncome: true }),
     ]
-    expect(detectRecurrenceCandidates(income)).toEqual([])
+    expect(detectRecurrenceCandidates(income, OLD_REFERENCE_DATE)).toEqual([])
   })
 })
 
@@ -128,7 +133,7 @@ describe('agrupación por cuenta — nunca se mezclan movimientos de cuentas dis
       movement({ date: '2026-07-24', amount: 200, description: 'ORANGE ESPAGNE SAU', accountId: ACCOUNT_B }),
       movement({ date: '2026-08-24', amount: 200, description: 'ORANGE ESPAGNE SAU', accountId: ACCOUNT_B }),
     ]
-    const results = detectRecurrenceCandidates(movements)
+    const results = detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)
     expect(results).toHaveLength(2)
     expect(results.find((c) => c.accountId === ACCOUNT_A)?.estimatedAmountCents).toBe(6455)
     expect(results.find((c) => c.accountId === ACCOUNT_B)?.estimatedAmountCents).toBe(20000)
@@ -148,7 +153,7 @@ describe('normalización de merchant — agrupa equivalentes sin fusionar comerc
 describe('mínimo de evidencia (RECURRENCE_MIN_OCCURRENCES = 3, decisión aprobada)', () => {
   it('con solo 2 cargos, por muy consistentes que sean los intervalos, NUNCA se propone', () => {
     const movements = [movement({ date: '2026-07-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' }), movement({ date: '2026-08-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' })]
-    expect(detectRecurrenceCandidates(movements)).toEqual([])
+    expect(detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)).toEqual([])
   })
 
   it('la constante está documentada y exportada — nunca un número suelto en el algoritmo', () => {
@@ -162,7 +167,7 @@ describe('mensual válido / inválido por intervalo irregular — ningún interv
     // siquiera es mensual ni bimestral, pero aunque lo fuera, el segundo intervalo por sí solo ya invalida
     // la racha reciente.
     const movements = [movement({ date: '2026-05-01', amount: 50 }), movement({ date: '2026-05-31', amount: 50 }), movement({ date: '2026-09-08', amount: 50 })]
-    expect(detectRecurrenceCandidates(movements)).toEqual([])
+    expect(detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)).toEqual([])
   })
 
   it('la racha final consistente SÍ se puede proponer aunque un cargo antiguo, ya fuera de la racha, fuera irregular', () => {
@@ -174,7 +179,7 @@ describe('mensual válido / inválido por intervalo irregular — ningún interv
       movement({ date: '2026-07-15', amount: 55 }),
       movement({ date: '2026-08-17', amount: 55 }),
     ]
-    const [candidate] = detectRecurrenceCandidates(movements)
+    const [candidate] = detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)
     expect(candidate).toBeDefined()
     expect(candidate.occurrences).toHaveLength(3) // solo la racha final, no el cargo de enero
     expect(candidate.occurrences[0].date).toBe('2026-06-15')
@@ -184,21 +189,21 @@ describe('mensual válido / inválido por intervalo irregular — ningún interv
 describe('bimestral/trimestral/etc. — el motor está preparado para las 6 periodicidades, cuando hay evidencia', () => {
   it('bimestral: 3 cargos cada ~60 días se detectan como bimestrales, no mensuales', () => {
     const movements = [movement({ date: '2026-01-05', amount: 40 }), movement({ date: '2026-03-06', amount: 40 }), movement({ date: '2026-05-04', amount: 40 })]
-    const [candidate] = detectRecurrenceCandidates(movements)
+    const [candidate] = detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)
     expect(candidate.periodicity).toBe('bimonthly')
   })
 
   it('trimestral: 3 cargos cada ~90 días', () => {
     const movements = [movement({ date: '2026-01-05', amount: 40 }), movement({ date: '2026-04-05', amount: 40 }), movement({ date: '2026-07-02', amount: 40 })]
-    const [candidate] = detectRecurrenceCandidates(movements)
+    const [candidate] = detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)
     expect(candidate.periodicity).toBe('quarterly')
   })
 
   it('anual: dos cargos separados por un año (con unos días de diferencia, caso real del seguro) — con RECURRENCE_MIN_OCCURRENCES=3 hacen falta 3 años para proponerlo, documentado como límite real del histórico disponible hoy', () => {
     const twoYears = [movement({ date: '2024-06-08', amount: 294 }), movement({ date: '2025-06-10', amount: 294 })]
-    expect(detectRecurrenceCandidates(twoYears)).toEqual([]) // solo 2 — no hay evidencia suficiente todavía
+    expect(detectRecurrenceCandidates(twoYears, OLD_REFERENCE_DATE)).toEqual([]) // solo 2 — no hay evidencia suficiente todavía
     const threeYears = [...twoYears, movement({ date: '2026-06-09', amount: 294 })]
-    const [candidate] = detectRecurrenceCandidates(threeYears)
+    const [candidate] = detectRecurrenceCandidates(threeYears, OLD_REFERENCE_DATE)
     expect(candidate.periodicity).toBe('annual')
   })
 
@@ -210,7 +215,7 @@ describe('bimestral/trimestral/etc. — el motor está preparado para las 6 peri
 describe('importe: media en céntimos, nunca floats; "Otros" nunca es una categoría fiable', () => {
   it('la media se calcula en céntimos enteros (nunca comparación/redondeo en punto flotante)', () => {
     const movements = [movement({ date: '2026-06-01', amount: 10.1 }), movement({ date: '2026-07-01', amount: 10.2 }), movement({ date: '2026-08-01', amount: 10.1 })]
-    const [candidate] = detectRecurrenceCandidates(movements)
+    const [candidate] = detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)
     // (1010+1020+1010)/3 = 1013.33 → redondeado a 1013 céntimos, nunca un resultado con imprecisión de float.
     expect(candidate.estimatedAmountCents).toBe(1013)
   })
@@ -221,19 +226,19 @@ describe('importe: media en céntimos, nunca floats; "Otros" nunca es una catego
       movement({ date: '2026-07-01', amount: 10, category: 'Seguros' }),
       movement({ date: '2026-08-01', amount: 10, category: 'Otros' }),
     ]
-    expect(detectRecurrenceCandidates(majority)[0].suggestedCategoryName).toBe('Seguros')
+    expect(detectRecurrenceCandidates(majority, OLD_REFERENCE_DATE)[0].suggestedCategoryName).toBe('Seguros')
 
     const tie = [
       movement({ date: '2026-06-01', amount: 10, category: 'Seguros', description: 'X' }),
       movement({ date: '2026-07-01', amount: 10, category: 'Vivienda y hogar', description: 'X' }),
       movement({ date: '2026-08-01', amount: 10, category: null, description: 'X' }),
     ]
-    expect(detectRecurrenceCandidates(tie)[0].suggestedCategoryName).toBeNull()
+    expect(detectRecurrenceCandidates(tie, OLD_REFERENCE_DATE)[0].suggestedCategoryName).toBeNull()
   })
 
   it('"Otros" nunca es fiable aunque sea unánime', () => {
     const allOtros = [movement({ date: '2026-06-01', amount: 10, category: 'Otros' }), movement({ date: '2026-07-01', amount: 10, category: 'Otros' }), movement({ date: '2026-08-01', amount: 10, category: 'Otros' })]
-    expect(detectRecurrenceCandidates(allOtros)[0].suggestedCategoryName).toBeNull()
+    expect(detectRecurrenceCandidates(allOtros, OLD_REFERENCE_DATE)[0].suggestedCategoryName).toBeNull()
   })
 })
 
@@ -278,19 +283,89 @@ describe('"No me interesa" — findNewRecurrenceCandidates respeta los descartes
   it('un merchant_key ya descartado para esa cuenta nunca vuelve a proponerse', () => {
     const movements = [movement({ date: '2026-06-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' }), movement({ date: '2026-07-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' }), movement({ date: '2026-08-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' })]
     const dismissed = new Set([`${ACCOUNT_A}::ORANGE ESPAGNE SAU`])
-    expect(findNewRecurrenceCandidates(movements, new Set(), [], dismissed)).toEqual([])
+    expect(findNewRecurrenceCandidates(movements, new Set(), [], dismissed, OLD_REFERENCE_DATE)).toEqual([])
   })
 
   it('un descarte de OTRA cuenta no afecta a esta', () => {
     const movements = [movement({ date: '2026-06-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' }), movement({ date: '2026-07-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' }), movement({ date: '2026-08-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' })]
     const dismissed = new Set([`${ACCOUNT_B}::ORANGE ESPAGNE SAU`])
-    expect(findNewRecurrenceCandidates(movements, new Set(), [], dismissed)).toHaveLength(1)
+    expect(findNewRecurrenceCandidates(movements, new Set(), [], dismissed, OLD_REFERENCE_DATE)).toHaveLength(1)
   })
 })
 
 describe('descripción vacía/ausente — nunca agrupa "nada" como si fuera un comercio', () => {
   it('movimientos sin descripción (null o solo espacios) se ignoran por completo', () => {
     const movements = [movement({ date: '2026-06-01', amount: 10, description: null }), movement({ date: '2026-07-01', amount: 10, description: '   ' }), movement({ date: '2026-08-01', amount: 10, description: null })]
-    expect(detectRecurrenceCandidates(movements)).toEqual([])
+    expect(detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)).toEqual([])
+  })
+})
+
+describe('Fase 1D-g.1 — "próximo cargo estimado" SIEMPRE estrictamente futuro (bug real certificado en iPhone, hoy=23/09/2026)', () => {
+  it('1) mensual ya futura: se conserva tal cual, sin avanzar de más', () => {
+    expect(nextFutureDueDate('2026-09-23', 1, '2026-09-23')).toBe('2026-10-23')
+  })
+
+  it('2) mensual en el pasado: avanza un ciclo hasta la primera fecha futura', () => {
+    expect(nextFutureDueDate('2026-08-17', 1, '2026-09-23')).toBe('2026-10-17')
+  })
+
+  it('3) mensual exactamente hoy: "próximo" significa posterior a hoy, nunca hoy mismo — avanza al siguiente ciclo', () => {
+    expect(nextFutureDueDate('2026-08-23', 1, '2026-09-23')).toBe('2026-10-23')
+  })
+
+  it('4) varios ciclos atrasados: avanza tantas veces como haga falta hasta la primera ocurrencia futura', () => {
+    // 17/07, 17/08 y 17/09 quedan los 3 en el pasado o son anteriores a hoy — hace falta llegar a 17/10.
+    expect(nextFutureDueDate('2026-06-17', 1, '2026-09-23')).toBe('2026-10-17')
+  })
+
+  it('5) bimestral', () => {
+    expect(nextFutureDueDate('2026-05-04', 2, '2026-09-23')).toBe('2026-11-04')
+  })
+
+  it('6) trimestral', () => {
+    expect(nextFutureDueDate('2026-01-05', 3, '2026-09-23')).toBe('2026-10-05')
+  })
+
+  it('7) semestral', () => {
+    expect(nextFutureDueDate('2026-03-01', 6, '2026-09-23')).toBe('2027-03-01')
+  })
+
+  it('8) anual', () => {
+    expect(nextFutureDueDate('2025-09-10', 12, '2026-09-23')).toBe('2027-09-10')
+  })
+
+  it('9) fin de mes: SIEMPRE ancla en el último cargo real (nunca encadena stepMonthsClamped sobre su propio resultado) — 31 ene no arrastra el recorte de 28 feb', () => {
+    // Si se encadenara (31 ene -> 28 feb clamped -> +1 mes = 28 mar), saldría 28/03; anclando siempre en
+    // 31 ene (2 ciclos = +2 meses desde el ancla), el resultado real es 31/03 (marzo sí tiene 31 días).
+    expect(nextFutureDueDate('2026-01-31', 1, '2026-03-15')).toBe('2026-03-31')
+  })
+
+  it('10) el caso real certificado en iPhone: ANTHROPIC ya no vuelve a mostrar 17/09/2026 (pasado) — avanza al 17/10/2026, producido por el mismo motor, nunca inventado a mano', () => {
+    const ANTHROPIC = [
+      movement({ date: '2026-06-15', amount: 21.78, description: 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN', expenseId: 'exp-a1' }),
+      movement({ date: '2026-07-15', amount: 21.78, description: 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN', expenseId: 'exp-a2' }),
+      movement({ date: '2026-08-17', amount: 21.78, description: 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN', expenseId: 'exp-a3' }),
+    ]
+    const HOY = '2026-09-23'
+    const [candidate] = detectRecurrenceCandidates(ANTHROPIC, HOY)
+    expect(candidate.nextDueDate).not.toBe('2026-09-17')
+    expect(candidate.nextDueDate).toBe('2026-10-17')
+    expect(candidate.nextDueDate > HOY).toBe(true)
+    // La corrección es SOLO sobre la fecha propuesta — la evidencia histórica detectada no cambia.
+    expect(candidate.periodicity).toBe('monthly')
+    expect(candidate.occurrences).toHaveLength(3)
+    expect(candidate.estimatedAmountCents).toBe(2178)
+  })
+
+  it('11) ENDESA sigue excluida por deduplicación con la fecha de referencia real de la certificación', () => {
+    const ENDESA = [
+      movement({ date: '2026-06-22', amount: 143.6, description: 'ENDESA ENERGIA S.A.', expenseId: 'exp-endesa-1' }),
+      movement({ date: '2026-07-24', amount: 253.9, description: 'ENDESA ENERGIA S.A.', expenseId: 'exp-endesa-2' }),
+      movement({ date: '2026-08-26', amount: 322.8, description: 'ENDESA ENERGIA S.A.', expenseId: 'exp-endesa-3' }),
+      movement({ date: '2026-09-23', amount: 261.08, description: 'ENDESA ENERGIA S.A.', expenseId: 'exp-endesa-4' }),
+    ]
+    const matchedExpenseIds = new Set(['exp-endesa-4'])
+    const results = findNewRecurrenceCandidates(ENDESA, matchedExpenseIds, [], new Set(), '2026-09-23')
+    expect(results).toEqual([])
   })
 })

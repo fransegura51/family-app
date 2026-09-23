@@ -84,7 +84,7 @@ describe('recurrencia amigable (nunca se pide escribir RRULE)', () => {
   it('usa buildRecurrenceRuleFromFormState/parseRecurrenceRuleToFormState (Fase 1D-b) del dominio, con las opciones pedidas', () => {
     expect(FS).toContain('buildRecurrenceRuleFromFormState')
     expect(FS).toContain('parseRecurrenceRuleToFormState')
-    for (const label of ['Mensual', 'Cada 3 meses', 'Cada 6 meses', 'Anual', 'Personalizado', '¿Se repite?', '¿Hasta cuándo?', 'Número de cuotas']) {
+    for (const label of ['Mensual', 'Cada 3 meses', 'Cada 6 meses', 'Anual', 'Personalizado', '¿Se repite?', '¿Hasta cuándo?', 'Número de pagos']) {
       expect(FS).toContain(label)
     }
   })
@@ -175,13 +175,23 @@ describe('Ayuda actualizada (misma fase, mismo commit)', () => {
     expect(dineroBlock).toContain('nunca se enseña como 0')
   })
 
-  it('cubre "Número de cuotas" (Fase 1D-b) y "¿Cómo se cobra cada vez?" / varios cobros (Fase 1D-c/d)', () => {
+  it('cubre "Número de pagos" (Fase 1D-b, renombrado en el ajuste UX) y "¿Cómo se cobra cada vez?" / varios cobros (Fase 1D-c/d)', () => {
     const dineroIdx = AYUDA.indexOf("'/dinero': [")
     const dineroBlock = AYUDA.slice(dineroIdx, AYUDA.indexOf("\n  ],", dineroIdx))
-    expect(dineroBlock).toContain('Número de cuotas')
+    expect(dineroBlock).toContain('Número de pagos')
     expect(dineroBlock).toContain('¿Cómo se cobra cada vez?')
     expect(dineroBlock).toContain('En varios cobros')
     expect(dineroBlock).not.toMatch(/RRULE|FREQ=|UNTIL=|INTERVAL=/) // sin jerga técnica, como en el resto de la app
+  })
+
+  it('Ajuste UX tras certificación móvil — explica el importe TOTAL repartido en "Plan de pagos" y la regla Conocido/Estimado/Pendiente del reparto', () => {
+    const dineroIdx = AYUDA.indexOf("'/dinero': [")
+    const dineroBlock = AYUDA.slice(dineroIdx, AYUDA.indexOf("\n  ],", dineroIdx))
+    expect(dineroBlock).toContain('Plan de pagos')
+    expect(dineroBlock).toContain('TOTAL')
+    expect(dineroBlock).toContain('Diferencia pendiente')
+    expect(dineroBlock).toContain('Próximo pago')
+    expect(dineroBlock).toContain('Último pago')
   })
 })
 
@@ -206,30 +216,52 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     expect(module).not.toMatch(/RRULE/i)
   })
 
-  it('la vista previa del plan usa expandForecastOccurrences (motor real), no un bucle de fechas hecho a mano', () => {
-    const idx = FS.indexOf('Vista previa del plan (Fase 1D-b)')
+  it('Ajuste UX tras certificación móvil — el "Plan de pagos" del plan finito reutiliza el puente de dominio (proposeFinitePlanLines/buildFinitePlanSubmission/parseFinitePlanLinesFromSaved), nunca calcula fechas/reparto a mano en el componente', () => {
+    expect(FS).toContain('proposeFinitePlanLines(')
+    expect(FS).toContain('buildFinitePlanSubmission(')
+    expect(FS).toContain('parseFinitePlanLinesFromSaved(')
+    const formIdx = FS.indexOf('function ForecastPaymentForm')
+    const formBody = FS.slice(formIdx, FS.indexOf('\nfunction ', formIdx + 10))
+    expect(formBody).not.toMatch(/setMonth|setDate|getMonth\(\)|getDate\(\)/) // sin aritmética de fechas manual en el componente
+  })
+
+  it('el "Plan de pagos" (una línea por pago, editable) SOLO se muestra en modo "Número de pagos" — nunca a la vez que "¿Cómo se cobra cada vez?" (una sola dimensión visible por plan finito)', () => {
+    const idx = FS.indexOf('isFinitePlanMode && planLines.length > 0 && (')
     expect(idx).toBeGreaterThan(-1)
-    const block = FS.slice(idx, FS.indexOf('return (', idx))
-    expect(block).toContain('expandForecastOccurrences(')
-    expect(block).not.toMatch(/setMonth|setDate|getMonth\(\)|getDate\(\)/) // sin aritmética de fechas manual en el componente
+    expect(FS).toContain("const isFinitePlanMode = repeats && untilMode === 'count'")
+    // "¿Cómo se cobra cada vez?" (el <label> real, no el comentario que lo explica) se oculta
+    // explícitamente cuando isFinitePlanMode.
+    const guardIdx = FS.indexOf('{!isFinitePlanMode && (')
+    expect(guardIdx).toBeGreaterThan(-1)
+    const block = FS.slice(guardIdx, guardIdx + 200)
+    expect(block).toContain('¿Cómo se cobra cada vez?')
   })
 
-  it('el total previsto se calcula con forecastTotals, no multiplicando importe × cuotas a mano en el JSX', () => {
-    expect(FS).toContain('forecastTotals(installmentPlanOccurrences)')
-  })
-
-  it('la previa NO se muestra para "Fecha concreta" — solo para "Número de cuotas" (alcance acotado a propósito)', () => {
-    const idx = FS.indexOf('installmentPlanPreviewCount != null && installmentPlanOccurrences.length > 0')
+  it('cada línea del plan finito es editable (fecha/estado/importe/basis) — reemplaza el reparto uniforme fijo de antes', () => {
+    const idx = FS.indexOf('Plan de pagos — {planLines.length} pagos')
     expect(idx).toBeGreaterThan(-1)
-    // installmentPlanRecurrenceRule solo se construye cuando untilMode === 'count'.
-    const ruleIdx = FS.indexOf('const installmentPlanRecurrenceRule =')
-    const ruleBlock = FS.slice(ruleIdx, ruleIdx + 300)
-    expect(ruleBlock).toContain("untilMode === 'count'")
+    const block = FS.slice(idx, idx + 2200)
+    expect(block).toContain('updatePlanLine(i, { date: e.target.value })')
+    expect(block).toContain('updatePlanLine(i, { amountStatus:')
+    expect(block).toContain('updatePlanLine(i, { amount: e.target.value })')
+    expect(block).toContain('updatePlanLine(i, { amountEstimatedBasis: e.target.value })')
   })
 
-  it('la tarjeta de gestión de un plan finito muestra importe×cuotas, frecuencia y última cuota en español (DD/MM/YYYY)', () => {
-    expect(FS).toContain('cuotas')
-    expect(FS).toContain('Última cuota: ${formatSpanishDate(recurrenceForm.untilDate)}')
+  it('el reparto se comprueba en céntimos (checkCentsDistribution) con el banner "Total distribuido correctamente" / "Diferencia pendiente" — nunca bloquea cuando el TOTAL es Estimado o Pendiente', () => {
+    expect(FS).toContain('checkCentsDistribution(totalCents, lineCentsList)')
+    expect(FS).toContain('✓ Total distribuido correctamente')
+    expect(FS).toContain('Diferencia pendiente:')
+    expect(FS).toMatch(/if \(check && !check\.matches && amountStatus === 'known'\)/)
+  })
+
+  it('la tarjeta de gestión de un plan finito muestra importe×pagos, frecuencia, próximo pago y último pago en español (DD/MM/YYYY) — nunca "Próxima renovación" (eso es solo de una obligación que se renueva de verdad)', () => {
+    const fnIdx = FS.indexOf('function renderManagementRow')
+    const block = FS.slice(fnIdx, fnIdx + 3200)
+    expect(block).toContain('pagos')
+    expect(block).toContain('Próximo pago: ${formatSpanishDate(nextPlanOccurrence.dueDate)}')
+    expect(block).toContain('Último pago: ${formatSpanishDate(recurrenceForm.untilDate)}')
+    const isPlanBlock = block.slice(block.indexOf('{isPlan ? ('), block.indexOf(') : hasSplit ? ('))
+    expect(isPlanBlock).not.toContain('Próxima renovación')
   })
 
   it('"N de M restantes" usa remainingInstallments/totalInstallments (Fase 1D-a) — nunca dice "pagadas"', () => {
@@ -290,9 +322,21 @@ describe('Fase 1D-d — cobro fraccionado por ciclo en la UI', () => {
     expect(block).not.toMatch(/offset/i) // "offsetDays" es un detalle interno (domain/forecastInstallmentSplitForm.ts), nunca llega al JSX
   })
 
-  it('"Mismo importe en todos" / "Importes diferentes" — el toggle pedido, implementado sin más alcance', () => {
-    expect(FS).toContain('Mismo importe en todos')
-    expect(FS).toContain('Importes diferentes')
+  it('Ajuste UX tras certificación móvil — el viejo selector "Mismo importe en todos / Importes diferentes" ya no existe: se sustituye por un importe TOTAL del ciclo + propuesta de reparto editable (proposeSplitCharges), igual criterio que el plan finito', () => {
+    expect(FS).not.toMatch(/<button[^>]*>\s*Mismo importe en todos/)
+    expect(FS).not.toMatch(/<button[^>]*>\s*Importes diferentes/)
+    expect(FS).toContain('proposeSplitCharges(')
+    const idx = FS.indexOf('Cobros de cada renovación')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 2200)
+    expect(block).toContain('updateSplitCharge(i, { date: e.target.value })')
+    expect(block).toContain('updateSplitCharge(i, { amountStatus:')
+    expect(block).toContain('updateSplitCharge(i, { amount: e.target.value })')
+  })
+
+  it('"¿Cómo se cobra cada vez?" solo aparece cuando NO es un plan finito (isFinitePlanMode=false) — las dos preguntas nunca conviven en pantalla', () => {
+    expect(FS).toContain('{!isFinitePlanMode && (')
+    expect(FS).toContain("const isSplitCycleMode = repeats && untilMode !== 'count' && chargeMode === 'split'")
   })
 
   it('la vista previa de cobros usa expandForecastOccurrences (motor real), no un bucle de fechas hecho a mano', () => {

@@ -6,6 +6,7 @@
 // verano (Date.UTC, sin componente de hora) y meses/años que cruzan por el offset.
 import type { ForecastAmountStatus, ForecastPaymentInstallment } from './forecast'
 import { stepDays } from './forecast'
+import { centsToEurosString, distributeTotalCentsEvenly, eurosStringToCents } from './forecastMoneyCents'
 
 export interface ForecastSplitChargeFormRow {
   date: string // YYYY-MM-DD, fecha humana tal cual la introduce el usuario
@@ -52,6 +53,31 @@ export function buildInstallmentTemplatesFromForm(
     amountStatus: c.amountStatus,
     amount: c.amountStatus === 'unknown' ? null : Number(c.amount) || 0,
     amountEstimatedBasis: c.amountStatus === 'estimated' ? c.amountEstimatedBasis.trim() || null : null,
+  }))
+}
+
+// Ajuste UX tras certificación móvil — propuesta inicial a partir del importe TOTAL del ciclo (no ya
+// "mismo importe en todos / diferentes": PEPA reparte en céntimos y el usuario corrige directamente
+// cada línea si hace falta). La fecha de cada cobro no tiene un patrón natural único (a diferencia de
+// un plan finito, que sigue la frecuencia elegida) — se propone la propia fecha de vencimiento para
+// todos y el usuario la ajusta, igual que ya hacía el formulario antes de este cambio.
+export function proposeSplitCharges(
+  dueDate: string,
+  count: number,
+  totalStatus: ForecastAmountStatus,
+  totalAmount: number | null,
+  totalBasis: string | null,
+): ForecastSplitChargeFormRow[] {
+  if (totalStatus === 'unknown' || totalAmount == null) {
+    return Array.from({ length: count }, () => ({ date: dueDate, amountStatus: 'unknown' as const, amount: '', amountEstimatedBasis: '' }))
+  }
+  const totalCents = eurosStringToCents(String(totalAmount)) ?? 0
+  const centsPerLine = distributeTotalCentsEvenly(totalCents, count)
+  return centsPerLine.map((cents) => ({
+    date: dueDate,
+    amountStatus: totalStatus,
+    amount: centsToEurosString(cents),
+    amountEstimatedBasis: totalStatus === 'estimated' ? (totalBasis ?? '') : '',
   }))
 }
 

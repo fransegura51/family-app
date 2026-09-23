@@ -376,3 +376,40 @@ export async function upsertForecastOccurrenceOverride(input: {
     )
   if (error) throw error
 }
+
+// Ajuste UX tras certificación móvil — sustituye TODOS los overrides de CICLO completo (nunca los de un
+// cargo suelto de Fase 1D-c: installment_sequence_index=0 exclusivamente) de un plan finito a la vez,
+// igual que replaceForecastReminders/replaceForecastPaymentInstallments: borra y vuelve a insertar. Es
+// lo que permite que "editar 6→8 cuotas" o "corregir un importe real del recibo" no deje overrides
+// fantasma de una versión anterior del plan.
+//
+// LIMITACIÓN CONOCIDA: como no existe todavía ninguna UI de conciliación bancaria ni de "omitir esta
+// cuota" para un plan finito, hoy es seguro borrar y reinsertar sin más — el único sitio que escribe
+// estos overrides es este propio formulario. Si en el futuro se añade conciliación (matched_expense_id)
+// u "omitir" (skipped) para un plan finito, esta función tendría que fusionar en vez de sustituir sin
+// más, para no perder esas filas.
+export async function replaceForecastPlanOverrides(
+  forecastPaymentId: string,
+  overrides: { occurrenceDate: string; dueDateOverride: string | null; amountStatus: ForecastAmountStatus | null; amount: number | null; amountEstimatedBasis: string | null }[],
+): Promise<void> {
+  const { error: deleteError } = await supabase
+    .from('forecast_occurrences')
+    .delete()
+    .eq('forecast_payment_id', forecastPaymentId)
+    .eq('installment_sequence_index', 0)
+  if (deleteError) throw deleteError
+  if (overrides.length > 0) {
+    const { error: insertError } = await supabase.from('forecast_occurrences').insert(
+      overrides.map((o) => ({
+        forecast_payment_id: forecastPaymentId,
+        occurrence_date: o.occurrenceDate,
+        installment_sequence_index: 0,
+        due_date_override: o.dueDateOverride,
+        amount_status: o.amountStatus,
+        amount: o.amount,
+        amount_estimated_basis: o.amountEstimatedBasis,
+      })),
+    )
+    if (insertError) throw insertError
+  }
+}

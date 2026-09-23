@@ -7,12 +7,16 @@
 import {
   buildForecastRecurrenceRule,
   computeInstallmentPlanUntil,
+  occurrenceForCycle,
   parseForecastRecurrenceOption,
   parseForecastRecurrenceRule,
   totalInstallments,
+  type ForecastAmountStatus,
   type ForecastCustomRecurrence,
+  type ForecastOccurrenceOverride,
   type ForecastRecurrenceOption,
 } from './forecast'
+import { centsToEurosString, distributeTotalCentsEvenly, eurosStringToCents } from './forecastMoneyCents'
 
 export type ForecastUntilMode = 'forever' | 'count' | 'date'
 
@@ -125,4 +129,133 @@ export function parseRecurrenceRuleToFormState(recurrenceRule: string | null, du
 export function formatSpanishDate(isoDate: string): string {
   const [y, m, d] = isoDate.split('-')
   return `${d}/${m}/${y}`
+}
+
+// ── Ajuste UX tras certificación móvil — "Importe TOTAL" del plan, con propuesta de reparto editable
+// línea a línea, en vez de "importe por cuota" repetido N veces. UNA línea == UN ciclo del plan finito
+// (occurrence_date de forecast_occurrences); nunca forecast_payment_installments — esa tabla es solo
+// para el cobro fraccionado POR CICLO de una obligación recurrente (Fase 1D-c), un concepto distinto. ──
+
+export interface ForecastPlanLineFormRow {
+  date: string
+  amountStatus: ForecastAmountStatus
+  amount: string
+  amountEstimatedBasis: string
+}
+
+// Propuesta inicial: N fechas reales (el mismo motor que ya usa el resto de Previsión, nunca a mano) +
+// reparto del total en céntimos enteros. Con total "Pendiente" (unknown), cada línea propuesta también
+// queda "Pendiente" — nunca se inventa un importe para poder repartir algo que no se conoce.
+export function proposeFinitePlanLines(
+  dueDate: string,
+  freq: ForecastCustomRecurrence['freq'],
+  interval: number,
+  count: number,
+  totalStatus: ForecastAmountStatus,
+  totalAmount: number | null,
+  totalBasis: string | null,
+): ForecastPlanLineFormRow[] {
+  const dates = Array.from({ length: count }, (_, i) => occurrenceForCycle(dueDate, { freq, interval, until: null }, i))
+  if (totalStatus === 'unknown' || totalAmount == null) {
+    return dates.map((date) => ({ date, amountStatus: 'unknown', amount: '', amountEstimatedBasis: '' }))
+  }
+  const totalCents = eurosStringToCents(String(totalAmount)) ?? 0
+  const centsPerLine = distributeTotalCentsEvenly(totalCents, count)
+  return dates.map((date, i) => ({
+    date,
+    amountStatus: totalStatus,
+    amount: centsToEurosString(centsPerLine[i]),
+    amountEstimatedBasis: totalStatus === 'estimated' ? (totalBasis ?? '') : '',
+  }))
+}
+
+// Reconstruye las líneas al editar un plan ya guardado: fecha/importe/estado "puros" de cada ciclo
+// (occurrenceForCycle + el importe base del padre — la "línea normal" del reparto), sustituidos por su
+// override real cuando existe (forecast_occurrences con installmentSequenceIndex=null, la fila del
+// CICLO completo — nunca una de un cargo suelto, eso es Fase 1D-c). El usuario nunca ve "esto es un
+// override, esto no es" — solo ve el plan real tal como quedó guardado.
+export function parseFinitePlanLinesFromSaved(
+  dueDate: string,
+  freq: ForecastCustomRecurrence['freq'],
+  interval: number,
+  count: number,
+  parentStatus: ForecastAmountStatus,
+  parentAmount: number | null,
+  parentAmountEstimatedBasis: string | null,
+  overrides: ForecastOccurrenceOverride[],
+): ForecastPlanLineFormRow[] {
+  const overrideByOccurrenceDate = new Map(overrides.filter((o) => o.installmentSequenceIndex == null).map((o) => [o.occurrenceDate, o]))
+  return Array.from({ length: count }, (_, i) => {
+    const pureDate = occurrenceForCycle(dueDate, { freq, interval, until: null }, i)
+    const override = overrideByOccurrenceDate.get(pureDate)
+    const date = override?.dueDateOverride ?? pureDate
+    const amountStatus = override?.amountStatus ?? parentStatus
+    const hasOwnAmount = !!override?.amountStatus
+    const amount = hasOwnAmount ? (override!.amount != null ? String(override!.amount) : '') : parentAmount != null ? String(parentAmount) : ''
+    const amountEstimatedBasis = hasOwnAmount ? override!.amountEstimatedBasis ?? '' : parentAmountEstimatedBasis ?? ''
+    return { date, amountStatus, amount, amountEstimatedBasis: amountStatus === 'estimated' ? amountEstimatedBasis : '' }
+  })
+}
+
+export interface FinitePlanOverrideDraft {
+  occurrenceDate: string
+  dueDateOverride: string | null
+  amountStatus: ForecastAmountStatus | null
+  amount: number | null
+  amountEstimatedBasis: string | null
+}
+
+export interface FinitePlanSubmission {
+  parentAmountStatus: ForecastAmountStatus
+  parentAmount: number | null
+  parentAmountEstimatedBasis: string | null
+  overrides: FinitePlanOverrideDraft[]
+}
+
+// A partir de las líneas (ya editadas o no por el usuario) construye lo que hay que guardar: el importe
+// "base" del padre (la primera línea del reparto propuesto — sirve de valor por defecto, casi nunca se
+// muestra ya que casi todas las líneas reales del caso del IBI llevan su propio override) y UN override
+// por cada línea que difiera de ese valor base (fecha, estado o importe) — nunca uno por cada línea
+// sin más: si el usuario no toca nada, la línea final (la del resto del reparto) es la única distinta.
+export function buildFinitePlanSubmission(
+  dueDate: string,
+  freq: ForecastCustomRecurrence['freq'],
+  interval: number,
+  lines: ForecastPlanLineFormRow[],
+  totalStatus: ForecastAmountStatus,
+  totalAmount: number | null,
+  totalBasis: string | null,
+): FinitePlanSubmission {
+  const pureDates = lines.map((_, i) => occurrenceForCycle(dueDate, { freq, interval, until: null }, i))
+  let baseAmount: number | null = null
+  if (totalStatus !== 'unknown' && totalAmount != null && lines.length > 0) {
+    const totalCents = eurosStringToCents(String(totalAmount)) ?? 0
+    baseAmount = distributeTotalCentsEvenly(totalCents, lines.length)[0] / 100
+  }
+  const parentAmountStatus = totalStatus
+  const parentAmount = totalStatus === 'unknown' ? null : (baseAmount ?? totalAmount)
+  // Cuando el TOTAL es Estimado, el padre también queda con status='estimated' — la restricción
+  // forecast_payments_estimated_needs_basis (migración 0155) exige entonces una basis no nula, así que
+  // el padre hereda la basis del propio total (el formulario ya obliga a rellenarla antes de guardar).
+  const parentAmountEstimatedBasis = parentAmountStatus === 'estimated' ? totalBasis?.trim() || null : null
+
+  const overrides: FinitePlanOverrideDraft[] = []
+  lines.forEach((line, i) => {
+    const pureDate = pureDates[i]
+    const dateChanged = line.date !== pureDate
+    const lineAmountCents = line.amountStatus === 'unknown' ? null : (eurosStringToCents(line.amount) ?? 0)
+    const baseAmountCents = parentAmount != null ? (eurosStringToCents(String(parentAmount)) ?? 0) : null
+    const lineBasis = line.amountStatus === 'estimated' ? line.amountEstimatedBasis.trim() || null : null
+    const basisChanged = line.amountStatus === 'estimated' && lineBasis !== parentAmountEstimatedBasis
+    const amountChanged = line.amountStatus !== parentAmountStatus || lineAmountCents !== baseAmountCents || basisChanged
+    if (!dateChanged && !amountChanged) return
+    overrides.push({
+      occurrenceDate: pureDate,
+      dueDateOverride: dateChanged ? line.date : null,
+      amountStatus: amountChanged ? line.amountStatus : null,
+      amount: amountChanged ? (lineAmountCents != null ? lineAmountCents / 100 : null) : null,
+      amountEstimatedBasis: amountChanged ? lineBasis : null,
+    })
+  })
+  return { parentAmountStatus, parentAmount, parentAmountEstimatedBasis, overrides }
 }

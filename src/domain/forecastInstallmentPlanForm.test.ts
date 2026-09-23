@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildFinitePlanSubmission,
   buildRecurrenceRuleFromFormState,
   formatSpanishDate,
   INSTALLMENT_COUNT_MAX,
   INSTALLMENT_COUNT_MIN,
+  parseFinitePlanLinesFromSaved,
   parseRecurrenceRuleToFormState,
+  proposeFinitePlanLines,
   resolvedFreqInterval,
   validateInstallmentCount,
+  type ForecastPlanLineFormRow,
   type ForecastRecurrenceFormState,
 } from './forecastInstallmentPlanForm'
+import type { ForecastOccurrenceOverride } from './forecast'
 
 function state(overrides: Partial<ForecastRecurrenceFormState> = {}): ForecastRecurrenceFormState {
   return {
@@ -210,5 +215,163 @@ describe('formatSpanishDate', () => {
   it('YYYY-MM-DD → DD/MM/YYYY, solo visual', () => {
     expect(formatSpanishDate('2027-06-08')).toBe('08/06/2027')
     expect(formatSpanishDate('2028-04-08')).toBe('08/04/2028')
+  })
+})
+
+// Ajuste UX tras certificación móvil — CASO REAL: "IBI y Residuos 2026", importe TOTAL, 6 pagos
+// mensuales desde el 05/11/2026. Los importes reales (verdad, según instrucción explícita) son
+// 144,54 / 144,54 / 144,54 / 144,53 / 144,54 / 145,87 — suman 868,56 € (no 867,56 € como se dijo al
+// principio; se usan los importes individuales, no esa cifra). El cargo 2 cae el 07/12, no el 05/12
+// "puro" de la frecuencia mensual — es el caso de override de fecha pedido explícitamente.
+const IBI_DUE_DATE = '2026-11-05'
+const IBI_REAL_LINES: ForecastPlanLineFormRow[] = [
+  { date: '2026-11-05', amountStatus: 'known', amount: '144.54', amountEstimatedBasis: '' },
+  { date: '2026-12-07', amountStatus: 'known', amount: '144.54', amountEstimatedBasis: '' },
+  { date: '2027-01-05', amountStatus: 'known', amount: '144.54', amountEstimatedBasis: '' },
+  { date: '2027-02-05', amountStatus: 'known', amount: '144.53', amountEstimatedBasis: '' },
+  { date: '2027-03-05', amountStatus: 'known', amount: '144.54', amountEstimatedBasis: '' },
+  { date: '2027-04-05', amountStatus: 'known', amount: '145.87', amountEstimatedBasis: '' },
+]
+const IBI_REAL_TOTAL = 868.56
+
+describe('proposeFinitePlanLines — CASO REAL: IBI y Residuos, importe total, 6 pagos mensuales', () => {
+  it('propone 6 fechas reales (motor, no a mano) y reparte el total en céntimos', () => {
+    const lines = proposeFinitePlanLines(IBI_DUE_DATE, 'MONTHLY', 1, 6, 'known', IBI_REAL_TOTAL, null)
+    expect(lines.map((l) => l.date)).toEqual(['2026-11-05', '2026-12-05', '2027-01-05', '2027-02-05', '2027-03-05', '2027-04-05'])
+    // 868,56 € / 6 es exacto (144,76 € × 6) — la PROPUESTA es uniforme; el usuario la corrige a los
+    // importes reales del recibo (irregulares) a mano, línea a línea.
+    expect(lines.every((l) => l.amount === '144.76')).toBe(true)
+    expect(lines.reduce((sum, l) => sum + Number(l.amount), 0)).toBeCloseTo(868.56, 2)
+  })
+
+  it('total con resto no exacto: la última línea absorbe el resto, igual que distributeTotalCentsEvenly', () => {
+    const lines = proposeFinitePlanLines('2027-11-08', 'MONTHLY', 1, 6, 'known', 867.56, null)
+    expect(lines.map((l) => l.amount)).toEqual(['144.59', '144.59', '144.59', '144.59', '144.59', '144.61'])
+  })
+
+  it('total Pendiente (unknown): las 6 líneas propuestas también quedan Pendientes, nunca 0 €', () => {
+    const lines = proposeFinitePlanLines(IBI_DUE_DATE, 'MONTHLY', 1, 6, 'unknown', null, null)
+    expect(lines.every((l) => l.amountStatus === 'unknown' && l.amount === '')).toBe(true)
+  })
+
+  it('total Estimado: cada línea propuesta hereda el estado y la basis', () => {
+    const lines = proposeFinitePlanLines(IBI_DUE_DATE, 'MONTHLY', 1, 3, 'estimated', 300, 'recibo del año pasado')
+    expect(lines.every((l) => l.amountStatus === 'estimated' && l.amountEstimatedBasis === 'recibo del año pasado')).toBe(true)
+  })
+})
+
+describe('buildFinitePlanSubmission — detecta overrides de fecha e importe, sin duplicar líneas iguales', () => {
+  it('CASO REAL: las 6 líneas reales del IBI difieren todas del reparto uniforme propuesto (144,76 €) → 6 overrides, uno con fecha propia', () => {
+    const submission = buildFinitePlanSubmission(IBI_DUE_DATE, 'MONTHLY', 1, IBI_REAL_LINES, 'known', IBI_REAL_TOTAL, null)
+    expect(submission.parentAmountStatus).toBe('known')
+    expect(submission.parentAmount).toBe(144.76) // la base del reparto propuesto — valor por defecto, casi nunca visible
+    expect(submission.overrides).toHaveLength(6)
+    const cargo2 = submission.overrides.find((o) => o.occurrenceDate === '2026-12-05')
+    expect(cargo2?.dueDateOverride).toBe('2026-12-07') // el override de fecha pedido explícitamente
+    expect(cargo2?.amount).toBe(144.54)
+    const totalOverridden = submission.overrides.reduce((sum, o) => sum + (o.amount ?? 0), 0)
+    expect(totalOverridden).toBeCloseTo(868.56, 2)
+  })
+
+  it('caso uniforme (846 € / 6 = 141 € exactos, el IBI original de 1D-b): SIN overrides si el usuario no toca nada', () => {
+    const lines = proposeFinitePlanLines('2027-11-08', 'MONTHLY', 1, 6, 'known', 846, null)
+    const submission = buildFinitePlanSubmission('2027-11-08', 'MONTHLY', 1, lines, 'known', 846, null)
+    expect(submission.parentAmount).toBe(141)
+    expect(submission.overrides).toHaveLength(0)
+  })
+
+  it('edición de UNA sola línea: solo esa línea genera override, el resto sigue heredando del padre', () => {
+    const lines = proposeFinitePlanLines('2027-11-08', 'MONTHLY', 1, 6, 'known', 846, null)
+    const edited = lines.map((l, i) => (i === 2 ? { ...l, amount: '200' } : l))
+    const submission = buildFinitePlanSubmission('2027-11-08', 'MONTHLY', 1, edited, 'known', 846, null)
+    expect(submission.overrides).toHaveLength(1)
+    expect(submission.overrides[0].amount).toBe(200)
+  })
+
+  it('cambiar solo la fecha de una línea (05/12 → 07/12), importe igual: override únicamente de fecha, amountStatus null', () => {
+    const lines = proposeFinitePlanLines(IBI_DUE_DATE, 'MONTHLY', 1, 6, 'known', 846, null) // reparto uniforme 141 € para simplificar el caso
+    const edited = lines.map((l, i) => (i === 1 ? { ...l, date: '2026-12-07' } : l))
+    const submission = buildFinitePlanSubmission(IBI_DUE_DATE, 'MONTHLY', 1, edited, 'known', 846, null)
+    expect(submission.overrides).toHaveLength(1)
+    expect(submission.overrides[0].dueDateOverride).toBe('2026-12-07')
+    expect(submission.overrides[0].amountStatus).toBeNull() // el importe no cambió, no hace falta guardarlo también
+  })
+
+  it('estimated: la basis de cada línea distinta viaja en su propio override', () => {
+    const lines = proposeFinitePlanLines(IBI_DUE_DATE, 'MONTHLY', 1, 2, 'estimated', 300, 'recibo del año pasado')
+    const edited = lines.map((l, i) => (i === 0 ? { ...l, amount: '180', amountEstimatedBasis: 'factura provisional' } : l))
+    const submission = buildFinitePlanSubmission(IBI_DUE_DATE, 'MONTHLY', 1, edited, 'estimated', 300, 'recibo del año pasado')
+    const changed = submission.overrides.find((o) => o.occurrenceDate === IBI_DUE_DATE)
+    expect(changed?.amount).toBe(180)
+    expect(changed?.amountEstimatedBasis).toBe('factura provisional')
+  })
+
+  it('total Estimado: el padre guarda su propia basis (nunca null) — si no, violaría la restricción real de la BD que exige basis cuando amount_status=estimated (forecast_payments_estimated_needs_basis)', () => {
+    const lines = proposeFinitePlanLines(IBI_DUE_DATE, 'MONTHLY', 1, 3, 'estimated', 300, 'recibo del año pasado')
+    const submission = buildFinitePlanSubmission(IBI_DUE_DATE, 'MONTHLY', 1, lines, 'estimated', 300, 'recibo del año pasado')
+    expect(submission.parentAmountStatus).toBe('estimated')
+    expect(submission.parentAmountEstimatedBasis).toBe('recibo del año pasado')
+  })
+
+  it('unknown: sin importe que repartir, ninguna línea sin tocar genera override de importe', () => {
+    const lines = proposeFinitePlanLines(IBI_DUE_DATE, 'MONTHLY', 1, 3, 'unknown', null, null)
+    const submission = buildFinitePlanSubmission(IBI_DUE_DATE, 'MONTHLY', 1, lines, 'unknown', null, null)
+    expect(submission.parentAmount).toBeNull()
+    expect(submission.overrides).toHaveLength(0)
+  })
+})
+
+describe('parseFinitePlanLinesFromSaved — reconstrucción, sin que el usuario sepa qué era override', () => {
+  it('CASO REAL: reconstruye las 6 líneas reales tal cual a partir de lo guardado (base + overrides)', () => {
+    const submission = buildFinitePlanSubmission(IBI_DUE_DATE, 'MONTHLY', 1, IBI_REAL_LINES, 'known', IBI_REAL_TOTAL, null)
+    const overrides: ForecastOccurrenceOverride[] = submission.overrides.map((o, i) => ({
+      id: `ov-${i}`,
+      forecastPaymentId: 'fp-ibi',
+      occurrenceDate: o.occurrenceDate,
+      installmentSequenceIndex: null,
+      dueDateOverride: o.dueDateOverride,
+      expectedPaymentDateOverride: null,
+      amountStatus: o.amountStatus,
+      amount: o.amount,
+      amountEstimatedBasis: o.amountEstimatedBasis,
+      skipped: false,
+      matchedExpenseId: null,
+    }))
+    const reconstructed = parseFinitePlanLinesFromSaved(
+      IBI_DUE_DATE,
+      'MONTHLY',
+      1,
+      6,
+      submission.parentAmountStatus,
+      submission.parentAmount,
+      submission.parentAmountEstimatedBasis,
+      overrides,
+    )
+    expect(reconstructed).toEqual(IBI_REAL_LINES)
+  })
+
+  it('sin overrides: todas las líneas heredan el importe base del padre', () => {
+    const reconstructed = parseFinitePlanLinesFromSaved('2027-11-08', 'MONTHLY', 1, 6, 'known', 141, null, [])
+    expect(reconstructed.every((l) => l.amount === '141' && l.amountStatus === 'known')).toBe(true)
+    expect(reconstructed.map((l) => l.date)).toEqual(['2027-11-08', '2027-12-08', '2028-01-08', '2028-02-08', '2028-03-08', '2028-04-08'])
+  })
+
+  it('ignora overrides de cargos sueltos (installmentSequenceIndex distinto de null) — eso es Fase 1D-c, no un plan finito', () => {
+    const splitOverride: ForecastOccurrenceOverride = {
+      id: 'ov-split',
+      forecastPaymentId: 'fp',
+      occurrenceDate: '2027-11-08',
+      installmentSequenceIndex: 1, // de un CARGO, no del ciclo — no debe aplicarse aquí
+      dueDateOverride: '2099-01-01',
+      expectedPaymentDateOverride: null,
+      amountStatus: 'known',
+      amount: 999,
+      amountEstimatedBasis: null,
+      skipped: false,
+      matchedExpenseId: null,
+    }
+    const reconstructed = parseFinitePlanLinesFromSaved('2027-11-08', 'MONTHLY', 1, 2, 'known', 141, null, [splitOverride])
+    expect(reconstructed[0].date).toBe('2027-11-08') // no contaminado por el override de cargo suelto
+    expect(reconstructed[0].amount).toBe('141')
   })
 })

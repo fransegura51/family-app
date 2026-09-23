@@ -3,6 +3,7 @@ import {
   buildInstallmentTemplatesFromForm,
   daysBetweenDates,
   parseInstallmentTemplatesToForm,
+  proposeSplitCharges,
   SPLIT_CHARGE_COUNT_MAX,
   SPLIT_CHARGE_COUNT_MIN,
   validateSplitChargeCount,
@@ -157,5 +158,35 @@ describe('editar el número de cargos (2 → 3 → 2) sin dejar hijos fantasma',
     expect(buildInstallmentTemplatesFromForm(dueDate, two)).toHaveLength(2)
     expect(buildInstallmentTemplatesFromForm(dueDate, three)).toHaveLength(3)
     expect(buildInstallmentTemplatesFromForm(dueDate, two)).toHaveLength(2) // volver a 2 no arrastra nada de la versión de 3
+  })
+})
+
+describe('proposeSplitCharges — ajuste UX tras certificación móvil: importe TOTAL del ciclo, sin "mismo importe/diferentes"', () => {
+  it('CASO REAL: seguro hogar, 600 € totales del ciclo repartidos en 2 cobros', () => {
+    const charges = proposeSplitCharges('2027-06-08', 2, 'known', 600, null)
+    expect(charges).toEqual([
+      { date: '2027-06-08', amountStatus: 'known', amount: '300.00', amountEstimatedBasis: '' },
+      { date: '2027-06-08', amountStatus: 'known', amount: '300.00', amountEstimatedBasis: '' },
+    ])
+  })
+
+  it('total con resto: la última línea absorbe el resto (mismo criterio que el plan finito)', () => {
+    const charges = proposeSplitCharges('2027-06-08', 3, 'known', 100, null)
+    expect(charges.map((c) => c.amount)).toEqual(['33.33', '33.33', '33.34'])
+  })
+
+  it('total Pendiente (unknown): todas las líneas propuestas quedan Pendientes', () => {
+    const charges = proposeSplitCharges('2027-06-08', 2, 'unknown', null, null)
+    expect(charges.every((c) => c.amountStatus === 'unknown' && c.amount === '')).toBe(true)
+  })
+
+  it('total Estimado: cada línea hereda estado y basis', () => {
+    const charges = proposeSplitCharges('2027-06-08', 2, 'estimated', 600, 'recibo del año pasado')
+    expect(charges.every((c) => c.amountStatus === 'estimated' && c.amountEstimatedBasis === 'recibo del año pasado')).toBe(true)
+  })
+
+  it('todas las fechas propuestas empiezan en la fecha de vencimiento — el usuario las ajusta a mano (sin patrón periódico como en un plan finito)', () => {
+    const charges = proposeSplitCharges('2027-06-08', 2, 'known', 600, null)
+    expect(charges.every((c) => c.date === '2027-06-08')).toBe(true)
   })
 })

@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 const FILES = import.meta.glob(['/src/ui/FinanceScreen.tsx', '/src/ui/EventosScreen.tsx'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const FS = FILES['/src/ui/FinanceScreen.tsx']
 const EVENTOS = FILES['/src/ui/EventosScreen.tsx']
+const APP_DOMAIN = import.meta.glob('/src/domain/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const FUNCTIONS = import.meta.glob('/supabase/functions/**/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
@@ -21,7 +22,10 @@ function body(text: string, startMarker: string, endMarker: string): string {
 
 describe('2. no se duplica la identidad de dominio: FinanceScreen usa isRealIncome/isRefund, nunca las reimplementa', () => {
   it('importa los helpers centrales, no una copia propia', () => {
-    expect(FS).toMatch(/import\s*\{\s*isRealIncome\s*\}\s*from\s*'@\/domain\/financeCompute'/)
+    // Corrección — ahora import junto a computePeriodFinancials (misma función compartida de
+    // Resumen/Evolución temporal), pero isRealIncome se sigue importando de financeCompute, no
+    // reimplementado.
+    expect(FS).toMatch(/import\s*\{\s*computePeriodFinancials,\s*isRealIncome\s*\}\s*from\s*'@\/domain\/financeCompute'/)
     expect(FS).toMatch(/import\s*\{\s*isRefund\s*\}\s*from\s*'@\/domain\/refunds'/)
   })
 })
@@ -67,19 +71,29 @@ describe('B. una devolución sigue visible en "Todos" (nunca se oculta del histo
 })
 
 describe('C. una devolución nunca cuenta como gasto (is_income=true, fuera de !e.isIncome)', () => {
-  it('ResumenTab: totalSpent sigue siendo SOLO !e.isIncome (bruto, sin cambios); refundsTotal/netSpent son aparte', () => {
+  it('ResumenTab: totalSpent/refundsTotal/netSpent salen de computePeriodFinancials (misma función que Evolución temporal), no de una fórmula propia', () => {
     const b = body(FS, 'function ResumenTab(', 'function PepaConclusionsWidget(')
-    expect(b).toContain("const totalSpent = real.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)")
-    expect(b).toContain('const refundsTotal = real.filter((e) => isRefund(e, categories)).reduce((s, e) => s + e.amount, 0)')
-    expect(b).toContain('const netSpent = totalSpent - refundsTotal')
+    expect(b).toContain(
+      'const { income: totalIncome, spent: totalSpent, refunds: refundsTotal, netSpent, ahorro } = computePeriodFinancials(inRange, categories)',
+    )
+    // La propia función compartida (financeCompute.ts) es la que de verdad define totalSpent como gasto
+    // BRUTO (isRealSpending: !e.isIncome, nunca resta la devolución) y netSpent como spent - refunds.
+    const financeCompute = APP_DOMAIN['/src/domain/financeCompute.ts']
+    const fnBody = body(financeCompute, 'export function computePeriodFinancials', '\n}')
+    expect(fnBody).toContain('rows.filter((e) => isRealSpending(e, categories))')
+    expect(fnBody).toContain('rows.filter((e) => isRefund(e, categories))')
+    expect(fnBody).toContain('const netSpent = spent - refunds')
   })
 })
 
 describe('E-I. Resumen: ingresos reales, gasto bruto, devoluciones, gasto neto y balance (Modelo C)', () => {
-  it('totalIncome usa isRealIncome (ingreso real, sin devoluciones); ahorro = totalIncome - netSpent (misma invariante que PEPA)', () => {
+  it('totalIncome usa isRealIncome (ingreso real, sin devoluciones); ahorro = totalIncome - netSpent (misma invariante que PEPA), vía computePeriodFinancials', () => {
     const b = body(FS, 'function ResumenTab(', 'function PepaConclusionsWidget(')
-    expect(b).toContain('const totalIncome = real.filter((e) => isRealIncome(e, categories)).reduce((s, e) => s + e.amount, 0)')
-    expect(b).toContain('const ahorro = totalIncome - netSpent')
+    expect(b).toContain('computePeriodFinancials(inRange, categories)')
+    const financeCompute = APP_DOMAIN['/src/domain/financeCompute.ts']
+    const fnBody = body(financeCompute, 'export function computePeriodFinancials', '\n}')
+    expect(fnBody).toContain('rows.filter((e) => isRealIncome(e, categories))')
+    expect(fnBody).toContain('ahorro: income - netSpent')
   })
 
   it('la tarjeta SOLO añade Devoluciones/Gasto neto cuando refundsTotal > 0 (si refunds = 0, la tarjeta no cambia)', () => {
@@ -103,11 +117,14 @@ describe('9. Ahorro/Balance: solo cambia la etiqueta cuando es negativo, nunca l
     expect(FS).toContain("<strong>{ahorro >= 0 ? 'Ahorro' : 'Balance'}: {ahorro.toFixed(2)} €</strong>")
     expect(FS).toContain("{r.ahorro >= 0 ? 'Ahorro' : 'Balance'}: {r.ahorro.toFixed(2)} €")
   })
-  it('la fórmula del ahorro no cambia: sigue siendo ingresos - gasto (neto)', () => {
+  it('la fórmula del ahorro no cambia: Evolución temporal usa la misma computePeriodFinancials que Resumen (ingresos - gasto neto)', () => {
     // Fase 1F.D — "¿Por qué ha cambiado mi gasto?" se mudó a Compras (PorQueHaCambiadoMiCompra, ShoppingScreen.tsx);
     // el siguiente componente en FinanceScreen.tsx es ahora ExpensesTab.
     const b = body(FS, 'function EvolucionTemporal(', 'function ExpensesTab(')
-    expect(b).toContain('ahorro: income - (spent - refunds)')
+    expect(b).toContain('computePeriodFinancials(inMonth, categories)')
+    const financeCompute = APP_DOMAIN['/src/domain/financeCompute.ts']
+    const fnBody = body(financeCompute, 'export function computePeriodFinancials', '\n}')
+    expect(fnBody).toContain('ahorro: income - netSpent')
   })
 })
 

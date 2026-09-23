@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { budgetSpent } from './finance'
-import { answerFinanceQuery, formatEuros, isRealSpending, resolveTarget, totalIncome, totalSpending, type FinanceData } from './financeCompute'
+import { REFUND_CATALOG_KEY } from './refunds'
+import {
+  answerFinanceQuery,
+  computePeriodFinancials,
+  formatEuros,
+  isRealSpending,
+  resolveTarget,
+  totalIncome,
+  totalSpending,
+  type FinanceData,
+} from './financeCompute'
 import { parseFinanceQuestion, type FinanceQuery } from './financeQuery'
 import type { Budget, BudgetCategory, Expense, Product, ProductPrice, Receipt } from './types'
 
@@ -305,5 +315,77 @@ describe('redacción según el periodo', () => {
   })
   it('precios de un mes concreto: "en agosto", sin repetir la preposición', () => {
     expect(ask('¿Qué productos han subido más de precio en agosto?')).toBe('No tengo suficientes compras registradas en agosto y el mes anterior para comparar precios todavía.')
+  })
+})
+
+// Corrección — Resumen y "Evolución temporal" (Estadísticas) daban totales de gasto/ahorro distintos
+// para el MISMO periodo: Resumen excluía los traspasos internos (isInternalTransferCategory) del gasto,
+// Evolución no. Caso real auditado en producción (Familia Hepburn, 31/08/2026 → 29/09/2026): la
+// diferencia eran exactamente 386,96 € = dos patas de salida de traspasos internos (100 € + 100 €) más
+// un "Cobro anulado" (86,96 €) que Evolución sumaba como gasto y Resumen no. computePeriodFinancials es
+// ahora la ÚNICA función que ambas pantallas llaman — este bloque demuestra que da el mismo resultado
+// para el mismo conjunto de filas, sea quien sea quien la invoque.
+describe('computePeriodFinancials — misma función para Resumen y Evolución temporal, nunca fórmulas paralelas', () => {
+  const CATS_CON_ANULADO: BudgetCategory[] = [...CATEGORIES, cat('c3c', 'Cobro anulado', 'c3')]
+
+  it('excluye del gasto la pata de salida de un traspaso interno Y un "Cobro anulado" — igual que ya hacía Resumen', () => {
+    const rows: Expense[] = [
+      exp('2026-09-05', 200, SUPER),
+      exp('2026-09-08', 100, 'Transferencias entre cuentas propias'), // salida de un traspaso interno
+      exp('2026-09-09', 50, 'Cobro anulado'), // devolución ya emparejada por el banco, no es gasto real
+    ]
+    const result = computePeriodFinancials(rows, CATS_CON_ANULADO)
+    expect(result.spent).toBe(200) // nunca 200 + 100 + 50 = 350 (el bug real de Evolución temporal)
+  })
+
+  it('reproduce el caso real auditado: dos traspasos salientes (100 € + 100 €) y un cobro anulado (86,96 €) no cuentan como gasto', () => {
+    const rows: Expense[] = [
+      exp('2026-09-05', 3709.97, SUPER), // gasto real del periodo, agregado en una sola fila por simplicidad
+      exp('2026-08-31', 100, 'Transferencias entre cuentas propias'),
+      exp('2026-09-01', 86.96, 'Cobro anulado'),
+      exp('2026-09-18', 100, 'Transferencias entre cuentas propias'),
+      exp('2026-09-01', 4254.67, 'Sueldo', { isIncome: true }),
+    ]
+    const result = computePeriodFinancials(rows, CATS_CON_ANULADO)
+    expect(result.spent).toBeCloseTo(3709.97, 2)
+    expect(result.income).toBeCloseTo(4254.67, 2)
+    expect(result.ahorro).toBeCloseTo(4254.67 - 3709.97, 2)
+    // Si alguna vez alguien reintroduce el bug (sumar las 386,96 € de traspasos/cobro anulado), este
+    // test falla mostrando el importe inflado, no un simple "expected X, got Y" sin contexto.
+    expect(result.spent).not.toBeCloseTo(3709.97 + 100 + 86.96 + 100, 2)
+  })
+
+  it('mismo conjunto de filas del mismo periodo → mismo resultado, lo llame quien lo llame (Resumen.gastos === Evolución.gastos)', () => {
+    const rows: Expense[] = [exp('2026-09-05', 300, SUPER), exp('2026-09-08', 150, 'Transferencias entre cuentas propias')]
+    const resumen = computePeriodFinancials(rows, CATS_CON_ANULADO) // misma llamada que hace ResumenTab
+    const evolucion = computePeriodFinancials(rows, CATS_CON_ANULADO) // misma llamada que hace EvolucionTemporal
+    expect(resumen).toEqual(evolucion)
+    expect(resumen.spent).toBe(300)
+    expect(resumen.ahorro).toBe(evolucion.ahorro)
+  })
+
+  it('una devolución se trata igual en las dos vistas: no es ingreso nuevo, y el gasto neto la descuenta (nunca resta del gasto bruto)', () => {
+    const catsConDevolucion: BudgetCategory[] = [...CATEGORIES, { ...cat('c5', 'Devoluciones'), catalogKey: REFUND_CATALOG_KEY }]
+    const rows: Expense[] = [
+      exp('2026-09-05', 100, SUPER),
+      exp('2026-09-06', 20, 'Devoluciones', { isIncome: true }),
+    ]
+    const result = computePeriodFinancials(rows, catsConDevolucion)
+    expect(result.income).toBe(0) // la devolución no es ingreso nuevo
+    expect(result.spent).toBe(100) // el gasto bruto no cambia por la devolución
+    expect(result.refunds).toBe(20)
+    expect(result.netSpent).toBe(80) // 100 - 20
+    expect(result.ahorro).toBe(-80) // 0 - 80
+  })
+
+  it('una transferencia con ambas patas en las filas del periodo no se cuenta dos veces (ni como doble gasto ni como doble ingreso)', () => {
+    const rows: Expense[] = [
+      exp('2026-09-05', 100, 'Transferencias entre cuentas propias'), // salida
+      exp('2026-09-05', 100, 'Movimientos internos', { isIncome: true, ownerMemberId: 'eric' }), // entrada
+    ]
+    const result = computePeriodFinancials(rows, CATS_CON_ANULADO)
+    expect(result.spent).toBe(0)
+    expect(result.income).toBe(0)
+    expect(result.ahorro).toBe(0)
   })
 })

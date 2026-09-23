@@ -94,6 +94,29 @@ export function isRealIncome(e: Expense, categories: BudgetCategory[]): boolean 
   return e.kind === 'real' && e.isIncome && !isInternalTransferCategory(e.category, categories) && !isRefund(e, categories)
 }
 
+export interface PeriodFinancials {
+  income: number
+  spent: number
+  refunds: number
+  netSpent: number
+  ahorro: number
+}
+
+// Corrección — Resumen y "Evolución temporal" (Estadísticas) daban totales distintos para el MISMO
+// periodo: Resumen excluía los traspasos internos del gasto (isRealSpending/isInternalTransferCategory),
+// Evolución no lo hacía, así que sumaba también la pata de salida de cada traspaso y cualquier "Cobro
+// anulado" como si fuera gasto real. Única fuente de verdad de ahora en adelante para
+// ingresos/gasto/ahorro de un periodo — reutiliza isRealIncome/isRealSpending/isRefund TAL CUAL (ya
+// certificadas, ver domain/refunds.ts), nunca se reimplementa la regla en cada pantalla. `rows` no hace
+// falta que venga pre-filtrado por kind: las tres funciones ya exigen kind==='real' internamente.
+export function computePeriodFinancials(rows: Expense[], categories: BudgetCategory[]): PeriodFinancials {
+  const income = rows.filter((e) => isRealIncome(e, categories)).reduce((s, e) => s + e.amount, 0)
+  const spent = rows.filter((e) => isRealSpending(e, categories)).reduce((s, e) => s + e.amount, 0)
+  const refunds = rows.filter((e) => isRefund(e, categories)).reduce((s, e) => s + e.amount, 0)
+  const netSpent = spent - refunds
+  return { income, spent, refunds, netSpent, ahorro: income - netSpent }
+}
+
 function inRange(e: Expense, from: string, to: string): boolean {
   return e.expenseDate >= from && e.expenseDate <= to
 }

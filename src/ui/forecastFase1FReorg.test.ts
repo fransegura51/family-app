@@ -243,7 +243,7 @@ describe('Fase 1F.F — "Dinero destinado a cuentas de ahorro" (ahorro destinado
   })
 
   it('nunca toca la fórmula de ahorro existente (ahorro/tasaAhorro se calculan antes, sin depender de savingsDestinedByMember)', () => {
-    const ahorroIdx = FS.indexOf('const ahorro = totalIncome - netSpent')
+    const ahorroIdx = FS.indexOf('computePeriodFinancials(inRange, categories)')
     const savingsIdx = FS.indexOf('const savingsDestinedByMember')
     expect(ahorroIdx).toBeGreaterThan(-1)
     expect(savingsIdx).toBeGreaterThan(ahorroIdx)

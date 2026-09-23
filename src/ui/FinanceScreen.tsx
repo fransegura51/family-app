@@ -140,7 +140,7 @@ import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceip
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
-import { isRealIncome } from '@/domain/financeCompute'
+import { computePeriodFinancials, isRealIncome } from '@/domain/financeCompute'
 // Fase 1F.C — "Comparado con el periodo anterior": reutiliza groupSpending (reparto por categoría con
 // el mismo criterio padre/hija que ya usa Pepa) y comparablePrevious (misma aritmética de mes contable
 // y misma regla de corte por tramo que ya usa la voz de Pepa) — nunca se reimplementan.
@@ -2064,14 +2064,11 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   // se inflan por igual (el Ahorro no cambia, pero la Tasa de ahorro
   // sale más baja de lo real al hincharse el denominador).
   const real = inRange.filter((e) => e.kind === 'real' && !isInternalTransferCategory(e.category, categories))
-  // FASE 6D.3 — Modelo C de devoluciones (ver domain/refunds.ts, domain/financeCompute.ts): una devolución (isRefund) no es un
-  // ingreso nuevo, así que totalIncome la excluye (isRealIncome); totalSpent sigue siendo el gasto BRUTO de siempre (una
-  // devolución nunca cuenta ahí, es una fila is_income=true); refundsTotal/netSpent son nuevos, para explicar la diferencia.
-  const totalIncome = real.filter((e) => isRealIncome(e, categories)).reduce((s, e) => s + e.amount, 0)
-  const totalSpent = real.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
-  const refundsTotal = real.filter((e) => isRefund(e, categories)).reduce((s, e) => s + e.amount, 0)
-  const netSpent = totalSpent - refundsTotal
-  const ahorro = totalIncome - netSpent
+  // Corrección — única fuente de verdad para ingresos/gasto/ahorro de un periodo (computePeriodFinancials,
+  // financeCompute.ts): antes esta pantalla y "Evolución temporal" calculaban el gasto con reglas
+  // distintas (Evolución no excluía los traspasos internos) y daban totales distintos para el MISMO
+  // periodo — ahora las dos llaman a la misma función, así que nunca pueden volver a desincronizarse.
+  const { income: totalIncome, spent: totalSpent, refunds: refundsTotal, netSpent, ahorro } = computePeriodFinancials(inRange, categories)
   // Skill de Pepa, punto 1: no se inventa una tasa de ahorro sin
   // ingresos con los que calcularla.
   const tasaAhorro = totalIncome > 0 ? (ahorro / totalIncome) * 100 : null
@@ -3307,14 +3304,14 @@ function EvolucionTemporal({
     }))
   }, [effectiveMonthStartDay])
 
-  // FASE 6D.3 — mismo criterio que Resumen: una devolución no es ingreso nuevo (isRealIncome la excluye); el gasto sigue siendo
-  // el bruto de siempre (nunca incluye una devolución, es una fila is_income=true), y el ahorro/balance usa el neto.
+  // Corrección — mismo criterio que Resumen, vía la MISMA función (computePeriodFinancials,
+  // financeCompute.ts) en vez de una fórmula paralela: antes "spent" aquí no excluía los traspasos
+  // internos (Transferencias entre cuentas propias, Cobro anulado), así que sumaba de más frente a
+  // Resumen para el mismo periodo — ahora es imposible que vuelvan a desincronizarse.
   const rows = months.map((m) => {
-    const inMonth = expenses.filter((e) => e.kind === 'real' && e.expenseDate >= m.from && e.expenseDate <= m.to)
-    const income = inMonth.filter((e) => isRealIncome(e, categories)).reduce((s, e) => s + e.amount, 0)
-    const spent = inMonth.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
-    const refunds = inMonth.filter((e) => isRefund(e, categories)).reduce((s, e) => s + e.amount, 0)
-    return { ...m, income, spent, ahorro: income - (spent - refunds), count: inMonth.length }
+    const inMonth = expenses.filter((e) => e.expenseDate >= m.from && e.expenseDate <= m.to)
+    const { income, spent, ahorro } = computePeriodFinancials(inMonth, categories)
+    return { ...m, income, spent, ahorro, count: inMonth.filter((e) => e.kind === 'real').length }
   })
   const maxAmount = Math.max(1, ...rows.map((r) => Math.max(r.income, r.spent)))
 

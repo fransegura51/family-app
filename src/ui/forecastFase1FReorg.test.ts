@@ -239,7 +239,16 @@ describe('Fase 1F.F — "Dinero destinado a cuentas de ahorro" (ahorro destinado
   it('reutiliza computeSavingsDestinedByMember (domain/finance.ts) — nunca reimplementa el filtro en el componente', () => {
     expect(FS).toContain('computeSavingsDestinedByMember')
     const b = body(FS, 'Fase 1F.F', 'return (')
-    expect(b).toContain('const savingsDestinedByMember = computeSavingsDestinedByMember(inRange, categories)')
+    expect(b).toContain('const savingsDestinedByMember = computeSavingsDestinedByMember(')
+    expect(b).toContain('inRange,')
+    expect(b).toContain('categories,')
+  })
+
+  it('Fase 1F.B — prioriza la salida resuelta estructuralmente (IBAN, RPC), la entrada es solo fallback', () => {
+    expect(FS).toContain('listResolvedInternalTransferDestinations')
+    expect(FS).toContain('resolvedTransferOutInRange')
+    // Filtrado por el mismo periodo que inRange, nunca todo el histórico sin acotar.
+    expect(FS).toContain('resolvedTransferOut.filter((o) => o.expenseDate >= from && o.expenseDate <= to)')
   })
 
   it('nunca toca la fórmula de ahorro existente (ahorro/tasaAhorro se calculan antes, sin depender de savingsDestinedByMember)', () => {
@@ -282,6 +291,7 @@ describe('Fase 1F — Ayuda actualizada (mismo commit)', () => {
     const dineroIdx = AYUDA.indexOf("'/dinero': [")
     const dineroBlock = AYUDA.slice(dineroIdx, AYUDA.indexOf('\n  ],', dineroIdx))
     expect(dineroBlock).toContain('🏦 Dinero destinado a cuentas de ahorro')
+    expect(dineroBlock).toContain('Lo identifica con el IBAN que ya trae el propio banco')
   })
 
   it('Compras: la Ayuda tiene una entrada propia para "🛒 PEPA analiza tus compras", con "¿Por qué ha cambiado mi compra?" mudado desde Economía', () => {

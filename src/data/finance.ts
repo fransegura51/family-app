@@ -61,6 +61,28 @@ export async function listExpenses(): Promise<Expense[]> {
   }))
 }
 
+// Fase 1F.B — "Dinero destinado a cuentas de ahorro" (Resumen): resuelve la pata de SALIDA de cada
+// traspaso interno vía el IBAN que el propio banco ya trae (RPC resolve_internal_transfer_destinations,
+// migración 0161) — nunca texto de tienda/etiqueta/nombre, nunca IA. Nunca llega ningún IBAN a este
+// cliente: la función SQL ya solo devuelve expense_id/destination_member_id/amount/expense_date.
+export interface ResolvedInternalTransferDestination {
+  expenseId: string
+  destinationMemberId: string
+  amount: number
+  expenseDate: string
+}
+
+export async function listResolvedInternalTransferDestinations(): Promise<ResolvedInternalTransferDestination[]> {
+  const { data, error } = await supabase.rpc('resolve_internal_transfer_destinations')
+  if (error) throw error
+  return ((data ?? []) as { expense_id: string; destination_member_id: string; amount: number | string; expense_date: string }[]).map((r) => ({
+    expenseId: r.expense_id,
+    destinationMemberId: r.destination_member_id,
+    amount: Number(r.amount),
+    expenseDate: r.expense_date,
+  }))
+}
+
 // Fase 1D-f (conciliación bancaria) — una fila suelta y FRESCA, nunca la de un listado ya cargado en
 // memoria: "Gestionar movimiento" necesita la categoría/etiqueta REALES en el momento de abrir ese paso
 // (pueden haber cambiado desde que se listó la pantalla), para poder mostrar de verdad qué había antes de

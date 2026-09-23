@@ -311,3 +311,194 @@ describe('computeSavingsDestinedByMember', () => {
     expect(computeSavingsDestinedByMember(rows, categories).size).toBe(0)
   })
 })
+
+// Fase 1F.B — corrección estructural: resolve_internal_transfer_destinations (migración 0161) resuelve
+// la pata de SALIDA por IBAN del banco (nunca texto/tienda/etiqueta/IA). Escenarios modelados sobre los
+// tres traspasos reales auditados (Familia Hepburn, 31/08→29/09/2026): Fernando 31/08 (ambas patas),
+// Eric 11/09 (solo salida) y Fernando 18/09 (solo salida) — resultado esperado del periodo real:
+// Eric 100 €, Fernando 200 €, total 300 €.
+// exp() por defecto pone id: 'e' siempre igual — aquí hacen falta ids distintos de verdad, porque
+// computeSavingsDestinedByMember cruza cada resolvedOut.expenseId contra `rows` por id.
+let outLegCounter = 0
+function outLeg(expenseDate: string, amount: number, category = 'Transferencias entre cuentas propias'): Expense {
+  outLegCounter++
+  return exp({ id: `out-${outLegCounter}`, expenseDate, amount, category, isIncome: false, ownerMemberId: null })
+}
+function resolvedOut(expenseId: string, destinationMemberId: string, amount: number, date: string) {
+  return { expenseId, destinationMemberId, amount, date }
+}
+
+describe('computeSavingsDestinedByMember — resolución estructural por IBAN (resolvedOut)', () => {
+  it('1. solo OUT resoluble (sin entrada sincronizada): cuenta igual, vía la salida', () => {
+    const out = outLeg('2026-09-11', 100)
+    const rows = [out]
+    const result = computeSavingsDestinedByMember(rows, categories, [resolvedOut(out.id, 'eric', 100, '2026-09-11')])
+    expect(result.get('eric')).toBe(100)
+    expect(result.size).toBe(1)
+  })
+
+  it('2. solo IN (sin resolución de salida disponible): sigue funcionando el fallback de siempre', () => {
+    const rows = [exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })]
+    const result = computeSavingsDestinedByMember(rows, categories, [])
+    expect(result.get('fernando')).toBe(100)
+  })
+
+  it('3. OUT + IN de la misma transferencia: se cuenta UNA sola vez (prioridad OUT, IN se descarta)', () => {
+    const out = outLeg('2026-08-31', 100)
+    const inLeg = exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const rows = [out, inLeg]
+    const result = computeSavingsDestinedByMember(rows, categories, [resolvedOut(out.id, 'fernando', 100, '2026-08-31')])
+    expect(result.get('fernando')).toBe(100) // nunca 200
+    expect(result.size).toBe(1)
+  })
+
+  it('4. sincronización tardía: la IN aparece más tarde y el total NO cambia (nunca pasa de 100 a 200)', () => {
+    const out = outLeg('2026-09-11', 100)
+    const rowsDia1 = [out]
+    const resultDia1 = computeSavingsDestinedByMember(rowsDia1, categories, [resolvedOut(out.id, 'eric', 100, '2026-09-11')])
+    expect(resultDia1.get('eric')).toBe(100)
+
+    // Día posterior: aparece la pata de entrada (misma transferencia, sincronizada tarde).
+    const inLeg = exp({ expenseDate: '2026-09-11', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'eric' })
+    const rowsDia2 = [out, inLeg]
+    const resultDia2 = computeSavingsDestinedByMember(rowsDia2, categories, [resolvedOut(out.id, 'eric', 100, '2026-09-11')])
+    expect(resultDia2.get('eric')).toBe(100) // sigue siendo 100, nunca 200
+  })
+
+  it('5/6/7. cuenta destino sin owner / IBAN desconocido / raw sin creditor_account: se resuelven en la RPC (0161), aquí simplemente no llegan en resolvedOut y no se cuentan', () => {
+    // La RPC exige dst.owner_member_id is not null y creditor_account->>iban is not null — un traspaso
+    // así nunca aparece en resolvedOut. Desde esta función, es indistinguible de "no hay resolución
+    // disponible": cae al fallback de entrada si existe, o no cuenta a nadie si tampoco hay entrada.
+    const out = outLeg('2026-09-11', 100)
+    const result = computeSavingsDestinedByMember([out], categories, [])
+    expect(result.size).toBe(0)
+  })
+
+  it('8. cuenta destino de otra familia: la RPC (RLS + filtro explícito de family_id) nunca la devuelve — aquí, simplemente no está en resolvedOut', () => {
+    const out = outLeg('2026-09-11', 100)
+    // Ningún resolvedOut para esta fila simula exactamente lo que hace la RPC cuando el único IBAN que
+    // coincide pertenece a otra familia: no la resuelve.
+    const result = computeSavingsDestinedByMember([out], categories, [])
+    expect(result.has('eric')).toBe(false)
+    expect(result.size).toBe(0)
+  })
+
+  it('9. tolerancia ±0,01€: una IN con 0,01€ de diferencia por redondeo bancario SÍ empareja con su OUT', () => {
+    const out = outLeg('2026-08-31', 100)
+    const inLeg = exp({ expenseDate: '2026-08-31', amount: 100.01, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const result = computeSavingsDestinedByMember([out, inLeg], categories, [resolvedOut(out.id, 'fernando', 100, '2026-08-31')])
+    expect(result.get('fernando')).toBe(100) // solo la OUT, la IN quedó emparejada y descartada
+  })
+
+  it('10. fuera de tolerancia (>0,01€) no empareja: comportamiento conservador documentado — se cuentan ambas por separado', () => {
+    const out = outLeg('2026-08-31', 100)
+    const inLeg = exp({ expenseDate: '2026-08-31', amount: 100.5, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const result = computeSavingsDestinedByMember([out, inLeg], categories, [resolvedOut(out.id, 'fernando', 100, '2026-08-31')])
+    // Documentado: sin coincidencia exacta (±0,01€) se tratan como dos eventos reales distintos, nunca
+    // se fuerza un emparejamiento dudoso — 100 (OUT) + 100,50 (IN sin pareja) = 200,50.
+    expect(result.get('fernando')).toBe(200.5)
+  })
+
+  it('11. fuera de la ventana temporal (>3 días) no empareja: mismo comportamiento conservador', () => {
+    const out = outLeg('2026-08-31', 100)
+    const inLeg = exp({ expenseDate: '2026-09-10', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const result = computeSavingsDestinedByMember([out, inLeg], categories, [resolvedOut(out.id, 'fernando', 100, '2026-08-31')])
+    expect(result.get('fernando')).toBe(200) // 100 (OUT) + 100 (IN, tratada como transferencia distinta)
+  })
+
+  it('12/13. matching 1:1 — dos OUT y dos IN del mismo importe/miembro: cada IN reclama su OUT más cercana en fecha, nunca las dos la misma', () => {
+    const out1 = outLeg('2026-08-31', 100)
+    const out2 = outLeg('2026-09-18', 100)
+    const in1 = exp({ id: 'in1', expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const in2 = exp({ id: 'in2', expenseDate: '2026-09-18', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const rows = [out1, out2, in1, in2]
+    const result = computeSavingsDestinedByMember(
+      rows,
+      categories,
+      [resolvedOut(out1.id, 'fernando', 100, '2026-08-31'), resolvedOut(out2.id, 'fernando', 100, '2026-09-18')],
+    )
+    // Dos transferencias reales de 100€ cada una a Fernando: total 200€, nunca 400€ (si las dos IN
+    // colapsaran sobre la misma OUT) ni 100€ (si una OUT se usara dos veces).
+    expect(result.get('fernando')).toBe(200)
+  })
+
+  it('14. varias transferencias a miembros diferentes, mezclando OUT resuelto y fallback de entrada', () => {
+    const outEric = outLeg('2026-09-11', 100)
+    const outFernando = outLeg('2026-09-18', 100)
+    const inFernandoAntiguo = exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const rows = [outEric, outFernando, inFernandoAntiguo]
+    const result = computeSavingsDestinedByMember(
+      rows,
+      categories,
+      [resolvedOut(outEric.id, 'eric', 100, '2026-09-11'), resolvedOut(outFernando.id, 'fernando', 100, '2026-09-18')],
+    )
+    expect(result.get('eric')).toBe(100)
+    expect(result.get('fernando')).toBe(200) // 100 (OUT 18/09) + 100 (IN 31/08, sin OUT que la empareje)
+  })
+
+  it('15. una salida resuelta cuyo expense YA NO está categorizado como traspaso interno no se cuenta', () => {
+    // p. ej. alguien recategorizó a mano esa fila después de que se sincronizara — la RPC no sabe de
+    // categorías (resuelve por IBAN), así que el cruce final lo hace esta función contra `rows`.
+    const notInternal = outLeg('2026-09-11', 100, 'Supermercado, carnicería y tiendas de alimentación')
+    const result = computeSavingsDestinedByMember([notInternal], categories, [resolvedOut(notInternal.id, 'eric', 100, '2026-09-11')])
+    expect(result.size).toBe(0)
+  })
+
+  it('16. subcategoría "Transferencias entre cuentas propias" bajo "Movimientos internos" funciona igual que la categoría padre', () => {
+    const out = outLeg('2026-09-11', 100, 'Transferencias entre cuentas propias')
+    const result = computeSavingsDestinedByMember([out], categories, [resolvedOut(out.id, 'eric', 100, '2026-09-11')])
+    expect(result.get('eric')).toBe(100)
+  })
+
+  it('17. sincronización tardía con varios periodos: el total del periodo se mantiene exacto pase lo que pase después', () => {
+    const out = outLeg('2026-09-18', 100)
+    const before = computeSavingsDestinedByMember([out], categories, [resolvedOut(out.id, 'fernando', 100, '2026-09-18')])
+    const inLegLater = exp({ expenseDate: '2026-09-19', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const after = computeSavingsDestinedByMember([out, inLegLater], categories, [resolvedOut(out.id, 'fernando', 100, '2026-09-18')])
+    expect(before.get('fernando')).toBe(after.get('fernando'))
+    expect(after.get('fernando')).toBe(100)
+  })
+
+  it('18. no hace falta ninguna etiqueta (tag) para identificar al miembro — resolvedOut no lleva tag_id en ningún sitio', () => {
+    const out = outLeg('2026-09-11', 100)
+    expect((out as unknown as { tagId: unknown }).tagId).toBeNull() // ninguna etiqueta puesta, y aun así se resuelve
+    const result = computeSavingsDestinedByMember([out], categories, [resolvedOut(out.id, 'eric', 100, '2026-09-11')])
+    expect(result.get('eric')).toBe(100)
+  })
+
+  it('19. no hace falta store/description — outLeg no lleva store y se resuelve igual', () => {
+    const out = outLeg('2026-09-11', 100)
+    expect(out.store).toBeNull()
+    const result = computeSavingsDestinedByMember([out], categories, [resolvedOut(out.id, 'eric', 100, '2026-09-11')])
+    expect(result.get('eric')).toBe(100)
+  })
+
+  it('20. aislamiento multi-familia: se prueba en la RPC (RLS + family_id explícito, migración 0161) — aquí solo se confirma que resolvedOut es la única fuente de verdad, nunca se recalcula ni se "adivina" una familia desde los datos locales', () => {
+    const out = outLeg('2026-09-11', 100)
+    // Sin ninguna resolución (como si la RPC hubiera descartado el IBAN por pertenecer a otra familia),
+    // el traspaso no se atribuye a nadie — nunca se intenta reconstruir el destino desde amount/date/tag.
+    const result = computeSavingsDestinedByMember([out], categories, [])
+    expect(result.size).toBe(0)
+  })
+
+  it('regresión con forma real: Fernando OUT+IN (100), Eric solo OUT (100), Fernando solo OUT (100) → Eric 100, Fernando 200 — NUNCA 300 para Fernando ni duplicados', () => {
+    const fernandoOut1 = outLeg('2026-08-31', 100) // tiene ambas patas
+    const fernandoIn1 = exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' })
+    const ericOut = outLeg('2026-09-11', 100) // solo salida
+    const fernandoOut2 = outLeg('2026-09-18', 100) // solo salida
+    const rows = [fernandoOut1, fernandoIn1, ericOut, fernandoOut2]
+    const result = computeSavingsDestinedByMember(
+      rows,
+      categories,
+      [
+        resolvedOut(fernandoOut1.id, 'fernando', 100, '2026-08-31'),
+        resolvedOut(ericOut.id, 'eric', 100, '2026-09-11'),
+        resolvedOut(fernandoOut2.id, 'fernando', 100, '2026-09-18'),
+      ],
+    )
+    expect(result.get('eric')).toBe(100)
+    expect(result.get('fernando')).toBe(200) // nunca 300 (fernandoIn1 quedó emparejada y descartada)
+    const total = [...result.values()].reduce((s, v) => s + v, 0)
+    expect(total).toBe(300)
+  })
+})

@@ -1,3 +1,4 @@
+import { daysBetween } from '@/domain/financePeriod'
 import { isPendingCategory } from '@/domain/pending'
 import type { Budget, BudgetCategory, Expense, KidWalletTransaction } from '@/domain/types'
 
@@ -86,11 +87,65 @@ export function isInternalTransferCategory(category: string | null, categories: 
 // movimiento sin dueño concreto, ver bank_accounts.ownerMemberId) y/o is_income=false, así que ninguna
 // de las dos condiciones de este filtro la deja pasar. `rows` ya debe venir filtrado al periodo elegido
 // (mismo `inRange` que usa el resto de Resumen) — esta función no filtra por fecha, solo agrupa.
-export function computeSavingsDestinedByMember(rows: Expense[], categories: BudgetCategory[]): Map<string, number> {
+// Fase 1F.B — corrección estructural: la pata de ENTRADA (is_income=true + ownerMemberId) puede faltar
+// si la cuenta receptora todavía no ha sincronizado (caso real auditado: los traspasos a Eric del
+// 11/09/2026 y a Fernando del 18/09/2026 nunca llegaron a tener pata de entrada). `resolvedOut` (vía
+// resolve_internal_transfer_destinations, migración 0161 — IBAN del banco, nunca texto/etiqueta/IA)
+// resuelve la pata de SALIDA, que siempre se sincroniza primero (desde la cuenta común). Prioridad: OUT
+// estructural > IN como fallback — nunca las dos a la vez para el mismo traspaso (ver dedupe abajo).
+export interface ResolvedTransferOut {
+  expenseId: string
+  destinationMemberId: string
+  amount: number
+  date: string
+}
+
+// Mismo margen que RECONCILIATION_DATE_WINDOW_DAYS (domain/forecastReconciliation.ts, 3 días) pero
+// declarado aparte a propósito: son conceptos distintos (esa ventana empareja una ocurrencia PREVISTA
+// contra un movimiento REAL; esta empareja las dos PATAS del mismo traspaso ya real) y Economía no debe
+// depender del módulo de Previsión solo por coincidir en el número.
+const INTERNAL_TRANSFER_MATCH_WINDOW_DAYS = 3
+
+export function computeSavingsDestinedByMember(rows: Expense[], categories: BudgetCategory[], resolvedOut: ResolvedTransferOut[] = []): Map<string, number> {
   const byMember = new Map<string, number>()
+
+  // resolvedOut viene de una RPC que resuelve por IBAN sin mirar categoría (para no reimplementar
+  // isInternalTransferCategory en SQL, una sola regla, nunca dos) — así que aquí se cruza cada salida
+  // resuelta contra su propio expense en `rows` y se descarta si esa fila ya NO está clasificada como
+  // traspaso interno (p. ej. alguien la recategorizó a mano después de sincronizarse) o si no está en el
+  // periodo cargado.
+  const rowsById = new Map(rows.map((e) => [e.id, e]))
+  const usableOut = resolvedOut.filter((out) => {
+    const expense = rowsById.get(out.expenseId)
+    return expense != null && expense.kind === 'real' && isInternalTransferCategory(expense.category, categories)
+  })
+
+  // OUT primero, siempre se cuenta — es la pata que casi nunca falta.
+  for (const out of usableOut) {
+    byMember.set(out.destinationMemberId, (byMember.get(out.destinationMemberId) ?? 0) + out.amount)
+  }
+
+  // IN como fallback — pero SOLO si no representa un traspaso que YA se contó vía OUT. Emparejamiento
+  // 1:1 explícito (mismo miembro + importe ±0,01€ + fecha dentro de la ventana): cada salida disponible
+  // se "reclama" como mucho una vez, así que dos entradas del mismo importe/miembro nunca colapsan sobre
+  // la misma salida ni se cuentan ambas de más — con ambigüedad real (más de una salida candidata),
+  // se reclama la de fecha más cercana, la opción conservadora.
+  const availableOut = usableOut.map((o) => ({ ...o, claimed: false }))
   for (const e of rows) {
     if (e.kind !== 'real' || !e.isIncome || !e.ownerMemberId) continue
     if (!isInternalTransferCategory(e.category, categories)) continue
+    // Comparación en céntimos (Math.round), nunca en euros con coma flotante: 100 - 100.01 da
+    // 0,010000000000005116 en JS, que se saldría de la tolerancia de un céntimo por puro error de
+    // redondeo binario, no por una diferencia real.
+    const candidates = availableOut
+      .filter((o) => !o.claimed && o.destinationMemberId === e.ownerMemberId && Math.abs(Math.round(o.amount * 100) - Math.round(e.amount * 100)) <= 1)
+      .filter((o) => Math.abs(daysBetween(o.date, e.expenseDate)) <= INTERNAL_TRANSFER_MATCH_WINDOW_DAYS)
+      .sort((a, b) => Math.abs(daysBetween(a.date, e.expenseDate)) - Math.abs(daysBetween(b.date, e.expenseDate)))
+    const match = candidates[0]
+    if (match) {
+      match.claimed = true
+      continue // ya contada vía la salida — nunca las dos patas a la vez
+    }
     byMember.set(e.ownerMemberId, (byMember.get(e.ownerMemberId) ?? 0) + e.amount)
   }
   return byMember

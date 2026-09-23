@@ -21,11 +21,13 @@ import {
   listBudgets,
   listExpenses,
   listGoals,
+  listResolvedInternalTransferDestinations,
   listTags,
   listWalletTransactions,
   updateBudgetCategory,
   updateExpense,
   updateTag,
+  type ResolvedInternalTransferDestination,
 } from '@/data/finance'
 import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTransactions } from '@/data/bank'
 import {
@@ -2031,6 +2033,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
+  const [resolvedTransferOut, setResolvedTransferOut] = useState<ResolvedInternalTransferDestination[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
@@ -2050,6 +2053,11 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
       .finally(() => setLoading(false))
     getFinanceMonthStartDay()
       .then(setMonthStartDay)
+      .catch(() => {})
+    // Fase 1F.B — si falla (p. ej. familia sin cuentas bancarias enlazadas), el bloque de ahorro
+    // destinado simplemente cae al fallback de siempre (pata de entrada); nunca bloquea el resto de Resumen.
+    listResolvedInternalTransferDestinations()
+      .then(setResolvedTransferOut)
       .catch(() => {})
   }, [])
 
@@ -2261,14 +2269,21 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
     conclusions.push(...extraPool)
   }
 
-  // Fase 1F.F — "Dinero destinado a cuentas de ahorro": SOLO la pata de ENTRADA de un traspaso interno,
-  // vía computeSavingsDestinedByMember (domain/finance.ts) — nunca se reimplementa aquí. Nunca entra en
-  // totalIncome/totalSpent/ahorro de arriba (esos ya excluyen todo movimiento interno, sin cambios) y
-  // nunca se convierte en ingreso ni en gasto de nadie. Terminología deliberadamente conservadora: el
-  // dinero movido este periodo puede ser ahorro acumulado de periodos anteriores, no necesariamente
-  // "generado" ahora — por eso nunca se dice "de tu ahorro de este mes". `inRange` (no `real`): la pata
-  // de entrada de un traspaso interno es justo lo que `real` excluye, así que hace falta la lista sin filtrar.
-  const savingsDestinedByMember = computeSavingsDestinedByMember(inRange, categories)
+  // Fase 1F.F/B — "Dinero destinado a cuentas de ahorro": prioriza la pata de SALIDA resuelta
+  // estructuralmente (IBAN del banco, resolve_internal_transfer_destinations) y usa la de ENTRADA como
+  // fallback — computeSavingsDestinedByMember (domain/finance.ts) hace el emparejamiento/deduplicación,
+  // nunca se reimplementa aquí. Nunca entra en totalIncome/totalSpent/ahorro de arriba (esos ya excluyen
+  // todo movimiento interno, sin cambios) y nunca se convierte en ingreso ni en gasto de nadie.
+  // Terminología deliberadamente conservadora: el dinero movido este periodo puede ser ahorro acumulado
+  // de periodos anteriores, no necesariamente "generado" ahora — por eso nunca se dice "de tu ahorro de
+  // este mes". `inRange` (no `real`): la pata de entrada de un traspaso interno es justo lo que `real`
+  // excluye, así que hace falta la lista sin filtrar.
+  const resolvedTransferOutInRange = resolvedTransferOut.filter((o) => o.expenseDate >= from && o.expenseDate <= to)
+  const savingsDestinedByMember = computeSavingsDestinedByMember(
+    inRange,
+    categories,
+    resolvedTransferOutInRange.map((o) => ({ expenseId: o.expenseId, destinationMemberId: o.destinationMemberId, amount: o.amount, date: o.expenseDate })),
+  )
   const savingsDestinedRows = [...savingsDestinedByMember.entries()]
     .map(([memberId, amount]) => ({ member: members.find((m) => m.id === memberId), amount }))
     .filter((r) => r.amount > 0.005)

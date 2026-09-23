@@ -585,9 +585,15 @@ describe('Fase 1D-g — posibles pagos recurrentes: sección discreta, propone, 
     const block = FS.slice(idx, idx + 2200)
     expect(block).toContain('{formatSpanishDate(c.nextDueDate)}')
 
+    // reviewRecurrenceCandidate delega en buildForecastPrefillFromCandidate (Fase 1D-g.2, extraído para
+    // que "Añadir a Previsión" desde Movimientos reutilice exactamente la misma construcción) — se
+    // comprueba ahí, en el único sitio donde de verdad se lee c.nextDueDate.
+    const builderIdx = FS.indexOf('function buildForecastPrefillFromCandidate')
+    const builderBody = FS.slice(builderIdx, FS.indexOf('\n}', builderIdx))
+    expect(builderBody).toContain('dueDate: c.nextDueDate')
     const reviewIdx = FS.indexOf('function reviewRecurrenceCandidate')
     const reviewBody = FS.slice(reviewIdx, FS.indexOf('\n  }', reviewIdx))
-    expect(reviewBody).toContain('dueDate: c.nextDueDate')
+    expect(reviewBody).toContain('buildForecastPrefillFromCandidate(c)')
   })
 
   it('usa findNewRecurrenceCandidates del dominio (motor determinista) — nunca recalcula la detección a mano en la pantalla', () => {
@@ -686,5 +692,106 @@ describe('Fase 1D-g — privacidad: ninguna IA/proveedor externo interviene en l
   it('FinanceScreen no pasa movimientos bancarios a ningún gateway de IA al detectar recurrencias', () => {
     const idx = FS.indexOf('const recurrenceCandidates = findNewRecurrenceCandidates')
     expect(idx).toBeGreaterThan(-1)
+  })
+})
+
+describe('Fase 1D-g.2 — "🔮 Añadir a Previsión" desde Movimientos: reutiliza, no duplica', () => {
+  it('el botón solo aparece cuando EditExpenseInline recibe onAddToForecast (undefined en Banco, presente en Movimientos solo si el gasto viene de un movimiento bancario real)', () => {
+    const idx = FS.indexOf('function EditExpenseInline(')
+    const sigEnd = FS.indexOf(') {', idx)
+    const signature = FS.slice(idx, sigEnd)
+    expect(signature).toContain('onAddToForecast?:')
+    expect(FS).toContain('🔮 Añadir a Previsión')
+    expect(FS).toContain('onAddToForecast={expenseAccountId.has(e.id) ? () => handleAddToForecast(e) : undefined}')
+  })
+
+  it('el botón nunca se cablea en la llamada de Banco (BankTab) — mismo componente, sin la prop ahí', () => {
+    const bankCallIdx = FS.indexOf('<EditExpenseInline', FS.indexOf('function BankTab('))
+    const movimientosDeclIdx = FS.indexOf('function ExpensesTab(')
+    expect(bankCallIdx).toBeGreaterThan(-1)
+    expect(bankCallIdx).toBeLessThan(movimientosDeclIdx) // la llamada de Banco es la primera del archivo, antes de ExpensesTab
+    const bankCall = FS.slice(bankCallIdx, FS.indexOf('/>', bankCallIdx))
+    expect(bankCall).not.toContain('onAddToForecast')
+  })
+
+  it('18/19) detectRecurrenceCandidates decide el camino — con ≥3 hermanos consistentes usa buildForecastPrefillFromCandidate, si no, el prefill mínimo del propio movimiento', () => {
+    const idx = FS.indexOf('async function handleAddToForecast')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx + 10) + 5)
+    expect(body).toContain('detectRecurrenceCandidates(movements, today)')
+    expect(body).toContain('buildForecastPrefillFromCandidate(candidate)')
+    expect(body).toContain('buildMinimalForecastPrefillFromMovement(bt, expense.category)')
+  })
+
+  it('la identidad para buscar hermanos es account_id + normalizeMerchantKey(description) + currency — nunca solo palabras compartidas', () => {
+    const idx = FS.indexOf('async function handleAddToForecast')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx + 10) + 5)
+    expect(body).toContain('t.accountId === bankAccountId')
+    expect(body).toContain('t.currency === bt.currency')
+    expect(body).toContain('normalizeMerchantKey(t.description) === merchantKey')
+  })
+
+  it('20) sin histórico suficiente: SIEMPRE Estimado, basado en el último cargo, sin recurrencia ni fecha inventadas', () => {
+    const idx = FS.indexOf('function buildMinimalForecastPrefillFromMovement')
+    const body = FS.slice(idx, FS.indexOf('\n}', idx))
+    expect(body).toContain("`Basado en el último cargo: ${formatForecastAmount(amount, bt.currency)}`")
+    expect(body).not.toContain('dueDate:')
+    expect(body).not.toContain('recurrenceRule:')
+  })
+
+  it('21/22) categoría fiable se precarga, pero "Otros" nunca se vende como categoría fiable', () => {
+    const idx = FS.indexOf('function buildMinimalForecastPrefillFromMovement')
+    const body = FS.slice(idx, FS.indexOf('\n}', idx))
+    expect(body).toContain("category && category !== 'Otros' ? category : null")
+  })
+
+  it('23) la cuenta bancaria REAL del movimiento se precarga siempre, en los dos casos (con y sin histórico)', () => {
+    const idx = FS.indexOf('async function handleAddToForecast')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx + 10) + 5)
+    expect(body).toContain('buildMinimalForecastPrefillFromMovement(bt, expense.category), bankAccountId }')
+  })
+
+  it('24) ForecastPaymentForm sigue teniendo una única declaración en todo el archivo — "Añadir a Previsión" no crea un segundo formulario', () => {
+    expect(FS.match(/function ForecastPaymentForm\(/g)?.length).toBe(1)
+  })
+
+  it('25/26) el modal de ExpensesTab reutiliza ForecastPaymentForm con payment=null — nada se guarda hasta pulsar el botón normal de crear, dentro del propio formulario', () => {
+    const idx = FS.indexOf('{showForecastForm && forecastPrefill && (')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 1100)
+    expect(block).toContain('<ForecastPaymentForm')
+    expect(block).toContain('payment={null}')
+    expect(block).toContain('prefill={forecastPrefill}')
+  })
+
+  it('27) previsión ya relacionada (fuerte o débil) muestra una advertencia ANTES de crear — nunca se crea en silencio, pero tampoco bloquea del todo', () => {
+    const idx = FS.indexOf('function findDuplicateForecastWarning')
+    const body = FS.slice(idx, FS.indexOf('\n}', idx))
+    expect(body).toContain('matchedExpenseIds.has(o.expenseId)')
+    expect(body).toContain('hasSharedWord(candidateLike.displayName')
+    const modalIdx = FS.indexOf('{forecastDuplicateWarning && (')
+    expect(modalIdx).toBeGreaterThan(-1)
+    const modalBlock = FS.slice(modalIdx, modalIdx + 900)
+    expect(modalBlock).toContain('Crear de todas formas')
+    expect(modalBlock).toContain('Cancelar')
+  })
+
+  it('28) dos préstamos con descripciones parecidas pero distinto identificador NUNCA se confunden — misma identidad exacta que el detector automático (no solo palabras compartidas)', () => {
+    // hasSharedWord solo se usa para el AVISO de posible duplicado (señal débil, deliberadamente
+    // conservadora) — nunca para decidir qué movimientos son "hermanos" del mismo préstamo, eso lo
+    // decide exclusivamente account_id + normalizeMerchantKey + currency (test anterior).
+    const idx = FS.indexOf('async function handleAddToForecast')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx + 10) + 5)
+    expect(body).not.toMatch(/hasSharedWord\(.*movements/)
+  })
+
+  it('29) ForecastPaymentForm sigue aceptando payment (edición normal) exactamente igual — prefill es un prop aparte, opcional, que no toca el camino de edición', () => {
+    expect(FS).toContain('payment: ForecastPaymentWithReminders | null')
+    expect(FS).toContain('prefill?: ForecastPaymentPrefill | null')
+  })
+
+  it('30) reviewRecurrenceCandidate (propuesta automática 1D-g) sigue usando el mismo builder compartido — sin regresión del flujo certificado', () => {
+    const idx = FS.indexOf('function reviewRecurrenceCandidate')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
+    expect(body).toContain('buildForecastPrefillFromCandidate(c)')
   })
 })

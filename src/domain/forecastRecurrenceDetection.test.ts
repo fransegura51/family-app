@@ -150,6 +150,45 @@ describe('normalización de merchant — agrupa equivalentes sin fusionar comerc
   })
 })
 
+describe('Fase 1D-g.2 — sufijo de fecha final (caso real de los dos préstamos: el banco añade la fecha del cargo al texto)', () => {
+  it('1-3) las 3 mensualidades reales del préstamo 450,50€ (N.8078183410) producen la MISMA merchant_key', () => {
+    const a = normalizeMerchantKey('PRESTAMOS ADEUDO CUOTA N.8078183410 30/06/26')
+    const b = normalizeMerchantKey('PRESTAMOS ADEUDO CUOTA N.8078183410 31/07/26')
+    const c = normalizeMerchantKey('PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26')
+    expect(a).toBe(b)
+    expect(b).toBe(c)
+    expect(a).toBe('PRESTAMOS ADEUDO CUOTA N.8078183410')
+  })
+
+  it('4) el préstamo 141,37€ (N.8077731039) produce una merchant_key DISTINTA — el identificador del préstamo nunca se pierde ni se fusiona con el otro', () => {
+    const loanA = normalizeMerchantKey('PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26')
+    const loanB = normalizeMerchantKey('PRESTAMOS ADEUDO CUOTA N.8077731039 31/08/26')
+    expect(loanA).not.toBe(loanB)
+    expect(loanA).toContain('8078183410')
+    expect(loanB).toContain('8077731039')
+  })
+
+  it('5) un número contractual SIN fecha al final no se toca', () => {
+    expect(normalizeMerchantKey('PRESTAMOS ADEUDO CUOTA N.8078183410')).toBe('PRESTAMOS ADEUDO CUOTA N.8078183410')
+  })
+
+  it('6) un número final que no es una fecha real (mes 13, o solo dígitos de tarjeta) nunca se elimina', () => {
+    // "45/13/26" no es una fecha válida (mes 13) — se conserva tal cual, no se adivina.
+    expect(normalizeMerchantKey('REFERENCIA CONTRATO 45/13/26')).toBe('REFERENCIA CONTRATO 45/13/26')
+    // Dígitos de tarjeta sin barras — nunca hay nada que un patrón de fecha pueda confundir aquí.
+    expect(normalizeMerchantKey('COMPRA TARJ. 5402XXXXXXXX4041 HIPERBER')).toBe('COMPRA TARJ. 5402XXXXXXXX4041 HIPERBER')
+  })
+
+  it('7) también soporta DD/MM/YYYY (año de 4 dígitos) si algún banco lo usara — mismo criterio, ninguna evidencia real hoy salvo DD/MM/YY', () => {
+    expect(normalizeMerchantKey('PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/2026')).toBe('PRESTAMOS ADEUDO CUOTA N.8078183410')
+  })
+
+  it('8) una descripción sin ninguna fecha al final se comporta exactamente igual que antes (regresión)', () => {
+    expect(normalizeMerchantKey('ENDESA ENERGIA S.A.')).toBe('ENDESA ENERGIA S.A.')
+    expect(normalizeMerchantKey('ORANGE ESPAGNE SAU')).toBe('ORANGE ESPAGNE SAU')
+  })
+})
+
 describe('mínimo de evidencia (RECURRENCE_MIN_OCCURRENCES = 3, decisión aprobada)', () => {
   it('con solo 2 cargos, por muy consistentes que sean los intervalos, NUNCA se propone', () => {
     const movements = [movement({ date: '2026-07-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' }), movement({ date: '2026-08-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' })]
@@ -368,4 +407,121 @@ describe('Fase 1D-g.1 — "próximo cargo estimado" SIEMPRE estrictamente futuro
     const results = findNewRecurrenceCandidates(ENDESA, matchedExpenseIds, [], new Set(), '2026-09-23')
     expect(results).toEqual([])
   })
+})
+
+describe('Fase 1D-g.2 — CASOS REALES: los dos préstamos (bank_transactions.description real de producción, con fecha embebida)', () => {
+  // Cuenta real, fechas/importes EXACTOS de la auditoría de esta fase.
+  const PRESTAMO_A = [
+    movement({ date: '2026-06-30', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 30/06/26', expenseId: 'exp-pa-1', category: 'Préstamos e intereses' }),
+    movement({ date: '2026-07-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/07/26', expenseId: 'exp-pa-2', category: 'Préstamos e intereses' }),
+    movement({ date: '2026-08-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26', expenseId: 'exp-pa-3', category: 'Préstamos e intereses' }),
+  ]
+  const PRESTAMO_B = [
+    movement({ date: '2026-06-30', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 30/06/26', expenseId: 'exp-pb-1', category: 'Préstamos e intereses' }),
+    movement({ date: '2026-07-31', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 31/07/26', expenseId: 'exp-pb-2', category: 'Préstamos e intereses' }),
+    movement({ date: '2026-08-31', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 31/08/26', expenseId: 'exp-pb-3', category: 'Préstamos e intereses' }),
+  ]
+
+  it('9) préstamo 450,50€ ×3 ahora SÍ se detecta como mensual (antes de este fix, cero candidatos)', () => {
+    const [candidate] = detectRecurrenceCandidates(PRESTAMO_A, OLD_REFERENCE_DATE)
+    expect(candidate).toBeDefined()
+    expect(candidate.periodicity).toBe('monthly')
+    expect(candidate.occurrences).toHaveLength(3)
+    expect(candidate.estimatedAmountCents).toBe(45050)
+    expect(candidate.suggestedCategoryName).toBe('Préstamos e intereses')
+  })
+
+  it('10) préstamo 141,37€ ×3 ahora SÍ se detecta como mensual', () => {
+    const [candidate] = detectRecurrenceCandidates(PRESTAMO_B, OLD_REFERENCE_DATE)
+    expect(candidate).toBeDefined()
+    expect(candidate.periodicity).toBe('monthly')
+    expect(candidate.occurrences).toHaveLength(3)
+    expect(candidate.estimatedAmountCents).toBe(14137)
+  })
+
+  it('11) los dos préstamos NUNCA se fusionan entre sí — dos candidatos independientes, cada uno con su propio importe', () => {
+    const results = detectRecurrenceCandidates([...PRESTAMO_A, ...PRESTAMO_B], OLD_REFERENCE_DATE)
+    expect(results).toHaveLength(2)
+    expect(results.map((c) => c.estimatedAmountCents).sort((a, b) => a - b)).toEqual([14137, 45050])
+    expect(results.map((c) => c.merchantKey).sort()).toEqual(['PRESTAMOS ADEUDO CUOTA N.8077731039', 'PRESTAMOS ADEUDO CUOTA N.8078183410'])
+  })
+
+  it('12) 30/06 → 31/07 → 31/08 entra en la tolerancia mensual (31 y 31 días, dentro de 23-37)', () => {
+    const [candidate] = detectRecurrenceCandidates(PRESTAMO_A, OLD_REFERENCE_DATE)
+    expect(candidate.occurrences.map((o) => o.date)).toEqual(['2026-06-30', '2026-07-31', '2026-08-31'])
+  })
+
+  it('13) la próxima fecha usa nextFutureDueDate con una referenceDate real explícita — nunca el reloj del sistema', () => {
+    const [candidate] = detectRecurrenceCandidates(PRESTAMO_A, '2026-09-23')
+    // Último cargo 31/08 + 1 mes (clamped, septiembre tiene 30 días) = 30/09 — ya futuro respecto al 23/09.
+    expect(candidate.nextDueDate).toBe('2026-09-30')
+    expect(candidate.nextDueDate > '2026-09-23').toBe(true)
+  })
+
+  it('14) Mercadona/Hiperber/Amazon (compra irregular real) siguen sin falsos positivos tras este cambio — el sufijo de fecha no les afecta porque sus descripciones no terminan en fecha', () => {
+    const irregular = [
+      movement({ date: '2026-09-01', amount: 48.92, description: 'COMPRA TARJ. 5402XXXXXXXX4041 HIPERBER DISTRIBUCION Y L-RAFAL' }),
+      movement({ date: '2026-09-16', amount: 47.75, description: 'COMPRA TARJ. 5402XXXXXXXX4041 HIPERBER DISTRIBUCION Y L-RAFAL' }),
+      movement({ date: '2026-09-18', amount: 28.5, description: 'COMPRA TARJ. 5402XXXXXXXX4041 HIPERBER DISTRIBUCION Y L-RAFAL' }),
+      movement({ date: '2026-09-21', amount: 17.56, description: 'COMPRA TARJ. 5402XXXXXXXX4041 HIPERBER DISTRIBUCION Y L-RAFAL' }),
+    ]
+    expect(detectRecurrenceCandidates(irregular, OLD_REFERENCE_DATE)).toEqual([])
+  })
+
+  it('15) Endesa sigue deduplicada (regresión — sin relación con el cambio de normalización, su descripción no termina en fecha)', () => {
+    const ENDESA = [
+      movement({ date: '2026-06-22', amount: 143.6, description: 'ENDESA ENERGIA S.A.', expenseId: 'exp-e1' }),
+      movement({ date: '2026-07-24', amount: 253.9, description: 'ENDESA ENERGIA S.A.', expenseId: 'exp-e2' }),
+      movement({ date: '2026-08-26', amount: 322.8, description: 'ENDESA ENERGIA S.A.', expenseId: 'exp-e3' }),
+      movement({ date: '2026-09-23', amount: 261.08, description: 'ENDESA ENERGIA S.A.', expenseId: 'exp-e4' }),
+    ]
+    expect(findNewRecurrenceCandidates(ENDESA, new Set(['exp-e4']), [], new Set(), OLD_REFERENCE_DATE)).toEqual([])
+  })
+
+  it('16) Orange se comporta exactamente igual que antes — su descripción no termina en fecha, normalizeMerchantKey no la toca', () => {
+    const ORANGE = [
+      movement({ date: '2026-06-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' }),
+      movement({ date: '2026-07-23', amount: 64.55, description: 'ORANGE ESPAGNE SAU' }),
+      movement({ date: '2026-08-21', amount: 73.02, description: 'ORANGE ESPAGNE SAU' }),
+      movement({ date: '2026-09-23', amount: 73.48, description: 'ORANGE ESPAGNE SAU' }),
+    ]
+    const [candidate] = detectRecurrenceCandidates(ORANGE, OLD_REFERENCE_DATE)
+    expect(candidate.merchantKey).toBe('ORANGE ESPAGNE SAU')
+    expect(candidate.occurrences).toHaveLength(4)
+  })
+
+  it('17) Anthropic ya creada como previsión real no reaparece (título real guardado tras aceptar la propuesta de 1D-g)', () => {
+    const ANTHROPIC = [
+      movement({ date: '2026-06-15', amount: 21.78, description: 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN', expenseId: 'exp-a1' }),
+      movement({ date: '2026-07-15', amount: 21.78, description: 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN', expenseId: 'exp-a2' }),
+      movement({ date: '2026-08-17', amount: 21.78, description: 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN', expenseId: 'exp-a3' }),
+    ]
+    const existingPayments: ForecastPaymentForDedup[] = [
+      { title: 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN', provider: null, bankAccountId: ACCOUNT_A, active: true },
+    ]
+    expect(findNewRecurrenceCandidates(ANTHROPIC, new Set(), existingPayments, new Set(), OLD_REFERENCE_DATE)).toEqual([])
+  })
+})
+
+describe('Fase 1D-g.2 — dismissals: la clave leída y la escrita por el detector siguen siendo la MISMA función', () => {
+  it('31) un descarte guardado con la merchant_key actual (post-fix) sigue excluyendo esa misma propuesta — el mecanismo de "No me interesa" no ha cambiado', () => {
+    const movements = PRESTAMO_A_FOR_DISMISS()
+    const key = `${ACCOUNT_A}::${normalizeMerchantKey('PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26')}`
+    const dismissed = new Set([key])
+    expect(findNewRecurrenceCandidates(movements, new Set(), [], dismissed, OLD_REFERENCE_DATE)).toEqual([])
+  })
+
+  it('32) un descarte de OTRO préstamo (merchant_key distinta) nunca afecta a este — el cambio de normalización no puede "resucitar" ni "matar" propuestas de forma cruzada', () => {
+    const movements = PRESTAMO_A_FOR_DISMISS()
+    const dismissedOtherLoan = new Set([`${ACCOUNT_A}::PRESTAMOS ADEUDO CUOTA N.8077731039`])
+    expect(findNewRecurrenceCandidates(movements, new Set(), [], dismissedOtherLoan, OLD_REFERENCE_DATE)).toHaveLength(1)
+  })
+
+  function PRESTAMO_A_FOR_DISMISS(): BankMovementForDetection[] {
+    return [
+      movement({ date: '2026-06-30', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 30/06/26', accountId: ACCOUNT_A }),
+      movement({ date: '2026-07-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/07/26', accountId: ACCOUNT_A }),
+      movement({ date: '2026-08-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26', accountId: ACCOUNT_A }),
+    ]
+  }
 })

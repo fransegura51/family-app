@@ -72,12 +72,32 @@ export const RECURRENCE_MIN_OCCURRENCES = 3
 //
 // Clave de agrupación deliberadamente CONSERVADORA (recorta espacios, mayúsculas) — nunca quita prefijos
 // ni números de tarjeta como haría cleanMerchantName (Edge Function, Deno-only, no importable aquí; no
-// se duplica). Los datos reales confirman que esto basta: el mismo comercio produce la MISMA cadena
-// exacta mes a mes (ENDESA ENERGIA S.A., ORANGE ESPAGNE SAU, COMPRA TARJ. ...ANTHROPIC*...). Una
+// se duplica). Los datos reales confirman que esto basta para la inmensa mayoría de comercios: la misma
+// cadena exacta mes a mes (ENDESA ENERGIA S.A., ORANGE ESPAGNE SAU, COMPRA TARJ. ...ANTHROPIC*...). Una
 // normalización más agresiva podría fusionar comercios distintos (prohibido explícitamente) — se prefiere
 // agrupar de menos que agrupar de más.
+//
+// Fase 1D-g.2 — auditoría de dos préstamos reales (bank_transactions.description =
+// "PRESTAMOS ADEUDO CUOTA N.8078183410 30/06/26", "...31/07/26", "...31/08/26"): el banco añade la
+// FECHA del cargo al final del texto, así que cada mensualidad producía una clave distinta y nunca
+// llegaba a RECURRENCE_MIN_OCCURRENCES. Único recorte añadido: un sufijo de fecha "DD/MM/YY" o
+// "DD/MM/YYYY" INEQUÍVOCO al final de la cadena (día 1-31, mes 1-12 — si no es una fecha real, no se
+// toca nada). El identificador del préstamo (N.8078183410) queda siempre dentro de la clave, así que
+// dos préstamos distintos nunca se fusionan por compartir "PRESTAMOS ADEUDO CUOTA". Nunca se toca
+// bank_transactions.description ni expenses: esto es solo la identidad DERIVADA que usa el detector.
+const TRAILING_DATE_SUFFIX = /\s+(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/
+
+function stripTrailingDateSuffix(text: string): string {
+  const match = text.match(TRAILING_DATE_SUFFIX)
+  if (!match) return text
+  const day = Number(match[1])
+  const month = Number(match[2])
+  if (day < 1 || day > 31 || month < 1 || month > 12) return text // no es una fecha real — se conserva tal cual
+  return text.slice(0, match.index).trimEnd()
+}
+
 export function normalizeMerchantKey(description: string): string {
-  return description.trim().replace(/\s+/g, ' ').toUpperCase()
+  return stripTrailingDateSuffix(description.trim().replace(/\s+/g, ' ')).toUpperCase()
 }
 
 interface MerchantGroup {

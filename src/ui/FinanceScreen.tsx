@@ -68,13 +68,16 @@ import {
 } from '@/domain/forecast'
 import {
   findReconciliationCandidates,
+  hasSharedWord,
   resolveManagedExpenseCategory,
   type BankMovementForMatching,
   type OccurrenceForMatching,
   type ReconciliationCandidate,
 } from '@/domain/forecastReconciliation'
 import {
+  detectRecurrenceCandidates,
   findNewRecurrenceCandidates,
+  normalizeMerchantKey,
   type BankMovementForDetection,
   type ForecastPaymentForDedup,
   type RecurrenceCandidate,
@@ -3277,6 +3280,16 @@ function ExpensesTab({
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [expenseAccountId, setExpenseAccountId] = useState<Map<string, string>>(new Map())
+  // Fase 1D-g.2 — "🔮 Añadir a Previsión": reutiliza el MISMO listado de movimientos bancarios que ya
+  // se pedía aquí para expenseAccountId (antes se descartaba el resto), para buscar hermanos históricos
+  // del movimiento seleccionado sin una petición de red aparte.
+  const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([])
+  const [forecastPrefill, setForecastPrefill] = useState<ForecastPaymentPrefill | null>(null)
+  const [showForecastForm, setShowForecastForm] = useState(false)
+  const [forecastDuplicateWarning, setForecastDuplicateWarning] = useState<{ message: string; prefill: ForecastPaymentPrefill } | null>(null)
+  const [forecastBusyExpenseId, setForecastBusyExpenseId] = useState<string | null>(null)
+  const [forecastError, setForecastError] = useState<string | null>(null)
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const movementColorMode = useMovementColorMode()
   const catColors = stableCategoryColors(categories)
   // Petición real: "quiero que quites el filtro mensual... y pongas
@@ -3337,6 +3350,7 @@ function ExpensesTab({
         setAccounts(acc)
         setMembers(m)
         setExpenseAccountId(new Map(bankTx.filter((bt) => bt.matchedExpenseId).map((bt) => [bt.matchedExpenseId as string, bt.accountId])))
+        setBankTransactions(bankTx)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -3346,6 +3360,61 @@ function ExpensesTab({
   }
 
   useEffect(reload, [])
+
+  // Fase 1D-g.2 — "🔮 Añadir a Previsión": identidad IDÉNTICA a la que usa el detector automático
+  // (account_id + normalizeMerchantKey(description) + currency, nunca solo palabras compartidas), y
+  // EXACTAMENTE el mismo motor (detectRecurrenceCandidates) — nunca un segundo detector. matchedExpenseIds
+  // y los pagos previstos existentes se cargan aquí, bajo demanda, para no pedirlos en cada carga de
+  // Movimientos cuando nadie va a usar este botón.
+  async function handleAddToForecast(expense: Expense) {
+    setForecastError(null)
+    const bankAccountId = expenseAccountId.get(expense.id)
+    const bt = bankTransactions.find((t) => t.matchedExpenseId === expense.id)
+    if (!bankAccountId || !bt || !bt.description) return
+    setForecastBusyExpenseId(expense.id)
+    try {
+      const merchantKey = normalizeMerchantKey(bt.description)
+      const categoryByExpenseId = new Map(expenses.map((e) => [e.id, e.category]))
+      const movements: BankMovementForDetection[] = bankTransactions
+        .filter(
+          (t): t is BankTransaction & { transactionDate: string } =>
+            t.accountId === bankAccountId &&
+            t.creditDebit === 'DBIT' &&
+            t.currency === bt.currency &&
+            t.transactionDate != null &&
+            !!t.description &&
+            normalizeMerchantKey(t.description) === merchantKey,
+        )
+        .map((t) => ({
+          bankTransactionId: t.id,
+          expenseId: t.matchedExpenseId,
+          accountId: t.accountId,
+          date: t.transactionDate,
+          amount: Math.abs(t.amount),
+          currency: t.currency,
+          description: t.description,
+          isIncome: false,
+          category: t.matchedExpenseId ? (categoryByExpenseId.get(t.matchedExpenseId) ?? null) : null,
+        }))
+      const [candidate] = detectRecurrenceCandidates(movements, today)
+      const prefill = candidate
+        ? buildForecastPrefillFromCandidate(candidate)
+        : { ...buildMinimalForecastPrefillFromMovement(bt, expense.category), bankAccountId }
+      const candidateLike = candidate ?? { accountId: bankAccountId, displayName: bt.description, occurrences: [{ expenseId: expense.id }] }
+      const [matchedExpenseIds, forecastPayments] = await Promise.all([listAllMatchedForecastExpenseIds(), listForecastPayments()])
+      const existingPayments: ForecastPaymentForDedup[] = forecastPayments.map((p) => ({ title: p.title, provider: p.provider, bankAccountId: p.bankAccountId, active: p.active }))
+      const warning = findDuplicateForecastWarning(candidateLike, matchedExpenseIds, existingPayments)
+      if (warning) setForecastDuplicateWarning({ message: warning, prefill })
+      else {
+        setForecastPrefill(prefill)
+        setShowForecastForm(true)
+      }
+    } catch (err) {
+      setForecastError(errorMessage(err, 'No se pudo analizar el histórico de este movimiento'))
+    } finally {
+      setForecastBusyExpenseId(null)
+    }
+  }
 
   const [periodFrom, periodTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
 
@@ -3601,6 +3670,8 @@ function ExpensesTab({
                 reload()
               }}
               onCancel={() => setEditingId(null)}
+              onAddToForecast={expenseAccountId.has(e.id) ? () => handleAddToForecast(e) : undefined}
+              addToForecastBusy={forecastBusyExpenseId === e.id}
             />
           ) : (
             <MovementRow
@@ -3667,6 +3738,61 @@ function ExpensesTab({
         )}
         {typeFilteredExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
       </div>
+
+      {forecastError && <p className="error">{forecastError}</p>}
+
+      {/* Fase 1D-g.2 — coincidencia real (fuerte: ya conciliado; débil: palabra compartida con una
+          previsión activa de la misma cuenta) — nunca se crea nada en silencio, pero tampoco se bloquea:
+          es una acción manual, decide la familia. */}
+      {forecastDuplicateWarning && (
+        <div className="modal-overlay" onClick={() => setForecastDuplicateWarning(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <p style={{ margin: '0 0 8px' }}>{forecastDuplicateWarning.message}</p>
+            <div className="form-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setForecastPrefill(forecastDuplicateWarning.prefill)
+                  setShowForecastForm(true)
+                  setForecastDuplicateWarning(null)
+                }}
+              >
+                Crear de todas formas
+              </button>
+              <button type="button" className="link-button" onClick={() => setForecastDuplicateWarning(null)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showForecastForm && forecastPrefill && (
+        <div className="modal-overlay" onClick={() => setShowForecastForm(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Nuevo pago previsto
+              </h2>
+              <button type="button" className="modal-close" aria-label="Cerrar" onClick={() => setShowForecastForm(false)}>
+                ✕
+              </button>
+            </div>
+            <ForecastPaymentForm
+              categories={categories}
+              members={members}
+              accounts={accounts}
+              payment={null}
+              prefill={forecastPrefill}
+              overrides={[]}
+              onSaved={() => {
+                setShowForecastForm(false)
+                setForecastPrefill(null)
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -3810,12 +3936,19 @@ function EditExpenseInline({
   tags,
   onDone,
   onCancel,
+  onAddToForecast,
+  addToForecastBusy,
 }: {
   expense: Expense
   categories: BudgetCategory[]
   tags: Tag[]
   onDone: () => void
   onCancel: () => void
+  // Fase 1D-g.2 — "🔮 Añadir a Previsión": opcional, undefined en Banco (mismo componente, sin tocarlo
+  // ahí) y solo presente en Movimientos cuando el gasto viene de verdad de un movimiento bancario (hace
+  // falta su account_id real, ver ExpensesTab).
+  onAddToForecast?: () => void
+  addToForecastBusy?: boolean
 }) {
   const [date, setDate] = useState(expense.expenseDate)
   const [amount, setAmount] = useState(String(expense.amount))
@@ -3990,6 +4123,11 @@ function EditExpenseInline({
             </button>
           </div>
         </>
+      )}
+      {onAddToForecast && (
+        <button type="button" className="link-button" style={{ margin: '4px 0 0' }} onClick={onAddToForecast} disabled={!!addToForecastBusy}>
+          {addToForecastBusy ? 'Analizando…' : '🔮 Añadir a Previsión'}
+        </button>
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
@@ -8342,6 +8480,55 @@ const RECURRENCE_PERIODICITY_RRULE: Record<RecurrencePeriodicity, { freq: Foreca
   annual: { freq: 'YEARLY', interval: 1 },
 }
 
+// Fase 1D-g.2 — extraído de PrevisionPagosTab (antes vivía inline en reviewRecurrenceCandidate) para
+// que "Añadir a Previsión" desde Movimientos pueda precargar EXACTAMENTE igual que una propuesta
+// automática de 1D-g, sin duplicar esta lógica en dos sitios.
+function buildForecastPrefillFromCandidate(c: RecurrenceCandidate): ForecastPaymentPrefill {
+  const { freq, interval } = RECURRENCE_PERIODICITY_RRULE[c.periodicity]
+  return {
+    title: c.displayName,
+    amount: c.estimatedAmountCents / 100,
+    amountEstimatedBasis: c.estimatedBasisText,
+    categoryName: c.suggestedCategoryName,
+    dueDate: c.nextDueDate,
+    recurrenceRule: buildForecastRecurrenceRule('custom', { freq, interval, until: null })!,
+    bankAccountId: c.accountId,
+  }
+}
+
+// Fase 1D-g.2 — "Añadir a Previsión" sobre un movimiento SIN histórico suficiente (menos de
+// RECURRENCE_MIN_OCCURRENCES cargos consistentes): solo datos reales del propio movimiento, nunca una
+// periodicidad o fecha inventadas. El importe FUTURO nunca es "Conocido" solo porque el cargo pasado sí
+// lo fue — "sé cuánto se cobró" no es "sé cuánto se cobrará" (pedido explícito).
+function buildMinimalForecastPrefillFromMovement(bt: Pick<BankTransaction, 'description' | 'amount' | 'currency'>, category: string | null): ForecastPaymentPrefill {
+  const amount = Math.abs(bt.amount)
+  return {
+    title: bt.description?.trim() || 'Pago',
+    amount,
+    amountEstimatedBasis: `Basado en el último cargo: ${formatForecastAmount(amount, bt.currency)}`,
+    categoryName: category && category !== 'Otros' ? category : null,
+    bankAccountId: '', // se rellena con el accountId real justo antes de usarse (ver handleAddToForecast)
+  }
+}
+
+// Fase 1D-g.2 — misma señal de deduplicación que isRecurrenceCandidateAlreadyKnown (domain/forecastRecurrenceDetection.ts),
+// pero devolviendo el motivo en texto para poder avisar ANTES de crear, en vez de excluir en silencio
+// como hace la lista automática: una acción manual del usuario nunca debe crear un duplicado sin que lo sepa,
+// pero tampoco bloquearlo — "preferimos perder una propuesta dudosa" no aplica aquí, es él quien decide.
+function findDuplicateForecastWarning(
+  candidateLike: { accountId: string; displayName: string; occurrences: readonly { expenseId: string | null }[] },
+  matchedExpenseIds: ReadonlySet<string>,
+  existingPayments: readonly ForecastPaymentForDedup[],
+): string | null {
+  if (candidateLike.occurrences.some((o) => o.expenseId && matchedExpenseIds.has(o.expenseId))) {
+    return 'Este movimiento ya está conciliado con una previsión existente.'
+  }
+  const match = existingPayments.find(
+    (p) => p.active && p.bankAccountId === candidateLike.accountId && hasSharedWord(candidateLike.displayName, `${p.title} ${p.provider ?? ''}`),
+  )
+  return match ? `Ya existe una previsión que podría corresponder a este movimiento: «${match.title}».` : null
+}
+
 function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [payments, setPayments] = useState<ForecastPaymentWithReminders[]>([])
   const [overridesByPayment, setOverridesByPayment] = useState<Map<string, ForecastOccurrenceOverride[]>>(new Map())
@@ -8523,16 +8710,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   }
 
   function reviewRecurrenceCandidate(c: RecurrenceCandidate) {
-    const { freq, interval } = RECURRENCE_PERIODICITY_RRULE[c.periodicity]
-    setRecurrencePrefill({
-      title: c.displayName,
-      amount: c.estimatedAmountCents / 100,
-      amountEstimatedBasis: c.estimatedBasisText,
-      categoryName: c.suggestedCategoryName,
-      dueDate: c.nextDueDate,
-      recurrenceRule: buildForecastRecurrenceRule('custom', { freq, interval, until: null })!,
-      bankAccountId: c.accountId,
-    })
+    setRecurrencePrefill(buildForecastPrefillFromCandidate(c))
     setEditingPayment(null)
     setShowAddForm(true)
   }
@@ -9176,15 +9354,20 @@ function computeSplitChargesSignature(splitCount: string, dueDate: string, amoun
 // categoría si es fiable, fecha, recurrencia, cuenta). Nunca "relacionado con", recordatorios ni notas
 // (pedido explícito: "NO inventar" esos datos) — se quedan en los valores por defecto de siempre del
 // formulario, exactamente como al crear un pago nuevo en blanco.
+// Fase 1D-g.2 — dueDate/recurrenceRule pasan a OPCIONALES: "Añadir a Previsión" desde un movimiento sin
+// histórico suficiente (Caso 2) no puede rellenarlos sin inventar una fecha o una periodicidad que no
+// existen todavía. Los useState de abajo (`payment?.x ?? prefill?.x ?? default`) ya funcionan sin
+// cambios con un prefill parcial: `prefill?.dueDate` es simplemente `undefined`, cae al `''`/`null` de
+// siempre — nunca hace falta una fecha falsa "para que compile".
 export interface ForecastPaymentPrefill {
   title: string
   amount: number
   amountEstimatedBasis: string
   categoryName: string | null
-  dueDate: string
+  dueDate?: string
   // Ya construida como texto (p. ej. "FREQ=MONTHLY") — reutiliza parseRecurrenceRuleToFormState tal cual
   // reconstruye la recurrencia de un pago ya guardado, en vez de fijar recurs/freqOption a mano aquí.
-  recurrenceRule: string
+  recurrenceRule?: string
   bankAccountId: string
 }
 

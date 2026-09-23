@@ -84,26 +84,29 @@ describe('recurrencia amigable (nunca se pide escribir RRULE)', () => {
   it('usa buildRecurrenceRuleFromFormState/parseRecurrenceRuleToFormState (Fase 1D-b) del dominio, con las opciones pedidas', () => {
     expect(FS).toContain('buildRecurrenceRuleFromFormState')
     expect(FS).toContain('parseRecurrenceRuleToFormState')
-    for (const label of ['Mensual', 'Cada 3 meses', 'Cada 6 meses', 'Anual', 'Personalizado', '¿Se repite?', '¿Hasta cuándo?', 'Número de pagos']) {
+    for (const label of ['Mensual', 'Cada 3 meses', 'Cada 6 meses', 'Anual', 'Personalizado', '¿Cómo se paga?', '¿Este pago volverá a repetirse cuando termine?', 'Número de pagos']) {
       expect(FS).toContain(label)
     }
   })
 
-  it('"Personalizado" solo expone frecuencia + intervalo — nada de un editor RRULE, ni siquiera "Fin" (eso ahora es "¿Hasta cuándo?", independiente de la frecuencia)', () => {
+  it('"Personalizado" solo expone frecuencia + intervalo — nada de un editor RRULE, ni siquiera "Fin" (eso ahora es "¿Hasta cuándo se repite?", independiente de la frecuencia)', () => {
     const idx = FS.indexOf("freqOption === 'custom' && (")
     expect(idx).toBeGreaterThan(-1)
     const block = FS.slice(idx, idx + 400)
     expect(block).toContain('Cada cuánto')
     expect(block).toContain('Cada')
-    expect(block).not.toContain('Fin (opcional)') // "Fin" ya no vive dentro de "Personalizado": es "¿Hasta cuándo?", para cualquier frecuencia
+    expect(block).not.toContain('Fin (opcional)') // "Fin" ya no vive dentro de "Personalizado": es "¿Hasta cuándo se repite?", para cualquier frecuencia
   })
 
-  it('"¿Hasta cuándo?" es una pregunta aparte, con "Número de cuotas" calculando UNTIL solo (nunca se pide al usuario)', () => {
-    expect(FS).toContain('¿Hasta cuándo?')
-    expect(FS).toContain('Hasta que lo desactive')
-    expect(FS).toContain('Fecha concreta')
+  it('Ajuste UX — "¿Hasta cuándo se repite?" (Para siempre / Hasta una fecha concreta) solo aparece cuando SÍ vuelve a repetirse — preserva la capacidad de reconstruir/editar un pago antiguo con fecha final, sin formar parte del flujo principal', () => {
+    expect(FS).toContain('¿Hasta cuándo se repite?')
+    expect(FS).toContain('Para siempre')
+    expect(FS).toContain('Hasta una fecha concreta')
     expect(FS).not.toMatch(/>\s*UNTIL\s*</)
     expect(FS).not.toContain('>RRULE<')
+    const idx = FS.lastIndexOf('¿Hasta cuándo se repite?')
+    const before = FS.slice(FS.lastIndexOf('{recurs && (', idx), idx)
+    expect(before).toContain('{recurs && (')
   })
 })
 
@@ -175,13 +178,20 @@ describe('Ayuda actualizada (misma fase, mismo commit)', () => {
     expect(dineroBlock).toContain('nunca se enseña como 0')
   })
 
-  it('cubre "Número de pagos" (Fase 1D-b, renombrado en el ajuste UX) y "¿Cómo se cobra cada vez?" / varios cobros (Fase 1D-c/d)', () => {
+  it('cubre "Número de pagos" (Fase 1D-b, renombrado en el ajuste UX) y los cobros de cada renovación (Fase 1D-c/d) para una obligación que sí vuelve a repetirse', () => {
     const dineroIdx = AYUDA.indexOf("'/dinero': [")
     const dineroBlock = AYUDA.slice(dineroIdx, AYUDA.indexOf("\n  ],", dineroIdx))
     expect(dineroBlock).toContain('Número de pagos')
-    expect(dineroBlock).toContain('¿Cómo se cobra cada vez?')
-    expect(dineroBlock).toContain('En varios cobros')
+    expect(dineroBlock).toContain('cobros de CADA renovación')
     expect(dineroBlock).not.toMatch(/RRULE|FREQ=|UNTIL=|INTERVAL=/) // sin jerga técnica, como en el resto de la app
+  })
+
+  it('Ajuste UX (fraccionamiento visible desde el principio) — explica que "¿Cómo se paga?" está siempre visible y que "¿Vuelve a repetirse?" es una pregunta aparte, sobre la obligación completa', () => {
+    const dineroIdx = AYUDA.indexOf("'/dinero': [")
+    const dineroBlock = AYUDA.slice(dineroIdx, AYUDA.indexOf("\n  ],", dineroIdx))
+    expect(dineroBlock).toContain('¿Cómo se paga?')
+    expect(dineroBlock).toContain('sin tener que activar nada antes')
+    expect(dineroBlock).toContain('¿Este pago volverá a repetirse cuando termine?')
   })
 
   it('Ajuste UX tras certificación móvil — explica el importe TOTAL repartido en "Plan de pagos" y la regla Conocido/Estimado/Pendiente del reparto', () => {
@@ -199,9 +209,12 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
   it('reutiliza el puente de dominio (forecastInstallmentPlanForm.ts) — nunca calcula UNTIL/fechas a mano en el componente', () => {
     expect(FS).toContain("from '@/domain/forecastInstallmentPlanForm'")
     expect(FS).toContain('validateInstallmentCount')
-    expect(FS).toContain('INSTALLMENT_COUNT_MIN')
     expect(FS).toContain('INSTALLMENT_COUNT_MAX')
     expect(FS).toContain('formatSpanishDate')
+    // Ajuste UX — "Número de pagos" es un único campo compartido entre el Caso A y el Caso B: su límite
+    // máximo cambia según recurs (60 para un plan finito, 12 para cargos por ciclo — límite real del
+    // propio módulo de dominio del Caso B, no un número inventado en la UI).
+    expect(FS).toMatch(/max=\{recurs \? SPLIT_CHARGE_COUNT_MAX : INSTALLMENT_COUNT_MAX\}/)
   })
 
   it('los límites de validación son 2 y 60 (auditoría previa), no un número inventado en la UI', () => {
@@ -225,16 +238,25 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     expect(formBody).not.toMatch(/setMonth|setDate|getMonth\(\)|getDate\(\)/) // sin aritmética de fechas manual en el componente
   })
 
-  it('el "Plan de pagos" (una línea por pago, editable) SOLO se muestra en modo "Número de pagos" — nunca a la vez que "¿Cómo se cobra cada vez?" (una sola dimensión visible por plan finito)', () => {
-    const idx = FS.indexOf('isFinitePlanMode && planLines.length > 0 && (')
+  it('Ajuste UX (fraccionamiento visible desde el principio) — "Número de pagos" y el "Plan de pagos" dependen SOLO de "¿Cómo se paga?" (paymentMode), nunca de "¿Vuelve a repetirse?" — así se descubren sin tener que activar la recurrencia antes', () => {
+    expect(FS).toContain("const isFinitePlanMode = paymentMode === 'multiple' && !recurs")
+    expect(FS).toContain("const isSplitCycleMode = paymentMode === 'multiple' && recurs")
+    // El bloque que contiene "Número de pagos" y el "Plan de pagos" se abre con paymentMode==='multiple',
+    // NUNCA con recurs/repeats — esa es justamente la puerta de entrada que antes estaba escondida.
+    const multipleIdx = FS.indexOf("{paymentMode === 'multiple' && (")
+    expect(multipleIdx).toBeGreaterThan(-1)
+    const block = FS.slice(multipleIdx, FS.indexOf('¿Este pago volverá a repetirse', multipleIdx))
+    expect(block).toContain('Número de pagos')
+    expect(block).toContain('isFinitePlanMode && planLines.length > 0 && (')
+    expect(block).toContain('isSplitCycleMode && splitCharges.length > 0 && (')
+  })
+
+  it('"¿Cómo se paga?" es SIEMPRE visible (no depende de ninguna otra respuesta) — el selector en sí no está envuelto en ningún "{...&&(" condicional', () => {
+    const idx = FS.indexOf('<label>\n        ¿Cómo se paga?')
     expect(idx).toBeGreaterThan(-1)
-    expect(FS).toContain("const isFinitePlanMode = repeats && untilMode === 'count'")
-    // "¿Cómo se cobra cada vez?" (el <label> real, no el comentario que lo explica) se oculta
-    // explícitamente cuando isFinitePlanMode.
-    const guardIdx = FS.indexOf('{!isFinitePlanMode && (')
-    expect(guardIdx).toBeGreaterThan(-1)
-    const block = FS.slice(guardIdx, guardIdx + 200)
-    expect(block).toContain('¿Cómo se cobra cada vez?')
+    const before = FS.slice(Math.max(0, idx - 400), idx)
+    // Justo antes del <label> real no hay ningún guard "{...&&(" (repeats/recurs/paymentMode) sin cerrar.
+    expect(before).not.toMatch(/\{(recurs|repeats|paymentMode)[^}]*&&\s*\($/)
   })
 
   it('cada línea del plan finito es editable (fecha/estado/importe/basis) — reemplaza el reparto uniforme fijo de antes', () => {
@@ -295,10 +317,11 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
 })
 
 describe('Fase 1D-d — cobro fraccionado por ciclo en la UI', () => {
-  it('"¿Cómo se cobra cada vez?" es una pregunta aparte de "¿Se repite?" — no un tercer valor mezclado en la misma', () => {
-    expect(FS).toContain('¿Cómo se cobra cada vez?')
-    expect(FS).toContain('En un solo pago')
-    expect(FS).toContain('En varios cobros')
+  it('Ajuste UX (fraccionamiento visible desde el principio) — el Caso B (cargos por ciclo) se activa con "¿Cómo se paga?" = "En varios pagos" + "¿Vuelve a repetirse?" = sí, ya no con un selector "¿Cómo se cobra cada vez?" propio', () => {
+    expect(FS).toContain('Un solo pago')
+    expect(FS).toContain('En varios pagos')
+    expect(FS).not.toContain('¿Cómo se cobra cada vez?')
+    expect(FS).not.toContain('En varios cobros')
   })
 
   it('reutiliza el puente de dominio (forecastInstallmentSplitForm.ts) — nunca calcula offsets/fechas a mano en el componente', () => {
@@ -334,9 +357,23 @@ describe('Fase 1D-d — cobro fraccionado por ciclo en la UI', () => {
     expect(block).toContain('updateSplitCharge(i, { amount: e.target.value })')
   })
 
-  it('"¿Cómo se cobra cada vez?" solo aparece cuando NO es un plan finito (isFinitePlanMode=false) — las dos preguntas nunca conviven en pantalla', () => {
-    expect(FS).toContain('{!isFinitePlanMode && (')
-    expect(FS).toContain("const isSplitCycleMode = repeats && untilMode !== 'count' && chargeMode === 'split'")
+  it('el Plan de pagos (Caso A) y los Cobros de cada renovación (Caso B) son mutuamente excluyentes por construcción: isFinitePlanMode e isSplitCycleMode nunca pueden ser true a la vez, para la misma paymentMode/recurs', () => {
+    expect(FS).toContain("const isFinitePlanMode = paymentMode === 'multiple' && !recurs")
+    expect(FS).toContain("const isSplitCycleMode = paymentMode === 'multiple' && recurs")
+    // Con los mismos (paymentMode, recurs), como mucho una de las dos puede ser true: !recurs y recurs
+    // son mutuamente excluyentes por definición — no hace falta un tercer guard "solo si no es la otra".
+  })
+
+  it('Ajuste UX — "Número de pagos" (y por tanto el fraccionamiento) NUNCA depende de "¿Vuelve a repetirse?": ninguna de las dos preguntas necesita activarse primero para descubrir la otra', () => {
+    const multipleIdx = FS.indexOf("{paymentMode === 'multiple' && (")
+    const recursCheckboxIdx = FS.indexOf('¿Este pago volverá a repetirse')
+    expect(multipleIdx).toBeGreaterThan(-1)
+    expect(recursCheckboxIdx).toBeGreaterThan(multipleIdx)
+    // Entre el guard "paymentMode === 'multiple'" y el checkbox de "¿vuelve a repetirse?" no hay ningún
+    // guard adicional de recurs/repeats envolviendo "Número de pagos" — solo paymentMode decide si se ve.
+    const between = FS.slice(multipleIdx, recursCheckboxIdx)
+    expect(between).not.toMatch(/\{recurs\s*&&/)
+    expect(between).not.toMatch(/\{repeats\s*&&/)
   })
 
   it('la vista previa de cobros usa expandForecastOccurrences (motor real), no un bucle de fechas hecho a mano', () => {
@@ -383,6 +420,53 @@ describe('Fase 1D-d — cobro fraccionado por ciclo en la UI', () => {
     const body = FS.slice(idx, FS.indexOf('function ForecastPaymentForm', idx))
     expect(body).toContain('expandForecastOccurrences(p, overridesByPayment.get(p.id) ?? [], today, horizonEnd, p.installments)')
     expect(body).toContain('expandForecastOccurrences(p, overridesByPayment.get(p.id) ?? [], today, twelveMonthEnd, p.installments)')
+  })
+})
+
+describe('Ajuste UX — las 4 combinaciones de "¿Cómo se paga?" × "¿Vuelve a repetirse?"', () => {
+  it('CASO C — pago único + no recurrencia: recurrenceRuleNeeded es false, no se construye ninguna Frecuencia', () => {
+    expect(FS).toContain("const recurrenceRuleNeeded = paymentMode === 'multiple' || recurs")
+    // single (paymentMode='multiple' es false) + !recurs -> recurrenceRuleNeeded=false -> recurrenceRule null.
+  })
+
+  it('CASO D — pago único + recurrencia mensual: "Frecuencia" solo se pide cuando paymentMode es single Y recurs es true (nunca antes de contestar la recurrencia, ya que un pago único no tiene "varios pagos" donde mostrarla antes)', () => {
+    const idx = FS.indexOf("{paymentMode === 'single' && recurs && (")
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 700)
+    expect(block).toContain('Frecuencia')
+    expect(block).toContain('RECURRENCE_OPTION_LABELS')
+  })
+
+  it('CASO A — varios pagos + NO recurrencia: isFinitePlanMode activa "Plan de pagos" (forecast_occurrences), nunca forecast_payment_installments', () => {
+    expect(FS).toContain('isFinitePlanMode && planLines.length > 0 && (')
+    expect(FS).toContain('replaceForecastPlanOverrides(id, finitePlanSubmission ? finitePlanSubmission.overrides : [])')
+  })
+
+  it('CASO B — varios pagos + SÍ recurrencia (p. ej. anual): isSplitCycleMode activa "Cobros de cada renovación" (forecast_payment_installments), reutilizando la arquitectura ya implementada en 1D-c/d', () => {
+    expect(FS).toContain('isSplitCycleMode && splitCharges.length > 0 && (')
+    expect(FS).toContain('replaceForecastPaymentInstallments(id, installmentsToSave)')
+  })
+})
+
+describe('Ajuste UX — edición: reconstruir el nuevo formulario desde datos ya guardados sin modificarlos por abrir', () => {
+  it('paymentMode inicial es "multiple" tanto si es un plan finito (untilMode guardado === count) como si tiene cargos por ciclo (installments.length > 0) — las dos formas antiguas de "varios pagos" convergen en la misma pregunta nueva', () => {
+    expect(FS).toContain(
+      "const initialPaymentMode: 'single' | 'multiple' = initialRecurrence.untilMode === 'count' || (payment?.installments.length ?? 0) > 0 ? 'multiple' : 'single'",
+    )
+  })
+
+  it('recurs inicial EXCLUYE explícitamente un plan finito (untilMode==="count"): aunque su recurrence_rule interno no sea null, la obligación NO "vuelve a repetirse" conceptualmente', () => {
+    expect(FS).toContain("const initialRecurs = initialRecurrence.repeats && initialRecurrence.untilMode !== 'count'")
+  })
+
+  it('paymentCount inicial toma el número de cargos guardados (Caso B) o el número de pagos reconstruido del plan finito (Caso A) — nunca un valor fijo', () => {
+    expect(FS).toContain(
+      "const [paymentCount, setPaymentCount] = useState(payment && payment.installments.length > 0 ? String(payment.installments.length) : initialRecurrence.installmentCount)",
+    )
+  })
+
+  it('recursUntilDate inicial reconstruye una fecha final ya guardada (untilMode==="date") — abrir y guardar sin tocar nada no la convierte silenciosamente en "para siempre"', () => {
+    expect(FS).toContain("const [recursUntilDate, setRecursUntilDate] = useState(initialRecurrence.untilMode === 'date')")
   })
 })
 

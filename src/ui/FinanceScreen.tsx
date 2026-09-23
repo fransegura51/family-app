@@ -64,7 +64,6 @@ import {
   buildRecurrenceRuleFromFormState,
   formatSpanishDate,
   INSTALLMENT_COUNT_MAX,
-  INSTALLMENT_COUNT_MIN,
   parseFinitePlanLinesFromSaved,
   parseRecurrenceRuleToFormState,
   proposeFinitePlanLines,
@@ -8700,25 +8699,47 @@ function ForecastPaymentForm({
   // estado inicial se reconstruye con parseRecurrenceRuleToFormState (domain/forecastInstallmentPlanForm.ts),
   // que ya decide si un UNTIL guardado corresponde a "Número de pagos" o a una "Fecha concreta" suelta.
   const initialRecurrence = parseRecurrenceRuleToFormState(payment?.recurrenceRule ?? null, payment?.dueDate ?? '')
-  const [repeats, setRepeats] = useState(initialRecurrence.repeats)
+  // Ajuste UX — "recurs" ("¿vuelve a repetirse?") es DISTINTO del viejo "repeats": un plan finito (Caso
+  // A, IBI en 6 pagos) internamente SIGUE usando un recurrence_rule con FREQ+UNTIL (initialRecurrence.repeats
+  // es true), pero conceptualmente NO "vuelve a repetirse" — termina. Por eso initialRecurrence.repeats
+  // por sí solo ya NO es la fuente de verdad de esta pregunta: se excluye explícitamente el caso
+  // untilMode==='count', que es justo el que representa un plan finito.
+  const initialRecurs = initialRecurrence.repeats && initialRecurrence.untilMode !== 'count'
+  const [recurs, setRecurs] = useState(initialRecurs)
   const [freqOption, setFreqOption] = useState<ForecastRecurrenceOption>(initialRecurrence.freqOption)
   const [customFreq, setCustomFreq] = useState<ForecastCustomRecurrence['freq']>(initialRecurrence.customFreq)
   const [customInterval, setCustomInterval] = useState(initialRecurrence.customInterval)
-  const [untilMode, setUntilMode] = useState<'forever' | 'count' | 'date'>(initialRecurrence.untilMode)
-  const [installmentCount, setInstallmentCount] = useState(initialRecurrence.installmentCount)
+  // Ajuste UX — "¿Hasta cuándo se repite?" ya no es una pregunta de primer nivel: solo se expone (muy al
+  // final, "Para siempre"/"Hasta una fecha concreta") cuando la obligación SÍ vuelve a repetirse — para
+  // no perder la capacidad de reconstruir/editar un pago antiguo guardado con una fecha final concreta.
+  const [recursUntilDate, setRecursUntilDate] = useState(initialRecurrence.untilMode === 'date')
   const [untilDate, setUntilDate] = useState(initialRecurrence.untilDate)
-  // Fase 1D-d + Ajuste UX: "¿Cómo se cobra cada vez?" — pregunta INDEPENDIENTE de "¿Cuándo se repite?"
-  // (arriba), y SOLO tiene sentido para una obligación que se sigue renovando sin fecha de fin fija
-  // (Caso B: p. ej. un seguro anual cobrado en 2 plazos por renovación). Un plan FINITO
-  // (untilMode === 'count', Caso A, más abajo) ya tiene su propia única dimensión ("Número de pagos") —
-  // las dos preguntas nunca conviven en la pantalla, para no pedir dos veces el mismo concepto.
-  const [chargeMode, setChargeMode] = useState<'single' | 'split'>(payment && payment.installments.length > 0 ? 'split' : 'single')
-  const [splitCount, setSplitCount] = useState(payment && payment.installments.length > 0 ? String(payment.installments.length) : '')
+  // Ajuste UX — "¿Cómo se paga?" (paymentMode) es la pregunta SIEMPRE visible que sustituye "¿Se repite?"
+  // como puerta de entrada al fraccionamiento: antes, para descubrir que se podía pagar en varias veces
+  // había que activar primero "¿Se repite?", lo cual no es intuitivo para una obligación puntual como el
+  // IBI. "Número de pagos" (paymentCount, compartido entre el Caso A y el Caso B — la etiqueta visible es
+  // la misma, solo cambia dónde se guarda) aparece en cuanto se elige "En varios pagos", sin depender de
+  // recurs. "¿Vuelve a repetirse?" (recurs, más abajo) decide DESPUÉS si esos pagos son un plan finito
+  // (Caso A, forecast_occurrences) o los cargos de cada renovación de una obligación que sí se repite
+  // (Caso B, forecast_payment_installments) — dos preguntas independientes, nunca mezcladas.
+  const initialPaymentMode: 'single' | 'multiple' = initialRecurrence.untilMode === 'count' || (payment?.installments.length ?? 0) > 0 ? 'multiple' : 'single'
+  const [paymentMode, setPaymentMode] = useState<'single' | 'multiple'>(initialPaymentMode)
+  const [paymentCount, setPaymentCount] = useState(payment && payment.installments.length > 0 ? String(payment.installments.length) : initialRecurrence.installmentCount)
+  // Caso A (plan finito, forecast_occurrences) exactamente cuando "varios pagos" + NO vuelve a repetirse;
+  // Caso B (cargos por ciclo, forecast_payment_installments) exactamente cuando "varios pagos" + SÍ
+  // vuelve a repetirse. untilMode ya no es elegible directamente por el usuario — se deriva aquí mismo,
+  // en el propio render (nunca con un efecto: así no hay ni un frame de retraso al cambiar de modo).
+  // recurrenceRuleNeeded: hace falta un recurrence_rule (y por tanto "Frecuencia") siempre que haya varios
+  // pagos (Caso A necesita FREQ+UNTIL para las N fechas) o que la obligación se repita.
+  const isFinitePlanMode = paymentMode === 'multiple' && !recurs
+  const isSplitCycleMode = paymentMode === 'multiple' && recurs
+  const untilMode: 'forever' | 'count' | 'date' = isFinitePlanMode ? 'count' : recursUntilDate ? 'date' : 'forever'
+  const recurrenceRuleNeeded = paymentMode === 'multiple' || recurs
   const [splitCharges, setSplitCharges] = useState<ForecastSplitChargeFormRow[]>(() =>
     payment && payment.installments.length > 0 ? parseInstallmentTemplatesToForm(payment.dueDate, payment.installments) : [],
   )
   const splitSignatureRef = useRef(
-    payment && payment.installments.length > 0 && initialRecurrence.repeats && initialRecurrence.untilMode !== 'count'
+    payment && payment.installments.length > 0
       ? computeSplitChargesSignature(String(payment.installments.length), payment.dueDate, payment.amountStatus, payment.amount != null ? String(payment.amount) : '', payment.amountEstimatedBasis ?? '')
       : '',
   )
@@ -8792,27 +8813,27 @@ function ForecastPaymentForm({
   // "cuántos pagos/cobros hacen falta" o el propio TOTAL (importe/estado/basis) — nunca al editar una
   // línea suelta (eso solo cambia planLines/splitCharges, no esta firma, así que no se regenera nada).
   useEffect(() => {
-    if (!(repeats && untilMode === 'count')) return
-    const signature = computeFinitePlanSignature(installmentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis)
+    if (!isFinitePlanMode) return
+    const signature = computeFinitePlanSignature(paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis)
     if (signature === planSignatureRef.current) return
     planSignatureRef.current = signature
-    const validated = validateInstallmentCount(installmentCount)
+    const validated = validateInstallmentCount(paymentCount)
     if (!validated.ok || !dueDate) return
     const { freq, interval } = resolvedFreqInterval(freqOption, customFreq, customInterval)
     const totalAmountNum = amountStatus === 'unknown' ? null : Number(amount) || 0
     setPlanLines(proposeFinitePlanLines(dueDate, freq, interval, validated.count, amountStatus, totalAmountNum, amountBasis))
-  }, [repeats, untilMode, installmentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis])
+  }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis])
 
   useEffect(() => {
-    if (!(repeats && untilMode !== 'count' && chargeMode === 'split')) return
-    const signature = computeSplitChargesSignature(splitCount, dueDate, amountStatus, amount, amountBasis)
+    if (!isSplitCycleMode) return
+    const signature = computeSplitChargesSignature(paymentCount, dueDate, amountStatus, amount, amountBasis)
     if (signature === splitSignatureRef.current) return
     splitSignatureRef.current = signature
-    const validated = validateSplitChargeCount(splitCount)
+    const validated = validateSplitChargeCount(paymentCount)
     if (!validated.ok || !dueDate) return
     const totalAmountNum = amountStatus === 'unknown' ? null : Number(amount) || 0
     setSplitCharges(proposeSplitCharges(dueDate, validated.count, amountStatus, totalAmountNum, amountBasis))
-  }, [repeats, untilMode, chargeMode, splitCount, dueDate, amountStatus, amount, amountBasis])
+  }, [isSplitCycleMode, paymentCount, dueDate, amountStatus, amount, amountBasis])
 
   // Regla acordada: TOTAL Conocido debe cuadrar EXACTO al céntimo para poder guardar; TOTAL Estimado
   // permite guardar con un aviso (una estimación nunca es exacta por definición); TOTAL Pendiente no
@@ -8840,8 +8861,8 @@ function ForecastPaymentForm({
       </p>
     )
   }
-  const planCheck = repeats && untilMode === 'count' ? distributionCheck(planLines) : null
-  const splitCheck = repeats && untilMode !== 'count' && chargeMode === 'split' ? distributionCheck(splitCharges) : null
+  const planCheck = isFinitePlanMode ? distributionCheck(planLines) : null
+  const splitCheck = isSplitCycleMode ? distributionCheck(splitCharges) : null
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -8868,8 +8889,8 @@ function ForecastPaymentForm({
       amountValue = parsed
     }
     let installmentCountValue: number | null = null
-    if (repeats && untilMode === 'count') {
-      const validated = validateInstallmentCount(installmentCount)
+    if (isFinitePlanMode) {
+      const validated = validateInstallmentCount(paymentCount)
       if (!validated.ok) {
         setError(validated.message)
         return
@@ -8879,7 +8900,7 @@ function ForecastPaymentForm({
     // Ajuste UX tras certificación móvil — CASO A (plan finito, "Número de pagos"): valida cada línea
     // del plan de pagos propuesto/editado, con los mismos mensajes humanos que el resto del formulario.
     let finitePlanSubmission: ReturnType<typeof buildFinitePlanSubmission> | null = null
-    if (repeats && untilMode === 'count' && installmentCountValue != null) {
+    if (isFinitePlanMode && installmentCountValue != null) {
       for (const line of planLines) {
         if (!line.date) {
           setError('Indica la fecha de cada pago.')
@@ -8916,9 +8937,9 @@ function ForecastPaymentForm({
       )
     }
     // CASO B (obligación recurrente con varios cobros por ciclo) — validación de los cobros, solo si
-    // "En varios cobros" está activo Y no es un plan finito (las dos preguntas nunca conviven).
+    // "En varios pagos" + "vuelve a repetirse" están activos a la vez (las dos preguntas nunca conviven).
     let installmentsToSave: ReturnType<typeof buildInstallmentTemplatesFromForm> = []
-    if (repeats && untilMode !== 'count' && chargeMode === 'split') {
+    if (isSplitCycleMode) {
       const countValidation = validateSplitChargeCount(String(splitCharges.length))
       if (!countValidation.ok) {
         setError(countValidation.message)
@@ -8948,7 +8969,11 @@ function ForecastPaymentForm({
       }
       installmentsToSave = buildInstallmentTemplatesFromForm(dueDate, splitCharges)
     }
-    const recurrenceRule = buildRecurrenceRuleFromFormState({ repeats, freqOption, customFreq, customInterval, untilMode, untilDate }, dueDate, installmentCountValue)
+    const recurrenceRule = buildRecurrenceRuleFromFormState(
+      { repeats: recurrenceRuleNeeded, freqOption, customFreq, customInterval, untilMode, untilDate },
+      dueDate,
+      installmentCountValue,
+    )
     setSaving(true)
     try {
       const input: ForecastPaymentInput = {
@@ -8992,18 +9017,16 @@ function ForecastPaymentForm({
 
   // Ajuste UX tras certificación móvil — "Importe TOTAL" cuando el importe introducido reparte varias
   // líneas (plan finito o cobro fraccionado por ciclo); "Importe" a secas en cualquier otro caso.
-  const isFinitePlanMode = repeats && untilMode === 'count'
-  const isSplitCycleMode = repeats && untilMode !== 'count' && chargeMode === 'split'
   const amountFieldLabel = isFinitePlanMode || isSplitCycleMode ? 'Importe TOTAL' : 'Importe'
   const amountStatusFieldLabel = isFinitePlanMode || isSplitCycleMode ? 'Estado del importe TOTAL' : 'Estado del importe'
   const amountBasisFieldLabel = isFinitePlanMode || isSplitCycleMode ? '¿En qué se basa el TOTAL?' : '¿En qué se basa?'
 
-  // Vista previa de "En varios cobros" (Fase 1D-d, Caso B) — motor real, mismo criterio de siempre: solo
+  // Vista previa de los cobros del Caso B (Fase 1D-d) — motor real, mismo criterio de siempre: solo
   // la renovación ACTUAL (un ciclo), nunca años futuros de golpe ("no hace falta llenar la pantalla").
   const splitChargesValid = isSplitCycleMode && splitCharges.length >= SPLIT_CHARGE_COUNT_MIN && splitCharges.every((c) => c.date)
   const splitInstallmentsPreview = splitChargesValid ? buildInstallmentTemplatesFromForm(dueDate, splitCharges) : []
   const splitPreviewOccurrences =
-    repeats && splitInstallmentsPreview.length > 0 && dueDate
+    isSplitCycleMode && splitInstallmentsPreview.length > 0 && dueDate
       ? expandForecastOccurrences(
           {
             id: 'preview-split',
@@ -9024,7 +9047,7 @@ function ForecastPaymentForm({
         )
       : []
   const splitNextRenewal =
-    repeats && splitPreviewOccurrences.length > 0
+    isSplitCycleMode && splitPreviewOccurrences.length > 0
       ? occurrenceForCycle(dueDate, { ...resolvedFreqInterval(freqOption, customFreq, customInterval), until: null }, 1)
       : null
 
@@ -9091,14 +9114,33 @@ function ForecastPaymentForm({
         </label>
       )}
 
-      <label className="checkbox-label">
-        <input type="checkbox" checked={repeats} onChange={(e) => setRepeats(e.target.checked)} />
-        ¿Se repite?
+      {/* Ajuste UX — "¿Cómo se paga?" es SIEMPRE visible, sin depender de "¿Vuelve a repetirse?": antes
+          había que activar "¿Se repite?" para descubrir que un pago puntual (el IBI) se podía fraccionar
+          en varios plazos, lo cual no es intuitivo. Ahora son dos preguntas independientes: CÓMO se paga
+          esta obligación, y SI, cuando termine, vuelve a repetirse. */}
+      <label>
+        ¿Cómo se paga?
+        <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value as 'single' | 'multiple')}>
+          <option value="single">Un solo pago</option>
+          <option value="multiple">En varios pagos</option>
+        </select>
       </label>
-      {repeats && (
+
+      {paymentMode === 'multiple' && (
         <>
           <label>
-            Frecuencia
+            Número de pagos
+            <input
+              type="number"
+              min={SPLIT_CHARGE_COUNT_MIN}
+              max={recurs ? SPLIT_CHARGE_COUNT_MAX : INSTALLMENT_COUNT_MAX}
+              step="1"
+              value={paymentCount}
+              onChange={(e) => setPaymentCount(e.target.value)}
+            />
+          </label>
+          <label>
+            {recurs ? 'Frecuencia de renovación' : 'Frecuencia'}
             <select value={freqOption} onChange={(e) => setFreqOption(e.target.value as ForecastRecurrenceOption)}>
               {(Object.keys(RECURRENCE_OPTION_LABELS) as ForecastRecurrenceOption[])
                 .filter((o) => o !== 'none')
@@ -9126,39 +9168,12 @@ function ForecastPaymentForm({
               </label>
             </div>
           )}
+          <p className="muted" style={{ fontSize: 12, marginTop: -8 }}>
+            El primer pago se calcula desde el Vencimiento indicado arriba.
+          </p>
 
-          <label>
-            ¿Hasta cuándo?
-            <select value={untilMode} onChange={(e) => setUntilMode(e.target.value as typeof untilMode)}>
-              <option value="forever">Hasta que lo desactive</option>
-              <option value="count">Número de pagos</option>
-              <option value="date">Fecha concreta</option>
-            </select>
-          </label>
-          {untilMode === 'count' && (
-            <label>
-              Número de pagos
-              <input
-                type="number"
-                min={INSTALLMENT_COUNT_MIN}
-                max={INSTALLMENT_COUNT_MAX}
-                step="1"
-                value={installmentCount}
-                onChange={(e) => setInstallmentCount(e.target.value)}
-              />
-            </label>
-          )}
-          {untilMode === 'date' && (
-            <label>
-              Fecha final
-              <input type="date" value={untilDate} onChange={(e) => setUntilDate(e.target.value)} />
-            </label>
-          )}
-
-          {/* Ajuste UX tras certificación móvil — CASO A: un plan finito tiene UNA sola dimensión visible
-              ("Número de pagos", arriba). PEPA propone el reparto del importe TOTAL (proposeFinitePlanLines,
-              motor real: occurrenceForCycle + reparto en céntimos) y cada línea es editable directamente —
-              sustituye el viejo selector "Mismo importe en todos / Importes diferentes". */}
+          {/* CASO A (plan finito): PEPA propone el reparto del importe TOTAL (proposeFinitePlanLines,
+              motor real: occurrenceForCycle + reparto en céntimos) y cada línea es editable directamente. */}
           {isFinitePlanMode && planLines.length > 0 && (
             <div className="card" style={{ padding: 12 }}>
               <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Plan de pagos — {planLines.length} pagos</p>
@@ -9205,100 +9220,133 @@ function ForecastPaymentForm({
             </div>
           )}
 
-          {/* Fase 1D-d: pregunta INDEPENDIENTE de "¿Cuándo se repite?" — un seguro se renueva una vez al
-              año y, aparte, cada renovación puede cobrarse en varios cargos. SOLO para una obligación que
-              sigue repitiéndose sin fecha de fin fija (Caso B) — un plan finito ya tiene su propia única
-              dimensión arriba ("Número de pagos"); las dos preguntas nunca se muestran a la vez. */}
-          {!isFinitePlanMode && (
-            <label>
-              ¿Cómo se cobra cada vez?
-              <select value={chargeMode} onChange={(e) => setChargeMode(e.target.value as 'single' | 'split')}>
-                <option value="single">En un solo pago</option>
-                <option value="split">En varios cobros</option>
-              </select>
-            </label>
-          )}
-          {isSplitCycleMode && (
-            <>
-              <label>
-                Número de cobros
-                <input
-                  type="number"
-                  min={SPLIT_CHARGE_COUNT_MIN}
-                  max={SPLIT_CHARGE_COUNT_MAX}
-                  step="1"
-                  value={splitCount}
-                  onChange={(e) => setSplitCount(e.target.value)}
-                />
-              </label>
-
-              {/* Ajuste UX tras certificación móvil — mismo patrón que el plan finito: PEPA propone el
-                  reparto del importe TOTAL del ciclo (proposeSplitCharges) y cada línea es editable
-                  directamente, sustituyendo "Mismo importe en todos / Importes diferentes". */}
-              {splitCharges.length > 0 && (
-                <div className="card" style={{ padding: 12 }}>
-                  <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Cobros de cada renovación</p>
-                  {renderDistributionBanner(splitCheck)}
-                  {splitCharges.map((charge, i) => (
-                    <div key={i} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, marginTop: i === 0 ? 0 : 8 }}>
-                      <strong style={{ fontSize: 13 }}>
-                        Cobro {i + 1} de {splitCharges.length}
-                      </strong>
-                      <label>
-                        Fecha prevista
-                        <input type="date" value={charge.date} onChange={(e) => updateSplitCharge(i, { date: e.target.value })} required />
-                      </label>
-                      <label>
-                        Estado del importe
-                        <select value={charge.amountStatus} onChange={(e) => updateSplitCharge(i, { amountStatus: e.target.value as ForecastAmountStatus })}>
-                          {(Object.keys(AMOUNT_STATUS_LABELS) as ForecastAmountStatus[]).map((s) => (
-                            <option key={s} value={s}>
-                              {AMOUNT_STATUS_LABELS[s]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {charge.amountStatus !== 'unknown' && (
-                        <label>
-                          Importe
-                          <input type="number" step="0.01" min="0" value={charge.amount} onChange={(e) => updateSplitCharge(i, { amount: e.target.value })} required />
-                        </label>
-                      )}
-                      {charge.amountStatus === 'estimated' && (
-                        <label>
-                          ¿En qué se basa?
-                          <input
-                            type="text"
-                            value={charge.amountEstimatedBasis}
-                            onChange={(e) => updateSplitCharge(i, { amountEstimatedBasis: e.target.value })}
-                            placeholder="Por ejemplo: recibo del año pasado"
-                            required
-                          />
-                        </label>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {splitPreviewOccurrences.length > 0 && (
-                <div className="card" style={{ padding: 12 }}>
-                  <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Próximos cobros</p>
-                  {splitPreviewOccurrences.map((o) => (
-                    <p key={o.installmentSequenceIndex} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
-                      {o.installmentSequenceIndex}/{splitPreviewOccurrences.length} —{' '}
-                      {o.amountStatus === 'unknown' ? 'Importe pendiente' : `${o.amountStatus === 'estimated' ? '≈ ' : ''}${formatForecastAmount(o.amount ?? 0, o.currency)}`} —{' '}
-                      {formatSpanishDate(o.dueDate)}
-                    </p>
-                  ))}
-                  {splitNextRenewal && (
-                    <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>
-                      Próxima renovación: {formatSpanishDate(splitNextRenewal)}
-                    </p>
+          {/* CASO B (obligación que se repite, cargos por ciclo): mismo patrón, PEPA reparte el TOTAL del
+              ciclo (proposeSplitCharges) y cada línea es editable directamente. */}
+          {isSplitCycleMode && splitCharges.length > 0 && (
+            <div className="card" style={{ padding: 12 }}>
+              <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Cobros de cada renovación</p>
+              {renderDistributionBanner(splitCheck)}
+              {splitCharges.map((charge, i) => (
+                <div key={i} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, marginTop: i === 0 ? 0 : 8 }}>
+                  <strong style={{ fontSize: 13 }}>
+                    Cobro {i + 1} de {splitCharges.length}
+                  </strong>
+                  <label>
+                    Fecha prevista
+                    <input type="date" value={charge.date} onChange={(e) => updateSplitCharge(i, { date: e.target.value })} required />
+                  </label>
+                  <label>
+                    Estado del importe
+                    <select value={charge.amountStatus} onChange={(e) => updateSplitCharge(i, { amountStatus: e.target.value as ForecastAmountStatus })}>
+                      {(Object.keys(AMOUNT_STATUS_LABELS) as ForecastAmountStatus[]).map((s) => (
+                        <option key={s} value={s}>
+                          {AMOUNT_STATUS_LABELS[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {charge.amountStatus !== 'unknown' && (
+                    <label>
+                      Importe
+                      <input type="number" step="0.01" min="0" value={charge.amount} onChange={(e) => updateSplitCharge(i, { amount: e.target.value })} required />
+                    </label>
+                  )}
+                  {charge.amountStatus === 'estimated' && (
+                    <label>
+                      ¿En qué se basa?
+                      <input
+                        type="text"
+                        value={charge.amountEstimatedBasis}
+                        onChange={(e) => updateSplitCharge(i, { amountEstimatedBasis: e.target.value })}
+                        placeholder="Por ejemplo: recibo del año pasado"
+                        required
+                      />
+                    </label>
                   )}
                 </div>
+              ))}
+            </div>
+          )}
+
+          {isSplitCycleMode && splitPreviewOccurrences.length > 0 && (
+            <div className="card" style={{ padding: 12 }}>
+              <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Próximos cobros</p>
+              {splitPreviewOccurrences.map((o) => (
+                <p key={o.installmentSequenceIndex} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                  {o.installmentSequenceIndex}/{splitPreviewOccurrences.length} —{' '}
+                  {o.amountStatus === 'unknown' ? 'Importe pendiente' : `${o.amountStatus === 'estimated' ? '≈ ' : ''}${formatForecastAmount(o.amount ?? 0, o.currency)}`} —{' '}
+                  {formatSpanishDate(o.dueDate)}
+                </p>
+              ))}
+              {splitNextRenewal && (
+                <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>
+                  Próxima renovación: {formatSpanishDate(splitNextRenewal)}
+                </p>
               )}
-            </>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Ajuste UX — pregunta SEPARADA de "¿Cómo se paga?": se refiere a la OBLIGACIÓN completa, nunca a
+          los pagos/cuotas individuales de arriba. Un plan finito (IBI en 6 pagos) responde que NO — con
+          el sexto pago termina. Un seguro que se renueva cada año responde que SÍ. */}
+      <label className="checkbox-label">
+        <input type="checkbox" checked={recurs} onChange={(e) => setRecurs(e.target.checked)} />
+        ¿Este pago volverá a repetirse cuando termine?
+      </label>
+
+      {paymentMode === 'single' && recurs && (
+        <>
+          <label>
+            Frecuencia
+            <select value={freqOption} onChange={(e) => setFreqOption(e.target.value as ForecastRecurrenceOption)}>
+              {(Object.keys(RECURRENCE_OPTION_LABELS) as ForecastRecurrenceOption[])
+                .filter((o) => o !== 'none')
+                .map((o) => (
+                  <option key={o} value={o}>
+                    {RECURRENCE_OPTION_LABELS[o]}
+                  </option>
+                ))}
+            </select>
+          </label>
+          {freqOption === 'custom' && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ flex: 1 }}>
+                Cada cuánto
+                <select value={customFreq} onChange={(e) => setCustomFreq(e.target.value as ForecastCustomRecurrence['freq'])}>
+                  <option value="DAILY">Diaria</option>
+                  <option value="WEEKLY">Semanal</option>
+                  <option value="MONTHLY">Mensual</option>
+                  <option value="YEARLY">Anual</option>
+                </select>
+              </label>
+              <label style={{ width: 90 }}>
+                Cada
+                <input type="number" min="1" step="1" value={customInterval} onChange={(e) => setCustomInterval(e.target.value)} />
+              </label>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Capacidad ya existente que se conserva (no se pregunta en el flujo principal): una obligación
+          que se repite puede tener una fecha final concreta, en vez de repetirse para siempre — necesario
+          para poder reconstruir/editar sin corromper un pago antiguo guardado así. */}
+      {recurs && (
+        <>
+          <label>
+            ¿Hasta cuándo se repite?
+            <select value={recursUntilDate ? 'date' : 'forever'} onChange={(e) => setRecursUntilDate(e.target.value === 'date')}>
+              <option value="forever">Para siempre</option>
+              <option value="date">Hasta una fecha concreta</option>
+            </select>
+          </label>
+          {recursUntilDate && (
+            <label>
+              Fecha final
+              <input type="date" value={untilDate} onChange={(e) => setUntilDate(e.target.value)} />
+            </label>
           )}
         </>
       )}

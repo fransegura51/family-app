@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { buildInvitationMessage, buildInvitationTemplateLayers, buildMapsUrl, computeEventConclusions, eventLocationMapLines, generateEventPlan, INVITATION_TEMPLATES, sortInvitationTemplatesForEvent } from '@/domain/events'
+import {
+  buildInvitationMessage,
+  buildInvitationTemplateLayers,
+  buildMapsUrl,
+  computeEventConclusions,
+  computeEventStatusSummary,
+  eventLocationMapLines,
+  generateEventPlan,
+  INVITATION_TEMPLATES,
+  isOverdueTask,
+  sortInvitationTemplatesForEvent,
+} from '@/domain/events'
 import type { InvitationTemplateMeta } from '@/domain/events'
-import type { FamilyEvent } from '@/domain/types'
+import type { EventGuest, EventTask, FamilyEvent } from '@/domain/types'
 
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
   return {
@@ -44,6 +55,48 @@ function daysFromNow(days: number): string {
   const d = new Date()
   d.setDate(d.getDate() + days)
   return d.toISOString().slice(0, 10)
+}
+
+let taskCounter = 0
+function makeTask(overrides: Partial<EventTask>): EventTask {
+  taskCounter += 1
+  return {
+    id: `t${taskCounter}`,
+    eventId: 'e1',
+    familyId: 'f1',
+    title: 'Tarea',
+    done: false,
+    dueDate: null,
+    source: 'manual',
+    sortOrder: taskCounter,
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+let guestCounter = 0
+function makeGuest(overrides: Partial<EventGuest>): EventGuest {
+  guestCounter += 1
+  return {
+    id: `g${guestCounter}`,
+    eventId: 'e1',
+    familyId: 'f1',
+    displayName: 'Invitado',
+    adultsCount: 1,
+    childrenCount: 0,
+    notes: null,
+    inviteScope: null,
+    rsvpStatus: 'pendiente',
+    rsvpAdultsCount: null,
+    rsvpChildrenCount: null,
+    rsvpNote: null,
+    rsvpTokenActive: true,
+    rsvpRespondedAt: null,
+    tableId: null,
+    sortOrder: guestCounter,
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
 }
 
 describe('computeEventConclusions', () => {
@@ -407,5 +460,88 @@ describe('buildMapsUrl', () => {
   it('prefers real coordinates over the label text when both are given', () => {
     const url = buildMapsUrl('en mi casa', { latitude: 40.4168, longitude: -3.7038 })
     expect(url).toBe('https://www.google.com/maps?q=40.4168,-3.7038')
+  })
+})
+
+describe('isOverdueTask', () => {
+  it('is overdue only when not done and the due date has passed', () => {
+    expect(isOverdueTask(makeTask({ done: false, dueDate: daysFromNow(-1) }))).toBe(true)
+    expect(isOverdueTask(makeTask({ done: true, dueDate: daysFromNow(-1) }))).toBe(false)
+    expect(isOverdueTask(makeTask({ done: false, dueDate: daysFromNow(1) }))).toBe(false)
+    expect(isOverdueTask(makeTask({ done: false, dueDate: null }))).toBe(false)
+  })
+})
+
+// Fase 2 — auditoría: el porcentaje "Preparación del evento" (media de
+// %tareas y %invitados) daba "50 %" con el caso real de "Bodas de
+// plata" (0 de 6 tareas hechas, 2 ya vencidas, 16 de 16 invitados
+// confirmados) — un número que escondía justo el problema. Estos tests
+// fijan el caso real como regresión permanente.
+describe('computeEventStatusSummary', () => {
+  it('caso real "Bodas de plata": 0/6 tareas + 16/16 invitados nunca produce un porcentaje de preparación', () => {
+    const tasks = [
+      makeTask({ title: 'Reservar ceremonia', done: false, dueDate: daysFromNow(-30) }),
+      makeTask({ title: 'Reservar celebración', done: false, dueDate: daysFromNow(-30) }),
+      makeTask({ title: 'Enviar invitaciones', done: false, dueDate: daysFromNow(10) }),
+      makeTask({ title: 'Confirmar menú', done: false, dueDate: null }),
+      makeTask({ title: 'Elegir flores', done: false, dueDate: null }),
+      makeTask({ title: 'Recoger anillos', done: false, dueDate: null }),
+    ]
+    const guests = [
+      makeGuest({ displayName: 'Familia David', adultsCount: 4, childrenCount: 1, rsvpStatus: 'confirmado', rsvpAdultsCount: 4, rsvpChildrenCount: 1 }),
+      makeGuest({ displayName: 'Familia Ramon', adultsCount: 8, childrenCount: 1, rsvpStatus: 'confirmado', rsvpAdultsCount: 8, rsvpChildrenCount: 1 }),
+      makeGuest({ displayName: 'Suegros', adultsCount: 2, childrenCount: 0, rsvpStatus: 'confirmado', rsvpAdultsCount: 2, rsvpChildrenCount: 0 }),
+    ]
+    const summary = computeEventStatusSummary({ tasks, guests, payments: [], plannedBudget: 5750, spentBudget: 0 })
+
+    expect(summary.tasksDone).toBe(0)
+    expect(summary.tasksTotal).toBe(6)
+    expect(summary.tasksOverdue).toBe(2)
+    expect(summary.guestsConfirmedPeople).toBe(16)
+    expect(summary.guestsTotalPeople).toBe(16)
+    expect(summary.budgetPlanned).toBe(5750)
+    expect(summary.budgetSpent).toBe(0)
+    // Nunca debe existir ningún campo de porcentaje/preparación agregado.
+    expect(Object.keys(summary).some((k) => /pct|percent|porcentaje|readiness|preparaci/i.test(k))).toBe(false)
+  })
+
+  it('cuenta invitados pendientes/no seguros como pendientes de responder, y confirmados no cuenta ahí', () => {
+    const guests = [
+      makeGuest({ rsvpStatus: 'pendiente' }),
+      makeGuest({ rsvpStatus: 'no_seguro' }),
+      makeGuest({ rsvpStatus: 'confirmado', rsvpAdultsCount: 1, rsvpChildrenCount: 0 }),
+      makeGuest({ rsvpStatus: 'no_asiste' }),
+    ]
+    const summary = computeEventStatusSummary({ tasks: [], guests, payments: [], plannedBudget: 0, spentBudget: null })
+    expect(summary.guestsPendingCount).toBe(2)
+  })
+
+  it('próximo hito: elige la tarea o el pago no vencido más próximo, nunca uno ya atrasado', () => {
+    const tasks = [makeTask({ title: 'Atrasada', done: false, dueDate: daysFromNow(-5) }), makeTask({ title: 'Próxima', done: false, dueDate: daysFromNow(3) })]
+    const summary = computeEventStatusSummary({ tasks, guests: [], payments: [], plannedBudget: 0, spentBudget: null })
+    expect(summary.nextMilestone).toEqual({ kind: 'tarea', label: 'Próxima', dueDate: daysFromNow(3), daysUntil: 3 })
+  })
+
+  it('próximo hito: compara tareas y pagos, y gana el que esté más cerca', () => {
+    const tasks = [makeTask({ title: 'Tarea lejana', done: false, dueDate: daysFromNow(10) })]
+    const summary = computeEventStatusSummary({
+      tasks,
+      guests: [],
+      payments: [{ concept: 'Fianza', totalAmount: 200, depositPaid: 0, dueDate: daysFromNow(2), status: 'pendiente' }],
+      plannedBudget: 0,
+      spentBudget: null,
+    })
+    expect(summary.nextMilestone).toEqual({ kind: 'pago', label: 'Fianza', dueDate: daysFromNow(2), daysUntil: 2 })
+  })
+
+  it('próximo hito: null cuando no hay ninguna tarea ni pago pendiente con fecha futura', () => {
+    const summary = computeEventStatusSummary({
+      tasks: [makeTask({ done: false, dueDate: null }), makeTask({ done: true, dueDate: daysFromNow(5) })],
+      guests: [],
+      payments: [{ concept: 'Pagado', totalAmount: 100, depositPaid: 100, dueDate: daysFromNow(1), status: 'pagado' }],
+      plannedBudget: 0,
+      spentBudget: null,
+    })
+    expect(summary.nextMilestone).toBeNull()
   })
 })

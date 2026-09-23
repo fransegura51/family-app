@@ -955,6 +955,15 @@ export interface EventConclusion {
   text: string
 }
 
+// Fase 2 — única definición de "tarea atrasada" de todo el módulo:
+// reutilizada tanto por computeEventConclusions (el aviso de texto)
+// como por computeEventStatusSummary (el contador del panel "Estado
+// del evento") para que nunca puedan divergir sobre qué cuenta como
+// atrasada.
+export function isOverdueTask(task: Pick<EventTask, 'done' | 'dueDate'>): boolean {
+  return !task.done && !!task.dueDate && daysUntil(task.dueDate) < 0
+}
+
 export function computeEventConclusions(input: {
   rsvpDeadline: string | null
   guests: Pick<EventGuest, 'rsvpStatus'>[]
@@ -983,7 +992,7 @@ export function computeEventConclusions(input: {
     }
   }
 
-  const overdueTasks = input.tasks.filter((t) => !t.done && t.dueDate && daysUntil(t.dueDate) < 0).length
+  const overdueTasks = input.tasks.filter(isOverdueTask).length
   if (overdueTasks > 0) {
     conclusions.push({
       id: 'overdue-tasks',
@@ -1046,6 +1055,73 @@ export function rankUpcomingTasks(tasks: EventTask[]): RankedEventTask[] {
       if (b.daysUntil === null) return -1
       return a.daysUntil - b.daysUntil
     })
+}
+
+// Fase 2 — auditoría: "0/6 tareas + 16/16 invitados = 50%" no
+// representa cuán preparado está un evento (media de dos proporciones
+// sin relación entre sí, que puede esconder tareas vencidas detrás de
+// un número tranquilizador). Sustituye ese porcentaje agregado por
+// indicadores independientes y verificables — reutiliza isOverdueTask
+// (misma definición que computeEventConclusions) y rankUpcomingTasks,
+// nunca una segunda lógica paralela para decidir qué está atrasado.
+export interface EventStatusSummary {
+  tasksTotal: number
+  tasksDone: number
+  tasksOverdue: number
+  guestsTotalPeople: number
+  guestsConfirmedPeople: number
+  guestsPendingCount: number
+  budgetPlanned: number
+  budgetSpent: number | null
+  nextMilestone: { kind: 'tarea' | 'pago'; label: string; dueDate: string; daysUntil: number } | null
+}
+
+export function computeEventStatusSummary(input: {
+  tasks: EventTask[]
+  guests: Pick<EventGuest, 'rsvpStatus' | 'adultsCount' | 'childrenCount' | 'rsvpAdultsCount' | 'rsvpChildrenCount'>[]
+  payments: Pick<EventPayment, 'concept' | 'totalAmount' | 'depositPaid' | 'dueDate' | 'status'>[]
+  plannedBudget: number
+  spentBudget: number | null
+}): EventStatusSummary {
+  const tasksTotal = input.tasks.length
+  const tasksDone = input.tasks.filter((t) => t.done).length
+  const tasksOverdue = input.tasks.filter(isOverdueTask).length
+
+  const guestsTotalPeople = input.guests.reduce((sum, g) => sum + g.adultsCount + g.childrenCount, 0)
+  const guestsConfirmedPeople = input.guests
+    .filter((g) => g.rsvpStatus === 'confirmado')
+    .reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0)
+  const guestsPendingCount = input.guests.filter((g) => g.rsvpStatus === 'pendiente' || g.rsvpStatus === 'no_seguro').length
+
+  // Próximo hito: la tarea o el pago no resuelto más próximo con fecha
+  // (nunca uno ya vencido — eso ya lo cubre "N atrasadas"/el aviso de
+  // pago vencido por su lado, para no repetir la misma información dos
+  // veces en la misma tarjeta).
+  const nextTask = rankUpcomingTasks(input.tasks).find((t) => t.daysUntil !== null && t.daysUntil >= 0)
+  const nextPayment = input.payments
+    .filter((p) => p.status !== 'pagado' && p.dueDate && p.totalAmount - p.depositPaid > 0)
+    .map((p) => ({ payment: p, daysUntil: daysUntil(p.dueDate as string) }))
+    .filter((p) => p.daysUntil >= 0)
+    .sort((a, b) => a.daysUntil - b.daysUntil)[0]
+
+  let nextMilestone: EventStatusSummary['nextMilestone'] = null
+  if (nextTask && (!nextPayment || (nextTask.daysUntil as number) <= nextPayment.daysUntil)) {
+    nextMilestone = { kind: 'tarea', label: nextTask.task.title, dueDate: nextTask.task.dueDate as string, daysUntil: nextTask.daysUntil as number }
+  } else if (nextPayment) {
+    nextMilestone = { kind: 'pago', label: nextPayment.payment.concept, dueDate: nextPayment.payment.dueDate as string, daysUntil: nextPayment.daysUntil }
+  }
+
+  return {
+    tasksTotal,
+    tasksDone,
+    tasksOverdue,
+    guestsTotalPeople,
+    guestsConfirmedPeople,
+    guestsPendingCount,
+    budgetPlanned: input.plannedBudget,
+    budgetSpent: input.spentBudget,
+    nextMilestone,
+  }
 }
 
 // ---------------------------------------------------------------------

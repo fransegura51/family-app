@@ -86,6 +86,7 @@ import {
   buildMapsUrl,
   CELEBRATION_SUBTYPES,
   computeEventConclusions,
+  computeEventStatusSummary,
   daysUntil,
   DUAL_LOCATION_EVENT_TYPES,
   type EventConclusion as EventConclusionType,
@@ -688,22 +689,17 @@ function EventDetail({
   }
   useEffect(reloadDashboardStats, [event.id, event.enabledModules, event.tagId, refreshKey])
 
-  // "Preparación del evento" — media de tareas completadas% e
-  // invitados confirmados% (los dos indicadores de "cuánto queda por
-  // hacer" de verdad); el presupuesto se enseña aparte, como cifra
-  // informativa — gastar más no es "estar más preparado".
+  // Fase 2 — "Estado del evento": sustituye el porcentaje agregado de
+  // "Preparación del evento" (auditoría: 0/6 tareas + 16/16 invitados
+  // daba "50 %", escondiendo justo las tareas atrasadas detrás de un
+  // número tranquilizador) por indicadores independientes y
+  // verificables, vía computeEventStatusSummary — sin fórmula nueva
+  // que combine cosas sin relación entre sí.
   const hasGuestsModule = event.enabledModules.includes('invitados')
   const hasBudgetModule = event.enabledModules.includes('presupuesto')
   const taskDoneCount = tasks.filter((t) => t.done).length
-  const taskPct = tasks.length > 0 ? (taskDoneCount / tasks.length) * 100 : null
-  const guestTotalPeople = guests.reduce((sum, g) => sum + g.adultsCount + g.childrenCount, 0)
-  const guestConfirmedPeople = guests
-    .filter((g) => g.rsvpStatus === 'confirmado')
-    .reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0)
-  const guestPct = guestTotalPeople > 0 ? (guestConfirmedPeople / guestTotalPeople) * 100 : null
-  const readinessParts = [taskPct, guestPct].filter((p): p is number => p !== null)
-  const readinessPct = readinessParts.length > 0 ? Math.round(readinessParts.reduce((sum, p) => sum + p, 0) / readinessParts.length) : null
   const budgetPlanned = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
+  const statusSummary = computeEventStatusSummary({ tasks, guests, payments, plannedBudget: budgetPlanned, spentBudget: budgetSpent })
 
   // "Pepa te recomienda" — hasta 3 tareas pendientes, vencidas primero
   // y luego las más próximas (rankUpcomingTasks, domain/events.ts).
@@ -739,7 +735,7 @@ function EventDetail({
         stat = tasks.length > 0 ? `${taskDoneCount} de ${tasks.length} completadas` : 'Sin tareas'
         break
       case 'invitados':
-        stat = guests.length > 0 ? `${guestTotalPeople} personas · ${guestConfirmedPeople} confirmadas` : 'Sin invitados'
+        stat = guests.length > 0 ? `${statusSummary.guestsTotalPeople} personas · ${statusSummary.guestsConfirmedPeople} confirmadas` : 'Sin invitados'
         break
       case 'presupuesto':
         stat = budgetSpent !== null ? `${budgetSpent.toFixed(2)} € de ${budgetPlanned.toFixed(2)} €` : `Planeado: ${budgetPlanned.toFixed(2)} €`
@@ -952,45 +948,61 @@ function EventDetail({
       {event.status === 'planificacion' && event.dateStatus === 'confirmada' && isToday(event.eventDate) && <EventDayBanner event={event} />}
       {event.status === 'planificacion' && <PepaConclusions event={event} />}
 
-      {/* "Preparación del evento" — petición real: rediseño del
-          dashboard, con la referencia de otra app de planificación de
-          fiestas ("mantendría nuestros iconos habituales pero lo demás
-          me gusta mucho"). */}
-      {readinessPct !== null && (
+      {/* Fase 2 — "Estado del evento": auditoría real encontró que
+          "Preparación del evento" (media de %tareas y %invitados) podía
+          enseñar "50 %" con 0 de 6 tareas hechas y 2 ya vencidas, solo
+          porque los invitados estaban confirmados — un número que
+          escondía justo el problema en vez de mostrarlo. Se sustituye
+          por indicadores independientes y verificables, sin inventar
+          otra fórmula agregada; lo urgente (atrasadas) tiene su propia
+          prioridad visual en vez de diluirse en una media. */}
+      {(hasTasksModule && statusSummary.tasksTotal > 0) ||
+      (hasGuestsModule && statusSummary.guestsTotalPeople > 0) ||
+      (hasBudgetModule && statusSummary.budgetSpent !== null) ? (
         <div className="card event-card" style={{ marginTop: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>Preparación del evento</strong>
-            <strong>{readinessPct} %</strong>
-          </div>
-          <div className="progress-bar" style={{ marginTop: 6 }}>
-            <div className="progress-bar-fill" style={{ width: `${readinessPct}%` }} />
-          </div>
-          <div className="event-readiness-stats">
-            {hasTasksModule && tasks.length > 0 && (
+          <strong>Estado del evento</strong>
+          <div className="event-readiness-stats" style={{ marginTop: 6 }}>
+            {hasTasksModule && statusSummary.tasksTotal > 0 && (
               <div>
                 <strong>
-                  {taskDoneCount} de {tasks.length}
+                  {statusSummary.tasksDone} de {statusSummary.tasksTotal}
                 </strong>
                 <span className="muted"> tareas completadas</span>
+                {statusSummary.tasksOverdue > 0 && (
+                  <div style={{ color: '#dc2626', fontWeight: 600, marginTop: 2 }}>
+                    🔴 {statusSummary.tasksOverdue} {statusSummary.tasksOverdue === 1 ? 'atrasada' : 'atrasadas'}
+                  </div>
+                )}
               </div>
             )}
-            {hasGuestsModule && guests.length > 0 && (
+            {hasGuestsModule && statusSummary.guestsTotalPeople > 0 && (
               <div>
                 <strong>
-                  {guestConfirmedPeople} de {guestTotalPeople}
+                  {statusSummary.guestsConfirmedPeople} de {statusSummary.guestsTotalPeople}
                 </strong>
                 <span className="muted"> invitados confirmados</span>
+                {statusSummary.guestsPendingCount > 0 && (
+                  <div className="muted" style={{ marginTop: 2 }}>
+                    {statusSummary.guestsPendingCount} {statusSummary.guestsPendingCount === 1 ? 'pendiente de responder' : 'pendientes de responder'}
+                  </div>
+                )}
               </div>
             )}
-            {hasBudgetModule && budgetSpent !== null && (
+            {hasBudgetModule && statusSummary.budgetSpent !== null && (
               <div>
-                <strong>{budgetSpent.toFixed(2)} €</strong>
-                <span className="muted"> de {budgetPlanned.toFixed(2)} €</span>
+                <strong>{statusSummary.budgetSpent.toFixed(2)} €</strong>
+                <span className="muted"> de {statusSummary.budgetPlanned.toFixed(2)} €</span>
               </div>
             )}
           </div>
+          {statusSummary.nextMilestone && (
+            <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
+              Próximo hito: {statusSummary.nextMilestone.kind === 'tarea' ? '✅' : '🧾'} {statusSummary.nextMilestone.label} —{' '}
+              {statusSummary.nextMilestone.daysUntil === 0 ? 'hoy' : statusSummary.nextMilestone.daysUntil === 1 ? 'mañana' : `en ${statusSummary.nextMilestone.daysUntil} días`}
+            </p>
+          )}
         </div>
-      )}
+      ) : null}
 
       {hasTasksModule && upcomingTasks.length > 0 && (
         <div className="card event-card event-recommend-card" style={{ marginTop: 8 }}>

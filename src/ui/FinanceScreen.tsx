@@ -78,6 +78,7 @@ import {
   detectRecurrenceCandidates,
   findNewRecurrenceCandidates,
   normalizeMerchantKey,
+  stripTrailingDateSuffix,
   type BankMovementForDetection,
   type ForecastPaymentForDedup,
   type RecurrenceCandidate,
@@ -8502,8 +8503,12 @@ function buildForecastPrefillFromCandidate(c: RecurrenceCandidate): ForecastPaym
 // lo fue — "sé cuánto se cobró" no es "sé cuánto se cobrará" (pedido explícito).
 function buildMinimalForecastPrefillFromMovement(bt: Pick<BankTransaction, 'description' | 'amount' | 'currency'>, category: string | null): ForecastPaymentPrefill {
   const amount = Math.abs(bt.amount)
+  // Fase 1D-g.3 — mismo recorte de fecha final que RecurrenceCandidate.displayName (stripTrailingDateSuffix,
+  // domain/forecastRecurrenceDetection.ts) — un cargo suelto tampoco debe enseñar "...31/08/26" como si
+  // fuera parte del nombre del pago.
+  const title = bt.description ? stripTrailingDateSuffix(bt.description.trim().replace(/\s+/g, ' ')) : ''
   return {
-    title: bt.description?.trim() || 'Pago',
+    title: title || 'Pago',
     amount,
     amountEstimatedBasis: `Basado en el último cargo: ${formatForecastAmount(amount, bt.currency)}`,
     categoryName: category && category !== 'Otros' ? category : null,
@@ -9417,9 +9422,20 @@ function ForecastPaymentForm({
   const [customFreq, setCustomFreq] = useState<ForecastCustomRecurrence['freq']>(initialRecurrence.customFreq)
   const [customInterval, setCustomInterval] = useState(initialRecurrence.customInterval)
   // Ajuste UX — "¿Hasta cuándo se repite?" ya no es una pregunta de primer nivel: solo se expone (muy al
-  // final, "Para siempre"/"Hasta una fecha concreta") cuando la obligación SÍ vuelve a repetirse — para
-  // no perder la capacidad de reconstruir/editar un pago antiguo guardado con una fecha final concreta.
-  const [recursUntilDate, setRecursUntilDate] = useState(initialRecurrence.untilMode === 'date')
+  // final, "Para siempre"/"Hasta una fecha concreta"/"No lo sé todavía") cuando la obligación SÍ vuelve a
+  // repetirse — para no perder la capacidad de reconstruir/editar un pago antiguo guardado con una fecha
+  // final concreta.
+  //
+  // Fase 1D-g.3 — 3 opciones, no 2: el banco puede decirnos la FRECUENCIA (mensual, etc.) pero nunca la
+  // DURACIÓN — "Para siempre" sería una conclusión que PEPA no puede afirmar. "No lo sé todavía" es SOLO
+  // el punto de partida de una previsión NUEVA precargada desde detección bancaria (prefill sin payment);
+  // nunca aparece al editar un pago YA guardado — su UNTIL (o su ausencia) ya fue una decisión explícita
+  // de la familia en su momento, y esta fase no la reinterpreta. No hace falta persistir esta distinción:
+  // mientras esté en "No lo sé todavía" el formulario simplemente no deja guardar (ver handleSubmit) —
+  // recurrence_rule sigue teniendo exactamente los mismos 2 estados reales de siempre.
+  const [recursDurationChoice, setRecursDurationChoice] = useState<'forever' | 'date' | 'unknown'>(
+    initialRecurrence.untilMode === 'date' ? 'date' : payment == null && prefill != null ? 'unknown' : 'forever',
+  )
   const [untilDate, setUntilDate] = useState(initialRecurrence.untilDate)
   // Ajuste UX — "¿Cómo se paga?" (paymentMode) es la pregunta SIEMPRE visible que sustituye "¿Se repite?"
   // como puerta de entrada al fraccionamiento: antes, para descubrir que se podía pagar en varias veces
@@ -9440,7 +9456,9 @@ function ForecastPaymentForm({
   // pagos (Caso A necesita FREQ+UNTIL para las N fechas) o que la obligación se repita.
   const isFinitePlanMode = paymentMode === 'multiple' && !recurs
   const isSplitCycleMode = paymentMode === 'multiple' && recurs
-  const untilMode: 'forever' | 'count' | 'date' = isFinitePlanMode ? 'count' : recursUntilDate ? 'date' : 'forever'
+  // "unknown" nunca llega a construir un recurrence_rule real — handleSubmit bloquea el guardado
+  // mientras siga en ese estado (ver validación), así que aquí basta con no confundirlo con "date".
+  const untilMode: 'forever' | 'count' | 'date' = isFinitePlanMode ? 'count' : recursDurationChoice === 'date' ? 'date' : 'forever'
   const recurrenceRuleNeeded = paymentMode === 'multiple' || recurs
   const [splitCharges, setSplitCharges] = useState<ForecastSplitChargeFormRow[]>(() =>
     payment && payment.installments.length > 0 ? parseInstallmentTemplatesToForm(payment.dueDate, payment.installments) : [],
@@ -9580,6 +9598,12 @@ function ForecastPaymentForm({
     }
     if (!dueDate) {
       setError('Indica cuándo vence.')
+      return
+    }
+    // Fase 1D-g.3 — "No lo sé todavía" nunca se guarda tal cual: PEPA nunca afirma "para siempre" en
+    // nombre del banco. La familia tiene que decidir explícitamente antes de poder crear la previsión.
+    if (recurs && recursDurationChoice === 'unknown') {
+      setError('Indica hasta cuándo se repite: "Para siempre" o "Hasta una fecha concreta".')
       return
     }
     if (amountStatus === 'estimated' && !amountBasis.trim()) {
@@ -10039,17 +10063,27 @@ function ForecastPaymentForm({
 
       {/* Capacidad ya existente que se conserva (no se pregunta en el flujo principal): una obligación
           que se repite puede tener una fecha final concreta, en vez de repetirse para siempre — necesario
-          para poder reconstruir/editar sin corromper un pago antiguo guardado así. */}
+          para poder reconstruir/editar sin corromper un pago antiguo guardado así.
+          Fase 1D-g.3 — "No lo sé todavía" solo aparece como opción mientras es el valor activo (precarga
+          bancaria sin decidir todavía): en cuanto la familia elige Para siempre/Hasta una fecha, desaparece
+          de la lista — nunca un valor real al que se pueda volver a mano. */}
       {recurs && (
         <>
           <label>
             ¿Hasta cuándo se repite?
-            <select value={recursUntilDate ? 'date' : 'forever'} onChange={(e) => setRecursUntilDate(e.target.value === 'date')}>
+            <select value={recursDurationChoice} onChange={(e) => setRecursDurationChoice(e.target.value as 'forever' | 'date' | 'unknown')}>
+              {recursDurationChoice === 'unknown' && <option value="unknown">No lo sé todavía</option>}
               <option value="forever">Para siempre</option>
               <option value="date">Hasta una fecha concreta</option>
             </select>
           </label>
-          {recursUntilDate && (
+          {recursDurationChoice === 'unknown' && (
+            <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+              PEPA ha detectado la frecuencia a partir del banco, pero no sabe cuándo termina — elige "Para siempre" o
+              "Hasta una fecha concreta" para poder guardar.
+            </p>
+          )}
+          {recursDurationChoice === 'date' && (
             <label>
               Fecha final
               <input type="date" value={untilDate} onChange={(e) => setUntilDate(e.target.value)} />

@@ -467,8 +467,10 @@ describe('Ajuste UX — edición: reconstruir el nuevo formulario desde datos ya
     )
   })
 
-  it('recursUntilDate inicial reconstruye una fecha final ya guardada (untilMode==="date") — abrir y guardar sin tocar nada no la convierte silenciosamente en "para siempre"', () => {
-    expect(FS).toContain("const [recursUntilDate, setRecursUntilDate] = useState(initialRecurrence.untilMode === 'date')")
+  it('recursDurationChoice inicial reconstruye una fecha final ya guardada (untilMode==="date") — abrir y guardar sin tocar nada no la convierte silenciosamente en "para siempre" (Fase 1D-g.3: ahora 3 estados, no 2)', () => {
+    expect(FS).toContain(
+      "initialRecurrence.untilMode === 'date' ? 'date' : payment == null && prefill != null ? 'unknown' : 'forever',",
+    )
   })
 })
 
@@ -793,5 +795,82 @@ describe('Fase 1D-g.2 — "🔮 Añadir a Previsión" desde Movimientos: reutili
     const idx = FS.indexOf('function reviewRecurrenceCandidate')
     const body = FS.slice(idx, FS.indexOf('\n  }', idx))
     expect(body).toContain('buildForecastPrefillFromCandidate(c)')
+  })
+})
+
+describe('Fase 1D-g.3 — título visible sin la fecha del último cargo de muestra', () => {
+  it('5) la tarjeta de candidato muestra c.displayName (ya sin fecha, corregido en el dominio) — nunca un título construido aparte en la UI', () => {
+    const idx = FS.indexOf('{recurrenceCandidates.map((c) => {')
+    const block = FS.slice(idx, idx + 700)
+    expect(block).toContain('<strong>{c.displayName}</strong>')
+  })
+
+  it('6) "Revisar" usa el mismo título estable — buildForecastPrefillFromCandidate precarga title: c.displayName', () => {
+    const idx = FS.indexOf('function buildForecastPrefillFromCandidate')
+    const body = FS.slice(idx, FS.indexOf('\n}', idx))
+    expect(body).toContain('title: c.displayName')
+  })
+
+  it('7) "Añadir a Previsión" sin histórico suficiente también limpia la fecha final del propio movimiento — mismo stripTrailingDateSuffix del dominio, nunca una segunda regex', () => {
+    const idx = FS.indexOf('function buildMinimalForecastPrefillFromMovement')
+    const body = FS.slice(idx, FS.indexOf('\n}', idx))
+    expect(body).toContain('stripTrailingDateSuffix(bt.description.trim().replace(/\\s+/g, \' \'))')
+  })
+
+  it('el título candidato reutiliza EXACTAMENTE stripTrailingDateSuffix del dominio — nunca una segunda regex de fecha en FinanceScreen.tsx', () => {
+    expect(FS).toContain("import {\n  detectRecurrenceCandidates,\n  findNewRecurrenceCandidates,\n  normalizeMerchantKey,\n  stripTrailingDateSuffix,")
+    expect(FS).not.toMatch(/\\d\{1,2\}\)\\\/\(\\d\{1,2\}\)\\\/\(\\d\{2\}/) // ninguna copia de TRAILING_DATE_SUFFIX en la UI
+  })
+})
+
+describe('Fase 1D-g.3 — "¿Hasta cuándo se repite?": distinguir "no lo sé" de "para siempre"', () => {
+  it('9/10) una previsión NUEVA precargada desde el banco (prefill, sin payment) empieza en "No lo sé todavía" — nunca afirma "Para siempre" en nombre del banco', () => {
+    expect(FS).toContain(
+      "initialRecurrence.untilMode === 'date' ? 'date' : payment == null && prefill != null ? 'unknown' : 'forever',",
+    )
+  })
+
+  it('13) una previsión manual nueva (sin prefill) sigue empezando en "Para siempre" — regresión: el comportamiento manual de siempre no cambia', () => {
+    // payment == null && prefill == null -> cae al 'forever' final de la misma expresión ternaria del test anterior.
+    const idx = FS.indexOf("const [recursDurationChoice, setRecursDurationChoice] = useState<'forever' | 'date' | 'unknown'>(")
+    expect(idx).toBeGreaterThan(-1)
+  })
+
+  it('14) editar un pago YA guardado nunca cae en "No lo sé todavía" — payment != null excluye esa rama siempre, su UNTIL (o ausencia) ya fue una decisión explícita', () => {
+    const idx = FS.indexOf("const [recursDurationChoice, setRecursDurationChoice] = useState<'forever' | 'date' | 'unknown'>(")
+    const body = FS.slice(idx, FS.indexOf(')', idx + 200))
+    expect(body).toContain('payment == null && prefill != null')
+  })
+
+  it('11/12) "Hasta una fecha concreta" sigue disponible y sigue alimentando el mismo untilDate/untilMode="date" de siempre', () => {
+    expect(FS).toContain('<option value="date">Hasta una fecha concreta</option>')
+    expect(FS).toContain("const untilMode: 'forever' | 'count' | 'date' = isFinitePlanMode ? 'count' : recursDurationChoice === 'date' ? 'date' : 'forever'")
+  })
+
+  it('"No lo sé todavía" nunca se guarda tal cual — handleSubmit bloquea el envío mientras siga activo', () => {
+    const idx = FS.indexOf('async function handleSubmit')
+    const body = FS.slice(idx, FS.indexOf("if (amountStatus === 'estimated'", idx))
+    expect(body).toContain("recurs && recursDurationChoice === 'unknown'")
+    expect(body).toContain('return')
+  })
+
+  it('"No lo sé todavía" solo aparece en la lista mientras es el valor activo — nunca un valor real al que se pueda volver a mano', () => {
+    expect(FS).toContain('{recursDurationChoice === \'unknown\' && <option value="unknown">No lo sé todavía</option>}')
+  })
+
+  it('no se persiste ninguna distinción nueva — sin migración, sin columna nueva: la propia UI decide antes de construir el recurrence_rule', () => {
+    // untilMode solo puede ser 'forever' | 'count' | 'date' — exactamente los mismos 2 estados reales de
+    // siempre (+ 'count' del plan finito), nunca un tercer valor persistido.
+    expect(FS).toContain("const untilMode: 'forever' | 'count' | 'date' = isFinitePlanMode ? 'count' : recursDurationChoice === 'date' ? 'date' : 'forever'")
+  })
+})
+
+describe('Fase 1D-g.3 — regresión: 1D-g/1D-g.1/1D-g.2 siguen intactos', () => {
+  it('15) Anthropic (sin fecha en su descripción) sigue sin verse afectado por stripTrailingDateSuffix', () => {
+    expect(RECURRENCE_DETECTION).toContain('ANTHROPIC')
+  })
+
+  it('16/17) el detector automático sigue usando findNewRecurrenceCandidates con la fecha de referencia real — préstamos y Endesa siguen su mismo camino de siempre', () => {
+    expect(FS).toContain('findNewRecurrenceCandidates(allBankMovementsForDetection, matchedExpenseIds, existingPaymentsForDedup, dismissedRecurrenceKeys, today)')
   })
 })

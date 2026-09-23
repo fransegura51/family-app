@@ -5,6 +5,7 @@ import {
   isRecurrenceCandidateAlreadyKnown,
   nextFutureDueDate,
   normalizeMerchantKey,
+  stripTrailingDateSuffix,
   RECURRENCE_MIN_OCCURRENCES,
   RECURRENCE_PERIODICITIES,
   type BankMovementForDetection,
@@ -186,6 +187,60 @@ describe('Fase 1D-g.2 — sufijo de fecha final (caso real de los dos préstamos
   it('8) una descripción sin ninguna fecha al final se comporta exactamente igual que antes (regresión)', () => {
     expect(normalizeMerchantKey('ENDESA ENERGIA S.A.')).toBe('ENDESA ENERGIA S.A.')
     expect(normalizeMerchantKey('ORANGE ESPAGNE SAU')).toBe('ORANGE ESPAGNE SAU')
+  })
+})
+
+describe('Fase 1D-g.3 — título visible del candidato: la fecha del último cargo de muestra NUNCA forma parte del nombre', () => {
+  it('1) el título candidato del préstamo 450,50€ elimina la fecha final del último cargo usado como muestra', () => {
+    const PRESTAMO_A = [
+      movement({ date: '2026-06-30', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 30/06/26' }),
+      movement({ date: '2026-07-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/07/26' }),
+      movement({ date: '2026-08-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26' }),
+    ]
+    const [candidate] = detectRecurrenceCandidates(PRESTAMO_A, OLD_REFERENCE_DATE)
+    expect(candidate.displayName).not.toContain('31/08/26')
+  })
+
+  it('2) mantiene el identificador N.8078183410 en el título — nunca se pierde al limpiar la fecha', () => {
+    const PRESTAMO_A = [
+      movement({ date: '2026-06-30', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 30/06/26' }),
+      movement({ date: '2026-07-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/07/26' }),
+      movement({ date: '2026-08-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26' }),
+    ]
+    const [candidate] = detectRecurrenceCandidates(PRESTAMO_A, OLD_REFERENCE_DATE)
+    expect(candidate.displayName).toBe('PRESTAMOS ADEUDO CUOTA N.8078183410')
+  })
+
+  it('3) el segundo préstamo mantiene N.8077731039 en su título, distinto del primero', () => {
+    const PRESTAMO_B = [
+      movement({ date: '2026-06-30', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 30/06/26' }),
+      movement({ date: '2026-07-31', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 31/07/26' }),
+      movement({ date: '2026-08-31', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 31/08/26' }),
+    ]
+    const [candidate] = detectRecurrenceCandidates(PRESTAMO_B, OLD_REFERENCE_DATE)
+    expect(candidate.displayName).toBe('PRESTAMOS ADEUDO CUOTA N.8077731039')
+  })
+
+  it('4) ambos siguen siendo identidades (merchant_key) distintas, con títulos igualmente distintos', () => {
+    const movements = [
+      movement({ date: '2026-06-30', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 30/06/26' }),
+      movement({ date: '2026-07-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/07/26' }),
+      movement({ date: '2026-08-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26' }),
+      movement({ date: '2026-06-30', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 30/06/26' }),
+      movement({ date: '2026-07-31', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 31/07/26' }),
+      movement({ date: '2026-08-31', amount: 141.37, description: 'PRESTAMOS ADEUDO CUOTA N.8077731039 31/08/26' }),
+    ]
+    const results = detectRecurrenceCandidates(movements, OLD_REFERENCE_DATE)
+    expect(results).toHaveLength(2)
+    expect(results.map((c) => c.merchantKey).sort()).toEqual(['PRESTAMOS ADEUDO CUOTA N.8077731039', 'PRESTAMOS ADEUDO CUOTA N.8078183410'])
+    expect(results.map((c) => c.displayName).sort()).toEqual(['PRESTAMOS ADEUDO CUOTA N.8077731039', 'PRESTAMOS ADEUDO CUOTA N.8078183410'])
+  })
+
+  it('8) stripTrailingDateSuffix nunca toca bank_transactions.description — es una función pura de presentación, nunca escribe nada', () => {
+    const original = 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26'
+    const cleaned = stripTrailingDateSuffix(original)
+    expect(cleaned).toBe('PRESTAMOS ADEUDO CUOTA N.8078183410')
+    expect(original).toBe('PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26') // el string de entrada no se muta
   })
 })
 

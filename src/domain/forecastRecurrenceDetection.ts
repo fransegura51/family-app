@@ -87,7 +87,11 @@ export const RECURRENCE_MIN_OCCURRENCES = 3
 // bank_transactions.description ni expenses: esto es solo la identidad DERIVADA que usa el detector.
 const TRAILING_DATE_SUFFIX = /\s+(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/
 
-function stripTrailingDateSuffix(text: string): string {
+// Exportada (Fase 1D-g.3): el mismo recorte que ya usa normalizeMerchantKey para la IDENTIDAD también
+// sirve, sin forzar mayúsculas, como nombre de PRESENTACIÓN — nunca una segunda regex de fecha. displayName
+// la reutiliza tal cual en groupByMerchant; FinanceScreen.tsx la reutiliza igual para el prefill mínimo
+// de "Añadir a Previsión" (Caso 2, sin histórico suficiente) — un único sitio decide qué es una fecha.
+export function stripTrailingDateSuffix(text: string): string {
   const match = text.match(TRAILING_DATE_SUFFIX)
   if (!match) return text
   const day = Number(match[1])
@@ -116,8 +120,12 @@ function groupByMerchant(movements: BankMovementForDetection[]): MerchantGroup[]
     const merchantKey = normalizeMerchantKey(m.description)
     const groupKey = `${m.accountId}::${merchantKey}::${m.currency}`
     const existing = groups.get(groupKey)
+    // Fase 1D-g.3 — displayName (el título que se ve en la tarjeta/formulario) recorta la MISMA fecha
+    // final que la identidad, pero SIN forzar mayúsculas: es un nombre para leer, no una clave de
+    // comparación. "31/08/26" del último cargo usado como muestra nunca es parte del nombre del pago.
+    const displayName = stripTrailingDateSuffix(m.description.trim().replace(/\s+/g, ' '))
     if (existing) existing.movements.push(m)
-    else groups.set(groupKey, { accountId: m.accountId, merchantKey, currency: m.currency, displayName: m.description.trim(), movements: [m] })
+    else groups.set(groupKey, { accountId: m.accountId, merchantKey, currency: m.currency, displayName, movements: [m] })
   }
   for (const g of groups.values()) g.movements.sort((a, b) => a.date.localeCompare(b.date))
   return [...groups.values()]

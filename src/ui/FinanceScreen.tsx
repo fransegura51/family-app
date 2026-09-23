@@ -141,15 +141,19 @@ import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/pr
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
 import { isRealIncome } from '@/domain/financeCompute'
+// Fase 1F.C — "Comparado con el periodo anterior": reutiliza groupSpending (reparto por categoría con
+// el mismo criterio padre/hija que ya usa Pepa) y comparablePrevious (misma aritmética de mes contable
+// y misma regla de corte por tramo que ya usa la voz de Pepa) — nunca se reimplementan.
+import { groupSpending, type FinanceData } from '@/domain/financeCompute'
+import { comparablePrevious, daysBetween, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
 import { isRefund } from '@/domain/refunds'
-import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase, purchaseNature } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, purchaseNature } from '@/domain/products'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
 import { partitionTicketLines } from '@/domain/ticketLines'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
 import { onManagersChanged, openManager } from '@/state/managers'
 import { listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
-import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import { balanceTrend, earliestTransactionDate } from '@/domain/balanceTrend'
 import {
   deleteProductPricesByReceipt,
@@ -2025,6 +2029,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
+  const [members, setMembers] = useState<FamilyMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [preset, setPreset] = useState<SpendRangePreset>('mes')
@@ -2033,11 +2038,12 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const [monthStartDay, setMonthStartDay] = useState(1)
 
   useEffect(() => {
-    Promise.all([listExpenses(), listBudgetCategories(), listTags()])
-      .then(([e, c, t]) => {
+    Promise.all([listExpenses(), listBudgetCategories(), listTags(), listFamilyMembers()])
+      .then(([e, c, t, m]) => {
         setExpenses(e)
         setCategories(c)
         setTags(t)
+        setMembers(m)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -2257,6 +2263,25 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
     conclusions.push(...extraPool)
   }
 
+  // Fase 1F.F — "Dinero destinado a cuentas de ahorro": SOLO la pata de ENTRADA de un traspaso interno
+  // (categoría "Movimientos internos" o hija suya, is_income=true, con ownerMemberId — el dueño de la
+  // cuenta que lo recibe, ya resuelto en el propio expense, igual convención que bank_accounts.ownerMemberId).
+  // Nunca se suma también la pata de SALIDA (evita contar el mismo traspaso dos veces), nunca entra en
+  // totalIncome/totalSpent/ahorro de arriba (esos ya excluyen todo movimiento interno, sin cambios) y
+  // nunca se convierte en ingreso ni en gasto de nadie. Terminología deliberadamente conservadora: el
+  // dinero movido este periodo puede ser ahorro acumulado de periodos anteriores, no necesariamente
+  // "generado" ahora — por eso nunca se dice "de tu ahorro de este mes".
+  const savingsDestinedByMember = new Map<string, number>()
+  for (const e of inRange) {
+    if (e.kind !== 'real' || !e.isIncome || !e.ownerMemberId) continue
+    if (!isInternalTransferCategory(e.category, categories)) continue
+    savingsDestinedByMember.set(e.ownerMemberId, (savingsDestinedByMember.get(e.ownerMemberId) ?? 0) + e.amount)
+  }
+  const savingsDestinedRows = [...savingsDestinedByMember.entries()]
+    .map(([memberId, amount]) => ({ member: members.find((m) => m.id === memberId), amount }))
+    .filter((r) => r.amount > 0.005)
+    .sort((a, b) => b.amount - a.amount)
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
@@ -2306,6 +2331,25 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
           {tasaAhorro !== null && <span className="muted"> · Tasa de ahorro {tasaAhorro.toFixed(0)}%</span>}
         </p>
       </div>
+
+      {/* Fase 1F.F — bloque aparte, nunca dentro de la tarjeta de Ahorro de arriba: es informativo (a
+          dónde ha ido dinero traspasado), no una segunda forma de calcular el ahorro. */}
+      {savingsDestinedRows.length > 0 && (
+        <div className="card event-card" style={{ marginTop: 8 }}>
+          <strong>🏦 Dinero destinado a cuentas de ahorro</strong>
+          <div style={{ marginTop: 6 }}>
+            {savingsDestinedRows.map((r) => (
+              <p key={r.member?.id ?? 'desconocido'} style={{ margin: '2px 0' }}>
+                {r.member?.name ?? 'Miembro desconocido'}: {r.amount.toFixed(2)} €
+              </p>
+            ))}
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+            Puede incluir ahorro acumulado en periodos anteriores, movido ahora — no es necesariamente
+            dinero generado en este periodo.
+          </p>
+        </div>
+      )}
 
       <h2 className="section-title">Conclusiones de Pepa</h2>
       <PepaConclusionsWidget conclusions={conclusions} onViewMovements={onViewMovements} />
@@ -2871,8 +2915,6 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
-  const [purchases, setPurchases] = useState<RawPurchase[]>([])
-  const [productNames, setProductNames] = useState<Map<string, string>>(new Map())
   // Petición real: "no me gusta que no cuadren Alimentación en Economía
   // y en Compras... es por los productos no alimenticios que se compran
   // en supermercados" — sin tocar la taxonomía de categorías (ver
@@ -2909,22 +2951,6 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         setAllPrices(prices)
         setAllProducts(products)
         setAllReceipts(receipts)
-        const foodReceiptIds = buildFoodReceiptIds(receipts, c)
-        const { nonFoodProductIds, foodProductIds } = buildProductKindSets(products)
-        setPurchases(
-          // Un pedido de Amazon que no sea de alimentación no debe
-          // entrar en el análisis de "¿por qué ha cambiado mi gasto?"
-          // de la cesta de tickets — uno que sí lo sea (café...) sí cuenta.
-          // Un producto marcado a mano como No alimentos tampoco cuenta,
-          // aunque se comprara en tienda física.
-          prices
-            .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds, foodProductIds))
-            .map((p) => {
-              const qty = Number(p.quantity)
-              return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
-            }),
-        )
-        setProductNames(new Map(products.map((pr) => [pr.id, pr.displayName])))
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -2933,7 +2959,9 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   if (loading) return <p className="muted">Cargando estadísticas…</p>
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
-  const periodLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
+  // Fase 1F.G — fecha visible en español (DD/MM/YYYY), nunca ISO crudo; from/to en sí siguen en ISO
+  // para el filtrado y para MovementsFilter, solo cambia cómo se enseña aquí.
+  const periodLabel = `${PRESET_LABELS[preset]} (${formatSpanishDate(from)} a ${formatSpanishDate(to)})`
   // Un traspaso entre cuentas propias de la familia no es gasto real
   // (ver mismo cambio en Resumen y Presupuesto Generales) — se excluye
   // aquí también para que categorías, etiquetas, D/N/Q y Fijo/Variable
@@ -3094,8 +3122,146 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         )}
       </div>
 
-      <EvolucionTemporal expenses={expenses} categories={categories} monthStartDay={monthStartDay} onViewMovements={onViewMovements} />
-      <PorQueHaCambiadoMiGasto purchases={purchases} productNames={productNames} onViewMovements={onViewMovements} />
+      <PeriodComparison expenses={expenses} categories={categories} preset={preset} from={from} to={to} monthStartDay={monthStartDay} />
+
+      <EvolucionTemporal expenses={expenses} categories={categories} monthStartDay={monthStartDay} preset={preset} onViewMovements={onViewMovements} />
+    </div>
+  )
+}
+
+// Fase 1F.C — "Comparado con el periodo anterior": compara el periodo elegido arriba con el mismo tipo
+// de periodo inmediatamente anterior (mes contable vs mes contable anterior, mes natural vs mes natural
+// anterior, nunca duraciones distintas), reutilizando comparablePrevious (financePeriod.ts) TAL CUAL —
+// la misma aritmética de mes contable y la misma regla de corte por tramo cuando el periodo actual no ha
+// terminado que ya usa la voz de Pepa — y groupSpending (financeCompute.ts) para el reparto por
+// categoría con el mismo criterio padre/hija que ya usa el análisis "por qué ha cambiado" de Pepa.
+function periodSpecForComparison(preset: SpendRangePreset, from: string, to: string): PeriodSpec {
+  switch (preset) {
+    case 'dia':
+      return { t: 'day', offset: 0 }
+    case 'semana':
+      return { t: 'week', offset: 0 }
+    case 'mes':
+    case 'mes_real':
+      return { t: 'month', offset: 0 }
+    case 'año':
+      return { t: 'year', offset: 0 }
+    case 'rango':
+    default:
+      return { t: 'last_days', n: daysBetween(from, to) + 1 }
+  }
+}
+
+interface CategoryDelta {
+  name: string
+  icon: string | null
+  before: number
+  after: number
+  delta: number
+  deltaPercent: number | null
+  isNew: boolean
+}
+
+function PeriodComparison({
+  expenses,
+  categories,
+  preset,
+  from,
+  to,
+  monthStartDay,
+}: {
+  expenses: Expense[]
+  categories: BudgetCategory[]
+  preset: SpendRangePreset
+  from: string
+  to: string
+  monthStartDay: number
+}) {
+  const today = new Date()
+  const todayStr = toDateStr(today)
+  const effectiveMonthStartDay = preset === 'mes_real' ? 1 : monthStartDay
+  const currentPeriod: ResolvedPeriod = {
+    spec: periodSpecForComparison(preset, from, to),
+    from,
+    to,
+    label: '',
+    ongoing: to > todayStr && from <= todayStr,
+  }
+  const cp = comparablePrevious(currentPeriod, today, effectiveMonthStartDay)
+
+  // Mismo criterio que el donut de categorías de arriba: solo gasto real, nunca ingresos ni
+  // movimientos internos entre cuentas propias de la familia — las devoluciones (is_income=true) ya
+  // quedan fuera igual que en el resto de Estadísticas, sin neteo por categoría (mismo tratamiento que
+  // ya tiene la vista de categorías).
+  const isComparableSpend = (e: Expense) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)
+  const currentRows = expenses.filter((e) => isComparableSpend(e) && e.expenseDate >= cp.current.from && e.expenseDate <= cp.current.to)
+  const previousRows = expenses.filter((e) => isComparableSpend(e) && e.expenseDate >= cp.previous.from && e.expenseDate <= cp.previous.to)
+
+  const financeData = { expenses, categories, receipts: [], prices: [], products: [], storeNames: [], monthStartDay } as unknown as FinanceData
+  const beforeByName = new Map(groupSpending(previousRows, financeData).map((g) => [g.name, g.amount]))
+  const afterByName = new Map(groupSpending(currentRows, financeData).map((g) => [g.name, g.amount]))
+  const names = new Set([...beforeByName.keys(), ...afterByName.keys()])
+
+  const deltas: CategoryDelta[] = [...names]
+    .map((name) => {
+      const before = beforeByName.get(name) ?? 0
+      const after = afterByName.get(name) ?? 0
+      const cat = categories.find((c) => c.name === name)
+      return {
+        name,
+        icon: cat?.icon ?? null,
+        before,
+        after,
+        delta: Math.round((after - before) * 100) / 100,
+        deltaPercent: before > 0 ? Math.round(((after - before) / before) * 1000) / 10 : null,
+        isNew: before === 0 && after > 0,
+      }
+    })
+    // both=0 no debería poder pasar (solo se listan nombres con gasto en alguno de los dos lados), pero
+    // se filtra por seguridad — nunca enseñar una categoría sin ningún gasto en ninguno de los periodos.
+    .filter((d) => d.before > 0 || d.after > 0)
+
+  const increases = deltas.filter((d) => d.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 4)
+  const decreases = deltas.filter((d) => d.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 4)
+
+  if (increases.length === 0 && decreases.length === 0) return null
+
+  function row(d: CategoryDelta) {
+    return (
+      <div key={d.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
+        <span>
+          {d.icon ? `${d.icon} ` : ''}
+          {d.name}
+        </span>
+        <span style={{ textAlign: 'right', fontSize: 13 }} className="muted">
+          {d.before.toFixed(2)} € → {d.after.toFixed(2)} €{' '}
+          <strong style={{ color: d.delta >= 0 ? '#b9770e' : '#1e8449' }}>
+            {d.isNew ? 'Nuevo gasto en este periodo' : `${d.delta >= 0 ? '+' : ''}${d.delta.toFixed(2)} € (${d.deltaPercent! >= 0 ? '+' : ''}${d.deltaPercent!.toFixed(0)}%)`}
+          </strong>
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="card event-card" style={{ marginTop: 12 }}>
+      <strong>Comparado con el periodo anterior</strong>
+      <p className="muted" style={{ margin: '4px 0 10px', fontSize: 12 }}>
+        {cp.previousLabel}
+        {cp.cutoff ? ' (mismo tramo de días transcurridos, el periodo actual todavía no ha terminado)' : ''}
+      </p>
+      {increases.length > 0 && (
+        <>
+          <p style={{ margin: '8px 0 2px', fontWeight: 600 }}>📈 Has gastado más</p>
+          {increases.map(row)}
+        </>
+      )}
+      {decreases.length > 0 && (
+        <>
+          <p style={{ margin: '10px 0 2px', fontWeight: 600 }}>📉 Has gastado menos</p>
+          {decreases.map(row)}
+        </>
+      )}
     </div>
   )
 }
@@ -3105,25 +3271,32 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
 // temporal debería ajustarse a la configuración del mes contable" — antes
 // siempre usaba el mes de calendario (día 1 al último), sin importar el
 // día de inicio elegido en Configuración.
+// Fase 1F.B — además, respeta el criterio ya elegido en el selector "📅 Fecha" de arriba: si está en
+// "Mes real" los 6 periodos son meses de calendario (día 1 al último), igual que hace rangeForPreset
+// con ese preset; con cualquier otro criterio (Mes contable incluido) se sigue usando el día de inicio
+// configurado, como antes — no se inventa un concepto de periodo nuevo.
 function EvolucionTemporal({
   expenses,
   categories,
   monthStartDay,
+  preset,
   onViewMovements,
 }: {
   expenses: Expense[]
   categories: BudgetCategory[]
   monthStartDay: number
+  preset: SpendRangePreset
   onViewMovements: (f: MovementsFilter) => void
 }) {
+  const effectiveMonthStartDay = preset === 'mes_real' ? 1 : monthStartDay
   const months = useMemo(() => {
-    return accountingMonthsBack(6, monthStartDay).map((p) => ({
+    return accountingMonthsBack(6, effectiveMonthStartDay).map((p) => ({
       key: `${p.monthLabelYear}-${String(p.monthLabelMonth0 + 1).padStart(2, '0')}`,
       label: `${MONTH_LABELS[p.monthLabelMonth0]} ${p.monthLabelYear}`,
       from: p.from,
       to: p.to,
     }))
-  }, [monthStartDay])
+  }, [effectiveMonthStartDay])
 
   // FASE 6D.3 — mismo criterio que Resumen: una devolución no es ingreso nuevo (isRealIncome la excluye); el gasto sigue siendo
   // el bruto de siempre (nunca incluye una devolución, es una fila is_income=true), y el ahorro/balance usa el neto.
@@ -3163,89 +3336,6 @@ function EvolucionTemporal({
           </div>
         ))}
       </div>
-    </div>
-  )
-}
-
-// Skill de Pepa, punto 14: solo se muestra si hay datos de tickets
-// suficientes en los dos meses a comparar — si no, se explica qué
-// falta en vez de enseñar un desglose vacío o inventado.
-function PorQueHaCambiadoMiGasto({
-  purchases,
-  productNames,
-  onViewMovements,
-}: {
-  purchases: RawPurchase[]
-  productNames: Map<string, string>
-  onViewMovements: (f: MovementsFilter) => void
-}) {
-  const now = new Date()
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const previousMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
-
-  const hasCurrent = purchases.some((p) => p.recordedDate.startsWith(currentMonth))
-  const hasPrevious = purchases.some((p) => p.recordedDate.startsWith(previousMonth))
-
-  return (
-    <div className="card event-card">
-      <strong>¿Por qué ha cambiado mi gasto?</strong>
-      {!hasCurrent || !hasPrevious ? (
-        <p className="muted" style={{ marginTop: 6 }}>
-          Todavía no hay tickets suficientes este mes y el anterior para desglosar el cambio de gasto — en cuanto haya
-          tickets de ambos meses, Pepa podrá explicar cuánto se debe a precio, a cantidad o a productos nuevos.
-        </p>
-      ) : (
-        (() => {
-          const b = decomposeSpendChange(purchases, currentMonth, previousMonth)
-          const delta = b.currentTotal - b.previousTotal
-          const topMovers = compareMonths(averagePricesByMonth(purchases), currentMonth, previousMonth)
-            .filter((c) => c.previousPrice != null && c.deltaPercent != null)
-            .sort((a, b2) => Math.abs(b2.deltaPercent!) - Math.abs(a.deltaPercent!))
-            .slice(0, 3)
-          return (
-            <>
-              <p className="muted" style={{ margin: '4px 0 10px', fontSize: 12 }}>
-                Análisis basado en los productos leídos de tus tickets — puede no coincidir exactamente con el banco.
-              </p>
-              <p style={{ margin: '2px 0' }}>
-                Cesta de tickets: {b.previousTotal.toFixed(2)} € → {b.currentTotal.toFixed(2)} € ({delta >= 0 ? '+' : ''}
-                {delta.toFixed(2)} €)
-              </p>
-              <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
-                <li>Por cambio de precio: {b.priceEffect >= 0 ? '+' : ''}{b.priceEffect.toFixed(2)} €</li>
-                <li>Por comprar más o menos cantidad: {b.quantityEffect >= 0 ? '+' : ''}{b.quantityEffect.toFixed(2)} €</li>
-                <li>Por productos nuevos: +{b.newProductsEffect.toFixed(2)} €</li>
-                <li>Por productos que ya no se compran: {b.droppedProductsEffect.toFixed(2)} €</li>
-              </ul>
-              {topMovers.length > 0 && (
-                <>
-                  <p className="muted" style={{ margin: '10px 0 2px', fontSize: 12 }}>
-                    Productos que más han cambiado de precio:
-                  </p>
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-                    {topMovers.map((c) => (
-                      <li key={c.productId}>
-                        {productNames.get(c.productId) ?? '?'}: {c.previousPrice!.toFixed(2)} € → {c.currentPrice!.toFixed(2)} € (
-                        {c.deltaPercent! >= 0 ? '+' : ''}
-                        {c.deltaPercent!.toFixed(0)}%)
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <button
-                type="button"
-                className="link-button"
-                style={{ marginTop: 6 }}
-                onClick={() => onViewMovements({ label: `Tickets — ${currentMonth}`, from: `${currentMonth}-01`, to: `${currentMonth}-31` })}
-              >
-                Ver movimientos de este mes →
-              </button>
-            </>
-          )
-        })()
-      )}
     </div>
   )
 }
@@ -8580,7 +8670,10 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [horizon, setHorizon] = useState<ForecastHorizon>('30d')
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingPayment, setEditingPayment] = useState<ForecastPaymentWithReminders | null>(null)
-  const [managementOpen, setManagementOpen] = useState(false)
+  // Fase 1F.A2 — "Gestionar pagos previstos" como listado aparte desaparece: Editar/Desactivar/Reactivar/
+  // Eliminar viven ahora dentro de cada tarjeta de "Próximos pagos", tras pulsar su "⋯" (una sola tarjeta
+  // abierta a la vez, igual que el patrón ya usado en FamilyScreen).
+  const [occurrenceMenuKey, setOccurrenceMenuKey] = useState<string | null>(null)
   // Fase 1D-e — conciliación bancaria: movimientos reales + qué expense ya está usado por CUALQUIER
   // ocurrencia (para que el motor de candidatos nunca proponga dos veces el mismo movimiento). Estado
   // aparte de payments/overrides porque se recarga solo tras confirmar/desconciliar, no en cada reload().
@@ -8833,6 +8926,69 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     }
   }
 
+  // Fase 1F.A2 — mismo contenido/cálculos que tenía la extinta "Gestionar pagos previstos"
+  // (Fase 1D-a/b/c/d): importe×pagos, frecuencia, próximo/último pago, "N de M restantes" para un plan
+  // finito; cobros por ciclo/"Se renueva" para una obligación fraccionada. Ahora vive dentro del "⋯" de
+  // cada tarjeta de "Próximos pagos", nunca en una segunda lista aparte.
+  function renderPaymentPlanSummary(p: ForecastPaymentWithReminders, overrides: ForecastOccurrenceOverride[]) {
+    const finished = isForecastPaymentFinished(p, overrides, today)
+    const recurrenceForm = p.recurrenceRule ? parseRecurrenceRuleToFormState(p.recurrenceRule, p.dueDate) : null
+    const recurrenceLabel = recurrenceForm ? RECURRENCE_SHORT_LABEL[recurrenceForm.freqOption] : ''
+    // Un plan finito de verdad (no un pago único —totalInstallments=1— ni una serie indefinida como
+    // Seguro Coche Ibiza —totalInstallments=null—): solo entonces se muestra la tarjeta compacta de plan.
+    const total = totalInstallments(p)
+    const isPlan = !!p.recurrenceRule && total != null && total > 1
+    // "N de M restantes" (Fase 1D-a): cuenta por fecha, nunca afirma que las pasadas están pagadas.
+    const remaining = isPlan ? remainingInstallments(p, overrides, today) : null
+    const nextPlanOccurrence = isPlan ? nextForecastOccurrence(p, overrides, today) : null
+    // Fase 1D-c: obligación con cargos fraccionados por ciclo (el caso del seguro) — eje distinto de
+    // isPlan (que es "cuántas renovaciones", esto es "cuántos cargos por renovación").
+    const hasSplit = p.installments.length > 0
+    const cycleKnownEstimatedTotal = p.installments.reduce((sum, i) => sum + (i.amountStatus !== 'unknown' ? (i.amount ?? 0) : 0), 0)
+    const cycleHasUnknown = p.installments.some((i) => i.amountStatus === 'unknown')
+    return (
+      <>
+        {(!p.active || finished) && (
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+            {!p.active ? 'Desactivada' : 'Finalizada'}
+          </p>
+        )}
+        {isPlan ? (
+          <>
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+              {p.amountStatus === 'unknown' ? 'Importe pendiente' : `${p.amountStatus === 'estimated' ? '≈ ' : ''}${formatForecastAmount(p.amount ?? 0, p.currency)}`} × {total}{' '}
+              pagos
+            </p>
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+              {recurrenceLabel}
+              {nextPlanOccurrence ? ` · Próximo pago: ${formatSpanishDate(nextPlanOccurrence.dueDate)}` : ''}
+              {recurrenceForm?.untilDate ? ` · Último pago: ${formatSpanishDate(recurrenceForm.untilDate)}` : ''}
+            </p>
+            {remaining != null && (
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                {remaining} de {total} restantes
+              </p>
+            )}
+          </>
+        ) : hasSplit ? (
+          <>
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+              {cycleHasUnknown ? 'Importe pendiente' : formatForecastAmount(cycleKnownEstimatedTotal, p.currency)} · {p.installments.length} cobros por ciclo
+            </p>
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+              {recurrenceLabel ? `Se renueva: ${recurrenceLabel}` : ''}
+            </p>
+          </>
+        ) : (
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+            Vence: {formatSpanishDate(p.dueDate)}
+            {recurrenceLabel ? ` · ${recurrenceLabel}` : ''}
+          </p>
+        )}
+      </>
+    )
+  }
+
   function renderOccurrenceRow(o: ForecastOccurrence) {
     const parent = payments.find((p) => p.id === o.forecastPaymentId)
     const category = categories.find((c) => c.id === o.categoryId)
@@ -8842,15 +8998,34 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     const recurrenceLabel = parent?.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseRecurrenceRuleToFormState(parent.recurrenceRule, parent.dueDate).freqOption] : ''
     // Fase 1D-c: "1/2", "2/2"... para un cargo concreto de una obligación fraccionada por ciclo.
     const chargeLabel = o.installmentSequenceIndex != null && parent ? `${o.installmentSequenceIndex}/${parent.installments.length} — ` : ''
+    const rowKey = `${o.forecastPaymentId}-${o.occurrenceDate}-${o.installmentSequenceIndex ?? 0}`
+    const menuOpen = occurrenceMenuKey === rowKey
     return (
-      <div key={`${o.forecastPaymentId}-${o.occurrenceDate}-${o.installmentSequenceIndex ?? 0}`} className="card task-card">
+      <div key={rowKey} className="card task-card">
         <div className="task-card-main">
-          <strong>
-            {chargeLabel}
-            {o.title}
-            {/* Fase 1D-e: conciliada con un movimiento real del banco — nunca automático, siempre confirmado a mano. */}
-            {o.matchedExpenseId && <span style={{ color: '#1e8449' }}> · ✓ Cobrado</span>}
-          </strong>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+            <strong>
+              {chargeLabel}
+              {o.title}
+              {/* Fase 1D-e: conciliada con un movimiento real del banco — nunca automático, siempre confirmado a mano. */}
+              {o.matchedExpenseId && <span style={{ color: '#1e8449' }}> · ✓ Cobrado</span>}
+            </strong>
+            {/* Fase 1F.A2 — Editar/Desactivar/Reactivar/Eliminar de la extinta "Gestionar pagos previstos",
+                ahora aquí, reutilizando EXACTAMENTE los mismos manejadores; solo si hay pago padre (siempre
+                lo hay salvo estado transitorio). */}
+            {parent && (
+              <button
+                type="button"
+                className="link-button"
+                aria-label={`Más acciones — ${o.title}`}
+                aria-expanded={menuOpen}
+                style={{ fontSize: 18, padding: '0 4px', lineHeight: 1, flexShrink: 0 }}
+                onClick={() => setOccurrenceMenuKey((cur) => (cur === rowKey ? null : rowKey))}
+              >
+                ⋯
+              </button>
+            )}
+          </div>
           {o.amountStatus === 'unknown' ? (
             <p className="muted" style={{ margin: '2px 0' }}>Importe pendiente</p>
           ) : (
@@ -8861,7 +9036,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
             </p>
           )}
           <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
-            {sameDates ? o.dueDate : `Pago previsto: ${o.expectedPaymentDate} · Vence: ${o.dueDate}`}
+            {sameDates ? formatSpanishDate(o.dueDate) : `Pago previsto: ${formatSpanishDate(o.expectedPaymentDate)} · Vence: ${formatSpanishDate(o.dueDate)}`}
           </p>
           {(category || recurrenceLabel) && (
             <p className="muted" style={{ fontSize: 12, margin: 0 }}>
@@ -8885,86 +9060,31 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               </button>
             </div>
           )}
-        </div>
-      </div>
-    )
-  }
-
-  function renderManagementRow(p: ForecastPaymentWithReminders) {
-    const overrides = overridesByPayment.get(p.id) ?? []
-    const finished = isForecastPaymentFinished(p, overrides, today)
-    const category = categories.find((c) => c.id === p.categoryId)
-    const recurrenceForm = p.recurrenceRule ? parseRecurrenceRuleToFormState(p.recurrenceRule, p.dueDate) : null
-    const recurrenceLabel = recurrenceForm ? RECURRENCE_SHORT_LABEL[recurrenceForm.freqOption] : ''
-    // Un plan finito de verdad (no un pago único —totalInstallments=1— ni una serie indefinida como
-    // Seguro Coche Ibiza —totalInstallments=null—): solo entonces se muestra la tarjeta compacta de plan.
-    const total = totalInstallments(p)
-    const isPlan = !!p.recurrenceRule && total != null && total > 1
-    // "N de M restantes" (Fase 1D-a): cuenta por fecha, nunca afirma que las pasadas están pagadas.
-    const remaining = isPlan ? remainingInstallments(p, overrides, today) : null
-    // Ajuste UX tras certificación móvil — terminología: un plan finito (p. ej. IBI en 6 pagos) tiene
-    // "Próximo pago"/"Último pago", nunca "Próxima renovación" (eso solo tiene sentido para una
-    // obligación que de verdad se renueva sin fecha de fin, el caso hasSplit de más abajo).
-    const nextPlanOccurrence = isPlan ? nextForecastOccurrence(p, overrides, today) : null
-    // Fase 1D-c: obligación con cargos fraccionados por ciclo (el caso del seguro) — eje distinto de
-    // isPlan (que es "cuántas renovaciones", esto es "cuántos cargos por renovación").
-    const hasSplit = p.installments.length > 0
-    const cycleKnownEstimatedTotal = p.installments.reduce((sum, i) => sum + (i.amountStatus !== 'unknown' ? (i.amount ?? 0) : 0), 0)
-    const cycleHasUnknown = p.installments.some((i) => i.amountStatus === 'unknown')
-    return (
-      <div key={p.id} className="card task-card">
-        <div className="task-card-main">
-          <strong>
-            {category ? `${category.icon} ` : ''}
-            {p.title}
-            {!p.active && <span className="muted"> · Desactivada</span>}
-            {p.active && finished && <span className="muted"> · Finalizada</span>}
-          </strong>
-          {isPlan ? (
-            <>
-              <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
-                {p.amountStatus === 'unknown' ? 'Importe pendiente' : `${p.amountStatus === 'estimated' ? '≈ ' : ''}${formatForecastAmount(p.amount ?? 0, p.currency)}`} × {total}{' '}
-                pagos
-              </p>
-              <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
-                {recurrenceLabel}
-                {nextPlanOccurrence ? ` · Próximo pago: ${formatSpanishDate(nextPlanOccurrence.dueDate)}` : ''}
-                {recurrenceForm?.untilDate ? ` · Último pago: ${formatSpanishDate(recurrenceForm.untilDate)}` : ''}
-              </p>
-              {remaining != null && (
-                <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                  {remaining} de {total} restantes
-                </p>
-              )}
-            </>
-          ) : hasSplit ? (
-            <>
-              <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
-                {cycleHasUnknown ? 'Importe pendiente' : formatForecastAmount(cycleKnownEstimatedTotal, p.currency)} · {p.installments.length} cobros por ciclo
-              </p>
-              <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
-                {recurrenceLabel ? `Se renueva: ${recurrenceLabel}` : ''}
-              </p>
-            </>
-          ) : (
-            <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
-              Vence: {p.dueDate}
-              {recurrenceLabel ? ` · ${recurrenceLabel}` : ''}
-            </p>
+          {parent && menuOpen && (
+            <div style={{ marginTop: 6 }}>
+              {renderPaymentPlanSummary(parent, overridesByPayment.get(parent.id) ?? [])}
+              <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    setEditingPayment(parent)
+                    setOccurrenceMenuKey(null)
+                  }}
+                >
+                  Editar
+                </button>
+                {parent.active ? (
+                  <ConfirmButton label="Desactivar" onConfirm={() => setForecastPaymentActive(parent, false).then(reload)} />
+                ) : (
+                  <button type="button" className="link-button" onClick={() => setForecastPaymentActive(parent, true).then(reload)}>
+                    Reactivar
+                  </button>
+                )}
+                <ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(parent.calendarEventId, parent.id).then(reload)} />
+              </div>
+            </div>
           )}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="link-button" onClick={() => setEditingPayment(p)}>
-            Editar
-          </button>
-          {p.active ? (
-            <ConfirmButton label="Desactivar" onConfirm={() => setForecastPaymentActive(p, false).then(reload)} />
-          ) : (
-            <button type="button" className="link-button" onClick={() => setForecastPaymentActive(p, true).then(reload)}>
-              Reactivar
-            </button>
-          )}
-          <ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(p.calendarEventId, p.id).then(reload)} />
         </div>
       </div>
     )
@@ -8980,7 +9100,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       </p>
       {error && <p className="error">{error}</p>}
 
-      <button type="button" className="link-button" onClick={() => setShowAddForm(true)}>
+      <button type="button" style={{ marginBottom: 8 }} onClick={() => setShowAddForm(true)}>
         + Añadir pago
       </button>
 
@@ -8994,6 +9114,42 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
         </div>
       ) : (
         <>
+          {/* Fase 1F.A — "Visión 12 meses" ahora antes del selector de horizonte: detectar qué meses
+              vienen más cargados es lo primero que se quiere ver, independientemente del horizonte elegido
+              abajo. Mismos cálculos de siempre (monthSlots/forecastByMonth), sin tocar la lógica. */}
+          <h2 className="section-title" style={{ marginTop: 12 }}>
+            Visión 12 meses
+          </h2>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+            {monthSlots.map((m) => (
+              <div key={m.key} className="card" style={{ minWidth: 92, flexShrink: 0, padding: '10px 12px' }}>
+                <strong style={{ fontSize: 13 }}>{m.label}</strong>
+                {m.totals.length === 0 && (
+                  <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+                    —
+                  </p>
+                )}
+                {m.totals.map((t) => (
+                  <div key={t.currency} style={{ marginTop: 4 }}>
+                    {t.knownTotal > 0 && (
+                      <p style={{ margin: 0, fontSize: 13 }}>{formatForecastAmount(t.knownTotal, t.currency)}</p>
+                    )}
+                    {t.estimatedTotal > 0 && (
+                      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                        ≈ {formatForecastAmount(t.estimatedTotal, t.currency)}
+                      </p>
+                    )}
+                    {t.unknownCount > 0 && (
+                      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                        {t.unknownCount} pendiente{t.unknownCount === 1 ? '' : 's'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
           <div className="filter-row" style={{ marginTop: 12 }}>
             {HORIZON_OPTIONS.map((h) => (
               <button key={h.key} type="button" className={'chip' + (horizon === h.key ? ' chip-active' : '')} onClick={() => setHorizon(h.key)}>
@@ -9099,6 +9255,90 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
             </>
           )}
 
+          {/* Independiente de si el acordeón de arriba está abierto/cerrado o de cuántos candidatos
+              queden: "Gestionar movimiento" es un paso propio que sigue vivo aunque el resto de la
+              sección de conciliación cambie de forma mientras se recarga. */}
+          {managing && (
+            <ManageReconciledExpense
+              expenseId={managing.expenseId}
+              forecastCategoryId={managing.forecastCategoryId}
+              categories={categories}
+              tags={tags}
+              onClose={() => setManaging(null)}
+              onDone={() => {
+                setManaging(null)
+                reloadReconciliation()
+              }}
+            />
+          )}
+
+          <h2 className="section-title" style={{ marginTop: 16 }}>
+            Próximos pagos
+          </h2>
+          <div className="event-list">
+            {upcomingOccurrences.map(renderOccurrenceRow)}
+            {upcomingOccurrences.length === 0 && <p className="muted">Nada previsto en este periodo.</p>}
+          </div>
+
+          {/* Fase 1E.2 — vista COMPLEMENTARIA, nunca sustituye "Próximos pagos" de arriba — solo aparece si
+              hay al menos un préstamo clasificado. Fase 1F.A3: se mantiene solo con datos adicionales del
+              préstamo (capital pendiente, interés, cuotas, fecha fin) — la cuota ya sale en "Próximos pagos". */}
+          {loanCards.length > 0 && (
+            <>
+              <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setLoanSectionOpen((v) => !v)}>
+                {loanSectionOpen ? '▾' : '▸'} 🏦 Préstamos e hipotecas
+              </button>
+              {loanSectionOpen && (
+                <div className="event-list" style={{ marginTop: 8 }}>
+                  {loanCards.map(({ loan, payment: p }) => {
+                    const freqLabel = p.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseRecurrenceRuleToFormState(p.recurrenceRule, p.dueDate).freqOption] : ''
+                    const hasAnyDetail = loan.outstandingPrincipalCents != null || loan.remainingInstallments != null || loan.maturityDate != null || loan.interestRateBps != null
+                    return (
+                      <div key={loan.id} className="card" style={{ padding: 12, marginBottom: 8 }}>
+                        <strong>{p.title}</strong>
+                        <p style={{ margin: '2px 0' }}>
+                          {p.amount != null ? formatForecastAmount(p.amount, p.currency) : 'Importe pendiente'}
+                          {freqLabel ? ` / ${freqLabel.toLowerCase()}` : ''}
+                        </p>
+                        {hasAnyDetail ? (
+                          <>
+                            {loan.outstandingPrincipalCents != null && loan.principalAsOfDate && (
+                              <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                                Capital pendiente: {formatForecastAmount(loan.outstandingPrincipalCents / 100, p.currency)} a fecha {formatSpanishDate(loan.principalAsOfDate)}
+                              </p>
+                            )}
+                            {loan.remainingInstallments != null && (
+                              <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                                {loan.remainingInstallments} cuota{loan.remainingInstallments === 1 ? '' : 's'} pendiente{loan.remainingInstallments === 1 ? '' : 's'}
+                              </p>
+                            )}
+                            {loan.maturityDate && (
+                              <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                                Finaliza {formatSpanishDate(loan.maturityDate)}
+                              </p>
+                            )}
+                            {loan.interestRateBps != null && (
+                              <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                                Interés{loan.interestType ? ` ${LOAN_INTEREST_TYPE_LABELS[loan.interestType].toLowerCase()}` : ''} {formatInterestBpsToPercent(loan.interestRateBps)}%
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                            Datos del préstamo incompletos
+                          </p>
+                        )}
+                        <button type="button" className="link-button" style={{ marginTop: 4 }} onClick={() => setEditingPayment(p)}>
+                          {hasAnyDetail ? 'Ver / editar datos del préstamo' : 'Completar datos'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
           {/* Fase 1D-g — igual de discreta que la conciliación bancaria de arriba: solo aparece si hay
               algo que proponer, nunca un aviso al abrir Economía. PEPA nunca crea nada aquí — "Revisar"
               solo abre el formulario normal de "Nuevo pago previsto" ya precargado. */}
@@ -9144,133 +9384,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               )}
             </>
           )}
-
-          {/* Independiente de si el acordeón de arriba está abierto/cerrado o de cuántos candidatos
-              queden: "Gestionar movimiento" es un paso propio que sigue vivo aunque el resto de la
-              sección de conciliación cambie de forma mientras se recarga. */}
-          {managing && (
-            <ManageReconciledExpense
-              expenseId={managing.expenseId}
-              forecastCategoryId={managing.forecastCategoryId}
-              categories={categories}
-              tags={tags}
-              onClose={() => setManaging(null)}
-              onDone={() => {
-                setManaging(null)
-                reloadReconciliation()
-              }}
-            />
-          )}
-
-          <h2 className="section-title" style={{ marginTop: 16 }}>
-            Próximos pagos
-          </h2>
-          <div className="event-list">
-            {upcomingOccurrences.map(renderOccurrenceRow)}
-            {upcomingOccurrences.length === 0 && <p className="muted">Nada previsto en este periodo.</p>}
-          </div>
-
-          <h2 className="section-title" style={{ marginTop: 16 }}>
-            Visión 12 meses
-          </h2>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-            {monthSlots.map((m) => (
-              <div key={m.key} className="card" style={{ minWidth: 92, flexShrink: 0, padding: '10px 12px' }}>
-                <strong style={{ fontSize: 13 }}>{m.label}</strong>
-                {m.totals.length === 0 && (
-                  <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-                    —
-                  </p>
-                )}
-                {m.totals.map((t) => (
-                  <div key={t.currency} style={{ marginTop: 4 }}>
-                    {t.knownTotal > 0 && (
-                      <p style={{ margin: 0, fontSize: 13 }}>{formatForecastAmount(t.knownTotal, t.currency)}</p>
-                    )}
-                    {t.estimatedTotal > 0 && (
-                      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                        ≈ {formatForecastAmount(t.estimatedTotal, t.currency)}
-                      </p>
-                    )}
-                    {t.unknownCount > 0 && (
-                      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                        {t.unknownCount} pendiente{t.unknownCount === 1 ? '' : 's'}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
         </>
-      )}
-
-      {/* Fase 1E.2 — vista COMPLEMENTARIA, nunca sustituye "Próximos pagos" de arriba — solo aparece si
-          hay al menos un préstamo clasificado. */}
-      {loanCards.length > 0 && (
-        <>
-          <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setLoanSectionOpen((v) => !v)}>
-            {loanSectionOpen ? '▾' : '▸'} 🏦 Préstamos e hipotecas
-          </button>
-          {loanSectionOpen && (
-            <div className="event-list" style={{ marginTop: 8 }}>
-              {loanCards.map(({ loan, payment: p }) => {
-                const freqLabel = p.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseRecurrenceRuleToFormState(p.recurrenceRule, p.dueDate).freqOption] : ''
-                const hasAnyDetail = loan.outstandingPrincipalCents != null || loan.remainingInstallments != null || loan.maturityDate != null || loan.interestRateBps != null
-                return (
-                  <div key={loan.id} className="card" style={{ padding: 12, marginBottom: 8 }}>
-                    <strong>{p.title}</strong>
-                    <p style={{ margin: '2px 0' }}>
-                      {p.amount != null ? formatForecastAmount(p.amount, p.currency) : 'Importe pendiente'}
-                      {freqLabel ? ` / ${freqLabel.toLowerCase()}` : ''}
-                    </p>
-                    {hasAnyDetail ? (
-                      <>
-                        {loan.outstandingPrincipalCents != null && loan.principalAsOfDate && (
-                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
-                            Capital pendiente: {formatForecastAmount(loan.outstandingPrincipalCents / 100, p.currency)} a fecha {formatSpanishDate(loan.principalAsOfDate)}
-                          </p>
-                        )}
-                        {loan.remainingInstallments != null && (
-                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
-                            {loan.remainingInstallments} cuota{loan.remainingInstallments === 1 ? '' : 's'} pendiente{loan.remainingInstallments === 1 ? '' : 's'}
-                          </p>
-                        )}
-                        {loan.maturityDate && (
-                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
-                            Finaliza {formatSpanishDate(loan.maturityDate)}
-                          </p>
-                        )}
-                        {loan.interestRateBps != null && (
-                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
-                            Interés{loan.interestType ? ` ${LOAN_INTEREST_TYPE_LABELS[loan.interestType].toLowerCase()}` : ''} {formatInterestBpsToPercent(loan.interestRateBps)}%
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
-                        Datos del préstamo incompletos
-                      </p>
-                    )}
-                    <button type="button" className="link-button" style={{ marginTop: 4 }} onClick={() => setEditingPayment(p)}>
-                      {hasAnyDetail ? 'Ver / editar' : 'Completar datos'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setManagementOpen((v) => !v)}>
-        {managementOpen ? '▾' : '▸'} Gestionar pagos previstos
-      </button>
-      {managementOpen && (
-        <div className="event-list" style={{ marginTop: 8 }}>
-          {payments.map(renderManagementRow)}
-          {payments.length === 0 && <p className="muted">Todavía no hay ningún pago previsto.</p>}
-        </div>
       )}
 
       {(showAddForm || editingPayment) && (

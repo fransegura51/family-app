@@ -46,7 +46,7 @@ import { listBudgetCategories } from '@/data/finance'
 import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodPurchase, isLikelyAlcohol, purchaseNature } from '@/domain/products'
 import { normalize } from '@/domain/voiceQuery'
 import { StoreIcon } from '@/ui/StoreIcon'
-import { averagePricesByMonth, basketTotal, compareMonths } from '@/domain/priceTrends'
+import { averagePricesByMonth, basketTotal, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
 import { BudgetsTab, ReceiptsTab, type MovementsFilter } from '@/ui/FinanceScreen'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
 import { setPendingMovementsFilter } from '@/state/pendingMovementsFilter'
@@ -54,6 +54,7 @@ import { onManagersChanged, openManager } from '@/state/managers'
 import type {
   Product,
   ProductPrice,
+  Receipt,
   ShoppingItem,
   ShoppingItemPriority,
   ShoppingItemStatus,
@@ -256,7 +257,7 @@ export function ShoppingScreen() {
         </p>
       )}
 
-      {tab === 'Inicio' && <ComprasInicioTab onNavigate={setTab} />}
+      {tab === 'Inicio' && <ComprasInicioTab onNavigate={setTab} onViewMovements={handleViewMovements} />}
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Historial' && <HistoryTab />}
       {tab === 'Tickets' && <ReceiptsTab />}
@@ -267,7 +268,7 @@ export function ShoppingScreen() {
   )
 }
 
-function ComprasInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void }) {
+function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: SubTab) => void; onViewMovements: (f: MovementsFilter) => void }) {
   const shortcuts: { tab: SubTab; body: string }[] = [
     { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.' },
     { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.' },
@@ -277,30 +278,180 @@ function ComprasInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void })
   // Petición real: extender el pastel también a estas tarjetas de
   // acceso rápido, igual que Inicio/Eventos — un color por tarjeta.
   const cardColors = pastelPalette(shortcuts.length)
-  return (
-    <div className="event-list">
-      {shortcuts.map((s, i) => {
-        const meta = COMPRAS_MENU_ITEM_META[s.tab]
-        return (
-          <button
-            key={s.tab}
-            type="button"
-            className="section-shortcut-card"
-            style={{ background: cardColors[i] }}
-            onClick={() => onNavigate(s.tab)}
-          >
-            <span className="section-shortcut-card-icon" aria-hidden="true">
-              {meta.icon}
-            </span>
-            <span>
-              <strong>{meta.label}</strong>
-              <p className="muted" style={{ margin: '4px 0 0' }}>
-                {s.body}
-              </p>
-            </span>
-          </button>
+
+  // Fase 1F.E — "🛒 PEPA analiza tus compras": mismos datos y mismo cálculo (cesta de tickets de
+  // alimentación) que ya usaba "¿Por qué ha cambiado mi gasto?" en Economía → Estadísticas antes de
+  // mudarse aquí (Fase 1F.D) — nunca se cambia el criterio de qué cuenta como compra de alimentación.
+  const [purchases, setPurchases] = useState<RawPurchase[]>([])
+  const [productNames, setProductNames] = useState<Map<string, string>>(new Map())
+  const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [loadingAnalysis, setLoadingAnalysis] = useState(true)
+
+  useEffect(() => {
+    Promise.all([listBudgetCategories(), listAllProductPrices(), listProducts(), listReceipts()])
+      .then(([categories, prices, products, receiptList]) => {
+        setReceipts(receiptList)
+        const foodReceiptIds = buildFoodReceiptIds(receiptList, categories)
+        const { nonFoodProductIds, foodProductIds } = buildProductKindSets(products)
+        setPurchases(
+          prices
+            .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds, foodProductIds))
+            .map((p) => {
+              const qty = Number(p.quantity)
+              return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
+            }),
         )
-      })}
+        setProductNames(new Map(products.map((pr) => [pr.id, pr.displayName])))
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAnalysis(false))
+  }, [])
+
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  // Mismo cálculo que ya usa Historial para la cesta del mes (basketTotal, domain/priceTrends) — no se
+  // inventa un segundo criterio de "cuánto llevas gastado este mes".
+  const currentBasket = basketTotal(purchases, currentMonth)
+  const receiptsThisMonth = receipts.filter((r) => r.receiptDate.startsWith(currentMonth)).length
+
+  return (
+    <div>
+      <div className="event-list">
+        {shortcuts.map((s, i) => {
+          const meta = COMPRAS_MENU_ITEM_META[s.tab]
+          return (
+            <button
+              key={s.tab}
+              type="button"
+              className="section-shortcut-card"
+              style={{ background: cardColors[i] }}
+              onClick={() => onNavigate(s.tab)}
+            >
+              <span className="section-shortcut-card-icon" aria-hidden="true">
+                {meta.icon}
+              </span>
+              <span>
+                <strong>{meta.label}</strong>
+                <p className="muted" style={{ margin: '4px 0 0' }}>
+                  {s.body}
+                </p>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Fase 1F.E — bloque de análisis DEBAJO de los 4 accesos de siempre, nunca los sustituye ni es una
+          segunda pantalla de estadísticas (esa sigue siendo "Estadística compras", sin tocar). Nombre
+          deliberadamente distinto del bloque equivalente de Economía (Resumen) para no confundir las
+          dos secciones. */}
+      <h2 className="section-title" style={{ marginTop: 16 }}>
+        🛒 PEPA analiza tus compras
+      </h2>
+      {/* Pensado para llevar la ilustración de PEPA en el súper revisando un ticket, con un bocadillo
+          vacío — mismo patrón que .pepa-conclusion-note/.pepa-conclusion-bubble-content ya usado en
+          Economía → Resumen (styles.css, FinanceScreen.tsx PepaConclusionsWidget). Ese archivo de imagen
+          todavía no existe en el repo (se buscó en src/assets y no hay ninguna escena así) — queda
+          preparado para cuando se suministre, sin generar ni inventar ninguna imagen nueva. */}
+      {loadingAnalysis ? (
+        <p className="muted">Cargando…</p>
+      ) : (
+        <>
+          <div className="card event-card">
+            <p style={{ margin: 0 }}>
+              Este mes llevas {currentBasket.toFixed(2)} € registrados en la cesta de tickets de alimentación
+              {receiptsThisMonth > 0 ? ` (${receiptsThisMonth} ticket${receiptsThisMonth === 1 ? '' : 's'})` : ''}.
+            </p>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <PorQueHaCambiadoMiCompra purchases={purchases} productNames={productNames} onViewMovements={onViewMovements} />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Fase 1F.D — mudado desde Economía → Estadísticas ("¿Por qué ha cambiado mi gasto?"): es análisis de
+// producto/ticket (precio, cantidad, productos nuevos/dejados de comprar), no análisis financiero
+// general — pertenece a Compras, nunca a Economía. Mismo cálculo exacto que tenía allí (Skill de Pepa,
+// punto 14), solo cambia dónde vive y el rótulo.
+function PorQueHaCambiadoMiCompra({
+  purchases,
+  productNames,
+  onViewMovements,
+}: {
+  purchases: RawPurchase[]
+  productNames: Map<string, string>
+  onViewMovements: (f: MovementsFilter) => void
+}) {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const previousMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
+
+  const hasCurrent = purchases.some((p) => p.recordedDate.startsWith(currentMonth))
+  const hasPrevious = purchases.some((p) => p.recordedDate.startsWith(previousMonth))
+
+  return (
+    <div className="card event-card">
+      <strong>¿Por qué ha cambiado mi compra?</strong>
+      {!hasCurrent || !hasPrevious ? (
+        <p className="muted" style={{ marginTop: 6 }}>
+          Todavía no hay tickets suficientes este mes y el anterior para desglosar el cambio de gasto — en cuanto haya
+          tickets de ambos meses, Pepa podrá explicar cuánto se debe a precio, a cantidad o a productos nuevos.
+        </p>
+      ) : (
+        (() => {
+          const b = decomposeSpendChange(purchases, currentMonth, previousMonth)
+          const delta = b.currentTotal - b.previousTotal
+          const topMovers = compareMonths(averagePricesByMonth(purchases), currentMonth, previousMonth)
+            .filter((c) => c.previousPrice != null && c.deltaPercent != null)
+            .sort((a, b2) => Math.abs(b2.deltaPercent!) - Math.abs(a.deltaPercent!))
+            .slice(0, 3)
+          return (
+            <>
+              <p className="muted" style={{ margin: '4px 0 10px', fontSize: 12 }}>
+                Análisis basado en los productos leídos de tus tickets — puede no coincidir exactamente con el banco.
+              </p>
+              <p style={{ margin: '2px 0' }}>
+                Cesta de tickets: {b.previousTotal.toFixed(2)} € → {b.currentTotal.toFixed(2)} € ({delta >= 0 ? '+' : ''}
+                {delta.toFixed(2)} €)
+              </p>
+              <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
+                <li>Por cambio de precio: {b.priceEffect >= 0 ? '+' : ''}{b.priceEffect.toFixed(2)} €</li>
+                <li>Por comprar más o menos cantidad: {b.quantityEffect >= 0 ? '+' : ''}{b.quantityEffect.toFixed(2)} €</li>
+                <li>Por productos nuevos: +{b.newProductsEffect.toFixed(2)} €</li>
+                <li>Por productos que ya no se compran: {b.droppedProductsEffect.toFixed(2)} €</li>
+              </ul>
+              {topMovers.length > 0 && (
+                <>
+                  <p className="muted" style={{ margin: '10px 0 2px', fontSize: 12 }}>
+                    Productos que más han cambiado de precio:
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                    {topMovers.map((c) => (
+                      <li key={c.productId}>
+                        {productNames.get(c.productId) ?? '?'}: {c.previousPrice!.toFixed(2)} € → {c.currentPrice!.toFixed(2)} € (
+                        {c.deltaPercent! >= 0 ? '+' : ''}
+                        {c.deltaPercent!.toFixed(0)}%)
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <button
+                type="button"
+                className="link-button"
+                style={{ marginTop: 6 }}
+                onClick={() => onViewMovements({ label: `Tickets — ${currentMonth}`, from: `${currentMonth}-01`, to: `${currentMonth}-31` })}
+              >
+                Ver movimientos de este mes →
+              </button>
+            </>
+          )
+        })()
+      )}
     </div>
   )
 }

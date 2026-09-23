@@ -142,16 +142,19 @@ describe('cuenta bancaria opcional, sin IBAN completo', () => {
 })
 
 describe('desactivar / reactivar / eliminar', () => {
+  // Fase 1F.A2 — estas tres acciones ya no viven en una fila aparte de "Gestionar pagos previstos":
+  // están dentro del "⋯" de cada tarjeta de "Próximos pagos" (renderOccurrenceRow), operando sobre el
+  // pago padre de la ocurrencia (`parent`), con los MISMOS manejadores de src/data/forecast.ts.
   it('Desactivar (con confirmación) es la acción principal para un pago que ya no aplica, no Eliminar', () => {
-    expect(FS).toContain('<ConfirmButton label="Desactivar" onConfirm={() => setForecastPaymentActive(p, false).then(reload)} />')
+    expect(FS).toContain('<ConfirmButton label="Desactivar" onConfirm={() => setForecastPaymentActive(parent, false).then(reload)} />')
   })
 
   it('Reactivar existe como acción separada', () => {
-    expect(FS).toContain('setForecastPaymentActive(p, true).then(reload)')
+    expect(FS).toContain('setForecastPaymentActive(parent, true).then(reload)')
   })
 
   it('Eliminar pide confirmación, como el resto de la app', () => {
-    expect(FS).toContain('<ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(p.calendarEventId, p.id).then(reload)} />')
+    expect(FS).toContain('<ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(parent.calendarEventId, parent.id).then(reload)} />')
   })
 })
 
@@ -279,7 +282,9 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
   })
 
   it('la tarjeta de gestión de un plan finito muestra importe×pagos, frecuencia, próximo pago y último pago en español (DD/MM/YYYY) — nunca "Próxima renovación" (eso es solo de una obligación que se renueva de verdad)', () => {
-    const fnIdx = FS.indexOf('function renderManagementRow')
+    // Fase 1F.A2 — este resumen ya no vive en una "Gestionar pagos previstos" aparte: se mudó al "⋯" de
+    // cada tarjeta de "Próximos pagos" (renderPaymentPlanSummary), mismo cálculo, mismos textos.
+    const fnIdx = FS.indexOf('function renderPaymentPlanSummary')
     const block = FS.slice(fnIdx, fnIdx + 3200)
     expect(block).toContain('pagos')
     expect(block).toContain('Próximo pago: ${formatSpanishDate(nextPlanOccurrence.dueDate)}')
@@ -289,7 +294,7 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
   })
 
   it('"N de M restantes" usa remainingInstallments/totalInstallments (Fase 1D-a) — nunca dice "pagadas"', () => {
-    const fnIdx = FS.indexOf('function renderManagementRow')
+    const fnIdx = FS.indexOf('function renderPaymentPlanSummary')
     expect(fnIdx).toBeGreaterThan(-1)
     const block = FS.slice(fnIdx, fnIdx + 3200)
     expect(block).toContain('remainingInstallments(p, overrides, today)')

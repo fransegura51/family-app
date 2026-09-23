@@ -104,7 +104,9 @@ describe('9. Ahorro/Balance: solo cambia la etiqueta cuando es negativo, nunca l
     expect(FS).toContain("{r.ahorro >= 0 ? 'Ahorro' : 'Balance'}: {r.ahorro.toFixed(2)} €")
   })
   it('la fórmula del ahorro no cambia: sigue siendo ingresos - gasto (neto)', () => {
-    const b = body(FS, 'function EvolucionTemporal(', 'function PorQueHaCambiadoMiGasto(')
+    // Fase 1F.D — "¿Por qué ha cambiado mi gasto?" se mudó a Compras (PorQueHaCambiadoMiCompra, ShoppingScreen.tsx);
+    // el siguiente componente en FinanceScreen.tsx es ahora ExpensesTab.
+    const b = body(FS, 'function EvolucionTemporal(', 'function ExpensesTab(')
     expect(b).toContain('ahorro: income - (spent - refunds)')
   })
 })

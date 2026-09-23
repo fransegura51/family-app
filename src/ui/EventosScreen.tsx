@@ -15,6 +15,7 @@ import {
   addEventSpecialDetail,
   addEventTable,
   addEventTask,
+  addEnabledModules,
   archiveEvent,
   assignGuestTable,
   createEvent,
@@ -565,12 +566,13 @@ function EventDetail({
   const [tasks, setTasks] = useState<EventTask[]>([])
   const [showAllTasks, setShowAllTasks] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
-  const [showEdit, setShowEdit] = useState(false)
-  const [showModules, setShowModules] = useState(false)
+  // Fase 1 — reforma de Editar/•••: un único punto de entrada
+  // ("Gestionar evento") en vez de dos controles compitiendo por la
+  // misma clase de acción, ver ManageEventModal más abajo.
+  const [showManage, setShowManage] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [showEndSummary, setShowEndSummary] = useState(false)
-  const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [openModule, setOpenModule] = useState<EventModuleKey | 'compras' | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -713,11 +715,13 @@ function EventDetail({
 
   // Rejilla de tarjetas: una por módulo activado con sección propia —
   // "invitaciones" no tiene sección aparte (el botón 💌 de cada
-  // invitado, dentro de Invitados, ya la cubre entera) y "ceremonia"
-  // solo aplica a los tipos con dos ubicaciones (Comunión/Bautizo/
-  // Boda). "Compras" es una clave propia (no un EventModuleKey real)
-  // ligada al mismo módulo que "Menú y compra": las dos aparecen o
-  // desaparecen juntas.
+  // invitado, dentro de Invitados, ya la cubre entera). "Ceremonia" ya
+  // no es una tarjeta de la rejilla (Fase 1 — reforma Editar/•••): sus
+  // campos viven en "Información del evento" dentro de "Gestionar
+  // evento", para no duplicar una tercera superficie de edición
+  // estructural (auditoría, hallazgo E). "Compras" es una clave propia
+  // (no un EventModuleKey real) ligada al mismo módulo que "Menú y
+  // compra": las dos aparecen o desaparecen juntas.
   interface ModuleCardDef {
     key: EventModuleKey | 'compras'
     icon: string
@@ -728,7 +732,7 @@ function EventDetail({
   for (const mod of EVENT_MODULES) {
     if (!event.enabledModules.includes(mod.key)) continue
     if (mod.key === 'invitaciones') continue
-    if (mod.key === 'ceremonia' && !DUAL_LOCATION_EVENT_TYPES.includes(event.type)) continue
+    if (mod.key === 'ceremonia') continue
     let stat = ''
     switch (mod.key) {
       case 'tareas':
@@ -755,9 +759,6 @@ function EventDetail({
         break
       case 'mesas':
         stat = tables.length > 0 ? `${tables.length} mesas` : 'Sin mesas'
-        break
-      case 'ceremonia':
-        stat = 'Toca para configurar'
         break
       case 'proveedores':
         stat = providers.length > 0 ? `${providers.length} proveedores` : 'Sin proveedores'
@@ -822,8 +823,6 @@ function EventDetail({
             </form>
           </div>
         )
-      case 'ceremonia':
-        return <CeremoniaSection key={`ceremonia-${refreshKey}`} event={event} onChanged={onChanged} />
       case 'invitados':
         return <GuestsSection key={`invitados-${refreshKey}`} event={event} />
       case 'mesas':
@@ -872,11 +871,8 @@ function EventDetail({
           ← Todos los eventos
         </button>
         <div className="filter-row" style={{ gap: 4 }}>
-          <button type="button" className="link-button" onClick={() => setShowEdit(true)}>
-            Editar
-          </button>
-          <button type="button" className="link-button" onClick={() => setShowMoreMenu(true)} aria-label="Más opciones">
-            •••
+          <button type="button" className="link-button" onClick={() => setShowManage(true)}>
+            ⚙️ Gestionar evento
           </button>
         </div>
       </div>
@@ -911,7 +907,7 @@ function EventDetail({
                 <button
                   type="button"
                   className="event-status-badge"
-                  onClick={() => setShowEdit(true)}
+                  onClick={() => setShowManage(true)}
                   title={event.dateStatus === 'confirmada' ? 'Fecha confirmada — tocar para editar' : 'Fecha provisional — tocar para editar'}
                   aria-label={event.dateStatus === 'confirmada' ? 'Fecha confirmada' : 'Fecha provisional'}
                 >
@@ -1051,52 +1047,28 @@ function EventDetail({
         </div>
       )}
 
-      {showMoreMenu && (
-        <EventMoreMenu
+      {showManage && (
+        <ManageEventModal
           event={event}
-          onClose={() => setShowMoreMenu(false)}
-          onModules={() => {
-            setShowMoreMenu(false)
-            setShowModules(true)
-          }}
+          onClose={() => setShowManage(false)}
+          onChanged={onChanged}
           onSaveTemplate={() => {
-            setShowMoreMenu(false)
+            setShowManage(false)
             setShowSaveTemplate(true)
           }}
           onArchive={() => {
-            setShowMoreMenu(false)
+            setShowManage(false)
             setShowEndSummary(true)
           }}
           onReactivate={() => {
-            setShowMoreMenu(false)
+            setShowManage(false)
             unarchiveEvent(event.id).then(onChanged)
           }}
           onDuplicate={() => {
-            setShowMoreMenu(false)
+            setShowManage(false)
             duplicateEvent(event.id).then(onDuplicated)
           }}
           onDelete={() => deleteEvent(event.id).then(onArchivedOrDeleted)}
-        />
-      )}
-
-      {showEdit && (
-        <EditEventModal
-          event={event}
-          onClose={() => setShowEdit(false)}
-          onSaved={() => {
-            setShowEdit(false)
-            onChanged()
-          }}
-        />
-      )}
-      {showModules && (
-        <ModulesModal
-          event={event}
-          onClose={() => setShowModules(false)}
-          onSaved={() => {
-            setShowModules(false)
-            onChanged()
-          }}
         />
       )}
       {showPlan && (
@@ -1125,15 +1097,24 @@ function EventDetail({
   )
 }
 
-// Petición real: rediseño del dashboard de un evento — todas las
-// acciones que antes iban sueltas en una tarjeta al final (Gestionar
-// módulos, Guardar como plantilla, Finalizar/Reactivar, Duplicar,
-// Borrar) se agrupan aquí, detrás del botón "•••" de la cabecera.
-// "Editar" se queda fuera, como enlace directo (acceso más frecuente).
-function EventMoreMenu({
+// Fase 1 — reforma de Editar/•••: auditoría real ("no queda claro qué
+// se administra desde cada uno") encontró que "Editar" y "•••" son en
+// realidad la misma clase de acción (configurar el evento) repartida
+// sin ningún criterio visible al usuario, y que además "Ceremonia"
+// (para Comunión/Bautizo/Boda) era una TERCERA superficie de edición
+// estructural, aparte de las otras dos. Un único punto de entrada
+// ("Gestionar evento"), con tres grupos claramente separados:
+// Información (qué es el evento) / Secciones (qué módulos tiene
+// activos — única fuente de verdad de enabledModules, ver
+// addEnabledModules en data/events.ts, reutilizada también por
+// "Organízamelo Pepa") / Acciones (duplicar, archivar, borrar — las
+// destructivas al final, separadas visualmente). No se duplica ningún
+// dato de Ceremonia: reutiliza tal cual CeremoniaSection (mismas
+// columnas, mismo guardado), solo cambia DÓNDE se muestra.
+function ManageEventModal({
   event,
   onClose,
-  onModules,
+  onChanged,
   onSaveTemplate,
   onArchive,
   onReactivate,
@@ -1142,31 +1123,162 @@ function EventMoreMenu({
 }: {
   event: FamilyEvent
   onClose: () => void
-  onModules: () => void
+  onChanged: () => void
   onSaveTemplate: () => void
   onArchive: () => void
   onReactivate: () => void
   onDuplicate: () => void
   onDelete: () => void
 }) {
+  const [title, setTitle] = useState(event.title)
+  const [dateStatus, setDateStatus] = useState(event.dateStatus)
+  const [eventDate, setEventDate] = useState(event.eventDate ?? '')
+  const [venueLabel, setVenueLabel] = useState(event.venueLabel ?? '')
+  const [venueCoords, setVenueCoords] = useState(
+    event.venueLatitude != null && event.venueLongitude != null ? { latitude: event.venueLatitude, longitude: event.venueLongitude } : null,
+  )
+  const [theme, setTheme] = useState(event.theme ?? '')
+  const [rsvpDeadline, setRsvpDeadline] = useState(event.rsvpDeadline ?? '')
+  const [savingInfo, setSavingInfo] = useState(false)
+  const [infoError, setInfoError] = useState<string | null>(null)
+  const [infoSaved, setInfoSaved] = useState(false)
+
+  const [modules, setModules] = useState<EventModuleKey[]>(event.enabledModules)
+  const [savingModules, setSavingModules] = useState(false)
+  const [modulesError, setModulesError] = useState<string | null>(null)
+  const [modulesSaved, setModulesSaved] = useState(false)
+
+  async function handleSaveInfo(ev: FormEvent) {
+    ev.preventDefault()
+    setSavingInfo(true)
+    setInfoError(null)
+    setInfoSaved(false)
+    try {
+      const nextDate = dateStatus === 'pendiente' ? null : eventDate || null
+      await updateEvent(event.id, {
+        title,
+        dateStatus,
+        eventDate: nextDate,
+        venueLabel: venueLabel || null,
+        venueLatitude: venueCoords?.latitude ?? null,
+        venueLongitude: venueCoords?.longitude ?? null,
+        theme: theme || null,
+        rsvpDeadline: rsvpDeadline || null,
+      })
+      // Petición de la Skill: "relative tasks update when event date
+      // changes" — solo se recalcula si la fecha de verdad ha cambiado.
+      if (nextDate !== event.eventDate) await recalculateAutoTasks(event.id, event.type, nextDate)
+      onChanged()
+      setInfoSaved(true)
+    } catch (err) {
+      setInfoError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingInfo(false)
+    }
+  }
+
+  async function handleSaveModules() {
+    setSavingModules(true)
+    setModulesError(null)
+    setModulesSaved(false)
+    try {
+      await updateEvent(event.id, { enabledModules: modules })
+      onChanged()
+      setModulesSaved(true)
+    } catch (err) {
+      setModulesError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingModules(false)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
-            Más opciones
+            Gestionar evento
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
           </button>
         </div>
-        <div className="event-list">
-          <button type="button" className="link-button" onClick={onModules} style={{ display: 'block' }}>
-            ⚙️ Gestionar módulos
+
+        <strong style={{ fontSize: 13, display: 'block', marginTop: 4 }}>Información del evento</strong>
+        <form className="card member-form" onSubmit={handleSaveInfo} style={{ marginTop: 4 }}>
+          {infoError && <p className="error">{infoError}</p>}
+          <label>
+            Nombre
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </label>
+          <label>
+            Fecha
+            <select value={dateStatus} onChange={(e) => setDateStatus(e.target.value as FamilyEvent['dateStatus'])}>
+              {DATE_STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {dateStatus !== 'pendiente' && (
+            <label>
+              {dateStatus === 'provisional' ? 'Fecha provisional' : 'Fecha'}
+              <input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+            </label>
+          )}
+          <label>
+            Lugar (como se ve en la invitación)
+            <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} placeholder="Ej. en mi casa, Restaurante La Terraza…" />
+          </label>
+          <EventLocationCoordsPicker coords={venueCoords} onCoordsChange={setVenueCoords} />
+          <label>
+            Tema
+            <input type="text" value={theme} onChange={(e) => setTheme(e.target.value)} />
+          </label>
+          <label>
+            Plazo de RSVP (opcional)
+            <input type="date" value={rsvpDeadline} onChange={(e) => setRsvpDeadline(e.target.value)} />
+          </label>
+          <button type="submit" disabled={savingInfo}>
+            {savingInfo ? 'Guardando…' : infoSaved ? '✓ Guardado' : 'Guardar información'}
           </button>
+        </form>
+
+        {DUAL_LOCATION_EVENT_TYPES.includes(event.type) && event.enabledModules.includes('ceremonia') && (
+          <CeremoniaSection event={event} onChanged={onChanged} />
+        )}
+
+        <strong style={{ fontSize: 13, display: 'block', marginTop: 16 }}>Secciones del evento</strong>
+        <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+          Los módulos que quites se ocultan, pero no se borra nada — puedes reactivarlos cuando quieras.
+        </p>
+        {modulesError && <p className="error">{modulesError}</p>}
+        <ModulePickerChips modules={modules} onChange={setModules} />
+        <button
+          type="button"
+          className="link-button"
+          onClick={handleSaveModules}
+          disabled={savingModules}
+          style={{ marginTop: 8 }}
+        >
+          {savingModules ? 'Guardando…' : modulesSaved ? '✓ Guardado' : 'Guardar secciones'}
+        </button>
+
+        <strong style={{ fontSize: 13, display: 'block', marginTop: 16 }}>Acciones del evento</strong>
+        <div className="event-list" style={{ marginTop: 4 }}>
           <button type="button" className="link-button" onClick={onSaveTemplate} style={{ display: 'block' }}>
             💾 Guardar como plantilla
           </button>
+          <button type="button" className="link-button" onClick={onDuplicate} style={{ display: 'block' }}>
+            📋 Duplicar
+          </button>
+        </div>
+
+        {/* Destructivas/de ciclo de vida, separadas visualmente al final
+            (auditoría, hallazgo E: "estructural" vs "operativo" mezclados
+            dentro del mismo menú era parte de la confusión). */}
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #eee' }}>
           {event.status === 'planificacion' ? (
             <button type="button" className="link-button" onClick={onArchive} style={{ display: 'block' }}>
               📦 Finalizar y archivar
@@ -1176,10 +1288,9 @@ function EventMoreMenu({
               Reactivar
             </button>
           )}
-          <button type="button" className="link-button" onClick={onDuplicate} style={{ display: 'block' }}>
-            Duplicar
-          </button>
-          <ConfirmButton label="Borrar evento" confirmLabel="Borrar" className="link-button" onConfirm={onDelete} />
+          <div style={{ marginTop: 4 }}>
+            <ConfirmButton label="Borrar evento" confirmLabel="Borrar" className="link-button" onConfirm={onDelete} />
+          </div>
         </div>
       </div>
     </div>
@@ -1304,145 +1415,11 @@ function EventLocationCoordsPicker({
   )
 }
 
-function EditEventModal({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
-  const [title, setTitle] = useState(event.title)
-  const [dateStatus, setDateStatus] = useState(event.dateStatus)
-  const [eventDate, setEventDate] = useState(event.eventDate ?? '')
-  const [venueLabel, setVenueLabel] = useState(event.venueLabel ?? '')
-  const [venueCoords, setVenueCoords] = useState(
-    event.venueLatitude != null && event.venueLongitude != null ? { latitude: event.venueLatitude, longitude: event.venueLongitude } : null,
-  )
-  const [theme, setTheme] = useState(event.theme ?? '')
-  const [rsvpDeadline, setRsvpDeadline] = useState(event.rsvpDeadline ?? '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSubmit(ev: FormEvent) {
-    ev.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      const nextDate = dateStatus === 'pendiente' ? null : eventDate || null
-      await updateEvent(event.id, {
-        title,
-        dateStatus,
-        eventDate: nextDate,
-        venueLabel: venueLabel || null,
-        venueLatitude: venueCoords?.latitude ?? null,
-        venueLongitude: venueCoords?.longitude ?? null,
-        theme: theme || null,
-        rsvpDeadline: rsvpDeadline || null,
-      })
-      // Petición de la Skill: "relative tasks update when event date
-      // changes" — solo se recalcula si la fecha de verdad ha cambiado.
-      if (nextDate !== event.eventDate) await recalculateAutoTasks(event.id, event.type, nextDate)
-      onSaved()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Editar evento
-          </h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-        <form className="card member-form" onSubmit={handleSubmit}>
-          {error && <p className="error">{error}</p>}
-          <label>
-            Nombre
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </label>
-          <label>
-            Fecha
-            <select value={dateStatus} onChange={(e) => setDateStatus(e.target.value as FamilyEvent['dateStatus'])}>
-              {DATE_STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {dateStatus !== 'pendiente' && (
-            <label>
-              {dateStatus === 'provisional' ? 'Fecha provisional' : 'Fecha'}
-              <input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-            </label>
-          )}
-          <label>
-            Lugar (como se ve en la invitación)
-            <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} placeholder="Ej. en mi casa, Restaurante La Terraza…" />
-          </label>
-          <EventLocationCoordsPicker coords={venueCoords} onCoordsChange={setVenueCoords} />
-          <label>
-            Tema
-            <input type="text" value={theme} onChange={(e) => setTheme(e.target.value)} />
-          </label>
-          <label>
-            Plazo de RSVP (opcional)
-            <input type="date" value={rsvpDeadline} onChange={(e) => setRsvpDeadline(e.target.value)} />
-          </label>
-          <button type="submit" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </button>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-function ModulesModal({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
-  const [modules, setModules] = useState<EventModuleKey[]>(event.enabledModules)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSave() {
-    setSaving(true)
-    setError(null)
-    try {
-      await updateEvent(event.id, { enabledModules: modules })
-      onSaved()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Gestionar módulos
-          </h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-        {error && <p className="error">{error}</p>}
-        <p className="muted" style={{ fontSize: 13 }}>
-          Los módulos que quites se ocultan, pero no se borra nada — puedes reactivarlos cuando quieras.
-        </p>
-        <ModulePickerChips modules={modules} onChange={setModules} />
-        <button type="button" onClick={handleSave} disabled={saving} style={{ marginTop: 12 }}>
-          {saving ? 'Guardando…' : 'Guardar'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------------
 // Ceremonia — solo Comunión/Bautizo/Boda (dos ubicaciones posibles).
+// Reutilizada tal cual dentro de "Información del evento" en
+// ManageEventModal (Fase 1) — no se duplica ningún dato ni lógica de
+// guardado, solo cambia dónde se muestra.
 // ---------------------------------------------------------------------
 
 function CeremoniaSection({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
@@ -5074,7 +5051,7 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
     setError(null)
     try {
       if (modulesChecked.size > 0) {
-        await updateEvent(event.id, { enabledModules: [...event.enabledModules, ...modulesChecked] })
+        await addEnabledModules(event.id, event.enabledModules, [...modulesChecked])
       }
       await Promise.all([
         ...plan.budgetItems.filter((_, i) => budgetChecked.has(i)).map((b) => addEventBudgetItem(event.id, b.category, b.plannedAmount)),

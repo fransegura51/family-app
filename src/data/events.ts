@@ -239,6 +239,17 @@ export async function updateEvent(
   if (patch.rsvpDeadline !== undefined || patch.title !== undefined) await syncRsvpDeadlineReminderSafely(id)
 }
 
+// Fase 1 — enabledModules debe tener una única fuente de verdad: tanto
+// "Gestionar evento" → Secciones (reemplazo directo) como "Organízamelo
+// Pepa" (añadir los módulos recomendados que faltan) pasan por esta
+// misma función en vez de construir el patch a mano cada uno por su
+// lado.
+export async function addEnabledModules(eventId: string, currentModules: EventModuleKey[], toAdd: EventModuleKey[]): Promise<void> {
+  if (toAdd.length === 0) return
+  const next = [...currentModules, ...toAdd.filter((m) => !currentModules.includes(m))]
+  await updateEvent(eventId, { enabledModules: next })
+}
+
 // Petición de la Skill: "relative tasks update when event date
 // changes" — solo toca las tareas generadas automáticamente (source
 // 'auto'), buscándolas por título exacto de la plantilla; una tarea

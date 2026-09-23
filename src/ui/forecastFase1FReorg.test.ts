@@ -99,15 +99,40 @@ describe('Fase 1F.A3 — "Préstamos e hipotecas" nunca duplica la cuota de "Pr�
   })
 })
 
-describe('Fase 1F.B — "Evolución temporal" respeta el criterio de periodo elegido', () => {
-  it('EvolucionTemporal recibe preset y fuerza monthStartDay=1 solo en "Mes real"', () => {
+describe('Fase 1F.B/D — "Evolución temporal" tiene su propio selector explícito Mes real / Mes contable', () => {
+  it('EvolucionTemporal tiene su propio estado "mode" (independiente del preset general) y fuerza monthStartDay=1 solo en "real"', () => {
     const b = body(FS, 'function EvolucionTemporal', 'function ExpensesTab')
     expect(b).toContain('preset: SpendRangePreset')
-    expect(b).toContain("const effectiveMonthStartDay = preset === 'mes_real' ? 1 : monthStartDay")
+    expect(b).toContain("const [mode, setMode] = useState<'real' | 'contable'>(preset === 'mes_real' ? 'real' : 'contable')")
+    expect(b).toContain("const effectiveMonthStartDay = mode === 'real' ? 1 : monthStartDay")
     expect(b).toContain('accountingMonthsBack(6, effectiveMonthStartDay)')
   })
 
-  it('EstadisticasTab le pasa el preset ya elegido en el selector "📅 Fecha", nunca uno nuevo', () => {
+  it('el selector [Mes real] [Mes contable] es explícito, con chips propios que cambian "mode" sin depender del selector general', () => {
+    const b = body(FS, 'function EvolucionTemporal', 'function ExpensesTab')
+    expect(b).toContain("onClick={() => setMode('real')}")
+    expect(b).toContain("onClick={() => setMode('contable')}")
+    expect(b).toContain('Mes real')
+    expect(b).toContain('Mes contable')
+  })
+
+  it('en modo Mes contable se enseña el rango exacto de cada periodo (fecha de corte real, no aproximada)', () => {
+    const b = body(FS, 'function EvolucionTemporal', 'function ExpensesTab')
+    expect(b).toContain("mode === 'contable' && (")
+    expect(b).toContain('{formatSpanishDate(r.from)} – {formatSpanishDate(r.to)}')
+  })
+
+  it('"Ver" usa siempre r.from/r.to del periodo exacto que se está mostrando (cambia solo con el mode activo)', () => {
+    const b = body(FS, 'function EvolucionTemporal', 'function ExpensesTab')
+    expect(b).toContain("onClick={() => onViewMovements({ label: `Movimientos — ${r.label}`, from: r.from, to: r.to })}")
+  })
+
+  it('reutiliza accountingMonthsBack/dateRanges.ts tal cual — nunca una segunda implementación de mes contable', () => {
+    const b = body(FS, 'function EvolucionTemporal', 'function ExpensesTab')
+    expect(b).not.toMatch(/setMonth|setDate|getMonth\(\)|getDate\(\)/)
+  })
+
+  it('EstadisticasTab le sigue pasando el preset general solo como valor inicial — no rompe el selector "📅 Fecha"', () => {
     const b = body(FS, 'function EstadisticasTab', 'function PeriodComparison')
     expect(b).toContain('<EvolucionTemporal expenses={expenses} categories={categories} monthStartDay={monthStartDay} preset={preset} onViewMovements={onViewMovements} />')
   })
@@ -129,8 +154,20 @@ describe('Fase 1F.C — "Comparado con el periodo anterior"', () => {
   it('anterior=0 nunca da un porcentaje infinito: se marca "Nuevo gasto en este periodo"', () => {
     const b = body(FS, 'function PeriodComparison', 'function EvolucionTemporal')
     expect(b).toContain('isNew: before === 0 && after > 0')
-    expect(b).toContain("d.isNew ? 'Nuevo gasto en este periodo'")
+    expect(b).toMatch(/d\.isNew\s*\n?\s*\?\s*'Nuevo gasto en este periodo'/)
     expect(b).not.toMatch(/before === 0[^}]*after \/ before/)
+  })
+
+  it('composición visual: "antes → después" y "delta (%)" son dos unidades que nunca se parten por dentro (whiteSpace nowrap), nunca separan un número de su €', () => {
+    const b = body(FS, 'function PeriodComparison', 'function EvolucionTemporal')
+    expect(b).toContain("<span style={{ whiteSpace: 'nowrap' }}>")
+    expect(b).toContain("whiteSpace: d.isNew ? 'normal' : 'nowrap'")
+    // El nombre de categoría va en su propia línea, no compartiendo fila con los importes (evita que el
+    // bloque numérico se quede con poco ancho en pantallas estrechas).
+    const rowFnIdx = b.indexOf('function row(d: CategoryDelta)')
+    expect(rowFnIdx).toBeGreaterThan(-1)
+    const rowFnBody = b.slice(rowFnIdx, rowFnIdx + 900)
+    expect(rowFnBody).not.toContain("justifyContent: 'space-between'")
   })
 
   it('ambos a 0 nunca se enseñan (se filtran antes de construir aumentos/descensos)', () => {
@@ -199,10 +236,10 @@ describe('Fase 1F.E — Inicio de Compras: nuevo bloque de análisis bajo los 4 
 })
 
 describe('Fase 1F.F — "Dinero destinado a cuentas de ahorro" (ahorro destinado)', () => {
-  it('nunca cuenta las dos patas de un traspaso: solo is_income=true con ownerMemberId', () => {
+  it('reutiliza computeSavingsDestinedByMember (domain/finance.ts) — nunca reimplementa el filtro en el componente', () => {
+    expect(FS).toContain('computeSavingsDestinedByMember')
     const b = body(FS, 'Fase 1F.F', 'return (')
-    expect(b).toContain("e.kind !== 'real' || !e.isIncome || !e.ownerMemberId")
-    expect(b).toContain('isInternalTransferCategory(e.category, categories)')
+    expect(b).toContain('const savingsDestinedByMember = computeSavingsDestinedByMember(inRange, categories)')
   })
 
   it('nunca toca la fórmula de ahorro existente (ahorro/tasaAhorro se calculan antes, sin depender de savingsDestinedByMember)', () => {
@@ -233,12 +270,12 @@ describe('Fase 1F — Ayuda actualizada (mismo commit)', () => {
     expect(dineroBlock).not.toMatch(/En "Gestionar pagos previstos"/)
   })
 
-  it('Estadísticas: la Ayuda explica "Comparado con el periodo anterior" y que Evolución temporal respeta Mes contable/Mes real', () => {
+  it('Estadísticas: la Ayuda explica "Comparado con el periodo anterior" y el selector propio [Mes real] [Mes contable] de Evolución temporal', () => {
     const dineroIdx = AYUDA.indexOf("'/dinero': [")
     const dineroBlock = AYUDA.slice(dineroIdx, AYUDA.indexOf('\n  ],', dineroIdx))
     expect(dineroBlock).toContain('Comparado con el periodo anterior')
     expect(dineroBlock).toContain('Nuevo gasto en este periodo')
-    expect(dineroBlock).toContain('con "Mes real" son siempre meses de calendario')
+    expect(dineroBlock).toContain('su propio selector [Mes real] [Mes contable]')
   })
 
   it('Resumen: la Ayuda explica "Dinero destinado a cuentas de ahorro"', () => {

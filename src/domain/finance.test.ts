@@ -3,6 +3,7 @@ import {
   budgetPeriodRange,
   budgetSpent,
   categoryColors,
+  computeSavingsDestinedByMember,
   stableCategoryColors,
   isFoodCategory,
   isInternalTransferCategory,
@@ -226,5 +227,87 @@ describe('stableCategoryColors', () => {
     const all = stableCategoryColors(categories)
     const own = stableCategoryColors(generales)
     for (const c of generales) expect(all.get(c.id)).toBe(own.get(c.id))
+  })
+})
+
+// Fase 1F.F — "Dinero destinado a cuentas de ahorro" (Resumen). Escenarios modelados directamente sobre
+// datos reales auditados en producción (Familia Hepburn, 31/08/2026): un traspaso completo son SIEMPRE
+// dos filas — salida ('Transferencias entre cuentas propias', is_income=false, ownerMemberId null) y
+// entrada ('Movimientos internos', is_income=true, ownerMemberId = quien la recibe) — y esta función
+// SOLO cuenta la de entrada. El llamador (ResumenTab) es quien filtra por periodo (inRange); esta
+// función es agnóstica de fechas, así que "respeta el periodo"/"respeta Mes contable" se prueba pasando
+// solo las filas que ya estarían dentro de ese periodo (igual que hace inRange en el componente).
+describe('computeSavingsDestinedByMember', () => {
+  it('una transferencia a la cuenta de un hijo: solo cuenta la pata de entrada', () => {
+    const rows: Expense[] = [
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Transferencias entre cuentas propias', isIncome: false, ownerMemberId: null }),
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'eric' }),
+    ]
+    const result = computeSavingsDestinedByMember(rows, categories)
+    expect(result.get('eric')).toBe(100)
+    expect(result.size).toBe(1)
+  })
+
+  it('dos transferencias a dos miembros distintos en el mismo periodo: cada uno con su importe, sin mezclarse', () => {
+    const rows: Expense[] = [
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Transferencias entre cuentas propias', isIncome: false, ownerMemberId: null }),
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' }),
+      exp({ expenseDate: '2026-09-05', amount: 250, category: 'Transferencias entre cuentas propias', isIncome: false, ownerMemberId: null }),
+      exp({ expenseDate: '2026-09-05', amount: 250, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'eric' }),
+    ]
+    const result = computeSavingsDestinedByMember(rows, categories)
+    expect(result.get('fernando')).toBe(100)
+    expect(result.get('eric')).toBe(250)
+    expect(result.size).toBe(2)
+  })
+
+  it('nunca cuenta las dos patas: el total nunca duplica el importe real traspasado', () => {
+    const rows: Expense[] = [
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Transferencias entre cuentas propias', isIncome: false, ownerMemberId: null }),
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'eric' }),
+    ]
+    const result = computeSavingsDestinedByMember(rows, categories)
+    const total = [...result.values()].reduce((s, v) => s + v, 0)
+    expect(total).toBe(100) // nunca 200
+  })
+
+  it('la pata de salida nunca cuenta aunque, por error de datos, llevara un ownerMemberId', () => {
+    const rows: Expense[] = [
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Transferencias entre cuentas propias', isIncome: false, ownerMemberId: 'eric' }),
+    ]
+    expect(computeSavingsDestinedByMember(rows, categories).size).toBe(0)
+  })
+
+  it('un movimiento fuera del periodo (no incluido en `rows`, igual que ya filtra inRange) nunca aparece', () => {
+    // Caso real auditado: traspaso a Eric de 100 € con fecha 14/08/2026, fuera del mes contable en curso
+    // (31/08/2026 → 29/09/2026) — el llamador ya lo deja fuera de `inRange`, así que ni siquiera llega aquí.
+    const rowsInPeriod: Expense[] = [
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'fernando' }),
+    ]
+    const result = computeSavingsDestinedByMember(rowsInPeriod, categories)
+    expect(result.has('eric')).toBe(false)
+  })
+
+  it('un movimiento clasificado como "Ingreso" (no "Movimientos internos") no cuenta, aunque tenga ownerMemberId y parezca un traspaso', () => {
+    // Caso real auditado: un traspaso a la cuenta de un hijo puede quedar categorizado "Ingreso" en vez de
+    // "Movimientos internos" por el motor de sincronización bancaria — una inconsistencia de datos previa
+    // a esta función, que no se "corrige" adivinando: solo se cuenta lo que la familia ya tiene clasificado
+    // como traspaso interno, igual que en el resto de la app (ahorro, Presupuesto...).
+    const rows: Expense[] = [
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Ingreso', isIncome: true, ownerMemberId: 'eric' }),
+    ]
+    expect(computeSavingsDestinedByMember(rows, categories).size).toBe(0)
+  })
+
+  it('un movimiento sin ownerMemberId (cuenta Común) no cuenta ni bajo una clave falsa', () => {
+    const rows: Expense[] = [exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: null })]
+    expect(computeSavingsDestinedByMember(rows, categories).size).toBe(0)
+  })
+
+  it('un movimiento no real (previsto/estimado) nunca cuenta, aunque coincida en categoría/owner', () => {
+    const rows: Expense[] = [
+      exp({ expenseDate: '2026-08-31', amount: 100, category: 'Movimientos internos', isIncome: true, ownerMemberId: 'eric', kind: 'previsto' }),
+    ]
+    expect(computeSavingsDestinedByMember(rows, categories).size).toBe(0)
   })
 })

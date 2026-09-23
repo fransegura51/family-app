@@ -164,6 +164,7 @@ import {
 import {
   budgetPeriodRange,
   budgetSpent,
+  computeSavingsDestinedByMember,
   stableCategoryColors,
   isComprasFamiliaCategory,
   isFoodCategory,
@@ -2263,20 +2264,14 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
     conclusions.push(...extraPool)
   }
 
-  // Fase 1F.F — "Dinero destinado a cuentas de ahorro": SOLO la pata de ENTRADA de un traspaso interno
-  // (categoría "Movimientos internos" o hija suya, is_income=true, con ownerMemberId — el dueño de la
-  // cuenta que lo recibe, ya resuelto en el propio expense, igual convención que bank_accounts.ownerMemberId).
-  // Nunca se suma también la pata de SALIDA (evita contar el mismo traspaso dos veces), nunca entra en
+  // Fase 1F.F — "Dinero destinado a cuentas de ahorro": SOLO la pata de ENTRADA de un traspaso interno,
+  // vía computeSavingsDestinedByMember (domain/finance.ts) — nunca se reimplementa aquí. Nunca entra en
   // totalIncome/totalSpent/ahorro de arriba (esos ya excluyen todo movimiento interno, sin cambios) y
   // nunca se convierte en ingreso ni en gasto de nadie. Terminología deliberadamente conservadora: el
   // dinero movido este periodo puede ser ahorro acumulado de periodos anteriores, no necesariamente
-  // "generado" ahora — por eso nunca se dice "de tu ahorro de este mes".
-  const savingsDestinedByMember = new Map<string, number>()
-  for (const e of inRange) {
-    if (e.kind !== 'real' || !e.isIncome || !e.ownerMemberId) continue
-    if (!isInternalTransferCategory(e.category, categories)) continue
-    savingsDestinedByMember.set(e.ownerMemberId, (savingsDestinedByMember.get(e.ownerMemberId) ?? 0) + e.amount)
-  }
+  // "generado" ahora — por eso nunca se dice "de tu ahorro de este mes". `inRange` (no `real`): la pata
+  // de entrada de un traspaso interno es justo lo que `real` excluye, así que hace falta la lista sin filtrar.
+  const savingsDestinedByMember = computeSavingsDestinedByMember(inRange, categories)
   const savingsDestinedRows = [...savingsDestinedByMember.entries()]
     .map(([memberId, amount]) => ({ member: members.find((m) => m.id === memberId), amount }))
     .filter((r) => r.amount > 0.005)
@@ -3226,19 +3221,29 @@ function PeriodComparison({
 
   if (increases.length === 0 && decreases.length === 0) return null
 
+  // Corrección post-certificación iPhone — el problema era de composición, no de cálculo: name+importes
+  // compartían una sola fila con justify-content: space-between, así que en pantallas estrechas el bloque
+  // de importes se quedaba con poco ancho y el navegador partía la línea donde encontraba hueco (a veces
+  // justo entre el número y el "€"). Ahora el nombre va en su propia línea (puede ocupar 2 líneas sin
+  // problema) y el bloque de importes usa todo el ancho de la tarjeta, con "antes → después" y el
+  // delta/porcentaje como dos unidades que nunca se rompen por dentro (whiteSpace: nowrap) — si no caben
+  // juntas, la que sobra baja entera a una segunda línea, nunca se parte un número de su "€".
   function row(d: CategoryDelta) {
+    const deltaText = d.isNew
+      ? 'Nuevo gasto en este periodo'
+      : `${d.delta >= 0 ? '+' : ''}${d.delta.toFixed(2)} € (${d.deltaPercent! >= 0 ? '+' : ''}${d.deltaPercent!.toFixed(0)}%)`
     return (
-      <div key={d.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
+      <div key={d.name} style={{ margin: '8px 0' }}>
         <span>
           {d.icon ? `${d.icon} ` : ''}
           {d.name}
         </span>
-        <span style={{ textAlign: 'right', fontSize: 13 }} className="muted">
-          {d.before.toFixed(2)} € → {d.after.toFixed(2)} €{' '}
-          <strong style={{ color: d.delta >= 0 ? '#b9770e' : '#1e8449' }}>
-            {d.isNew ? 'Nuevo gasto en este periodo' : `${d.delta >= 0 ? '+' : ''}${d.delta.toFixed(2)} € (${d.deltaPercent! >= 0 ? '+' : ''}${d.deltaPercent!.toFixed(0)}%)`}
-          </strong>
-        </span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 8, rowGap: 2, marginTop: 2, fontSize: 13 }} className="muted">
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {d.before.toFixed(2)} € → {d.after.toFixed(2)} €
+          </span>
+          <strong style={{ color: d.delta >= 0 ? '#b9770e' : '#1e8449', whiteSpace: d.isNew ? 'normal' : 'nowrap' }}>{deltaText}</strong>
+        </div>
       </div>
     )
   }
@@ -3271,10 +3276,13 @@ function PeriodComparison({
 // temporal debería ajustarse a la configuración del mes contable" — antes
 // siempre usaba el mes de calendario (día 1 al último), sin importar el
 // día de inicio elegido en Configuración.
-// Fase 1F.B — además, respeta el criterio ya elegido en el selector "📅 Fecha" de arriba: si está en
-// "Mes real" los 6 periodos son meses de calendario (día 1 al último), igual que hace rangeForPreset
-// con ese preset; con cualquier otro criterio (Mes contable incluido) se sigue usando el día de inicio
-// configurado, como antes — no se inventa un concepto de periodo nuevo.
+// Corrección post-certificación iPhone — el criterio heredado del selector "📅 Fecha" de arriba no
+// bastaba: con "Mes contable" seleccionado arriba, esta sección seguía enseñando SIEMPRE meses de
+// calendario, sin ningún control propio para saber (o cambiar) qué periodización se está viendo. Ahora
+// tiene su PROPIO selector explícito [Mes real] [Mes contable], independiente del selector general en
+// cuanto se monta (arranca alineado con el de arriba, como valor inicial razonable, pero cambiarlo aquí
+// no toca el selector general ni al revés) — reutiliza exactamente accountingMonthsBack/rangeForPreset
+// (mismo día de corte configurado, mismas funciones de dateRanges.ts), nunca una segunda implementación.
 function EvolucionTemporal({
   expenses,
   categories,
@@ -3288,7 +3296,8 @@ function EvolucionTemporal({
   preset: SpendRangePreset
   onViewMovements: (f: MovementsFilter) => void
 }) {
-  const effectiveMonthStartDay = preset === 'mes_real' ? 1 : monthStartDay
+  const [mode, setMode] = useState<'real' | 'contable'>(preset === 'mes_real' ? 'real' : 'contable')
+  const effectiveMonthStartDay = mode === 'real' ? 1 : monthStartDay
   const months = useMemo(() => {
     return accountingMonthsBack(6, effectiveMonthStartDay).map((p) => ({
       key: `${p.monthLabelYear}-${String(p.monthLabelMonth0 + 1).padStart(2, '0')}`,
@@ -3312,11 +3321,27 @@ function EvolucionTemporal({
   return (
     <div className="card event-card">
       <strong>Evolución temporal — últimos 6 meses</strong>
+      <div className="filter-row" style={{ marginTop: 6, marginBottom: 2 }}>
+        <button type="button" className={'chip' + (mode === 'real' ? ' chip-active' : '')} onClick={() => setMode('real')}>
+          Mes real
+        </button>
+        <button type="button" className={'chip' + (mode === 'contable' ? ' chip-active' : '')} onClick={() => setMode('contable')}>
+          Mes contable
+        </button>
+      </div>
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {rows.map((r) => (
           <div key={r.key}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span>{r.label}</span>
+              <span>
+                {r.label}
+                {mode === 'contable' && (
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {' '}
+                    ({formatSpanishDate(r.from)} – {formatSpanishDate(r.to)})
+                  </span>
+                )}
+              </span>
               <span className={r.ahorro >= 0 ? 'muted' : 'error'}>{r.ahorro >= 0 ? 'Ahorro' : 'Balance'}: {r.ahorro.toFixed(2)} €</span>
             </div>
             <div style={{ display: 'flex', height: 8, gap: 2, marginTop: 3 }}>

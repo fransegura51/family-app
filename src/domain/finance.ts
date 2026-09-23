@@ -79,6 +79,23 @@ export function isInternalTransferCategory(category: string | null, categories: 
   return categories.find((c) => c.id === cat.parentId)?.name === 'Movimientos internos'
 }
 
+// Fase 1F.F — "Dinero destinado a cuentas de ahorro" (Resumen): SOLO la pata de ENTRADA de un traspaso
+// interno (is_income=true, categoría "Movimientos internos" o hija suya, con ownerMemberId — el dueño
+// de la cuenta que lo recibe, ya resuelto en el propio expense). Nunca suma también la pata de SALIDA
+// (evita contar el mismo traspaso dos veces): la pata de salida siempre tiene ownerMemberId null (es un
+// movimiento sin dueño concreto, ver bank_accounts.ownerMemberId) y/o is_income=false, así que ninguna
+// de las dos condiciones de este filtro la deja pasar. `rows` ya debe venir filtrado al periodo elegido
+// (mismo `inRange` que usa el resto de Resumen) — esta función no filtra por fecha, solo agrupa.
+export function computeSavingsDestinedByMember(rows: Expense[], categories: BudgetCategory[]): Map<string, number> {
+  const byMember = new Map<string, number>()
+  for (const e of rows) {
+    if (e.kind !== 'real' || !e.isIncome || !e.ownerMemberId) continue
+    if (!isInternalTransferCategory(e.category, categories)) continue
+    byMember.set(e.ownerMemberId, (byMember.get(e.ownerMemberId) ?? 0) + e.amount)
+  }
+  return byMember
+}
+
 // Skill de Pepa, puntos 15/16 — petición real: "la adjudicación de
 // Quiero/Necesito/Debo y la de Fijo/Variable no debería ser manual
 // sino automática... clasificar cada categoría desde un principio".

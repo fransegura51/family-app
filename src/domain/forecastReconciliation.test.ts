@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { expandForecastOccurrences, forecastTotals, type ForecastOccurrence, type ForecastOccurrenceOverride, type ForecastPayment } from './forecast'
 import {
   findReconciliationCandidates,
+  hasSharedWord,
+  meaningfulWords,
   RECONCILIATION_CONFIDENCE_HIGH_MIN,
   RECONCILIATION_CONFIDENCE_MEDIUM_MIN,
   RECONCILIATION_DATE_WINDOW_DAYS,
@@ -380,4 +382,41 @@ describe('CASO REAL OBLIGATORIO — Endesa factura de luz (certificación móvil
   // hace el UPDATE) en src/data/forecastReconciliationMigration.test.ts — unmatchForecastOccurrence solo
   // toca forecast_occurrences.matched_expense_id, nunca la tabla expenses: ambas quedan independientes
   // por diseño, así que no hay nada que "revertir" — la categoría/etiqueta simplemente nunca se tocan.
+})
+
+describe('Fase 1D-g.4 — hasSharedWord: identidad del comercio, nunca del medio de pago (auditoría real Netflix vs Anthropic)', () => {
+  const NETFLIX_REAL = 'COMPRA TARJ. 5402XXXXXXXX4041 NETFLIX.COM-Madrid'
+  const ANTHROPIC_REAL = 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN'
+
+  it('CASO REAL: Netflix y Anthropic ya NO se consideran relacionados — antes compartían "COMPRA"/"TARJ"/la tarjeta enmascarada, ninguno identifica al comercio', () => {
+    expect(hasSharedWord(NETFLIX_REAL, ANTHROPIC_REAL)).toBe(false)
+  })
+
+  it('"compra" y "tarj" dejan de ser palabras significativas — boilerplate bancario genérico, demostrado con el caso real', () => {
+    const words = meaningfulWords(NETFLIX_REAL)
+    expect(words.has('compra')).toBe(false)
+    expect(words.has('tarj')).toBe(false)
+  })
+
+  it('la referencia de tarjeta enmascarada (dígitos + "x" mezclados) nunca es significativa, detectado de forma ESTRUCTURAL, no por su valor exacto', () => {
+    expect(meaningfulWords(NETFLIX_REAL).has('5402xxxxxxxx4041')).toBe(false)
+    // Un formato de enmascarado DISTINTO (más x, menos dígitos) también se excluye — nunca una lista de
+    // números concretos.
+    expect(meaningfulWords('COMPRA 99XXXXXXXXXXXX01 ALGO').has('99xxxxxxxxxxxx01')).toBe(false)
+  })
+
+  it('REGRESIÓN: un identificador real de préstamo/contrato (solo dígitos, sin "x") SIGUE siendo significativo — "8078183410" no se ve afectado', () => {
+    expect(meaningfulWords('PRESTAMOS ADEUDO CUOTA N.8078183410').has('8078183410')).toBe(true)
+    expect(hasSharedWord('PRESTAMOS ADEUDO CUOTA N.8078183410', 'Hipoteca Casa N.8078183410')).toBe(true)
+  })
+
+  it('una palabra con letras reales además de dígitos/"x" no se confunde con una tarjeta enmascarada (p. ej. "xbox360" sigue siendo una palabra real)', () => {
+    expect(meaningfulWords('COMPRA XBOX360 TIENDA').has('xbox360')).toBe(true)
+  })
+
+  it('la lista de boilerplate es mínima — no excluye palabras reales de comercios (Netflix, Orange, Endesa siguen siendo significativas)', () => {
+    expect(meaningfulWords(NETFLIX_REAL).has('netflix')).toBe(true)
+    expect(meaningfulWords('ORANGE ESPAGNE SAU').has('orange')).toBe(true)
+    expect(meaningfulWords('ENDESA ENERGIA S.A.').has('endesa')).toBe(true)
+  })
 })

@@ -580,3 +580,41 @@ describe('Fase 1D-g.2 — dismissals: la clave leída y la escrita por el detect
     ]
   }
 })
+
+describe('Fase 1D-g.4 — CASO REAL: Netflix ya no se excluye por compartir tarjeta con Anthropic', () => {
+  const NETFLIX = [
+    movement({ date: '2026-07-16', amount: 14.99, description: 'COMPRA TARJ. 5402XXXXXXXX4041 NETFLIX.COM-Madrid', expenseId: 'exp-n1', category: 'Suscripciones y entretenimiento' }),
+    movement({ date: '2026-08-17', amount: 14.99, description: 'COMPRA TARJ. 5402XXXXXXXX4041 NETFLIX.COM-MADRID', expenseId: 'exp-n2', category: 'Suscripciones y entretenimiento' }),
+    movement({ date: '2026-09-16', amount: 14.99, description: 'COMPRA TARJ. 5402XXXXXXXX4041 NETFLIX.COM-Madrid', expenseId: 'exp-n3', category: 'Suscripciones y entretenimiento' }),
+  ]
+  const ANTHROPIC_PAYMENT: ForecastPaymentForDedup = {
+    title: 'COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN',
+    provider: null,
+    bankAccountId: ACCOUNT_A,
+    active: true,
+  }
+
+  it('el candidato Netflix ya no queda excluido por deduplicación débil contra el título real (sin renombrar) del pago de Anthropic', () => {
+    const [candidate] = detectRecurrenceCandidates(NETFLIX, OLD_REFERENCE_DATE)
+    expect(isRecurrenceCandidateAlreadyKnown(candidate, new Set(), [ANTHROPIC_PAYMENT])).toBe(false)
+  })
+
+  it('Netflix sobrevive a findNewRecurrenceCandidates cuando Anthropic ya existe como previsión activa en la misma cuenta', () => {
+    const results = findNewRecurrenceCandidates(NETFLIX, new Set(), [ANTHROPIC_PAYMENT], new Set(), OLD_REFERENCE_DATE)
+    expect(results).toHaveLength(1)
+    expect(results[0].displayName).toContain('NETFLIX')
+  })
+})
+
+describe('Fase 1D-g.4 — REGRESIÓN obligatoria: la Hipoteca sigue evitando que el préstamo N.8078183410 se vuelva a proponer', () => {
+  it('el préstamo 450,50€ sigue excluido por deduplicación contra "Hipoteca Casa N.8078183410" (identificador real compartido, nunca boilerplate)', () => {
+    const PRESTAMO_A = [
+      movement({ date: '2026-06-30', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 30/06/26', expenseId: 'exp-h1' }),
+      movement({ date: '2026-07-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/07/26', expenseId: 'exp-h2' }),
+      movement({ date: '2026-08-31', amount: 450.5, description: 'PRESTAMOS ADEUDO CUOTA N.8078183410 31/08/26', expenseId: 'exp-h3' }),
+    ]
+    const HIPOTECA_PAYMENT: ForecastPaymentForDedup = { title: 'Hipoteca Casa N.8078183410', provider: null, bankAccountId: ACCOUNT_A, active: true }
+    const results = findNewRecurrenceCandidates(PRESTAMO_A, new Set(), [HIPOTECA_PAYMENT], new Set(), OLD_REFERENCE_DATE)
+    expect(results).toEqual([])
+  })
+})

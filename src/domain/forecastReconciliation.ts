@@ -92,6 +92,26 @@ function daysBetween(fromDateStr: string, toDateStr: string): number {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000)
 }
 
+// Fase 1D-g.4 — auditoría real (Netflix vs Anthropic): la deduplicación debe buscar identidad del
+// COMPROMISO/comercio, nunca del MEDIO DE PAGO. "COMPRA TARJ. 5402XXXXXXXX4041 NETFLIX.COM-Madrid" y
+// "COMPRA TARJ. 5402XXXXXXXX4041 ANTHROPIC* CLAUDE SUB-DUBLIN" compartían "COMPRA", "TARJ" y el número
+// de tarjeta enmascarado — ninguno de los tres identifica al comercio, los tres son boilerplate del
+// banco (misma tarjeta paga Netflix, Anthropic, Orange...). Lista MÍNIMA y conservadora — solo lo
+// demostrado con un caso real, nunca un diccionario bancario extenso (si aparecen más casos, se añaden
+// uno a uno con su propia evidencia, nunca por anticipado).
+const GENERIC_BANK_BOILERPLATE_WORDS = new Set(['compra', 'tarj'])
+
+// Referencia de tarjeta enmascarada: ESTRUCTURAL (dígitos y "x" mezclados, nada más), nunca una lista de
+// números concretos — así detecta cualquier formato de enmascarado ("5402XXXXXXXX4041" y cualquier
+// variante futura) sin tener que hardcodear ningún número. Un identificador real (número de préstamo,
+// de contrato...) es SIEMPRE solo dígitos — nunca lleva "x" — así que nunca se ve afectado: "8078183410"
+// sigue siendo significativo, tal como debe seguir relacionando "PRESTAMOS ADEUDO CUOTA N.8078183410"
+// con "Hipoteca Casa N.8078183410". Una palabra con letras reales además de dígitos/"x" (p. ej. "xbox360")
+// tampoco encaja aquí — solo cuenta si TODO el token es exclusivamente dígitos y "x".
+function isMaskedCardReference(word: string): boolean {
+  return /^[0-9x]+$/.test(word) && /\d/.test(word) && /x/.test(word)
+}
+
 // Texto libre → palabras "útiles" (3+ letras, sin acentos) para una coincidencia de texto simple y
 // explicable — nunca IA, nunca similitud semántica inventada. Una palabra en común entre el concepto
 // bancario y el título/proveedor de la previsión es una señal secundaria, nunca obligatoria.
@@ -103,7 +123,7 @@ export function meaningfulWords(text: string): Set<string> {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
   const words = normalized.match(/[a-z0-9]+/g) ?? []
-  return new Set(words.filter((w) => w.length >= 3))
+  return new Set(words.filter((w) => w.length >= 3 && !GENERIC_BANK_BOILERPLATE_WORDS.has(w) && !isMaskedCardReference(w)))
 }
 
 export function hasSharedWord(a: string, b: string): boolean {

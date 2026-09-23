@@ -310,10 +310,13 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     const submitEnd = FS.indexOf('\n  }\n', submitIdx)
     const submitBody = FS.slice(submitIdx, submitEnd)
     expect(submitBody).not.toMatch(/forecast_occurrences|upsertForecastOccurrenceOverride/)
-    // Una llamada de creación XOR una de actualización según la rama if/else — nunca ambas a la vez, y
-    // ninguna de las dos dentro de un bucle (serían pagos independientes por cuota, justo lo prohibido).
+    // Una única llamada de creación real — nunca dentro de un bucle (serían pagos independientes por
+    // cuota, justo lo prohibido). Dos actualizaciones posibles (if/else if/else, Fase 1E.2): editar un
+    // pago ya guardado, o reintentar tras un fallo guardando SOLO los datos del préstamo de un pago que
+    // este mismo formulario ya creó — createdPaymentIdRef garantiza que ese reintento actualiza, nunca
+    // vuelve a crear un segundo forecast_payment.
     expect(submitBody.match(/createForecastPayment\(/g)?.length).toBe(1)
-    expect(submitBody.match(/updateForecastPayment\(/g)?.length).toBe(1)
+    expect(submitBody.match(/updateForecastPayment\(/g)?.length).toBe(2)
     expect(submitBody).not.toMatch(/\.map\([^)]*(createForecastPayment|updateForecastPayment)/)
   })
 })
@@ -872,5 +875,179 @@ describe('Fase 1D-g.3 — regresión: 1D-g/1D-g.1/1D-g.2 siguen intactos', () =>
 
   it('16/17) el detector automático sigue usando findNewRecurrenceCandidates con la fecha de referencia real — préstamos y Endesa siguen su mismo camino de siempre', () => {
     expect(FS).toContain('findNewRecurrenceCandidates(allBankMovementsForDetection, matchedExpenseIds, existingPaymentsForDedup, dismissedRecurrenceKeys, today)')
+  })
+})
+
+describe('Fase 1E.2 — clasificar una Previsión como préstamo/hipoteca desde el ForecastPaymentForm existente', () => {
+  it('"Tipo de pago" es "Pago normal" por defecto — nunca preseleccionado "Préstamo/hipoteca" solo, ni siquiera con una sugerencia bancaria fuerte', () => {
+    expect(FS).toContain("const [paymentType, setPaymentType] = useState<'normal' | 'prestamo'>('normal')")
+  })
+
+  it('editando un pago ya guardado, el tipo se carga de verdad desde forecast_loan_details (getLoanDetails) — nunca se adivina por el título/categoría', () => {
+    const idx = FS.indexOf('getLoanDetails(payment.id)')
+    expect(idx).toBeGreaterThan(-1)
+    const block = FS.slice(idx, idx + 700)
+    expect(block).toContain("setPaymentType('prestamo')")
+  })
+
+  it('pago normal nunca llama a createLoanDetails — solo ocurre dentro de la rama paymentType === "prestamo"', () => {
+    const submitIdx = FS.indexOf('async function handleSubmit', FS.indexOf('function ForecastPaymentForm'))
+    const submitEnd = FS.indexOf('\n  }\n', submitIdx)
+    const submitBody = FS.slice(submitIdx, submitEnd)
+    const loanInputIdx = submitBody.indexOf('const loanInput: ForecastLoanDetailsInput')
+    expect(loanInputIdx).toBeGreaterThan(-1)
+    const guardIdx = submitBody.lastIndexOf("if (paymentType === 'prestamo')", loanInputIdx)
+    expect(guardIdx).toBeGreaterThan(-1)
+    expect(submitBody.slice(guardIdx, loanInputIdx + 1400)).toContain('createLoanDetails(id, loanInput)')
+  })
+
+  it('préstamo Nivel 1 es válido: createLoanDetails/updateLoanDetails se llaman con TODOS los campos financieros aceptando null — nunca se exige rellenar nada', () => {
+    const idx = FS.indexOf('const loanInput: ForecastLoanDetailsInput')
+    const body = FS.slice(idx, idx + 900)
+    expect(body).toContain('loanType: loanType || null')
+    expect(body).toContain('outstandingPrincipalCents: loanOutstandingPrincipal.trim() ? eurosStringToCents(loanOutstandingPrincipal) : null')
+    expect(body).toContain('interestRateBps: loanInterestRatePercent.trim() ? parseInterestPercentToBps(loanInterestRatePercent) : null')
+  })
+
+  it('porcentaje humano -> básicos puntos al guardar, y básicos puntos -> porcentaje humano al cargar (round-trip real)', () => {
+    expect(FS).toContain('parseInterestPercentToBps(loanInterestRatePercent)')
+    expect(FS).toContain('formatInterestBpsToPercent(details.interestRateBps)')
+  })
+
+  it('Referencia bancaria y Referencia contractual son estados independientes — ninguno se copia del otro', () => {
+    expect(FS).toContain("const [loanBankReference, setLoanBankReference] = useState(prefill?.suggestedLoanBankReference ?? '')")
+    expect(FS).toContain("const [loanContractReference, setLoanContractReference] = useState('')")
+    // La sugerencia estructural (extractLoanBankReference) nunca alimenta contractReference.
+    expect(FS).not.toMatch(/setLoanContractReference\([^)]*suggestedLoanBankReference/)
+  })
+
+  it('capital pendiente sin fecha (o fecha sin capital) bloquea el guardado — igual que exige la constraint de la BD (0160)', () => {
+    const submitIdx = FS.indexOf('async function handleSubmit', FS.indexOf('function ForecastPaymentForm'))
+    const submitEnd = FS.indexOf('\n  }\n', submitIdx)
+    const submitBody = FS.slice(submitIdx, submitEnd)
+    expect(submitBody).toContain("if (loanOutstandingPrincipal.trim() && !loanPrincipalAsOfDate)")
+    expect(submitBody).toContain("if (!loanOutstandingPrincipal.trim() && loanPrincipalAsOfDate)")
+  })
+
+  it('NULL nunca se muestra como 0/0%/0 cuotas — la tarjeta de préstamo comprueba "!= null" antes de pintar cada línea, y usa "Datos del préstamo incompletos" cuando no hay nada', () => {
+    const idx = FS.indexOf('loanCards.map(({ loan, payment: p }) => {')
+    const block = FS.slice(idx, idx + 3000)
+    expect(block).toContain('loan.outstandingPrincipalCents != null && loan.principalAsOfDate')
+    expect(block).toContain('loan.remainingInstallments != null')
+    expect(block).toContain('loan.interestRateBps != null')
+    expect(block).toContain('Datos del préstamo incompletos')
+    expect(block).not.toMatch(/>\{loan\.\w+\} €/) // nunca imprime un campo potencialmente null crudo sin guardia
+  })
+
+  it('desclasificar (Préstamo -> Pago normal) con datos ya guardados exige confirmación explícita — nunca borra en silencio', () => {
+    const idx = FS.indexOf('function handlePaymentTypeChange')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
+    expect(body).toContain("if (next === 'normal' && paymentType === 'prestamo' && existingLoanDetails)")
+    expect(body).toContain('setShowDeclassifyConfirm(true)')
+    expect(body).toContain('return') // no cambia paymentType todavía — espera confirmación
+    expect(FS).toContain('Cambiar a pago normal')
+    expect(FS).toContain('La previsión y')
+  })
+
+  it('la eliminación real del detalle de préstamo solo ocurre AL GUARDAR (handleSubmit), nunca al tocar el selector — deleteLoanDetails nunca se llama desde handlePaymentTypeChange', () => {
+    const idx = FS.indexOf('function handlePaymentTypeChange')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
+    expect(body).not.toContain('deleteLoanDetails')
+  })
+
+  it('borrar el detalle de préstamo (desclasificar) nunca borra el forecast_payment — son llamadas completamente separadas', () => {
+    const idx = FS.indexOf('await deleteLoanDetails(existingLoanDetails.id)')
+    expect(idx).toBeGreaterThan(-1)
+    const around = FS.slice(idx - 200, idx + 200)
+    expect(around).not.toContain('deleteForecastPayment')
+  })
+
+  it('reintentar tras un fallo guardando SOLO el préstamo nunca duplica el forecast_payment — createdPaymentIdRef recuerda el id ya creado en este formulario', () => {
+    expect(FS).toContain("const createdPaymentIdRef = useRef<string | null>(null)")
+    expect(FS).toContain('} else if (createdPaymentIdRef.current) {')
+  })
+
+  it('💡 la sugerencia visual nunca marca "Préstamo/hipoteca" ella sola — solo aparece mientras paymentType sigue en "normal"', () => {
+    const idx = FS.indexOf('💡 Parece una cuota de préstamo (referencia')
+    expect(idx).toBeGreaterThan(-1)
+    const before = FS.slice(Math.max(0, idx - 300), idx)
+    expect(before).toContain("paymentType === 'normal'")
+  })
+})
+
+describe('Fase 1E.2 — capital pendiente NUNCA participa en Previsión (solo informativo)', () => {
+  it('forecastTotals/forecastByMonth (domain/forecast.ts) no mencionan ningún campo de préstamo', () => {
+    const idx = FS_DOMAIN_FORECAST.indexOf('export function forecastTotals')
+    const totalsBody = FS_DOMAIN_FORECAST.slice(idx, FS_DOMAIN_FORECAST.indexOf('\n}', idx))
+    expect(totalsBody).not.toMatch(/outstandingPrincipal|loanDetail|ForecastLoanDetails/i)
+    const byMonthIdx = FS_DOMAIN_FORECAST.indexOf('export function forecastByMonth')
+    const byMonthBody = FS_DOMAIN_FORECAST.slice(byMonthIdx, FS_DOMAIN_FORECAST.indexOf('\n}', byMonthIdx))
+    expect(byMonthBody).not.toMatch(/outstandingPrincipal|loanDetail|ForecastLoanDetails/i)
+  })
+
+  it('la única cuota real de un préstamo en Previsión sigue siendo forecast_payments.amount — loanCards es una lista APARTE, nunca sustituye upcomingOccurrences', () => {
+    expect(FS).toContain('const loanCards = loanDetails')
+    expect(FS).toContain('{loanCards.length > 0 && (')
+    // upcomingOccurrences (7d/30d/3m/12m) se sigue calculando exactamente igual, sin filtrar por loanDetails.
+    const idx = FS.indexOf('const upcomingOccurrences: ForecastOccurrence[] = []')
+    expect(idx).toBeGreaterThan(-1)
+    expect(FS.slice(idx, idx + 300)).not.toMatch(/loanDetails|loanCards/)
+  })
+
+  it('un préstamo sigue apareciendo con normalidad en "Próximos pagos" — nunca se excluye de activePayments/upcomingOccurrences por tener forecast_loan_details', () => {
+    const idx = FS.indexOf('const activePayments = payments.filter((p) => p.active)')
+    expect(idx).toBeGreaterThan(-1)
+    expect(FS.slice(idx, idx + 100)).not.toMatch(/loanDetails/)
+  })
+})
+
+describe('Fase 1E.2 — sección "🏦 Préstamos e hipotecas": complementaria, nunca sustituye "Próximos pagos"', () => {
+  it('solo se muestra cuando hay al menos un préstamo clasificado', () => {
+    expect(FS).toContain('{loanCards.length > 0 && (')
+  })
+
+  it('"Ver / editar" / "Completar datos" reutiliza EXACTAMENTE el mismo editingPayment/ForecastPaymentForm de siempre — nunca un formulario/ficha aparte', () => {
+    const idx = FS.indexOf('loanCards.map(({ loan, payment: p }) => {')
+    const block = FS.slice(idx, idx + 3000)
+    expect(block).toContain('onClick={() => setEditingPayment(p)}')
+    expect(FS.match(/function ForecastPaymentForm\(/g)?.length).toBe(1)
+  })
+})
+
+describe('Fase 1E.2 — ajuste del menú de Economía', () => {
+  it('"Nuevo movimiento" ya no es una entrada de ECONOMIA_MENU_ITEM_META (economiaMenu.ts) — "accion:movimiento" solo sobrevive en RETIRED_KEYS, para limpiar menús ya guardados', () => {
+    const metaIdx = ECONOMIA_MENU.indexOf('export const ECONOMIA_MENU_ITEM_META')
+    const metaBody = ECONOMIA_MENU.slice(metaIdx, ECONOMIA_MENU.indexOf('\n}', metaIdx))
+    expect(metaBody).not.toContain('accion:movimiento')
+    expect(metaBody).not.toContain('Nuevo movimiento')
+    expect(ECONOMIA_MENU).toContain("const RETIRED_KEYS = ['accion:categorias', 'accion:etiquetas', 'accion:movimiento']")
+  })
+
+  it('el orden por defecto es el pedido, con "Educación financiera" siempre la última', () => {
+    expect(ECONOMIA_MENU).toMatch(
+      /DEFAULT_KEYS: FixedEconomiaMenuItemKey\[\] = \[\s*'Resumen',\s*'Estadísticas',\s*'Movimientos',\s*'Presupuesto Generales',\s*'Banco',\s*'Previsión de pagos',\s*'Educación financiera',\s*\]/,
+    )
+  })
+
+  it('handleEconomiaAction ya no gestiona "accion:movimiento" — el menú deja de abrir el modal de nuevo movimiento', () => {
+    const idx = FS.indexOf('function handleEconomiaAction')
+    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
+    expect(body).not.toContain('accion:movimiento')
+  })
+})
+
+describe('Fase 1E.2 — "+ Nuevo movimiento" en Movimientos reutiliza el flujo existente', () => {
+  it('ExpensesTab recibe onOpenNewMovement y lo dispara con un botón propio — nunca un formulario nuevo', () => {
+    const idx = FS.indexOf('function ExpensesTab(')
+    const sigEnd = FS.indexOf(') {', idx)
+    expect(FS.slice(idx, sigEnd)).toContain('onOpenNewMovement')
+    expect(FS).toContain('+ Nuevo movimiento')
+    expect(FS).toContain('onClick={onOpenNewMovement}')
+  })
+
+  it('FinanceScreen pasa exactamente el mismo setShowNewMovement de siempre — reutiliza NewMovementModal/AddExpenseToAnyCategoryInline sin duplicar', () => {
+    expect(FS).toContain('onOpenNewMovement={() => setShowNewMovement(true)}')
+    expect(FS.match(/function NewMovementModal\(/g)?.length).toBe(1)
+    expect(FS.match(/function AddExpenseToAnyCategoryInline\(/g)?.length).toBe(1)
   })
 })

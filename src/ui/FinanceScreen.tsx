@@ -30,12 +30,16 @@ import {
 import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTransactions } from '@/data/bank'
 import {
   createForecastPayment,
+  createLoanDetails,
   deleteForecastPayment,
+  deleteLoanDetails,
   dismissForecastRecurrence,
+  getLoanDetails,
   listAllMatchedForecastExpenseIds,
   listForecastOccurrenceOverrides,
   listForecastPayments,
   listForecastRecurrenceDismissals,
+  listLoanDetails,
   matchForecastOccurrence,
   replaceForecastPaymentInstallments,
   replaceForecastPlanOverrides,
@@ -43,6 +47,8 @@ import {
   setForecastPaymentActive,
   unmatchForecastOccurrence,
   updateForecastPayment,
+  updateLoanDetails,
+  type ForecastLoanDetailsInput,
   type ForecastPaymentInput,
   type ForecastPaymentWithReminders,
 } from '@/data/forecast'
@@ -52,15 +58,20 @@ import {
   forecastByMonth,
   forecastTotals,
   formatForecastAmount,
+  formatInterestBpsToPercent,
   isForecastPaymentFinished,
   nextForecastOccurrence,
   occurrenceForCycle,
+  parseInterestPercentToBps,
   remainingInstallments,
   stepDays,
   stepMonthsClamped,
   totalInstallments,
   type ForecastAmountStatus,
   type ForecastCustomRecurrence,
+  type ForecastLoanDetails,
+  type ForecastLoanInterestType,
+  type ForecastLoanType,
   type ForecastOccurrence,
   type ForecastOccurrenceOverride,
   type ForecastRecurrenceOption,
@@ -237,7 +248,7 @@ function isEconomiaSubTab(key: EconomiaMenuItemKey): key is SubTab {
 // acceso del desplegable se puede sacar. Guardado en el dispositivo
 // (como el orden del menú), no por familia.
 const ECONOMIA_PINNED_KEY = 'familyapp:economia-pinned-tabs'
-const ECONOMIA_FIXED_KEYS: readonly string[] = [...SUB_TABS, 'accion:movimiento']
+const ECONOMIA_FIXED_KEYS: readonly string[] = [...SUB_TABS]
 
 // Los accesos personalizados ("custom:<id>") no están en ninguna lista
 // fija — se validan por forma en vez de por pertenencia, para que
@@ -458,11 +469,11 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   }
 
   function handleEconomiaAction(key: EconomiaMenuItemKey) {
-    if (key === 'accion:movimiento') setShowNewMovement(true)
-    else if (isEconomiaSubTab(key)) setTab(key)
+    if (isEconomiaSubTab(key)) setTab(key)
     // Un acceso personalizado no lleva a ningún sitio todavía — el
     // propio EconomiaMenuDropdown enseña el aviso "aún no hay nada
-    // aquí" al tocarlo.
+    // aquí" al tocarlo. "Nuevo movimiento" (Fase 1E.2) ya no es un
+    // acceso del menú — ver "+ Nuevo movimiento" dentro de Movimientos.
   }
 
   const flatMenuEntries = menuLayout.flatMap((g) => g.items)
@@ -630,6 +641,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           }
           accountsMode={accountsMode}
           myMemberId={myMemberId}
+          onOpenNewMovement={() => setShowNewMovement(true)}
         />
       )}
       {tab === 'Presupuesto Generales' && (
@@ -3257,6 +3269,7 @@ function ExpensesTab({
   onBack,
   accountsMode = 'compartido',
   myMemberId = null,
+  onOpenNewMovement,
 }: {
   filter?: MovementsFilter | null
   onClearFilter?: () => void
@@ -3264,6 +3277,11 @@ function ExpensesTab({
   onBack?: () => void
   accountsMode?: AccountsMode
   myMemberId?: string | null
+  // Fase 1E.2 — "Nuevo movimiento" deja de ser una entrada del menú ☰ de Economía y pasa a vivir aquí,
+  // en la pantalla a la que de verdad pertenece. Reutiliza EXACTAMENTE el mismo NewMovementModal/
+  // AddExpenseToAnyCategoryInline de siempre (estado en el FinanceScreen padre) — nunca un formulario
+  // ni un flujo nuevo.
+  onOpenNewMovement?: () => void
 }) {
   // Piso compartido — solo tiene sentido elegir Individual/Común en modo
   // Separado; en Compartido no hay nada que separar (todo es una sola
@@ -3542,6 +3560,12 @@ function ExpensesTab({
   return (
     <div>
       {error && <p className="error">{error}</p>}
+
+      {onOpenNewMovement && !filter && (
+        <button type="button" style={{ marginBottom: 8 }} onClick={onOpenNewMovement}>
+          + Nuevo movimiento
+        </button>
+      )}
 
       {filter ? (
         <div className="card event-card">
@@ -8461,6 +8485,16 @@ const RECURRENCE_SHORT_LABEL: Record<ForecastRecurrenceOption, string> = {
   custom: 'Personalizado',
 }
 const AMOUNT_STATUS_LABELS: Record<ForecastAmountStatus, string> = { known: 'Conocido', estimated: 'Estimado', unknown: 'Pendiente' }
+// Fase 1E.2 — "Sin especificar" no es un valor real de loanType (columna NULL en BD): es solo la opción
+// del <select> que representa "todavía no lo sé", igual criterio que el resto del formulario.
+const LOAN_TYPE_LABELS: Record<ForecastLoanType, string> = {
+  hipoteca: 'Hipoteca',
+  prestamo_coche: 'Préstamo coche',
+  prestamo_moto: 'Préstamo moto',
+  prestamo_personal: 'Préstamo personal',
+  otro: 'Otro',
+}
+const LOAN_INTEREST_TYPE_LABELS: Record<ForecastLoanInterestType, string> = { fijo: 'Fijo', variable: 'Variable', mixto: 'Mixto' }
 const REMINDER_UNIT_LABELS: Record<ForecastReminderUnit, string> = { minutes: 'minutos', hours: 'horas', days: 'días', weeks: 'semanas', months: 'meses' }
 const REMINDER_QUICK_OPTIONS: { label: string; value: number; unit: ForecastReminderUnit }[] = [
   { label: '1 semana antes', value: 1, unit: 'weeks' },
@@ -8494,6 +8528,7 @@ function buildForecastPrefillFromCandidate(c: RecurrenceCandidate): ForecastPaym
     dueDate: c.nextDueDate,
     recurrenceRule: buildForecastRecurrenceRule('custom', { freq, interval, until: null })!,
     bankAccountId: c.accountId,
+    suggestedLoanBankReference: extractLoanBankReference(c.displayName),
   }
 }
 
@@ -8513,6 +8548,7 @@ function buildMinimalForecastPrefillFromMovement(bt: Pick<BankTransaction, 'desc
     amountEstimatedBasis: `Basado en el último cargo: ${formatForecastAmount(amount, bt.currency)}`,
     categoryName: category && category !== 'Otros' ? category : null,
     bankAccountId: '', // se rellena con el accountId real justo antes de usarse (ver handleAddToForecast)
+    suggestedLoanBankReference: title ? extractLoanBankReference(title) : null,
   }
 }
 
@@ -8570,6 +8606,11 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [recurrenceDismissBusyKey, setRecurrenceDismissBusyKey] = useState<string | null>(null)
   const [recurrenceError, setRecurrenceError] = useState<string | null>(null)
   const [recurrencePrefill, setRecurrencePrefill] = useState<ForecastPaymentPrefill | null>(null)
+  // Fase 1E.2 — "🏦 Préstamos e hipotecas": vista complementaria de solo lectura, nunca sustituye
+  // "Próximos pagos". Se recarga aparte (no en cada reload() normal) — solo cambia al crear/editar/
+  // desclasificar un préstamo desde el propio formulario.
+  const [loanDetails, setLoanDetails] = useState<ForecastLoanDetails[]>([])
+  const [loanSectionOpen, setLoanSectionOpen] = useState(false)
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -8585,6 +8626,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       })
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar Previsión de pagos')))
       .finally(() => setLoading(false))
+    // Fase 1E.2 — se recarga junto con payments: clasificar/desclasificar un préstamo pasa siempre por
+    // ForecastPaymentForm, que llama a la misma reload() al guardar (onSaved -> saveCommon).
+    listLoanDetails().then(setLoanDetails).catch(() => {})
   }
   function reloadReconciliation() {
     listBankTransactions().then(setBankTransactions).catch(() => {})
@@ -8618,6 +8662,16 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   }
 
   const activePayments = payments.filter((p) => p.active)
+  // Fase 1E.2 — "🏦 Préstamos e hipotecas": SOLO forecast_payments que de verdad tienen un
+  // forecast_loan_details relacionado (la existencia de la fila es la clasificación, nunca un booleano
+  // aparte) — capital pendiente/interés/vencimiento nunca participan en horizonEnd/forecastTotals/
+  // forecastByMonth de arriba, son puramente informativos.
+  const loanCards = loanDetails
+    .map((loan) => {
+      const p = payments.find((pp) => pp.id === loan.forecastPaymentId)
+      return p ? { loan, payment: p } : null
+    })
+    .filter((x): x is { loan: ForecastLoanDetails; payment: ForecastPaymentWithReminders } => x !== null)
   const horizonEnd =
     horizon === '7d' ? stepDays(today, 7) : horizon === '30d' ? stepDays(today, 30) : horizon === '3m' ? stepMonthsClamped(today, 3) : stepMonthsClamped(today, 12)
 
@@ -9151,6 +9205,64 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
         </>
       )}
 
+      {/* Fase 1E.2 — vista COMPLEMENTARIA, nunca sustituye "Próximos pagos" de arriba — solo aparece si
+          hay al menos un préstamo clasificado. */}
+      {loanCards.length > 0 && (
+        <>
+          <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setLoanSectionOpen((v) => !v)}>
+            {loanSectionOpen ? '▾' : '▸'} 🏦 Préstamos e hipotecas
+          </button>
+          {loanSectionOpen && (
+            <div className="event-list" style={{ marginTop: 8 }}>
+              {loanCards.map(({ loan, payment: p }) => {
+                const freqLabel = p.recurrenceRule ? RECURRENCE_SHORT_LABEL[parseRecurrenceRuleToFormState(p.recurrenceRule, p.dueDate).freqOption] : ''
+                const hasAnyDetail = loan.outstandingPrincipalCents != null || loan.remainingInstallments != null || loan.maturityDate != null || loan.interestRateBps != null
+                return (
+                  <div key={loan.id} className="card" style={{ padding: 12, marginBottom: 8 }}>
+                    <strong>{p.title}</strong>
+                    <p style={{ margin: '2px 0' }}>
+                      {p.amount != null ? formatForecastAmount(p.amount, p.currency) : 'Importe pendiente'}
+                      {freqLabel ? ` / ${freqLabel.toLowerCase()}` : ''}
+                    </p>
+                    {hasAnyDetail ? (
+                      <>
+                        {loan.outstandingPrincipalCents != null && loan.principalAsOfDate && (
+                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                            Capital pendiente: {formatForecastAmount(loan.outstandingPrincipalCents / 100, p.currency)} a fecha {formatSpanishDate(loan.principalAsOfDate)}
+                          </p>
+                        )}
+                        {loan.remainingInstallments != null && (
+                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                            {loan.remainingInstallments} cuota{loan.remainingInstallments === 1 ? '' : 's'} pendiente{loan.remainingInstallments === 1 ? '' : 's'}
+                          </p>
+                        )}
+                        {loan.maturityDate && (
+                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                            Finaliza {formatSpanishDate(loan.maturityDate)}
+                          </p>
+                        )}
+                        {loan.interestRateBps != null && (
+                          <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                            Interés{loan.interestType ? ` ${LOAN_INTEREST_TYPE_LABELS[loan.interestType].toLowerCase()}` : ''} {formatInterestBpsToPercent(loan.interestRateBps)}%
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                        Datos del préstamo incompletos
+                      </p>
+                    )}
+                    <button type="button" className="link-button" style={{ marginTop: 4 }} onClick={() => setEditingPayment(p)}>
+                      {hasAnyDetail ? 'Ver / editar' : 'Completar datos'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+
       <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setManagementOpen((v) => !v)}>
         {managementOpen ? '▾' : '▸'} Gestionar pagos previstos
       </button>
@@ -9374,6 +9486,23 @@ export interface ForecastPaymentPrefill {
   // reconstruye la recurrencia de un pago ya guardado, en vez de fijar recurs/freqOption a mano aquí.
   recurrenceRule?: string
   bankAccountId: string
+  // Fase 1E.2 — SOLO una sugerencia de "Referencia bancaria" cuando la descripción real contiene un
+  // patrón estructural claro de préstamo ("...PRESTAMO... N.XXXXXXXXXX") — nunca selecciona "Préstamo /
+  // hipoteca" por sí sola, nunca rellena Referencia contractual (ver extractLoanBankReference).
+  suggestedLoanBankReference?: string | null
+}
+
+// Fase 1E.2 — sugerencia visual "💡 Parece una cuota de préstamo": puramente ESTRUCTURAL sobre el título
+// YA producido por el detector (1D-g) — nunca toca normalizeMerchantKey/hasSharedWord/tolerancias/mínimo
+// de ocurrencias/deduplicación, nunca decide el tipo de pago por el usuario. Solo se activa cuando el
+// título contiene la palabra "préstamo" Y un número de referencia largo tras "N." (patrón real:
+// "PRESTAMOS ADEUDO CUOTA N.8078183410") — ese número se ofrece como Referencia bancaria, nunca como
+// Referencia contractual (Fase 1E.0/1E.1: son conceptos distintos). No hardcodea ningún número de
+// préstamo ni nombre de comercio concreto.
+function extractLoanBankReference(text: string): string | null {
+  if (!/prestamo/i.test(text)) return null
+  const match = text.match(/n\.?\s*(\d{6,})/i)
+  return match ? match[1] : null
 }
 
 function ForecastPaymentForm({
@@ -9509,6 +9638,69 @@ function ForecastPaymentForm({
   const [notes, setNotes] = useState(payment?.notes ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Reintentar tras un fallo AL GUARDAR SOLO los datos del préstamo (ver handleSubmit) nunca debe crear
+  // un segundo forecast_payment — una vez creado en este mismo formulario, los reintentos actualizan ese
+  // mismo id en vez de volver a createForecastPayment.
+  const createdPaymentIdRef = useRef<string | null>(null)
+
+  // Fase 1E.2 — "Tipo de pago": forecast_payments sigue siendo la ÚNICA fuente de verdad de
+  // concepto/cuota/fechas/recurrencia/cuenta — esto solo decide si además existe un forecast_loan_details
+  // relacionado (1:1 opcional). Para un pago YA guardado, el valor inicial se carga de verdad (ver
+  // useEffect más abajo) — nunca se adivina por el título ni la categoría. Para uno nuevo, "Pago normal"
+  // por defecto siempre — incluso si prefill trae una sugerencia de préstamo (nunca se preselecciona sola).
+  const [paymentType, setPaymentType] = useState<'normal' | 'prestamo'>('normal')
+  const [existingLoanDetails, setExistingLoanDetails] = useState<ForecastLoanDetails | null>(null)
+  const [showDeclassifyConfirm, setShowDeclassifyConfirm] = useState(false)
+  const [loanType, setLoanType] = useState<ForecastLoanType | ''>('')
+  const [loanBankReference, setLoanBankReference] = useState(prefill?.suggestedLoanBankReference ?? '')
+  const [loanContractReference, setLoanContractReference] = useState('')
+  const [loanOriginalPrincipal, setLoanOriginalPrincipal] = useState('')
+  const [loanOutstandingPrincipal, setLoanOutstandingPrincipal] = useState('')
+  const [loanPrincipalAsOfDate, setLoanPrincipalAsOfDate] = useState('')
+  const [loanInterestRatePercent, setLoanInterestRatePercent] = useState('')
+  const [loanInterestType, setLoanInterestType] = useState<ForecastLoanInterestType | ''>('')
+  const [loanMaturityDate, setLoanMaturityDate] = useState('')
+  const [loanRemainingInstallments, setLoanRemainingInstallments] = useState('')
+  const [loanNotes, setLoanNotes] = useState('')
+
+  // Editando un pago ya guardado: se carga su forecast_loan_details real (si existe) — nunca se asume.
+  useEffect(() => {
+    if (!payment) return
+    let cancelled = false
+    getLoanDetails(payment.id)
+      .then((details) => {
+        if (cancelled || !details) return
+        setExistingLoanDetails(details)
+        setPaymentType('prestamo')
+        setLoanType(details.loanType ?? '')
+        setLoanBankReference(details.bankReference ?? '')
+        setLoanContractReference(details.contractReference ?? '')
+        setLoanOriginalPrincipal(details.originalPrincipalCents != null ? centsToEurosString(details.originalPrincipalCents) : '')
+        setLoanOutstandingPrincipal(details.outstandingPrincipalCents != null ? centsToEurosString(details.outstandingPrincipalCents) : '')
+        setLoanPrincipalAsOfDate(details.principalAsOfDate ?? '')
+        setLoanInterestRatePercent(details.interestRateBps != null ? formatInterestBpsToPercent(details.interestRateBps) : '')
+        setLoanInterestType(details.interestType ?? '')
+        setLoanMaturityDate(details.maturityDate ?? '')
+        setLoanRemainingInstallments(details.remainingInstallments != null ? String(details.remainingInstallments) : '')
+        setLoanNotes(details.notes ?? '')
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payment?.id])
+
+  // Cambiar de "Préstamo/hipoteca" a "Pago normal" cuando ya hay datos guardados de verdad NUNCA los
+  // borra en silencio — exige confirmación explícita. Nada se borra todavía aquí: la eliminación real
+  // ocurre solo al guardar (handleSubmit), y solo si de verdad se confirmó y se guarda el formulario.
+  function handlePaymentTypeChange(next: 'normal' | 'prestamo') {
+    if (next === 'normal' && paymentType === 'prestamo' && existingLoanDetails) {
+      setShowDeclassifyConfirm(true)
+      return
+    }
+    setPaymentType(next)
+  }
 
   function hasReminder(value: number, unit: ForecastReminderUnit) {
     return reminders.some((r) => r.value === value && r.unit === unit)
@@ -9599,6 +9791,23 @@ function ForecastPaymentForm({
     if (!dueDate) {
       setError('Indica cuándo vence.')
       return
+    }
+    // Fase 1E.2 — capital pendiente y su fecha de referencia van SIEMPRE juntos, igual que exige la BD
+    // (constraint bidireccional forecast_loan_details_principal_date_together) — nunca se intenta
+    // guardar uno sin el otro.
+    if (paymentType === 'prestamo') {
+      if (loanOutstandingPrincipal.trim() && !loanPrincipalAsOfDate) {
+        setError('Indica la fecha del capital pendiente.')
+        return
+      }
+      if (!loanOutstandingPrincipal.trim() && loanPrincipalAsOfDate) {
+        setError('Indica el capital pendiente, o borra su fecha.')
+        return
+      }
+      if (loanInterestRatePercent.trim() && parseInterestPercentToBps(loanInterestRatePercent) == null) {
+        setError('Pon un interés válido.')
+        return
+      }
     }
     // Fase 1D-g.3 — "No lo sé todavía" nunca se guarda tal cual: PEPA nunca afirma "para siempre" en
     // nombre del banco. La familia tiene que decidir explícitamente antes de poder crear la previsión.
@@ -9727,8 +9936,15 @@ function ForecastPaymentForm({
       if (payment) {
         await updateForecastPayment(payment.id, { ...input, active: payment.active, calendarEventId: payment.calendarEventId })
         id = payment.id
+      } else if (createdPaymentIdRef.current) {
+        // Fase 1E.2 — ya se creó en un intento anterior de ESTE mismo formulario (p. ej. si el único
+        // fallo fue al guardar los datos del préstamo, más abajo) — reintentar actualiza ese mismo pago,
+        // nunca crea un segundo forecast_payment.
+        id = createdPaymentIdRef.current
+        await updateForecastPayment(id, { ...input, active: true, calendarEventId: null })
       } else {
         id = await createForecastPayment(input)
+        createdPaymentIdRef.current = id
       }
       await replaceForecastReminders(id, reminders)
       // "un solo pago" o desactivar los cobros vuelve a dejar installmentsToSave=[] — sustituye la
@@ -9738,6 +9954,33 @@ function ForecastPaymentForm({
       // sustituye los overrides de ciclo por una lista vacía — así cambiar de "Número de pagos" a
       // "Hasta que lo desactive" limpia el plan anterior en vez de dejarlo fantasma.
       await replaceForecastPlanOverrides(id, finitePlanSubmission ? finitePlanSubmission.overrides : [])
+
+      // Fase 1E.2 — forecast_payment ya está guardado (arriba) antes de tocar forecast_loan_details: si
+      // esto falla, el pago en sí NO se pierde ni se duplica — createdPaymentIdRef ya lo recuerda, así
+      // que reintentar (pulsar Guardar otra vez) solo reintenta esta parte, nunca crea un pago repetido.
+      if (paymentType === 'prestamo') {
+        const loanInput: ForecastLoanDetailsInput = {
+          loanType: loanType || null,
+          bankReference: loanBankReference.trim() || null,
+          contractReference: loanContractReference.trim() || null,
+          originalPrincipalCents: loanOriginalPrincipal.trim() ? eurosStringToCents(loanOriginalPrincipal) : null,
+          outstandingPrincipalCents: loanOutstandingPrincipal.trim() ? eurosStringToCents(loanOutstandingPrincipal) : null,
+          principalAsOfDate: loanPrincipalAsOfDate || null,
+          interestRateBps: loanInterestRatePercent.trim() ? parseInterestPercentToBps(loanInterestRatePercent) : null,
+          interestType: loanInterestType || null,
+          maturityDate: loanMaturityDate || null,
+          remainingInstallments: loanRemainingInstallments.trim() ? Math.round(Number(loanRemainingInstallments)) : null,
+          lastVerifiedAt: null,
+          notes: loanNotes.trim() || null,
+        }
+        if (existingLoanDetails) await updateLoanDetails(existingLoanDetails.id, loanInput)
+        else await createLoanDetails(id, loanInput)
+      } else if (existingLoanDetails) {
+        // Desclasificado y confirmado (ver handlePaymentTypeChange) — quitar SOLO la clasificación de
+        // préstamo, el forecast_payment permanece intacto.
+        await deleteLoanDetails(existingLoanDetails.id)
+        setExistingLoanDetails(null)
+      }
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -9828,6 +10071,120 @@ function ForecastPaymentForm({
         Categoría
         <CategorySelect value={categoryName} onChange={setCategoryName} categories={categories} />
       </label>
+
+      {/* Fase 1E.2 — "Tipo de pago": forecast_payments sigue siendo la única fuente de verdad de
+          concepto/cuota/fechas/recurrencia/cuenta; esto solo decide si además existe un
+          forecast_loan_details (1:1 opcional) — nunca se marca "Préstamo/hipoteca" sola, ni siquiera
+          cuando la descripción bancaria lo sugiere con mucha fuerza. */}
+      {!payment && prefill?.suggestedLoanBankReference && paymentType === 'normal' && (
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 4px' }}>
+          💡 Parece una cuota de préstamo (referencia {prefill.suggestedLoanBankReference}) — si quieres guardar sus datos, marca
+          "Préstamo / hipoteca" abajo.
+        </p>
+      )}
+      <label>
+        Tipo de pago
+        <select value={paymentType} onChange={(e) => handlePaymentTypeChange(e.target.value as 'normal' | 'prestamo')}>
+          <option value="normal">Pago normal</option>
+          <option value="prestamo">Préstamo / hipoteca</option>
+        </select>
+      </label>
+
+      {showDeclassifyConfirm && (
+        <div className="card" style={{ padding: 12, margin: '4px 0 8px' }}>
+          <p style={{ margin: '0 0 8px' }}>
+            Este pago tiene información de préstamo guardada. Si lo cambias a pago normal, se eliminarán esos detalles. La previsión y
+            sus movimientos no se eliminarán.
+          </p>
+          <div className="form-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentType('normal')
+                setShowDeclassifyConfirm(false)
+              }}
+            >
+              Cambiar a pago normal
+            </button>
+            <button type="button" className="link-button" onClick={() => setShowDeclassifyConfirm(false)}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {paymentType === 'prestamo' && (
+        <div className="card" style={{ padding: 12, margin: '4px 0 8px' }}>
+          <p style={{ margin: '0 0 8px', fontWeight: 600 }}>🏦 Datos del préstamo</p>
+          <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+            Todos estos datos son opcionales — puedes guardar solo "es un préstamo" y completarlos más adelante.
+          </p>
+          <label>
+            Tipo
+            <select value={loanType} onChange={(e) => setLoanType(e.target.value as ForecastLoanType | '')}>
+              <option value="">Sin especificar</option>
+              {(Object.keys(LOAN_TYPE_LABELS) as ForecastLoanType[]).map((t) => (
+                <option key={t} value={t}>
+                  {LOAN_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Referencia bancaria
+            <input type="text" value={loanBankReference} onChange={(e) => setLoanBankReference(e.target.value)} placeholder="Identificador visto en los cargos del banco" />
+          </label>
+          <label>
+            Referencia contractual
+            <input type="text" value={loanContractReference} onChange={(e) => setLoanContractReference(e.target.value)} placeholder="Número de contrato real" />
+          </label>
+          <div className="inline-fields">
+            <label style={{ flex: 1 }}>
+              Capital inicial
+              <input type="number" step="0.01" min="0" value={loanOriginalPrincipal} onChange={(e) => setLoanOriginalPrincipal(e.target.value)} />
+            </label>
+            <label style={{ flex: 1 }}>
+              Capital pendiente
+              <input type="number" step="0.01" min="0" value={loanOutstandingPrincipal} onChange={(e) => setLoanOutstandingPrincipal(e.target.value)} />
+            </label>
+          </div>
+          {loanOutstandingPrincipal.trim() && (
+            <label>
+              Fecha del capital pendiente
+              <input type="date" value={loanPrincipalAsOfDate} onChange={(e) => setLoanPrincipalAsOfDate(e.target.value)} required />
+            </label>
+          )}
+          <div className="inline-fields">
+            <label style={{ flex: 1 }}>
+              Tipo de interés (%)
+              <input type="text" inputMode="decimal" value={loanInterestRatePercent} onChange={(e) => setLoanInterestRatePercent(e.target.value)} placeholder="3,00" />
+            </label>
+            <label style={{ flex: 1 }}>
+              Tipo
+              <select value={loanInterestType} onChange={(e) => setLoanInterestType(e.target.value as ForecastLoanInterestType | '')}>
+                <option value="">Sin especificar</option>
+                {(Object.keys(LOAN_INTEREST_TYPE_LABELS) as ForecastLoanInterestType[]).map((t) => (
+                  <option key={t} value={t}>
+                    {LOAN_INTEREST_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label>
+            Fecha de finalización
+            <input type="date" value={loanMaturityDate} onChange={(e) => setLoanMaturityDate(e.target.value)} />
+          </label>
+          <label>
+            Cuotas pendientes
+            <input type="number" step="1" min="0" value={loanRemainingInstallments} onChange={(e) => setLoanRemainingInstallments(e.target.value)} />
+          </label>
+          <label>
+            Notas del préstamo
+            <input type="text" value={loanNotes} onChange={(e) => setLoanNotes(e.target.value)} />
+          </label>
+        </div>
+      )}
 
       <label>
         Vencimiento

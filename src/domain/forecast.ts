@@ -81,6 +81,21 @@ export interface ForecastLoanDetails {
   updatedAt: string
 }
 
+// Fase 1E.2 — conversión UI porcentaje humano ↔ básicos puntos persistidos (interestRateBps). Nunca
+// decimal flotante en BD: "3,00 %" se guarda como 300, nunca 3.00 ni 0.03. Puramente aritmética de
+// unidades — no es ningún cálculo financiero (interés compuesto, TAE...), eso sigue sin implementarse.
+export function parseInterestPercentToBps(text: string): number | null {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+  const value = Number(trimmed.replace(',', '.'))
+  if (!Number.isFinite(value)) return null
+  return Math.round(value * 100)
+}
+
+export function formatInterestBpsToPercent(bps: number): string {
+  return (bps / 100).toFixed(2).replace('.', ',')
+}
+
 export interface ForecastOccurrenceOverride {
   id: string
   forecastPaymentId: string

@@ -15,6 +15,8 @@ import {
   installmentIndexForOccurrence,
   remainingInstallments,
   remainingPlanAmount,
+  formatInterestBpsToPercent,
+  parseInterestPercentToBps,
   type ForecastPayment,
   type ForecastOccurrence,
   type ForecastOccurrenceOverride,
@@ -949,5 +951,37 @@ describe('Fase 1D-c — cobro fraccionado POR CICLO (una obligación recurrente,
       expect(occ.every((o) => o.installmentSequenceIndex === null)).toBe(true)
       expect(totalInstallments(ibi)).toBe(6)
     })
+  })
+})
+
+describe('Fase 1E.2 — parseInterestPercentToBps / formatInterestBpsToPercent (préstamos, sin ningún cálculo financiero)', () => {
+  it('caso real de la hipoteca: "3,00" (coma española) -> 300 básicos puntos', () => {
+    expect(parseInterestPercentToBps('3,00')).toBe(300)
+  })
+
+  it('también acepta punto decimal', () => {
+    expect(parseInterestPercentToBps('3.5')).toBe(350)
+  })
+
+  it('vacío -> null (nunca 0 como sustituto de "no lo sé")', () => {
+    expect(parseInterestPercentToBps('')).toBeNull()
+    expect(parseInterestPercentToBps('   ')).toBeNull()
+  })
+
+  it('texto no numérico -> null, nunca NaN ni 0', () => {
+    expect(parseInterestPercentToBps('abc')).toBeNull()
+  })
+
+  it('redondea a básicos puntos enteros — nunca decimales en la BD', () => {
+    expect(parseInterestPercentToBps('3,005')).toBe(301) // 300.5 redondeado
+  })
+
+  it('300 básicos puntos -> "3,00" (formato español, coma)', () => {
+    expect(formatInterestBpsToPercent(300)).toBe('3,00')
+  })
+
+  it('ida y vuelta estable para el caso real: 300 -> "3,00" -> 300', () => {
+    const percent = formatInterestBpsToPercent(300)
+    expect(parseInterestPercentToBps(percent)).toBe(300)
   })
 })

@@ -22,7 +22,6 @@ export type FixedEconomiaMenuItemKey =
   | 'Banco'
   | 'Educación financiera'
   | 'Previsión de pagos'
-  | 'accion:movimiento'
 
 export type EconomiaMenuItemKey = FixedEconomiaMenuItemKey | `custom:${string}`
 
@@ -52,9 +51,8 @@ export const ECONOMIA_MENU_ITEM_META: Record<FixedEconomiaMenuItemKey, { icon: s
   Movimientos: { icon: '📋', label: 'Movimientos' },
   'Presupuesto Generales': { icon: '💰', label: 'Presupuesto(s)' },
   Banco: { icon: '🏦', label: 'Banco' },
-  'Educación financiera': { icon: '🎓', label: 'Educación financiera' },
   'Previsión de pagos': { icon: '🔮', label: 'Previsión de pagos' },
-  'accion:movimiento': { icon: '➕', label: 'Nuevo movimiento' },
+  'Educación financiera': { icon: '🎓', label: 'Educación financiera' },
 }
 
 // Icono/nombre a mostrar para cualquier entrada, fija o personalizada.
@@ -63,22 +61,25 @@ export function economiaMenuEntryMeta(entry: EconomiaMenuEntry): { icon: string;
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
+// Fase 1E.2 — petición real: "Educación financiera" siempre la última; "Nuevo movimiento" deja de ser
+// una entrada del menú (es una acción, no una sección) — ver "+ Nuevo movimiento" dentro de Movimientos.
 const DEFAULT_KEYS: FixedEconomiaMenuItemKey[] = [
   'Resumen',
   'Estadísticas',
   'Movimientos',
   'Presupuesto Generales',
   'Banco',
-  'Educación financiera',
   'Previsión de pagos',
-  'accion:movimiento',
+  'Educación financiera',
 ]
 
 const KEY = 'familyapp:economia-menu-layout'
 
 // Categorías y Etiquetas se gestionan ahora desde Configuración (y con un
 // atajo en cada sitio donde se usan): se quitan de los menús ya guardados.
-const RETIRED_KEYS = ['accion:categorias', 'accion:etiquetas']
+// "accion:movimiento" (Fase 1E.2) pasa a vivir como botón "+ Nuevo movimiento" dentro de Movimientos —
+// se retira igual que los otros dos, para que desaparezca de los menús ya personalizados por la familia.
+const RETIRED_KEYS = ['accion:categorias', 'accion:etiquetas', 'accion:movimiento']
 
 function defaultLayout(): EconomiaMenuGroup[] {
   return [{ id: 'default', name: null, items: DEFAULT_KEYS.map((key) => ({ key })) }]

@@ -17,6 +17,14 @@ export function centsToEurosString(cents: number): string {
   return (cents / 100).toFixed(2)
 }
 
+// Misma idea que eurosStringToCents pero partiendo de un number ya parseado (forecast_occurrences.amount,
+// bank_transactions.amount — numeric de Postgres, llega como number desde supabase-js) — Fase 1D-e
+// (conciliación bancaria): comparar importes en céntimos, nunca en float, también al comparar contra un
+// movimiento bancario real.
+export function eurosNumberToCents(n: number): number {
+  return Math.round(n * 100)
+}
+
 // Reparto determinista: la base (redondeada hacia abajo) para todas las líneas salvo la ÚLTIMA, que
 // absorbe TODO el resto — así la suma de las N líneas es SIEMPRE exactamente igual al total, sin
 // excepción, y coincide con el patrón real observado (867,56 € / 6 → 5 × 144,59 € + 1 × 144,61 €).

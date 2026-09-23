@@ -383,24 +383,38 @@ export async function upsertForecastOccurrenceOverride(input: {
 // lo que permite que "editar 6→8 cuotas" o "corregir un importe real del recibo" no deje overrides
 // fantasma de una versión anterior del plan.
 //
-// LIMITACIÓN CONOCIDA: como no existe todavía ninguna UI de conciliación bancaria ni de "omitir esta
-// cuota" para un plan finito, hoy es seguro borrar y reinsertar sin más — el único sitio que escribe
-// estos overrides es este propio formulario. Si en el futuro se añade conciliación (matched_expense_id)
-// u "omitir" (skipped) para un plan finito, esta función tendría que fusionar en vez de sustituir sin
-// más, para no perder esas filas.
+// Fase 1D-e (conciliación bancaria) — CORREGIDO: desde que matchForecastOccurrence puede escribir
+// matched_expense_id en una fila de CICLO completo, un borra-y-reinserta puro aquí perdería en silencio
+// cualquier conciliación ya hecha con solo reabrir y volver a guardar el formulario del plan (auditoría
+// de esta fase, riesgo real de pérdida de dato detectado antes de escribir código). Ahora: nunca se borra
+// una fila ya conciliada (matched_expense_id no nulo), y si esa fecha sigue en la lista nueva de
+// `overrides`, esa línea en concreto se ignora al insertar (su fecha/importe ya conciliados no se tocan
+// desde aquí — editarlos es responsabilidad de desconciliar primero, no de este reemplazo masivo).
 export async function replaceForecastPlanOverrides(
   forecastPaymentId: string,
   overrides: { occurrenceDate: string; dueDateOverride: string | null; amountStatus: ForecastAmountStatus | null; amount: number | null; amountEstimatedBasis: string | null }[],
 ): Promise<void> {
+  const { data: matchedRows, error: selectError } = await supabase
+    .from('forecast_occurrences')
+    .select('occurrence_date')
+    .eq('forecast_payment_id', forecastPaymentId)
+    .eq('installment_sequence_index', 0)
+    .not('matched_expense_id', 'is', null)
+  if (selectError) throw selectError
+  const matchedDates = new Set((matchedRows ?? []).map((r) => r.occurrence_date as string))
+
   const { error: deleteError } = await supabase
     .from('forecast_occurrences')
     .delete()
     .eq('forecast_payment_id', forecastPaymentId)
     .eq('installment_sequence_index', 0)
+    .is('matched_expense_id', null)
   if (deleteError) throw deleteError
-  if (overrides.length > 0) {
+
+  const rowsToInsert = overrides.filter((o) => !matchedDates.has(o.occurrenceDate))
+  if (rowsToInsert.length > 0) {
     const { error: insertError } = await supabase.from('forecast_occurrences').insert(
-      overrides.map((o) => ({
+      rowsToInsert.map((o) => ({
         forecast_payment_id: forecastPaymentId,
         occurrence_date: o.occurrenceDate,
         installment_sequence_index: 0,
@@ -412,4 +426,73 @@ export async function replaceForecastPlanOverrides(
     )
     if (insertError) throw insertError
   }
+}
+
+// ── Fase 1D-e — conciliación bancaria ──────────────────────────────────────────────────────────────
+//
+// matchForecastOccurrence: RPC atómica (ver migración 0157) — nunca un upsert de cliente normal, porque
+// hace falta la protección real contra condiciones de carrera (doble clic, dos pestañas, reintento de
+// sincronización) que un upsert de PostgREST no puede dar por sí solo: el índice único parcial de
+// forecast_occurrences.matched_expense_id garantiza que un mismo expense nunca concilie dos ocurrencias, y
+// la función rechaza con un error explícito (nunca en silencio) reconciliar una ocurrencia que YA estaba
+// conciliada con OTRO expense distinto. Confirmar la MISMA pareja dos veces es idempotente sin error.
+export interface ForecastReconciliationSnapshot {
+  amountStatus: ForecastAmountStatus
+  amount: number | null
+  amountEstimatedBasis: string | null
+}
+
+const FORECAST_OCCURRENCE_ALREADY_MATCHED = 'forecast_occurrence_already_matched'
+
+export async function matchForecastOccurrence(
+  forecastPaymentId: string,
+  occurrenceDate: string,
+  installmentSequenceIndex: number | null,
+  expenseId: string,
+  snapshot: ForecastReconciliationSnapshot,
+): Promise<void> {
+  const { error } = await supabase.rpc('match_forecast_occurrence', {
+    p_forecast_payment_id: forecastPaymentId,
+    p_occurrence_date: occurrenceDate,
+    p_installment_sequence_index: installmentSequenceIndex,
+    p_expense_id: expenseId,
+    p_amount_status: snapshot.amountStatus,
+    p_amount: snapshot.amount,
+    p_amount_estimated_basis: snapshot.amountEstimatedBasis,
+  })
+  if (error) {
+    if (error.message?.includes(FORECAST_OCCURRENCE_ALREADY_MATCHED)) {
+      throw new Error('Este pago ya se había conciliado con otro movimiento distinto — desconcílialo primero si quieres cambiarlo.')
+    }
+    throw error
+  }
+}
+
+// Desconciliar: solo quita el vínculo (nunca borra bank_transactions/expenses/forecast_payments/la propia
+// fila de override — el importe/fecha que ya tuviera esa ocurrencia, si los tenía, se conservan tal
+// cual). Condicionado al expense que se cree desconciliar: si ya no coincide (alguien lo cambió o ya se
+// había desconciliado), no hace nada — idempotente, nunca un error por reintentar.
+export async function unmatchForecastOccurrence(
+  forecastPaymentId: string,
+  occurrenceDate: string,
+  installmentSequenceIndex: number | null,
+  expenseId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('forecast_occurrences')
+    .update({ matched_expense_id: null, updated_at: new Date().toISOString() })
+    .eq('forecast_payment_id', forecastPaymentId)
+    .eq('occurrence_date', occurrenceDate)
+    .eq('installment_sequence_index', installmentSequenceIndex ?? 0)
+    .eq('matched_expense_id', expenseId)
+  if (error) throw error
+}
+
+// Todos los expense_id ya usados por CUALQUIER ocurrencia de CUALQUIER previsión de la familia (RLS ya
+// acota a la familia actual) — para que el motor de candidatos (domain/forecastReconciliation.ts) nunca
+// proponga dos veces el mismo movimiento aunque encajara igual de bien con dos previsiones distintas.
+export async function listAllMatchedForecastExpenseIds(): Promise<Set<string>> {
+  const { data, error } = await supabase.from('forecast_occurrences').select('matched_expense_id').not('matched_expense_id', 'is', null)
+  if (error) throw error
+  return new Set((data ?? []).map((r) => r.matched_expense_id as string))
 }

@@ -93,14 +93,14 @@ describe('netSpending / totalRefunds: nuevas, sin duplicar la fórmula en otros 
 
 describe('lo que esta fase NO toca', () => {
   it('sin migración de datos nueva: ninguna migración de 6D.2/6D.3 posterior a 0152 (6D.0)', () => {
-    // 0153 (ai_gate_family), 0154 (fix_recurring_reminder_occurrences), 0155 (forecast_payments) y
-    // 0156 (forecast_payment_installments) son de fases posteriores (F7-001, el arreglo de avisos de
-    // calendario y Previsión de pagos Fases 1B/1D-c), no de 6D.2/6D.3 — autorizadas aparte, no rompen
-    // esta guarda.
+    // 0153 (ai_gate_family), 0154 (fix_recurring_reminder_occurrences), 0155 (forecast_payments),
+    // 0156 (forecast_payment_installments) y 0157 (forecast_reconciliation) son de fases posteriores
+    // (F7-001, el arreglo de avisos de calendario y Previsión de pagos Fases 1B/1D-c/1D-e), no de
+    // 6D.2/6D.3 — autorizadas aparte, no rompen esta guarda.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(156)
+    expect(Math.max(...numbers)).toBe(157)
   })
 
   it('no se ha tocado ninguna regla del sync bancario', () => {

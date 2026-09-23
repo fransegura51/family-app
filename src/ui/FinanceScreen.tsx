@@ -30,12 +30,15 @@ import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTr
 import {
   createForecastPayment,
   deleteForecastPayment,
+  listAllMatchedForecastExpenseIds,
   listForecastOccurrenceOverrides,
   listForecastPayments,
+  matchForecastOccurrence,
   replaceForecastPaymentInstallments,
   replaceForecastPlanOverrides,
   replaceForecastReminders,
   setForecastPaymentActive,
+  unmatchForecastOccurrence,
   updateForecastPayment,
   type ForecastPaymentInput,
   type ForecastPaymentWithReminders,
@@ -59,6 +62,12 @@ import {
   type ForecastRecurrenceOption,
   type ForecastReminderUnit,
 } from '@/domain/forecast'
+import {
+  findReconciliationCandidates,
+  type BankMovementForMatching,
+  type OccurrenceForMatching,
+  type ReconciliationCandidate,
+} from '@/domain/forecastReconciliation'
 import {
   buildFinitePlanSubmission,
   buildRecurrenceRuleFromFormState,
@@ -8320,6 +8329,15 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingPayment, setEditingPayment] = useState<ForecastPaymentWithReminders | null>(null)
   const [managementOpen, setManagementOpen] = useState(false)
+  // Fase 1D-e — conciliación bancaria: movimientos reales + qué expense ya está usado por CUALQUIER
+  // ocurrencia (para que el motor de candidatos nunca proponga dos veces el mismo movimiento). Estado
+  // aparte de payments/overrides porque se recarga solo tras confirmar/desconciliar, no en cada reload().
+  const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([])
+  const [matchedExpenseIds, setMatchedExpenseIds] = useState<Set<string>>(new Set())
+  const [dismissedCandidateKeys, setDismissedCandidateKeys] = useState<Set<string>>(new Set())
+  const [reconcileOpen, setReconcileOpen] = useState(false)
+  const [reconcileBusyKey, setReconcileBusyKey] = useState<string | null>(null)
+  const [reconcileError, setReconcileError] = useState<string | null>(null)
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -8336,7 +8354,12 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar Previsión de pagos')))
       .finally(() => setLoading(false))
   }
+  function reloadReconciliation() {
+    listBankTransactions().then(setBankTransactions).catch(() => {})
+    listAllMatchedForecastExpenseIds().then(setMatchedExpenseIds).catch(() => {})
+  }
   useEffect(reload, [])
+  useEffect(reloadReconciliation, [])
   useEffect(() => {
     listFamilyMembers().then(setMembers).catch(() => {})
     listBankAccounts().then(setAccounts).catch(() => {})
@@ -8377,6 +8400,86 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     return { key, label: MONTH_LABELS[monthIndex0].slice(0, 3).toUpperCase(), totals: monthTotals.get(key) ?? [] }
   })
 
+  // Fase 1D-e — conciliación bancaria: ventana propia (nunca la del selector de horizonte de arriba —
+  // un cargo ya puede haber pasado antes de "hoy" cuando se sincroniza el banco). ±14 días hacia atrás
+  // cubre sobradamente la ventana de fecha del motor (RECONCILIATION_DATE_WINDOW_DAYS=3) más el margen
+  // de sincronización incremental del banco (3 días, ver enable-banking-sync-transactions); un poco hacia
+  // delante para poder proponer un cargo que ya haya llegado para una cuota futura próxima.
+  const reconciliationRangeStart = stepDays(today, -14)
+  const reconciliationRangeEnd = stepDays(today, 10)
+  const reconciliationOccurrences: ForecastOccurrence[] = []
+  for (const p of activePayments) {
+    reconciliationOccurrences.push(...expandForecastOccurrences(p, overridesByPayment.get(p.id) ?? [], reconciliationRangeStart, reconciliationRangeEnd, p.installments))
+  }
+  const reconciliationCandidateInputs: OccurrenceForMatching[] = reconciliationOccurrences
+    .filter((o) => !o.matchedExpenseId)
+    .map((o) => {
+      const parent = payments.find((p) => p.id === o.forecastPaymentId)
+      return {
+        occurrence: o,
+        payment: { bankAccountId: parent?.bankAccountId ?? null, title: parent?.title ?? o.title, provider: parent?.provider ?? null },
+        categoryName: categories.find((c) => c.id === o.categoryId)?.name ?? null,
+      }
+    })
+  const reconciliationMovements: BankMovementForMatching[] = bankTransactions
+    .filter((t): t is BankTransaction & { transactionDate: string } => t.creditDebit === 'DBIT' && t.transactionDate != null)
+    .map((t) => ({
+      bankTransactionId: t.id,
+      expenseId: t.matchedExpenseId,
+      accountId: t.accountId,
+      date: t.transactionDate,
+      amount: Math.abs(t.amount),
+      currency: t.currency,
+      description: t.description,
+      isIncome: false,
+    }))
+  const reconciliationCandidates = findReconciliationCandidates(reconciliationCandidateInputs, reconciliationMovements, matchedExpenseIds).filter(
+    (c) => !dismissedCandidateKeys.has(candidateKey(c)),
+  )
+  const reconciledRecently = reconciliationOccurrences.filter((o) => !!o.matchedExpenseId)
+
+  function candidateKey(c: ReconciliationCandidate): string {
+    return `${c.occurrence.forecastPaymentId}:${c.occurrence.occurrenceDate}:${c.occurrence.installmentSequenceIndex ?? 0}:${c.movement.bankTransactionId}`
+  }
+
+  async function confirmCandidate(c: ReconciliationCandidate) {
+    if (!c.movement.expenseId) return
+    const key = candidateKey(c)
+    setReconcileBusyKey(key)
+    setReconcileError(null)
+    try {
+      await matchForecastOccurrence(c.occurrence.forecastPaymentId, c.occurrence.occurrenceDate, c.occurrence.installmentSequenceIndex, c.movement.expenseId, {
+        amountStatus: c.occurrence.amountStatus,
+        amount: c.occurrence.amount,
+        amountEstimatedBasis: null,
+      })
+      reload()
+      reloadReconciliation()
+    } catch (err) {
+      setReconcileError(errorMessage(err, 'No se pudo conciliar'))
+    } finally {
+      setReconcileBusyKey(null)
+    }
+  }
+  function dismissCandidate(c: ReconciliationCandidate) {
+    setDismissedCandidateKeys((prev) => new Set(prev).add(candidateKey(c)))
+  }
+  async function unmatchOccurrence(o: ForecastOccurrence) {
+    if (!o.matchedExpenseId) return
+    const key = `${o.forecastPaymentId}:${o.occurrenceDate}:${o.installmentSequenceIndex ?? 0}`
+    setReconcileBusyKey(key)
+    setReconcileError(null)
+    try {
+      await unmatchForecastOccurrence(o.forecastPaymentId, o.occurrenceDate, o.installmentSequenceIndex, o.matchedExpenseId)
+      reload()
+      reloadReconciliation()
+    } catch (err) {
+      setReconcileError(errorMessage(err, 'No se pudo desconciliar'))
+    } finally {
+      setReconcileBusyKey(null)
+    }
+  }
+
   function renderOccurrenceRow(o: ForecastOccurrence) {
     const parent = payments.find((p) => p.id === o.forecastPaymentId)
     const category = categories.find((c) => c.id === o.categoryId)
@@ -8392,6 +8495,8 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
           <strong>
             {chargeLabel}
             {o.title}
+            {/* Fase 1D-e: conciliada con un movimiento real del banco — nunca automático, siempre confirmado a mano. */}
+            {o.matchedExpenseId && <span style={{ color: '#1e8449' }}> · ✓ Cobrado</span>}
           </strong>
           {o.amountStatus === 'unknown' ? (
             <p className="muted" style={{ margin: '2px 0' }}>Importe pendiente</p>
@@ -8411,6 +8516,11 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               {category && recurrenceLabel ? ' · ' : ''}
               {recurrenceLabel}
             </p>
+          )}
+          {o.matchedExpenseId && (
+            <button type="button" className="link-button" style={{ fontSize: 12, padding: 0, marginTop: 2 }} onClick={() => unmatchOccurrence(o)}>
+              Desconciliar
+            </button>
           )}
         </div>
       </div>
@@ -8549,6 +8659,74 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               </div>
             ))}
           </div>
+
+          {/* Fase 1D-e — zona discreta, nunca un popup al abrir Economía: solo aparece si hay algo que
+              revisar. HIGH/MEDIUM se proponen para confirmar a mano — LOW nunca se enseña (demasiado
+              ruido, no aporta confianza suficiente); ni siquiera "high" concilia solo (auditoría, sección
+              7: sin auto-conciliación todavía). */}
+          {(reconciliationCandidates.length > 0 || reconciledRecently.length > 0) && (
+            <>
+              <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setReconcileOpen((v) => !v)}>
+                {reconcileOpen ? '▾' : '▸'} 🔎{' '}
+                {reconciliationCandidates.length > 0
+                  ? `${reconciliationCandidates.length} pago${reconciliationCandidates.length === 1 ? '' : 's'} por revisar`
+                  : 'Conciliación bancaria'}
+              </button>
+              {reconcileOpen && (
+                <div style={{ marginTop: 8 }}>
+                  {reconcileError && <p className="error">{reconcileError}</p>}
+                  {reconciliationCandidates.map((c) => {
+                    const key = candidateKey(c)
+                    const busy = reconcileBusyKey === key
+                    return (
+                      <div key={key} className="card" style={{ padding: 12, marginBottom: 8 }}>
+                        <p className="muted" style={{ margin: '0 0 4px', fontSize: 12 }}>
+                          {c.confidence === 'high' ? 'PEPA ha encontrado un posible cargo' : 'Puede que sea este cargo — revísalo'}
+                        </p>
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                          <div style={{ flex: 1, minWidth: 140 }}>
+                            <p className="muted" style={{ margin: 0, fontSize: 11 }}>Previsto</p>
+                            <strong>{c.occurrence.title}</strong>
+                            <p style={{ margin: '2px 0' }}>
+                              {formatSpanishDate(c.occurrence.expectedPaymentDate)} ·{' '}
+                              {c.occurrence.amountStatus === 'unknown' ? 'Importe pendiente' : formatForecastAmount(c.occurrence.amount ?? 0, c.occurrence.currency)}
+                            </p>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 140 }}>
+                            <p className="muted" style={{ margin: 0, fontSize: 11 }}>Banco</p>
+                            <strong>{c.movement.description ?? 'Movimiento bancario'}</strong>
+                            <p style={{ margin: '2px 0' }}>
+                              {formatSpanishDate(c.movement.date)} · {formatForecastAmount(c.movement.amount, c.movement.currency)}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>{c.reasons.map((r) => r.label).join(' · ')}</p>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="button" disabled={busy} onClick={() => confirmCandidate(c)}>
+                            {busy ? 'Guardando…' : 'Confirmar'}
+                          </button>
+                          <button type="button" className="link-button" disabled={busy} onClick={() => dismissCandidate(c)}>
+                            No es este
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {reconciledRecently.length > 0 && (
+                    <>
+                      <p className="muted" style={{ fontSize: 12, margin: '8px 0 4px', fontWeight: 600 }}>Conciliados recientemente</p>
+                      {reconciledRecently.map((o) => (
+                        <p key={`${o.forecastPaymentId}-${o.occurrenceDate}-${o.installmentSequenceIndex ?? 0}`} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                          ✓ {o.title} · {formatSpanishDate(o.expectedPaymentDate)} ·{' '}
+                          {o.amountStatus === 'unknown' ? 'Importe pendiente' : formatForecastAmount(o.amount ?? 0, o.currency)}
+                        </p>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
           <h2 className="section-title" style={{ marginTop: 16 }}>
             Próximos pagos

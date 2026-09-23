@@ -50,12 +50,15 @@ describe('isRealIncome: TODOS sus consumidores usan la nueva semántica (sin exc
   // `monthSharedDeposits` (documentado aparte: "depósito en la cuenta común" de piso compartido, no ingreso familiar); en
   // EventosScreen.tsx las 4 apariciones son también el lado del gasto de un evento (documentado in situ). Se deja como
   // constancia de que la búsqueda por texto NO basta para auditar esto — hace falta leer qué calcula cada una.
+  // Eventos Fase 3 — loadAllEventAlerts (src/data/events.ts) reutiliza EXACTAMENTE el mismo cálculo de "gastado" de un evento
+  // que ya usa EventosScreen.tsx (mismo lado del gasto, misma etiqueta), para que el aviso "presupuesto excedido" nunca pueda
+  // divergir de lo que el propio dashboard del evento ya muestra — no un cálculo nuevo, el mismo trasladado a la capa de datos.
   it('auditoría: lo que queda con este patrón de texto ya no es un filtro de ingresos sin corregir', () => {
     const offenders = Object.entries(APP)
       .filter(([f, t]) => !['/src/domain/financeCompute.ts', '/src/domain/financeAnalysis.ts'].includes(f) && /e\.isIncome\s*&&[^\n]*isInternalTransferCategory/.test(t))
       .map(([f]) => f)
       .sort()
-    expect(offenders).toEqual(['/src/ui/EventosScreen.tsx', '/src/ui/FinanceScreen.tsx'])
+    expect(offenders).toEqual(['/src/data/events.ts', '/src/ui/EventosScreen.tsx', '/src/ui/FinanceScreen.tsx'])
   })
 })
 

@@ -808,6 +808,43 @@ button {
   line-height: 1;
 }
 
+/* Fase 3/4 — indicador discreto de "necesita atención" en el módulo
+   Eventos (bottom-nav y menú ☰). Un número comprensible (eventos con
+   incidencias), nunca la suma bruta de cada incidencia. */
+.nav-attention-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+
+/* Misma señal, pero en línea (no superpuesta) para el menú ☰, donde
+   el icono va seguido del texto en vez de en una tarjeta pequeña. */
+.nav-menu-item-badge {
+  display: inline-block;
+  min-width: 15px;
+  height: 15px;
+  margin-left: 6px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  vertical-align: middle;
+}
+
 .nav-item.active {
   color: var(--primary);
 }

@@ -1,5 +1,5 @@
 import { ChangeEvent, type CSSProperties, FormEvent, type ReactNode, PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import {
   addEventActivity,
@@ -253,6 +253,19 @@ function ModulePickerChips({ modules, onChange }: { modules: EventModuleKey[]; o
   )
 }
 
+const EVENT_MODULE_KEYS = new Set(EVENT_MODULES.map((m) => m.key))
+
+// Fase 4 — deep-link real: /eventos?event=<uuid>&modulo=<clave>. No
+// hace falta ninguna ruta ":id" nueva (":id" habría exigido tocar
+// App.tsx/el 404.html de GitHub Pages) — con la SPA ya cargada,
+// react-router resuelve el mismo "/eventos" con query string sin
+// ningún salto de página, y un id inexistente o no autorizado
+// simplemente no aparece en `events` (ya viene filtrado por RLS), así
+// que el fallback a la lista de eventos es automático.
+function validInitialModule(raw: string | null): EventModuleKey | null {
+  return raw && EVENT_MODULE_KEYS.has(raw as EventModuleKey) ? (raw as EventModuleKey) : null
+}
+
 export function EventosScreen() {
   const [events, setEvents] = useState<FamilyEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -260,6 +273,8 @@ export function EventosScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [initialModule, setInitialModule] = useState<EventModuleKey | null>(null)
 
   function reload() {
     listEvents(showArchived)
@@ -268,6 +283,22 @@ export function EventosScreen() {
       .finally(() => setLoading(false))
   }
   useEffect(reload, [showArchived])
+
+  // Consume el deep-link una sola vez, en cuanto los eventos ya están
+  // cargados (antes no se sabe si el id es válido) — y limpia la URL
+  // después, para que navegar dentro de Eventos a partir de ahí no
+  // vuelva a forzar el mismo módulo.
+  useEffect(() => {
+    if (loading) return
+    const eventParam = searchParams.get('event')
+    if (!eventParam) return
+    if (events.some((e) => e.id === eventParam)) {
+      setSelectedId(eventParam)
+      setInitialModule(validInitialModule(searchParams.get('modulo')))
+    }
+    setSearchParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, events])
 
   const selected = events.find((e) => e.id === selectedId) ?? null
 
@@ -287,6 +318,7 @@ export function EventosScreen() {
       {selected ? (
         <EventDetail
           event={selected}
+          initialModule={initialModule}
           onBack={() => setSelectedId(null)}
           onChanged={reload}
           onArchivedOrDeleted={() => {
@@ -553,12 +585,14 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
 // BudgetSection...) no cambian nada por dentro, solo CUÁNDO se montan.
 function EventDetail({
   event,
+  initialModule = null,
   onBack,
   onChanged,
   onArchivedOrDeleted,
   onDuplicated,
 }: {
   event: FamilyEvent
+  initialModule?: EventModuleKey | null
   onBack: () => void
   onChanged: () => void
   onArchivedOrDeleted: () => void
@@ -574,7 +608,7 @@ function EventDetail({
   const [showPlan, setShowPlan] = useState(false)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [showEndSummary, setShowEndSummary] = useState(false)
-  const [openModule, setOpenModule] = useState<EventModuleKey | 'compras' | null>(null)
+  const [openModule, setOpenModule] = useState<EventModuleKey | 'compras' | null>(initialModule)
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
   // Un evento con la fecha confirmada que todavía no está en el Calendario (p. ej. uno

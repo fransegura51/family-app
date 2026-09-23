@@ -3,13 +3,16 @@ import {
   buildInvitationMessage,
   buildInvitationTemplateLayers,
   buildMapsUrl,
+  computeAllEventAlerts,
   computeEventConclusions,
   computeEventStatusSummary,
+  eventAlertsToAttentionItems,
   eventLocationMapLines,
   generateEventPlan,
   INVITATION_TEMPLATES,
   isOverdueTask,
   sortInvitationTemplatesForEvent,
+  type EventAlertInput,
 } from '@/domain/events'
 import type { InvitationTemplateMeta } from '@/domain/events'
 import type { EventGuest, EventTask, FamilyEvent } from '@/domain/types'
@@ -460,6 +463,96 @@ describe('buildMapsUrl', () => {
   it('prefers real coordinates over the label text when both are given', () => {
     const url = buildMapsUrl('en mi casa', { latitude: 40.4168, longitude: -3.7038 })
     expect(url).toBe('https://www.google.com/maps?q=40.4168,-3.7038')
+  })
+})
+
+// Fase 3 — avisos fuera del evento: computeAllEventAlerts reutiliza
+// computeEventConclusions (no crea una segunda lógica de qué es una
+// alerta) y agrupa por evento.
+function makeAlertInput(overrides: Partial<EventAlertInput>): EventAlertInput {
+  return {
+    eventId: 'e1',
+    eventTitle: 'Evento',
+    eventIcon: '🎉',
+    rsvpDeadline: null,
+    guests: [],
+    tasks: [],
+    payments: [],
+    plannedBudget: 0,
+    spentBudget: null,
+    ...overrides,
+  }
+}
+
+describe('computeAllEventAlerts', () => {
+  it('un evento sin incidencias no produce ningún aviso', () => {
+    const alerts = computeAllEventAlerts([makeAlertInput({ eventId: 'e1' })])
+    expect(alerts).toEqual([])
+  })
+
+  it('un evento con varias incidencias produce UN solo aviso agrupado, no uno por incidencia', () => {
+    const alerts = computeAllEventAlerts([
+      makeAlertInput({
+        eventId: 'e1',
+        eventTitle: 'Bodas de plata',
+        tasks: [makeTask({ done: false, dueDate: daysFromNow(-1) }), makeTask({ done: false, dueDate: daysFromNow(-2) })],
+        payments: [{ concept: 'Fianza', totalAmount: 200, depositPaid: 0, dueDate: daysFromNow(1), status: 'pendiente' }],
+      }),
+    ])
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].eventId).toBe('e1')
+    expect(alerts[0].conclusions.length).toBeGreaterThan(1)
+  })
+
+  it('varios eventos simultáneos: uno por evento con incidencias, ninguno para los que no tienen', () => {
+    const alerts = computeAllEventAlerts([
+      makeAlertInput({ eventId: 'e1', eventTitle: 'Sin problemas' }),
+      makeAlertInput({ eventId: 'e2', eventTitle: 'Con tarea atrasada', tasks: [makeTask({ done: false, dueDate: daysFromNow(-3) })] }),
+      makeAlertInput({ eventId: 'e3', eventTitle: 'Otra con tarea atrasada', tasks: [makeTask({ done: false, dueDate: daysFromNow(-1) })] }),
+    ])
+    expect(alerts.map((a) => a.eventId).sort()).toEqual(['e2', 'e3'])
+  })
+
+  it('una incidencia resuelta desaparece al recalcular sobre el estado actual (no queda nada persistido)', () => {
+    const withOverdueTask = makeAlertInput({ eventId: 'e1', tasks: [makeTask({ id: 't1', done: false, dueDate: daysFromNow(-1) })] })
+    expect(computeAllEventAlerts([withOverdueTask])).toHaveLength(1)
+
+    // La misma tarea, ahora marcada como hecha — la condición ya no se cumple.
+    const resolved = makeAlertInput({ eventId: 'e1', tasks: [makeTask({ id: 't1', done: true, dueDate: daysFromNow(-1) })] })
+    expect(computeAllEventAlerts([resolved])).toEqual([])
+  })
+
+  it('elige el módulo de destino según la incidencia más urgente (tareas antes que presupuesto)', () => {
+    const alerts = computeAllEventAlerts([
+      makeAlertInput({
+        eventId: 'e1',
+        tasks: [makeTask({ done: false, dueDate: daysFromNow(-1) })],
+        plannedBudget: 100,
+        spentBudget: 200,
+      }),
+    ])
+    expect(alerts[0].primaryModule).toBe('tareas')
+  })
+})
+
+describe('eventAlertsToAttentionItems', () => {
+  it('construye el enlace de deep-link con el evento y el módulo destino', () => {
+    const alerts = computeAllEventAlerts([
+      makeAlertInput({ eventId: 'abc-123', eventTitle: 'Bodas de plata', eventIcon: '💍', tasks: [makeTask({ done: false, dueDate: daysFromNow(-1) })] }),
+    ])
+    const items = eventAlertsToAttentionItems(alerts)
+    expect(items).toHaveLength(1)
+    expect(items[0].title).toBe('Bodas de plata')
+    expect(items[0].icon).toBe('💍')
+    expect(items[0].to).toBe('/eventos?event=abc-123&modulo=tareas')
+    expect(items[0].lines.length).toBeGreaterThan(0)
+  })
+
+  it('sin módulo de destino determinable, el enlace apunta solo al evento', () => {
+    // No debería ocurrir en la práctica (toda conclusión hoy mapea a un
+    // módulo), pero el mapeo no debe romperse si algún día no lo hace.
+    const items = eventAlertsToAttentionItems([{ eventId: 'x', eventTitle: 'X', eventIcon: '🎉', conclusions: [{ id: 'desconocido', icon: '❓', text: 'algo' }], primaryModule: null }])
+    expect(items[0].to).toBe('/eventos?event=x')
   })
 })
 

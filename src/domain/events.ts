@@ -14,6 +14,7 @@ import type {
   FamilyEvent,
   InvitationLayer,
 } from '@/domain/types'
+import type { AttentionItem } from '@/domain/attention'
 
 // Arte real, traído fuera por el usuario ("quiero obras de arte", no SVG
 // dibujado a mano) — ver InvitationTemplateMeta.image más abajo.
@@ -1122,6 +1123,91 @@ export function computeEventStatusSummary(input: {
     budgetSpent: input.spentBudget,
     nextMilestone,
   }
+}
+
+// Fase 3 — avisos fuera del evento: computeEventConclusions() ya es el
+// motor determinista (sin IA) que decide qué es una alerta; esto solo
+// lo ejecuta para TODOS los eventos de la familia a la vez y agrupa el
+// resultado por evento, para que un evento con varias incidencias
+// produzca un único aviso (nunca una colección de avisos sueltos del
+// mismo evento). Es pura: sin persistir nada, un aviso "desaparece"
+// solo con volver a calcular sobre el estado actual — la condición que
+// ya no se cumple simplemente deja de producir una conclusión.
+// El llamador es responsable de pasar solo eventos activos/en
+// planificación (ver loadAllEventAlerts en data/events.ts, que ya
+// filtra por listEvents() sin incluir archivados).
+export interface EventAlertInput {
+  eventId: string
+  eventTitle: string
+  eventIcon: string
+  rsvpDeadline: string | null
+  guests: Pick<EventGuest, 'rsvpStatus'>[]
+  tasks: Pick<EventTask, 'done' | 'dueDate'>[]
+  payments: Pick<EventPayment, 'concept' | 'totalAmount' | 'depositPaid' | 'dueDate' | 'status'>[]
+  plannedBudget: number
+  spentBudget: number | null
+}
+
+export interface EventAlertSummary {
+  eventId: string
+  eventTitle: string
+  eventIcon: string
+  conclusions: EventConclusion[]
+  // A qué sección del evento debería llevar el deep-link — la más
+  // urgente/accionable cuando hay varias incidencias a la vez, para no
+  // tener que elegir entre ellas en el punto de destino.
+  primaryModule: EventModuleKey | null
+}
+
+const ALERT_PRIMARY_MODULE_BY_CONCLUSION_PREFIX: { prefix: string; module: EventModuleKey }[] = [
+  { prefix: 'overdue-tasks', module: 'tareas' },
+  { prefix: 'payment-', module: 'pagos' },
+  { prefix: 'rsvp-deadline', module: 'invitados' },
+  { prefix: 'budget-over', module: 'presupuesto' },
+]
+
+function primaryModuleForConclusions(conclusions: EventConclusion[]): EventModuleKey | null {
+  for (const { prefix, module } of ALERT_PRIMARY_MODULE_BY_CONCLUSION_PREFIX) {
+    if (conclusions.some((c) => c.id.startsWith(prefix))) return module
+  }
+  return null
+}
+
+export function computeAllEventAlerts(events: EventAlertInput[]): EventAlertSummary[] {
+  const summaries: EventAlertSummary[] = []
+  for (const ev of events) {
+    const conclusions = computeEventConclusions({
+      rsvpDeadline: ev.rsvpDeadline,
+      guests: ev.guests,
+      tasks: ev.tasks,
+      payments: ev.payments,
+      plannedBudget: ev.plannedBudget,
+      spentBudget: ev.spentBudget,
+    })
+    if (conclusions.length === 0) continue
+    summaries.push({
+      eventId: ev.eventId,
+      eventTitle: ev.eventTitle,
+      eventIcon: ev.eventIcon,
+      conclusions,
+      primaryModule: primaryModuleForConclusions(conclusions),
+    })
+  }
+  return summaries
+}
+
+// Traduce los avisos de Eventos al patrón genérico de "atención" (ver
+// domain/attention.ts) — el único sitio que sabe que la URL de Eventos
+// se construye con ?event=&modulo=, ver Fase 4 (deep-link) en
+// EventosScreen.tsx.
+export function eventAlertsToAttentionItems(alerts: EventAlertSummary[]): AttentionItem[] {
+  return alerts.map((a) => ({
+    id: `evento-${a.eventId}`,
+    icon: a.eventIcon,
+    title: a.eventTitle,
+    lines: a.conclusions.map((c) => `${c.icon} ${c.text}`),
+    to: `/eventos?event=${a.eventId}${a.primaryModule ? `&modulo=${a.primaryModule}` : ''}`,
+  }))
 }
 
 // ---------------------------------------------------------------------

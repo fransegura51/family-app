@@ -5,8 +5,10 @@
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
 import { addShoppingItem } from '@/data/shopping'
 import { supabase } from '@/data/supabaseClient'
+import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { distinctTagColor } from '@/domain/colors'
-import { generateAutoTasks } from '@/domain/events'
+import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary } from '@/domain/events'
+import { isInternalTransferCategory } from '@/domain/finance'
 import { showToast } from '@/state/toast'
 import type { EventReminder } from '@/domain/reminders'
 import type {
@@ -98,6 +100,49 @@ export async function getEvent(id: string): Promise<FamilyEvent> {
   const { data, error } = await supabase.from('events').select(EVENT_SELECT).eq('id', id).single()
   if (error) throw error
   return mapEvent(data)
+}
+
+// Fase 3 — avisos fuera del evento: agrega computeEventConclusions()
+// sobre TODOS los eventos activos de la familia (listEvents() ya
+// excluye los archivados por defecto). expenses/categorías se piden
+// una sola vez y se reparten entre todos los eventos, igual que hace
+// cada PepaConclusions por su cuenta hoy dentro de un evento — aquí
+// solo se hace para varios a la vez, sin ninguna lógica nueva de qué
+// es una alerta (eso sigue siendo enteramente de computeEventConclusions).
+export async function loadAllEventAlerts(): Promise<EventAlertSummary[]> {
+  const events = await listEvents()
+  if (events.length === 0) return []
+  const needsBudget = events.some((e) => e.enabledModules.includes('presupuesto') && e.tagId)
+  const [expenses, categories] = needsBudget ? await Promise.all([listExpenses(), listBudgetCategories()]) : [null, null]
+
+  const inputs: EventAlertInput[] = await Promise.all(
+    events.map(async (event) => {
+      const has = (k: EventModuleKey) => event.enabledModules.includes(k)
+      const [guests, tasks, payments, budgetItems] = await Promise.all([
+        has('invitados') ? listEventGuests(event.id) : Promise.resolve([]),
+        has('tareas') ? listEventTasks(event.id) : Promise.resolve([]),
+        has('pagos') ? listEventPayments(event.id) : Promise.resolve([]),
+        has('presupuesto') ? listEventBudgetItems(event.id) : Promise.resolve([]),
+      ])
+      const plannedBudget = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
+      const spentBudget =
+        event.tagId && has('presupuesto') && expenses && categories
+          ? expenses.filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories)).reduce((sum, e) => sum + e.amount, 0)
+          : null
+      return {
+        eventId: event.id,
+        eventTitle: event.title,
+        eventIcon: EVENT_TYPE_META[event.type].icon,
+        rsvpDeadline: event.rsvpDeadline,
+        guests,
+        tasks,
+        payments,
+        plannedBudget,
+        spentBudget,
+      }
+    }),
+  )
+  return computeAllEventAlerts(inputs)
 }
 
 // Busca una etiqueta de Economía con ese nombre exacto o la crea —

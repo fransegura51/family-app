@@ -43,6 +43,7 @@ interface HelpItem {
 
 const HELP_DETAILS: Record<string, HelpItem[]> = {
   '/': [
+    { title: '🔔 PEPA te avisa', text: 'Si algún evento necesita atención (tareas atrasadas, un pago que vence, invitados sin responder cerca del plazo...) aparece aquí arriba, una tarjeta por evento con lo más urgente resumido — tócala para ir directamente a la sección que lo necesita. Desaparece sola en cuanto se resuelve; hoy solo Eventos avisa así, pero está pensado para que otras secciones puedan sumarse más adelante.' },
     { title: 'Portada de fotos', text: 'Va pasando las últimas fotos de la Galería como un carrusel; se detiene si la tocas.' },
     { title: 'Avisos del día', text: 'Al final del carrusel hay dos diapositivas fijas: "Hoy en el calendario" y "Compra pendiente" (con su propio aviso si no hay nada). Cada una lleva abajo a la izquierda un enlace — "Ir a Calendario →" o "Ir a la Lista →" — que te lleva directo allí; tocar el resto de la diapositiva solo la detiene para que la leas.' },
     { title: 'Accesos rápidos', text: 'Una tarjeta por sección con un resumen de una línea — tócala para entrar directamente.' },
@@ -76,6 +77,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Compartir', text: 'El icono 📤 de cada evento manda el título, la fecha y la nota como texto al menú de compartir del móvil (con quién quieras: WhatsApp, Instagram, email...) — como texto en vez de un archivo .ics, porque muchas apps de Android no aceptan archivos de calendario y el menú se quedaba sin ningún sitio real donde mandarlo. Si ni el menú nativo ni el portapapeles funcionan aquí, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
   ],
   '/eventos': [
+    { title: 'Aviso en el menú', text: 'Un número rojo junto al icono de Eventos (en la barra de abajo y en el menú ☰) indica cuántos eventos necesitan atención ahora mismo — nunca la suma de cada tarea atrasada, solo cuántos eventos distintos. Se actualiza solo al cambiar de pantalla.' },
     { title: 'Tipos de evento', text: 'Cumpleaños, Comunión, Bautizo, Celebración (aniversario, jubilación, fiesta sorpresa, reunión familiar...), Boda íntima o Personalizado — cada uno con su propia checklist inicial.' },
     { title: 'Fecha', text: 'Puedes crear el evento sin fecha todavía, con una provisional o ya confirmada; si la cambias más adelante, las fechas de las tareas generadas se recalculan solas.' },
     { title: 'Qué módulos usar', text: '"Recomendado" activa lo típico de ese tipo de evento; "Elegir yo" te deja marcarlos a mano. Se pueden encender o apagar después desde "⚙️ Gestionar evento" → "Secciones del evento", sin perder nada de lo que ya tuvieras apuntado.' },

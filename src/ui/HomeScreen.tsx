@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
+import type { AttentionItem } from '@/domain/attention'
 import { getPermissionState, requestPermission, subscribeToPush } from '@/services/notifications'
 import { savePushSubscription } from '@/data/push'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
@@ -8,7 +9,10 @@ import { listFamilyMembers } from '@/data/family'
 import { listUpcomingEvents } from '@/data/calendar'
 import { expandOccurrences } from '@/domain/calendar'
 import { listShoppingItems } from '@/data/shopping'
+import { loadAllEventAlerts } from '@/data/events'
+import { eventAlertsToAttentionItems } from '@/domain/events'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { AttentionCard } from '@/ui/AttentionCard'
 import { loadHomeCardOrder, saveHomeCardOrder } from '@/state/homeCardOrder'
 import { CalendarOnboardingModal } from '@/ui/CalendarOnboardingModal'
 import { NAV_TABS, navSectionId, NAV_SECTION_COLORS } from '@/domain/navTabs'
@@ -81,12 +85,23 @@ export function HomeScreen({ profile }: { profile: Profile }) {
   const [self, setSelf] = useState<FamilyMember | null>(null)
   const [order, setOrder] = useState<string[]>(() => resolveOrder(loadHomeCardOrder()))
   const [organizing, setOrganizing] = useState(false)
+  const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([])
 
   useEffect(() => {
     listFamilyMembers()
       .then((members) => setSelf(members.find((m) => m.linkedProfileId === profile.id) ?? null))
       .catch(() => {})
   }, [profile.id])
+
+  // Fase 3 — "PEPA te avisa": hoy solo Eventos produce avisos, pero el
+  // propio AttentionCard no sabe nada de Eventos (ver domain/attention.ts)
+  // para que otros módulos puedan sumar los suyos después sin tocar
+  // esta pantalla.
+  useEffect(() => {
+    loadAllEventAlerts()
+      .then((alerts) => setAttentionItems(eventAlertsToAttentionItems(alerts)))
+      .catch(() => {})
+  }, [])
 
   function moveCard(id: string, direction: -1 | 1) {
     setOrder((prev) => {
@@ -120,6 +135,8 @@ export function HomeScreen({ profile }: { profile: Profile }) {
           <p className="muted">¿Cómo te puedo ayudar?</p>
         </div>
       </div>
+
+      <AttentionCard items={attentionItems} />
 
       <PhotoBanner />
 

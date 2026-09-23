@@ -7,6 +7,7 @@ import { ToastHost } from '@/ui/ToastHost'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, NAV_SECTION_COLORS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
 import { onOpenManager, type ManagerKind } from '@/state/managers'
+import { loadAllEventAlerts } from '@/data/events'
 import type { Profile } from '@/domain/types'
 
 // Ventanas de gestión (categorías, etiquetas, clases de alimentos):
@@ -83,7 +84,19 @@ export function NavShell({ profile }: { profile: Profile }) {
   const [order, setOrder] = useState(() => resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav')))
   const [menuOpen, setMenuOpen] = useState(false)
   const [manager, setManager] = useState<ManagerKind | null>(null)
+  const [eventsNeedingAttention, setEventsNeedingAttention] = useState(0)
   useEffect(() => onOpenManager(setManager), [])
+
+  // Fase 3/4 — indicador discreto en el módulo Eventos: cuenta eventos
+  // que necesitan atención (nunca la suma bruta de incidencias, para
+  // no enseñar "17 alertas" porque un solo evento tenga muchas tareas
+  // atrasadas). Se recalcula al cambiar de pantalla — sin polling — así
+  // que se actualiza solo en cuanto el usuario resuelve algo y navega.
+  useEffect(() => {
+    loadAllEventAlerts()
+      .then((alerts) => setEventsNeedingAttention(alerts.length))
+      .catch(() => {})
+  }, [location.pathname])
 
   // MenuSettingsScreen vive en otra pantalla (no se remonta NavShell
   // al navegar allí y volver, es la propia estructura) — sin este
@@ -152,6 +165,7 @@ export function NavShell({ profile }: { profile: Profile }) {
             >
               <span className="nav-item-icon">{tab.icon}</span>
               {tab.label}
+              {tab.to === '/eventos' && eventsNeedingAttention > 0 && <span className="nav-menu-item-badge">{eventsNeedingAttention}</span>}
             </button>
           ))}
           <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('ayuda') }} onClick={() => go('/ayuda')}>
@@ -193,7 +207,10 @@ export function NavShell({ profile }: { profile: Profile }) {
             className={'nav-item' + (isActiveNavPath(location.pathname, tab) ? ' active' : '')}
             onClick={() => navigate(tab.to)}
           >
-            <span className="nav-item-icon">{tab.icon}</span>
+            <span className="nav-item-icon" style={{ position: 'relative' }}>
+              {tab.icon}
+              {tab.to === '/eventos' && eventsNeedingAttention > 0 && <span className="nav-attention-badge">{eventsNeedingAttention}</span>}
+            </span>
             <span className="nav-item-label">{tab.label}</span>
           </button>
         ))}

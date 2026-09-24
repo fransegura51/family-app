@@ -1291,7 +1291,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
   function handlePrettify() {
     pushHistory()
-    setLayers((ls) => autoArrangeLayers(ls))
+    // INV-EDITOR-2 — la zona segura real es la de la plantilla elegida (template.textArea); con una foto
+    // de fondo propia (sin plantilla de arte detrás) o una plantilla sin zona propia, cae a
+    // DEFAULT_TEXT_AREA (ver domain/events.ts, autoArrangeLayers) — nunca una zona nueva inventada aquí.
+    const zone = backgroundImageUrl ? undefined : INVITATION_TEMPLATES.find((t) => t.key === templateKey)?.textArea
+    setLayers((ls) => autoArrangeLayers(ls, zone))
   }
 
   async function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {

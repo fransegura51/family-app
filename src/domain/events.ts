@@ -1492,7 +1492,9 @@ function newLayerId(): string {
 // posiciones fijas para las 100. Sin template (o sin textArea propio,
 // p. ej. un tema sin foto todavía), cae a una caja genérica centrada
 // parecida a la de antes.
-const DEFAULT_TEXT_AREA = { x: 0.1, y: 0.15, width: 0.8, height: 0.7 }
+export type SafeZone = { x: number; y: number; width: number; height: number }
+
+const DEFAULT_TEXT_AREA: SafeZone = { x: 0.1, y: 0.15, width: 0.8, height: 0.7 }
 
 export function buildInvitationTemplateLayers(event: FamilyEvent, template?: InvitationTemplateMeta): InvitationLayer[] {
   const zone = template?.textArea ?? DEFAULT_TEXT_AREA
@@ -1536,26 +1538,69 @@ export function makeInvitationLayer(type: InvitationLayer['type'], overrides: Pa
   }
 }
 
-// "Pepa, hazla bonita" (opcional, Skill 07 punto 2) — reglas
-// deterministas, no IA de verdad: reparte las capas de texto en
-// vertical, centra la foto y las formas, sin tocar el contenido de
-// nadie. Nunca se llama sola, solo cuando el usuario la pide.
-export function autoArrangeLayers(layers: InvitationLayer[]): InvitationLayer[] {
+function clampFraction(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n))
+}
+
+function isInsideZone(x: number, y: number, zone: SafeZone): boolean {
+  return x >= zone.x && x <= zone.x + zone.width && y >= zone.y && y <= zone.y + zone.height
+}
+
+// INV-EDITOR-2 — una forma/decoración que "Pepa, hazla bonita" recoloca nunca debe quedar DENTRO de la
+// zona de texto de la plantilla: si el punto candidato cae ahí, se aleja hacia el borde exterior más
+// cercano del lienzo (geometría determinista, sin IA ni visión artificial).
+function pushOutsideZone(x: number, y: number, zone: SafeZone): { x: number; y: number } {
+  if (!isInsideZone(x, y, zone)) return { x, y }
+  const distLeft = x - zone.x
+  const distRight = zone.x + zone.width - x
+  const distTop = y - zone.y
+  const distBottom = zone.y + zone.height - y
+  const min = Math.min(distLeft, distRight, distTop, distBottom)
+  if (min === distLeft) return { x: clampFraction(zone.x - 0.06, 0.02, 0.98), y }
+  if (min === distRight) return { x: clampFraction(zone.x + zone.width + 0.06, 0.02, 0.98), y }
+  if (min === distTop) return { x, y: clampFraction(zone.y - 0.06, 0.02, 0.98) }
+  return { x, y: clampFraction(zone.y + zone.height + 0.06, 0.02, 0.98) }
+}
+
+// "Pepa, hazla bonita" (opcional, Skill 07 punto 2) — reglas deterministas, no IA de verdad: reparte las
+// capas de texto en vertical, centra la foto y las formas, sin tocar el contenido de nadie. Nunca se
+// llama sola, solo cuando el usuario la pide.
+//
+// INV-EDITOR-2 — antes colocaba texto/icono con coordenadas genéricas del lienzo entero, ignorando
+// dónde está el hueco real de la plantilla (template.textArea, ya usado por buildInvitationTemplateLayers
+// más arriba) — en plantillas con decoración pesada (p. ej. un tema floral tipo "Bodas de plata") el
+// texto/icono podía acabar encima de las flores. Ahora SIEMPRE recibe la `textArea` real de la plantilla
+// (o DEFAULT_TEXT_AREA si no hay ninguna aplicable — foto de fondo propia, o plantilla sin zona propia) y
+// coloca icono→título→mensaje en ese orden, de arriba abajo, sin salir nunca de esa zona; las
+// formas/decoraciones se mantienen fuera de ella cuando es posible (ver pushOutsideZone). Es la MISMA
+// fuente de verdad que ya usan las capas por defecto — no se crea un segundo sistema de "zonas seguras".
+export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone = DEFAULT_TEXT_AREA): InvitationLayer[] {
+  const zone = textArea ?? DEFAULT_TEXT_AREA
   const photos = layers.filter((l) => l.type === 'photo')
   const texts = layers.filter((l) => l.type === 'text' || l.type === 'event_data')
   const emojis = layers.filter((l) => l.type === 'emoji')
   const shapes = layers.filter((l) => l.type === 'shape')
 
+  const cx = zone.x + zone.width / 2
   const arranged: InvitationLayer[] = []
-  photos.forEach((l) => arranged.push({ ...l, x: 0.5, y: 0.4, rotation: 0, scale: Math.min(l.scale, 1.4) }))
-  emojis.forEach((l, i) => arranged.push({ ...l, x: 0.5, y: photos.length > 0 ? 0.16 : 0.2 + i * 0.05, rotation: 0 }))
 
+  // La foto (si el usuario ha añadido una) sigue siendo el elemento principal, centrada en el lienzo —
+  // suele ser más grande que la zona de texto de la plantilla, así que no se confina a ella.
+  photos.forEach((l) => arranged.push({ ...l, x: 0.5, y: 0.4, rotation: 0, scale: Math.min(l.scale, 1.4) }))
+
+  // 1) Icono/emoji principal, arriba de la zona segura.
+  emojis.forEach((l, i) => arranged.push({ ...l, x: cx, y: zone.y + zone.height * clampFraction(0.1 + i * 0.05, 0, 0.3), rotation: 0 }))
+
+  // 2)/3) Título y mensaje/datos, repartidos en vertical DEBAJO de los iconos, sin salir nunca de la zona.
+  const textTop = zone.y + zone.height * (emojis.length > 0 ? 0.32 : 0.14)
+  const textBottom = zone.y + zone.height * 0.92
   const textSlots = texts.length
   texts.forEach((l, i) => {
-    const y = textSlots === 1 ? 0.5 : 0.38 + (i / Math.max(1, textSlots - 1)) * 0.4
-    arranged.push({ ...l, x: 0.5, y, rotation: 0 })
+    const y = textSlots === 1 ? (textTop + textBottom) / 2 : textTop + (i / Math.max(1, textSlots - 1)) * (textBottom - textTop)
+    arranged.push({ ...l, x: cx, y: clampFraction(y, zone.y, zone.y + zone.height), rotation: 0 })
   })
 
+  // 4) Formas/decoraciones: las 4 esquinas del lienzo de siempre, apartadas de la zona de texto si hiciera falta.
   const corners: [number, number][] = [
     [0.15, 0.12],
     [0.85, 0.12],
@@ -1563,7 +1608,8 @@ export function autoArrangeLayers(layers: InvitationLayer[]): InvitationLayer[] 
     [0.85, 0.88],
   ]
   shapes.forEach((l, i) => {
-    const [x, y] = corners[i % corners.length]
+    const [cornerX, cornerY] = corners[i % corners.length]
+    const { x, y } = pushOutsideZone(cornerX, cornerY, zone)
     arranged.push({ ...l, x, y })
   })
 

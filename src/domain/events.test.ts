@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  autoArrangeLayers,
   buildInvitationMessage,
   buildInvitationTemplateLayers,
   buildMapsUrl,
@@ -20,8 +21,8 @@ import {
   sortInvitationTemplatesForEvent,
   type EventAlertInput,
 } from '@/domain/events'
-import type { InvitationTemplateMeta } from '@/domain/events'
-import type { EventGuest, EventTask, FamilyEvent } from '@/domain/types'
+import type { InvitationTemplateMeta, SafeZone } from '@/domain/events'
+import type { EventGuest, EventTask, FamilyEvent, InvitationLayer } from '@/domain/types'
 
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
   return {
@@ -410,6 +411,108 @@ describe('buildInvitationTemplateLayers', () => {
       expect(layer.x).toBeGreaterThan(0)
       expect(layer.x).toBeLessThan(1)
     }
+  })
+})
+
+// INV-EDITOR-2 — "Pepa, hazla bonita" debe recolocar SIEMPRE dentro de la zona segura real de la
+// plantilla (template.textArea), nunca con coordenadas genéricas del lienzo entero — antes ignoraba
+// textArea del todo y podía mandar texto/icono encima de la decoración (caso real reportado: una
+// plantilla floral tipo "Bodas de plata").
+describe('autoArrangeLayers', () => {
+  let seq = 0
+  function layer(type: InvitationLayer['type'], overrides: Partial<InvitationLayer> = {}): InvitationLayer {
+    seq++
+    return { id: `l${seq}`, type, x: 0.9, y: 0.9, rotation: 45, scale: 1, zIndex: seq, ...overrides }
+  }
+
+  function expectInsideZone(l: InvitationLayer, zone: SafeZone) {
+    expect(l.x).toBeGreaterThanOrEqual(zone.x - 0.001)
+    expect(l.x).toBeLessThanOrEqual(zone.x + zone.width + 0.001)
+    expect(l.y).toBeGreaterThanOrEqual(zone.y - 0.001)
+    expect(l.y).toBeLessThanOrEqual(zone.y + zone.height + 0.001)
+  }
+
+  it('emoji + título + mensaje: los tres quedan dentro de una zona amplia, en orden vertical icono→título→mensaje', () => {
+    const zone: SafeZone = { x: 0.1, y: 0.1, width: 0.8, height: 0.7 }
+    const layers = [layer('emoji'), layer('text', { text: 'Título' }), layer('event_data', { text: 'Mensaje' })]
+    const [emoji, text, eventData] = autoArrangeLayers(layers, zone)
+    for (const l of [emoji, text, eventData]) expectInsideZone(l, zone)
+    expect(emoji.y).toBeLessThan(text.y)
+    expect(text.y).toBeLessThan(eventData.y)
+  })
+
+  it('CASO REAL — plantilla floral tipo "Bodas de plata" (zona estrecha y descentrada): nada queda fuera de su zona limpia', () => {
+    // Geometría real de una plantilla floral del catálogo (domain/events.ts, INVITATION_TEMPLATES 'floral').
+    const zone: SafeZone = { x: 0.2542, y: 0.204, width: 0.5693, height: 0.6253 }
+    const layers = [layer('emoji'), layer('text', { text: 'Bodas de plata' }), layer('event_data', { text: 'Os esperamos...' })]
+    const arranged = autoArrangeLayers(layers, zone)
+    for (const l of arranged) expectInsideZone(l, zone)
+  })
+
+  it('plantilla con textArea alta (mucho height, poco width): el icono queda arriba y el mensaje abajo, ambos dentro', () => {
+    const zone: SafeZone = { x: 0.35, y: 0.05, width: 0.3, height: 0.85 }
+    const layers = [layer('emoji'), layer('text'), layer('event_data')]
+    const [emoji, , eventData] = autoArrangeLayers(layers, zone)
+    expectInsideZone(emoji, zone)
+    expectInsideZone(eventData, zone)
+    expect(emoji.y).toBeLessThan(eventData.y)
+  })
+
+  it('plantilla con textArea baja (poco height): sigue sin salirse, aunque quede todo apretado', () => {
+    const zone: SafeZone = { x: 0.1, y: 0.4, width: 0.8, height: 0.15 }
+    const layers = [layer('emoji'), layer('text'), layer('event_data')]
+    for (const l of autoArrangeLayers(layers, zone)) expectInsideZone(l, zone)
+  })
+
+  it('plantilla con zona estrecha (poco width): el texto se mantiene centrado en esa franja', () => {
+    const zone: SafeZone = { x: 0.4, y: 0.1, width: 0.2, height: 0.7 }
+    const layers = [layer('text')]
+    const [text] = autoArrangeLayers(layers, zone)
+    expectInsideZone(text, zone)
+    expect(text.x).toBeCloseTo(zone.x + zone.width / 2)
+  })
+
+  it('sin textArea (undefined): cae a DEFAULT_TEXT_AREA, nunca revienta ni usa coordenadas fuera de 0..1', () => {
+    const layers = [layer('emoji'), layer('text'), layer('event_data')]
+    for (const l of autoArrangeLayers(layers)) {
+      expect(l.x).toBeGreaterThanOrEqual(0)
+      expect(l.x).toBeLessThanOrEqual(1)
+      expect(l.y).toBeGreaterThanOrEqual(0)
+      expect(l.y).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('varias capas de texto (más de 2): todas quedan dentro de la zona, repartidas sin solaparse', () => {
+    const zone: SafeZone = { x: 0.1, y: 0.1, width: 0.8, height: 0.7 }
+    const layers = [layer('text'), layer('text'), layer('event_data'), layer('text')]
+    const arranged = autoArrangeLayers(layers, zone)
+    for (const l of arranged) expectInsideZone(l, zone)
+    const ys = arranged.map((l) => l.y)
+    expect(new Set(ys).size).toBe(ys.length) // ninguna coincide exactamente con otra (no solapamiento vertical)
+  })
+
+  it('decoraciones (formas): se mantienen fuera de la zona de texto cuando cae dentro de ella', () => {
+    // Zona grande que llega a tragarse una de las 4 esquinas de siempre (0.15, 0.12) — debe apartarse.
+    const zone: SafeZone = { x: 0.05, y: 0.05, width: 0.7, height: 0.7 }
+    const layers = [layer('shape', { shapeKey: 'estrella' }), layer('shape', { shapeKey: 'confeti' })]
+    for (const l of autoArrangeLayers(layers, zone)) {
+      expect(l.x >= zone.x && l.x <= zone.x + zone.width && l.y >= zone.y && l.y <= zone.y + zone.height).toBe(false)
+    }
+  })
+
+  it('repetición determinista: aplicar el algoritmo dos veces con la misma entrada da el mismo resultado', () => {
+    const zone: SafeZone = { x: 0.2, y: 0.15, width: 0.6, height: 0.6 }
+    const layers = [layer('emoji'), layer('text'), layer('event_data'), layer('shape', { shapeKey: 'anillo' })]
+    const once = autoArrangeLayers(layers, zone)
+    const twice = autoArrangeLayers(layers, zone)
+    expect(once).toEqual(twice)
+  })
+
+  it('la foto sigue centrada en el lienzo (no confinada a la zona de texto, suele ser más grande)', () => {
+    const zone: SafeZone = { x: 0.3, y: 0.3, width: 0.2, height: 0.2 }
+    const [photo] = autoArrangeLayers([layer('photo', { photoPath: 'p.jpg' })], zone)
+    expect(photo.x).toBe(0.5)
+    expect(photo.y).toBe(0.4)
   })
 })
 

@@ -1065,6 +1065,39 @@ export function rankUpcomingTasks(tasks: EventTask[]): RankedEventTask[] {
 // indicadores independientes y verificables — reutiliza isOverdueTask
 // (misma definición que computeEventConclusions) y rankUpcomingTasks,
 // nunca una segunda lógica paralela para decidir qué está atrasado.
+export interface EventMilestone {
+  kind: 'tarea' | 'pago'
+  label: string
+  dueDate: string
+  daysUntil: number
+}
+
+// Fase 7 — extraída de computeEventStatusSummary para que
+// computeEventHealth (más abajo) reutilice exactamente el mismo
+// "próximo hito" en vez de recalcularlo con otro criterio.
+export function pickNextMilestone(
+  tasks: EventTask[],
+  payments: Pick<EventPayment, 'concept' | 'totalAmount' | 'depositPaid' | 'dueDate' | 'status'>[],
+): EventMilestone | null {
+  // La tarea o el pago no resuelto más próximo con fecha (nunca uno ya
+  // vencido — eso ya lo cubre "N atrasadas"/el aviso de pago vencido
+  // por su lado, para no repetir la misma información dos veces).
+  const nextTask = rankUpcomingTasks(tasks).find((t) => t.daysUntil !== null && t.daysUntil >= 0)
+  const nextPayment = payments
+    .filter((p) => p.status !== 'pagado' && p.dueDate && p.totalAmount - p.depositPaid > 0)
+    .map((p) => ({ payment: p, daysUntil: daysUntil(p.dueDate as string) }))
+    .filter((p) => p.daysUntil >= 0)
+    .sort((a, b) => a.daysUntil - b.daysUntil)[0]
+
+  if (nextTask && (!nextPayment || (nextTask.daysUntil as number) <= nextPayment.daysUntil)) {
+    return { kind: 'tarea', label: nextTask.task.title, dueDate: nextTask.task.dueDate as string, daysUntil: nextTask.daysUntil as number }
+  }
+  if (nextPayment) {
+    return { kind: 'pago', label: nextPayment.payment.concept, dueDate: nextPayment.payment.dueDate as string, daysUntil: nextPayment.daysUntil }
+  }
+  return null
+}
+
 export interface EventStatusSummary {
   tasksTotal: number
   tasksDone: number
@@ -1074,7 +1107,7 @@ export interface EventStatusSummary {
   guestsPendingCount: number
   budgetPlanned: number
   budgetSpent: number | null
-  nextMilestone: { kind: 'tarea' | 'pago'; label: string; dueDate: string; daysUntil: number } | null
+  nextMilestone: EventMilestone | null
 }
 
 export function computeEventStatusSummary(input: {
@@ -1094,24 +1127,6 @@ export function computeEventStatusSummary(input: {
     .reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0)
   const guestsPendingCount = input.guests.filter((g) => g.rsvpStatus === 'pendiente' || g.rsvpStatus === 'no_seguro').length
 
-  // Próximo hito: la tarea o el pago no resuelto más próximo con fecha
-  // (nunca uno ya vencido — eso ya lo cubre "N atrasadas"/el aviso de
-  // pago vencido por su lado, para no repetir la misma información dos
-  // veces en la misma tarjeta).
-  const nextTask = rankUpcomingTasks(input.tasks).find((t) => t.daysUntil !== null && t.daysUntil >= 0)
-  const nextPayment = input.payments
-    .filter((p) => p.status !== 'pagado' && p.dueDate && p.totalAmount - p.depositPaid > 0)
-    .map((p) => ({ payment: p, daysUntil: daysUntil(p.dueDate as string) }))
-    .filter((p) => p.daysUntil >= 0)
-    .sort((a, b) => a.daysUntil - b.daysUntil)[0]
-
-  let nextMilestone: EventStatusSummary['nextMilestone'] = null
-  if (nextTask && (!nextPayment || (nextTask.daysUntil as number) <= nextPayment.daysUntil)) {
-    nextMilestone = { kind: 'tarea', label: nextTask.task.title, dueDate: nextTask.task.dueDate as string, daysUntil: nextTask.daysUntil as number }
-  } else if (nextPayment) {
-    nextMilestone = { kind: 'pago', label: nextPayment.payment.concept, dueDate: nextPayment.payment.dueDate as string, daysUntil: nextPayment.daysUntil }
-  }
-
   return {
     tasksTotal,
     tasksDone,
@@ -1121,8 +1136,147 @@ export function computeEventStatusSummary(input: {
     guestsPendingCount,
     budgetPlanned: input.plannedBudget,
     budgetSpent: input.spentBudget,
-    nextMilestone,
+    nextMilestone: pickNextMilestone(input.tasks, input.payments),
   }
+}
+
+// ---------------------------------------------------------------------
+// Fase 7 — barra dinámica de "Estado del evento". NO vuelve a ser un
+// porcentaje mostrado al usuario (eso es justo lo que la Fase 2 quitó):
+// `progress` es un valor interno para elegir el color/posición de la
+// barra, nunca se enseña como cifra. `level` es lo único que decide
+// el color, y las incidencias importantes (tareas/pagos atrasados)
+// pueden fijar el nivel directamente, sin pasar por la media — "no
+// basar el color únicamente en la puntuación". Reglas deterministas,
+// sin IA, sobre datos ya calculados en otro sitio (isOverdueTask,
+// pickNextMilestone) — nunca una segunda definición de "atrasado".
+// ---------------------------------------------------------------------
+export type EventHealthLevel = 'danger' | 'warning' | 'progress' | 'good'
+
+export interface EventHealth {
+  progress: number
+  level: EventHealthLevel
+  label: string
+  message: string
+}
+
+const EVENT_HEALTH_LEVEL_LABEL: Record<EventHealthLevel, string> = {
+  danger: 'Necesita atención',
+  warning: 'Hay cosas que revisar',
+  progress: 'En marcha',
+  good: 'Todo va al día',
+}
+
+function milestoneMessage(m: EventMilestone | null): string {
+  if (!m) return 'Sin nada urgente por ahora'
+  const when = m.daysUntil === 0 ? 'hoy' : m.daysUntil === 1 ? 'mañana' : `en ${m.daysUntil} días`
+  return `Próximo hito: ${m.label} — ${when}`
+}
+
+// Misma definición de "vencido"/"vence pronto" que ya usa
+// computeEventConclusions para los pagos (días<0 con saldo pendiente =
+// vencido; 0-7 días con saldo pendiente = vence pronto) — un solo
+// sitio que decide esto, reutilizado aquí para no inventar un segundo
+// criterio de cuándo un pago es preocupante.
+export function countPaymentAlerts(payments: Pick<EventPayment, 'totalAmount' | 'depositPaid' | 'dueDate' | 'status'>[]): {
+  overdue: number
+  dueSoon: number
+} {
+  let overdue = 0
+  let dueSoon = 0
+  for (const p of payments) {
+    if (p.status === 'pagado' || !p.dueDate) continue
+    const remaining = p.totalAmount - p.depositPaid
+    if (remaining <= 0) continue
+    const days = daysUntil(p.dueDate)
+    if (days < 0) overdue += 1
+    else if (days <= 7) dueSoon += 1
+  }
+  return { overdue, dueSoon }
+}
+
+export function computeEventHealth(input: {
+  hasTasksModule: boolean
+  tasksTotal: number
+  tasksDone: number
+  tasksOverdue: number
+  hasGuestsModule: boolean
+  guestsTotalPeople: number
+  guestsConfirmedPeople: number
+  guestsPendingCount: number
+  hasBudgetModule: boolean
+  budgetPlanned: number
+  budgetSpent: number | null
+  hasPaymentsModule: boolean
+  paymentsOverdueCount: number
+  paymentsDueSoonCount: number
+  // "si corresponde": solo se evalúa cuando el evento ya tiene un
+  // lugar en texto (venueLabel/ceremonyLocationLabel/...) — un evento
+  // que todavía no ha decidido dónde será no debe verse penalizado por
+  // no tener coordenadas de algo que ni siquiera existe todavía.
+  locationApplicable: boolean
+  hasExactLocation: boolean
+  hasMenuModule: boolean
+  menuItemsTotal: number
+  menuItemsTransferred: number
+  nextMilestone: EventMilestone | null
+}): EventHealth {
+  // 1) Progreso interno: media de las dimensiones aplicables (solo las
+  // de módulos activos con datos reales) — nunca se enseña como cifra.
+  // El presupuesto/pagos quedan fuera de esta media a propósito (Fase
+  // 2: "gastar más no es estar más preparado"): solo participan más
+  // abajo como señales de alarma, nunca sumando progreso.
+  const ratios: number[] = []
+  if (input.hasTasksModule && input.tasksTotal > 0) ratios.push(input.tasksDone / input.tasksTotal)
+  if (input.hasGuestsModule && input.guestsTotalPeople > 0) ratios.push(input.guestsConfirmedPeople / input.guestsTotalPeople)
+  if (input.hasMenuModule && input.menuItemsTotal > 0) ratios.push(input.menuItemsTransferred / input.menuItemsTotal)
+  if (input.locationApplicable) ratios.push(input.hasExactLocation ? 1 : 0)
+  const progress = ratios.length > 0 ? Math.round((ratios.reduce((sum, r) => sum + r, 0) / ratios.length) * 100) : 0
+
+  // 2) Señales de alarma, en orden de severidad — la primera que
+  // aplica decide el nivel y el mensaje, sin importar el progreso.
+  if (input.hasTasksModule && input.tasksOverdue > 0) {
+    return {
+      progress,
+      level: 'danger',
+      label: EVENT_HEALTH_LEVEL_LABEL.danger,
+      message: `${input.tasksOverdue} ${input.tasksOverdue === 1 ? 'tarea atrasada' : 'tareas atrasadas'}`,
+    }
+  }
+  if (input.hasPaymentsModule && input.paymentsOverdueCount > 0) {
+    return {
+      progress,
+      level: 'danger',
+      label: EVENT_HEALTH_LEVEL_LABEL.danger,
+      message: `${input.paymentsOverdueCount} ${input.paymentsOverdueCount === 1 ? 'pago vencido' : 'pagos vencidos'}`,
+    }
+  }
+  if (input.hasBudgetModule && input.budgetSpent !== null && input.budgetPlanned > 0 && input.budgetSpent > input.budgetPlanned) {
+    return { progress, level: 'warning', label: EVENT_HEALTH_LEVEL_LABEL.warning, message: 'El gasto ya supera lo planeado' }
+  }
+  if (input.hasPaymentsModule && input.paymentsDueSoonCount > 0) {
+    return {
+      progress,
+      level: 'warning',
+      label: EVENT_HEALTH_LEVEL_LABEL.warning,
+      message: `${input.paymentsDueSoonCount} ${input.paymentsDueSoonCount === 1 ? 'pago vence pronto' : 'pagos vencen pronto'}`,
+    }
+  }
+  if (input.hasGuestsModule && input.guestsPendingCount > 0) {
+    return {
+      progress,
+      level: 'warning',
+      label: EVENT_HEALTH_LEVEL_LABEL.warning,
+      message: `${input.guestsPendingCount} ${input.guestsPendingCount === 1 ? 'invitado pendiente' : 'invitados pendientes'}`,
+    }
+  }
+
+  // 3) Sin ninguna incidencia: el color sube o baja entre "en marcha" y
+  // "todo va al día" solo según el progreso interno.
+  if (progress >= 80) {
+    return { progress, level: 'good', label: EVENT_HEALTH_LEVEL_LABEL.good, message: milestoneMessage(input.nextMilestone) }
+  }
+  return { progress, level: 'progress', label: EVENT_HEALTH_LEVEL_LABEL.progress, message: milestoneMessage(input.nextMilestone) }
 }
 
 // Fase 3 — avisos fuera del evento: computeEventConclusions() ya es el

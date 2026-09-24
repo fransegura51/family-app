@@ -5,12 +5,15 @@ import {
   buildMapsUrl,
   computeAllEventAlerts,
   computeEventConclusions,
+  computeEventHealth,
   computeEventStatusSummary,
+  countPaymentAlerts,
   eventAlertsToAttentionItems,
   eventLocationMapLines,
   generateEventPlan,
   INVITATION_TEMPLATES,
   isOverdueTask,
+  pickNextMilestone,
   sortInvitationTemplatesForEvent,
   type EventAlertInput,
 } from '@/domain/events'
@@ -533,6 +536,123 @@ describe('computeAllEventAlerts', () => {
       }),
     ])
     expect(alerts[0].primaryModule).toBe('tareas')
+  })
+})
+
+// Fase 7 — barra dinámica de "Estado del evento": el color (level)
+// nunca depende solo de la media interna (progress); una incidencia
+// real puede fijarlo directamente. No hay ningún examen en el que
+// "progress" se enseñe como cifra al usuario — eso lo comprueba un
+// test aparte sobre el propio código de la UI, más abajo.
+function makeHealthInput(overrides: Partial<Parameters<typeof computeEventHealth>[0]>): Parameters<typeof computeEventHealth>[0] {
+  return {
+    hasTasksModule: false,
+    tasksTotal: 0,
+    tasksDone: 0,
+    tasksOverdue: 0,
+    hasGuestsModule: false,
+    guestsTotalPeople: 0,
+    guestsConfirmedPeople: 0,
+    guestsPendingCount: 0,
+    hasBudgetModule: false,
+    budgetPlanned: 0,
+    budgetSpent: null,
+    hasPaymentsModule: false,
+    paymentsOverdueCount: 0,
+    paymentsDueSoonCount: 0,
+    locationApplicable: false,
+    hasExactLocation: false,
+    hasMenuModule: false,
+    menuItemsTotal: 0,
+    menuItemsTransferred: 0,
+    nextMilestone: null,
+    ...overrides,
+  }
+}
+
+describe('countPaymentAlerts', () => {
+  it('cuenta vencidos y "vence pronto" con la misma definición que computeEventConclusions', () => {
+    const result = countPaymentAlerts([
+      { totalAmount: 200, depositPaid: 0, dueDate: daysFromNow(-1), status: 'pendiente' },
+      { totalAmount: 200, depositPaid: 0, dueDate: daysFromNow(3), status: 'pendiente' },
+      { totalAmount: 200, depositPaid: 200, dueDate: daysFromNow(-1), status: 'pagado' },
+      { totalAmount: 200, depositPaid: 200, dueDate: daysFromNow(1), status: 'parcial' },
+    ])
+    expect(result).toEqual({ overdue: 1, dueSoon: 1 })
+  })
+})
+
+describe('pickNextMilestone', () => {
+  it('null cuando no hay nada pendiente con fecha futura', () => {
+    expect(pickNextMilestone([], [])).toBeNull()
+  })
+})
+
+describe('computeEventHealth', () => {
+  it('sin tareas ni ningún módulo con datos: no rompe, nivel neutro sin incidencias', () => {
+    const health = computeEventHealth(makeHealthInput({}))
+    expect(health.level).toBe('progress')
+    expect(health.progress).toBe(0)
+  })
+
+  it('tareas completadas al 100% y sin invitados/presupuesto: evento al día, verde', () => {
+    const health = computeEventHealth(makeHealthInput({ hasTasksModule: true, tasksTotal: 4, tasksDone: 4 }))
+    expect(health.level).toBe('good')
+  })
+
+  it('una tarea atrasada degrada a rojo aunque el resto esté completo', () => {
+    const health = computeEventHealth(
+      makeHealthInput({ hasTasksModule: true, tasksTotal: 4, tasksDone: 4, tasksOverdue: 1, hasGuestsModule: true, guestsTotalPeople: 10, guestsConfirmedPeople: 10 }),
+    )
+    expect(health.level).toBe('danger')
+    expect(health.message).toContain('1 tarea atrasada')
+  })
+
+  it('módulos desactivados no penalizan: sin mesas/menú no cuentan aunque no tengan datos', () => {
+    // Ningún dato de menú (hasMenuModule=false) — no debe arrastrar el progreso hacia 0.
+    const conMenu = computeEventHealth(makeHealthInput({ hasTasksModule: true, tasksTotal: 2, tasksDone: 2, hasMenuModule: true, menuItemsTotal: 2, menuItemsTransferred: 0 }))
+    const sinMenu = computeEventHealth(makeHealthInput({ hasTasksModule: true, tasksTotal: 2, tasksDone: 2, hasMenuModule: false }))
+    expect(sinMenu.progress).toBe(100)
+    expect(conMenu.progress).toBeLessThan(sinMenu.progress)
+  })
+
+  it('RSVP inactivo: invitados pendientes no degradan el color', () => {
+    const health = computeEventHealth(makeHealthInput({ hasGuestsModule: false, guestsPendingCount: 5, hasTasksModule: true, tasksTotal: 2, tasksDone: 2 }))
+    expect(health.level).not.toBe('warning')
+  })
+
+  it('RSVP activo: invitados pendientes sí degradan a naranja', () => {
+    const health = computeEventHealth(makeHealthInput({ hasGuestsModule: true, guestsTotalPeople: 10, guestsConfirmedPeople: 10, guestsPendingCount: 3 }))
+    expect(health.level).toBe('warning')
+    expect(health.message).toContain('3 invitados pendientes')
+  })
+
+  it('presupuesto desactivado: gasto sobre lo planeado no aplica si el módulo no está activo', () => {
+    const health = computeEventHealth(makeHealthInput({ hasBudgetModule: false, budgetPlanned: 100, budgetSpent: 500 }))
+    expect(health.level).not.toBe('warning')
+  })
+
+  it('presupuesto activo y superado: naranja', () => {
+    const health = computeEventHealth(makeHealthInput({ hasBudgetModule: true, budgetPlanned: 100, budgetSpent: 150 }))
+    expect(health.level).toBe('warning')
+  })
+
+  it('pago vencido: rojo, con prioridad sobre presupuesto superado', () => {
+    const health = computeEventHealth(makeHealthInput({ hasPaymentsModule: true, paymentsOverdueCount: 1, hasBudgetModule: true, budgetPlanned: 100, budgetSpent: 150 }))
+    expect(health.level).toBe('danger')
+  })
+
+  it('sin ubicación exacta cuando el evento ya tiene lugar en texto: reduce el progreso, pero no es una incidencia (no baja de "progress")', () => {
+    const health = computeEventHealth(makeHealthInput({ locationApplicable: true, hasExactLocation: false }))
+    expect(health.progress).toBe(0)
+    expect(['progress', 'good']).toContain(health.level)
+  })
+
+  it('nunca enseña "progress" como porcentaje en label/message', () => {
+    const health = computeEventHealth(makeHealthInput({ hasTasksModule: true, tasksTotal: 3, tasksDone: 1 }))
+    expect(health.label).not.toMatch(/\d/)
+    expect(health.message).not.toContain('%')
+    expect(health.label).not.toContain('%')
   })
 })
 

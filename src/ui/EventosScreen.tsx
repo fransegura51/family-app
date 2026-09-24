@@ -87,7 +87,9 @@ import {
   buildMapsUrl,
   CELEBRATION_SUBTYPES,
   computeEventConclusions,
+  computeEventHealth,
   computeEventStatusSummary,
+  countPaymentAlerts,
   daysUntil,
   DUAL_LOCATION_EVENT_TYPES,
   type EventConclusion as EventConclusionType,
@@ -97,6 +99,7 @@ import {
   eventDateLine,
   eventLocationLines,
   eventLocationMapLines,
+  type EventHealthLevel,
   generateEventPlan,
   INVITATION_EMOJI_SUGGESTIONS,
   INVITATION_SHAPES,
@@ -154,6 +157,14 @@ const DATE_STATUS_OPTIONS: { value: FamilyEvent['dateStatus']; label: string }[]
   { value: 'provisional', label: 'Fecha provisional' },
   { value: 'confirmada', label: 'Fecha confirmada' },
 ]
+
+// Fase 7 — el emoji es presentación pura (vive aquí, no en domain/events.ts).
+const EVENT_HEALTH_EMOJI: Record<EventHealthLevel, string> = {
+  danger: '🔴',
+  warning: '🟠',
+  progress: '🟡',
+  good: '🟢',
+}
 
 // Ceremonia (dos ubicaciones) solo tiene sentido en estos tipos —
 // aunque el módulo esté activado, en otros tipos no se muestra.
@@ -739,9 +750,45 @@ function EventDetail({
   // que combine cosas sin relación entre sí.
   const hasGuestsModule = event.enabledModules.includes('invitados')
   const hasBudgetModule = event.enabledModules.includes('presupuesto')
+  const hasPaymentsModule = event.enabledModules.includes('pagos')
+  const hasMenuModule = event.enabledModules.includes('menu_compra')
   const taskDoneCount = tasks.filter((t) => t.done).length
   const budgetPlanned = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
   const statusSummary = computeEventStatusSummary({ tasks, guests, payments, plannedBudget: budgetPlanned, spentBudget: budgetSpent })
+
+  // Fase 7 — barra dinámica: "corresponde" evaluar ubicación exacta
+  // solo si el evento ya tiene algún lugar en texto — uno que todavía
+  // no ha decidido dónde será no se penaliza por algo que ni existe.
+  const eventLocations = DUAL_LOCATION_EVENT_TYPES.includes(event.type)
+    ? [
+        { label: event.ceremonyLocationLabel, hasCoords: event.ceremonyLocationLatitude != null },
+        { label: event.celebrationLocationLabel, hasCoords: event.celebrationLocationLatitude != null },
+      ]
+    : [{ label: event.venueLabel, hasCoords: event.venueLatitude != null }]
+  const setLocations = eventLocations.filter((l) => l.label)
+  const paymentAlerts = countPaymentAlerts(payments)
+  const eventHealth = computeEventHealth({
+    hasTasksModule,
+    tasksTotal: statusSummary.tasksTotal,
+    tasksDone: statusSummary.tasksDone,
+    tasksOverdue: statusSummary.tasksOverdue,
+    hasGuestsModule,
+    guestsTotalPeople: statusSummary.guestsTotalPeople,
+    guestsConfirmedPeople: statusSummary.guestsConfirmedPeople,
+    guestsPendingCount: statusSummary.guestsPendingCount,
+    hasBudgetModule,
+    budgetPlanned: statusSummary.budgetPlanned,
+    budgetSpent: statusSummary.budgetSpent,
+    hasPaymentsModule,
+    paymentsOverdueCount: paymentAlerts.overdue,
+    paymentsDueSoonCount: paymentAlerts.dueSoon,
+    locationApplicable: setLocations.length > 0,
+    hasExactLocation: setLocations.length > 0 && setLocations.every((l) => l.hasCoords),
+    hasMenuModule,
+    menuItemsTotal: menuItems.length,
+    menuItemsTransferred: menuItems.filter((i) => i.transferred).length,
+    nextMilestone: statusSummary.nextMilestone,
+  })
 
   // "Pepa te recomienda" — hasta 3 tareas pendientes, vencidas primero
   // y luego las más próximas (rankUpcomingTasks, domain/events.ts).
@@ -1018,7 +1065,18 @@ function EventDetail({
       (hasBudgetModule && statusSummary.budgetSpent !== null) ? (
         <div className="card event-card" style={{ marginTop: 8 }}>
           <strong>Estado del evento</strong>
-          <div className="event-readiness-stats" style={{ marginTop: 6 }}>
+          {/* Fase 7 — barra dinámica: el color (level) nunca depende solo
+              de la media interna (progress) — una incidencia real
+              (tarea/pago atrasado, presupuesto superado) fija el color
+              directamente. El número de "progress" no se enseña nunca,
+              solo se usa para el ancho de la barra. */}
+          <div className={`event-health-bar event-health-${eventHealth.level}`} style={{ marginTop: 8 }}>
+            <div className="event-health-bar-fill" style={{ width: `${eventHealth.progress}%` }} />
+          </div>
+          <p style={{ margin: '6px 0 0', fontWeight: 600 }}>
+            {EVENT_HEALTH_EMOJI[eventHealth.level]} {eventHealth.label} · {eventHealth.message}
+          </p>
+          <div className="event-readiness-stats" style={{ marginTop: 10 }}>
             {hasTasksModule && statusSummary.tasksTotal > 0 && (
               <div>
                 <strong>

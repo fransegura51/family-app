@@ -808,6 +808,34 @@ button {
   line-height: 1;
 }
 
+/* Fase 7 — barra dinámica de "Estado del evento": el color viene de
+   una clase por nivel (nunca de un gradiente continuo por porcentaje),
+   para que el significado sea siempre el mismo 🔴/🟠/🟡/🟢 sin importar
+   el ancho relleno. */
+.event-health-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+.event-health-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.event-health-danger .event-health-bar-fill {
+  background: #dc2626;
+}
+.event-health-warning .event-health-bar-fill {
+  background: #f97316;
+}
+.event-health-progress .event-health-bar-fill {
+  background: #eab308;
+}
+.event-health-good .event-health-bar-fill {
+  background: #16a34a;
+}
+
 /* Fase 3/4 — indicador discreto de "necesita atención" en el módulo
    Eventos (bottom-nav y menú ☰). Un número comprensible (eventos con
    incidencias), nunca la suma bruta de cada incidencia. */

@@ -150,6 +150,7 @@ import { groupSpending, type FinanceData } from '@/domain/financeCompute'
 import { comparablePrevious, daysBetween, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
 import { isRefund } from '@/domain/refunds'
 import { buildFoodReceiptIds, buildProductKindSets, purchaseNature } from '@/domain/products'
+import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
 import { partitionTicketLines } from '@/domain/ticketLines'
@@ -5705,8 +5706,8 @@ function ReceiptRow({
             lines &&
             lines.map((l) => {
               // Corrección PESO — la unidad real guardada decide la etiqueta; el histórico anterior a esta
-              // corrección (unit=null) sigue mostrándose como "ud", igual que siempre.
-              const unitLabel = l.unit === 'kg' ? 'kg' : 'ud'
+              // corrección (unit=null) sigue mostrándose como "ud", igual que siempre (ver domain/measurementUnit.ts).
+              const unitLabel = normalizeMeasurementUnit(l.unit) ?? 'ud'
               return (
                 <p key={l.id} className="muted receipt-row-detail-line">
                   {l.name}

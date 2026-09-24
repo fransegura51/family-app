@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildFoodReceiptIds, computeProductStats, isFoodPurchase, isLikelyAlcohol, purchaseNature } from '@/domain/products'
 import type { BudgetCategory, ProductPrice } from '@/domain/types'
 
-function price(recordedDate: string, amount: number): ProductPrice {
-  return { id: recordedDate, productId: 'p', price: amount, store: 'Mercadona', quantity: null, unit: null, recordedDate, receiptId: null }
+function price(recordedDate: string, amount: number, unit: string | null = null): ProductPrice {
+  return { id: recordedDate, productId: 'p', price: amount, store: 'Mercadona', quantity: null, unit, recordedDate, receiptId: null }
 }
 
 describe('computeProductStats', () => {
@@ -27,6 +27,36 @@ describe('computeProductStats', () => {
     expect(stats.avgDaysBetween).toBe(7)
     // 10 días desde la última compra ≥ 7 de media → toca comprar.
     expect(stats.isDue).toBe(true)
+    // Sin ningún "kg" en la serie, el legacy unit=null es compatible con "ud" — comportamiento idéntico al anterior a PESO-4.
+    expect(stats.unit).toBe('ud')
+    expect(stats.priceSampleCount).toBe(3)
+    expect(stats.excludedLegacyCount).toBe(0)
+  })
+
+  it('PESO-4 — CASO C: un legacy unit=null en una serie que también tiene "kg" se excluye de las estadísticas de precio (nunca "bajó de 2,64 a 1,70")', () => {
+    const stats = computeProductStats([price('2026-08-18', 2.64, null), price('2026-09-18', 1.7, 'kg')])!
+    expect(stats.unit).toBe('kg')
+    expect(stats.lastPrice).toBe(1.7)
+    expect(stats.avgPrice).toBe(1.7)
+    expect(stats.minPrice).toBe(1.7)
+    expect(stats.maxPrice).toBe(1.7)
+    expect(stats.priceSampleCount).toBe(1)
+    expect(stats.excludedLegacyCount).toBe(1)
+    // La frecuencia de recompra SÍ sigue contando las 2 compras — no es un dato de precio.
+    expect(stats.count).toBe(2)
+  })
+
+  it('PESO-4 — CASO D: legacy unit=null + "ud" nuevo (Leche) — el legacy SÍ es comparable, no hay evidencia de venta por peso', () => {
+    const stats = computeProductStats([price('2026-08-01', 1.1, null), price('2026-09-01', 1.2, 'ud')])!
+    expect(stats.unit).toBe('ud')
+    expect(stats.priceSampleCount).toBe(2)
+    expect(stats.excludedLegacyCount).toBe(0)
+    expect(stats.avgPrice).toBeCloseTo(1.15)
+  })
+
+  it('PESO-4 — CASO E: nombre engañoso no importa — un "PATATA 5 KG" con unit="ud" da estadísticas €/ud, nunca €/kg', () => {
+    const stats = computeProductStats([price('2026-09-01', 5, 'ud'), price('2026-09-08', 5, 'ud')])!
+    expect(stats.unit).toBe('ud')
   })
 
   it('no está "pendiente" si aún no ha pasado el intervalo medio; con una sola compra nunca', () => {

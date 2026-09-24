@@ -57,6 +57,7 @@ import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodP
 import { normalize } from '@/domain/voiceQuery'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { averagePricesByMonth, basketTotal, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
+import { displayMeasurementUnit, lastComparablePriceByStore, type MeasurementUnit } from '@/domain/measurementUnit'
 import { buildShoppingInsights, type ShoppingInsight } from '@/domain/shoppingInsights'
 import { BudgetsTab, ReceiptsTab, type MovementsFilter } from '@/ui/FinanceScreen'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
@@ -127,6 +128,9 @@ interface ProductSuggestion {
   quantity: string | null
   unit: string | null
   lastPrice: number | null
+  // PESO-4 — magnitud de lastPrice (€/kg o €/ud); null cuando no hay ningún precio comparable (ver
+  // domain/measurementUnit.ts — nunca se asume "ud" a fuego).
+  lastPriceUnit: MeasurementUnit | null
   // Inciso Compras — Parte B: foto opcional del producto (products.photo_path), para el ojo 👁 de
   // cada fila de la lista — reutiliza este mismo mapa por nombre normalizado en vez de cargar aparte.
   photoPath: string | null
@@ -152,6 +156,7 @@ function buildSuggestions(
       quantity: last?.quantity ?? null,
       unit: last?.unit ?? null,
       lastPrice: stats?.lastPrice ?? null,
+      lastPriceUnit: stats?.unit ?? null,
       photoPath: p.photoPath,
     }
   })
@@ -1764,7 +1769,7 @@ function DraggableStoreGroup({
         const detailParts = [
           [item.quantity, item.unit].filter(Boolean).join(' '),
           !shoppingMode && item.priority !== 'normal' ? `prioridad ${item.priority}` : null,
-          known?.lastPrice != null ? `${known.lastPrice.toFixed(2)} €/ud` : null,
+          known?.lastPrice != null ? `${known.lastPrice.toFixed(2)} ${displayMeasurementUnit(known.lastPriceUnit ?? 'ud')}` : null,
         ].filter(Boolean)
         const label = item.name + (detailParts.length > 0 ? ` · ${detailParts.join(' · ')}` : '')
         return (
@@ -1976,6 +1981,7 @@ function AddShoppingItemForm({
   const [store, setStore] = useState('')
   const [priority, setPriority] = useState<ShoppingItemPriority>('normal')
   const [matchedPrice, setMatchedPrice] = useState<number | null>(null)
+  const [matchedPriceUnit, setMatchedPriceUnit] = useState<MeasurementUnit | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   // Inciso Compras — Parte B: igual que "Tienda (opcional)", un enlace
@@ -2000,8 +2006,10 @@ function AddShoppingItemForm({
       setQuantity(match.quantity ?? '')
       setUnit(match.unit ?? '')
       setMatchedPrice(match.lastPrice)
+      setMatchedPriceUnit(match.lastPriceUnit)
     } else {
       setMatchedPrice(null)
+      setMatchedPriceUnit(null)
     }
   }
 
@@ -2061,7 +2069,9 @@ function AddShoppingItemForm({
           ))}
         </datalist>
       </label>
-      {matchedPrice != null && <p className="muted">Último precio: {matchedPrice.toFixed(2)} €</p>}
+      {matchedPrice != null && (
+        <p className="muted">Último precio: {matchedPrice.toFixed(2)} {displayMeasurementUnit(matchedPriceUnit ?? 'ud')}</p>
+      )}
       <div className="inline-fields">
         <label>
           Cantidad
@@ -2599,9 +2609,17 @@ function HistoryTab() {
     const lines: string[] = []
     if (stats) {
       if (stats.avgDaysBetween != null) lines.push(`Sueles comprarlo cada ${Math.round(stats.avgDaysBetween)} días.`)
+      // PESO-4 — media/mínimo/máximo SOLO de la magnitud dominante (stats.unit): nunca mezcla €/kg con
+      // €/ud. Si hay compras legacy descartadas por ambigüedad, se dice aparte, con toda honestidad.
+      const unitLabel = displayMeasurementUnit(stats.unit)
       lines.push(
-        `${stats.count} ${stats.count === 1 ? 'compra' : 'compras'} · media ${stats.avgPrice.toFixed(2)} €/ud · mínimo ${stats.minPrice.toFixed(2)} €/ud · máximo ${stats.maxPrice.toFixed(2)} €/ud.`,
+        `${stats.priceSampleCount} ${stats.priceSampleCount === 1 ? 'compra' : 'compras'} con precio ${unitLabel} · media ${stats.avgPrice.toFixed(2)} ${unitLabel} · mínimo ${stats.minPrice.toFixed(2)} ${unitLabel} · máximo ${stats.maxPrice.toFixed(2)} ${unitLabel}.`,
       )
+      if (stats.excludedLegacyCount > 0) {
+        lines.push(
+          `${stats.excludedLegacyCount} ${stats.excludedLegacyCount === 1 ? 'compra antigua' : 'compras antiguas'} con unidad histórica no disponible: no se incluyen en esta comparación.`,
+        )
+      }
     }
     const comparison = comparisons.find((c) => c.productId === productId)
     if (comparison?.deltaPercent != null) {
@@ -2611,22 +2629,22 @@ function HistoryTab() {
       }
     }
 
-    // Última vez comprado en cada tienda y a qué precio — si es en más
-    // de una, se marca cuál sale más barata.
-    const byStore = new Map<string, { price: number; date: string }>()
-    for (const p of [...productPrices].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))) {
-      byStore.set(p.store || 'Sin tienda concreta', { price: p.price, date: p.recordedDate })
-    }
-    const storeEntries = [...byStore.entries()].sort((a, b) => a[1].price - b[1].price)
-    if (storeEntries.length > 1) {
-      const cheapest = storeEntries[0][1].price
-      lines.push('Por tienda:')
-      for (const [store, info] of storeEntries) {
-        const flag = info.price === cheapest ? ' — más barata' : ''
-        lines.push(`${store}: ${info.price.toFixed(2)} €/ud (${formatFullDate(info.date)})${flag}`)
+    // Última vez comprado en cada tienda y a qué precio, SOLO de la magnitud comparable dominante — si es
+    // en más de una tienda, se marca cuál sale más barata (nunca comparando €/kg con €/ud).
+    const resolved = lastComparablePriceByStore(productPrices)
+    if (resolved) {
+      const unitLabel = displayMeasurementUnit(resolved.unit)
+      const storeEntries = [...resolved.byStore.entries()].sort((a, b) => a[1].price - b[1].price)
+      if (storeEntries.length > 1) {
+        const cheapest = storeEntries[0][1].price
+        lines.push('Por tienda:')
+        for (const [store, info] of storeEntries) {
+          const flag = info.price === cheapest ? ' — más barata' : ''
+          lines.push(`${store}: ${info.price.toFixed(2)} ${unitLabel} (${formatFullDate(info.date)})${flag}`)
+        }
+      } else if (storeEntries.length === 1) {
+        lines.push(`Comprado en ${storeEntries[0][0]}.`)
       }
-    } else if (storeEntries.length === 1) {
-      lines.push(`Comprado en ${storeEntries[0][0]}.`)
     }
 
     const product = productsById.get(productId)
@@ -2790,7 +2808,7 @@ function HistoryTab() {
             >
               {product.displayName}
             </button>
-            <span className="price-row-price">{stats!.lastPrice.toFixed(2)} €/ud</span>
+            <span className="price-row-price">{stats!.lastPrice.toFixed(2)} {displayMeasurementUnit(stats!.unit)}</span>
             <button
               type="button"
               className="link-button"

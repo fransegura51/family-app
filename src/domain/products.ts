@@ -1,12 +1,11 @@
 import type { BudgetCategory, Product, ProductPrice, Receipt } from '@/domain/types'
 import { isFoodCategory } from '@/domain/finance'
+import { groupBySafeMagnitude, type MeasurementUnit } from '@/domain/measurementUnit'
 
 export interface ProductStats {
+  // Frecuencia de recompra: sobre TODAS las compras, sea cual sea su unidad — cuándo tocar comprar de
+  // nuevo no depende de si el precio se guardó en €/kg o €/ud.
   count: number
-  lastPrice: number
-  avgPrice: number
-  minPrice: number
-  maxPrice: number
   lastDate: string
   avgDaysBetween: number | null
   // Sugerido para la próxima compra: ya ha pasado (al menos) el intervalo
@@ -14,6 +13,19 @@ export interface ProductStats {
   // pero añadirla a la lista siempre requiere una acción explícita del
   // usuario — nunca se añade sola.
   isDue: boolean
+
+  // PESO-4 — precio: SOLO de la magnitud dominante (la del registro comparable —kg o ud— más reciente,
+  // ver domain/measurementUnit.ts) — nunca mezcla €/kg con €/ud ni un legacy unit=null ambiguo.
+  unit: MeasurementUnit
+  lastPrice: number
+  avgPrice: number
+  minPrice: number
+  maxPrice: number
+  // Cuántas compras entraron en avgPrice/minPrice/maxPrice/lastPrice (la magnitud dominante).
+  priceSampleCount: number
+  // Compras legacy (unit=null) descartadas de las estadísticas de precio por ambigüedad — esta serie
+  // también tiene compras "kg" explícitas, así que no se puede asumir que el legacy fuera "ud".
+  excludedLegacyCount: number
 }
 
 function daysBetween(a: string, b: string): number {
@@ -120,7 +132,6 @@ export function buildFoodReceiptIds(receipts: Pick<Receipt, 'id' | 'category'>[]
 export function computeProductStats(prices: ProductPrice[]): ProductStats | null {
   if (prices.length === 0) return null
   const sorted = [...prices].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))
-  const amounts = sorted.map((p) => p.price)
   const lastDate = sorted[sorted.length - 1].recordedDate
 
   let avgDaysBetween: number | null = null
@@ -136,14 +147,27 @@ export function computeProductStats(prices: ProductPrice[]): ProductStats | null
   const daysSinceLast = daysBetween(lastDate, todayStr)
   const isDue = avgDaysBetween != null && daysSinceLast >= avgDaysBetween
 
+  // PESO-4 — magnitud dominante: la del registro comparable (kg o ud) más reciente. El legacy
+  // (unit=null) ambiguo en una serie con "kg" explícito (`unknown`) nunca entra en el precio.
+  const { kg, ud, unknown } = groupBySafeMagnitude(sorted)
+  const comparable = [...kg.map((p) => ({ p, unit: 'kg' as const })), ...ud.map((p) => ({ p, unit: 'ud' as const }))].sort((a, b) =>
+    a.p.recordedDate.localeCompare(b.p.recordedDate),
+  )
+  const activeUnit: MeasurementUnit = comparable.length > 0 ? comparable[comparable.length - 1].unit : 'ud'
+  const priceGroup = activeUnit === 'kg' ? kg : ud
+  const amounts = priceGroup.map((p) => p.price)
+
   return {
     count: sorted.length,
-    lastPrice: amounts[amounts.length - 1],
-    avgPrice: amounts.reduce((a, b) => a + b, 0) / amounts.length,
-    minPrice: Math.min(...amounts),
-    maxPrice: Math.max(...amounts),
     lastDate,
     avgDaysBetween,
     isDue,
+    unit: activeUnit,
+    lastPrice: amounts.length > 0 ? amounts[amounts.length - 1] : 0,
+    avgPrice: amounts.length > 0 ? amounts.reduce((a, b) => a + b, 0) / amounts.length : 0,
+    minPrice: amounts.length > 0 ? Math.min(...amounts) : 0,
+    maxPrice: amounts.length > 0 ? Math.max(...amounts) : 0,
+    priceSampleCount: priceGroup.length,
+    excludedLegacyCount: unknown.length,
   }
 }

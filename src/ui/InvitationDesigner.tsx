@@ -1409,7 +1409,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     // de fondo propia (sin plantilla de arte detrás) o una plantilla sin zona propia, cae a
     // DEFAULT_TEXT_AREA (ver domain/events.ts, autoArrangeLayers) — nunca una zona nueva inventada aquí.
     const zone = backgroundImageUrl ? undefined : INVITATION_TEMPLATES.find((t) => t.key === templateKey)?.textArea
-    setLayers((ls) => autoArrangeLayers(ls, zone))
+    const result = autoArrangeLayers(layers, zone)
+    setLayers(result.layers)
+    // Corrección tras certificación iPhone — nunca se reduce el fontSize ni se fuerza el texto a caber:
+    // si de verdad no cabe ni comprimiendo los huecos al mínimo, se avisa en vez de ocultarlo.
+    setError(result.overflowed ? 'El texto no cabe entero en la zona limpia de esta plantilla — prueba a acortarlo, a hacerlo más pequeño con "Tamaño", o usa otra plantilla.' : null)
   }
 
   async function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
@@ -1543,7 +1547,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 ↩️ Deshacer
               </button>
               <button type="button" className="link-button" onClick={handlePrettify}>
-                ✨ Hazla bonita
+                ✨ Pepa, hazla bonita
               </button>
               <button type="button" className="link-button" onClick={handleSave} disabled={saving} style={{ marginLeft: 'auto', fontWeight: 600 }}>
                 {saving ? 'Guardando…' : '💾 Guardar'}

@@ -1562,6 +1562,75 @@ function pushOutsideZone(x: number, y: number, zone: SafeZone): { x: number; y: 
   return { x, y: clampFraction(zone.y + zone.height + 0.06, 0.02, 0.98) }
 }
 
+// INV-EDITOR-2 (corrección tras certificación iPhone) — cuánto lienzo (en px) se asume para convertir
+// tamaños de fuente (px, fijos — ver InvitationLayerVisual) en fracciones del lienzo. El lienzo real es
+// responsive (aspect-ratio + ancho variable según el dispositivo); domain/ no tiene acceso al DOM para
+// medirlo de verdad, así que esto es una aproximación deliberada y documentada — mismo orden de magnitud
+// que .invitation-designer-sheet (max-width 420px) menos el padding del editor — nunca una medida exacta.
+const ASSUMED_CANVAS_SIZE_PX = 380
+const LINE_HEIGHT_RATIO = 1.25
+const AVG_CHAR_WIDTH_RATIO = 0.55
+
+// Cuántas líneas ocupará un texto: saltos de línea explícitos (\n, los que ya trae buildInvitationMessage
+// o los que escribe el usuario) + una estimación de ajuste de línea dentro del ancho disponible — sin
+// medir el DOM real, una aproximación determinista basada en caracteres/ancho medio de carácter.
+function estimateWrappedLineCount(text: string, fontSize: number, availableWidthFrac: number): number {
+  const availablePx = Math.max(60, availableWidthFrac * ASSUMED_CANVAS_SIZE_PX)
+  const avgCharWidthPx = Math.max(1, fontSize * AVG_CHAR_WIDTH_RATIO)
+  const charsPerLine = Math.max(4, Math.floor(availablePx / avgCharWidthPx))
+  const segments = (text || '').split('\n')
+  let lines = 0
+  for (const seg of segments) {
+    const len = seg.trim().length
+    lines += Math.max(1, Math.ceil(len / charsPerLine))
+  }
+  return Math.max(1, lines)
+}
+
+export interface LayerBoxFraction {
+  halfWidth: number
+  halfHeight: number
+}
+
+// INV-EDITOR-2 (corrección) — estima, en fracción del lienzo (0..1), la MITAD del ancho/alto real con el
+// que se renderiza una capa — la misma función que usa autoArrangeLayers para colocarla y que los tests
+// usan para comprobar que su caja completa (no solo su centro) queda dentro de la zona segura. El texto
+// curvado reutiliza las mismas fórmulas que su propio SVG (ver InvitationLayerVisual en
+// ui/InvitationDesigner.tsx) para que la estimación no se desvíe de lo que de verdad se pinta.
+export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: number): LayerBoxFraction {
+  if (layer.type === 'text' && layer.curve) {
+    const fontSize = layer.fontSize ?? 16
+    const text = (layer.text ?? '').replace(/\n/g, ' ')
+    const widthPx = Math.max(220, text.length * fontSize * 0.62)
+    const heightPx = Math.max(80, Math.abs(layer.curve) * 0.9 + fontSize * 1.6)
+    return { halfWidth: widthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / ASSUMED_CANVAS_SIZE_PX }
+  }
+  if (layer.type === 'text' || layer.type === 'event_data') {
+    const fontSize = layer.fontSize ?? 16
+    const lines = estimateWrappedLineCount(layer.text ?? '', fontSize, zoneWidthFrac)
+    const heightPx = lines * fontSize * LINE_HEIGHT_RATIO
+    // Ancho estimado: el de la línea más larga, acotado por la propia zona (el texto se centra dentro de
+    // ella) — nunca más ancho que la zona, nunca más que su contenido real.
+    const segments = (layer.text ?? '').split('\n')
+    const longest = segments.reduce((m, s) => Math.max(m, s.trim().length), 0)
+    const widthPx = Math.min(zoneWidthFrac * ASSUMED_CANVAS_SIZE_PX, longest * fontSize * AVG_CHAR_WIDTH_RATIO)
+    return { halfWidth: widthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / ASSUMED_CANVAS_SIZE_PX }
+  }
+  // emoji | shape | photo — cuadrado de lado fontSize, igual que se renderizan (ver InvitationLayerVisual).
+  const size = layer.fontSize ?? (layer.type === 'photo' ? 120 : layer.type === 'shape' ? 60 : 48)
+  return { halfWidth: size / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: size / 2 / ASSUMED_CANVAS_SIZE_PX }
+}
+
+export interface AutoArrangeResult {
+  layers: InvitationLayer[]
+  // INV-EDITOR-2 (corrección) — true si, incluso comprimiendo los huecos al mínimo, el contenido de
+  // texto no cabe entero dentro de la zona segura: se coloca en el mejor orden posible (icono → título →
+  // mensaje, sin huecos) pero alguna capa se sale de la zona — NUNCA se reduce el fontSize ni se inventa
+  // una zona más grande para ocultarlo. Queda documentado aquí para decidir después cómo resolverlo
+  // (¿fontSize automático menor? ¿avisar a la familia? ¿recortar el texto?) — esta corrección no lo hace.
+  overflowed: boolean
+}
+
 // "Pepa, hazla bonita" (opcional, Skill 07 punto 2) — reglas deterministas, no IA de verdad: reparte las
 // capas de texto en vertical, centra la foto y las formas, sin tocar el contenido de nadie. Nunca se
 // llama sola, solo cuando el usuario la pide.
@@ -1570,11 +1639,17 @@ function pushOutsideZone(x: number, y: number, zone: SafeZone): { x: number; y: 
 // dónde está el hueco real de la plantilla (template.textArea, ya usado por buildInvitationTemplateLayers
 // más arriba) — en plantillas con decoración pesada (p. ej. un tema floral tipo "Bodas de plata") el
 // texto/icono podía acabar encima de las flores. Ahora SIEMPRE recibe la `textArea` real de la plantilla
-// (o DEFAULT_TEXT_AREA si no hay ninguna aplicable — foto de fondo propia, o plantilla sin zona propia) y
-// coloca icono→título→mensaje en ese orden, de arriba abajo, sin salir nunca de esa zona; las
-// formas/decoraciones se mantienen fuera de ella cuando es posible (ver pushOutsideZone). Es la MISMA
-// fuente de verdad que ya usan las capas por defecto — no se crea un segundo sistema de "zonas seguras".
-export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone = DEFAULT_TEXT_AREA): InvitationLayer[] {
+// (o DEFAULT_TEXT_AREA si no hay ninguna aplicable — foto de fondo propia, o plantilla sin zona propia).
+//
+// Corrección tras certificación iPhone (caso real "Bodas de plata"): colocar por el CENTRO no basta si no
+// se conoce el ancho/alto real de la capa — un centro pegado al borde de la zona garantiza que la mitad
+// de un bloque de texto multilínea se salga. Ahora cada capa de texto se APILA por su alto real
+// (estimateLayerBoxFraction — la misma función que comprueban los tests), con un hueco razonable entre
+// icono/título/mensaje que se comprime primero si hace falta, antes de aceptar que no cabe (ver
+// `overflowed`). Las formas/decoraciones se mantienen fuera de la zona cuando es posible (pushOutsideZone).
+// Es la MISMA fuente de verdad que ya usan las capas por defecto — no se crea un segundo sistema de
+// "zonas seguras", ni valores especiales para ninguna plantilla concreta.
+export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone = DEFAULT_TEXT_AREA): AutoArrangeResult {
   const zone = textArea ?? DEFAULT_TEXT_AREA
   const photos = layers.filter((l) => l.type === 'photo')
   const texts = layers.filter((l) => l.type === 'text' || l.type === 'event_data')
@@ -1582,22 +1657,56 @@ export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone 
   const shapes = layers.filter((l) => l.type === 'shape')
 
   const cx = zone.x + zone.width / 2
+  const zoneTop = zone.y
+  const zoneBottom = zone.y + zone.height
   const arranged: InvitationLayer[] = []
+  let overflowed = false
 
   // La foto (si el usuario ha añadido una) sigue siendo el elemento principal, centrada en el lienzo —
   // suele ser más grande que la zona de texto de la plantilla, así que no se confina a ella.
   photos.forEach((l) => arranged.push({ ...l, x: 0.5, y: 0.4, rotation: 0, scale: Math.min(l.scale, 1.4) }))
 
-  // 1) Icono/emoji principal, arriba de la zona segura.
-  emojis.forEach((l, i) => arranged.push({ ...l, x: cx, y: zone.y + zone.height * clampFraction(0.1 + i * 0.05, 0, 0.3), rotation: 0 }))
+  // 1) Icono/emoji principal, arriba de la zona segura — su propia caja también se mantiene dentro.
+  let iconsBottom = zoneTop
+  emojis.forEach((l, i) => {
+    const box = estimateLayerBoxFraction(l, zone.width)
+    const target = zoneTop + zone.height * clampFraction(0.1 + i * 0.05, 0, 0.3)
+    const y = clampFraction(target, zoneTop + box.halfHeight, Math.max(zoneTop + box.halfHeight, zoneBottom - box.halfHeight))
+    arranged.push({ ...l, x: cx, y, rotation: 0 })
+    iconsBottom = Math.max(iconsBottom, y + box.halfHeight)
+  })
 
-  // 2)/3) Título y mensaje/datos, repartidos en vertical DEBAJO de los iconos, sin salir nunca de la zona.
-  const textTop = zone.y + zone.height * (emojis.length > 0 ? 0.32 : 0.14)
-  const textBottom = zone.y + zone.height * 0.92
-  const textSlots = texts.length
+  // 2)/3) Título y mensaje/datos: apilados por su alto REAL (nunca un reparto ciego de N centros), con
+  // una separación razonable entre capas que se comprime si hace falta — nunca reduce el fontSize.
+  const GAP_FRACTION = 0.03 // hueco "natural" entre capas, como fracción de la altura de la zona.
+  const BOTTOM_MARGIN_FRACTION = 0.02 // pequeño margen inferior dentro de la zona, para no pegar el texto al borde.
+  const naturalGap = GAP_FRACTION * zone.height
+  const availableTop = emojis.length > 0 ? iconsBottom + naturalGap : zoneTop
+  const availableBottom = zoneBottom - BOTTOM_MARGIN_FRACTION * zone.height
+  const availableHeight = Math.max(0, availableBottom - availableTop)
+
+  const textBoxes = texts.map((l) => estimateLayerBoxFraction(l, zone.width))
+  const totalHeights = textBoxes.reduce((sum, b) => sum + b.halfHeight * 2, 0)
+  const gapCount = Math.max(0, texts.length - 1)
+
+  // Se comprimen primero los huecos hacia 0 — nunca el fontSize — antes de aceptar que no cabe.
+  let gap = naturalGap
+  if (gapCount > 0 && totalHeights + naturalGap * gapCount > availableHeight) {
+    gap = Math.max(0, (availableHeight - totalHeights) / gapCount)
+  }
+  const totalWithCompressedGaps = totalHeights + gap * gapCount
+  if (totalWithCompressedGaps > availableHeight + 1e-9) overflowed = true
+
+  // Con hueco de sobra, el bloque completo se centra en el espacio disponible (más equilibrado
+  // visualmente); si no cabe ni comprimido, se apila desde arriba tal cual, sin forzarlo a caber.
+  const extraSpace = Math.max(0, availableHeight - totalWithCompressedGaps)
+  let cursor = availableTop + (overflowed ? 0 : extraSpace / 2)
   texts.forEach((l, i) => {
-    const y = textSlots === 1 ? (textTop + textBottom) / 2 : textTop + (i / Math.max(1, textSlots - 1)) * (textBottom - textTop)
-    arranged.push({ ...l, x: cx, y: clampFraction(y, zone.y, zone.y + zone.height), rotation: 0 })
+    if (i > 0) cursor += gap
+    const half = textBoxes[i].halfHeight
+    const centerY = cursor + half
+    arranged.push({ ...l, x: cx, y: centerY, rotation: 0 })
+    cursor += half * 2
   })
 
   // 4) Formas/decoraciones: las 4 esquinas del lienzo de siempre, apartadas de la zona de texto si hiciera falta.
@@ -1613,5 +1722,5 @@ export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone 
     arranged.push({ ...l, x, y })
   })
 
-  return arranged
+  return { layers: arranged, overflowed }
 }

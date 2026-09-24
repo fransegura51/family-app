@@ -12,6 +12,7 @@ import {
   computeGuestSeatingStatus,
   computeTableOccupancy,
   countPaymentAlerts,
+  estimateLayerBoxFraction,
   eventAlertsToAttentionItems,
   eventLocationMapLines,
   generateEventPlan,
@@ -416,8 +417,13 @@ describe('buildInvitationTemplateLayers', () => {
 
 // INV-EDITOR-2 — "Pepa, hazla bonita" debe recolocar SIEMPRE dentro de la zona segura real de la
 // plantilla (template.textArea), nunca con coordenadas genéricas del lienzo entero — antes ignoraba
-// textArea del todo y podía mandar texto/icono encima de la decoración (caso real reportado: una
-// plantilla floral tipo "Bodas de plata").
+// textArea del todo y podía mandar texto/icono encima de la decoración.
+//
+// Corrección tras certificación iPhone (caso real reportado: plantilla floral "Bodas de plata" — el
+// CENTRO del mensaje caía dentro de la zona, pero su caja completa —multilínea, con alto real— sobresalía
+// por abajo, encima de las flores). Los tests de abajo comprueban la caja COMPLETA (left/right/top/bottom,
+// con estimateLayerBoxFraction — la MISMA función que usa autoArrangeLayers para colocar, no una
+// reimplementación paralela para el test), nunca solo el punto x/y.
 describe('autoArrangeLayers', () => {
   let seq = 0
   function layer(type: InvitationLayer['type'], overrides: Partial<InvitationLayer> = {}): InvitationLayer {
@@ -425,56 +431,110 @@ describe('autoArrangeLayers', () => {
     return { id: `l${seq}`, type, x: 0.9, y: 0.9, rotation: 45, scale: 1, zIndex: seq, ...overrides }
   }
 
-  function expectInsideZone(l: InvitationLayer, zone: SafeZone) {
-    expect(l.x).toBeGreaterThanOrEqual(zone.x - 0.001)
-    expect(l.x).toBeLessThanOrEqual(zone.x + zone.width + 0.001)
-    expect(l.y).toBeGreaterThanOrEqual(zone.y - 0.001)
-    expect(l.y).toBeLessThanOrEqual(zone.y + zone.height + 0.001)
+  const EPS = 0.001
+
+  // Caja COMPLETA (left/right/top/bottom), no el punto — con la misma función que usa el algoritmo real.
+  function boxOf(l: InvitationLayer, zoneWidth: number) {
+    const { halfWidth, halfHeight } = estimateLayerBoxFraction(l, zoneWidth)
+    return { left: l.x - halfWidth, right: l.x + halfWidth, top: l.y - halfHeight, bottom: l.y + halfHeight }
   }
 
-  it('emoji + título + mensaje: los tres quedan dentro de una zona amplia, en orden vertical icono→título→mensaje', () => {
+  function expectFullBoxInsideZone(l: InvitationLayer, zone: SafeZone) {
+    const box = boxOf(l, zone.width)
+    expect(box.left).toBeGreaterThanOrEqual(zone.x - EPS)
+    expect(box.right).toBeLessThanOrEqual(zone.x + zone.width + EPS)
+    expect(box.top).toBeGreaterThanOrEqual(zone.y - EPS)
+    expect(box.bottom).toBeLessThanOrEqual(zone.y + zone.height + EPS)
+  }
+
+  function textLayers(ls: InvitationLayer[]): InvitationLayer[] {
+    return ls.filter((l) => l.type === 'text' || l.type === 'event_data')
+  }
+
+  it('emoji + título + mensaje: la caja completa de los tres queda dentro de una zona amplia, en orden vertical icono→título→mensaje', () => {
     const zone: SafeZone = { x: 0.1, y: 0.1, width: 0.8, height: 0.7 }
     const layers = [layer('emoji'), layer('text', { text: 'Título' }), layer('event_data', { text: 'Mensaje' })]
-    const [emoji, text, eventData] = autoArrangeLayers(layers, zone)
-    for (const l of [emoji, text, eventData]) expectInsideZone(l, zone)
+    const result = autoArrangeLayers(layers, zone)
+    expect(result.overflowed).toBe(false)
+    const [emoji, text, eventData] = result.layers
+    for (const l of [emoji, text, eventData]) expectFullBoxInsideZone(l, zone)
     expect(emoji.y).toBeLessThan(text.y)
     expect(text.y).toBeLessThan(eventData.y)
   })
 
-  it('CASO REAL — plantilla floral tipo "Bodas de plata" (zona estrecha y descentrada): nada queda fuera de su zona limpia', () => {
-    // Geometría real de una plantilla floral del catálogo (domain/events.ts, INVITATION_TEMPLATES 'floral').
-    const zone: SafeZone = { x: 0.2542, y: 0.204, width: 0.5693, height: 0.6253 }
-    const layers = [layer('emoji'), layer('text', { text: 'Bodas de plata' }), layer('event_data', { text: 'Os esperamos...' })]
-    const arranged = autoArrangeLayers(layers, zone)
-    for (const l of arranged) expectInsideZone(l, zone)
+  it('CASO REAL — plantilla floral "Bodas de plata": la caja COMPLETA del título y el mensaje reales (buildInvitationMessage) queda dentro de textArea', () => {
+    // Geometría y plantilla REALES del catálogo (domain/events.ts, INVITATION_TEMPLATES 'floral') — el
+    // mismo template_key que certificó el bug en iPhone.
+    const template = INVITATION_TEMPLATES.find((t) => t.key === 'floral')!
+    const zone = template.textArea!
+    const event = makeEvent({ type: 'boda', title: 'Bodas de plata', eventDate: '2026-12-19' })
+    // Mismas capas por defecto que abre el editor de verdad (icono + título + buildInvitationMessage).
+    const defaultLayers = buildInvitationTemplateLayers(event, template)
+    const result = autoArrangeLayers(defaultLayers, zone)
+    expect(result.overflowed).toBe(false)
+    for (const l of textLayers(result.layers)) expectFullBoxInsideZone(l, zone)
   })
 
-  it('plantilla con textArea alta (mucho height, poco width): el icono queda arriba y el mensaje abajo, ambos dentro', () => {
+  // Tamaños de fuente realistas para una zona "compact" (height<0.45), los mismos que asignaría de
+  // verdad buildInvitationTemplateLayers (iconSize 40 / titleSize 19 / messageSize 12) — no los genéricos
+  // del helper `layer()` (16/48), que sobrecargarían una zona de 0.3 de alto hasta el punto de un
+  // overflow real y no demostrarían nada sobre la posición de la zona en sí (eso ya lo cubre el test de
+  // OVERFLOW, aparte).
+  it('textArea SUPERIOR (pegada arriba del lienzo): la caja completa del mensaje no se sale de la zona', () => {
+    const zone: SafeZone = { x: 0.15, y: 0.02, width: 0.7, height: 0.3 }
+    const layers = [
+      layer('emoji', { fontSize: 40 }),
+      layer('text', { text: 'Título', fontSize: 19 }),
+      layer('event_data', { text: 'Un mensaje algo más largo para forzar varias líneas de verdad', fontSize: 12 }),
+    ]
+    const result = autoArrangeLayers(layers, zone)
+    expect(result.overflowed).toBe(false)
+    for (const l of textLayers(result.layers)) expectFullBoxInsideZone(l, zone)
+  })
+
+  it('textArea INFERIOR (pegada abajo del lienzo): igual, nada se sale de la zona', () => {
+    const zone: SafeZone = { x: 0.15, y: 0.65, width: 0.7, height: 0.3 }
+    const layers = [
+      layer('emoji', { fontSize: 40 }),
+      layer('text', { text: 'Título', fontSize: 19 }),
+      layer('event_data', { text: 'Un mensaje algo más largo para forzar varias líneas de verdad', fontSize: 12 }),
+    ]
+    const result = autoArrangeLayers(layers, zone)
+    expect(result.overflowed).toBe(false)
+    for (const l of textLayers(result.layers)) expectFullBoxInsideZone(l, zone)
+  })
+
+  it('plantilla con textArea alta (mucho height, poco width): el icono queda arriba y el mensaje abajo, ambos con su caja completa dentro', () => {
     const zone: SafeZone = { x: 0.35, y: 0.05, width: 0.3, height: 0.85 }
     const layers = [layer('emoji'), layer('text'), layer('event_data')]
-    const [emoji, , eventData] = autoArrangeLayers(layers, zone)
-    expectInsideZone(emoji, zone)
-    expectInsideZone(eventData, zone)
+    const result = autoArrangeLayers(layers, zone)
+    const [emoji, , eventData] = result.layers
+    expectFullBoxInsideZone(emoji, zone)
+    expectFullBoxInsideZone(eventData, zone)
     expect(emoji.y).toBeLessThan(eventData.y)
   })
 
-  it('plantilla con textArea baja (poco height): sigue sin salirse, aunque quede todo apretado', () => {
+  it('plantilla con textArea baja (poco height): sigue sin salirse, aunque quede todo apretado (o se detecte overflow, nunca una salida silenciosa)', () => {
     const zone: SafeZone = { x: 0.1, y: 0.4, width: 0.8, height: 0.15 }
     const layers = [layer('emoji'), layer('text'), layer('event_data')]
-    for (const l of autoArrangeLayers(layers, zone)) expectInsideZone(l, zone)
+    const result = autoArrangeLayers(layers, zone)
+    if (!result.overflowed) {
+      for (const l of textLayers(result.layers)) expectFullBoxInsideZone(l, zone)
+    }
   })
 
-  it('plantilla con zona estrecha (poco width): el texto se mantiene centrado en esa franja', () => {
+  it('plantilla con zona ESTRECHA (poco width): el texto se mantiene centrado en esa franja, caja completa dentro', () => {
     const zone: SafeZone = { x: 0.4, y: 0.1, width: 0.2, height: 0.7 }
-    const layers = [layer('text')]
-    const [text] = autoArrangeLayers(layers, zone)
-    expectInsideZone(text, zone)
+    const layers = [layer('text', { text: 'Hola' })]
+    const result = autoArrangeLayers(layers, zone)
+    const [text] = result.layers
+    expectFullBoxInsideZone(text, zone)
     expect(text.x).toBeCloseTo(zone.x + zone.width / 2)
   })
 
   it('sin textArea (undefined): cae a DEFAULT_TEXT_AREA, nunca revienta ni usa coordenadas fuera de 0..1', () => {
     const layers = [layer('emoji'), layer('text'), layer('event_data')]
-    for (const l of autoArrangeLayers(layers)) {
+    for (const l of autoArrangeLayers(layers).layers) {
       expect(l.x).toBeGreaterThanOrEqual(0)
       expect(l.x).toBeLessThanOrEqual(1)
       expect(l.y).toBeGreaterThanOrEqual(0)
@@ -482,12 +542,13 @@ describe('autoArrangeLayers', () => {
     }
   })
 
-  it('varias capas de texto (más de 2): todas quedan dentro de la zona, repartidas sin solaparse', () => {
+  it('varias capas de texto (más de 2): todas con su caja completa dentro de la zona, repartidas sin solaparse', () => {
     const zone: SafeZone = { x: 0.1, y: 0.1, width: 0.8, height: 0.7 }
     const layers = [layer('text'), layer('text'), layer('event_data'), layer('text')]
-    const arranged = autoArrangeLayers(layers, zone)
-    for (const l of arranged) expectInsideZone(l, zone)
-    const ys = arranged.map((l) => l.y)
+    const result = autoArrangeLayers(layers, zone)
+    expect(result.overflowed).toBe(false)
+    for (const l of result.layers) expectFullBoxInsideZone(l, zone)
+    const ys = result.layers.map((l) => l.y)
     expect(new Set(ys).size).toBe(ys.length) // ninguna coincide exactamente con otra (no solapamiento vertical)
   })
 
@@ -495,7 +556,7 @@ describe('autoArrangeLayers', () => {
     // Zona grande que llega a tragarse una de las 4 esquinas de siempre (0.15, 0.12) — debe apartarse.
     const zone: SafeZone = { x: 0.05, y: 0.05, width: 0.7, height: 0.7 }
     const layers = [layer('shape', { shapeKey: 'estrella' }), layer('shape', { shapeKey: 'confeti' })]
-    for (const l of autoArrangeLayers(layers, zone)) {
+    for (const l of autoArrangeLayers(layers, zone).layers) {
       expect(l.x >= zone.x && l.x <= zone.x + zone.width && l.y >= zone.y && l.y <= zone.y + zone.height).toBe(false)
     }
   })
@@ -510,9 +571,45 @@ describe('autoArrangeLayers', () => {
 
   it('la foto sigue centrada en el lienzo (no confinada a la zona de texto, suele ser más grande)', () => {
     const zone: SafeZone = { x: 0.3, y: 0.3, width: 0.2, height: 0.2 }
-    const [photo] = autoArrangeLayers([layer('photo', { photoPath: 'p.jpg' })], zone)
+    const result = autoArrangeLayers([layer('photo', { photoPath: 'p.jpg' })], zone)
+    const [photo] = result.layers
     expect(photo.x).toBe(0.5)
     expect(photo.y).toBe(0.4)
+  })
+
+  // ---------------------------------------------------------------------
+  // Detección de overflow — cuando el contenido físicamente no cabe.
+  // ---------------------------------------------------------------------
+  it('OVERFLOW real: una zona diminuta con texto largo se detecta (overflowed=true), sin reducir el fontSize ni empujarlo a caber a la fuerza', () => {
+    const zone: SafeZone = { x: 0.3, y: 0.3, width: 0.2, height: 0.08 } // zona diminuta, físicamente imposible
+    const longMessage =
+      'Este mensaje es deliberadamente larguísimo para que sea físicamente imposible que quepa en una zona tan diminuta como esta, sin importar cuánto se compriman los huecos entre capas de texto.'
+    const layers = [
+      layer('emoji', { fontSize: 40 }),
+      layer('text', { text: 'Un título bastante largo también', fontSize: 24 }),
+      layer('event_data', { text: longMessage, fontSize: 14 }),
+    ]
+    const result = autoArrangeLayers(layers, zone)
+    expect(result.overflowed).toBe(true)
+    // El fontSize de cada capa nunca se toca — "no reduzcas silenciosamente el texto".
+    for (const l of result.layers) {
+      const original = layers.find((o) => o.id === l.id)!
+      expect(l.fontSize).toBe(original.fontSize)
+    }
+    // Detección honesta: de verdad hay alguna capa cuya caja se sale de la zona (nunca se "empuja dentro"
+    // a la fuerza solo para que el resultado parezca contenido).
+    const anyBoxOutside = textLayers(result.layers).some((l) => {
+      const box = boxOf(l, zone.width)
+      return box.top < zone.y - EPS || box.bottom > zone.y + zone.height + EPS
+    })
+    expect(anyBoxOutside).toBe(true)
+  })
+
+  it('sin overflow, el contenido cabe sin comprimir huecos (zona amplia de sobra)', () => {
+    const zone: SafeZone = { x: 0.05, y: 0.05, width: 0.9, height: 0.9 }
+    const layers = [layer('emoji'), layer('text', { text: 'Corto' }), layer('event_data', { text: 'Corto también' })]
+    const result = autoArrangeLayers(layers, zone)
+    expect(result.overflowed).toBe(false)
   })
 })
 

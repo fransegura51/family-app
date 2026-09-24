@@ -1082,6 +1082,10 @@ interface EditorSnapshot {
 // Constante nombrada en vez de un número mágico — cuántas operaciones deshacibles se conservan a la vez.
 const MAX_HISTORY_ENTRIES = 20
 
+// INV-EDITOR-4 — reforma UX móvil: un único panel secundario (popover compacto) a la vez, según qué está
+// seleccionado — nunca el antiguo bloque fijo con todos los controles a la vista simultáneamente.
+type DesignerPanel = 'plantilla' | 'texto' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas'
+
 export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
   const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
   const [templateKey, setTemplateKey] = useState(sortedTemplates[0].key)
@@ -1118,7 +1122,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [saving, setSaving] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [uploadingBackground, setUploadingBackground] = useState(false)
-  const [addMenu, setAddMenu] = useState<'emoji' | 'forma' | null>(null)
+  // INV-EDITOR-4 — un único panel secundario abierto a la vez (color/fuente/efecto/tamaño/curva.../
+  // plantilla/emoji/forma), en vez del antiguo bloque fijo permanente con todos los controles a la vista.
+  const [panel, setPanel] = useState<DesignerPanel | null>(null)
   const [customEmoji, setCustomEmoji] = useState('')
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -1186,11 +1192,17 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     continuousEditRef.current = null
   }
 
-  // Selecciona (o deselecciona) un elemento — SIEMPRE cierra cualquier edición continua en curso, para
-  // que una edición del elemento anterior nunca "siga corriendo" sobre el nuevo tras cambiar de selección.
+  // Selecciona (o deselecciona) un elemento — SIEMPRE cierra cualquier edición continua en curso y
+  // cualquier panel abierto, para que ni una edición ni un panel del elemento anterior "sigan corriendo"
+  // sobre el nuevo tras cambiar de selección.
   function selectLayer(id: string | null) {
     continuousEditRef.current = null
+    setPanel(null)
     setSelectedId(id)
+  }
+
+  function togglePanel(p: DesignerPanel) {
+    setPanel((cur) => (cur === p ? null : p))
   }
 
   // Cambio discreto (un clic completo: preset de color, fuente, estilo de texto, tamaño ±...) — cada uno
@@ -1222,7 +1234,6 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     const maxZ = layers.reduce((m, l) => Math.max(m, l.zIndex), 0)
     setLayers((ls) => [...ls, { ...layer, zIndex: maxZ + 1 }])
     selectLayer(layer.id)
-    setAddMenu(null)
   }
 
   function handleDuplicate() {
@@ -1449,10 +1460,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const currentTemplate = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
   const canvasAspectRatio = !backgroundImageUrl && currentTemplate?.imageAspect ? `${currentTemplate.imageAspect} / 1` : '3 / 4'
 
+  // INV-EDITOR-4 — barra contextual: solo las herramientas que aplican al tipo seleccionado (o, sin
+  // selección, las acciones para añadir/elegir plantilla) — nunca los 9 controles de siempre a la vez.
+  const isTextLike = selected?.type === 'text' || selected?.type === 'event_data'
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <div className="modal-header">
+      <div className="modal-sheet invitation-designer-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <div className="modal-header" style={{ padding: '16px 16px 0' }}>
           <h2 className="section-title" style={{ margin: 0 }}>
             Diseño de la invitación
           </h2>
@@ -1460,340 +1475,434 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             ✕
           </button>
         </div>
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className="error" style={{ margin: '6px 16px 0' }}>
+            {error}
+          </p>
+        )}
         {loading ? (
-          <p className="muted">Cargando…</p>
+          <p className="muted" style={{ padding: '0 16px 16px' }}>
+            Cargando…
+          </p>
         ) : (
           <>
-            <InvitationTemplatePicker
-              templates={sortedTemplates}
-              selectedKey={templateKey}
-              onSelect={(t) => {
-                // INV-EDITOR-3 — deshacible siempre, cambien o no las capas (antes solo se guardaba
-                // historial cuando además tocaba recolocar las 3 capas por defecto).
-                pushHistory()
-                setTemplateKey(t.key)
-                setBackgroundGradient(t.gradient)
-                // Petición real: "no quiero que el texto se salga de
-                // ese área, habrá que ajustarlo tarjeta por tarjeta" —
-                // si todavía son las 3 capas por defecto sin tocar,
-                // recolocarlas en el hueco de la plantilla nueva;
-                // si ya hay capas propias (añadidas, movidas, borradas...
-                // el recuento ya no cuadra), se respetan tal cual.
-                if (layers.length === 3) {
-                  setLayers(buildInvitationTemplateLayers(event, t))
-                }
-              }}
-            />
-            <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-              O usa tu propia foto como fondo entero, en vez de un tema:
-            </p>
-            <div className="filter-row" style={{ marginTop: 2 }}>
-              <label className="chip" style={{ cursor: 'pointer' }}>
-                {uploadingBackground ? 'Subiendo…' : backgroundImageUrl ? '🖼️ Cambiar foto de fondo' : '🖼️ Usar mi foto de fondo'}
-                <input type="file" accept="image/*" onChange={handleBackgroundPhotoChange} style={{ display: 'none' }} disabled={uploadingBackground} />
-              </label>
-              {backgroundImageUrl && (
-                <button type="button" className="link-button" onClick={handleRemoveBackgroundPhoto}>
-                  Quitar foto de fondo
-                </button>
-              )}
-              {backgroundImageUrl && (
-                <button
-                  type="button"
-                  className={'chip' + (adjustingBackground ? ' chip-active' : '')}
-                  onClick={() => setAdjustingBackground((v) => !v)}
-                >
-                  🔧 Ajustar fondo
-                </button>
-              )}
-            </div>
-            {adjustingBackground && (
-              <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                Arrastra la foto para moverla y pellizca con dos dedos para hacer zoom.
-              </p>
-            )}
-
-            <div
-              ref={canvasRef}
-              onPointerDown={() => selectLayer(null)}
-              style={{ position: 'relative', width: '100%', aspectRatio: canvasAspectRatio, borderRadius: 16, overflow: 'hidden', background: backgroundGradient, marginTop: 10, touchAction: 'none' }}
-            >
-              {backgroundImageUrl ? (
-                <img
-                  src={backgroundImageUrl}
-                  alt=""
-                  onPointerDown={handleBackgroundPointerDown}
-                  onPointerMove={handleBackgroundPointerMove}
-                  onPointerUp={handleBackgroundPointerUp}
-                  onPointerCancel={handleBackgroundPointerUp}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    transform: `translate(${backgroundOffsetX * 100}%, ${backgroundOffsetY * 100}%) scale(${backgroundScale})`,
-                    touchAction: adjustingBackground ? 'none' : undefined,
-                    cursor: adjustingBackground ? 'grab' : undefined,
-                  }}
-                />
-              ) : (
-                <InvitationBackground templateKey={templateKey} />
-              )}
-              {layers
-                .slice()
-                .sort((a, b) => a.zIndex - b.zIndex)
-                .map((layer) => (
-                  <div
-                    key={layer.id}
-                    onPointerDown={(e) => handleLayerPointerDown(e, layer)}
-                    onPointerMove={handleDragPointerMove}
-                    onPointerUp={handleDragPointerUp}
-                    onPointerCancel={handleDragPointerUp}
-                    style={{
-                      position: 'absolute',
-                      left: `${layer.x * 100}%`,
-                      top: `${layer.y * 100}%`,
-                      transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
-                      cursor: 'grab',
-                      touchAction: 'none',
-                      outline: layer.id === selectedId ? '2px dashed #ffffff' : 'none',
-                      outlineOffset: 4,
-                    }}
-                  >
-                    <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
-                    {layer.id === selectedId && (
-                      <div
-                        onPointerDown={(e) => handleHandlePointerDown(e, layer)}
-                        onPointerMove={handleDragPointerMove}
-                        onPointerUp={handleDragPointerUp}
-                        onPointerCancel={handleDragPointerUp}
-                        style={{
-                          position: 'absolute',
-                          right: -14,
-                          bottom: -14,
-                          width: 24,
-                          height: 24,
-                          borderRadius: '50%',
-                          background: '#4C6EF5',
-                          border: '2px solid white',
-                          cursor: 'grab',
-                          touchAction: 'none',
-                        }}
-                      />
-                    )}
-                  </div>
-                ))}
-            </div>
-            <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-              Arrastra para mover; el punto azul de la esquina cambia tamaño y rotación a la vez.
-            </p>
-
-            <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
-              <button type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('text', { text: 'Texto', color: '#ffffff', fontSize: 18, fontFamily: 'inherit' }))}>
-                + Texto
-              </button>
-              <button type="button" className="chip" onClick={() => setAddMenu(addMenu === 'emoji' ? null : 'emoji')}>
-                + Emoji
-              </button>
-              <button type="button" className="chip" onClick={() => setAddMenu(addMenu === 'forma' ? null : 'forma')}>
-                + Forma
-              </button>
-              <label className="chip" style={{ cursor: 'pointer' }}>
-                {uploadingPhoto ? 'Subiendo…' : '+ Foto'}
-                <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} disabled={uploadingPhoto} />
-              </label>
-              <button type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('event_data', { text: buildInvitationMessage(event), color: '#ffffff', fontSize: 14 }))}>
-                + Texto de invitación
-              </button>
-            </div>
-            {addMenu === 'emoji' && (
-              <>
-                {/* Petición real: "los emojis salen muy pocos, lo suyo
-                    sería poder usar cualquier emoji del teclado" — el
-                    teclado emoji nativo del móvil ya funciona en
-                    cualquier campo de texto, así que basta con un campo
-                    donde pegar/escribir cualquiera; los botones de abajo
-                    siguen para los más usados, de un toque. */}
-                <form
-                  style={{ display: 'flex', gap: 6, marginTop: 4 }}
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    const em = customEmoji.trim()
-                    if (!em) return
-                    handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))
-                    setCustomEmoji('')
-                  }}
-                >
-                  <input
-                    type="text"
-                    value={customEmoji}
-                    onChange={(e) => setCustomEmoji(e.target.value)}
-                    placeholder="Escribe o pega cualquier emoji del teclado"
-                    style={{ flex: 1 }}
-                  />
-                  <button type="submit" className="chip" disabled={!customEmoji.trim()}>
-                    + Añadir
-                  </button>
-                </form>
-                <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
-                  {INVITATION_EMOJI_SUGGESTIONS.map((em) => (
-                    <button key={em} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))}>
-                      {em}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-            {addMenu === 'forma' && (
-              <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
-                {INVITATION_SHAPES.map((s) => (
-                  <button key={s.key} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('shape', { shapeKey: s.key, color: '#ffffff', fontSize: 60 }))}>
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {selected && (
-              <div className="card member-form" style={{ marginTop: 8 }}>
-                <strong style={{ fontSize: 13 }}>Elemento seleccionado</strong>
-                {(selected.type === 'text' || selected.type === 'event_data' || selected.type === 'shape') && (
-                  <div className="filter-row" style={{ marginTop: 4, alignItems: 'center' }}>
-                    {LAYER_COLOR_PRESETS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => updateSelectedDiscrete({ color: c })}
-                        style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: selected.color === c ? '2px solid #4C6EF5' : '1px solid #d8dae8' }}
-                        aria-label={`Color ${c}`}
-                      />
-                    ))}
-                    {/* Petición real: "mejor pon un botón que puedas
-                        elegir el color de la letra de una paleta más
-                        amplia" — input[type=color] nativo abre la rueda
-                        de color completa del móvil, sin límite a los 6
-                        rápidos de arriba. */}
-                    <input
-                      type="color"
-                      className="color-wheel-input"
-                      value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
-                      onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
-                      onBlur={commitContinuousEdit}
-                      aria-label="Elegir cualquier color"
-                    />
-                  </div>
-                )}
-                {(selected.type === 'text' || selected.type === 'event_data') && (
-                  <label style={{ marginTop: 8, display: 'block' }}>
-                    Texto
-                    <textarea
-                      value={selected.text ?? ''}
-                      onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
-                      onBlur={commitContinuousEdit}
-                      rows={2}
-                    />
-                  </label>
-                )}
-                {(selected.type === 'text' || selected.type === 'event_data') && (
-                  <label style={{ marginTop: 8, display: 'block' }}>
-                    Fuente
-                    <select value={selected.fontFamily || 'inherit'} onChange={(e) => updateSelectedDiscrete({ fontFamily: e.target.value })}>
-                      {LAYER_FONT_OPTIONS.map((f) => (
-                        <option key={f.value} value={f.value}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {/* Petición real: "formato 3D", "letras de brillos...
-                    purpurina", "un color arcoíris... uno fijo [que
-                    cambia a lo largo de lo escrito, no con el tiempo] y
-                    otro que vaya cambiando conforme lo mires", "otro
-                    estilo iridiscente" — todos rellenos alternativos del
-                    texto; tocar el que ya está activo lo quita (vuelve
-                    a "normal"). Curvar (más abajo) es la forma, no el
-                    relleno, y sí se puede combinar con cualquiera de
-                    estos. */}
-                {(selected.type === 'text' || selected.type === 'event_data') && (
-                  <div className="filter-row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
-                    {TEXT_STYLE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        className={'chip' + ((selected.textStyle ?? 'normal') === opt.value ? ' chip-active' : '')}
-                        onClick={() => updateSelectedDiscrete({ textStyle: (selected.textStyle ?? 'normal') === opt.value ? 'normal' : opt.value })}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selected.type === 'text' && (
-                  <label style={{ marginTop: 8, display: 'block' }}>
-                    Curvar texto {selected.curve ? `(${selected.curve > 0 ? '⌣ arriba' : '⌢ abajo'})` : '(recto)'}
-                    <input
-                      type="range"
-                      min={-100}
-                      max={100}
-                      value={selected.curve ?? 0}
-                      onChange={(e) => updateSelectedContinuous({ curve: Number(e.target.value) }, 'curve')}
-                      onPointerUp={commitContinuousEdit}
-                      onBlur={commitContinuousEdit}
-                      style={{ width: '100%' }}
-                    />
-                  </label>
-                )}
-                <div className="filter-row" style={{ marginTop: 8 }}>
-                  {/* Petición real: "he insertado una foto y no consigo
-                      editar su tamaño" — con ±2 el cambio era
-                      imperceptible en una foto/forma de 60-300px (sí se
-                      notaba en texto, de 10-40px); foto/forma usan un
-                      paso mayor. El punto azul de la esquina (pellizcar/
-                      arrastrar) sigue siendo el gesto principal. */}
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - (selected.type === 'text' || selected.type === 'event_data' ? 2 : 15)) })}
-                  >
-                    A-
-                  </button>
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + (selected.type === 'text' || selected.type === 'event_data' ? 2 : 15) })}
-                  >
-                    A+
-                  </button>
-                  <button type="button" className="link-button" onClick={() => handleReorder(1)}>
-                    ⬆ Adelante
-                  </button>
-                  <button type="button" className="link-button" onClick={() => handleReorder(-1)}>
-                    ⬇ Atrás
-                  </button>
-                  <button type="button" className="link-button" onClick={handleDuplicate}>
-                    ⧉ Duplicar
-                  </button>
-                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
-                </div>
-              </div>
-            )}
-
-            <div className="filter-row" style={{ marginTop: 12 }}>
+            <div className="invitation-utility-row">
               <button type="button" className="link-button" onClick={handleUndo} disabled={history.length === 0}>
                 ↩️ Deshacer
               </button>
               <button type="button" className="link-button" onClick={handlePrettify}>
-                ✨ Pepa, hazla bonita
+                ✨ Hazla bonita
               </button>
-              <ConfirmButton label="↺ Restaurar plantilla" confirmLabel="Restaurar" className="link-button" onConfirm={handleRestoreTemplate} />
+              <button type="button" className="link-button" onClick={handleSave} disabled={saving} style={{ marginLeft: 'auto', fontWeight: 600 }}>
+                {saving ? 'Guardando…' : '💾 Guardar'}
+              </button>
             </div>
 
-            <button type="button" onClick={handleSave} disabled={saving} style={{ marginTop: 12 }}>
-              {saving ? 'Guardando…' : '💾 Guardar diseño'}
-            </button>
+            {/* El lienzo domina la pantalla: ocupa todo el espacio disponible entre la fila de arriba y
+                la barra contextual de abajo, en vez de ser una tarjeta más entre paneles y botones. */}
+            <div className="invitation-canvas-wrap">
+              <div
+                ref={canvasRef}
+                onPointerDown={() => selectLayer(null)}
+                style={{ position: 'relative', width: '100%', aspectRatio: canvasAspectRatio, maxHeight: '100%', borderRadius: 16, overflow: 'hidden', background: backgroundGradient, touchAction: 'none' }}
+              >
+                {backgroundImageUrl ? (
+                  <img
+                    src={backgroundImageUrl}
+                    alt=""
+                    onPointerDown={handleBackgroundPointerDown}
+                    onPointerMove={handleBackgroundPointerMove}
+                    onPointerUp={handleBackgroundPointerUp}
+                    onPointerCancel={handleBackgroundPointerUp}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      transform: `translate(${backgroundOffsetX * 100}%, ${backgroundOffsetY * 100}%) scale(${backgroundScale})`,
+                      touchAction: adjustingBackground ? 'none' : undefined,
+                      cursor: adjustingBackground ? 'grab' : undefined,
+                    }}
+                  />
+                ) : (
+                  <InvitationBackground templateKey={templateKey} />
+                )}
+                {layers
+                  .slice()
+                  .sort((a, b) => a.zIndex - b.zIndex)
+                  .map((layer) => (
+                    <div
+                      key={layer.id}
+                      onPointerDown={(e) => handleLayerPointerDown(e, layer)}
+                      onPointerMove={handleDragPointerMove}
+                      onPointerUp={handleDragPointerUp}
+                      onPointerCancel={handleDragPointerUp}
+                      style={{
+                        position: 'absolute',
+                        left: `${layer.x * 100}%`,
+                        top: `${layer.y * 100}%`,
+                        transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
+                        cursor: 'grab',
+                        touchAction: 'none',
+                        outline: layer.id === selectedId ? '2px dashed #ffffff' : 'none',
+                        outlineOffset: 4,
+                      }}
+                    >
+                      <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
+                      {layer.id === selectedId && (
+                        <div
+                          onPointerDown={(e) => handleHandlePointerDown(e, layer)}
+                          onPointerMove={handleDragPointerMove}
+                          onPointerUp={handleDragPointerUp}
+                          onPointerCancel={handleDragPointerUp}
+                          style={{
+                            position: 'absolute',
+                            right: -14,
+                            bottom: -14,
+                            width: 24,
+                            height: 24,
+                            borderRadius: '50%',
+                            background: '#4C6EF5',
+                            border: '2px solid white',
+                            cursor: 'grab',
+                            touchAction: 'none',
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Barra contextual + su panel (como mucho uno abierto a la vez), fija abajo, respetando el
+                Home Indicator del iPhone (env(safe-area-inset-bottom)). */}
+            <div className="invitation-toolbar-wrap">
+              {panel && <div className="invitation-panel-overlay" onClick={() => setPanel(null)} />}
+              {panel && (
+                <div className="invitation-panel" onClick={(e) => e.stopPropagation()}>
+                  {panel === 'plantilla' && (
+                    <>
+                      <InvitationTemplatePicker
+                        templates={sortedTemplates}
+                        selectedKey={templateKey}
+                        onSelect={(t) => {
+                          // INV-EDITOR-3 — deshacible siempre, cambien o no las capas (antes solo se
+                          // guardaba historial cuando además tocaba recolocar las 3 capas por defecto).
+                          pushHistory()
+                          setTemplateKey(t.key)
+                          setBackgroundGradient(t.gradient)
+                          // Petición real: "no quiero que el texto se salga de ese área, habrá que
+                          // ajustarlo tarjeta por tarjeta" — si todavía son las 3 capas por defecto sin
+                          // tocar, recolocarlas en el hueco de la plantilla nueva; si ya hay capas
+                          // propias (añadidas, movidas, borradas... el recuento ya no cuadra), se
+                          // respetan tal cual.
+                          if (layers.length === 3) {
+                            setLayers(buildInvitationTemplateLayers(event, t))
+                          }
+                        }}
+                      />
+                      <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                        O usa tu propia foto como fondo entero, en vez de un tema:
+                      </p>
+                      <div className="filter-row" style={{ marginTop: 2 }}>
+                        <label className="chip" style={{ cursor: 'pointer' }}>
+                          {uploadingBackground ? 'Subiendo…' : backgroundImageUrl ? '🖼️ Cambiar foto de fondo' : '🖼️ Usar mi foto de fondo'}
+                          <input type="file" accept="image/*" onChange={handleBackgroundPhotoChange} style={{ display: 'none' }} disabled={uploadingBackground} />
+                        </label>
+                        {backgroundImageUrl && (
+                          <button type="button" className="link-button" onClick={handleRemoveBackgroundPhoto}>
+                            Quitar foto de fondo
+                          </button>
+                        )}
+                        {backgroundImageUrl && (
+                          <button
+                            type="button"
+                            className={'chip' + (adjustingBackground ? ' chip-active' : '')}
+                            onClick={() => setAdjustingBackground((v) => !v)}
+                          >
+                            🔧 Ajustar fondo
+                          </button>
+                        )}
+                      </div>
+                      {adjustingBackground && (
+                        <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                          Arrastra la foto para moverla y pellizca con dos dedos para hacer zoom.
+                        </p>
+                      )}
+                      <div className="filter-row" style={{ marginTop: 10 }}>
+                        <ConfirmButton label="↺ Restaurar plantilla" confirmLabel="Restaurar" className="link-button" onConfirm={handleRestoreTemplate} />
+                      </div>
+                    </>
+                  )}
+
+                  {panel === 'emoji' && (
+                    <>
+                      {/* Petición real: "los emojis salen muy pocos, lo suyo sería poder usar cualquier
+                          emoji del teclado" — el teclado emoji nativo del móvil ya funciona en cualquier
+                          campo de texto, así que basta con un campo donde pegar/escribir cualquiera; los
+                          botones de abajo siguen para los más usados, de un toque. */}
+                      <form
+                        style={{ display: 'flex', gap: 6 }}
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          const em = customEmoji.trim()
+                          if (!em) return
+                          handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))
+                          setCustomEmoji('')
+                        }}
+                      >
+                        <input
+                          type="text"
+                          value={customEmoji}
+                          onChange={(e) => setCustomEmoji(e.target.value)}
+                          placeholder="Escribe o pega cualquier emoji del teclado"
+                          style={{ flex: 1 }}
+                        />
+                        <button type="submit" className="chip" disabled={!customEmoji.trim()}>
+                          + Añadir
+                        </button>
+                      </form>
+                      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
+                        {INVITATION_EMOJI_SUGGESTIONS.map((em) => (
+                          <button key={em} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))}>
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {panel === 'forma' && (
+                    <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                      {INVITATION_SHAPES.map((s) => (
+                        <button key={s.key} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('shape', { shapeKey: s.key, color: '#ffffff', fontSize: 60 }))}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {panel === 'texto' && selected && isTextLike && (
+                    <label style={{ display: 'block' }}>
+                      Texto
+                      <textarea
+                        autoFocus
+                        value={selected.text ?? ''}
+                        onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
+                        onBlur={commitContinuousEdit}
+                        rows={3}
+                      />
+                    </label>
+                  )}
+
+                  {panel === 'color' && selected && (selected.type === 'text' || selected.type === 'event_data' || selected.type === 'shape') && (
+                    <div className="filter-row" style={{ alignItems: 'center' }}>
+                      {LAYER_COLOR_PRESETS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => updateSelectedDiscrete({ color: c })}
+                          style={{ width: 30, height: 30, borderRadius: '50%', background: c, border: selected.color === c ? '2px solid #4C6EF5' : '1px solid #d8dae8' }}
+                          aria-label={`Color ${c}`}
+                        />
+                      ))}
+                      {/* Petición real: "mejor pon un botón que puedas elegir el color de la letra de
+                          una paleta más amplia" — input[type=color] nativo abre la rueda de color
+                          completa del móvil, sin límite a los 6 rápidos de arriba. */}
+                      <input
+                        type="color"
+                        className="color-wheel-input"
+                        value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
+                        onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
+                        onBlur={commitContinuousEdit}
+                        aria-label="Elegir cualquier color"
+                      />
+                    </div>
+                  )}
+
+                  {panel === 'fuente' && selected && isTextLike && (
+                    <label style={{ display: 'block' }}>
+                      Fuente
+                      <select value={selected.fontFamily || 'inherit'} onChange={(e) => updateSelectedDiscrete({ fontFamily: e.target.value })}>
+                        {LAYER_FONT_OPTIONS.map((f) => (
+                          <option key={f.value} value={f.value}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  {/* Petición real: "formato 3D", "letras de brillos... purpurina", "un color arcoíris...
+                      uno fijo [que cambia a lo largo de lo escrito, no con el tiempo] y otro que vaya
+                      cambiando conforme lo mires", "otro estilo iridiscente" — todos rellenos
+                      alternativos del texto; tocar el que ya está activo lo quita (vuelve a "normal"). */}
+                  {panel === 'efecto' && selected && isTextLike && (
+                    <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                      {TEXT_STYLE_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          className={'chip' + ((selected.textStyle ?? 'normal') === opt.value ? ' chip-active' : '')}
+                          onClick={() => updateSelectedDiscrete({ textStyle: (selected.textStyle ?? 'normal') === opt.value ? 'normal' : opt.value })}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {panel === 'tamano' && selected && (
+                    <div className="filter-row" style={{ alignItems: 'center', justifyContent: 'center' }}>
+                      {/* Petición real: "he insertado una foto y no consigo editar su tamaño" — con ±2
+                          el cambio era imperceptible en una foto/forma de 60-300px (sí se notaba en
+                          texto, de 10-40px); foto/forma usan un paso mayor. El punto azul de la esquina
+                          (pellizcar/arrastrar) sigue siendo el gesto principal. */}
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - (isTextLike ? 2 : 15)) })}
+                      >
+                        A-
+                      </button>
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {Math.round(selected.fontSize ?? 16)}
+                      </span>
+                      <button type="button" className="link-button" onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + (isTextLike ? 2 : 15) })}>
+                        A+
+                      </button>
+                    </div>
+                  )}
+
+                  {panel === 'mas' && selected && (
+                    <>
+                      {selected.type === 'text' && (
+                        <label style={{ display: 'block' }}>
+                          Curvar texto {selected.curve ? `(${selected.curve > 0 ? '⌣ arriba' : '⌢ abajo'})` : '(recto)'}
+                          <input
+                            type="range"
+                            min={-100}
+                            max={100}
+                            value={selected.curve ?? 0}
+                            onChange={(e) => updateSelectedContinuous({ curve: Number(e.target.value) }, 'curve')}
+                            onPointerUp={commitContinuousEdit}
+                            onBlur={commitContinuousEdit}
+                            style={{ width: '100%' }}
+                          />
+                        </label>
+                      )}
+                      <div className="filter-row" style={{ marginTop: selected.type === 'text' ? 10 : 0 }}>
+                        <button type="button" className="link-button" onClick={() => handleReorder(1)}>
+                          ⬆ Adelante
+                        </button>
+                        <button type="button" className="link-button" onClick={() => handleReorder(-1)}>
+                          ⬇ Atrás
+                        </button>
+                        <button type="button" className="link-button" onClick={handleDuplicate}>
+                          ⧉ Duplicar
+                        </button>
+                        <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div className="invitation-toolbar">
+                {!selected ? (
+                  <>
+                    <button
+                      type="button"
+                      className="invitation-toolbar-btn"
+                      onClick={() => handleAddLayer(makeInvitationLayer('text', { text: 'Texto', color: '#ffffff', fontSize: 18, fontFamily: 'inherit' }))}
+                    >
+                      <span className="invitation-toolbar-icon">🔤</span>
+                      <span>Texto</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="invitation-toolbar-btn"
+                      onClick={() => handleAddLayer(makeInvitationLayer('event_data', { text: buildInvitationMessage(event), color: '#ffffff', fontSize: 14 }))}
+                    >
+                      <span className="invitation-toolbar-icon">📋</span>
+                      <span>Datos</span>
+                    </button>
+                    <label className="invitation-toolbar-btn" style={{ cursor: 'pointer' }}>
+                      <span className="invitation-toolbar-icon">{uploadingPhoto ? '…' : '📷'}</span>
+                      <span>Foto</span>
+                      <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} disabled={uploadingPhoto} />
+                    </label>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'emoji' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('emoji')}>
+                      <span className="invitation-toolbar-icon">😀</span>
+                      <span>Emoji</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'forma' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('forma')}>
+                      <span className="invitation-toolbar-icon">◆</span>
+                      <span>Forma</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'plantilla' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('plantilla')}>
+                      <span className="invitation-toolbar-icon">🎨</span>
+                      <span>Plantilla</span>
+                    </button>
+                  </>
+                ) : isTextLike ? (
+                  <>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'texto' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('texto')}>
+                      <span className="invitation-toolbar-icon">✏️</span>
+                      <span>Editar</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'color' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('color')}>
+                      <span className="invitation-toolbar-icon">🎨</span>
+                      <span>Color</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'fuente' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('fuente')}>
+                      <span className="invitation-toolbar-icon">Aa</span>
+                      <span>Fuente</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'efecto' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('efecto')}>
+                      <span className="invitation-toolbar-icon">✨</span>
+                      <span>Efecto</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'tamano' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('tamano')}>
+                      <span className="invitation-toolbar-icon">🔠</span>
+                      <span>Tamaño</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'mas' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('mas')}>
+                      <span className="invitation-toolbar-icon">⋯</span>
+                      <span>Más</span>
+                    </button>
+                  </>
+                ) : selected.type === 'shape' ? (
+                  <>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'color' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('color')}>
+                      <span className="invitation-toolbar-icon">🎨</span>
+                      <span>Color</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'tamano' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('tamano')}>
+                      <span className="invitation-toolbar-icon">🔠</span>
+                      <span>Tamaño</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'mas' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('mas')}>
+                      <span className="invitation-toolbar-icon">⋯</span>
+                      <span>Más</span>
+                    </button>
+                  </>
+                ) : (
+                  // foto | emoji — sin controles de texto/color.
+                  <>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'tamano' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('tamano')}>
+                      <span className="invitation-toolbar-icon">🔠</span>
+                      <span>Tamaño</span>
+                    </button>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'mas' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('mas')}>
+                      <span className="invitation-toolbar-icon">⋯</span>
+                      <span>Más</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
           </>
         )}
       </div>

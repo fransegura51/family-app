@@ -3364,6 +3364,101 @@ textarea {
   }
 }
 
+/* INV-EDITOR-4 — reforma UX móvil del diseñador de invitaciones (InvitationDesigner.tsx): el lienzo
+   domina la pantalla; la barra de herramientas cambia según qué está seleccionado, con como mucho un
+   panel secundario compacto abierto a la vez, en vez del antiguo bloque fijo "Elemento seleccionado"
+   con todos los controles a la vista. */
+.invitation-designer-sheet {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  height: 88vh;
+  max-height: 88vh;
+  overflow: hidden;
+}
+
+.invitation-utility-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 16px;
+  flex-shrink: 0;
+}
+
+.invitation-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 16px;
+  overflow: hidden;
+}
+
+.invitation-toolbar-wrap {
+  position: relative;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border, #e4e7f2);
+  background: white;
+}
+
+.invitation-toolbar {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling: touch;
+}
+
+.invitation-toolbar-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1 0 auto;
+  min-width: 58px;
+  border: none;
+  background: none;
+  border-radius: 10px;
+  padding: 6px 4px;
+  font-size: 11px;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.invitation-toolbar-btn-active {
+  background: #eef0ff;
+  color: #4c6ef5;
+}
+
+.invitation-toolbar-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+
+/* Capa transparente para cerrar el panel tocando fuera — no oscurece el lienzo, que sigue a la vista. */
+.invitation-panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+}
+
+.invitation-panel {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 100%;
+  margin-bottom: 6px;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 -6px 24px rgba(15, 18, 30, 0.2);
+  padding: 12px;
+  max-height: 48vh;
+  overflow-y: auto;
+  z-index: 56;
+}
+
 /* Petición real: "en vez de abrir una ventana, quiero que se abra
    debajo y se siga viendo el calendario de arriba, para poder ir
    rápidamente a cambiar de día tocando arriba" — el día ya no es una

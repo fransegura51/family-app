@@ -1304,16 +1304,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     setLayers(sorted)
   }
 
+  // INV-EDITOR-6 — "Restaurar plantilla" SOLO repone las capas (icono/título/mensaje) a la posición de
+  // la plantilla elegida. Antes también borraba en silencio la foto de fondo propia (si había una) —
+  // ahora nunca la toca: quitar la foto de fondo es una acción aparte y explícita ("Quitar foto de
+  // fondo", más abajo). Sigue siendo una única operación deshacible con "↩️ Deshacer".
   function handleRestoreTemplate() {
     pushHistory()
     setLayers(buildInvitationTemplateLayers(event, INVITATION_TEMPLATES.find((t) => t.key === templateKey)))
     selectLayer(null)
-    setBackgroundImagePath(null)
-    setBackgroundImageUrl(null)
-    setBackgroundOffsetX(0)
-    setBackgroundOffsetY(0)
-    setBackgroundScale(1)
-    setAdjustingBackground(false)
   }
 
   async function handleBackgroundPhotoChange(e: ChangeEvent<HTMLInputElement>) {
@@ -1665,9 +1663,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                           <input type="file" accept="image/*" onChange={handleBackgroundPhotoChange} style={{ display: 'none' }} disabled={uploadingBackground} />
                         </label>
                         {backgroundImageUrl && (
-                          <button type="button" className="link-button" onClick={handleRemoveBackgroundPhoto}>
-                            Quitar foto de fondo
-                          </button>
+                          <ConfirmButton label="Quitar foto de fondo" confirmLabel="Quitar" className="link-button" onConfirm={handleRemoveBackgroundPhoto} />
                         )}
                         {backgroundImageUrl && (
                           <button
@@ -1684,7 +1680,13 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                           Arrastra la foto para moverla y pellizca con dos dedos para hacer zoom.
                         </p>
                       )}
-                      <div className="filter-row" style={{ marginTop: 10 }}>
+                      {/* INV-EDITOR-6 — "Restaurar plantilla" nunca toca la foto de fondo propia (si
+                          hay una): solo vuelve a colocar icono/título/mensaje. Quitar la foto es la
+                          acción de arriba, aparte y explícita. */}
+                      <p className="muted" style={{ fontSize: 11, marginTop: 10 }}>
+                        Vuelve a colocar el icono, el título y el mensaje en su sitio de la plantilla — tu foto de fondo (si tienes una) no se toca.
+                      </p>
+                      <div className="filter-row" style={{ marginTop: 2 }}>
                         <ConfirmButton label="↺ Restaurar plantilla" confirmLabel="Restaurar" className="link-button" onConfirm={handleRestoreTemplate} />
                       </div>
                     </>

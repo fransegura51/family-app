@@ -7,6 +7,7 @@
 import type {
   EventGuest,
   EventGuestInviteScope,
+  EventGuestMember,
   EventModuleKey,
   EventPayment,
   EventTask,
@@ -441,6 +442,35 @@ export function eventLocationMapLines(
     lines.push(`📍 Cómo llegar: ${buildMapsUrl(event.venueLabel, coords)}`)
   }
   return lines
+}
+
+// Eventos Fase 14B — desglose OPCIONAL de personas dentro de una
+// unidad invitada. adults_count/children_count (event_guests) SIGUEN
+// siendo la fuente de verdad — esta función nunca los recalcula, solo
+// compara para poder avisar (sin bloquear) si el desglose tiene más
+// personas de un tipo que las contadas para el grupo. Un desglose
+// parcial (menos personas que el recuento) es válido y no es aviso.
+export interface GuestBreakdownStatus {
+  adultsMembers: number
+  childrenMembers: number
+  totalMembers: number
+  adultsExceeded: boolean
+  childrenExceeded: boolean
+}
+
+export function computeGuestBreakdownStatus(
+  guest: Pick<EventGuest, 'adultsCount' | 'childrenCount'>,
+  members: Pick<EventGuestMember, 'personType'>[],
+): GuestBreakdownStatus {
+  const adultsMembers = members.filter((m) => m.personType === 'adulto').length
+  const childrenMembers = members.filter((m) => m.personType === 'nino').length
+  return {
+    adultsMembers,
+    childrenMembers,
+    totalMembers: members.length,
+    adultsExceeded: adultsMembers > guest.adultsCount,
+    childrenExceeded: childrenMembers > guest.childrenCount,
+  }
 }
 
 function invitationDateClause(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate' | 'eventTime'>): string {

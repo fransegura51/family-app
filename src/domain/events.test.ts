@@ -7,6 +7,7 @@ import {
   computeEventConclusions,
   computeEventHealth,
   computeEventStatusSummary,
+  computeGuestBreakdownStatus,
   countPaymentAlerts,
   eventAlertsToAttentionItems,
   eventLocationMapLines,
@@ -758,5 +759,52 @@ describe('computeEventStatusSummary', () => {
       spentBudget: null,
     })
     expect(summary.nextMilestone).toBeNull()
+  })
+})
+
+// Eventos Fase 14B — desglose opcional de personas dentro de una
+// unidad invitada. adults_count/children_count del guest son SIEMPRE
+// la fuente de verdad; esta función solo compara, nunca recalcula.
+describe('computeGuestBreakdownStatus', () => {
+  const guest = { adultsCount: 2, childrenCount: 1 }
+
+  it('grupo sin personas desglosadas: 0 en todo, sin exceso', () => {
+    const status = computeGuestBreakdownStatus(guest, [])
+    expect(status).toEqual({ adultsMembers: 0, childrenMembers: 0, totalMembers: 0, adultsExceeded: false, childrenExceeded: false })
+  })
+
+  it('una persona desglosada (adulto)', () => {
+    const status = computeGuestBreakdownStatus(guest, [{ personType: 'adulto' }])
+    expect(status).toEqual({ adultsMembers: 1, childrenMembers: 0, totalMembers: 1, adultsExceeded: false, childrenExceeded: false })
+  })
+
+  it('varias personas desglosadas, mezcla de adultos y niños', () => {
+    const status = computeGuestBreakdownStatus(guest, [{ personType: 'adulto' }, { personType: 'adulto' }, { personType: 'nino' }])
+    expect(status).toEqual({ adultsMembers: 2, childrenMembers: 1, totalMembers: 3, adultsExceeded: false, childrenExceeded: false })
+  })
+
+  it('desglose completo (coincide exactamente con adults_count/children_count): sin aviso', () => {
+    const status = computeGuestBreakdownStatus(guest, [{ personType: 'adulto' }, { personType: 'adulto' }, { personType: 'nino' }])
+    expect(status.adultsExceeded).toBe(false)
+    expect(status.childrenExceeded).toBe(false)
+  })
+
+  it('desglose parcial (menos personas que el recuento): sigue siendo válido, sin aviso', () => {
+    const status = computeGuestBreakdownStatus(guest, [{ personType: 'adulto' }])
+    expect(status.adultsExceeded).toBe(false)
+    expect(status.childrenExceeded).toBe(false)
+    expect(status.totalMembers).toBeLessThan(guest.adultsCount + guest.childrenCount)
+  })
+
+  it('exceso de adultos: más adultos desglosados que adults_count', () => {
+    const status = computeGuestBreakdownStatus(guest, [{ personType: 'adulto' }, { personType: 'adulto' }, { personType: 'adulto' }])
+    expect(status.adultsExceeded).toBe(true)
+    expect(status.childrenExceeded).toBe(false)
+  })
+
+  it('exceso de niños: más niños desglosados que children_count', () => {
+    const status = computeGuestBreakdownStatus(guest, [{ personType: 'nino' }, { personType: 'nino' }])
+    expect(status.adultsExceeded).toBe(false)
+    expect(status.childrenExceeded).toBe(true)
   })
 })

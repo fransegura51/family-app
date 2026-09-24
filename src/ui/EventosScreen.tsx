@@ -9,6 +9,7 @@ import {
   addEventFavorItem,
   addEventGift,
   addEventGuest,
+  addEventGuestMember,
   addEventMenuItem,
   addEventPayment,
   addEventProvider,
@@ -30,6 +31,7 @@ import {
   deleteEventFavorItem,
   deleteEventGift,
   deleteEventGuest,
+  deleteEventGuestMember,
   deleteEventMenuItem,
   deleteEventPayment,
   deleteEventProvider,
@@ -51,6 +53,7 @@ import {
   listEventDecorationItems,
   listEventFavorItems,
   listEventGifts,
+  listEventGuestMembers,
   listEventGuests,
   listEventMenuItems,
   listEventPayments,
@@ -73,6 +76,7 @@ import {
   updateEventDecorationItem,
   updateEventFavorItem,
   updateEventGuest,
+  updateEventGuestMember,
   updateEventPayment,
   updateEventSpecialDetail,
   updateEventTask,
@@ -97,6 +101,7 @@ import {
   computeEventConclusions,
   computeEventHealth,
   computeEventStatusSummary,
+  computeGuestBreakdownStatus,
   countPaymentAlerts,
   daysUntil,
   DUAL_LOCATION_EVENT_TYPES,
@@ -135,6 +140,8 @@ import type {
   EventGiftReceived,
   EventGuest,
   EventGuestInviteScope,
+  EventGuestMember,
+  EventGuestMemberType,
   EventGuestRsvpStatus,
   EventMenuItem,
   EventModuleKey,
@@ -2042,6 +2049,7 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
                 {g.adultsCount} adultos, {g.childrenCount} niños
                 {g.notes ? ` · ${g.notes}` : ''}
               </p>
+              <GuestBreakdownSection guest={g} />
               <div className="filter-row" style={{ flexWrap: 'wrap' }}>
                 <select value={g.rsvpStatus} onChange={(e) => handleRsvpStatusChange(g, e.target.value as EventGuestRsvpStatus)}>
                   {RSVP_STATUS_OPTIONS.map((o) => (
@@ -2210,6 +2218,156 @@ function EventOpenLinkBlock({ event }: { event: FamilyEvent }) {
         </div>
       )}
       {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
+    </div>
+  )
+}
+
+// Eventos Fase 14B — desglose OPCIONAL de personas dentro de una
+// unidad invitada (event_guest_members, Fase 14A). Colapsado por
+// defecto: una unidad sin desglose se ve igual que antes salvo por
+// este botón nuevo. adults_count/children_count de la unidad NUNCA se
+// tocan aquí (siguen siendo la fuente de verdad, Fase 14A/14B); el
+// aviso de descuadre es solo informativo, nunca bloquea guardar.
+function GuestBreakdownSection({ guest }: { guest: EventGuest }) {
+  const [expanded, setExpanded] = useState(false)
+  const [members, setMembers] = useState<EventGuestMember[]>([])
+  const [showAddPerson, setShowAddPerson] = useState(false)
+  const [personName, setPersonName] = useState('')
+  const [personType, setPersonType] = useState<EventGuestMemberType>('adulto')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editType, setEditType] = useState<EventGuestMemberType>('adulto')
+  const [error, setError] = useState<string | null>(null)
+
+  function reloadMembers() {
+    listEventGuestMembers(guest.id)
+      .then(setMembers)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las personas')))
+  }
+  useEffect(() => {
+    if (expanded) reloadMembers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, guest.id])
+
+  const status = computeGuestBreakdownStatus(guest, members)
+
+  async function handleAddPerson(ev: FormEvent) {
+    ev.preventDefault()
+    if (!personName.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setError(null)
+    try {
+      await addEventGuestMember(guest, { name: personName, personType })
+      setPersonName('')
+      setPersonType('adulto')
+      setShowAddPerson(false)
+      reloadMembers()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    }
+  }
+
+  function startEdit(m: EventGuestMember) {
+    setEditingId(m.id)
+    setEditName(m.name)
+    setEditType(m.personType)
+  }
+
+  async function handleSaveEdit(id: string) {
+    if (!editName.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setError(null)
+    try {
+      await updateEventGuestMember(id, { name: editName, personType: editType })
+      setEditingId(null)
+      reloadMembers()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    }
+  }
+
+  async function handleDeletePerson(id: string) {
+    try {
+      await deleteEventGuestMember(id)
+      if (editingId === id) setEditingId(null)
+      reloadMembers()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo eliminar'))
+    }
+  }
+
+  if (!expanded) {
+    return (
+      <button type="button" className="link-button" onClick={() => setExpanded(true)}>
+        👤 Desglosar personas
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ margin: '4px 0' }}>
+      <button type="button" className="link-button" onClick={() => setExpanded(false)}>
+        👤 Ocultar personas
+      </button>
+      {error && <p className="error">{error}</p>}
+      {(status.adultsExceeded || status.childrenExceeded) && (
+        <p className="muted" style={{ color: '#b45309' }}>
+          ⚠️ Hay más {status.adultsExceeded && status.childrenExceeded ? 'adultos y niños' : status.adultsExceeded ? 'adultos' : 'niños'} desglosados
+          que los contados para este grupo ({guest.adultsCount} adultos, {guest.childrenCount} niños).
+        </p>
+      )}
+      {members.length > 0 && (
+        <ul style={{ margin: '4px 0', paddingLeft: 18 }}>
+          {members.map((m) =>
+            editingId === m.id ? (
+              <li key={m.id} style={{ listStyle: 'none', marginLeft: -18 }}>
+                <div className="inline-fields">
+                  <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+                  <select value={editType} onChange={(e) => setEditType(e.target.value as EventGuestMemberType)}>
+                    <option value="adulto">Adulto</option>
+                    <option value="nino">Niño</option>
+                  </select>
+                  <button type="button" className="link-button" onClick={() => handleSaveEdit(m.id)}>
+                    Guardar
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setEditingId(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              </li>
+            ) : (
+              <li key={m.id}>
+                {m.name} ({m.personType === 'adulto' ? 'adulto' : 'niño'})
+                <button type="button" className="link-button" onClick={() => startEdit(m)}>
+                  Editar
+                </button>
+                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar persona" onConfirm={() => handleDeletePerson(m.id)} />
+              </li>
+            ),
+          )}
+        </ul>
+      )}
+      {showAddPerson ? (
+        <form className="inline-fields" onSubmit={handleAddPerson}>
+          <input type="text" value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Nombre" autoFocus />
+          <select value={personType} onChange={(e) => setPersonType(e.target.value as EventGuestMemberType)}>
+            <option value="adulto">Adulto</option>
+            <option value="nino">Niño</option>
+          </select>
+          <button type="submit">Guardar</button>
+          <button type="button" className="link-button" onClick={() => setShowAddPerson(false)}>
+            Cancelar
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="link-button" onClick={() => setShowAddPerson(true)}>
+          + Añadir persona
+        </button>
+      )}
     </div>
   )
 }

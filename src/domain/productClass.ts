@@ -15,7 +15,7 @@
 // respaldo en products.category: se resuelve dinámicamente.
 //
 // Este módulo es PURO: el resultado compartido ya viene resuelto (lo carga sharedClassLoader por lotes).
-import { classifyFoodType } from './foodTypes'
+import { classifyFoodType, NO_FOOD_TYPES } from './foodTypes'
 
 export type ProductClassKind = 'alimentacion' | 'no_alimentos'
 export type ProductClassSource = 'manual' | 'shared' | 'legacy' | 'rule' | 'fallback'
@@ -136,11 +136,34 @@ export function resolveProductClass(input: ResolveProductClassInput): ResolvedPr
   if (input.kind === 'alimentacion') {
     const guess = classifyFoodType(input.name)
     const hit = guess.key !== 'otros'
+    if (hit) {
+      return {
+        className: guess.label,
+        foodTypeKey: RULE_KEY_TO_FOOD_TYPE_KEY[guess.key] ?? null,
+        kind: input.kind,
+        source: 'rule',
+        sharedOutcome,
+        classKnown: findClassByName(input.familyClasses, guess.label) != null,
+      }
+    }
+    // Ninguna palabra de comida en el nombre Y "alimentación" aquí es
+    // solo una suposición (tienda física por defecto, no un dato real)
+    // — asumir "Otros alimentos" sin más pruebas etiquetaba como comida
+    // productos que no lo son (bug real: "Desatascador" mostrado como
+    // Otros alimentos). Se manda al catálogo de Otros (no alimentos) en
+    // su lugar, si la familia todavía tiene esa clase — nunca se
+    // inventa una clase nueva.
+    if (input.kindIsDefault) {
+      const otros = findClassByName(input.familyClasses.filter((c) => c.kind === 'no_alimentos'), NO_FOOD_TYPES[NO_FOOD_TYPES.length - 1].label)
+      if (otros) {
+        return { className: otros.name, foodTypeKey: otros.catalogKey, kind: 'no_alimentos', source: 'fallback', sharedOutcome, classKnown: true }
+      }
+    }
     return {
       className: guess.label,
       foodTypeKey: RULE_KEY_TO_FOOD_TYPE_KEY[guess.key] ?? null,
       kind: input.kind,
-      source: hit ? 'rule' : 'fallback',
+      source: 'fallback',
       sharedOutcome,
       classKnown: findClassByName(input.familyClasses, guess.label) != null,
     }

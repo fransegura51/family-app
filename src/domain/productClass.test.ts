@@ -225,9 +225,47 @@ describe('casos reales del inventario aprobado (cadena real + texto real, resolu
   })
 
   it('Mercadona + PARKING: comportamiento actual documentado — sin aprendizaje; se resuelve por reglas/respaldo o por su clase guardada', () => {
-    expect(classFor('Mercadona', 'PARKING')).toMatchObject({ source: 'fallback', sharedOutcome: 'not_found', className: 'Otros alimentos' })
+    // Corrección real: "PARKING" no lleva ninguna palabra de comida y el
+    // conjunto "alimentación" aquí es solo la suposición por defecto de
+    // un producto nuevo — en vez de mentir "Otros alimentos", cae en el
+    // catálogo de Otros (no alimentos) que la familia ya tiene.
+    expect(classFor('Mercadona', 'PARKING')).toMatchObject({ source: 'fallback', sharedOutcome: 'not_found', className: 'Otros', kind: 'no_alimentos' })
     const stored = { category: 'Otros', classConfirmedAt: null, nonFood: true }
     expect(classFor('Mercadona', 'PARKING', stored, 'no_alimentos')).toMatchObject({ source: 'legacy', className: 'Otros' })
+  })
+
+  it('un producto nuevo sin ninguna palabra de comida (real: "DESATASCADOR") cae en Otros (no alimentos), nunca en Otros alimentos', () => {
+    expect(classFor('Mercadona', 'DESATASCADOR')).toMatchObject({ className: 'Otros', kind: 'no_alimentos', source: 'fallback' })
+  })
+
+  it('un producto nuevo que SÍ tiene palabra de comida real sigue clasificándose en Alimentos como siempre', () => {
+    expect(classFor('Mercadona', 'BERENJENA')).toMatchObject({ className: 'Verdura y hortalizas', kind: 'alimentacion' })
+    expect(classFor('Mercadona', 'BERENJENA').source).not.toBe('fallback')
+  })
+
+  it('conjunto "alimentación" NO por defecto (contexto ya sabido, p. ej. Historial en su pestaña de Alimentos): sigue devolviendo Otros alimentos, no se manda a Otros', () => {
+    // kindIsDefault false/ausente = el llamador ya sabe que es Alimentos (no es una suposición) — comportamiento intacto.
+    const r = resolveProductClass({ name: 'DESATASCADOR', kind: 'alimentacion', familyClasses: FAMILY, shared: null })
+    expect(r).toMatchObject({ className: 'Otros alimentos', kind: 'alimentacion', source: 'fallback' })
+  })
+
+  it('si la familia ya no tiene la clase "Otros" de no_alimentos (borrada/renombrada), nunca se inventa una — cae de vuelta al comportamiento anterior', () => {
+    const sinOtrosNoAlimentos = FAMILY.filter((c) => !(c.kind === 'no_alimentos' && c.name === 'Otros'))
+    const r = resolveProductClass({ name: 'DESATASCADOR', kind: 'alimentacion', kindIsDefault: true, familyClasses: sinOtrosNoAlimentos, shared: null })
+    expect(r).toMatchObject({ className: 'Otros alimentos', kind: 'alimentacion', source: 'fallback' })
+  })
+
+  it('un producto YA existente con clase manual o histórica nunca se reclasifica por este cambio', () => {
+    const manual = { category: 'Mascotas', classConfirmedAt: '2026-09-21', nonFood: false }
+    expect(resolveProductClass({ name: 'DESATASCADOR', product: manual, kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })).toMatchObject({
+      className: 'Mascotas',
+      source: 'manual',
+    })
+    const legacy = { category: 'Otros alimentos', classConfirmedAt: null, nonFood: false }
+    expect(resolveProductClass({ name: 'DESATASCADOR', product: legacy, kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })).toMatchObject({
+      className: 'Otros alimentos',
+      source: 'legacy',
+    })
   })
 
   it.each([

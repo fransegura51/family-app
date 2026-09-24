@@ -77,6 +77,7 @@ function makeTask(overrides: Partial<EventTask>): EventTask {
     sortOrder: taskCounter,
     createdAt: '2026-01-01T00:00:00Z',
     assignedMemberId: null,
+    calendarEventId: null,
     ...overrides,
   }
 }

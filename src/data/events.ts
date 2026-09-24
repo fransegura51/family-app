@@ -368,7 +368,7 @@ export async function duplicateEvent(id: string): Promise<string> {
 // Preparativos / tareas
 // ---------------------------------------------------------------------
 
-const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id'
+const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapTask(r: any): EventTask {
@@ -383,6 +383,7 @@ function mapTask(r: any): EventTask {
     sortOrder: r.sort_order,
     createdAt: r.created_at,
     assignedMemberId: r.assigned_member_id,
+    calendarEventId: r.calendar_event_id,
   }
 }
 
@@ -419,9 +420,73 @@ export async function updateEventTask(
   if (patch.assignedMemberId !== undefined) update.assigned_member_id = patch.assignedMemberId
   const { error } = await supabase.from('event_tasks').update(update).eq('id', id)
   if (error) throw error
+  // Fase 9 — si la tarea ya está enlazada al Calendario, mantenerlo al
+  // día (mismo patrón "safely" que syncEventToCalendarSafely: un fallo
+  // aquí nunca deshace el guardado de la tarea, solo avisa).
+  if (patch.title !== undefined || patch.dueDate !== undefined) await syncLinkedTaskCalendarEventSafely(id)
+}
+
+// Fase 9 — Tarea → Calendario. Mismo patrón ya certificado que
+// linkRsvpDeadlineReminder/syncRsvpDeadlineReminder: enlace ESTABLE por
+// id (event_tasks.calendar_event_id), nunca se busca por título; la
+// propia presencia del id es el estado de "Mostrar en Calendario".
+export async function linkEventTaskToCalendar(taskId: string): Promise<void> {
+  const { data: task, error } = await supabase.from('event_tasks').select('title, due_date, calendar_event_id').eq('id', taskId).single()
+  if (error) throw error
+  if (task.calendar_event_id) return // ya enlazada — idempotente, nunca duplica
+  if (!task.due_date) throw new Error('Esta tarea todavía no tiene fecha')
+  const familyId = await currentFamilyId()
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data: calendarEvent, error: insertError } = await supabase
+    .from('calendar_events')
+    .insert({ family_id: familyId, title: task.title, start_at: `${task.due_date}T00:00:00`, all_day: true, created_by: userResult.user.id, visibility: 'shared' })
+    .select('id')
+    .single()
+  if (insertError) throw insertError
+  const { error: linkError } = await supabase.from('event_tasks').update({ calendar_event_id: calendarEvent.id }).eq('id', taskId)
+  if (linkError) throw linkError
+}
+
+async function unlinkEventTaskCalendarById(taskId: string, calendarEventId: string): Promise<void> {
+  const { error } = await supabase.from('calendar_events').delete().eq('id', calendarEventId)
+  if (error) throw error
+  const { error: unlinkError } = await supabase.from('event_tasks').update({ calendar_event_id: null }).eq('id', taskId)
+  if (unlinkError) throw unlinkError
+}
+
+export async function unlinkEventTaskFromCalendar(taskId: string): Promise<void> {
+  const { data: task, error } = await supabase.from('event_tasks').select('calendar_event_id').eq('id', taskId).single()
+  if (error) throw error
+  if (!task.calendar_event_id) return
+  await unlinkEventTaskCalendarById(taskId, task.calendar_event_id)
+}
+
+async function syncLinkedTaskCalendarEventSafely(taskId: string): Promise<void> {
+  try {
+    const { data, error } = await supabase.from('event_tasks').select('calendar_event_id, title, due_date').eq('id', taskId).single()
+    if (error) throw error
+    if (!data.calendar_event_id) return
+    if (!data.due_date) {
+      // Sin fecha ya no tiene sentido seguir en el calendario — se desvincula sola.
+      await unlinkEventTaskCalendarById(taskId, data.calendar_event_id)
+      return
+    }
+    const { error: updateError } = await supabase
+      .from('calendar_events')
+      .update({ title: data.title, start_at: `${data.due_date}T00:00:00` })
+      .eq('id', data.calendar_event_id)
+    if (updateError) throw updateError
+  } catch {
+    showToast('⚠️ No se pudo actualizar el calendario de esta tarea')
+  }
 }
 
 export async function deleteEventTask(id: string): Promise<void> {
+  // Fase 9 — si la tarea estaba enlazada al Calendario, limpia también
+  // ese compromiso — nunca deja un hueco huérfano en Calendario.
+  const { data: linked } = await supabase.from('event_tasks').select('calendar_event_id').eq('id', id).maybeSingle()
+  if (linked?.calendar_event_id) await supabase.from('calendar_events').delete().eq('id', linked.calendar_event_id)
   const { error } = await supabase.from('event_tasks').delete().eq('id', id)
   if (error) throw error
 }

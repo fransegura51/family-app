@@ -673,6 +673,11 @@ export interface EventTask {
   // Fase 6 — quién de la familia la hace. Nullable ("sin asignar"),
   // nunca inferido — ver migración 0162_event_task_assignee.sql.
   assignedMemberId: string | null
+  // Fase 9 — "Mostrar en Calendario": la propia presencia de este id
+  // ES el estado del interruptor (null = apagado) — ver migración
+  // 0163_event_task_calendar_link.sql. Enlace estable, nunca se
+  // resuelve buscando por título.
+  calendarEventId: string | null
 }
 
 export interface EventBudgetItem {

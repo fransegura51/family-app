@@ -17,6 +17,8 @@ import {
   addEventTask,
   addEnabledModules,
   archiveEvent,
+  linkEventTaskToCalendar,
+  unlinkEventTaskFromCalendar,
   assignGuestTable,
   createEvent,
   deleteEvent,
@@ -1529,6 +1531,9 @@ function TaskEditModal({
   const [title, setTitle] = useState(task.title)
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
   const [assignedMemberId, setAssignedMemberId] = useState(task.assignedMemberId ?? '')
+  // Fase 9 — la propia presencia de calendarEventId es el estado
+  // inicial del interruptor; no hay una columna booleana aparte.
+  const [showInCalendar, setShowInCalendar] = useState(task.calendarEventId != null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1542,6 +1547,9 @@ function TaskEditModal({
     setError(null)
     try {
       await updateEventTask(task.id, { title, dueDate: dueDate || null, assignedMemberId: assignedMemberId || null })
+      const wasLinked = task.calendarEventId != null
+      if (showInCalendar && !wasLinked && dueDate) await linkEventTaskToCalendar(task.id)
+      else if (!showInCalendar && wasLinked) await unlinkEventTaskFromCalendar(task.id)
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -1569,7 +1577,14 @@ function TaskEditModal({
           </label>
           <label>
             Fecha
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => {
+                setDueDate(e.target.value)
+                if (!e.target.value) setShowInCalendar(false)
+              }}
+            />
           </label>
           <label>
             Responsable
@@ -1583,6 +1598,15 @@ function TaskEditModal({
               ))}
             </select>
           </label>
+          <label className="inline-fields" style={{ alignItems: 'center' }}>
+            <input type="checkbox" checked={showInCalendar} disabled={!dueDate} onChange={(e) => setShowInCalendar(e.target.checked)} />
+            <span>📅 Mostrar en Calendario</span>
+          </label>
+          {!dueDate && (
+            <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
+              Ponle una fecha para poder mostrarla en el Calendario.
+            </p>
+          )}
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando…' : 'Guardar'}
           </button>

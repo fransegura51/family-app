@@ -1627,11 +1627,20 @@ export async function saveEventInvitation(
   if (error) throw error
 }
 
+// INV-EDITOR-7 — mismo tope que uploadProductPhoto (data/products.ts): tras comprimir (compressImageFile
+// ya reduce a MAX_DIMENSION=1600px/calidad 0.82), este límite solo atrapa casos patológicos — un formato
+// que no se pudo recomprimir, por ejemplo.
+const MAX_INVITATION_PHOTO_BYTES = 8 * 1024 * 1024
+
 // Foto subida por el usuario para una capa del diseño — mismo patrón
 // que member-photos (bucket privado, carpeta por familia, URL firmada).
 export async function uploadInvitationPhoto(eventId: string, file: File): Promise<string> {
+  // El accept="image/*" del selector de archivo es solo una pista de UI, nunca una validación real —
+  // se comprueba aquí también, de verdad, antes de tocar storage (mismo patrón que uploadProductPhoto).
+  if (!file.type.startsWith('image/')) throw new Error('Solo se pueden subir imágenes.')
   const familyId = await currentFamilyId()
   const compressed = await compressImageFile(file)
+  if (compressed.size > MAX_INVITATION_PHOTO_BYTES) throw new Error('La foto pesa demasiado, incluso comprimida. Prueba con otra.')
   const ext = compressed.name.split('.').pop() || 'jpg'
   const path = `${familyId}/${eventId}/${crypto.randomUUID()}.${ext}`
   const { error } = await supabase.storage.from('event-photos').upload(path, compressed)

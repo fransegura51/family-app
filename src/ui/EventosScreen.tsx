@@ -166,6 +166,7 @@ import { shareText } from '@/services/share'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { LocationPickerModal } from '@/ui/LocationPickerModal'
+import { GuestExportModal } from '@/ui/GuestExportModal'
 
 // Módulo Eventos (PEPA Events) — plan aprobado en
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
@@ -1959,6 +1960,7 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
   const [showAdd, setShowAdd] = useState(false)
   const [invitationGuest, setInvitationGuest] = useState<EventGuest | null>(null)
   const [showDesigner, setShowDesigner] = useState(false)
+  const [showExport, setShowExport] = useState(false)
   const [statusFilter, setStatusFilter] = useState<EventGuestRsvpStatus | 'todos'>('todos')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -2011,11 +2013,16 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
         <strong>👥 Invitados</strong>
-        <button type="button" className="link-button" onClick={() => setShowDesigner(true)}>
-          🎨 Diseño de la invitación
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+          <button type="button" className="link-button" onClick={() => setShowExport(true)}>
+            📤 Exportar invitados
+          </button>
+          <button type="button" className="link-button" onClick={() => setShowDesigner(true)}>
+            🎨 Diseño de la invitación
+          </button>
+        </div>
       </div>
       <p className="muted" style={{ margin: '4px 0' }}>
         {guests.length} {guests.length === 1 ? 'invitado/grupo' : 'invitados/grupos'} · {totalPeople} personas en total · {confirmedAdults + confirmedChildren}{' '}
@@ -2123,6 +2130,7 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
       {invitationGuest && <InvitationModal event={event} guest={invitationGuest} onClose={() => setInvitationGuest(null)} />}
       {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
       {showDesigner && <InvitationCanvasEditor event={event} onClose={() => setShowDesigner(false)} onSaved={() => setShowDesigner(false)} />}
+      {showExport && <GuestExportModal event={event} onClose={() => setShowExport(false)} />}
     </div>
   )
 }

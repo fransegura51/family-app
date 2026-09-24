@@ -1,0 +1,73 @@
+import { describe, expect, it } from 'vitest'
+
+// Fase 14E.1 — cableado del botón "Exportar invitados" en EventosScreen
+// (GuestsSection) y del modal src/ui/GuestExportModal.tsx. La lógica de
+// exportación en sí (modelo canónico, las 3 vistas, pendientes de
+// identificar, aforo, RSVP, privacidad) se prueba exhaustivamente en
+// src/domain/guestExport.test.ts, junto a esas funciones — aquí solo se
+// comprueba que la pantalla abre/cierra el modal correcto y que el
+// modal es un componente aparte (no vive dentro de EventosScreen.tsx).
+const EVENTOS_APP = import.meta.glob('/src/ui/EventosScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const EVENTOS_SRC = EVENTOS_APP['/src/ui/EventosScreen.tsx']
+
+const MODAL_APP = import.meta.glob('/src/ui/GuestExportModal.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const MODAL_SRC = MODAL_APP['/src/ui/GuestExportModal.tsx']
+
+function window(src: string, fromMarker: string, toMarker: string): string {
+  const start = src.indexOf(fromMarker)
+  expect(start, `no se encontró "${fromMarker}"`).toBeGreaterThan(-1)
+  const end = src.indexOf(toMarker, start + fromMarker.length)
+  expect(end, `no se encontró "${toMarker}" después de "${fromMarker}"`).toBeGreaterThan(start)
+  return src.slice(start, end)
+}
+
+describe('Botón "Exportar invitados" en GuestsSection (TEST: entrada junto a Diseño de la invitación)', () => {
+  it('EventosScreen.tsx importa GuestExportModal desde su propio archivo — la lógica no vive en EventosScreen.tsx', () => {
+    expect(EVENTOS_SRC).toContain("import { GuestExportModal } from '@/ui/GuestExportModal'")
+  })
+
+  it('el botón "📤 Exportar invitados" está junto a "🎨 Diseño de la invitación" dentro de GuestsSection', () => {
+    const section = window(EVENTOS_SRC, 'function GuestsSection', '\nfunction EventOpenLinkBlock')
+    const header = window(section, "<strong>👥 Invitados</strong>", '</div>\n      </div>')
+    expect(header).toContain('📤 Exportar invitados')
+    expect(header).toContain('🎨 Diseño de la invitación')
+    expect(header).toContain('setShowExport(true)')
+  })
+
+  it('el modal se abre/cierra con su propio estado y se le pasa el evento completo', () => {
+    const section = window(EVENTOS_SRC, 'function GuestsSection', '\nfunction EventOpenLinkBlock')
+    expect(section).toContain('const [showExport, setShowExport] = useState(false)')
+    expect(section).toContain('{showExport && <GuestExportModal event={event} onClose={() => setShowExport(false)} />}')
+  })
+})
+
+describe('GuestExportModal — organizar por / incluir (TEST: 3 modos, 2 filtros, sin CSV/PDF/compartir todavía)', () => {
+  it('ofrece exactamente 3 formas de organizar: mesas, familias, alfabético', () => {
+    const options = window(MODAL_SRC, 'const ORGANIZE_OPTIONS', ']\n')
+    expect(options).toContain("value: 'mesas'")
+    expect(options).toContain("value: 'familias'")
+    expect(options).toContain("value: 'alfabetico'")
+  })
+
+  it('ofrece exactamente 2 filtros de asistencia: todos, confirmados (sin "pendientes" todavía)', () => {
+    const options = window(MODAL_SRC, 'const ATTENDANCE_OPTIONS', ']\n')
+    expect(options).toContain("value: 'todos'")
+    expect(options).toContain("value: 'confirmados'")
+    expect(options).not.toContain("value: 'pendiente'")
+  })
+
+  it('carga invitados, personas desglosadas y mesas del evento — nada se escribe, solo se lee', () => {
+    expect(MODAL_SRC).toContain('listEventGuests(event.id)')
+    expect(MODAL_SRC).toContain('listEventGuestMembersForEvent(event.id)')
+    expect(MODAL_SRC).toContain('listEventTables(event.id)')
+  })
+
+  it('en esta subfase todavía NO hay CSV, impresión ni compartir (llegan en 14E.2-14E.4)', () => {
+    expect(MODAL_SRC).not.toMatch(/text\/csv|Blob\(|navigator\.share|window\.print/)
+  })
+
+  it('reutiliza el patrón de modal ya establecido (.modal-overlay/.modal-sheet), no uno nuevo', () => {
+    expect(MODAL_SRC).toContain('className="modal-overlay"')
+    expect(MODAL_SRC).toContain('className="modal-sheet"')
+  })
+})

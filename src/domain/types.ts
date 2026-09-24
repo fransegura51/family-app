@@ -816,7 +816,10 @@ export interface EventFavorItem {
 export type EventSpecialDetailStatus = 'pendiente' | 'comprado' | 'preparado'
 
 // Detalles para personas concretas (padrinos, testigos, abuelos...) —
-// por destinatario, no por tipo de artículo.
+// por destinatario, no por tipo de artículo. memberId (Fase 14D) es un
+// enlace OPCIONAL a una persona real desglosada (event_guest_members);
+// recipientName (texto libre) sigue siendo el dato que manda siempre,
+// nunca se sustituye por el nombre de memberId.
 export interface EventSpecialDetail {
   id: string
   eventId: string
@@ -828,11 +831,15 @@ export interface EventSpecialDetail {
   status: EventSpecialDetailStatus
   deliveryNote: string | null
   notes: string | null
+  memberId: string | null
   createdAt: string
 }
 
 // Regalos recibidos — PRIVADO, nunca expuesto en la página pública de
-// RSVP (petición explícita de la Skill).
+// RSVP (petición explícita de la Skill). memberId (Fase 14D) es un
+// enlace OPCIONAL a una persona real desglosada (event_guest_members);
+// guestName (texto libre) sigue siendo el dato que manda siempre, para
+// regalos de varias personas a la vez sin necesidad de N:M.
 export interface EventGiftReceived {
   id: string
   eventId: string
@@ -841,6 +848,7 @@ export interface EventGiftReceived {
   giftDescription: string | null
   cashAmount: number | null
   note: string | null
+  memberId: string | null
   createdAt: string
 }
 

@@ -105,8 +105,14 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Actividades y juegos', text: 'Juegos o animación con edad orientativa, duración y material necesario — "→ Compras" pasa el material a la lista de la compra si hace falta comprar algo.' },
     { title: 'Proveedores', text: 'Registro sencillo (nombre, tipo, contacto) — sin ningún directorio externo.' },
     { title: 'Pagos y fianzas', text: 'Concepto, total, lo ya pagado y cuándo vence — calcula solo lo pendiente y deja marcar como pagado del todo con un toque.' },
-    { title: 'Detalles / recuerdos', text: 'Dos listas aparte: recuerdos para los invitados en general (bolsas de chuches, detalles de comunión...) por tipo de artículo con proveedor y estado, y detalles para personas concretas (padrinos, testigos, abuelos...) por destinatario.' },
-    { title: 'Regalos recibidos', text: 'Privado — nunca se muestra en la página pública de RSVP. Quién trajo qué, importe en efectivo si lo hay, y el total sumado solo.' },
+    {
+      title: 'Detalles / recuerdos',
+      text: 'Dos listas aparte: recuerdos para los invitados en general (bolsas de chuches, detalles de comunión...) por tipo de artículo con proveedor y estado, y detalles para personas concretas (padrinos, testigos, abuelos...) por destinatario. En "Persona especial", si el evento ya tiene alguna persona desglosada en Invitados (ver "Desglosar personas"), aparece un desplegable opcional para vincularla — el nombre que escribes a mano sigue siendo el que manda, el vínculo es solo informativo y no se puede cambiar después de crearlo.',
+    },
+    {
+      title: 'Regalos recibidos',
+      text: 'Privado — nunca se muestra en la página pública de RSVP. Quién trajo qué, importe en efectivo si lo hay, y el total sumado solo. Igual que en Detalles, puedes vincular opcionalmente el regalo a una persona desglosada de Invitados si la hay; para un regalo de varias personas a la vez, sigue escribiéndolas todas en "De quién" tal cual, sin tener que elegir una sola.',
+    },
     { title: 'Plan del día', text: 'Lista cronológica con hora y título de cada momento del día — se vuelve más protagonista el propio día del evento.' },
     { title: 'Plazo de RSVP', text: 'Fecha opcional (editar evento) — cuando se acerca y todavía queda gente sin responder, avisa en "Pepa dice". Al ponerla se apunta sola un aviso en el Calendario 3 días antes (nota "Recordatorio del plazo puesto"); si cambias o quitas el plazo, el aviso se mueve o se borra solo.' },
     { title: 'Recordatorio de un pago', text: 'Si un pago o fianza tiene fecha de vencimiento y todavía queda algo pendiente, "🔔 Recordarme" apunta un aviso en el Calendario 3 días antes.' },

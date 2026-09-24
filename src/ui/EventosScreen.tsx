@@ -3518,6 +3518,7 @@ function AddActivityModal({ eventId, onClose, onAdded }: { eventId: string; onCl
 function DetailsSection({ eventId }: { eventId: string }) {
   const [favors, setFavors] = useState<EventFavorItem[]>([])
   const [specials, setSpecials] = useState<EventSpecialDetail[]>([])
+  const [members, setMembers] = useState<EventGuestMember[]>([])
   const [showAddFavor, setShowAddFavor] = useState(false)
   const [showAddSpecial, setShowAddSpecial] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -3529,8 +3530,18 @@ function DetailsSection({ eventId }: { eventId: string }) {
     listEventSpecialDetails(eventId)
       .then(setSpecials)
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los detalles especiales')))
+    // Fase 14D — para el selector opcional "vincular a una persona
+    // desglosada"; recipientName sigue siendo el dato que manda, esto
+    // es solo un enlace informativo adicional.
+    listEventGuestMembersForEvent(eventId)
+      .then(setMembers)
+      .catch(() => {})
   }
   useEffect(reload, [eventId])
+
+  function memberName(memberId: string | null): string | null {
+    return memberId ? (members.find((m) => m.id === memberId)?.name ?? null) : null
+  }
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
@@ -3583,6 +3594,7 @@ function DetailsSection({ eventId }: { eventId: string }) {
               {s.recipientName}
               {s.relationship ? ` (${s.relationship})` : ''}
               {s.detail ? ` · ${s.detail}` : ''}
+              {memberName(s.memberId) ? ` · 👤 ${memberName(s.memberId)}` : ''}
             </span>
             <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventSpecialDetail(s.id).then(reload)} />
           </div>
@@ -3606,6 +3618,7 @@ function DetailsSection({ eventId }: { eventId: string }) {
       {showAddSpecial && (
         <AddSpecialDetailModal
           eventId={eventId}
+          members={members}
           onClose={() => setShowAddSpecial(false)}
           onAdded={() => {
             setShowAddSpecial(false)
@@ -3676,10 +3689,21 @@ function AddFavorModal({ eventId, onClose, onAdded }: { eventId: string; onClose
   )
 }
 
-function AddSpecialDetailModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+function AddSpecialDetailModal({
+  eventId,
+  members,
+  onClose,
+  onAdded,
+}: {
+  eventId: string
+  members: EventGuestMember[]
+  onClose: () => void
+  onAdded: () => void
+}) {
   const [recipientName, setRecipientName] = useState('')
   const [relationship, setRelationship] = useState('')
   const [detail, setDetail] = useState('')
+  const [memberId, setMemberId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -3692,7 +3716,7 @@ function AddSpecialDetailModal({ eventId, onClose, onAdded }: { eventId: string;
     setSaving(true)
     setError(null)
     try {
-      await addEventSpecialDetail(eventId, { recipientName, relationship: relationship || null, detail: detail || null })
+      await addEventSpecialDetail(eventId, { recipientName, relationship: relationship || null, detail: detail || null, memberId: memberId || null })
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -3726,6 +3750,19 @@ function AddSpecialDetailModal({ eventId, onClose, onAdded }: { eventId: string;
             Idea de detalle (opcional)
             <input type="text" value={detail} onChange={(e) => setDetail(e.target.value)} />
           </label>
+          {members.length > 0 && (
+            <label>
+              Vincular a una persona desglosada de Invitados (opcional)
+              <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+                <option value="">Sin vincular</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando…' : 'Añadir'}
           </button>
@@ -3741,6 +3778,7 @@ function AddSpecialDetailModal({ eventId, onClose, onAdded }: { eventId: string;
 
 function GiftsSection({ eventId }: { eventId: string }) {
   const [gifts, setGifts] = useState<EventGiftReceived[]>([])
+  const [members, setMembers] = useState<EventGuestMember[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -3748,10 +3786,17 @@ function GiftsSection({ eventId }: { eventId: string }) {
     listEventGifts(eventId)
       .then(setGifts)
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los regalos')))
+    // Fase 14D — para el selector opcional "vincular a una persona
+    // desglosada"; guestName sigue siendo el dato que manda (sirve
+    // también para regalos de varias personas a la vez, sin N:M).
+    listEventGuestMembersForEvent(eventId)
+      .then(setMembers)
+      .catch(() => {})
   }
   useEffect(reload, [eventId])
 
   const totalCash = gifts.reduce((sum, g) => sum + (g.cashAmount ?? 0), 0)
+  const memberName = (memberId: string | null): string | null => (memberId ? (members.find((m) => m.id === memberId)?.name ?? null) : null)
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
@@ -3772,6 +3817,7 @@ function GiftsSection({ eventId }: { eventId: string }) {
               {g.guestName}
               {g.giftDescription ? ` · ${g.giftDescription}` : ''}
               {g.cashAmount ? ` · ${g.cashAmount.toFixed(2)} €` : ''}
+              {memberName(g.memberId) ? ` · 👤 ${memberName(g.memberId)}` : ''}
             </span>
             <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventGift(g.id).then(reload)} />
           </div>
@@ -3784,6 +3830,7 @@ function GiftsSection({ eventId }: { eventId: string }) {
       {showAdd && (
         <AddGiftModal
           eventId={eventId}
+          members={members}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
@@ -3795,10 +3842,21 @@ function GiftsSection({ eventId }: { eventId: string }) {
   )
 }
 
-function AddGiftModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+function AddGiftModal({
+  eventId,
+  members,
+  onClose,
+  onAdded,
+}: {
+  eventId: string
+  members: EventGuestMember[]
+  onClose: () => void
+  onAdded: () => void
+}) {
   const [guestName, setGuestName] = useState('')
   const [giftDescription, setGiftDescription] = useState('')
   const [cashAmount, setCashAmount] = useState('')
+  const [memberId, setMemberId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -3811,7 +3869,12 @@ function AddGiftModal({ eventId, onClose, onAdded }: { eventId: string; onClose:
     setSaving(true)
     setError(null)
     try {
-      await addEventGift(eventId, { guestName, giftDescription: giftDescription || null, cashAmount: cashAmount ? Number(cashAmount) : null })
+      await addEventGift(eventId, {
+        guestName,
+        giftDescription: giftDescription || null,
+        cashAmount: cashAmount ? Number(cashAmount) : null,
+        memberId: memberId || null,
+      })
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -3845,6 +3908,19 @@ function AddGiftModal({ eventId, onClose, onAdded }: { eventId: string; onClose:
             Importe en efectivo (opcional)
             <input type="number" min={0} step="0.01" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} />
           </label>
+          {members.length > 0 && (
+            <label>
+              Vincular a una persona desglosada de Invitados (opcional)
+              <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+                <option value="">Sin vincular</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando…' : 'Añadir'}
           </button>

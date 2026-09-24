@@ -1420,7 +1420,7 @@ export async function deleteEventFavorItem(id: string): Promise<void> {
   if (error) throw error
 }
 
-const SPECIAL_DETAIL_SELECT = 'id, event_id, family_id, recipient_name, relationship, detail, budget, status, delivery_note, notes, created_at'
+const SPECIAL_DETAIL_SELECT = 'id, event_id, family_id, recipient_name, relationship, detail, budget, status, delivery_note, notes, member_id, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapSpecialDetail(r: any): EventSpecialDetail {
@@ -1435,6 +1435,7 @@ function mapSpecialDetail(r: any): EventSpecialDetail {
     status: r.status,
     deliveryNote: r.delivery_note,
     notes: r.notes,
+    memberId: r.member_id,
     createdAt: r.created_at,
   }
 }
@@ -1451,7 +1452,7 @@ export async function listEventSpecialDetails(eventId: string): Promise<EventSpe
 
 export async function addEventSpecialDetail(
   eventId: string,
-  input: { recipientName: string; relationship?: string | null; detail?: string | null; budget?: number | null },
+  input: { recipientName: string; relationship?: string | null; detail?: string | null; budget?: number | null; memberId?: string | null },
 ): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('event_special_details').insert({
@@ -1461,6 +1462,7 @@ export async function addEventSpecialDetail(
     relationship: input.relationship ?? null,
     detail: input.detail ?? null,
     budget: input.budget ?? null,
+    member_id: input.memberId ?? null,
   })
   if (error) throw error
 }
@@ -1482,7 +1484,7 @@ export async function deleteEventSpecialDetail(id: string): Promise<void> {
 // RSVP (event-rsvp no consulta esta tabla en ningún momento).
 // ---------------------------------------------------------------------
 
-const GIFT_SELECT = 'id, event_id, family_id, guest_name, gift_description, cash_amount, note, created_at'
+const GIFT_SELECT = 'id, event_id, family_id, guest_name, gift_description, cash_amount, note, member_id, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapGiftReceived(r: any): EventGiftReceived {
@@ -1494,6 +1496,7 @@ function mapGiftReceived(r: any): EventGiftReceived {
     giftDescription: r.gift_description,
     cashAmount: r.cash_amount === null ? null : Number(r.cash_amount),
     note: r.note,
+    memberId: r.member_id,
     createdAt: r.created_at,
   }
 }
@@ -1506,7 +1509,7 @@ export async function listEventGifts(eventId: string): Promise<EventGiftReceived
 
 export async function addEventGift(
   eventId: string,
-  input: { guestName: string; giftDescription?: string | null; cashAmount?: number | null; note?: string | null },
+  input: { guestName: string; giftDescription?: string | null; cashAmount?: number | null; note?: string | null; memberId?: string | null },
 ): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('event_gifts_received').insert({
@@ -1516,6 +1519,7 @@ export async function addEventGift(
     gift_description: input.giftDescription ?? null,
     cash_amount: input.cashAmount ?? null,
     note: input.note ?? null,
+    member_id: input.memberId ?? null,
   })
   if (error) throw error
 }

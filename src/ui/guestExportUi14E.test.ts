@@ -62,8 +62,8 @@ describe('GuestExportModal — organizar por / incluir (TEST: 3 modos, 2 filtros
     expect(MODAL_SRC).toContain('listEventTables(event.id)')
   })
 
-  it('todavía NO hay impresión ni compartir (llegan en 14E.3/14E.4)', () => {
-    expect(MODAL_SRC).not.toMatch(/navigator\.share|window\.print/)
+  it('todavía NO hay compartir (llega en 14E.4)', () => {
+    expect(MODAL_SRC).not.toMatch(/navigator\.share/)
   })
 
   it('reutiliza el patrón de modal ya establecido (.modal-overlay/.modal-sheet), no uno nuevo', () => {
@@ -82,5 +82,23 @@ describe('Fase 14E.2 — botón CSV (TEST: descarga el mismo modelo canónico, s
 
   it('pide BOM UTF-8 en la descarga, para que Excel/Numbers reconozcan bien ñ y tildes', () => {
     expect(MODAL_SRC).toContain("'text/csv;charset=utf-8', true)")
+  })
+})
+
+describe('Fase 14E.3 — botón Imprimir/PDF (TEST: reutiliza el mismo modelo, sin librería PDF)', () => {
+  it('el botón "📄 Imprimir / PDF" llama a guestExportReportHtml (domain, puro) y openPrintReport (services, efecto de navegador)', () => {
+    expect(MODAL_SRC).toContain("import { openPrintReport } from '@/services/printReport'")
+    expect(MODAL_SRC).toContain('openPrintReport(')
+    expect(MODAL_SRC).toContain('guestExportReportHtml(')
+    expect(MODAL_SRC).toContain('📄 Imprimir / PDF')
+  })
+
+  it('no instala ninguna librería PDF — el HTML se abre en pestaña nueva y usa window.print()', () => {
+    const PRINT_SRC = (import.meta.glob('/src/services/printReport.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
+      '/src/services/printReport.ts'
+    ]
+    expect(PRINT_SRC).toContain("window.open('', '_blank')")
+    expect(PRINT_SRC).toContain('win.print()')
+    expect(PRINT_SRC).not.toMatch(/jspdf|pdf-lib|pdfmake/i)
   })
 })

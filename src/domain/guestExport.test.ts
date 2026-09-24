@@ -6,9 +6,12 @@ import {
   buildMesasView,
   guestExportCsv,
   guestExportFilename,
+  guestExportReportHtml,
   inviteScopeLabel,
   personTypeLabel,
   rsvpStatusLabel,
+  type GuestExportAttendanceFilter,
+  type GuestExportOrganizeMode,
 } from '@/domain/guestExport'
 import type { EventGuest, EventGuestMember, EventGuestMemberType, EventTableSeat } from '@/domain/types'
 
@@ -442,5 +445,109 @@ describe('Fase 14E.2 — CSV (TEST: estructura, escapado, privacidad)', () => {
   it('el nombre de archivo se deriva del título del evento, sin nada técnico', () => {
     expect(guestExportFilename('Bodas de plata', 'mesas', 'csv')).toBe('invitados-bodas-de-plata-mesas.csv')
     expect(guestExportFilename('¡Cumpleaños de Iñaki!', 'alfabetico', 'csv')).toBe('invitados-cumpleanos-de-inaki-alfabetico.csv')
+  })
+})
+
+describe('Fase 14E.3 — Impresión/PDF (TEST: HTML seguro, contenido correcto, privacidad)', () => {
+  const META = (organize: GuestExportOrganizeMode, attendance: GuestExportAttendanceFilter = 'todos') => ({
+    eventTitle: 'Bodas de plata',
+    organize,
+    attendance,
+    generatedAtLabel: '24 de septiembre de 2026',
+  })
+
+  it('escapa HTML en nombres/grupos/mesas — un nombre con <script> nunca se interpreta como etiqueta', () => {
+    const guests = [guest('a', 'Familia <script>alert(1)</script>', { adultsCount: 1, childrenCount: 0 })]
+    const members = [member('m1', 'a', '<b>Juan</b> & "Ana"', 'adulto')]
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables: [] }, 'todos')
+    const html = guestExportReportHtml(model, META('familias'), false)
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).not.toContain('<b>Juan</b>')
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).toContain('&lt;b&gt;Juan&lt;/b&gt; &amp; &quot;Ana&quot;')
+  })
+
+  it('el título del evento aparece escapado, tanto en <title> como en el cuerpo', () => {
+    const model = buildGuestExportModel({ guests: [], membersByGuestId: {}, tables: [] }, 'todos')
+    const html = guestExportReportHtml(model, { ...META('mesas'), eventTitle: 'Cena & <Fiesta>' }, false)
+    expect(html).toContain('<title>Invitados — Cena &amp; &lt;Fiesta&gt;</title>')
+    expect(html).toContain('Invitados — Cena &amp; &lt;Fiesta&gt;')
+  })
+
+  it('muestra la organización elegida y el filtro de asistencia', () => {
+    const model = buildGuestExportModel({ guests: [], membersByGuestId: {}, tables: [] }, 'confirmados')
+    const html = guestExportReportHtml(model, META('alfabetico', 'confirmados'), false)
+    expect(html).toContain('Alfabético')
+    expect(html).toContain('Confirmados')
+    expect(html).toContain('24 de septiembre de 2026')
+  })
+
+  it('muestra el sobreaforo con el mismo aviso que ya usa la pantalla de Mesas', () => {
+    const guests = [guest('a', 'Familia A', { adultsCount: 3, childrenCount: 0, tableId: 't1' })]
+    const tables = [table('t1', 'Mesa 1', 2)]
+    const model = buildGuestExportModel({ guests, membersByGuestId: {}, tables }, 'todos')
+    const html = guestExportReportHtml(model, META('mesas'), false)
+    expect(html).toContain('⚠️ Aforo superado')
+    expect(html).toContain('Mesa 1 — 3/2')
+  })
+
+  it('muestra los pendientes de identificar, nunca ocultos', () => {
+    const guests = [guest('ramon', 'Familia Ramón', { adultsCount: 8, childrenCount: 1 })]
+    const members = Array.from({ length: 7 }, (_, i) => member(`m${i}`, 'ramon', `Adulto ${i}`, 'adulto'))
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables: [] }, 'todos')
+    const htmlMesas = guestExportReportHtml(model, META('mesas'), false)
+    const htmlFamilias = guestExportReportHtml(model, META('familias'), false)
+    const htmlAlfabetico = guestExportReportHtml(model, META('alfabetico'), false)
+    expect(htmlMesas).toContain('⚠️ Pendientes de asignar')
+    expect(htmlMesas).toContain('1 adulto pendiente de identificar')
+    expect(htmlFamilias).toContain('1 niño pendiente de identificar')
+    expect(htmlAlfabetico).toContain('Pendientes de identificar')
+  })
+
+  it('el título del documento y de la cabecera incluyen el evento — nunca un título genérico', () => {
+    const model = buildGuestExportModel({ guests: [], membersByGuestId: {}, tables: [] }, 'todos')
+    const html = guestExportReportHtml(model, META('mesas'), false)
+    expect(html).toContain('<title>Invitados — Bodas de plata</title>')
+    expect(html).toContain('<h1>Invitados — Bodas de plata</h1>')
+  })
+
+  it('incluye un botón de cerrar que se oculta al imprimir (mismo problema real ya resuelto en Economía: sin él, no hay forma de volver a la app)', () => {
+    const model = buildGuestExportModel({ guests: [], membersByGuestId: {}, tables: [] }, 'todos')
+    const html = guestExportReportHtml(model, META('mesas'), false)
+    expect(html).toContain('class="close-btn"')
+    expect(html).toContain('@media print')
+    expect(html).toMatch(/@media print\s*\{\s*\.close-btn\s*\{\s*display:\s*none/)
+  })
+
+  it('privacidad: el HTML nunca contiene un UUID, notas privadas ni tokens, en ningún modo', () => {
+    const uuidLike = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    const guests = [
+      guest('11111111-1111-1111-1111-111111111111', 'Familia Ramón', {
+        adultsCount: 2,
+        childrenCount: 0,
+        tableId: '22222222-2222-2222-2222-222222222222',
+        notes: 'nota privada del organizador',
+        rsvpNote: 'mensaje privado',
+      }),
+    ]
+    const members = [
+      member('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Ángela', 'adulto', {
+        tableId: '22222222-2222-2222-2222-222222222222',
+      }),
+    ]
+    const tables = [table('22222222-2222-2222-2222-222222222222', 'Mesa 1', 6)]
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables }, 'todos')
+    for (const mode of ['mesas', 'familias', 'alfabetico'] as const) {
+      const html = guestExportReportHtml(model, META(mode), true)
+      expect(html).not.toMatch(uuidLike)
+      expect(html).not.toContain('nota privada')
+      expect(html).not.toContain('mensaje privado')
+    }
+  })
+
+  it('sin invitados, genera un documento válido con los totales en 0 (nunca rompe)', () => {
+    const model = buildGuestExportModel({ guests: [], membersByGuestId: {}, tables: [] }, 'todos')
+    const html = guestExportReportHtml(model, META('mesas'), false)
+    expect(html).toContain('Total: 0 invitados')
   })
 })

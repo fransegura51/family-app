@@ -464,3 +464,138 @@ function slugify(text: string): string {
 export function guestExportFilename(eventTitle: string, mode: GuestExportOrganizeMode, extension: string): string {
   return `invitados-${slugify(eventTitle)}-${mode}.${extension}`
 }
+
+// ---------------------------------------------------------------------
+// Fase 14E.3 — Impresión/PDF. HTML puro y seguro (texto testable, sin
+// tocar el navegador — abrir la pestaña y llamar a window.print() es un
+// efecto de navegador y vive en services/printReport.ts, igual que
+// downloadTextFile). Construido sobre las MISMAS vistas de pantalla
+// (buildMesasView/buildFamiliasView/buildAlfabeticoView) de 14E.1, no
+// una lógica de contenido distinta para imprimir.
+//
+// Reutiliza/generaliza el patrón ya usado en Economía
+// (FinanceScreen.tsx → openBudgetReport: pestaña nueva + HTML inline +
+// window.print(), "Guardar como PDF" gratis vía el propio diálogo del
+// navegador) SIN tocar ese archivo — este es un helper nuevo y aparte.
+// ---------------------------------------------------------------------
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+function organizeModeLabel(mode: GuestExportOrganizeMode): string {
+  if (mode === 'mesas') return 'Por mesas'
+  if (mode === 'familias') return 'Por familias'
+  return 'Alfabético'
+}
+
+function attendanceFilterLabel(attendance: GuestExportAttendanceFilter): string {
+  return attendance === 'confirmados' ? 'Confirmados' : 'Todos'
+}
+
+function reportTotals(guests: EventGuest[]): { declared: number; confirmed: number | null } {
+  const declared = guests.reduce((sum, g) => sum + g.adultsCount + g.childrenCount, 0)
+  const confirmedGuests = guests.filter((g) => g.rsvpStatus === 'confirmado')
+  const confirmed =
+    confirmedGuests.length === 0 ? null : confirmedGuests.reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0)
+  return { declared, confirmed }
+}
+
+function mesasReportBody(view: MesasView): string {
+  const tableBlocks = view.tableGroups
+    .map((t) => {
+      const items = t.entries.length === 0 ? '<li class="muted">Sin invitados asignados.</li>' : t.entries.map((e) => `<li>${escapeHtml(e.label)}</li>`).join('')
+      const occupancy = t.capacity != null ? `${t.occupied}/${t.capacity}` : `${t.occupied}`
+      const warn = t.overCapacity ? ' <span class="warn">⚠️ Aforo superado</span>' : ''
+      return `<h2>${escapeHtml(t.tableName)} — ${occupancy}${warn}</h2><ul>${items}</ul>`
+    })
+    .join('')
+  if (view.pending.length === 0) return tableBlocks
+  const pendingBlock =
+    '<h2>⚠️ Pendientes de asignar</h2>' + view.pending.map((p) => `<p><strong>${escapeHtml(p.groupName)}</strong> — ${escapeHtml(p.lines.join(', '))}</p>`).join('')
+  return tableBlocks + pendingBlock
+}
+
+function familiasReportBody(view: FamiliasView): string {
+  return view.groups
+    .map((g) => {
+      const metaParts = [`Invitados: ${g.declaredTotal}`]
+      if (g.confirmedTotal != null) metaParts.push(`Confirmados: ${g.confirmedTotal}`)
+      metaParts.push(g.rsvpStatusLabel)
+      if (g.inviteScopeLabel) metaParts.push(g.inviteScopeLabel)
+      const named = g.namedLines.map((l) => `<li>${escapeHtml(l.text)}</li>`).join('')
+      const pending = g.pendingLines.map((l) => `<p class="pending">${escapeHtml(l)}</p>`).join('')
+      return `<h2>${escapeHtml(g.groupName)}</h2><p class="muted">${escapeHtml(metaParts.join(' · '))}</p>${named ? `<ul>${named}</ul>` : ''}${pending}`
+    })
+    .join('')
+}
+
+function alfabeticoReportBody(view: AlfabeticoView): string {
+  const entries = view.entries.map((e) => `<li>${escapeHtml(e.text)}</li>`).join('')
+  const entriesBlock = entries ? `<ul>${entries}</ul>` : '<p class="muted">Nadie identificado todavía.</p>'
+  if (view.pending.length === 0) return entriesBlock
+  const pendingBlock =
+    '<h2>Pendientes de identificar</h2>' + view.pending.map((p) => `<p><strong>${escapeHtml(p.groupName)}</strong> — ${escapeHtml(p.lines.join(', '))}</p>`).join('')
+  return entriesBlock + pendingBlock
+}
+
+export interface GuestExportReportMeta {
+  eventTitle: string
+  organize: GuestExportOrganizeMode
+  attendance: GuestExportAttendanceFilter
+  // Ya formateada por quien llama (Intl/toLocaleDateString es un efecto
+  // dependiente del reloj/locale del navegador) — esta función se queda
+  // pura y determinista, testable con un valor fijo.
+  generatedAtLabel: string
+}
+
+export function guestExportReportHtml(model: GuestExportModel, meta: GuestExportReportMeta, showInviteScope: boolean): string {
+  const body =
+    meta.organize === 'mesas'
+      ? mesasReportBody(buildMesasView(model))
+      : meta.organize === 'familias'
+        ? familiasReportBody(buildFamiliasView(model, showInviteScope))
+        : alfabeticoReportBody(buildAlfabeticoView(model))
+  const totals = reportTotals(model.filteredGuests)
+  const totalsLine = `Total: ${totals.declared} invitados${totals.confirmed != null ? ` · Confirmados: ${totals.confirmed}` : ''}`
+
+  return `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Invitados — ${escapeHtml(meta.eventTitle)}</title>
+<style>
+  body { font-family: system-ui, sans-serif; padding: 24px; padding-top: 64px; color: #1c1f26; background: #fff; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  h2 { font-size: 16px; margin-top: 20px; margin-bottom: 4px; }
+  .muted { color: #6b7280; margin-top: 0; font-size: 13px; }
+  .warn { color: #b45309; font-weight: 600; }
+  .pending { color: #b45309; margin: 2px 0; }
+  ul { margin: 4px 0; padding-left: 20px; }
+  li { padding: 2px 0; }
+  .close-btn {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    background: #4c6ef5;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  @media print {
+    .close-btn { display: none; }
+  }
+</style>
+</head>
+<body>
+  <button type="button" class="close-btn" onclick="window.close(); setTimeout(function(){ history.back() }, 150)">✕ Cerrar</button>
+  <h1>Invitados — ${escapeHtml(meta.eventTitle)}</h1>
+  <p class="muted">${escapeHtml(organizeModeLabel(meta.organize))} · ${escapeHtml(attendanceFilterLabel(meta.attendance))} · Generado el ${escapeHtml(meta.generatedAtLabel)}</p>
+  <p><strong>${escapeHtml(totalsLine)}</strong></p>
+  ${body}
+</body>
+</html>`
+}

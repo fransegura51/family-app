@@ -9,15 +9,17 @@ import {
   buildMesasView,
   guestExportCsv,
   guestExportFilename,
+  guestExportReportHtml,
   type GuestExportAttendanceFilter,
   type GuestExportModel,
   type GuestExportOrganizeMode,
 } from '@/domain/guestExport'
 import type { EventGuest, EventGuestMember, EventTableSeat, FamilyEvent } from '@/domain/types'
 import { downloadTextFile } from '@/services/exportFile'
+import { openPrintReport } from '@/services/printReport'
 
-// Fase 14E — modelo + vista previa (14E.1), CSV (14E.2). Impresión/PDF
-// y compartir llegan en 14E.3/14E.4, sobre este mismo modal y el mismo
+// Fase 14E — modelo + vista previa (14E.1), CSV (14E.2), impresión/PDF
+// (14E.3). Compartir llega en 14E.4, sobre este mismo modal y el mismo
 // modelo canónico de domain/guestExport.ts — nunca una lógica distinta
 // por formato. EventosScreen.tsx solo abre/cierra este modal y le pasa
 // el evento — la lógica de exportación vive aquí, no allí.
@@ -116,6 +118,25 @@ export function GuestExportModal({ event, onClose }: { event: FamilyEvent; onClo
           <>
             <GuestExportPreview model={model} organize={organize} showInviteScope={showInviteScope} />
             <div className="form-actions" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() =>
+                  openPrintReport(
+                    guestExportReportHtml(
+                      model,
+                      {
+                        eventTitle: event.title,
+                        organize,
+                        attendance,
+                        generatedAtLabel: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
+                      },
+                      showInviteScope,
+                    ),
+                  )
+                }
+              >
+                📄 Imprimir / PDF
+              </button>
               <button
                 type="button"
                 onClick={() => downloadTextFile(guestExportFilename(event.title, organize, 'csv'), guestExportCsv(model, organize), 'text/csv;charset=utf-8', true)}

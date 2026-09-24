@@ -159,6 +159,19 @@ describe('TIPO 2 — producto_frecuente (TEST: producto frecuente correcto, prod
     ]
     expect(findMostFrequentProduct({ prices, products }, NOW)).toBeNull()
   })
+
+  it('con un nombre de producto muy largo, lo acorta en la frase sin desbordar (TEST: nombres de productos muy largos)', () => {
+    const longName = 'Aceite de oliva virgen extra ecológico primera presión en frío 1L'
+    const products = [product('aceite', longName)]
+    const prices = [
+      price('aceite', { recordedDate: '2026-09-01' }),
+      price('aceite', { recordedDate: '2026-09-08' }),
+      price('aceite', { recordedDate: '2026-09-15' }),
+    ]
+    const insight = findMostFrequentProduct({ prices, products }, NOW)
+    expect(insight?.text).not.toContain(longName)
+    expect(insight?.text.length).toBeLessThan(80)
+  })
 })
 
 describe('TIPO 3 — precio_minimo_tienda (TEST: precio mínimo correcto, comparación entre tiendas correcta)', () => {
@@ -172,7 +185,12 @@ describe('TIPO 3 — precio_minimo_tienda (TEST: precio mínimo correcto, compar
       price('det', { store: 'Hiperber', price: 4.3, recordedDate: '2026-08-15' }),
     ]
     const insight = findBestPriceGapProduct({ prices, products })
-    expect(insight?.text).toBe('Detergente lo has pagado más barato en Mercadona: 3.85 €. En otra compra llegó a costarte 4.30 €.')
+    expect(insight?.text).toBe('Detergente lo pagas más barato en Mercadona: 3.85 €.')
+    // Correctivo final — separar conclusión de detalle: el "En otra
+    // compra llegó a costarte X €" ya no va en el bocadillo, vive en
+    // el historial real que abre "+info".
+    expect(insight?.text).not.toContain('En otra compra')
+    expect(insight?.moreInfo).toEqual({ productId: 'det', productName: 'Detergente' })
   })
 
   it('sin al menos 2 tiendas reales no compara nada', () => {
@@ -200,7 +218,7 @@ describe('TIPO 4 — producto_emergente (TEST: producto nuevo habitual según cr
       ...['r1', 'r2', 'r3', 'r4'].map((rid) => price('snack', { receiptId: rid, recordedDate: '2026-09-20' })),
     ]
     const insight = findEmergingProduct({ prices, products })
-    expect(insight?.text).toBe('Snack nuevo ya aparece en 4 de tus últimas 5 compras.')
+    expect(insight?.text).toBe('Snack nuevo empieza a ser habitual: 4 de tus últimas 5 compras.')
   })
 
   it('un producto con historia MÁS ANTIGUA que la ventana reciente no cuenta como "emergente"', () => {
@@ -231,7 +249,7 @@ describe('TIPO 5 — producto_desaparecido (TEST: producto desaparecido según c
       price('cava', { recordedDate: '2026-06-21' }),
     ]
     const insight = findDisappearedProduct({ prices, products }, NOW)
-    expect(insight?.text).toBe('Hace más de un mes que no compras Cava, aunque antes aparecía con frecuencia.')
+    expect(insight?.text).toBe('Hace más de un mes que no compras Cava — antes era habitual.')
   })
 
   it('una ausencia aislada (poco más del intervalo medio) no cuenta como "desaparecido"', () => {
@@ -255,7 +273,23 @@ describe('TIPO 6 — recompra_anticipada (TEST: intervalo de recompra correcto)'
       price('panal', { recordedDate: '2026-08-23' }),
     ]
     const insight = findEarlyRepurchase({ prices, products })
-    expect(insight?.text).toBe('Has vuelto a comprar Pañales solo 2 días después. Normalmente pasan unos 10 días entre compras.')
+    expect(insight?.text).toBe('Sueles comprar Pañales cada 10 días, pero esta vez has repetido a los 2.')
+  })
+
+  it('conclusión de recompra — reproduce literalmente el ejemplo dado por el usuario (Cebolla tubo cada 33 días, repetida a los 4)', () => {
+    const products = [product('cebolla', 'Cebolla tubo')]
+    const prices = [
+      price('cebolla', { recordedDate: '2026-06-01' }),
+      price('cebolla', { recordedDate: '2026-07-04' }),
+      price('cebolla', { recordedDate: '2026-08-06' }),
+      price('cebolla', { recordedDate: '2026-08-10' }),
+    ]
+    const insight = findEarlyRepurchase({ prices, products })
+    expect(insight?.text).toBe('Sueles comprar Cebolla tubo cada 33 días, pero esta vez has repetido a los 4.')
+    // El bocadillo se queda con la conclusión — el resto (fechas
+    // concretas, historial completo de intervalos) vive en "+info".
+    expect(insight?.text.length).toBeLessThan(90)
+    expect(insight?.moreInfo).toEqual({ productId: 'cebolla', productName: 'Cebolla tubo' })
   })
 
   it('sin historial suficiente (menos de 2 intervalos previos) no se pronuncia', () => {
@@ -274,9 +308,53 @@ describe('TIPO 7 — cesta_habitual (TEST: cesta habitual correcta)', () => {
       ...Array.from({ length: 4 }, (_, i) => price('c', { recordedDate: `2026-0${(i % 9) + 1}-10` })),
     ]
     const insight = findCoreBasket({ prices, products })
-    expect(insight?.text).toContain('Estos 3 productos')
-    expect(insight?.text).toContain('Leche')
+    expect(insight?.text).toBe('Tienes 3 productos habituales. Entre los que más se repiten están Leche, Pan y Huevos.')
     expect(insight?.moreInfo).toBeUndefined()
+  })
+
+  it('con muchos productos habituales (59), cuenta el total real pero solo nombra como máximo 4 ejemplos, los de mayor recurrencia (TEST: 59 productos habituales)', () => {
+    // Los 6 primeros (p0..p5, nombres cortos reales) son los MÁS recurrentes
+    // (10 compras); el resto (p6..p58) son menos recurrentes (solo 4, el
+    // mínimo para contar como "habitual") y con nombres irrelevantes: no
+    // deben aparecer como ejemplo, solo sumar al total.
+    const topNames = ['Leche', 'Pan', 'Huevos', 'Queso', 'Yogur', 'Tomate']
+    const products: Product[] = [
+      ...topNames.map((name, i) => product(`p${i}`, name)),
+      ...Array.from({ length: 53 }, (_, i) => product(`p${i + 6}`, `Producto ${i + 6}`)),
+    ]
+    const prices: ProductPrice[] = products.flatMap((p, i) => {
+      const count = i < 6 ? 10 : 4
+      return Array.from({ length: count }, (_, j) => price(p.id, { recordedDate: `2026-0${(j % 9) + 1}-0${(i % 9) + 1}` }))
+    })
+    const insight = findCoreBasket({ prices, products })
+    expect(insight?.text).toBe('Tienes 59 productos habituales. Entre los que más se repiten están Leche, Pan, Huevos y Queso.')
+    // Nunca enumera la lista completa ni afirma que los 59 se repiten igual.
+    expect(insight?.text).not.toContain('Producto 6')
+    expect(insight?.text).not.toContain('Yogur')
+    expect(insight?.text.length).toBeLessThan(160)
+    expect(insight?.moreInfo).toBeUndefined()
+  })
+
+  it('con nombres de producto muy largos, acorta cada nombre y reduce el número de ejemplos para no desbordar (TEST: nombres largos → menos ejemplos)', () => {
+    const longNames = [
+      'Detergente concentrado ecológico para ropa delicada',
+      'Papel higiénico triple capa suave extra largo',
+      'Yogur natural desnatado sin azúcares añadidos',
+      'Aceite de oliva virgen extra primera presión en frío',
+      'Galletas integrales con semillas de chía y lino',
+    ]
+    const products: Product[] = longNames.map((name, i) => product(`p${i}`, name))
+    const prices: ProductPrice[] = products.flatMap((p) => Array.from({ length: 4 }, (_, j) => price(p.id, { recordedDate: `2026-0${j + 1}-01` })))
+    const insight = findCoreBasket({ prices, products })
+    expect(insight).not.toBeNull()
+    // Cada nombre queda acortado a un máximo legible…
+    for (const name of longNames) {
+      expect(insight?.text).not.toContain(name)
+    }
+    // …y el presupuesto de caracteres deja sitio a menos de 4 ejemplos.
+    const exampleCount = (insight?.text.match(/,|y /g) ?? []).length
+    expect(exampleCount).toBeLessThan(4)
+    expect(insight?.text.length).toBeLessThan(160)
   })
 
   it('sin al menos 3 productos recurrentes no hay cesta habitual que mostrar', () => {
@@ -305,7 +383,7 @@ describe('TIPO 8 — categoria_por_tienda (TEST: categorías por tienda correcta
       price('b', { store: 'Hiperber', recordedDate: '2026-05-01' }),
     ]
     const insight = findCategoryStoreConcentration({ prices, products })
-    expect(insight?.text).toBe('La mayoría de tus productos de Limpieza los compras en Mercadona.')
+    expect(insight?.text).toBe('Compras la mayoría de Limpieza en Mercadona.')
   })
 
   it('con dos categorías concentradas en tiendas distintas, las contrasta en una sola frase', () => {
@@ -318,7 +396,22 @@ describe('TIPO 8 — categoria_por_tienda (TEST: categorías por tienda correcta
       ...Array.from({ length: 5 }, (_, i) => price('tomate', { store: 'Hiperber', recordedDate: `2026-0${i + 1}-05` })),
     ]
     const insight = findCategoryStoreConcentration({ prices, products })
-    expect(insight?.text).toBe('La mayoría de tus productos de Limpieza los compras en Mercadona, mientras que los de Verdura aparecen más en Hiperber.')
+    expect(insight?.text).toBe('Compras Limpieza sobre todo en Mercadona, y Verdura en Hiperber.')
+  })
+
+  it('con nombres de categoría y tienda largos, los acorta en la frase (TEST: categorías largas)', () => {
+    const products = [
+      product('a', 'Lejía', { category: 'Productos de limpieza y hogar para toda la casa' }),
+      product('b', 'Detergente', { category: 'Productos de limpieza y hogar para toda la casa' }),
+    ]
+    const prices = [
+      ...Array.from({ length: 4 }, (_, i) => price('a', { store: 'Supermercado Central de Distribución Regional', recordedDate: `2026-0${i + 1}-01` })),
+      price('b', { store: 'Otra tienda cualquiera', recordedDate: '2026-05-01' }),
+    ]
+    const insight = findCategoryStoreConcentration({ prices, products })
+    expect(insight?.text).not.toContain('Productos de limpieza y hogar para toda la casa')
+    expect(insight?.text).not.toContain('Supermercado Central de Distribución Regional')
+    expect(insight?.text.length).toBeLessThan(100)
   })
 
   it('productos sin category guardada no participan (no se adivina ninguna clase)', () => {
@@ -352,8 +445,23 @@ describe('TIPO 1 — tienda_habitual_barata', () => {
       ]),
     ]
     const insight = findCheapestStoreForHabituals({ prices, products })
-    expect(insight?.text).toBe('De los productos que compras habitualmente, 3 te han salido más baratos en Mercadona que en otras tiendas.')
+    expect(insight?.text).toBe('3 de tus productos habituales salen más baratos en Mercadona.')
     expect(insight?.moreInfo).toBeUndefined()
+  })
+
+  it('con un nombre de tienda muy largo, lo acorta en la frase sin desbordar (TEST: nombres largos de tienda)', () => {
+    const longStore = 'Hipermercado Central de la Región Metropolitana Sur'
+    const products = [product('a', 'Pan'), product('b', 'Leche'), product('c', 'Huevos')]
+    const prices = [
+      ...['a', 'b', 'c'].flatMap((id) => [
+        price(id, { store: longStore, price: 1, recordedDate: '2026-06-01' }),
+        price(id, { store: 'Hiperber', price: 2, recordedDate: '2026-07-01' }),
+        price(id, { store: longStore, price: 1, recordedDate: '2026-08-01' }),
+      ]),
+    ]
+    const insight = findCheapestStoreForHabituals({ prices, products })
+    expect(insight?.text).not.toContain(longStore)
+    expect(insight?.text.length).toBeLessThan(80)
   })
 
   it('con menos de 3 productos coincidiendo en la misma tienda barata no afirma nada', () => {
@@ -410,5 +518,101 @@ describe('+info solo con destino válido (TEST: +info solo cuando existe destino
     ]
     const insight = findMostFrequentProduct({ prices, products }, NOW)
     expect(insight?.moreInfo?.productId).toBe('leche')
+  })
+})
+
+describe('Correctivo final — política común de longitud (TEST: ningún hallazgo desborda el bocadillo, en el peor caso de datos)', () => {
+  // Techo generoso pero real: el bocadillo de la imagen oficial es una
+  // caja fija en móvil — ningún texto de este carrusel debe acercarse a
+  // un párrafo. 170 caracteres es muy por debajo del "estos 59
+  // productos... (100% INTEGRAL, BOLSA PLASTICO...)" original (~230+
+  // caracteres) que motivó este correctivo.
+  const MAX_BUBBLE_TEXT_LENGTH = 170
+  const LONG_STORE = 'Hipermercado Central de la Región Metropolitana Sur'
+  const LONG_PRODUCT = 'Aceite de oliva virgen extra ecológico primera presión en frío 1L'
+  const LONG_CATEGORY = 'Productos de limpieza y hogar para toda la casa'
+
+  it('TIPO 1 (tienda habitual barata) con nombre de tienda largo se mantiene corto', () => {
+    const products = [product('a', 'Pan'), product('b', 'Leche'), product('c', 'Huevos')]
+    const prices = ['a', 'b', 'c'].flatMap((id) => [
+      price(id, { store: LONG_STORE, price: 1, recordedDate: '2026-06-01' }),
+      price(id, { store: 'Hiperber', price: 2, recordedDate: '2026-07-01' }),
+      price(id, { store: LONG_STORE, price: 1, recordedDate: '2026-08-01' }),
+    ])
+    const insight = findCheapestStoreForHabituals({ prices, products })
+    expect(insight?.text.length).toBeLessThan(MAX_BUBBLE_TEXT_LENGTH)
+  })
+
+  it('TIPO 2 (producto frecuente) con nombre de producto largo se mantiene corto', () => {
+    const products = [product('p', LONG_PRODUCT)]
+    const prices = Array.from({ length: 5 }, (_, i) => price('p', { recordedDate: `2026-09-0${i + 1}` }))
+    const insight = findMostFrequentProduct({ prices, products }, NOW)
+    expect(insight?.text.length).toBeLessThan(MAX_BUBBLE_TEXT_LENGTH)
+  })
+
+  it('TIPO 3 (comparación de precios) con nombre de producto y tienda largos se mantiene corto', () => {
+    const products = [product('p', LONG_PRODUCT)]
+    const prices = [
+      price('p', { store: LONG_STORE, price: 3.85, recordedDate: '2026-08-01' }),
+      price('p', { store: 'Hiperber', price: 4.3, recordedDate: '2026-08-15' }),
+      price('p', { store: LONG_STORE, price: 3.9, recordedDate: '2026-09-01' }),
+    ]
+    const insight = findBestPriceGapProduct({ prices, products })
+    expect(insight?.text.length).toBeLessThan(MAX_BUBBLE_TEXT_LENGTH)
+  })
+
+  it('TIPO 4 (producto emergente) con nombre de producto largo se mantiene corto', () => {
+    const products = [product('snack', LONG_PRODUCT), product('ancla', 'Ancla')]
+    const receipts = ['r1', 'r2', 'r3', 'r4', 'r5']
+    const prices = [
+      price('ancla', { receiptId: 'r0-antigua', recordedDate: '2026-01-01' }),
+      ...receipts.map((rid, i) => price('ancla', { receiptId: rid, recordedDate: `2026-09-2${i}` })),
+      ...['r1', 'r2', 'r3', 'r4'].map((rid) => price('snack', { receiptId: rid, recordedDate: '2026-09-20' })),
+    ]
+    const insight = findEmergingProduct({ prices, products })
+    expect(insight?.text.length).toBeLessThan(MAX_BUBBLE_TEXT_LENGTH)
+  })
+
+  it('TIPO 5 (producto desaparecido) con nombre de producto largo se mantiene corto', () => {
+    const products = [product('p', LONG_PRODUCT)]
+    const prices = [
+      price('p', { recordedDate: '2026-06-01' }),
+      price('p', { recordedDate: '2026-06-11' }),
+      price('p', { recordedDate: '2026-06-21' }),
+    ]
+    const insight = findDisappearedProduct({ prices, products }, NOW)
+    expect(insight?.text.length).toBeLessThan(MAX_BUBBLE_TEXT_LENGTH)
+  })
+
+  it('TIPO 6 (recompra anticipada) con nombre de producto largo se mantiene corto', () => {
+    const products = [product('p', LONG_PRODUCT)]
+    const prices = [
+      price('p', { recordedDate: '2026-08-01' }),
+      price('p', { recordedDate: '2026-08-11' }),
+      price('p', { recordedDate: '2026-08-21' }),
+      price('p', { recordedDate: '2026-08-23' }),
+    ]
+    const insight = findEarlyRepurchase({ prices, products })
+    expect(insight?.text.length).toBeLessThan(MAX_BUBBLE_TEXT_LENGTH)
+  })
+
+  it('TIPO 7 (cesta habitual) con 59 productos habituales se mantiene corto', () => {
+    const products: Product[] = Array.from({ length: 59 }, (_, i) => product(`p${i}`, `Producto ${i}`))
+    const prices: ProductPrice[] = products.flatMap((p, i) => Array.from({ length: 4 }, (_, j) => price(p.id, { recordedDate: `2026-0${(j % 9) + 1}-0${(i % 9) + 1}` })))
+    const insight = findCoreBasket({ prices, products })
+    expect(insight?.text.length).toBeLessThan(MAX_BUBBLE_TEXT_LENGTH)
+  })
+
+  it('TIPO 8 (categoría por tienda) con nombres de categoría y tienda largos se mantiene corto', () => {
+    const products = [
+      product('a', 'Lejía', { category: LONG_CATEGORY }),
+      product('b', 'Detergente', { category: LONG_CATEGORY }),
+    ]
+    const prices = [
+      ...Array.from({ length: 4 }, (_, i) => price('a', { store: LONG_STORE, recordedDate: `2026-0${i + 1}-01` })),
+      price('b', { store: 'Hiperber', recordedDate: '2026-05-01' }),
+    ]
+    const insight = findCategoryStoreConcentration({ prices, products })
+    expect(insight?.text.length).toBeLessThan(MAX_BUBBLE_TEXT_LENGTH)
   })
 })

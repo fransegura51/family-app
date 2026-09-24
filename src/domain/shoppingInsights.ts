@@ -88,6 +88,49 @@ function moreInfoFor(product: Product): ShoppingInsightMoreInfo {
 }
 
 // ---------------------------------------------------------------------
+// Correctivo final — política común de longitud para las 8 frases:
+// nunca desborda el bocadillo real de la imagen oficial. En orden:
+// 1) frase corta y natural desde el origen (nunca un párrafo largo
+//    recortado con "…" como parche); 2) menos ejemplos; 3) sin
+// información secundaria (el detalle vive en "+info", nunca en la
+// frase principal); 4) solo entonces, el ajuste de tipografía en JS
+// de PepaComprasWidget (con un mínimo legible) hace el resto.
+// ---------------------------------------------------------------------
+const MAX_NAME_LENGTH = 22
+const EXAMPLES_CHAR_BUDGET = 34
+
+function shortenName(name: string): string {
+  const trimmed = name.trim()
+  if (trimmed.length <= MAX_NAME_LENGTH) return trimmed
+  return `${trimmed.slice(0, MAX_NAME_LENGTH - 1).trimEnd()}…`
+}
+
+function joinNames(names: string[]): string {
+  if (names.length === 0) return ''
+  if (names.length === 1) return names[0]
+  return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`
+}
+
+// Hasta `maxCount` ejemplos, ya en orden de más a menos recurrentes —
+// pero menos si los nombres son largos: un presupuesto de caracteres
+// para el GRUPO de ejemplos, no un tamaño fijo por nombre, así que
+// nombres largos dejan sitio a menos ejemplos en vez de desbordar.
+function pickExamples(names: string[], maxCount = 4): string[] {
+  const picked: string[] = []
+  let length = 0
+  for (const raw of names) {
+    if (picked.length >= maxCount) break
+    const name = shortenName(raw)
+    const additional = name.length + 2
+    if (picked.length > 0 && length + additional > EXAMPLES_CHAR_BUDGET) break
+    picked.push(name)
+    length += additional
+  }
+  if (picked.length === 0 && names.length > 0) picked.push(shortenName(names[0]))
+  return picked
+}
+
+// ---------------------------------------------------------------------
 // TIPO 1 — tienda más conveniente para productos habituales.
 // ---------------------------------------------------------------------
 export function findCheapestStoreForHabituals(input: Input): ShoppingInsight | null {
@@ -106,7 +149,7 @@ export function findCheapestStoreForHabituals(input: Input): ShoppingInsight | n
   if (count < 3) return null
   return {
     kind: 'tienda_habitual_barata',
-    text: `De los productos que compras habitualmente, ${count} te han salido más baratos en ${store} que en otras tiendas.`,
+    text: `${count} de tus productos habituales salen más baratos en ${shortenName(store)}.`,
   }
 }
 
@@ -127,9 +170,10 @@ export function findMostFrequentProduct(input: Input, now: Date): ShoppingInsigh
   if (!best) return null
   const product = products.get(best.productId)
   if (!product) return null
+  const times = best.count === 1 ? 'vez' : 'veces'
   return {
     kind: 'producto_frecuente',
-    text: `${product.displayName} es uno de tus productos más habituales: lo has comprado ${best.count} ${best.count === 1 ? 'vez' : 'veces'} en los últimos 30 días.`,
+    text: `${shortenName(product.displayName)} es de tus productos habituales: ${best.count} ${times} en 30 días.`,
     moreInfo: moreInfoFor(product),
   }
 }
@@ -157,9 +201,13 @@ export function findBestPriceGapProduct(input: Input): ShoppingInsight | null {
   if (!best) return null
   const product = products.get(best.productId)
   if (!product) return null
+  // Correctivo final — separar conclusión de detalle: la frase principal
+  // se queda solo con el hecho clave (dónde sale más barato); la
+  // comparación completa por tienda ya la da el propio "+info" al abrir
+  // el historial real del producto, sin duplicarla aquí.
   return {
     kind: 'precio_minimo_tienda',
-    text: `${product.displayName} lo has pagado más barato en ${best.min.store}: ${best.min.price.toFixed(2)} €. En otra compra llegó a costarte ${best.max.price.toFixed(2)} €.`,
+    text: `${shortenName(product.displayName)} lo pagas más barato en ${shortenName(best.min.store)}: ${best.min.price.toFixed(2)} €.`,
     moreInfo: moreInfoFor(product),
   }
 }
@@ -201,7 +249,7 @@ export function findEmergingProduct(input: Input): ShoppingInsight | null {
   if (!product) return null
   return {
     kind: 'producto_emergente',
-    text: `${product.displayName} ya aparece en ${best.appearances} de tus últimas ${windowSize} compras.`,
+    text: `${shortenName(product.displayName)} empieza a ser habitual: ${best.appearances} de tus últimas ${windowSize} compras.`,
     moreInfo: moreInfoFor(product),
   }
 }
@@ -234,7 +282,7 @@ export function findDisappearedProduct(input: Input, now: Date): ShoppingInsight
   if (!product) return null
   return {
     kind: 'producto_desaparecido',
-    text: `Hace más de un mes que no compras ${product.displayName}, aunque antes aparecía con frecuencia.`,
+    text: `Hace más de un mes que no compras ${shortenName(product.displayName)} — antes era habitual.`,
     moreInfo: moreInfoFor(product),
   }
 }
@@ -268,7 +316,7 @@ export function findEarlyRepurchase(input: Input): ShoppingInsight | null {
   if (!product) return null
   return {
     kind: 'recompra_anticipada',
-    text: `Has vuelto a comprar ${product.displayName} solo ${best.lastGap} ${best.lastGap === 1 ? 'día' : 'días'} después. Normalmente pasan unos ${Math.round(best.avgPrior)} días entre compras.`,
+    text: `Sueles comprar ${shortenName(product.displayName)} cada ${Math.round(best.avgPrior)} días, pero esta vez has repetido a los ${best.lastGap}.`,
     moreInfo: moreInfoFor(product),
   }
 }
@@ -288,11 +336,17 @@ export function findCoreBasket(input: Input): ShoppingInsight | null {
     .filter((x): x is { productId: string; count: number; name: string } => x.name != null)
     .sort((a, b) => b.count - a.count || a.productId.localeCompare(b.productId))
   if (recurring.length < 3) return null
-  const shown = recurring.slice(0, 5).map((x) => x.name)
-  const suffix = recurring.length > shown.length ? '…' : ''
+  // Correctivo final — con muchos productos habituales (visto en real:
+  // "Estos 59 productos... (100% INTEGRAL, BOLSA PLASTICO, TABLA
+  // QUESO...)") enumerarlos todos no es útil ni cabe en el bocadillo.
+  // Se cuentan todos (el cálculo interno no cambia), pero solo se
+  // nombran los que MÁS se repiten — como mucho 4, menos si los
+  // nombres son largos (ver pickExamples) — sin afirmar que los demás
+  // tienen la misma recurrencia.
+  const examples = pickExamples(recurring.map((x) => x.name))
   return {
     kind: 'cesta_habitual',
-    text: `Estos ${recurring.length} productos forman el núcleo de tu compra: aparecen de forma recurrente en tus tickets (${shown.join(', ')}${suffix}).`,
+    text: `Tienes ${recurring.length} productos habituales. Entre los que más se repiten están ${joinNames(examples)}.`,
   }
 }
 
@@ -338,12 +392,12 @@ export function findCategoryStoreConcentration(input: Input): ShoppingInsight | 
   if (second) {
     return {
       kind: 'categoria_por_tienda',
-      text: `La mayoría de tus productos de ${first.category} los compras en ${first.store}, mientras que los de ${second.category} aparecen más en ${second.store}.`,
+      text: `Compras ${shortenName(first.category)} sobre todo en ${shortenName(first.store)}, y ${shortenName(second.category)} en ${shortenName(second.store)}.`,
     }
   }
   return {
     kind: 'categoria_por_tienda',
-    text: `La mayoría de tus productos de ${first.category} los compras en ${first.store}.`,
+    text: `Compras la mayoría de ${shortenName(first.category)} en ${shortenName(first.store)}.`,
   }
 }
 

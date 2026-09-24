@@ -432,6 +432,14 @@ function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: Shoppi
   // Mismo ajuste de tamaño de letra que PepaConclusionsWidget: el texto
   // vive en una caja de altura fija (el bocadillo real de la ilustración)
   // y se reduce en JS hasta caber, en vez de desbordar por debajo.
+  // Correctivo final — esto es la ÚLTIMA red de seguridad, no el
+  // mecanismo principal: las frases ya se componen cortas desde el
+  // origen (domain/shoppingInsights.ts: shortenName/pickExamples,
+  // detalle movido a "+info"), así que con un texto bien compuesto casi
+  // nunca hace falta reducir mucho. minSize es más alto que en Economía
+  // (12px, no 9px) para mantener una lectura cómoda en iPhone — nunca
+  // se oculta texto fuera del bocadillo, pero tampoco se reduce la
+  // tipografía de forma indefinida.
   const currentText = insights[index]?.text ?? insights[0]?.text
   useEffect(() => {
     const el = textRef.current
@@ -441,7 +449,7 @@ function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: Shoppi
     const infoHeight = infoRef.current ? infoRef.current.offsetHeight + 2 : 0
     const available = bubble.clientHeight - infoHeight
     let size = parseFloat(window.getComputedStyle(el).fontSize)
-    const minSize = 9
+    const minSize = 12
     while (el.scrollHeight > available && size > minSize) {
       size -= 0.5
       el.style.fontSize = `${size}px`

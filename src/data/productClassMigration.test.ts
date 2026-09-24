@@ -173,6 +173,32 @@ describe('Fase 5: escritura — la clasificación automática NO se guarda como 
   })
 })
 
+describe('Corrección — PEPA no adivina Alimentación/Otros para un producto desconocido', () => {
+  const ui = (file: string) => APP[`/src/ui/${file}`]
+
+  it('kindIsDefault ya NO usa "no existe fila en products" como señal — una fila vacía (p. ej. creada solo por una foto) no es una clasificación real', () => {
+    for (const file of ['ShoppingScreen.tsx', 'FinanceScreen.tsx']) {
+      expect(ui(file), file).not.toMatch(/kindIsDefault:\s*!existing[,\s]/)
+      expect(ui(file), file).toMatch(/kindIsDefault:\s*existing\s*==\s*null\s*\|\|\s*\(existing\.classKind\s*==\s*null\s*&&\s*!existing\.nonFood\)/)
+    }
+  })
+
+  it('el resolutor central ya no manda el respaldo de Alimentos-por-defecto a "Otros": cuando no hay ninguna señal real, className queda vacío (Sin clasificar)', () => {
+    const src = APP['/src/domain/productClass.ts']
+    // El bloque kindIsDefault del respaldo de Alimentos devuelve className vacío, nunca busca ni rellena una clase de "Otros".
+    const block = src.slice(src.indexOf('if (input.kindIsDefault)'), src.indexOf('// Contexto real y ya sabido como Alimentos'))
+    expect(block).toContain("className: ''")
+    expect(block).not.toMatch(/no_alimentos|NO_FOOD_TYPES|findClassByName/)
+  })
+
+  it('el estado "Sin clasificar" reutiliza el mecanismo ya existente (className vacío → label "Sin clasificar", icono ❓), sin ningún concepto nuevo de UI', () => {
+    expect(ui('ShoppingScreen.tsx')).toContain("const label = classification || 'Sin clasificar'")
+    // FinanceScreen no construye un label propio (la vista de tickets ya lo hacía así antes de esta corrección) — solo el icono
+    // depende de si hay clasificación; sigue cayendo a ❓ cuando classification está vacío, sin ningún cambio necesario aquí.
+    expect(ui('FinanceScreen.tsx')).toMatch(/known\?\.icon\s*\?\?\s*\(classification\s*\?/)
+  })
+})
+
 describe('Fase 5: privacidad y seguridad de lectura', () => {
   it('a la RPC solo viajan tienda y texto comercial: el cargador no conoce familias, precios, fechas ni tickets', () => {
     const code = (s: string) => s.replace(/\/\/[^\n]*/g, '').replace(/Date\.now/g, '')

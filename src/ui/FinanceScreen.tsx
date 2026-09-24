@@ -5782,7 +5782,9 @@ function resolveDraftLineClass(
       name: existing?.displayName ?? line.name,
       product: existing ?? null,
       kind,
-      kindIsDefault: !existing, // producto nuevo: el conjunto es solo una suposición por tienda; lo compartido aprobado puede fijarlo
+      // Sin ninguna clasificación REAL conocida (ni clase confirmada/histórica, ni marca non_food) — el conjunto es solo una
+      // suposición, aunque ya exista el producto (p. ej. una fila creada solo para una foto, sin clasificar nada todavía).
+      kindIsDefault: existing == null || (existing.classKind == null && !existing.nonFood),
       familyClasses: [...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos],
       shared: line.name.trim() ? shared : null,
     })

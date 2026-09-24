@@ -15,7 +15,7 @@
 // respaldo en products.category: se resuelve dinámicamente.
 //
 // Este módulo es PURO: el resultado compartido ya viene resuelto (lo carga sharedClassLoader por lotes).
-import { classifyFoodType, NO_FOOD_TYPES } from './foodTypes'
+import { classifyFoodType } from './foodTypes'
 
 export type ProductClassKind = 'alimentacion' | 'no_alimentos'
 export type ProductClassSource = 'manual' | 'shared' | 'legacy' | 'rule' | 'fallback'
@@ -147,18 +147,21 @@ export function resolveProductClass(input: ResolveProductClassInput): ResolvedPr
       }
     }
     // Ninguna palabra de comida en el nombre Y "alimentación" aquí es
-    // solo una suposición (tienda física por defecto, no un dato real)
-    // — asumir "Otros alimentos" sin más pruebas etiquetaba como comida
-    // productos que no lo son (bug real: "Desatascador" mostrado como
-    // Otros alimentos). Se manda al catálogo de Otros (no alimentos) en
-    // su lugar, si la familia todavía tiene esa clase — nunca se
-    // inventa una clase nueva.
+    // solo una suposición (sin clasificación real conocida) — PEPA NO
+    // DEBE ADIVINAR: ni asumir "Otros alimentos" (bug real: "Desatascador"
+    // mostrado como comida) ni asumir "Otros"/no_alimentos (bug real:
+    // "Tortitas integrales" mostrado como no-comida solo por no
+    // reconocer la palabra — ausencia de coincidencia no es lo mismo
+    // que "no es comida"). Queda "Sin clasificar" (mecanismo YA
+    // existente: className vacío, igual que el respaldo de no_alimentos
+    // más abajo) hasta que la familia lo confirme a mano o el
+    // aprendizaje compartido lo resuelva.
     if (input.kindIsDefault) {
-      const otros = findClassByName(input.familyClasses.filter((c) => c.kind === 'no_alimentos'), NO_FOOD_TYPES[NO_FOOD_TYPES.length - 1].label)
-      if (otros) {
-        return { className: otros.name, foodTypeKey: otros.catalogKey, kind: 'no_alimentos', source: 'fallback', sharedOutcome, classKnown: true }
-      }
+      return { className: '', foodTypeKey: null, kind: input.kind, source: 'fallback', sharedOutcome, classKnown: false }
     }
+    // Contexto real y ya sabido como Alimentos (no una suposición, p. ej.
+    // Historial en su propia pestaña de Alimentos): "Otros alimentos"
+    // sigue siendo el cajón de sastre esperado dentro de ese conjunto.
     return {
       className: guess.label,
       foodTypeKey: RULE_KEY_TO_FOOD_TYPE_KEY[guess.key] ?? null,

@@ -1195,7 +1195,10 @@ function ShoppingListTab() {
       name: item.name,
       product: existing ?? null,
       kind: contextKind,
-      kindIsDefault: !existing, // producto nuevo: «Alimentos» es solo una suposición; lo compartido aprobado puede fijar el conjunto
+      // Sin ninguna clasificación REAL conocida (ni clase confirmada/histórica, ni marca non_food) — «Alimentos» aquí es solo
+      // una suposición, aunque ya exista una fila en products (p. ej. creada solo para adjuntar una foto, sin clasificar nada
+      // — bug real: «Desatascador»). NO usar !existing solo: una fila vacía no es una clasificación conocida.
+      kindIsDefault: existing == null || (existing.classKind == null && !existing.nonFood),
       familyClasses: [...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos],
       shared: sharedHintFor(listShared, item.store, item.name),
     })

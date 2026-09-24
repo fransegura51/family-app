@@ -228,19 +228,14 @@ describe('Fase 1F.E — Inicio de Compras: nuevo bloque de análisis bajo los 4 
   })
 
   // RESUELTO en el Inciso Compras — Parte A (carrusel "PEPA analiza tus compras",
-  // PepaComprasWidget, ver forecastIncisoCompras.test.ts / shoppingInsights.test.ts /
-  // shoppingPepaCarousel.test.ts): la ilustración oficial de Pepa en el súper todavía no se ha
-  // subido al repo (se pidió al usuario, con ruta y nombre exactos), así que el carrusel usa un
-  // marcador temporal ya existente en el repo (pepa-avatar.jpg) — nunca se ha inventado ni
-  // generado ningún archivo — documentado con un TODO explícito junto al import, listo para
-  // cambiarse por una sola línea en cuanto exista el archivo real.
-  it('sigue sin haber ningún import nuevo bajo @/assets/compras/ más allá del compras-header ya existente (la imagen oficial sigue sin subir)', () => {
-    expect((SS.match(/from '@\/assets\/compras\//g) ?? []).length).toBe(1)
-  })
-
-  it('el marcador temporal de imagen está documentado como tal (TODO explícito, no una imagen definitiva)', () => {
-    expect(SS).toContain('TODO(asset pendiente)')
-    expect(SS).toContain("import pepaComprasImgPlaceholder from '@/assets/pepa/pepa-avatar.jpg'")
+  // PepaComprasWidget, ver shoppingInsights.test.ts / shoppingPepaCarousel.test.ts): el usuario
+  // suministró la ilustración oficial de Pepa en el súper (cesta, junto a la caja, revisando un
+  // ticket, bocadillo grande vacío) — nunca se inventó ni generó ninguna imagen. Vive en
+  // src/assets/compras/pepa-compras-analiza.jpg (941×1672), con las coordenadas del bocadillo en
+  // .pepa-compras-bubble-content (styles.css) medidas a mano sobre la imagen real.
+  it('usa la ilustración oficial de Pepa en el súper, no un marcador temporal ni una imagen de otra sección', () => {
+    expect(SS).toContain("import pepaComprasImg from '@/assets/compras/pepa-compras-analiza.jpg'")
+    expect((SS.match(/from '@\/assets\/compras\//g) ?? []).length).toBe(2)
   })
 })
 

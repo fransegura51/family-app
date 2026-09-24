@@ -630,12 +630,11 @@ body {
    hábitos, Compras → Inicio). Mismo patrón que .pepa-conclusion-note/
    .pepa-conclusion-bubble-content de arriba (Economía → Resumen),
    clases propias porque la ilustración es distinta (Pepa en el súper,
-   no en casa). Coordenadas del bocadillo puestas de forma PROVISIONAL
-   (mismo % que pepa-conclusiones.jpg, composición similar descrita) —
-   se usa un marcador temporal como imagen (ver ShoppingScreen.tsx,
-   PepaComprasWidget) hasta que exista el archivo oficial en
-   src/assets/compras/pepa-compras-analiza.jpg; en cuanto se suministre,
-   volver a medir estas coordenadas a mano sobre la imagen real. */
+   con la cesta, junto a la caja, revisando un ticket) y bastante más
+   alta/estrecha (941×1672, frente a 1024×1536). Coordenadas del
+   bocadillo medidas a mano sobre la imagen real: es un bocadillo
+   ancho pegado a la parte de arriba, no centrado a media altura como
+   en Economía. */
 .pepa-compras-banner {
   margin: 14px 0;
 }
@@ -643,7 +642,7 @@ body {
 .pepa-compras-note {
   position: relative;
   width: 100%;
-  aspect-ratio: 1024 / 1536;
+  aspect-ratio: 941 / 1672;
   border-radius: 14px;
   overflow: hidden;
   container-type: inline-size;
@@ -658,10 +657,10 @@ body {
 
 .pepa-compras-bubble-content {
   position: absolute;
-  top: 6%;
-  left: 9%;
+  top: 4%;
+  left: 7%;
   width: 82%;
-  height: 27%;
+  height: 24%;
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -409,6 +409,9 @@ export interface Product {
   // null/undefined = sin clase conocida (entonces `nonFood` es solo la marca heredada). La TIENDA nunca entra aquí. La deriva
   // listProducts (data/products.ts); ver buildProductKindSets (domain/products.ts).
   classKind?: 'alimentacion' | 'no_alimentos' | null
+  // Inciso Compras — Parte B: foto OPCIONAL para reconocer el producto en la tienda (bucket privado
+  // product-photos, signed URL) — null = sin foto, el caso normal para la mayoría de productos.
+  photoPath: string | null
 }
 
 export interface ProductPrice {

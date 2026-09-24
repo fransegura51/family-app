@@ -1,4 +1,14 @@
-import { FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ChangeEvent,
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  TouchEvent as ReactTouchEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   COMPRAS_MENU_ITEM_META,
@@ -21,7 +31,7 @@ import {
   updateShoppingItem,
   updateShoppingItemStatus,
 } from '@/data/shopping'
-import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
+import { getProductPhotoUrl, listAllProductPrices, listProducts, removeProductPhoto, setProductNonFood, uploadProductPhotoForName } from '@/data/products'
 import {
   listFamilyFoodTypes,
   seedFamilyFoodTypes,
@@ -53,15 +63,12 @@ import { ProductTypesModal } from '@/ui/ProductTypesModal'
 import { setPendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { setPendingProductHistoryLink, takePendingProductHistoryLink } from '@/state/pendingProductHistoryLink'
 import { onManagersChanged, openManager } from '@/state/managers'
-// TODO(asset pendiente): el usuario todavía no ha subido la ilustración
-// oficial de Pepa en el súper (con cesta, junto a la caja, revisando un
-// ticket) — debe colocarse en src/assets/compras/pepa-compras-analiza.jpg.
-// En cuanto exista, cambiar este import a esa ruta y ajustar las
-// coordenadas del bocadillo en .pepa-compras-bubble-content (styles.css)
-// a la composición real de esa imagen. Se usa pepa-avatar.jpg como
-// marcador temporal SOLO para que el carrusel sea funcional y
-// verificable mientras tanto — no es la imagen definitiva.
-import pepaComprasImgPlaceholder from '@/assets/pepa/pepa-avatar.jpg'
+// Ilustración oficial de Pepa en el súper (cesta, junto a la caja,
+// revisando un ticket, bocadillo grande vacío) — mismo patrón que
+// pepaConclusionsImg en FinanceScreen.tsx. 941×1672 — ver
+// .pepa-compras-note/.pepa-compras-bubble-content en styles.css, con
+// las coordenadas del bocadillo medidas a mano sobre esta imagen real.
+import pepaComprasImg from '@/assets/compras/pepa-compras-analiza.jpg'
 import type {
   Product,
   ProductPrice,
@@ -114,11 +121,15 @@ function normalizeProductName(s: string): string {
 // habitual (con marca), cantidad/unidad y último precio pagado, para no
 // tener que escribirlo todo de cero cada vez.
 interface ProductSuggestion {
+  productId: string
   displayName: string
   normalizedName: string
   quantity: string | null
   unit: string | null
   lastPrice: number | null
+  // Inciso Compras — Parte B: foto opcional del producto (products.photo_path), para el ojo 👁 de
+  // cada fila de la lista — reutiliza este mismo mapa por nombre normalizado en vez de cargar aparte.
+  photoPath: string | null
 }
 
 function buildSuggestions(
@@ -135,11 +146,13 @@ function buildSuggestions(
     const stats = computeProductStats(ownPrices)
     const last = [...ownPrices].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))[0]
     return {
+      productId: p.id,
       displayName: p.displayName,
       normalizedName: p.normalizedName,
       quantity: last?.quantity ?? null,
       unit: last?.unit ?? null,
       lastPrice: stats?.lastPrice ?? null,
+      photoPath: p.photoPath,
     }
   })
 }
@@ -439,7 +452,7 @@ function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: Shoppi
     return (
       <div className="pepa-compras-banner">
         <div className="pepa-compras-note">
-          <img src={pepaComprasImgPlaceholder} alt="" className="pepa-compras-note-img" />
+          <img src={pepaComprasImg} alt="" className="pepa-compras-note-img" />
           <div className="pepa-compras-bubble-content">
             <p className="pepa-compras-note-text">Todavía necesito más tickets o compras registradas para detectar patrones.</p>
           </div>
@@ -477,7 +490,7 @@ function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: Shoppi
         role="group"
         aria-label="Hallazgo de Pepa sobre tus compras"
       >
-        <img src={pepaComprasImgPlaceholder} alt="" className="pepa-compras-note-img" />
+        <img src={pepaComprasImg} alt="" className="pepa-compras-note-img" />
         <div ref={bubbleRef} className="pepa-compras-bubble-content">
           <p ref={textRef} className="pepa-compras-note-text">
             {current.text}
@@ -1399,6 +1412,7 @@ function ShoppingListTab() {
               item={editingItem}
               suggestions={suggestions}
               knownStores={[...new Set(items.map((i) => i.store).filter((s): s is string => !!s))]}
+              onPhotoChanged={reload}
               onSaved={() => {
                 reload()
                 setEditingItem(null)
@@ -1731,7 +1745,11 @@ function DraggableStoreGroup({
         // Todo el detalle (cantidad/unidad, prioridad, precio) en una
         // sola línea con el nombre, estilo Memoria — petición real:
         // "más estrecha, al estilo de Memoria... en una sola línea".
-        const known = suggestions.find((s) => s.normalizedName === normalizeProductName(item.name))
+        // normalizeProductName() en los dos lados: products.normalized_name
+        // (data/products.ts) no quita acentos, pero el nombre del item sí
+        // se compara sin ellos aquí — sin normalizar los dos igual, un
+        // nombre con tilde ("Champú") nunca encontraría su producto.
+        const known = suggestions.find((s) => normalizeProductName(s.normalizedName) === normalizeProductName(item.name))
         const detailParts = [
           [item.quantity, item.unit].filter(Boolean).join(' '),
           !shoppingMode && item.priority !== 'normal' ? `prioridad ${item.priority}` : null,
@@ -1743,6 +1761,7 @@ function DraggableStoreGroup({
             key={item.id}
             item={item}
             label={label}
+            photoPath={known?.photoPath ?? null}
             done={done}
             dragging={draggingId === item.id}
             dragOffsetY={dragOffset}
@@ -1772,6 +1791,7 @@ const SWIPE_OPEN_X = -76
 function ShoppingItemRow({
   item,
   label,
+  photoPath,
   done,
   dragging,
   dragOffsetY,
@@ -1786,6 +1806,7 @@ function ShoppingItemRow({
 }: {
   item: ShoppingItem
   label: string
+  photoPath: string | null
   done: boolean
   dragging: boolean
   dragOffsetY: number
@@ -1802,6 +1823,25 @@ function ShoppingItemRow({
   const [liveX, setLiveX] = useState<number | null>(null)
   const swipeStartX = useRef(0)
   const swiping = useRef(false)
+  // Inciso Compras — Parte B: ojo discreto, SOLO si hay foto — nunca
+  // aumenta la altura de la fila (misma altura que las que no tienen).
+  // No hay lightbox propio en la app: mismo patrón ya usado para tickets/
+  // documentos (FinanceScreen.tsx handleViewTicket, DocumentsScreen.tsx) —
+  // pestaña nueva con la URL firmada.
+  const [openingPhoto, setOpeningPhoto] = useState(false)
+  async function handleViewPhoto(e: ReactMouseEvent) {
+    e.stopPropagation()
+    if (!photoPath || openingPhoto) return
+    setOpeningPhoto(true)
+    try {
+      const url = await getProductPhotoUrl(photoPath)
+      window.open(url, '_blank')
+    } catch {
+      // Una foto que no carga nunca debe romper la lista — se ignora en silencio, el ojo sigue ahí para reintentar.
+    } finally {
+      setOpeningPhoto(false)
+    }
+  }
 
   function handleSwipeStart(e: ReactPointerEvent) {
     if (shoppingMode) return
@@ -1885,6 +1925,11 @@ function ShoppingItemRow({
         >
           {label}
         </button>
+        {photoPath && (
+          <button type="button" className="icon-button" onClick={handleViewPhoto} aria-label={`Ver foto de ${item.name}`}>
+            👁
+          </button>
+        )}
         {/* Marcar/desmarcar comprado — ya NO borra el producto de la
             lista, solo lo tacha (petición real: seguir viéndolo
             mientras se sigue comprando el resto). */}
@@ -1922,6 +1967,15 @@ function AddShoppingItemForm({
   const [matchedPrice, setMatchedPrice] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Inciso Compras — Parte B: igual que "Tienda (opcional)", un enlace
+  // discreto para no complicar el alta rápida de varios productos
+  // seguidos — la mayoría no llevará foto. Sube directo al elegirla
+  // (crea/reutiliza el producto por nombre, ver uploadProductPhotoForName);
+  // "Ver/Cambiar/Quitar" con más detalle vive en "Editar producto".
+  const [photoName, setPhotoName] = useState<string | null>(null)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   // Al escribir "LE" ya aparece "Leche" (con su marca habitual) en el
   // desplegable nativo del input; al completarlo (a mano o eligiéndolo)
@@ -1940,6 +1994,22 @@ function AddShoppingItemForm({
     }
   }
 
+  async function handlePhotoSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !name.trim()) return
+    setPhotoBusy(true)
+    setPhotoError(null)
+    try {
+      await uploadProductPhotoForName(name, file)
+      setPhotoName(name)
+    } catch (err) {
+      setPhotoError(errorMessage(err, 'No se pudo subir la foto'))
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
@@ -1950,6 +2020,7 @@ function AddShoppingItemForm({
       setQuantity('')
       setUnit('')
       setMatchedPrice(null)
+      setPhotoName(null)
       // La tienda NO se limpia adrede: al añadir varios productos seguidos
       // de la misma tienda ("en Mercadona: patatas, huevos, leche") no
       // hace falta volver a escribirla cada vez.
@@ -2009,6 +2080,22 @@ function AddShoppingItemForm({
           ))}
         </select>
       </label>
+      {photoError && <p className="error">{photoError}</p>}
+      {photoName === name && photoName ? (
+        <p className="muted" style={{ fontSize: 13 }}>
+          📷 Foto añadida a "{photoName}".
+        </p>
+      ) : (
+        <button
+          type="button"
+          className="link-button"
+          disabled={photoBusy || !name.trim()}
+          onClick={() => photoInputRef.current?.click()}
+        >
+          {photoBusy ? 'Subiendo…' : '📷 Foto del producto (opcional)'}
+        </button>
+      )}
+      <input type="file" accept="image/*" ref={photoInputRef} onChange={handlePhotoSelected} style={{ display: 'none' }} />
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Añadiendo…' : 'Añadir'}
@@ -2023,11 +2110,17 @@ function EditShoppingItemForm({
   item,
   suggestions,
   knownStores,
+  onPhotoChanged,
   onSaved,
 }: {
   item: ShoppingItem
   suggestions: ProductSuggestion[]
   knownStores: string[]
+  // Añadir/cambiar/quitar la foto se guarda al instante (no espera al
+  // "Guardar" del formulario) — sin avisar al padre, la fila de la
+  // lista seguiría enseñando el ojo viejo (o ninguno) hasta el próximo
+  // reload, aunque en la base de datos ya estuviera al día.
+  onPhotoChanged: () => void
   onSaved: () => void
 }) {
   const [name, setName] = useState(item.name)
@@ -2037,6 +2130,61 @@ function EditShoppingItemForm({
   const [priority, setPriority] = useState<ShoppingItemPriority>(item.priority)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Inciso Compras — Parte B: foto OPCIONAL del producto (products.photo_path, no de este item de
+  // lista — ver getOrCreateProductId en data/products.ts). Se arranca con lo que ya se sabe de este
+  // producto (si ya se compró antes) y se actualiza en memoria tras subir/quitar, sin recargar toda
+  // la lista solo para esto.
+  const matched = suggestions.find((s) => normalizeProductName(s.normalizedName) === normalizeProductName(item.name))
+  const [productId, setProductId] = useState<string | null>(matched?.productId ?? null)
+  const [photoPath, setPhotoPath] = useState<string | null>(matched?.photoPath ?? null)
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!photoPath) {
+      setPhotoUrl(null)
+      return
+    }
+    getProductPhotoUrl(photoPath)
+      .then(setPhotoUrl)
+      .catch(() => setPhotoUrl(null))
+  }, [photoPath])
+
+  async function handlePhotoSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPhotoBusy(true)
+    setPhotoError(null)
+    try {
+      const result = await uploadProductPhotoForName(name, file)
+      setProductId(result.productId)
+      setPhotoPath(result.photoPath)
+      onPhotoChanged()
+    } catch (err) {
+      setPhotoError(errorMessage(err, 'No se pudo subir la foto'))
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
+  async function handleRemovePhoto() {
+    if (!productId || !photoPath) return
+    setPhotoBusy(true)
+    setPhotoError(null)
+    try {
+      await removeProductPhoto(productId, photoPath)
+      setPhotoPath(null)
+      onPhotoChanged()
+    } catch (err) {
+      setPhotoError(errorMessage(err, 'No se pudo quitar la foto'))
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -2092,6 +2240,30 @@ function EditShoppingItemForm({
           ))}
         </select>
       </label>
+      <div>
+        <p className="muted" style={{ margin: '0 0 4px', fontSize: 13 }}>
+          📷 Foto del producto (opcional) — para que se reconozca en la tienda sin dudas.
+        </p>
+        {photoError && <p className="error">{photoError}</p>}
+        {photoPath ? (
+          <div className="inline-fields" style={{ alignItems: 'center' }}>
+            {photoUrl && (
+              <button type="button" className="link-button" onClick={() => window.open(photoUrl, '_blank')}>
+                👁 Ver foto
+              </button>
+            )}
+            <button type="button" className="link-button" disabled={photoBusy} onClick={() => photoInputRef.current?.click()}>
+              Cambiar foto
+            </button>
+            <ConfirmButton onConfirm={handleRemovePhoto} label="Quitar foto" className="link-button" />
+          </div>
+        ) : (
+          <button type="button" className="link-button" disabled={photoBusy} onClick={() => photoInputRef.current?.click()}>
+            {photoBusy ? 'Subiendo…' : '+ Añadir foto (hacer foto o elegir de la galería)'}
+          </button>
+        )}
+        <input type="file" accept="image/*" ref={photoInputRef} onChange={handlePhotoSelected} style={{ display: 'none' }} />
+      </div>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Guardar'}

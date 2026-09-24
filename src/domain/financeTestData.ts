@@ -60,8 +60,8 @@ export const EXPENSES: Expense[] = [
 ]
 
 export const PRODUCTS: Product[] = [
-  { id: 'q1', familyId: 'f', normalizedName: 'queso rallado', displayName: 'Queso rallado', category: null, brand: null, nonFood: false, classConfirmedAt: null },
-  { id: 'l1', familyId: 'f', normalizedName: 'leche entera', displayName: 'Leche entera', category: null, brand: null, nonFood: false, classConfirmedAt: null },
+  { id: 'q1', familyId: 'f', normalizedName: 'queso rallado', displayName: 'Queso rallado', category: null, brand: null, nonFood: false, classConfirmedAt: null, photoPath: null },
+  { id: 'l1', familyId: 'f', normalizedName: 'leche entera', displayName: 'Leche entera', category: null, brand: null, nonFood: false, classConfirmedAt: null, photoPath: null },
 ]
 
 // Los precios de estos tests son líneas de un TICKET de supermercado categorizado como Alimentación (la evidencia de comida para un producto sin clase).

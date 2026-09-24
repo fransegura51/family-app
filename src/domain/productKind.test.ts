@@ -24,6 +24,7 @@ function product(id: string, category: string | null, opts: { nonFood?: boolean;
     nonFood: opts.nonFood ?? false,
     classConfirmedAt: opts.confirmed === false || category == null ? null : '2026-09-21T17:35:40Z',
     classKind: storedClassKind(category, CLASSES),
+    photoPath: null,
   }
 }
 

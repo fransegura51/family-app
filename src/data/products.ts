@@ -1,5 +1,6 @@
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
 import { storedClassKind, type ProductClassKind } from '@/domain/productClass'
 import { isProductLine } from '@/domain/ticketLines'
 import type { Product, ProductPrice } from '@/domain/types'
@@ -25,7 +26,7 @@ export async function listProducts(): Promise<Product[]> {
     fetchAllRows((from, to) =>
       supabase
         .from('products')
-        .select('id, family_id, normalized_name, display_name, category, brand, non_food, class_confirmed_at')
+        .select('id, family_id, normalized_name, display_name, category, brand, non_food, class_confirmed_at, photo_path')
         .order('id')
         .range(from, to),
     ),
@@ -44,7 +45,79 @@ export async function listProducts(): Promise<Product[]> {
     nonFood: r.non_food,
     classConfirmedAt: r.class_confirmed_at ?? null,
     classKind: storedClassKind(r.category, familyClasses),
+    photoPath: r.photo_path ?? null,
   }))
+}
+
+// Único uso: darle una identidad en `products` a un item de la lista
+// que todavía no se ha comprado nunca, para poder attachearle una foto
+// (ver comentario de recordProductPurchase más arriba). A diferencia de
+// esa función, NUNCA inserta en product_prices — no es una compra.
+async function getOrCreateProductId(displayName: string): Promise<string> {
+  const familyId = await currentFamilyId()
+  const normalizedName = normalize(displayName)
+  const { data, error } = await supabase
+    .from('products')
+    .upsert({ family_id: familyId, normalized_name: normalizedName, display_name: displayName }, { onConflict: 'family_id,normalized_name' })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+// Límite tras comprimir (domain/imageCompression.ts ya reduce a
+// MAX_DIMENSION=1600px/calidad 0.82 — este tope solo atrapa casos
+// patológicos: un formato que no se pudo recomprimir, por ejemplo).
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
+// Inciso Compras — Parte B: foto OPCIONAL de un producto (bucket
+// privado product-photos, mismo patrón que member-photos/recipe-photos
+// — solo se guarda el path, nunca los bytes). Va en `products` (la
+// identidad reutilizable por nombre normalizado), no en shopping_items,
+// para que reaparezca sola la próxima vez que se añada el mismo
+// producto a una lista. Si el producto todavía no existe (nunca se ha
+// comprado), se crea aquí mismo — ver getOrCreateProductId.
+export async function uploadProductPhotoForName(displayName: string, file: File): Promise<{ productId: string; photoPath: string }> {
+  const productId = await getOrCreateProductId(displayName)
+  const photoPath = await uploadProductPhoto(productId, file)
+  return { productId, photoPath }
+}
+
+async function uploadProductPhoto(productId: string, file: File): Promise<string> {
+  // El accept="image/*" del selector de archivo ya guía al usuario, pero es solo una pista de UI —
+  // se valida aquí también, de verdad, antes de tocar storage.
+  if (!file.type.startsWith('image/')) throw new Error('Solo se pueden subir imágenes.')
+
+  const familyId = await currentFamilyId()
+  const compressed = await compressImageFile(file)
+  if (compressed.size > MAX_PHOTO_BYTES) throw new Error('La foto pesa demasiado, incluso comprimida. Prueba con otra.')
+  const ext = compressed.name.split('.').pop() || 'jpg'
+  const path = `${familyId}/${crypto.randomUUID()}.${ext}`
+
+  const { error: uploadError } = await supabase.storage.from('product-photos').upload(path, compressed)
+  if (uploadError) throw uploadError
+
+  const { data: current } = await supabase.from('products').select('photo_path').eq('id', productId).single()
+  const previousPath = current?.photo_path as string | undefined
+
+  const { error } = await supabase.from('products').update({ photo_path: path }).eq('id', productId)
+  if (error) throw error
+
+  // Sustituir una foto ya puesta: se borra la anterior para no dejar un archivo huérfano en el bucket.
+  if (previousPath) await supabase.storage.from('product-photos').remove([previousPath])
+  return path
+}
+
+export async function getProductPhotoUrl(photoPath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('product-photos').createSignedUrl(photoPath, 3600)
+  if (error) throw error
+  return data.signedUrl
+}
+
+export async function removeProductPhoto(productId: string, photoPath: string): Promise<void> {
+  const { error } = await supabase.from('products').update({ photo_path: null }).eq('id', productId)
+  if (error) throw error
+  await supabase.storage.from('product-photos').remove([photoPath])
 }
 
 // Excepción manual por producto a la regla "compra en tienda física =
@@ -115,9 +188,13 @@ export async function listAllProductPrices(): Promise<ProductPrice[]> {
 // texto original que escribió la familia (Skill 11). Registra un punto
 // más de historial de precio cada vez que se llama (Skill 09).
 //
-// Es el ÚNICO camino del cliente que crea products/product_prices: aquí se descartan, ANTES de persistir nada, las líneas que no son
-// productos (p. ej. PARKING en Mercadona, ver domain/ticketLines.ts). Devuelve productId=null cuando la línea se ha descartado.
-// (Los webhooks del servidor aplican la misma regla y la base de datos la refuerza con un trigger en product_prices.)
+// Es el ÚNICO camino del cliente que crea product_prices (historial de precio real, con compra de
+// verdad detrás): aquí se descartan, ANTES de persistir nada, las líneas que no son productos (p. ej.
+// PARKING en Mercadona, ver domain/ticketLines.ts). Devuelve productId=null cuando la línea se ha
+// descartado. (Los webhooks del servidor aplican la misma regla y la base de datos la refuerza con un
+// trigger en product_prices.) getOrCreateProductId (más abajo) es la única EXCEPCIÓN que crea una fila
+// de `products` sin ninguna compra detrás — para poder attachear una foto (Inciso Compras Parte B) a un
+// producto de la lista que todavía no se ha comprado nunca; nunca inserta en product_prices.
 export async function recordProductPurchase(input: {
   name: string
   price: number

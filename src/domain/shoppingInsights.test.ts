@@ -24,6 +24,7 @@ function product(id: string, displayName: string, overrides: Partial<Product> = 
     brand: null,
     nonFood: false,
     classConfirmedAt: null,
+    photoPath: null,
     ...overrides,
   }
 }

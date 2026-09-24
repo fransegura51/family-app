@@ -81,9 +81,9 @@ const EXPENSES: Expense[] = [
 ]
 
 const PRODUCTS: Product[] = [
-  { id: 'q1', familyId: 'f', normalizedName: 'queso rallado', displayName: 'Queso rallado', category: null, brand: null, nonFood: false, classConfirmedAt: null },
-  { id: 'l1', familyId: 'f', normalizedName: 'leche entera', displayName: 'Leche entera', category: null, brand: null, nonFood: false, classConfirmedAt: null },
-  { id: 'p1', familyId: 'f', normalizedName: 'pan', displayName: 'Pan', category: null, brand: null, nonFood: false, classConfirmedAt: null },
+  { id: 'q1', familyId: 'f', normalizedName: 'queso rallado', displayName: 'Queso rallado', category: null, brand: null, nonFood: false, classConfirmedAt: null, photoPath: null },
+  { id: 'l1', familyId: 'f', normalizedName: 'leche entera', displayName: 'Leche entera', category: null, brand: null, nonFood: false, classConfirmedAt: null, photoPath: null },
+  { id: 'p1', familyId: 'f', normalizedName: 'pan', displayName: 'Pan', category: null, brand: null, nonFood: false, classConfirmedAt: null, photoPath: null },
 ]
 // Los precios de estos tests son líneas de un TICKET de supermercado categorizado como Alimentación (la evidencia de comida para un producto sin clase).
 const FOOD_RECEIPT = { id: 'r-food', familyId: 'f', storagePath: null, store: 'Mercadona', receiptDate: '2026-09-01', totalAmount: null, expenseId: null, notes: null, category: 'Alimentación', purchasedByMemberId: null } as Receipt

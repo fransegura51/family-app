@@ -8,6 +8,8 @@ import {
   computeEventHealth,
   computeEventStatusSummary,
   computeGuestBreakdownStatus,
+  computeGuestSeatingStatus,
+  computeTableOccupancy,
   countPaymentAlerts,
   eventAlertsToAttentionItems,
   eventLocationMapLines,
@@ -806,5 +808,78 @@ describe('computeGuestBreakdownStatus', () => {
     const status = computeGuestBreakdownStatus(guest, [{ personType: 'nino' }, { personType: 'nino' }])
     expect(status.adultsExceeded).toBe(false)
     expect(status.childrenExceeded).toBe(true)
+  })
+})
+
+// Eventos Fase 14C — mesas por persona invitada. Dos modos MUTUAMENTE
+// EXCLUYENTES: una unidad sin personas desglosadas sigue ocupando por
+// unidad completa (como toda la vida); en cuanto tiene alguna persona
+// desglosada, cuenta solo por persona (nunca las dos a la vez, para no
+// duplicar plazas).
+describe('computeGuestSeatingStatus', () => {
+  it('unidad sin desglose (TEST: unidad sin desglosar sigue igual): modo "unidad", nada que reportar por persona', () => {
+    const status = computeGuestSeatingStatus({ adultsCount: 2, childrenCount: 1 }, [])
+    expect(status).toEqual({ mode: 'unidad', totalDeclared: 3, identifiedCount: 0, unidentifiedCount: 0, seatedIdentifiedCount: 0, unassignedIdentifiedCount: 0 })
+  })
+
+  it('desglose completo: identificados = declarados, sin nadie "por nombrar"', () => {
+    const status = computeGuestSeatingStatus({ adultsCount: 2, childrenCount: 1 }, [{ tableId: 't1' }, { tableId: null }, { tableId: 't1' }])
+    expect(status.mode).toBe('personas')
+    expect(status.identifiedCount).toBe(3)
+    expect(status.unidentifiedCount).toBe(0)
+    expect(status.seatedIdentifiedCount).toBe(2)
+    expect(status.unassignedIdentifiedCount).toBe(1)
+  })
+
+  it('desglose parcial (TEST: grupo parcialmente desglosado): reporta total/identificados/por-nombrar/sentados/sin-mesa', () => {
+    // Grupo de 5 (declarado), solo 2 personas nombradas todavía.
+    const status = computeGuestSeatingStatus({ adultsCount: 3, childrenCount: 2 }, [{ tableId: 'mesa-ninos' }, { tableId: null }])
+    expect(status).toEqual({
+      mode: 'personas',
+      totalDeclared: 5,
+      identifiedCount: 2,
+      unidentifiedCount: 3,
+      seatedIdentifiedCount: 1,
+      unassignedIdentifiedCount: 1,
+    })
+  })
+})
+
+describe('computeTableOccupancy (TEST: sin doble conteo, TEST: plazas sin nombre nunca se asignan a una mesa)', () => {
+  const mesaNinos = { id: 'mesa-ninos' }
+
+  it('unidad sin desglose: cuenta el grupo entero solo si su table_id de unidad es esa mesa', () => {
+    const guests = [{ id: 'g1', adultsCount: 2, childrenCount: 1, tableId: 'mesa-ninos' }, { id: 'g2', adultsCount: 1, childrenCount: 0, tableId: 'otra-mesa' }]
+    expect(computeTableOccupancy(mesaNinos, guests, {})).toBe(3)
+  })
+
+  it('unidad CON desglose: su table_id de unidad ya NO cuenta (evita duplicar plazas) — solo cuentan sus personas', () => {
+    const guests = [{ id: 'g1', adultsCount: 2, childrenCount: 1, tableId: 'mesa-ninos' }]
+    // El grupo entero "vale" 3, pero solo 1 persona real está sentada en mesa-ninos.
+    const membersByGuestId = { g1: [{ tableId: 'mesa-ninos' }, { tableId: null }, { tableId: null }] }
+    expect(computeTableOccupancy(mesaNinos, guests, membersByGuestId)).toBe(1)
+  })
+
+  it('las plazas sin nombre (declaradas de más, sin persona real) nunca se cuentan en ninguna mesa', () => {
+    const guests = [{ id: 'g1', adultsCount: 4, childrenCount: 0, tableId: 'mesa-ninos' }]
+    // Solo 1 de las 4 plazas declaradas tiene una persona real, y esa persona no está en mesa-ninos.
+    const membersByGuestId = { g1: [{ tableId: null }] }
+    expect(computeTableOccupancy(mesaNinos, guests, membersByGuestId)).toBe(0)
+  })
+
+  it('caso real reproducido (Bodas de plata / Mesa niños, sin tocar producción): con desglose, la mesa vacía se puede llenar', () => {
+    // Reproduce la limitación real documentada en la Fase 13B: una
+    // "Mesa niños" (capacidad 5) que quedaba SIEMPRE vacía porque el
+    // grupo entero de 3 personas (2 adultos + 1 niño) solo se podía
+    // sentar como unidad en UNA mesa. Con la Fase 14C, desglosando esa
+    // unidad, el niño concreto sí puede sentarse en la mesa de niños
+    // sin mover a los adultos.
+    const table = { id: 'mesa-ninos' }
+    const guests = [{ id: 'familia-1', adultsCount: 2, childrenCount: 1, tableId: 'mesa-principal' }]
+    const membersByGuestId = {
+      'familia-1': [{ tableId: 'mesa-principal' }, { tableId: 'mesa-principal' }, { tableId: 'mesa-ninos' }],
+    }
+    expect(computeTableOccupancy(table, guests, membersByGuestId)).toBe(1)
+    expect(computeTableOccupancy({ id: 'mesa-principal' }, guests, membersByGuestId)).toBe(2)
   })
 })

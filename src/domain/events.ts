@@ -10,6 +10,7 @@ import type {
   EventGuestMember,
   EventModuleKey,
   EventPayment,
+  EventTableSeat,
   EventTask,
   EventType,
   FamilyEvent,
@@ -471,6 +472,68 @@ export function computeGuestBreakdownStatus(
     adultsExceeded: adultsMembers > guest.adultsCount,
     childrenExceeded: childrenMembers > guest.childrenCount,
   }
+}
+
+// Eventos Fase 14C — dos modos de ocupación de mesa MUTUAMENTE
+// EXCLUYENTES para no duplicar plazas: una unidad SIN ninguna persona
+// desglosada sigue contando por unidad completa (event_guests.table_id,
+// exactamente como antes de la Fase 14A); en cuanto tiene aunque sea
+// una persona desglosada, la unidad pasa a modo "personas" y deja de
+// contar por su table_id de unidad (que puede quedar con un valor
+// antiguo sin usar — no se borra, por si se borran luego todas las
+// personas y hay que volver limpiamente al modo unidad). Las plazas
+// del desglose parcial que todavía no tienen nombre (unidentified)
+// nunca se inventan ni se reparten en ninguna mesa: solo se cuentan
+// aparte, como recordatorio de "personas por nombrar".
+export interface GuestSeatingStatus {
+  mode: 'unidad' | 'personas'
+  totalDeclared: number
+  identifiedCount: number
+  unidentifiedCount: number
+  seatedIdentifiedCount: number
+  unassignedIdentifiedCount: number
+}
+
+export function computeGuestSeatingStatus(
+  guest: Pick<EventGuest, 'adultsCount' | 'childrenCount'>,
+  members: Pick<EventGuestMember, 'tableId'>[],
+): GuestSeatingStatus {
+  const totalDeclared = guest.adultsCount + guest.childrenCount
+  if (members.length === 0) {
+    return { mode: 'unidad', totalDeclared, identifiedCount: 0, unidentifiedCount: 0, seatedIdentifiedCount: 0, unassignedIdentifiedCount: 0 }
+  }
+  const identifiedCount = members.length
+  const seatedIdentifiedCount = members.filter((m) => m.tableId != null).length
+  return {
+    mode: 'personas',
+    totalDeclared,
+    identifiedCount,
+    unidentifiedCount: Math.max(0, totalDeclared - identifiedCount),
+    seatedIdentifiedCount,
+    unassignedIdentifiedCount: identifiedCount - seatedIdentifiedCount,
+  }
+}
+
+// Cuántas personas hay realmente sentadas en UNA mesa concreta,
+// combinando los dos modos sin sumar dos veces la misma unidad: si
+// tiene personas desglosadas, cuenta cada persona asignada a esa mesa
+// (1 cada una); si no, cuenta el grupo entero solo si su table_id de
+// unidad es esa mesa (como siempre).
+export function computeTableOccupancy(
+  table: Pick<EventTableSeat, 'id'>,
+  guests: Pick<EventGuest, 'id' | 'adultsCount' | 'childrenCount' | 'tableId'>[],
+  membersByGuestId: Record<string, Pick<EventGuestMember, 'tableId'>[]>,
+): number {
+  let count = 0
+  for (const g of guests) {
+    const members = membersByGuestId[g.id] ?? []
+    if (members.length === 0) {
+      if (g.tableId === table.id) count += g.adultsCount + g.childrenCount
+    } else {
+      count += members.filter((m) => m.tableId === table.id).length
+    }
+  }
+  return count
 }
 
 function invitationDateClause(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate' | 'eventTime'>): string {

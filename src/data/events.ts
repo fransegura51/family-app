@@ -870,7 +870,7 @@ export async function listEventGuestMembersForEvent(eventId: string): Promise<Ev
 
 export async function addEventGuestMember(
   guest: Pick<EventGuest, 'id' | 'eventId' | 'familyId'>,
-  input: { name: string; personType: EventGuestMemberType },
+  input: { name: string; personType: EventGuestMemberType; tableId?: string | null },
 ): Promise<void> {
   const { error } = await supabase.from('event_guest_members').insert({
     guest_id: guest.id,
@@ -878,6 +878,7 @@ export async function addEventGuestMember(
     family_id: guest.familyId,
     name: input.name.trim(),
     person_type: input.personType,
+    table_id: input.tableId ?? null,
     sort_order: Date.now(),
   })
   if (error) throw error

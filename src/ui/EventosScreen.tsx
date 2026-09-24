@@ -54,6 +54,7 @@ import {
   listEventFavorItems,
   listEventGifts,
   listEventGuestMembers,
+  listEventGuestMembersForEvent,
   listEventGuests,
   listEventMenuItems,
   listEventPayments,
@@ -102,6 +103,8 @@ import {
   computeEventHealth,
   computeEventStatusSummary,
   computeGuestBreakdownStatus,
+  computeGuestSeatingStatus,
+  computeTableOccupancy,
   countPaymentAlerts,
   daysUntil,
   DUAL_LOCATION_EVENT_TYPES,
@@ -203,6 +206,11 @@ const INVITE_SCOPE_OPTIONS: { value: EventGuestInviteScope; label: string }[] = 
   { value: 'solo_ceremonia', label: 'Solo ceremonia' },
   { value: 'solo_celebracion', label: 'Solo celebración' },
 ]
+
+// Fase 14C — sentinela del <select> "Asignar todo el grupo a…": su
+// placeholder deshabilitado ya usa value="", así que "Sin mesa" (quitar
+// mesa a todo el grupo) necesita un valor propio para no compartirlo.
+const GROUP_ASSIGN_NONE = '__sin_mesa__'
 
 function eventDateLabel(ev: FamilyEvent): string {
   if (ev.dateStatus === 'pendiente' || !ev.eventDate) return 'Sin fecha todavía'
@@ -2259,7 +2267,12 @@ function GuestBreakdownSection({ guest }: { guest: EventGuest }) {
     }
     setError(null)
     try {
-      await addEventGuestMember(guest, { name: personName, personType })
+      // Fase 14C — transición grupo→personas: si es la primera persona
+      // de esta unidad y el grupo ya tenía mesa asignada, se traslada
+      // como mesa inicial de esa persona (única fuente sin ambigüedad;
+      // a partir de la 2ª persona ya no hay una mesa de grupo que copiar).
+      const initialTableId = members.length === 0 ? guest.tableId : null
+      await addEventGuestMember(guest, { name: personName, personType, tableId: initialTableId })
       setPersonName('')
       setPersonType('adulto')
       setShowAddPerson(false)
@@ -3112,6 +3125,7 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
 function TablesSection({ event }: { event: FamilyEvent }) {
   const [tables, setTables] = useState<EventTableSeat[]>([])
   const [guests, setGuests] = useState<EventGuest[]>([])
+  const [members, setMembers] = useState<EventGuestMember[]>([])
   const [newName, setNewName] = useState('')
   const [newCapacity, setNewCapacity] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -3123,8 +3137,19 @@ function TablesSection({ event }: { event: FamilyEvent }) {
     listEventGuests(event.id)
       .then(setGuests)
       .catch(() => {})
+    listEventGuestMembersForEvent(event.id)
+      .then(setMembers)
+      .catch(() => {})
   }
   useEffect(reload, [event.id])
+
+  // Fase 14C — agrupado por unidad, para saber sin JOIN adicional si
+  // cada invitado está desglosado en personas o sigue en modo unidad.
+  const membersByGuestId = useMemo(() => {
+    const map: Record<string, EventGuestMember[]> = {}
+    for (const m of members) (map[m.guestId] ??= []).push(m)
+    return map
+  }, [members])
 
   async function handleAdd(ev: FormEvent) {
     ev.preventDefault()
@@ -3139,26 +3164,40 @@ function TablesSection({ event }: { event: FamilyEvent }) {
     }
   }
 
+  async function handleAssignAllGroup(guestMembers: EventGuestMember[], tableId: string | null) {
+    try {
+      await Promise.all(guestMembers.map((m) => updateEventGuestMember(m.id, { tableId })))
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo asignar la mesa'))
+    }
+  }
+
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>🪑 Mesas</strong>
       {error && <p className="error">{error}</p>}
       <div className="event-list" style={{ marginTop: 8 }}>
         {tables.map((t) => {
-          const seated = guests.filter((g) => g.tableId === t.id)
-          const seatedCount = seated.reduce((sum, g) => sum + g.adultsCount + g.childrenCount, 0)
+          const seatedCount = computeTableOccupancy(t, guests, membersByGuestId)
+          const overCapacity = t.capacity != null && seatedCount > t.capacity
+          const namesHere = [
+            ...guests.filter((g) => (membersByGuestId[g.id]?.length ?? 0) === 0 && g.tableId === t.id).map((g) => g.displayName),
+            ...members.filter((m) => m.tableId === t.id).map((m) => m.name),
+          ]
           return (
             <div key={t.id} className="card task-card">
               <div className="task-card-main" style={{ width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <strong>
+                  <strong style={overCapacity ? { color: '#b45309' } : undefined}>
                     {t.name}
                     {t.capacity ? ` (${seatedCount}/${t.capacity})` : ` (${seatedCount})`}
+                    {overCapacity ? ' ⚠️' : ''}
                   </strong>
                   <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar mesa" onConfirm={() => deleteEventTable(t.id).then(reload)} />
                 </div>
                 <p className="muted" style={{ margin: '2px 0' }}>
-                  {seated.length === 0 ? 'Sin invitados asignados.' : seated.map((g) => g.displayName).join(', ')}
+                  {namesHere.length === 0 ? 'Sin invitados asignados.' : namesHere.join(', ')}
                 </p>
               </div>
             </div>
@@ -3177,19 +3216,70 @@ function TablesSection({ event }: { event: FamilyEvent }) {
             Asignar invitados a una mesa:
           </p>
           <div className="event-list">
-            {guests.map((g) => (
-              <div key={g.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                <span style={{ flex: 1 }}>{g.displayName}</span>
-                <select value={g.tableId ?? ''} onChange={(e) => assignGuestTable(g.id, e.target.value || null).then(reload)}>
-                  <option value="">Sin mesa</option>
-                  {tables.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
+            {guests.map((g) => {
+              const guestMembers = membersByGuestId[g.id] ?? []
+              if (guestMembers.length === 0) {
+                return (
+                  <div key={g.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                    <span style={{ flex: 1 }}>{g.displayName}</span>
+                    <select value={g.tableId ?? ''} onChange={(e) => assignGuestTable(g.id, e.target.value || null).then(reload)}>
+                      <option value="">Sin mesa</option>
+                      {tables.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )
+              }
+              const status = computeGuestSeatingStatus(g, guestMembers)
+              return (
+                <div key={g.id} style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong>{g.displayName}</strong>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (value === '') return
+                        handleAssignAllGroup(guestMembers, value === GROUP_ASSIGN_NONE ? null : value)
+                        e.target.value = ''
+                      }}
+                    >
+                      <option value="" disabled>
+                        Asignar todo el grupo a…
+                      </option>
+                      <option value={GROUP_ASSIGN_NONE}>Sin mesa</option>
+                      {tables.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                    {status.seatedIdentifiedCount}/{status.identifiedCount} personas sentadas
+                    {status.unidentifiedCount > 0 ? ` · ${status.unidentifiedCount} por nombrar (sin mesa asignable)` : ''}
+                  </p>
+                  {guestMembers.map((m) => (
+                    <div key={m.id} className="inline-fields" style={{ alignItems: 'center', marginLeft: 12 }}>
+                      <span style={{ flex: 1 }}>
+                        {m.name} ({m.personType === 'adulto' ? 'adulto' : 'niño'})
+                      </span>
+                      <select value={m.tableId ?? ''} onChange={(e) => updateEventGuestMember(m.id, { tableId: e.target.value || null }).then(reload)}>
+                        <option value="">Sin mesa</option>
+                        {tables.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   ))}
-                </select>
-              </div>
-            ))}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

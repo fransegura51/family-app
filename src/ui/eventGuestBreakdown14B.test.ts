@@ -44,7 +44,7 @@ describe('Fase 14B — grupo no desglosado sigue idéntico (TEST: unidad sin des
 describe('Fase 14B — formulario de alta: Nombre, Tipo, Guardar, Cancelar. Nada más (TEST: añadir persona)', () => {
   it('addEventGuestMember recibe el guest completo (para que la capa de datos saque guest_id/event_id/family_id) y el tipo elegido', () => {
     const body = window(GUEST_BREAKDOWN_SECTION, 'async function handleAddPerson', 'function startEdit')
-    expect(body).toContain('await addEventGuestMember(guest, { name: personName, personType })')
+    expect(body).toContain('await addEventGuestMember(guest, { name: personName, personType, tableId: initialTableId })')
   })
 
   it('el formulario de alta no pide más que nombre y tipo (sin teléfono, edad, mesa...)', () => {

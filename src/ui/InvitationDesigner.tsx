@@ -1082,6 +1082,13 @@ interface EditorSnapshot {
 // Constante nombrada en vez de un número mágico — cuántas operaciones deshacibles se conservan a la vez.
 const MAX_HISTORY_ENTRIES = 20
 
+// INV-EDITOR-5 — cambios sin guardar: comparación textual del snapshot SIN backgroundImageUrl (una URL
+// firmada nueva en cada carga no es un cambio real de contenido, solo cambiaría el token de la firma).
+function comparableSnapshotKey(s: EditorSnapshot): string {
+  const { backgroundImageUrl: _unused, ...rest } = s
+  return JSON.stringify(rest)
+}
+
 // INV-EDITOR-4 — reforma UX móvil: un único panel secundario (popover compacto) a la vez, según qué está
 // seleccionado — nunca el antiguo bloque fijo con todos los controles a la vista simultáneamente.
 type DesignerPanel = 'plantilla' | 'texto' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas'
@@ -1129,6 +1136,10 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
+  // INV-EDITOR-5 — cambios sin guardar: el snapshot (comparable) tal como se cargó o se guardó por
+  // última vez. null mientras sigue cargando (todavía no hay nada con lo que comparar).
+  const savedSnapshotRef = useRef<string | null>(null)
+  const [confirmingExit, setConfirmingExit] = useState(false)
 
   useEffect(() => {
     getEventInvitation(event.id)
@@ -1139,18 +1150,35 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
         // reabrir. Lo que importa es si existe fila guardada, no si
         // tiene capas.
         if (invitation) {
-          setTemplateKey(invitation.templateKey || INVITATION_TEMPLATES[0].key)
-          setBackgroundGradient(invitation.canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient)
+          const loadedTemplateKey = invitation.templateKey || INVITATION_TEMPLATES[0].key
+          const loadedGradient = invitation.canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient
+          const loadedOffsetX = invitation.canvas.backgroundOffsetX ?? 0
+          const loadedOffsetY = invitation.canvas.backgroundOffsetY ?? 0
+          const loadedScale = invitation.canvas.backgroundScale ?? 1
+          setTemplateKey(loadedTemplateKey)
+          setBackgroundGradient(loadedGradient)
           setLayers(invitation.canvas.layers)
-          setBackgroundOffsetX(invitation.canvas.backgroundOffsetX ?? 0)
-          setBackgroundOffsetY(invitation.canvas.backgroundOffsetY ?? 0)
-          setBackgroundScale(invitation.canvas.backgroundScale ?? 1)
+          setBackgroundOffsetX(loadedOffsetX)
+          setBackgroundOffsetY(loadedOffsetY)
+          setBackgroundScale(loadedScale)
           if (invitation.backgroundImagePath) {
             setBackgroundImagePath(invitation.backgroundImagePath)
             getInvitationPhotoUrl(invitation.backgroundImagePath)
               .then(setBackgroundImageUrl)
               .catch(() => {})
           }
+          // INV-EDITOR-5 — "lo guardado" es esto, no lo que haya en pantalla (backgroundImageUrl aún no
+          // ha llegado, pero no forma parte de la comparación — ver comparableSnapshotKey).
+          savedSnapshotRef.current = comparableSnapshotKey({
+            layers: invitation.canvas.layers,
+            templateKey: loadedTemplateKey,
+            backgroundGradient: loadedGradient,
+            backgroundImagePath: invitation.backgroundImagePath,
+            backgroundImageUrl: null,
+            backgroundOffsetX: loadedOffsetX,
+            backgroundOffsetY: loadedOffsetY,
+            backgroundScale: loadedScale,
+          })
           const paths = invitation.canvas.layers.map((l) => l.photoPath).filter((p): p is string => !!p)
           const urls = await Promise.all(paths.map((p) => getInvitationPhotoUrl(p).catch(() => null)))
           const map: Record<string, string> = {}
@@ -1159,7 +1187,18 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
           })
           setPhotoUrls(map)
         } else {
-          setLayers(buildInvitationTemplateLayers(event, sortedTemplates[0]))
+          const initialLayers = buildInvitationTemplateLayers(event, sortedTemplates[0])
+          setLayers(initialLayers)
+          savedSnapshotRef.current = comparableSnapshotKey({
+            layers: initialLayers,
+            templateKey: sortedTemplates[0].key,
+            backgroundGradient: sortedTemplates[0].gradient,
+            backgroundImagePath: null,
+            backgroundImageUrl: null,
+            backgroundOffsetX: 0,
+            backgroundOffsetY: 0,
+            backgroundScale: 1,
+          })
         }
       })
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar el diseño')))
@@ -1449,12 +1488,26 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     setError(null)
     try {
       await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers, backgroundOffsetX, backgroundOffsetY, backgroundScale }, backgroundImagePath)
+      // INV-EDITOR-5 — a partir de aquí, lo guardado ya coincide con lo que se ve: deja de estar "sucio".
+      savedSnapshotRef.current = comparableSnapshotKey(currentSnapshot())
+      setConfirmingExit(false)
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar el diseño'))
     } finally {
       setSaving(false)
     }
+  }
+
+  // INV-EDITOR-5 — cambios sin guardar: true solo cuando lo que se ve de verdad difiere de lo último
+  // cargado/guardado (nunca durante la carga inicial, cuando savedSnapshotRef todavía es null).
+  const dirty = savedSnapshotRef.current !== null && comparableSnapshotKey(currentSnapshot()) !== savedSnapshotRef.current
+
+  // Único punto de salida (✕ del encabezado y tocar fuera del modal) — si hay cambios sin guardar, pide
+  // confirmación en vez de cerrar y perderlos en silencio.
+  function requestClose() {
+    if (dirty) setConfirmingExit(true)
+    else onClose()
   }
 
   const currentTemplate = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
@@ -1465,13 +1518,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const isTextLike = selected?.type === 'text' || selected?.type === 'event_data'
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <>
+    <div className="modal-overlay" onClick={requestClose}>
       <div className="modal-sheet invitation-designer-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
         <div className="modal-header" style={{ padding: '16px 16px 0' }}>
           <h2 className="section-title" style={{ margin: 0 }}>
             Diseño de la invitación
           </h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+          <button type="button" className="modal-close" onClick={requestClose} aria-label="Cerrar">
             ✕
           </button>
         </div>
@@ -1907,5 +1961,31 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
         )}
       </div>
     </div>
+    {/* INV-EDITOR-5 — cambios sin guardar: overlay propio, HERMANO del principal (nunca anidado dentro),
+        para que tocar su fondo no burbujee y dispare también el requestClose del editor. */}
+    {confirmingExit && (
+      <div className="modal-overlay" style={{ zIndex: 60 }} onClick={() => setConfirmingExit(false)}>
+        <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Tienes cambios sin guardar
+          </h2>
+          <p className="muted" style={{ marginTop: 6 }}>
+            Si sales ahora, se pierde lo que has cambiado en el diseño desde la última vez que lo guardaste.
+          </p>
+          <div className="filter-row" style={{ marginTop: 14, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setConfirmingExit(false)}>
+              Seguir editando
+            </button>
+            <button type="button" className="link-button" onClick={handleSave} disabled={saving}>
+              {saving ? 'Guardando…' : '💾 Guardar y salir'}
+            </button>
+            <button type="button" className="link-button" onClick={onClose}>
+              Salir sin guardar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

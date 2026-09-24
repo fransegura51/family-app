@@ -18,6 +18,11 @@
 // answerCheapest (domain/financeCompute.ts) y openDetail (ShoppingScreen
 // → HistoryTab): agrupar por p.store || 'Sin tienda concreta', exigir
 // ≥2 tiendas reales y ≥3 compras — no se reinventa un criterio distinto.
+//
+// PESO-5 — el "último precio por tienda" nunca mezcla €/kg con €/ud, ni compara un legacy unit=null
+// ambiguo (ver domain/measurementUnit.ts, lastComparablePriceByStore): reutilizado también por
+// answerCheapest y openDetail, un único criterio para las tres.
+import { lastComparablePriceByStore } from '@/domain/measurementUnit'
 import type { Product, ProductPrice } from '@/domain/types'
 
 export type ShoppingInsightKind =
@@ -66,17 +71,6 @@ function groupByProduct(prices: ProductPrice[]): Map<string, ProductPrice[]> {
     else map.set(p.productId, [p])
   }
   return map
-}
-
-// Último precio por tienda (misma técnica que openDetail/answerCheapest):
-// ordena por fecha ascendente y se queda con la última entrada de cada
-// tienda — así un mismo producto/tienda no cuenta dos veces.
-function lastPriceByStore(productPrices: ProductPrice[]): Map<string, { price: number; date: string }> {
-  const byStore = new Map<string, { price: number; date: string }>()
-  for (const p of [...productPrices].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))) {
-    byStore.set(p.store || 'Sin tienda concreta', { price: p.price, date: p.recordedDate })
-  }
-  return byStore
 }
 
 function productById(products: Product[]): Map<string, Product> {
@@ -137,9 +131,9 @@ export function findCheapestStoreForHabituals(input: Input): ShoppingInsight | n
   const byProduct = groupByProduct(input.prices)
   const cheapestStoreCount = new Map<string, number>()
   for (const [, prices] of byProduct) {
-    if (prices.length < 3) continue
-    const byStore = lastPriceByStore(prices)
-    const realStores = [...byStore.entries()].filter(([store]) => store !== 'Sin tienda concreta')
+    const resolved = lastComparablePriceByStore(prices)
+    if (!resolved || resolved.count < 3) continue
+    const realStores = [...resolved.byStore.entries()].filter(([store]) => store !== 'Sin tienda concreta')
     if (realStores.length < 2) continue
     const cheapest = realStores.reduce((min, e) => (e[1].price < min[1].price ? e : min))
     cheapestStoreCount.set(cheapest[0], (cheapestStoreCount.get(cheapest[0]) ?? 0) + 1)
@@ -185,18 +179,18 @@ export function findMostFrequentProduct(input: Input, now: Date): ShoppingInsigh
 export function findBestPriceGapProduct(input: Input): ShoppingInsight | null {
   const byProduct = groupByProduct(input.prices)
   const products = productById(input.products)
-  let best: { productId: string; gap: number; min: { store: string; price: number }; max: { store: string; price: number } } | null = null
+  let best: { productId: string; unit: 'kg' | 'ud'; gap: number; min: { store: string; price: number }; max: { store: string; price: number } } | null = null
   for (const [productId, prices] of byProduct) {
-    if (prices.length < 3) continue
-    const byStore = lastPriceByStore(prices)
-    const realStores = [...byStore.entries()].filter(([store]) => store !== 'Sin tienda concreta')
+    const resolved = lastComparablePriceByStore(prices)
+    if (!resolved || resolved.count < 3) continue
+    const realStores = [...resolved.byStore.entries()].filter(([store]) => store !== 'Sin tienda concreta')
     if (realStores.length < 2) continue
     const sorted = [...realStores].sort((a, b) => a[1].price - b[1].price)
     const min = { store: sorted[0][0], price: sorted[0][1].price }
     const max = { store: sorted[sorted.length - 1][0], price: sorted[sorted.length - 1][1].price }
     const gap = max.price - min.price
     if (gap < 0.05) continue
-    if (!best || gap > best.gap || (gap === best.gap && productId < best.productId)) best = { productId, gap, min, max }
+    if (!best || gap > best.gap || (gap === best.gap && productId < best.productId)) best = { productId, unit: resolved.unit, gap, min, max }
   }
   if (!best) return null
   const product = products.get(best.productId)
@@ -205,9 +199,11 @@ export function findBestPriceGapProduct(input: Input): ShoppingInsight | null {
   // se queda solo con el hecho clave (dónde sale más barato); la
   // comparación completa por tienda ya la da el propio "+info" al abrir
   // el historial real del producto, sin duplicarla aquí.
+  // PESO-5 — nunca "/ud" a fuego: solo se añade el sufijo cuando de verdad es un precio por kg.
+  const unitSuffix = best.unit === 'kg' ? '/kg' : ''
   return {
     kind: 'precio_minimo_tienda',
-    text: `${shortenName(product.displayName)} lo pagas más barato en ${shortenName(best.min.store)}: ${best.min.price.toFixed(2)} €.`,
+    text: `${shortenName(product.displayName)} lo pagas más barato en ${shortenName(best.min.store)}: ${best.min.price.toFixed(2)} €${unitSuffix}.`,
     moreInfo: moreInfoFor(product),
   }
 }

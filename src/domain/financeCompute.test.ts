@@ -285,6 +285,64 @@ describe('precios y tiendas (solo líneas de ticket)', () => {
   })
 })
 
+describe('PESO-5 — precios conscientes de magnitud (€/kg vs €/ud, solo líneas de ticket)', () => {
+  const PEPINO: Product = { id: 'pepino', familyId: 'f', normalizedName: 'pepino', displayName: 'Pepino', category: null, brand: null, nonFood: false, classConfirmedAt: null, photoPath: null }
+  function priceU(productId: string, date: string, priceValue: number, store: string | null, unit: string | null): ProductPrice {
+    pid++
+    return { id: `pu${pid}`, productId, price: priceValue, store, quantity: '1', unit, recordedDate: date, receiptId: 'r-food' }
+  }
+
+  it('A/F) dos precios €/kg del mismo producto: sube de precio correctamente, con la etiqueta /kg', () => {
+    const d = data({
+      products: [...PRODUCTS, PEPINO],
+      prices: [...PRICES, priceU('pepino', '2026-08-18', 1.7, 'Mercadona', 'kg'), priceU('pepino', '2026-09-18', 1.9, 'Mercadona', 'kg')],
+    })
+    expect(ask('¿Qué productos han subido más de precio?', d)).toContain('Pepino: 1,70 €/kg → 1,90 €/kg (+11,8 %)')
+  })
+
+  it('C) CASO REAL — Pepino legacy (2,64 €, unit=null) en agosto + Pepino nuevo (1,70 €/kg) en septiembre: JAMÁS dice que ha bajado', () => {
+    const d = data({
+      products: [...PRODUCTS, PEPINO],
+      prices: [...PRICES, priceU('pepino', '2026-08-18', 2.64, 'Mercadona', null), priceU('pepino', '2026-09-18', 1.7, 'Mercadona', 'kg')],
+    })
+    const up = ask('¿Qué productos han subido más de precio?', d)
+    const down = ask('¿Qué productos han bajado de precio?', d)
+    expect(up).not.toContain('Pepino')
+    expect(down).not.toContain('Pepino')
+  })
+
+  it('F) tienda más barata — dos tiendas con €/kg: comparación válida', () => {
+    const d = data({
+      products: [...PRODUCTS, PEPINO],
+      prices: [
+        ...PRICES,
+        priceU('pepino', '2026-08-01', 1.7, 'Mercadona', 'kg'),
+        priceU('pepino', '2026-08-15', 1.95, 'Aldi', 'kg'),
+        priceU('pepino', '2026-09-01', 1.7, 'Mercadona', 'kg'),
+      ],
+    })
+    const text = ask('¿Dónde compramos más barato el pepino?', d)
+    expect(text).toContain('Pepino')
+    expect(text).toContain('1,70 €/kg')
+    expect(text).toContain('más barato en Mercadona')
+  })
+
+  it('G) tienda más barata — una tienda €/kg y otra €/ud: nunca se comparan, no hay afirmación de "más barata"', () => {
+    const d = data({
+      products: [...PRODUCTS, PEPINO],
+      prices: [
+        ...PRICES,
+        priceU('pepino', '2026-08-01', 1.7, 'Mercadona', 'kg'),
+        priceU('pepino', '2026-07-01', 1.5, 'Aldi', 'ud'),
+        priceU('pepino', '2026-09-01', 1.9, 'Mercadona', 'kg'),
+      ],
+    })
+    // La magnitud dominante es "kg" (el registro comparable más reciente): Aldi (ud) queda fuera, así que
+    // solo hay una tienda real comparable — no hay datos suficientes para afirmar nada.
+    expect(ask('¿Dónde compramos más barato el pepino?', d)).toContain('No tengo suficientes compras registradas')
+  })
+})
+
 describe('datos incompletos', () => {
   it('sin ningún gasto en el periodo lo dice (no responde 0)', () => {
     expect(ask('¿Cuánto hemos gastado este mes?', data({ expenses: [] }))).toBe('No tengo gastos registrados este mes.')

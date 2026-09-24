@@ -1,48 +1,61 @@
 // Compara lo que cuesta cada producto de un mes a otro, a partir del
 // mismo historial de precios que ya alimentan los tickets y la Memoria
-// de la lista de la compra (Skill 09). Sin IA: agrupa por producto y
-// por mes, promedia si se compró varias veces, y calcula la subida o
-// bajada en % frente al mes anterior.
+// de la lista de la compra (Skill 09). Sin IA: agrupa por producto,
+// magnitud (€/kg vs €/ud — ver domain/measurementUnit.ts) y mes,
+// promedia si se compró varias veces, y calcula la subida o bajada en
+// % frente al mes anterior.
 //
-// "price" es siempre el precio POR UNIDAD (recordProductPurchase ya
-// divide el importe total de la línea entre las unidades antes de
-// guardarlo) — NUNCA hay que volver a dividir aquí entre "quantity".
-// Bug real reportado: se dividía dos veces, y una cerveza a 1,10€/ud
-// aparecía en este listado a 0,73€/ud. El total de la cesta
-// (basketTotal) sí necesita multiplicar por "quantity", porque ahí
-// interesa lo realmente pagado en la línea, no el precio unitario.
+// "price" es siempre el precio POR MAGNITUD (por unidad, o por kg si
+// unit="kg") — NUNCA el importe total de la línea, y nunca hay que
+// volver a dividir aquí entre "quantity". PESO-4/5: nunca se compara
+// un precio €/kg con uno €/ud, ni un legacy unit=null ambiguo (una
+// serie con "kg" en otro sitio) con ninguno de los dos — ver
+// groupBySafeMagnitude.
+import { groupBySafeMagnitude, type MeasurementUnit } from '@/domain/measurementUnit'
 
 export interface RawPurchase {
   productId: string
-  price: number // precio POR UNIDAD de la línea
-  quantity: number // unidades compradas en esa línea (1 si no se sabe)
+  price: number // precio POR MAGNITUD (por unidad, o por kg) de la línea
+  quantity: number // unidades o kg comprados en esa línea (1 si no se sabe)
+  unit: string | null // 'kg' | 'ud' | null (legacy anterior a PESO-1/2/3)
   recordedDate: string // YYYY-MM-DD
 }
 
 export interface ProductMonthPrice {
   productId: string
+  unit: MeasurementUnit
   month: string // YYYY-MM
-  avgPrice: number // precio medio POR UNIDAD ese mes
+  avgPrice: number // precio medio de esa magnitud ese mes
 }
 
 export function averagePricesByMonth(purchases: RawPurchase[]): ProductMonthPrice[] {
-  const sums = new Map<string, { sum: number; count: number }>()
+  const byProduct = new Map<string, RawPurchase[]>()
   for (const p of purchases) {
-    const month = p.recordedDate.slice(0, 7)
-    const key = `${p.productId}|${month}`
-    const entry = sums.get(key) ?? { sum: 0, count: 0 }
-    entry.sum += p.price
-    entry.count += 1
-    sums.set(key, entry)
+    const list = byProduct.get(p.productId) ?? []
+    list.push(p)
+    byProduct.set(p.productId, list)
   }
-  return [...sums.entries()].map(([key, { sum, count }]) => {
-    const [productId, month] = key.split('|')
-    return { productId, month, avgPrice: sum / count }
-  })
+
+  const sums = new Map<string, { sum: number; count: number; productId: string; unit: MeasurementUnit; month: string }>()
+  for (const [productId, records] of byProduct) {
+    const { kg, ud } = groupBySafeMagnitude(records)
+    for (const [unit, group] of [['kg', kg] as const, ['ud', ud] as const]) {
+      for (const p of group) {
+        const month = p.recordedDate.slice(0, 7)
+        const key = `${productId}|${unit}|${month}`
+        const entry = sums.get(key) ?? { sum: 0, count: 0, productId, unit, month }
+        entry.sum += p.price
+        entry.count += 1
+        sums.set(key, entry)
+      }
+    }
+  }
+  return [...sums.values()].map(({ sum, count, productId, unit, month }) => ({ productId, unit, month, avgPrice: sum / count }))
 }
 
 export interface ProductPriceComparison {
   productId: string
+  unit: MeasurementUnit
   currentPrice: number | null
   previousPrice: number | null
   deltaPercent: number | null // positivo = subida, negativo = bajada
@@ -53,20 +66,21 @@ export function compareMonths(
   currentMonth: string,
   previousMonth: string,
 ): ProductPriceComparison[] {
-  const byProduct = new Map<string, { current?: number; previous?: number }>()
+  const byKey = new Map<string, { productId: string; unit: MeasurementUnit; current?: number; previous?: number }>()
   for (const mp of monthPrices) {
     if (mp.month !== currentMonth && mp.month !== previousMonth) continue
-    const entry = byProduct.get(mp.productId) ?? {}
+    const key = `${mp.productId}|${mp.unit}`
+    const entry = byKey.get(key) ?? { productId: mp.productId, unit: mp.unit }
     if (mp.month === currentMonth) entry.current = mp.avgPrice
     if (mp.month === previousMonth) entry.previous = mp.avgPrice
-    byProduct.set(mp.productId, entry)
+    byKey.set(key, entry)
   }
 
   const results: ProductPriceComparison[] = []
-  for (const [productId, { current, previous }] of byProduct) {
+  for (const { productId, unit, current, previous } of byKey.values()) {
     if (current == null) continue // solo interesa lo comprado ESTE mes
     const deltaPercent = previous != null && previous !== 0 ? ((current - previous) / previous) * 100 : null
-    results.push({ productId, currentPrice: current, previousPrice: previous ?? null, deltaPercent })
+    results.push({ productId, unit, currentPrice: current, previousPrice: previous ?? null, deltaPercent })
   }
   return results
 }
@@ -100,21 +114,13 @@ export function decomposeSpendChange(
   currentMonth: string,
   previousMonth: string,
 ): SpendChangeBreakdown {
-  const byProduct = new Map<string, { prevQty: number; prevSpend: number; curQty: number; curSpend: number }>()
+  const byProduct = new Map<string, RawPurchase[]>()
   for (const p of purchases) {
     const month = p.recordedDate.slice(0, 7)
     if (month !== currentMonth && month !== previousMonth) continue
-    const entry = byProduct.get(p.productId) ?? { prevQty: 0, prevSpend: 0, curQty: 0, curSpend: 0 }
-    const qty = p.quantity > 0 ? p.quantity : 1
-    const spend = p.price * qty
-    if (month === previousMonth) {
-      entry.prevQty += qty
-      entry.prevSpend += spend
-    } else {
-      entry.curQty += qty
-      entry.curSpend += spend
-    }
-    byProduct.set(p.productId, entry)
+    const list = byProduct.get(p.productId) ?? []
+    list.push(p)
+    byProduct.set(p.productId, list)
   }
 
   let priceEffect = 0
@@ -123,18 +129,55 @@ export function decomposeSpendChange(
   let droppedProductsEffect = 0
   let previousTotal = 0
   let currentTotal = 0
-  for (const { prevQty, prevSpend, curQty, curSpend } of byProduct.values()) {
-    previousTotal += prevSpend
-    currentTotal += curSpend
-    if (prevQty > 0 && curQty > 0) {
-      const prevAvgPrice = prevSpend / prevQty
-      const curAvgPrice = curSpend / curQty
-      priceEffect += (curAvgPrice - prevAvgPrice) * prevQty
-      quantityEffect += (curQty - prevQty) * curAvgPrice
-    } else if (prevQty > 0 && curQty === 0) {
-      droppedProductsEffect -= prevSpend
-    } else if (prevQty === 0 && curQty > 0) {
-      newProductsEffect += curSpend
+
+  function sumSide(records: RawPurchase[], month: string): { qty: number; spend: number } {
+    let qty = 0
+    let spend = 0
+    for (const r of records) {
+      if (r.recordedDate.slice(0, 7) !== month) continue
+      const q = r.quantity > 0 ? r.quantity : 1
+      qty += q
+      spend += r.price * q
+    }
+    return { qty, spend }
+  }
+
+  for (const [, records] of byProduct) {
+    // PESO-5 — un legacy ambiguo (unit=null en una serie que también tiene "kg", ver
+    // domain/measurementUnit.ts) NUNCA se compara con el otro mes como si fuese "el mismo producto que
+    // cambió de precio": se cuenta como si se hubiera dejado de comprar "como antes" y empezado a
+    // comprar "como ahora" — nunca inventa un efecto de precio o cantidad entre dos magnitudes que no
+    // sabemos si son la misma. El total de cada mes (previousTotal/currentTotal) sigue sumando TODO,
+    // así que el balance económico real nunca cambia.
+    const { kg, ud, unknown } = groupBySafeMagnitude(records)
+    for (const u of unknown) {
+      const month = u.recordedDate.slice(0, 7)
+      const qty = u.quantity > 0 ? u.quantity : 1
+      const spend = u.price * qty
+      if (month === previousMonth) {
+        previousTotal += spend
+        droppedProductsEffect -= spend
+      } else {
+        currentTotal += spend
+        newProductsEffect += spend
+      }
+    }
+    for (const group of [kg, ud]) {
+      if (group.length === 0) continue
+      const prev = sumSide(group, previousMonth)
+      const cur = sumSide(group, currentMonth)
+      previousTotal += prev.spend
+      currentTotal += cur.spend
+      if (prev.qty > 0 && cur.qty > 0) {
+        const prevAvgPrice = prev.spend / prev.qty
+        const curAvgPrice = cur.spend / cur.qty
+        priceEffect += (curAvgPrice - prevAvgPrice) * prev.qty
+        quantityEffect += (cur.qty - prev.qty) * curAvgPrice
+      } else if (prev.qty > 0 && cur.qty === 0) {
+        droppedProductsEffect -= prev.spend
+      } else if (prev.qty === 0 && cur.qty > 0) {
+        newProductsEffect += cur.spend
+      }
     }
   }
   return { previousTotal, currentTotal, priceEffect, quantityEffect, newProductsEffect, droppedProductsEffect }

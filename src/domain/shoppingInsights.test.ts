@@ -202,6 +202,43 @@ describe('TIPO 3 — precio_minimo_tienda (TEST: precio mínimo correcto, compar
     ]
     expect(findBestPriceGapProduct({ prices, products })).toBeNull()
   })
+
+  it('PESO-5 — F) dos tiendas con €/kg: comparación válida, con la etiqueta "/kg"', () => {
+    const products = [product('pepino', 'Pepino')]
+    const prices = [
+      price('pepino', { store: 'Mercadona', price: 1.7, unit: 'kg', recordedDate: '2026-09-18' }),
+      price('pepino', { store: 'Hiperber', price: 1.95, unit: 'kg', recordedDate: '2026-09-19' }),
+      price('pepino', { store: 'Mercadona', price: 1.7, unit: 'kg', recordedDate: '2026-08-01' }),
+    ]
+    const insight = findBestPriceGapProduct({ prices, products })
+    expect(insight?.text).toBe('Pepino lo pagas más barato en Mercadona: 1.70 €/kg.')
+  })
+
+  it('PESO-5 — G) una tienda €/kg y otra €/ud: nunca se declara una "más barata" por magnitudes distintas', () => {
+    const products = [product('pepino', 'Pepino')]
+    const prices = [
+      price('pepino', { store: 'Mercadona', price: 1.7, unit: 'kg', recordedDate: '2026-09-19' }),
+      price('pepino', { store: 'Hiperber', price: 1.5, unit: 'ud', recordedDate: '2026-09-18' }),
+      price('pepino', { store: 'Mercadona', price: 1.9, unit: 'kg', recordedDate: '2026-08-01' }),
+    ]
+    // La magnitud dominante es "kg" (el registro comparable más reciente) — Hiperber (ud) queda fuera,
+    // así que solo queda una tienda real comparable: no hay diferencia de precio que anunciar.
+    expect(findBestPriceGapProduct({ prices, products })).toBeNull()
+  })
+})
+
+describe('PESO-5 — J) "PEPA analiza tus compras" nunca mezcla €/kg con €/ud', () => {
+  it('un producto con solo una tienda €/kg comparable (la otra en €/ud, excluida) no genera ni Tipo 1 ni Tipo 3', () => {
+    const products = [product('a', 'Pepino'), product('b', 'Manzana'), product('c', 'Berenjena')]
+    const prices = ['a', 'b', 'c'].flatMap((id) => [
+      price(id, { store: 'Mercadona', price: 1.7, unit: 'kg', recordedDate: '2026-06-01' }),
+      price(id, { store: 'Hiperber', price: 1.5, unit: 'ud', recordedDate: '2026-07-01' }),
+      price(id, { store: 'Mercadona', price: 1.9, unit: 'kg', recordedDate: '2026-08-01' }),
+    ])
+    const insights = buildShoppingInsights({ prices, products }, NOW)
+    expect(insights.map((i) => i.kind)).not.toContain('tienda_habitual_barata')
+    expect(insights.map((i) => i.kind)).not.toContain('precio_minimo_tienda')
+  })
 })
 
 describe('TIPO 4 — producto_emergente (TEST: producto nuevo habitual según criterio)', () => {
@@ -474,6 +511,22 @@ describe('TIPO 1 — tienda_habitual_barata', () => {
       price('b', { store: 'Mercadona', price: 2, recordedDate: '2026-07-01' }),
       price('b', { store: 'Hiperber', price: 1, recordedDate: '2026-08-01' }),
     ]
+    expect(findCheapestStoreForHabituals({ prices, products })).toBeNull()
+  })
+
+  it('PESO-5 — G) nunca compara una tienda €/kg con una €/ud: la tienda con la magnitud incompatible no puede "ganar"', () => {
+    // Pepino: Mercadona vende por kg (barato en €), Hiperber solo tiene un registro €/ud (más caro en
+    // número, pero no es comparable) — jamás debe contar como "más barato en Mercadona" por magnitudes.
+    const products = [product('a', 'Pepino'), product('b', 'Manzana'), product('c', 'Berenjena')]
+    const prices = [
+      ...['a', 'b', 'c'].flatMap((id) => [
+        price(id, { store: 'Mercadona', price: 1.7, unit: 'kg', recordedDate: '2026-06-01' }),
+        price(id, { store: 'Hiperber', price: 1.5, unit: 'ud', recordedDate: '2026-07-01' }),
+        price(id, { store: 'Mercadona', price: 1.9, unit: 'kg', recordedDate: '2026-08-01' }),
+      ]),
+    ]
+    // Hiperber (ud) queda fuera de la comparación por magnitud: con una sola tienda real (Mercadona, kg)
+    // no hay comparación posible, así que este hallazgo no debe generarse.
     expect(findCheapestStoreForHabituals({ prices, products })).toBeNull()
   })
 })

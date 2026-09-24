@@ -22,6 +22,7 @@ import { isInternalTransferCategory } from '@/domain/finance'
 import { comparableAgainst, comparablePrevious, resolvePeriod, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
 import type { FinanceQuery } from '@/domain/financeQuery'
 import { averagePricesByMonth, compareMonths, decomposeSpendChange, type RawPurchase, type SpendChangeBreakdown } from '@/domain/priceTrends'
+import { lastComparablePriceByStore, type MeasurementUnit } from '@/domain/measurementUnit'
 import { pendingSpending, type PendingSpending } from '@/domain/pending'
 import { isRefund, refundLabel } from '@/domain/refunds'
 import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
@@ -57,6 +58,13 @@ export function formatEuros(amount: number): string {
 export function formatPercent(p: number): string {
   const rounded = Math.round(p * 10) / 10
   return `${rounded > 0 ? '+' : ''}${String(rounded).replace('.', ',')} %`
+}
+
+// PESO-5 — igual que formatEuros, pero deja claro cuándo el importe es por kg (nunca cuando es por
+// unidad, para no cambiar el texto de siempre en el caso normal — ver domain/measurementUnit.ts).
+function formatEurosPerUnit(amount: number, unit: MeasurementUnit): string {
+  const base = formatEuros(amount)
+  return unit === 'kg' ? base.replace(/ €$/, ' €/kg') : base
 }
 
 export function capitalize(s: string): string {
@@ -555,7 +563,7 @@ function ticketPurchases(data: FinanceData): (RawPurchase & { store: string | nu
     .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFood, foodProductIds))
     .map((p) => {
       const qty = Number(p.quantity)
-      return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate, store: p.store }
+      return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: p.unit, recordedDate: p.recordedDate, store: p.store }
     })
 }
 
@@ -640,6 +648,7 @@ function answerWhy(query: FinanceQuery, data: FinanceData, today: Date): Finance
     lines.push(`Solo en la cesta de tickets (${formatEuros(bd.previousTotal)} → ${formatEuros(bd.currentTotal)}, ${signedEuros(basketDelta)}):`)
     lines.push(`Por precios ${signedEuros(bd.priceEffect)} · por cantidades ${signedEuros(bd.quantityEffect)} · productos nuevos ${signedEuros(bd.newProductsEffect)} · dejados de comprar ${signedEuros(bd.droppedProductsEffect)}.`)
     const top = movers.slice(0, 3)
+    // Los % ya vienen solo de comparaciones de la MISMA magnitud (compareMonths, ver measurementUnit.ts) — nunca hace falta filtrar aquí.
     if (top.length > 0) lines.push(`Precios que más han cambiado: ${top.map((m) => `${productName(data, m.productId)} ${formatPercent(m.deltaPercent)}`).join(', ')}.`)
     lines.push('El análisis de tickets puede no coincidir con el banco.')
   } else {
@@ -693,8 +702,12 @@ function answerPrices(query: FinanceQuery, data: FinanceData, today: Date, direc
   if (wanted.length === 0) {
     return { text: `Según tus tickets, ${label} ningún producto ha ${direction === 'up' ? 'subido' : 'bajado'} de precio respecto al mes anterior (entre los ${changes.length} que puedo comparar).`, query: q }
   }
-  const lines = wanted.map((c) => `${productName(data, c.productId)}: ${formatEuros(c.previousPrice!)} → ${formatEuros(c.currentPrice!)} (${formatPercent(c.deltaPercent!)})`)
-  return { text: `Según tus tickets, ${label} han ${direction === 'up' ? 'subido' : 'bajado'} más de precio (precio medio por unidad):\n${lines.join('\n')}`, query: q }
+  // PESO-5 — "precio medio por unidad" ya no es siempre cierto (puede ser €/kg): el sufijo "/kg" se añade
+  // solo cuando corresponde, nunca a fuego (ver formatEurosPerUnit).
+  const lines = wanted.map(
+    (c) => `${productName(data, c.productId)}: ${formatEurosPerUnit(c.previousPrice!, c.unit)} → ${formatEurosPerUnit(c.currentPrice!, c.unit)} (${formatPercent(c.deltaPercent!)})`,
+  )
+  return { text: `Según tus tickets, ${label} han ${direction === 'up' ? 'subido' : 'bajado'} más de precio:\n${lines.join('\n')}`, query: q }
 }
 
 function answerCheapest(query: FinanceQuery, data: FinanceData): FinanceAnswer {
@@ -709,13 +722,14 @@ function answerCheapest(query: FinanceQuery, data: FinanceData): FinanceAnswer {
   const purchases = data.prices.filter((p) => matches.some((m) => m.id === p.productId))
   if (purchases.length === 0) return { text: `No tengo compras registradas de «${term}», así que no puedo compararlo.`, query: q }
 
-  // Por producto: último precio en cada tienda (igual que la ficha del producto en Compras).
+  // Por producto: último precio COMPARABLE en cada tienda (misma magnitud — nunca €/kg contra €/ud, ver
+  // domain/measurementUnit.ts; igual que la ficha del producto en Compras).
   const perProduct = matches
     .map((product) => {
-      const rows = purchases.filter((p) => p.productId === product.id).sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))
-      const byStore = new Map<string, { price: number; date: string }>()
-      for (const r of rows) byStore.set(r.store || 'Sin tienda concreta', { price: r.price, date: r.recordedDate })
-      return { product, count: rows.length, stores: [...byStore.entries()].sort((a, b) => a[1].price - b[1].price) }
+      const rows = purchases.filter((p) => p.productId === product.id)
+      const resolved = lastComparablePriceByStore(rows)
+      if (!resolved) return { product, unit: null as MeasurementUnit | null, count: 0, stores: [] as [string, { price: number; date: string }][] }
+      return { product, unit: resolved.unit, count: resolved.count, stores: [...resolved.byStore.entries()].sort((a, b) => a[1].price - b[1].price) }
     })
     .filter((x) => x.count > 0)
     .sort((a, b) => b.count - a.count)
@@ -726,10 +740,10 @@ function answerCheapest(query: FinanceQuery, data: FinanceData): FinanceAnswer {
     const only = where.length === 1 ? ` Solo las tengo de ${where[0]}.` : ''
     return { text: `No tengo suficientes compras registradas de «${term}» en más de una tienda para compararlo todavía (${purchases.length} ${purchases.length === 1 ? 'compra' : 'compras'}).${only}`, query: q }
   }
-  const lines: string[] = ['Según tus compras registradas (último precio por unidad en cada tienda):']
+  const lines: string[] = ['Según tus compras registradas (último precio comparable en cada tienda):']
   for (const c of comparable.slice(0, 2)) {
     const cheapest = c.stores[0]
-    lines.push(`${c.product.displayName}: ${c.stores.map(([s, i]) => `${s} ${formatEuros(i.price)}`).join(' · ')} — más barato en ${cheapest[0]}.`)
+    lines.push(`${c.product.displayName}: ${c.stores.map(([s, i]) => `${s} ${formatEurosPerUnit(i.price, c.unit!)}`).join(' · ')} — más barato en ${cheapest[0]}.`)
   }
   lines.push('Es solo tu histórico, no el precio actual del mercado.')
   return { text: lines.join('\n'), query: q }

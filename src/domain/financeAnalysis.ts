@@ -184,7 +184,7 @@ export function buildAnalysis(data: FinanceData, period: ResolvedPeriod, today: 
     const inWindow = (d: string, r: { from: string; to: string }) => d >= r.from && d <= r.to
     const raw = data.prices
       .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFood, foodProductIds) && (inWindow(p.recordedDate, cp.current) || inWindow(p.recordedDate, cp.previous)))
-      .map((p) => ({ productId: p.productId, price: p.price, quantity: 1, recordedDate: inWindow(p.recordedDate, cp.current) ? '2000-02-01' : '2000-01-01' }))
+      .map((p) => ({ productId: p.productId, price: p.price, quantity: 1, unit: p.unit, recordedDate: inWindow(p.recordedDate, cp.current) ? '2000-02-01' : '2000-01-01' }))
     const moves = compareMonths(averagePricesByMonth(raw), '2000-02', '2000-01').filter((c) => c.previousPrice != null && c.deltaPercent != null)
     priceAnalysis = {
       available: moves.length > 0,

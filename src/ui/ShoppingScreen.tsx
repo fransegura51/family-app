@@ -334,7 +334,7 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
             .filter((p) => isFoodPurchase(p, foodReceiptIds, nonFoodProductIds, foodProductIds))
             .map((p) => {
               const qty = Number(p.quantity)
-              return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, recordedDate: p.recordedDate }
+              return { productId: p.productId, price: p.price, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: p.unit, recordedDate: p.recordedDate }
             }),
         )
         setProductNames(new Map(products.map((pr) => [pr.id, pr.displayName])))
@@ -595,7 +595,8 @@ function PorQueHaCambiadoMiCompra({
                   <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
                     {topMovers.map((c) => (
                       <li key={c.productId}>
-                        {productNames.get(c.productId) ?? '?'}: {c.previousPrice!.toFixed(2)} € → {c.currentPrice!.toFixed(2)} € (
+                        {productNames.get(c.productId) ?? '?'}: {c.previousPrice!.toFixed(2)} {displayMeasurementUnit(c.unit)} → {c.currentPrice!.toFixed(2)}{' '}
+                        {displayMeasurementUnit(c.unit)} (
                         {c.deltaPercent! >= 0 ? '+' : ''}
                         {c.deltaPercent!.toFixed(0)}%)
                       </li>
@@ -2521,6 +2522,7 @@ function HistoryTab() {
             productId: p.productId,
             price: p.price,
             quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+            unit: p.unit,
             recordedDate: p.recordedDate,
           }
         }),
@@ -2571,6 +2573,7 @@ function HistoryTab() {
             inThisMonth ?? {
               productId: product.id,
               name: product.displayName,
+              unit: stats!.unit,
               currentPrice: stats!.lastPrice,
               previousPrice: null,
               deltaPercent: null,
@@ -2892,7 +2895,7 @@ function HistoryTab() {
                   {c.name}
                 </button>
                 <span className="price-row-price">
-                  {c.currentPrice!.toFixed(2)} €<PriceDelta percent={c.deltaPercent} />
+                  {c.currentPrice!.toFixed(2)} {displayMeasurementUnit(c.unit)}<PriceDelta percent={c.deltaPercent} />
                 </span>
                 <button
                   type="button"

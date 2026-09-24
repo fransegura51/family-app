@@ -660,6 +660,26 @@ export interface EventGuest {
   createdAt: string
 }
 
+// Fase 14A — desglose OPCIONAL de personas dentro de una unidad
+// invitada (event_guest). event_guests sigue siendo la unidad real
+// para invitación/RSVP/token público/recuentos — esto es un segundo
+// nivel, nunca un reemplazo. eventId/familyId van redundantes respecto
+// a guestId a propósito (misma razón que en la migración 0164: la RLS
+// "hardened" los necesita para comprobar pertenencia sin JOIN extra).
+export type EventGuestMemberType = 'adulto' | 'nino'
+
+export interface EventGuestMember {
+  id: string
+  guestId: string
+  eventId: string
+  familyId: string
+  name: string
+  personType: EventGuestMemberType
+  tableId: string | null
+  sortOrder: number
+  createdAt: string
+}
+
 export interface EventTask {
   id: string
   eventId: string

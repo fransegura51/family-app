@@ -26,6 +26,8 @@ import type {
   EventGiftReceived,
   EventGuest,
   EventGuestInviteScope,
+  EventGuestMember,
+  EventGuestMemberType,
   EventGuestRsvpStatus,
   EventInvitation,
   EventMenuItem,
@@ -823,6 +825,78 @@ export async function updateEventGuest(
 
 export async function deleteEventGuest(id: string): Promise<void> {
   const { error } = await supabase.from('event_guests').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Fase 14A — personas individuales OPCIONALES dentro de una unidad
+// invitada. event_id/family_id se guardan tal cual desde la unidad
+// padre (event_guests), nunca se recalculan aquí — la RLS "hardened"
+// de la migración 0164 es quien de verdad garantiza que no puedan
+// quedar desalineados con guest_id/table_id.
+// ---------------------------------------------------------------------
+
+const GUEST_MEMBER_SELECT = 'id, guest_id, event_id, family_id, name, person_type, table_id, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapGuestMember(r: any): EventGuestMember {
+  return {
+    id: r.id,
+    guestId: r.guest_id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    name: r.name,
+    personType: r.person_type,
+    tableId: r.table_id,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventGuestMembers(guestId: string): Promise<EventGuestMember[]> {
+  const { data, error } = await supabase.from('event_guest_members').select(GUEST_MEMBER_SELECT).eq('guest_id', guestId).order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapGuestMember)
+}
+
+// Fase 14C también necesita ver TODAS las personas de un evento a la
+// vez (para la vista de Mesas, que agrupa por unidad) — sin repetir
+// esta consulta base en la capa de datos.
+export async function listEventGuestMembersForEvent(eventId: string): Promise<EventGuestMember[]> {
+  const { data, error } = await supabase.from('event_guest_members').select(GUEST_MEMBER_SELECT).eq('event_id', eventId).order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapGuestMember)
+}
+
+export async function addEventGuestMember(
+  guest: Pick<EventGuest, 'id' | 'eventId' | 'familyId'>,
+  input: { name: string; personType: EventGuestMemberType },
+): Promise<void> {
+  const { error } = await supabase.from('event_guest_members').insert({
+    guest_id: guest.id,
+    event_id: guest.eventId,
+    family_id: guest.familyId,
+    name: input.name.trim(),
+    person_type: input.personType,
+    sort_order: Date.now(),
+  })
+  if (error) throw error
+}
+
+export async function updateEventGuestMember(
+  id: string,
+  patch: Partial<{ name: string; personType: EventGuestMemberType; tableId: string | null }>,
+): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.personType !== undefined) update.person_type = patch.personType
+  if (patch.tableId !== undefined) update.table_id = patch.tableId
+  const { error } = await supabase.from('event_guest_members').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventGuestMember(id: string): Promise<void> {
+  const { error } = await supabase.from('event_guest_members').delete().eq('id', id)
   if (error) throw error
 }
 

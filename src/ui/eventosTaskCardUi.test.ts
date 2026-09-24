@@ -16,7 +16,7 @@ describe('Preparativos: nunca se enseña una fecha ISO cruda', () => {
 
   it('"Pepa te recomienda" formatea con formatSpanishDate, no imprime task.dueDate directamente', () => {
     const idx = SRC.indexOf('💡 Pepa te recomienda')
-    const block = SRC.slice(idx, idx + 1500)
+    const block = SRC.slice(idx, idx + 2500)
     expect(block).toContain('formatSpanishDate(task.dueDate)')
     expect(block).not.toMatch(/\$\{task\.dueDate\}/)
   })
@@ -26,5 +26,14 @@ describe('Preparativos: nunca se enseña una fecha ISO cruda', () => {
     const fnBody = SRC.slice(fnStart, SRC.indexOf('\nfunction TaskEditModal', fnStart))
     expect(fnBody).not.toContain('ConfirmIconButton')
     expect(fnBody).toContain('ConfirmButton')
+  })
+})
+
+describe('Fase 11 — "Pepa te recomienda" reutiliza reminderLabel, no reinventa el texto del recordatorio', () => {
+  it('importa reminderLabel de domain/reminders en vez de formatear los minutos a mano', () => {
+    expect(SRC).toContain("reminderLabel,")
+    const idx = SRC.indexOf('💡 Pepa te recomienda')
+    const block = SRC.slice(idx, idx + 2500)
+    expect(block).toContain('reminderLabel(reminder.minutesBefore, reminder.anchor)')
   })
 })

@@ -85,7 +85,7 @@ import { listFamilyMembers } from '@/data/family'
 // Eventos; no toca push/cron/service worker, solo configura qué debe
 // avisar el pipeline ya existente.
 import { listEventReminders, replaceReminders } from '@/data/calendar'
-import { REMINDER_UNIT_OPTIONS, reminderMinutesFrom, type EventReminder, type ReminderUnit } from '@/domain/reminders'
+import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
 import {
@@ -811,6 +811,26 @@ function EventDetail({
   // y luego las más próximas (rankUpcomingTasks, domain/events.ts).
   const upcomingTasks = rankUpcomingTasks(tasks).slice(0, 3)
 
+  // Fase 11 — "recordatorio cuando aporte valor": solo se pide para las
+  // hasta 3 tareas que ya se muestran aquí, nunca para todas las
+  // tareas del evento. Reutiliza listEventReminders (Fase 10, mismo
+  // almacén que Calendario) — desaparece sola si la tarea deja de
+  // estar entre las recomendadas (p. ej. al resolverse).
+  const [upcomingReminders, setUpcomingReminders] = useState<Record<string, EventReminder>>({})
+  useEffect(() => {
+    const linked = rankUpcomingTasks(tasks)
+      .slice(0, 3)
+      .map((r) => r.task)
+      .filter((t): t is EventTask & { calendarEventId: string } => t.calendarEventId != null)
+    if (linked.length === 0) {
+      setUpcomingReminders({})
+      return
+    }
+    Promise.all(linked.map((t) => listEventReminders(t.calendarEventId).then((rs) => [t.id, rs[0]] as const)))
+      .then((pairs) => setUpcomingReminders(Object.fromEntries(pairs.filter((p): p is [string, EventReminder] => !!p[1]))))
+      .catch(() => {})
+  }, [tasks])
+
   // Cuenta atrás — solo si hay fecha puesta (un evento "pendiente" sin
   // fecha no tiene nada que contar).
   const daysToEvent = event.eventDate ? daysUntil(event.eventDate) : null
@@ -1143,6 +1163,7 @@ function EventDetail({
           <div className="event-list">
             {upcomingTasks.map(({ task, priority, daysUntil: d }) => {
               const responsible = familyMembers.find((m) => m.id === task.assignedMemberId)
+              const reminder = upcomingReminders[task.id]
               return (
                 <div key={task.id} className="inline-fields" style={{ alignItems: 'center' }}>
                   <span className={`event-priority-dot event-priority-${priority}`} aria-hidden="true" />
@@ -1153,6 +1174,13 @@ function EventDetail({
                       <span className="muted" style={{ fontSize: 12 }}>
                         {' '}
                         · Responsable: {responsible.name}
+                      </span>
+                    )}
+                    {/* Fase 11 — recordatorio solo si aporta valor: solo cuando existe uno de verdad. */}
+                    {reminder && (
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {' '}
+                        · 🔔 {reminderLabel(reminder.minutesBefore, reminder.anchor)}
                       </span>
                     )}
                   </span>

@@ -7,16 +7,19 @@ import {
   buildFamiliasView,
   buildGuestExportModel,
   buildMesasView,
+  guestExportCsv,
+  guestExportFilename,
   type GuestExportAttendanceFilter,
   type GuestExportModel,
   type GuestExportOrganizeMode,
 } from '@/domain/guestExport'
 import type { EventGuest, EventGuestMember, EventTableSeat, FamilyEvent } from '@/domain/types'
+import { downloadTextFile } from '@/services/exportFile'
 
-// Fase 14E.1 — modelo + vista previa. Todavía sin CSV/impresión/
-// compartir (llegan en 14E.2-14E.4, sobre este mismo modal y el mismo
+// Fase 14E — modelo + vista previa (14E.1), CSV (14E.2). Impresión/PDF
+// y compartir llegan en 14E.3/14E.4, sobre este mismo modal y el mismo
 // modelo canónico de domain/guestExport.ts — nunca una lógica distinta
-// por formato). EventosScreen.tsx solo abre/cierra este modal y le pasa
+// por formato. EventosScreen.tsx solo abre/cierra este modal y le pasa
 // el evento — la lógica de exportación vive aquí, no allí.
 const ORGANIZE_OPTIONS: { value: GuestExportOrganizeMode; label: string }[] = [
   { value: 'mesas', label: '🪑 Mesas' },
@@ -110,7 +113,17 @@ export function GuestExportModal({ event, onClose }: { event: FamilyEvent; onClo
         ) : guests.length === 0 ? (
           <p className="muted">Todavía no hay invitados que exportar.</p>
         ) : (
-          <GuestExportPreview model={model} organize={organize} showInviteScope={showInviteScope} />
+          <>
+            <GuestExportPreview model={model} organize={organize} showInviteScope={showInviteScope} />
+            <div className="form-actions" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => downloadTextFile(guestExportFilename(event.title, organize, 'csv'), guestExportCsv(model, organize), 'text/csv;charset=utf-8', true)}
+              >
+                📊 CSV
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>

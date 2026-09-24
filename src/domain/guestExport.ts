@@ -360,3 +360,107 @@ export function buildAlfabeticoView(model: GuestExportModel): AlfabeticoView {
 
   return { entries, pending: [...pendingByGroup.values()] }
 }
+
+// ---------------------------------------------------------------------
+// Fase 14E.2 — CSV, sin dependencias externas (Blob + <a download> vive
+// en services/exportFile.ts, efecto de navegador; aquí solo texto puro,
+// testable con tests normales, igual que domain/share.ts).
+//
+// Las 3 columnas de valor ("Mesa", "Nombre/Grupo", "Tipo") se calculan
+// UNA vez por fila con las mismas 4 funciones para los 3 modos — el CSV
+// no reimplementa nada, solo reordena/filtra las mismas ExportGuestRow
+// del modelo canónico según cada modo (misma fuente que las vistas de
+// pantalla). Nunca se serializan groupId/tableId (IDs internos), solo
+// groupName/tableName.
+// ---------------------------------------------------------------------
+const CSV_HEADERS: Record<GuestExportOrganizeMode, string[]> = {
+  mesas: ['Mesa', 'Nombre/Grupo', 'Tipo', 'Familia', 'Estado RSVP'],
+  familias: ['Familia', 'Nombre', 'Tipo', 'Mesa', 'Estado RSVP'],
+  alfabetico: ['Nombre', 'Tipo', 'Familia', 'Mesa', 'Estado RSVP'],
+}
+
+function csvMesaValue(row: ExportGuestRow): string {
+  if (row.tableName) return row.tableName
+  return row.seatable ? 'Sin mesa' : 'Pendiente de asignar'
+}
+
+function csvNombreGrupo(row: ExportGuestRow): string {
+  if (row.kind === 'named') return row.personName ?? ''
+  if (row.kind === 'group_aggregate') return `${row.groupName} (${row.count} personas)`
+  return `${row.count} pendiente${row.count === 1 ? '' : 's'}`
+}
+
+function csvTipo(row: ExportGuestRow): string {
+  if (row.kind === 'named') return personTypeLabel(row.personType as EventGuestMemberType)
+  if (row.kind === 'group_aggregate') return 'Grupo'
+  return row.personType === 'adulto' ? 'Adulto pendiente' : 'Niño pendiente'
+}
+
+function csvRowFields(row: ExportGuestRow, mode: GuestExportOrganizeMode): string[] {
+  const mesa = csvMesaValue(row)
+  const nombre = csvNombreGrupo(row)
+  const tipo = csvTipo(row)
+  const rsvp = rsvpStatusLabel(row.groupRsvpStatus)
+  if (mode === 'mesas') return [mesa, nombre, tipo, row.groupName, rsvp]
+  if (mode === 'alfabetico') return [nombre, tipo, row.groupName, mesa, rsvp]
+  return [row.groupName, nombre, tipo, mesa, rsvp]
+}
+
+// Mismo orden/agrupación que su vista de pantalla correspondiente
+// (buildMesasView/buildAlfabeticoView) — "familias" no necesita
+// reordenar nada, las filas ya salen agrupadas por grupo del propio
+// modelo canónico.
+function csvRowsForMode(model: GuestExportModel, mode: GuestExportOrganizeMode): ExportGuestRow[] {
+  if (mode === 'mesas') {
+    const tableOrder = new Map(model.tables.map((t, i) => [t.id, i]))
+    const orderOf = (tableId: string | null) => (tableId != null ? (tableOrder.get(tableId) ?? tableOrder.size) : tableOrder.size)
+    const seatable = [...model.rows.filter((r) => r.seatable)].sort((a, b) => orderOf(a.tableId) - orderOf(b.tableId))
+    const pending = model.rows.filter((r) => !r.seatable)
+    return [...seatable, ...pending]
+  }
+  if (mode === 'alfabetico') {
+    const named = [...model.rows.filter((r) => r.kind === 'named')].sort((a, b) => (a.personName ?? '').localeCompare(b.personName ?? '', 'es'))
+    const rest = model.rows.filter((r) => r.kind !== 'named')
+    return [...named, ...rest]
+  }
+  return model.rows
+}
+
+// Coma/comilla/salto de línea en un nombre real (ej. "Pérez, hijo" o un
+// apodo entre comillas) no puede romper el CSV — se envuelve entre
+// comillas y se duplica cualquier comilla interna, la regla estándar.
+function escapeCsvField(value: string): string {
+  if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+export function guestExportCsv(model: GuestExportModel, mode: GuestExportOrganizeMode): string {
+  const header = CSV_HEADERS[mode]
+  const rows = csvRowsForMode(model, mode).map((r) => csvRowFields(r, mode))
+  return [header, ...rows].map((fields) => fields.map(escapeCsvField).join(',')).join('\r\n')
+}
+
+// ---------------------------------------------------------------------
+// Nombre de archivo compartido por todos los formatos (CSV ahora,
+// impresión/compartir después) — determinista a partir del título del
+// evento, sin nada técnico (ni id ni fecha de generación en el nombre).
+// ---------------------------------------------------------------------
+// Rango Unicode de los diacríticos combinados que deja NFD (p.ej. la
+// tilde de "ñ" separada de la "n") — construido con String.fromCharCode
+// en vez de un escape \uXXXX directo en el regex literal, para que el
+// código fuente no lleve un carácter combinado invisible pegado.
+const COMBINING_MARKS = new RegExp(`[${String.fromCharCode(0x0300)}-${String.fromCharCode(0x036f)}]`, 'g')
+
+function slugify(text: string): string {
+  const slug = text
+    .normalize('NFD')
+    .replace(COMBINING_MARKS, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-+|-+$)/g, '')
+  return slug || 'evento'
+}
+
+export function guestExportFilename(eventTitle: string, mode: GuestExportOrganizeMode, extension: string): string {
+  return `invitados-${slugify(eventTitle)}-${mode}.${extension}`
+}

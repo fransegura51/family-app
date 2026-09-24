@@ -4,6 +4,8 @@ import {
   buildFamiliasView,
   buildGuestExportModel,
   buildMesasView,
+  guestExportCsv,
+  guestExportFilename,
   inviteScopeLabel,
   personTypeLabel,
   rsvpStatusLabel,
@@ -335,5 +337,110 @@ describe('Modelo vacío (TEST: evento sin invitados no rompe nada)', () => {
     expect(buildMesasView(model)).toEqual({ tableGroups: [], pending: [] })
     expect(buildFamiliasView(model, false)).toEqual({ groups: [] })
     expect(buildAlfabeticoView(model)).toEqual({ entries: [], pending: [] })
+  })
+})
+
+describe('Fase 14E.2 — CSV (TEST: estructura, escapado, privacidad)', () => {
+  it('cabecera y columnas de "Por mesas" son exactamente las acordadas', () => {
+    const guests = [guest('a', 'Familia A', { adultsCount: 1, childrenCount: 0, tableId: 't1' })]
+    const tables = [table('t1', 'Mesa 1', 6)]
+    const model = buildGuestExportModel({ guests, membersByGuestId: {}, tables }, 'todos')
+    const csv = guestExportCsv(model, 'mesas')
+    const lines = csv.split('\r\n')
+    expect(lines[0]).toBe('Mesa,Nombre/Grupo,Tipo,Familia,Estado RSVP')
+    expect(lines[1]).toBe('Mesa 1,Familia A (1 personas),Grupo,Familia A,Pendiente')
+  })
+
+  it('cabecera y columnas de "Alfabético" son exactamente las acordadas', () => {
+    const guests = [guest('ramon', 'Familia Ramón', { adultsCount: 1, childrenCount: 0 })]
+    const members = [member('m1', 'ramon', 'Ángela', 'adulto', { tableId: 't1' })]
+    const tables = [table('t1', 'Mesa 2')]
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables }, 'todos')
+    const csv = guestExportCsv(model, 'alfabetico')
+    const lines = csv.split('\r\n')
+    expect(lines[0]).toBe('Nombre,Tipo,Familia,Mesa,Estado RSVP')
+    expect(lines[1]).toBe('Ángela,adulto,Familia Ramón,Mesa 2,Pendiente')
+  })
+
+  it('"Por familias" agrupa las filas de un mismo grupo consecutivamente, incluyendo pendientes', () => {
+    const guests = [guest('ramon', 'Familia Ramón', { adultsCount: 2, childrenCount: 1 })]
+    const members = [member('m1', 'ramon', 'Jorge', 'adulto')]
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables: [] }, 'todos')
+    const csv = guestExportCsv(model, 'familias')
+    const lines = csv.split('\r\n')
+    expect(lines[0]).toBe('Familia,Nombre,Tipo,Mesa,Estado RSVP')
+    expect(lines).toHaveLength(4) // cabecera + Jorge + 1 adulto pendiente + 1 niño pendiente
+    expect(lines.every((l, i) => i === 0 || l.startsWith('Familia Ramón,'))).toBe(true)
+  })
+
+  it('caracteres españoles (ñ, tildes) se conservan tal cual, sin escapar', () => {
+    const guests = [guest('a', 'Cumpleaños de Iñaki', { adultsCount: 1, childrenCount: 0 })]
+    const model = buildGuestExportModel({ guests, membersByGuestId: {}, tables: [] }, 'todos')
+    const csv = guestExportCsv(model, 'familias')
+    expect(csv).toContain('Cumpleaños de Iñaki')
+  })
+
+  it('escapa comas en un nombre entre comillas', () => {
+    const guests = [guest('a', 'Familia A', { adultsCount: 1, childrenCount: 0 })]
+    const members = [member('m1', 'a', 'Pérez, Juan', 'adulto')]
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables: [] }, 'todos')
+    const csv = guestExportCsv(model, 'alfabetico')
+    expect(csv).toContain('"Pérez, Juan"')
+  })
+
+  it('escapa comillas dobles duplicándolas dentro de comillas', () => {
+    const guests = [guest('a', 'Familia A', { adultsCount: 1, childrenCount: 0 })]
+    const members = [member('m1', 'a', 'Juan "Juanito"', 'adulto')]
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables: [] }, 'todos')
+    const csv = guestExportCsv(model, 'alfabetico')
+    expect(csv).toContain('"Juan ""Juanito"""')
+  })
+
+  it('escapa saltos de línea dentro de un campo envolviéndolo en comillas', () => {
+    const guests = [guest('a', 'Familia A\ncon salto', { adultsCount: 1, childrenCount: 0 })]
+    const model = buildGuestExportModel({ guests, membersByGuestId: {}, tables: [] }, 'todos')
+    const csv = guestExportCsv(model, 'familias')
+    expect(csv).toContain('"Familia A\ncon salto"')
+    // El salto de línea del campo no debe confundirse con un salto de fila real (\r\n sin comillas)
+    expect(csv.split('\r\n')).toHaveLength(2) // cabecera + única fila agregada (aunque contenga un \n interno)
+  })
+
+  it('no asume que los nombres son simples: nombre con coma Y comillas a la vez', () => {
+    const guests = [guest('a', 'Familia A', { adultsCount: 1, childrenCount: 0 })]
+    const members = [member('m1', 'a', 'O\'Brien, "Pepe"', 'adulto')]
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables: [] }, 'todos')
+    const csv = guestExportCsv(model, 'alfabetico')
+    expect(csv).toContain('"O\'Brien, ""Pepe"""')
+  })
+
+  it('privacidad: ningún CSV (en ningún modo) contiene un UUID, notas privadas ni tokens', () => {
+    const uuidLike = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    const guests = [
+      guest('11111111-1111-1111-1111-111111111111', 'Familia Ramón', {
+        adultsCount: 2,
+        childrenCount: 0,
+        tableId: '22222222-2222-2222-2222-222222222222',
+        notes: 'nota privada del organizador',
+        rsvpNote: 'mensaje privado',
+      }),
+    ]
+    const members = [
+      member('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Ángela', 'adulto', {
+        tableId: '22222222-2222-2222-2222-222222222222',
+      }),
+    ]
+    const tables = [table('22222222-2222-2222-2222-222222222222', 'Mesa 1', 6)]
+    const model = buildGuestExportModel({ guests, membersByGuestId: membersByGuestId(members), tables }, 'todos')
+    for (const mode of ['mesas', 'familias', 'alfabetico'] as const) {
+      const csv = guestExportCsv(model, mode)
+      expect(csv).not.toMatch(uuidLike)
+      expect(csv).not.toContain('nota privada')
+      expect(csv).not.toContain('mensaje privado')
+    }
+  })
+
+  it('el nombre de archivo se deriva del título del evento, sin nada técnico', () => {
+    expect(guestExportFilename('Bodas de plata', 'mesas', 'csv')).toBe('invitados-bodas-de-plata-mesas.csv')
+    expect(guestExportFilename('¡Cumpleaños de Iñaki!', 'alfabetico', 'csv')).toBe('invitados-cumpleanos-de-inaki-alfabetico.csv')
   })
 })

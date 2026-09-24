@@ -62,12 +62,25 @@ describe('GuestExportModal — organizar por / incluir (TEST: 3 modos, 2 filtros
     expect(MODAL_SRC).toContain('listEventTables(event.id)')
   })
 
-  it('en esta subfase todavía NO hay CSV, impresión ni compartir (llegan en 14E.2-14E.4)', () => {
-    expect(MODAL_SRC).not.toMatch(/text\/csv|Blob\(|navigator\.share|window\.print/)
+  it('todavía NO hay impresión ni compartir (llegan en 14E.3/14E.4)', () => {
+    expect(MODAL_SRC).not.toMatch(/navigator\.share|window\.print/)
   })
 
   it('reutiliza el patrón de modal ya establecido (.modal-overlay/.modal-sheet), no uno nuevo', () => {
     expect(MODAL_SRC).toContain('className="modal-overlay"')
     expect(MODAL_SRC).toContain('className="modal-sheet"')
+  })
+})
+
+describe('Fase 14E.2 — botón CSV (TEST: descarga el mismo modelo canónico, sin infraestructura nueva)', () => {
+  it('el botón "📊 CSV" llama a guestExportCsv/guestExportFilename (domain, puro) y downloadTextFile (services, efecto de navegador)', () => {
+    expect(MODAL_SRC).toContain("import { downloadTextFile } from '@/services/exportFile'")
+    expect(MODAL_SRC).toContain('guestExportCsv(model, organize)')
+    expect(MODAL_SRC).toContain("guestExportFilename(event.title, organize, 'csv')")
+    expect(MODAL_SRC).toContain('📊 CSV')
+  })
+
+  it('pide BOM UTF-8 en la descarga, para que Excel/Numbers reconozcan bien ñ y tildes', () => {
+    expect(MODAL_SRC).toContain("'text/csv;charset=utf-8', true)")
   })
 })

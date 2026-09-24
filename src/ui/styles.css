@@ -1890,6 +1890,52 @@ select {
   color: var(--muted);
 }
 
+/* Corrective visual Fase 14B — cabecera plegable "👥 Personas · X de Y"
+   dentro de cada invitado (EventosScreen.tsx, GuestBreakdownSection):
+   mismo espíritu que .shopping-store-heading-toggle (botón entero
+   pulsable, chevron que indica abierto/cerrado), como <button> nativo
+   en vez de role="button" para no tener que reimplementar el manejo de
+   teclado a mano. Alto mínimo táctil (44px) — nunca se reduce la
+   tipografía para que quepa. */
+.guest-breakdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.guest-breakdown-chevron {
+  color: var(--muted);
+  flex: none;
+}
+
+.guest-breakdown-body {
+  margin: 4px 0 8px;
+}
+
+.guest-breakdown-person-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 2px 0;
+}
+
+.guest-breakdown-person-name {
+  flex: 1;
+}
+
 /* Petición real: "vamos a organizarla por clases de alimentos...
    productos similares suelen estar juntos" — subcabecera por clase
    dentro de cada tienda, más pequeña y sin peso que la de la tienda

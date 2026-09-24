@@ -63,16 +63,22 @@ describe('Fase 14C — sin doble conteo en la UI (mismo criterio que computeTabl
   })
 })
 
+// Corrective visual Fase 14B: el alta de persona vive ahora en
+// GuestPersonModal (modal/bottom-sheet compartido con la edición), ya
+// no en un formulario inline dentro de GuestBreakdownSection — pero la
+// regla de herencia de mesa de esta Fase 14C es exactamente la misma.
+const GUEST_PERSON_MODAL = window(SRC, 'function GuestPersonModal', '\nfunction AddGuestModal')
+
 describe('Fase 14C — transición grupo→personas (TEST: transición grupo→personas hereda mesa)', () => {
   it('la primera persona añadida a un grupo que ya tenía mesa hereda esa mesa como inicial', () => {
-    const body = window(SRC, 'async function handleAddPerson', 'function startEdit')
-    expect(body).toContain('const initialTableId = members.length === 0 ? guest.tableId : null')
-    expect(body).toContain('await addEventGuestMember(guest, { name: personName, personType, tableId: initialTableId })')
+    const body = window(GUEST_PERSON_MODAL, 'async function handleSubmit', 'return (')
+    expect(body).toContain('const initialTableId = hasExistingMembers ? null : guest.tableId')
+    expect(body).toContain('await addEventGuestMember(guest, { name, personType, tableId: initialTableId })')
   })
 
   it('a partir de la 2ª persona ya no se copia ninguna mesa (no hay una única mesa de grupo que copiar sin ambigüedad)', () => {
-    const body = window(SRC, 'async function handleAddPerson', 'function startEdit')
-    expect(body).toMatch(/members\.length === 0 \? guest\.tableId : null/)
+    const body = window(GUEST_PERSON_MODAL, 'async function handleSubmit', 'return (')
+    expect(body).toContain('hasExistingMembers ? null : guest.tableId')
   })
 })
 

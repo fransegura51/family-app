@@ -2236,151 +2236,215 @@ function EventOpenLinkBlock({ event }: { event: FamilyEvent }) {
 // este botón nuevo. adults_count/children_count de la unidad NUNCA se
 // tocan aquí (siguen siendo la fuente de verdad, Fase 14A/14B); el
 // aviso de descuadre es solo informativo, nunca bloquea guardar.
+// Corrective visual Fase 14B (capturas reales de iPhone): el enlace de
+// contraer pegado justo al de añadir persona se leía como una sola
+// acción, y el formulario inline (Nombre | Tipo | Guardar | Cancelar)
+// se salía de la tarjeta en móvil. Ahora: acción única y clara cuando
+// no hay nadie desglosado ("👥 Añadir nombres de invitados", sin la
+// palabra técnica "desglosar"), cabecera compacta pulsable con
+// contador real cuando ya hay alguien ("👥 Personas · X de Y"), y el
+// alta/edición se hace en un modal/bottom-sheet aparte (mismo
+// .modal-overlay/.modal-sheet que el resto de PEPA) en vez de un
+// formulario horizontal metido en la tarjeta. Ni el modelo de datos,
+// ni la RLS, ni los recuentos, ni la Fase 14C/14D se tocan — solo
+// presentación.
 function GuestBreakdownSection({ guest }: { guest: EventGuest }) {
   const [expanded, setExpanded] = useState(false)
   const [members, setMembers] = useState<EventGuestMember[]>([])
-  const [showAddPerson, setShowAddPerson] = useState(false)
-  const [personName, setPersonName] = useState('')
-  const [personType, setPersonType] = useState<EventGuestMemberType>('adulto')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editName, setEditName] = useState('')
-  const [editType, setEditType] = useState<EventGuestMemberType>('adulto')
+  const [loaded, setLoaded] = useState(false)
+  // undefined = modal cerrado; null = modo "añadir"; EventGuestMember = modo "editar" esa persona.
+  const [modalMember, setModalMember] = useState<EventGuestMember | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
 
   function reloadMembers() {
     listEventGuestMembers(guest.id)
-      .then(setMembers)
+      .then((m) => {
+        setMembers(m)
+        setLoaded(true)
+      })
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las personas')))
   }
-  useEffect(() => {
-    if (expanded) reloadMembers()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded, guest.id])
+  // Se carga siempre (no solo al expandir): la cabecera colapsada ya
+  // necesita saber si hay alguna persona para decidir qué texto mostrar.
+  useEffect(reloadMembers, [guest.id])
 
   const status = computeGuestBreakdownStatus(guest, members)
-
-  async function handleAddPerson(ev: FormEvent) {
-    ev.preventDefault()
-    if (!personName.trim()) {
-      setError('Ponle un nombre.')
-      return
-    }
-    setError(null)
-    try {
-      // Fase 14C — transición grupo→personas: si es la primera persona
-      // de esta unidad y el grupo ya tenía mesa asignada, se traslada
-      // como mesa inicial de esa persona (única fuente sin ambigüedad;
-      // a partir de la 2ª persona ya no hay una mesa de grupo que copiar).
-      const initialTableId = members.length === 0 ? guest.tableId : null
-      await addEventGuestMember(guest, { name: personName, personType, tableId: initialTableId })
-      setPersonName('')
-      setPersonType('adulto')
-      setShowAddPerson(false)
-      reloadMembers()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir'))
-    }
-  }
-
-  function startEdit(m: EventGuestMember) {
-    setEditingId(m.id)
-    setEditName(m.name)
-    setEditType(m.personType)
-  }
-
-  async function handleSaveEdit(id: string) {
-    if (!editName.trim()) {
-      setError('Ponle un nombre.')
-      return
-    }
-    setError(null)
-    try {
-      await updateEventGuestMember(id, { name: editName, personType: editType })
-      setEditingId(null)
-      reloadMembers()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar'))
-    }
-  }
+  const totalDeclared = guest.adultsCount + guest.childrenCount
 
   async function handleDeletePerson(id: string) {
     try {
       await deleteEventGuestMember(id)
-      if (editingId === id) setEditingId(null)
       reloadMembers()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo eliminar'))
     }
   }
 
-  if (!expanded) {
+  if (!loaded) return null
+
+  if (members.length === 0) {
     return (
-      <button type="button" className="link-button" onClick={() => setExpanded(true)}>
-        👤 Desglosar personas
-      </button>
+      <>
+        <button type="button" className="link-button" onClick={() => setModalMember(null)}>
+          👥 Añadir nombres de invitados
+        </button>
+        {modalMember !== undefined && (
+          <GuestPersonModal
+            guest={guest}
+            member={modalMember}
+            hasExistingMembers={false}
+            onClose={() => setModalMember(undefined)}
+            onSaved={() => {
+              setModalMember(undefined)
+              setExpanded(true)
+              reloadMembers()
+            }}
+          />
+        )}
+      </>
     )
   }
 
   return (
     <div style={{ margin: '4px 0' }}>
-      <button type="button" className="link-button" onClick={() => setExpanded(false)}>
-        👤 Ocultar personas
+      <button
+        type="button"
+        className="guest-breakdown-toggle"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span>
+          👥 Personas · {status.totalMembers} de {totalDeclared}
+        </span>
+        <span className="guest-breakdown-chevron" aria-hidden="true">
+          {expanded ? '︿' : '⌄'}
+        </span>
       </button>
-      {error && <p className="error">{error}</p>}
-      {(status.adultsExceeded || status.childrenExceeded) && (
-        <p className="muted" style={{ color: '#b45309' }}>
-          ⚠️ Hay más {status.adultsExceeded && status.childrenExceeded ? 'adultos y niños' : status.adultsExceeded ? 'adultos' : 'niños'} desglosados
-          que los contados para este grupo ({guest.adultsCount} adultos, {guest.childrenCount} niños).
-        </p>
-      )}
-      {members.length > 0 && (
-        <ul style={{ margin: '4px 0', paddingLeft: 18 }}>
-          {members.map((m) =>
-            editingId === m.id ? (
-              <li key={m.id} style={{ listStyle: 'none', marginLeft: -18 }}>
-                <div className="inline-fields">
-                  <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
-                  <select value={editType} onChange={(e) => setEditType(e.target.value as EventGuestMemberType)}>
-                    <option value="adulto">Adulto</option>
-                    <option value="nino">Niño</option>
-                  </select>
-                  <button type="button" className="link-button" onClick={() => handleSaveEdit(m.id)}>
-                    Guardar
-                  </button>
-                  <button type="button" className="link-button" onClick={() => setEditingId(null)}>
-                    Cancelar
-                  </button>
-                </div>
-              </li>
-            ) : (
-              <li key={m.id}>
-                {m.name} ({m.personType === 'adulto' ? 'adulto' : 'niño'})
-                <button type="button" className="link-button" onClick={() => startEdit(m)}>
-                  Editar
-                </button>
-                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar persona" onConfirm={() => handleDeletePerson(m.id)} />
-              </li>
-            ),
+      {expanded && (
+        <div className="guest-breakdown-body">
+          {error && <p className="error">{error}</p>}
+          {(status.adultsExceeded || status.childrenExceeded) && (
+            <p className="muted" style={{ color: '#b45309' }}>
+              ⚠️ Hay más {status.adultsExceeded && status.childrenExceeded ? 'adultos y niños' : status.adultsExceeded ? 'adultos' : 'niños'} desglosados
+              que los contados para este grupo ({guest.adultsCount} adultos, {guest.childrenCount} niños).
+            </p>
           )}
-        </ul>
-      )}
-      {showAddPerson ? (
-        <form className="inline-fields" onSubmit={handleAddPerson}>
-          <input type="text" value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Nombre" autoFocus />
-          <select value={personType} onChange={(e) => setPersonType(e.target.value as EventGuestMemberType)}>
-            <option value="adulto">Adulto</option>
-            <option value="nino">Niño</option>
-          </select>
-          <button type="submit">Guardar</button>
-          <button type="button" className="link-button" onClick={() => setShowAddPerson(false)}>
-            Cancelar
+          {members.map((m) => (
+            <div key={m.id} className="guest-breakdown-person-row">
+              <span className="guest-breakdown-person-name">
+                {m.name} ({m.personType === 'adulto' ? 'adulto' : 'niño'})
+              </span>
+              <button type="button" className="link-button" onClick={() => setModalMember(m)}>
+                Editar
+              </button>
+              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar persona" onConfirm={() => handleDeletePerson(m.id)} />
+            </div>
+          ))}
+          <button type="button" className="link-button" onClick={() => setModalMember(null)}>
+            + Añadir persona
           </button>
-        </form>
-      ) : (
-        <button type="button" className="link-button" onClick={() => setShowAddPerson(true)}>
-          + Añadir persona
-        </button>
+        </div>
       )}
+      {modalMember !== undefined && (
+        <GuestPersonModal
+          guest={guest}
+          member={modalMember}
+          hasExistingMembers={members.length > 0}
+          onClose={() => setModalMember(undefined)}
+          onSaved={() => {
+            setModalMember(undefined)
+            reloadMembers()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Modal/bottom-sheet compartido para añadir Y editar una persona
+// desglosada — mismo componente en los dos casos (título y valores
+// precargados cambian según `member`), en vez de un segundo formulario
+// inline distinto para editar.
+function GuestPersonModal({
+  guest,
+  member,
+  hasExistingMembers,
+  onClose,
+  onSaved,
+}: {
+  guest: EventGuest
+  member: EventGuestMember | null
+  hasExistingMembers: boolean
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(member?.name ?? '')
+  const [personType, setPersonType] = useState<EventGuestMemberType>(member?.personType ?? 'adulto')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const isEdit = member !== null
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!name.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      if (member) {
+        await updateEventGuestMember(member.id, { name, personType })
+      } else {
+        // Fase 14C — transición grupo→personas: si es la primera persona
+        // de esta unidad y el grupo ya tenía mesa asignada, se traslada
+        // como mesa inicial de esa persona (única fuente sin ambigüedad;
+        // a partir de la 2ª persona ya no hay una mesa de grupo que copiar).
+        const initialTableId = hasExistingMembers ? null : guest.tableId
+        await addEventGuestMember(guest, { name, personType, tableId: initialTableId })
+      }
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            {isEdit ? 'Editar persona' : 'Añadir persona'}
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            Nombre
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre del invitado" autoFocus />
+          </label>
+          <label>
+            Tipo
+            <select value={personType} onChange={(e) => setPersonType(e.target.value as EventGuestMemberType)}>
+              <option value="adulto">Adulto</option>
+              <option value="nino">Niño</option>
+            </select>
+          </label>
+          <div className="form-actions">
+            <button type="submit" disabled={saving}>
+              {saving ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Guardar persona'}
+            </button>
+            <button type="button" className="link-button" onClick={onClose}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

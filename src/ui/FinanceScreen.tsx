@@ -187,7 +187,7 @@ import {
   type SpendRangePreset,
 } from '@/domain/dateRanges'
 import { findKnownStore } from '@/domain/voiceQuery'
-import { analyzeReceiptPhoto } from '@/services/receiptPhoto'
+import { analyzeReceiptPhoto, type MeasurementUnit } from '@/services/receiptPhoto'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
@@ -5703,12 +5703,17 @@ function ReceiptRow({
           )}
           {!loadingLines &&
             lines &&
-            lines.map((l) => (
-              <p key={l.id} className="muted receipt-row-detail-line">
-                {l.name}
-                {l.quantity && ` · ${l.quantity} ud`} · {l.price.toFixed(2)} €/ud
-              </p>
-            ))}
+            lines.map((l) => {
+              // Corrección PESO — la unidad real guardada decide la etiqueta; el histórico anterior a esta
+              // corrección (unit=null) sigue mostrándose como "ud", igual que siempre.
+              const unitLabel = l.unit === 'kg' ? 'kg' : 'ud'
+              return (
+                <p key={l.id} className="muted receipt-row-detail-line">
+                  {l.name}
+                  {l.quantity && ` · ${l.quantity} ${unitLabel}`} · {l.price.toFixed(2)} €/{unitLabel}
+                </p>
+              )
+            })}
         </div>
       )}
     </div>
@@ -5717,8 +5722,14 @@ function ReceiptRow({
 
 interface DraftLine {
   name: string
+  // Nº de unidades, o el peso EXACTO en kg (con decimales) cuando unit === 'kg'.
   quantity: string
-  price: string // importe TOTAL de la línea (cantidad × precio unitario), no el precio por unidad
+  unit: MeasurementUnit
+  // Precio por unidad, o precio por kg cuando unit === 'kg' — la magnitud que de verdad se guarda y se
+  // compara (corrección PESO: antes este campo era el importe TOTAL de la línea, mezclando "cuánto pagué"
+  // con "a cuánto sale la unidad/el kg" — un producto por peso como "PEPINO" a 1,70 €/kg quedaba guardado
+  // como si costase 2,64 €/ud, el importe de 1,554 kg).
+  unitPrice: string
   // Si el usuario toca el símbolo de clasificación y elige una, gana
   // sobre lo que hubiera adivinado resolveDraftLineClass — undefined
   // deja que se seguisa recalculando sola mientras cambia el nombre.
@@ -5948,11 +5959,9 @@ function ReceiptForm({
     listProductPricesByReceipt(receipt.id)
       .then((detail) =>
         setLines(
-          detail.map((l) => {
-            const qty = Number(l.quantity)
-            const totalLinePrice = Number.isFinite(qty) && qty > 0 ? l.price * qty : l.price
-            return { name: l.name, quantity: l.quantity ?? '1', price: totalLinePrice.toFixed(2) }
-          }),
+          // l.price YA es el precio por unidad o por kg (nunca el importe total) — no hace falta reconstruir
+          // nada, a diferencia de antes.
+          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2) })),
         ),
       )
       .catch(() => {})
@@ -5976,7 +5985,7 @@ function ReceiptForm({
       // Las líneas que no son productos (PARKING de Mercadona...) no llegan ni a la revisión: el ticket conserva su total y su foto.
       const { products: productLines, skipped } = partitionTicketLines(readStore, parsed.items)
       setSkippedLines(skipped.map((s) => s.line.name.trim()))
-      setLines(productLines.map((l) => ({ name: l.name, quantity: String(l.quantity), price: l.price.toFixed(2) })))
+      setLines(productLines.map((l) => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, unitPrice: l.unitPrice.toFixed(2) })))
       setOcrStatus('done')
     } catch (err) {
       setOcrStatus('error')
@@ -5993,7 +6002,7 @@ function ReceiptForm({
   }
 
   function addBlankLine() {
-    setLines((prev) => [...prev, { name: '', quantity: '1', price: '' }])
+    setLines((prev) => [...prev, { name: '', quantity: '1', unit: 'ud', unitPrice: '' }])
   }
 
   async function saveLines(receiptId: string) {
@@ -6003,20 +6012,17 @@ function ReceiptForm({
     // al probar con un ticket de varias líneas.
     await Promise.all(
       lines
-        .filter((line) => line.name.trim() && !Number.isNaN(Number(line.price)))
+        .filter((line) => line.name.trim() && !Number.isNaN(Number(line.unitPrice)))
         .map(async (line) => {
-          // "Precio" es el importe TOTAL de la línea ("3 cervezas,
-          // 3,30€"), no el precio de una — bug real reportado: se
-          // guardaba tal cual y la Memoria de precios enseñaba 3,30€
-          // como si fuera el precio de una unidad. Se divide entre
-          // las unidades para guardar siempre precio por unidad.
-          const units = Number(line.quantity)
-          const unitPrice = Number.isFinite(units) && units > 0 ? Number(line.price) / units : Number(line.price)
+          // Corrección PESO — line.unitPrice YA es el precio por unidad, o por kg cuando line.unit==='kg'
+          // (nunca el importe total de la línea): se guarda tal cual, sin dividir entre nada. Antes "Precio"
+          // era el importe TOTAL de la línea y había que dividirlo entre las unidades; ahora quien revisa el
+          // ticket edita directamente la magnitud comparable (€/ud o €/kg), igual que ya la da el OCR.
           const { productId } = await recordProductPurchase({
             name: line.name.trim(),
-            price: unitPrice,
+            price: Number(line.unitPrice),
             quantity: line.quantity || '1',
-            unit: '',
+            unit: line.unit,
             store,
             date: receiptDate,
             receiptId,
@@ -6216,8 +6222,9 @@ function ReceiptForm({
             <p className="muted" style={{ flex: 1, margin: 0 }}>
               Productos leídos — revisa y corrige antes de guardar. El símbolo de la izquierda es la
               clasificación del producto (toca para cambiarla); "Nuevo" marca los que no reconoce de antes, para
-              que repases si la ha adivinado bien. "Cant." es cuántas unidades se compraron y "Precio" el
-              importe total de esa línea, no el precio de una sola unidad.
+              que repases si la ha adivinado bien. La cantidad es cuántas unidades se compraron, o el peso en
+              kg si se vendió por peso (fruta, verdura, carne al corte...); el precio es siempre por unidad —o
+              por kg cuando la unidad es "kg"—, nunca el importe total de la línea, que se ve aparte.
             </p>
             <button
               type="button"
@@ -6260,24 +6267,42 @@ function ReceiptForm({
                   <input
                     type="number"
                     className="receipt-line-qty"
-                    min={1}
-                    step={1}
+                    min={line.unit === 'kg' ? 0.001 : 1}
+                    step={line.unit === 'kg' ? 0.001 : 1}
                     value={line.quantity}
                     onChange={(e) => updateLine(i, { quantity: e.target.value })}
-                    placeholder="Cant."
-                    title="Cantidad comprada"
+                    placeholder={line.unit === 'kg' ? 'Peso' : 'Cant.'}
+                    title={line.unit === 'kg' ? 'Peso comprado, en kg' : 'Cantidad comprada'}
                   />
+                  <select
+                    value={line.unit}
+                    onChange={(e) => updateLine(i, { unit: e.target.value as MeasurementUnit })}
+                    title="Unidad de medida"
+                    aria-label="Unidad de medida"
+                  >
+                    <option value="ud">ud</option>
+                    <option value="kg">kg</option>
+                  </select>
                   <input
                     type="number"
                     step="0.01"
-                    value={line.price}
-                    onChange={(e) => updateLine(i, { price: e.target.value })}
-                    placeholder="Precio total"
+                    value={line.unitPrice}
+                    onChange={(e) => updateLine(i, { unitPrice: e.target.value })}
+                    placeholder={line.unit === 'kg' ? 'Precio/kg' : 'Precio/ud'}
+                    title={line.unit === 'kg' ? 'Precio por kg' : 'Precio por unidad'}
                   />
-                  {/* Mismo cálculo que se guarda de verdad — para pillar un
-                      fallo de lectura antes de guardar, no después. */}
-                  {Number(line.quantity) > 1 && !Number.isNaN(Number(line.price)) && (
-                    <span className="muted">= {(Number(line.price) / Number(line.quantity)).toFixed(2)} €/ud</span>
+                  {/* Importe resultante, solo para que se vea claro — nunca es lo que se guarda como precio
+                      comparable (eso es unitPrice tal cual, arriba); mismo cálculo que ya usa quien revisa
+                      el ticket para comprobar que cuadra con el importe impreso, antes de guardar. */}
+                  {!Number.isNaN(Number(line.quantity)) && !Number.isNaN(Number(line.unitPrice)) && (
+                    <span className="muted">
+                      ={' '}
+                      {(Number(line.quantity) * Number(line.unitPrice)).toLocaleString('es-ES', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{' '}
+                      €
+                    </span>
                   )}
                 </div>
               </div>

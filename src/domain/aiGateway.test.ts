@@ -132,9 +132,16 @@ describe('analyze-receipt-photo (y mercadona-ticket-webhook, mismo propósito)',
     expect(parts[1]).toEqual({ inlineData: { mimeType: 'image/png', data: 'BBB' } })
   })
 
-  it('interpreta una respuesta correcta, redondeando la cantidad', () => {
-    const out = parseReceiptPhotoOutput('```json\n{"store":"Mercadona","date":"2026-09-16","total":7.33,"items":[{"name":"Leche","quantity":2.98,"price":2.40}]}\n```')
-    expect(out).toEqual({ store: 'Mercadona', date: '2026-09-16', total: 7.33, items: [{ name: 'Leche', quantity: 3, price: 2.4 }] })
+  it('interpreta una respuesta correcta, redondeando la cantidad (venta por unidad, esquema nuevo)', () => {
+    const out = parseReceiptPhotoOutput(
+      '```json\n{"store":"Mercadona","date":"2026-09-16","total":7.33,"items":[{"name":"Leche","quantity":2.98,"unit":"ud","unitPrice":1.20,"lineTotal":2.40}]}\n```',
+    )
+    expect(out).toEqual({
+      store: 'Mercadona',
+      date: '2026-09-16',
+      total: 7.33,
+      items: [{ name: 'Leche', quantity: 3, unit: 'ud', unitPrice: 1.2, lineTotal: 2.4 }],
+    })
   })
 
   it('un JSON inválido o vacío nunca lanza: devuelve el ticket vacío (el cliente avisa de revisar)', () => {
@@ -142,10 +149,82 @@ describe('analyze-receipt-photo (y mercadona-ticket-webhook, mismo propósito)',
     expect(() => receiptPhotoSpec.parseOutput('no es json', { imageBase64: '', mimeType: '' })).not.toThrow()
   })
 
-  it('descarta líneas sin nombre o con precio no numérico; fecha con formato inválido se descarta', () => {
-    const out = parseReceiptPhotoOutput('{"date":"16-09-2026","items":[{"name":"","price":1},{"name":"Pan","price":"no numero"},{"name":"Agua","price":0.5}]}')
+  it('descarta líneas sin nombre o con importe no numérico; fecha con formato inválido se descarta', () => {
+    const out = parseReceiptPhotoOutput(
+      '{"date":"16-09-2026","items":[{"name":"","unit":"ud","unitPrice":1,"lineTotal":1},{"name":"Pan","unitPrice":"no numero","lineTotal":"no numero"},{"name":"Agua","unit":"ud","unitPrice":0.5,"lineTotal":0.5}]}',
+    )
     expect(out.date).toBeNull()
-    expect(out.items).toEqual([{ name: 'Agua', quantity: 1, price: 0.5 }])
+    expect(out.items).toEqual([{ name: 'Agua', quantity: 1, unit: 'ud', unitPrice: 0.5, lineTotal: 0.5 }])
+  })
+
+  // ------------------------------------------------------------------
+  // Corrección PESO-1 — venta por peso (€/kg) vs. venta por unidad
+  // (€/ud). Caso real obligatorio: ticket de Mercadona 18/09/2026.
+  // ------------------------------------------------------------------
+  describe('venta por peso (€/kg) — caso real obligatorio (ticket Mercadona 18/09/2026)', () => {
+    it('A) PEPINO — 1,554 kg × 1,70 €/kg = 2,64 €: guarda el peso exacto y el precio por kg, nunca el importe como si fuese €/ud', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"PEPINO","quantity":1.554,"unit":"kg","unitPrice":1.70,"lineTotal":2.64}]}')
+      expect(out.items).toEqual([{ name: 'PEPINO', quantity: 1.554, unit: 'kg', unitPrice: 1.7, lineTotal: 2.64 }])
+    })
+
+    it('B) MANZ. ROJA DULCE — 0,730 kg × 2,00 €/kg = 1,46 €', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"MANZ. ROJA DULCE","quantity":0.730,"unit":"kg","unitPrice":2.00,"lineTotal":1.46}]}')
+      expect(out.items).toEqual([{ name: 'MANZ. ROJA DULCE', quantity: 0.73, unit: 'kg', unitPrice: 2, lineTotal: 1.46 }])
+    })
+
+    it('C) BERENJENA — 0,554 kg × 2,20 €/kg = 1,22 €', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"BERENJENA","quantity":0.554,"unit":"kg","unitPrice":2.20,"lineTotal":1.22}]}')
+      expect(out.items).toEqual([{ name: 'BERENJENA', quantity: 0.554, unit: 'kg', unitPrice: 2.2, lineTotal: 1.22 }])
+    })
+
+    it('D) producto normal — 2 ud × 2,55 €/ud = 5,10 €: sigue siendo €/ud, sin cambios', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"Producto normal","quantity":2,"unit":"ud","unitPrice":2.55,"lineTotal":5.10}]}')
+      expect(out.items).toEqual([{ name: 'Producto normal', quantity: 2, unit: 'ud', unitPrice: 2.55, lineTotal: 5.1 }])
+    })
+
+    it('E) GUACAMOLE 500 GR — 1 ud × 3,95 €: el peso en el NOMBRE no convierte el producto en venta por kg', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"GUACAMOLE 500 GR","quantity":1,"unit":"ud","unitPrice":3.95,"lineTotal":3.95}]}')
+      expect(out.items).toEqual([{ name: 'GUACAMOLE 500 GR', quantity: 1, unit: 'ud', unitPrice: 3.95, lineTotal: 3.95 }])
+    })
+
+    it('F) un "unit" inventado o ausente NUNCA se acepta como kg — solo el literal exacto "kg" cuenta como evidencia', () => {
+      for (const bogusUnit of [undefined, 'Kg', 'KG', 'gr', 'g', 'gramos', 'unidad', 'peso', '']) {
+        const out = parseReceiptPhotoOutput(JSON.stringify({ items: [{ name: 'AGUA 1,5L', quantity: 1, unit: bogusUnit, unitPrice: 0.6, lineTotal: 0.6 }] }))
+        expect(out.items[0].unit, `unit=${JSON.stringify(bogusUnit)}`).toBe('ud')
+      }
+    })
+
+    it('G) el nombre nunca decide venta por peso: "kg"/"gr" en el nombre sin unit="kg" explícito sigue siendo €/ud', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"ARROZ 1 KG","quantity":1,"unit":"ud","unitPrice":1.5,"lineTotal":1.5}]}')
+      expect(out.items[0]).toMatchObject({ unit: 'ud', quantity: 1 })
+    })
+
+    it('H) un ticket con el esquema antiguo (solo "price", sin "unit"/"unitPrice"/"lineTotal") nunca rompe el parser', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"Pan","quantity":1,"price":1.80}]}')
+      expect(out.items).toEqual([{ name: 'Pan', quantity: 1, unit: 'ud', unitPrice: 1.8, lineTotal: 1.8 }])
+    })
+
+    it('I) el peso NUNCA se redondea a un número entero (ni a 1 ni a 2) — solo las unidades se redondean', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"PEPINO","quantity":1.554,"unit":"kg","unitPrice":1.70,"lineTotal":2.64}]}')
+      expect(out.items[0].quantity).toBe(1.554)
+      expect(out.items[0].quantity).not.toBe(1)
+      expect(out.items[0].quantity).not.toBe(2)
+      const ud = parseReceiptPhotoOutput('{"items":[{"name":"Leche","quantity":2.98,"unit":"ud","unitPrice":1.2,"lineTotal":2.4}]}')
+      expect(ud.items[0].quantity).toBe(3)
+    })
+
+    it('J) sin unitPrice impreso por separado (formato 2 sin desglose), se deriva del importe total — nunca al revés', () => {
+      const out = parseReceiptPhotoOutput('{"items":[{"name":"Bolsa patatas","quantity":2,"unit":"ud","lineTotal":6.00}]}')
+      expect(out.items).toEqual([{ name: 'Bolsa patatas', quantity: 2, unit: 'ud', unitPrice: 3, lineTotal: 6 }])
+    })
+
+    it('K) el prompt ya NO ordena ignorar el peso/€kg, y sí explica cuándo NO es evidencia de venta por peso', () => {
+      const parts = receiptPhotoSpec.buildParts({ imageBase64: 'BBB', mimeType: 'image/png' })
+      const text = 'text' in parts[0] ? parts[0].text : ''
+      expect(text).not.toMatch(/IGNORA el peso/)
+      expect(text).toContain('GUACAMOLE 500 GR')
+      expect(text).toMatch(/nunca (es|será) prueba de nada|no es prueba de nada/)
+    })
   })
 })
 

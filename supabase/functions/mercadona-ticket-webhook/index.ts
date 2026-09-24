@@ -188,17 +188,17 @@ Deno.serve(async (req) => {
         .single()
       if (productError) throw productError
 
-      // "price" es el importe TOTAL de la línea (Skill del prompt de
-      // arriba) — se divide entre las unidades para guardar siempre el
-      // precio por unidad, igual que "Subir ticket" a mano.
-      const unitPrice = item.quantity > 0 ? item.price / item.quantity : item.price
-
+      // Corrección PESO-2 — item.unitPrice/unit ya vienen correctamente separados del prompt (peso.ts):
+      // "ud" = precio por unidad, "kg" = precio por kg (nunca el importe total de la línea, que solo se usa
+      // para derivar unitPrice cuando el ticket no imprime un precio unitario por separado — ver
+      // receiptPhoto.ts). Sin división aquí: sea cual sea la unidad, item.unitPrice YA es la magnitud
+      // comparable de verdad, igual que "Subir ticket" a mano.
       const { error: priceError } = await admin.from("product_prices").insert({
         product_id: product.id,
-        price: unitPrice,
+        price: item.unitPrice,
         store: "Mercadona",
         quantity: String(item.quantity),
-        unit: null,
+        unit: item.unit,
         recorded_date: receiptDate,
         receipt_id: receipt.id,
       })

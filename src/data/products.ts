@@ -135,6 +135,9 @@ export interface ReceiptLineDetail {
   name: string
   price: number
   quantity: string | null
+  // Corrección PESO — 'kg' solo si así se guardó explícitamente; cualquier otra cosa (incluido null, todo
+  // el histórico anterior a esta corrección) se trata como 'ud', igual que ya se mostraba antes.
+  unit: string | null
 }
 
 // El detalle de líneas leído de un ticket concreto — para el desplegable
@@ -144,7 +147,7 @@ export interface ReceiptLineDetail {
 export async function listProductPricesByReceipt(receiptId: string): Promise<ReceiptLineDetail[]> {
   const { data, error } = await supabase
     .from('product_prices')
-    .select('id, price, quantity, products(display_name)')
+    .select('id, price, quantity, unit, products(display_name)')
     .eq('receipt_id', receiptId)
   if (error) throw error
   return data.map((r) => ({
@@ -152,6 +155,7 @@ export async function listProductPricesByReceipt(receiptId: string): Promise<Rec
     name: (r.products as unknown as { display_name: string } | null)?.display_name ?? '?',
     price: Number(r.price),
     quantity: r.quantity,
+    unit: r.unit,
   }))
 }
 

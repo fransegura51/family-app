@@ -227,11 +227,20 @@ describe('Fase 1F.E — Inicio de Compras: nuevo bloque de análisis bajo los 4 
     expect(SS).toContain("<BudgetsTab group=\"alimentacion\" seedCategories={[]} onViewMovements={handleViewMovements} />")
   })
 
-  it('la imagen de PEPA en el súper no existe todavía en el repo — se deja documentado, sin inventar ni importar un archivo inexistente', () => {
-    const b = body(SS, 'function ComprasInicioTab', 'function PorQueHaCambiadoMiCompra')
-    expect(b).toContain('todavía no existe en el repo')
-    // Ningún import nuevo de una imagen "pepa" además del ya existente compras-header.
+  // RESUELTO en el Inciso Compras — Parte A (carrusel "PEPA analiza tus compras",
+  // PepaComprasWidget, ver forecastIncisoCompras.test.ts / shoppingInsights.test.ts /
+  // shoppingPepaCarousel.test.ts): la ilustración oficial de Pepa en el súper todavía no se ha
+  // subido al repo (se pidió al usuario, con ruta y nombre exactos), así que el carrusel usa un
+  // marcador temporal ya existente en el repo (pepa-avatar.jpg) — nunca se ha inventado ni
+  // generado ningún archivo — documentado con un TODO explícito junto al import, listo para
+  // cambiarse por una sola línea en cuanto exista el archivo real.
+  it('sigue sin haber ningún import nuevo bajo @/assets/compras/ más allá del compras-header ya existente (la imagen oficial sigue sin subir)', () => {
     expect((SS.match(/from '@\/assets\/compras\//g) ?? []).length).toBe(1)
+  })
+
+  it('el marcador temporal de imagen está documentado como tal (TODO explícito, no una imagen definitiva)', () => {
+    expect(SS).toContain('TODO(asset pendiente)')
+    expect(SS).toContain("import pepaComprasImgPlaceholder from '@/assets/pepa/pepa-avatar.jpg'")
   })
 })
 

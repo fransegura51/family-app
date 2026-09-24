@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   COMPRAS_MENU_ITEM_META,
@@ -47,10 +47,21 @@ import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodP
 import { normalize } from '@/domain/voiceQuery'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { averagePricesByMonth, basketTotal, compareMonths, decomposeSpendChange, type RawPurchase } from '@/domain/priceTrends'
+import { buildShoppingInsights, type ShoppingInsight } from '@/domain/shoppingInsights'
 import { BudgetsTab, ReceiptsTab, type MovementsFilter } from '@/ui/FinanceScreen'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
 import { setPendingMovementsFilter } from '@/state/pendingMovementsFilter'
+import { setPendingProductHistoryLink, takePendingProductHistoryLink } from '@/state/pendingProductHistoryLink'
 import { onManagersChanged, openManager } from '@/state/managers'
+// TODO(asset pendiente): el usuario todavía no ha subido la ilustración
+// oficial de Pepa en el súper (con cesta, junto a la caja, revisando un
+// ticket) — debe colocarse en src/assets/compras/pepa-compras-analiza.jpg.
+// En cuanto exista, cambiar este import a esa ruta y ajustar las
+// coordenadas del bocadillo en .pepa-compras-bubble-content (styles.css)
+// a la composición real de esa imagen. Se usa pepa-avatar.jpg como
+// marcador temporal SOLO para que el carrusel sea funcional y
+// verificable mientras tanto — no es la imagen definitiva.
+import pepaComprasImgPlaceholder from '@/assets/pepa/pepa-avatar.jpg'
 import type {
   Product,
   ProductPrice,
@@ -286,6 +297,13 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
   const [productNames, setProductNames] = useState<Map<string, string>>(new Map())
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [loadingAnalysis, setLoadingAnalysis] = useState(true)
+  // Inciso Compras — Parte A: el carrusel "PEPA analiza tus compras" es
+  // sobre HÁBITOS (Alimentos y Otros a la vez), no solo la cesta de
+  // alimentación de "¿Por qué ha cambiado mi compra?" — necesita los
+  // precios/productos SIN filtrar; se guardan aparte del `purchases`
+  // filtrado de arriba, sin repetir la consulta.
+  const [allPrices, setAllPrices] = useState<ProductPrice[]>([])
+  const [allProductsForInsights, setAllProductsForInsights] = useState<Product[]>([])
 
   useEffect(() => {
     Promise.all([listBudgetCategories(), listAllProductPrices(), listProducts(), listReceipts()])
@@ -302,10 +320,17 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
             }),
         )
         setProductNames(new Map(products.map((pr) => [pr.id, pr.displayName])))
+        setAllPrices(prices)
+        setAllProductsForInsights(products)
       })
       .catch(() => {})
       .finally(() => setLoadingAnalysis(false))
   }, [])
+
+  const insights = useMemo(
+    () => buildShoppingInsights({ prices: allPrices, products: allProductsForInsights }),
+    [allPrices, allProductsForInsights],
+  )
 
   const now = new Date()
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -348,15 +373,16 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
       <h2 className="section-title" style={{ marginTop: 16 }}>
         🛒 PEPA analiza tus compras
       </h2>
-      {/* Pensado para llevar la ilustración de PEPA en el súper revisando un ticket, con un bocadillo
-          vacío — mismo patrón que .pepa-conclusion-note/.pepa-conclusion-bubble-content ya usado en
-          Economía → Resumen (styles.css, FinanceScreen.tsx PepaConclusionsWidget). Ese archivo de imagen
-          todavía no existe en el repo (se buscó en src/assets y no hay ninguna escena así) — queda
-          preparado para cuando se suministre, sin generar ni inventar ninguna imagen nueva. */}
       {loadingAnalysis ? (
         <p className="muted">Cargando…</p>
       ) : (
         <>
+          {/* Inciso Compras — Parte A: carrusel de HÁBITOS de compra (tienda más conveniente, productos
+              frecuentes, dónde sale más barato, cesta habitual...) — nunca repite los números de "¿Por
+              qué ha cambiado mi compra?" (debajo, sin tocar). Mismo patrón que PepaConclusionsWidget
+              (Economía → Resumen, FinanceScreen.tsx): imagen + bocadillo + swipe + puntos, selección
+              inicial aleatoria solo al montar. */}
+          <PepaComprasWidget insights={insights} onNavigateToHistory={() => onNavigate('Historial')} />
           <div className="card event-card">
             <p style={{ margin: 0 }}>
               Este mes llevas {currentBasket.toFixed(2)} € registrados en la cesta de tickets de alimentación
@@ -368,6 +394,117 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// Inciso Compras — Parte A: "PEPA analiza tus compras" (carrusel de hábitos). Mismo patrón que
+// PepaConclusionsWidget (Economía → Resumen, FinanceScreen.tsx): componente propio, no genérico —
+// imagen + bocadillo con container-query units, swipe táctil (umbral 50px, más horizontal que
+// vertical), puntos reutilizando home-photo-banner-dot(-active), selección inicial aleatoria SOLO al
+// montar (useState con inicializador perezoso, nunca en cada render). Sin la tarjeta "💡 explicación"
+// de Economía (aquí no hace falta: cada frase ya se basta sola). Los hallazgos (ShoppingInsight[]) los
+// calcula domain/shoppingInsights.ts — este componente solo los pinta y gestiona el carrusel.
+function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: ShoppingInsight[]; onNavigateToHistory: () => void }) {
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * Math.max(insights.length, 1)))
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const bubbleRef = useRef<HTMLDivElement>(null)
+  const textRef = useRef<HTMLParagraphElement>(null)
+  const infoRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (index >= insights.length) setIndex(0)
+  }, [insights.length, index])
+
+  // Mismo ajuste de tamaño de letra que PepaConclusionsWidget: el texto
+  // vive en una caja de altura fija (el bocadillo real de la ilustración)
+  // y se reduce en JS hasta caber, en vez de desbordar por debajo.
+  const currentText = insights[index]?.text ?? insights[0]?.text
+  useEffect(() => {
+    const el = textRef.current
+    const bubble = bubbleRef.current
+    if (!el || !bubble) return
+    el.style.fontSize = ''
+    const infoHeight = infoRef.current ? infoRef.current.offsetHeight + 2 : 0
+    const available = bubble.clientHeight - infoHeight
+    let size = parseFloat(window.getComputedStyle(el).fontSize)
+    const minSize = 9
+    while (el.scrollHeight > available && size > minSize) {
+      size -= 0.5
+      el.style.fontSize = `${size}px`
+    }
+  }, [currentText])
+
+  if (insights.length === 0) {
+    return (
+      <div className="pepa-compras-banner">
+        <div className="pepa-compras-note">
+          <img src={pepaComprasImgPlaceholder} alt="" className="pepa-compras-note-img" />
+          <div className="pepa-compras-bubble-content">
+            <p className="pepa-compras-note-text">Todavía necesito más tickets o compras registradas para detectar patrones.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  const current = insights[index] ?? insights[0]
+
+  function go(delta: number) {
+    setIndex((i) => (i + delta + insights.length) % insights.length)
+  }
+
+  function handleTouchStart(e: ReactTouchEvent) {
+    const t = e.touches[0]
+    touchStartRef.current = { x: t.clientX, y: t.clientY }
+  }
+
+  function handleTouchEnd(e: ReactTouchEvent) {
+    const start = touchStartRef.current
+    touchStartRef.current = null
+    if (!start || insights.length < 2) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    if (Math.abs(dx) >= 50 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1)
+  }
+
+  return (
+    <div className="pepa-compras-banner">
+      <div
+        className="pepa-compras-note"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        role="group"
+        aria-label="Hallazgo de Pepa sobre tus compras"
+      >
+        <img src={pepaComprasImgPlaceholder} alt="" className="pepa-compras-note-img" />
+        <div ref={bubbleRef} className="pepa-compras-bubble-content">
+          <p ref={textRef} className="pepa-compras-note-text">
+            {current.text}
+          </p>
+          {current.moreInfo && (
+            <button
+              ref={infoRef}
+              type="button"
+              className="link-button pepa-compras-info"
+              onClick={(e) => {
+                e.stopPropagation()
+                setPendingProductHistoryLink(current.moreInfo!)
+                onNavigateToHistory()
+              }}
+            >
+              +info →
+            </button>
+          )}
+        </div>
+        {insights.length > 1 && (
+          <div className="home-photo-banner-dots pepa-compras-dots">
+            {insights.map((_, i) => (
+              <span key={i} className={'home-photo-banner-dot' + (i === index ? ' home-photo-banner-dot-active' : '')} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -2120,6 +2257,27 @@ function HistoryTab() {
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p.displayName])), [products])
   const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
   const { nonFoodProductIds, foodProductIds } = useMemo(() => buildProductKindSets(products), [products])
+
+  // "+info →" del carrusel "PEPA analiza tus compras" (destino real: el
+  // historial de precios de ESE producto) — se consume una sola vez, en
+  // cuanto los datos están cargados (mismo patrón que pendingMovementsFilter
+  // en Economía). El chip Alimentos/Otros se decide con purchaseNature
+  // (la naturaleza real, que depende también de los tickets — no solo de
+  // classKind) usando los mismos datos que ya calcula el resto de
+  // Historial, para no adivinar un chip que podría no coincidir.
+  const pendingLinkAppliedRef = useRef(false)
+  useEffect(() => {
+    if (loading || pendingLinkAppliedRef.current) return
+    const link = takePendingProductHistoryLink()
+    if (!link) return
+    pendingLinkAppliedRef.current = true
+    const productPrice = prices.find((p) => p.productId === link.productId)
+    if (productPrice) {
+      const nature = purchaseNature(productPrice, foodReceiptIds, nonFoodProductIds, foodProductIds)
+      setMode(nature === 'alimentacion' ? 'alimentacion' : 'no_alimentos')
+    }
+    setQuery(link.productName)
+  }, [loading, prices, foodReceiptIds, nonFoodProductIds, foodProductIds])
 
   // Aprendizaje compartido: un producto comprado en VARIAS tiendas (o con alguna compra sin tienda) no tiene una cadena
   // inequívoca, así que no se le atribuye ninguna arbitraria — el aprendizaje compartido se salta para él.

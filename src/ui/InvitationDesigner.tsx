@@ -1065,13 +1065,36 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
 }
 
+// INV-EDITOR-3 — Deshacer de verdad: un snapshot completo (capas Y fondo — plantilla, degradado, foto de
+// fondo propia y su pan/zoom), no solo las capas. Antes "Restaurar plantilla"/"foto de fondo" pushHistory
+// solo guardaba las capas, así que Deshacer nunca recuperaba la foto de fondo que esas acciones borraban.
+interface EditorSnapshot {
+  layers: InvitationLayer[]
+  templateKey: string
+  backgroundGradient: string
+  backgroundImagePath: string | null
+  backgroundImageUrl: string | null
+  backgroundOffsetX: number
+  backgroundOffsetY: number
+  backgroundScale: number
+}
+
+// Constante nombrada en vez de un número mágico — cuántas operaciones deshacibles se conservan a la vez.
+const MAX_HISTORY_ENTRIES = 20
+
 export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
   const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
   const [templateKey, setTemplateKey] = useState(sortedTemplates[0].key)
   const [backgroundGradient, setBackgroundGradient] = useState(sortedTemplates[0].gradient)
   const [layers, setLayers] = useState<InvitationLayer[]>([])
-  const [history, setHistory] = useState<InvitationLayer[][]>([])
+  const [history, setHistory] = useState<EditorSnapshot[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // INV-EDITOR-3 — mientras el usuario sigue "dentro" de la misma edición continua (escribiendo en el
+  // mismo campo de texto, arrastrando el mismo slider/selector de color), esta clave impide crear un
+  // snapshot por cada pulsación/tick: solo se guarda historial al EMPEZAR una edición nueva (clave
+  // distinta a la anterior); terminar el gesto (blur/soltar) la borra, para que la siguiente edición del
+  // mismo campo vuelva a contar como una operación deshacible aparte.
+  const continuousEditRef = useRef<string | null>(null)
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   // Petición real: "que cualquier usuario pueda importar una imagen
   // que le guste para hacer la invitación" — foto de fondo A PANTALLA
@@ -1140,26 +1163,65 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
   const selected = layers.find((l) => l.id === selectedId) ?? null
 
+  function currentSnapshot(): EditorSnapshot {
+    return { layers, templateKey, backgroundGradient, backgroundImagePath, backgroundImageUrl, backgroundOffsetX, backgroundOffsetY, backgroundScale }
+  }
+
   function pushHistory() {
-    setHistory((h) => [...h.slice(-19), layers])
+    setHistory((h) => [...h.slice(-(MAX_HISTORY_ENTRIES - 1)), currentSnapshot()])
   }
 
   function handleUndo() {
     if (history.length === 0) return
-    setLayers(history[history.length - 1])
+    const prev = history[history.length - 1]
+    setLayers(prev.layers)
+    setTemplateKey(prev.templateKey)
+    setBackgroundGradient(prev.backgroundGradient)
+    setBackgroundImagePath(prev.backgroundImagePath)
+    setBackgroundImageUrl(prev.backgroundImageUrl)
+    setBackgroundOffsetX(prev.backgroundOffsetX)
+    setBackgroundOffsetY(prev.backgroundOffsetY)
+    setBackgroundScale(prev.backgroundScale)
     setHistory((h) => h.slice(0, -1))
+    continuousEditRef.current = null
   }
 
-  function updateSelected(patch: Partial<InvitationLayer>) {
+  // Selecciona (o deselecciona) un elemento — SIEMPRE cierra cualquier edición continua en curso, para
+  // que una edición del elemento anterior nunca "siga corriendo" sobre el nuevo tras cambiar de selección.
+  function selectLayer(id: string | null) {
+    continuousEditRef.current = null
+    setSelectedId(id)
+  }
+
+  // Cambio discreto (un clic completo: preset de color, fuente, estilo de texto, tamaño ±...) — cada uno
+  // es su propia operación deshacible, siempre.
+  function updateSelectedDiscrete(patch: Partial<InvitationLayer>) {
     if (!selectedId) return
+    pushHistory()
     setLayers((ls) => ls.map((l) => (l.id === selectedId ? { ...l, ...patch } : l)))
+  }
+
+  // Cambio continuo (escribir texto, arrastrar la rueda de color o el slider de curva) — solo abre un
+  // snapshot nuevo al EMPEZAR a editar ese campo; mientras siga siendo el mismo campo, se actualiza sin
+  // apilar historial. `commitContinuousEdit` (blur/soltar el gesto) cierra la sesión.
+  function updateSelectedContinuous(patch: Partial<InvitationLayer>, fieldKey: string) {
+    if (!selectedId) return
+    if (continuousEditRef.current !== fieldKey) {
+      pushHistory()
+      continuousEditRef.current = fieldKey
+    }
+    setLayers((ls) => ls.map((l) => (l.id === selectedId ? { ...l, ...patch } : l)))
+  }
+
+  function commitContinuousEdit() {
+    continuousEditRef.current = null
   }
 
   function handleAddLayer(layer: InvitationLayer) {
     pushHistory()
     const maxZ = layers.reduce((m, l) => Math.max(m, l.zIndex), 0)
     setLayers((ls) => [...ls, { ...layer, zIndex: maxZ + 1 }])
-    setSelectedId(layer.id)
+    selectLayer(layer.id)
     setAddMenu(null)
   }
 
@@ -1169,14 +1231,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     const maxZ = layers.reduce((m, l) => Math.max(m, l.zIndex), 0)
     const copy: InvitationLayer = { ...selected, id: `${selected.id}-copy-${Date.now()}`, x: clamp(selected.x + 0.05, 0, 1), y: clamp(selected.y + 0.05, 0, 1), zIndex: maxZ + 1 }
     setLayers((ls) => [...ls, copy])
-    setSelectedId(copy.id)
+    selectLayer(copy.id)
   }
 
   function handleDeleteSelected() {
     if (!selectedId) return
     pushHistory()
     setLayers((ls) => ls.filter((l) => l.id !== selectedId))
-    setSelectedId(null)
+    selectLayer(null)
   }
 
   function handleReorder(direction: 1 | -1) {
@@ -1195,7 +1257,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   function handleRestoreTemplate() {
     pushHistory()
     setLayers(buildInvitationTemplateLayers(event, INVITATION_TEMPLATES.find((t) => t.key === templateKey)))
-    setSelectedId(null)
+    selectLayer(null)
     setBackgroundImagePath(null)
     setBackgroundImageUrl(null)
     setBackgroundOffsetX(0)
@@ -1219,12 +1281,12 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
       // por defecto tiene sentido sobre nuestro propio arte, pero sobre
       // una plantilla ajena (traída de fuera) solo estorbaría. Se borra
       // solo la primera vez que se sube una foto de fondo, no en cada
-      // cambio posterior, para no tirar un diseño ya empezado; se puede
-      // deshacer con "↩️ Deshacer" si no era lo que querían.
+      // cambio posterior, para no tirar un diseño ya empezado.
+      // INV-EDITOR-3 — ahora SIEMPRE es una operación deshacible (antes solo lo era la primera vez).
+      pushHistory()
       if (!backgroundImagePath) {
-        pushHistory()
         setLayers([])
-        setSelectedId(null)
+        selectLayer(null)
       }
       setBackgroundImagePath(path)
       setBackgroundImageUrl(url)
@@ -1235,7 +1297,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     }
   }
 
+  // INV-EDITOR-3 — ahora deshacible (antes no formaba parte del historial en absoluto).
   function handleRemoveBackgroundPhoto() {
+    pushHistory()
     setBackgroundImagePath(null)
     setBackgroundImageUrl(null)
     setBackgroundOffsetX(0)
@@ -1252,6 +1316,8 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     if (!bgDragRef.current) {
+      // INV-EDITOR-3 — un único snapshot al EMPEZAR el gesto (pan o pinch), nunca uno por cada pointermove.
+      pushHistory()
       bgDragRef.current = { pointers: new Map(), startOffsetX: backgroundOffsetX, startOffsetY: backgroundOffsetY, startScale: backgroundScale, startDist: 0 }
     }
     bgDragRef.current.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -1320,7 +1386,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     pushHistory()
-    setSelectedId(layer.id)
+    selectLayer(layer.id)
     const rect = canvasRef.current!.getBoundingClientRect()
     dragRef.current = { mode: 'move', layerId: layer.id, startClientX: e.clientX, startClientY: e.clientY, rectW: rect.width, rectH: rect.height, x0: layer.x, y0: layer.y }
   }
@@ -1329,7 +1395,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     pushHistory()
-    setSelectedId(layer.id)
+    selectLayer(layer.id)
     const rect = canvasRef.current!.getBoundingClientRect()
     const centerPx = { x: rect.left + layer.x * rect.width, y: rect.top + layer.y * rect.height }
     const dx0 = e.clientX - centerPx.x
@@ -1403,6 +1469,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
               templates={sortedTemplates}
               selectedKey={templateKey}
               onSelect={(t) => {
+                // INV-EDITOR-3 — deshacible siempre, cambien o no las capas (antes solo se guardaba
+                // historial cuando además tocaba recolocar las 3 capas por defecto).
+                pushHistory()
                 setTemplateKey(t.key)
                 setBackgroundGradient(t.gradient)
                 // Petición real: "no quiero que el texto se salga de
@@ -1412,7 +1481,6 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 // si ya hay capas propias (añadidas, movidas, borradas...
                 // el recuento ya no cuadra), se respetan tal cual.
                 if (layers.length === 3) {
-                  pushHistory()
                   setLayers(buildInvitationTemplateLayers(event, t))
                 }
               }}
@@ -1448,7 +1516,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
             <div
               ref={canvasRef}
-              onPointerDown={() => setSelectedId(null)}
+              onPointerDown={() => selectLayer(null)}
               style={{ position: 'relative', width: '100%', aspectRatio: canvasAspectRatio, borderRadius: 16, overflow: 'hidden', background: backgroundGradient, marginTop: 10, touchAction: 'none' }}
             >
               {backgroundImageUrl ? (
@@ -1597,7 +1665,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       <button
                         key={c}
                         type="button"
-                        onClick={() => updateSelected({ color: c })}
+                        onClick={() => updateSelectedDiscrete({ color: c })}
                         style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: selected.color === c ? '2px solid #4C6EF5' : '1px solid #d8dae8' }}
                         aria-label={`Color ${c}`}
                       />
@@ -1611,7 +1679,8 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       type="color"
                       className="color-wheel-input"
                       value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
-                      onChange={(e) => updateSelected({ color: e.target.value })}
+                      onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
+                      onBlur={commitContinuousEdit}
                       aria-label="Elegir cualquier color"
                     />
                   </div>
@@ -1619,13 +1688,18 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 {(selected.type === 'text' || selected.type === 'event_data') && (
                   <label style={{ marginTop: 8, display: 'block' }}>
                     Texto
-                    <textarea value={selected.text ?? ''} onChange={(e) => updateSelected({ text: e.target.value })} rows={2} />
+                    <textarea
+                      value={selected.text ?? ''}
+                      onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
+                      onBlur={commitContinuousEdit}
+                      rows={2}
+                    />
                   </label>
                 )}
                 {(selected.type === 'text' || selected.type === 'event_data') && (
                   <label style={{ marginTop: 8, display: 'block' }}>
                     Fuente
-                    <select value={selected.fontFamily || 'inherit'} onChange={(e) => updateSelected({ fontFamily: e.target.value })}>
+                    <select value={selected.fontFamily || 'inherit'} onChange={(e) => updateSelectedDiscrete({ fontFamily: e.target.value })}>
                       {LAYER_FONT_OPTIONS.map((f) => (
                         <option key={f.value} value={f.value}>
                           {f.label}
@@ -1650,7 +1724,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                         key={opt.value}
                         type="button"
                         className={'chip' + ((selected.textStyle ?? 'normal') === opt.value ? ' chip-active' : '')}
-                        onClick={() => updateSelected({ textStyle: (selected.textStyle ?? 'normal') === opt.value ? 'normal' : opt.value })}
+                        onClick={() => updateSelectedDiscrete({ textStyle: (selected.textStyle ?? 'normal') === opt.value ? 'normal' : opt.value })}
                       >
                         {opt.label}
                       </button>
@@ -1665,7 +1739,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       min={-100}
                       max={100}
                       value={selected.curve ?? 0}
-                      onChange={(e) => updateSelected({ curve: Number(e.target.value) })}
+                      onChange={(e) => updateSelectedContinuous({ curve: Number(e.target.value) }, 'curve')}
+                      onPointerUp={commitContinuousEdit}
+                      onBlur={commitContinuousEdit}
                       style={{ width: '100%' }}
                     />
                   </label>
@@ -1680,14 +1756,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   <button
                     type="button"
                     className="link-button"
-                    onClick={() => updateSelected({ fontSize: Math.max(10, (selected.fontSize ?? 16) - (selected.type === 'text' || selected.type === 'event_data' ? 2 : 15)) })}
+                    onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - (selected.type === 'text' || selected.type === 'event_data' ? 2 : 15)) })}
                   >
                     A-
                   </button>
                   <button
                     type="button"
                     className="link-button"
-                    onClick={() => updateSelected({ fontSize: (selected.fontSize ?? 16) + (selected.type === 'text' || selected.type === 'event_data' ? 2 : 15) })}
+                    onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + (selected.type === 'text' || selected.type === 'event_data' ? 2 : 15) })}
                   >
                     A+
                   </button>

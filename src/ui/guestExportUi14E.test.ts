@@ -41,7 +41,7 @@ describe('Botón "Exportar invitados" en GuestsSection (TEST: entrada junto a Di
   })
 })
 
-describe('GuestExportModal — organizar por / incluir (TEST: 3 modos, 2 filtros, sin CSV/PDF/compartir todavía)', () => {
+describe('GuestExportModal — organizar por / incluir (TEST: 3 modos, 2 filtros)', () => {
   it('ofrece exactamente 3 formas de organizar: mesas, familias, alfabético', () => {
     const options = window(MODAL_SRC, 'const ORGANIZE_OPTIONS', ']\n')
     expect(options).toContain("value: 'mesas'")
@@ -60,10 +60,6 @@ describe('GuestExportModal — organizar por / incluir (TEST: 3 modos, 2 filtros
     expect(MODAL_SRC).toContain('listEventGuests(event.id)')
     expect(MODAL_SRC).toContain('listEventGuestMembersForEvent(event.id)')
     expect(MODAL_SRC).toContain('listEventTables(event.id)')
-  })
-
-  it('todavía NO hay compartir (llega en 14E.4)', () => {
-    expect(MODAL_SRC).not.toMatch(/navigator\.share/)
   })
 
   it('reutiliza el patrón de modal ya establecido (.modal-overlay/.modal-sheet), no uno nuevo', () => {
@@ -100,5 +96,34 @@ describe('Fase 14E.3 — botón Imprimir/PDF (TEST: reutiliza el mismo modelo, s
     expect(PRINT_SRC).toContain("window.open('', '_blank')")
     expect(PRINT_SRC).toContain('win.print()')
     expect(PRINT_SRC).not.toMatch(/jspdf|pdf-lib|pdfmake/i)
+  })
+})
+
+describe('Fase 14E.4 — botón Compartir (TEST: prioriza archivo CSV, cae a texto, luego al modal de PEPA ya existente)', () => {
+  it('reutiliza services/share.ts (canShareFiles/shareFiles/shareText) — ninguna infraestructura paralela', () => {
+    expect(MODAL_SRC).toContain("import { canShareFiles, shareFiles, shareText } from '@/services/share'")
+  })
+
+  it('prioriza compartir el CSV como archivo cuando el teléfono lo permite de verdad', () => {
+    const body = window(MODAL_SRC, 'async function handleShare', '\n  return (')
+    expect(body).toContain('canShareFiles([csvFile])')
+    expect(body).toContain('shareFiles([csvFile]')
+  })
+
+  it('si el archivo no se puede compartir, cae a un texto humano (guestListText), nunca al CSV en crudo', () => {
+    const body = window(MODAL_SRC, 'async function handleShare', '\n  return (')
+    expect(body).toContain('guestListText(event.title, attendance, buildShareTextInput())')
+    expect(body).toContain('shareText({ title, text })')
+  })
+
+  it('si tampoco eso funciona, cae al modal de copiar/WhatsApp/email ya establecido en PEPA (ShareFallbackModal)', () => {
+    expect(MODAL_SRC).toContain("import { ShareFallbackModal } from '@/ui/ShareFallbackModal'")
+    expect(MODAL_SRC).toContain('setManualShare({ title, text })')
+    expect(MODAL_SRC).toContain('{manualShare && <ShareFallbackModal')
+  })
+
+  it('el botón "📤 Compartir" existe y se deshabilita mientras se comparte (evita doble toque)', () => {
+    expect(MODAL_SRC).toContain('📤 Compartir')
+    expect(MODAL_SRC).toContain('onClick={handleShare} disabled={sharing}')
   })
 })

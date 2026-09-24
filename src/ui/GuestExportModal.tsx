@@ -14,12 +14,15 @@ import {
   type GuestExportModel,
   type GuestExportOrganizeMode,
 } from '@/domain/guestExport'
+import { guestListText, type GuestListTextInput } from '@/domain/share'
 import type { EventGuest, EventGuestMember, EventTableSeat, FamilyEvent } from '@/domain/types'
 import { downloadTextFile } from '@/services/exportFile'
 import { openPrintReport } from '@/services/printReport'
+import { canShareFiles, shareFiles, shareText } from '@/services/share'
+import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 
 // Fase 14E — modelo + vista previa (14E.1), CSV (14E.2), impresión/PDF
-// (14E.3). Compartir llega en 14E.4, sobre este mismo modal y el mismo
+// (14E.3), compartir (14E.4). Todo sobre este mismo modal y el mismo
 // modelo canónico de domain/guestExport.ts — nunca una lógica distinta
 // por formato. EventosScreen.tsx solo abre/cierra este modal y le pasa
 // el evento — la lógica de exportación vive aquí, no allí.
@@ -42,6 +45,9 @@ export function GuestExportModal({ event, onClose }: { event: FamilyEvent; onClo
   const [error, setError] = useState<string | null>(null)
   const [organize, setOrganize] = useState<GuestExportOrganizeMode>('mesas')
   const [attendance, setAttendance] = useState<GuestExportAttendanceFilter>('todos')
+  const [sharing, setSharing] = useState(false)
+  const [shareNotice, setShareNotice] = useState<string | null>(null)
+  const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -70,6 +76,37 @@ export function GuestExportModal({ event, onClose }: { event: FamilyEvent; onClo
   // celebración separadas — mismo criterio que ya usa GuestsSection
   // para decidir si enseña ese <select>.
   const showInviteScope = DUAL_LOCATION_EVENT_TYPES.includes(event.type)
+
+  function buildShareTextInput(): GuestListTextInput {
+    if (organize === 'mesas') return { organize: 'mesas', view: buildMesasView(model) }
+    if (organize === 'familias') return { organize: 'familias', view: buildFamiliasView(model, showInviteScope) }
+    return { organize: 'alfabetico', view: buildAlfabeticoView(model) }
+  }
+
+  // Prioridad móvil (petición real): compartir el CSV como archivo si el
+  // teléfono lo permite de verdad; si no, cae a un texto humano (no el
+  // propio CSV en crudo) mediante el mismo menú nativo — y si tampoco
+  // eso funciona, al modal de copiar/WhatsApp/email que ya usa el resto
+  // de PEPA (nunca deja sin ninguna forma de compartir).
+  async function handleShare() {
+    setSharing(true)
+    setShareNotice(null)
+    const title = `Invitados — ${event.title}`
+    const text = guestListText(event.title, attendance, buildShareTextInput())
+    try {
+      const csvFile = new File([guestExportCsv(model, organize)], guestExportFilename(event.title, organize, 'csv'), { type: 'text/csv;charset=utf-8' })
+      if (canShareFiles([csvFile])) {
+        const shared = await shareFiles([csvFile], { title })
+        if (shared) return
+      }
+      const shown = await shareText({ title, text })
+      setShareNotice(shown ? null : 'Copiado al portapapeles.')
+    } catch {
+      setManualShare({ title, text })
+    } finally {
+      setSharing(false)
+    }
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -143,10 +180,15 @@ export function GuestExportModal({ event, onClose }: { event: FamilyEvent; onClo
               >
                 📊 CSV
               </button>
+              <button type="button" onClick={handleShare} disabled={sharing}>
+                📤 Compartir
+              </button>
             </div>
+            {shareNotice && <p className="points-badge">{shareNotice}</p>}
           </>
         )}
       </div>
+      {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
     </div>
   )
 }

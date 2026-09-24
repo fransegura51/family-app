@@ -482,13 +482,16 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
-function organizeModeLabel(mode: GuestExportOrganizeMode): string {
+// Exportadas: domain/share.ts (guestListText, Fase 14E.4) las reutiliza
+// tal cual para el texto compartido, en vez de tener su propia copia de
+// estas mismas dos etiquetas.
+export function organizeModeLabel(mode: GuestExportOrganizeMode): string {
   if (mode === 'mesas') return 'Por mesas'
   if (mode === 'familias') return 'Por familias'
   return 'Alfabético'
 }
 
-function attendanceFilterLabel(attendance: GuestExportAttendanceFilter): string {
+export function attendanceFilterLabel(attendance: GuestExportAttendanceFilter): string {
   return attendance === 'confirmados' ? 'Confirmados' : 'Todos'
 }
 

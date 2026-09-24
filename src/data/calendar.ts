@@ -109,7 +109,12 @@ export async function getEventAttachmentUrl(storagePath: string): Promise<string
   return data.signedUrl
 }
 
-async function replaceReminders(eventId: string, reminders: EventReminder[]): Promise<void> {
+// Exportada (Fase 10 de Eventos): "reemplaza todos los recordatorios de
+// este calendar_events" es genérico — no depende de que el compromiso
+// venga de Calendario o de una tarea de Eventos enlazada, así que
+// Eventos la reutiliza tal cual en vez de reimplementar el mismo
+// delete+insert.
+export async function replaceReminders(eventId: string, reminders: EventReminder[]): Promise<void> {
   const { error: deleteError } = await supabase.from('calendar_event_reminders').delete().eq('event_id', eventId)
   if (deleteError) throw deleteError
 
@@ -119,6 +124,14 @@ async function replaceReminders(eventId: string, reminders: EventReminder[]): Pr
     )
     if (insertError) throw insertError
   }
+}
+
+// Exportada (Fase 10 de Eventos): leer los recordatorios de un
+// calendar_events concreto sin tener que traer el evento entero.
+export async function listEventReminders(eventId: string): Promise<EventReminder[]> {
+  const { data, error } = await supabase.from('calendar_event_reminders').select('minutes_before, anchor').eq('event_id', eventId)
+  if (error) throw error
+  return data.map((r) => ({ minutesBefore: r.minutes_before, anchor: r.anchor as ReminderAnchor }))
 }
 
 export async function createEvent(input: {

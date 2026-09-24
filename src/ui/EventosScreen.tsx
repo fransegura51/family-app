@@ -80,6 +80,12 @@ import {
 } from '@/data/events'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
+// Fase 10 — reutiliza el mismo almacén de recordatorios que ya usa
+// Calendario (calendar_event_reminders) en vez de crear uno propio de
+// Eventos; no toca push/cron/service worker, solo configura qué debe
+// avisar el pipeline ya existente.
+import { listEventReminders, replaceReminders } from '@/data/calendar'
+import { REMINDER_UNIT_OPTIONS, reminderMinutesFrom, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
 import {
@@ -1534,8 +1540,44 @@ function TaskEditModal({
   // Fase 9 — la propia presencia de calendarEventId es el estado
   // inicial del interruptor; no hay una columna booleana aparte.
   const [showInCalendar, setShowInCalendar] = useState(task.calendarEventId != null)
+  // Fase 10 — recordatorio de la tarea: como mucho uno (no una lista),
+  // igual que el plazo de RSVP (DEFAULT_DEADLINE_REMINDERS). Solo tiene
+  // sentido si la tarea está enlazada al Calendario.
+  const [reminderChoice, setReminderChoice] = useState<'none' | 'same_day' | '1_day' | '1_week' | 'custom'>('none')
+  const [customAmount, setCustomAmount] = useState('1')
+  const [customUnit, setCustomUnit] = useState<ReminderUnit>('dias')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!task.calendarEventId) return
+    listEventReminders(task.calendarEventId)
+      .then((reminders) => {
+        const r = reminders[0]
+        if (!r) setReminderChoice('none')
+        else if (r.minutesBefore === 0) setReminderChoice('same_day')
+        else if (r.minutesBefore === 1440) setReminderChoice('1_day')
+        else if (r.minutesBefore === 10080) setReminderChoice('1_week')
+        else setReminderChoice('custom')
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function remindersForChoice(): EventReminder[] {
+    switch (reminderChoice) {
+      case 'none':
+        return []
+      case 'same_day':
+        return [{ minutesBefore: 0, anchor: 'start' }]
+      case '1_day':
+        return [{ minutesBefore: 1440, anchor: 'start' }]
+      case '1_week':
+        return [{ minutesBefore: 10080, anchor: 'start' }]
+      case 'custom':
+        return [{ minutesBefore: reminderMinutesFrom(Number(customAmount) || 1, customUnit), anchor: 'start' }]
+    }
+  }
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -1548,8 +1590,13 @@ function TaskEditModal({
     try {
       await updateEventTask(task.id, { title, dueDate: dueDate || null, assignedMemberId: assignedMemberId || null })
       const wasLinked = task.calendarEventId != null
-      if (showInCalendar && !wasLinked && dueDate) await linkEventTaskToCalendar(task.id)
-      else if (!showInCalendar && wasLinked) await unlinkEventTaskFromCalendar(task.id)
+      let linkedId: string | null = task.calendarEventId
+      if (showInCalendar && !wasLinked && dueDate) linkedId = await linkEventTaskToCalendar(task.id)
+      else if (!showInCalendar && wasLinked) {
+        await unlinkEventTaskFromCalendar(task.id)
+        linkedId = null
+      }
+      if (linkedId) await replaceReminders(linkedId, remindersForChoice())
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -1606,6 +1653,40 @@ function TaskEditModal({
             <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
               Ponle una fecha para poder mostrarla en el Calendario.
             </p>
+          )}
+          {showInCalendar && (
+            <label>
+              Recordatorio
+              <select value={reminderChoice} onChange={(e) => setReminderChoice(e.target.value as typeof reminderChoice)}>
+                <option value="none">🔔 Sin aviso</option>
+                <option value="same_day">🔔 El mismo día</option>
+                <option value="1_day">🔔 1 día antes</option>
+                <option value="1_week">🔔 1 semana antes</option>
+                <option value="custom">🔔 Personalizado</option>
+              </select>
+            </label>
+          )}
+          {showInCalendar && reminderChoice === 'custom' && (
+            <div className="inline-fields">
+              <input
+                type="number"
+                min={1}
+                value={customAmount}
+                onChange={(e) => setCustomAmount(e.target.value)}
+                style={{ width: 70 }}
+                aria-label="Cantidad del recordatorio personalizado"
+              />
+              <select value={customUnit} onChange={(e) => setCustomUnit(e.target.value as ReminderUnit)} aria-label="Unidad del recordatorio personalizado">
+                {REMINDER_UNIT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <span className="muted" style={{ fontSize: 12 }}>
+                antes
+              </span>
+            </div>
           )}
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando…' : 'Guardar'}

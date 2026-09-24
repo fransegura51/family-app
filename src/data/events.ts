@@ -430,10 +430,13 @@ export async function updateEventTask(
 // linkRsvpDeadlineReminder/syncRsvpDeadlineReminder: enlace ESTABLE por
 // id (event_tasks.calendar_event_id), nunca se busca por título; la
 // propia presencia del id es el estado de "Mostrar en Calendario".
-export async function linkEventTaskToCalendar(taskId: string): Promise<void> {
+// Devuelve el id del calendar_events enlazado (recién creado o el que
+// ya hubiera) — Fase 10 lo necesita para poder guardar el recordatorio
+// justo después de activar "Mostrar en Calendario" en el mismo guardado.
+export async function linkEventTaskToCalendar(taskId: string): Promise<string> {
   const { data: task, error } = await supabase.from('event_tasks').select('title, due_date, calendar_event_id').eq('id', taskId).single()
   if (error) throw error
-  if (task.calendar_event_id) return // ya enlazada — idempotente, nunca duplica
+  if (task.calendar_event_id) return task.calendar_event_id // ya enlazada — idempotente, nunca duplica
   if (!task.due_date) throw new Error('Esta tarea todavía no tiene fecha')
   const familyId = await currentFamilyId()
   const { data: userResult } = await supabase.auth.getUser()
@@ -446,6 +449,7 @@ export async function linkEventTaskToCalendar(taskId: string): Promise<void> {
   if (insertError) throw insertError
   const { error: linkError } = await supabase.from('event_tasks').update({ calendar_event_id: calendarEvent.id }).eq('id', taskId)
   if (linkError) throw linkError
+  return calendarEvent.id
 }
 
 async function unlinkEventTaskCalendarById(taskId: string, calendarEventId: string): Promise<void> {

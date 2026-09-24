@@ -134,6 +134,28 @@ export async function listEventReminders(eventId: string): Promise<EventReminder
   return data.map((r) => ({ minutesBefore: r.minutes_before, anchor: r.anchor as ReminderAnchor }))
 }
 
+// Exportada (BUG TAREA-CALENDARIO-01): mismo patrón exacto que
+// replaceReminders, extraído del delete+insert que createEvent/
+// updateEvent ya hacían sobre calendar_event_members (sin tocar esas
+// dos funciones) — para que una tarea de Eventos enlazada al
+// Calendario pueda mantener su responsable sincronizado sin
+// reimplementar la lógica ni crear una segunda tabla/mecanismo de
+// asignación. []  = "Toda la familia" (semántica ya existente de
+// CalendarScreen: memberIds.length === 0), un solo member_id = ese
+// miembro. La RLS de calendar_event_members (0012_harden_foreign_key_
+// ownership.sql) ya exige member_in_current_family(member_id), así que
+// un id de otra familia es rechazado por la base de datos, no hace
+// falta duplicar esa comprobación aquí.
+export async function replaceEventMembers(eventId: string, memberIds: string[]): Promise<void> {
+  const { error: deleteError } = await supabase.from('calendar_event_members').delete().eq('event_id', eventId)
+  if (deleteError) throw deleteError
+
+  if (memberIds.length > 0) {
+    const { error: insertError } = await supabase.from('calendar_event_members').insert(memberIds.map((memberId) => ({ event_id: eventId, member_id: memberId })))
+    if (insertError) throw insertError
+  }
+}
+
 export async function createEvent(input: {
   title: string
   startAt: string

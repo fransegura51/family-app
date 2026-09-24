@@ -6,6 +6,10 @@
 import { addShoppingItem } from '@/data/shopping'
 import { supabase } from '@/data/supabaseClient'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
+// BUG TAREA-CALENDARIO-01 — reutiliza el mismo mecanismo de asignación
+// de miembro que ya usa Calendario (calendar_event_members), nunca uno
+// propio de Eventos.
+import { replaceEventMembers } from '@/data/calendar'
 import { distinctTagColor } from '@/domain/colors'
 import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary } from '@/domain/events'
 import { isInternalTransferCategory } from '@/domain/finance'
@@ -420,10 +424,29 @@ export async function updateEventTask(
   if (patch.assignedMemberId !== undefined) update.assigned_member_id = patch.assignedMemberId
   const { error } = await supabase.from('event_tasks').update(update).eq('id', id)
   if (error) throw error
-  // Fase 9 — si la tarea ya está enlazada al Calendario, mantenerlo al
-  // día (mismo patrón "safely" que syncEventToCalendarSafely: un fallo
-  // aquí nunca deshace el guardado de la tarea, solo avisa).
-  if (patch.title !== undefined || patch.dueDate !== undefined) await syncLinkedTaskCalendarEventSafely(id)
+  // Fase 9/BUG TAREA-CALENDARIO-01 — si la tarea ya está enlazada al
+  // Calendario, mantenerlo al día (mismo patrón "safely" que
+  // syncEventToCalendarSafely: un fallo aquí nunca deshace el guardado
+  // de la tarea, solo avisa). El responsable también dispara la
+  // sincronización, no solo título/fecha.
+  if (patch.title !== undefined || patch.dueDate !== undefined || patch.assignedMemberId !== undefined) await syncLinkedTaskCalendarEventSafely(id)
+}
+
+// BUG TAREA-CALENDARIO-01 — única construcción/sincronización canónica
+// EventTask → CalendarEvent para título/fecha/responsable: tanto crear
+// el enlace (linkEventTaskToCalendar) como cada edición posterior
+// (syncLinkedTaskCalendarEventSafely) pasan por aquí, para que no
+// puedan existir dos mapeos distintos que diverjan. El responsable usa
+// exactamente la semántica ya existente de Calendario
+// (calendar_event_members vacío = "Toda la familia", ver CalendarScreen.tsx) —
+// nunca una segunda interpretación propia de Eventos.
+async function applyTaskToLinkedCalendarEvent(
+  calendarEventId: string,
+  task: { title: string; due_date: string; assigned_member_id: string | null },
+): Promise<void> {
+  const { error } = await supabase.from('calendar_events').update({ title: task.title, start_at: `${task.due_date}T00:00:00` }).eq('id', calendarEventId)
+  if (error) throw error
+  await replaceEventMembers(calendarEventId, task.assigned_member_id ? [task.assigned_member_id] : [])
 }
 
 // Fase 9 — Tarea → Calendario. Mismo patrón ya certificado que
@@ -434,7 +457,7 @@ export async function updateEventTask(
 // ya hubiera) — Fase 10 lo necesita para poder guardar el recordatorio
 // justo después de activar "Mostrar en Calendario" en el mismo guardado.
 export async function linkEventTaskToCalendar(taskId: string): Promise<string> {
-  const { data: task, error } = await supabase.from('event_tasks').select('title, due_date, calendar_event_id').eq('id', taskId).single()
+  const { data: task, error } = await supabase.from('event_tasks').select('title, due_date, calendar_event_id, assigned_member_id').eq('id', taskId).single()
   if (error) throw error
   if (task.calendar_event_id) return task.calendar_event_id // ya enlazada — idempotente, nunca duplica
   if (!task.due_date) throw new Error('Esta tarea todavía no tiene fecha')
@@ -449,6 +472,10 @@ export async function linkEventTaskToCalendar(taskId: string): Promise<string> {
   if (insertError) throw insertError
   const { error: linkError } = await supabase.from('event_tasks').update({ calendar_event_id: calendarEvent.id }).eq('id', taskId)
   if (linkError) throw linkError
+  // BUG TAREA-CALENDARIO-01 — el responsable ya elegido en Eventos debe
+  // propagarse desde la primera creación del calendar_event, no solo
+  // en ediciones posteriores.
+  if (task.assigned_member_id) await replaceEventMembers(calendarEvent.id, [task.assigned_member_id])
   return calendarEvent.id
 }
 
@@ -468,7 +495,7 @@ export async function unlinkEventTaskFromCalendar(taskId: string): Promise<void>
 
 async function syncLinkedTaskCalendarEventSafely(taskId: string): Promise<void> {
   try {
-    const { data, error } = await supabase.from('event_tasks').select('calendar_event_id, title, due_date').eq('id', taskId).single()
+    const { data, error } = await supabase.from('event_tasks').select('calendar_event_id, title, due_date, assigned_member_id').eq('id', taskId).single()
     if (error) throw error
     if (!data.calendar_event_id) return
     if (!data.due_date) {
@@ -476,11 +503,7 @@ async function syncLinkedTaskCalendarEventSafely(taskId: string): Promise<void> 
       await unlinkEventTaskCalendarById(taskId, data.calendar_event_id)
       return
     }
-    const { error: updateError } = await supabase
-      .from('calendar_events')
-      .update({ title: data.title, start_at: `${data.due_date}T00:00:00` })
-      .eq('id', data.calendar_event_id)
-    if (updateError) throw updateError
+    await applyTaskToLinkedCalendarEvent(data.calendar_event_id, { title: data.title, due_date: data.due_date, assigned_member_id: data.assigned_member_id })
   } catch {
     showToast('⚠️ No se pudo actualizar el calendario de esta tarea')
   }

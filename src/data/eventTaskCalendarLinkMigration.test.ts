@@ -63,10 +63,13 @@ describe('capa de datos: enlace estable, nunca por título', () => {
     expect(helperBody).toContain('calendar_event_id: null')
   })
 
-  it('updateEventTask sincroniza el calendario enlazado cuando cambia título o fecha, nunca al cambiar solo "done"/responsable', () => {
+  it('updateEventTask sincroniza el calendario enlazado cuando cambia título, fecha o responsable, nunca al cambiar solo "done" (BUG TAREA-CALENDARIO-01: el responsable también debe disparar la sincronización — ver bugTareaCalendario01.test.ts)', () => {
     const start = SRC.indexOf('export async function updateEventTask')
-    const body = SRC.slice(start, SRC.indexOf('\n// Fase 9', start))
-    expect(body).toContain('if (patch.title !== undefined || patch.dueDate !== undefined) await syncLinkedTaskCalendarEventSafely(id)')
+    const body = SRC.slice(start, SRC.indexOf('\n// BUG TAREA-CALENDARIO-01', start))
+    expect(body).toContain(
+      'if (patch.title !== undefined || patch.dueDate !== undefined || patch.assignedMemberId !== undefined) await syncLinkedTaskCalendarEventSafely(id)',
+    )
+    expect(body).not.toMatch(/patch\.done[^\n]*syncLinkedTaskCalendarEventSafely/)
   })
 
   it('deleteEventTask limpia el calendar_events asociado antes de borrar la tarea', () => {

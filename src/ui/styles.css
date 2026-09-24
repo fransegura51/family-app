@@ -826,6 +826,14 @@ button {
   margin-top: 2px;
   font-size: 12px;
 }
+/* Fase 12 — deep-link a la tarea concreta: destaca (sin gritar) la
+   ficha a la que llevó el aviso, para no obligar a buscarla entre el
+   resto. */
+.event-task-card-highlighted {
+  border: 2px solid #f59e0b;
+  background: #fffbeb;
+}
+
 .event-task-menu {
   position: absolute;
   right: 0;

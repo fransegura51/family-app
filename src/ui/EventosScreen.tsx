@@ -625,7 +625,11 @@ function EventDetail({
   onDuplicated: (id: string) => void
 }) {
   const [tasks, setTasks] = useState<EventTask[]>([])
-  const [showAllTasks, setShowAllTasks] = useState(false)
+  // Fase 12 — si se llega a Preparativos desde un aviso, se enseñan
+  // todas las pendientes de entrada (no solo las 5 primeras sin
+  // ordenar) para garantizar que la tarea destacada esté siempre a la
+  // vista sin un paso extra de "Ver todas".
+  const [showAllTasks, setShowAllTasks] = useState(initialModule === 'tareas')
   // Fase 8 — rediseño de Preparativos: qué tarea se está editando ahora
   // mismo (ficha compacta + modal de edición, en vez de una fila de
   // tabla con checkbox+texto+fecha+responsable+✕ compitiendo por sitio).
@@ -772,6 +776,15 @@ function EventDetail({
   const taskDoneCount = tasks.filter((t) => t.done).length
   const budgetPlanned = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
   const statusSummary = computeEventStatusSummary({ tasks, guests, payments, plannedBudget: budgetPlanned, spentBudget: budgetSpent })
+
+  // Fase 12 — deep-link a la tarea concreta: computeEventConclusions
+  // agrega ("N tareas atrasadas"), no señala una tarea en particular,
+  // así que en vez de inventar un id de tarea en la URL (más
+  // arquitectura, más superficie de deep-link que mantener), al entrar
+  // a Preparativos desde un aviso se destaca sola la más urgente de
+  // verdad (mismo orden que "Pepa te recomienda", rankUpcomingTasks) —
+  // sencillo, robusto, y se recalcula solo si se resuelve.
+  const deepLinkHighlightTaskId = initialModule === 'tareas' ? (rankUpcomingTasks(tasks)[0]?.task.id ?? null) : null
 
   // Fase 7 — barra dinámica: "corresponde" evaluar ubicación exacta
   // solo si el evento ya tiene algún lugar en texto — uno que todavía
@@ -929,6 +942,7 @@ function EventDetail({
                   key={t.id}
                   task={t}
                   responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
+                  highlighted={t.id === deepLinkHighlightTaskId}
                   onToggleDone={() => updateEventTask(t.id, { done: true }).then(reloadTasks)}
                   onEdit={() => setEditingTaskId(t.id)}
                   onDelete={() => deleteEventTask(t.id).then(reloadTasks)}
@@ -1493,12 +1507,16 @@ function ManageEventModal({
 function TaskCard({
   task,
   responsible,
+  highlighted = false,
   onToggleDone,
   onEdit,
   onDelete,
 }: {
   task: EventTask
   responsible: FamilyMember | null
+  // Fase 12 — deep-link a la tarea concreta: destaca la ficha cuando se
+  // llegó aquí desde un aviso sobre esta tarea en particular.
+  highlighted?: boolean
   onToggleDone: () => void
   onEdit: () => void
   onDelete: () => void
@@ -1506,7 +1524,7 @@ function TaskCard({
   const [showMenu, setShowMenu] = useState(false)
   const overdue = isOverdueTask(task)
   return (
-    <div className="card event-task-card">
+    <div className={'card event-task-card' + (highlighted ? ' event-task-card-highlighted' : '')}>
       <input type="checkbox" checked={task.done} onChange={onToggleDone} aria-label={`Marcar "${task.title}" como hecha`} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600 }}>{task.title}</div>

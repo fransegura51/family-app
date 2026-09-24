@@ -808,6 +808,40 @@ button {
   line-height: 1;
 }
 
+/* Fase 8 — rediseño de Preparativos (mobile-first): ficha compacta en
+   vez de una fila de tabla — checkbox + título/meta que puede
+   envolver en varias líneas sin desbordar, acciones detrás de "⋯" en
+   vez de una ✕ siempre visible. */
+.event-task-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+}
+.event-task-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 2px;
+  font-size: 12px;
+}
+.event-task-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 2;
+  min-width: 140px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 /* Fase 7 — barra dinámica de "Estado del evento": el color viene de
    una clase por nivel (nunca de un gradiente continuo por porcentaje),
    para que el significado sea siempre el mismo 🔴/🟠/🟡/🟢 sin importar

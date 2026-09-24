@@ -105,12 +105,17 @@ import {
   INVITATION_SHAPES,
   INVITATION_TEMPLATES,
   type InvitationTemplateMeta,
+  isOverdueTask,
   isToday,
   makeInvitationLayer,
   rankUpcomingTasks,
   RECOMMENDED_MODULES,
   sortInvitationTemplatesForEvent,
 } from '@/domain/events'
+// Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
+// Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
+// una función pura sin ninguna dependencia de Previsión/Economía.
+import { formatSpanishDate } from '@/domain/forecastInstallmentPlanForm'
 import { pastelPalette } from '@/domain/colors'
 import { listShoppingItems } from '@/data/shopping'
 import type {
@@ -613,6 +618,10 @@ function EventDetail({
 }) {
   const [tasks, setTasks] = useState<EventTask[]>([])
   const [showAllTasks, setShowAllTasks] = useState(false)
+  // Fase 8 — rediseño de Preparativos: qué tarea se está editando ahora
+  // mismo (ficha compacta + modal de edición, en vez de una fila de
+  // tabla con checkbox+texto+fecha+responsable+✕ compitiendo por sitio).
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   // Fase 1 — reforma de Editar/•••: un único punto de entrada
   // ("Gestionar evento") en vez de dos controles compitiendo por la
@@ -880,36 +889,22 @@ function EventDetail({
 
   function renderOpenModule() {
     switch (openModule) {
-      case 'tareas':
+      case 'tareas': {
+        const editingTask = tasks.find((t) => t.id === editingTaskId) ?? null
         return (
           <div className="card event-card">
             <strong>{EVENT_MODULES.find((m) => m.key === 'tareas')?.icon} Preparativos</strong>
             {pendingTasks.length === 0 && <p className="muted">No hay nada pendiente.</p>}
-            <div className="event-list">
+            <div className="event-list" style={{ marginTop: 8 }}>
               {visibleTasks.map((t) => (
-                <div key={t.id} className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input type="checkbox" checked={t.done} onChange={() => updateEventTask(t.id, { done: true }).then(reloadTasks)} />
-                  <span style={{ flex: 1, minWidth: 120 }}>
-                    {t.title}
-                    {t.dueDate ? ` · ${t.dueDate}` : ''}
-                  </span>
-                  {/* Fase 6 — responsable: nunca inferido, "Sin asignar" es la opción
-                      por defecto y sigue siéndolo salvo que alguien elija a mano. */}
-                  <select
-                    value={t.assignedMemberId ?? ''}
-                    onChange={(e) => updateEventTask(t.id, { assignedMemberId: e.target.value || null }).then(reloadTasks)}
-                    style={{ fontSize: 12 }}
-                    aria-label={`Responsable de "${t.title}"`}
-                  >
-                    <option value="">Sin asignar</option>
-                    {familyMembers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar tarea" onConfirm={() => deleteEventTask(t.id).then(reloadTasks)} />
-                </div>
+                <TaskCard
+                  key={t.id}
+                  task={t}
+                  responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
+                  onToggleDone={() => updateEventTask(t.id, { done: true }).then(reloadTasks)}
+                  onEdit={() => setEditingTaskId(t.id)}
+                  onDelete={() => deleteEventTask(t.id).then(reloadTasks)}
+                />
               ))}
             </div>
             {pendingTasks.length > 5 && (
@@ -921,8 +916,20 @@ function EventDetail({
               <input type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="+ Añadir tarea" style={{ flex: 1 }} />
               <button type="submit">Añadir</button>
             </form>
+            {editingTask && (
+              <TaskEditModal
+                task={editingTask}
+                familyMembers={familyMembers}
+                onClose={() => setEditingTaskId(null)}
+                onSaved={() => {
+                  setEditingTaskId(null)
+                  reloadTasks()
+                }}
+              />
+            )}
           </div>
         )
+      }
       case 'invitados':
         return <GuestsSection key={`invitados-${refreshKey}`} event={event} />
       case 'mesas':
@@ -1143,7 +1150,7 @@ function EventDetail({
                   </span>
                   {task.dueDate && (
                     <span className="muted" style={{ fontSize: 12 }}>
-                      {d !== null && d < 0 ? `Venció ${task.dueDate}` : `Vence ${task.dueDate}`}
+                      {d !== null && d < 0 ? `Venció el ${formatSpanishDate(task.dueDate)}` : `Vence el ${formatSpanishDate(task.dueDate)}`}
                     </span>
                   )}
                 </div>
@@ -1441,6 +1448,150 @@ function ManageEventModal({
 // listShoppingItems). La gestión de verdad (marcar comprado, añadir,
 // borrar) se sigue haciendo en Compras — aquí solo se ve qué falta y
 // se enlaza allí.
+// Fase 8 — rediseño de Preparativos: ficha compacta táctil en vez de
+// una fila de tabla (checkbox+texto+fecha+responsable+✕ compitiendo
+// por el mismo espacio horizontal, con la fecha en ISO crudo). Título
+// protagonista, fecha/responsable como línea secundaria, acciones
+// (editar/borrar) detrás de "⋯" — nunca un select permanente ni la ✕
+// siempre visible.
+function TaskCard({
+  task,
+  responsible,
+  onToggleDone,
+  onEdit,
+  onDelete,
+}: {
+  task: EventTask
+  responsible: FamilyMember | null
+  onToggleDone: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const [showMenu, setShowMenu] = useState(false)
+  const overdue = isOverdueTask(task)
+  return (
+    <div className="card event-task-card">
+      <input type="checkbox" checked={task.done} onChange={onToggleDone} aria-label={`Marcar "${task.title}" como hecha`} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600 }}>{task.title}</div>
+        {(task.dueDate || responsible) && (
+          <div className="muted event-task-card-meta">
+            {task.dueDate && (
+              <span style={overdue ? { color: '#dc2626', fontWeight: 600 } : undefined}>
+                📅 {formatSpanishDate(task.dueDate)}
+                {overdue ? ' · 🔴 Atrasada' : ''}
+              </span>
+            )}
+            {responsible && <span>👤 {responsible.name}</span>}
+          </div>
+        )}
+      </div>
+      <div style={{ position: 'relative' }}>
+        <button type="button" className="icon-button" aria-label={`Más opciones de "${task.title}"`} onClick={() => setShowMenu((v) => !v)}>
+          ⋯
+        </button>
+        {showMenu && (
+          <>
+            {/* Capa invisible para cerrar el menú al tocar fuera, mismo patrón que modal-overlay. */}
+            <div style={{ position: 'fixed', inset: 0, zIndex: 1 }} onClick={() => setShowMenu(false)} />
+            <div className="event-task-menu">
+              <button
+                type="button"
+                className="link-button"
+                style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                onClick={() => {
+                  setShowMenu(false)
+                  onEdit()
+                }}
+              >
+                ✏️ Editar
+              </button>
+              <ConfirmButton label="🗑️ Borrar" confirmLabel="Borrar" className="link-button" onConfirm={onDelete} />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TaskEditModal({
+  task,
+  familyMembers,
+  onClose,
+  onSaved,
+}: {
+  task: EventTask
+  familyMembers: FamilyMember[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [title, setTitle] = useState(task.title)
+  const [dueDate, setDueDate] = useState(task.dueDate ?? '')
+  const [assignedMemberId, setAssignedMemberId] = useState(task.assignedMemberId ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!title.trim()) {
+      setError('Ponle un título.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateEventTask(task.id, { title, dueDate: dueDate || null, assignedMemberId: assignedMemberId || null })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Editar tarea
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            Título
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+          </label>
+          <label>
+            Fecha
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          </label>
+          <label>
+            Responsable
+            {/* Fase 6 — nunca inferido: "Sin asignar" sigue siéndolo salvo que alguien elija a mano. */}
+            <select value={assignedMemberId} onChange={(e) => setAssignedMemberId(e.target.value)}>
+              <option value="">Sin asignar</option>
+              {familyMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function EventShoppingSection({ items }: { items: ShoppingItem[] }) {
   const pending = items.filter((i) => i.status === 'pendiente')
   const bought = items.filter((i) => i.status === 'comprado')

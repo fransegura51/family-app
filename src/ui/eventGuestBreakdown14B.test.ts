@@ -204,13 +204,14 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     expect(guestRow).toContain("{g.notes ? ` · ${g.notes}` : ''}")
   })
 
-  it('no se ha tocado ninguna migración ni política RLS de la Fase 14B (0167 es de una fase totalmente distinta y posterior)', () => {
+  it('no se ha tocado ninguna migración ni política RLS de la Fase 14B (0167/0168 son de fases totalmente distintas y posteriores)', () => {
     // 0167 (reclassify_commission_reversal_pair_202609, FASE CA-4) es la corrección puntual del par
-    // comisión+bonificación de septiembre — no tiene nada que ver con invitados/regalos de eventos.
+    // comisión+bonificación de septiembre. 0168 (receipt_dedup_fingerprint) añade huellas anti-duplicado a
+    // `receipts`. Ninguna de las dos tiene nada que ver con invitados/regalos de eventos.
     const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(167)
+    expect(Math.max(...numbers)).toBe(168)
   })
 })

@@ -149,6 +149,7 @@ import { computePeriodFinancials, isRealIncome } from '@/domain/financeCompute'
 import { groupSpending, type FinanceData } from '@/domain/financeCompute'
 import { comparablePrevious, daysBetween, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
 import { isRefund } from '@/domain/refunds'
+import { incomeSelectableCategories } from '@/domain/cancelledCharge'
 import { buildFoodReceiptIds, buildProductKindSets, purchaseNature } from '@/domain/products'
 import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
 import { classifyFoodType } from '@/domain/foodTypes'
@@ -4107,7 +4108,10 @@ function EditExpenseInline({
   const [amount, setAmount] = useState(String(expense.amount))
   // NULL (pendiente de clasificar) se conserva tal cual mientras no se elija una categoría: abrir y guardar no inventa ninguna.
   const [category, setCategory] = useState<string | null>(expense.category)
-  const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
+  // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
+  // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
+  // cancelledCharge.ts) para poder corregir a mano la pata de abono de un cargo+abono que se cancela.
+  const incomeCategories = incomeSelectableCategories(categories)
   const [store, setStore] = useState(expense.store ?? '')
   const [tagId, setTagId] = useState(expense.tagId ?? '')
   const [notes, setNotes] = useState(expense.notes ?? '')
@@ -4642,7 +4646,10 @@ function AddExpenseToAnyCategoryInline({
   // Gasto/Ingreso; un ingreso no lleva categoría de presupuesto ni
   // establecimiento, solo fecha e importe.
   const [isIncome, setIsIncome] = useState(false)
-  const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
+  // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
+  // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
+  // cancelledCharge.ts) para poder corregir a mano la pata de abono de un cargo+abono que se cancela.
+  const incomeCategories = incomeSelectableCategories(categories)
   const [category, setCategory] = useState(categories[0]?.name ?? 'Alimentación')
   const [incomeCategory, setIncomeCategory] = useState(incomeCategories[0]?.name ?? 'Ingreso')
   const [store, setStore] = useState('')
@@ -7755,7 +7762,10 @@ function AddIncomeInline({
   categories: BudgetCategory[]
   onAdded: () => void
 }) {
-  const incomeCategories = categories.filter((c) => c.budgetGroup === 'ingresos')
+  // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
+  // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
+  // cancelledCharge.ts) para poder corregir a mano la pata de abono de un cargo+abono que se cancela.
+  const incomeCategories = incomeSelectableCategories(categories)
   const [date, setDate] = useState(toDateStr(new Date()))
   const [amount, setAmount] = useState('')
   // Petición real: "los ingresos también se deberían poder

@@ -101,16 +101,18 @@ describe('Fase 2: rollback y aislamiento', () => {
     expect(ROLLBACK).not.toMatch(/\bdelete from\b|\btruncate\b|\bdrop table\b|catalog_categories|catalog_food_types/i)
   })
 
-  it('solo los consumidores conocidos usan catalog_key: clases de producto (Fase 5) y, desde la 6D.1, la identidad de categorías financieras (Devoluciones)', () => {
+  it('solo los consumidores conocidos usan catalog_key: clases de producto (Fase 5), identidad de categorías financieras (Devoluciones, Fase 6D.1) y Cobro anulado (Fase CA-3)', () => {
     const users = Object.entries(APP)
       .filter(([, text]) => /catalog_key|catalogKey/.test(text))
       .map(([file]) => file)
       .sort()
     // Fase 5 (clases de producto) + Fase 6D.1 (domain/refunds.ts: identidad de «Devoluciones» por catalog_key, no por nombre; la
-    // capa de datos de budget_categories ahora selecciona y expone esa columna; los fixtures de test la traen a null por defecto).
+    // capa de datos de budget_categories ahora selecciona y expone esa columna; los fixtures de test la traen a null por defecto) +
+    // Fase CA-3 (domain/cancelledCharge.ts: mismo patrón para «Cobro anulado», para poder elegirla a mano en un ingreso).
     expect(users).toEqual([
       '/src/data/finance.ts',
       '/src/data/foodTypes.ts',
+      '/src/domain/cancelledCharge.ts',
       '/src/domain/financeTestData.ts',
       '/src/domain/productClass.ts',
       '/src/domain/refunds.ts',

@@ -85,11 +85,23 @@ describe('G/H/K/O/P/Q/R/S. el cambio: SOLO category, en las dos filas, nada más
 })
 
 describe('no automatiza nada: solo dos filas puntuales, sin tocar el sync bancario', () => {
-  it('la migración no toca guessCategory, MERCHANT_CATEGORY_RULES, la regla /^anul/ ni ninguna ventana temporal del sync', () => {
+  it('la migración no toca guessCategory, MERCHANT_CATEGORY_RULES ni la regla /^anul/ del sync', () => {
     const bank = FUNCTIONS['/supabase/functions/enable-banking-sync-transactions/index.ts']
     expect(bank).toContain('return familyCategoryNames.has("Otros") ? "Otros" : [...familyCategoryNames][0] ?? "Otros"')
     expect(bank).toContain('/^anul\\b/i')
-    expect(bank).not.toMatch(/bonific|comision.{0,20}mant/i)
+  })
+
+  // FASE CA-1 (posterior a esta migración 0152): el sync SÍ reconoce ahora "bonific"/"comision...mant" —
+  // pero como una regla propia, estrecha y con sus propias guardas (ver
+  // commissionReversalDetection.test.ts), no como un efecto colateral de esta migración puntual. Esta
+  // migración en sí (el fichero SQL) sigue sin tocar el sync — eso no cambia.
+  it('la mención de "bonific"/comisión en el sync, si existe, es la regla CA-1 documentada y acotada, no un atajo suelto', () => {
+    const bank = FUNCTIONS['/supabase/functions/enable-banking-sync-transactions/index.ts']
+    if (/bonific|comision.{0,20}mant/i.test(bank)) {
+      expect(bank).toContain('COMMISSION_REVERSAL_MATCH_WINDOW_DAYS')
+      expect(bank).toContain('isCommissionReversalDescription')
+      expect(bank).toContain('pickUnambiguousCommissionCharge')
+    }
   })
 
   it('no existe en el código activo ninguna regla nueva BONIFIC → Cobro anulado ni comisión → categoría', () => {

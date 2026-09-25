@@ -24,6 +24,12 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 //   importe y ambos pasan a "Cobro anulado" (ver
 //   linkTransactionsToExpenses) — así no cuentan como gasto duplicado
 //   ni como ingreso suelto si luego se vuelve a cobrar.
+// - FASE CA-1 — mismo destino ("Cobro anulado") para una reversión/bonificación de comisión bancaria
+//   ("BONIFIC. COMISION MANT. CUENTA" contra "INTERESES Y/O COMISIONES CUENTA", caso real auditado del
+//   24/06 y 24/09/2026): el banco no usa la palabra "ANUL" para esto, así que es una regla aparte,
+//   deliberadamente más estrecha (misma cuenta, ventana de 3 días, exige palabra de comisión/interés en
+//   AMBOS lados) — ver isCommissionReversalDescription/isCommissionChargeDescription/
+//   pickUnambiguousCommissionCharge. Si hay ambigüedad (más de un cargo candidato), no empareja nada.
 //
 // Primera vez que se sincroniza una cuenta: trae el periodo pedido
 // (días). A partir de ahí cada sincronización es incremental de
@@ -155,6 +161,51 @@ function guessCategory(description: string | null, familyCategoryNames: Set<stri
     }
   }
   return familyCategoryNames.has("Otros") ? "Otros" : [...familyCategoryNames][0] ?? "Otros"
+}
+
+// FASE CA-1 — petición real: "INTERESES Y/O COMISIONES CUENTA" (cargo) + "BONIFIC. COMISION MANT.
+// CUENTA" (abono), mismo día, se cancelan entre sí igual que un "ANUL COMPRA TARJ..." — pero el banco no
+// usa la palabra "ANUL" para esto, así que el patrón /^anul\b/i de más abajo nunca lo detectaba. Regla
+// DELIBERADAMENTE estrecha: nunca "mismo importe con signo contrario" a secas (eso generaría falsos
+// "Cobro anulado" con cualquier coincidencia de importe, p. ej. una compra de 60€ y un ingreso de 60€ sin
+// relación) — exige que AMBAS descripciones (abono Y cargo candidato) mencionen comisión/interés, no solo
+// la del abono. Funciones puras (sin admin/IO) para poder razonarlas y testearlas por separado.
+const COMMISSION_KEYWORDS_PATTERN = /comisi[oó]n|inter[eé]s(es)?/i
+const COMMISSION_REVERSAL_PATTERN = /bonific|revers|anulaci[oó]n/i
+
+// ¿Es esta la descripción de un CARGO de comisión/interés bancario (el lado que se anula)?
+function isCommissionChargeDescription(description: string | null): boolean {
+  return COMMISSION_KEYWORDS_PATTERN.test(description ?? "")
+}
+
+// ¿Es esta la descripción de un ABONO que revierte/bonifica una comisión (el lado que anula)? Exige
+// también la palabra de comisión/interés en el propio abono (no solo "bonific") para no confundirse con
+// una bonificación no relacionada con comisiones (p. ej. "BONIFICACION NOMINA").
+function isCommissionReversalDescription(description: string | null): boolean {
+  const text = description ?? ""
+  return COMMISSION_REVERSAL_PATTERN.test(text) && COMMISSION_KEYWORDS_PATTERN.test(text)
+}
+
+// Mismo margen que INTERNAL_TRANSFER_MATCH_WINDOW_DAYS / RECONCILIATION_DATE_WINDOW_DAYS (domain/
+// finance.ts, domain/forecastReconciliation.ts): 3 días para dos patas del MISMO evento real. Los dos
+// casos reales observados (24/06 y 24/09/2026) llegan el mismo día — 3 días deja margen para que el banco
+// registre la bonificación con un pequeño desfase sin ampliarlo a una ventana larga tipo la de 60 días de
+// "ANUL" (esa es para una devolución de compra, que sí puede tardar semanas; una reversión de comisión de
+// mantenimiento es un ajuste del propio banco, se aplica casi siempre el mismo día o el siguiente).
+const COMMISSION_REVERSAL_MATCH_WINDOW_DAYS = 3
+
+interface CommissionChargeCandidate {
+  id: string
+  amount: number
+  description: string | null
+}
+
+// Único candidato válido, o null si no hay ninguno o si hay más de uno — mejor NO emparejar
+// automáticamente (cae al camino normal, como un Ingreso cualquiera) que arriesgar un "Cobro anulado"
+// falso por ambigüedad (petición real, caso de dos cargos candidatos del mismo importe).
+function pickUnambiguousCommissionCharge(candidates: CommissionChargeCandidate[], targetAmount: number): CommissionChargeCandidate | null {
+  const matches = candidates.filter((c) => Math.abs(c.amount - targetAmount) < 0.01 && isCommissionChargeDescription(c.description))
+  return matches.length === 1 ? matches[0] : null
 }
 
 interface BankAccountRow {
@@ -295,6 +346,40 @@ async function syncAccount(
   return { synced }
 }
 
+// Compartida por el patrón "ANUL..." y por la nueva regla de reversión de comisión (FASE CA-1): pasa el
+// cargo ya existente a "Cobro anulado", crea el gasto del abono con esa misma categoría y enlaza el
+// movimiento bancario del abono a ese nuevo gasto. Mismo efecto exacto que tenía el bloque de "ANUL" antes
+// de esta fase — solo se ha sacado a una función para no repetirlo con la regla nueva.
+async function reclassifyAsCancelledChargePair(
+  admin: ReturnType<typeof createClient>,
+  params: {
+    chargeExpenseId: string
+    familyId: string
+    ownerMemberId: string | null
+    bt: { id: string; transaction_date: unknown; amount: unknown; description: unknown }
+  },
+): Promise<void> {
+  await admin.from("expenses").update({ category: "Cobro anulado" }).eq("id", params.chargeExpenseId)
+  const { data: refundExpense } = await admin
+    .from("expenses")
+    .insert({
+      family_id: params.familyId,
+      expense_date: params.bt.transaction_date,
+      amount: Number(params.bt.amount),
+      category: "Cobro anulado",
+      store: null,
+      kind: "real",
+      notes: params.bt.description as string | null,
+      is_income: true,
+      budget_group: "generales",
+      source: "banco",
+      owner_member_id: params.ownerMemberId,
+    })
+    .select("id")
+    .single()
+  if (refundExpense) await admin.from("bank_transactions").update({ matched_expense_id: refundExpense.id }).eq("id", params.bt.id)
+}
+
 // Convierte cada movimiento del banco sin enlazar todavía en un gasto
 // real de Movimientos: o se une a un ticket ya existente (mismo
 // importe, ±7 días) o se crea un gasto nuevo con categoría adivinada.
@@ -354,25 +439,52 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
         )[0]
 
       if (originalCharge) {
-        await admin.from("expenses").update({ category: "Cobro anulado" }).eq("id", originalCharge.id)
-        const { data: refundExpense } = await admin
-          .from("expenses")
-          .insert({
-            family_id: familyId,
-            expense_date: bt.transaction_date,
-            amount: Number(bt.amount),
-            category: "Cobro anulado",
-            store: null,
-            kind: "real",
-            notes: bt.description as string | null,
-            is_income: true,
-            budget_group: "generales",
-            source: "banco",
-            owner_member_id: account.owner_member_id,
-          })
-          .select("id")
-          .single()
-        if (refundExpense) await admin.from("bank_transactions").update({ matched_expense_id: refundExpense.id }).eq("id", bt.id)
+        await reclassifyAsCancelledChargePair(admin, { chargeExpenseId: originalCharge.id, familyId, ownerMemberId: account.owner_member_id, bt })
+        continue
+      }
+    }
+
+    // FASE CA-1 — reversión/bonificación de comisión bancaria (ver isCommissionReversalDescription más
+    // arriba): solo se intenta cuando el patrón "ANUL" de arriba no ha aplicado. Ventana corta (3 días,
+    // no 60 — ver COMMISSION_REVERSAL_MATCH_WINDOW_DAYS), MISMA CUENTA (bank_transactions.account_id =
+    // account.id, la cuenta que se está sincronizando ahora mismo — no se busca en otras cuentas de la
+    // familia) y exige que el cargo candidato también mencione comisión/interés (isCommissionChargeDescription)
+    // — así un "BONIFIC." cualquiera no candidato no empareja con una compra normal (petición real, caso
+    // 6). Si hay más de un cargo candidato del mismo importe, no se elige ninguno (petición real, caso 7:
+    // mejor no automatizar un caso dudoso que crear un "Cobro anulado" falso) y cae al camino normal de
+    // abajo, igual que si no se hubiera encontrado ninguno.
+    if (isIncome && isCommissionReversalDescription((bt.description as string | null) ?? null)) {
+      const date = new Date(bt.transaction_date as string)
+      const from = new Date(date)
+      from.setDate(from.getDate() - COMMISSION_REVERSAL_MATCH_WINDOW_DAYS)
+
+      // Mismo criterio que el resto del archivo: dos consultas simples (bank_transactions de esta MISMA
+      // cuenta, luego los expenses que enlazan) en vez de un embed de PostgREST, para quedar en el mismo
+      // estilo que el resto de linkTransactionsToExpenses.
+      const { data: chargeTxCandidates } = await admin
+        .from("bank_transactions")
+        .select("amount, description, matched_expense_id")
+        .eq("account_id", account.id)
+        .eq("credit_debit", "DBIT")
+        .not("matched_expense_id", "is", null)
+        .gte("transaction_date", from.toISOString().slice(0, 10))
+        .lte("transaction_date", bt.transaction_date as string)
+
+      const candidateExpenseIds = (chargeTxCandidates ?? []).map((c) => c.matched_expense_id as string)
+      const { data: candidateExpenses } = candidateExpenseIds.length
+        ? await admin.from("expenses").select("id, is_income, category").in("id", candidateExpenseIds)
+        : { data: [] as { id: string; is_income: boolean; category: string | null }[] }
+      const eligibleExpenseIds = new Set(
+        (candidateExpenses ?? []).filter((e) => e.is_income === false && e.category !== "Cobro anulado").map((e) => e.id as string),
+      )
+
+      const eligible: CommissionChargeCandidate[] = (chargeTxCandidates ?? [])
+        .filter((c) => eligibleExpenseIds.has(c.matched_expense_id as string))
+        .map((c) => ({ id: c.matched_expense_id as string, amount: Number(c.amount), description: c.description as string | null }))
+
+      const originalCharge = pickUnambiguousCommissionCharge(eligible, Number(bt.amount))
+      if (originalCharge) {
+        await reclassifyAsCancelledChargePair(admin, { chargeExpenseId: originalCharge.id, familyId, ownerMemberId: account.owner_member_id, bt })
         continue
       }
     }

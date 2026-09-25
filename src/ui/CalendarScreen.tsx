@@ -1719,7 +1719,10 @@ function AgendaListView({
 
 // Foto grande sobre la tarjeta del evento (formato de referencia,
 // como "Moto") — la url firmada se pide sola, no llega ya resuelta.
-function EventAttachmentPhoto({ storagePath }: { storagePath: string }) {
+// onClick opcional: EventCard (Vista Familiar) la usa para abrir PhotoLightbox — antes no tenía ninguna
+// interacción propia (la tarjeta entera no tiene onClick, solo el botón "Editar"), así que añadirla no
+// cambia ningún comportamiento existente.
+function EventAttachmentPhoto({ storagePath, onClick }: { storagePath: string; onClick?: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     let active = true
@@ -1731,6 +1734,13 @@ function EventAttachmentPhoto({ storagePath }: { storagePath: string }) {
     }
   }, [storagePath])
   if (!url) return null
+  if (onClick) {
+    return (
+      <button type="button" className="agenda-card-photo-button" onClick={onClick} aria-label="Ver foto del evento">
+        <img src={url} alt="" className="agenda-card-photo" />
+      </button>
+    )
+  }
   return <img src={url} alt="" className="agenda-card-photo" />
 }
 
@@ -1756,6 +1766,10 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
   const [liveX, setLiveX] = useState<number | null>(null)
   const startXRef = useRef(0)
   const swiping = useRef(false)
+  // Miniatura de la foto del evento (petición real: la foto grande solo se veía en Vista Familiar —
+  // aquí se ve una miniatura, y tocarla abre PhotoLightbox en vez de editar el evento). Propia de esta
+  // fila, no se coordina con ninguna otra — como mucho una foto abierta a la vez tiene sentido en la UI.
+  const [showingPhoto, setShowingPhoto] = useState(false)
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     startXRef.current = e.clientX
@@ -1904,6 +1918,9 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
             </span>
           </span>
         </button>
+        {entry.attachmentKind === 'foto' && entry.attachmentStoragePath && (
+          <AgendaRowThumb storagePath={entry.attachmentStoragePath} onOpen={() => setShowingPhoto(true)} />
+        )}
         {entry.onShare && (
           <button
             type="button"
@@ -1919,6 +1936,74 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
           </button>
         )}
       </div>
+      {/* El visor se renderiza FUERA de .agenda-row-inner a propósito: esa fila puede llevar un
+          transform (deslizar para borrar), y un transform en un antepasado convierte position:fixed en
+          relativo a ÉL en vez de a la pantalla — el visor dejaría de ser realmente a pantalla completa
+          si la fila estuviera a medio deslizar. */}
+      {showingPhoto && entry.attachmentStoragePath && (
+        <PhotoLightbox storagePath={entry.attachmentStoragePath} onClose={() => setShowingPhoto(false)} />
+      )}
+    </div>
+  )
+}
+
+// Miniatura de la foto en la fila compacta — interacción propia e independiente de la fila: tocarla
+// abre PhotoLightbox, nunca el editor del evento (petición real explícita). Para en seco el click Y el
+// pointerdown (este último porque .agenda-row-inner escucha pointerdown/move/up para el gesto de
+// deslizar-para-borrar en TODA la fila — sin pararlo aquí, tocar la miniatura también arrancaría ese
+// gesto). Reutiliza getEventAttachmentUrl, igual que EventAttachmentPhoto — no es una copia de esa
+// lógica, es la misma función, solo con una clase CSS de tamaño distinta.
+function AgendaRowThumb({ storagePath, onOpen }: { storagePath: string; onOpen: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    getEventAttachmentUrl(storagePath)
+      .then((u) => active && setUrl(u))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [storagePath])
+  if (!url) return null
+  return (
+    <button
+      type="button"
+      className="agenda-row-thumb"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen()
+      }}
+      aria-label="Ver foto del evento"
+    >
+      <img src={url} alt="" />
+    </button>
+  )
+}
+
+// Visor simple de una foto de evento — overlay a pantalla completa, sin carrusel, sin edición, sin
+// descarga: solo ver la foto más grande y cerrar. No existía ya un visor así en la app: Compras/
+// Documentos abren la foto en una pestaña nueva del navegador (ShoppingScreen.tsx handleViewPhoto,
+// mismo patrón en DocumentsScreen.tsx), que aquí no encaja porque la foto de un evento se pensó para
+// verse dentro de la propia pantalla de Calendario. Reutiliza getEventAttachmentUrl, igual que
+// EventAttachmentPhoto — mismo bucket, misma URL firmada, sin lógica nueva de acceso a Storage.
+function PhotoLightbox({ storagePath, onClose }: { storagePath: string; onClose: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    getEventAttachmentUrl(storagePath)
+      .then((u) => active && setUrl(u))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [storagePath])
+  return (
+    <div className="photo-lightbox-overlay" onClick={onClose}>
+      <button type="button" className="photo-lightbox-close" onClick={onClose} aria-label="Cerrar foto">
+        ✕
+      </button>
+      {url && <img src={url} alt="" className="photo-lightbox-image" onClick={(e) => e.stopPropagation()} />}
     </div>
   )
 }
@@ -1976,6 +2061,7 @@ function EventCard({
   const [confirming, setConfirming] = useState(false)
   const [pickingDay, setPickingDay] = useState(false)
   const [occurrenceDate, setOccurrenceDate] = useState(() => toDateStr(new Date(ev.startAt)))
+  const [showingPhoto, setShowingPhoto] = useState(false)
   const mapsUrl =
     ev.locationLatitude != null && ev.locationLongitude != null
       ? `https://www.google.com/maps?q=${ev.locationLatitude},${ev.locationLongitude}`
@@ -1983,7 +2069,10 @@ function EventCard({
   return (
     <div className="card event-card" style={{ borderColor: ev.color ?? undefined }}>
       {ev.attachmentKind === 'foto' && ev.attachmentStoragePath && (
-        <EventAttachmentPhoto storagePath={ev.attachmentStoragePath} />
+        <EventAttachmentPhoto storagePath={ev.attachmentStoragePath} onClick={() => setShowingPhoto(true)} />
+      )}
+      {showingPhoto && ev.attachmentStoragePath && (
+        <PhotoLightbox storagePath={ev.attachmentStoragePath} onClose={() => setShowingPhoto(false)} />
       )}
       <strong>
         {ev.visibility === 'private' && '🔒 '}

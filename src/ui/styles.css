@@ -2745,7 +2745,13 @@ textarea {
   height: 40px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.15);
+  /* Bug real (captura de iPhone): con fondo casi transparente
+     (rgba(255,255,255,0.15)) el botón se volvía invisible sobre una
+     zona clara de la propia foto ("blanco sobre blanco"). Fondo oscuro
+     sólido — como el botón de cerrar de la Cámara/Fotos de iOS — se ve
+     igual de bien encima de una foto clara que de una oscura. */
+  background: rgba(17, 17, 17, 0.75);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   color: #fff;
   font-size: 18px;
   line-height: 1;

@@ -6,6 +6,7 @@ import {
   INVITATION_EMOJI_SUGGESTIONS,
   INVITATION_SHAPES,
   INVITATION_TEMPLATES,
+  LINE_HEIGHT_RATIO,
   type InvitationTemplateMeta,
   makeInvitationLayer,
   sortInvitationTemplatesForEvent,
@@ -232,6 +233,12 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
               fontSize,
               fontFamily,
               fontWeight,
+              // Debe coincidir EXACTAMENTE con LINE_HEIGHT_RATIO (domain/events.ts): esa constante es la
+              // que estimateLayerBoxFraction usa para calcular el alto real de esta capa y así colocar el
+              // resto (autoArrangeLayers) sin solape ni overflow falso. Sin fijarlo aquí, el <div> heredaba
+              // el line-height "normal" del navegador/fuente (variable según fontFamily) y el alto
+              // estimado podía no coincidir con el alto realmente pintado.
+              lineHeight: LINE_HEIGHT_RATIO,
               whiteSpace: 'pre-line',
               textAlign: 'center',
               textShadow: className ? 'none' : style === '3d' ? text3dShadow(color) : '0 1px 4px rgba(0,0,0,0.25)',
@@ -251,7 +258,7 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
       const url = layer.photoPath ? photoUrls[layer.photoPath] : undefined
       const size = layer.fontSize ?? 120
       return url ? (
-        <img src={url} alt="" style={{ width: size, height: size, objectFit: 'cover', borderRadius: 12, display: 'block' }} />
+        <img src={url} alt="" draggable={false} style={{ width: size, height: size, objectFit: 'cover', borderRadius: 12, display: 'block' }} />
       ) : (
         <div style={{ width: size, height: size, borderRadius: 12, background: 'rgba(255,255,255,0.35)' }} />
       )
@@ -1560,12 +1567,34 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
               <div
                 ref={canvasRef}
                 onPointerDown={() => selectLayer(null)}
-                style={{ position: 'relative', width: '100%', aspectRatio: canvasAspectRatio, maxHeight: '100%', borderRadius: 16, overflow: 'hidden', background: backgroundGradient, touchAction: 'none' }}
+                // 2E — en iPhone, trabajar repetidamente (long-press, doble toque) sobre una capa dentro
+                // del lienzo editable podía abrir el menú contextual nativo de iOS (Compartir/Guardar en
+                // Fotos/Copiar/Copiar sujeto...) por encima de nuestros propios controles. Localizado SOLO
+                // al lienzo (no a toda la app): onContextMenu bloquea el menú nativo, WebkitTouchCallout
+                // desactiva el callout de long-press de Safari, WebkitUserSelect/userSelect evitan la
+                // selección nativa de texto/imagen que dispara "Copiar"/"Copiar sujeto". La selección de
+                // capas, el arrastre, el resize y la edición de texto (que ocurre en un campo aparte, no
+                // aquí dentro) siguen funcionando exactamente igual — nada de esto los toca.
+                onContextMenu={(e) => e.preventDefault()}
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  aspectRatio: canvasAspectRatio,
+                  maxHeight: '100%',
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  background: backgroundGradient,
+                  touchAction: 'none',
+                  WebkitTouchCallout: 'none',
+                  WebkitUserSelect: 'none',
+                  userSelect: 'none',
+                } as CSSProperties}
               >
                 {backgroundImageUrl ? (
                   <img
                     src={backgroundImageUrl}
                     alt=""
+                    draggable={false}
                     onPointerDown={handleBackgroundPointerDown}
                     onPointerMove={handleBackgroundPointerMove}
                     onPointerUp={handleBackgroundPointerUp}

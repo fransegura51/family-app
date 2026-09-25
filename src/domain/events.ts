@@ -1568,7 +1568,13 @@ function pushOutsideZone(x: number, y: number, zone: SafeZone): { x: number; y: 
 // medirlo de verdad, así que esto es una aproximación deliberada y documentada — mismo orden de magnitud
 // que .invitation-designer-sheet (max-width 420px) menos el padding del editor — nunca una medida exacta.
 const ASSUMED_CANVAS_SIZE_PX = 380
-const LINE_HEIGHT_RATIO = 1.25
+// Exportada (no solo interna a esta estimación): InvitationLayerVisual (ui/InvitationDesigner.tsx) la fija
+// como line-height REAL del texto renderizado, para que la caja que aquí se calcula ya no sea una mera
+// aproximación del alto real, sino la garantía de él — antes el <div> de texto no fijaba line-height
+// ninguno (heredaba el "normal" del navegador/fuente, que varía según la tipografía), así que en algunas
+// plantillas el texto real podía ser más alto o más bajo que lo estimado aquí y acabar solapando con la
+// capa siguiente, o al revés, disparar un aviso de "no cabe" siendo mentira.
+export const LINE_HEIGHT_RATIO = 1.25
 const AVG_CHAR_WIDTH_RATIO = 0.55
 
 // Cuántas líneas ocupará un texto: saltos de línea explícitos (\n, los que ya trae buildInvitationMessage

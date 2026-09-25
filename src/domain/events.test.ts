@@ -611,6 +611,72 @@ describe('autoArrangeLayers', () => {
     const result = autoArrangeLayers(layers, zone)
     expect(result.overflowed).toBe(false)
   })
+
+  // -----------------------------------------------------------------------------------------------
+  // TURNO NOCTURNO 2A — "Pepa, hazla bonita" (handlePrettify en InvitationDesigner.tsx llama
+  // directamente a esta función) NUNCA debe cambiar el contenido escrito por el usuario: solo
+  // posición/tamaño/rotación. Regla absoluta pedida explícitamente. Comprueba TODOS los campos de
+  // contenido, no solo `text`, en cada tipo de capa (incluido texto curvado y con overflow real).
+  // -----------------------------------------------------------------------------------------------
+  describe('2A — nunca toca el contenido (solo posición/tamaño/rotación)', () => {
+    const CONTENT_FIELDS = ['text', 'fontSize', 'fontFamily', 'color', 'textStyle', 'curve', 'photoPath', 'shapeKey', 'id', 'zIndex'] as const
+
+    function contentSnapshot(l: InvitationLayer): Partial<Record<(typeof CONTENT_FIELDS)[number], unknown>> {
+      const snap: Partial<Record<(typeof CONTENT_FIELDS)[number], unknown>> = {}
+      for (const f of CONTENT_FIELDS) snap[f] = (l as unknown as Record<string, unknown>)[f]
+      return snap
+    }
+
+    it('zona amplia (sin comprimir): texto/fontSize/fontFamily/color/textStyle idénticos antes y después', () => {
+      const zone: SafeZone = { x: 0.1, y: 0.1, width: 0.8, height: 0.7 }
+      const layers = [
+        layer('emoji', { text: '🎉' }),
+        layer('text', { text: '¡Feliz cumpleaños, Martina! 🎂', fontSize: 22, fontFamily: 'Pacifico', color: '#ff00aa', textStyle: 'sparkle' }),
+        layer('event_data', { text: 'Sábado 12 de diciembre\nEn casa de la abuela\nTraed regalo envuelto', fontSize: 14, color: '#111111' }),
+      ]
+      const before = new Map(layers.map((l) => [l.id, contentSnapshot(l)]))
+      const result = autoArrangeLayers(layers, zone)
+      for (const l of result.layers) expect(contentSnapshot(l)).toEqual(before.get(l.id))
+    })
+
+    it('zona diminuta CON overflow real: el contenido sigue intacto incluso cuando no cabe', () => {
+      const zone: SafeZone = { x: 0.3, y: 0.3, width: 0.2, height: 0.08 }
+      const longMessage = 'Un mensaje deliberadamente larguísimo para forzar overflow real y comprobar que ni así se toca el contenido.'
+      const layers = [
+        layer('emoji', { text: '🥳', fontSize: 40 }),
+        layer('text', { text: 'Un título bastante largo también', fontSize: 24 }),
+        layer('event_data', { text: longMessage, fontSize: 14 }),
+      ]
+      const before = new Map(layers.map((l) => [l.id, contentSnapshot(l)]))
+      const result = autoArrangeLayers(layers, zone)
+      expect(result.overflowed).toBe(true)
+      for (const l of result.layers) expect(contentSnapshot(l)).toEqual(before.get(l.id))
+    })
+
+    it('texto curvado: curve/text/fontSize intactos (autoArrangeLayers no reposiciona el ángulo de curva)', () => {
+      const zone: SafeZone = { x: 0.1, y: 0.1, width: 0.8, height: 0.7 }
+      const layers = [layer('text', { text: 'Enhorabuena', fontSize: 30, curve: 60 })]
+      const before = contentSnapshot(layers[0])
+      const [result] = autoArrangeLayers(layers, zone).layers
+      expect(contentSnapshot(result)).toEqual(before)
+    })
+
+    it('emojis, fotos y formas: photoPath/shapeKey/text intactos', () => {
+      const zone: SafeZone = { x: 0.05, y: 0.05, width: 0.7, height: 0.7 }
+      const layers = [layer('photo', { photoPath: 'foto-real.jpg' }), layer('shape', { shapeKey: 'estrella' }), layer('emoji', { text: '⭐' })]
+      const before = new Map(layers.map((l) => [l.id, contentSnapshot(l)]))
+      const result = autoArrangeLayers(layers, zone)
+      for (const l of result.layers) expect(contentSnapshot(l)).toEqual(before.get(l.id))
+    })
+
+    it('nunca añade ni quita capas: el nº de capas de salida es EXACTAMENTE el de entrada', () => {
+      const zone: SafeZone = { x: 0.1, y: 0.1, width: 0.8, height: 0.7 }
+      const layers = [layer('emoji'), layer('text', { text: 'A' }), layer('event_data', { text: 'B' }), layer('shape', { shapeKey: 'confeti' })]
+      const result = autoArrangeLayers(layers, zone)
+      expect(result.layers.length).toBe(layers.length)
+      expect(new Set(result.layers.map((l) => l.id))).toEqual(new Set(layers.map((l) => l.id)))
+    })
+  })
 })
 
 describe('eventLocationMapLines', () => {

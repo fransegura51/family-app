@@ -144,7 +144,12 @@ describe('NINGÚN productor genera NULL todavía (6C.2A no cambia el comportamie
   it('el sync bancario sigue asignando categoría con las MISMAS reglas: mismo fallback «Otros» y misma regla de Repsol', () => {
     expect(BANK).toContain('return familyCategoryNames.has("Otros") ? "Otros" : [...familyCategoryNames][0] ?? "Otros"')
     expect(BANK).toContain('{ keywords: ["repsol", "cepsa", "galp", "shell", "gasolinera", "estacion de servicio", "petroprix", "ballenoil"], category: "Combustible" }')
-    expect(BANK).toContain('category: isIncome ? "Ingreso" : category')
+    // FASE DEV-1: el lado del GASTO sigue exactamente igual (guessCategory sin tocar, "Otros" de fallback).
+    // El lado del INGRESO ya no es siempre el literal "Ingreso" — puede ser "Devoluciones" (por catalog_key,
+    // ver explicitBankRefundDetection.test.ts) cuando la descripción empieza por "DEVOLUCION"; el resto de
+    // ingresos (sin ese patrón) sigue cayendo en "Ingreso" exactamente igual que antes.
+    expect(BANK).toContain('category: isIncome ? incomeCategory : category,')
+    expect(BANK).toContain('const incomeCategory = isIncome && refundCategoryName && isExplicitBankRefundDescription((bt.description as string | null) ?? null) ? refundCategoryName : "Ingreso"')
     expect(BANK).not.toMatch(/category:\s*null/)
   })
 

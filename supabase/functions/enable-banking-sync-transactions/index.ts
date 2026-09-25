@@ -208,6 +208,27 @@ function pickUnambiguousCommissionCharge(candidates: CommissionChargeCandidate[]
   return matches.length === 1 ? matches[0] : null
 }
 
+// FASE DEV-1 — devolución bancaria EXPLÍCITA: el banco antepone literalmente la palabra "DEVOLUCION" a
+// estos abonos (auditoría real, Familia Hepburn: 5/5 casos conocidos empiezan así — Amazon, Farmacia,
+// Leroy Merlin, Google One, C&A). Regla deliberadamente tan estrecha como /^anul\b/i: SOLO reconoce ese
+// inicio literal, nunca "abono"/"reembolso"/"retorno"/"ajuste"/"bonificación"/"refund"/"transferencia
+// recibida" — quedan fuera a propósito en esta fase. NO intenta enlazar ninguna compra (la auditoría
+// demostró que 3/5 son parciales, 1/5 no tiene compra localizable, y Amazon puede repetir el mismo
+// importe en varios cargos distintos el mismo mes) — solo decide QUÉ ES el abono, nunca A QUÉ
+// corresponde, así que no hace ninguna consulta adicional (a diferencia de ANUL/CA-1).
+const EXPLICIT_BANK_REFUND_PATTERN = /^devolucion\b/i
+
+function isExplicitBankRefundDescription(description: string | null): boolean {
+  return EXPLICIT_BANK_REFUND_PATTERN.test(description ?? "")
+}
+
+// Mismo valor que REFUND_CATALOG_KEY en src/domain/refunds.ts — un edge function Deno no puede importar
+// de src/ (se despliega como archivo aparte), así que se mantiene sincronizado a mano; ver
+// explicitBankRefundDetection.test.ts, que comprueba que este valor coincide exactamente con el de
+// refunds.ts. Identidad SIEMPRE por catalog_key, nunca por el nombre visible de la categoría (igual que
+// refunds.ts: una familia puede renombrar "Devoluciones" sin perder la identidad).
+const REFUND_CATALOG_KEY = "i.ingreso.devoluciones"
+
 interface BankAccountRow {
   id: string
   account_uid: string
@@ -393,8 +414,14 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
     .is("matched_expense_id", null)
   if (!unmatched || unmatched.length === 0) return
 
-  const { data: categories } = await admin.from("budget_categories").select("name").eq("family_id", familyId)
+  const { data: categories } = await admin.from("budget_categories").select("name, catalog_key").eq("family_id", familyId)
   const familyCategoryNames = new Set((categories ?? []).map((c) => c.name as string))
+  // FASE DEV-1 — resuelve el nombre REAL de "Devoluciones" para esta familia por catalog_key (nunca un
+  // texto fijo "Devoluciones": la categoría podría estar renombrada, igual que ya asume refunds.ts). Si
+  // la familia no tiene esa categoría (no debería pasar: la crea el catálogo estándar), la regla DEV-1
+  // simplemente no se aplica y el abono cae al camino normal de "Ingreso" — nunca se inventa una
+  // categoría que no existe.
+  const refundCategoryName = (categories ?? []).find((c) => c.catalog_key === REFUND_CATALOG_KEY)?.name as string | undefined
 
   for (const bt of unmatched) {
     const store = cleanMerchantName(bt.description as string | null)
@@ -489,6 +516,12 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
       }
     }
 
+    // FASE DEV-1 — devolución bancaria explícita (ver isExplicitBankRefundDescription más arriba): solo
+    // se intenta cuando ni "ANUL" ni la reversión de comisión de arriba han aplicado. A diferencia de
+    // esas dos reglas, esta NO hace ninguna consulta ni busca la compra original — solo decide la
+    // categoría del ingreso que se va a insertar más abajo (ver "category: isIncome ? incomeCategory...").
+    const incomeCategory = isIncome && refundCategoryName && isExplicitBankRefundDescription((bt.description as string | null) ?? null) ? refundCategoryName : "Ingreso"
+
     if (!isIncome) {
       // ¿Ya existe un ticket O un gasto apuntado a mano con este mismo
       // importe en una fecha cercana, sin enlazar todavía a ningún
@@ -549,7 +582,7 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
         family_id: familyId,
         expense_date: bt.transaction_date,
         amount: Number(bt.amount),
-        category: isIncome ? "Ingreso" : category,
+        category: isIncome ? incomeCategory : category,
         store: isIncome ? null : store,
         kind: "real",
         notes: bt.description as string | null,

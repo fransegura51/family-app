@@ -95,27 +95,27 @@ describe('netSpending / totalRefunds: nuevas, sin duplicar la fórmula en otros 
 })
 
 describe('lo que esta fase NO toca', () => {
-  it('sin migración de datos nueva: ninguna migración de 6D.2/6D.3 posterior a 0152 (6D.0)', () => {
-    // 0153 (ai_gate_family), 0154 (fix_recurring_reminder_occurrences), 0155 (forecast_payments),
-    // 0156 (forecast_payment_installments), 0157 (forecast_reconciliation), 0158
-    // (forecast_recurrence_dismissals), 0159 (fix_forecast_recurrence_dismissals_rls), 0160
-    // (forecast_loan_details), 0161 (resolve_internal_transfer_destinations), 0162
-    // (event_task_assignee), 0163 (event_task_calendar_link), 0164 (event_guest_members), 0165
-    // (event_detail_gift_member_link) y 0166 (product_photo) son de fases posteriores (F7-001, el
-    // arreglo de avisos de calendario, Previsión de pagos Fases 1B/1D-c/1D-e/1D-g/1E.0, Fase 1F.B —
-    // ahorro destinado, Eventos Fases 6/9/14A/14D — responsable de tarea, tarea→calendario, personas
-    // invitadas y su vínculo opcional en detalles/regalos, y el Inciso Compras Parte B — foto opcional
-    // de producto), no de 6D.2/6D.3 — autorizadas aparte, no rompen esta guarda.
+  it('sin migración de datos nueva de la Fase 6D.2/6D.3 en sí: las posteriores son de otras fases, ya auditadas cada una en su sitio', () => {
+    // 0153-0166: ver detalle en el historial de este archivo. 0167 (reclassify_commission_reversal_pair_202609,
+    // FASE CA-4) es la corrección puntual del par comisión+bonificación de septiembre — un UPDATE de 2 filas
+    // por id exacto, no de 6D.2/6D.3, auditada y con su propio test (commissionReversalMigration202609.test.ts).
+    // Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(166)
+    expect(Math.max(...numbers)).toBe(167)
   })
 
-  it('no se ha tocado ninguna regla del sync bancario', () => {
+  it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
+    // Hasta la FASE DEV-1 esta guarda comprobaba que el sync bancario no mencionaba nada de devoluciones en
+    // absoluto. DEV-1 (posterior, auditada aparte — ver explicitBankRefundDetection.test.ts) añade
+    // deliberadamente una regla estrecha ("DEVOLUCION" explícito al inicio → categoría oficial resuelta por
+    // catalog_key, sin enlazar ninguna compra) que reutiliza el MISMO valor de REFUND_CATALOG_KEY que este
+    // archivo define — no lo redefine con otro valor, no llama a isRefund(), no toca refunds.ts.
     const bank = FUNCTIONS['/supabase/functions/enable-banking-sync-transactions/index.ts']
     expect(bank).toContain('/^anul\\b/i')
-    expect(bank).not.toMatch(/isRefund|REFUND_CATALOG_KEY|i\.ingreso\.devoluciones/)
+    expect(bank).toContain(`const REFUND_CATALOG_KEY = "i.ingreso.devoluciones"`)
+    expect(bank).not.toMatch(/isRefund\(/)
   })
 
   // La métrica 'refunds' y las frases de PEPA sobre devoluciones ya no están reservadas: las implementa la Fase 6D.2

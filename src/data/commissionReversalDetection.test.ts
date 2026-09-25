@@ -73,8 +73,14 @@ describe('3. no toca refunds.ts, Amazon ni devoluciones', () => {
   it('domain/refunds.ts no menciona nada de la fase CA-1/comisión', () => {
     expect(REFUNDS['/src/domain/refunds.ts']).not.toMatch(/comision|CA-1|CA-2/i)
   })
-  it('la Edge Function no crea ningún vínculo compra↔devolución ni toca isRefund/REFUND_CATALOG_KEY', () => {
-    expect(SYNC).not.toMatch(/isRefund|REFUND_CATALOG_KEY|Amazon/i)
+  it('el propio bloque CA-1 (reversión de comisión) no crea ningún vínculo compra↔devolución ni llama a isRefund/Amazon', () => {
+    // FASE DEV-1 (posterior a CA-1, fichero aparte de esta auditoría) SÍ referencia REFUND_CATALOG_KEY en
+    // otro punto del mismo archivo — deliberado, ver explicitBankRefundDetection.test.ts. Lo que este test
+    // sigue garantizando es que el bloque de CA-1 en sí (reversión de comisión) no lo usa ni depende de él.
+    const start = SYNC.indexOf('if (isIncome && isCommissionReversalDescription(')
+    const end = SYNC.indexOf('const incomeCategory = isIncome && refundCategoryName')
+    const block = SYNC.slice(start, end)
+    expect(block).not.toMatch(/isRefund\(|REFUND_CATALOG_KEY|Amazon/i)
   })
 })
 

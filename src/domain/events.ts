@@ -805,7 +805,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.951, textArea: { x: 0.0724, y: 0.0497, width: 0.644, height: 0.5217 } },
   // FASE 2 — fondo rediseñado (2026-09): marco con forma de casa; decoración (llavero "Bienvenidos",
   // plantas, pizarra, cajas) fuera del propio marco — zona segura es el rectángulo inscrito bajo el tejado.
-  { key: 'casa_bienvenida', label: 'Nueva casa bienvenida', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaBienvenida, imageAspect: 0.6667, textArea: { x: 0.26, y: 0.24, width: 0.48, height: 0.56 } },
+  { key: 'casa_bienvenida', label: 'Nueva casa bienvenida', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaBienvenida, imageAspect: 0.6667, textArea: { x: 0.22, y: 0.17, width: 0.58, height: 0.7 } },
   // FASE 2 — fondo rediseñado (2026-09): marco fino dorado, plantas/vela/llaves fuera o en el borde inferior.
   { key: 'casa_llaves', label: 'Nueva casa llaves', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaLlaves, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.12, width: 0.64, height: 0.6 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, cojines/planta fuera del marco por abajo.
@@ -834,7 +834,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Disco, Barbacoa y Comunión.
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la izquierda, comida
   // completamente por debajo del marco.
-  { key: 'comida_familiar', label: 'Comida familiar', gradient: 'linear-gradient(160deg, #FBBF24, #166534)', text: '#1f2233', artKey: 'confeti', image: invitaComidaFamiliar, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.16, width: 0.46, height: 0.52 } },
+  { key: 'comida_familiar', label: 'Comida familiar', gradient: 'linear-gradient(160deg, #FBBF24, #166534)', text: '#1f2233', artKey: 'confeti', image: invitaComidaFamiliar, imageAspect: 0.6667, textArea: { x: 0.26, y: 0.12, width: 0.52, height: 0.58 } },
   // GRUPO A — certificada ("CENA EN CASA: funciona correctamente"). No tocar salvo necesidad real.
   { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar, imageAspect: 1.188, textArea: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.5747 } },
   { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 1.1861, textArea: { x: 0.3244, y: 0.1142, width: 0.6067, height: 0.5084 } },
@@ -853,7 +853,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora.
   // FASE 2 — fondo rediseñado (2026-09): sombrero arriba-izq, señal fuera a la izquierda, pajarita/nariz y
   // antifaz abajo.
-  { key: 'carnaval_payaso', label: 'Carnaval payaso', gradient: 'linear-gradient(160deg, #FBBF24, #7C3AED)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalPayaso, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.22, width: 0.46, height: 0.5 } },
+  { key: 'carnaval_payaso', label: 'Carnaval payaso', gradient: 'linear-gradient(160deg, #FBBF24, #7C3AED)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalPayaso, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.18, width: 0.52, height: 0.56 } },
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora ni compensar con cambios globales del motor.
   // FASE 2 — fondo rediseñado (2026-09): marco de confeti, señal/pizarra fuera del marco, sombrero/gafas abajo.
   { key: 'carnaval_confeti', label: 'Carnaval confeti', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalConfeti, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.16, width: 0.54, height: 0.52 } },
@@ -863,7 +863,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // GRUPO C — marcada para futuro rediseño ("necesita más espacio limpio, decoración invade demasiado").
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la izquierda, girasoles/calabazas
   // completamente por debajo del marco.
-  { key: 'otono_cosecha', label: 'Otoño cosecha', gradient: 'linear-gradient(160deg, #FBBF24, #B45309)', text: '#7C2D12', artKey: 'confeti', image: invitaOtonoCosecha, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.16, width: 0.58, height: 0.46 } },
+  { key: 'otono_cosecha', label: 'Otoño cosecha', gradient: 'linear-gradient(160deg, #FBBF24, #B45309)', text: '#7C2D12', artKey: 'confeti', image: invitaOtonoCosecha, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.1, width: 0.6, height: 0.56 } },
   // GRUPO A — certificada ("CORAZONES ACUARELA: funciona correctamente"). No tocar salvo necesidad real.
   { key: 'corazones_acuarela', label: 'Corazones acuarela', gradient: 'linear-gradient(160deg, #FDA4AF, #FFE4E6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesAcuarela, imageAspect: 1.2287, textArea: { x: 0.304, y: 0.1436, width: 0.6253, height: 0.6444 } },
   { key: 'corazones_madera', label: 'Corazones rústico', gradient: 'linear-gradient(160deg, #E11D48, #78350F)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesMadera, imageAspect: 1.2306, textArea: { x: 0.16, y: 0.08, width: 0.62, height: 0.55 } },

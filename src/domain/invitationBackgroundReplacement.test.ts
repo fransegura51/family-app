@@ -149,6 +149,24 @@ describe('4.-10. textArea de las 32 sustituidas: dentro de límites, sin solape 
     const bodyBox = boxOf(body, template.textArea!.width)
     expect(titleBox.bottom, `título y cuerpo se solapan en "${key}"`).toBeLessThanOrEqual(bodyBox.top + EPS)
   })
+
+  // BUG REAL encontrado tras esta fase (reportado en vivo, iPhone): 4 de las 33 zonas nuevas (casa_bienvenida,
+  // comida_familiar, carnaval_payaso, otono_cosecha) daban overflowed=true con el texto de certificación —
+  // el "no se solapan" de arriba NUNCA lo detectaba porque, cuando overflowed=true, autoArrangeLayers coloca
+  // título y cuerpo TOCÁNDOSE exactamente (gap comprimido a 0) según su propia estimación de alto: la
+  // comprobación de solape usa esa MISMA estimación para verificar, así que nunca puede detectar que la
+  // estimación se quede corta frente al ancho/alto REAL ya renderizado (el mismo tipo de problema que
+  // LINE_HEIGHT_RATIO cerró para el alto de línea, pero aquí para cuántas líneas ocupa realmente el ancho
+  // disponible — ver estimateWrappedLineCount, aproximación deliberada y documentada en el propio código).
+  // Corrección real: ampliar esas 4 zonas hasta que overflowed sea false (gap real >0, no solo "no se tocan
+  // en la estimación") — nunca tocar el motor compartido para esto, es un problema de calibración de esas
+  // 4 plantillas en concreto. Este test cierra el hueco de cobertura que dejó pasar el bug.
+  it.each(REPLACED_KEYS)('%s: NO da overflowed=true con el texto de certificación (gap real, no solo "sin solape estimado")', (key) => {
+    const template = templateByKey(key)
+    const layers = buildInvitationTemplateLayers(makeCertificationEvent(), template)
+    const { overflowed } = autoArrangeLayers(layers, template.textArea)
+    expect(overflowed, `"${key}" da overflowed=true con el texto de certificación`).toBe(false)
+  })
 })
 
 describe('11. imageAspect recalculado desde cero (nunca reutiliza la proporción de la imagen anterior)', () => {

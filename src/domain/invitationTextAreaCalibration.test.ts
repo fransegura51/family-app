@@ -154,10 +154,13 @@ describe('5. FÚTBOL: zona calibrada contra la foto real (sin comprimir el texto
   // 2026-09-26: la zona {0.08,0.08,0.84,0.72} de FASE 1 se declaró antes de que el bug real de ancho
   // (ver AVG_CHAR_WIDTH_RATIO/width en InvitationDesigner.tsx) quedara corregido — con el ancho real ya
   // coincidiendo con el declarado, se vio que invadía el balón y la grada de fondo en las esquinas
-  // inferiores. Estrechada a {0.1,0.08,0.8,0.56} tras inspeccionar la foto real.
+  // inferiores. Estrechada a {0.1,0.08,0.8,0.56} tras inspeccionar la foto real, y el mismo día ampliada de
+  // nuevo a {0.1,0.08,0.8,0.64} tras confirmar que la tarjeta de pintura blanca real da más margen vertical
+  // antes de esas mismas decoraciones (revisión de "generosidad": zonas amplias de verdad, no solo el
+  // mínimo que cabe para el texto de certificación).
   it('textArea calibrada tras la revisión de imagen real', () => {
     const zone = templateByKey('futbol').textArea!
-    expect(zone).toEqual({ x: 0.1, y: 0.08, width: 0.8, height: 0.56 })
+    expect(zone).toEqual({ x: 0.1, y: 0.08, width: 0.8, height: 0.64 })
   })
   it('con el texto de certificación, el bloque título+cuerpo no queda comprimido a un hueco mínimo (hay margen real, no overflow)', () => {
     const template = templateByKey('futbol')

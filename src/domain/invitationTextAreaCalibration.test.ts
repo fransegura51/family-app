@@ -169,22 +169,28 @@ describe('6. GRUPO A — certificadas: BEBÉ NIÑO y HALLOWEEN CASA ENCANTADA pe
   it('bebe_nino: textArea byte-idéntica a antes de esta fase', () => {
     expect(templateByKey('bebe_nino').textArea).toEqual({ x: 0.15, y: 0.1, width: 0.7, height: 0.4 })
   })
-  it('halloween_casa: textArea byte-idéntica a antes de esta fase', () => {
-    expect(templateByKey('halloween_casa').textArea).toEqual({ x: 0.2387, y: 0.3212, width: 0.5227, height: 0.4809 })
+  // 2026-09-26: excepción autorizada explícitamente por el usuario — únicamente el alto crece (x/y/width
+  // intactos) para cerrar el bug real de solape con el texto de certificación de 4 líneas tras subir
+  // AVG_CHAR_WIDTH_RATIO a 0.6 (ver el mismo comentario junto a esa constante en events.ts).
+  it('halloween_casa: solo el alto cambió (bug real de solape, 2026-09-26), x/y/width intactos', () => {
+    expect(templateByKey('halloween_casa').textArea).toEqual({ x: 0.2387, y: 0.3212, width: 0.5227, height: 0.6788 })
   })
 })
 
-describe('7. GRUPO A completo (9 plantillas certificadas): ninguna textArea se ha tocado', () => {
+describe('7. GRUPO A completo (9 plantillas certificadas): ninguna textArea se ha tocado salvo la excepción documentada de 2026-09-26', () => {
+  // 2026-09-26: 4 de las 9 (unicornio, halloween_casa, playa_terraza, cena_hogar) tuvieron SOLO su alto
+  // ampliado — nunca x/y/width — como excepción autorizada explícitamente por el usuario para el bug real
+  // de solape con el texto de certificación de 4 líneas (ver AVG_CHAR_WIDTH_RATIO en events.ts).
   const GROUP_A: Record<string, { x: number; y: number; width: number; height: number }> = {
     elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.6742 },
-    playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.5413 },
-    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.5747 },
+    playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.68 },
+    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.6 },
     corazones_acuarela: { x: 0.304, y: 0.1436, width: 0.6253, height: 0.6444 },
     alegre: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 },
-    unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.5 },
+    unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 },
     superheroe: { x: 0.0978, y: 0.3606, width: 0.7933, height: 0.4561 },
     bebe_nino: { x: 0.15, y: 0.1, width: 0.7, height: 0.4 },
-    halloween_casa: { x: 0.2387, y: 0.3212, width: 0.5227, height: 0.4809 },
+    halloween_casa: { x: 0.2387, y: 0.3212, width: 0.5227, height: 0.6788 },
   }
   it.each(Object.entries(GROUP_A))('%s', (key, expected) => {
     expect(templateByKey(key).textArea).toEqual(expected)
@@ -211,19 +217,24 @@ export const FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2 = [
 ] as const
 
 describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN sin tocar (12 de las 27 originales)', () => {
+  // 2026-09-26: 7 de las 12 (bebe_nina, bebe_arcoiris, despedida_novia, tapas, jubilacion_relax,
+  // jubilacion_cena, carnaval_bufon) tuvieron SOLO su alto ampliado — nunca imagen, imageAspect, x/y/width —
+  // como excepción autorizada explícitamente por el usuario para el bug real de solape con el texto de
+  // certificación de 4 líneas (ver AVG_CHAR_WIDTH_RATIO en events.ts). Siguen sin fondo nuevo ni ningún otro
+  // cambio: la excepción es puramente ese bugfix de alto.
   const UNCHANGED_UNLISTED: Record<string, { x: number; y: number; width: number; height: number }> = {
-    bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.5183 },
+    bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 },
     bebe_neutro: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 },
-    bebe_arcoiris: { x: 0.0724, y: 0.0497, width: 0.644, height: 0.5217 },
+    bebe_arcoiris: { x: 0.0724, y: 0.0497, width: 0.644, height: 0.6 },
     casa_cajas: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 },
-    despedida_novia: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.588 },
+    despedida_novia: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.68 },
     playa_piscina: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 },
     playa_pina: { x: 0.2529, y: 0.2116, width: 0.672, height: 0.588 },
-    tapas: { x: 0.3244, y: 0.1142, width: 0.6067, height: 0.5084 },
+    tapas: { x: 0.3244, y: 0.1142, width: 0.6067, height: 0.6 },
     jubilacion_viaje: { x: 0.2862, y: 0.2009, width: 0.4387, height: 0.476 },
-    jubilacion_relax: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.2987 },
-    jubilacion_cena: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.5227 },
-    carnaval_bufon: { x: 0.3449, y: 0.2564, width: 0.588, height: 0.476 },
+    jubilacion_relax: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.56 },
+    jubilacion_cena: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.68 },
+    carnaval_bufon: { x: 0.3449, y: 0.2564, width: 0.588, height: 0.6 },
   }
   it.each(Object.entries(UNCHANGED_UNLISTED))('%s', (key, expected) => {
     expect(templateByKey(key).textArea).toEqual(expected)

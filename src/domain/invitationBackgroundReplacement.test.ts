@@ -179,16 +179,20 @@ describe('11. imageAspect recalculado desde cero (nunca reutiliza la proporción
 })
 
 describe('12. plantillas certificadas (grupo A) permanecen exactamente intactas — ninguna recibió fondo nuevo esta fase', () => {
+  // 2026-09-26: 4 de las 9 (unicornio, halloween_casa, playa_terraza, cena_hogar) tuvieron SOLO su alto
+  // ampliado — nunca imagen, imageAspect, x/y/width — como excepción autorizada explícitamente por el
+  // usuario para el bug real de solape con el texto de certificación de 4 líneas (ver AVG_CHAR_WIDTH_RATIO
+  // en events.ts). Ninguna recibió fondo nuevo: la excepción es puramente ese bugfix de alto.
   const CERTIFIED: Record<string, { x: number; y: number; width: number; height: number }> = {
     elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.6742 },
-    playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.5413 },
-    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.5747 },
+    playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.68 },
+    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.6 },
     corazones_acuarela: { x: 0.304, y: 0.1436, width: 0.6253, height: 0.6444 },
     alegre: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 },
-    unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.5 },
+    unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 },
     superheroe: { x: 0.0978, y: 0.3606, width: 0.7933, height: 0.4561 },
     bebe_nino: { x: 0.15, y: 0.1, width: 0.7, height: 0.4 },
-    halloween_casa: { x: 0.2387, y: 0.3212, width: 0.5227, height: 0.4809 },
+    halloween_casa: { x: 0.2387, y: 0.3212, width: 0.5227, height: 0.6788 },
   }
   it.each(Object.entries(CERTIFIED))('%s', (key, expectedTextArea) => {
     const t = templateByKey(key)

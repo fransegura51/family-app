@@ -642,11 +642,18 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // GRUPO A — certificada ("GLOBOS: buen resultado. Mantener especialmente la separación actual entre
   // título y cuerpo"). No tocar.
   { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos', image: invitaAlegre, imageAspect: 0.6531, textArea: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 } },
-  { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo', image: invitaMonstruo, imageAspect: 0.8333, textArea: { x: 0.24, y: 0.38, width: 0.52, height: 0.42 } },
+  // Zona intencionadamente <0.45 de ancho: activa el modo "compact" de buildInvitationTemplateLayers
+  // (fuente más pequeña automática) — el cartel blanco real es pequeño (sujeto por las manos de los
+  // monstruos), no hay más superficie limpia que ganar ampliando, así que se reduce la fuente en vez de
+  // invadir a los personajes.
+  { key: 'monstruo', label: 'Monstruo', gradient: 'linear-gradient(160deg, #2DD4BF, #059669)', text: '#ffffff', artKey: 'monstruo', image: invitaMonstruo, imageAspect: 0.8333, textArea: { x: 0.24, y: 0.35, width: 0.44, height: 0.5 } },
   { key: 'futbol', label: 'Fútbol', gradient: 'linear-gradient(160deg, #3B82F6, #1E3A8A)', text: '#ffffff', artKey: 'futbol', image: invitaFutbol, imageAspect: 0.4361, textArea: { x: 0.08, y: 0.08, width: 0.84, height: 0.72 } },
   // GRUPO A — certificada ("UNICORNIO: resultado prácticamente correcto. No tocar salvo ajuste mínimo
   // realmente necesario"). Sin cambios esta fase.
-  { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio, imageAspect: 0.4322, textArea: { x: 0.2, y: 0.1, width: 0.6, height: 0.5 } },
+  // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
+  // para el bug real de solape con el texto de certificación de 4 líneas tras subir AVG_CHAR_WIDTH_RATIO
+  // a 0.6: se amplía únicamente el alto (x/y/width intactos) al mínimo necesario para overflowed=false.
+  { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio, imageAspect: 0.4322, textArea: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 } },
   // GRUPO A — certificada ("DORADO: funciona correctamente"). No tocar.
   { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado', image: invitaElegante, imageAspect: 1.1861, textArea: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.6742 } },
   // Sin instrucción explícita en la revisión manual de esta fase — textArea sin tocar (es la plantilla del
@@ -654,19 +661,19 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // FASE 2 — fondo rediseñado (2026-09): marco de madera con flores/pajarera en el borde, pájaro posado en
   // el borde superior — panel claro central grande. Ya NO es la imagen usada en el caso de certificación
   // "Bodas de plata" de sesiones anteriores (esa referencia queda obsoleta con este cambio de fondo).
-  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralJardin, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.18, width: 0.56, height: 0.56 } },
+  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralJardin, imageAspect: 0.6667, textArea: { x: 0.26, y: 0.14, width: 0.6, height: 0.6 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("personaje más pequeño/lateral, mucha más zona
   // central/derecha"). NO tocar textArea ahora.
   // FASE 2 — fondo rediseñado (2026-09): tarjeta grande y limpia, oso reducido a la esquina inferior
   // izquierda. imageAspect y textArea recalculados desde cero sobre la imagen nueva real.
-  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo, imageAspect: 1.2736, textArea: { x: 0.32, y: 0.1, width: 0.6, height: 0.55 } },
+  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo, imageAspect: 1.2736, textArea: { x: 0.28, y: 0.08, width: 0.66, height: 0.58 } },
   { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco', image: invitaDisco, imageAspect: 1.188, textArea: { x: 0.14, y: 0.08, width: 0.72, height: 0.68 } },
   // Lote 2 — petición real, lista de 26 temas; 3 no se hacen por ser
   // personajes/estilos con derechos de terceros (Minecraft, Mario Bros,
   // Spiderman — ver INVITATION_ART en EventosScreen.tsx). El resto se
   // reparte en varios lotes.
   { key: 'dinosaurios', label: 'Dinosaurios', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'dinosaurios', image: invitaDinosaurios, imageAspect: 0.4361, textArea: { x: 0.16, y: 0.14, width: 0.62, height: 0.6 } },
-  { key: 'videojuegos', label: 'Videojuegos', gradient: 'linear-gradient(160deg, #312E81, #4C1D95)', text: '#ffffff', artKey: 'videojuegos', image: invitaVideojuegos, imageAspect: 0.499, textArea: { x: 0.14, y: 0.2, width: 0.68, height: 0.54 } },
+  { key: 'videojuegos', label: 'Videojuegos', gradient: 'linear-gradient(160deg, #312E81, #4C1D95)', text: '#ffffff', artKey: 'videojuegos', image: invitaVideojuegos, imageAspect: 0.499, textArea: { x: 0.13, y: 0.16, width: 0.7, height: 0.62 } },
   { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones', image: invitaCorazones, imageAspect: 0.4512, textArea: { x: 0.12, y: 0.15, width: 0.76, height: 0.55 } },
   // FASE 2 — fondo rediseñado (2026-09): sigue siendo el ID "ositos" (nunca se renombra por un cambio
   // cosmético), aunque el personaje visual ahora es un cachorro detective — mismo concepto reducido a la
@@ -679,7 +686,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Lote 3.
   // GRUPO C — marcada para futuro rediseño/ajuste de fondo ("elementos del robot invaden zona de escritura").
   // FASE 2 — fondo rediseñado (2026-09): panel claro rectangular con robots solo en las 4 esquinas.
-  { key: 'robots', label: 'Robots', gradient: 'linear-gradient(160deg, #64748B, #1E293B)', text: '#ffffff', artKey: 'robots', image: invitaRobots, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.24, width: 0.64, height: 0.54 } },
+  { key: 'robots', label: 'Robots', gradient: 'linear-gradient(160deg, #64748B, #1E293B)', text: '#ffffff', artKey: 'robots', image: invitaRobots, imageAspect: 0.6667, textArea: { x: 0.15, y: 0.2, width: 0.7, height: 0.62 } },
   // GRUPO A — certificada ("SUPERHÉROE: PASA. No rediseñar ni modificar innecesariamente."). Sin cambios.
   { key: 'superheroe', label: 'Superhéroe', gradient: 'linear-gradient(160deg, #DC2626, #1E3A8A)', text: '#ffffff', artKey: 'superheroe', image: invitaSuperheroe, imageAspect: 0.4844, textArea: { x: 0.0978, y: 0.3606, width: 0.7933, height: 0.4561 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("zona útil insuficiente, ampliar panel claro").
@@ -687,14 +694,14 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'superheroina', label: 'Superheroína', gradient: 'linear-gradient(160deg, #EC4899, #7C3AED)', text: '#ffffff', artKey: 'superheroina', image: invitaSuperheroina, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.16, width: 0.58, height: 0.6 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("reducir decoración inferior y aumentar zona limpia").
   // FASE 2 — fondo rediseñado (2026-09): cartel claro superior, niños/decoración bajados a la parte inferior.
-  { key: 'pijamas', label: 'Estrellitas', gradient: 'linear-gradient(160deg, #312E81, #0F172A)', text: '#ffffff', artKey: 'pijamas', image: invitaPijamas, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.1, width: 0.62, height: 0.42 } },
+  { key: 'pijamas', label: 'Estrellitas', gradient: 'linear-gradient(160deg, #312E81, #0F172A)', text: '#ffffff', artKey: 'pijamas', image: invitaPijamas, imageAspect: 0.6667, textArea: { x: 0.14, y: 0.05, width: 0.72, height: 0.54 } },
   // "Guerreras Kpop" — ambiente genérico de concierto/idol (neón,
   // micro, focos), sin ningún grupo, cara ni persona real de por medio.
   // GRUPO C — identificado como "CANTANTE / ESTRELLA MUSICAL" de la revisión manual (no es un nombre
   // literal — inferido por tema: ambiente de concierto/idol, sin grupo/cara real, ver comentario "Lote 3"
   // más arriba; marcado para futuro rediseño: "aumentar panel/estrella/zona clara"). NO tocar textArea ahora.
   // FASE 2 — fondo rediseñado (2026-09): estrella de neón con zona clara en su franja horizontal central.
-  { key: 'kpop', label: 'Kpop', gradient: 'linear-gradient(160deg, #DB2777, #6D28D9)', text: '#ffffff', artKey: 'kpop', image: invitaKpop, imageAspect: 0.6667, textArea: { x: 0.34, y: 0.2, width: 0.56, height: 0.38 } },
+  { key: 'kpop', label: 'Kpop', gradient: 'linear-gradient(160deg, #DB2777, #6D28D9)', text: '#ffffff', artKey: 'kpop', image: invitaKpop, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.16, width: 0.62, height: 0.44 } },
   // Lote 4 — arte real traído por el usuario (dos hojas de 6 y 12
   // ilustraciones ya recortadas en plantillas individuales). De las 12
   // de la segunda hoja se descarta una (castillo/varita/lechuza al
@@ -705,12 +712,12 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // nuevos no llevan `artKey` propio con dibujo de repuesto porque
   // siempre tienen `image`; si en el futuro faltara la imagen, el
   // fallback de InvitationBackgroundArt usa 'confeti'.
-  { key: 'princesa', label: 'Princesa', gradient: 'linear-gradient(160deg, #FBCFE8, #F9A8D4)', text: '#9D174D', artKey: 'confeti', image: invitaPrincesa, imageAspect: 0.5, textArea: { x: 0.18, y: 0.14, width: 0.64, height: 0.56 } },
-  { key: 'espacio', label: 'Espacio', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaEspacio, imageAspect: 0.4322, textArea: { x: 0.14, y: 0.14, width: 0.68, height: 0.5 } },
-  { key: 'piratas', label: 'Piratas', gradient: 'linear-gradient(160deg, #38BDF8, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaPiratas, imageAspect: 0.4355, textArea: { x: 0.14, y: 0.12, width: 0.68, height: 0.52 } },
+  { key: 'princesa', label: 'Princesa', gradient: 'linear-gradient(160deg, #FBCFE8, #F9A8D4)', text: '#9D174D', artKey: 'confeti', image: invitaPrincesa, imageAspect: 0.5, textArea: { x: 0.14, y: 0.12, width: 0.72, height: 0.58 } },
+  { key: 'espacio', label: 'Espacio', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaEspacio, imageAspect: 0.4322, textArea: { x: 0.08, y: 0.08, width: 0.78, height: 0.58 } },
+  { key: 'piratas', label: 'Piratas', gradient: 'linear-gradient(160deg, #38BDF8, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaPiratas, imageAspect: 0.4355, textArea: { x: 0.11, y: 0.1, width: 0.72, height: 0.54 } },
   { key: 'safari', label: 'Safari', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'confeti', image: invitaSafari, imageAspect: 1.214, textArea: { x: 0.18, y: 0.16, width: 0.64, height: 0.62 } },
   { key: 'acampada', label: 'Acampada', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaAcampada, imageAspect: 0.5565, textArea: { x: 0.36, y: 0.12, width: 0.58, height: 0.66 } },
-  { key: 'oceano', label: 'Fondo del mar', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaOceano, imageAspect: 0.5011, textArea: { x: 0.14, y: 0.18, width: 0.66, height: 0.5 } },
+  { key: 'oceano', label: 'Fondo del mar', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaOceano, imageAspect: 0.5011, textArea: { x: 0.12, y: 0.14, width: 0.7, height: 0.56 } },
   // GRUPO C — "HADA" en la revisión manual, marcada para futuro rediseño de fondo ("hada más pequeña/
   // lateral, varita fuera de la zona de escritura, gran zona limpia central"). NO tocar textArea ahora.
   // FASE 2 — fondo rediseñado (2026-09): hada pequeña en la esquina superior, varita fuera de la zona de
@@ -718,11 +725,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'hadas', label: 'Hadas', gradient: 'linear-gradient(160deg, #FBCFE8, #BBF7D0)', text: '#BE185D', artKey: 'confeti', image: invitaHadas, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.14, width: 0.66, height: 0.7 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("cartel central más alto/vertical, reorganizar animales").
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera vertical con animales solo alrededor del borde.
-  { key: 'granja', label: 'Granja', gradient: 'linear-gradient(160deg, #FDE9D9, #DC2626)', text: '#7C2D12', artKey: 'confeti', image: invitaGranja, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.26, width: 0.6, height: 0.56 } },
-  { key: 'alienigenas', label: 'Alienígenas', gradient: 'linear-gradient(160deg, #312E81, #020617)', text: '#ffffff', artKey: 'confeti', image: invitaAlienigenas, imageAspect: 0.5, textArea: { x: 0.14, y: 0.1, width: 0.68, height: 0.52 } },
+  { key: 'granja', label: 'Granja', gradient: 'linear-gradient(160deg, #FDE9D9, #DC2626)', text: '#7C2D12', artKey: 'confeti', image: invitaGranja, imageAspect: 0.6667, textArea: { x: 0.17, y: 0.22, width: 0.66, height: 0.62 } },
+  { key: 'alienigenas', label: 'Alienígenas', gradient: 'linear-gradient(160deg, #312E81, #020617)', text: '#ffffff', artKey: 'confeti', image: invitaAlienigenas, imageAspect: 0.5, textArea: { x: 0.11, y: 0.08, width: 0.72, height: 0.54 } },
   { key: 'playa', label: 'Playa tropical', gradient: 'linear-gradient(160deg, #FDBA74, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlaya, imageAspect: 0.4492, textArea: { x: 0.1, y: 0.08, width: 0.68, height: 0.4 } },
-  { key: 'concierto', label: 'Concierto', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaConcierto, imageAspect: 0.4688, textArea: { x: 0.14, y: 0.06, width: 0.68, height: 0.55 } },
-  { key: 'boda', label: 'Boda', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#4A5D23', artKey: 'confeti', image: invitaBoda, imageAspect: 1.2163, textArea: { x: 0.12, y: 0.08, width: 0.76, height: 0.48 } },
+  { key: 'concierto', label: 'Concierto', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaConcierto, imageAspect: 0.4688, textArea: { x: 0.14, y: 0.04, width: 0.7, height: 0.6 } },
+  { key: 'boda', label: 'Boda', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#4A5D23', artKey: 'confeti', image: invitaBoda, imageAspect: 1.2163, textArea: { x: 0.12, y: 0.06, width: 0.76, height: 0.6 } },
   // Lote 5 — segunda hoja de arte real. Se descartan los repetidos de
   // temas que ya tenían imagen (fútbol, dinosaurios, espacio, unicornio)
   // y una sirena que se parece demasiado a un personaje Disney conocido
@@ -732,7 +739,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // FASE 2 — fondo rediseñado (2026-09): cartel vertical con cinta de peligro, niños en las esquinas
   // superiores, excavadora fuera del pergamino (por la izquierda, ver zona más estrecha por ese lado).
   { key: 'obras', label: 'Obras', gradient: 'linear-gradient(160deg, #FBBF24, #78350F)', text: '#1f2233', artKey: 'confeti', image: invitaObras, imageAspect: 0.6667, textArea: { x: 0.26, y: 0.14, width: 0.5, height: 0.68 } },
-  { key: 'nochevieja', label: 'Nochevieja', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaNochevieja, imageAspect: 0.5, textArea: { x: 0.16, y: 0.06, width: 0.62, height: 0.52 } },
+  { key: 'nochevieja', label: 'Nochevieja', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaNochevieja, imageAspect: 0.5, textArea: { x: 0.12, y: 0.03, width: 0.7, height: 0.6 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("óvalo dorado central grande, vertical/alargado").
   // FASE 2 — fondo rediseñado (2026-09): marco dorado fino, flores en corners, cáliz/vela/biblia abajo a
   // la izquierda — franja central ancha completamente libre.
@@ -744,25 +751,28 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // variante rosa de comunión, el barco de bautizo y el osito de luna
   // que repetía Bebé niño) y se sustituye el comunion.jpg del lote 5
   // (floral verde) por este cáliz, más reconocible.
-  { key: 'barbacoa', label: 'Barbacoa', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaBarbacoa, imageAspect: 1.1861, textArea: { x: 0.2, y: 0.06, width: 0.62, height: 0.55 } },
+  { key: 'barbacoa', label: 'Barbacoa', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaBarbacoa, imageAspect: 1.1861, textArea: { x: 0.2, y: 0.04, width: 0.64, height: 0.58 } },
   // Lote 7 — cuarta hoja. Se descartan los repetidos (Nochevieja, un
   // marco de luces de jardín parecido a Barbacoa, y rosas/corazones que
   // ya teníamos) y se añaden Bautizo niña, Navidad y un Cumpleaños más
   // elegante/adulto (pastel de chocolate y cóctel, distinto del
   // Cumpleaños infantil de "Globos").
-  { key: 'bautizo_nina', label: 'Bautizo niña', gradient: 'linear-gradient(160deg, #FCE7F3, #FBCFE8)', text: '#9D174D', artKey: 'confeti', image: invitaBautizoNina, imageAspect: 0.4214, textArea: { x: 0.18, y: 0.1, width: 0.58, height: 0.55 } },
-  { key: 'navidad', label: 'Navidad', gradient: 'linear-gradient(160deg, #166534, #7F1D1D)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidad, imageAspect: 0.4214, textArea: { x: 0.14, y: 0.1, width: 0.7, height: 0.5 } },
-  { key: 'cumpleanos_elegante', label: 'Cumpleaños elegante', gradient: 'linear-gradient(160deg, #134E4A, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCumpleanosElegante, imageAspect: 0.4214, textArea: { x: 0.18, y: 0.1, width: 0.64, height: 0.5 } },
+  { key: 'bautizo_nina', label: 'Bautizo niña', gradient: 'linear-gradient(160deg, #FCE7F3, #FBCFE8)', text: '#9D174D', artKey: 'confeti', image: invitaBautizoNina, imageAspect: 0.4214, textArea: { x: 0.14, y: 0.08, width: 0.64, height: 0.58 } },
+  { key: 'navidad', label: 'Navidad', gradient: 'linear-gradient(160deg, #166534, #7F1D1D)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidad, imageAspect: 0.4214, textArea: { x: 0.1, y: 0.08, width: 0.74, height: 0.54 } },
+  { key: 'cumpleanos_elegante', label: 'Cumpleaños elegante', gradient: 'linear-gradient(160deg, #134E4A, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCumpleanosElegante, imageAspect: 0.4214, textArea: { x: 0.11, y: 0.05, width: 0.74, height: 0.56 } },
   // Lote 8 — "Navidad varias" (pedido explícito en la lista de 26
   // temas: varias variantes navideñas, no solo una) + una hoja extra de
   // Halloween que no estaba en la lista pero encaja igual de bien en
   // Celebración/Personalizado — nada con copyright, calabazas/fantasmas
   // genéricos.
-  { key: 'navidad_hogar', label: 'Navidad junto al fuego', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadHogar, imageAspect: 0.5911, textArea: { x: 0.24, y: 0.08, width: 0.58, height: 0.42 } },
+  // Zona intencionadamente <0.45 de ancho: activa el modo "compact" (fuente más pequeña automática) — el
+  // pergamino real es pequeño y la chimenea/calcetines limitan la altura, no hay más superficie limpia real
+  // que ganar ampliando sin invadirlos.
+  { key: 'navidad_hogar', label: 'Navidad junto al fuego', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadHogar, imageAspect: 0.5911, textArea: { x: 0.24, y: 0.05, width: 0.44, height: 0.48 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("crear cartel central más largo y ancho").
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera mucho más ancho/largo, muñeco de nieve reducido
   // a la esquina inferior izquierda.
-  { key: 'navidad_muneco', label: 'Navidad muñeco de nieve', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaNavidadMuneco, imageAspect: 0.6667, textArea: { x: 0.24, y: 0.16, width: 0.56, height: 0.54 } },
+  { key: 'navidad_muneco', label: 'Navidad muñeco de nieve', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaNavidadMuneco, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.12, width: 0.62, height: 0.6 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("gran zona central limpia, evitar ramas diagonales").
   // FASE 2 — fondo rediseñado (2026-09): decoración redistribuida a las esquinas opuestas (arriba-izq /
   // abajo-dcha), gran zona central limpia sin ramas diagonales.
@@ -774,17 +784,20 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Hoja ligeramente inclinada — sin soporte de rotación en textArea hoy (solo x/y/width/height, ver
   // InvitationTemplateMeta), y esta fase no lo añade (evitar fragilidad para una sola plantilla, ver
   // informe). Ajuste mínimo de zona, no de orientación — pendiente de fase futura si hiciera falta más.
-  { key: 'navidad_galletas', label: 'Navidad galletas', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadGalletas, imageAspect: 0.5911, textArea: { x: 0.2, y: 0.14, width: 0.6, height: 0.56 } },
+  { key: 'navidad_galletas', label: 'Navidad galletas', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadGalletas, imageAspect: 0.5911, textArea: { x: 0.18, y: 0.1, width: 0.64, height: 0.6 } },
   { key: 'navidad_farolillos', label: 'Navidad farolillos', gradient: 'linear-gradient(160deg, #1E3A8A, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaNavidadFarolillos, imageAspect: 0.5895, textArea: { x: 0.34, y: 0.08, width: 0.56, height: 0.62 } },
-  { key: 'halloween_calabaza', label: 'Halloween calabaza', gradient: 'linear-gradient(160deg, #C2410C, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaHalloweenCalabaza, imageAspect: 0.6531, textArea: { x: 0.16, y: 0.22, width: 0.66, height: 0.5 } },
+  { key: 'halloween_calabaza', label: 'Halloween calabaza', gradient: 'linear-gradient(160deg, #C2410C, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaHalloweenCalabaza, imageAspect: 0.6531, textArea: { x: 0.15, y: 0.19, width: 0.68, height: 0.58 } },
   // GRUPO A — certificada ("HALLOWEEN CASA ENCANTADA: PERFECTA. CERTIFICADA. NO TOCAR"). Referencia de no-regresión.
-  { key: 'halloween_casa', label: 'Halloween casa encantada', gradient: 'linear-gradient(160deg, #1E1B4B, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaHalloweenCasa, imageAspect: 0.6531, textArea: { x: 0.2387, y: 0.3212, width: 0.5227, height: 0.4809 } },
+  // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
+  // para el bug real de solape con el texto de certificación de 4 líneas tras subir AVG_CHAR_WIDTH_RATIO
+  // a 0.6: se amplía únicamente el alto (x/y/width intactos) al mínimo necesario para overflowed=false.
+  { key: 'halloween_casa', label: 'Halloween casa encantada', gradient: 'linear-gradient(160deg, #1E1B4B, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaHalloweenCasa, imageAspect: 0.6531, textArea: { x: 0.2387, y: 0.3212, width: 0.5227, height: 0.6788 } },
   { key: 'halloween_bruja', label: 'Halloween bruja', gradient: 'linear-gradient(160deg, #166534, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaHalloweenBruja, imageAspect: 0.6531, textArea: { x: 0.26, y: 0.14, width: 0.56, height: 0.58 } },
-  { key: 'halloween_fantasmas', label: 'Halloween fantasmas', gradient: 'linear-gradient(160deg, #C2410C, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaHalloweenFantasmas, imageAspect: 0.6531, textArea: { x: 0.14, y: 0.12, width: 0.68, height: 0.48 } },
+  { key: 'halloween_fantasmas', label: 'Halloween fantasmas', gradient: 'linear-gradient(160deg, #C2410C, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaHalloweenFantasmas, imageAspect: 0.6531, textArea: { x: 0.11, y: 0.09, width: 0.72, height: 0.54 } },
   // Lote 9 — más variantes de cumpleaños; se descarta una cuarta
   // (señal de madera "Buena compañía/Risas/Momentos inolvidables" en
   // playa) por quedar demasiado parecida a Playa tropical.
-  { key: 'cumpleanos_rosa', label: 'Cumpleaños rosa', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaCumpleanosRosa, imageAspect: 0.6531, textArea: { x: 0.24, y: 0.1, width: 0.56, height: 0.42 } },
+  { key: 'cumpleanos_rosa', label: 'Cumpleaños rosa', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaCumpleanosRosa, imageAspect: 0.6531, textArea: { x: 0.18, y: 0.04, width: 0.68, height: 0.6 } },
   { key: 'cumpleanos_fiesta', label: 'Cumpleaños fiesta', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCumpleanosFiesta, imageAspect: 0.6531, textArea: { x: 0.18, y: 0.1, width: 0.62, height: 0.44 } },
   // Lote 10 — "Ribete (Graduación)" de la lista de 26 (varias
   // variantes), Bebé chica/Cuna neutral/variante arcoíris (completa la
@@ -794,15 +807,18 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // ("varias", igual que Navidad).
   // FASE 2 — fondo rediseñado (2026-09): tarjeta con marco dorado fino, birrete/globos en corners,
   // libros/diploma abajo — franja central amplia libre.
-  { key: 'graduacion_esfuerzo', label: 'Graduación esfuerzo', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaGraduacionEsfuerzo, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.22, width: 0.66, height: 0.54 } },
-  { key: 'graduacion_suena', label: 'Graduación sueña', gradient: 'linear-gradient(160deg, #166534, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaGraduacionSuena, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.14, width: 0.6, height: 0.5 } },
+  { key: 'graduacion_esfuerzo', label: 'Graduación esfuerzo', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaGraduacionEsfuerzo, imageAspect: 0.6667, textArea: { x: 0.17, y: 0.18, width: 0.7, height: 0.6 } },
+  { key: 'graduacion_suena', label: 'Graduación sueña', gradient: 'linear-gradient(160deg, #166534, #0F172A)', text: '#ffffff', artKey: 'confeti', image: invitaGraduacionSuena, imageAspect: 0.6667, textArea: { x: 0.17, y: 0.09, width: 0.66, height: 0.58 } },
   // FASE 2 — fondo rediseñado (2026-09): tarjeta CIRCULAR dorada, birrete arriba-dcha, libros/diploma
   // abajo — zona segura es el rectángulo inscrito en el círculo evitando ambos.
-  { key: 'graduacion_disciplina', label: 'Graduación disciplina', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaGraduacionDisciplina, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.3, width: 0.58, height: 0.36 } },
-  { key: 'graduacion_explorar', label: 'Graduación explorar', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaGraduacionExplorar, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.2, width: 0.6, height: 0.54 } },
-  { key: 'bebe_nina', label: 'Bebé niña', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaBebeNina, imageAspect: 0.9526, textArea: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.5183 } },
+  // Zona intencionadamente <0.45 de ancho: activa el modo "compact" (fuente más pequeña automática). La tarjeta
+  // circular de esta plantilla limita la superficie real utilizable, real límite geométrico documentado en
+  // FASE 1 — no hay más espacio limpio real dentro del círculo que ganar ampliando el rectángulo.
+  { key: 'graduacion_disciplina', label: 'Graduación disciplina', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaGraduacionDisciplina, imageAspect: 0.6667, textArea: { x: 0.29, y: 0.2, width: 0.42, height: 0.56 } },
+  { key: 'graduacion_explorar', label: 'Graduación explorar', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaGraduacionExplorar, imageAspect: 0.6667, textArea: { x: 0.15, y: 0.15, width: 0.66, height: 0.62 } },
+  { key: 'bebe_nina', label: 'Bebé niña', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaBebeNina, imageAspect: 0.9526, textArea: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 } },
   { key: 'bebe_neutro', label: 'Cuna neutral', gradient: 'linear-gradient(160deg, #D9F99D, #FDE9D9)', text: '#3F6212', artKey: 'confeti', image: invitaBebeNeutro, imageAspect: 0.9526, textArea: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 } },
-  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.951, textArea: { x: 0.0724, y: 0.0497, width: 0.644, height: 0.5217 } },
+  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.951, textArea: { x: 0.0724, y: 0.0497, width: 0.644, height: 0.6 } },
   // FASE 2 — fondo rediseñado (2026-09): marco con forma de casa; decoración (llavero "Bienvenidos",
   // plantas, pizarra, cajas) fuera del propio marco — zona segura es el rectángulo inscrito bajo el tejado.
   { key: 'casa_bienvenida', label: 'Nueva casa bienvenida', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaBienvenida, imageAspect: 0.6667, textArea: { x: 0.22, y: 0.17, width: 0.58, height: 0.7 } },
@@ -811,22 +827,25 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, cojines/planta fuera del marco por abajo.
   { key: 'casa_terraza', label: 'Nueva casa terraza', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaTerraza, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.12, width: 0.54, height: 0.62 } },
   { key: 'casa_cajas', label: 'Nueva casa mudanza', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaCajas, imageAspect: 1, textArea: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 } },
-  { key: 'despedida_novia', label: 'Despedida de soltera', gradient: 'linear-gradient(160deg, #EC4899, #9D174D)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNovia, imageAspect: 1, textArea: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.588 } },
+  { key: 'despedida_novia', label: 'Despedida de soltera', gradient: 'linear-gradient(160deg, #EC4899, #9D174D)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNovia, imageAspect: 1, textArea: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.68 } },
   // FASE 2 — fondo rediseñado (2026-09): gorra arriba-izq, señal fuera del marco a la derecha, cubo "EL
   // NOVIO" abajo-izq.
-  { key: 'despedida_novio', label: 'Despedida de soltero', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNovio, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.28, width: 0.54, height: 0.4 } },
+  { key: 'despedida_novio', label: 'Despedida de soltero', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNovio, imageAspect: 0.6667, textArea: { x: 0.12, y: 0.18, width: 0.66, height: 0.6 } },
   // FASE 2 — fondo rediseñado (2026-09): sombrero arriba-izq, señal/carteles fuera del marco a los lados.
-  { key: 'despedida_viaje', label: 'Despedida de viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaViaje, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.34, width: 0.46, height: 0.44 } },
+  { key: 'despedida_viaje', label: 'Despedida de viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaViaje, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.22, width: 0.6, height: 0.6 } },
   // FASE 2 — fondo rediseñado (2026-09): bola de discoteca arriba-izq, señal/neón/cubo fuera del marco.
   { key: 'despedida_noche', label: 'Despedida de noche', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNoche, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.18, width: 0.4, height: 0.58 } },
   { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic, imageAspect: 1, textArea: { x: 0.14, y: 0.08, width: 0.72, height: 0.58 } },
   { key: 'floral_primavera', label: 'Floral primavera', gradient: 'linear-gradient(160deg, #FFE4E6, #D9F99D)', text: '#3F6212', artKey: 'floral', image: invitaFloralPrimavera, imageAspect: 1, textArea: { x: 0.16, y: 0.06, width: 0.7, height: 0.62 } },
-  { key: 'floral_noche', label: 'Floral noche de jardín', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'floral', image: invitaFloralNoche, imageAspect: 1, textArea: { x: 0.3, y: 0.1, width: 0.52, height: 0.56 } },
+  { key: 'floral_noche', label: 'Floral noche de jardín', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'floral', image: invitaFloralNoche, imageAspect: 1, textArea: { x: 0.3, y: 0.08, width: 0.54, height: 0.58 } },
   { key: 'playa_piscina', label: 'Playa piscina', gradient: 'linear-gradient(160deg, #0EA5E9, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPiscina, imageAspect: 1, textArea: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 } },
   { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.2529, y: 0.2116, width: 0.672, height: 0.588 } },
-  { key: 'playa_atardecer', label: 'Playa atardecer', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaAtardecer, imageAspect: 1, textArea: { x: 0.22, y: 0.1, width: 0.62, height: 0.55 } },
+  { key: 'playa_atardecer', label: 'Playa atardecer', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaAtardecer, imageAspect: 1, textArea: { x: 0.2, y: 0.08, width: 0.64, height: 0.58 } },
   // GRUPO A — certificada ("PLAYA NOCHE / PLAYA TERRAZA: funcionan correctamente"). No tocar salvo necesidad real.
-  { key: 'playa_terraza', label: 'Playa noche de verano', gradient: 'linear-gradient(160deg, #B45309, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaTerraza, imageAspect: 1, textArea: { x: 0.212, y: 0.1849, width: 0.476, height: 0.5413 } },
+  // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
+  // para el bug real de solape con el texto de certificación de 4 líneas tras subir AVG_CHAR_WIDTH_RATIO
+  // a 0.6: se amplía únicamente el alto (x/y/width intactos) al mínimo necesario para overflowed=false.
+  { key: 'playa_terraza', label: 'Playa noche de verano', gradient: 'linear-gradient(160deg, #B45309, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaTerraza, imageAspect: 1, textArea: { x: 0.212, y: 0.1849, width: 0.476, height: 0.68 } },
   // Lote 11 — Clásico (SVG→foto), Reunión familiar (ya existe como
   // subtipo de Celebración) con varias escenas de comida, Jubilación
   // (también subtipo ya existente) y más variantes de Carnaval, Otoño y
@@ -834,42 +853,51 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Disco, Barbacoa y Comunión.
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la izquierda, comida
   // completamente por debajo del marco.
-  { key: 'comida_familiar', label: 'Comida familiar', gradient: 'linear-gradient(160deg, #FBBF24, #166534)', text: '#1f2233', artKey: 'confeti', image: invitaComidaFamiliar, imageAspect: 0.6667, textArea: { x: 0.26, y: 0.12, width: 0.52, height: 0.58 } },
+  { key: 'comida_familiar', label: 'Comida familiar', gradient: 'linear-gradient(160deg, #FBBF24, #166534)', text: '#1f2233', artKey: 'confeti', image: invitaComidaFamiliar, imageAspect: 0.6667, textArea: { x: 0.23, y: 0.08, width: 0.58, height: 0.62 } },
   // GRUPO A — certificada ("CENA EN CASA: funciona correctamente"). No tocar salvo necesidad real.
-  { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar, imageAspect: 1.188, textArea: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.5747 } },
-  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 1.1861, textArea: { x: 0.3244, y: 0.1142, width: 0.6067, height: 0.5084 } },
+  // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
+  // para el bug real de solape con el texto de certificación de 4 líneas tras subir AVG_CHAR_WIDTH_RATIO
+  // a 0.6: se amplía únicamente el alto (x/y/width intactos) al mínimo necesario para overflowed=false.
+  { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar, imageAspect: 1.188, textArea: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.6 } },
+  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 1.1861, textArea: { x: 0.3244, y: 0.1142, width: 0.6067, height: 0.6 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la derecha, jarra con texto abajo-izq.
-  { key: 'desayuno', label: 'Desayuno / Brunch', gradient: 'linear-gradient(160deg, #FDE9D9, #FBBF24)', text: '#7C2D12', artKey: 'confeti', image: invitaDesayuno, imageAspect: 0.6667, textArea: { x: 0.22, y: 0.12, width: 0.58, height: 0.56 } },
+  { key: 'desayuno', label: 'Desayuno / Brunch', gradient: 'linear-gradient(160deg, #FDE9D9, #FBBF24)', text: '#7C2D12', artKey: 'confeti', image: invitaDesayuno, imageAspect: 0.6667, textArea: { x: 0.19, y: 0.08, width: 0.64, height: 0.62 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, pizarra/señal fuera a los lados, farol abajo-izq.
   { key: 'jubilacion_brindis', label: 'Jubilación brindis', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaJubilacionBrindis, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.14, width: 0.42, height: 0.55 } },
   { key: 'jubilacion_viaje', label: 'Jubilación viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaJubilacionViaje, imageAspect: 1, textArea: { x: 0.2862, y: 0.2009, width: 0.4387, height: 0.476 } },
-  { key: 'jubilacion_relax', label: 'Jubilación tranquila', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaJubilacionRelax, imageAspect: 1, textArea: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.2987 } },
-  { key: 'jubilacion_cena', label: 'Jubilación cena', gradient: 'linear-gradient(160deg, #7F1D1D, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaJubilacionCena, imageAspect: 1, textArea: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.5227 } },
-  { key: 'carnaval_bufon', label: 'Carnaval bufón', gradient: 'linear-gradient(160deg, #7C3AED, #DB2777)', text: '#ffffff', artKey: 'confeti', image: invitaCarnavalBufon, imageAspect: 1, textArea: { x: 0.3449, y: 0.2564, width: 0.588, height: 0.476 } },
+  { key: 'jubilacion_relax', label: 'Jubilación tranquila', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaJubilacionRelax, imageAspect: 1, textArea: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.56 } },
+  { key: 'jubilacion_cena', label: 'Jubilación cena', gradient: 'linear-gradient(160deg, #7F1D1D, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaJubilacionCena, imageAspect: 1, textArea: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.68 } },
+  { key: 'carnaval_bufon', label: 'Carnaval bufón', gradient: 'linear-gradient(160deg, #7C3AED, #DB2777)', text: '#ffffff', artKey: 'confeti', image: invitaCarnavalBufon, imageAspect: 1, textArea: { x: 0.3449, y: 0.2564, width: 0.588, height: 0.6 } },
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora.
   // FASE 2 — fondo rediseñado (2026-09): plumas de colores arriba-izq y en toda la columna derecha —
   // franja central estrecha realmente libre.
-  { key: 'carnaval_plumas', label: 'Carnaval plumas', gradient: 'linear-gradient(160deg, #0EA5E9, #DB2777)', text: '#ffffff', artKey: 'confeti', image: invitaCarnavalPlumas, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.36, width: 0.42, height: 0.4 } },
+  // Zona intencionadamente <0.45 de ancho: activa el modo "compact" (fuente más pequeña automática). Los
+  // bordes de plumas a ambos lados son gruesos y reales, límite geométrico ya documentado en FASE 1 — no hay
+  // más ancho limpio real que ganar sin invadirlos.
+  { key: 'carnaval_plumas', label: 'Carnaval plumas', gradient: 'linear-gradient(160deg, #0EA5E9, #DB2777)', text: '#ffffff', artKey: 'confeti', image: invitaCarnavalPlumas, imageAspect: 0.6667, textArea: { x: 0.27, y: 0.26, width: 0.44, height: 0.56 } },
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora.
   // FASE 2 — fondo rediseñado (2026-09): sombrero arriba-izq, señal fuera a la izquierda, pajarita/nariz y
   // antifaz abajo.
-  { key: 'carnaval_payaso', label: 'Carnaval payaso', gradient: 'linear-gradient(160deg, #FBBF24, #7C3AED)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalPayaso, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.18, width: 0.52, height: 0.56 } },
+  { key: 'carnaval_payaso', label: 'Carnaval payaso', gradient: 'linear-gradient(160deg, #FBBF24, #7C3AED)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalPayaso, imageAspect: 0.6667, textArea: { x: 0.25, y: 0.13, width: 0.58, height: 0.64 } },
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora ni compensar con cambios globales del motor.
   // FASE 2 — fondo rediseñado (2026-09): marco de confeti, señal/pizarra fuera del marco, sombrero/gafas abajo.
-  { key: 'carnaval_confeti', label: 'Carnaval confeti', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalConfeti, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.16, width: 0.54, height: 0.52 } },
-  { key: 'otono_acogedor', label: 'Otoño acogedor', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoAcogedor, imageAspect: 1, textArea: { x: 0.28, y: 0.06, width: 0.56, height: 0.52 } },
-  { key: 'otono_senderismo', label: 'Otoño senderismo', gradient: 'linear-gradient(160deg, #B45309, #166534)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoSenderismo, imageAspect: 1, textArea: { x: 0.3, y: 0.1, width: 0.48, height: 0.55 } },
-  { key: 'otono_hogar', label: 'Otoño en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoHogar, imageAspect: 1, textArea: { x: 0.34, y: 0.08, width: 0.56, height: 0.42 } },
+  { key: 'carnaval_confeti', label: 'Carnaval confeti', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalConfeti, imageAspect: 0.6667, textArea: { x: 0.24, y: 0.1, width: 0.6, height: 0.6 } },
+  { key: 'otono_acogedor', label: 'Otoño acogedor', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoAcogedor, imageAspect: 1, textArea: { x: 0.23, y: 0.03, width: 0.64, height: 0.58 } },
+  // Zona intencionadamente <0.45 de ancho: activa el modo "compact" (fuente más pequeña automática). El
+  // sendero real deja una franja vertical estrecha entre los árboles a ambos lados — ya documentado en FASE 1
+  // como límite físico genuino de esta imagen, no hay más ancho limpio real que ganar ampliando.
+  { key: 'otono_senderismo', label: 'Otoño senderismo', gradient: 'linear-gradient(160deg, #B45309, #166534)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoSenderismo, imageAspect: 1, textArea: { x: 0.29, y: 0.04, width: 0.44, height: 0.68 } },
+  { key: 'otono_hogar', label: 'Otoño en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoHogar, imageAspect: 1, textArea: { x: 0.26, y: 0.04, width: 0.66, height: 0.6 } },
   // GRUPO C — marcada para futuro rediseño ("necesita más espacio limpio, decoración invade demasiado").
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la izquierda, girasoles/calabazas
   // completamente por debajo del marco.
-  { key: 'otono_cosecha', label: 'Otoño cosecha', gradient: 'linear-gradient(160deg, #FBBF24, #B45309)', text: '#7C2D12', artKey: 'confeti', image: invitaOtonoCosecha, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.1, width: 0.6, height: 0.56 } },
+  { key: 'otono_cosecha', label: 'Otoño cosecha', gradient: 'linear-gradient(160deg, #FBBF24, #B45309)', text: '#7C2D12', artKey: 'confeti', image: invitaOtonoCosecha, imageAspect: 0.6667, textArea: { x: 0.25, y: 0.05, width: 0.66, height: 0.62 } },
   // GRUPO A — certificada ("CORAZONES ACUARELA: funciona correctamente"). No tocar salvo necesidad real.
   { key: 'corazones_acuarela', label: 'Corazones acuarela', gradient: 'linear-gradient(160deg, #FDA4AF, #FFE4E6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesAcuarela, imageAspect: 1.2287, textArea: { x: 0.304, y: 0.1436, width: 0.6253, height: 0.6444 } },
-  { key: 'corazones_madera', label: 'Corazones rústico', gradient: 'linear-gradient(160deg, #E11D48, #78350F)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesMadera, imageAspect: 1.2306, textArea: { x: 0.16, y: 0.08, width: 0.62, height: 0.55 } },
+  { key: 'corazones_madera', label: 'Corazones rústico', gradient: 'linear-gradient(160deg, #E11D48, #78350F)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesMadera, imageAspect: 1.2306, textArea: { x: 0.16, y: 0.06, width: 0.62, height: 0.6 } },
   { key: 'corazones_terraza', label: 'Corazones terraza', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesTerraza, imageAspect: 1.1861, textArea: { x: 0.22, y: 0.04, width: 0.56, height: 0.62 } },
-  { key: 'corazones_dorado', label: 'Corazones dorado', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesDorado, imageAspect: 1.188, textArea: { x: 0.14, y: 0.08, width: 0.56, height: 0.56 } },
-  { key: 'celebracion_dorada', label: 'Celebración dorada', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCelebracionDorada, imageAspect: 1.188, textArea: { x: 0.26, y: 0.08, width: 0.5, height: 0.5 } },
+  { key: 'corazones_dorado', label: 'Corazones dorado', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesDorado, imageAspect: 1.188, textArea: { x: 0.14, y: 0.06, width: 0.56, height: 0.6 } },
+  { key: 'celebracion_dorada', label: 'Celebración dorada', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCelebracionDorada, imageAspect: 1.188, textArea: { x: 0.24, y: 0.06, width: 0.54, height: 0.58 } },
   { key: 'fiesta_acuarela', label: 'Fiesta acuarela', gradient: 'linear-gradient(160deg, #FDE9D9, #F3E8FF)', text: '#6B21A8', artKey: 'confeti', image: invitaFiestaAcuarela, imageAspect: 1.1861, textArea: { x: 0.16, y: 0.12, width: 0.68, height: 0.58 } },
   // Lote 12 — repaso visual de la familia: sustituye SVG o fotos que
   // "quedan borrosas o no quedan bien" en Robots, Ositos, Gatitos,
@@ -880,10 +908,10 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // GRUPO C — marcada para futuro rediseño de fondo ("crear tarjeta/zona limpia de escritura mucho mayor").
   // FASE 2 — fondo rediseñado (2026-09): marco ondulado, tortuga arriba-dcha, sirena abajo-izq — tarjeta
   // realmente mucho más grande y clara.
-  { key: 'sirena', label: 'Sirena', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaSirena, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.2, width: 0.56, height: 0.42 } },
-  { key: 'delfin_tortuga', label: 'Delfín y tortuga', gradient: 'linear-gradient(160deg, #0EA5E9, #0369A1)', text: '#ffffff', artKey: 'confeti', image: invitaDelfinTortuga, imageAspect: 1.2163, textArea: { x: 0.14, y: 0.14, width: 0.68, height: 0.56 } },
+  { key: 'sirena', label: 'Sirena', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaSirena, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.08, width: 0.7, height: 0.62 } },
+  { key: 'delfin_tortuga', label: 'Delfín y tortuga', gradient: 'linear-gradient(160deg, #0EA5E9, #0369A1)', text: '#ffffff', artKey: 'confeti', image: invitaDelfinTortuga, imageAspect: 1.2163, textArea: { x: 0.12, y: 0.12, width: 0.72, height: 0.6 } },
   { key: 'mago', label: 'Mago', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaMago, imageAspect: 1.214, textArea: { x: 0.32, y: 0.12, width: 0.54, height: 0.58 } },
-  { key: 'bruja', label: 'Bruja', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaBruja, imageAspect: 1.2163, textArea: { x: 0.42, y: 0.06, width: 0.46, height: 0.64 } },
+  { key: 'bruja', label: 'Bruja', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaBruja, imageAspect: 1.2163, textArea: { x: 0.4, y: 0.04, width: 0.5, height: 0.68 } },
 ]
 
 // Petición real: "quiero evitar que tengan que repasar las 97 [temas],
@@ -1665,7 +1693,16 @@ const ASSUMED_CANVAS_SIZE_PX = 380
 // plantillas el texto real podía ser más alto o más bajo que lo estimado aquí y acabar solapando con la
 // capa siguiente, o al revés, disparar un aviso de "no cabe" siendo mentira.
 export const LINE_HEIGHT_RATIO = 1.25
-const AVG_CHAR_WIDTH_RATIO = 0.55
+// Bug real reportado en vivo (iPhone, plantilla "boda", texto de certificación real de 4 líneas): título y
+// cuerpo se veían solapados aunque autoArrangeLayers calculaba overflowed=false, con un hueco estimado de
+// apenas el 1,4% del alto del lienzo. Causa: 0.55 asumía un carácter medio más estrecho del que realmente
+// pinta system-ui/-apple-system (San Francisco en iOS) para texto en español con tildes y mayúsculas — el
+// ajuste de línea real ocupa más líneas de las que estimateWrappedLineCount predecía, así que el cuerpo
+// pintado de verdad era más alto que el estimado y su borde superior invadía el título. Subido a 0.6 (nunca
+// una medida exacta — igual que ASSUMED_CANVAS_SIZE_PX, aproximación deliberada y documentada) para que la
+// estimación sea más conservadora en las 100 plantillas; las zonas que con este valor pasan a dar
+// overflowed=true se han revisado y ampliado una por una (ver commits de esta misma fecha).
+const AVG_CHAR_WIDTH_RATIO = 0.6
 
 // Cuántas líneas ocupará un texto: saltos de línea explícitos (\n, los que ya trae buildInvitationMessage
 // o los que escribe el usuario) + una estimación de ajuste de línea dentro del ancho disponible — sin

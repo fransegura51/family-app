@@ -1847,10 +1847,14 @@ export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone 
   const totalWithCompressedGaps = totalHeights + gap * gapCount
   if (totalWithCompressedGaps > availableHeight + 1e-9) overflowed = true
 
-  // Con hueco de sobra, el bloque completo se centra en el espacio disponible (más equilibrado
-  // visualmente); si no cabe ni comprimido, se apila desde arriba tal cual, sin forzarlo a caber.
-  const extraSpace = Math.max(0, availableHeight - totalWithCompressedGaps)
-  let cursor = availableTop + (overflowed ? 0 : extraSpace / 2)
+  // Bug real reportado en vivo ("floral", "corazones"): con hueco de sobra el bloque se centraba en el
+  // espacio disponible (mitad arriba, mitad abajo) — en plantillas tipo cartel/pícnic, la parte de ABAJO
+  // de la zona suele tener más decoración real (flores, objetos) que la de ARRIBA, así que centrar
+  // empujaba el texto precisamente hacia ahí en vez de aprovechar que arriba ya estaba limpio. Ahora el
+  // bloque se apila siempre desde arriba (el pequeño margen inicial ya lo da el icono/emoji, que apunta a
+  // zoneTop + 10% de la zona, más el hueco natural hasta el título) y todo el hueco sobrante queda abajo,
+  // sin usar — igual que cuando no cabe ni comprimido, nunca se fuerza a caber.
+  let cursor = availableTop
   texts.forEach((l, i) => {
     if (i > 0) cursor += gap
     const half = textBoxes[i].halfHeight

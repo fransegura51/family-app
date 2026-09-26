@@ -150,12 +150,14 @@ describe('4. sin regresión de overflow en las 46 plantillas recalibradas, con e
   })
 })
 
-describe('5. FÚTBOL aprovecha correctamente su nueva zona (mucho más grande que la anterior, sin comprimir)', () => {
-  it('la nueva textArea es sustancialmente más grande que la anterior (0.8027×0.5383 → más alta y ancha)', () => {
+describe('5. FÚTBOL: zona calibrada contra la foto real (sin comprimir el texto)', () => {
+  // 2026-09-26: la zona {0.08,0.08,0.84,0.72} de FASE 1 se declaró antes de que el bug real de ancho
+  // (ver AVG_CHAR_WIDTH_RATIO/width en InvitationDesigner.tsx) quedara corregido — con el ancho real ya
+  // coincidiendo con el declarado, se vio que invadía el balón y la grada de fondo en las esquinas
+  // inferiores. Estrechada a {0.1,0.08,0.8,0.56} tras inspeccionar la foto real.
+  it('textArea calibrada tras la revisión de imagen real', () => {
     const zone = templateByKey('futbol').textArea!
-    expect(zone.height).toBeGreaterThan(0.5383) // más alta que antes
-    expect(zone.width).toBeGreaterThanOrEqual(0.8027 - EPS) // igual o más ancha
-    expect(zone).toEqual({ x: 0.08, y: 0.08, width: 0.84, height: 0.72 })
+    expect(zone).toEqual({ x: 0.1, y: 0.08, width: 0.8, height: 0.56 })
   })
   it('con el texto de certificación, el bloque título+cuerpo no queda comprimido a un hueco mínimo (hay margen real, no overflow)', () => {
     const template = templateByKey('futbol')

@@ -835,8 +835,13 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'despedida_viaje', label: 'Despedida de viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaViaje, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.22, width: 0.6, height: 0.6 } },
   // FASE 2 — fondo rediseñado (2026-09): bola de discoteca arriba-izq, señal/neón/cubo fuera del marco.
   { key: 'despedida_noche', label: 'Despedida de noche', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNoche, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.18, width: 0.4, height: 0.58 } },
-  { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic, imageAspect: 1, textArea: { x: 0.14, y: 0.08, width: 0.72, height: 0.58 } },
-  { key: 'floral_primavera', label: 'Floral primavera', gradient: 'linear-gradient(160deg, #FFE4E6, #D9F99D)', text: '#3F6212', artKey: 'floral', image: invitaFloralPrimavera, imageAspect: 1, textArea: { x: 0.16, y: 0.06, width: 0.7, height: 0.62 } },
+  // Estrechada 2026-09-26 (reportado en vivo): con el bug de ancho ya corregido, el texto por fin ocupa el
+  // ancho real declarado — reveló que 0.72 era más ancho que el cartel limpio de la foto (mariposa y
+  // sombrero de paja pegados a los bordes). Solo cambia x/width, nunca la imagen.
+  { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic, imageAspect: 1, textArea: { x: 0.22, y: 0.08, width: 0.56, height: 0.58 } },
+  // Estrechada 2026-09-26 (reportado en vivo): mismo motivo que floral_picnic — 0.7 invadía la mariposa y
+  // el jarrón de tulipanes a los lados del cartel. Solo cambia x/width, nunca la imagen.
+  { key: 'floral_primavera', label: 'Floral primavera', gradient: 'linear-gradient(160deg, #FFE4E6, #D9F99D)', text: '#3F6212', artKey: 'floral', image: invitaFloralPrimavera, imageAspect: 1, textArea: { x: 0.23, y: 0.06, width: 0.54, height: 0.62 } },
   { key: 'floral_noche', label: 'Floral noche de jardín', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'floral', image: invitaFloralNoche, imageAspect: 1, textArea: { x: 0.3, y: 0.08, width: 0.54, height: 0.58 } },
   { key: 'playa_piscina', label: 'Playa piscina', gradient: 'linear-gradient(160deg, #0EA5E9, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPiscina, imageAspect: 1, textArea: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 } },
   { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.2529, y: 0.2116, width: 0.672, height: 0.588 } },

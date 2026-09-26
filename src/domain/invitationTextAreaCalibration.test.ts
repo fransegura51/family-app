@@ -147,7 +147,11 @@ describe('4. sin regresión de overflow en las 46 plantillas recalibradas, con e
   // dinosaurios: recalibrada 2026-09-26 a mano por el usuario sobre la foto real, evitando T-rex/
   // triceratops de las esquinas — riesgo de overflow asumido explícitamente (ver
   // invitationLiteralTextOverlap.test.ts para el detalle, incluye bautizo y ositos por el mismo motivo).
-  const KNOWN_TIGHT = new Set(['otono_senderismo', 'floral_picnic', 'floral_primavera', 'dinosaurios'])
+  // navidad_hogar, cumpleanos_rosa, cumpleanos_fiesta: mismo motivo, recalibradas a mano por el usuario.
+  const KNOWN_TIGHT = new Set([
+    'otono_senderismo', 'floral_picnic', 'floral_primavera', 'dinosaurios',
+    'navidad_hogar', 'cumpleanos_rosa', 'cumpleanos_fiesta',
+  ])
   it.each(GROUP_B_KEYS.filter((k) => !KNOWN_TIGHT.has(k)))('%s', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(event, template)
@@ -230,15 +234,16 @@ export const FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2 = [
 ] as const
 
 describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN sin tocar (12 de las 27 originales)', () => {
-  // 2026-09-26: 7 de las 12 (bebe_nina, bebe_arcoiris, despedida_novia, tapas, jubilacion_relax,
-  // jubilacion_cena, carnaval_bufon) tuvieron SOLO su alto ampliado — nunca imagen, imageAspect, x/y/width —
-  // como excepción autorizada explícitamente por el usuario para el bug real de solape con el texto de
-  // certificación de 4 líneas (ver AVG_CHAR_WIDTH_RATIO en events.ts). Siguen sin fondo nuevo ni ningún otro
-  // cambio: la excepción es puramente ese bugfix de alto.
+  // 2026-09-26: 6 de las 12 (bebe_nina, despedida_novia, tapas, jubilacion_relax, jubilacion_cena,
+  // carnaval_bufon) tuvieron SOLO su alto ampliado — nunca imagen, imageAspect, x/y/width — como excepción
+  // autorizada explícitamente por el usuario para el bug real de solape con el texto de certificación de 4
+  // líneas (ver AVG_CHAR_WIDTH_RATIO en events.ts). bebe_arcoiris fue más allá: recalibrada por completo a
+  // mano por el usuario sobre la foto real (sigue dando overflow con el texto completo, riesgo asumido
+  // explícitamente, ver invitationLiteralTextOverlap.test.ts). Ninguna de las 12 recibió fondo nuevo.
   const UNCHANGED_UNLISTED: Record<string, { x: number; y: number; width: number; height: number }> = {
     bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 },
     bebe_neutro: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 },
-    bebe_arcoiris: { x: 0.0724, y: 0.0497, width: 0.644, height: 0.6 },
+    bebe_arcoiris: { x: 0.25, y: 0.17, width: 0.52, height: 0.48 },
     casa_cajas: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 },
     despedida_novia: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.68 },
     playa_piscina: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 },

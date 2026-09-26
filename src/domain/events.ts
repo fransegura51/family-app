@@ -805,7 +805,10 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Zona intencionadamente <0.45 de ancho: activa el modo "compact" (fuente más pequeña automática) — el
   // pergamino real es pequeño y la chimenea/calcetines limitan la altura, no hay más superficie limpia real
   // que ganar ampliando sin invadirlos.
-  { key: 'navidad_hogar', label: 'Navidad junto al fuego', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadHogar, imageAspect: 0.5911, textArea: { x: 0.24, y: 0.05, width: 0.44, height: 0.48 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando la guirnalda y el
+  // lazo rojo de las esquinas) — con el texto de certificación completo el cálculo automático sigue dando
+  // overflow, riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'navidad_hogar', label: 'Navidad junto al fuego', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadHogar, imageAspect: 0.5911, textArea: { x: 0.41, y: 0.12, width: 0.46, height: 0.36 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("crear cartel central más largo y ancho").
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera mucho más ancho/largo, muñeco de nieve reducido
   // a la esquina inferior izquierda.
@@ -834,8 +837,14 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Lote 9 — más variantes de cumpleaños; se descarta una cuarta
   // (señal de madera "Buena compañía/Risas/Momentos inolvidables" en
   // playa) por quedar demasiado parecida a Playa tropical.
-  { key: 'cumpleanos_rosa', label: 'Cumpleaños rosa', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaCumpleanosRosa, imageAspect: 0.6531, textArea: { x: 0.3, y: 0.1, width: 0.6, height: 0.6 } },
-  { key: 'cumpleanos_fiesta', label: 'Cumpleaños fiesta', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCumpleanosFiesta, imageAspect: 0.6531, textArea: { x: 0.15, y: 0.12, width: 0.55, height: 0.7 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando los globos/pancarta
+  // de arriba) — con el texto de certificación completo el cálculo automático sigue dando overflow, riesgo
+  // asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'cumpleanos_rosa', label: 'Cumpleaños rosa', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaCumpleanosRosa, imageAspect: 0.6531, textArea: { x: 0.3, y: 0.17, width: 0.53, height: 0.52 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el sombrero de paja
+  // de la derecha) — con el texto de certificación completo el cálculo automático sigue dando overflow,
+  // riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'cumpleanos_fiesta', label: 'Cumpleaños fiesta', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCumpleanosFiesta, imageAspect: 0.6531, textArea: { x: 0.26, y: 0.14, width: 0.52, height: 0.55 } },
   // Lote 10 — "Ribete (Graduación)" de la lista de 26 (varias
   // variantes), Bebé chica/Cuna neutral/variante arcoíris (completa la
   // pareja con Bebé niño), y tres categorías nuevas que no estaban en la
@@ -857,14 +866,22 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'graduacion_explorar', label: 'Graduación explorar', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaGraduacionExplorar, imageAspect: 0.6667, textArea: { x: 0.17, y: 0.29, width: 0.63, height: 0.6 } },
   { key: 'bebe_nina', label: 'Bebé niña', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaBebeNina, imageAspect: 0.9526, textArea: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 } },
   { key: 'bebe_neutro', label: 'Cuna neutral', gradient: 'linear-gradient(160deg, #D9F99D, #FDE9D9)', text: '#3F6212', artKey: 'confeti', image: invitaBebeNeutro, imageAspect: 0.9526, textArea: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 } },
-  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.951, textArea: { x: 0.0724, y: 0.0497, width: 0.644, height: 0.6 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando la estrella/nube de
+  // arriba y el conejito de la izquierda) — con el texto de certificación completo el cálculo automático
+  // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
+  // invitationLiteralTextOverlap.test.ts).
+  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.951, textArea: { x: 0.25, y: 0.17, width: 0.52, height: 0.48 } },
   // FASE 2 — fondo rediseñado (2026-09): marco con forma de casa; decoración (llavero "Bienvenidos",
   // plantas, pizarra, cajas) fuera del propio marco — zona segura es el rectángulo inscrito bajo el tejado.
   // Recalibrada 2026-09-26 (feedback en vivo): cortada a la altura de la cesta de la vela (antes invadía
   // el candelabro de mimbre y quedaba muy cerca de las cajas), confirmada por el usuario.
   { key: 'casa_bienvenida', label: 'Nueva casa bienvenida', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaBienvenida, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.24, width: 0.44, height: 0.5 } },
   // FASE 2 — fondo rediseñado (2026-09): marco fino dorado, plantas/vela/llaves fuera o en el borde inferior.
-  { key: 'casa_llaves', label: 'Nueva casa llaves', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaLlaves, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.11, width: 0.6, height: 0.62 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el eucalipto y el
+  // texto "FAMILIA PLANES RISAS VIDA" de arriba) — con el texto de certificación completo el cálculo
+  // automático sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
+  // invitationLiteralTextOverlap.test.ts).
+  { key: 'casa_llaves', label: 'Nueva casa llaves', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaLlaves, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.25, width: 0.52, height: 0.46 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, cojines/planta fuera del marco por abajo.
   { key: 'casa_terraza', label: 'Nueva casa terraza', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaTerraza, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.12, width: 0.54, height: 0.62 } },
   { key: 'casa_cajas', label: 'Nueva casa mudanza', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaCajas, imageAspect: 1, textArea: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 } },

@@ -191,56 +191,34 @@ describe('7. GRUPO A completo (9 plantillas certificadas): ninguna textArea se h
   })
 })
 
-describe('8. GRUPO C completo (18 plantillas de futuro rediseño de fondo): ninguna textArea se ha tocado', () => {
-  const GROUP_C: Record<string, { x: number; y: number; width: number; height: number }> = {
-    bautizo: { x: 0.35, y: 0.1, width: 0.55, height: 0.7 },
-    gatitos: { x: 0.308, y: 0.4195, width: 0.5507, height: 0.4314 },
-    robots: { x: 0.2836, y: 0.1189, width: 0.644, height: 0.6811 },
-    superheroina: { x: 0.2391, y: 0.1043, width: 0.644, height: 0.6697 },
-    pijamas: { x: 0.3507, y: 0.1649, width: 0.532, height: 0.4541 },
-    kpop: { x: 0.396, y: 0.0746, width: 0.5413, height: 0.7832 },
-    hadas: { x: 0.2876, y: 0.207, width: 0.5693, height: 0.613 },
-    granja: { x: 0.1782, y: 0.5324, width: 0.588, height: 0.3405 },
-    obras: { x: 0.1689, y: 0.2157, width: 0.6067, height: 0.7038 },
-    comunion: { x: 0.3, y: 0.1, width: 0.6, height: 0.45 },
-    navidad_muneco: { x: 0.3493, y: 0.2368, width: 0.4013, height: 0.4145 },
-    navidad_dorada: { x: 0.32, y: 0.08, width: 0.6, height: 0.5 },
-    navidad_papanoel: { x: 0.4778, y: 0.1911, width: 0.4667, height: 0.6245 },
-    carnaval_plumas: { x: 0.2902, y: 0.0676, width: 0.5973, height: 0.7093 },
-    carnaval_payaso: { x: 0.0667, y: 0.2556, width: 0.7, height: 0.4667 },
-    carnaval_confeti: { x: 0.2551, y: 0.0587, width: 0.5787, height: 0.616 },
-    otono_cosecha: { x: 0.3098, y: 0.056, width: 0.5693, height: 0.588 },
-    sirena: { x: 0.344, y: 0.1535, width: 0.5787, height: 0.7605 },
-  }
-  it.each(Object.entries(GROUP_C))('%s', (key, expected) => {
-    expect(templateByKey(key).textArea).toEqual(expected)
-  })
-})
+// FASE 2 (2026-09) sustituyó el fondo de las 18 plantillas del grupo C original — todas resueltas, ninguna
+// queda pendiente de rediseño. Sus valores ANTERIORES (y los assertions que los protegían) ya no aplican:
+// ver invitationBackgroundReplacement.test.ts para la cobertura de sus valores NUEVOS. Se documentan aquí
+// los 18 keys por trazabilidad, no como assertion.
+export const FASE1_GROUP_C_RESUELTO_EN_FASE2 = [
+  'bautizo', 'gatitos', 'robots', 'superheroina', 'pijamas', 'kpop', 'hadas', 'granja', 'obras', 'comunion',
+  'navidad_muneco', 'navidad_dorada', 'navidad_papanoel', 'carnaval_plumas', 'carnaval_payaso', 'carnaval_confeti',
+  'otono_cosecha', 'sirena',
+] as const
 
-describe('9. plantillas SIN instrucción explícita en la revisión (27): ninguna se ha modificado automáticamente', () => {
+// De las 27 plantillas "sin instrucción explícita" de FASE 1, 14 recibieron fondo nuevo en FASE 2 (ver
+// invitationBackgroundReplacement.test.ts) — dejan de estar en esta lista. Quedan 13 realmente sin tocar.
+export const FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2 = [
+  'ositos', 'graduacion_esfuerzo', 'graduacion_suena', 'graduacion_disciplina', 'graduacion_explorar',
+  'casa_bienvenida', 'casa_llaves', 'casa_terraza', 'despedida_novio', 'despedida_viaje', 'despedida_noche',
+  'comida_familiar', 'desayuno', 'jubilacion_brindis',
+] as const
+
+describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN sin tocar (13 de las 27 originales)', () => {
   const UNCHANGED_UNLISTED: Record<string, { x: number; y: number; width: number; height: number }> = {
-    ositos: { x: 0.2031, y: 0.1346, width: 0.616, height: 0.7038 },
-    graduacion_esfuerzo: { x: 0.2987, y: 0.1525, width: 0.5693, height: 0.7119 },
-    graduacion_suena: { x: 0.2622, y: 0.1173, width: 0.42, height: 0.6976 },
-    graduacion_disciplina: { x: 0.3084, y: 0.1627, width: 0.4387, height: 0.6407 },
-    graduacion_explorar: { x: 0.2036, y: 0.1464, width: 0.504, height: 0.4698 },
     bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.5183 },
     bebe_neutro: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 },
     bebe_arcoiris: { x: 0.0724, y: 0.0497, width: 0.644, height: 0.5217 },
-    casa_bienvenida: { x: 0.4102, y: 0.1524, width: 0.4573, height: 0.5507 },
-    casa_llaves: { x: 0.2244, y: 0.0631, width: 0.6067, height: 0.6627 },
-    casa_terraza: { x: 0.2476, y: 0.0853, width: 0.616, height: 0.6627 },
     casa_cajas: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 },
     despedida_novia: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.588 },
-    despedida_novio: { x: 0.1587, y: 0.2107, width: 0.616, height: 0.5787 },
-    despedida_viaje: { x: 0.2787, y: 0.1858, width: 0.476, height: 0.5507 },
-    despedida_noche: { x: 0.2893, y: 0.148, width: 0.588, height: 0.7373 },
     playa_piscina: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 },
     playa_pina: { x: 0.2529, y: 0.2116, width: 0.672, height: 0.588 },
-    comida_familiar: { x: 0.3031, y: 0.0495, width: 0.616, height: 0.5195 },
     tapas: { x: 0.3244, y: 0.1142, width: 0.6067, height: 0.5084 },
-    desayuno: { x: 0.0613, y: 0.06, width: 0.644, height: 0.63 },
-    jubilacion_brindis: { x: 0.3111, y: 0.2027, width: 0.4667, height: 0.4947 },
     jubilacion_viaje: { x: 0.2862, y: 0.2009, width: 0.4387, height: 0.476 },
     jubilacion_relax: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.2987 },
     jubilacion_cena: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.5227 },
@@ -250,14 +228,14 @@ describe('9. plantillas SIN instrucción explícita en la revisión (27): ningun
   it.each(Object.entries(UNCHANGED_UNLISTED))('%s', (key, expected) => {
     expect(templateByKey(key).textArea).toEqual(expected)
   })
-  it('las tres agrupaciones (A=9 + B=46 + C=18 + sin instrucción=27) cubren exactamente las 100 plantillas reales', () => {
+  it('A=9 + B=46 + resueltas en FASE2=32 + sin instrucción restante=13 cubren exactamente las 100 plantillas reales', () => {
     const named = new Set([
       ...Object.keys({
         elegante: 0, playa_terraza: 0, cena_hogar: 0, corazones_acuarela: 0, alegre: 0, unicornio: 0, superheroe: 0, bebe_nino: 0, halloween_casa: 0,
       }),
       ...GROUP_B_KEYS,
-      'bautizo', 'gatitos', 'robots', 'superheroina', 'pijamas', 'kpop', 'hadas', 'granja', 'obras', 'comunion',
-      'navidad_muneco', 'navidad_dorada', 'navidad_papanoel', 'carnaval_plumas', 'carnaval_payaso', 'carnaval_confeti', 'otono_cosecha', 'sirena',
+      ...FASE1_GROUP_C_RESUELTO_EN_FASE2,
+      ...FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2,
       ...Object.keys(UNCHANGED_UNLISTED),
     ])
     expect(named.size).toBe(100)

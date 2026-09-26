@@ -674,7 +674,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // reparte en varios lotes.
   { key: 'dinosaurios', label: 'Dinosaurios', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'dinosaurios', image: invitaDinosaurios, imageAspect: 0.4361, textArea: { x: 0.22, y: 0.3, width: 0.5, height: 0.6807 } },
   { key: 'videojuegos', label: 'Videojuegos', gradient: 'linear-gradient(160deg, #312E81, #4C1D95)', text: '#ffffff', artKey: 'videojuegos', image: invitaVideojuegos, imageAspect: 0.499, textArea: { x: 0.13, y: 0.32, width: 0.7, height: 0.5491 } },
-  { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones', image: invitaCorazones, imageAspect: 0.4512, textArea: { x: 0.16, y: 0.28, width: 0.68, height: 0.4 } },
+  // Ampliada 2026-09-26 (feedback en vivo): la ronda de estrechado anterior calibró justo lo mínimo para
+  // el texto de certificación, dejando hueco real sin aprovechar dentro del corazón — quien escriba más
+  // texto que el de certificación se beneficia de más margen real. Comprobado que sigue sin invadir las
+  // rosas de las esquinas ni la punta inferior del corazón.
+  { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones', image: invitaCorazones, imageAspect: 0.4512, textArea: { x: 0.15, y: 0.18, width: 0.7, height: 0.44 } },
   // FASE 2 — fondo rediseñado (2026-09): sigue siendo el ID "ositos" (nunca se renombra por un cambio
   // cosmético), aunque el personaje visual ahora es un cachorro detective — mismo concepto reducido a la
   // esquina inferior izquierda, gran pergamino limpio central/derecho.
@@ -841,8 +845,16 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic, imageAspect: 1, textArea: { x: 0.22, y: 0.08, width: 0.56, height: 0.58 } },
   // Estrechada 2026-09-26 (reportado en vivo): mismo motivo que floral_picnic — 0.7 invadía la mariposa y
   // el jarrón de tulipanes a los lados del cartel. Solo cambia x/width, nunca la imagen.
-  { key: 'floral_primavera', label: 'Floral primavera', gradient: 'linear-gradient(160deg, #FFE4E6, #D9F99D)', text: '#3F6212', artKey: 'floral', image: invitaFloralPrimavera, imageAspect: 1, textArea: { x: 0.23, y: 0.06, width: 0.54, height: 0.62 } },
-  { key: 'floral_noche', label: 'Floral noche de jardín', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'floral', image: invitaFloralNoche, imageAspect: 1, textArea: { x: 0.3, y: 0.18, width: 0.5, height: 0.6807 } },
+  // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — pergamino grande y
+  // limpio, imageAspect recalculado (1024x1536 real → 0.6667, ya no cuadrada). textArea recalculada desde
+  // cero: modo compact (ancho<0.45) para evitar la mariposa naranja superior-izquierda y la mariposa rosa
+  // de la derecha; el jarrón de tulipanes y las flores del borde inferior quedan fuera de la zona.
+  { key: 'floral_primavera', label: 'Floral primavera', gradient: 'linear-gradient(160deg, #FFE4E6, #D9F99D)', text: '#3F6212', artKey: 'floral', image: invitaFloralPrimavera, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.18, width: 0.44, height: 0.5 } },
+  // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — pergamino grande junto
+  // a farolillos de exterior, imageAspect recalculado (1024x1536 real → 0.6667, ya no cuadrada). textArea
+  // recalculada desde cero: modo compact (ancho<0.45) para evitar la enredadera que cae sobre el borde
+  // superior del pergamino y las flores/farolillos de la parte inferior.
+  { key: 'floral_noche', label: 'Floral noche de jardín', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'floral', image: invitaFloralNoche, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.18, width: 0.43, height: 0.48 } },
   { key: 'playa_piscina', label: 'Playa piscina', gradient: 'linear-gradient(160deg, #0EA5E9, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPiscina, imageAspect: 1, textArea: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 } },
   { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.2529, y: 0.2116, width: 0.672, height: 0.588 } },
   { key: 'playa_atardecer', label: 'Playa atardecer', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaAtardecer, imageAspect: 1, textArea: { x: 0.24, y: 0.12, width: 0.58, height: 0.5976 } },

@@ -670,13 +670,19 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // central/derecha"). NO tocar textArea ahora.
   // FASE 2 — fondo rediseñado (2026-09): tarjeta grande y limpia, oso reducido a la esquina inferior
   // izquierda. imageAspect y textArea recalculados desde cero sobre la imagen nueva real.
-  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo, imageAspect: 1.2736, textArea: { x: 0.4, y: 0.06, width: 0.52, height: 0.7 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando globos/regalos) —
+  // con el texto de certificación completo el cálculo automático sigue dando overflow, riesgo asumido
+  // explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo, imageAspect: 1.2736, textArea: { x: 0.35, y: 0.13, width: 0.58, height: 0.56 } },
   { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco', image: invitaDisco, imageAspect: 1.188, textArea: { x: 0.2, y: 0.18, width: 0.66, height: 0.6376 } },
   // Lote 2 — petición real, lista de 26 temas; 3 no se hacen por ser
   // personajes/estilos con derechos de terceros (Minecraft, Mario Bros,
   // Spiderman — ver INVITATION_ART en EventosScreen.tsx). El resto se
   // reparte en varios lotes.
-  { key: 'dinosaurios', label: 'Dinosaurios', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'dinosaurios', image: invitaDinosaurios, imageAspect: 0.4361, textArea: { x: 0.17, y: 0.3, width: 0.55, height: 0.6807 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el T-rex/triceratops
+  // de las esquinas) — con el texto de certificación completo el cálculo automático sigue dando overflow,
+  // riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'dinosaurios', label: 'Dinosaurios', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'dinosaurios', image: invitaDinosaurios, imageAspect: 0.4361, textArea: { x: 0.26, y: 0.22, width: 0.46, height: 0.36 } },
   { key: 'videojuegos', label: 'Videojuegos', gradient: 'linear-gradient(160deg, #312E81, #4C1D95)', text: '#ffffff', artKey: 'videojuegos', image: invitaVideojuegos, imageAspect: 0.499, textArea: { x: 0.13, y: 0.23, width: 0.7, height: 0.6391 } },
   // Ampliada 2026-09-26 (feedback en vivo): la ronda de estrechado anterior calibró justo lo mínimo para
   // el texto de certificación, dejando hueco real sin aprovechar dentro del corazón — quien escriba más
@@ -691,7 +697,10 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // FASE 2 — fondo rediseñado (2026-09): sigue siendo el ID "ositos" (nunca se renombra por un cambio
   // cosmético), aunque el personaje visual ahora es un cachorro detective — mismo concepto reducido a la
   // esquina inferior izquierda, gran pergamino limpio central/derecho.
-  { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos', image: invitaOsitos, imageAspect: 1.2192, textArea: { x: 0.3, y: 0.05, width: 0.56, height: 0.68 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el perro detective y
+  // el letrero/farol de la derecha) — con el texto de certificación completo el cálculo automático sigue
+  // dando overflow, riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos', image: invitaOsitos, imageAspect: 1.2192, textArea: { x: 0.3, y: 0.13, width: 0.56, height: 0.56 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("necesita tarjeta clara considerablemente mayor").
   // FASE 2 — fondo rediseñado (2026-09): tarjeta clara mucho mayor, gatitos reducidos a las esquinas.
   { key: 'gatitos', label: 'Gatitos', gradient: 'linear-gradient(160deg, #F3E8FF, #E9D5FF)', text: '#6B21A8', artKey: 'gatitos', image: invitaGatitos, imageAspect: 0.6667, textArea: { x: 0.14, y: 0.27, width: 0.7, height: 0.63 } },
@@ -707,7 +716,9 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'superheroina', label: 'Superheroína', gradient: 'linear-gradient(160deg, #EC4899, #7C3AED)', text: '#ffffff', artKey: 'superheroina', image: invitaSuperheroina, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.2, width: 0.56, height: 0.7 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("reducir decoración inferior y aumentar zona limpia").
   // FASE 2 — fondo rediseñado (2026-09): cartel claro superior, niños/decoración bajados a la parte inferior.
-  { key: 'pijamas', label: 'Estrellitas', gradient: 'linear-gradient(160deg, #312E81, #0F172A)', text: '#ffffff', artKey: 'pijamas', image: invitaPijamas, imageAspect: 0.6667, textArea: { x: 0.21, y: 0.05, width: 0.68, height: 0.6 } },
+  // Recalibrada 2026-09-26 (feedback en vivo): bajada para dejar fuera las luces/estrellas colgantes de
+  // arriba, marcada a mano por el usuario sobre la foto real, cabe el texto sin overflow.
+  { key: 'pijamas', label: 'Estrellitas', gradient: 'linear-gradient(160deg, #312E81, #0F172A)', text: '#ffffff', artKey: 'pijamas', image: invitaPijamas, imageAspect: 0.6667, textArea: { x: 0.21, y: 0.16, width: 0.68, height: 0.64 } },
   // "Guerreras Kpop" — ambiente genérico de concierto/idol (neón,
   // micro, focos), sin ningún grupo, cara ni persona real de por medio.
   // GRUPO C — identificado como "CANTANTE / ESTRELLA MUSICAL" de la revisión manual (no es un nombre
@@ -868,14 +879,22 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Estrechada 2026-09-26 (reportado en vivo): con el bug de ancho ya corregido, el texto por fin ocupa el
   // ancho real declarado — reveló que 0.72 era más ancho que el cartel limpio de la foto (mariposa y
   // sombrero de paja pegados a los bordes). Solo cambia x/width, nunca la imagen.
-  { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic, imageAspect: 1, textArea: { x: 0.22, y: 0.08, width: 0.56, height: 0.58 } },
+  // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — pícnic con mariposa,
+  // sombrero de paja y cesta de flores, imageAspect recalculado (1024x1536 → 0.6667). textArea marcada a
+  // mano por el usuario sobre la foto real (con el texto de certificación completo el cálculo automático
+  // sigue dando overflow — riesgo asumido explícitamente por el usuario, no forzado por el motor).
+  { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic, imageAspect: 0.6667, textArea: { x: 0.16, y: 0.14, width: 0.55, height: 0.48 } },
   // Estrechada 2026-09-26 (reportado en vivo): mismo motivo que floral_picnic — 0.7 invadía la mariposa y
   // el jarrón de tulipanes a los lados del cartel. Solo cambia x/width, nunca la imagen.
   // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — pergamino grande y
   // limpio, imageAspect recalculado (1024x1536 real → 0.6667, ya no cuadrada). textArea recalculada desde
   // cero: modo compact (ancho<0.45) para evitar la mariposa naranja superior-izquierda y la mariposa rosa
   // de la derecha; el jarrón de tulipanes y las flores del borde inferior quedan fuera de la zona.
-  { key: 'floral_primavera', label: 'Floral primavera', gradient: 'linear-gradient(160deg, #FFE4E6, #D9F99D)', text: '#3F6212', artKey: 'floral', image: invitaFloralPrimavera, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.18, width: 0.44, height: 0.5 } },
+  // Recalibrada 2026-09-26 (feedback en vivo): desplazada a la derecha para dejar fuera el jarrón de
+  // tulipanes de la izquierda, marcada a mano por el usuario sobre la foto real (con el texto de
+  // certificación completo el cálculo automático sigue dando overflow — riesgo asumido explícitamente por
+  // el usuario, no forzado por el motor).
+  { key: 'floral_primavera', label: 'Floral primavera', gradient: 'linear-gradient(160deg, #FFE4E6, #D9F99D)', text: '#3F6212', artKey: 'floral', image: invitaFloralPrimavera, imageAspect: 0.6667, textArea: { x: 0.36, y: 0.16, width: 0.46, height: 0.62 } },
   // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — pergamino grande junto
   // a farolillos de exterior, imageAspect recalculado (1024x1536 real → 0.6667, ya no cuadrada). textArea
   // recalculada desde cero: modo compact (ancho<0.45) para evitar la enredadera que cae sobre el borde
@@ -936,7 +955,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // completamente por debajo del marco.
   { key: 'otono_cosecha', label: 'Otoño cosecha', gradient: 'linear-gradient(160deg, #FBBF24, #B45309)', text: '#7C2D12', artKey: 'confeti', image: invitaOtonoCosecha, imageAspect: 0.6667, textArea: { x: 0.29, y: 0.1, width: 0.59, height: 0.65 } },
   // GRUPO A — certificada ("CORAZONES ACUARELA: funciona correctamente"). No tocar salvo necesidad real.
-  { key: 'corazones_acuarela', label: 'Corazones acuarela', gradient: 'linear-gradient(160deg, #FDA4AF, #FFE4E6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesAcuarela, imageAspect: 1.2287, textArea: { x: 0.304, y: 0.1436, width: 0.6253, height: 0.6444 } },
+  // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — marco dorado con
+  // corazones/flores acuarela solo en las esquinas, imageAspect recalculado (1024x1536 → 0.6667). Plantilla
+  // certificada (grupo A) — excepción autorizada explícitamente por el usuario al darme la imagen nueva
+  // directamente. textArea recalculada desde cero, confirmada por el usuario.
+  { key: 'corazones_acuarela', label: 'Corazones acuarela', gradient: 'linear-gradient(160deg, #FDA4AF, #FFE4E6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesAcuarela, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.14, width: 0.6, height: 0.62 } },
   // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — marco de madera
   // rústico con rosas en los laterales y un regalo en la esquina inferior derecha, imageAspect recalculado
   // (1024x1536 → 0.6667). textArea recalculada desde cero: rectángulo confirmado por el usuario tras verlo

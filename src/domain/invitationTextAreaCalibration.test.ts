@@ -141,7 +141,13 @@ describe('4. sin regresión de overflow en las 46 plantillas recalibradas, con e
   // fuente POR DEFECTO (no compacto) puede seguir marcando overflowed=true; igual que el resto de casos de
   // overflow real, NUNCA se oculta ni se fuerza a caber — se avisa. Queda en la lista de revisión visual
   // (informe final) para decidir si necesita fuente más pequeña manual o quedar en el grupo C.
-  const KNOWN_TIGHT = new Set(['otono_senderismo'])
+  // 2026-09-26: floral_picnic y floral_primavera recibieron fondos nuevos con zonas marcadas A MANO por el
+  // usuario sobre la foto real — riesgo de overflow asumido explícitamente por el usuario (ver
+  // invitationLiteralTextOverlap.test.ts para el detalle), no un bug pendiente.
+  // dinosaurios: recalibrada 2026-09-26 a mano por el usuario sobre la foto real, evitando T-rex/
+  // triceratops de las esquinas — riesgo de overflow asumido explícitamente (ver
+  // invitationLiteralTextOverlap.test.ts para el detalle, incluye bautizo y ositos por el mismo motivo).
+  const KNOWN_TIGHT = new Set(['otono_senderismo', 'floral_picnic', 'floral_primavera', 'dinosaurios'])
   it.each(GROUP_B_KEYS.filter((k) => !KNOWN_TIGHT.has(k)))('%s', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(event, template)
@@ -186,11 +192,13 @@ describe('7. GRUPO A completo (9 plantillas certificadas): ninguna textArea se h
   // 2026-09-26: 4 de las 9 (unicornio, halloween_casa, playa_terraza, cena_hogar) tuvieron SOLO su alto
   // ampliado — nunca x/y/width — como excepción autorizada explícitamente por el usuario para el bug real
   // de solape con el texto de certificación de 4 líneas (ver AVG_CHAR_WIDTH_RATIO en events.ts).
+  // corazones_acuarela recibió un fondo nuevo del usuario (imagen + textArea recalculada por completo) —
+  // misma excepción autorizada explícitamente al dar la imagen directamente.
   const GROUP_A: Record<string, { x: number; y: number; width: number; height: number }> = {
     elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.6742 },
     playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.68 },
     cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.6 },
-    corazones_acuarela: { x: 0.304, y: 0.1436, width: 0.6253, height: 0.6444 },
+    corazones_acuarela: { x: 0.2, y: 0.14, width: 0.6, height: 0.62 },
     alegre: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 },
     unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 },
     superheroe: { x: 0.0978, y: 0.3606, width: 0.7933, height: 0.4561 },

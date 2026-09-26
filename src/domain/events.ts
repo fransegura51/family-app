@@ -678,7 +678,12 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // el texto de certificación, dejando hueco real sin aprovechar dentro del corazón — quien escriba más
   // texto que el de certificación se beneficia de más margen real. Comprobado que sigue sin invadir las
   // rosas de las esquinas ni la punta inferior del corazón.
-  { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones', image: invitaCorazones, imageAspect: 0.4512, textArea: { x: 0.15, y: 0.18, width: 0.7, height: 0.44 } },
+  // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — marco de madera con
+  // rosas/corazones en los 4 bordes, imageAspect recalculado (1024x1536 → 0.6667, ya no la silueta de
+  // corazón anterior). textArea recalculada desde cero: rectángulo confirmado por el usuario tras verlo
+  // dibujado sobre la foto real (dos vueltas: la primera invadía los corazones grandes de las esquinas
+  // inferiores, se subió el borde inferior hasta dejarlos fuera).
+  { key: 'corazones', label: 'Corazones', gradient: 'linear-gradient(160deg, #FDA4AF, #E11D48)', text: '#ffffff', artKey: 'corazones', image: invitaCorazones, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.09, width: 0.64, height: 0.71 } },
   // FASE 2 — fondo rediseñado (2026-09): sigue siendo el ID "ositos" (nunca se renombra por un cambio
   // cosmético), aunque el personaje visual ahora es un cachorro detective — mismo concepto reducido a la
   // esquina inferior izquierda, gran pergamino limpio central/derecho.
@@ -733,7 +738,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'alienigenas', label: 'Alienígenas', gradient: 'linear-gradient(160deg, #312E81, #020617)', text: '#ffffff', artKey: 'confeti', image: invitaAlienigenas, imageAspect: 0.5, textArea: { x: 0.15, y: 0.19, width: 0.68, height: 0.61 } },
   { key: 'playa', label: 'Playa tropical', gradient: 'linear-gradient(160deg, #FDBA74, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlaya, imageAspect: 0.4492, textArea: { x: 0.16, y: 0.12, width: 0.6, height: 0.5976 } },
   { key: 'concierto', label: 'Concierto', gradient: 'linear-gradient(160deg, #7C3AED, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaConcierto, imageAspect: 0.4688, textArea: { x: 0.17, y: 0.08, width: 0.66, height: 0.5976 } },
-  { key: 'boda', label: 'Boda', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#4A5D23', artKey: 'confeti', image: invitaBoda, imageAspect: 1.2163, textArea: { x: 0.19, y: 0.14, width: 0.55, height: 0.6807 } },
+  // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — marco rectangular
+  // limpio con rosas y corazones solo en las esquinas, imageAspect recalculado (1024x1536 → 0.6667).
+  // textArea recalculada desde cero: rectángulo confirmado por el usuario tras verlo dibujado sobre la
+  // foto real, evitando las 4 esquinas decoradas.
+  { key: 'boda', label: 'Boda', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#4A5D23', artKey: 'confeti', image: invitaBoda, imageAspect: 0.6667, textArea: { x: 0.22, y: 0.08, width: 0.56, height: 0.82 } },
   // Lote 5 — segunda hoja de arte real. Se descartan los repetidos de
   // temas que ya tenían imagen (fútbol, dinosaurios, espacio, unicornio)
   // y una sirena que se parece demasiado a un personaje Disney conocido
@@ -911,7 +920,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'otono_cosecha', label: 'Otoño cosecha', gradient: 'linear-gradient(160deg, #FBBF24, #B45309)', text: '#7C2D12', artKey: 'confeti', image: invitaOtonoCosecha, imageAspect: 0.6667, textArea: { x: 0.29, y: 0.1, width: 0.59, height: 0.65 } },
   // GRUPO A — certificada ("CORAZONES ACUARELA: funciona correctamente"). No tocar salvo necesidad real.
   { key: 'corazones_acuarela', label: 'Corazones acuarela', gradient: 'linear-gradient(160deg, #FDA4AF, #FFE4E6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesAcuarela, imageAspect: 1.2287, textArea: { x: 0.304, y: 0.1436, width: 0.6253, height: 0.6444 } },
-  { key: 'corazones_madera', label: 'Corazones rústico', gradient: 'linear-gradient(160deg, #E11D48, #78350F)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesMadera, imageAspect: 1.2306, textArea: { x: 0.16, y: 0.06, width: 0.62, height: 0.6 } },
+  // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — marco de madera
+  // rústico con rosas en los laterales y un regalo en la esquina inferior derecha, imageAspect recalculado
+  // (1024x1536 → 0.6667). textArea recalculada desde cero: rectángulo confirmado por el usuario tras verlo
+  // dibujado sobre la foto real (el borde inferior sube bastante para dejar fuera el regalo con el lazo).
+  { key: 'corazones_madera', label: 'Corazones rústico', gradient: 'linear-gradient(160deg, #E11D48, #78350F)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesMadera, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.07, width: 0.64, height: 0.66 } },
   { key: 'corazones_terraza', label: 'Corazones terraza', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesTerraza, imageAspect: 1.1861, textArea: { x: 0.22, y: 0.14, width: 0.56, height: 0.62 } },
   { key: 'corazones_dorado', label: 'Corazones dorado', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesDorado, imageAspect: 1.188, textArea: { x: 0.14, y: 0.06, width: 0.56, height: 0.6 } },
   { key: 'celebracion_dorada', label: 'Celebración dorada', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCelebracionDorada, imageAspect: 1.188, textArea: { x: 0.27, y: 0.11, width: 0.51, height: 0.7407 } },

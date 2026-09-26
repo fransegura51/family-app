@@ -651,7 +651,10 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado', image: invitaElegante, imageAspect: 1.1861, textArea: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.6742 } },
   // Sin instrucción explícita en la revisión manual de esta fase — textArea sin tocar (es la plantilla del
   // caso de certificación "Bodas de plata" de la fase anterior, no confundir con floral_picnic/primavera/noche).
-  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralJardin, imageAspect: 1, textArea: { x: 0.2542, y: 0.204, width: 0.5693, height: 0.6253 } },
+  // FASE 2 — fondo rediseñado (2026-09): marco de madera con flores/pajarera en el borde, pájaro posado en
+  // el borde superior — panel claro central grande. Ya NO es la imagen usada en el caso de certificación
+  // "Bodas de plata" de sesiones anteriores (esa referencia queda obsoleta con este cambio de fondo).
+  { key: 'floral', label: 'Floral', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralJardin, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.18, width: 0.56, height: 0.56 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("personaje más pequeño/lateral, mucha más zona
   // central/derecha"). NO tocar textArea ahora.
   // FASE 2 — fondo rediseñado (2026-09): tarjeta grande y limpia, oso reducido a la esquina inferior

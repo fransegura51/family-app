@@ -3,12 +3,14 @@ import { autoArrangeLayers, buildInvitationTemplateLayers, estimateLayerBoxFract
 import type { FamilyEvent, InvitationLayer } from '@/domain/types'
 import { FASE1_GROUP_C_RESUELTO_EN_FASE2, FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2 } from './invitationTextAreaCalibration.test'
 
-// FASE 2 (2026-09) — sustitución de 32 fondos rediseñados: las 18 plantillas del antiguo grupo C de FASE 1
-// (candidatas a rediseño) + 14 de las 27 "sin instrucción explícita" que también recibieron fondo nuevo en
-// esta ronda. El asset se sustituyó en el MISMO archivo (misma ruta `<key>.jpg`, mismo import, mismo `key`
-// interno — nunca se crea un archivo nuevo ni se renombra un ID), así que no puede haber assets huérfanos.
-// imageAspect y textArea se recalcularon desde cero sobre la geometría real de cada imagen nueva (nunca
-// reutilizando la textArea antigua).
+// FASE 2 (2026-09) — sustitución de 33 fondos rediseñados: las 18 plantillas del antiguo grupo C de FASE 1
+// (candidatas a rediseño) + 15 de las 27 "sin instrucción explícita" que también recibieron fondo nuevo en
+// esta ronda (14 en la primera tanda + "floral" en una tanda posterior, la plantilla del caso de
+// certificación original "Bodas de plata" — ver events.test.ts, sigue pasando con el fondo nuevo). El asset
+// se sustituyó en el MISMO archivo (misma ruta `<key>.jpg`, mismo import, mismo `key` interno — nunca se
+// crea un archivo nuevo ni se renombra un ID), así que no puede haber assets huérfanos. imageAspect y
+// textArea se recalcularon desde cero sobre la geometría real de cada imagen nueva (nunca reutilizando la
+// textArea antigua).
 const EPS = 0.0001
 const REPLACED_KEYS = [...FASE1_GROUP_C_RESUELTO_EN_FASE2, ...FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2] as const
 
@@ -91,6 +93,7 @@ describe('1./2. las 32 plantillas sustituidas siguen existiendo con su ID (key) 
     carnaval_confeti: 'Carnaval confeti',
     otono_cosecha: 'Otoño cosecha',
     sirena: 'Sirena',
+    floral: 'Floral',
     ositos: 'Ositos',
     graduacion_esfuerzo: 'Graduación esfuerzo',
     graduacion_suena: 'Graduación sueña',
@@ -106,7 +109,7 @@ describe('1./2. las 32 plantillas sustituidas siguen existiendo con su ID (key) 
     desayuno: 'Desayuno / Brunch',
     jubilacion_brindis: 'Jubilación brindis',
   }
-  expect(REPLACED_KEYS.length).toBe(32)
+  expect(REPLACED_KEYS.length).toBe(33)
   it.each(REPLACED_KEYS)('%s', (key) => {
     const t = templateByKey(key)
     expect(t.key).toBe(key) // el ID interno NUNCA cambia por un cambio cosmético de fondo (caso ositos/Perrito)

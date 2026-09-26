@@ -201,15 +201,16 @@ export const FASE1_GROUP_C_RESUELTO_EN_FASE2 = [
   'otono_cosecha', 'sirena',
 ] as const
 
-// De las 27 plantillas "sin instrucción explícita" de FASE 1, 14 recibieron fondo nuevo en FASE 2 (ver
-// invitationBackgroundReplacement.test.ts) — dejan de estar en esta lista. Quedan 13 realmente sin tocar.
+// De las 27 plantillas "sin instrucción explícita" de FASE 1, 15 recibieron fondo nuevo en FASE 2 (14 en la
+// primera tanda + "floral", la plantilla del caso de certificación original, en una tanda posterior — ver
+// invitationBackgroundReplacement.test.ts) — dejan de estar en esta lista. Quedan 12 realmente sin tocar.
 export const FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2 = [
   'ositos', 'graduacion_esfuerzo', 'graduacion_suena', 'graduacion_disciplina', 'graduacion_explorar',
   'casa_bienvenida', 'casa_llaves', 'casa_terraza', 'despedida_novio', 'despedida_viaje', 'despedida_noche',
-  'comida_familiar', 'desayuno', 'jubilacion_brindis',
+  'comida_familiar', 'desayuno', 'jubilacion_brindis', 'floral',
 ] as const
 
-describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN sin tocar (13 de las 27 originales)', () => {
+describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN sin tocar (12 de las 27 originales)', () => {
   const UNCHANGED_UNLISTED: Record<string, { x: number; y: number; width: number; height: number }> = {
     bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.5183 },
     bebe_neutro: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 },
@@ -223,12 +224,11 @@ describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN s
     jubilacion_relax: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.2987 },
     jubilacion_cena: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.5227 },
     carnaval_bufon: { x: 0.3449, y: 0.2564, width: 0.588, height: 0.476 },
-    floral: { x: 0.2542, y: 0.204, width: 0.5693, height: 0.6253 },
   }
   it.each(Object.entries(UNCHANGED_UNLISTED))('%s', (key, expected) => {
     expect(templateByKey(key).textArea).toEqual(expected)
   })
-  it('A=9 + B=46 + resueltas en FASE2=32 + sin instrucción restante=13 cubren exactamente las 100 plantillas reales', () => {
+  it('A=9 + B=46 + resueltas en FASE2=33 + sin instrucción restante=12 cubren exactamente las 100 plantillas reales', () => {
     const named = new Set([
       ...Object.keys({
         elegante: 0, playa_terraza: 0, cena_hogar: 0, corazones_acuarela: 0, alegre: 0, unicornio: 0, superheroe: 0, bebe_nino: 0, halloween_casa: 0,

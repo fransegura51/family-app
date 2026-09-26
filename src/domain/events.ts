@@ -1612,7 +1612,7 @@ function newLayerId(): string {
 // parecida a la de antes.
 export type SafeZone = { x: number; y: number; width: number; height: number }
 
-const DEFAULT_TEXT_AREA: SafeZone = { x: 0.1, y: 0.15, width: 0.8, height: 0.7 }
+export const DEFAULT_TEXT_AREA: SafeZone = { x: 0.1, y: 0.15, width: 0.8, height: 0.7 }
 
 export function buildInvitationTemplateLayers(event: FamilyEvent, template?: InvitationTemplateMeta): InvitationLayer[] {
   const zone = template?.textArea ?? DEFAULT_TEXT_AREA

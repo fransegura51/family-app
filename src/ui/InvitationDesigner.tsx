@@ -3,6 +3,7 @@ import {
   autoArrangeLayers,
   buildInvitationMessage,
   buildInvitationTemplateLayers,
+  DEFAULT_TEXT_AREA,
   INVITATION_EMOJI_SUGGESTIONS,
   INVITATION_SHAPES,
   INVITATION_TEMPLATES,
@@ -987,6 +988,16 @@ export function InvitationCanvasView({
 }) {
   const template = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
   const aspectRatio = !backgroundImageUrl && template?.imageAspect ? `${template.imageAspect} / 1` : '3 / 4'
+  // Bug real reportado en vivo (iPhone, plantilla "boda"): el <div> de una capa de texto se posiciona con
+  // `left` + `transform: translate(-50%,-50%)` pero sin `width` propio — un position:absolute sin width usa
+  // "shrink-to-fit" acotado por (ancho del contenedor - left), NUNCA el ancho de la textArea de la
+  // plantilla. Para una capa centrada (x=0.5, el caso normal) eso deja solo ~la mitad del ancho real que
+  // estimateWrappedLineCount/autoArrangeLayers asumían (zone.width) — el texto ajustaba línea mucho antes de
+  // lo estimado, así que el bloque pintado de verdad era más alto que el estimado y solapaba con la capa
+  // siguiente, por mucho que se subiera AVG_CHAR_WIDTH_RATIO o se ampliara la zona. Se fija aquí el mismo
+  // ancho (zoneWidthFrac) que ya usan esas funciones, igual que LINE_HEIGHT_RATIO se fija como line-height
+  // real — para que el ajuste de línea real coincida con el estimado en las 100 plantillas.
+  const zoneWidthFrac = backgroundImageUrl ? DEFAULT_TEXT_AREA.width : (template?.textArea ?? DEFAULT_TEXT_AREA).width
   return (
     <div
       style={{
@@ -1017,19 +1028,23 @@ export function InvitationCanvasView({
       {canvas.layers
         .slice()
         .sort((a, b) => a.zIndex - b.zIndex)
-        .map((layer) => (
-          <div
-            key={layer.id}
-            style={{
-              position: 'absolute',
-              left: `${layer.x * 100}%`,
-              top: `${layer.y * 100}%`,
-              transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
-            }}
-          >
-            <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
-          </div>
-        ))}
+        .map((layer) => {
+          const isWrappingText = (layer.type === 'text' || layer.type === 'event_data') && !layer.curve
+          return (
+            <div
+              key={layer.id}
+              style={{
+                position: 'absolute',
+                left: `${layer.x * 100}%`,
+                top: `${layer.y * 100}%`,
+                width: isWrappingText ? `${zoneWidthFrac * 100}%` : undefined,
+                transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
+              }}
+            >
+              <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
+            </div>
+          )
+        })}
     </div>
   )
 }
@@ -1521,6 +1536,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
   const currentTemplate = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
   const canvasAspectRatio = !backgroundImageUrl && currentTemplate?.imageAspect ? `${currentTemplate.imageAspect} / 1` : '3 / 4'
+  // Ver el comentario junto a "zoneWidthFrac" en InvitationCanvasView: sin esto, el <div> de una capa de
+  // texto usa "shrink-to-fit" real (acotado por left, no por el ancho de la zona) y ajusta línea mucho antes
+  // de lo que estimateWrappedLineCount asume, así que el bloque pintado de verdad puede ser más alto que el
+  // estimado y solapar con la capa siguiente — el mismo editor donde se reportó el bug real en vivo.
+  const zoneWidthFrac = backgroundImageUrl ? DEFAULT_TEXT_AREA.width : (currentTemplate?.textArea ?? DEFAULT_TEXT_AREA).width
 
   // INV-EDITOR-4 — barra contextual: solo las herramientas que aplican al tipo seleccionado (o, sin
   // selección, las acciones para añadir/elegir plantilla) — nunca los 9 controles de siempre a la vez.
@@ -1616,7 +1636,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 {layers
                   .slice()
                   .sort((a, b) => a.zIndex - b.zIndex)
-                  .map((layer) => (
+                  .map((layer) => {
+                    const isWrappingText = (layer.type === 'text' || layer.type === 'event_data') && !layer.curve
+                    return (
                     <div
                       key={layer.id}
                       onPointerDown={(e) => handleLayerPointerDown(e, layer)}
@@ -1627,6 +1649,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                         position: 'absolute',
                         left: `${layer.x * 100}%`,
                         top: `${layer.y * 100}%`,
+                        width: isWrappingText ? `${zoneWidthFrac * 100}%` : undefined,
                         transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
                         cursor: 'grab',
                         touchAction: 'none',
@@ -1656,7 +1679,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                         />
                       )}
                     </div>
-                  ))}
+                  )})}
               </div>
             </div>
 

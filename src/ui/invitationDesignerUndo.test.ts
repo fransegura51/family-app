@@ -23,11 +23,14 @@ describe('el snapshot de historial incluye el fondo, no solo las capas', () => {
     }
   })
 
-  it('handleUndo restaura TODOS los campos del snapshot, no solo las capas', () => {
+  it('handleUndo aplica el snapshot completo vía applySnapshot (Bloque 4: la misma función que usa handleRedo, sin duplicar la lista de setters)', () => {
     const idx = SRC.indexOf('function handleUndo')
     const block = SRC.slice(idx, SRC.indexOf('\n  }', idx))
-    for (const setter of ['setLayers(prev', 'setTemplateKey(prev', 'setBackgroundGradient(prev', 'setBackgroundImagePath(prev', 'setBackgroundImageUrl(prev', 'setBackgroundOffsetX(prev', 'setBackgroundOffsetY(prev', 'setBackgroundScale(prev']) {
-      expect(block).toContain(setter)
+    expect(block).toContain('applySnapshot(prev)')
+    const applyIdx = SRC.indexOf('function applySnapshot')
+    const applyBlock = SRC.slice(applyIdx, SRC.indexOf('\n  }', applyIdx))
+    for (const setter of ['setLayers(s', 'setTemplateKey(s', 'setBackgroundGradient(s', 'setBackgroundImagePath(s', 'setBackgroundImageUrl(s', 'setBackgroundOffsetX(s', 'setBackgroundOffsetY(s', 'setBackgroundScale(s']) {
+      expect(applyBlock).toContain(setter)
     }
   })
 })

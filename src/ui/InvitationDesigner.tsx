@@ -1191,6 +1191,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [backgroundGradient, setBackgroundGradient] = useState(sortedTemplates[0].gradient)
   const [layers, setLayers] = useState<InvitationLayer[]>([])
   const [history, setHistory] = useState<EditorSnapshot[]>([])
+  // Bloque 4 — ↪️ Rehacer: pila separada de snapshots "deshechos", en el mismo formato que `history`. Se
+  // vacía cada vez que se apila una entrada nueva en `history` (pushHistory) — así una edición nueva tras
+  // un Deshacer borra la rama redo, como en cualquier editor (Estado A→B→C, deshacer a B, editar a D: C
+  // desaparece, no queda accesible).
+  const [future, setFuture] = useState<EditorSnapshot[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // INV-EDITOR-3 — mientras el usuario sigue "dentro" de la misma edición continua (escribiendo en el
   // mismo campo de texto, arrastrando el mismo slider/selector de color), esta clave impide crear un
@@ -1349,20 +1354,39 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
   function pushHistory() {
     setHistory((h) => [...h.slice(-(MAX_HISTORY_ENTRIES - 1)), currentSnapshot()])
+    // Bloque 4 — CUALQUIER operación nueva pasa por aquí (mover, redimensionar, cambiar color/fuente/
+    // tamaño/alineación, añadir/borrar/duplicar, cambiar de plantilla, fondo importado...), así que vaciar
+    // `future` aquí basta para que la regla "una edición nueva borra la rama redo" se cumpla siempre, sin
+    // tener que tocar cada función una por una.
+    setFuture([])
+  }
+
+  function applySnapshot(s: EditorSnapshot) {
+    setLayers(s.layers)
+    setTemplateKey(s.templateKey)
+    setBackgroundGradient(s.backgroundGradient)
+    setBackgroundImagePath(s.backgroundImagePath)
+    setBackgroundImageUrl(s.backgroundImageUrl)
+    setBackgroundOffsetX(s.backgroundOffsetX)
+    setBackgroundOffsetY(s.backgroundOffsetY)
+    setBackgroundScale(s.backgroundScale)
   }
 
   function handleUndo() {
     if (history.length === 0) return
     const prev = history[history.length - 1]
-    setLayers(prev.layers)
-    setTemplateKey(prev.templateKey)
-    setBackgroundGradient(prev.backgroundGradient)
-    setBackgroundImagePath(prev.backgroundImagePath)
-    setBackgroundImageUrl(prev.backgroundImageUrl)
-    setBackgroundOffsetX(prev.backgroundOffsetX)
-    setBackgroundOffsetY(prev.backgroundOffsetY)
-    setBackgroundScale(prev.backgroundScale)
+    setFuture((f) => [...f.slice(-(MAX_HISTORY_ENTRIES - 1)), currentSnapshot()])
+    applySnapshot(prev)
     setHistory((h) => h.slice(0, -1))
+    continuousEditRef.current = null
+  }
+
+  function handleRedo() {
+    if (future.length === 0) return
+    const next = future[future.length - 1]
+    setHistory((h) => [...h.slice(-(MAX_HISTORY_ENTRIES - 1)), currentSnapshot()])
+    applySnapshot(next)
+    setFuture((f) => f.slice(0, -1))
     continuousEditRef.current = null
   }
 
@@ -1750,6 +1774,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             <div className="invitation-utility-row">
               <button type="button" className="link-button" onClick={handleUndo} disabled={history.length === 0}>
                 ↩️ Deshacer
+              </button>
+              <button type="button" className="link-button" onClick={handleRedo} disabled={future.length === 0}>
+                ↪️ Rehacer
               </button>
               <button type="button" className="link-button" onClick={handlePrettify}>
                 ✨ Pepa, hazla bonita

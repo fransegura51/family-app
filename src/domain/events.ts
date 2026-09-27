@@ -900,7 +900,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // sombrero de paja y cesta de flores, imageAspect recalculado (1024x1536 → 0.6667). textArea marcada a
   // mano por el usuario sobre la foto real (con el texto de certificación completo el cálculo automático
   // sigue dando overflow — riesgo asumido explícitamente por el usuario, no forzado por el motor).
-  { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic, imageAspect: 0.6667, textArea: { x: 0.16, y: 0.14, width: 0.55, height: 0.48 } },
+  // Recalibrada 2026-09-26 (feedback en vivo tras el fix de aspect-ratio): la esquina superior-izquierda
+  // quedaba pegada a la mariposa (visible incluso en la marca original del usuario) — el anillo/título se
+  // solapaban con ella al renderizar. Desplazada ligeramente; con el cálculo de alto ya corregido, cabe con
+  // margen real sin necesitar ningún "riesgo asumido".
+  { key: 'floral_picnic', label: 'Floral picnic', gradient: 'linear-gradient(160deg, #FFE4E6, #FED7AA)', text: '#7C2D12', artKey: 'floral', image: invitaFloralPicnic, imageAspect: 0.6667, textArea: { x: 0.2, y: 0.18, width: 0.51, height: 0.44 } },
   // Estrechada 2026-09-26 (reportado en vivo): mismo motivo que floral_picnic — 0.7 invadía la mariposa y
   // el jarrón de tulipanes a los lados del cartel. Solo cambia x/width, nunca la imagen.
   // Fondo sustituido 2026-09-26 (imagen nueva del usuario, mismo archivo/ruta/ID) — pergamino grande y

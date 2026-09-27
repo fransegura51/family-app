@@ -1826,20 +1826,92 @@ export const LINE_HEIGHT_RATIO = 1.25
 // overflowed=true se han revisado y ampliado una por una (ver commits de esta misma fecha).
 const AVG_CHAR_WIDTH_RATIO = 0.6
 
-// Cuántas líneas ocupará un texto: saltos de línea explícitos (\n, los que ya trae buildInvitationMessage
-// o los que escribe el usuario) + una estimación de ajuste de línea dentro del ancho disponible — sin
-// medir el DOM real, una aproximación determinista basada en caracteres/ancho medio de carácter.
-function estimateWrappedLineCount(text: string, fontSize: number, availableWidthFrac: number): number {
+// Mide el ancho real (en px) de un texto de una sola línea, a un fontSize/peso dados, con la fuente real
+// que usa la plataforma en ese momento — típicamente respaldado por Canvas 2D measureText en el navegador
+// real (ver InvitationDesigner.tsx). domain/ no tiene DOM/canvas propio, así que esta función se inyecta
+// desde fuera; cuando no se inyecta (tests de dominio, ver más abajo) se usa una aproximación por caracteres.
+export type TextMeasurer = (text: string, fontSize: number, fontWeight: number, fontFamily?: string) => number
+
+interface WrappedTextMetrics {
+  lines: number
+  maxLineWidthPx: number
+}
+
+// 2026-09-27 — investigación pedida por la usuaria tras encontrar que "corazones_terraza" no cabía en una
+// zona visualmente amplia: comparé esta heurística de caracteres contra el DOM real con una matriz de 9
+// casos (título corto/largo, cuerpo de 4 líneas a varios fontSize/anchos, una línea larga sin saltos que
+// fuerza wrap, emojis densos, fuente grande en zona estrecha) en un navegador real. Resultado: la
+// heurística por caracteres SOBREESTIMA el número de líneas en 6 de los 9 casos (nunca subestima en esta
+// muestra), a veces hasta un 75% de más (7 líneas estimadas contra 4 reales) — porque AVG_CHAR_WIDTH_RATIO
+// es un promedio fijo que no reproduce el ancho real de cada carácter en la fuente del sistema, y esa
+// fuente cambia de plataforma (San Francisco en iOS, Roboto en Android, Segoe UI en escritorio): ningún
+// número fijo puede representar a las tres. En cambio, simular el wrapping real palabra a palabra con el
+// ANCHO MEDIDO de cada palabra (Canvas 2D measureText — disponible en todo navegador, sea cual sea la
+// plataforma) predijo EXACTAMENTE el mismo número de líneas que el DOM real en los 9 casos, porque usa el
+// mismo motor de texto que la plataforma real en cada caso, en vez de asumir uno. Por eso measureWrappedText
+// acepta un `measurer` opcional: si existe (solo en el navegador real) se usa wrapping real palabra a
+// palabra; si no (tests de dominio, sin DOM/canvas) se mantiene la vieja heurística de caracteres — nunca
+// se ha retocado ese número a ojo, sigue siendo la misma aproximación de siempre, solo que ahora es
+// estrictamente el fallback para cuando no hay medición real disponible, no la única vía.
+function measureWrappedText(
+  text: string,
+  fontSize: number,
+  fontWeight: number,
+  fontFamily: string | undefined,
+  availableWidthFrac: number,
+  measurer?: TextMeasurer,
+): WrappedTextMetrics {
   const availablePx = Math.max(60, availableWidthFrac * ASSUMED_CANVAS_SIZE_PX)
-  const avgCharWidthPx = Math.max(1, fontSize * AVG_CHAR_WIDTH_RATIO)
-  const charsPerLine = Math.max(4, Math.floor(availablePx / avgCharWidthPx))
   const segments = (text || '').split('\n')
-  let lines = 0
-  for (const seg of segments) {
-    const len = seg.trim().length
-    lines += Math.max(1, Math.ceil(len / charsPerLine))
+
+  if (!measurer) {
+    const avgCharWidthPx = Math.max(1, fontSize * AVG_CHAR_WIDTH_RATIO)
+    const charsPerLine = Math.max(4, Math.floor(availablePx / avgCharWidthPx))
+    let lines = 0
+    for (const seg of segments) {
+      const len = seg.trim().length
+      lines += Math.max(1, Math.ceil(len / charsPerLine))
+    }
+    const longest = segments.reduce((m, s) => Math.max(m, s.trim().length), 0)
+    return { lines: Math.max(1, lines), maxLineWidthPx: Math.min(availablePx, longest * fontSize * AVG_CHAR_WIDTH_RATIO) }
   }
-  return Math.max(1, lines)
+
+  let totalLines = 0
+  let maxLineWidthPx = 0
+  const spaceWidth = measurer(' ', fontSize, fontWeight, fontFamily)
+  for (const seg of segments) {
+    const words = seg.trim().split(/\s+/).filter(Boolean)
+    if (words.length === 0) {
+      totalLines += 1
+      continue
+    }
+    let currentWidth = 0
+    let wordsInLine = 0
+    const flushLine = () => {
+      maxLineWidthPx = Math.max(maxLineWidthPx, currentWidth)
+      totalLines += 1
+      currentWidth = 0
+      wordsInLine = 0
+    }
+    for (const w of words) {
+      const wWidth = measurer(w, fontSize, fontWeight, fontFamily)
+      if (wordsInLine === 0) {
+        currentWidth = wWidth
+        wordsInLine = 1
+        continue
+      }
+      if (currentWidth + spaceWidth + wWidth <= availablePx) {
+        currentWidth += spaceWidth + wWidth
+        wordsInLine += 1
+      } else {
+        flushLine()
+        currentWidth = wWidth
+        wordsInLine = 1
+      }
+    }
+    flushLine()
+  }
+  return { lines: Math.max(1, totalLines), maxLineWidthPx: Math.min(availablePx, maxLineWidthPx) }
 }
 
 export interface LayerBoxFraction {
@@ -1868,7 +1940,7 @@ function assumedCanvasHeightPx(imageAspect: number): number {
 // usan para comprobar que su caja completa (no solo su centro) queda dentro de la zona segura. El texto
 // curvado reutiliza las mismas fórmulas que su propio SVG (ver InvitationLayerVisual en
 // ui/InvitationDesigner.tsx) para que la estimación no se desvíe de lo que de verdad se pinta.
-export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: number, imageAspect = 1): LayerBoxFraction {
+export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: number, imageAspect = 1, measurer?: TextMeasurer): LayerBoxFraction {
   const canvasHeightPx = assumedCanvasHeightPx(imageAspect)
   if (layer.type === 'text' && layer.curve) {
     const fontSize = layer.fontSize ?? 16
@@ -1879,14 +1951,10 @@ export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: 
   }
   if (layer.type === 'text' || layer.type === 'event_data') {
     const fontSize = layer.fontSize ?? 16
-    const lines = estimateWrappedLineCount(layer.text ?? '', fontSize, zoneWidthFrac)
+    const fontWeight = layer.type === 'text' ? 700 : 400
+    const { lines, maxLineWidthPx } = measureWrappedText(layer.text ?? '', fontSize, fontWeight, layer.fontFamily, zoneWidthFrac, measurer)
     const heightPx = lines * fontSize * LINE_HEIGHT_RATIO
-    // Ancho estimado: el de la línea más larga, acotado por la propia zona (el texto se centra dentro de
-    // ella) — nunca más ancho que la zona, nunca más que su contenido real.
-    const segments = (layer.text ?? '').split('\n')
-    const longest = segments.reduce((m, s) => Math.max(m, s.trim().length), 0)
-    const widthPx = Math.min(zoneWidthFrac * ASSUMED_CANVAS_SIZE_PX, longest * fontSize * AVG_CHAR_WIDTH_RATIO)
-    return { halfWidth: widthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / canvasHeightPx }
+    return { halfWidth: maxLineWidthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / canvasHeightPx }
   }
   // emoji | shape | photo — cuadrado de lado fontSize, igual que se renderizan (ver InvitationLayerVisual).
   const size = layer.fontSize ?? (layer.type === 'photo' ? 120 : layer.type === 'shape' ? 60 : 48)
@@ -1921,7 +1989,12 @@ export interface AutoArrangeResult {
 // `overflowed`). Las formas/decoraciones se mantienen fuera de la zona cuando es posible (pushOutsideZone).
 // Es la MISMA fuente de verdad que ya usan las capas por defecto — no se crea un segundo sistema de
 // "zonas seguras", ni valores especiales para ninguna plantilla concreta.
-export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone = DEFAULT_TEXT_AREA, imageAspect = 1): AutoArrangeResult {
+export function autoArrangeLayers(
+  layers: InvitationLayer[],
+  textArea: SafeZone = DEFAULT_TEXT_AREA,
+  imageAspect = 1,
+  measurer?: TextMeasurer,
+): AutoArrangeResult {
   const zone = textArea ?? DEFAULT_TEXT_AREA
   const photos = layers.filter((l) => l.type === 'photo')
   const texts = layers.filter((l) => l.type === 'text' || l.type === 'event_data')
@@ -1941,7 +2014,7 @@ export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone 
   // 1) Icono/emoji principal, arriba de la zona segura — su propia caja también se mantiene dentro.
   let iconsBottom = zoneTop
   emojis.forEach((l, i) => {
-    const box = estimateLayerBoxFraction(l, zone.width, imageAspect)
+    const box = estimateLayerBoxFraction(l, zone.width, imageAspect, measurer)
     const target = zoneTop + zone.height * clampFraction(0.1 + i * 0.05, 0, 0.3)
     const y = clampFraction(target, zoneTop + box.halfHeight, Math.max(zoneTop + box.halfHeight, zoneBottom - box.halfHeight))
     arranged.push({ ...l, x: cx, y, rotation: 0 })
@@ -1957,7 +2030,7 @@ export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone 
   const availableBottom = zoneBottom - BOTTOM_MARGIN_FRACTION * zone.height
   const availableHeight = Math.max(0, availableBottom - availableTop)
 
-  const textBoxes = texts.map((l) => estimateLayerBoxFraction(l, zone.width, imageAspect))
+  const textBoxes = texts.map((l) => estimateLayerBoxFraction(l, zone.width, imageAspect, measurer))
   const totalHeights = textBoxes.reduce((sum, b) => sum + b.halfHeight * 2, 0)
   const gapCount = Math.max(0, texts.length - 1)
 

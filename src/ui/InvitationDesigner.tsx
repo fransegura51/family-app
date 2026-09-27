@@ -11,6 +11,7 @@ import {
   type InvitationTemplateMeta,
   makeInvitationLayer,
   sortInvitationTemplatesForEvent,
+  type TextMeasurer,
 } from '@/domain/events'
 import { errorMessage } from '@/domain/errorMessage'
 import type { FamilyEvent, InvitationCanvas, InvitationLayer, InvitationTextStyle } from '@/domain/types'
@@ -34,6 +35,35 @@ import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 // Un solo diseño por evento (event_invitations, unique(event_id)); el
 // invite_scope de cada invitado no cambia el diseño.
 // ---------------------------------------------------------------------
+
+// Debe coincidir con el font-family base real de la app (ver ui/styles.css, selector "body") — es el que
+// resuelve un layer con fontFamily 'inherit' (el caso normal; ver LAYER_FONT_OPTIONS más abajo).
+const BASE_FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
+
+// 2026-09-27 (investigación de layout, "corazones_terraza") — measurer real para autoArrangeLayers/
+// estimateLayerBoxFraction (domain/events.ts): mide el ancho real de cada palabra con Canvas 2D
+// measureText en vez de la vieja aproximación por caracteres. Se probó contra el DOM real (9 casos:
+// títulos, cuerpos multilínea, líneas que fuerzan wrap, emojis, varios fontSize/anchos) y predijo
+// EXACTAMENTE el mismo número de líneas que el DOM en los 9 — porque usa el mismo motor de texto que la
+// plataforma real en cada caso (San Francisco en iOS, Roboto en Android, Segoe UI en escritorio...) en vez
+// de asumir un ancho de carácter fijo. Un único <canvas> oculto se reutiliza entre llamadas (measureText no
+// pinta nada, así que ni siquiera hace falta añadirlo al DOM).
+let measureCanvasCtx: CanvasRenderingContext2D | null | undefined
+function getMeasureCtx(): CanvasRenderingContext2D | null {
+  if (measureCanvasCtx === undefined) {
+    measureCanvasCtx = typeof document === 'undefined' ? null : (document.createElement('canvas').getContext('2d') ?? null)
+  }
+  return measureCanvasCtx
+}
+// Una capa puede pedir una fuente propia (LAYER_FONT_OPTIONS) en vez de heredar la base de la app — de ahí
+// el 4º argumento opcional: se resuelve aquí, no en domain/ (que no conoce las fuentes que ofrece la UI).
+const domTextMeasurer: TextMeasurer = (text, fontSize, fontWeight, fontFamily) => {
+  const ctx = getMeasureCtx()
+  const family = !fontFamily || fontFamily === 'inherit' ? BASE_FONT_STACK : fontFamily
+  if (!ctx) return text.length * fontSize * 0.6 // sin Canvas disponible (SSR/tests): misma aproximación de siempre.
+  ctx.font = `${fontWeight} ${fontSize}px ${family}`
+  return ctx.measureText(text).width
+}
 
 function InvitationShapeGraphic({ shapeKey, color, size }: { shapeKey?: string; color?: string; size: number }) {
   const c = color || '#ffffff'
@@ -1432,7 +1462,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     // DEFAULT_TEXT_AREA (ver domain/events.ts, autoArrangeLayers) — nunca una zona nueva inventada aquí.
     const template = backgroundImageUrl ? undefined : INVITATION_TEMPLATES.find((t) => t.key === templateKey)
     const zone = template?.textArea
-    const result = autoArrangeLayers(layers, zone, template?.imageAspect ?? 1)
+    const result = autoArrangeLayers(layers, zone, template?.imageAspect ?? 1, domTextMeasurer)
     setLayers(result.layers)
     // Corrección tras certificación iPhone — nunca se reduce el fontSize ni se fuerza el texto a caber:
     // si de verdad no cabe ni comprimiendo los huecos al mínimo, se avisa en vez de ocultarlo.

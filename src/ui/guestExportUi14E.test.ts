@@ -21,17 +21,22 @@ function window(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
-describe('Botón "Exportar invitados" en GuestsSection (TEST: entrada junto a Diseño de la invitación)', () => {
+describe('Botón "Exportar invitados" en GuestsSection (TEST: entrada en la cabecera de Invitados)', () => {
   it('EventosScreen.tsx importa GuestExportModal desde su propio archivo — la lógica no vive en EventosScreen.tsx', () => {
     expect(EVENTOS_SRC).toContain("import { GuestExportModal } from '@/ui/GuestExportModal'")
   })
 
-  it('el botón "📤 Exportar invitados" está junto a "🎨 Diseño de la invitación" dentro de GuestsSection', () => {
+  it('el botón "📤 Exportar invitados" está en la cabecera de GuestsSection', () => {
     const section = window(EVENTOS_SRC, 'function GuestsSection', '\nfunction EventOpenLinkBlock')
     const header = window(section, "<strong>👥 Invitados</strong>", '</div>\n      </div>')
     expect(header).toContain('📤 Exportar invitados')
-    expect(header).toContain('🎨 Diseño de la invitación')
     expect(header).toContain('setShowExport(true)')
+  })
+
+  it('Fase 3 (2026-09-27): GuestsSection ya no diseña la invitación — eso vive en su propio módulo (InvitationSection)', () => {
+    const section = window(EVENTOS_SRC, 'function GuestsSection', '\nfunction EventOpenLinkBlock')
+    expect(section).not.toContain('🎨 Diseño de la invitación')
+    expect(section).not.toContain('InvitationCanvasEditor')
   })
 
   it('el modal se abre/cierra con su propio estado y se le pasa el evento completo', () => {

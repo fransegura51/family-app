@@ -137,6 +137,7 @@ import type {
   EventGuestMember,
   EventGuestMemberType,
   EventGuestRsvpStatus,
+  EventInvitation,
   EventMenuItem,
   EventModuleKey,
   EventPayment,
@@ -709,6 +710,7 @@ function EventDetail({
   // está activado en ESTE evento.
   // ---------------------------------------------------------------
   const [guests, setGuests] = useState<EventGuest[]>([])
+  const [invitationExists, setInvitationExists] = useState(false)
   const [budgetItems, setBudgetItems] = useState<EventBudgetItem[]>([])
   const [budgetSpent, setBudgetSpent] = useState<number | null>(null)
   const [menuItems, setMenuItems] = useState<EventMenuItem[]>([])
@@ -732,6 +734,10 @@ function EventDetail({
   function reloadDashboardStats() {
     const has = (k: EventModuleKey) => event.enabledModules.includes(k)
     if (has('invitados')) listEventGuests(event.id).then(setGuests).catch(() => {})
+    if (has('invitaciones'))
+      getEventInvitation(event.id)
+        .then((inv) => setInvitationExists(!!inv && inv.canvas.layers.length > 0))
+        .catch(() => {})
     if (has('presupuesto')) {
       listEventBudgetItems(event.id).then(setBudgetItems).catch(() => {})
       if (event.tagId) {
@@ -854,15 +860,17 @@ function EventDetail({
   // fecha no tiene nada que contar).
   const daysToEvent = event.eventDate ? daysUntil(event.eventDate) : null
 
-  // Rejilla de tarjetas: una por módulo activado con sección propia —
-  // "invitaciones" no tiene sección aparte (el botón 💌 de cada
-  // invitado, dentro de Invitados, ya la cubre entera). "Ceremonia" ya
-  // no es una tarjeta de la rejilla (Fase 1 — reforma Editar/•••): sus
-  // campos viven en "Información del evento" dentro de "Gestionar
-  // evento", para no duplicar una tercera superficie de edición
-  // estructural (auditoría, hallazgo E). "Compras" es una clave propia
-  // (no un EventModuleKey real) ligada al mismo módulo que "Menú y
-  // compra": las dos aparecen o desaparecen juntas.
+  // Rejilla de tarjetas: una por módulo activado con sección propia.
+  // "invitaciones" pasó a tener sección propia en Fase 3 (2026-09-27,
+  // auditoría): antes su valor de EventModuleKey nunca se usaba porque
+  // el botón 💌 de cada invitado, dentro de Invitados, se consideraba
+  // suficiente — pero eso mezclaba "diseñar" con "enviar" (InvitationSection,
+  // más arriba). "Ceremonia" ya no es una tarjeta de la rejilla (Fase 1 —
+  // reforma Editar/•••): sus campos viven en "Información del evento"
+  // dentro de "Gestionar evento", para no duplicar una tercera superficie
+  // de edición estructural (auditoría, hallazgo E). "Compras" es una
+  // clave propia (no un EventModuleKey real) ligada al mismo módulo que
+  // "Menú y compra": las dos aparecen o desaparecen juntas.
   interface ModuleCardDef {
     key: EventModuleKey | 'compras'
     icon: string
@@ -872,7 +880,6 @@ function EventDetail({
   const moduleCards: ModuleCardDef[] = []
   for (const mod of EVENT_MODULES) {
     if (!event.enabledModules.includes(mod.key)) continue
-    if (mod.key === 'invitaciones') continue
     if (mod.key === 'ceremonia') continue
     let stat = ''
     switch (mod.key) {
@@ -881,6 +888,9 @@ function EventDetail({
         break
       case 'invitados':
         stat = guests.length > 0 ? `${statusSummary.guestsTotalPeople} personas · ${statusSummary.guestsConfirmedPeople} confirmadas` : 'Sin invitados'
+        break
+      case 'invitaciones':
+        stat = invitationExists ? 'Invitación creada' : 'Sin crear todavía'
         break
       case 'presupuesto':
         stat = budgetSpent !== null ? `${budgetSpent.toFixed(2)} € de ${budgetPlanned.toFixed(2)} €` : `Planeado: ${budgetPlanned.toFixed(2)} €`
@@ -979,7 +989,9 @@ function EventDetail({
         )
       }
       case 'invitados':
-        return <GuestsSection key={`invitados-${refreshKey}`} event={event} />
+        return <GuestsSection key={`invitados-${refreshKey}`} event={event} onOpenInvitation={() => setOpenModule('invitaciones')} />
+      case 'invitaciones':
+        return <InvitationSection key={`invitaciones-${refreshKey}`} event={event} />
       case 'mesas':
         return <TablesSection key={`mesas-${refreshKey}`} event={event} />
       case 'presupuesto':
@@ -1937,6 +1949,99 @@ function CeremoniaSection({ event, onChanged }: { event: FamilyEvent; onChanged:
 }
 
 // ---------------------------------------------------------------------
+// Fase 3 (reestructuración del diseñador) — Invitación del evento: crear
+// y editar el diseño en capas vive aquí, en su propio módulo, en vez de
+// dentro de Invitados (auditoría 2026-09-27: mezclaba "diseñar" con
+// "enviar"). Invitados conserva únicamente el envío/RSVP (InvitationModal,
+// más abajo), que sigue leyendo esta misma invitación vía getEventInvitation.
+// ---------------------------------------------------------------------
+
+function InvitationSection({ event }: { event: FamilyEvent }) {
+  const [invitation, setInvitation] = useState<EventInvitation | null>(null)
+  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null)
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showEditor, setShowEditor] = useState(false)
+
+  function reload() {
+    setLoading(true)
+    setError(null)
+    getEventInvitation(event.id)
+      .then(async (inv) => {
+        setInvitation(inv)
+        if (!inv) {
+          setBackgroundUrl(null)
+          setPhotoUrls({})
+          return
+        }
+        if (inv.backgroundImagePath) {
+          getInvitationPhotoUrl(inv.backgroundImagePath)
+            .then(setBackgroundUrl)
+            .catch(() => setBackgroundUrl(null))
+        } else {
+          setBackgroundUrl(null)
+        }
+        const paths = inv.canvas.layers.map((l) => l.photoPath).filter((p): p is string => !!p)
+        const urls = await Promise.all(paths.map((p) => getInvitationPhotoUrl(p).catch(() => null)))
+        const map: Record<string, string> = {}
+        paths.forEach((p, i) => {
+          if (urls[i]) map[p] = urls[i] as string
+        })
+        setPhotoUrls(map)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar la invitación')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(reload, [event.id])
+
+  const hasDesign = !!invitation && invitation.canvas.layers.length > 0
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8 }}>
+      <strong>💌 Invitación</strong>
+      {error && <p className="error">{error}</p>}
+      {loading && (
+        <p className="muted" style={{ margin: '8px 0' }}>
+          Cargando…
+        </p>
+      )}
+      {!loading && hasDesign && invitation && (
+        <>
+          <div style={{ marginTop: 8, maxWidth: 320 }}>
+            <InvitationCanvasView canvas={invitation.canvas} templateKey={invitation.templateKey} photoUrls={photoUrls} backgroundImageUrl={backgroundUrl} />
+          </div>
+          <button type="button" className="link-button" onClick={() => setShowEditor(true)} style={{ marginTop: 8 }}>
+            🎨 Editar diseño
+          </button>
+        </>
+      )}
+      {!loading && !hasDesign && (
+        <>
+          <p className="muted" style={{ margin: '8px 0' }}>Todavía no has creado la invitación de este evento.</p>
+          <button type="button" onClick={() => setShowEditor(true)}>
+            + Crear invitación
+          </button>
+        </>
+      )}
+      <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+        Para enviarla a los invitados, ve a 👥 Invitados.
+      </p>
+      {showEditor && (
+        <InvitationCanvasEditor
+          event={event}
+          onClose={() => setShowEditor(false)}
+          onSaved={() => {
+            setShowEditor(false)
+            reload()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
 // Invitados.
 // ---------------------------------------------------------------------
 
@@ -1945,11 +2050,10 @@ const GUEST_FILTER_OPTIONS: { value: EventGuestRsvpStatus | 'todos'; label: stri
   ...RSVP_STATUS_OPTIONS,
 ]
 
-function GuestsSection({ event }: { event: FamilyEvent }) {
+function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpenInvitation: () => void }) {
   const [guests, setGuests] = useState<EventGuest[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [invitationGuest, setInvitationGuest] = useState<EventGuest | null>(null)
-  const [showDesigner, setShowDesigner] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [statusFilter, setStatusFilter] = useState<EventGuestRsvpStatus | 'todos'>('todos')
   const [error, setError] = useState<string | null>(null)
@@ -2008,9 +2112,6 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
         <div style={{ display: 'flex', flexWrap: 'wrap' }}>
           <button type="button" className="link-button" onClick={() => setShowExport(true)}>
             📤 Exportar invitados
-          </button>
-          <button type="button" className="link-button" onClick={() => setShowDesigner(true)}>
-            🎨 Diseño de la invitación
           </button>
         </div>
       </div>
@@ -2117,9 +2218,8 @@ function GuestsSection({ event }: { event: FamilyEvent }) {
           }}
         />
       )}
-      {invitationGuest && <InvitationModal event={event} guest={invitationGuest} onClose={() => setInvitationGuest(null)} />}
+      {invitationGuest && <InvitationModal event={event} guest={invitationGuest} onClose={() => setInvitationGuest(null)} onCreateInvitation={onOpenInvitation} />}
       {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
-      {showDesigner && <InvitationCanvasEditor event={event} onClose={() => setShowDesigner(false)} onSaved={() => setShowDesigner(false)} />}
       {showExport && <GuestExportModal event={event} onClose={() => setShowExport(false)} />}
     </div>
   )
@@ -3022,7 +3122,17 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
 // capas de verdad (arrastrar/pellizcar/rotar) llega en la Fase 3.
 // ---------------------------------------------------------------------
 
-function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest: EventGuest; onClose: () => void }) {
+function InvitationModal({
+  event,
+  guest,
+  onClose,
+  onCreateInvitation,
+}: {
+  event: FamilyEvent
+  guest: EventGuest
+  onClose: () => void
+  onCreateInvitation: () => void
+}) {
   const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
   const [templateKey, setTemplateKey] = useState(sortedTemplates[0].key)
   const [message, setMessage] = useState('¡Nos encantaría contar contigo!')
@@ -3124,10 +3234,17 @@ function InvitationModal({ event, guest, onClose }: { event: FamilyEvent; guest:
           <InvitationCanvasView canvas={customCanvas} templateKey={customTemplateKey} photoUrls={photoUrls} backgroundImageUrl={customBackgroundUrl} />
         ) : (
           <>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Elige un tema — el texto sale relleno solo, y se puede editar antes de mandarlo. Para un diseño con foto, texto y emoji a tu gusto, usa "🎨
-              Diseño de la invitación" en Invitados.
-            </p>
+            <p className="muted" style={{ fontSize: 13 }}>Elige un tema — el texto sale relleno solo, y se puede editar antes de mandarlo.</p>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                onClose()
+                onCreateInvitation()
+              }}
+            >
+              🎨 Crear invitación con foto, texto y emoji a tu gusto
+            </button>
             <InvitationTemplatePicker templates={sortedTemplates} selectedKey={templateKey} onSelect={(t) => setTemplateKey(t.key)} />
 
             <div

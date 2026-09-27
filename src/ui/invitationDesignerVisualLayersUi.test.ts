@@ -114,7 +114,7 @@ describe('Orden de capas — "⬆ Adelante"/"⬇ Atrás" ya disponible para foto
   })
 
   it('el panel "Más" (con Adelante/Atrás/Duplicar/Borrar) está disponible en las 3 ramas de la barra: texto, forma, y foto/emoji', () => {
-    const toolbar = slice(DESIGNER_SRC, '<div className="invitation-toolbar">', '</div>\n            </div>\n          </>\n        )}')
+    const toolbar = slice(DESIGNER_SRC, '<div className="invitation-toolbar">', '</div>\n            </div>\n            )}\n          </>\n        )}')
     const masButtons = toolbar.split("togglePanel('mas')").length - 1
     expect(masButtons).toBe(3)
   })

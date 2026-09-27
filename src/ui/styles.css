@@ -3534,6 +3534,109 @@ textarea {
   z-index: 56;
 }
 
+/* Corrección UX (2026-09-27) — modo de edición de texto del diseñador de invitaciones: sustituye a
+   .invitation-toolbar-wrap SOLO mientras se edita el contenido de una capa de texto, para que las
+   herramientas de formato (alineación/negrita/cursiva/fuente/color/tamaño) queden pegadas justo encima del
+   teclado, en vez de en un popover flotante que compite por el mismo espacio. Limitado a este componente —
+   no toca ningún estilo global de inputs/textarea. */
+.invitation-text-edit-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border, #e4e7f2);
+  background: white;
+  padding: 8px 8px 0;
+}
+
+.invitation-text-edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.invitation-text-edit-btn {
+  flex-shrink: 0;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  border: 1px solid #d8dae8;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  font-size: 15px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.invitation-text-edit-btn-active {
+  background: #eef0ff;
+  border-color: #4c6ef5;
+  color: #4c6ef5;
+}
+
+.invitation-text-edit-done {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #34c759;
+  color: white;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Fuentes con previsualización real (petición real: "Aa Aa Aa... cada opción debe previsualizar su propia
+   tipografía", no un <select> con el mismo texto para las tres). Desplazable con el dedo si no caben. */
+.invitation-font-preview-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.invitation-font-preview-btn {
+  flex-shrink: 0;
+  min-width: 48px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid #d8dae8;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #1f2233;
+  cursor: pointer;
+}
+
+.invitation-font-preview-btn-active {
+  border-color: #4c6ef5;
+  background: #eef0ff;
+}
+
+/* font-size: 16px explícito (no el 14px global de "textarea") — por debajo de 16px, iOS Safari hace zoom
+   automático de toda la página al enfocar el campo; aquí sí importa evitarlo porque el usuario necesita
+   seguir viendo el resto de la barra de formato mientras escribe. Cambio limitado a este textarea concreto,
+   no al resto de la app. */
+.invitation-text-edit-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  min-height: 64px;
+}
+
 /* Petición real: "en vez de abrir una ventana, quiero que se abra
    debajo y se siga viendo el calendario de arriba, para poder ir
    rápidamente a cambiar de día tocando arriba" — el día ya no es una

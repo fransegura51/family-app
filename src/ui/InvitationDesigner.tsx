@@ -1224,6 +1224,17 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // INV-EDITOR-4 — un único panel secundario abierto a la vez (color/fuente/efecto/tamaño/curva.../
   // plantilla/emoji/forma), en vez del antiguo bloque fijo permanente con todos los controles a la vista.
   const [panel, setPanel] = useState<DesignerPanel | null>(null)
+  // Corrección UX (2026-09-27) — dentro del modo de edición de texto ("panel === 'texto'"), cuál de las
+  // dos filas secundarias (fuente/color) está desplegada — como mucho una a la vez, igual criterio que
+  // `panel` para el resto del editor. Se resetea sola al salir del modo de edición (ver useEffect abajo).
+  const [textEditTool, setTextEditTool] = useState<'font' | 'color' | null>(null)
+  // Corrección UX — alto real visible (visualViewport) para no dejar la barra de edición de texto detrás
+  // del teclado en iOS/Android: iOS no encoge `vh` cuando aparece el teclado (solo el visualViewport), así
+  // que sin esto la hoja del diseñador (88vh) se queda con el mismo alto de siempre y su parte de abajo
+  // (justo donde viven los controles de texto) termina tapada. Se mide siempre que el editor está montado
+  // (barato, no hace nada mientras no hay teclado) pero solo se APLICA en el modo de edición de texto — el
+  // resto del diseñador no cambia de tamaño nunca por esto.
+  const [keyboardInset, setKeyboardInset] = useState(0)
   const [customEmoji, setCustomEmoji] = useState('')
   // Fase 3 Bloque 3 — "🕘 Recientes": se carga una vez al montar (no cambia mientras el editor está
   // abierto salvo que el propio usuario inserte un emoji, ver handleInsertEmoji).
@@ -1245,6 +1256,25 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // última vez. null mientras sigue cargando (todavía no hay nada con lo que comparar).
   const savedSnapshotRef = useRef<string | null>(null)
   const [confirmingExit, setConfirmingExit] = useState(false)
+
+  // Corrección UX — mide cuánto tapa el teclado (o cualquier otra barra del navegador) el visualViewport,
+  // en vivo. `window.innerHeight` es el viewport de DISEÑO (el que asumen las unidades `vh`, que iOS no
+  // reduce al abrir el teclado); `visualViewport.height` + `offsetTop` es lo que de verdad se ve. La
+  // diferencia entre los dos es, por definición, el hueco que ha ocupado el teclado.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return
+    const vv = window.visualViewport
+    function update() {
+      setKeyboardInset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop))
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [])
 
   useEffect(() => {
     getEventInvitation(event.id)
@@ -1673,11 +1703,31 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // INV-EDITOR-4 — barra contextual: solo las herramientas que aplican al tipo seleccionado (o, sin
   // selección, las acciones para añadir/elegir plantilla) — nunca los 9 controles de siempre a la vez.
   const isTextLike = selected?.type === 'text' || selected?.type === 'event_data'
+  // Corrección UX — modo de edición de texto: la barra compacta (Terminar/alineación/B/I/fuente/color/
+  // tamaño) sustituye a la barra de herramientas normal SOLO mientras se edita el contenido de una capa de
+  // texto. El resto de paneles (color de una forma, tamaño de una foto...) no cambian en nada.
+  const textEditMode = panel === 'texto' && isTextLike
+  useEffect(() => {
+    if (!textEditMode) setTextEditTool(null)
+  }, [textEditMode])
 
   return (
     <>
     <div className="modal-overlay" onClick={requestClose}>
-      <div className="modal-sheet invitation-designer-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+      <div
+        className="modal-sheet invitation-designer-sheet"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: 420,
+          // Corrección UX — solo mientras se edita texto y el teclado tapa parte de la pantalla: sube la
+          // hoja y le resta exactamente ese hueco, para que la barra de edición de texto (justo encima del
+          // teclado) nunca quede oculta detrás de él. Sin teclado (o fuera del modo de edición), esto no
+          // hace nada — la hoja se queda con su 88vh de siempre (ver .invitation-designer-sheet en styles.css).
+          ...(textEditMode && keyboardInset > 0
+            ? { marginBottom: keyboardInset, height: `calc(88vh - ${keyboardInset}px)`, maxHeight: `calc(88vh - ${keyboardInset}px)` }
+            : {}),
+        }}
+      >
         <div className="modal-header" style={{ padding: '16px 16px 0' }}>
           <h2 className="section-title" style={{ margin: 0 }}>
             Diseño de la invitación
@@ -1816,8 +1866,133 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
               </div>
             </div>
 
+            {/* Corrección UX (2026-09-27) — modo de edición de texto: barra compacta propia, pegada al
+                teclado, en vez de la barra de herramientas + panel genéricos de abajo. Reutiliza EXACTAMENTE
+                las mismas funciones/estado que el resto del editor (updateSelectedDiscrete/Continuous,
+                resolveLayerFontWeight, ALIGN_OPTIONS, LAYER_FONT_OPTIONS, LAYER_COLOR_PRESETS) — nada de
+                lógica nueva, solo una disposición distinta para móvil. */}
+            {textEditMode && selected && (
+              <div className="invitation-text-edit-bar" style={{ paddingBottom: `max(8px, env(safe-area-inset-bottom, 0px))` }}>
+                {textEditTool === 'font' && (
+                  <div className="invitation-font-preview-row">
+                    {LAYER_FONT_OPTIONS.map((f) => (
+                      <button
+                        key={f.value}
+                        type="button"
+                        className={'invitation-font-preview-btn' + ((selected.fontFamily || 'inherit') === f.value ? ' invitation-font-preview-btn-active' : '')}
+                        onClick={() => updateSelectedDiscrete({ fontFamily: f.value })}
+                        style={{ fontFamily: f.value === 'inherit' ? BASE_FONT_STACK : f.value }}
+                        aria-label={f.label}
+                      >
+                        Aa
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {textEditTool === 'color' && (
+                  <div className="filter-row" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                    {LAYER_COLOR_PRESETS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => updateSelectedDiscrete({ color: c })}
+                        style={{ width: 30, height: 30, borderRadius: '50%', background: c, border: selected.color === c ? '2px solid #4C6EF5' : '1px solid #d8dae8' }}
+                        aria-label={`Color ${c}`}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      className="color-wheel-input"
+                      value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
+                      onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
+                      onBlur={commitContinuousEdit}
+                      aria-label="Elegir cualquier color"
+                    />
+                  </div>
+                )}
+                <div className="invitation-text-edit-toolbar">
+                  <button type="button" className="invitation-text-edit-done" onClick={() => setPanel(null)} aria-label="Terminar edición">
+                    ✓
+                  </button>
+                  {ALIGN_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={'invitation-text-edit-btn' + ((selected.textAlign ?? 'center') === opt.value ? ' invitation-text-edit-btn-active' : '')}
+                      onClick={() => updateSelectedDiscrete({ textAlign: opt.value })}
+                      aria-label={opt.label}
+                    >
+                      {opt.icon}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={'invitation-text-edit-btn' + (resolveLayerFontWeight(selected) === 700 ? ' invitation-text-edit-btn-active' : '')}
+                    onClick={() => updateSelectedDiscrete({ bold: resolveLayerFontWeight(selected) !== 700 })}
+                    aria-label="Negrita"
+                    style={{ fontWeight: 700 }}
+                  >
+                    B
+                  </button>
+                  <button
+                    type="button"
+                    className={'invitation-text-edit-btn' + (selected.italic ? ' invitation-text-edit-btn-active' : '')}
+                    onClick={() => updateSelectedDiscrete({ italic: !selected.italic })}
+                    aria-label="Cursiva"
+                    style={{ fontStyle: 'italic' }}
+                  >
+                    I
+                  </button>
+                  <button
+                    type="button"
+                    className={'invitation-text-edit-btn' + (textEditTool === 'font' ? ' invitation-text-edit-btn-active' : '')}
+                    onClick={() => setTextEditTool((t) => (t === 'font' ? null : 'font'))}
+                    aria-label="Fuente"
+                  >
+                    Aa
+                  </button>
+                  <button
+                    type="button"
+                    className={'invitation-text-edit-btn' + (textEditTool === 'color' ? ' invitation-text-edit-btn-active' : '')}
+                    onClick={() => setTextEditTool((t) => (t === 'color' ? null : 'color'))}
+                    aria-label="Color"
+                  >
+                    <span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: selected.color || '#ffffff', border: '1px solid #d8dae8' }} />
+                  </button>
+                  <button
+                    type="button"
+                    className="invitation-text-edit-btn"
+                    onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 2) })}
+                    aria-label="Letra más pequeña"
+                  >
+                    A−
+                  </button>
+                  <span className="muted" style={{ fontSize: 12, flexShrink: 0 }}>
+                    {Math.round(selected.fontSize ?? 16)}
+                  </span>
+                  <button
+                    type="button"
+                    className="invitation-text-edit-btn"
+                    onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + 2 })}
+                    aria-label="Letra más grande"
+                  >
+                    A+
+                  </button>
+                </div>
+                <textarea
+                  className="invitation-text-edit-textarea"
+                  autoFocus
+                  value={selected.text ?? ''}
+                  onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
+                  onBlur={commitContinuousEdit}
+                  rows={3}
+                />
+              </div>
+            )}
+
             {/* Barra contextual + su panel (como mucho uno abierto a la vez), fija abajo, respetando el
                 Home Indicator del iPhone (env(safe-area-inset-bottom)). */}
+            {!textEditMode && (
             <div className="invitation-toolbar-wrap">
               {panel && <div className="invitation-panel-overlay" onClick={() => setPanel(null)} />}
               {panel && (
@@ -1970,52 +2145,6 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                         </button>
                       ))}
                     </div>
-                  )}
-
-                  {panel === 'texto' && selected && isTextLike && (
-                    <>
-                      <label style={{ display: 'block' }}>
-                        Texto
-                        <textarea
-                          autoFocus
-                          value={selected.text ?? ''}
-                          onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
-                          onBlur={commitContinuousEdit}
-                          rows={3}
-                        />
-                      </label>
-                      <div className="filter-row" style={{ marginTop: 8, alignItems: 'center' }}>
-                        {ALIGN_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            className={'chip' + ((selected.textAlign ?? 'center') === opt.value ? ' chip-active' : '')}
-                            onClick={() => updateSelectedDiscrete({ textAlign: opt.value })}
-                            aria-label={opt.label}
-                          >
-                            {opt.icon}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          className={'chip' + (resolveLayerFontWeight(selected) === 700 ? ' chip-active' : '')}
-                          onClick={() => updateSelectedDiscrete({ bold: resolveLayerFontWeight(selected) !== 700 })}
-                          aria-label="Negrita"
-                          style={{ fontWeight: 700 }}
-                        >
-                          B
-                        </button>
-                        <button
-                          type="button"
-                          className={'chip' + (selected.italic ? ' chip-active' : '')}
-                          onClick={() => updateSelectedDiscrete({ italic: !selected.italic })}
-                          aria-label="Cursiva"
-                          style={{ fontStyle: 'italic' }}
-                        >
-                          I
-                        </button>
-                      </div>
-                    </>
                   )}
 
                   {panel === 'datos' && (
@@ -2281,6 +2410,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 )}
               </div>
             </div>
+            )}
           </>
         )}
       </div>

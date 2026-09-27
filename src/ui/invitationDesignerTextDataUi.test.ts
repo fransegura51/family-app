@@ -52,32 +52,12 @@ describe('InvitationLayerVisual — fontWeight/fontStyle/textAlign vienen de la 
   })
 })
 
-describe('Panel "texto" (✏️ Editar) — alineación, negrita y cursiva junto al contenido, sin nuevos botones de barra', () => {
-  const panel = slice(DESIGNER_SRC, "panel === 'texto' && selected && isTextLike", "panel === 'datos'")
-
-  it('sigue teniendo el textarea de contenido (no se duplica el control de editar texto)', () => {
-    expect(panel).toContain('value={selected.text ?? \'\'}')
-    expect(panel).toContain("updateSelectedContinuous({ text: e.target.value }, 'text')")
-  })
-
-  it('alineación: 3 opciones (ALIGN_OPTIONS), cada una es un cambio discreto (una operación de Deshacer)', () => {
-    expect(panel).toContain('ALIGN_OPTIONS.map')
-    expect(panel).toContain("updateSelectedDiscrete({ textAlign: opt.value })")
-    expect(DESIGNER_SRC).toContain("{ value: 'left'")
-    expect(DESIGNER_SRC).toContain("{ value: 'center'")
-    expect(DESIGNER_SRC).toContain("{ value: 'right'")
-  })
-
-  it('negrita: botón "B" que invierte el peso EFECTIVO actual (respeta el default por tipo si nunca se tocó)', () => {
-    expect(panel).toContain('resolveLayerFontWeight(selected) === 700')
-    expect(panel).toContain('updateSelectedDiscrete({ bold: resolveLayerFontWeight(selected) !== 700 })')
-  })
-
-  it('cursiva: botón "I" que alterna italic, cambio discreto', () => {
-    expect(panel).toContain('updateSelectedDiscrete({ italic: !selected.italic })')
-  })
-
-  it('no se tocan los paneles de color/fuente/efecto/tamaño ya existentes (reutilizados tal cual)', () => {
+// Corrección UX (2026-09-27, posterior al Bloque 3) — el modo de edición de texto dejó de vivir dentro del
+// .invitation-panel genérico: ahora es su propia barra (.invitation-text-edit-bar, ver
+// invitationTextEditModeUi.test.ts) pegada al teclado. Los tests de alineación/negrita/cursiva se movieron
+// ahí; este archivo conserva solo lo que NO cambió con esa corrección.
+describe('Paneles de color/fuente/efecto/tamaño ya existentes — sin tocar (la corrección de edición de texto no los usa para texto, pero siguen ahí para formas/fotos)', () => {
+  it('siguen presentes tal cual', () => {
     expect(DESIGNER_SRC).toContain("panel === 'color' && selected")
     expect(DESIGNER_SRC).toContain("panel === 'fuente' && selected && isTextLike")
     expect(DESIGNER_SRC).toContain("panel === 'efecto' && selected && isTextLike")

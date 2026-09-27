@@ -85,7 +85,16 @@ describe('📋 Datos — panel real con los campos existentes del evento, ya no 
 
   it('insertar un dato crea una capa event_data normal (editable como cualquier otra), no un tipo bloqueado especial', () => {
     const panel = slice(DESIGNER_SRC, "panel === 'datos' && (", '{panel === \'mas\'')
-    expect(panel).toContain("handleAddLayer(makeInvitationLayer('event_data', { text: f.value, color: '#ffffff', fontSize: 14 }))")
+    expect(panel).toContain('handleAddLayer(')
+    expect(panel).toContain("makeInvitationLayer('event_data'")
+    expect(panel).toContain('text: f.value')
+    expect(panel).toContain("color: '#ffffff'")
+    expect(panel).toContain('fontSize: 14')
+  })
+
+  it('Fase 3 Bloque 5B — la capa insertada a mano lleva procedencia (source) hacia el campo del evento del que nació', () => {
+    const panel = slice(DESIGNER_SRC, "panel === 'datos' && (", '{panel === \'mas\'')
+    expect(panel).toContain("source: { kind: 'event_field', field: toEventFieldKey(f.key), valueAtInsertion: f.value }")
   })
 
   it('indica discretamente qué datos ya se han insertado, sin bloquear insertarlos de nuevo', () => {

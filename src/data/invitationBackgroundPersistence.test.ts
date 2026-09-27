@@ -70,3 +70,18 @@ describe('getEventInvitation — persistencia de backgroundOffsetX/Y/backgroundS
     expect(invitation?.canvas.layers).toEqual(layers)
   })
 })
+
+describe('getEventInvitation — persistencia de customTextArea (Bloque 5B, plantilla propia)', () => {
+  it('reconstruye la zona de escritura confirmada por el usuario — mismo riesgo que backgroundOffsetX/Y ya corregido arriba', async () => {
+    const zone = { x: 0.12, y: 0.2, width: 0.6, height: 0.5 }
+    maybeSingle.mockResolvedValueOnce({ data: row({ backgroundGradient: '', layers: [], customTextArea: zone }), error: null })
+    const invitation = await getEventInvitation('e1')
+    expect(invitation?.canvas.customTextArea).toEqual(zone)
+  })
+
+  it('una invitación sin customTextArea (anterior a este bloque, o sin zona confirmada) da null, sin lanzar', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: row({ backgroundGradient: '', layers: [] }), error: null })
+    const invitation = await getEventInvitation('e1')
+    expect(invitation?.canvas.customTextArea).toBeNull()
+  })
+})

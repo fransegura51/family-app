@@ -917,7 +917,25 @@ export interface InvitationLayer {
   // normal, como siempre) — 'circle' la recorta en círculo sin tocar el archivo subido.
   opacity?: number
   photoMask?: 'none' | 'circle'
+  // Fase 3 Bloque 5B — de qué dato real del evento nació esta capa (generada por "Pepa, hazla por mí" o
+  // insertada a mano desde "📋 Datos"), y qué texto tenía el evento en ese momento. Permite detectar más
+  // tarde si el evento cambió (comparando `valueAtInsertion` con el dato actual) y si el usuario personalizó
+  // el texto después (comparando `layer.text` con `valueAtInsertion`) sin ningún flag aparte que pueda
+  // desincronizarse. Opcional y retrocompatible: ausente en toda invitación anterior a este bloque y en
+  // cualquier texto libre escrito a mano — esas capas simplemente no participan en el seguimiento.
+  source?: {
+    kind: 'event_field'
+    field: Exclude<InvitationEventFieldKey, 'closing'>
+    valueAtInsertion: string
+  }
 }
+
+// Fase 3 Bloque 5B — claves de "hecho real del evento" que puede llevar una invitación: título, fecha,
+// hora, lugar, edad/subtítulo, ceremonia, celebración, más "closing" (frase de cierre genérica, ver
+// domain/invitationAutoCompose.ts — nunca un hecho real, nunca el origen de una capa con seguimiento).
+// Definida aquí (no en invitationAutoCompose.ts) para que InvitationLayer.source pueda referenciarla sin
+// depender del motor de composición.
+export type InvitationEventFieldKey = 'title' | 'subtitle' | 'fecha' | 'hora' | 'lugar' | 'ceremonia' | 'celebracion' | 'closing'
 
 export interface InvitationCanvas {
   backgroundGradient: string
@@ -930,6 +948,12 @@ export interface InvitationCanvas {
   backgroundOffsetX?: number
   backgroundOffsetY?: number
   backgroundScale?: number
+  // Fase 3 Bloque 5B — "zona de escritura" que el usuario confirmó a mano para un fondo importado propio
+  // (secciones 10-16): las 100 plantillas PEPA ya traen su textArea calibrado, pero una imagen importada
+  // no, y DEFAULT_TEXT_AREA no sabe dónde hay una cara o decoración. Ausente/null = todavía no se ha
+  // confirmado ninguna (o el fondo no es una foto propia) — "Hazla bonita"/"Hazla por mí" caen entonces al
+  // mismo DEFAULT_TEXT_AREA de siempre, sin ningún cambio de comportamiento para invitaciones anteriores.
+  customTextArea?: { x: number; y: number; width: number; height: number } | null
 }
 
 export interface EventInvitation {

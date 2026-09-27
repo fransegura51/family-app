@@ -14,6 +14,7 @@ import {
   reconcileOverlappingBoxes,
   resolveLayerFontWeight,
   sortInvitationTemplatesForEvent,
+  type SafeZone,
   type TextMeasurer,
 } from '@/domain/events'
 import { errorMessage } from '@/domain/errorMessage'
@@ -21,6 +22,25 @@ import type { FamilyEvent, InvitationCanvas, InvitationLayer, InvitationTextAlig
 import { getEventInvitation, getInvitationPhotoUrl, saveEventInvitation, uploadInvitationPhoto } from '@/data/events'
 import { loadRecentInvitationEmoji, recordRecentInvitationEmoji } from '@/state/invitationRecentEmoji'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+// Fase 3 Bloque 5B — "✨ Pepa, hazla por mí": el editor solo COORDINA (sube foto, decide qué plantilla/
+// estilo está activo, aplica el resultado como una operación de historial); todas las recetas, la
+// clasificación geométrica y las reglas de validación siguen viviendo en el motor del Bloque 5A — nada de
+// eso se reimplementa aquí.
+import {
+  type AutoComposeFieldKey,
+  type AutoComposeStyle,
+  buildCustomTemplateMeta,
+  checkAllStyleCompatibility,
+  composeInvitationForMe,
+  getInvitationEventDataChanges,
+  type InvitationEventDataChange,
+  invitationHasTrackedEventData,
+  isInvitationLayerManuallyEdited,
+  removeInvitationLayersForRemovedFields,
+  type StyleCompatibility,
+  toEventFieldKey,
+  updateInvitationLayersFromEvent,
+} from '@/domain/invitationAutoCompose'
 
 // Editor de invitaciones en capas (Fase 3) — extraído de EventosScreen.tsx (INV-EDITOR-1, reforma del
 // diseñador) para no seguir haciendo crecer ese archivo. Componentes públicos (usados desde
@@ -1132,6 +1152,18 @@ const TEXT_STYLE_OPTIONS: { value: InvitationTextStyle; label: string }[] = [
   { value: 'metallic', label: '🥈 Metalizado' },
 ]
 
+// Fase 3 Bloque 5B — etiquetas legibles para el aviso "Han cambiado: ..." (sección 26/28). 'closing' nunca
+// aparece aquí (no es un dato del evento, nunca lleva `source`).
+const EVENT_FIELD_LABELS: Record<Exclude<AutoComposeFieldKey, 'closing'>, string> = {
+  title: 'el título',
+  subtitle: 'la edad',
+  fecha: 'la fecha',
+  hora: 'la hora',
+  lugar: 'el lugar',
+  ceremonia: 'la ceremonia',
+  celebracion: 'la celebración',
+}
+
 interface DragState {
   mode: 'move' | 'transform'
   layerId: string
@@ -1166,6 +1198,9 @@ interface EditorSnapshot {
   backgroundOffsetX: number
   backgroundOffsetY: number
   backgroundScale: number
+  // Fase 3 Bloque 5B — mismo criterio que el resto del fondo (arriba): la zona de escritura de una
+  // plantilla propia también es parte del snapshot completo, para que Deshacer/Rehacer la recuperen igual.
+  customTextArea: SafeZone | null
 }
 
 // Constante nombrada en vez de un número mágico — cuántas operaciones deshacibles se conservan a la vez.
@@ -1180,7 +1215,7 @@ function comparableSnapshotKey(s: EditorSnapshot): string {
 
 // INV-EDITOR-4 — reforma UX móvil: un único panel secundario (popover compacto) a la vez, según qué está
 // seleccionado — nunca el antiguo bloque fijo con todos los controles a la vista simultáneamente.
-type DesignerPanel = 'plantilla' | 'texto' | 'datos' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas'
+type DesignerPanel = 'plantilla' | 'texto' | 'datos' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas' | 'pepa'
 
 export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
   const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
@@ -1247,6 +1282,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
+  // Fase 3 Bloque 5B — arrastre del rectángulo de "zona de escritura" (mover/redimensionar), mismo patrón
+  // que dragRef pero con su propio estado (geometría 0..1, no x/y/rotation/scale de una capa).
+  const textAreaDragRef = useRef<{ mode: 'move' | 'resize'; startClientX: number; startClientY: number; rect0: SafeZone; canvasRect: DOMRect } | null>(null)
   // 2026-09-27 — solape real reportado en vivo (iPhone, "dinosaurios"/"espacio", imageAspect bajo ~0.43):
   // tras "Pepa, hazla bonita" el icono/título/mensaje aparecían superpuestos en el dispositivo real, aunque
   // el cálculo de fracciones (con measureText, ver d082f7b) daba hueco de sobra y no se reprodujo en ningún
@@ -1261,6 +1299,29 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // última vez. null mientras sigue cargando (todavía no hay nada con lo que comparar).
   const savedSnapshotRef = useRef<string | null>(null)
   const [confirmingExit, setConfirmingExit] = useState(false)
+
+  // ---------------------------------------------------------------------------------------------------
+  // Fase 3 Bloque 5B — "✨ Pepa, hazla por mí" + plantilla propia + seguimiento de datos del evento.
+  // ---------------------------------------------------------------------------------------------------
+  // Zona de escritura confirmada por el usuario para un fondo importado propio (secciones 10-16). null =
+  // fondo no propio, o propio pero sin zona confirmada todavía (Hazla bonita/por mí caen a DEFAULT_TEXT_AREA,
+  // como siempre — sin ningún cambio para invitaciones guardadas antes de este bloque).
+  const [customTextArea, setCustomTextArea] = useState<SafeZone | null>(null)
+  const [definingTextArea, setDefiningTextArea] = useState(false)
+  const [draftTextArea, setDraftTextArea] = useState<SafeZone>(DEFAULT_TEXT_AREA)
+  // Asistente "Pepa, hazla por mí" (secciones 3-9): estilo elegido, foto (solo para "con foto") y errores
+  // propios del asistente — nunca reutiliza `error` (ese es el de "Hazla bonita"/guardar).
+  const [pepaStyle, setPepaStyle] = useState<AutoComposeStyle | null>(null)
+  const [pepaUploadingPhoto, setPepaUploadingPhoto] = useState(false)
+  const [pepaError, setPepaError] = useState<string | null>(null)
+  // Sección 20 — regenerar sobre contenido ya existente pide confirmación antes de sustituirlo.
+  const [pendingPepaGeneration, setPendingPepaGeneration] = useState<{ style: AutoComposeStyle; photoPath: string | null } | null>(null)
+  // Secciones 26-33 — seguimiento de datos del evento: aviso al abrir el editor (si hay cambios) y panel de
+  // actualización selectiva. `changesBannerDismissed` es solo de esta sesión de edición (no se persiste).
+  const [changesBannerDismissed, setChangesBannerDismissed] = useState(false)
+  const [showUpdatePanel, setShowUpdatePanel] = useState(false)
+  const [manualFieldDecisions, setManualFieldDecisions] = useState<Record<string, 'update' | 'keep'>>({})
+  const [removedFieldDecisions, setRemovedFieldDecisions] = useState<Record<string, boolean>>({})
 
   // Corrección UX — mide cuánto tapa el teclado (o cualquier otra barra del navegador) el visualViewport,
   // en vivo. `window.innerHeight` es el viewport de DISEÑO (el que asumen las unidades `vh`, que iOS no
@@ -1295,12 +1356,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
           const loadedOffsetX = invitation.canvas.backgroundOffsetX ?? 0
           const loadedOffsetY = invitation.canvas.backgroundOffsetY ?? 0
           const loadedScale = invitation.canvas.backgroundScale ?? 1
+          const loadedCustomTextArea = invitation.canvas.customTextArea ?? null
           setTemplateKey(loadedTemplateKey)
           setBackgroundGradient(loadedGradient)
           setLayers(invitation.canvas.layers)
           setBackgroundOffsetX(loadedOffsetX)
           setBackgroundOffsetY(loadedOffsetY)
           setBackgroundScale(loadedScale)
+          setCustomTextArea(loadedCustomTextArea)
           if (invitation.backgroundImagePath) {
             setBackgroundImagePath(invitation.backgroundImagePath)
             getInvitationPhotoUrl(invitation.backgroundImagePath)
@@ -1318,6 +1381,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             backgroundOffsetX: loadedOffsetX,
             backgroundOffsetY: loadedOffsetY,
             backgroundScale: loadedScale,
+            customTextArea: loadedCustomTextArea,
           })
           const paths = invitation.canvas.layers.map((l) => l.photoPath).filter((p): p is string => !!p)
           const urls = await Promise.all(paths.map((p) => getInvitationPhotoUrl(p).catch(() => null)))
@@ -1338,6 +1402,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             backgroundOffsetX: 0,
             backgroundOffsetY: 0,
             backgroundScale: 1,
+            customTextArea: null,
           })
         }
       })
@@ -1349,7 +1414,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const selected = layers.find((l) => l.id === selectedId) ?? null
 
   function currentSnapshot(): EditorSnapshot {
-    return { layers, templateKey, backgroundGradient, backgroundImagePath, backgroundImageUrl, backgroundOffsetX, backgroundOffsetY, backgroundScale }
+    return { layers, templateKey, backgroundGradient, backgroundImagePath, backgroundImageUrl, backgroundOffsetX, backgroundOffsetY, backgroundScale, customTextArea }
   }
 
   function pushHistory() {
@@ -1370,6 +1435,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     setBackgroundOffsetX(s.backgroundOffsetX)
     setBackgroundOffsetY(s.backgroundOffsetY)
     setBackgroundScale(s.backgroundScale)
+    setCustomTextArea(s.customTextArea)
   }
 
   function handleUndo() {
@@ -1506,6 +1572,12 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
       }
       setBackgroundImagePath(path)
       setBackgroundImageUrl(url)
+      // Fase 3 Bloque 5B (sección 13) — una imagen DISTINTA invalida la zona de escritura anterior (podía
+      // estar pensada para otra composición: otra cara, otra decoración). Nunca se reutiliza en silencio:
+      // se abre directamente el editor visual de la zona, con una propuesta razonable ya puesta (sección 12).
+      setCustomTextArea(null)
+      setDraftTextArea(DEFAULT_TEXT_AREA)
+      setDefiningTextArea(true)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo subir la foto de fondo'))
     } finally {
@@ -1522,6 +1594,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     setBackgroundOffsetY(0)
     setBackgroundScale(1)
     setAdjustingBackground(false)
+    setCustomTextArea(null)
   }
 
   // Un dedo mueve (pan), dos dedos hacen zoom (pinch) — solo mientras
@@ -1576,8 +1649,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     // INV-EDITOR-2 — la zona segura real es la de la plantilla elegida (template.textArea); con una foto
     // de fondo propia (sin plantilla de arte detrás) o una plantilla sin zona propia, cae a
     // DEFAULT_TEXT_AREA (ver domain/events.ts, autoArrangeLayers) — nunca una zona nueva inventada aquí.
+    // Fase 3 Bloque 5B (sección 14) — si el usuario confirmó una zona de escritura propia para el fondo
+    // importado, "Hazla bonita" la respeta en vez de asumir ciegamente DEFAULT_TEXT_AREA; sin zona
+    // confirmada (o sin fondo propio) el comportamiento es EXACTAMENTE el de siempre, sin ningún cambio.
     const template = backgroundImageUrl ? undefined : INVITATION_TEMPLATES.find((t) => t.key === templateKey)
-    const zone = template?.textArea
+    const zone = template?.textArea ?? (backgroundImageUrl ? (customTextArea ?? undefined) : undefined)
     const result = autoArrangeLayers(layers, zone, template?.imageAspect ?? 1, domTextMeasurer)
     setLayers(result.layers)
     // Corrección tras certificación iPhone — nunca se reduce el fontSize ni se fuerza el texto a caber:
@@ -1693,7 +1769,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     setSaving(true)
     setError(null)
     try {
-      await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers, backgroundOffsetX, backgroundOffsetY, backgroundScale }, backgroundImagePath)
+      await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers, backgroundOffsetX, backgroundOffsetY, backgroundScale, customTextArea }, backgroundImagePath)
       // INV-EDITOR-5 — a partir de aquí, lo guardado ya coincide con lo que se ve: deja de estar "sucio".
       savedSnapshotRef.current = comparableSnapshotKey(currentSnapshot())
       setConfirmingExit(false)
@@ -1709,6 +1785,169 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // cargado/guardado (nunca durante la carga inicial, cuando savedSnapshotRef todavía es null).
   const dirty = savedSnapshotRef.current !== null && comparableSnapshotKey(currentSnapshot()) !== savedSnapshotRef.current
 
+  // =======================================================================================================
+  // Fase 3 Bloque 5B — "✨ Pepa, hazla por mí": el editor solo decide QUÉ generar (plantilla activa ya
+  // elegida con el selector de siempre + estilo + foto) y aplica el resultado del motor como UNA sola
+  // operación de historial — ninguna receta ni regla de validación se reimplementa aquí (viven en
+  // domain/invitationAutoCompose.ts, Bloque 5A).
+  // =======================================================================================================
+  const currentTemplateForPepa = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
+  // La "plantilla" para el motor es la que YA está activa en el editor (secciones 3-4: se elige ANTES, con
+  // el selector de siempre — "Cambiar plantilla" dentro del asistente solo reabre ese mismo panel, nunca
+  // uno nuevo). Con un fondo propio sin zona de escritura confirmada, no hay geometría real todavía: null.
+  const activeTemplateForPepa: InvitationTemplateMeta | null = backgroundImageUrl
+    ? customTextArea
+      ? buildCustomTemplateMeta(customTextArea)
+      : null
+    : (currentTemplateForPepa ?? null)
+
+  const pepaCompatibility: StyleCompatibility[] = useMemo(() => {
+    if (!activeTemplateForPepa) return []
+    return checkAllStyleCompatibility({ event, template: activeTemplateForPepa, measurer: domTextMeasurer })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event, activeTemplateForPepa?.key, activeTemplateForPepa?.textArea, activeTemplateForPepa?.imageAspect])
+
+  function hasExistingInvitationContent(): boolean {
+    return layers.length > 0 || !!backgroundImagePath
+  }
+
+  function applyPepaGeneration(style: AutoComposeStyle, photoPath: string | null) {
+    if (!activeTemplateForPepa) return
+    const result = composeInvitationForMe({ event, template: activeTemplateForPepa, style, photoPath: photoPath ?? undefined, measurer: domTextMeasurer })
+    if (result.status !== 'success') {
+      // Sección 42 — el Canvas real tiene la última palabra y puede fallar aunque la comprobación de
+      // compatibilidad dijera que sí (caso límite): nunca se deja una composición a medias ni se borra la
+      // anterior, y se ofrece volver a elegir estilo o cambiar de plantilla (enlace ya presente en el panel).
+      setPepaError('PEPA no ha conseguido colocar todo correctamente en esta plantilla. Prueba otro estilo o elige otra plantilla.')
+      setPepaStyle(null)
+      return
+    }
+    pushHistory()
+    setLayers(result.layers)
+    setPepaStyle(null)
+    setPepaError(null)
+    setPanel(null)
+    selectLayer(null)
+    setError(null)
+  }
+
+  // Sección 20 — regenerar sobre contenido ya existente pide confirmación antes de sustituirlo; sin
+  // contenido previo (invitación recién empezada) se genera directamente.
+  function requestPepaGeneration(style: AutoComposeStyle, photoPath: string | null) {
+    if (hasExistingInvitationContent()) setPendingPepaGeneration({ style, photoPath })
+    else applyPepaGeneration(style, photoPath)
+  }
+
+  function handlePepaSelectStyle(style: AutoComposeStyle) {
+    const compat = pepaCompatibility.find((c) => c.style === style)
+    if (!compat?.compatible) return
+    setPepaStyle(style)
+    setPepaError(null)
+    // Sección 8 — la foto se pide SOLO ahora que se ha elegido "Con foto", nunca antes.
+    if (style === 'con_foto') return
+    requestPepaGeneration(style, null)
+  }
+
+  async function handlePepaPhotoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPepaUploadingPhoto(true)
+    setPepaError(null)
+    try {
+      // Mismo pipeline de subida/compresión que ya usa "+ Foto" (sección 8) — nunca un segundo sistema.
+      const path = await uploadInvitationPhoto(event.id, file)
+      const url = await getInvitationPhotoUrl(path)
+      setPhotoUrls((m) => ({ ...m, [path]: url }))
+      requestPepaGeneration('con_foto', path)
+    } catch (err) {
+      setPepaError(errorMessage(err, 'No se pudo subir la foto'))
+    } finally {
+      setPepaUploadingPhoto(false)
+    }
+  }
+
+  function confirmPepaRegeneration() {
+    if (!pendingPepaGeneration) return
+    applyPepaGeneration(pendingPepaGeneration.style, pendingPepaGeneration.photoPath)
+    setPendingPepaGeneration(null)
+  }
+
+  // ---------------------------------------------------------------------------------------------------
+  // Zona de escritura de una plantilla propia (secciones 10-16) — un único rectángulo, mover con un dedo
+  // en el centro, redimensionar con el tirador de la esquina; mismo patrón de puntero (setPointerCapture +
+  // fracción del rect real del lienzo) que ya usan handleLayerPointerDown/handleHandlePointerDown.
+  // ---------------------------------------------------------------------------------------------------
+  function confirmTextArea() {
+    setCustomTextArea(draftTextArea)
+    setDefiningTextArea(false)
+  }
+
+  function handleTextAreaRectPointerDown(e: ReactPointerEvent<HTMLDivElement>, mode: 'move' | 'resize') {
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    textAreaDragRef.current = { mode, startClientX: e.clientX, startClientY: e.clientY, rect0: draftTextArea, canvasRect: canvasRef.current!.getBoundingClientRect() }
+  }
+
+  function handleTextAreaRectPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = textAreaDragRef.current
+    if (!d) return
+    e.stopPropagation()
+    const dx = (e.clientX - d.startClientX) / d.canvasRect.width
+    const dy = (e.clientY - d.startClientY) / d.canvasRect.height
+    if (d.mode === 'move') {
+      setDraftTextArea({ ...d.rect0, x: clamp(d.rect0.x + dx, 0, 1 - d.rect0.width), y: clamp(d.rect0.y + dy, 0, 1 - d.rect0.height) })
+    } else {
+      setDraftTextArea({ ...d.rect0, width: clamp(d.rect0.width + dx, 0.15, 1 - d.rect0.x), height: clamp(d.rect0.height + dy, 0.15, 1 - d.rect0.y) })
+    }
+  }
+
+  function handleTextAreaRectPointerUp() {
+    textAreaDragRef.current = null
+  }
+
+  // ---------------------------------------------------------------------------------------------------
+  // Seguimiento de datos del evento (secciones 22-39) — comparación en vivo entre lo que cada capa
+  // procedente del evento tenía "en su momento" (`source.valueAtInsertion`) y el dato real actual.
+  // ---------------------------------------------------------------------------------------------------
+  const eventDataChanges: InvitationEventDataChange[] = useMemo(() => getInvitationEventDataChanges(layers, event), [layers, event])
+  const hasTrackedEventData = useMemo(() => invitationHasTrackedEventData(layers), [layers])
+
+  function openUpdatePanel() {
+    setManualFieldDecisions({})
+    setRemovedFieldDecisions({})
+    setShowUpdatePanel(true)
+  }
+
+  // Sección 29/33 — actualización SELECTIVA (solo los campos elegidos) aplicada como UNA sola operación de
+  // historial, aunque afecte a varios campos a la vez; nunca toca texto libre, decoración, foto o plantilla.
+  function applyEventDataUpdate() {
+    const fieldsToUpdate: Exclude<AutoComposeFieldKey, 'closing'>[] = []
+    const fieldsToRemove: Exclude<AutoComposeFieldKey, 'closing'>[] = []
+    for (const change of eventDataChanges) {
+      if (change.current === null) {
+        // Sección 34 — dato eliminado del evento: solo se quita la capa si el usuario lo confirma aquí.
+        if (removedFieldDecisions[change.field]) fieldsToRemove.push(change.field)
+        continue
+      }
+      const layer = layers.find((l) => l.source?.field === change.field)
+      const manuallyEdited = layer ? isInvitationLayerManuallyEdited(layer) : false
+      if (manuallyEdited) {
+        // Sección 32 — nunca se sobrescribe una personalización sin permiso explícito.
+        if (manualFieldDecisions[change.field] === 'update') fieldsToUpdate.push(change.field)
+      } else {
+        fieldsToUpdate.push(change.field)
+      }
+    }
+    if (fieldsToUpdate.length === 0 && fieldsToRemove.length === 0) {
+      setShowUpdatePanel(false)
+      return
+    }
+    pushHistory()
+    setLayers(removeInvitationLayersForRemovedFields(updateInvitationLayersFromEvent(layers, event, fieldsToUpdate), fieldsToRemove))
+    setShowUpdatePanel(false)
+  }
+
   // Único punto de salida (✕ del encabezado y tocar fuera del modal) — si hay cambios sin guardar, pide
   // confirmación en vez de cerrar y perderlos en silencio.
   function requestClose() {
@@ -1722,7 +1961,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // texto usa "shrink-to-fit" real (acotado por left, no por el ancho de la zona) y ajusta línea mucho antes
   // de lo que estimateWrappedLineCount asume, así que el bloque pintado de verdad puede ser más alto que el
   // estimado y solapar con la capa siguiente — el mismo editor donde se reportó el bug real en vivo.
-  const zoneWidthFrac = backgroundImageUrl ? DEFAULT_TEXT_AREA.width : (currentTemplate?.textArea ?? DEFAULT_TEXT_AREA).width
+  const zoneWidthFrac = backgroundImageUrl ? (customTextArea ?? DEFAULT_TEXT_AREA).width : (currentTemplate?.textArea ?? DEFAULT_TEXT_AREA).width
 
   // INV-EDITOR-4 — barra contextual: solo las herramientas que aplican al tipo seleccionado (o, sin
   // selección, las acciones para añadir/elegir plantilla) — nunca los 9 controles de siempre a la vez.
@@ -1781,10 +2020,37 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
               <button type="button" className="link-button" onClick={handlePrettify}>
                 ✨ Pepa, hazla bonita
               </button>
+              <button type="button" className="link-button" onClick={() => togglePanel('pepa')}>
+                ✨ Pepa, hazla por mí
+              </button>
               <button type="button" className="link-button" onClick={handleSave} disabled={saving} style={{ marginLeft: 'auto', fontWeight: 600 }}>
                 {saving ? 'Guardando…' : '💾 Guardar'}
               </button>
             </div>
+
+            {/* Fase 3 Bloque 5B (sección 26/28) — si esta invitación tiene datos con seguimiento y el
+                evento cambió desde entonces, avisar ANTES de dejar editar con normalidad. */}
+            {hasTrackedEventData && eventDataChanges.length > 0 && !changesBannerDismissed && !showUpdatePanel && (
+              <div className="invitation-changed-data-banner" style={{ margin: '0 16px 8px', padding: 10, borderRadius: 10, background: '#FEF3C7', color: '#78350F', fontSize: 13 }}>
+                <p style={{ margin: 0, fontWeight: 600 }}>⚠️ Hay datos del evento que han cambiado desde que creaste esta invitación.</p>
+                <p style={{ margin: '4px 0 0' }}>
+                  Han cambiado:{' '}
+                  {eventDataChanges
+                    .map((c) => EVENT_FIELD_LABELS[c.field])
+                    .filter(Boolean)
+                    .join(', ')}
+                  .
+                </p>
+                <div className="filter-row" style={{ marginTop: 8 }}>
+                  <button type="button" className="chip chip-active" onClick={openUpdatePanel}>
+                    ✨ Sí, actualizar
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setChangesBannerDismissed(true)}>
+                    Ahora no
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* El lienzo domina la pantalla: ocupa todo el espacio disponible entre la fila de arriba y
                 la barra contextual de abajo, en vez de ser una tarjeta más entre paneles y botones. */}
@@ -1890,6 +2156,66 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       )}
                     </div>
                   )})}
+                {/* Fase 3 Bloque 5B (secciones 10-16) — rectángulo de "zona de escritura" para un fondo
+                    propio: arrastrar desde el centro mueve, el tirador de la esquina redimensiona — mismo
+                    patrón de puntero que el resto de capas (setPointerCapture + fracción del rect real). */}
+                {definingTextArea && (
+                  <div
+                    onPointerDown={(e) => handleTextAreaRectPointerDown(e, 'move')}
+                    onPointerMove={handleTextAreaRectPointerMove}
+                    onPointerUp={handleTextAreaRectPointerUp}
+                    onPointerCancel={handleTextAreaRectPointerUp}
+                    style={{
+                      position: 'absolute',
+                      left: `${draftTextArea.x * 100}%`,
+                      top: `${draftTextArea.y * 100}%`,
+                      width: `${draftTextArea.width * 100}%`,
+                      height: `${draftTextArea.height * 100}%`,
+                      border: '2px dashed #4C6EF5',
+                      background: 'rgba(76, 110, 245, 0.15)',
+                      borderRadius: 8,
+                      cursor: 'grab',
+                      touchAction: 'none',
+                      zIndex: 50,
+                    }}
+                  >
+                    <div
+                      onPointerDown={(e) => handleTextAreaRectPointerDown(e, 'resize')}
+                      onPointerMove={handleTextAreaRectPointerMove}
+                      onPointerUp={handleTextAreaRectPointerUp}
+                      onPointerCancel={handleTextAreaRectPointerUp}
+                      style={{
+                        position: 'absolute',
+                        right: -14,
+                        bottom: -14,
+                        width: 26,
+                        height: 26,
+                        borderRadius: '50%',
+                        background: '#4C6EF5',
+                        border: '2px solid white',
+                        cursor: 'nwse-resize',
+                        touchAction: 'none',
+                      }}
+                    />
+                  </div>
+                )}
+                {/* Barra de confirmación DENTRO del mismo <div ref={canvasRef}> (misma referencia de
+                    posicionamiento que el rectángulo de arriba — position:'relative' ya lo trae ese <div>,
+                    ver su style más arriba, sin tocar el <div className="invitation-canvas-wrap"> exterior). */}
+                {definingTextArea && (
+                  <div
+                    className="filter-row"
+                    style={{ position: 'absolute', top: 8, left: 8, right: 8, justifyContent: 'center', background: 'rgba(255,255,255,0.92)', borderRadius: 10, padding: 8, zIndex: 51 }}
+                  >
+                    <span className="muted" style={{ fontSize: 12 }}>Ahí es donde PEPA escribirá</span>
+                    <button type="button" className="link-button" onClick={() => setDraftTextArea(DEFAULT_TEXT_AREA)}>
+                      ↺ Restablecer
+                    </button>
+                    <button type="button" className="chip chip-active" onClick={confirmTextArea} style={{ fontWeight: 600 }}>
+                      ✓ Confirmar zona
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2065,6 +2391,20 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                             🔧 Ajustar fondo
                           </button>
                         )}
+                        {/* Fase 3 Bloque 5B (secciones 10-16) — solo tiene sentido con un fondo propio: las
+                            100 plantillas PEPA ya traen su textArea calibrado. */}
+                        {backgroundImageUrl && (
+                          <button
+                            type="button"
+                            className="chip"
+                            onClick={() => {
+                              setDraftTextArea(customTextArea ?? DEFAULT_TEXT_AREA)
+                              setDefiningTextArea(true)
+                            }}
+                          >
+                            📐 {customTextArea ? 'Editar zona de escritura' : 'Definir zona de escritura'}
+                          </button>
+                        )}
                       </div>
                       {adjustingBackground && (
                         <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
@@ -2080,6 +2420,89 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       <div className="filter-row" style={{ marginTop: 2 }}>
                         <ConfirmButton label="↺ Restaurar plantilla" confirmLabel="Restaurar" className="link-button" onConfirm={handleRestoreTemplate} />
                       </div>
+                    </>
+                  )}
+
+                  {/* Fase 3 Bloque 5B — "✨ Pepa, hazla por mí": la plantilla es la que YA está activa (se
+                      elige ANTES, con el selector de arriba — "Cambiar plantilla" solo reabre ese mismo
+                      panel); aquí solo se elige el estilo y, si hace falta, la foto. */}
+                  {panel === 'pepa' && (
+                    <>
+                      <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+                        Plantilla: <strong>{backgroundImageUrl ? 'tu foto de fondo' : (currentTemplateForPepa?.label ?? templateKey)}</strong>{' '}
+                        <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => togglePanel('plantilla')}>
+                          Cambiar
+                        </button>
+                      </p>
+
+                      {backgroundImageUrl && !customTextArea ? (
+                        <div>
+                          <p className="muted" style={{ fontSize: 13 }}>
+                            Antes de elegir un estilo, dile a PEPA dónde debe escribir sobre tu foto.
+                          </p>
+                          <button
+                            type="button"
+                            className="chip chip-active"
+                            onClick={() => {
+                              setDraftTextArea(DEFAULT_TEXT_AREA)
+                              setDefiningTextArea(true)
+                            }}
+                          >
+                            📐 Definir zona de escritura
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>¿Cómo quieres que PEPA prepare tu invitación?</p>
+                          {pepaError && (
+                            <p className="error" style={{ fontSize: 13, margin: '0 0 6px' }}>
+                              {pepaError}
+                            </p>
+                          )}
+                          <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                            {(
+                              [
+                                { style: 'clasica' as const, label: '📝 Clásica' },
+                                { style: 'con_foto' as const, label: '📷 Con foto' },
+                                { style: 'divertida' as const, label: '🎉 Divertida' },
+                              ]
+                            ).map(({ style, label }) => {
+                              const compat = pepaCompatibility.find((c) => c.style === style)
+                              const disabled = !compat?.compatible
+                              return (
+                                <div key={style} style={{ minWidth: 120 }}>
+                                  <button
+                                    type="button"
+                                    className={'chip' + (pepaStyle === style ? ' chip-active' : '')}
+                                    disabled={disabled}
+                                    aria-disabled={disabled}
+                                    onClick={() => handlePepaSelectStyle(style)}
+                                    style={disabled ? { opacity: 0.5 } : undefined}
+                                  >
+                                    {label}
+                                  </button>
+                                  {disabled && compat?.reason && (
+                                    <p className="muted" style={{ fontSize: 11, margin: '2px 0 0' }}>
+                                      {compat.reason}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                          {pepaStyle === 'con_foto' && (
+                            <div style={{ marginTop: 10 }}>
+                              <label className="chip" style={{ cursor: 'pointer' }}>
+                                {pepaUploadingPhoto ? 'Subiendo…' : '➕ Elegir foto'}
+                                <input type="file" accept="image/*" onChange={handlePepaPhotoChange} style={{ display: 'none' }} disabled={pepaUploadingPhoto} />
+                              </label>
+                              <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                                Si esta plantilla no admite foto, elige otra plantilla o vuelve a "Elegir estilo".
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </>
                   )}
 
@@ -2188,7 +2611,19 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                             key={f.key}
                             type="button"
                             className={'chip' + (alreadyInserted ? ' chip-active' : '')}
-                            onClick={() => handleAddLayer(makeInvitationLayer('event_data', { text: f.value, color: '#ffffff', fontSize: 14 }))}
+                            onClick={() =>
+                              // Fase 3 Bloque 5B (sección 23-24) — igual que las capas de "Pepa, hazla por mí",
+                              // esta capa insertada a mano queda marcada con su procedencia, para poder detectar
+                              // más tarde si el evento cambió.
+                              handleAddLayer(
+                                makeInvitationLayer('event_data', {
+                                  text: f.value,
+                                  color: '#ffffff',
+                                  fontSize: 14,
+                                  source: { kind: 'event_field', field: toEventFieldKey(f.key), valueAtInsertion: f.value },
+                                }),
+                              )
+                            }
                           >
                             {alreadyInserted ? '✓ ' : ''}
                             {f.value}
@@ -2462,6 +2897,101 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             </button>
             <button type="button" className="link-button" onClick={onClose}>
               Salir sin guardar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {/* Fase 3 Bloque 5B (sección 20) — regenerar con "Pepa, hazla por mí" sobre contenido ya existente pide
+        confirmación explícita antes de sustituirlo; la composición anterior no se toca hasta confirmar. */}
+    {pendingPepaGeneration && (
+      <div className="modal-overlay" style={{ zIndex: 60 }} onClick={() => setPendingPepaGeneration(null)}>
+        <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            PEPA va a crear una nueva composición
+          </h2>
+          <p className="muted" style={{ marginTop: 6 }}>Tus cambios actuales se sustituirán.</p>
+          <div className="filter-row" style={{ marginTop: 14, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setPendingPepaGeneration(null)}>
+              Cancelar
+            </button>
+            <button type="button" className="link-button" style={{ fontWeight: 600 }} onClick={confirmPepaRegeneration}>
+              Crear nueva
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {/* Fase 3 Bloque 5B (secciones 28-33) — actualización selectiva de los datos del evento: campos no
+        personalizados se actualizan directamente, campos personalizados a mano piden decisión, campos
+        eliminados del evento piden confirmación aparte para quitar su capa. Todo se aplica como UNA sola
+        operación de historial (ver applyEventDataUpdate). */}
+    {showUpdatePanel && (
+      <div className="modal-overlay" style={{ zIndex: 60 }} onClick={() => setShowUpdatePanel(false)}>
+        <div className="modal-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Actualizar datos de la invitación
+          </h2>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {eventDataChanges.map((change) => {
+              const layer = layers.find((l) => l.source?.field === change.field)
+              const manuallyEdited = layer ? isInvitationLayerManuallyEdited(layer) : false
+              if (change.current === null) {
+                return (
+                  <div key={change.field} style={{ fontSize: 13 }}>
+                    <p style={{ margin: 0 }}>
+                      {EVENT_FIELD_LABELS[change.field]}: el dato ya no existe en el evento («{change.previous}»).
+                    </p>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!removedFieldDecisions[change.field]}
+                        onChange={(e) => setRemovedFieldDecisions((m) => ({ ...m, [change.field]: e.target.checked }))}
+                      />
+                      Quitar esta capa
+                    </label>
+                  </div>
+                )
+              }
+              if (manuallyEdited) {
+                const decision = manualFieldDecisions[change.field] ?? 'keep'
+                return (
+                  <div key={change.field} style={{ fontSize: 13 }}>
+                    <p style={{ margin: 0 }}>
+                      Modificaste manualmente el texto de {EVENT_FIELD_LABELS[change.field]}. Actualizarlo lo sustituirá por «{change.current}».
+                    </p>
+                    <div className="filter-row" style={{ marginTop: 4 }}>
+                      <button
+                        type="button"
+                        className={'chip' + (decision === 'update' ? ' chip-active' : '')}
+                        onClick={() => setManualFieldDecisions((m) => ({ ...m, [change.field]: 'update' }))}
+                      >
+                        Actualizar
+                      </button>
+                      <button
+                        type="button"
+                        className={'chip' + (decision === 'keep' ? ' chip-active' : '')}
+                        onClick={() => setManualFieldDecisions((m) => ({ ...m, [change.field]: 'keep' }))}
+                      >
+                        Mantener mi texto
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
+              return (
+                <p key={change.field} style={{ margin: 0, fontSize: 13 }}>
+                  {EVENT_FIELD_LABELS[change.field]}: «{change.previous}» → «{change.current}» (se actualizará)
+                </p>
+              )
+            })}
+          </div>
+          <div className="filter-row" style={{ marginTop: 14, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setShowUpdatePanel(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="link-button" style={{ fontWeight: 600 }} onClick={applyEventDataUpdate}>
+              Aplicar
             </button>
           </div>
         </div>

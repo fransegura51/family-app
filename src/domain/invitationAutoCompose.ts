@@ -28,7 +28,7 @@ import {
   type SafeZone,
   type TextMeasurer,
 } from '@/domain/events'
-import type { EventType, FamilyEvent, InvitationLayer } from '@/domain/types'
+import type { EventType, FamilyEvent, InvitationEventFieldKey, InvitationLayer } from '@/domain/types'
 
 // ---------------------------------------------------------------------------------------------------
 // Familias geométricas (auditoría 2026-09-27, ver memoria de sesión "Auditoría geométrica de las 100
@@ -95,7 +95,17 @@ export function classifyTemplateGeometry(template: Pick<InvitationTemplateMeta, 
 // ---------------------------------------------------------------------------------------------------
 // Datos reales del evento — normalizados y con formato humano, listos para convertirse en capas.
 // ---------------------------------------------------------------------------------------------------
-export type AutoComposeFieldKey = 'title' | 'subtitle' | 'fecha' | 'hora' | 'lugar' | 'ceremonia' | 'celebracion' | 'closing'
+// Fase 3 Bloque 5B — el tipo canónico ahora vive en domain/types.ts (InvitationLayer.source lo referencia
+// sin depender de este módulo); se conserva este alias para no romper ningún import existente de
+// `AutoComposeFieldKey`.
+export type AutoComposeFieldKey = InvitationEventFieldKey
+
+// Bloque 5B — misma normalización 'edad'→'subtitle' que ya hacía `getAvailableInvitationData` en línea,
+// factorizada para que el panel manual "📋 Datos" (InvitationDesigner.tsx) pueda etiquetar sus propias
+// capas con la MISMA clave canónica, sin duplicar el criterio.
+export function toEventFieldKey(dataFieldKey: string): Exclude<AutoComposeFieldKey, 'closing'> {
+  return (dataFieldKey === 'edad' ? 'subtitle' : dataFieldKey) as Exclude<AutoComposeFieldKey, 'closing'>
+}
 
 export interface AutoComposeDataField {
   key: AutoComposeFieldKey
@@ -103,6 +113,15 @@ export interface AutoComposeDataField {
   // Un hecho real del evento nunca se omite silenciosamente (ver sección 34). Una frase genérica de
   // cierre (essential=false) SÍ puede omitirse como último paso de adaptación antes de fallar la receta.
   essential: boolean
+  // Bloque 5B — true solo en el campo "fecha" fusionado con "hora" en las recetas compactas (ver
+  // buildFieldsForAttempt): su texto ya no es "el dato fecha", sino "fecha · hora" combinados bajo la
+  // misma `key: 'fecha'` por simplicidad de layout. Si se marcara con procedencia igualmente, el
+  // seguimiento de datos del evento (getInvitationEventDataChanges) compararía ese texto combinado contra
+  // el valor de "fecha" en solitario que devuelve getAvailableInvitationData — un falso "cambió" permanente
+  // aunque el evento no cambiara nunca (bug real encontrado en verificación de navegador). Un campo fusionado
+  // simplemente no lleva procedencia — sigue siendo texto normal y editable, solo queda fuera del
+  // seguimiento, en vez de arriesgarse a un falso positivo.
+  merged?: boolean
 }
 
 // Catálogo pequeño y determinista de cierres genéricos — mismo tono que `buildInvitationMessage`
@@ -126,8 +145,7 @@ const CLOSING_PHRASES: Record<EventType, string> = {
 export function getAvailableInvitationData(event: FamilyEvent): AutoComposeDataField[] {
   const fields: AutoComposeDataField[] = [{ key: 'title', text: event.title, essential: true }]
   for (const f of buildInvitationDataFields(event)) {
-    const key: AutoComposeFieldKey = f.key === 'edad' ? 'subtitle' : (f.key as AutoComposeFieldKey)
-    fields.push({ key, text: f.value, essential: true })
+    fields.push({ key: toEventFieldKey(f.key), text: f.value, essential: true })
   }
   const closing = CLOSING_PHRASES[event.type]
   if (closing) fields.push({ key: 'closing', text: closing, essential: false })
@@ -304,7 +322,7 @@ function buildFieldsForAttempt(event: FamilyEvent, compact: boolean, includeClos
     const fecha = fields.find((f) => f.key === 'fecha')
     const hora = fields.find((f) => f.key === 'hora')
     if (fecha && hora) {
-      const merged: AutoComposeDataField = { key: 'fecha', text: `${fecha.text} · ${hora.text}`, essential: true }
+      const merged: AutoComposeDataField = { key: 'fecha', text: `${fecha.text} · ${hora.text}`, essential: true, merged: true }
       const withoutFechaHora = fields.filter((f) => f.key !== 'fecha' && f.key !== 'hora')
       const insertAt = withoutFechaHora.findIndex((f) => f.key === 'lugar' || f.key === 'ceremonia' || f.key === 'closing')
       fields = insertAt === -1 ? [...withoutFechaHora, merged] : [...withoutFechaHora.slice(0, insertAt), merged, ...withoutFechaHora.slice(insertAt)]
@@ -326,6 +344,10 @@ function buildFieldLayers(fields: AutoComposeDataField[], sizeIndex: number): In
     color: '#ffffff',
     fontFamily: 'inherit',
     fontSize: fontSizeStepsFor(f.key)[sizeIndex],
+    // Bloque 5B (sección 22-24) — todo campo real (nunca el cierre genérico, ni un campo fusionado
+    // fecha+hora — ver AutoComposeDataField.merged) queda marcado con su procedencia, para poder detectar
+    // más tarde si el evento cambió.
+    ...(f.key === 'closing' || f.merged ? {} : { source: { kind: 'event_field' as const, field: f.key, valueAtInsertion: f.text } }),
   }))
 }
 
@@ -503,4 +525,171 @@ export function composeInvitationForMe(params: ComposeInvitationForMeParams): Au
     attemptedRecipes,
     reason: `Ninguna de las recetas (${attemptedRecipes.join(' → ')}) encajó dentro del textArea real de "${template.key}" ni siquiera en tamaño mínimo y sin cierre.`,
   }
+}
+
+// =======================================================================================================
+// Bloque 5B — integración con la UI real. Todo lo de aquí abajo son consumidores puros de
+// `composeInvitationForMe`/`getAvailableInvitationData` de arriba: ninguno reimplementa una receta ni una
+// regla de validación paralela.
+// =======================================================================================================
+
+// ---------------------------------------------------------------------------------------------------
+// Compatibilidad de estilo (sección 6-7) — la UI la usa para mostrar un estilo desactivado ANTES de que
+// el usuario lo elija y descubra que no cabe. "Compatible" significa exactamente "composeInvitationForMe
+// aceptaría alguna receta de este estilo con los datos reales de este evento" — nunca una heurística
+// geométrica aparte, y nunca un `if (template.key === ...)` hardcodeado por plantilla (sección 6).
+// ---------------------------------------------------------------------------------------------------
+export interface StyleCompatibility {
+  style: AutoComposeStyle
+  compatible: boolean
+  reason?: string
+}
+
+// El motor nunca inspecciona los píxeles de la foto (buildPhotoPlacement solo reserva una fracción de la
+// zona según geometría/receta) — comprobar "con_foto" no necesita esperar a que el usuario suba una foto
+// real, una ruta de referencia fija basta y da el mismo resultado (sección 8: el flujo pide la plantilla y
+// el estilo ANTES que la foto).
+const COMPATIBILITY_CHECK_PHOTO_PATH = '__compat_check__'
+
+const INCOMPATIBLE_STYLE_REASON: Record<AutoComposeStyle, string> = {
+  clasica: 'Esta plantilla no tiene suficiente espacio para este estilo.',
+  con_foto: 'Esta plantilla tiene poco espacio para una invitación con foto.',
+  divertida: 'Esta plantilla no tiene suficiente espacio para este estilo.',
+}
+
+export interface CheckStyleCompatibilityParams {
+  event: FamilyEvent
+  template: InvitationTemplateMeta
+  style: AutoComposeStyle
+  /** Igual que en composeInvitationForMe: el real (Canvas) en el navegador tiene la última palabra sobre
+   * el heurístico de Node (sección 7) — se pasa tal cual, sin ninguna regla nueva aquí. */
+  measurer?: TextMeasurer
+}
+
+export function checkStyleCompatibility(params: CheckStyleCompatibilityParams): StyleCompatibility {
+  const result = composeInvitationForMe({
+    event: params.event,
+    template: params.template,
+    style: params.style,
+    photoPath: params.style === 'con_foto' ? COMPATIBILITY_CHECK_PHOTO_PATH : undefined,
+    measurer: params.measurer,
+  })
+  if (result.status === 'success') return { style: params.style, compatible: true }
+  return { style: params.style, compatible: false, reason: INCOMPATIBLE_STYLE_REASON[params.style] }
+}
+
+export function checkAllStyleCompatibility(params: { event: FamilyEvent; template: InvitationTemplateMeta; measurer?: TextMeasurer }): StyleCompatibility[] {
+  const styles: AutoComposeStyle[] = ['clasica', 'con_foto', 'divertida']
+  return styles.map((style) => checkStyleCompatibility({ ...params, style }))
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Plantilla propia (secciones 10-16) — un fondo importado por el usuario nunca se añade a
+// INVITATION_TEMPLATES (sección 15); se construye un InvitationTemplateMeta "sintético" con la MISMA
+// forma que cualquier plantilla real para que classifyTemplateGeometry/composeInvitationForMe la traten
+// exactamente igual (mismo fallback aritmético ya documentado en el Bloque 5A, ninguna regla especial
+// aquí). Nunca se guarda en el catálogo ni se muestra junto a las 100 plantillas reales.
+// ---------------------------------------------------------------------------------------------------
+export const CUSTOM_TEMPLATE_KEY = '__custom__'
+
+export function buildCustomTemplateMeta(textArea: SafeZone): InvitationTemplateMeta {
+  return {
+    key: CUSTOM_TEMPLATE_KEY,
+    label: 'Plantilla propia',
+    gradient: '',
+    text: '#ffffff',
+    artKey: '',
+    // Mismo criterio que ya usa el editor para "Pepa, hazla bonita" sobre un fondo importado
+    // (handlePrettify, ui/InvitationDesigner.tsx): sin plantilla oficial no hay un imageAspect real
+    // conocido, así que se asume 1 — nunca se inventa una medida de la imagen real.
+    imageAspect: 1,
+    textArea,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Seguimiento de datos del evento (secciones 22-39). Cada capa de texto que nació de un dato real del
+// evento (generada por este motor, o insertada a mano desde "📋 Datos") lleva opcionalmente
+// `source: {kind:'event_field', field, valueAtInsertion}` (ver InvitationLayer, domain/types.ts). No se
+// guarda ninguna copia aparte del evento (sección 22, "nunca una copia completa"): la propia capa YA es
+// el "valor usado en su momento" (`valueAtInsertion`), y si el usuario la personalizó después se deduce
+// comparando `layer.text` con ese valor — sin ningún flag nuevo que pueda desincronizarse.
+// ---------------------------------------------------------------------------------------------------
+export interface InvitationEventDataChange {
+  field: Exclude<AutoComposeFieldKey, 'closing'>
+  previous: string
+  /** null = el dato ya no existe en el evento (sección 34, "datos eliminados"). */
+  current: string | null
+}
+
+/**
+ * true solo si al menos una capa lleva procedencia — una invitación sin ninguna capa `source` (anterior a
+ * este bloque, o compuesta enteramente a mano con texto libre) no puede compararse: sección 27, "no
+ * afirmar actualizada si no se puede comprobar" — la UI debe mostrar un estado neutro en ese caso, nunca
+ * "✓ actualizada".
+ */
+export function invitationHasTrackedEventData(layers: InvitationLayer[]): boolean {
+  return layers.some((l) => l.source?.kind === 'event_field')
+}
+
+/**
+ * Compara lo que cada capa procedente del evento tenía "en su momento" con el dato real ACTUAL del
+ * evento. Sección 35 — un campo nuevo que el evento tiene ahora pero que ninguna capa usó nunca NO es un
+ * cambio (no hay nada con qué compararlo): solo se reportan campos que sí se usaron y cuyo valor difiere.
+ */
+export function getInvitationEventDataChanges(layers: InvitationLayer[], event: FamilyEvent): InvitationEventDataChange[] {
+  const currentByField = new Map(getAvailableInvitationData(event).map((f) => [f.key, f.text]))
+  const seen = new Set<string>()
+  const changes: InvitationEventDataChange[] = []
+  for (const layer of layers) {
+    if (layer.source?.kind !== 'event_field') continue
+    const field = layer.source.field
+    if (seen.has(field)) continue
+    seen.add(field)
+    const current = currentByField.get(field) ?? null
+    if (current !== layer.source.valueAtInsertion) changes.push({ field, previous: layer.source.valueAtInsertion, current })
+  }
+  return changes
+}
+
+/**
+ * Una capa procedente del evento se considera "personalizada a mano" si su texto ya no coincide con el
+ * valor que tenía cuando se insertó (sección 30/38) — sin flag aparte: el propio texto es la prueba, y la
+ * metadata nunca se borra al editar (sigue sabiéndose "esta capa nació del lugar" aunque el usuario la
+ * haya reescrito).
+ */
+export function isInvitationLayerManuallyEdited(layer: InvitationLayer): boolean {
+  return layer.source?.kind === 'event_field' && layer.text !== layer.source.valueAtInsertion
+}
+
+/**
+ * Actualización SELECTIVA (sección 29): solo sustituye el texto de las capas cuyo campo está en
+ * `fieldsToUpdate`, y sincroniza `valueAtInsertion` para que vuelvan a quedar al día. Nunca regenera la
+ * invitación entera, nunca toca texto libre/decoración/foto/plantilla — todo lo que no coincide se
+ * devuelve tal cual (misma referencia).
+ */
+export function updateInvitationLayersFromEvent(
+  layers: InvitationLayer[],
+  event: FamilyEvent,
+  fieldsToUpdate: readonly Exclude<AutoComposeFieldKey, 'closing'>[],
+): InvitationLayer[] {
+  if (fieldsToUpdate.length === 0) return layers
+  const currentByField = new Map(getAvailableInvitationData(event).map((f) => [f.key, f.text]))
+  const fieldSet = new Set<string>(fieldsToUpdate)
+  return layers.map((l) => {
+    if (l.source?.kind !== 'event_field' || !fieldSet.has(l.source.field)) return l
+    const current = currentByField.get(l.source.field)
+    if (current === undefined) return l // dato eliminado del evento — sección 34, no se borra aquí en silencio.
+    return { ...l, text: current, source: { ...l.source, valueAtInsertion: current } }
+  })
+}
+
+/**
+ * Sección 34 — quita las capas cuyo dato real ya no existe en el evento. Solo debe llamarse tras
+ * confirmación explícita del usuario (nunca automático); nunca reorganiza el resto de la invitación.
+ */
+export function removeInvitationLayersForRemovedFields(layers: InvitationLayer[], fieldsToRemove: readonly Exclude<AutoComposeFieldKey, 'closing'>[]): InvitationLayer[] {
+  if (fieldsToRemove.length === 0) return layers
+  const fieldSet = new Set<string>(fieldsToRemove)
+  return layers.filter((l) => !(l.source?.kind === 'event_field' && fieldSet.has(l.source.field)))
 }

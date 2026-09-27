@@ -1601,6 +1601,10 @@ function mapInvitation(r: any): EventInvitation {
       backgroundOffsetX: canvas?.backgroundOffsetX,
       backgroundOffsetY: canvas?.backgroundOffsetY,
       backgroundScale: canvas?.backgroundScale,
+      // Fase 3 Bloque 5B — mismo cuidado que backgroundOffsetX/Y/backgroundScale arriba (ver el comentario
+      // del Bloque 3): sin este campo aquí, la zona de escritura confirmada por el usuario se perdería en
+      // silencio al reabrir la invitación, igual que pasó antes con el encuadre del fondo.
+      customTextArea: canvas?.customTextArea ?? null,
     },
     backgroundImagePath: r.background_image_path,
     createdAt: r.created_at,

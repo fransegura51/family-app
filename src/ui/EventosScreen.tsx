@@ -158,6 +158,7 @@ import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { LocationPickerModal } from '@/ui/LocationPickerModal'
 import { GuestExportModal } from '@/ui/GuestExportModal'
 import { InvitationBackground, InvitationCanvasEditor, InvitationCanvasView, InvitationTemplatePicker } from '@/ui/InvitationDesigner'
+import { getInvitationEventDataChanges, invitationHasTrackedEventData } from '@/domain/invitationAutoCompose'
 
 // Módulo Eventos (PEPA Events) — plan aprobado en
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
@@ -2001,6 +2002,12 @@ function InvitationSection({ event }: { event: FamilyEvent }) {
   // fondo importado — vacío de verdad (ni una cosa ni la otra) es el único caso que no cuenta.
   const hasDesign = !!invitation && (invitation.canvas.layers.length > 0 || !!invitation.backgroundImagePath)
 
+  // Fase 3 Bloque 5B (secciones 26-27) — solo se afirma "actualizada" cuando de verdad se puede comprobar
+  // (al menos una capa con procedencia real). Una invitación sin ninguna capa `source` (anterior a este
+  // bloque, o compuesta enteramente a mano con texto libre) se queda en un estado neutro — nunca se inventa
+  // certeza que no se tiene.
+  const trackedEventDataChanges = invitation && invitationHasTrackedEventData(invitation.canvas.layers) ? getInvitationEventDataChanges(invitation.canvas.layers, event) : null
+
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>💌 Invitación</strong>
@@ -2012,11 +2019,17 @@ function InvitationSection({ event }: { event: FamilyEvent }) {
       )}
       {!loading && hasDesign && invitation && (
         <>
+          {trackedEventDataChanges !== null &&
+            (trackedEventDataChanges.length === 0 ? (
+              <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>✓ Invitación actualizada — los datos coinciden con los del evento.</p>
+            ) : (
+              <p style={{ fontSize: 12, margin: '4px 0 0', color: '#92400E' }}>⚠️ La invitación puede contener información anterior.</p>
+            ))}
           <div style={{ marginTop: 8, maxWidth: 320 }}>
             <InvitationCanvasView canvas={invitation.canvas} templateKey={invitation.templateKey} photoUrls={photoUrls} backgroundImageUrl={backgroundUrl} />
           </div>
           <button type="button" className="link-button" onClick={() => setShowEditor(true)} style={{ marginTop: 8 }}>
-            🎨 Editar diseño
+            🎨 {trackedEventDataChanges && trackedEventDataChanges.length > 0 ? 'Revisar invitación' : 'Editar diseño'}
           </button>
         </>
       )}

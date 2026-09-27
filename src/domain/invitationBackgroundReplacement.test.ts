@@ -193,10 +193,12 @@ describe('12. plantillas certificadas (grupo A) permanecen exactamente intactas 
   // invitationLiteralTextOverlap.test.ts): con imageAspect > 1 el motor llevaba todo este tiempo
   // SUBESTIMANDO su alto real necesario, nunca detectado porque esta fase probaba con el texto más corto de
   // buildInvitationMessage.
+  // 2026-09-27: cena_hogar recibió fondo nuevo del usuario (imagen + textArea recalculada por completo,
+  // imageAspect pasa de 1.188 a 0.6667) — misma excepción autorizada al dar la imagen directamente.
   const CERTIFIED: Record<string, { x: number; y: number; width: number; height: number }> = {
     elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.705 },
     playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.68 },
-    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.706 },
+    cena_hogar: { x: 0.23, y: 0.09, width: 0.54, height: 0.48 },
     corazones_acuarela: { x: 0.2, y: 0.14, width: 0.6, height: 0.62 },
     alegre: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 },
     unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 },

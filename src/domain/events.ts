@@ -864,13 +864,13 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // eucalipto del ramo, confirmada por el usuario.
   { key: 'graduacion_disciplina', label: 'Graduación disciplina', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaGraduacionDisciplina, imageAspect: 0.6667, textArea: { x: 0.35, y: 0.3, width: 0.55, height: 0.58 } },
   { key: 'graduacion_explorar', label: 'Graduación explorar', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaGraduacionExplorar, imageAspect: 0.6667, textArea: { x: 0.17, y: 0.29, width: 0.63, height: 0.6 } },
-  { key: 'bebe_nina', label: 'Bebé niña', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaBebeNina, imageAspect: 0.9526, textArea: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 } },
-  { key: 'bebe_neutro', label: 'Cuna neutral', gradient: 'linear-gradient(160deg, #D9F99D, #FDE9D9)', text: '#3F6212', artKey: 'confeti', image: invitaBebeNeutro, imageAspect: 0.9526, textArea: { x: 0.27, y: 0.23, width: 0.54, height: 0.54 } },
+  { key: 'bebe_nina', label: 'Bebé niña', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaBebeNina, imageAspect: 0.6667, textArea: { x: 0.27, y: 0.18, width: 0.46, height: 0.52 } },
+  { key: 'bebe_neutro', label: 'Cuna neutral', gradient: 'linear-gradient(160deg, #D9F99D, #FDE9D9)', text: '#3F6212', artKey: 'confeti', image: invitaBebeNeutro, imageAspect: 0.6667, textArea: { x: 0.27, y: 0.17, width: 0.47, height: 0.5 } },
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando la estrella/nube de
   // arriba y el conejito de la izquierda) — con el texto de certificación completo el cálculo automático
   // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
   // invitationLiteralTextOverlap.test.ts).
-  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.951, textArea: { x: 0.25, y: 0.17, width: 0.52, height: 0.648 } },
+  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.6667, textArea: { x: 0.26, y: 0.18, width: 0.46, height: 0.5 } },
   // FASE 2 — fondo rediseñado (2026-09): marco con forma de casa; decoración (llavero "Bienvenidos",
   // plantas, pizarra, cajas) fuera del propio marco — zona segura es el rectángulo inscrito bajo el tejado.
   // Recalibrada 2026-09-26 (feedback en vivo): cortada a la altura de la cesta de la vela (antes invadía
@@ -948,7 +948,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
   // para el bug real de solape con el texto de certificación de 4 líneas tras subir AVG_CHAR_WIDTH_RATIO
   // a 0.6: se amplía únicamente el alto (x/y/width intactos) al mínimo necesario para overflowed=false.
-  { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar, imageAspect: 1.188, textArea: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.706 } },
+  { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar, imageAspect: 0.6667, textArea: { x: 0.23, y: 0.09, width: 0.54, height: 0.48 } },
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real) — con el texto de
   // certificación completo el cálculo automático sigue dando overflow, riesgo asumido explícitamente por el
   // usuario (ver invitationLiteralTextOverlap.test.ts).
@@ -2072,4 +2072,35 @@ export function autoArrangeLayers(
   })
 
   return { layers: arranged, overflowed }
+}
+
+export interface RenderedLayerBox {
+  id: string
+  top: number
+  bottom: number
+}
+
+// 2026-09-27 — solape real reportado en vivo (iPhone, plantillas de imageAspect bajo ~0.43 como
+// "dinosaurios"/"espacio") tras "Pepa, hazla bonita": el icono/título/mensaje aparecían superpuestos en el
+// dispositivo real aunque el cálculo de fracciones (con measureText, ver measureWrappedText) daba hueco de
+// sobra y no se reprodujo en ningún entorno de escritorio probado — no se pudo aislar la causa exacta
+// (posible diferencia real entre Canvas measureText y el motor de texto del dispositivo para ese rango de
+// imageAspect). En vez de seguir afinando una estimación que ya ha demostrado poder desviarse del render
+// real, esta función es la segunda pasada: recibe el alto YA PINTADO de verdad (getBoundingClientRect, ver
+// ui/InvitationDesigner.tsx) de cada capa apilada, en el orden en que se colocaron, y devuelve cuánto hay
+// que desplazar hacia abajo a las que sigan tocando a la anterior — corrige el problema sea cual sea su
+// causa real, sin tocar la estimación en sí. Pura y sin DOM para poder probarla con datos de ejemplo.
+export function reconcileOverlappingBoxes(orderedBoxes: RenderedLayerBox[], safetyGapFrac = 0.01): Map<string, number> {
+  const shifts = new Map<string, number>()
+  let cursorBottom = -Infinity
+  for (const box of orderedBoxes) {
+    if (box.top < cursorBottom + safetyGapFrac) {
+      const shift = cursorBottom + safetyGapFrac - box.top
+      shifts.set(box.id, shift)
+      cursorBottom = box.bottom + shift
+    } else {
+      cursorBottom = box.bottom
+    }
+  }
+  return shifts
 }

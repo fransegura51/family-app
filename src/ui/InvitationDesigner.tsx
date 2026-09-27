@@ -1,4 +1,4 @@
-import { ChangeEvent, type CSSProperties, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, type CSSProperties, PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   autoArrangeLayers,
   buildInvitationMessage,
@@ -10,6 +10,7 @@ import {
   LINE_HEIGHT_RATIO,
   type InvitationTemplateMeta,
   makeInvitationLayer,
+  reconcileOverlappingBoxes,
   sortInvitationTemplatesForEvent,
   type TextMeasurer,
 } from '@/domain/events'
@@ -1188,6 +1189,16 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
+  // 2026-09-27 — solape real reportado en vivo (iPhone, "dinosaurios"/"espacio", imageAspect bajo ~0.43):
+  // tras "Pepa, hazla bonita" el icono/título/mensaje aparecían superpuestos en el dispositivo real, aunque
+  // el cálculo de fracciones (con measureText, ver d082f7b) daba hueco de sobra y no se reprodujo en ningún
+  // entorno de escritorio probado — no se pudo aislar la causa exacta (posible diferencia real entre
+  // Canvas measureText y el renderizado DOM en Safari/iOS para este rango de imageAspect). En vez de seguir
+  // afinando una estimación que ya ha demostrado poder desviarse del render real, esta segunda pasada mide
+  // el alto YA PINTADO de verdad (getBoundingClientRect) justo después de "Pepa" y separa las capas que
+  // sigan tocándose — corrige el problema sea cual sea su causa real, sin tocar la estimación en sí.
+  const layerElsRef = useRef<Map<string, HTMLDivElement>>(new Map())
+  const reconcilePendingRef = useRef(false)
   // INV-EDITOR-5 — cambios sin guardar: el snapshot (comparable) tal como se cargó o se guardó por
   // última vez. null mientras sigue cargando (todavía no hay nada con lo que comparar).
   const savedSnapshotRef = useRef<string | null>(null)
@@ -1467,7 +1478,42 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     // Corrección tras certificación iPhone — nunca se reduce el fontSize ni se fuerza el texto a caber:
     // si de verdad no cabe ni comprimiendo los huecos al mínimo, se avisa en vez de ocultarlo.
     setError(result.overflowed ? 'El texto no cabe entero en la zona limpia de esta plantilla — prueba a acortarlo, a hacerlo más pequeño con "Tamaño", o usa otra plantilla.' : null)
+    // Ver el comentario junto a layerElsRef/reconcilePendingRef: la siguiente pasada (useLayoutEffect)
+    // comprueba el alto YA PINTADO de verdad y separa las capas si el estimado se quedó corto.
+    reconcilePendingRef.current = true
   }
+
+  // Segunda pasada tras "Pepa, hazla bonita": mide el alto REAL ya pintado (getBoundingClientRect) de
+  // icono/título/mensaje y, si dos siguen tocándose de verdad, separa la de abajo — corrige el problema
+  // igual si la causa es una diferencia real de Canvas measureText vs. el motor de texto del dispositivo,
+  // sin tocar la estimación (ver domain/events.ts). useLayoutEffect (no useEffect): se ejecuta después de
+  // que el DOM ya tiene las posiciones nuevas pero ANTES de que el navegador pinte ese fotograma, así que
+  // si hace falta corregir, el usuario nunca llega a ver el solape a medio corregir.
+  useLayoutEffect(() => {
+    if (!reconcilePendingRef.current) return
+    reconcilePendingRef.current = false
+    const containerEl = canvasRef.current
+    if (!containerEl) return
+    const containerRect = containerEl.getBoundingClientRect()
+    if (containerRect.height <= 0) return
+
+    const stackedIds = layers
+      .filter((l) => l.type === 'emoji' || l.type === 'text' || l.type === 'event_data')
+      .sort((a, b) => a.y - b.y)
+      .map((l) => l.id)
+
+    const orderedBoxes = stackedIds.flatMap((id) => {
+      const el = layerElsRef.current.get(id)
+      if (!el) return []
+      const r = el.getBoundingClientRect()
+      if (r.height <= 0) return []
+      return [{ id, top: (r.top - containerRect.top) / containerRect.height, bottom: (r.bottom - containerRect.top) / containerRect.height }]
+    })
+    const shifts = reconcileOverlappingBoxes(orderedBoxes)
+    if (shifts.size > 0) {
+      setLayers((prev) => prev.map((l) => (shifts.has(l.id) ? { ...l, y: l.y + shifts.get(l.id)! } : l)))
+    }
+  }, [layers])
 
   async function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1672,6 +1718,10 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     return (
                     <div
                       key={layer.id}
+                      ref={(el) => {
+                        if (el) layerElsRef.current.set(layer.id, el)
+                        else layerElsRef.current.delete(layer.id)
+                      }}
                       onPointerDown={(e) => handleLayerPointerDown(e, layer)}
                       onPointerMove={handleDragPointerMove}
                       onPointerUp={handleDragPointerUp}

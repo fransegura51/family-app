@@ -198,10 +198,13 @@ describe('7. GRUPO A completo (9 plantillas certificadas): ninguna textArea se h
   // invitationLiteralTextOverlap.test.ts): con imageAspect > 1 (lienzo más ancho que alto), el motor
   // llevaba todo este tiempo SUBESTIMANDO el alto real necesario para estas 2 — nunca se detectó porque los
   // tests de esta fase usaban el texto más corto de buildInvitationMessage, no el literal de 4 líneas.
+  // 2026-09-27: cena_hogar recibió un fondo nuevo del usuario (imagen + textArea recalculada por completo,
+  // imageAspect pasa de 1.188 a 0.6667) — misma excepción autorizada al dar la imagen directamente, igual
+  // que corazones_acuarela.
   const GROUP_A: Record<string, { x: number; y: number; width: number; height: number }> = {
     elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.705 },
     playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.68 },
-    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.706 },
+    cena_hogar: { x: 0.23, y: 0.09, width: 0.54, height: 0.48 },
     corazones_acuarela: { x: 0.2, y: 0.14, width: 0.6, height: 0.62 },
     alegre: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 },
     unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 },
@@ -257,9 +260,6 @@ describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN s
   // comida (la usuaria lo confirmó en el dispositivo real) — se deja sin tocar, error de mi propio análisis
   // inicial, no un bug real.
   const UNCHANGED_UNLISTED: Record<string, { x: number; y: number; width: number; height: number }> = {
-    bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 },
-    bebe_neutro: { x: 0.27, y: 0.23, width: 0.54, height: 0.54 },
-    bebe_arcoiris: { x: 0.25, y: 0.17, width: 0.52, height: 0.648 },
     casa_cajas: { x: 0.25, y: 0.10, width: 0.38, height: 0.58 },
     despedida_novia: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.68 },
     playa_piscina: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 },
@@ -284,6 +284,21 @@ describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN s
     expect(t.imageAspect).toBe(0.6667)
     expect(t.textArea).toEqual({ x: 0.33, y: 0.13, width: 0.48, height: 0.5 })
   })
+  it('bebe_nina (fondo sustituido 2026-09-27 por la usuaria)', () => {
+    const t = templateByKey('bebe_nina')
+    expect(t.imageAspect).toBe(0.6667)
+    expect(t.textArea).toEqual({ x: 0.27, y: 0.18, width: 0.46, height: 0.52 })
+  })
+  it('bebe_neutro (fondo sustituido 2026-09-27 por la usuaria)', () => {
+    const t = templateByKey('bebe_neutro')
+    expect(t.imageAspect).toBe(0.6667)
+    expect(t.textArea).toEqual({ x: 0.27, y: 0.17, width: 0.47, height: 0.5 })
+  })
+  it('bebe_arcoiris (fondo sustituido 2026-09-27 por la usuaria)', () => {
+    const t = templateByKey('bebe_arcoiris')
+    expect(t.imageAspect).toBe(0.6667)
+    expect(t.textArea).toEqual({ x: 0.26, y: 0.18, width: 0.46, height: 0.5 })
+  })
   it('A=9 + B=46 + resueltas en FASE2=33 + sin instrucción restante=12 cubren exactamente las 100 plantillas reales', () => {
     const named = new Set([
       ...Object.keys({
@@ -295,6 +310,9 @@ describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN s
       ...Object.keys(UNCHANGED_UNLISTED),
       'jubilacion_cena',
       'tapas',
+      'bebe_nina',
+      'bebe_neutro',
+      'bebe_arcoiris',
     ])
     expect(named.size).toBe(100)
     expect(INVITATION_TEMPLATES.length).toBe(100)

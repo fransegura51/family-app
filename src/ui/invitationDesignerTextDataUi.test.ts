@@ -1,0 +1,131 @@
+import { describe, expect, it } from 'vitest'
+
+// Fase 3 Bloque 2 (2026-09-27) — 🔤 Texto (alineación/negrita/cursiva) y 📋 Datos reales del evento.
+// Mismo estilo que el resto de tests de InvitationDesigner.tsx (invitationDesignerLineHeight.test.ts,
+// invitationDesignerContextualUi.test.ts...): auditoría del código fuente real, no un test de render.
+const FILES = import.meta.glob(['/src/ui/InvitationDesigner.tsx', '/src/domain/events.ts'], {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>
+const DESIGNER_SRC = FILES['/src/ui/InvitationDesigner.tsx']
+const EVENTS_SRC = FILES['/src/domain/events.ts']
+
+function slice(src: string, fromMarker: string, toMarker: string): string {
+  const start = src.indexOf(fromMarker)
+  expect(start, `no se encontró "${fromMarker}"`).toBeGreaterThan(-1)
+  const end = src.indexOf(toMarker, start + fromMarker.length)
+  expect(end, `no se encontró "${toMarker}" después de "${fromMarker}"`).toBeGreaterThan(start)
+  return src.slice(start, end)
+}
+
+describe('InvitationLayerVisual — fontWeight/fontStyle/textAlign vienen de la capa, no hardcodeados', () => {
+  it('ya no queda ningún fontWeight hardcodeado por tipo (layer.type === \'text\' ? 700 : 400) en este archivo', () => {
+    expect(DESIGNER_SRC).not.toContain("layer.type === 'text' ? 700 : 400")
+  })
+
+  it('usa resolveLayerFontWeight(layer), importado de @/domain/events (una sola regla, no duplicada)', () => {
+    const importBlock = DESIGNER_SRC.slice(DESIGNER_SRC.indexOf('import {'), DESIGNER_SRC.indexOf("} from '@/domain/events'"))
+    expect(importBlock).toContain('resolveLayerFontWeight')
+    const block = slice(DESIGNER_SRC, 'function InvitationLayerVisual', "case 'emoji':")
+    expect(block).toContain('const fontWeight = resolveLayerFontWeight(layer)')
+  })
+
+  it('resolveLayerFontWeight vive en domain/events.ts y respeta bold explícito con default compatible por tipo', () => {
+    expect(EVENTS_SRC).toContain('export function resolveLayerFontWeight(layer: Pick<InvitationLayer, \'type\' | \'bold\'>): number {')
+    expect(EVENTS_SRC).toContain("if (layer.bold !== undefined) return layer.bold ? 700 : 400")
+    expect(EVENTS_SRC).toContain("return layer.type === 'text' ? 700 : 400")
+  })
+
+  it('fontStyle se deriva de layer.italic (nunca hardcodeado a "normal")', () => {
+    const block = slice(DESIGNER_SRC, 'function InvitationLayerVisual', "case 'emoji':")
+    expect(block).toContain("const fontStyle = layer.italic ? 'italic' : 'normal'")
+    expect(block).toContain('fontStyle,') // aplicado en el <div> del texto no curvado
+    expect(block).toContain('fontStyle={fontStyle}') // aplicado también en el <text> SVG (curvado)
+  })
+
+  it('textAlign se deriva de layer.textAlign con default "center" (compatible con invitaciones antiguas sin la propiedad)', () => {
+    const block = slice(DESIGNER_SRC, 'function InvitationLayerVisual', "case 'emoji':")
+    expect(block).not.toContain("textAlign: 'center',")
+    expect(block).toContain("const textAlign = layer.textAlign ?? 'center'")
+    expect(block).toContain('textAlign,')
+  })
+})
+
+describe('Panel "texto" (✏️ Editar) — alineación, negrita y cursiva junto al contenido, sin nuevos botones de barra', () => {
+  const panel = slice(DESIGNER_SRC, "panel === 'texto' && selected && isTextLike", "panel === 'datos'")
+
+  it('sigue teniendo el textarea de contenido (no se duplica el control de editar texto)', () => {
+    expect(panel).toContain('value={selected.text ?? \'\'}')
+    expect(panel).toContain("updateSelectedContinuous({ text: e.target.value }, 'text')")
+  })
+
+  it('alineación: 3 opciones (ALIGN_OPTIONS), cada una es un cambio discreto (una operación de Deshacer)', () => {
+    expect(panel).toContain('ALIGN_OPTIONS.map')
+    expect(panel).toContain("updateSelectedDiscrete({ textAlign: opt.value })")
+    expect(DESIGNER_SRC).toContain("{ value: 'left'")
+    expect(DESIGNER_SRC).toContain("{ value: 'center'")
+    expect(DESIGNER_SRC).toContain("{ value: 'right'")
+  })
+
+  it('negrita: botón "B" que invierte el peso EFECTIVO actual (respeta el default por tipo si nunca se tocó)', () => {
+    expect(panel).toContain('resolveLayerFontWeight(selected) === 700')
+    expect(panel).toContain('updateSelectedDiscrete({ bold: resolveLayerFontWeight(selected) !== 700 })')
+  })
+
+  it('cursiva: botón "I" que alterna italic, cambio discreto', () => {
+    expect(panel).toContain('updateSelectedDiscrete({ italic: !selected.italic })')
+  })
+
+  it('no se tocan los paneles de color/fuente/efecto/tamaño ya existentes (reutilizados tal cual)', () => {
+    expect(DESIGNER_SRC).toContain("panel === 'color' && selected")
+    expect(DESIGNER_SRC).toContain("panel === 'fuente' && selected && isTextLike")
+    expect(DESIGNER_SRC).toContain("panel === 'efecto' && selected && isTextLike")
+    expect(DESIGNER_SRC).toContain("panel === 'tamano' && selected")
+  })
+})
+
+describe('📋 Datos — panel real con los campos existentes del evento, ya no un botón que inserta todo el párrafo', () => {
+  it('"datos" es un DesignerPanel de verdad (togglePanel), no una acción directa de un solo toque', () => {
+    expect(DESIGNER_SRC).toContain(
+      "type DesignerPanel = 'plantilla' | 'texto' | 'datos' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas'",
+    )
+    expect(DESIGNER_SRC).toContain("onClick={() => togglePanel('datos')}")
+  })
+
+  it('ya NO inserta buildInvitationMessage(event) de un solo toque (ese comportamiento se sustituye por el panel)', () => {
+    expect(DESIGNER_SRC).not.toContain('buildInvitationMessage')
+  })
+
+  it('el panel lee los campos de buildInvitationDataFields(event) — no una lista hardcodeada en la UI', () => {
+    const panel = slice(DESIGNER_SRC, "panel === 'datos' && (", '{panel === \'mas\'')
+    expect(panel).toContain('invitationDataFields.map')
+    expect(DESIGNER_SRC).toContain('const invitationDataFields = useMemo(() => buildInvitationDataFields(event), [event])')
+  })
+
+  it('insertar un dato crea una capa event_data normal (editable como cualquier otra), no un tipo bloqueado especial', () => {
+    const panel = slice(DESIGNER_SRC, "panel === 'datos' && (", '{panel === \'mas\'')
+    expect(panel).toContain("handleAddLayer(makeInvitationLayer('event_data', { text: f.value, color: '#ffffff', fontSize: 14 }))")
+  })
+
+  it('indica discretamente qué datos ya se han insertado, sin bloquear insertarlos de nuevo', () => {
+    const panel = slice(DESIGNER_SRC, "panel === 'datos' && (", '{panel === \'mas\'')
+    expect(panel).toContain('const alreadyInserted = layers.some((l) => l.text === f.value)')
+  })
+
+  it('si el evento no tiene ningún dato real todavía, no inventa nada — muestra un aviso en vez de una lista vacía silenciosa', () => {
+    const panel = slice(DESIGNER_SRC, "panel === 'datos' && (", '{panel === \'mas\'')
+    expect(panel).toContain('invitationDataFields.length === 0')
+  })
+})
+
+describe('buildInvitationDataFields vive en domain/ (dominio puro), no duplicado en la UI', () => {
+  it('está exportado desde domain/events.ts junto a InvitationDataField', () => {
+    expect(EVENTS_SRC).toContain('export interface InvitationDataField {')
+    expect(EVENTS_SRC).toContain('export function buildInvitationDataFields(event: FamilyEvent): InvitationDataField[] {')
+  })
+
+  it('no inventa un campo "edad" fuera de cumpleaños, ni ubicación fuera de lo realmente puesto', () => {
+    expect(EVENTS_SRC).toContain("event.type === 'cumpleanos' && typeof event.details.ageTurning === 'number'")
+  })
+})

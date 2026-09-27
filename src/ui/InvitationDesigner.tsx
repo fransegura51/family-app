@@ -1,7 +1,7 @@
 import { ChangeEvent, type CSSProperties, PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   autoArrangeLayers,
-  buildInvitationMessage,
+  buildInvitationDataFields,
   buildInvitationTemplateLayers,
   DEFAULT_TEXT_AREA,
   INVITATION_EMOJI_SUGGESTIONS,
@@ -11,11 +11,12 @@ import {
   type InvitationTemplateMeta,
   makeInvitationLayer,
   reconcileOverlappingBoxes,
+  resolveLayerFontWeight,
   sortInvitationTemplatesForEvent,
   type TextMeasurer,
 } from '@/domain/events'
 import { errorMessage } from '@/domain/errorMessage'
-import type { FamilyEvent, InvitationCanvas, InvitationLayer, InvitationTextStyle } from '@/domain/types'
+import type { FamilyEvent, InvitationCanvas, InvitationLayer, InvitationTextAlign, InvitationTextStyle } from '@/domain/types'
 import { getEventInvitation, getInvitationPhotoUrl, saveEventInvitation, uploadInvitationPhoto } from '@/data/events'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 
@@ -213,7 +214,9 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
       const color = layer.color || '#ffffff'
       const fontSize = layer.fontSize ?? 16
       const fontFamily = layer.fontFamily || 'inherit'
-      const fontWeight = layer.type === 'text' ? 700 : 400
+      const fontWeight = resolveLayerFontWeight(layer)
+      const fontStyle = layer.italic ? 'italic' : 'normal'
+      const textAlign = layer.textAlign ?? 'center'
       const style = layer.textStyle ?? 'normal'
       const hasGradientFill = style !== 'normal' && style !== '3d'
 
@@ -240,13 +243,13 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
             )}
             {style === '3d' &&
               [5, 4, 3, 2, 1].map((i) => (
-                <text key={i} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={dark} transform={`translate(${i}, ${i})`}>
+                <text key={i} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fontStyle={fontStyle} fill={dark} transform={`translate(${i}, ${i})`}>
                   <textPath href={`#${pathId}`} xlinkHref={`#${pathId}`} startOffset="50%" textAnchor="middle">
                     {text}
                   </textPath>
                 </text>
               ))}
-            <text fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={fill}>
+            <text fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fontStyle={fontStyle} fill={fill}>
               <textPath href={`#${pathId}`} xlinkHref={`#${pathId}`} startOffset="50%" textAnchor="middle">
                 {text}
               </textPath>
@@ -265,6 +268,7 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
               fontSize,
               fontFamily,
               fontWeight,
+              fontStyle,
               // Debe coincidir EXACTAMENTE con LINE_HEIGHT_RATIO (domain/events.ts): esa constante es la
               // que estimateLayerBoxFraction usa para calcular el alto real de esta capa y así colocar el
               // resto (autoArrangeLayers) sin solape ni overflow falso. Sin fijarlo aquí, el <div> heredaba
@@ -272,7 +276,7 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
               // estimado podía no coincidir con el alto realmente pintado.
               lineHeight: LINE_HEIGHT_RATIO,
               whiteSpace: 'pre-line',
-              textAlign: 'center',
+              textAlign,
               textShadow: className ? 'none' : style === '3d' ? text3dShadow(color) : '0 1px 4px rgba(0,0,0,0.25)',
               '--glitter-base': color,
             } as CSSProperties
@@ -1087,6 +1091,14 @@ const LAYER_FONT_OPTIONS: { value: string; label: string }[] = [
   { value: '"Brush Script MT", cursive', label: 'Manuscrita' },
 ]
 
+// Fase 3 Bloque 2 — alineación real por capa (antes textAlign: 'center' fijo para todas). Solo 3 opciones,
+// sin ambigüedad de icono: ninguna requiere leyenda aparte para entenderse de un vistazo en móvil.
+const ALIGN_OPTIONS: { value: InvitationTextAlign; icon: string; label: string }[] = [
+  { value: 'left', icon: '⬅', label: 'Alinear a la izquierda' },
+  { value: 'center', icon: '↔', label: 'Centrar' },
+  { value: 'right', icon: '➡', label: 'Alinear a la derecha' },
+]
+
 const TEXT_STYLE_OPTIONS: { value: InvitationTextStyle; label: string }[] = [
   { value: '3d', label: '🧊 3D' },
   { value: 'sparkle', label: '✨ Purpurina' },
@@ -1144,10 +1156,13 @@ function comparableSnapshotKey(s: EditorSnapshot): string {
 
 // INV-EDITOR-4 — reforma UX móvil: un único panel secundario (popover compacto) a la vez, según qué está
 // seleccionado — nunca el antiguo bloque fijo con todos los controles a la vista simultáneamente.
-type DesignerPanel = 'plantilla' | 'texto' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas'
+type DesignerPanel = 'plantilla' | 'texto' | 'datos' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas'
 
 export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
   const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
+  // Fase 3 Bloque 2 — solo los datos reales del evento (ver buildInvitationDataFields): nunca se inventa
+  // ningún campo ausente, la lista puede salir corta o vacía si el evento todavía no tiene esos datos.
+  const invitationDataFields = useMemo(() => buildInvitationDataFields(event), [event])
   const [templateKey, setTemplateKey] = useState(sortedTemplates[0].key)
   const [backgroundGradient, setBackgroundGradient] = useState(sortedTemplates[0].gradient)
   const [layers, setLayers] = useState<InvitationLayer[]>([])
@@ -1877,16 +1892,73 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   )}
 
                   {panel === 'texto' && selected && isTextLike && (
-                    <label style={{ display: 'block' }}>
-                      Texto
-                      <textarea
-                        autoFocus
-                        value={selected.text ?? ''}
-                        onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
-                        onBlur={commitContinuousEdit}
-                        rows={3}
-                      />
-                    </label>
+                    <>
+                      <label style={{ display: 'block' }}>
+                        Texto
+                        <textarea
+                          autoFocus
+                          value={selected.text ?? ''}
+                          onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
+                          onBlur={commitContinuousEdit}
+                          rows={3}
+                        />
+                      </label>
+                      <div className="filter-row" style={{ marginTop: 8, alignItems: 'center' }}>
+                        {ALIGN_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            className={'chip' + ((selected.textAlign ?? 'center') === opt.value ? ' chip-active' : '')}
+                            onClick={() => updateSelectedDiscrete({ textAlign: opt.value })}
+                            aria-label={opt.label}
+                          >
+                            {opt.icon}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className={'chip' + (resolveLayerFontWeight(selected) === 700 ? ' chip-active' : '')}
+                          onClick={() => updateSelectedDiscrete({ bold: resolveLayerFontWeight(selected) !== 700 })}
+                          aria-label="Negrita"
+                          style={{ fontWeight: 700 }}
+                        >
+                          B
+                        </button>
+                        <button
+                          type="button"
+                          className={'chip' + (selected.italic ? ' chip-active' : '')}
+                          onClick={() => updateSelectedDiscrete({ italic: !selected.italic })}
+                          aria-label="Cursiva"
+                          style={{ fontStyle: 'italic' }}
+                        >
+                          I
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {panel === 'datos' && (
+                    <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                      {invitationDataFields.length === 0 && (
+                        <p className="muted" style={{ fontSize: 12 }}>
+                          Este evento todavía no tiene fecha, hora o lugar puestos — en cuanto los rellenes en "⚙️ Gestionar evento", aparecerán aquí.
+                        </p>
+                      )}
+                      {invitationDataFields.map((f) => {
+                        const alreadyInserted = layers.some((l) => l.text === f.value)
+                        return (
+                          <button
+                            key={f.key}
+                            type="button"
+                            className={'chip' + (alreadyInserted ? ' chip-active' : '')}
+                            onClick={() => handleAddLayer(makeInvitationLayer('event_data', { text: f.value, color: '#ffffff', fontSize: 14 }))}
+                          >
+                            {alreadyInserted ? '✓ ' : ''}
+                            {f.value}
+                          </button>
+                        )
+                      })}
+                    </div>
                   )}
 
                   {panel === 'color' && selected && (selected.type === 'text' || selected.type === 'event_data' || selected.type === 'shape') && (
@@ -2013,11 +2085,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       <span className="invitation-toolbar-icon">🔤</span>
                       <span>Texto</span>
                     </button>
-                    <button
-                      type="button"
-                      className="invitation-toolbar-btn"
-                      onClick={() => handleAddLayer(makeInvitationLayer('event_data', { text: buildInvitationMessage(event), color: '#ffffff', fontSize: 14 }))}
-                    >
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'datos' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('datos')}>
                       <span className="invitation-toolbar-icon">📋</span>
                       <span>Datos</span>
                     </button>

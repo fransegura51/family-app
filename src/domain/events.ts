@@ -595,6 +595,53 @@ export function buildInvitationMessage(event: FamilyEvent): string {
   }
 }
 
+// Fase 3 Bloque 2 — "📋 Datos": un dato real del evento, listo para insertarse como una capa de texto
+// normal en la invitación (ver ui/InvitationDesigner.tsx, panel 'datos'). `value` ya lleva el emoji y está
+// formateado en humano (nunca un ISO en crudo) — es exactamente el texto que se guarda en `layer.text`.
+export interface InvitationDataField {
+  key: string
+  icon: string
+  label: string
+  value: string
+}
+
+// Petición real: "PEPA ya conoce datos del evento... solo mostrar campos que 1) realmente existan, 2)
+// tengan contenido, 3) tengan sentido para una invitación" — cada campo se añade solo si el evento tiene
+// contenido real ahí; nunca se inventa un valor ausente (ni una hora, ni una edad, ni un lugar). Pensada
+// para ser la MISMA normalización que "✨ Pepa, hazla por mí" reutilizará más adelante (evento → datos
+// utilizables), así que la fecha/hora/ubicación no se formatean de nuevo en otro sitio aparte.
+export function buildInvitationDataFields(event: FamilyEvent): InvitationDataField[] {
+  const fields: InvitationDataField[] = []
+
+  if (event.dateStatus !== 'pendiente' && event.eventDate) {
+    const nice = new Date(event.eventDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
+    fields.push({ key: 'fecha', icon: '📅', label: 'Fecha', value: `📅 ${nice}` })
+  }
+  if (event.eventTime) {
+    fields.push({ key: 'hora', icon: '🕐', label: 'Hora', value: `🕐 ${event.eventTime.slice(0, 5)}` })
+  }
+
+  if (DUAL_LOCATION_EVENT_TYPES.includes(event.type)) {
+    if (event.ceremonyLocationLabel) {
+      const time = event.ceremonyTime ? ` · ${event.ceremonyTime.slice(0, 5)}` : ''
+      fields.push({ key: 'ceremonia', icon: '🕊️', label: 'Ceremonia', value: `🕊️ ${event.ceremonyLocationLabel}${time}` })
+    }
+    if (event.celebrationLocationLabel) {
+      fields.push({ key: 'celebracion', icon: '🎉', label: 'Celebración', value: `🎉 ${event.celebrationLocationLabel}` })
+    }
+  } else if (event.venueLabel) {
+    fields.push({ key: 'lugar', icon: '📍', label: 'Lugar', value: `📍 ${event.venueLabel}` })
+  }
+
+  // Solo cumpleaños guarda cuántos años se cumplen (details.ageTurning, obligatorio al crear ese tipo de
+  // evento — ver EventosScreen.tsx) — no se inventa una edad para ningún otro tipo.
+  if (event.type === 'cumpleanos' && typeof event.details.ageTurning === 'number') {
+    fields.push({ key: 'edad', icon: '🎂', label: 'Cumple años', value: `🎂 Cumple ${event.details.ageTurning} años` })
+  }
+
+  return fields
+}
+
 // Plantillas — cada una es color + una ilustración decorativa propia
 // (ver INVITATION_ART en EventosScreen.tsx, ahí vive el JSX porque este
 // archivo es .ts sin JSX). Petición real: "no quiero un simple fondo
@@ -1935,6 +1982,17 @@ function assumedCanvasHeightPx(imageAspect: number): number {
   return ASSUMED_CANVAS_SIZE_PX / imageAspect
 }
 
+// Fase 3 Bloque 2 — peso de letra REAL de una capa, en un único sitio (antes duplicado tal cual aquí y en
+// InvitationLayerVisual, ui/InvitationDesigner.tsx). `bold` es opcional y compatible: una capa guardada
+// ANTES de que existiera esta propiedad no la tiene (undefined), así que cae exactamente en la regla vieja
+// (texto=700, resto=400) — el aspecto de una invitación antigua no cambia ni un píxel. Solo cuando el
+// usuario toca a mano el botón "B" del editor queda un valor explícito (true/false) que manda por encima
+// del tipo de capa.
+export function resolveLayerFontWeight(layer: Pick<InvitationLayer, 'type' | 'bold'>): number {
+  if (layer.bold !== undefined) return layer.bold ? 700 : 400
+  return layer.type === 'text' ? 700 : 400
+}
+
 // INV-EDITOR-2 (corrección) — estima, en fracción del lienzo (0..1), la MITAD del ancho/alto real con el
 // que se renderiza una capa — la misma función que usa autoArrangeLayers para colocarla y que los tests
 // usan para comprobar que su caja completa (no solo su centro) queda dentro de la zona segura. El texto
@@ -1951,7 +2009,7 @@ export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: 
   }
   if (layer.type === 'text' || layer.type === 'event_data') {
     const fontSize = layer.fontSize ?? 16
-    const fontWeight = layer.type === 'text' ? 700 : 400
+    const fontWeight = resolveLayerFontWeight(layer)
     const { lines, maxLineWidthPx } = measureWrappedText(layer.text ?? '', fontSize, fontWeight, layer.fontFamily, zoneWidthFrac, measurer)
     const heightPx = lines * fontSize * LINE_HEIGHT_RATIO
     return { halfWidth: maxLineWidthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / canvasHeightPx }

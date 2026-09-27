@@ -874,6 +874,8 @@ export type InvitationLayerType = 'background' | 'shape' | 'photo' | 'text' | 'e
 
 export type InvitationTextStyle = 'normal' | '3d' | 'sparkle' | 'rainbow_static' | 'rainbow_animated' | 'iridescent' | 'metallic'
 
+export type InvitationTextAlign = 'left' | 'center' | 'right'
+
 export interface InvitationLayer {
   id: string
   type: InvitationLayerType
@@ -897,6 +899,13 @@ export interface InvitationLayer {
   // líneas, no tiene sentido curvarlo).
   textStyle?: InvitationTextStyle
   curve?: number
+  // Fase 3 Bloque 2 — opcionales y compatibles: una capa GUARDADA ANTES de que existieran (undefined en los
+  // tres) debe verse EXACTAMENTE igual que antes (ver resolveLayerFontWeight para bold/fontWeight; italic
+  // ausente siempre fue "normal"; textAlign ausente siempre fue 'center', hardcodeado en el render de
+  // antes). Solo capas nuevas o tocadas a mano por el usuario llevan un valor explícito aquí.
+  textAlign?: InvitationTextAlign
+  bold?: boolean
+  italic?: boolean
   // forma decorativa genérica (sin personajes con copyright)
   shapeKey?: string
   // foto subida por el usuario (event-photos bucket)

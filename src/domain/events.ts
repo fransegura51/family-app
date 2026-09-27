@@ -1751,8 +1751,13 @@ export function eventAlertsToAttentionItems(alerts: EventAlertSummary[]): Attent
 // personaje con copyright) para la capa "shape".
 // ---------------------------------------------------------------------
 
+// Fase 3 Bloque 3 — añadidas rectángulo/línea/corazón (pedidas explícitamente); el resto ya existía. Cada
+// una necesita su propio caso en InvitationShapeGraphic (ui/InvitationDesigner.tsx).
 export const INVITATION_SHAPES: { key: string; label: string }[] = [
   { key: 'circulo', label: '⚪ Círculo' },
+  { key: 'rectangulo', label: '▭ Rectángulo' },
+  { key: 'linea', label: '➖ Línea' },
+  { key: 'corazon', label: '❤️ Corazón' },
   { key: 'anillo', label: '⭕ Anillo' },
   { key: 'estrella', label: '⭐ Estrella' },
   { key: 'confeti', label: '🎊 Confeti' },
@@ -1760,7 +1765,248 @@ export const INVITATION_SHAPES: { key: string; label: string }[] = [
   { key: 'brillos', label: '✨ Brillos' },
 ]
 
-export const INVITATION_EMOJI_SUGGESTIONS = ['🎉', '🎂', '🎈', '⛪', '👶', '💍', '🥂', '🌸', '✨', '🎁']
+// Fase 3 Bloque 3 — biblioteca de emojis por categorías con búsqueda en español (petición real: "la
+// biblioteca es demasiado pequeña... el buscador no debe depender únicamente del carácter"). Todo datos
+// locales, sin librería ni API: cada emoji lleva sus propios términos de búsqueda en español (sin tildes,
+// en minúscula — normalizeInvitationEmojiSearch se encarga de normalizar lo que escriba el usuario para que
+// "corazón"/"corazon" encuentren lo mismo).
+export interface InvitationEmojiEntry {
+  char: string
+  terms: string[]
+}
+
+export interface InvitationEmojiCategory {
+  key: string
+  label: string
+  emojis: InvitationEmojiEntry[]
+}
+
+export const INVITATION_EMOJI_CATEGORIES: InvitationEmojiCategory[] = [
+  {
+    key: 'caras',
+    label: '😀 Caras y personas',
+    emojis: [
+      { char: '😀', terms: ['sonrisa', 'feliz', 'cara'] },
+      { char: '😄', terms: ['sonrisa', 'feliz', 'risa'] },
+      { char: '😁', terms: ['sonrisa', 'feliz'] },
+      { char: '🥳', terms: ['fiesta', 'celebrar', 'cumpleaños', 'cara fiesta'] },
+      { char: '😍', terms: ['enamorado', 'amor', 'corazones', 'ojos corazon'] },
+      { char: '🤩', terms: ['asombrado', 'estrellas', 'impresionado'] },
+      { char: '😘', terms: ['beso', 'cariño'] },
+      { char: '🙌', terms: ['manos arriba', 'celebrar', 'yupi'] },
+      { char: '👏', terms: ['aplauso', 'felicidades', 'bravo'] },
+      { char: '🤗', terms: ['abrazo', 'cariño'] },
+      { char: '🥰', terms: ['cariño', 'amor', 'enamorado'] },
+    ],
+  },
+  {
+    key: 'celebracion',
+    label: '🎉 Celebración',
+    emojis: [
+      { char: '🎉', terms: ['fiesta', 'confeti', 'celebracion', 'enhorabuena'] },
+      { char: '🎊', terms: ['confeti', 'fiesta'] },
+      { char: '🍾', terms: ['champan', 'brindis', 'botella'] },
+      { char: '🥂', terms: ['brindis', 'copas', 'celebrar'] },
+      { char: '🎈', terms: ['globo', 'fiesta'] },
+      { char: '🎇', terms: ['fuegos artificiales', 'chispas'] },
+      { char: '🎆', terms: ['fuegos artificiales'] },
+      { char: '🪅', terms: ['piñata', 'fiesta'] },
+      { char: '🎵', terms: ['musica', 'nota'] },
+      { char: '🎶', terms: ['musica', 'notas'] },
+      { char: '📣', terms: ['megafono', 'anuncio', 'aviso'] },
+    ],
+  },
+  {
+    key: 'cumpleanos',
+    label: '🎂 Cumpleaños',
+    emojis: [
+      { char: '🎂', terms: ['tarta', 'pastel', 'cumpleaños', 'cumple'] },
+      { char: '🍰', terms: ['pastel', 'tarta', 'porcion'] },
+      { char: '🧁', terms: ['cupcake', 'magdalena', 'pastelito'] },
+      { char: '🕯️', terms: ['vela', 'velas'] },
+      { char: '🎁', terms: ['regalo', 'sorpresa'] },
+      { char: '👑', terms: ['corona', 'rey', 'reina'] },
+      { char: '🎀', terms: ['lazo', 'moño'] },
+    ],
+  },
+  {
+    key: 'amor',
+    label: '❤️ Amor',
+    emojis: [
+      { char: '❤️', terms: ['corazon', 'amor', 'rojo'] },
+      { char: '💕', terms: ['corazones', 'amor', 'cariño'] },
+      { char: '💖', terms: ['corazon', 'brillante', 'amor'] },
+      { char: '💗', terms: ['corazon', 'amor'] },
+      { char: '💘', terms: ['flecha', 'cupido', 'corazon'] },
+      { char: '💝', terms: ['regalo', 'corazon', 'amor'] },
+      { char: '💑', terms: ['pareja', 'enamorados'] },
+      { char: '💐', terms: ['ramo', 'flores', 'boda'] },
+    ],
+  },
+  {
+    key: 'boda',
+    label: '💍 Boda',
+    emojis: [
+      { char: '💍', terms: ['anillo', 'boda', 'compromiso', 'alianza'] },
+      { char: '👰', terms: ['novia', 'boda'] },
+      { char: '🤵', terms: ['novio', 'boda'] },
+      { char: '💒', terms: ['iglesia', 'boda', 'ceremonia'] },
+      { char: '🕊️', terms: ['paloma', 'paz', 'boda'] },
+      { char: '👫', terms: ['pareja', 'novios'] },
+      { char: '💌', terms: ['carta', 'invitacion', 'amor'] },
+    ],
+  },
+  {
+    key: 'bebe',
+    label: '👶 Bebé',
+    emojis: [
+      { char: '👶', terms: ['bebe', 'niño', 'niña'] },
+      { char: '🍼', terms: ['biberon', 'bebe'] },
+      { char: '🧸', terms: ['osito', 'peluche', 'oso'] },
+      { char: '👣', terms: ['huellas', 'pies', 'bebe'] },
+      { char: '🩵', terms: ['azul', 'niño', 'corazon azul'] },
+      { char: '🩷', terms: ['rosa', 'niña', 'corazon rosa'] },
+      { char: '🦋', terms: ['mariposa'] },
+    ],
+  },
+  {
+    key: 'graduacion',
+    label: '🎓 Graduación',
+    emojis: [
+      { char: '🎓', terms: ['birrete', 'graduacion', 'graduado'] },
+      { char: '📚', terms: ['libros', 'estudios'] },
+      { char: '📖', terms: ['libro', 'lectura'] },
+      { char: '🏆', terms: ['trofeo', 'premio', 'exito'] },
+      { char: '📜', terms: ['diploma', 'titulo', 'pergamino'] },
+      { char: '✏️', terms: ['lapiz', 'estudiar'] },
+    ],
+  },
+  {
+    key: 'comida',
+    label: '🍽️ Comida',
+    emojis: [
+      { char: '🍽️', terms: ['plato', 'comida', 'cena'] },
+      { char: '🍕', terms: ['pizza'] },
+      { char: '🍔', terms: ['hamburguesa'] },
+      { char: '🍷', terms: ['vino', 'copa'] },
+      { char: '🍾', terms: ['champan', 'brindis'] },
+      { char: '🍩', terms: ['donut', 'rosquilla'] },
+      { char: '🍿', terms: ['palomitas'] },
+    ],
+  },
+  {
+    key: 'navidad',
+    label: '🎄 Navidad',
+    emojis: [
+      { char: '🎄', terms: ['arbol', 'navidad'] },
+      { char: '🎅', terms: ['papa noel', 'santa', 'navidad'] },
+      { char: '🤶', terms: ['mama noel', 'navidad'] },
+      { char: '❄️', terms: ['copo de nieve', 'frio', 'invierno'] },
+      { char: '⛄', terms: ['muñeco de nieve'] },
+      { char: '🔔', terms: ['campana', 'navidad'] },
+      { char: '🦌', terms: ['reno', 'navidad'] },
+    ],
+  },
+  {
+    key: 'halloween',
+    label: '🎃 Halloween',
+    emojis: [
+      { char: '🎃', terms: ['calabaza', 'halloween'] },
+      { char: '👻', terms: ['fantasma', 'halloween'] },
+      { char: '🦇', terms: ['murcielago', 'halloween'] },
+      { char: '🕷️', terms: ['araña', 'halloween'] },
+      { char: '🕸️', terms: ['telaraña', 'halloween'] },
+      { char: '💀', terms: ['calavera', 'esqueleto'] },
+      { char: '🧙', terms: ['bruja', 'mago'] },
+      { char: '🍬', terms: ['caramelo', 'chuche'] },
+    ],
+  },
+  {
+    key: 'naturaleza',
+    label: '🌸 Naturaleza',
+    emojis: [
+      { char: '🌸', terms: ['flor', 'cerezo'] },
+      { char: '🌷', terms: ['tulipan', 'flor'] },
+      { char: '🌹', terms: ['rosa', 'flor'] },
+      { char: '🌻', terms: ['girasol', 'flor'] },
+      { char: '🍀', terms: ['trebol', 'suerte'] },
+      { char: '🌿', terms: ['hoja', 'planta'] },
+      { char: '☀️', terms: ['sol', 'verano'] },
+      { char: '🌈', terms: ['arcoiris'] },
+    ],
+  },
+  {
+    key: 'fecha_hora',
+    label: '📅 Fecha y hora',
+    emojis: [
+      { char: '📅', terms: ['calendario', 'fecha', 'dia'] },
+      { char: '🗓️', terms: ['calendario', 'fecha'] },
+      { char: '🕐', terms: ['reloj', 'hora'] },
+      { char: '⏰', terms: ['despertador', 'alarma', 'hora'] },
+      { char: '⏳', terms: ['cuenta atras', 'tiempo'] },
+    ],
+  },
+  {
+    key: 'lugares',
+    label: '📍 Lugares',
+    emojis: [
+      { char: '📍', terms: ['ubicacion', 'lugar', 'sitio'] },
+      { char: '🗺️', terms: ['mapa', 'ubicacion'] },
+      { char: '🏠', terms: ['casa', 'hogar'] },
+      { char: '⛪', terms: ['iglesia', 'ceremonia'] },
+      { char: '🏰', terms: ['castillo'] },
+      { char: '🏖️', terms: ['playa'] },
+      { char: '🏨', terms: ['hotel'] },
+      { char: '🎪', terms: ['carpa', 'circo'] },
+    ],
+  },
+  {
+    key: 'simbolos',
+    label: '⭐ Símbolos',
+    emojis: [
+      { char: '⭐', terms: ['estrella'] },
+      { char: '✨', terms: ['brillo', 'destello', 'magia'] },
+      { char: '💫', terms: ['brillo', 'estrella'] },
+      { char: '🌟', terms: ['estrella', 'brillo'] },
+      { char: '✅', terms: ['check', 'confirmado', 'hecho'] },
+      { char: '💯', terms: ['cien', 'perfecto'] },
+      { char: '🔥', terms: ['fuego', 'genial'] },
+      { char: '👍', terms: ['pulgar arriba', 'bien', 'ok'] },
+      { char: '🙏', terms: ['gracias', 'oracion', 'por favor'] },
+    ],
+  },
+]
+
+// Quita tildes y pasa a minúsculas — para que "corazón"/"corazon", "Tarta"/"tarta" busquen lo mismo, sin
+// tener que escribir cada término dos veces en INVITATION_EMOJI_CATEGORIES.
+function normalizeInvitationEmojiSearch(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+}
+
+// Búsqueda por concepto en español (petición real: "el buscador no debe depender únicamente del carácter
+// del emoji... corazón, tarta, cumpleaños, reloj, ubicación, regalo, bebé, anillo, flor"). Coincide si el
+// término de búsqueda normalizado APARECE dentro de alguno de los términos del emoji (substring, sin
+// dependencias de fuzzy-matching) — cada emoji sale como mucho una vez, en el orden de las categorías.
+export function searchInvitationEmoji(query: string): InvitationEmojiEntry[] {
+  const q = normalizeInvitationEmojiSearch(query)
+  if (!q) return []
+  const seen = new Set<string>()
+  const results: InvitationEmojiEntry[] = []
+  for (const category of INVITATION_EMOJI_CATEGORIES) {
+    for (const entry of category.emojis) {
+      if (seen.has(entry.char)) continue
+      if (entry.terms.some((t) => normalizeInvitationEmojiSearch(t).includes(q))) {
+        results.push(entry)
+        seen.add(entry.char)
+      }
+    }
+  }
+  return results
+}
 
 let layerCounter = 0
 function newLayerId(): string {

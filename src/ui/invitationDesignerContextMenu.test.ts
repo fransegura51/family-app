@@ -32,7 +32,11 @@ describe('2E — el lienzo editable bloquea el menú contextual nativo de iOS, l
   it('la imagen de fondo y la foto de una capa tienen draggable={false} (sin arrastre/drag nativo de imagen)', () => {
     const bgImgBlock = SRC.slice(SRC.indexOf('<img\n                    src={backgroundImageUrl}'), SRC.indexOf('/>', SRC.indexOf('<img\n                    src={backgroundImageUrl}')))
     expect(bgImgBlock).toContain('draggable={false}')
-    expect(SRC).toContain('<img src={url} alt="" draggable={false} style={{ width: size, height: size, objectFit: \'cover\', borderRadius: 12, display: \'block\' }} />')
+    // Fase 3 Bloque 3 — borderRadius de la foto de capa pasó a ser una variable (photoMask: 'circle'/'none'),
+    // ya no un 12 fijo; la protección que importa aquí (draggable={false}) sigue en el mismo <img>.
+    const photoImgBlock = SRC.slice(SRC.indexOf('return url ? (', SRC.indexOf("case 'photo': {")), SRC.indexOf('/>', SRC.indexOf("case 'photo': {")))
+    expect(photoImgBlock).toContain('<img src={url} alt="" draggable={false}')
+    expect(photoImgBlock).toContain('borderRadius,')
   })
 
   it('el bloqueo NO toca los manejadores de selección/arrastre/resize/edición ya existentes: siguen presentes tal cual, dentro o fuera del bloque tocado', () => {

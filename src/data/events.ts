@@ -1591,7 +1591,17 @@ function mapInvitation(r: any): EventInvitation {
     eventId: r.event_id,
     familyId: r.family_id,
     templateKey: r.template_key,
-    canvas: { backgroundGradient: canvas?.backgroundGradient ?? '', layers: canvas?.layers ?? [] },
+    // Fase 3 Bloque 3 — bug real reproducido en vivo (mover/zoom una plantilla importada, guardar, reabrir):
+    // canvas_json SÍ guarda backgroundOffsetX/Y/backgroundScale (saveEventInvitation serializa el objeto
+    // entero), pero esta función los descartaba al leer — el editor siempre veía undefined y caía en sus
+    // valores por defecto (0/0/1), perdiendo en silencio el encuadre que el usuario había ajustado.
+    canvas: {
+      backgroundGradient: canvas?.backgroundGradient ?? '',
+      layers: canvas?.layers ?? [],
+      backgroundOffsetX: canvas?.backgroundOffsetX,
+      backgroundOffsetY: canvas?.backgroundOffsetY,
+      backgroundScale: canvas?.backgroundScale,
+    },
     backgroundImagePath: r.background_image_path,
     createdAt: r.created_at,
     updatedAt: r.updated_at,

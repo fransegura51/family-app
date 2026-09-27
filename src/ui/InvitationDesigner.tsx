@@ -4,10 +4,11 @@ import {
   buildInvitationDataFields,
   buildInvitationTemplateLayers,
   DEFAULT_TEXT_AREA,
-  INVITATION_EMOJI_SUGGESTIONS,
+  INVITATION_EMOJI_CATEGORIES,
   INVITATION_SHAPES,
   INVITATION_TEMPLATES,
   LINE_HEIGHT_RATIO,
+  searchInvitationEmoji,
   type InvitationTemplateMeta,
   makeInvitationLayer,
   reconcileOverlappingBoxes,
@@ -18,6 +19,7 @@ import {
 import { errorMessage } from '@/domain/errorMessage'
 import type { FamilyEvent, InvitationCanvas, InvitationLayer, InvitationTextAlign, InvitationTextStyle } from '@/domain/types'
 import { getEventInvitation, getInvitationPhotoUrl, saveEventInvitation, uploadInvitationPhoto } from '@/data/events'
+import { loadRecentInvitationEmoji, recordRecentInvitationEmoji } from '@/state/invitationRecentEmoji'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 
 // Editor de invitaciones en capas (Fase 3) — extraído de EventosScreen.tsx (INV-EDITOR-1, reforma del
@@ -70,6 +72,24 @@ const domTextMeasurer: TextMeasurer = (text, fontSize, fontWeight, fontFamily) =
 function InvitationShapeGraphic({ shapeKey, color, size }: { shapeKey?: string; color?: string; size: number }) {
   const c = color || '#ffffff'
   switch (shapeKey) {
+    case 'rectangulo':
+      return (
+        <svg width={size} height={size * 0.66} viewBox="0 0 100 66">
+          <rect x="2" y="2" width="96" height="62" rx="6" fill={c} />
+        </svg>
+      )
+    case 'linea':
+      return (
+        <svg width={size} height={Math.max(12, size * 0.08)} viewBox="0 0 100 8">
+          <rect x="0" y="2" width="100" height="4" rx="2" fill={c} />
+        </svg>
+      )
+    case 'corazon':
+      return (
+        <svg width={size} height={size} viewBox="0 0 100 100">
+          <path d="M50 88 C20 65 5 45 5 27 C5 10 18 2 32 2 C42 2 48 8 50 14 C52 8 58 2 68 2 C82 2 95 10 95 27 C95 45 80 65 50 88 Z" fill={c} />
+        </svg>
+      )
     case 'anillo':
       return (
         <svg width={size} height={size} viewBox="0 0 100 100">
@@ -293,10 +313,13 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
     case 'photo': {
       const url = layer.photoPath ? photoUrls[layer.photoPath] : undefined
       const size = layer.fontSize ?? 120
+      // Fase 3 Bloque 3 — "Círculo" es una máscara geométrica (border-radius), no "quitar fondo"
+      // (segmentación real del sujeto) — son funciones distintas, esta es la única implementada por ahora.
+      const borderRadius = layer.photoMask === 'circle' ? '50%' : 12
       return url ? (
-        <img src={url} alt="" draggable={false} style={{ width: size, height: size, objectFit: 'cover', borderRadius: 12, display: 'block' }} />
+        <img src={url} alt="" draggable={false} style={{ width: size, height: size, objectFit: 'cover', borderRadius, display: 'block' }} />
       ) : (
-        <div style={{ width: size, height: size, borderRadius: 12, background: 'rgba(255,255,255,0.35)' }} />
+        <div style={{ width: size, height: size, borderRadius, background: 'rgba(255,255,255,0.35)' }} />
       )
     }
     default:
@@ -1074,6 +1097,7 @@ export function InvitationCanvasView({
                 top: `${layer.y * 100}%`,
                 width: isWrappingText ? `${zoneWidthFrac * 100}%` : undefined,
                 transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
+                opacity: layer.opacity ?? 1,
               }}
             >
               <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
@@ -1201,6 +1225,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // plantilla/emoji/forma), en vez del antiguo bloque fijo permanente con todos los controles a la vista.
   const [panel, setPanel] = useState<DesignerPanel | null>(null)
   const [customEmoji, setCustomEmoji] = useState('')
+  // Fase 3 Bloque 3 — "🕘 Recientes": se carga una vez al montar (no cambia mientras el editor está
+  // abierto salvo que el propio usuario inserte un emoji, ver handleInsertEmoji).
+  const [recentEmoji, setRecentEmoji] = useState<string[]>(() => loadRecentInvitationEmoji())
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -1351,6 +1378,15 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     const maxZ = layers.reduce((m, l) => Math.max(m, l.zIndex), 0)
     setLayers((ls) => [...ls, { ...layer, zIndex: maxZ + 1 }])
     selectLayer(layer.id)
+  }
+
+  // Fase 3 Bloque 3 — inserta un emoji (de la biblioteca, de la búsqueda o de "Recientes") y lo apunta como
+  // reciente — mismo criterio de "operación normal" que cualquier otra capa: se puede mover, cambiar de
+  // tamaño, duplicar o borrar después sin ninguna diferencia.
+  function handleInsertEmoji(char: string) {
+    handleAddLayer(makeInvitationLayer('emoji', { text: char, fontSize: 48 }))
+    recordRecentInvitationEmoji(char)
+    setRecentEmoji(loadRecentInvitationEmoji())
   }
 
   function handleDuplicate() {
@@ -1747,6 +1783,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                         top: `${layer.y * 100}%`,
                         width: isWrappingText ? `${zoneWidthFrac * 100}%` : undefined,
                         transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scale(${layer.scale})`,
+                        opacity: layer.opacity ?? 1,
                         cursor: 'grab',
                         touchAction: 'none',
                         outline: layer.id === selectedId ? '2px dashed #ffffff' : 'none',
@@ -1848,15 +1885,16 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     <>
                       {/* Petición real: "los emojis salen muy pocos, lo suyo sería poder usar cualquier
                           emoji del teclado" — el teclado emoji nativo del móvil ya funciona en cualquier
-                          campo de texto, así que basta con un campo donde pegar/escribir cualquiera; los
-                          botones de abajo siguen para los más usados, de un toque. */}
+                          campo de texto, así que el mismo campo sirve para dos cosas: buscar un concepto en
+                          español (biblioteca local, sin API) O pegar/escribir directamente cualquier emoji
+                          del teclado y añadirlo tal cual con "+ Añadir". */}
                       <form
                         style={{ display: 'flex', gap: 6 }}
                         onSubmit={(e) => {
                           e.preventDefault()
                           const em = customEmoji.trim()
                           if (!em) return
-                          handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))
+                          handleInsertEmoji(em)
                           setCustomEmoji('')
                         }}
                       >
@@ -1864,20 +1902,63 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                           type="text"
                           value={customEmoji}
                           onChange={(e) => setCustomEmoji(e.target.value)}
-                          placeholder="Escribe o pega cualquier emoji del teclado"
+                          placeholder="Buscar (tarta, corazón...) o pegar un emoji"
                           style={{ flex: 1 }}
                         />
                         <button type="submit" className="chip" disabled={!customEmoji.trim()}>
                           + Añadir
                         </button>
                       </form>
-                      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
-                        {INVITATION_EMOJI_SUGGESTIONS.map((em) => (
-                          <button key={em} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('emoji', { text: em, fontSize: 48 }))}>
-                            {em}
-                          </button>
-                        ))}
-                      </div>
+                      {customEmoji.trim() ? (
+                        (() => {
+                          const results = searchInvitationEmoji(customEmoji)
+                          return (
+                            <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
+                              {results.length === 0 && (
+                                <p className="muted" style={{ fontSize: 12 }}>
+                                  Sin resultados para "{customEmoji}" — si es un emoji, tócalo en tu teclado y pulsa "+ Añadir" para usarlo tal cual.
+                                </p>
+                              )}
+                              {results.map((e) => (
+                                <button key={e.char} type="button" className="chip" onClick={() => handleInsertEmoji(e.char)}>
+                                  {e.char}
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        })()
+                      ) : (
+                        <>
+                          {recentEmoji.length > 0 && (
+                            <>
+                              <p className="muted" style={{ fontSize: 11, margin: '8px 0 2px' }}>
+                                🕘 Recientes
+                              </p>
+                              <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                                {recentEmoji.map((em) => (
+                                  <button key={em} type="button" className="chip" onClick={() => handleInsertEmoji(em)}>
+                                    {em}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                          {INVITATION_EMOJI_CATEGORIES.map((cat) => (
+                            <div key={cat.key}>
+                              <p className="muted" style={{ fontSize: 11, margin: '8px 0 2px' }}>
+                                {cat.label}
+                              </p>
+                              <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                                {cat.emojis.map((e) => (
+                                  <button key={e.char} type="button" className="chip" onClick={() => handleInsertEmoji(e.char)}>
+                                    {e.char}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
                     </>
                   )}
 
@@ -2056,6 +2137,42 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                             style={{ width: '100%' }}
                           />
                         </label>
+                      )}
+                      {selected.type === 'shape' && (
+                        <label style={{ display: 'block' }}>
+                          Opacidad ({Math.round((selected.opacity ?? 1) * 100)}%)
+                          <input
+                            type="range"
+                            min={20}
+                            max={100}
+                            value={Math.round((selected.opacity ?? 1) * 100)}
+                            onChange={(e) => updateSelectedContinuous({ opacity: Number(e.target.value) / 100 }, 'opacity')}
+                            onPointerUp={commitContinuousEdit}
+                            onBlur={commitContinuousEdit}
+                            style={{ width: '100%' }}
+                          />
+                        </label>
+                      )}
+                      {selected.type === 'photo' && (
+                        <div className="filter-row" style={{ marginBottom: 10 }}>
+                          <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
+                            Recorte:
+                          </span>
+                          <button
+                            type="button"
+                            className={'chip' + ((selected.photoMask ?? 'none') === 'none' ? ' chip-active' : '')}
+                            onClick={() => updateSelectedDiscrete({ photoMask: 'none' })}
+                          >
+                            Original
+                          </button>
+                          <button
+                            type="button"
+                            className={'chip' + (selected.photoMask === 'circle' ? ' chip-active' : '')}
+                            onClick={() => updateSelectedDiscrete({ photoMask: 'circle' })}
+                          >
+                            ⚪ Círculo
+                          </button>
+                        </div>
                       )}
                       <div className="filter-row" style={{ marginTop: selected.type === 'text' ? 10 : 0 }}>
                         <button type="button" className="link-button" onClick={() => handleReorder(1)}>

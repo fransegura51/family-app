@@ -911,6 +911,12 @@ export interface InvitationLayer {
   // foto subida por el usuario (event-photos bucket)
   photoPath?: string
   photoUrl?: string
+  // Fase 3 Bloque 3 — opcionales y compatibles, igual criterio que textAlign/bold/italic (Bloque 2): una
+  // capa guardada antes de que existieran se ve exactamente igual que antes. `opacity` (0..1, control solo
+  // para "forma" por ahora) ausente = 1 (opaco, como siempre). `photoMask` ausente = 'none' (foto cuadrada
+  // normal, como siempre) — 'circle' la recorta en círculo sin tocar el archivo subido.
+  opacity?: number
+  photoMask?: 'none' | 'circle'
 }
 
 export interface InvitationCanvas {

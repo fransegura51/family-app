@@ -1995,7 +1995,11 @@ function InvitationSection({ event }: { event: FamilyEvent }) {
   }
   useEffect(reload, [event.id])
 
-  const hasDesign = !!invitation && invitation.canvas.layers.length > 0
+  // Fase 3 Bloque 3 — bug real encontrado al probar "Plantilla importada": un diseño hecho solo de foto de
+  // fondo (sin ninguna capa encima) tiene layers.length === 0, así que "solo capas" decía "sin crear
+  // todavía" aunque el usuario SÍ tuviera un fondo propio guardado. Cuenta como diseño real si hay capas O
+  // fondo importado — vacío de verdad (ni una cosa ni la otra) es el único caso que no cuenta.
+  const hasDesign = !!invitation && (invitation.canvas.layers.length > 0 || !!invitation.backgroundImagePath)
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
@@ -3157,7 +3161,9 @@ function InvitationModal({
     // siempre; un fallo aquí no debe bloquear el enlace de RSVP.
     getEventInvitation(event.id)
       .then(async (invitation) => {
-        if (!invitation || invitation.canvas.layers.length === 0) return
+        // Mismo criterio que InvitationSection: un diseño hecho solo de foto de fondo (sin capas encima)
+        // también es un diseño real — no solo "hay capas".
+        if (!invitation || (invitation.canvas.layers.length === 0 && !invitation.backgroundImagePath)) return
         setCustomCanvas(invitation.canvas)
         setCustomTemplateKey(invitation.templateKey)
         if (invitation.backgroundImagePath) {

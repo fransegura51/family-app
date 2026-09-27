@@ -2100,7 +2100,11 @@ function pushOutsideZone(x: number, y: number, zone: SafeZone): { x: number; y: 
 // responsive (aspect-ratio + ancho variable según el dispositivo); domain/ no tiene acceso al DOM para
 // medirlo de verdad, así que esto es una aproximación deliberada y documentada — mismo orden de magnitud
 // que .invitation-designer-sheet (max-width 420px) menos el padding del editor — nunca una medida exacta.
-const ASSUMED_CANVAS_SIZE_PX = 380
+// Fase 3 Bloque 5A ("Pepa, hazla por mí") — exportada tal cual (mismo valor, sin cambiar su comportamiento
+// aquí) para que el nuevo motor de composición (invitationAutoCompose.ts) calcule el tamaño en px de una
+// foto que debe ocupar una fracción concreta del textArea usando EXACTAMENTE la misma conversión px↔fracción
+// que ya usa esta estimación — evita una segunda aproximación paralela que pudiera desviarse de esta.
+export const ASSUMED_CANVAS_SIZE_PX = 380
 // Exportada (no solo interna a esta estimación): InvitationLayerVisual (ui/InvitationDesigner.tsx) la fija
 // como line-height REAL del texto renderizado, para que la caja que aquí se calcula ya no sea una mera
 // aproximación del alto real, sino la garantía de él — antes el <div> de texto no fijaba line-height
@@ -2224,7 +2228,7 @@ export interface LayerBoxFraction {
 // p. ej. "boda"). Verificado en el navegador real: para imageAspect 0.5911 el error medido fue exactamente
 // 1/0.5911, confirmando la causa. Ahora cada función recibe `imageAspect` (1 si no se conoce, p. ej. foto
 // propia) y usa `ASSUMED_CANVAS_SIZE_PX / imageAspect` como referencia real del alto del lienzo.
-function assumedCanvasHeightPx(imageAspect: number): number {
+export function assumedCanvasHeightPx(imageAspect: number): number {
   return ASSUMED_CANVAS_SIZE_PX / imageAspect
 }
 

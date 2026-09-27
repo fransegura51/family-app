@@ -234,12 +234,13 @@ export const FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2 = [
 ] as const
 
 describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN sin tocar (12 de las 27 originales)', () => {
-  // 2026-09-26: 6 de las 12 (bebe_nina, despedida_novia, tapas, jubilacion_relax, jubilacion_cena,
-  // carnaval_bufon) tuvieron SOLO su alto ampliado — nunca imagen, imageAspect, x/y/width — como excepción
-  // autorizada explícitamente por el usuario para el bug real de solape con el texto de certificación de 4
-  // líneas (ver AVG_CHAR_WIDTH_RATIO en events.ts). bebe_arcoiris fue más allá: recalibrada por completo a
-  // mano por el usuario sobre la foto real (sigue dando overflow con el texto completo, riesgo asumido
-  // explícitamente, ver invitationLiteralTextOverlap.test.ts). Ninguna de las 12 recibió fondo nuevo.
+  // 2026-09-26: 4 de las 12 (bebe_nina, despedida_novia, jubilacion_relax, jubilacion_cena, carnaval_bufon)
+  // tuvieron SOLO su alto ampliado — nunca imagen, imageAspect, x/y/width — como excepción autorizada
+  // explícitamente por el usuario para el bug real de solape con el texto de certificación de 4 líneas (ver
+  // AVG_CHAR_WIDTH_RATIO en events.ts). bebe_arcoiris, playa_pina y tapas fueron más allá: recalibradas por
+  // completo a mano por el usuario sobre la foto real (siguen dando overflow con el texto completo, riesgo
+  // asumido explícitamente, ver invitationLiteralTextOverlap.test.ts). Ninguna de las 12 recibió fondo
+  // nuevo.
   const UNCHANGED_UNLISTED: Record<string, { x: number; y: number; width: number; height: number }> = {
     bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 },
     bebe_neutro: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 },
@@ -247,8 +248,8 @@ describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN s
     casa_cajas: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 },
     despedida_novia: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.68 },
     playa_piscina: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 },
-    playa_pina: { x: 0.2529, y: 0.2116, width: 0.672, height: 0.588 },
-    tapas: { x: 0.3244, y: 0.1142, width: 0.6067, height: 0.6 },
+    playa_pina: { x: 0.25, y: 0.21, width: 0.5, height: 0.56 },
+    tapas: { x: 0.32, y: 0.11, width: 0.51, height: 0.55 },
     jubilacion_viaje: { x: 0.2862, y: 0.2009, width: 0.4387, height: 0.476 },
     jubilacion_relax: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.56 },
     jubilacion_cena: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.68 },

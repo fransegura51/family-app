@@ -918,7 +918,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // superior del pergamino y las flores/farolillos de la parte inferior.
   { key: 'floral_noche', label: 'Floral noche de jardín', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'floral', image: invitaFloralNoche, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.18, width: 0.43, height: 0.48 } },
   { key: 'playa_piscina', label: 'Playa piscina', gradient: 'linear-gradient(160deg, #0EA5E9, #FB7185)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPiscina, imageAspect: 1, textArea: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 } },
-  { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.2529, y: 0.2116, width: 0.672, height: 0.588 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el letrero
+  // "Sol/Amigos/Risas..." de la derecha) — con el texto de certificación completo el cálculo automático
+  // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
+  // invitationLiteralTextOverlap.test.ts).
+  { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.25, y: 0.21, width: 0.5, height: 0.56 } },
   { key: 'playa_atardecer', label: 'Playa atardecer', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaAtardecer, imageAspect: 1, textArea: { x: 0.24, y: 0.12, width: 0.58, height: 0.5976 } },
   // GRUPO A — certificada ("PLAYA NOCHE / PLAYA TERRAZA: funcionan correctamente"). No tocar salvo necesidad real.
   // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
@@ -932,15 +936,24 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Disco, Barbacoa y Comunión.
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la izquierda, comida
   // completamente por debajo del marco.
-  { key: 'comida_familiar', label: 'Comida familiar', gradient: 'linear-gradient(160deg, #FBBF24, #166534)', text: '#1f2233', artKey: 'confeti', image: invitaComidaFamiliar, imageAspect: 0.6667, textArea: { x: 0.23, y: 0.08, width: 0.58, height: 0.62 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el eucalipto de
+  // arriba y las luces colgantes) — con el texto de certificación completo el cálculo automático sigue
+  // dando overflow, riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'comida_familiar', label: 'Comida familiar', gradient: 'linear-gradient(160deg, #FBBF24, #166534)', text: '#1f2233', artKey: 'confeti', image: invitaComidaFamiliar, imageAspect: 0.6667, textArea: { x: 0.33, y: 0.13, width: 0.45, height: 0.54 } },
   // GRUPO A — certificada ("CENA EN CASA: funciona correctamente"). No tocar salvo necesidad real.
   // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
   // para el bug real de solape con el texto de certificación de 4 líneas tras subir AVG_CHAR_WIDTH_RATIO
   // a 0.6: se amplía únicamente el alto (x/y/width intactos) al mínimo necesario para overflowed=false.
   { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar, imageAspect: 1.188, textArea: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.6 } },
-  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 1.1861, textArea: { x: 0.3244, y: 0.1142, width: 0.6067, height: 0.6 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real) — con el texto de
+  // certificación completo el cálculo automático sigue dando overflow, riesgo asumido explícitamente por el
+  // usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 1.1861, textArea: { x: 0.32, y: 0.11, width: 0.51, height: 0.55 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la derecha, jarra con texto abajo-izq.
-  { key: 'desayuno', label: 'Desayuno / Brunch', gradient: 'linear-gradient(160deg, #FDE9D9, #FBBF24)', text: '#7C2D12', artKey: 'confeti', image: invitaDesayuno, imageAspect: 0.6667, textArea: { x: 0.23, y: 0.08, width: 0.56, height: 0.62 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, bajada para dejar fuera el
+  // borde superior del marco) — con el texto de certificación completo el cálculo automático sigue dando
+  // overflow, riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'desayuno', label: 'Desayuno / Brunch', gradient: 'linear-gradient(160deg, #FDE9D9, #FBBF24)', text: '#7C2D12', artKey: 'confeti', image: invitaDesayuno, imageAspect: 0.6667, textArea: { x: 0.25, y: 0.18, width: 0.57, height: 0.5 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, pizarra/señal fuera a los lados, farol abajo-izq.
   { key: 'jubilacion_brindis', label: 'Jubilación brindis', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaJubilacionBrindis, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.14, width: 0.42, height: 0.55 } },
   { key: 'jubilacion_viaje', label: 'Jubilación viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaJubilacionViaje, imageAspect: 1, textArea: { x: 0.2862, y: 0.2009, width: 0.4387, height: 0.476 } },
@@ -957,7 +970,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora.
   // FASE 2 — fondo rediseñado (2026-09): sombrero arriba-izq, señal fuera a la izquierda, pajarita/nariz y
   // antifaz abajo.
-  { key: 'carnaval_payaso', label: 'Carnaval payaso', gradient: 'linear-gradient(160deg, #FBBF24, #7C3AED)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalPayaso, imageAspect: 0.6667, textArea: { x: 0.21, y: 0.16, width: 0.55, height: 0.72 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el sombrero de copa
+  // morado de la esquina superior-izquierda) — con el texto de certificación completo el cálculo automático
+  // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
+  // invitationLiteralTextOverlap.test.ts).
+  { key: 'carnaval_payaso', label: 'Carnaval payaso', gradient: 'linear-gradient(160deg, #FBBF24, #7C3AED)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalPayaso, imageAspect: 0.6667, textArea: { x: 0.37, y: 0.2, width: 0.39, height: 0.49 } },
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora ni compensar con cambios globales del motor.
   // FASE 2 — fondo rediseñado (2026-09): marco de confeti, señal/pizarra fuera del marco, sombrero/gafas abajo.
   { key: 'carnaval_confeti', label: 'Carnaval confeti', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalConfeti, imageAspect: 0.6667, textArea: { x: 0.24, y: 0.1, width: 0.6, height: 0.6 } },

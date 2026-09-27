@@ -46,6 +46,7 @@ function boxOf(l: InvitationLayer, zoneWidth: number) {
 const KNOWN_RISK_ACCEPTED = new Set([
   'floral_picnic', 'floral_primavera', 'bautizo', 'dinosaurios', 'ositos',
   'navidad_hogar', 'cumpleanos_rosa', 'cumpleanos_fiesta', 'bebe_arcoiris', 'casa_llaves',
+  'playa_pina', 'comida_familiar', 'tapas', 'desayuno', 'carnaval_payaso',
 ])
 
 describe('las 100 plantillas reales no dan overflow con el texto literal largo de certificación (bug real 2026-09-26)', () => {

@@ -161,9 +161,11 @@ describe('4.-10. textArea de las 32 sustituidas: dentro de límites, sin solape 
   // Corrección real: ampliar esas 4 zonas hasta que overflowed sea false (gap real >0, no solo "no se tocan
   // en la estimación") — nunca tocar el motor compartido para esto, es un problema de calibración de esas
   // 4 plantillas en concreto. Este test cierra el hueco de cobertura que dejó pasar el bug.
-  // casa_llaves: recalibrada 2026-09-26 a mano por el usuario sobre la foto real — sigue dando overflow con
-  // el texto completo, riesgo asumido explícitamente (ver invitationLiteralTextOverlap.test.ts).
-  it.each(REPLACED_KEYS.filter((k) => k !== 'casa_llaves'))('%s: NO da overflowed=true con el texto de certificación (gap real, no solo "sin solape estimado")', (key) => {
+  // casa_llaves, carnaval_payaso, comida_familiar, desayuno: recalibradas 2026-09-26 a mano por el usuario
+  // sobre la foto real — siguen dando overflow con el texto completo, riesgo asumido explícitamente (ver
+  // invitationLiteralTextOverlap.test.ts).
+  const RISK_ACCEPTED_REPLACED = new Set(['casa_llaves', 'carnaval_payaso', 'comida_familiar', 'desayuno'])
+  it.each(REPLACED_KEYS.filter((k) => !RISK_ACCEPTED_REPLACED.has(k)))('%s: NO da overflowed=true con el texto de certificación (gap real, no solo "sin solape estimado")', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(makeCertificationEvent(), template)
     const { overflowed } = autoArrangeLayers(layers, template.textArea)

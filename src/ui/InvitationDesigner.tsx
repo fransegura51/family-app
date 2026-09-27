@@ -1430,8 +1430,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     // INV-EDITOR-2 — la zona segura real es la de la plantilla elegida (template.textArea); con una foto
     // de fondo propia (sin plantilla de arte detrás) o una plantilla sin zona propia, cae a
     // DEFAULT_TEXT_AREA (ver domain/events.ts, autoArrangeLayers) — nunca una zona nueva inventada aquí.
-    const zone = backgroundImageUrl ? undefined : INVITATION_TEMPLATES.find((t) => t.key === templateKey)?.textArea
-    const result = autoArrangeLayers(layers, zone)
+    const template = backgroundImageUrl ? undefined : INVITATION_TEMPLATES.find((t) => t.key === templateKey)
+    const zone = template?.textArea
+    const result = autoArrangeLayers(layers, zone, template?.imageAspect ?? 1)
     setLayers(result.layers)
     // Corrección tras certificación iPhone — nunca se reduce el fontSize ni se fuerza el texto a caber:
     // si de verdad no cabe ni comprimiendo los huecos al mínimo, se avisa en vez de ocultarlo.

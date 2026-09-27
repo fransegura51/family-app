@@ -32,29 +32,30 @@ function makeLiteralLayers(zone: { x: number; y: number; width: number; height: 
   ]
 }
 
-function boxOf(l: InvitationLayer, zoneWidth: number) {
-  const { halfWidth, halfHeight } = estimateLayerBoxFraction(l, zoneWidth)
+function boxOf(l: InvitationLayer, zoneWidth: number, imageAspect = 1) {
+  const { halfWidth, halfHeight } = estimateLayerBoxFraction(l, zoneWidth, imageAspect)
   return { left: l.x - halfWidth, right: l.x + halfWidth, top: l.y - halfHeight, bottom: l.y + halfHeight }
 }
 
-// 2026-09-26: floral_picnic y floral_primavera recibieron fondos nuevos con zonas marcadas A MANO por el
-// usuario sobre la foto real (no calculadas) — con el texto literal de certificación completo siguen dando
-// overflowed=true, pero el usuario vio la superposición real en su iPhone y decidió explícitamente asumir
-// ese riesgo en vez de ampliar la zona (que invadiría el jarrón de tulipanes / la mariposa y el sombrero).
-// Documentado aquí, no oculto: si algún día se quiere "arreglar" esto, es una decisión de diseño del
-// usuario, no un bug pendiente.
-const KNOWN_RISK_ACCEPTED = new Set([
-  'floral_picnic', 'floral_primavera', 'bautizo', 'dinosaurios', 'ositos',
-  'navidad_hogar', 'cumpleanos_rosa', 'cumpleanos_fiesta', 'bebe_arcoiris', 'casa_llaves',
-  'playa_pina', 'comida_familiar', 'tapas', 'desayuno', 'carnaval_payaso',
-])
+// 2026-09-26: durante buena parte de esta ronda de recalibración a mano, ~20 plantillas (todas con lienzo
+// más ancho que alto o cuadrado) seguían dando overflowed=true incluso tras marcarlas sobre la foto real, y
+// se aceptaron aquí como "riesgo asumido por el usuario". La causa real no era esa: estimateLayerBoxFraction
+// usaba ASSUMED_CANVAS_SIZE_PX como referencia de píxeles tanto para el ancho como para el alto del lienzo,
+// cuando el lienzo real tiene `aspect-ratio: imageAspect / 1` — para un lienzo NO cuadrado eso hacía que el
+// alto estimado de cada línea de texto fuera sistemáticamente incorrecto (demasiado alto en plantillas
+// verticales → avisos de "no cabe" falsos, como el que detectó el usuario en "navidad_hogar"; demasiado
+// bajo en plantillas horizontales → el riesgo real y contrario, ocultar un solape verdadero). Corregido
+// pasando `imageAspect` a estimateLayerBoxFraction/autoArrangeLayers (ver events.ts) y verificado en el
+// navegador real antes de aplicarlo. Con el cálculo corregido, las 100 plantillas pasan sin ninguna
+// excepción — este set queda vacío a propósito, para que una regresión futura no pueda colarse en silencio.
+const KNOWN_RISK_ACCEPTED = new Set<string>([])
 
 describe('las 100 plantillas reales no dan overflow con el texto literal largo de certificación (bug real 2026-09-26)', () => {
   it.each(INVITATION_TEMPLATES.map((t) => t.key).filter((k) => !KNOWN_RISK_ACCEPTED.has(k)))('%s', (key) => {
     const template = INVITATION_TEMPLATES.find((t) => t.key === key)!
     if (!template.textArea) return
     const layers = makeLiteralLayers(template.textArea)
-    const { overflowed } = autoArrangeLayers(layers, template.textArea)
+    const { overflowed } = autoArrangeLayers(layers, template.textArea, template.imageAspect)
     expect(overflowed, `"${key}" da overflowed=true con el texto literal largo de certificación`).toBe(false)
   })
 })
@@ -64,11 +65,11 @@ describe('las 100 plantillas reales: título y cuerpo no se solapan con el texto
     const template = INVITATION_TEMPLATES.find((t) => t.key === key)!
     if (!template.textArea) return
     const layers = makeLiteralLayers(template.textArea)
-    const { layers: arranged } = autoArrangeLayers(layers, template.textArea)
+    const { layers: arranged } = autoArrangeLayers(layers, template.textArea, template.imageAspect)
     const title = arranged.find((l) => l.id === 'title')!
     const body = arranged.find((l) => l.id === 'body')!
-    const titleBox = boxOf(title, template.textArea.width)
-    const bodyBox = boxOf(body, template.textArea.width)
+    const titleBox = boxOf(title, template.textArea.width, template.imageAspect)
+    const bodyBox = boxOf(body, template.textArea.width, template.imageAspect)
     expect(titleBox.bottom, `título y cuerpo se solapan en "${key}" con el texto literal largo`).toBeLessThanOrEqual(bodyBox.top + EPS)
   })
 })

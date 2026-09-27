@@ -20,8 +20,8 @@ function templateByKey(key: string) {
   return t!
 }
 
-function boxOf(l: InvitationLayer, zoneWidth: number) {
-  const { halfWidth, halfHeight } = estimateLayerBoxFraction(l, zoneWidth)
+function boxOf(l: InvitationLayer, zoneWidth: number, imageAspect = 1) {
+  const { halfWidth, halfHeight } = estimateLayerBoxFraction(l, zoneWidth, imageAspect)
   return { left: l.x - halfWidth, right: l.x + halfWidth, top: l.y - halfHeight, bottom: l.y + halfHeight }
 }
 
@@ -142,11 +142,11 @@ describe('4.-10. textArea de las 32 sustituidas: dentro de límites, sin solape 
   it.each(REPLACED_KEYS)('%s: título y cuerpo no se solapan con el texto de certificación', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(makeCertificationEvent(), template)
-    const { layers: arranged } = autoArrangeLayers(layers, template.textArea)
+    const { layers: arranged } = autoArrangeLayers(layers, template.textArea, template.imageAspect)
     const title = arranged.find((l) => l.type === 'text')!
     const body = arranged.find((l) => l.type === 'event_data')!
-    const titleBox = boxOf(title, template.textArea!.width)
-    const bodyBox = boxOf(body, template.textArea!.width)
+    const titleBox = boxOf(title, template.textArea!.width, template.imageAspect)
+    const bodyBox = boxOf(body, template.textArea!.width, template.imageAspect)
     expect(titleBox.bottom, `título y cuerpo se solapan en "${key}"`).toBeLessThanOrEqual(bodyBox.top + EPS)
   })
 
@@ -161,14 +161,15 @@ describe('4.-10. textArea de las 32 sustituidas: dentro de límites, sin solape 
   // Corrección real: ampliar esas 4 zonas hasta que overflowed sea false (gap real >0, no solo "no se tocan
   // en la estimación") — nunca tocar el motor compartido para esto, es un problema de calibración de esas
   // 4 plantillas en concreto. Este test cierra el hueco de cobertura que dejó pasar el bug.
-  // casa_llaves, carnaval_payaso, comida_familiar, desayuno: recalibradas 2026-09-26 a mano por el usuario
-  // sobre la foto real — siguen dando overflow con el texto completo, riesgo asumido explícitamente (ver
-  // invitationLiteralTextOverlap.test.ts).
-  const RISK_ACCEPTED_REPLACED = new Set(['casa_llaves', 'carnaval_payaso', 'comida_familiar', 'desayuno'])
-  it.each(REPLACED_KEYS.filter((k) => !RISK_ACCEPTED_REPLACED.has(k)))('%s: NO da overflowed=true con el texto de certificación (gap real, no solo "sin solape estimado")', (key) => {
+  // 2026-09-26: casa_llaves, carnaval_payaso, comida_familiar, desayuno (recalibradas a mano por el usuario)
+  // parecían seguir dando overflow con el texto completo hasta encontrar la causa real: estimateLayerBoxFraction
+  // usaba la misma referencia de píxeles para el ancho Y el alto del lienzo, incorrecto para cualquier
+  // plantilla no cuadrada. Corregido pasando `imageAspect` (ver invitationLiteralTextOverlap.test.ts) — ya
+  // no hace falta ningún riesgo asumido, las 33 pasan con el cálculo correcto.
+  it.each(REPLACED_KEYS)('%s: NO da overflowed=true con el texto de certificación (gap real, no solo "sin solape estimado")', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(makeCertificationEvent(), template)
-    const { overflowed } = autoArrangeLayers(layers, template.textArea)
+    const { overflowed } = autoArrangeLayers(layers, template.textArea, template.imageAspect)
     expect(overflowed, `"${key}" da overflowed=true con el texto de certificación`).toBe(false)
   })
 })
@@ -188,10 +189,14 @@ describe('12. plantillas certificadas (grupo A) permanecen exactamente intactas 
   // usuario para el bug real de solape con el texto de certificación de 4 líneas (ver AVG_CHAR_WIDTH_RATIO
   // en events.ts). corazones_acuarela sí recibió fondo nuevo (2026-09-26), dado directamente por el
   // usuario — imagen, imageAspect y textArea recalculados por completo, misma excepción autorizada.
+  // elegante y cena_hogar ampliaron su alto de nuevo el mismo día al corregir el bug de aspect-ratio (ver
+  // invitationLiteralTextOverlap.test.ts): con imageAspect > 1 el motor llevaba todo este tiempo
+  // SUBESTIMANDO su alto real necesario, nunca detectado porque esta fase probaba con el texto más corto de
+  // buildInvitationMessage.
   const CERTIFIED: Record<string, { x: number; y: number; width: number; height: number }> = {
-    elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.6742 },
+    elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.705 },
     playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.68 },
-    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.6 },
+    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.706 },
     corazones_acuarela: { x: 0.2, y: 0.14, width: 0.6, height: 0.62 },
     alegre: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 },
     unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 },

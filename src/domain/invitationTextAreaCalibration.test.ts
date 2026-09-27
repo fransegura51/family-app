@@ -21,8 +21,8 @@ function templateByKey(key: string) {
   return t!
 }
 
-function boxOf(l: InvitationLayer, zoneWidth: number) {
-  const { halfWidth, halfHeight } = estimateLayerBoxFraction(l, zoneWidth)
+function boxOf(l: InvitationLayer, zoneWidth: number, imageAspect = 1) {
+  const { halfWidth, halfHeight } = estimateLayerBoxFraction(l, zoneWidth, imageAspect)
   return { left: l.x - halfWidth, right: l.x + halfWidth, top: l.y - halfHeight, bottom: l.y + halfHeight }
 }
 
@@ -119,11 +119,11 @@ describe('2./3. título y cuerpo no se solapan en las 46 plantillas recalibradas
       it.each(GROUP_B_KEYS)('%s', (key) => {
         const template = templateByKey(key)
         const layers = buildInvitationTemplateLayers(event, template)
-        const { layers: arranged } = autoArrangeLayers(layers, template.textArea)
+        const { layers: arranged } = autoArrangeLayers(layers, template.textArea, template.imageAspect)
         const title = arranged.find((l) => l.type === 'text')!
         const body = arranged.find((l) => l.type === 'event_data')!
-        const titleBox = boxOf(title, template.textArea!.width)
-        const bodyBox = boxOf(body, template.textArea!.width)
+        const titleBox = boxOf(title, template.textArea!.width, template.imageAspect)
+        const bodyBox = boxOf(body, template.textArea!.width, template.imageAspect)
         // Solape real = los rangos verticales de sus cajas completas se cruzan (no solo el punto central).
         const overlap = titleBox.bottom > bodyBox.top + EPS
         expect(overlap, `título y cuerpo se solapan en "${key}" con "${event.title}"`).toBe(false)
@@ -134,28 +134,16 @@ describe('2./3. título y cuerpo no se solapan en las 46 plantillas recalibradas
 
 describe('4. sin regresión de overflow en las 46 plantillas recalibradas, con el texto de certificación real', () => {
   const event = makeCertificationEvent()
-  // otono_senderismo es la única excepción documentada: la propia revisión manual la describe como "algo
-  // más justo... la edición manual demuestra que PUEDE funcionar" (no "funciona seguro") — su superficie
-  // real (foto real, cartel de madera junto a un tablón de anuncios ya impreso) es genuinamente más
-  // estrecha que el resto del grupo B. Con el texto de certificación (3 líneas + 2 emojis) y el tamaño de
-  // fuente POR DEFECTO (no compacto) puede seguir marcando overflowed=true; igual que el resto de casos de
-  // overflow real, NUNCA se oculta ni se fuerza a caber — se avisa. Queda en la lista de revisión visual
-  // (informe final) para decidir si necesita fuente más pequeña manual o quedar en el grupo C.
-  // 2026-09-26: floral_picnic y floral_primavera recibieron fondos nuevos con zonas marcadas A MANO por el
-  // usuario sobre la foto real — riesgo de overflow asumido explícitamente por el usuario (ver
-  // invitationLiteralTextOverlap.test.ts para el detalle), no un bug pendiente.
-  // dinosaurios: recalibrada 2026-09-26 a mano por el usuario sobre la foto real, evitando T-rex/
-  // triceratops de las esquinas — riesgo de overflow asumido explícitamente (ver
-  // invitationLiteralTextOverlap.test.ts para el detalle, incluye bautizo y ositos por el mismo motivo).
-  // navidad_hogar, cumpleanos_rosa, cumpleanos_fiesta: mismo motivo, recalibradas a mano por el usuario.
-  const KNOWN_TIGHT = new Set([
-    'otono_senderismo', 'floral_picnic', 'floral_primavera', 'dinosaurios',
-    'navidad_hogar', 'cumpleanos_rosa', 'cumpleanos_fiesta',
-  ])
-  it.each(GROUP_B_KEYS.filter((k) => !KNOWN_TIGHT.has(k)))('%s', (key) => {
+  // 2026-09-26: esta sección tuvo varias excepciones documentadas (otono_senderismo, floral_picnic/
+  // primavera, dinosaurios, navidad_hogar, cumpleanos_rosa, cumpleanos_fiesta...) hasta que se encontró la
+  // causa real: estimateLayerBoxFraction usaba la misma referencia de píxeles (ASSUMED_CANVAS_SIZE_PX) para
+  // el ancho Y el alto del lienzo, incorrecto para cualquier plantilla no cuadrada (`aspect-ratio:
+  // imageAspect / 1`). Corregido pasando `imageAspect` a autoArrangeLayers (ver events.ts) — con el cálculo
+  // correcto, las 46 pasan sin ninguna excepción.
+  it.each(GROUP_B_KEYS)('%s', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(event, template)
-    const { overflowed } = autoArrangeLayers(layers, template.textArea)
+    const { overflowed } = autoArrangeLayers(layers, template.textArea, template.imageAspect)
     expect(overflowed, `"${key}" da overflow con el texto de certificación tras la recalibración`).toBe(false)
   })
 })
@@ -175,7 +163,7 @@ describe('5. FÚTBOL: zona calibrada contra la foto real (sin comprimir el texto
   it('con el texto de certificación, el bloque título+cuerpo no queda comprimido a un hueco mínimo (hay margen real, no overflow)', () => {
     const template = templateByKey('futbol')
     const layers = buildInvitationTemplateLayers(makeCertificationEvent(), template)
-    const { overflowed } = autoArrangeLayers(layers, template.textArea)
+    const { overflowed } = autoArrangeLayers(layers, template.textArea, template.imageAspect)
     expect(overflowed).toBe(false)
   })
 })
@@ -197,11 +185,15 @@ describe('7. GRUPO A completo (9 plantillas certificadas): ninguna textArea se h
   // ampliado — nunca x/y/width — como excepción autorizada explícitamente por el usuario para el bug real
   // de solape con el texto de certificación de 4 líneas (ver AVG_CHAR_WIDTH_RATIO en events.ts).
   // corazones_acuarela recibió un fondo nuevo del usuario (imagen + textArea recalculada por completo) —
-  // misma excepción autorizada explícitamente al dar la imagen directamente.
+  // misma excepción autorizada explícitamente al dar la imagen directamente. elegante y cena_hogar
+  // ampliaron su alto de nuevo el mismo día al corregir el bug de aspect-ratio (ver
+  // invitationLiteralTextOverlap.test.ts): con imageAspect > 1 (lienzo más ancho que alto), el motor
+  // llevaba todo este tiempo SUBESTIMANDO el alto real necesario para estas 2 — nunca se detectó porque los
+  // tests de esta fase usaban el texto más corto de buildInvitationMessage, no el literal de 4 líneas.
   const GROUP_A: Record<string, { x: number; y: number; width: number; height: number }> = {
-    elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.6742 },
+    elegante: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.705 },
     playa_terraza: { x: 0.212, y: 0.1849, width: 0.476, height: 0.68 },
-    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.6 },
+    cena_hogar: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.706 },
     corazones_acuarela: { x: 0.2, y: 0.14, width: 0.6, height: 0.62 },
     alegre: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 },
     unicornio: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 },
@@ -238,18 +230,18 @@ describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN s
   // tuvieron SOLO su alto ampliado — nunca imagen, imageAspect, x/y/width — como excepción autorizada
   // explícitamente por el usuario para el bug real de solape con el texto de certificación de 4 líneas (ver
   // AVG_CHAR_WIDTH_RATIO en events.ts). bebe_arcoiris, playa_pina y tapas fueron más allá: recalibradas por
-  // completo a mano por el usuario sobre la foto real (siguen dando overflow con el texto completo, riesgo
-  // asumido explícitamente, ver invitationLiteralTextOverlap.test.ts). Ninguna de las 12 recibió fondo
-  // nuevo.
+  // completo a mano por el usuario sobre la foto real, y ampliaron su alto una vez más el mismo día al
+  // corregir el bug de aspect-ratio (ver invitationLiteralTextOverlap.test.ts) — ya no hace falta ningún
+  // riesgo asumido, las 3 caben con el cálculo correcto. Ninguna de las 12 recibió fondo nuevo.
   const UNCHANGED_UNLISTED: Record<string, { x: number; y: number; width: number; height: number }> = {
     bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 },
     bebe_neutro: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 },
-    bebe_arcoiris: { x: 0.25, y: 0.17, width: 0.52, height: 0.48 },
+    bebe_arcoiris: { x: 0.25, y: 0.17, width: 0.52, height: 0.648 },
     casa_cajas: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 },
     despedida_novia: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.68 },
     playa_piscina: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 },
-    playa_pina: { x: 0.25, y: 0.21, width: 0.5, height: 0.56 },
-    tapas: { x: 0.32, y: 0.11, width: 0.51, height: 0.55 },
+    playa_pina: { x: 0.25, y: 0.21, width: 0.5, height: 0.681 },
+    tapas: { x: 0.32, y: 0.11, width: 0.51, height: 0.804 },
     jubilacion_viaje: { x: 0.2862, y: 0.2009, width: 0.4387, height: 0.476 },
     jubilacion_relax: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.56 },
     jubilacion_cena: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.68 },

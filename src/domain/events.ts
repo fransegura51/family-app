@@ -638,7 +638,7 @@ export interface InvitationTemplateMeta {
 }
 
 export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
-  { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti', image: invitaClasico, imageAspect: 1.1861, textArea: { x: 0.3, y: 0.16, width: 0.6, height: 0.6376 } },
+  { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti', image: invitaClasico, imageAspect: 1.1861, textArea: { x: 0.3, y: 0.16, width: 0.6, height: 0.705 } },
   // GRUPO A — certificada ("GLOBOS: buen resultado. Mantener especialmente la separación actual entre
   // título y cuerpo"). No tocar.
   { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos', image: invitaAlegre, imageAspect: 0.6531, textArea: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 } },
@@ -659,7 +659,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // a 0.6: se amplía únicamente el alto (x/y/width intactos) al mínimo necesario para overflowed=false.
   { key: 'unicornio', label: 'Unicornio', gradient: 'linear-gradient(160deg, #F5D0FE, #C4B5FD)', text: '#4C1D95', artKey: 'unicornio', image: invitaUnicornio, imageAspect: 0.4322, textArea: { x: 0.2, y: 0.1, width: 0.6, height: 0.6 } },
   // GRUPO A — certificada ("DORADO: funciona correctamente"). No tocar.
-  { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado', image: invitaElegante, imageAspect: 1.1861, textArea: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.6742 } },
+  { key: 'elegante', label: 'Dorado', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'dorado', image: invitaElegante, imageAspect: 1.1861, textArea: { x: 0.1876, y: 0.13, width: 0.5693, height: 0.705 } },
   // Sin instrucción explícita en la revisión manual de esta fase — textArea sin tocar (es la plantilla del
   // caso de certificación "Bodas de plata" de la fase anterior, no confundir con floral_picnic/primavera/noche).
   // FASE 2 — fondo rediseñado (2026-09): marco de madera con flores/pajarera en el borde, pájaro posado en
@@ -673,8 +673,8 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando globos/regalos) —
   // con el texto de certificación completo el cálculo automático sigue dando overflow, riesgo asumido
   // explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
-  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo, imageAspect: 1.2736, textArea: { x: 0.35, y: 0.13, width: 0.58, height: 0.56 } },
-  { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco', image: invitaDisco, imageAspect: 1.188, textArea: { x: 0.2, y: 0.18, width: 0.66, height: 0.6376 } },
+  { key: 'bautizo', label: 'Celeste', gradient: 'linear-gradient(160deg, #DBEAFE, #BFDBFE)', text: '#1E3A8A', artKey: 'celeste', image: invitaBautizo, imageAspect: 1.2736, textArea: { x: 0.35, y: 0.13, width: 0.58, height: 0.756 } },
+  { key: 'disco', label: 'Disco', gradient: 'linear-gradient(160deg, #581C87, #1E1B4B)', text: '#ffffff', artKey: 'disco', image: invitaDisco, imageAspect: 1.188, textArea: { x: 0.2, y: 0.18, width: 0.66, height: 0.706 } },
   // Lote 2 — petición real, lista de 26 temas; 3 no se hacen por ser
   // personajes/estilos con derechos de terceros (Minecraft, Mario Bros,
   // Spiderman — ver INVITATION_ART en EventosScreen.tsx). El resto se
@@ -700,7 +700,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el perro detective y
   // el letrero/farol de la derecha) — con el texto de certificación completo el cálculo automático sigue
   // dando overflow, riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
-  { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos', image: invitaOsitos, imageAspect: 1.2192, textArea: { x: 0.3, y: 0.13, width: 0.56, height: 0.56 } },
+  { key: 'ositos', label: 'Ositos', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'ositos', image: invitaOsitos, imageAspect: 1.2192, textArea: { x: 0.3, y: 0.13, width: 0.56, height: 0.724 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("necesita tarjeta clara considerablemente mayor").
   // FASE 2 — fondo rediseñado (2026-09): tarjeta clara mucho mayor, gatitos reducidos a las esquinas.
   { key: 'gatitos', label: 'Gatitos', gradient: 'linear-gradient(160deg, #F3E8FF, #E9D5FF)', text: '#6B21A8', artKey: 'gatitos', image: invitaGatitos, imageAspect: 0.6667, textArea: { x: 0.14, y: 0.27, width: 0.7, height: 0.63 } },
@@ -748,7 +748,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // animales de las esquinas (jirafa, mono, elefante, cebra) — en realidad están casi todos FUERA del
   // marco de bambú, en la jungla de alrededor. Centrada de verdad entre los 4, justo debajo de la barra
   // de bambú superior, confirmada por el usuario.
-  { key: 'safari', label: 'Safari', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'confeti', image: invitaSafari, imageAspect: 1.214, textArea: { x: 0.3, y: 0.21, width: 0.56, height: 0.6 } },
+  { key: 'safari', label: 'Safari', gradient: 'linear-gradient(160deg, #84CC16, #166534)', text: '#ffffff', artKey: 'confeti', image: invitaSafari, imageAspect: 1.214, textArea: { x: 0.3, y: 0.21, width: 0.56, height: 0.721 } },
   { key: 'acampada', label: 'Acampada', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaAcampada, imageAspect: 0.5565, textArea: { x: 0.38, y: 0.16, width: 0.52, height: 0.6807 } },
   { key: 'oceano', label: 'Fondo del mar', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaOceano, imageAspect: 0.5011, textArea: { x: 0.12, y: 0.2, width: 0.7, height: 0.55 } },
   // GRUPO C — "HADA" en la revisión manual, marcada para futuro rediseño de fondo ("hada más pequeña/
@@ -788,7 +788,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // variante rosa de comunión, el barco de bautizo y el osito de luna
   // que repetía Bebé niño) y se sustituye el comunion.jpg del lote 5
   // (floral verde) por este cáliz, más reconocible.
-  { key: 'barbacoa', label: 'Barbacoa', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaBarbacoa, imageAspect: 1.1861, textArea: { x: 0.24, y: 0.16, width: 0.5, height: 0.6807 } },
+  { key: 'barbacoa', label: 'Barbacoa', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaBarbacoa, imageAspect: 1.1861, textArea: { x: 0.24, y: 0.16, width: 0.5, height: 0.804 } },
   // Lote 7 — cuarta hoja. Se descartan los repetidos (Nochevieja, un
   // marco de luces de jardín parecido a Barbacoa, y rosas/corazones que
   // ya teníamos) y se añaden Bautizo niña, Navidad y un Cumpleaños más
@@ -870,7 +870,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // arriba y el conejito de la izquierda) — con el texto de certificación completo el cálculo automático
   // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
   // invitationLiteralTextOverlap.test.ts).
-  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.951, textArea: { x: 0.25, y: 0.17, width: 0.52, height: 0.48 } },
+  { key: 'bebe_arcoiris', label: 'Bebé arcoíris', gradient: 'linear-gradient(160deg, #FBCFE8, #BFDBFE)', text: '#9D174D', artKey: 'confeti', image: invitaBebeArcoiris, imageAspect: 0.951, textArea: { x: 0.25, y: 0.17, width: 0.52, height: 0.648 } },
   // FASE 2 — fondo rediseñado (2026-09): marco con forma de casa; decoración (llavero "Bienvenidos",
   // plantas, pizarra, cajas) fuera del propio marco — zona segura es el rectángulo inscrito bajo el tejado.
   // Recalibrada 2026-09-26 (feedback en vivo): cortada a la altura de la cesta de la vela (antes invadía
@@ -922,7 +922,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // "Sol/Amigos/Risas..." de la derecha) — con el texto de certificación completo el cálculo automático
   // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
   // invitationLiteralTextOverlap.test.ts).
-  { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.25, y: 0.21, width: 0.5, height: 0.56 } },
+  { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.25, y: 0.21, width: 0.5, height: 0.681 } },
   { key: 'playa_atardecer', label: 'Playa atardecer', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaAtardecer, imageAspect: 1, textArea: { x: 0.24, y: 0.12, width: 0.58, height: 0.5976 } },
   // GRUPO A — certificada ("PLAYA NOCHE / PLAYA TERRAZA: funcionan correctamente"). No tocar salvo necesidad real.
   // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
@@ -944,11 +944,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
   // para el bug real de solape con el texto de certificación de 4 líneas tras subir AVG_CHAR_WIDTH_RATIO
   // a 0.6: se amplía únicamente el alto (x/y/width intactos) al mínimo necesario para overflowed=false.
-  { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar, imageAspect: 1.188, textArea: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.6 } },
+  { key: 'cena_hogar', label: 'Cena en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCenaHogar, imageAspect: 1.188, textArea: { x: 0.2284, y: 0.1074, width: 0.532, height: 0.706 } },
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real) — con el texto de
   // certificación completo el cálculo automático sigue dando overflow, riesgo asumido explícitamente por el
   // usuario (ver invitationLiteralTextOverlap.test.ts).
-  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 1.1861, textArea: { x: 0.32, y: 0.11, width: 0.51, height: 0.55 } },
+  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 1.1861, textArea: { x: 0.32, y: 0.11, width: 0.51, height: 0.804 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la derecha, jarra con texto abajo-izq.
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, bajada para dejar fuera el
   // borde superior del marco) — con el texto de certificación completo el cálculo automático sigue dando
@@ -977,13 +977,25 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'carnaval_payaso', label: 'Carnaval payaso', gradient: 'linear-gradient(160deg, #FBBF24, #7C3AED)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalPayaso, imageAspect: 0.6667, textArea: { x: 0.37, y: 0.2, width: 0.39, height: 0.49 } },
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora ni compensar con cambios globales del motor.
   // FASE 2 — fondo rediseñado (2026-09): marco de confeti, señal/pizarra fuera del marco, sombrero/gafas abajo.
-  { key: 'carnaval_confeti', label: 'Carnaval confeti', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalConfeti, imageAspect: 0.6667, textArea: { x: 0.24, y: 0.1, width: 0.6, height: 0.6 } },
-  { key: 'otono_acogedor', label: 'Otoño acogedor', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoAcogedor, imageAspect: 1, textArea: { x: 0.28, y: 0.08, width: 0.58, height: 0.7 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, bajada para dejar fuera el
+  // borde superior de confeti) — con el texto de certificación completo el cálculo automático sigue dando
+  // overflow, riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'carnaval_confeti', label: 'Carnaval confeti', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#1f2233', artKey: 'confeti', image: invitaCarnavalConfeti, imageAspect: 0.6667, textArea: { x: 0.25, y: 0.2, width: 0.54, height: 0.5 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, bajada para dejar fuera las
+  // hojas de arce de arriba) — cabe el texto sin overflow.
+  { key: 'otono_acogedor', label: 'Otoño acogedor', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoAcogedor, imageAspect: 1, textArea: { x: 0.29, y: 0.15, width: 0.57, height: 0.6 } },
   // Zona intencionadamente <0.45 de ancho: activa el modo "compact" (fuente más pequeña automática). El
   // sendero real deja una franja vertical estrecha entre los árboles a ambos lados — ya documentado en FASE 1
   // como límite físico genuino de esta imagen, no hay más ancho limpio real que ganar ampliando.
-  { key: 'otono_senderismo', label: 'Otoño senderismo', gradient: 'linear-gradient(160deg, #B45309, #166534)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoSenderismo, imageAspect: 1, textArea: { x: 0.29, y: 0.04, width: 0.44, height: 0.68 } },
-  { key: 'otono_hogar', label: 'Otoño en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoHogar, imageAspect: 1, textArea: { x: 0.26, y: 0.04, width: 0.66, height: 0.5976 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, bajada para dejar fuera las
+  // montañas/copas de árboles de arriba) — con el texto de certificación completo el cálculo automático
+  // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
+  // invitationLiteralTextOverlap.test.ts).
+  { key: 'otono_senderismo', label: 'Otoño senderismo', gradient: 'linear-gradient(160deg, #B45309, #166534)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoSenderismo, imageAspect: 1, textArea: { x: 0.28, y: 0.23, width: 0.49, height: 0.681 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el gancho/marco
+  // superior) — con el texto de certificación completo el cálculo automático sigue dando overflow, riesgo
+  // asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
+  { key: 'otono_hogar', label: 'Otoño en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoHogar, imageAspect: 1, textArea: { x: 0.32, y: 0.12, width: 0.53, height: 0.681 } },
   // GRUPO C — marcada para futuro rediseño ("necesita más espacio limpio, decoración invade demasiado").
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la izquierda, girasoles/calabazas
   // completamente por debajo del marco.
@@ -999,10 +1011,10 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // (1024x1536 → 0.6667). textArea recalculada desde cero: rectángulo confirmado por el usuario tras verlo
   // dibujado sobre la foto real (el borde inferior sube bastante para dejar fuera el regalo con el lazo).
   { key: 'corazones_madera', label: 'Corazones rústico', gradient: 'linear-gradient(160deg, #E11D48, #78350F)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesMadera, imageAspect: 0.6667, textArea: { x: 0.18, y: 0.07, width: 0.64, height: 0.66 } },
-  { key: 'corazones_terraza', label: 'Corazones terraza', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesTerraza, imageAspect: 1.1861, textArea: { x: 0.22, y: 0.14, width: 0.56, height: 0.62 } },
-  { key: 'corazones_dorado', label: 'Corazones dorado', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesDorado, imageAspect: 1.188, textArea: { x: 0.14, y: 0.06, width: 0.56, height: 0.6 } },
-  { key: 'celebracion_dorada', label: 'Celebración dorada', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCelebracionDorada, imageAspect: 1.188, textArea: { x: 0.27, y: 0.11, width: 0.51, height: 0.7407 } },
-  { key: 'fiesta_acuarela', label: 'Fiesta acuarela', gradient: 'linear-gradient(160deg, #FDE9D9, #F3E8FF)', text: '#6B21A8', artKey: 'confeti', image: invitaFiestaAcuarela, imageAspect: 1.1861, textArea: { x: 0.2, y: 0.1, width: 0.58, height: 0.6776 } },
+  { key: 'corazones_terraza', label: 'Corazones terraza', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'corazones', image: invitaCorazonesTerraza, imageAspect: 1.1861, textArea: { x: 0.22, y: 0.14, width: 0.56, height: 0.705 } },
+  { key: 'corazones_dorado', label: 'Corazones dorado', gradient: 'linear-gradient(160deg, #F5F0E6, #E7DFC6)', text: '#9D174D', artKey: 'corazones', image: invitaCorazonesDorado, imageAspect: 1.188, textArea: { x: 0.14, y: 0.06, width: 0.56, height: 0.706 } },
+  { key: 'celebracion_dorada', label: 'Celebración dorada', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCelebracionDorada, imageAspect: 1.188, textArea: { x: 0.27, y: 0.11, width: 0.51, height: 0.805 } },
+  { key: 'fiesta_acuarela', label: 'Fiesta acuarela', gradient: 'linear-gradient(160deg, #FDE9D9, #F3E8FF)', text: '#6B21A8', artKey: 'confeti', image: invitaFiestaAcuarela, imageAspect: 1.1861, textArea: { x: 0.2, y: 0.1, width: 0.58, height: 0.705 } },
   // Lote 12 — repaso visual de la familia: sustituye SVG o fotos que
   // "quedan borrosas o no quedan bien" en Robots, Ositos, Gatitos,
   // Kpop, Superheroína y Estrellitas (ya no dibujo/foto vieja, ahora
@@ -1012,10 +1024,12 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // GRUPO C — marcada para futuro rediseño de fondo ("crear tarjeta/zona limpia de escritura mucho mayor").
   // FASE 2 — fondo rediseñado (2026-09): marco ondulado, tortuga arriba-dcha, sirena abajo-izq — tarjeta
   // realmente mucho más grande y clara.
-  { key: 'sirena', label: 'Sirena', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaSirena, imageAspect: 0.6667, textArea: { x: 0.19, y: 0.17, width: 0.64, height: 0.68 } },
-  { key: 'delfin_tortuga', label: 'Delfín y tortuga', gradient: 'linear-gradient(160deg, #0EA5E9, #0369A1)', text: '#ffffff', artKey: 'confeti', image: invitaDelfinTortuga, imageAspect: 1.2163, textArea: { x: 0.12, y: 0.12, width: 0.72, height: 0.6 } },
-  { key: 'mago', label: 'Mago', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaMago, imageAspect: 1.214, textArea: { x: 0.35, y: 0.16, width: 0.41, height: 0.6 } },
-  { key: 'bruja', label: 'Bruja', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaBruja, imageAspect: 1.2163, textArea: { x: 0.4, y: 0.04, width: 0.5, height: 0.68 } },
+  // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, estrechada para dejar fuera
+  // a la sirena/pelo de la izquierda) — cabe el texto sin overflow.
+  { key: 'sirena', label: 'Sirena', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaSirena, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.19, width: 0.58, height: 0.62 } },
+  { key: 'delfin_tortuga', label: 'Delfín y tortuga', gradient: 'linear-gradient(160deg, #0EA5E9, #0369A1)', text: '#ffffff', artKey: 'confeti', image: invitaDelfinTortuga, imageAspect: 1.2163, textArea: { x: 0.12, y: 0.12, width: 0.72, height: 0.664 } },
+  { key: 'mago', label: 'Mago', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaMago, imageAspect: 1.214, textArea: { x: 0.35, y: 0.16, width: 0.41, height: 0.668 } },
+  { key: 'bruja', label: 'Bruja', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaBruja, imageAspect: 1.2163, textArea: { x: 0.4, y: 0.04, width: 0.5, height: 0.824 } },
 ]
 
 // Petición real: "quiero evitar que tengan que repasar las 97 [temas],
@@ -1829,18 +1843,35 @@ export interface LayerBoxFraction {
   halfHeight: number
 }
 
+// Bug real reportado en vivo (iPhone, plantilla "navidad_hogar"): el usuario confirmó visualmente que el
+// texto SÍ cabía, pero autoArrangeLayers avisaba de overflow. Causa: ASSUMED_CANVAS_SIZE_PX se usaba como
+// referencia de píxeles tanto para el ANCHO como para el ALTO del lienzo — correcto solo si el lienzo fuera
+// cuadrado. El lienzo real tiene `aspect-ratio: imageAspect / 1` (ver InvitationCanvasEditor), así que su
+// alto real en px es ASSUMED_CANVAS_SIZE_PX / imageAspect, no ASSUMED_CANVAS_SIZE_PX — para una plantilla
+// vertical como esta (imageAspect 0.59), el lienzo real es 1/0.59 ≈ 1.7 VECES más alto de lo que la fórmula
+// asumía, así que una misma altura de texto en px representaba una fracción de zona mucho mayor de la real
+// → avisos de "no cabe" falsos en plantillas verticales (la mayoría), y el error contrario — infravalorar
+// el alto necesario, sin avisar de un solape real — en las pocas plantillas horizontales (imageAspect > 1,
+// p. ej. "boda"). Verificado en el navegador real: para imageAspect 0.5911 el error medido fue exactamente
+// 1/0.5911, confirmando la causa. Ahora cada función recibe `imageAspect` (1 si no se conoce, p. ej. foto
+// propia) y usa `ASSUMED_CANVAS_SIZE_PX / imageAspect` como referencia real del alto del lienzo.
+function assumedCanvasHeightPx(imageAspect: number): number {
+  return ASSUMED_CANVAS_SIZE_PX / imageAspect
+}
+
 // INV-EDITOR-2 (corrección) — estima, en fracción del lienzo (0..1), la MITAD del ancho/alto real con el
 // que se renderiza una capa — la misma función que usa autoArrangeLayers para colocarla y que los tests
 // usan para comprobar que su caja completa (no solo su centro) queda dentro de la zona segura. El texto
 // curvado reutiliza las mismas fórmulas que su propio SVG (ver InvitationLayerVisual en
 // ui/InvitationDesigner.tsx) para que la estimación no se desvíe de lo que de verdad se pinta.
-export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: number): LayerBoxFraction {
+export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: number, imageAspect = 1): LayerBoxFraction {
+  const canvasHeightPx = assumedCanvasHeightPx(imageAspect)
   if (layer.type === 'text' && layer.curve) {
     const fontSize = layer.fontSize ?? 16
     const text = (layer.text ?? '').replace(/\n/g, ' ')
     const widthPx = Math.max(220, text.length * fontSize * 0.62)
     const heightPx = Math.max(80, Math.abs(layer.curve) * 0.9 + fontSize * 1.6)
-    return { halfWidth: widthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / ASSUMED_CANVAS_SIZE_PX }
+    return { halfWidth: widthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / canvasHeightPx }
   }
   if (layer.type === 'text' || layer.type === 'event_data') {
     const fontSize = layer.fontSize ?? 16
@@ -1851,11 +1882,11 @@ export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: 
     const segments = (layer.text ?? '').split('\n')
     const longest = segments.reduce((m, s) => Math.max(m, s.trim().length), 0)
     const widthPx = Math.min(zoneWidthFrac * ASSUMED_CANVAS_SIZE_PX, longest * fontSize * AVG_CHAR_WIDTH_RATIO)
-    return { halfWidth: widthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / ASSUMED_CANVAS_SIZE_PX }
+    return { halfWidth: widthPx / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: heightPx / 2 / canvasHeightPx }
   }
   // emoji | shape | photo — cuadrado de lado fontSize, igual que se renderizan (ver InvitationLayerVisual).
   const size = layer.fontSize ?? (layer.type === 'photo' ? 120 : layer.type === 'shape' ? 60 : 48)
-  return { halfWidth: size / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: size / 2 / ASSUMED_CANVAS_SIZE_PX }
+  return { halfWidth: size / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: size / 2 / canvasHeightPx }
 }
 
 export interface AutoArrangeResult {
@@ -1886,7 +1917,7 @@ export interface AutoArrangeResult {
 // `overflowed`). Las formas/decoraciones se mantienen fuera de la zona cuando es posible (pushOutsideZone).
 // Es la MISMA fuente de verdad que ya usan las capas por defecto — no se crea un segundo sistema de
 // "zonas seguras", ni valores especiales para ninguna plantilla concreta.
-export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone = DEFAULT_TEXT_AREA): AutoArrangeResult {
+export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone = DEFAULT_TEXT_AREA, imageAspect = 1): AutoArrangeResult {
   const zone = textArea ?? DEFAULT_TEXT_AREA
   const photos = layers.filter((l) => l.type === 'photo')
   const texts = layers.filter((l) => l.type === 'text' || l.type === 'event_data')
@@ -1906,7 +1937,7 @@ export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone 
   // 1) Icono/emoji principal, arriba de la zona segura — su propia caja también se mantiene dentro.
   let iconsBottom = zoneTop
   emojis.forEach((l, i) => {
-    const box = estimateLayerBoxFraction(l, zone.width)
+    const box = estimateLayerBoxFraction(l, zone.width, imageAspect)
     const target = zoneTop + zone.height * clampFraction(0.1 + i * 0.05, 0, 0.3)
     const y = clampFraction(target, zoneTop + box.halfHeight, Math.max(zoneTop + box.halfHeight, zoneBottom - box.halfHeight))
     arranged.push({ ...l, x: cx, y, rotation: 0 })
@@ -1922,7 +1953,7 @@ export function autoArrangeLayers(layers: InvitationLayer[], textArea: SafeZone 
   const availableBottom = zoneBottom - BOTTOM_MARGIN_FRACTION * zone.height
   const availableHeight = Math.max(0, availableBottom - availableTop)
 
-  const textBoxes = texts.map((l) => estimateLayerBoxFraction(l, zone.width))
+  const textBoxes = texts.map((l) => estimateLayerBoxFraction(l, zone.width, imageAspect))
   const totalHeights = textBoxes.reduce((sum, b) => sum + b.halfHeight * 2, 0)
   const gapCount = Math.max(0, texts.length - 1)
 

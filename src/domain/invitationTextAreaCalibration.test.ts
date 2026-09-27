@@ -140,7 +140,13 @@ describe('4. sin regresión de overflow en las 46 plantillas recalibradas, con e
   // el ancho Y el alto del lienzo, incorrecto para cualquier plantilla no cuadrada (`aspect-ratio:
   // imageAspect / 1`). Corregido pasando `imageAspect` a autoArrangeLayers (ver events.ts) — con el cálculo
   // correcto, las 46 pasan sin ninguna excepción.
-  it.each(GROUP_B_KEYS)('%s', (key) => {
+  //
+  // 2026-09-27: "corazones_terraza" es una excepción deliberada, no un bug — ver el comentario junto a
+  // KNOWN_RISK_ACCEPTED en invitationLiteralTextOverlap.test.ts para el detalle completo (zona estrechada
+  // a petición de la usuaria para que coincida con el borde real del cartel; con esa anchura el texto
+  // largo no cabe hasta el borde inferior real del cartel, riesgo aceptado explícitamente).
+  const KNOWN_RISK_ACCEPTED = new Set<string>(['corazones_terraza'])
+  it.each(GROUP_B_KEYS.filter((k) => !KNOWN_RISK_ACCEPTED.has(k)))('%s', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(event, template)
     const { overflowed } = autoArrangeLayers(layers, template.textArea, template.imageAspect)

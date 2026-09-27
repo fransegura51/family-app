@@ -147,7 +147,7 @@ describe('4. sin regresión de overflow en las 46 plantillas recalibradas, con e
   // que autoArrangeLayers cae siempre al fallback por caracteres, que sigue sobreestimando el wrapping a
   // este ancho (0.35) — ver el comentario completo junto a FALLBACK_HEURISTIC_FALSE_POSITIVE en
   // invitationLiteralTextOverlap.test.ts. Falso positivo exclusivo de la prueba en Node, no de la app real.
-  const FALLBACK_HEURISTIC_FALSE_POSITIVE = new Set<string>(['corazones_terraza'])
+  const FALLBACK_HEURISTIC_FALSE_POSITIVE = new Set<string>(['corazones_terraza', 'otono_senderismo', 'delfin_tortuga', 'bruja'])
   it.each(GROUP_B_KEYS.filter((k) => !FALLBACK_HEURISTIC_FALSE_POSITIVE.has(k)))('%s', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(event, template)
@@ -241,22 +241,48 @@ describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN s
   // completo a mano por el usuario sobre la foto real, y ampliaron su alto una vez más el mismo día al
   // corregir el bug de aspect-ratio (ver invitationLiteralTextOverlap.test.ts) — ya no hace falta ningún
   // riesgo asumido, las 3 caben con el cálculo correcto. Ninguna de las 12 recibió fondo nuevo.
+  //
+  // 2026-09-27 — revisión de geometría pura (misma metodología que corazones_terraza), verificando SIEMPRE
+  // el contenido real ya colocado por autoArrangeLayers contra la foto (no solo la caja nominal de la zona,
+  // que se apila desde arriba y puede dejar mucho hueco sin usar debajo sin que eso sea un problema real —
+  // lección de "tapas", ver más abajo). jubilacion_viaje, jubilacion_relax, bebe_neutro y playa_pina SÍ
+  // tenían un solape real y visible del texto ya renderizado (el sombrero/maleta en jubilacion_viaje; la
+  // pila de carteles de madera en jubilacion_relax; la jirafa en bebe_neutro; la piña/hibisco en playa_pina)
+  // — no un problema de texto, geometría mal medida. Recalibradas sobre la foto real y verificadas con el
+  // motor measureText corregido (d082f7b): las 4 dan overflowed=false con margen genuino, confirmado
+  // renderizando el contenido real (no solo la zona) sobre la imagen real. jubilacion_cena tenía el mismo
+  // tipo de solape pero su superficie limpia real era demasiado pequeña incluso al máximo seguro — la
+  // usuaria sustituyó la imagen por una versión ampliada; recalibrada sobre la imagen nueva. "tapas" parecía
+  // tener el mismo problema por la caja nominal, pero el contenido real renderizado NO llega a tocar la
+  // comida (la usuaria lo confirmó en el dispositivo real) — se deja sin tocar, error de mi propio análisis
+  // inicial, no un bug real.
   const UNCHANGED_UNLISTED: Record<string, { x: number; y: number; width: number; height: number }> = {
     bebe_nina: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 },
-    bebe_neutro: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 },
+    bebe_neutro: { x: 0.27, y: 0.23, width: 0.54, height: 0.54 },
     bebe_arcoiris: { x: 0.25, y: 0.17, width: 0.52, height: 0.648 },
-    casa_cajas: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 },
+    casa_cajas: { x: 0.25, y: 0.10, width: 0.38, height: 0.58 },
     despedida_novia: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.68 },
     playa_piscina: { x: 0.28, y: 0.12, width: 0.55, height: 0.6 },
-    playa_pina: { x: 0.25, y: 0.21, width: 0.5, height: 0.681 },
-    tapas: { x: 0.32, y: 0.11, width: 0.51, height: 0.804 },
-    jubilacion_viaje: { x: 0.2862, y: 0.2009, width: 0.4387, height: 0.476 },
-    jubilacion_relax: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.56 },
-    jubilacion_cena: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.68 },
+    playa_pina: { x: 0.28, y: 0.14, width: 0.44, height: 0.58 },
+    jubilacion_viaje: { x: 0.23, y: 0.16, width: 0.35, height: 0.52 },
+    jubilacion_relax: { x: 0.35, y: 0.06, width: 0.44, height: 0.5 },
     carnaval_bufon: { x: 0.3449, y: 0.2564, width: 0.588, height: 0.6 },
   }
   it.each(Object.entries(UNCHANGED_UNLISTED))('%s', (key, expected) => {
     expect(templateByKey(key).textArea).toEqual(expected)
+  })
+  // jubilacion_cena y tapas SÍ recibieron fondo nuevo en esta ronda (2026-09-27, imagen ampliada dada
+  // directamente por la usuaria tras encontrar que la superficie limpia original era demasiado pequeña) —
+  // no encajan en "ninguna de las 12 recibió fondo nuevo" de arriba, así que se prueban aparte.
+  it('jubilacion_cena (fondo sustituido 2026-09-27, superficie ampliada por la usuaria)', () => {
+    const t = templateByKey('jubilacion_cena')
+    expect(t.imageAspect).toBe(0.6667)
+    expect(t.textArea).toEqual({ x: 0.24, y: 0.13, width: 0.48, height: 0.55 })
+  })
+  it('tapas (fondo sustituido 2026-09-27, superficie ampliada por la usuaria)', () => {
+    const t = templateByKey('tapas')
+    expect(t.imageAspect).toBe(0.6667)
+    expect(t.textArea).toEqual({ x: 0.33, y: 0.13, width: 0.48, height: 0.5 })
   })
   it('A=9 + B=46 + resueltas en FASE2=33 + sin instrucción restante=12 cubren exactamente las 100 plantillas reales', () => {
     const named = new Set([
@@ -267,6 +293,8 @@ describe('9. plantillas SIN instrucción explícita en la revisión que SIGUEN s
       ...FASE1_GROUP_C_RESUELTO_EN_FASE2,
       ...FASE1_SIN_INSTRUCCION_RESUELTO_EN_FASE2,
       ...Object.keys(UNCHANGED_UNLISTED),
+      'jubilacion_cena',
+      'tapas',
     ])
     expect(named.size).toBe(100)
     expect(INVITATION_TEMPLATES.length).toBe(100)

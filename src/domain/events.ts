@@ -808,7 +808,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando la guirnalda y el
   // lazo rojo de las esquinas) — con el texto de certificación completo el cálculo automático sigue dando
   // overflow, riesgo asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
-  { key: 'navidad_hogar', label: 'Navidad junto al fuego', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadHogar, imageAspect: 0.5911, textArea: { x: 0.41, y: 0.12, width: 0.46, height: 0.36 } },
+  { key: 'navidad_hogar', label: 'Navidad junto al fuego', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidadHogar, imageAspect: 0.5911, textArea: { x: 0.28, y: 0.11, width: 0.54, height: 0.34 } },
   // GRUPO C — marcada para futuro rediseño de fondo ("crear cartel central más largo y ancho").
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera mucho más ancho/largo, muñeco de nieve reducido
   // a la esquina inferior izquierda.
@@ -865,7 +865,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'graduacion_disciplina', label: 'Graduación disciplina', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaGraduacionDisciplina, imageAspect: 0.6667, textArea: { x: 0.35, y: 0.3, width: 0.55, height: 0.58 } },
   { key: 'graduacion_explorar', label: 'Graduación explorar', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaGraduacionExplorar, imageAspect: 0.6667, textArea: { x: 0.17, y: 0.29, width: 0.63, height: 0.6 } },
   { key: 'bebe_nina', label: 'Bebé niña', gradient: 'linear-gradient(160deg, #FBCFE8, #FDA4AF)', text: '#9D174D', artKey: 'confeti', image: invitaBebeNina, imageAspect: 0.9526, textArea: { x: 0.2444, y: 0.1238, width: 0.4667, height: 0.68 } },
-  { key: 'bebe_neutro', label: 'Cuna neutral', gradient: 'linear-gradient(160deg, #D9F99D, #FDE9D9)', text: '#3F6212', artKey: 'confeti', image: invitaBebeNeutro, imageAspect: 0.9526, textArea: { x: 0.1036, y: 0.1413, width: 0.7373, height: 0.5898 } },
+  { key: 'bebe_neutro', label: 'Cuna neutral', gradient: 'linear-gradient(160deg, #D9F99D, #FDE9D9)', text: '#3F6212', artKey: 'confeti', image: invitaBebeNeutro, imageAspect: 0.9526, textArea: { x: 0.27, y: 0.23, width: 0.54, height: 0.54 } },
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando la estrella/nube de
   // arriba y el conejito de la izquierda) — con el texto de certificación completo el cálculo automático
   // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
@@ -884,7 +884,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'casa_llaves', label: 'Nueva casa llaves', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaLlaves, imageAspect: 0.6667, textArea: { x: 0.28, y: 0.25, width: 0.52, height: 0.46 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, cojines/planta fuera del marco por abajo.
   { key: 'casa_terraza', label: 'Nueva casa terraza', gradient: 'linear-gradient(160deg, #166534, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaTerraza, imageAspect: 0.6667, textArea: { x: 0.3, y: 0.12, width: 0.54, height: 0.62 } },
-  { key: 'casa_cajas', label: 'Nueva casa mudanza', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaCajas, imageAspect: 1, textArea: { x: 0.2138, y: 0.1231, width: 0.4947, height: 0.7093 } },
+  { key: 'casa_cajas', label: 'Nueva casa mudanza', gradient: 'linear-gradient(160deg, #B45309, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaCasaCajas, imageAspect: 1, textArea: { x: 0.25, y: 0.10, width: 0.38, height: 0.58 } },
   { key: 'despedida_novia', label: 'Despedida de soltera', gradient: 'linear-gradient(160deg, #EC4899, #9D174D)', text: '#ffffff', artKey: 'confeti', image: invitaDespedidaNovia, imageAspect: 1, textArea: { x: 0.2582, y: 0.1116, width: 0.4947, height: 0.68 } },
   // FASE 2 — fondo rediseñado (2026-09): gorra arriba-izq, señal fuera del marco a la derecha, cubo "EL
   // NOVIO" abajo-izq.
@@ -926,7 +926,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // "Sol/Amigos/Risas..." de la derecha) — con el texto de certificación completo el cálculo automático
   // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
   // invitationLiteralTextOverlap.test.ts).
-  { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.25, y: 0.21, width: 0.5, height: 0.681 } },
+  { key: 'playa_pina', label: 'Playa piña colada', gradient: 'linear-gradient(160deg, #FBBF24, #0EA5E9)', text: '#7C2D12', artKey: 'confeti', image: invitaPlayaPina, imageAspect: 1, textArea: { x: 0.28, y: 0.14, width: 0.44, height: 0.58 } },
   { key: 'playa_atardecer', label: 'Playa atardecer', gradient: 'linear-gradient(160deg, #FB923C, #7C2D12)', text: '#FFF7ED', artKey: 'confeti', image: invitaPlayaAtardecer, imageAspect: 1, textArea: { x: 0.24, y: 0.12, width: 0.58, height: 0.5976 } },
   // GRUPO A — certificada ("PLAYA NOCHE / PLAYA TERRAZA: funcionan correctamente"). No tocar salvo necesidad real.
   // Plantilla certificada (grupo A) — excepción autorizada explícitamente por el usuario 2026-09-26 SOLO
@@ -952,7 +952,7 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real) — con el texto de
   // certificación completo el cálculo automático sigue dando overflow, riesgo asumido explícitamente por el
   // usuario (ver invitationLiteralTextOverlap.test.ts).
-  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 1.1861, textArea: { x: 0.32, y: 0.11, width: 0.51, height: 0.804 } },
+  { key: 'tapas', label: 'Tapas con amigos', gradient: 'linear-gradient(160deg, #B45309, #78350F)', text: '#FFF7ED', artKey: 'confeti', image: invitaTapas, imageAspect: 0.6667, textArea: { x: 0.33, y: 0.13, width: 0.48, height: 0.50 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la derecha, jarra con texto abajo-izq.
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, bajada para dejar fuera el
   // borde superior del marco) — con el texto de certificación completo el cálculo automático sigue dando
@@ -960,9 +960,9 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   { key: 'desayuno', label: 'Desayuno / Brunch', gradient: 'linear-gradient(160deg, #FDE9D9, #FBBF24)', text: '#7C2D12', artKey: 'confeti', image: invitaDesayuno, imageAspect: 0.6667, textArea: { x: 0.25, y: 0.18, width: 0.57, height: 0.5 } },
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, pizarra/señal fuera a los lados, farol abajo-izq.
   { key: 'jubilacion_brindis', label: 'Jubilación brindis', gradient: 'linear-gradient(160deg, #1F2937, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaJubilacionBrindis, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.14, width: 0.42, height: 0.55 } },
-  { key: 'jubilacion_viaje', label: 'Jubilación viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaJubilacionViaje, imageAspect: 1, textArea: { x: 0.2862, y: 0.2009, width: 0.4387, height: 0.476 } },
-  { key: 'jubilacion_relax', label: 'Jubilación tranquila', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaJubilacionRelax, imageAspect: 1, textArea: { x: 0.3827, y: 0.1173, width: 0.4013, height: 0.56 } },
-  { key: 'jubilacion_cena', label: 'Jubilación cena', gradient: 'linear-gradient(160deg, #7F1D1D, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaJubilacionCena, imageAspect: 1, textArea: { x: 0.2564, y: 0.1498, width: 0.476, height: 0.68 } },
+  { key: 'jubilacion_viaje', label: 'Jubilación viaje', gradient: 'linear-gradient(160deg, #0EA5E9, #78350F)', text: '#ffffff', artKey: 'confeti', image: invitaJubilacionViaje, imageAspect: 1, textArea: { x: 0.23, y: 0.16, width: 0.35, height: 0.52 } },
+  { key: 'jubilacion_relax', label: 'Jubilación tranquila', gradient: 'linear-gradient(160deg, #FDE9D9, #D6A574)', text: '#5C3A1E', artKey: 'confeti', image: invitaJubilacionRelax, imageAspect: 1, textArea: { x: 0.35, y: 0.06, width: 0.44, height: 0.5 } },
+  { key: 'jubilacion_cena', label: 'Jubilación cena', gradient: 'linear-gradient(160deg, #7F1D1D, #1E1B4B)', text: '#FFF7ED', artKey: 'confeti', image: invitaJubilacionCena, imageAspect: 0.6667, textArea: { x: 0.24, y: 0.13, width: 0.48, height: 0.55 } },
   { key: 'carnaval_bufon', label: 'Carnaval bufón', gradient: 'linear-gradient(160deg, #7C3AED, #DB2777)', text: '#ffffff', artKey: 'confeti', image: invitaCarnavalBufon, imageAspect: 1, textArea: { x: 0.3449, y: 0.2564, width: 0.588, height: 0.6 } },
   // GRUPO C — marcada para futuro rediseño. NO tocar ahora.
   // FASE 2 — fondo rediseñado (2026-09): plumas de colores arriba-izq y en toda la columna derecha —
@@ -995,11 +995,11 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // montañas/copas de árboles de arriba) — con el texto de certificación completo el cálculo automático
   // sigue dando overflow, riesgo asumido explícitamente por el usuario (ver
   // invitationLiteralTextOverlap.test.ts).
-  { key: 'otono_senderismo', label: 'Otoño senderismo', gradient: 'linear-gradient(160deg, #B45309, #166534)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoSenderismo, imageAspect: 1, textArea: { x: 0.28, y: 0.23, width: 0.49, height: 0.681 } },
+  { key: 'otono_senderismo', label: 'Otoño senderismo', gradient: 'linear-gradient(160deg, #B45309, #166534)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoSenderismo, imageAspect: 1, textArea: { x: 0.31, y: 0.13, width: 0.40, height: 0.48 } },
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, evitando el gancho/marco
   // superior) — con el texto de certificación completo el cálculo automático sigue dando overflow, riesgo
   // asumido explícitamente por el usuario (ver invitationLiteralTextOverlap.test.ts).
-  { key: 'otono_hogar', label: 'Otoño en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoHogar, imageAspect: 1, textArea: { x: 0.32, y: 0.12, width: 0.53, height: 0.681 } },
+  { key: 'otono_hogar', label: 'Otoño en casa', gradient: 'linear-gradient(160deg, #7F1D1D, #451A03)', text: '#FFF7ED', artKey: 'confeti', image: invitaOtonoHogar, imageAspect: 1, textArea: { x: 0.36, y: 0.08, width: 0.52, height: 0.42 } },
   // GRUPO C — marcada para futuro rediseño ("necesita más espacio limpio, decoración invade demasiado").
   // FASE 2 — fondo rediseñado (2026-09): cartel de madera, señal fuera a la izquierda, girasoles/calabazas
   // completamente por debajo del marco.
@@ -1031,9 +1031,9 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Recalibrada 2026-09-26 (marcada a mano por el usuario sobre la foto real, estrechada para dejar fuera
   // a la sirena/pelo de la izquierda) — cabe el texto sin overflow.
   { key: 'sirena', label: 'Sirena', gradient: 'linear-gradient(160deg, #0EA5E9, #075985)', text: '#ffffff', artKey: 'confeti', image: invitaSirena, imageAspect: 0.6667, textArea: { x: 0.32, y: 0.19, width: 0.58, height: 0.62 } },
-  { key: 'delfin_tortuga', label: 'Delfín y tortuga', gradient: 'linear-gradient(160deg, #0EA5E9, #0369A1)', text: '#ffffff', artKey: 'confeti', image: invitaDelfinTortuga, imageAspect: 1.2163, textArea: { x: 0.12, y: 0.12, width: 0.72, height: 0.664 } },
-  { key: 'mago', label: 'Mago', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaMago, imageAspect: 1.214, textArea: { x: 0.35, y: 0.16, width: 0.41, height: 0.668 } },
-  { key: 'bruja', label: 'Bruja', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaBruja, imageAspect: 1.2163, textArea: { x: 0.4, y: 0.04, width: 0.5, height: 0.824 } },
+  { key: 'delfin_tortuga', label: 'Delfín y tortuga', gradient: 'linear-gradient(160deg, #0EA5E9, #0369A1)', text: '#ffffff', artKey: 'confeti', image: invitaDelfinTortuga, imageAspect: 1.2163, textArea: { x: 0.32, y: 0.08, width: 0.40, height: 0.58 } },
+  { key: 'mago', label: 'Mago', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaMago, imageAspect: 1.214, textArea: { x: 0.40, y: 0.14, width: 0.40, height: 0.62 } },
+  { key: 'bruja', label: 'Bruja', gradient: 'linear-gradient(160deg, #4C1D95, #1E1B4B)', text: '#ffffff', artKey: 'confeti', image: invitaBruja, imageAspect: 1.2163, textArea: { x: 0.52, y: 0.08, width: 0.36, height: 0.58 } },
 ]
 
 // Petición real: "quiero evitar que tengan que repasar las 97 [temas],

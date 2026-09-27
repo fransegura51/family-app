@@ -60,7 +60,17 @@ const KNOWN_RISK_ACCEPTED = new Set<string>([])
 // TextMeasurer real) — y ese fallback, deliberadamente conservador, todavía sobreestima el wrapping para
 // este ancho concreto (0.35) y marca overflowed=true. Es un falso positivo conocido y exclusivo de la
 // prueba en Node, no del comportamiento real de la app — no reducir la textArea para "arreglar" esto.
-const FALLBACK_HEURISTIC_FALSE_POSITIVE = new Set<string>(['corazones_terraza'])
+//
+// 2026-09-27 — misma causa en las siguientes, todas con textArea geométrica (medida sobre la foto real,
+// nunca sobre el texto) verificada overflowed=false en el navegador real con measureText: "jubilacion_viaje"
+// (marco de madera), "bebe_neutro" (círculo dorado), "otono_senderismo" (cartel entre botas y termo),
+// "otono_hogar" (cartel sobre la manta), "delfin_tortuga" (círculo entre delfín y tortuga), "mago" y "bruja"
+// (cartel junto al niño/niña). El fallback de Node sobreestima el wrapping a estos anchos estrechos —
+// mismo no-arreglo.
+const FALLBACK_HEURISTIC_FALSE_POSITIVE = new Set<string>([
+  'corazones_terraza', 'jubilacion_viaje', 'bebe_neutro', 'otono_senderismo', 'otono_hogar',
+  'delfin_tortuga', 'mago', 'bruja',
+])
 
 describe('las 100 plantillas reales no dan overflow con el texto literal largo de certificación (bug real 2026-09-26)', () => {
   it.each(INVITATION_TEMPLATES.map((t) => t.key).filter((k) => !KNOWN_RISK_ACCEPTED.has(k) && !FALLBACK_HEURISTIC_FALSE_POSITIVE.has(k)))('%s', (key) => {

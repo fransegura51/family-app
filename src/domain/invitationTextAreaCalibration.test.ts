@@ -141,12 +141,14 @@ describe('4. sin regresión de overflow en las 46 plantillas recalibradas, con e
   // imageAspect / 1`). Corregido pasando `imageAspect` a autoArrangeLayers (ver events.ts) — con el cálculo
   // correcto, las 46 pasan sin ninguna excepción.
   //
-  // 2026-09-27: "corazones_terraza" es una excepción deliberada, no un bug — ver el comentario junto a
-  // KNOWN_RISK_ACCEPTED en invitationLiteralTextOverlap.test.ts para el detalle completo (zona estrechada
-  // a petición de la usuaria para que coincida con el borde real del cartel; con esa anchura el texto
-  // largo no cabe hasta el borde inferior real del cartel, riesgo aceptado explícitamente).
-  const KNOWN_RISK_ACCEPTED = new Set<string>(['corazones_terraza'])
-  it.each(GROUP_B_KEYS.filter((k) => !KNOWN_RISK_ACCEPTED.has(k)))('%s', (key) => {
+  // 2026-09-27 — "corazones_terraza" no es una excepción de diseño: su textArea es puramente geométrica
+  // (superficie crema real de la foto) y en el navegador real, con el motor measureText corregido (commit
+  // d082f7b), da overflowed=false con margen genuino. Este archivo corre en Node puro (sin DOM/canvas), así
+  // que autoArrangeLayers cae siempre al fallback por caracteres, que sigue sobreestimando el wrapping a
+  // este ancho (0.35) — ver el comentario completo junto a FALLBACK_HEURISTIC_FALSE_POSITIVE en
+  // invitationLiteralTextOverlap.test.ts. Falso positivo exclusivo de la prueba en Node, no de la app real.
+  const FALLBACK_HEURISTIC_FALSE_POSITIVE = new Set<string>(['corazones_terraza'])
+  it.each(GROUP_B_KEYS.filter((k) => !FALLBACK_HEURISTIC_FALSE_POSITIVE.has(k)))('%s', (key) => {
     const template = templateByKey(key)
     const layers = buildInvitationTemplateLayers(event, template)
     const { overflowed } = autoArrangeLayers(layers, template.textArea, template.imageAspect)

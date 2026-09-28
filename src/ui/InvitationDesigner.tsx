@@ -4,7 +4,9 @@ import {
   autoArrangeLayers,
   buildInvitationDataFields,
   buildInvitationTemplateLayers,
+  clampLayerCenterAccessible,
   DEFAULT_TEXT_AREA,
+  estimateLayerBoxFraction,
   findFreeDataLayerPosition,
   findFreeDecorationLayerPosition,
   INVITATION_EMOJI_CATEGORIES,
@@ -12,6 +14,7 @@ import {
   INVITATION_TEMPLATES,
   invitationEmojiSkinToneVariants,
   LINE_HEIGHT_RATIO,
+  recoverInaccessibleLayerPositions,
   searchInvitationEmoji,
   type InvitationTemplateMeta,
   makeInvitationLayer,
@@ -1184,7 +1187,6 @@ export function InvitationCanvasView({
   )
 }
 
-const LAYER_COLOR_PRESETS = ['#ffffff', '#1f2233', '#4C6EF5', '#F472B6', '#FBBF24', '#34D399']
 const LAYER_FONT_OPTIONS: { value: string; label: string }[] = [
   { value: 'inherit', label: 'Normal' },
   { value: 'Georgia, serif', label: 'Con serifa' },
@@ -1488,9 +1490,6 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // un <textarea> posicionado exactamente donde está la capa). Se resetea al cambiar de selección.
   const [textEditingActive, setTextEditingActive] = useState(false)
   const inPlaceTextareaRef = useRef<HTMLTextAreaElement>(null)
-  // Sección 4 — "Color" abre DIRECTAMENTE el selector nativo completo: este ref solo sirve para disparar
-  // el click() del <input type="color"> oculto, sin ningún cajón/fila de colores predefinidos intermedio.
-  const colorInputRef = useRef<HTMLInputElement>(null)
   // Corrección UX — alto real visible (visualViewport) para no dejar la barra de edición de texto detrás
   // del teclado en iOS/Android: iOS no encoge `vh` cuando aparece el teclado (solo el visualViewport), así
   // que sin esto la hoja del diseñador (88vh) se queda con el mismo alto de siempre y su parte de abajo
@@ -1587,7 +1586,17 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
           const loadedCustomTextArea = invitation.canvas.customTextArea ?? null
           setTemplateKey(loadedTemplateKey)
           setBackgroundGradient(loadedGradient)
-          setLayers(invitation.canvas.layers)
+          // Corrección (2026-09-28) — recuperación conservadora al abrir: una invitación guardada ANTES de
+          // la corrección del arrastre (ver handleDragPointerMove) podía tener alguna capa realmente
+          // inaccesible (su centro en el límite/esquina del lienzo, sin hueco táctil real). Se recoloca
+          // aquí lo mínimo necesario — nunca se recentra nada, y una capa ya accesible (aunque sobresalga
+          // parcialmente, eso sigue permitido) no se toca. savedSnapshotRef sigue comparando contra lo que
+          // de verdad hay en la base de datos (invitation.canvas.layers, sin recuperar) — si esto recoloca
+          // algo, se ve como "cambios sin guardar" hasta que la familia pulse Guardar, igual que cualquier
+          // otro cambio, en vez de reescribir la base de datos en silencio.
+          const loadedTemplateMeta = INVITATION_TEMPLATES.find((t) => t.key === loadedTemplateKey)
+          const loadedImageAspect = !invitation.backgroundImagePath && loadedTemplateMeta?.imageAspect ? loadedTemplateMeta.imageAspect : 3 / 4
+          setLayers(recoverInaccessibleLayerPositions(invitation.canvas.layers, loadedImageAspect))
           setBackgroundOffsetX(loadedOffsetX)
           setBackgroundOffsetY(loadedOffsetY)
           setBackgroundScale(loadedScale)
@@ -1992,7 +2001,23 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     if (d.mode === 'move') {
       const dx = (e.clientX - d.startClientX!) / d.rectW!
       const dy = (e.clientY - d.startClientY!) / d.rectH!
-      setLayers((ls) => ls.map((l) => (l.id === d.layerId ? { ...l, x: clamp(d.x0! + dx, 0, 1), y: clamp(d.y0! + dy, 0, 1) } : l)))
+      // Corrección (2026-09-28) — bug real (iPhone): arrastrar una capa hasta el borde/esquina la dejaba
+      // con su centro exactamente en el límite (0 o 1) sin tener en cuenta su propio tamaño, así que podía
+      // quedar un resto demasiado pequeño (o inexistente) para volver a tocarla — capa persistente pero
+      // inaccesible. clampLayerCenterAccessible (domain/events.ts) sigue permitiendo sobresalir del lienzo
+      // a propósito, solo garantiza un hueco táctil mínimo por eje — mismo motor para las 5 capas, sin
+      // ninguna rama por `layer.type` aquí.
+      setLayers((ls) =>
+        ls.map((l) => {
+          if (l.id !== d.layerId) return l
+          const zoneWidthFrac = l.zoneWidthFrac ?? legacyZoneWidthFrac
+          const box = estimateLayerBoxFraction(l, zoneWidthFrac, imageAspectNumeric)
+          const scale = l.scale || 1
+          const x = clampLayerCenterAccessible(d.x0! + dx, box.halfWidth * scale, ASSUMED_CANVAS_SIZE_PX)
+          const y = clampLayerCenterAccessible(d.y0! + dy, box.halfHeight * scale, logicalHeightPx)
+          return { ...l, x, y }
+        }),
+      )
     } else {
       const dx = e.clientX - d.centerPx!.x
       const dy = e.clientY - d.centerPx!.y
@@ -2255,6 +2280,34 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   useEffect(() => {
     if (textEditingActive) inPlaceTextareaRef.current?.focus()
   }, [textEditingActive])
+
+  // Corrección UX (2026-09-28) — Forma usaba una interfaz de color distinta (6 presets + una rueda aparte),
+  // ya inconsistente con el selector que se corrigió para Texto. Un único selector directo — sin presets —
+  // para cualquier tipo de capa con color editable: un swatch que muestra el color actual, con el
+  // <input type="color"> nativo superpuesto ENCIMA (mismo truco ya probado en Texto: el toque llega
+  // directamente al selector nativo, nunca un ref + .click() programático, que en Safari/iPhone no siempre
+  // cuenta como gesto de usuario y puede no abrir la rueda de color). Una sola implementación reutilizada
+  // en los dos sitios — nunca dos sistemas de color distintos en el mismo editor.
+  function renderColorSwatch(buttonClassName: string) {
+    if (!selected) return null
+    return (
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <span className={buttonClassName} aria-hidden="true">
+          <span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: selected.color || '#ffffff', border: '1px solid #d8dae8' }} />
+        </span>
+        <input
+          type="color"
+          className="color-wheel-input"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, border: 0, padding: 0, margin: 0, cursor: 'pointer' }}
+          value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
+          onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
+          onBlur={commitContinuousEdit}
+          aria-label="Color"
+          title="Color"
+        />
+      </div>
+    )
+  }
 
   return (
     <>
@@ -2545,7 +2598,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             {/* Corrección UX (2026-09-27) — modo de edición de texto: barra compacta propia, pegada al
                 teclado, en vez de la barra de herramientas + panel genéricos de abajo. Reutiliza EXACTAMENTE
                 las mismas funciones/estado que el resto del editor (updateSelectedDiscrete/Continuous,
-                resolveLayerFontWeight, ALIGN_OPTIONS, LAYER_FONT_OPTIONS, LAYER_COLOR_PRESETS) — nada de
+                resolveLayerFontWeight, ALIGN_OPTIONS, LAYER_FONT_OPTIONS, renderColorSwatch) — nada de
                 lógica nueva, solo una disposición distinta para móvil. */}
             {/* Reorganización (2026-09-28) — menú de texto en DOS FILAS FIJAS, agrupadas por familia y
                 separadas por una línea vertical fina (petición real), siempre visibles mientras haya un
@@ -2677,28 +2730,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   </button>
                 </div>
                 <div className="invitation-text-toolbar-row">
-                  {/* GRUPO 4 — apariencia (color y efectos juntos). Corrección real (el botón no abría nada
-                      en el móvil): en vez de un input oculto en otro punto del árbol al que este botón le
-                      hacía click() por código, el <input type="color"> real se superpone AQUÍ MISMO, encima
-                      del círculo que muestra el color actual — así el toque del usuario llega directamente al
-                      selector nativo (mismo patrón que cualquier "swatch" de color con input nativo debajo,
-                      sin depender de que el navegador acepte un .click() programático). */}
-                  <div style={{ position: 'relative', display: 'inline-block' }}>
-                    <span className="invitation-text-edit-btn" aria-hidden="true">
-                      <span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: selected.color || '#ffffff', border: '1px solid #d8dae8' }} />
-                    </span>
-                    <input
-                      ref={colorInputRef}
-                      type="color"
-                      className="color-wheel-input"
-                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, border: 0, padding: 0, margin: 0, cursor: 'pointer' }}
-                      value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
-                      onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
-                      onBlur={commitContinuousEdit}
-                      aria-label="Color"
-                      title="Color"
-                    />
-                  </div>
+                  {/* GRUPO 4 — apariencia (color y efectos juntos). renderColorSwatch (definido más arriba)
+                      es la MISMA implementación que usa Forma — un único selector directo, sin presets. */}
+                  {renderColorSwatch('invitation-text-edit-btn')}
                   <button
                     type="button"
                     className={'invitation-text-edit-btn' + (textEditTool === 'effect' ? ' invitation-text-edit-btn-active' : '')}
@@ -3072,30 +3106,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   {/* Fuente/Tamaño/Efecto de texto y su Color ya no viven aquí (2026-09-28) — están
                       SIEMPRE visibles en las dos filas fijas del menú de texto (ver más abajo) en cuanto
                       hay una capa de texto seleccionada, sin duplicar controles en dos sitios distintos.
-                      Este panel de color solo sigue haciendo falta para una forma. */}
+                      Este panel de color solo sigue haciendo falta para una forma. Corrección UX
+                      (2026-09-28) — ya no hay presets + rueda aparte: mismo selector directo que Texto
+                      (renderColorSwatch, definido más arriba), sin mantener dos sistemas de color. */}
                   {panel === 'color' && selected && selected.type === 'shape' && (
-                    <div className="filter-row" style={{ alignItems: 'center' }}>
-                      {LAYER_COLOR_PRESETS.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => updateSelectedDiscrete({ color: c })}
-                          style={{ width: 30, height: 30, borderRadius: '50%', background: c, border: selected.color === c ? '2px solid #4C6EF5' : '1px solid #d8dae8' }}
-                          aria-label={`Color ${c}`}
-                        />
-                      ))}
-                      {/* Petición real: "mejor pon un botón que puedas elegir el color de la letra de
-                          una paleta más amplia" — input[type=color] nativo abre la rueda de color
-                          completa del móvil, sin límite a los 6 rápidos de arriba. */}
-                      <input
-                        type="color"
-                        className="color-wheel-input"
-                        value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
-                        onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
-                        onBlur={commitContinuousEdit}
-                        aria-label="Elegir cualquier color"
-                      />
-                    </div>
+                    <div className="filter-row" style={{ alignItems: 'center' }}>{renderColorSwatch('invitation-toolbar-btn')}</div>
                   )}
 
                   {panel === 'tamano' && selected && (
@@ -3103,14 +3118,17 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       {/* Petición real: "he insertado una foto y no consigo editar su tamaño" — el texto
                           ya no llega aquí (tiene su propio control en las dos filas fijas), así que el paso
                           es siempre el de foto/forma/emoji. El punto azul de la esquina (pellizcar/
-                          arrastrar) sigue siendo el gesto principal. */}
-                      <button type="button" className="link-button" onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 15) })}>
-                        A-
+                          arrastrar) sigue siendo el gesto principal. Corrección UX (2026-09-28) — Forma
+                          usa ahora el mismo patrón "A±" que Texto (mismo estilo de botón, mismo glifo "−"),
+                          en vez del antiguo icono 🔠 de la barra; foto/emoji siguen con el mismo control,
+                          sin cambios pedidos para ellos en esta corrección. */}
+                      <button type="button" className="invitation-text-edit-btn" onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 15) })} aria-label="Más pequeño">
+                        A−
                       </button>
                       <span className="muted" style={{ fontSize: 12 }}>
                         {Math.round(selected.fontSize ?? 16)}
                       </span>
-                      <button type="button" className="link-button" onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + 15 })}>
+                      <button type="button" className="invitation-text-edit-btn" onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + 15 })} aria-label="Más grande">
                         A+
                       </button>
                     </div>
@@ -3207,7 +3225,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       <span>Color</span>
                     </button>
                     <button type="button" className={'invitation-toolbar-btn' + (panel === 'tamano' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('tamano')}>
-                      <span className="invitation-toolbar-icon">🔠</span>
+                      <span className="invitation-toolbar-icon">A±</span>
                       <span>Tamaño</span>
                     </button>
                     <button type="button" className={'invitation-toolbar-btn' + (panel === 'mas' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('mas')}>

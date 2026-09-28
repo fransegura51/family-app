@@ -2655,6 +2655,59 @@ export function estimateLayerBoxFraction(layer: InvitationLayer, zoneWidthFrac: 
   return { halfWidth: size / 2 / ASSUMED_CANVAS_SIZE_PX, halfHeight: size / 2 / canvasHeightPx }
 }
 
+// Corrección (2026-09-28) — bug real reproducido en iPhone: arrastrar una capa (probado con formas de
+// corazón, pero el motor de arrastre es EL MISMO para texto/datos/foto/emoji/forma — ver
+// handleDragPointerMove en ui/InvitationDesigner.tsx, sin ninguna rama por `layer.type`) hasta el borde, o
+// peor, hasta una ESQUINA del lienzo, dejaba su CENTRO justo en el límite (x/y = 0 o 1) — el clamp de
+// siempre (Math.min/max a [0,1]) solo miraba ESE PUNTO, nunca el tamaño real de la propia capa. Con el
+// lienzo recortando (overflow:hidden) todo lo que se sale, lo que quedaba visible en una esquina podía ser
+// un cuadrado de menos de 30×30px — técnicamente seleccionable, pero en la práctica imposible de volver a
+// tocar con el dedo: una capa persistente pero inaccesible (reproducido con dos corazones, guardado y
+// confirmado que seguían así al reabrir).
+//
+// No cambia el criterio de siempre: una capa PUEDE sobresalir parcialmente del lienzo si el usuario quiere
+// ese efecto (eso no se toca). Solo se garantiza un hueco táctil mínimo razonable en cada eje, nunca que
+// quede 100% dentro. 36px lógicos (sobre el lienzo de referencia ASSUMED_CANVAS_SIZE_PX=380, el mismo que
+// ya usa estimateLayerBoxFraction) es un poco por debajo del mínimo recomendado de iOS/Android (44pt/48dp)
+// a propósito, para no recolocar de más una capa que ya era razonablemente accesible.
+export const MIN_ACCESSIBLE_TOUCH_PX = 36
+
+// Recorta el CENTRO de una capa, en UN eje, para que deje como mínimo MIN_ACCESSIBLE_TOUCH_PX de sí misma
+// dentro del lienzo — nunca exige más hueco del que la propia capa PUEDE dar como mucho (su lado entero,
+// 2×halfExtentFrac, que es el máximo solape posible cuando queda completamente dentro en ese eje) — una
+// capa ya más pequeña que el mínimo pedido no se queda encerrada sin poder tocar nunca el borde, solo se le
+// pide el máximo que ella misma puede ofrecer. Un solo eje a la vez porque el arrastre ya trata x e y de
+// forma independiente (mismo patrón que el clamp de siempre); en una esquina, aplicar esto en los dos ejes
+// deja un cuadrado mínimo accesible.
+export function clampLayerCenterAccessible(center: number, halfExtentFrac: number, canvasSizePx: number): number {
+  const minVisibleFrac = Math.min(2 * halfExtentFrac, MIN_ACCESSIBLE_TOUCH_PX / canvasSizePx)
+  return clampFraction(center, minVisibleFrac - halfExtentFrac, 1 + halfExtentFrac - minVisibleFrac)
+}
+
+// Recuperación conservadora (2026-09-28) — al ABRIR una invitación ya guardada (antes de esta corrección
+// era posible dejar una capa en una posición inaccesible, ver arriba), recoloca SOLO las capas que de
+// verdad estén fuera del hueco táctil mínimo — lo mínimo necesario para que vuelvan a ser seleccionables.
+// Nunca recentra, nunca toca una capa que ya fuera accesible (aunque sobresalga parcialmente) — layers
+// intacta por identidad de objeto cuando nada cambia, para no marcar como "con cambios sin guardar" una
+// invitación que ya estaba bien.
+export function recoverInaccessibleLayerPositions(layers: InvitationLayer[], imageAspect = 1): InvitationLayer[] {
+  const canvasHeightPx = assumedCanvasHeightPx(imageAspect)
+  let changed = false
+  const next = layers.map((layer) => {
+    const zoneWidthFrac = layer.zoneWidthFrac ?? DEFAULT_TEXT_AREA.width
+    const box = estimateLayerBoxFraction(layer, zoneWidthFrac, imageAspect)
+    const scale = layer.scale || 1
+    const halfW = box.halfWidth * scale
+    const halfH = box.halfHeight * scale
+    const x = clampLayerCenterAccessible(layer.x, halfW, ASSUMED_CANVAS_SIZE_PX)
+    const y = clampLayerCenterAccessible(layer.y, halfH, canvasHeightPx)
+    if (x === layer.x && y === layer.y) return layer
+    changed = true
+    return { ...layer, x, y }
+  })
+  return changed ? next : layers
+}
+
 export interface AutoArrangeResult {
   layers: InvitationLayer[]
   // INV-EDITOR-2 (corrección) — true si, incluso comprimiendo los huecos al mínimo, el contenido de

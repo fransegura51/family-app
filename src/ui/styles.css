@@ -3534,6 +3534,25 @@ textarea {
   z-index: 56;
 }
 
+/* Unificación Emoji+Forma → Decorar (2026-09-28) — selector de tono de piel (long-press sobre un emoji del
+   catálogo). Encima de .invitation-panel (z-index 56): el catálogo puede seguir haciendo scroll detrás. */
+.invitation-emoji-variant-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 58;
+}
+
+.invitation-emoji-variant-popover {
+  position: fixed;
+  display: flex;
+  gap: 4px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(15, 18, 30, 0.25);
+  padding: 8px;
+  z-index: 59;
+}
+
 /* Corrección UX (2026-09-27) — modo de edición de texto del diseñador de invitaciones: sustituye a
    .invitation-toolbar-wrap SOLO mientras se edita el contenido de una capa de texto, para que las
    herramientas de formato (alineación/negrita/cursiva/fuente/color/tamaño) queden pegadas justo encima del

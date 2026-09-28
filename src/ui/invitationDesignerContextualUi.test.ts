@@ -15,13 +15,16 @@ describe('el antiguo bloque fijo "Elemento seleccionado" ha desaparecido', () =>
   })
 })
 
-describe('barra SIN selección: exactamente las 6 acciones pedidas', () => {
-  it('Texto, Datos, Foto, Emoji, Forma y Plantilla, nada de controles de texto/color', () => {
+describe('barra SIN selección: exactamente las 5 acciones (unificación 2026-09-28: Emoji+Forma -> Decorar)', () => {
+  it('Texto, Datos, Foto, Decorar y Plantilla, nada de controles de texto/color', () => {
     const idx = SRC.indexOf('{!selected ? (')
     const block = SRC.slice(idx, SRC.indexOf(") : selected.type === 'shape' ? (", idx))
-    for (const label of ['Texto', 'Datos', 'Foto', 'Emoji', 'Forma', 'Plantilla']) {
+    for (const label of ['Texto', 'Datos', 'Foto', 'Decorar', 'Plantilla']) {
       expect(block).toContain(`<span>${label}</span>`)
     }
+    // "Emoji"/"Forma" ya no son botones de barra independientes — viven como pestañas dentro de "Decorar".
+    expect(block).not.toContain('<span>Emoji</span>')
+    expect(block).not.toContain('<span>Forma</span>')
     expect(block).not.toContain("togglePanel('color')")
   })
 })

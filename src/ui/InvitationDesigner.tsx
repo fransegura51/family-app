@@ -6,9 +6,11 @@ import {
   buildInvitationTemplateLayers,
   DEFAULT_TEXT_AREA,
   findFreeDataLayerPosition,
+  findFreeDecorationLayerPosition,
   INVITATION_EMOJI_CATEGORIES,
   INVITATION_SHAPES,
   INVITATION_TEMPLATES,
+  invitationEmojiSkinToneVariants,
   LINE_HEIGHT_RATIO,
   searchInvitationEmoji,
   type InvitationTemplateMeta,
@@ -1311,7 +1313,121 @@ function comparableSnapshotKey(s: EditorSnapshot): string {
 // Reorganización (2026-09-28) — 'texto'/'fuente'/'efecto' ya no son estados de `panel`: el menú de texto
 // (dos filas fijas) se muestra directamente en cuanto hay una capa de texto seleccionada (ver
 // `textEditMode`), y Fuente/Efecto viven dentro de ese menú (`textEditTool`), no como paneles aparte.
-type DesignerPanel = 'plantilla' | 'datos' | 'emoji' | 'forma' | 'color' | 'tamano' | 'mas' | 'pepa'
+// Unificación Emoji+Forma → Decorar (2026-09-28) — 'emoji' y 'forma' dejan de ser paneles independientes;
+// ahora comparten un único panel 'decorar' con dos pestañas (ver `decorarTab`). Es solo una reorganización
+// de la barra: ni el modelo de capas (InvitationLayer sigue siendo type:'emoji'|'shape' de siempre) ni el
+// contenido de cada catálogo cambian.
+type DesignerPanel = 'plantilla' | 'datos' | 'decorar' | 'color' | 'tamano' | 'mas' | 'pepa'
+type DecorarTab = 'emoji' | 'forma'
+
+const LONG_PRESS_MS = 450
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10
+
+// Unificación Emoji+Forma → Decorar (2026-09-28) — long-press estilo WhatsApp/iOS para elegir tono de piel
+// real de Unicode (ver invitationEmojiSkinToneVariants, domain/events.ts). Un emoji sin variantes se sigue
+// insertando al toque, sin ningún paso de más — mismo comportamiento de siempre, código sin cambios para
+// ese caso. El temporizador se cancela si el dedo se mueve más de un pequeño umbral (para no robarle el
+// scroll del panel al usuario) o se suelta antes de tiempo; `firedRef` evita que el "click" sintético que
+// el navegador dispara después de un long-press inserte también el emoji base antes de elegir variante.
+function InvitationEmojiChip({ char, onInsert }: { char: string; onInsert: (char: string) => void }) {
+  const variants = useMemo(() => invitationEmojiSkinToneVariants(char), [char])
+  const [showVariants, setShowVariants] = useState(false)
+  const [popoverPos, setPopoverPos] = useState<{ left: number; top: number } | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const firedRef = useRef(false)
+  const startRef = useRef<{ x: number; y: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement | null>(null)
+
+  function clearTimer() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+  }
+
+  function openVariants() {
+    const rect = btnRef.current?.getBoundingClientRect()
+    const popoverWidth = variants.length * 40 + 16
+    if (rect) {
+      const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - 8 - popoverWidth))
+      const top = Math.max(8, rect.top - 56)
+      setPopoverPos({ left, top })
+    }
+    setShowVariants(true)
+  }
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLButtonElement>) {
+    if (variants.length === 0) return
+    startRef.current = { x: e.clientX, y: e.clientY }
+    firedRef.current = false
+    clearTimer()
+    timerRef.current = setTimeout(() => {
+      firedRef.current = true
+      openVariants()
+    }, LONG_PRESS_MS)
+  }
+
+  function handlePointerMove(e: ReactPointerEvent<HTMLButtonElement>) {
+    if (!startRef.current) return
+    const dx = e.clientX - startRef.current.x
+    const dy = e.clientY - startRef.current.y
+    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE_PX) clearTimer()
+  }
+
+  function handlePointerEnd() {
+    clearTimer()
+  }
+
+  function handleClick() {
+    if (firedRef.current) {
+      firedRef.current = false
+      return
+    }
+    onInsert(char)
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className="chip"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerLeave={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        onClick={handleClick}
+        // Igual que el lienzo (más arriba): solo en los chips que de verdad tienen variantes, para que un
+        // long-press no dispare el menú contextual nativo de Safari por encima del selector de tonos.
+        onContextMenu={variants.length > 0 ? (e) => e.preventDefault() : undefined}
+        style={variants.length > 0 ? ({ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' } as CSSProperties) : undefined}
+      >
+        {char}
+      </button>
+      {showVariants && popoverPos && (
+        <>
+          <div className="invitation-emoji-variant-overlay" onPointerDown={() => setShowVariants(false)} />
+          <div className="invitation-emoji-variant-popover" style={{ left: popoverPos.left, top: popoverPos.top }}>
+            {variants.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="chip"
+                onClick={() => {
+                  setShowVariants(false)
+                  onInsert(v)
+                }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  )
+}
 
 export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
   const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
@@ -1386,6 +1502,8 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // Fase 3 Bloque 3 — "🕘 Recientes": se carga una vez al montar (no cambia mientras el editor está
   // abierto salvo que el propio usuario inserte un emoji, ver handleInsertEmoji).
   const [recentEmoji, setRecentEmoji] = useState<string[]>(() => loadRecentInvitationEmoji())
+  // Unificación Emoji+Forma → Decorar (2026-09-28) — pestaña activa dentro del panel único 'decorar'.
+  const [decorarTab, setDecorarTab] = useState<DecorarTab>('emoji')
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -1615,10 +1733,23 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // Fase 3 Bloque 3 — inserta un emoji (de la biblioteca, de la búsqueda o de "Recientes") y lo apunta como
   // reciente — mismo criterio de "operación normal" que cualquier otra capa: se puede mover, cambiar de
   // tamaño, duplicar o borrar después sin ninguna diferencia.
+  // Unificación Emoji+Forma → Decorar (2026-09-28) — corrección: ya no se inserta siempre en (0.5, 0.5)
+  // (ver makeInvitationLayer) porque varios emoji seguidos quedaban apilados exactamente encima unos de
+  // otros; findFreeDecorationLayerPosition busca el primer hueco libre (domain/events.ts).
   function handleInsertEmoji(char: string) {
-    handleAddLayer(makeInvitationLayer('emoji', { text: char, fontSize: 48 }))
+    const layer = makeInvitationLayer('emoji', { text: char, fontSize: 48 })
+    const { x, y } = findFreeDecorationLayerPosition(layer, layers, imageAspectNumeric)
+    handleAddLayer({ ...layer, x, y })
     recordRecentInvitationEmoji(char)
     setRecentEmoji(loadRecentInvitationEmoji())
+  }
+
+  // Unificación Emoji+Forma → Decorar (2026-09-28) — mismo tratamiento que handleInsertEmoji, extraído del
+  // onClick en línea que tenía antes la rejilla de formas, para poder reusar el mismo cálculo de hueco libre.
+  function handleInsertShape(shapeKey: string) {
+    const layer = makeInvitationLayer('shape', { shapeKey, color: '#ffffff', fontSize: 60 })
+    const { x, y } = findFreeDecorationLayerPosition(layer, layers, imageAspectNumeric)
+    handleAddLayer({ ...layer, x, y })
   }
 
   function handleDuplicate() {
@@ -2787,95 +2918,113 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     </>
                   )}
 
-                  {panel === 'emoji' && (
+                  {panel === 'decorar' && (
                     <>
-                      {/* Petición real: "los emojis salen muy pocos, lo suyo sería poder usar cualquier
-                          emoji del teclado" — el teclado emoji nativo del móvil ya funciona en cualquier
-                          campo de texto, así que el mismo campo sirve para dos cosas: buscar un concepto en
-                          español (biblioteca local, sin API) O pegar/escribir directamente cualquier emoji
-                          del teclado y añadirlo tal cual con "+ Añadir". */}
-                      <form
-                        style={{ display: 'flex', gap: 6 }}
-                        onSubmit={(e) => {
-                          e.preventDefault()
-                          const em = customEmoji.trim()
-                          if (!em) return
-                          handleInsertEmoji(em)
-                          setCustomEmoji('')
-                        }}
-                      >
-                        <input
-                          type="text"
-                          value={customEmoji}
-                          onChange={(e) => setCustomEmoji(e.target.value)}
-                          placeholder="Buscar (tarta, corazón...) o pegar un emoji"
-                          style={{ flex: 1 }}
-                        />
-                        <button type="submit" className="chip" disabled={!customEmoji.trim()}>
-                          + Añadir
+                      {/* Unificación Emoji+Forma → Decorar (2026-09-28) — un único punto de entrada con dos
+                          pestañas, en vez de dos botones de barra distintos; cada pestaña reutiliza tal cual
+                          el catálogo y las acciones que ya tenía por separado (nada de contenido nuevo). */}
+                      <div className="filter-row" style={{ marginBottom: 8 }}>
+                        <button
+                          type="button"
+                          className={'chip' + (decorarTab === 'emoji' ? ' chip-active' : '')}
+                          onClick={() => setDecorarTab('emoji')}
+                        >
+                          😀 Emojis
                         </button>
-                      </form>
-                      {customEmoji.trim() ? (
-                        (() => {
-                          const results = searchInvitationEmoji(customEmoji)
-                          return (
-                            <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
-                              {results.length === 0 && (
-                                <p className="muted" style={{ fontSize: 12 }}>
-                                  Sin resultados para "{customEmoji}" — si es un emoji, tócalo en tu teclado y pulsa "+ Añadir" para usarlo tal cual.
-                                </p>
-                              )}
-                              {results.map((e) => (
-                                <button key={e.char} type="button" className="chip" onClick={() => handleInsertEmoji(e.char)}>
-                                  {e.char}
-                                </button>
-                              ))}
-                            </div>
-                          )
-                        })()
-                      ) : (
+                        <button
+                          type="button"
+                          className={'chip' + (decorarTab === 'forma' ? ' chip-active' : '')}
+                          onClick={() => setDecorarTab('forma')}
+                        >
+                          ◆ Formas
+                        </button>
+                      </div>
+
+                      {decorarTab === 'emoji' && (
                         <>
-                          {recentEmoji.length > 0 && (
+                          {/* Petición real: "los emojis salen muy pocos, lo suyo sería poder usar cualquier
+                              emoji del teclado" — el teclado emoji nativo del móvil ya funciona en cualquier
+                              campo de texto, así que el mismo campo sirve para dos cosas: buscar un concepto
+                              en español (biblioteca local, sin API) O pegar/escribir directamente cualquier
+                              emoji del teclado y añadirlo tal cual con "+ Añadir". */}
+                          <form
+                            style={{ display: 'flex', gap: 6 }}
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              const em = customEmoji.trim()
+                              if (!em) return
+                              handleInsertEmoji(em)
+                              setCustomEmoji('')
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={customEmoji}
+                              onChange={(e) => setCustomEmoji(e.target.value)}
+                              placeholder="Buscar (tarta, corazón...) o pegar un emoji"
+                              style={{ flex: 1 }}
+                            />
+                            <button type="submit" className="chip" disabled={!customEmoji.trim()}>
+                              + Añadir
+                            </button>
+                          </form>
+                          {customEmoji.trim() ? (
+                            (() => {
+                              const results = searchInvitationEmoji(customEmoji)
+                              return (
+                                <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
+                                  {results.length === 0 && (
+                                    <p className="muted" style={{ fontSize: 12 }}>
+                                      Sin resultados para "{customEmoji}" — si es un emoji, tócalo en tu teclado y pulsa "+ Añadir" para usarlo tal cual.
+                                    </p>
+                                  )}
+                                  {results.map((e) => (
+                                    <InvitationEmojiChip key={e.char} char={e.char} onInsert={handleInsertEmoji} />
+                                  ))}
+                                </div>
+                              )
+                            })()
+                          ) : (
                             <>
-                              <p className="muted" style={{ fontSize: 11, margin: '8px 0 2px' }}>
-                                🕘 Recientes
-                              </p>
-                              <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-                                {recentEmoji.map((em) => (
-                                  <button key={em} type="button" className="chip" onClick={() => handleInsertEmoji(em)}>
-                                    {em}
-                                  </button>
-                                ))}
-                              </div>
+                              {recentEmoji.length > 0 && (
+                                <>
+                                  <p className="muted" style={{ fontSize: 11, margin: '8px 0 2px' }}>
+                                    🕘 Recientes
+                                  </p>
+                                  <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                                    {recentEmoji.map((em) => (
+                                      <InvitationEmojiChip key={em} char={em} onInsert={handleInsertEmoji} />
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                              {INVITATION_EMOJI_CATEGORIES.map((cat) => (
+                                <div key={cat.key}>
+                                  <p className="muted" style={{ fontSize: 11, margin: '8px 0 2px' }}>
+                                    {cat.label}
+                                  </p>
+                                  <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                                    {cat.emojis.map((e) => (
+                                      <InvitationEmojiChip key={e.char} char={e.char} onInsert={handleInsertEmoji} />
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
                             </>
                           )}
-                          {INVITATION_EMOJI_CATEGORIES.map((cat) => (
-                            <div key={cat.key}>
-                              <p className="muted" style={{ fontSize: 11, margin: '8px 0 2px' }}>
-                                {cat.label}
-                              </p>
-                              <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-                                {cat.emojis.map((e) => (
-                                  <button key={e.char} type="button" className="chip" onClick={() => handleInsertEmoji(e.char)}>
-                                    {e.char}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
                         </>
                       )}
-                    </>
-                  )}
 
-                  {panel === 'forma' && (
-                    <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-                      {INVITATION_SHAPES.map((s) => (
-                        <button key={s.key} type="button" className="chip" onClick={() => handleAddLayer(makeInvitationLayer('shape', { shapeKey: s.key, color: '#ffffff', fontSize: 60 }))}>
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
+                      {decorarTab === 'forma' && (
+                        <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                          {INVITATION_SHAPES.map((s) => (
+                            <button key={s.key} type="button" className="chip" onClick={() => handleInsertShape(s.key)}>
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {panel === 'datos' && (
@@ -3042,13 +3191,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       <span>Foto</span>
                       <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} disabled={uploadingPhoto} />
                     </label>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'emoji' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('emoji')}>
-                      <span className="invitation-toolbar-icon">😀</span>
-                      <span>Emoji</span>
-                    </button>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'forma' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('forma')}>
-                      <span className="invitation-toolbar-icon">◆</span>
-                      <span>Forma</span>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'decorar' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('decorar')}>
+                      <span className="invitation-toolbar-icon">🖌️</span>
+                      <span>Decorar</span>
                     </button>
                     <button type="button" className={'invitation-toolbar-btn' + (panel === 'plantilla' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('plantilla')}>
                       <span className="invitation-toolbar-icon">🎨</span>

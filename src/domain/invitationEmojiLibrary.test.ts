@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { INVITATION_EMOJI_CATEGORIES, INVITATION_SHAPES, searchInvitationEmoji } from '@/domain/events'
+import { INVITATION_EMOJI_CATEGORIES, INVITATION_SHAPES, invitationEmojiSkinToneVariants, searchInvitationEmoji } from '@/domain/events'
 
 // Fase 3 Bloque 3 (2026-09-27) — biblioteca de emojis por categorías + buscador en español, sin
 // dependencias ni API (metadatos locales). Ver también src/state/invitationRecentEmoji.test.ts (recientes)
@@ -91,6 +91,34 @@ describe('searchInvitationEmoji — busca por concepto en español, no solo por 
     const results = searchInvitationEmoji('a') // término muy genérico, coincide en muchas entradas
     const chars = results.map((e) => e.char)
     expect(new Set(chars).size).toBe(chars.length)
+  })
+})
+
+describe('invitationEmojiSkinToneVariants — tono de piel real de Unicode (long-press), ver InvitationEmojiChip en ui/InvitationDesigner.tsx', () => {
+  it('👍 (Emoji_Modifier_Base real) da 5 variantes, claro a oscuro, siempre con el emoji base + un único modificador', () => {
+    const variants = invitationEmojiSkinToneVariants('👍')
+    expect(variants).toHaveLength(5)
+    for (const v of variants) {
+      expect(v.startsWith('👍')).toBe(true)
+      expect([...v].length).toBe(2) // el emoji base + el modificador, ninguna secuencia rara.
+    }
+    expect(new Set(variants).size).toBe(5) // las 5 son distintas entre sí.
+  })
+
+  it('todos los emoji de mano/persona ya presentes en el catálogo con variante real dan exactamente 5 resultados', () => {
+    for (const char of ['🙌', '👏', '🙏', '👍', '👶', '👰', '🤵', '🎅', '🤶', '🧙']) {
+      expect(invitationEmojiSkinToneVariants(char), `${char} debería tener 5 variantes`).toHaveLength(5)
+    }
+  })
+
+  it('un emoji sin cara/mano no tiene variante de tono de piel (nunca se inventa una)', () => {
+    expect(invitationEmojiSkinToneVariants('🎂')).toEqual([])
+    expect(invitationEmojiSkinToneVariants('🎁')).toEqual([])
+  })
+
+  it('los emoji de MÁS DE UNA persona (👫, 💑) se dejan fuera a propósito — Unicode no da un tono distinto por persona sin una secuencia ZWJ más compleja, y ante la duda se deja fuera', () => {
+    expect(invitationEmojiSkinToneVariants('👫')).toEqual([])
+    expect(invitationEmojiSkinToneVariants('💑')).toEqual([])
   })
 })
 

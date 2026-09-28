@@ -13,6 +13,7 @@ import {
   computeTableOccupancy,
   countPaymentAlerts,
   estimateLayerBoxFraction,
+  EVENT_MODULES,
   eventAlertsToAttentionItems,
   eventLocationMapLines,
   generateEventPlan,
@@ -1147,5 +1148,18 @@ describe('computeTableOccupancy (TEST: sin doble conteo, TEST: plazas sin nombre
     }
     expect(computeTableOccupancy(table, guests, membersByGuestId)).toBe(1)
     expect(computeTableOccupancy({ id: 'mesa-principal' }, guests, membersByGuestId)).toBe(2)
+  })
+})
+
+describe('EVENT_MODULES — etiqueta visible del módulo "invitaciones" (2026-09-28: renombrado de "Invitaciones y RSVP" a "Invitación")', () => {
+  it('el módulo "invitaciones" se muestra como "Invitación" (EventosScreen lee mod.label para la tarjeta, los chips de selección y "Organízamelo Pepa")', () => {
+    const mod = EVENT_MODULES.find((m) => m.key === 'invitaciones')
+    expect(mod?.label).toBe('Invitación')
+  })
+
+  it('la clave interna "invitaciones" no cambia — solo la etiqueta visible (el RSVP público y su plazo no son este módulo, y siguen sin tocar)', () => {
+    const keys = EVENT_MODULES.map((m) => m.key)
+    expect(keys).toContain('invitaciones')
+    expect(EVENT_MODULES.map((m) => m.label)).not.toContain('Invitaciones y RSVP')
   })
 })

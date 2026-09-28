@@ -15,8 +15,8 @@ function slice(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
-describe('😀 Emoji — biblioteca por categorías + buscador + recientes', () => {
-  const panel = slice(DESIGNER_SRC, "panel === 'emoji' && (", "panel === 'forma'")
+describe('😀 Emoji (dentro de 🖌️ Decorar) — biblioteca por categorías + buscador + recientes', () => {
+  const panel = slice(DESIGNER_SRC, "decorarTab === 'emoji' && (", "decorarTab === 'forma'")
 
   it('el campo de texto sirve para buscar por concepto Y para pegar/escribir un emoji literal (+ Añadir)', () => {
     expect(panel).toContain('placeholder="Buscar (tarta, corazón...) o pegar un emoji"')
@@ -34,11 +34,21 @@ describe('😀 Emoji — biblioteca por categorías + buscador + recientes', () 
     expect(panel).toContain('INVITATION_EMOJI_CATEGORIES.map((cat) =>')
   })
 
-  it('handleInsertEmoji añade la capa Y la apunta como reciente — mismo camino para búsqueda, categoría o recientes', () => {
+  it('handleInsertEmoji añade la capa (en un hueco libre, sin apilarla siempre en el centro) Y la apunta como reciente — mismo camino para búsqueda, categoría o recientes', () => {
     const fn = slice(DESIGNER_SRC, 'function handleInsertEmoji', '\n  }')
-    expect(fn).toContain("handleAddLayer(makeInvitationLayer('emoji', { text: char, fontSize: 48 }))")
+    expect(fn).toContain("makeInvitationLayer('emoji', { text: char, fontSize: 48 })")
+    expect(fn).toContain('findFreeDecorationLayerPosition(layer, layers, imageAspectNumeric)')
+    expect(fn).toContain('handleAddLayer({ ...layer, x, y })')
     expect(fn).toContain('recordRecentInvitationEmoji(char)')
     expect(fn).toContain('setRecentEmoji(loadRecentInvitationEmoji())')
+  })
+
+  it('long-press sobre un chip (InvitationEmojiChip) ofrece variantes de tono de piel reales de Unicode, sin apilarlas por otra ruta', () => {
+    const chip = slice(DESIGNER_SRC, 'function InvitationEmojiChip', 'function InvitationCanvasEditor')
+    expect(chip).toContain('invitationEmojiSkinToneVariants(char)')
+    expect(chip).toContain('setTimeout(')
+    expect(chip).toContain('LONG_PRESS_MS')
+    expect(chip).toContain('onContextMenu={variants.length > 0 ? (e) => e.preventDefault() : undefined}')
   })
 
   it('importa la biblioteca y los recientes de sus módulos de dominio/estado (no datos duplicados en la UI)', () => {
@@ -67,9 +77,10 @@ describe('◆ Formas — rectángulo/línea/corazón renderizables, resto sin to
     expect(graphic).toContain("case 'circulo':\n    default:")
   })
 
-  it('el panel "forma" sigue construyéndose a partir de INVITATION_SHAPES (las 3 nuevas aparecen solas, sin lista aparte en la UI)', () => {
-    const panel = slice(DESIGNER_SRC, "panel === 'forma' && (", "panel === 'datos'")
+  it('la pestaña "Formas" (dentro de 🖌️ Decorar) sigue construyéndose a partir de INVITATION_SHAPES (las 3 nuevas aparecen solas, sin lista aparte en la UI)', () => {
+    const panel = slice(DESIGNER_SRC, "decorarTab === 'forma' && (", "panel === 'datos'")
     expect(panel).toContain('INVITATION_SHAPES.map((s) =>')
+    expect(panel).toContain('handleInsertShape(s.key)')
   })
 })
 
@@ -89,8 +100,9 @@ describe('Opacidad (formas) y máscara de foto (círculo) — controles dentro d
     expect(masPanel).toContain("updateSelectedDiscrete({ photoMask: 'circle' })")
   })
 
-  it('no se ha tocado la barra de herramientas para foto/emoji/forma (reorganización 2026-09-28: solo el texto cambió de sitio)', () => {
-    expect(DESIGNER_SRC).toContain("type DesignerPanel = 'plantilla' | 'datos' | 'emoji' | 'forma' | 'color' | 'tamano' | 'mas' | 'pepa'")
+  it('no se ha tocado la barra de herramientas para foto (unificación 2026-09-28: "emoji"+"forma" se fusionan en un único panel "decorar" con pestañas, ver decorarTab)', () => {
+    expect(DESIGNER_SRC).toContain("type DesignerPanel = 'plantilla' | 'datos' | 'decorar' | 'color' | 'tamano' | 'mas' | 'pepa'")
+    expect(DESIGNER_SRC).toContain("type DecorarTab = 'emoji' | 'forma'")
   })
 })
 

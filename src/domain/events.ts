@@ -151,7 +151,9 @@ export const CELEBRATION_SUBTYPES = [
 
 export const EVENT_MODULES: { key: EventModuleKey; label: string; icon: string }[] = [
   { key: 'invitados', label: 'Invitados', icon: '👥' },
-  { key: 'invitaciones', label: 'Invitaciones y RSVP', icon: '💌' },
+  // Renombrado visible (2026-09-28): "Invitaciones y RSVP" -> "Invitación" — solo la etiqueta, la clave
+  // 'invitaciones' y todo lo demás (RSVP público, plazo de RSVP...) sigue igual, sin tocar.
+  { key: 'invitaciones', label: 'Invitación', icon: '💌' },
   { key: 'tareas', label: 'Preparativos', icon: '✅' },
   { key: 'presupuesto', label: 'Presupuesto', icon: '💰' },
   { key: 'pagos', label: 'Pagos y fianzas', icon: '🧾' },
@@ -2335,6 +2337,32 @@ export const INVITATION_EMOJI_CATEGORIES: InvitationEmojiCategory[] = [
   },
 ]
 
+// Unificación Emoji+Forma → Decorar (2026-09-28), punto 4 del encargo — variantes de TONO DE PIEL reales de
+// Unicode (nunca imágenes, nunca un recoloreado artificial): un modificador Fitzpatrick (U+1F3FB..U+1F3FF)
+// solo existe de verdad para un emoji que el propio estándar marca como "Emoji_Modifier_Base". Auditado a
+// mano, uno a uno, SOLO entre los emoji que YA están en INVITATION_EMOJI_CATEGORIES (nunca se añade ningún
+// emoji nuevo por esto). Elegir una variante solo cambia QUÉ secuencia Unicode se guarda en `text` — sigue
+// siendo `type: 'emoji'`, el mismo modelo de siempre.
+//
+// Deliberadamente fuera de esta lista: los emoji de MÁS DE UNA persona (👫, 💑...) — Unicode permite un
+// único modificador aplicado a las dos figuras a la vez, pero no un tono distinto por persona sin una
+// secuencia ZWJ más compleja; ante la duda, se deja fuera (instrucción explícita) en vez de ofrecer una
+// variante a medias.
+//
+// Variantes de género/pelo (secuencias ZWJ tipo 🧑‍⚕️, 🧑‍🦰): auditadas y descartadas para esta entrega.
+// Ninguno de los emoji "de rol" que sí las tienen en Unicode (policía, guardia, profesiones...) está hoy en
+// el catálogo. Hay una excepción real y verificable (🧙 mago/bruja, con 🧙‍♂️/🧙‍♀️, secuencia RGI estable
+// desde Unicode 11) pero se deja fuera para no mezclar un único caso suelto con un eje — tono de piel — que
+// sí cubre de forma consistente TODO el catálogo elegible; se documenta aquí en vez de improvisar.
+const SKIN_TONE_MODIFIERS = ['\u{1F3FB}', '\u{1F3FC}', '\u{1F3FD}', '\u{1F3FE}', '\u{1F3FF}']
+const SKIN_TONE_ELIGIBLE_EMOJI = new Set(['🙌', '👏', '🙏', '👍', '👶', '👰', '🤵', '🎅', '🤶', '🧙'])
+
+/** Devuelve las 5 variantes de tono de piel de `char` (claro a oscuro) si Unicode las admite, si no `[]`. */
+export function invitationEmojiSkinToneVariants(char: string): string[] {
+  if (!SKIN_TONE_ELIGIBLE_EMOJI.has(char)) return []
+  return SKIN_TONE_MODIFIERS.map((m) => char + m)
+}
+
 // Quita tildes y pasa a minúsculas — para que "corazón"/"corazon", "Tarta"/"tarta" busquen lo mismo, sin
 // tener que escribir cada término dos veces en INVITATION_EMOJI_CATEGORIES.
 function normalizeInvitationEmojiSearch(s: string): string {
@@ -2804,4 +2832,53 @@ export function findFreeDataLayerPosition(layers: Pick<InvitationLayer, 'x' | 'y
   // Lienzo excepcionalmente lleno (más filas de datos que hueco vertical real) — último recurso: la fila
   // final, igual que cualquier otra capa, el usuario puede moverla a mano después.
   return { x, y: lastY }
+}
+
+// Unificación Emoji+Forma → Decorar (2026-09-28) — mismo bug que arriba pero para emoji/forma insertados
+// desde el nuevo selector "🎨 Decorar": makeInvitationLayer los coloca siempre en (0.5, 0.5), así que
+// insertar varios seguidos los deja exactamente apilados. NO reutiliza findFreeDataLayerPosition — esa
+// función está pensada para filas de texto casi tan anchas como la zona (x fijo, solo busca fila vertical);
+// una capa de emoji/forma es aproximadamente cuadrada y puede moverse en las dos direcciones, así que
+// necesita su propia búsqueda — sí reutiliza boxesOverlap y estimateLayerBoxFraction (ya miden emoji/forma
+// vía fontSize) porque esa parte es genérica de verdad.
+//
+// Primer intento probado siempre: el centro (0.5, 0.5) — con el lienzo vacío da el mismo sitio de siempre,
+// compatibilidad total. Si ya hay algo ahí, se prueba en anillos concéntricos hacia fuera (8 puntos por
+// anillo, como las horas de un reloj) en vez de una única línea diagonal — una línea recta choca enseguida
+// contra el borde del lienzo (0.1..0.9) y, una vez ahí, todos los pasos siguientes caen en el mismo punto
+// de la esquina, así que se queda sin más huecos que probar mucho antes de que el lienzo esté realmente
+// lleno. Un anillo explora las 8 direcciones a una distancia dada antes de alejarse más, así que un emoji
+// nuevo encuentra hueco en cualquier lado libre del centro, no solo en la diagonal.
+const DECORATION_RING_STEP_FRAC = 0.1
+const DECORATION_RING_COUNT = 4
+const DECORATION_POINTS_PER_RING = 8
+
+export function findFreeDecorationLayerPosition(
+  layer: InvitationLayer,
+  existingLayers: InvitationLayer[],
+  imageAspect = 1,
+): { x: number; y: number } {
+  const box = estimateLayerBoxFraction(layer, 1, imageAspect)
+  const decorationLayers = existingLayers.filter((l) => l.type === 'emoji' || l.type === 'shape')
+  const candidates: { x: number; y: number }[] = [{ x: 0.5, y: 0.5 }]
+  for (let ring = 1; ring <= DECORATION_RING_COUNT; ring++) {
+    const radius = ring * DECORATION_RING_STEP_FRAC
+    for (let p = 0; p < DECORATION_POINTS_PER_RING; p++) {
+      const angle = (p / DECORATION_POINTS_PER_RING) * Math.PI * 2
+      candidates.push({
+        x: clampFraction(0.5 + radius * Math.cos(angle), 0.1, 0.9),
+        y: clampFraction(0.5 + radius * Math.sin(angle), 0.1, 0.9),
+      })
+    }
+  }
+  for (const c of candidates) {
+    const overlaps = decorationLayers.some((l) => {
+      const otherBox = estimateLayerBoxFraction(l, 1, imageAspect)
+      return boxesOverlap(c.x, c.y, box.halfWidth, box.halfHeight, l.x, l.y, otherBox.halfWidth, otherBox.halfHeight)
+    })
+    if (!overlaps) return c
+  }
+  // Lienzo excepcionalmente lleno de decoraciones — último recurso: el centro, igual que hoy; el usuario
+  // puede moverla a mano después, como cualquier otra capa.
+  return { x: 0.5, y: 0.5 }
 }

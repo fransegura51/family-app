@@ -68,7 +68,7 @@ describe('Panel de color/tamaño ya existentes — sin tocar para formas/fotos (
 
 describe('📋 Datos — panel real con los campos existentes del evento, ya no un botón que inserta todo el párrafo', () => {
   it('"datos" es un DesignerPanel de verdad (togglePanel), no una acción directa de un solo toque', () => {
-    expect(DESIGNER_SRC).toContain("type DesignerPanel = 'plantilla' | 'datos' | 'emoji' | 'forma' | 'color' | 'tamano' | 'mas' | 'pepa'")
+    expect(DESIGNER_SRC).toContain("type DesignerPanel = 'plantilla' | 'datos' | 'decorar' | 'color' | 'tamano' | 'mas' | 'pepa'")
     expect(DESIGNER_SRC).toContain("onClick={() => togglePanel('datos')}")
   })
 

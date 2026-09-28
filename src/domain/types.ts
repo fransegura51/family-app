@@ -935,7 +935,7 @@ export interface InvitationLayer {
 // domain/invitationAutoCompose.ts — nunca un hecho real, nunca el origen de una capa con seguimiento).
 // Definida aquí (no en invitationAutoCompose.ts) para que InvitationLayer.source pueda referenciarla sin
 // depender del motor de composición.
-export type InvitationEventFieldKey = 'title' | 'subtitle' | 'fecha' | 'hora' | 'lugar' | 'ceremonia' | 'celebracion' | 'closing'
+export type InvitationEventFieldKey = 'title' | 'subtitle' | 'fecha' | 'hora' | 'lugar' | 'ceremonia' | 'hora_ceremonia' | 'celebracion' | 'closing'
 
 export interface InvitationCanvas {
   backgroundGradient: string

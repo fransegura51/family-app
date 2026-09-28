@@ -315,18 +315,25 @@ function buildPhotoPlacement(recipe: AutoComposeRecipeKey, zone: SafeZone, image
 // compacta (agrupa datos compatibles), y permite reintentar sin el cierre genérico (nunca sin un hecho
 // real) como último paso de adaptación antes de fallar la receta.
 // ---------------------------------------------------------------------------------------------------
+// Agrupa dos campos compatibles bajo la clave del primero, marcados `merged` (sección 11 del Bloque 5A) —
+// nunca lleva procedencia (ver buildFieldLayers): comparar un texto combinado contra el dato SUELTO de
+// `getAvailableInvitationData` daría un falso "cambió" permanente (bug real corregido en el Bloque 5B para
+// fecha+hora, mismo motivo por el que la hora de la ceremonia usa exactamente esta misma función en vez de
+// una fusión propia). Conserva la posición original del primer campo — nunca reordena el resto.
+function mergeCompactPair(fields: AutoComposeDataField[], primaryKey: AutoComposeFieldKey, secondaryKey: AutoComposeFieldKey): AutoComposeDataField[] {
+  const primary = fields.find((f) => f.key === primaryKey)
+  const secondary = fields.find((f) => f.key === secondaryKey)
+  if (!primary || !secondary) return fields
+  const merged: AutoComposeDataField = { key: primaryKey, text: `${primary.text} · ${secondary.text}`, essential: true, merged: true }
+  return fields.filter((f) => f.key !== secondaryKey).map((f) => (f.key === primaryKey ? merged : f))
+}
+
 function buildFieldsForAttempt(event: FamilyEvent, compact: boolean, includeClosing: boolean): AutoComposeDataField[] {
   const base = getAvailableInvitationData(event)
   let fields = base.filter((f) => includeClosing || f.key !== 'closing')
   if (compact) {
-    const fecha = fields.find((f) => f.key === 'fecha')
-    const hora = fields.find((f) => f.key === 'hora')
-    if (fecha && hora) {
-      const merged: AutoComposeDataField = { key: 'fecha', text: `${fecha.text} · ${hora.text}`, essential: true, merged: true }
-      const withoutFechaHora = fields.filter((f) => f.key !== 'fecha' && f.key !== 'hora')
-      const insertAt = withoutFechaHora.findIndex((f) => f.key === 'lugar' || f.key === 'ceremonia' || f.key === 'closing')
-      fields = insertAt === -1 ? [...withoutFechaHora, merged] : [...withoutFechaHora.slice(0, insertAt), merged, ...withoutFechaHora.slice(insertAt)]
-    }
+    fields = mergeCompactPair(fields, 'fecha', 'hora')
+    fields = mergeCompactPair(fields, 'ceremonia', 'hora_ceremonia')
   }
   return fields
 }

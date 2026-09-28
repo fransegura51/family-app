@@ -623,8 +623,15 @@ export function buildInvitationDataFields(event: FamilyEvent): InvitationDataFie
 
   if (DUAL_LOCATION_EVENT_TYPES.includes(event.type)) {
     if (event.ceremonyLocationLabel) {
-      const time = event.ceremonyTime ? ` · ${event.ceremonyTime.slice(0, 5)}` : ''
-      fields.push({ key: 'ceremonia', icon: '🕊️', label: 'Ceremonia', value: `🕊️ ${event.ceremonyLocationLabel}${time}` })
+      fields.push({ key: 'ceremonia', icon: '🕊️', label: 'Ceremonia', value: `🕊️ ${event.ceremonyLocationLabel}` })
+    }
+    // Corrección (integración de hora de ceremonia) — antes la hora se pegaba dentro del propio texto de
+    // "ceremonia" (mismo texto combinado, sin poder distinguir "cambió el lugar" de "cambió la hora" por
+    // separado). Igual que fecha/hora ya son dos campos independientes más arriba, la hora de la ceremonia
+    // es su propio campo — se recombinan visualmente solo en las recetas compactas de "Pepa, hazla por mí"
+    // (ver mergeCompactPair, invitationAutoCompose.ts), nunca aquí.
+    if (event.ceremonyTime) {
+      fields.push({ key: 'hora_ceremonia', icon: '🕐', label: 'Hora de la ceremonia', value: `🕐 ${event.ceremonyTime.slice(0, 5)}` })
     }
     if (event.celebrationLocationLabel) {
       fields.push({ key: 'celebracion', icon: '🎉', label: 'Celebración', value: `🎉 ${event.celebrationLocationLabel}` })

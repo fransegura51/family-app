@@ -119,9 +119,25 @@ describe('buildInvitationDataFields — solo datos reales, nunca inventados', ()
       celebrationLocationLabel: 'Restaurante Los Olivos',
     })
     const fields = buildInvitationDataFields(event)
-    expect(fields.find((f) => f.key === 'ceremonia')?.value).toBe('🕊️ Parroquia de San José · 12:00')
+    // Corrección (integración de hora de ceremonia): la hora ya NO va pegada dentro del texto de
+    // "ceremonia" — es su propio campo independiente (igual que fecha/hora), para poder detectar y
+    // actualizar un cambio de hora sin tocar el lugar, y viceversa.
+    expect(fields.find((f) => f.key === 'ceremonia')?.value).toBe('🕊️ Parroquia de San José')
+    expect(fields.find((f) => f.key === 'hora_ceremonia')?.value).toBe('🕐 12:00')
     expect(fields.find((f) => f.key === 'celebracion')?.value).toBe('🎉 Restaurante Los Olivos')
     expect(fields.some((f) => f.key === 'lugar')).toBe(false)
+  })
+
+  it('boda con ceremonia pero sin hora puesta: no inventa ninguna hora de ceremonia', () => {
+    const event = makeEvent({ type: 'boda', ceremonyLocationLabel: 'Parroquia de San José', ceremonyTime: null, celebrationLocationLabel: 'Restaurante Los Olivos' })
+    const fields = buildInvitationDataFields(event)
+    expect(fields.some((f) => f.key === 'hora_ceremonia')).toBe(false)
+  })
+
+  it('la hora de la ceremonia se formatea HH:MM (sin segundos), igual que la hora general del evento', () => {
+    const event = makeEvent({ type: 'comunion', ceremonyLocationLabel: 'Iglesia de San Andrés', ceremonyTime: '10:00:00' })
+    const fields = buildInvitationDataFields(event)
+    expect(fields.find((f) => f.key === 'hora_ceremonia')?.value).toBe('🕐 10:00')
   })
 
   it('boda con solo celebración puesta: no inventa una ceremonia inexistente', () => {

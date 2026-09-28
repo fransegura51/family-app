@@ -1161,6 +1161,7 @@ const EVENT_FIELD_LABELS: Record<Exclude<AutoComposeFieldKey, 'closing'>, string
   hora: 'la hora',
   lugar: 'el lugar',
   ceremonia: 'la ceremonia',
+  hora_ceremonia: 'la hora de la ceremonia',
   celebracion: 'la celebración',
 }
 

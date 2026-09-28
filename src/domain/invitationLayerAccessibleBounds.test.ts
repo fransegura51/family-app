@@ -52,6 +52,48 @@ describe('clampLayerCenterAccessible', () => {
   })
 })
 
+describe('clampLayerCenterAccessible — precisión real en pantalla (corrección tras fallar en iPhone real)', () => {
+  // Corrección real (2026-09-28) — la primera versión de esta corrección comparaba el hueco mínimo
+  // (MIN_ACCESSIBLE_TOUCH_PX) contra el lienzo LÓGICO fijo (ASSUMED_CANVAS_SIZE_PX=380), no contra el
+  // tamaño REAL en pantalla del lienzo en ESTE dispositivo/plantilla concretos. El renderizado usa
+  // fracciones (0..1) escaladas visualmente al contenedor real — así que "36px lógicos" solo son 36px
+  // REALES cuando el lienzo mide exactamente 380px en pantalla. Si el lienzo real es más pequeño (pantalla
+  // estrecha, plantilla de aspecto muy vertical, poco alto disponible entre la cabecera y la barra
+  // inferior — justo el caso reportado en iPhone real), el mismo cálculo dejaba MENOS de 36px reales
+  // tocables. La función en sí sigue siendo genérica (recibe `canvasSizePx` como parámetro) — lo que
+  // cambió fue qué le pasa ui/InvitationDesigner.tsx: el rect REAL del lienzo (d.rectW/d.rectH, medido al
+  // empezar el arrastre), nunca el lienzo lógico de referencia. Estas pruebas fijan esa propiedad como
+  // contrato de la función, para que no se rompa si alguien vuelve a pasarle el valor lógico por error.
+  it('con un lienzo real MÁS PEQUEÑO que el lógico, el resultado se tira más hacia dentro (en fracción) para seguir dejando los mismos px reales', () => {
+    const halfW = 30 / ASSUMED_CANVAS_SIZE_PX // mismo corazón por defecto, siempre en fracción del lienzo lógico
+    const clampedAtReferenceSize = clampLayerCenterAccessible(1, halfW, ASSUMED_CANVAS_SIZE_PX) // 380px "reales"
+    const smallerRealCanvasPx = 200 // un lienzo real bastante más encogido que el lógico
+    const clampedAtSmallerSize = clampLayerCenterAccessible(1, halfW, smallerRealCanvasPx)
+    // Con menos px reales disponibles, hace falta ceder una fracción MAYOR del lienzo para seguir dejando
+    // el mismo hueco físico — es decir, el resultado se aleja MÁS del borde crudo (1) que a tamaño de
+    // referencia.
+    expect(1 - clampedAtSmallerSize).toBeGreaterThan(1 - clampedAtReferenceSize)
+  })
+
+  it('el hueco resultante, convertido a px reales con el tamaño de lienzo que se le pasó, es SIEMPRE el mínimo pedido, mientras la propia capa (a ese tamaño real) pueda darlo', () => {
+    const halfW = 30 / ASSUMED_CANVAS_SIZE_PX // 60px de fontSize lógico -> encoge proporcionalmente con el lienzo real
+    for (const realCanvasPx of [380, 300, 250]) {
+      const clamped = clampLayerCenterAccessible(1, halfW, realCanvasPx)
+      const resultingOverlapRealPx = (1 - clamped + halfW) * realCanvasPx
+      expect(resultingOverlapRealPx).toBeCloseTo(MIN_ACCESSIBLE_TOUCH_PX, 1)
+    }
+  })
+
+  it('si el lienzo real se encoge tanto que ni el lado entero de la capa llega al mínimo, se le deja su máximo (nunca queda encerrada sin poder tocar el borde) — mismo criterio que a tamaño lógico', () => {
+    const halfW = 30 / ASSUMED_CANVAS_SIZE_PX
+    const tinyRealCanvasPx = 150 // la capa entera (2×halfW ≈ 23.7px reales aquí) ya es menor que el mínimo (36px)
+    const clamped = clampLayerCenterAccessible(1, halfW, tinyRealCanvasPx)
+    const resultingOverlapRealPx = (1 - clamped + halfW) * tinyRealCanvasPx
+    expect(resultingOverlapRealPx).toBeCloseTo(2 * halfW * tinyRealCanvasPx, 1) // su lado entero, no más
+    expect(resultingOverlapRealPx).toBeLessThan(MIN_ACCESSIBLE_TOUCH_PX)
+  })
+})
+
 describe('recoverInaccessibleLayerPositions — recuperación conservadora al abrir una invitación guardada', () => {
   it('un array sin ninguna capa inaccesible se devuelve TAL CUAL (misma referencia — no marca "cambios sin guardar" de la nada)', () => {
     const layers = [shapeLayer(0.5, 0.5), shapeLayer(0.3, 0.7)]

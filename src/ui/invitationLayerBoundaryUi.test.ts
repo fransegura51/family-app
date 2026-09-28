@@ -34,8 +34,15 @@ describe('handleDragPointerMove — arrastre consciente del tamaño real de la c
     expect(fn).not.toContain('clamp(d.x0! + dx, 0, 1)')
     expect(fn).not.toContain('clamp(d.y0! + dy, 0, 1)')
     expect(moveMode).toContain('estimateLayerBoxFraction(l, zoneWidthFrac, imageAspectNumeric)')
-    expect(moveMode).toContain('clampLayerCenterAccessible(d.x0! + dx, box.halfWidth * scale, ASSUMED_CANVAS_SIZE_PX)')
-    expect(moveMode).toContain('clampLayerCenterAccessible(d.y0! + dy, box.halfHeight * scale, logicalHeightPx)')
+  })
+
+  it('corrección real (seguía fallando en iPhone real): el umbral se compara contra el tamaño REAL en pantalla del lienzo (d.rectW/d.rectH, medido al empezar este arrastre), no contra el lienzo lógico fijo — si el lienzo ha tenido que encogerse más en este dispositivo/plantilla, "36px lógicos" ya no equivalen a 36px reales, y el hueco dejaba de ser tocable de verdad', () => {
+    expect(moveMode).toContain('clampLayerCenterAccessible(d.x0! + dx, box.halfWidth * scale, d.rectW!)')
+    expect(moveMode).toContain('clampLayerCenterAccessible(d.y0! + dy, box.halfHeight * scale, d.rectH!)')
+    // Ni ASSUMED_CANVAS_SIZE_PX ni logicalHeightPx (el lienzo lógico de referencia) en el propio cálculo
+    // del clamp — solo el rect real capturado en handleLayerPointerDown.
+    expect(moveMode).not.toContain('ASSUMED_CANVAS_SIZE_PX)')
+    expect(moveMode).not.toContain('logicalHeightPx)')
   })
 
   it('sin ninguna rama por layer.type — mismo cálculo para texto/datos/foto/emoji/forma (si hiciera falta un parche por tipo, el bug pediría arreglarlo en un solo punto común, no aquí)', () => {

@@ -21,7 +21,7 @@ describe('Color de una forma — mismo selector directo que Texto, sin presets',
   const colorPanel = slice(DESIGNER_SRC, "panel === 'color' && selected && selected.type === 'shape' && (", "panel === 'tamano' && selected && (")
 
   it('llama a renderColorSwatch (la misma función que usa Texto) — no monta presets ni una rueda propia', () => {
-    expect(colorPanel).toContain("renderColorSwatch('invitation-toolbar-btn')")
+    expect(colorPanel).toContain('renderColorSwatch()')
   })
 
   it('LAYER_COLOR_PRESETS ha desaparecido del todo del archivo (ni presets de forma ni de texto)', () => {

@@ -98,24 +98,29 @@ describe('Fuente — previsualización visual real (Aa en su propia tipografía)
   })
 })
 
-describe('Color — Fase 4 + corrección real (el botón no abría nada en el móvil): abre DIRECTAMENTE el selector nativo, sin fila de presets', () => {
+describe('Color — corrección real (probado en iPhone real: el panel salía en blanco y no reaccionaba al toque), sin fila de presets', () => {
   // Unificación de color (2026-09-28) — el swatch (antes en línea aquí mismo) se extrajo a una única
   // función compartida, renderColorSwatch, reutilizada también por Forma (ver
   // invitationShapeColorSizeUi.test.ts) — "un único sistema de selección de color" para las dos.
-  const swatchFn = slice(DESIGNER_SRC, 'function renderColorSwatch(buttonClassName: string) {', '\n  return (\n    <>')
+  //
+  // Corrección real (2026-09-28) — el primer intento (input invisible opacity:0 superpuesto a un swatch
+  // decorativo) no era fiable en Safari/iOS: el toque no siempre llegaba al input real. Se sustituye por
+  // el <input type="color"> VISIBLE de siempre (.color-wheel-input, el mismo patrón que ya tenía Forma
+  // antes de esta fase y que nunca se reportó roto) — el propio input es el botón.
+  const swatchFn = slice(DESIGNER_SRC, 'function renderColorSwatch() {', '\n  return (\n    <>')
 
   it('la barra de texto llama a renderColorSwatch (no monta su propio <input type="color"> en línea)', () => {
-    expect(editBar).toContain("renderColorSwatch('invitation-text-edit-btn')")
+    expect(editBar).toContain('renderColorSwatch()')
     expect(editBar).not.toContain('LAYER_COLOR_PRESETS')
     expect(editBar).not.toContain('colorInputRef.current?.click()')
   })
 
-  it('renderColorSwatch: el <input type="color"> real se superpone al círculo, el toque llega a él directamente (sin depender de un .click() programático ni de un ref externo)', () => {
+  it('renderColorSwatch: el <input type="color"> es VISIBLE y ES el propio botón — nunca opacity:0 superpuesto a otro elemento decorativo (eso es justo lo que fallaba en Safari/iOS real)', () => {
     expect(swatchFn).toContain('type="color"')
+    expect(swatchFn).toContain('className="color-wheel-input"')
     expect(swatchFn).toContain('aria-label="Color"')
-    // El input está en position:absolute + inset:0 sobre el swatch, con opacity:0 (invisible pero sí
-    // interactivo — nunca pointerEvents:none, que impediría que el toque real llegara al input).
-    expect(swatchFn).toContain("position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0")
+    expect(swatchFn).not.toContain('opacity: 0')
+    expect(swatchFn).not.toContain("position: 'absolute'")
     expect(swatchFn).not.toContain('pointerEvents')
     expect(swatchFn).not.toContain('colorInputRef')
   })
@@ -127,7 +132,7 @@ describe('Color — Fase 4 + corrección real (el botón no abría nada en el m�
 
   it('color y efectos aparecen juntos, en la segunda fila (Fase 4: "deben aparecer juntos visualmente")', () => {
     const row2 = slice(editBar, 'GRUPO 4 — apariencia', 'GRUPO 6 — capas/objeto')
-    expect(row2).toContain("renderColorSwatch('invitation-text-edit-btn')")
+    expect(row2).toContain('renderColorSwatch()')
     expect(row2).toContain("setTextEditTool((t) => (t === 'effect' ? null : 'effect'))")
   })
 })

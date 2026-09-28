@@ -2007,14 +2007,26 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
       // inaccesible. clampLayerCenterAccessible (domain/events.ts) sigue permitiendo sobresalir del lienzo
       // a propósito, solo garantiza un hueco táctil mínimo por eje — mismo motor para las 5 capas, sin
       // ninguna rama por `layer.type` aquí.
+      //
+      // Corrección real (2026-09-28, seguía fallando en iPhone real tras la primera corrección) — el
+      // umbral (MIN_ACCESSIBLE_TOUCH_PX) tiene que compararse contra el tamaño REAL en pantalla del
+      // lienzo, no contra el lienzo lógico fijo de referencia (ASSUMED_CANVAS_SIZE_PX=380). El
+      // renderizado usa fracciones (0..1) sobre el tamaño lógico, escaladas visualmente al tamaño real del
+      // contenedor (useCanvasScale) — así que "36px lógicos" solo equivalen a 36px REALES en pantalla
+      // cuando el lienzo se renderiza exactamente a 380px; si en este dispositivo/plantilla concretos el
+      // lienzo ha tenido que encogerse más (pantalla estrecha, plantilla con aspecto muy vertical, poco
+      // alto disponible), esos "36px lógicos" se quedaban en muchos menos px reales — justo el caso real
+      // reportado. d.rectW/d.rectH (el rect REAL del lienzo, medido en handleLayerPointerDown al empezar
+      // ESTE arrastre) son las unidades correctas: el hueco resultante siempre es de verdad tocable en
+      // ESTA pantalla, sea cual sea su escala.
       setLayers((ls) =>
         ls.map((l) => {
           if (l.id !== d.layerId) return l
           const zoneWidthFrac = l.zoneWidthFrac ?? legacyZoneWidthFrac
           const box = estimateLayerBoxFraction(l, zoneWidthFrac, imageAspectNumeric)
           const scale = l.scale || 1
-          const x = clampLayerCenterAccessible(d.x0! + dx, box.halfWidth * scale, ASSUMED_CANVAS_SIZE_PX)
-          const y = clampLayerCenterAccessible(d.y0! + dy, box.halfHeight * scale, logicalHeightPx)
+          const x = clampLayerCenterAccessible(d.x0! + dx, box.halfWidth * scale, d.rectW!)
+          const y = clampLayerCenterAccessible(d.y0! + dy, box.halfHeight * scale, d.rectH!)
           return { ...l, x, y }
         }),
       )
@@ -2283,29 +2295,29 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
   // Corrección UX (2026-09-28) — Forma usaba una interfaz de color distinta (6 presets + una rueda aparte),
   // ya inconsistente con el selector que se corrigió para Texto. Un único selector directo — sin presets —
-  // para cualquier tipo de capa con color editable: un swatch que muestra el color actual, con el
-  // <input type="color"> nativo superpuesto ENCIMA (mismo truco ya probado en Texto: el toque llega
-  // directamente al selector nativo, nunca un ref + .click() programático, que en Safari/iPhone no siempre
-  // cuenta como gesto de usuario y puede no abrir la rueda de color). Una sola implementación reutilizada
-  // en los dos sitios — nunca dos sistemas de color distintos en el mismo editor.
-  function renderColorSwatch(buttonClassName: string) {
+  // para cualquier tipo de capa con color editable.
+  //
+  // Corrección real (2026-09-28, probado en iPhone real: el panel salía prácticamente en blanco y tocarlo
+  // no hacía nada) — el truco anterior (un <input type="color"> invisible, opacity:0, superpuesto encima
+  // de un swatch decorativo) no es fiable en Safari/iOS: el toque no siempre llega al input real cuando
+  // este no es el propio elemento visible. Se vuelve al patrón que SÍ funcionaba ya en este archivo antes
+  // de esta fase (el selector "elegir cualquier color" de Forma, nunca reportado como roto): el
+  // <input type="color"> real, VISIBLE, estilizado con la clase ya existente .color-wheel-input (un
+  // anillo de colores con el color actual dentro, vía ::-webkit-color-swatch) — el propio input ES el
+  // botón, así que el toque siempre llega directamente a un control nativo real, nunca a un decorado
+  // encima. Sigue siendo un único selector directo (sin presets), compartido tal cual por Texto y Forma.
+  function renderColorSwatch() {
     if (!selected) return null
     return (
-      <div style={{ position: 'relative', display: 'inline-block' }}>
-        <span className={buttonClassName} aria-hidden="true">
-          <span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: selected.color || '#ffffff', border: '1px solid #d8dae8' }} />
-        </span>
-        <input
-          type="color"
-          className="color-wheel-input"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, border: 0, padding: 0, margin: 0, cursor: 'pointer' }}
-          value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
-          onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
-          onBlur={commitContinuousEdit}
-          aria-label="Color"
-          title="Color"
-        />
-      </div>
+      <input
+        type="color"
+        className="color-wheel-input"
+        value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
+        onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
+        onBlur={commitContinuousEdit}
+        aria-label="Color"
+        title="Color"
+      />
     )
   }
 
@@ -2732,7 +2744,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 <div className="invitation-text-toolbar-row">
                   {/* GRUPO 4 — apariencia (color y efectos juntos). renderColorSwatch (definido más arriba)
                       es la MISMA implementación que usa Forma — un único selector directo, sin presets. */}
-                  {renderColorSwatch('invitation-text-edit-btn')}
+                  {renderColorSwatch()}
                   <button
                     type="button"
                     className={'invitation-text-edit-btn' + (textEditTool === 'effect' ? ' invitation-text-edit-btn-active' : '')}
@@ -3110,7 +3122,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       (2026-09-28) — ya no hay presets + rueda aparte: mismo selector directo que Texto
                       (renderColorSwatch, definido más arriba), sin mantener dos sistemas de color. */}
                   {panel === 'color' && selected && selected.type === 'shape' && (
-                    <div className="filter-row" style={{ alignItems: 'center' }}>{renderColorSwatch('invitation-toolbar-btn')}</div>
+                    <div className="filter-row" style={{ alignItems: 'center' }}>{renderColorSwatch()}</div>
                   )}
 
                   {panel === 'tamano' && selected && (

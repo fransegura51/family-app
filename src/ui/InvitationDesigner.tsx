@@ -2738,7 +2738,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                             {(
                               [
                                 { style: 'clasico' as const, label: '📝 Clásico' },
-                                { style: 'divertido' as const, label: '🎉 Divertido' },
+                                { style: 'divertido' as const, label: '🎉 Moderno' },
                               ]
                             ).map(({ style, label }) => {
                               const compat = pepaCompatibility.find((c) => c.style === style)

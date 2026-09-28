@@ -957,8 +957,24 @@ export interface InvitationTemplatePalette {
 // el conjunto entero debe quedarse dentro de un rectángulo más conservador que `textArea` (ver comentario
 // en cada plantilla). Usar tres objetos DISTINTOS con los mismos números habría roto ese apilado conjunto
 // (cada rol se habría centrado por separado en su propio hueco) sin necesidad.
+// Revisión "Clásico/Moderno y márgenes visuales" (2026-09-28) — SE PROBÓ y se REVIRTIÓ un recorte de
+// `height` (0.02) para dar aire al cierre: análisis + verificación numérica mostraron que es INEFICAZ (e
+// incluso ligeramente contraproducente) en el escenario real que falla. `autoArrangeLayers` apila desde
+// arriba y, cuando el contenido ya fuerza `compact`+un paso de tamaño reducido (el caso real reportado), el
+// hueco de gaps se comprime hasta llenar exactamente `availableHeight` — el aire bajo el cierre queda
+// SIEMPRE en `BOTTOM_MARGIN_FRACTION * zone.height` (una fracción FIJA de la propia altura de zona), nunca
+// más. Encoger `zone.height` para "dar aire" en realidad ENCOGE ese propio colchón (medido: 0.018→0.0117,
+// peor, no mejor). La única forma de ganar aire real ahí sería reducir más el contenido (fuente más
+// pequeña u omitir el cierre) — exactamente el efecto secundario que no se quería. Conservado el resultado
+// anterior tal cual, sin una tercera solución (instrucción explícita del usuario).
 const CLASICO_SAFE_ZONE: SafeZone = { x: 0.3, y: 0.16, width: 0.6, height: 0.62 }
-const CUMPLEANOS_ELEGANTE_SAFE_ZONE: SafeZone = { x: 0.22, y: 0.12, width: 0.56, height: 0.42 }
+// Mismo ajuste mínimo — el TOP del título quedaba EXACTAMENTE en el TOP de la zona efectiva (0 de aire
+// propio, más allá del margen del estilo), con 0.107 de hueco totalmente SIN USAR por debajo del cierre en
+// esta plantilla — sube `y` (recorta `height` la misma cantidad para no tocar el borde inferior, que ya
+// sobraba de sobra) — cero riesgo de overflow nuevo dado el hueco medido. Verificado visualmente con +0.02:
+// insuficiente (una hoja del ramo seguía tocando la "C" de "Cumpleaños") — sube al máximo del rango
+// diagnosticado (+0.03) en vez de una tercera solución.
+const CUMPLEANOS_ELEGANTE_SAFE_ZONE: SafeZone = { x: 0.22, y: 0.15, width: 0.56, height: 0.39 }
 
 export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   {

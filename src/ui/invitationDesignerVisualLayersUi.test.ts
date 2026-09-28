@@ -68,7 +68,7 @@ describe('◆ Formas — rectángulo/línea/corazón renderizables, resto sin to
   })
 
   it('el panel "forma" sigue construyéndose a partir de INVITATION_SHAPES (las 3 nuevas aparecen solas, sin lista aparte en la UI)', () => {
-    const panel = slice(DESIGNER_SRC, "panel === 'forma' && (", "panel === 'texto'")
+    const panel = slice(DESIGNER_SRC, "panel === 'forma' && (", "panel === 'datos'")
     expect(panel).toContain('INVITATION_SHAPES.map((s) =>')
   })
 })
@@ -89,8 +89,8 @@ describe('Opacidad (formas) y máscara de foto (círculo) — controles dentro d
     expect(masPanel).toContain("updateSelectedDiscrete({ photoMask: 'circle' })")
   })
 
-  it('no se ha tocado la barra de herramientas: mismo conjunto de botones para foto/emoji/forma que antes', () => {
-    expect(DESIGNER_SRC).toContain("type DesignerPanel = 'plantilla' | 'texto' | 'datos' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas'")
+  it('no se ha tocado la barra de herramientas para foto/emoji/forma (reorganización 2026-09-28: solo el texto cambió de sitio)', () => {
+    expect(DESIGNER_SRC).toContain("type DesignerPanel = 'plantilla' | 'datos' | 'emoji' | 'forma' | 'color' | 'tamano' | 'mas' | 'pepa'")
   })
 })
 
@@ -113,10 +113,10 @@ describe('Orden de capas — "⬆ Adelante"/"⬇ Atrás" ya disponible para foto
     expect(fn).not.toMatch(/selected\.type ===/)
   })
 
-  it('el panel "Más" (con Adelante/Atrás/Duplicar/Borrar) está disponible en las 3 ramas de la barra: texto, forma, y foto/emoji', () => {
+  it('el panel "Más" (con Adelante/Atrás/Duplicar/Borrar) sigue disponible en las 2 ramas de la barra normal que le quedan: forma, y foto/emoji (el texto se reorganizó a sus propias dos filas fijas, con los mismos 4 controles integrados ahí — ver invitationTextEditModeUi.test.ts)', () => {
     const toolbar = slice(DESIGNER_SRC, '<div className="invitation-toolbar">', '</div>\n            </div>\n            )}\n          </>\n        )}')
     const masButtons = toolbar.split("togglePanel('mas')").length - 1
-    expect(masButtons).toBe(3)
+    expect(masButtons).toBe(2)
   })
 })
 

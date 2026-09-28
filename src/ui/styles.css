@@ -3637,6 +3637,43 @@ textarea {
   min-height: 64px;
 }
 
+/* Reorganización (2026-09-28) — dos filas FIJAS de herramientas de texto, agrupadas por familia y
+   separadas por una línea vertical fina gris (petición real). overflow-x:hidden a propósito: nunca debe
+   hacer falta desplazar para encontrar una herramienta — los botones son compactos para caber sin scroll. */
+.invitation-text-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: hidden;
+  flex-wrap: nowrap;
+}
+
+.invitation-text-toolbar-sep {
+  flex-shrink: 0;
+  width: 1px;
+  align-self: stretch;
+  background: #e4e7f2;
+  margin: 2px 1px;
+}
+
+/* Edición EN EL LIENZO (2026-09-28) — sustituye al textarea grande aparte de antes: se pinta exactamente
+   donde está la capa real, con su mismo tamaño/color/alineación (curva/3D/degradados se simplifican
+   mientras se escribe, ver el comentario en InvitationDesigner.tsx). Reseteo total de estilo nativo de
+   textarea para que no se note que es un campo de formulario. */
+.invitation-inplace-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: pre-line;
+}
+
 /* Petición real: "en vez de abrir una ventana, quiero que se abra
    debajo y se siga viendo el calendario de arriba, para poder ir
    rápidamente a cambiar de día tocando arriba" — el día ya no es una

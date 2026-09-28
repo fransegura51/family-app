@@ -18,25 +18,24 @@ describe('el antiguo bloque fijo "Elemento seleccionado" ha desaparecido', () =>
 describe('barra SIN selección: exactamente las 6 acciones pedidas', () => {
   it('Texto, Datos, Foto, Emoji, Forma y Plantilla, nada de controles de texto/color', () => {
     const idx = SRC.indexOf('{!selected ? (')
-    const block = SRC.slice(idx, SRC.indexOf(') : isTextLike ? (', idx))
+    const block = SRC.slice(idx, SRC.indexOf(") : selected.type === 'shape' ? (", idx))
     for (const label of ['Texto', 'Datos', 'Foto', 'Emoji', 'Forma', 'Plantilla']) {
       expect(block).toContain(`<span>${label}</span>`)
     }
     expect(block).not.toContain("togglePanel('color')")
-    expect(block).not.toContain("togglePanel('efecto')")
   })
 })
 
-describe('barra CON texto/datos seleccionados: solo herramientas de texto', () => {
-  it('Editar, Color, Fuente, Efecto, Tamaño y Más — nunca Plantilla/Emoji/Forma', () => {
-    const start = SRC.indexOf(') : isTextLike ? (')
-    const block = SRC.slice(start, SRC.indexOf(") : selected.type === 'shape' ? (", start))
-    for (const label of ['Editar', 'Color', 'Fuente', 'Efecto', 'Tamaño', 'Más']) {
-      expect(block).toContain(`<span>${label}</span>`)
-    }
-    expect(block).not.toContain("togglePanel('plantilla')")
-    expect(block).not.toContain("togglePanel('emoji')")
-    expect(block).not.toContain("togglePanel('forma')")
+describe('reorganización (2026-09-28) — una capa de texto seleccionada ya NO pasa por la barra normal', () => {
+  it('la rama "isTextLike" de la barra ha desaparecido (dead code eliminado, no solo ocultado)', () => {
+    expect(SRC).not.toContain(': isTextLike ? (')
+    expect(SRC).not.toContain("<span>Editar</span>")
+  })
+
+  it('en su lugar, textEditMode (dos filas fijas) se activa con solo tener una capa de texto seleccionada — sin panel intermedio', () => {
+    const idx = SRC.indexOf('const textEditMode =')
+    const line = SRC.slice(idx, SRC.indexOf('\n', idx))
+    expect(line).toBe('const textEditMode = isTextLike && !!selected')
   })
 })
 
@@ -71,8 +70,11 @@ describe('un único panel secundario a la vez', () => {
     // Cada bloque "panel === 'x' && ..." está protegido por el mismo `panel` — nunca dos a la vez porque
     // `panel` es un único valor (DesignerPanel | null), nunca una lista.
     expect(SRC).toContain('const [panel, setPanel] = useState<DesignerPanel | null>(null)')
+    // Reorganización (2026-09-28) — 'texto'/'fuente'/'efecto' ya no son valores de `panel` (viven dentro
+    // del menú de texto, gobernados por `textEditTool`); quedan: plantilla, pepa, emoji, forma, datos,
+    // color, tamano, mas.
     const panelChecks = SRC.match(/panel === '\w+' &&/g) ?? []
-    expect(panelChecks.length).toBeGreaterThanOrEqual(9) // plantilla, emoji, forma, texto, color, fuente, efecto, tamano, mas
+    expect(panelChecks.length).toBeGreaterThanOrEqual(6)
   })
 
   it('togglePanel cierra el panel si ya estaba abierto (nunca dos abiertos)', () => {

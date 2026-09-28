@@ -56,20 +56,19 @@ describe('InvitationLayerVisual — fontWeight/fontStyle/textAlign vienen de la 
 // .invitation-panel genérico: ahora es su propia barra (.invitation-text-edit-bar, ver
 // invitationTextEditModeUi.test.ts) pegada al teclado. Los tests de alineación/negrita/cursiva se movieron
 // ahí; este archivo conserva solo lo que NO cambió con esa corrección.
-describe('Paneles de color/fuente/efecto/tamaño ya existentes — sin tocar (la corrección de edición de texto no los usa para texto, pero siguen ahí para formas/fotos)', () => {
-  it('siguen presentes tal cual', () => {
-    expect(DESIGNER_SRC).toContain("panel === 'color' && selected")
-    expect(DESIGNER_SRC).toContain("panel === 'fuente' && selected && isTextLike")
-    expect(DESIGNER_SRC).toContain("panel === 'efecto' && selected && isTextLike")
+describe('Panel de color/tamaño ya existentes — sin tocar para formas/fotos (reorganización 2026-09-28: Fuente/Efecto de texto ya no son paneles aparte, viven en el menú de texto — ver invitationTextEditModeUi.test.ts)', () => {
+  it('siguen presentes tal cual para lo que no es texto', () => {
+    expect(DESIGNER_SRC).toContain("panel === 'color' && selected && selected.type === 'shape'")
     expect(DESIGNER_SRC).toContain("panel === 'tamano' && selected")
+    // Fuente/Efecto como PANEL (no como herramienta del menú de texto) ya no existen — eran una duplicidad.
+    expect(DESIGNER_SRC).not.toContain("panel === 'fuente'")
+    expect(DESIGNER_SRC).not.toContain("panel === 'efecto'")
   })
 })
 
 describe('📋 Datos — panel real con los campos existentes del evento, ya no un botón que inserta todo el párrafo', () => {
   it('"datos" es un DesignerPanel de verdad (togglePanel), no una acción directa de un solo toque', () => {
-    expect(DESIGNER_SRC).toContain(
-      "type DesignerPanel = 'plantilla' | 'texto' | 'datos' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas'",
-    )
+    expect(DESIGNER_SRC).toContain("type DesignerPanel = 'plantilla' | 'datos' | 'emoji' | 'forma' | 'color' | 'tamano' | 'mas' | 'pepa'")
     expect(DESIGNER_SRC).toContain("onClick={() => togglePanel('datos')}")
   })
 

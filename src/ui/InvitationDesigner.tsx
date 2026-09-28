@@ -1,9 +1,11 @@
 import { ChangeEvent, type CSSProperties, PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
+  ASSUMED_CANVAS_SIZE_PX,
   autoArrangeLayers,
   buildInvitationDataFields,
   buildInvitationTemplateLayers,
   DEFAULT_TEXT_AREA,
+  findFreeDataLayerPosition,
   INVITATION_EMOJI_CATEGORIES,
   INVITATION_SHAPES,
   INVITATION_TEMPLATES,
@@ -63,6 +65,42 @@ import {
 // Debe coincidir con el font-family base real de la app (ver ui/styles.css, selector "body") — es el que
 // resuelve un layer con fontFamily 'inherit' (el caso normal; ver LAYER_FONT_OPTIONS más abajo).
 const BASE_FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
+
+// Corrección WYSIWYG (2026-09-28) — CAUSA REAL del bug "lo que veo en el editor no es lo que se guarda":
+// el editor (InvitationCanvasEditor) y la vista de solo lectura (InvitationCanvasView, usada en el módulo
+// Invitación y en el modal de envío) son dos contenedores con un ancho máximo en px DISTINTO (la hoja del
+// editor puede llegar a 420px; la vista previa del módulo, a 320px). Las capas se posicionan en % (correcto,
+// escala bien), pero `fontSize` es px absoluto — el navegador calcula los saltos de línea reales contra el
+// ANCHO REAL en píxeles del contenedor en cada sitio, así que el mismo texto, con el mismo fontSize, puede
+// partir línea en un punto distinto según dónde se pinte, desplazando verticalmente todo lo que viene
+// detrás. No es que nada se reconstruya al guardar — los datos guardados son idénticos — es que el mismo
+// dato se ve distinto según el ancho real del contenedor.
+// SOLUCIÓN: renderizar el lienzo SIEMPRE a un tamaño lógico fijo en píxeles (el mismo que ya asume el
+// medidor de texto de "Hazla bonita"/"Pepa, hazla por mí": ASSUMED_CANVAS_SIZE_PX) y escalar visualmente
+// ese resultado con `transform: scale()` para que quepa en cada contenedor — el salto de línea se calcula
+// SIEMPRE contra el mismo ancho lógico, en el editor y en cualquier vista previa, y solo cambia el zoom
+// visual final (igual que Canva/Figma). El medidor de texto (domTextMeasurer) ya mide en px absolutos
+// independientes de cualquier transform CSS, así que sigue siendo consistente con este ancho lógico. El
+// arrastre de capas ya convierte por el rect REAL (post-transform) del contenedor, así que sigue
+// funcionando sin cambios — getBoundingClientRect() de un elemento con `scale()` ya devuelve su tamaño
+// visual, no el lógico.
+function useCanvasScale(containerRef: { current: HTMLElement | null }, logicalWidthPx: number): number {
+  const [scale, setScale] = useState(1)
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const update = () => {
+      const width = el.getBoundingClientRect().width
+      if (width > 0) setScale(width / logicalWidthPx)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerRef.current, logicalWidthPx])
+  return scale
+}
 
 // 2026-09-27 (investigación de layout, "corazones_terraza") — measurer real para autoArrangeLayers/
 // estimateLayerBoxFraction (domain/events.ts): mide el ancho real de cada palabra con Canvas 2D
@@ -1065,7 +1103,14 @@ export function InvitationCanvasView({
   backgroundImageUrl?: string | null
 }) {
   const template = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
-  const aspectRatio = !backgroundImageUrl && template?.imageAspect ? `${template.imageAspect} / 1` : '3 / 4'
+  // Corrección WYSIWYG — ver el comentario de useCanvasScale más arriba: imageAspectNumeric/logicalWidthPx/
+  // logicalHeightPx son el tamaño LÓGICO fijo del lienzo (siempre el mismo, en el editor y aquí); `scale`
+  // es solo el zoom visual para que quepa en el contenedor real de cada sitio donde se use este componente.
+  const imageAspectNumeric = !backgroundImageUrl && template?.imageAspect ? template.imageAspect : 3 / 4
+  const logicalWidthPx = ASSUMED_CANVAS_SIZE_PX
+  const logicalHeightPx = ASSUMED_CANVAS_SIZE_PX / imageAspectNumeric
+  const outerRef = useRef<HTMLDivElement>(null)
+  const scale = useCanvasScale(outerRef, logicalWidthPx)
   // Bug real reportado en vivo (iPhone, plantilla "boda"): el <div> de una capa de texto se posiciona con
   // `left` + `transform: translate(-50%,-50%)` pero sin `width` propio — un position:absolute sin width usa
   // "shrink-to-fit" acotado por (ancho del contenedor - left), NUNCA el ancho de la textArea de la
@@ -1078,15 +1123,17 @@ export function InvitationCanvasView({
   const zoneWidthFrac = backgroundImageUrl ? DEFAULT_TEXT_AREA.width : (template?.textArea ?? DEFAULT_TEXT_AREA).width
   return (
     <div
+      ref={outerRef}
       style={{
         position: 'relative',
         width: '100%',
-        aspectRatio,
+        aspectRatio: `${imageAspectNumeric}`,
         borderRadius: 16,
         overflow: 'hidden',
         background: canvas.backgroundGradient || INVITATION_TEMPLATES[0].gradient,
       }}
     >
+      <div style={{ position: 'absolute', top: 0, left: 0, width: logicalWidthPx, height: logicalHeightPx, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
       {backgroundImageUrl ? (
         <img
           src={backgroundImageUrl}
@@ -1124,6 +1171,7 @@ export function InvitationCanvasView({
             </div>
           )
         })}
+      </div>
     </div>
   )
 }
@@ -1187,6 +1235,7 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
 }
 
+
 // INV-EDITOR-3 — Deshacer de verdad: un snapshot completo (capas Y fondo — plantilla, degradado, foto de
 // fondo propia y su pan/zoom), no solo las capas. Antes "Restaurar plantilla"/"foto de fondo" pushHistory
 // solo guardaba las capas, así que Deshacer nunca recuperaba la foto de fondo que esas acciones borraban.
@@ -1216,7 +1265,10 @@ function comparableSnapshotKey(s: EditorSnapshot): string {
 
 // INV-EDITOR-4 — reforma UX móvil: un único panel secundario (popover compacto) a la vez, según qué está
 // seleccionado — nunca el antiguo bloque fijo con todos los controles a la vista simultáneamente.
-type DesignerPanel = 'plantilla' | 'texto' | 'datos' | 'emoji' | 'forma' | 'color' | 'fuente' | 'efecto' | 'tamano' | 'mas' | 'pepa'
+// Reorganización (2026-09-28) — 'texto'/'fuente'/'efecto' ya no son estados de `panel`: el menú de texto
+// (dos filas fijas) se muestra directamente en cuanto hay una capa de texto seleccionada (ver
+// `textEditMode`), y Fuente/Efecto viven dentro de ese menú (`textEditTool`), no como paneles aparte.
+type DesignerPanel = 'plantilla' | 'datos' | 'emoji' | 'forma' | 'color' | 'tamano' | 'mas' | 'pepa'
 
 export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: FamilyEvent; onClose: () => void; onSaved: () => void }) {
   const sortedTemplates = useMemo(() => sortInvitationTemplatesForEvent(INVITATION_TEMPLATES, event), [event])
@@ -1265,10 +1317,21 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // INV-EDITOR-4 — un único panel secundario abierto a la vez (color/fuente/efecto/tamaño/curva.../
   // plantilla/emoji/forma), en vez del antiguo bloque fijo permanente con todos los controles a la vista.
   const [panel, setPanel] = useState<DesignerPanel | null>(null)
-  // Corrección UX (2026-09-27) — dentro del modo de edición de texto ("panel === 'texto'"), cuál de las
-  // dos filas secundarias (fuente/color) está desplegada — como mucho una a la vez, igual criterio que
-  // `panel` para el resto del editor. Se resetea sola al salir del modo de edición (ver useEffect abajo).
-  const [textEditTool, setTextEditTool] = useState<'font' | 'color' | null>(null)
+  // Corrección UX (2026-09-27, reorganizada 2026-09-28) — dentro del menú de texto (dos filas fijas, ver
+  // más abajo), cuál "cajón" secundario está desplegado justo encima de esas dos filas — como mucho uno a
+  // la vez. Color ya no vive aquí (sección 4 del encargo): pulsarlo abre DIRECTAMENTE el selector nativo
+  // completo (input[type=color]), sin cajón intermedio. Se resetea sola al cambiar de selección.
+  const [textEditTool, setTextEditTool] = useState<'font' | 'size' | 'effect' | 'curve' | null>(null)
+  // Corrección (2026-09-28) — edición de texto EN EL LIENZO (en el sitio real de la capa), en vez de un
+  // textarea grande aparte abajo: las dos filas de herramientas están siempre visibles en cuanto hay un
+  // texto seleccionado (para poder mover/formatear sin querer abrir el teclado), y este flag decide si,
+  // ADEMÁS, esa capa concreta se está escribiendo ahora mismo (entonces se sustituye su render normal por
+  // un <textarea> posicionado exactamente donde está la capa). Se resetea al cambiar de selección.
+  const [textEditingActive, setTextEditingActive] = useState(false)
+  const inPlaceTextareaRef = useRef<HTMLTextAreaElement>(null)
+  // Sección 4 — "Color" abre DIRECTAMENTE el selector nativo completo: este ref solo sirve para disparar
+  // el click() del <input type="color"> oculto, sin ningún cajón/fila de colores predefinidos intermedio.
+  const colorInputRef = useRef<HTMLInputElement>(null)
   // Corrección UX — alto real visible (visualViewport) para no dejar la barra de edición de texto detrás
   // del teclado en iOS/Android: iOS no encoge `vh` cuando aparece el teclado (solo el visualViewport), así
   // que sin esto la hoja del diseñador (88vh) se queda con el mismo alto de siempre y su parte de abajo
@@ -1463,6 +1526,8 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   function selectLayer(id: string | null) {
     continuousEditRef.current = null
     setPanel(null)
+    setTextEditTool(null)
+    setTextEditingActive(false)
     setSelectedId(id)
   }
 
@@ -1957,7 +2022,15 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   }
 
   const currentTemplate = INVITATION_TEMPLATES.find((t) => t.key === templateKey)
-  const canvasAspectRatio = !backgroundImageUrl && currentTemplate?.imageAspect ? `${currentTemplate.imageAspect} / 1` : '3 / 4'
+  // Corrección WYSIWYG — ver el comentario de useCanvasScale más arriba: el lienzo del editor se renderiza
+  // al MISMO tamaño lógico fijo (ASSUMED_CANVAS_SIZE_PX) que InvitationCanvasView, para que el salto de
+  // línea real sea exactamente el mismo aquí y en cualquier vista previa/guardado posterior — solo cambia
+  // el zoom visual (`canvasScale`) según el espacio real disponible en cada dispositivo.
+  const imageAspectNumeric = !backgroundImageUrl && currentTemplate?.imageAspect ? currentTemplate.imageAspect : 3 / 4
+  const logicalWidthPx = ASSUMED_CANVAS_SIZE_PX
+  const logicalHeightPx = ASSUMED_CANVAS_SIZE_PX / imageAspectNumeric
+  const canvasScale = useCanvasScale(canvasRef, logicalWidthPx)
+  const canvasAspectRatio = `${imageAspectNumeric}`
   // Ver el comentario junto a "zoneWidthFrac" en InvitationCanvasView: sin esto, el <div> de una capa de
   // texto usa "shrink-to-fit" real (acotado por left, no por el ancho de la zona) y ajusta línea mucho antes
   // de lo que estimateWrappedLineCount asume, así que el bloque pintado de verdad puede ser más alto que el
@@ -1967,13 +2040,24 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // INV-EDITOR-4 — barra contextual: solo las herramientas que aplican al tipo seleccionado (o, sin
   // selección, las acciones para añadir/elegir plantilla) — nunca los 9 controles de siempre a la vez.
   const isTextLike = selected?.type === 'text' || selected?.type === 'event_data'
-  // Corrección UX — modo de edición de texto: la barra compacta (Terminar/alineación/B/I/fuente/color/
-  // tamaño) sustituye a la barra de herramientas normal SOLO mientras se edita el contenido de una capa de
-  // texto. El resto de paneles (color de una forma, tamaño de una foto...) no cambian en nada.
-  const textEditMode = panel === 'texto' && isTextLike
+  // Reorganización (2026-09-28) — las DOS FILAS FIJAS de herramientas de texto sustituyen a la barra de
+  // herramientas normal en cuanto hay una capa de texto seleccionada (no hace falta un paso "Editar" aparte
+  // para verlas: alineación/formato/tipografía/apariencia/transformación/capas, todo en un único sitio, sin
+  // duplicar Fuente/Tamaño en otro panel). El contenido de la capa solo se vuelve editable (textEditingActive)
+  // cuando se pulsa el botón "Editar" de esas dos filas — así seleccionar para mover/formatear nunca abre el
+  // teclado por sorpresa. El resto de paneles (color de una forma, tamaño de una foto...) no cambian en nada.
+  const textEditMode = isTextLike && !!selected
   useEffect(() => {
-    if (!textEditMode) setTextEditTool(null)
+    if (!textEditMode) {
+      setTextEditTool(null)
+      setTextEditingActive(false)
+    }
   }, [textEditMode])
+  // Autofoco al entrar en edición de texto en el lienzo (mismo criterio que el textarea de antes: autoFocus
+  // no basta cuando el elemento no acaba de montarse en este render, así que se hace explícito aquí).
+  useEffect(() => {
+    if (textEditingActive) inPlaceTextareaRef.current?.focus()
+  }, [textEditingActive])
 
   return (
     <>
@@ -2082,6 +2166,13 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   userSelect: 'none',
                 } as CSSProperties}
               >
+                {/* Corrección WYSIWYG — contenido a tamaño lógico fijo (ver useCanvasScale más arriba),
+                    escalado visualmente para llenar el <div ref={canvasRef}> real. canvasRef sigue siendo
+                    el elemento cuyo rect real (ya escalado) usan handleLayerPointerDown/handleDragPointerMove/
+                    handleHandlePointerDown/handleTextAreaRectPointerDown/la reconciliación de Prettify —
+                    ninguno de ellos cambia: getBoundingClientRect() de un ancestro con overflow:hidden ya
+                    refleja el tamaño visual real, sea cual sea la profundidad del árbol por debajo. */}
+                <div style={{ position: 'absolute', top: 0, left: 0, width: logicalWidthPx, height: logicalHeightPx, transform: `scale(${canvasScale})`, transformOrigin: 'top left' }}>
                 {backgroundImageUrl ? (
                   <img
                     src={backgroundImageUrl}
@@ -2134,7 +2225,37 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                         outlineOffset: 4,
                       }}
                     >
-                      <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
+                      {textEditingActive && layer.id === selectedId && (layer.type === 'text' || layer.type === 'event_data') ? (
+                        // Corrección (2026-09-28) — edición EN EL LIENZO, en el sitio real de la capa, en vez
+                        // de un textarea grande aparte abajo (duplicado). Mientras se escribe, se simplifica
+                        // visualmente (tamaño/color/alineación sí; curva/3D/purpurina/degradados no — esos
+                        // efectos vuelven en cuanto se pulsa "✓ Listo", el texto real guardado es idéntico).
+                        <textarea
+                          ref={inPlaceTextareaRef}
+                          value={selected?.text ?? ''}
+                          onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
+                          onBlur={commitContinuousEdit}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onInput={(e) => {
+                            const el = e.currentTarget
+                            el.style.height = 'auto'
+                            el.style.height = `${el.scrollHeight}px`
+                          }}
+                          className="invitation-inplace-textarea"
+                          style={{
+                            width: '100%',
+                            color: layer.color || '#ffffff',
+                            fontFamily: layer.fontFamily && layer.fontFamily !== 'inherit' ? layer.fontFamily : BASE_FONT_STACK,
+                            fontSize: layer.fontSize ?? 16,
+                            fontWeight: resolveLayerFontWeight(layer),
+                            fontStyle: layer.italic ? 'italic' : 'normal',
+                            textAlign: layer.textAlign ?? 'center',
+                            lineHeight: LINE_HEIGHT_RATIO,
+                          }}
+                        />
+                      ) : (
+                        <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
+                      )}
                       {layer.id === selectedId && (
                         <div
                           onPointerDown={(e) => handleHandlePointerDown(e, layer)}
@@ -2200,9 +2321,12 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     />
                   </div>
                 )}
-                {/* Barra de confirmación DENTRO del mismo <div ref={canvasRef}> (misma referencia de
-                    posicionamiento que el rectángulo de arriba — position:'relative' ya lo trae ese <div>,
-                    ver su style más arriba, sin tocar el <div className="invitation-canvas-wrap"> exterior). */}
+                </div>
+                {/* Barra de confirmación FUERA del lienzo a tamaño lógico (arriba): es UI del editor, no
+                    contenido de la invitación — debe verse siempre a tamaño de texto normal, nunca
+                    encogerse/agrandarse con el zoom visual del lienzo. Sigue dentro de <div ref={canvasRef}>
+                    (misma referencia de posicionamiento que antes, position:'relative' ya lo trae ese <div>,
+                    sin tocar el <div className="invitation-canvas-wrap"> exterior). */}
                 {definingTextArea && (
                   <div
                     className="filter-row"
@@ -2225,6 +2349,13 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 las mismas funciones/estado que el resto del editor (updateSelectedDiscrete/Continuous,
                 resolveLayerFontWeight, ALIGN_OPTIONS, LAYER_FONT_OPTIONS, LAYER_COLOR_PRESETS) — nada de
                 lógica nueva, solo una disposición distinta para móvil. */}
+            {/* Reorganización (2026-09-28) — menú de texto en DOS FILAS FIJAS, agrupadas por familia y
+                separadas por una línea vertical fina (petición real), siempre visibles mientras haya un
+                texto seleccionado (no hace falta pulsar "Editar" para verlas — solo para escribir). Fuente
+                y Tamaño existen UNA sola vez aquí (antes se repetían en el panel inferior genérico). Al
+                pulsar una herramienta, sus opciones se despliegan justo encima de las dos filas — nunca una
+                pantalla nueva. Mismo estilo visual de botones que antes (.invitation-text-edit-btn), solo
+                reorganizados. */}
             {textEditMode && selected && (
               <div className="invitation-text-edit-bar" style={{ paddingBottom: `max(8px, env(safe-area-inset-bottom, 0px))` }}>
                 {textEditTool === 'font' && (
@@ -2243,31 +2374,73 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     ))}
                   </div>
                 )}
-                {textEditTool === 'color' && (
-                  <div className="filter-row" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                    {LAYER_COLOR_PRESETS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => updateSelectedDiscrete({ color: c })}
-                        style={{ width: 30, height: 30, borderRadius: '50%', background: c, border: selected.color === c ? '2px solid #4C6EF5' : '1px solid #d8dae8' }}
-                        aria-label={`Color ${c}`}
-                      />
-                    ))}
-                    <input
-                      type="color"
-                      className="color-wheel-input"
-                      value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
-                      onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
-                      onBlur={commitContinuousEdit}
-                      aria-label="Elegir cualquier color"
-                    />
+                {textEditTool === 'size' && (
+                  <div className="filter-row" style={{ alignItems: 'center', justifyContent: 'center' }}>
+                    <button type="button" className="invitation-text-edit-btn" onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 2) })} aria-label="Letra más pequeña">
+                      A−
+                    </button>
+                    <span className="muted" style={{ fontSize: 12, flexShrink: 0 }}>
+                      {Math.round(selected.fontSize ?? 16)}
+                    </span>
+                    <button type="button" className="invitation-text-edit-btn" onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + 2 })} aria-label="Letra más grande">
+                      A+
+                    </button>
                   </div>
                 )}
-                <div className="invitation-text-edit-toolbar">
-                  <button type="button" className="invitation-text-edit-done" onClick={() => setPanel(null)} aria-label="Terminar edición">
-                    ✓
+                {textEditTool === 'effect' && (
+                  <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                    {TEXT_STYLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={'chip' + ((selected.textStyle ?? 'normal') === opt.value ? ' chip-active' : '')}
+                        onClick={() => updateSelectedDiscrete({ textStyle: (selected.textStyle ?? 'normal') === opt.value ? 'normal' : opt.value })}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {textEditTool === 'curve' && selected.type === 'text' && (
+                  <label style={{ display: 'block' }}>
+                    Curvar texto {selected.curve ? `(${selected.curve > 0 ? '⌣ arriba' : '⌢ abajo'})` : '(recto)'}
+                    <input
+                      type="range"
+                      min={-100}
+                      max={100}
+                      value={selected.curve ?? 0}
+                      onChange={(e) => updateSelectedContinuous({ curve: Number(e.target.value) }, 'curve')}
+                      onPointerUp={commitContinuousEdit}
+                      onBlur={commitContinuousEdit}
+                      style={{ width: '100%' }}
+                    />
+                  </label>
+                )}
+                {/* Sección 4 — "Color" abre DIRECTAMENTE el selector nativo completo (sin fila de colores
+                    predefinidos aparte): este input está siempre montado pero invisible, y el botón de la
+                    fila 2 solo le hace click() por debajo. */}
+                <input
+                  ref={colorInputRef}
+                  type="color"
+                  className="color-wheel-input"
+                  style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
+                  value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
+                  onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
+                  onBlur={commitContinuousEdit}
+                  aria-label="Elegir color"
+                  tabIndex={-1}
+                />
+                <div className="invitation-text-toolbar-row">
+                  <button
+                    type="button"
+                    className={'invitation-text-edit-btn' + (textEditingActive ? ' invitation-text-edit-btn-active' : '')}
+                    onClick={() => setTextEditingActive((v) => !v)}
+                    aria-label={textEditingActive ? 'Terminar edición del texto' : 'Editar texto'}
+                  >
+                    {textEditingActive ? '✓' : '✏️'}
                   </button>
+                  <div className="invitation-text-toolbar-sep" />
+                  {/* GRUPO 1 — posición/alineación */}
                   {ALIGN_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -2279,6 +2452,8 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       {opt.icon}
                     </button>
                   ))}
+                  <div className="invitation-text-toolbar-sep" />
+                  {/* GRUPO 2 — formato */}
                   <button
                     type="button"
                     className={'invitation-text-edit-btn' + (resolveLayerFontWeight(selected) === 700 ? ' invitation-text-edit-btn-active' : '')}
@@ -2297,6 +2472,8 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   >
                     I
                   </button>
+                  <div className="invitation-text-toolbar-sep" />
+                  {/* GRUPO 3 — tipografía (fuente + tamaño, cada uno UNA sola vez en todo el editor) */}
                   <button
                     type="button"
                     className={'invitation-text-edit-btn' + (textEditTool === 'font' ? ' invitation-text-edit-btn-active' : '')}
@@ -2307,40 +2484,58 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   </button>
                   <button
                     type="button"
-                    className={'invitation-text-edit-btn' + (textEditTool === 'color' ? ' invitation-text-edit-btn-active' : '')}
-                    onClick={() => setTextEditTool((t) => (t === 'color' ? null : 'color'))}
+                    className={'invitation-text-edit-btn' + (textEditTool === 'size' ? ' invitation-text-edit-btn-active' : '')}
+                    onClick={() => setTextEditTool((t) => (t === 'size' ? null : 'size'))}
+                    aria-label="Tamaño"
+                  >
+                    🔠
+                  </button>
+                </div>
+                <div className="invitation-text-toolbar-row">
+                  {/* GRUPO 4 — apariencia (color y efectos juntos) */}
+                  <button
+                    type="button"
+                    className="invitation-text-edit-btn"
+                    onClick={() => colorInputRef.current?.click()}
                     aria-label="Color"
                   >
                     <span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: selected.color || '#ffffff', border: '1px solid #d8dae8' }} />
                   </button>
                   <button
                     type="button"
-                    className="invitation-text-edit-btn"
-                    onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 2) })}
-                    aria-label="Letra más pequeña"
+                    className={'invitation-text-edit-btn' + (textEditTool === 'effect' ? ' invitation-text-edit-btn-active' : '')}
+                    onClick={() => setTextEditTool((t) => (t === 'effect' ? null : 'effect'))}
+                    aria-label="Efectos"
                   >
-                    A−
+                    ✨
                   </button>
-                  <span className="muted" style={{ fontSize: 12, flexShrink: 0 }}>
-                    {Math.round(selected.fontSize ?? 16)}
-                  </span>
-                  <button
-                    type="button"
-                    className="invitation-text-edit-btn"
-                    onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + 2 })}
-                    aria-label="Letra más grande"
-                  >
-                    A+
+                  {selected.type === 'text' && (
+                    <>
+                      <div className="invitation-text-toolbar-sep" />
+                      {/* GRUPO 5 — transformación (solo tiene sentido en una línea, no en event_data) */}
+                      <button
+                        type="button"
+                        className={'invitation-text-edit-btn' + (textEditTool === 'curve' ? ' invitation-text-edit-btn-active' : '')}
+                        onClick={() => setTextEditTool((t) => (t === 'curve' ? null : 'curve'))}
+                        aria-label="Curvar texto"
+                      >
+                        ⌒
+                      </button>
+                    </>
+                  )}
+                  <div className="invitation-text-toolbar-sep" />
+                  {/* GRUPO 6 — capas/objeto */}
+                  <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(1)} aria-label="Traer adelante">
+                    ⬆
                   </button>
+                  <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(-1)} aria-label="Enviar atrás">
+                    ⬇
+                  </button>
+                  <button type="button" className="invitation-text-edit-btn" onClick={handleDuplicate} aria-label="Duplicar">
+                    ⧉
+                  </button>
+                  <ConfirmIconButton icon="✕" className="invitation-text-edit-btn" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
                 </div>
-                <textarea
-                  className="invitation-text-edit-textarea"
-                  autoFocus
-                  value={selected.text ?? ''}
-                  onChange={(e) => updateSelectedContinuous({ text: e.target.value }, 'text')}
-                  onBlur={commitContinuousEdit}
-                  rows={3}
-                />
               </div>
             )}
 
@@ -2612,19 +2807,25 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                             key={f.key}
                             type="button"
                             className={'chip' + (alreadyInserted ? ' chip-active' : '')}
-                            onClick={() =>
+                            onClick={() => {
                               // Fase 3 Bloque 5B (sección 23-24) — igual que las capas de "Pepa, hazla por mí",
                               // esta capa insertada a mano queda marcada con su procedencia, para poder detectar
                               // más tarde si el evento cambió.
+                              // Corrección (2026-09-28) — cada dato busca su propia posición libre en vez de
+                              // caer siempre en el centro exacto (0.5, 0.5), donde varios datos seguidos
+                              // quedaban apilados unos encima de otros.
+                              const pos = findFreeDataLayerPosition(layers)
                               handleAddLayer(
                                 makeInvitationLayer('event_data', {
                                   text: f.value,
                                   color: '#ffffff',
                                   fontSize: 14,
+                                  x: pos.x,
+                                  y: pos.y,
                                   source: { kind: 'event_field', field: toEventFieldKey(f.key), valueAtInsertion: f.value },
                                 }),
                               )
-                            }
+                            }}
                           >
                             {alreadyInserted ? '✓ ' : ''}
                             {f.value}
@@ -2634,7 +2835,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     </div>
                   )}
 
-                  {panel === 'color' && selected && (selected.type === 'text' || selected.type === 'event_data' || selected.type === 'shape') && (
+                  {/* Fuente/Tamaño/Efecto de texto y su Color ya no viven aquí (2026-09-28) — están
+                      SIEMPRE visibles en las dos filas fijas del menú de texto (ver más abajo) en cuanto
+                      hay una capa de texto seleccionada, sin duplicar controles en dos sitios distintos.
+                      Este panel de color solo sigue haciendo falta para una forma. */}
+                  {panel === 'color' && selected && selected.type === 'shape' && (
                     <div className="filter-row" style={{ alignItems: 'center' }}>
                       {LAYER_COLOR_PRESETS.map((c) => (
                         <button
@@ -2659,55 +2864,19 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     </div>
                   )}
 
-                  {panel === 'fuente' && selected && isTextLike && (
-                    <label style={{ display: 'block' }}>
-                      Fuente
-                      <select value={selected.fontFamily || 'inherit'} onChange={(e) => updateSelectedDiscrete({ fontFamily: e.target.value })}>
-                        {LAYER_FONT_OPTIONS.map((f) => (
-                          <option key={f.value} value={f.value}>
-                            {f.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-
-                  {/* Petición real: "formato 3D", "letras de brillos... purpurina", "un color arcoíris...
-                      uno fijo [que cambia a lo largo de lo escrito, no con el tiempo] y otro que vaya
-                      cambiando conforme lo mires", "otro estilo iridiscente" — todos rellenos
-                      alternativos del texto; tocar el que ya está activo lo quita (vuelve a "normal"). */}
-                  {panel === 'efecto' && selected && isTextLike && (
-                    <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-                      {TEXT_STYLE_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          className={'chip' + ((selected.textStyle ?? 'normal') === opt.value ? ' chip-active' : '')}
-                          onClick={() => updateSelectedDiscrete({ textStyle: (selected.textStyle ?? 'normal') === opt.value ? 'normal' : opt.value })}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
                   {panel === 'tamano' && selected && (
                     <div className="filter-row" style={{ alignItems: 'center', justifyContent: 'center' }}>
-                      {/* Petición real: "he insertado una foto y no consigo editar su tamaño" — con ±2
-                          el cambio era imperceptible en una foto/forma de 60-300px (sí se notaba en
-                          texto, de 10-40px); foto/forma usan un paso mayor. El punto azul de la esquina
-                          (pellizcar/arrastrar) sigue siendo el gesto principal. */}
-                      <button
-                        type="button"
-                        className="link-button"
-                        onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - (isTextLike ? 2 : 15)) })}
-                      >
+                      {/* Petición real: "he insertado una foto y no consigo editar su tamaño" — el texto
+                          ya no llega aquí (tiene su propio control en las dos filas fijas), así que el paso
+                          es siempre el de foto/forma/emoji. El punto azul de la esquina (pellizcar/
+                          arrastrar) sigue siendo el gesto principal. */}
+                      <button type="button" className="link-button" onClick={() => updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 15) })}>
                         A-
                       </button>
                       <span className="muted" style={{ fontSize: 12 }}>
                         {Math.round(selected.fontSize ?? 16)}
                       </span>
-                      <button type="button" className="link-button" onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + (isTextLike ? 2 : 15) })}>
+                      <button type="button" className="link-button" onClick={() => updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + 15 })}>
                         A+
                       </button>
                     </div>
@@ -2715,21 +2884,6 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
                   {panel === 'mas' && selected && (
                     <>
-                      {selected.type === 'text' && (
-                        <label style={{ display: 'block' }}>
-                          Curvar texto {selected.curve ? `(${selected.curve > 0 ? '⌣ arriba' : '⌢ abajo'})` : '(recto)'}
-                          <input
-                            type="range"
-                            min={-100}
-                            max={100}
-                            value={selected.curve ?? 0}
-                            onChange={(e) => updateSelectedContinuous({ curve: Number(e.target.value) }, 'curve')}
-                            onPointerUp={commitContinuousEdit}
-                            onBlur={commitContinuousEdit}
-                            style={{ width: '100%' }}
-                          />
-                        </label>
-                      )}
                       {selected.type === 'shape' && (
                         <label style={{ display: 'block' }}>
                           Opacidad ({Math.round((selected.opacity ?? 1) * 100)}%)
@@ -2766,7 +2920,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                           </button>
                         </div>
                       )}
-                      <div className="filter-row" style={{ marginTop: selected.type === 'text' ? 10 : 0 }}>
+                      <div className="filter-row">
                         <button type="button" className="link-button" onClick={() => handleReorder(1)}>
                           ⬆ Adelante
                         </button>
@@ -2814,33 +2968,6 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     <button type="button" className={'invitation-toolbar-btn' + (panel === 'plantilla' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('plantilla')}>
                       <span className="invitation-toolbar-icon">🎨</span>
                       <span>Plantilla</span>
-                    </button>
-                  </>
-                ) : isTextLike ? (
-                  <>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'texto' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('texto')}>
-                      <span className="invitation-toolbar-icon">✏️</span>
-                      <span>Editar</span>
-                    </button>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'color' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('color')}>
-                      <span className="invitation-toolbar-icon">🎨</span>
-                      <span>Color</span>
-                    </button>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'fuente' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('fuente')}>
-                      <span className="invitation-toolbar-icon">Aa</span>
-                      <span>Fuente</span>
-                    </button>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'efecto' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('efecto')}>
-                      <span className="invitation-toolbar-icon">✨</span>
-                      <span>Efecto</span>
-                    </button>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'tamano' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('tamano')}>
-                      <span className="invitation-toolbar-icon">🔠</span>
-                      <span>Tamaño</span>
-                    </button>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'mas' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('mas')}>
-                      <span className="invitation-toolbar-icon">⋯</span>
-                      <span>Más</span>
                     </button>
                   </>
                 ) : selected.type === 'shape' ? (

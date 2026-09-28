@@ -2419,3 +2419,38 @@ export function reconcileOverlappingBoxes(orderedBoxes: RenderedLayerBox[], safe
   }
   return shifts
 }
+
+// Corrección (2026-09-28) — bug real: insertar varios datos seguidos desde "📋 Datos" (fecha, lugar, hora,
+// restaurante...) los dejaba TODOS en la misma posición por defecto (x:0.5, y:0.5 — ver makeInvitationLayer,
+// ui/InvitationDesigner.tsx), así que quedaban apilados exactamente encima unos de otros. Esta función solo
+// decide la posición INICIAL de la nueva capa: busca la primera fila vertical libre (que no se solape con
+// ninguna capa ya colocada), empezando cerca de la parte superior y bajando; si el lienzo ya está lleno en
+// esa columna, prueba una columna ligeramente desplazada en vez de devolver siempre la última fila (que
+// solaparía). Sigue siendo un objeto independiente de siempre — el usuario puede moverlo libremente
+// después, esto no le ata a nada. Pura y sin DOM, mismo criterio que reconcileOverlappingBoxes (arriba).
+const DATA_LAYER_ROW_HEIGHT_FRAC = 0.07
+const DATA_LAYER_HALF_WIDTH_FRAC = 0.35
+
+function boxesOverlap(aX: number, aY: number, aHalfW: number, aHalfH: number, bX: number, bY: number, bHalfW: number, bHalfH: number): boolean {
+  return Math.abs(aX - bX) < aHalfW + bHalfW && Math.abs(aY - bY) < aHalfH + bHalfH
+}
+
+export function findFreeDataLayerPosition(layers: Pick<InvitationLayer, 'x' | 'y'>[]): { x: number; y: number } {
+  // Una fila de dato ocupa casi todo el ancho de la zona de texto (no tiene sentido buscar una "columna"
+  // al lado — se solaparía igualmente) — el único grado de libertad real es la posición vertical.
+  const x = 0.5
+  const halfH = DATA_LAYER_ROW_HEIGHT_FRAC / 2
+  const startY = 0.22
+  const maxY = 0.9
+  const rows = Math.max(1, Math.round((maxY - startY) / DATA_LAYER_ROW_HEIGHT_FRAC))
+  let lastY = startY
+  for (let i = 0; i <= rows; i++) {
+    const y = Math.min(maxY, Math.max(0.06, startY + i * DATA_LAYER_ROW_HEIGHT_FRAC))
+    lastY = y
+    const overlaps = layers.some((l) => boxesOverlap(x, y, DATA_LAYER_HALF_WIDTH_FRAC, halfH, l.x, l.y, DATA_LAYER_HALF_WIDTH_FRAC, halfH))
+    if (!overlaps) return { x, y }
+  }
+  // Lienzo excepcionalmente lleno (más filas de datos que hueco vertical real) — último recurso: la fila
+  // final, igual que cualquier otra capa, el usuario puede moverla a mano después.
+  return { x, y: lastY }
+}

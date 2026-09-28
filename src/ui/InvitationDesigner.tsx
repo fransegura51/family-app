@@ -107,6 +107,47 @@ function useCanvasScale(containerRef: { current: HTMLElement | null }, logicalWi
   return scale
 }
 
+// Corrección (2026-09-29, aprobada explícitamente — única parte del sistema WYSIWYG que se toca en esta
+// fase) — bug real encontrado auditando el bug del corazón inaccesible: useCanvasScale (arriba) solo mira
+// el ANCHO disponible. Eso es correcto para InvitationCanvasView (la vista de solo lectura, en una página
+// normal, nunca con límite de alto) pero NO para el editor: su lienzo vive dentro de una hoja de alto FIJO
+// (88vh) y, en una plantilla vertical (Globos, Monstruo, Fútbol, Unicornio...) con poco alto disponible
+// (pantalla real pequeña, o poca altura libre tras cabecera+toolbar), el lienzo cabía de sobra por ancho
+// pero el alto que la relación de aspecto pedía superaba el hueco real — como el <div ref={canvasRef}>
+// tenía `width:100%` fijo (no derivado de la relación de aspecto) y `maxHeight:100%` + overflow:hidden,
+// el navegador simplemente RECORTABA la parte de abajo del lienzo, invisible e intocable de verdad, con
+// cualquier capa ahí dentro geométricamente válida pero inalcanzable — ningún clamp de arrastre podía
+// arreglarlo porque el recorte pasaba ANTES, a nivel de contenedor.
+//
+// Esta variante calcula la escala como el MÍNIMO entre lo que permite el ancho y lo que permite el alto
+// disponibles (igual que `object-fit: contain`) — el lienzo completo cabe siempre entero, nunca se
+// recorta. Mide `wrapperRef` (el contenedor `.invitation-canvas-wrap`, NO el propio lienzo): su tamaño ya
+// es el hueco real que flexbox le ha asignado (cabecera + barra inferior + safe-area ya restados por el
+// propio motor de layout, sin sumar constantes a mano — flex:1 más min-height:0 en ese contenedor). Al ser
+// el panel Color/Tamaño/Más `position:absolute` (no participa del flujo normal), abrir o cerrar un panel
+// NO cambia la altura de `.invitation-canvas-wrap` — así que el lienzo no "salta" de tamaño al tocar esos
+// botones. El propio lienzo lógico (ASSUMED_CANVAS_SIZE_PX, coordenadas x/y, tamaños de capa,
+// autoArrangeLayers, resolveEffectiveZone, InvitationCanvasView) no cambia en absoluto: solo cambia cuánto
+// se escala visualmente el editor para caber entero.
+function useFitCanvasScale(wrapperRef: { current: HTMLElement | null }, logicalWidthPx: number, logicalHeightPx: number): number {
+  const [scale, setScale] = useState(1)
+  useLayoutEffect(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    const update = () => {
+      const rect = el.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return
+      setScale(Math.min(rect.width / logicalWidthPx, rect.height / logicalHeightPx))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wrapperRef.current, logicalWidthPx, logicalHeightPx])
+  return scale
+}
+
 // 2026-09-27 (investigación de layout, "corazones_terraza") — measurer real para autoArrangeLayers/
 // estimateLayerBoxFraction (domain/events.ts): mide el ancho real de cada palabra con Canvas 2D
 // measureText en vez de la vieja aproximación por caracteres. Se probó contra el DOM real (9 casos:
@@ -1505,6 +1546,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [decorarTab, setDecorarTab] = useState<DecorarTab>('emoji')
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  // Corrección (2026-09-29) — ref al CONTENEDOR (.invitation-canvas-wrap), no al lienzo en sí, para medir
+  // el hueco real disponible con useFitCanvasScale (ver más arriba).
+  const canvasWrapRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   // Fase 3 Bloque 5B — arrastre del rectángulo de "zona de escritura" (mover/redimensionar), mismo patrón
   // que dragRef pero con su propio estado (geometría 0..1, no x/y/rotation/scale de una capa).
@@ -2019,6 +2063,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
       // reportado. d.rectW/d.rectH (el rect REAL del lienzo, medido en handleLayerPointerDown al empezar
       // ESTE arrastre) son las unidades correctas: el hueco resultante siempre es de verdad tocable en
       // ESTA pantalla, sea cual sea su escala.
+      //
+      // (2026-09-29) — sigue haciendo falta con useFitCanvasScale: aunque el lienzo ya no se recorte
+      // nunca (ver su comentario), d.rectW/d.rectH pueden ser menores que 380px lógicos en un teléfono
+      // estrecho o con una plantilla muy vertical — este clamp es quien garantiza que, aun así, quede
+      // hueco táctil real; sin él, useFitCanvasScale por sí solo NO evitaría una esquina de pocos px.
       setLayers((ls) =>
         ls.map((l) => {
           if (l.id !== d.layerId) return l
@@ -2262,8 +2311,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const imageAspectNumeric = !backgroundImageUrl && currentTemplate?.imageAspect ? currentTemplate.imageAspect : 3 / 4
   const logicalWidthPx = ASSUMED_CANVAS_SIZE_PX
   const logicalHeightPx = ASSUMED_CANVAS_SIZE_PX / imageAspectNumeric
-  const canvasScale = useCanvasScale(canvasRef, logicalWidthPx)
-  const canvasAspectRatio = `${imageAspectNumeric}`
+  // Corrección (2026-09-29) — useFitCanvasScale (no useCanvasScale) para que el lienzo del editor quepa
+  // SIEMPRE entero (ancho Y alto), ver el comentario junto a su definición.
+  const canvasScale = useFitCanvasScale(canvasWrapRef, logicalWidthPx, logicalHeightPx)
   // Ver el comentario junto a "legacyZoneWidthFrac" en InvitationCanvasView: sin esto, el <div> de una capa de
   // texto usa "shrink-to-fit" real (acotado por left, no por el ancho de la zona) y ajusta línea mucho antes
   // de lo que estimateWrappedLineCount asume, así que el bloque pintado de verdad puede ser más alto que el
@@ -2401,7 +2451,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
             {/* El lienzo domina la pantalla: ocupa todo el espacio disponible entre la fila de arriba y
                 la barra contextual de abajo, en vez de ser una tarjeta más entre paneles y botones. */}
-            <div className="invitation-canvas-wrap">
+            <div className="invitation-canvas-wrap" ref={canvasWrapRef}>
               <div
                 ref={canvasRef}
                 onPointerDown={() => selectLayer(null)}
@@ -2416,9 +2466,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 onContextMenu={(e) => e.preventDefault()}
                 style={{
                   position: 'relative',
-                  width: '100%',
-                  aspectRatio: canvasAspectRatio,
-                  maxHeight: '100%',
+                  // Corrección (2026-09-29) — tamaño EXPLÍCITO (no `width:100%` + `aspectRatio` +
+                  // `maxHeight:100%`): con ese trío, el navegador nunca reducía el ANCHO aunque el ALTO
+                  // quedara acotado por maxHeight, así que el contenido (más alto que el hueco real)
+                  // quedaba recortado por overflow:hidden — justo el bug del corazón inaccesible. Ahora
+                  // canvasScale (useFitCanvasScale) ya es el mínimo entre lo que permite el ancho Y el
+                  // alto disponibles, así que este tamaño SIEMPRE cabe entero — nunca hace falta recortar.
+                  width: logicalWidthPx * canvasScale,
+                  height: logicalHeightPx * canvasScale,
                   borderRadius: 16,
                   overflow: 'hidden',
                   background: backgroundGradient,
@@ -2428,7 +2483,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   userSelect: 'none',
                 } as CSSProperties}
               >
-                {/* Corrección WYSIWYG — contenido a tamaño lógico fijo (ver useCanvasScale más arriba),
+                {/* Corrección WYSIWYG — contenido a tamaño lógico fijo (ver useFitCanvasScale más arriba),
                     escalado visualmente para llenar el <div ref={canvasRef}> real. canvasRef sigue siendo
                     el elemento cuyo rect real (ya escalado) usan handleLayerPointerDown/handleDragPointerMove/
                     handleHandlePointerDown/handleTextAreaRectPointerDown/la reconciliación de Prettify —

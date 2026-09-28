@@ -2690,6 +2690,12 @@ export function clampLayerCenterAccessible(center: number, halfExtentFrac: numbe
 // Nunca recentra, nunca toca una capa que ya fuera accesible (aunque sobresalga parcialmente) — layers
 // intacta por identidad de objeto cuando nada cambia, para no marcar como "con cambios sin guardar" una
 // invitación que ya estaba bien.
+//
+// Revisado (2026-09-29) tras corregir el recorte del contenedor del editor (useFitCanvasScale, ver
+// ui/InvitationDesigner.tsx): esta función SIEMPRE ha comparado contra el lienzo LÓGICO fijo
+// (ASSUMED_CANVAS_SIZE_PX/assumedCanvasHeightPx), nunca contra ningún rect del DOM del editor — así que el
+// recorte visual que tenía el contenedor no la afectaba en absoluto, y no hace falta cambiar nada aquí:
+// nunca marcó como "inaccesible" una capa solo porque el editor la estuviera recortando.
 export function recoverInaccessibleLayerPositions(layers: InvitationLayer[], imageAspect = 1): InvitationLayer[] {
   const canvasHeightPx = assumedCanvasHeightPx(imageAspect)
   let changed = false

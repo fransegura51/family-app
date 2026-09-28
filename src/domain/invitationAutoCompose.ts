@@ -255,16 +255,20 @@ function resolveZoneTone(template: InvitationTemplateMeta, role: 'title' | 'body
   return roleTone ?? palette?.zoneTone ?? DEFAULT_ZONE_TONE
 }
 
-// Sección 21 — "color inteligente": el color de la plantilla (`template.text`, o un futuro override de
-// `palette`) sigue siendo el candidato preferido — se conserva siempre que tenga contraste real. Cuando no
-// lo tiene (sección 4: legibilidad > armonía), se sustituye por el neutro seguro del tono resuelto — nunca
-// se queda un color ilegible "porque combina". TITLE/BODY/CLOSING se resuelven de forma independiente
-// (sección 7): pueden llevar colores distintos, y uno puede caer al neutro mientras otro conserva el acento
-// de la plantilla si ese sí tiene contraste suficiente.
+// Sección 21, refinada 2026-09-28 (punto 13 del mandato de geometría segura) — "color inteligente" con
+// prioridad EXPLÍCITA por rol, ya no uniforme: BODY es el texto corrido que se lee de verdad, así que recibe
+// SIEMPRE el neutro seguro de máximo contraste — nunca se prueba un acento en BODY, ni siquiera si pasara el
+// umbral (evita el "todo negro por sistema" Y el "acento poco fiable" a la vez: una sola regla, sin
+// excepciones, para el rol que más importa leer bien). TITLE y CLOSING sí pueden lucir un acento de la
+// plantilla (`template.text` o un futuro override de `palette`) — pero solo si ese candidato supera el
+// umbral de contraste contra el tono de zona resuelto; si no lo supera, caen al mismo neutro seguro.
+// Legibilidad > armonía de color, siempre — nunca se inventa un color nuevo, solo se acepta o se descarta el
+// que ya existe.
 function resolveRoleColor(template: InvitationTemplateMeta, style: AutoComposeStyle, role: 'title' | 'body' | 'closing'): string {
   const tone = resolveZoneTone(template, role)
+  if (role === 'body') return SAFE_NEUTRAL_COLOR[tone]
   const override = template.palette?.[style]
-  const candidate = (role === 'title' ? override?.titleColor : role === 'body' ? override?.bodyColor : override?.closingColor) ?? template.text
+  const candidate = (role === 'title' ? override?.titleColor : override?.closingColor) ?? template.text
   if (candidate && contrastRatio(candidate, ZONE_REFERENCE_COLOR[tone]) >= CONTRAST_THRESHOLD[role]) return candidate
   return SAFE_NEUTRAL_COLOR[tone]
 }
@@ -283,7 +287,7 @@ interface ResolvedZones {
   forbidden: SafeZone[]
 }
 
-function resolveZones(template: InvitationTemplateMeta): ResolvedZones {
+export function resolveZones(template: InvitationTemplateMeta): ResolvedZones {
   const base = template.textArea ?? DEFAULT_TEXT_AREA
   const z = template.zones
   return {
@@ -315,23 +319,86 @@ function insetZone(zone: SafeZone, margin: { side: number; top: number; bottom: 
   }
 }
 
+// Geometría segura (2026-09-28) — ÚNICA función que decide "zona efectiva" (rectángulo real de trabajo, ya
+// con el margen interior de seguridad aplicado) para un rol, en TODO el motor: apilado (autoArrangeLayers),
+// desplazamiento lateral (applyRoleOffsets), validación final (contentLayersFitZones) y zona prohibida
+// (invadesForbiddenZone) parten SIEMPRE de aquí — nunca cada uno calcula su propio inset por su cuenta. El
+// WYSIWYG (InvitationDesigner.tsx) NO vuelve a ejecutar esta función: en vez de eso, cada capa generada por
+// este motor lleva grabado el ancho resultante (`InvitationLayer.zoneWidthFrac`, ver `stampZoneWidths` más
+// abajo) para que ambos usen literalmente el mismo número, no una segunda fórmula que pueda divergir con el
+// tiempo. Una capa SIN ese campo (toda invitación guardada antes de este cambio) sigue usando el cálculo
+// heredado en el renderer — compatibilidad explícita, ver InvitationLayer.zoneWidthFrac en domain/types.ts.
+export function resolveEffectiveZone(baseZone: SafeZone, style: AutoComposeStyle, compact: boolean): SafeZone {
+  return insetZone(baseZone, marginForAttempt(style, compact))
+}
+
+// Geometría segura (2026-09-28) — tolerancia de PUNTO FLOTANTE/REDONDEO DE PÍXEL, no de diseño: separa "cabe
+// exactamente" de "no cabe por un error de la propia aritmética" — en concreto, el tamaño de una foto se
+// GUARDA como entero de píxeles (`Math.round`, ver `photoSizeForFraction`) porque así lo necesita el
+// renderer; volver a expresar ese entero como fracción de zona introduce un desajuste de hasta medio píxel
+// frente al valor sin redondear. Se fija en 1px sobre el lado más corto del lienzo asumido (nunca un margen
+// de maniobra real ni una licencia de diseño).
+const GEOMETRY_EPS = 1 / ASSUMED_CANVAS_SIZE_PX
+
 function boxesOverlapRect(cx: number, cy: number, halfW: number, halfH: number, rect: SafeZone): boolean {
   return cx - halfW < rect.x + rect.width && cx + halfW > rect.x && cy - halfH < rect.y + rect.height && cy + halfH > rect.y
+}
+
+// Rol semántico de una capa generada por este motor a partir de su id fijo — usado para elegir, capa a
+// capa, cuál de las tres zonas efectivas (title/body/closing) le corresponde. `null` para cualquier capa sin
+// rol (foto, decoración, emoji) — esas no participan en la validación por rol.
+function contentRoleOf(layer: InvitationLayer): 'title' | 'body' | 'closing' | null {
+  if (layer.id === 'auto-title') return 'title'
+  if (layer.id === 'auto-body') return 'body'
+  if (layer.id === 'auto-closing') return 'closing'
+  return null
 }
 
 // Sección 15 — zonas prohibidas: si la plantilla no las calibra (ninguna de las 100 lo hace todavía), esta
 // comprobación siempre da `false` (comportamiento de siempre, sin regresión). Cuando existan, una capa que
 // invade una zona con ilustración importante hace fallar el intento (nunca la reposiciona con heurísticas
-// de imagen — sección 15, "no análisis de imagen complejo en esta fase").
-function invadesForbiddenZone(layers: InvitationLayer[], forbidden: SafeZone[], zoneWidthFrac: number, imageAspect: number, measurer?: TextMeasurer): boolean {
+// de imagen — sección 15, "no análisis de imagen complejo en esta fase"). Cada capa se mide con el ancho de
+// SU PROPIA zona efectiva (título/cuerpo/cierre pueden tener anchos distintos, p. ej. `alegre`); una capa
+// sin rol (foto/decoración) usa `genericWidthFrac` como aproximación razonable.
+function invadesForbiddenZone(layers: InvitationLayer[], forbidden: SafeZone[], zonesByRole: Record<'title' | 'body' | 'closing', SafeZone>, genericWidthFrac: number, imageAspect: number, measurer?: TextMeasurer): boolean {
   if (forbidden.length === 0) return false
   for (const l of layers) {
-    const box = estimateLayerBoxFraction(l, zoneWidthFrac, imageAspect, measurer)
+    const role = contentRoleOf(l)
+    const widthFrac = role ? zonesByRole[role].width : genericWidthFrac
+    const box = estimateLayerBoxFraction(l, widthFrac, imageAspect, measurer)
     for (const rect of forbidden) {
       if (boxesOverlapRect(l.x, l.y, box.halfWidth, box.halfHeight, rect)) return true
     }
   }
   return false
+}
+
+// Geometría segura (2026-09-28), punto 2/16 del mandato — validación OBLIGATORIA de caja completa: no basta
+// con que el CENTRO de una capa esté dentro de su zona (eso es lo que efectivamente comprobaba el sistema
+// antes de este cambio, vía `autoArrangeLayers`/`applyRoleOffsets`) — hace falta que los CUATRO bordes
+// (izquierdo/derecho/arriba/abajo) de su caja real, YA con fuente/tamaño/negrita/cursiva/curva/ajuste de
+// línea/alineación/desplazamiento/posición final aplicados, queden dentro de su zona efectiva. Tolerancia
+// SOLO de punto flotante (`GEOMETRY_EPS`) — nunca de diseño. Se ejecuta sobre el resultado YA terminado de un
+// intento, como último cerrojo antes de aceptarlo (ver `validateComposition`).
+export function layerBoundsWithinZone(layer: InvitationLayer, zone: SafeZone, imageAspect: number, measurer: TextMeasurer | undefined): boolean {
+  const box = estimateLayerBoxFraction(layer, zone.width, imageAspect, measurer)
+  const left = layer.x - box.halfWidth
+  const right = layer.x + box.halfWidth
+  const top = layer.y - box.halfHeight
+  const bottom = layer.y + box.halfHeight
+  return left >= zone.x - GEOMETRY_EPS && right <= zone.x + zone.width + GEOMETRY_EPS && top >= zone.y - GEOMETRY_EPS && bottom <= zone.y + zone.height + GEOMETRY_EPS
+}
+
+// TITLE/BODY/CLOSING (punto 2 del mandato) — cada capa con rol contra SU PROPIA zona efectiva. Una capa sin
+// rol (decoración/emoji) queda fuera de esta comprobación a propósito (sección 2, ya tiene su propia lógica
+// de "cabe o se omite" en `placeEmojiBesideTitle`).
+function contentLayersFitZones(layers: InvitationLayer[], zonesByRole: Record<'title' | 'body' | 'closing', SafeZone>, imageAspect: number, measurer: TextMeasurer | undefined): boolean {
+  for (const l of layers) {
+    const role = contentRoleOf(l)
+    if (!role) continue
+    if (!layerBoundsWithinZone(l, zonesByRole[role], imageAspect, measurer)) return false
+  }
+  return true
 }
 
 // Foto (sección 18) — fracción de zona reservada antes de pasar el resto a autoArrangeLayers para el texto.
@@ -357,6 +424,10 @@ function photoSizeForFraction(widthFrac: number, heightFrac: number, imageAspect
 interface PhotoPlacement {
   layer: InvitationLayer
   textZone: SafeZone
+  // Geometría segura, punto 2 — el rectángulo REAL dentro del que se colocó la foto (la zona explícita, o el
+  // sub-rectángulo tallado del textZone) — permite a `validateComposition` comprobar que la foto (igual que
+  // TITLE/BODY/CLOSING) también respeta su propia zona, en vez de asumirlo solo "por construcción".
+  photoZone: SafeZone
 }
 
 function buildPhotoPlacement(shape: 'rect' | 'circle', explicitZone: SafeZone | undefined, textZone: SafeZone, imageAspect: number, photoPath: string, compact: boolean): PhotoPlacement {
@@ -365,17 +436,26 @@ function buildPhotoPlacement(shape: 'rect' | 'circle', explicitZone: SafeZone | 
     const cy = explicitZone.y + explicitZone.height / 2
     const size = photoSizeForFraction(explicitZone.width, explicitZone.height, imageAspect)
     const layer: InvitationLayer = { id: 'auto-photo', type: 'photo', x: cx, y: cy, rotation: 0, scale: 1, zIndex: 1, photoPath, photoMask: shape === 'circle' ? 'circle' : 'none', fontSize: size }
-    return { layer, textZone }
+    return { layer, textZone, photoZone: explicitZone }
   }
   const zone = textZone
   if (shape === 'rect') {
     const heightFrac = PHOTO_RECT_HEIGHT_FRAC[compact ? 'compact' : 'full']
-    const size = photoSizeForFraction(zone.width, heightFrac, imageAspect)
+    // Geometría segura (2026-09-28) — corrección de unidades: `heightFrac` es una fracción DE `zone.height`
+    // (así se usa unas líneas más abajo para posicionar y para tallar `textTop`), pero el tamaño se calculaba
+    // con `heightFrac` como fracción del CANVAS COMPLETO (sin multiplicar por `zone.height`) — inconsistente
+    // con el propio posicionamiento y con la rama 'circle' de aquí abajo, que sí multiplica por `zone.height`.
+    // Con esa unidad equivocada, el tamaño calculado podía superar el hueco real reservado para la foto
+    // (`photoZone`), invadiendo la banda de texto — causa real del solape foto/texto detectado por la nueva
+    // validación de caja completa (punto 2 del mandato de geometría segura), no un falso positivo de la
+    // validación.
+    const size = photoSizeForFraction(zone.width, heightFrac * zone.height, imageAspect)
     const cx = zone.x + zone.width / 2
     const photoCenterYFrac = heightFrac / 2
     const layer: InvitationLayer = { id: 'auto-photo', type: 'photo', x: cx, y: zone.y + zone.height * photoCenterYFrac, rotation: 0, scale: 1, zIndex: 1, photoPath, photoMask: 'none', fontSize: size }
     const textTop = zone.y + zone.height * (heightFrac + PHOTO_GAP_FRAC)
-    return { layer, textZone: { x: zone.x, y: textTop, width: zone.width, height: zone.y + zone.height - textTop } }
+    const photoZone: SafeZone = { x: zone.x, y: zone.y, width: zone.width, height: zone.height * heightFrac }
+    return { layer, textZone: { x: zone.x, y: textTop, width: zone.width, height: zone.y + zone.height - textTop }, photoZone }
   }
   const diameterFrac = PHOTO_CIRCLE_DIAMETER_FRAC[compact ? 'compact' : 'full']
   const size = photoSizeForFraction(diameterFrac * zone.width, diameterFrac * zone.height, imageAspect)
@@ -383,7 +463,8 @@ function buildPhotoPlacement(shape: 'rect' | 'circle', explicitZone: SafeZone | 
   const cx = zone.x + zone.width / 2
   const layer: InvitationLayer = { id: 'auto-photo', type: 'photo', x: cx, y: zone.y + (heightFracReal * zone.height) / 2, rotation: 0, scale: 1, zIndex: 1, photoPath, photoMask: 'circle', fontSize: size }
   const textTop = zone.y + zone.height * (heightFracReal + PHOTO_GAP_FRAC)
-  return { layer, textZone: { x: zone.x, y: textTop, width: zone.width, height: zone.y + zone.height - textTop } }
+  const photoZone: SafeZone = { x: zone.x, y: zone.y, width: zone.width, height: zone.height * heightFracReal }
+  return { layer, textZone: { x: zone.x, y: textTop, width: zone.width, height: zone.y + zone.height - textTop }, photoZone }
 }
 
 // Sección 22 — decoración (emoji + una forma, mismo catálogo/asociación por tipo de evento que antes: nunca
@@ -411,22 +492,49 @@ function placeDecorationInZones(layers: InvitationLayer[], decorationZones: Safe
   })
 }
 
-// Sección 1 (corrección real) — desplaza X de un rol dentro de su zona, según `xOffsetFrac` del estilo —
-// nunca Y (la posición vertical la sigue decidiendo el apilado por alto real de autoArrangeLayers, sin
-// tocar). Siempre acotado dentro de la zona usando la caja real de la capa (nunca puede sacarla del hueco
-// seguro) — mismo criterio de medición que ya usa el resto del motor (estimateLayerBoxFraction).
-function applyRoleOffsets(layers: InvitationLayer[], style: AutoComposeStyle, zone: SafeZone, imageAspect: number, measurer: TextMeasurer | undefined): InvitationLayer[] {
+interface RoleOffsetResult {
+  layers: InvitationLayer[]
+  // Geometría segura, punto 3 — `false` en cuanto CUALQUIER capa con rol (title/body/closing) mide más que
+  // su propia zona (título/cuerpo/cierre), en cualquier dimensión — p. ej. un título curvado cuya caja real
+  // es más ancha que la zona disponible (causa raíz nº2 del bug original: el clamp `Math.min(maxX,
+  // Math.max(minX, targetX))` con `minX > maxX` SIEMPRE devolvía `maxX`, una posición pegada a un borde que
+  // garantizaba invasión por el otro lado, sin ninguna señal de que eso había pasado). Esta función ya NUNCA
+  // resuelve ese caso con una posición: lo señala como fallo del intento completo, para que
+  // `buildAttemptSequence` pruebe la siguiente variante (menos tamaño, sin curva...) — "nunca aceptar
+  // overflow silenciosamente".
+  fits: boolean
+}
+
+// Sección 1 (corrección real), redefinida 2026-09-28 (punto 3-4 del mandato de geometría segura) — desplaza
+// X de un rol dentro de su zona, según `xOffsetFrac` del estilo — nunca Y (la posición vertical la sigue
+// decidiendo el apilado por alto real de autoArrangeLayers, sin tocar). El desplazamiento se acota al
+// MOVIMIENTO HORIZONTAL REALMENTE LIBRE — `zone.width - measuredBox.width` — nunca a una fracción fija del
+// ancho de zona: una capa que ya ocupa casi todo el ancho útil recibe, correctamente, un desplazamiento casi
+// nulo (la personalidad del estilo nunca tiene prioridad sobre la geometría). Antes de desplazar nada,
+// comprueba que la caja real de la capa cabe siquiera CENTRADA en su zona (ancho y alto) — si no cabe, no
+// hay ninguna posición válida que "clampear": se señala como fallo (ver `RoleOffsetResult.fits`) en vez de
+// devolver una posición pegada a un borde que garantiza invadir el lado opuesto.
+function applyRoleOffsets(layers: InvitationLayer[], style: AutoComposeStyle, zone: SafeZone, imageAspect: number, measurer: TextMeasurer | undefined): RoleOffsetResult {
   const treatment = STYLE_TREATMENT[style]
   const roleTreatmentById: Record<string, StyleRoleTreatment> = { 'auto-title': treatment.title, 'auto-body': treatment.body, 'auto-closing': treatment.closing }
-  return layers.map((l) => {
+  let fits = true
+  const outLayers = layers.map((l) => {
+    const role = contentRoleOf(l)
+    if (!role) return l // sin rol (decoración/emoji) — fuera del alcance de esta validación, ver punto 2.
+    const box = estimateLayerBoxFraction(l, zone.width, imageAspect, measurer)
+    if (box.halfWidth * 2 > zone.width + GEOMETRY_EPS || box.halfHeight * 2 > zone.height + GEOMETRY_EPS) {
+      fits = false
+      return l
+    }
     const offsetFrac = roleTreatmentById[l.id]?.xOffsetFrac
     if (!offsetFrac) return l
-    const box = estimateLayerBoxFraction(l, zone.width, imageAspect, measurer)
-    const minX = zone.x + box.halfWidth
-    const maxX = zone.x + zone.width - box.halfWidth
-    const targetX = l.x + offsetFrac * zone.width
-    return { ...l, x: Math.min(maxX, Math.max(minX, targetX)) }
+    const zoneCenterX = zone.x + zone.width / 2
+    const freeHalf = zone.width / 2 - box.halfWidth // >= 0, garantizado por la comprobación anterior.
+    const desiredShift = offsetFrac * zone.width
+    const clampedShift = Math.max(-freeHalf, Math.min(freeHalf, desiredShift))
+    return { ...l, x: zoneCenterX + clampedShift }
   })
+  return { layers: outLayers, fits }
 }
 
 // Sección 2 (corrección real) — el emoji decorativo, integrado junto al título en vez de flotar aparte por
@@ -578,16 +686,37 @@ function buildContentLayers(event: FamilyEvent, content: InvitationContent, styl
 interface AttemptResult {
   layers: InvitationLayer[]
   overflowed: boolean
+  // Geometría segura, punto 3 — `false` en cuanto `applyRoleOffsets` detecta una capa con rol cuya caja real
+  // no cabe, ni siquiera centrada, en su zona efectiva (p. ej. un título curvado más ancho que la zona).
+  fits: boolean
+  // Geometría segura, punto 6/9 — la MISMA zona efectiva (título/cuerpo/cierre) usada para apilar y
+  // desplazar estas capas; se reutiliza tal cual para la validación final (`contentLayersFitZones`) y para
+  // grabar `zoneWidthFrac` en cada capa (`stampZoneWidths`) — una única fuente, nunca recalculada aparte.
+  zonesByRole: Record<'title' | 'body' | 'closing', SafeZone>
+  photoZone?: SafeZone
+}
+
+// Geometría segura, punto 6/9 — graba en cada capa generada el rol y el ancho de zona EFECTIVO (ya con el
+// margen de seguridad aplicado) que realmente se usó para calcularla. Puente de compatibilidad (ver
+// InvitationLayer.zoneWidthFrac, domain/types.ts): el renderer WYSIWYG usa este valor tal cual cuando existe
+// y cae a su cálculo heredado cuando falta — así ninguna invitación guardada antes de este cambio cambia de
+// aspecto, y las nuevas quedan garantizadas a usar exactamente la misma zona que este motor.
+function stampZoneWidths(layers: InvitationLayer[], zonesByRole: Record<'title' | 'body' | 'closing', SafeZone>): InvitationLayer[] {
+  return layers.map((l) => {
+    const role = contentRoleOf(l)
+    if (!role) return l
+    return { ...l, zoneRole: role, zoneWidthFrac: zonesByRole[role].width }
+  })
 }
 
 function attemptOnce(content: InvitationContent, event: FamilyEvent, template: InvitationTemplateMeta, style: AutoComposeStyle, photoPath: string | undefined, measurer: TextMeasurer | undefined, attempt: ComposeAttempt): AttemptResult {
   const zones = resolveZones(template)
   const family = classifyTemplateGeometry(template)
   const imageAspect = template.imageAspect ?? 1
-  const margin = marginForAttempt(style, attempt.compact)
   const sameZone = zones.title === zones.body && zones.body === zones.closing
 
   let photoLayer: InvitationLayer | null = null
+  let photoZone: SafeZone | undefined
   // Zona de texto de partida: cuando título/cuerpo/cierre comparten zona (las 100 plantillas hoy), es esa
   // única zona; si están calibradas por separado, se usa `body` como referencia para tallar el hueco de la
   // foto (el mismo criterio de "elemento principal" que ya usaba este motor).
@@ -597,6 +726,7 @@ function attemptOnce(content: InvitationContent, event: FamilyEvent, template: I
     const placement = buildPhotoPlacement(shape, zones.photo, baseTextZone, imageAspect, photoPath, attempt.compact)
     photoLayer = placement.layer
     baseTextZone = placement.textZone
+    photoZone = placement.photoZone
   }
 
   const contentLayers = buildContentLayers(event, content, style, template, attempt)
@@ -608,6 +738,8 @@ function attemptOnce(content: InvitationContent, event: FamilyEvent, template: I
 
   let textLayers: InvitationLayer[]
   let overflowed = false
+  let fits = true
+  let zonesByRole: Record<'title' | 'body' | 'closing', SafeZone>
 
   // Sección 1-2 (corrección real) — tras el apilado vertical de autoArrangeLayers (sin tocar), dos pasadas
   // de composición propias del estilo: desplazamiento lateral por rol (`applyRoleOffsets`) y, si el estilo
@@ -617,32 +749,36 @@ function attemptOnce(content: InvitationContent, event: FamilyEvent, template: I
   const treatment = STYLE_TREATMENT[style]
 
   if (sameZone) {
-    const textZone = insetZone(baseTextZone, margin)
+    const textZone = resolveEffectiveZone(baseTextZone, style, attempt.compact)
+    zonesByRole = { title: textZone, body: textZone, closing: textZone }
     const result = autoArrangeLayers([...contentLayers, ...decorationLayers], textZone, imageAspect, measurer)
-    let arranged = applyRoleOffsets(result.layers, style, textZone, imageAspect, measurer)
-    arranged = placeDecorationInZones(arranged, zones.decoration)
+    const offsetResult = applyRoleOffsets(result.layers, style, textZone, imageAspect, measurer)
+    fits = offsetResult.fits
+    let arranged = placeDecorationInZones(offsetResult.layers, zones.decoration)
     if (attempt.includeDecoration && treatment.emojiBesideTitle && zones.decoration.length === 0) {
       arranged = placeEmojiBesideTitle(arranged, textZone, imageAspect, measurer)
     }
     textLayers = arranged
     overflowed = result.overflowed
   } else {
-    // Zonas por rol calibradas a mano (todavía ninguna de las 100) — cada rol se apila en su propio
-    // rectángulo, de forma independiente; la decoración sigue yendo en su propia zona si existe, o se
-    // apoya en la zona de cuerpo como referencia si no.
-    const titleZone = photoLayer && zones.title === (sameZone ? undefined : zones.body) ? baseTextZone : zones.title
-    const titleInset = insetZone(titleZone, margin)
-    const bodyInset = insetZone(baseTextZone, margin)
+    // Zonas por rol calibradas a mano (`alegre`, desde este mismo cambio) — cada rol se apila en su propio
+    // rectángulo, de forma independiente; la decoración sigue yendo en su propia zona si existe, o se apoya
+    // en la zona de cuerpo como referencia si no.
+    const titleZone = photoLayer && zones.title === zones.body ? baseTextZone : zones.title
+    const titleInset = resolveEffectiveZone(titleZone, style, attempt.compact)
+    const bodyInset = resolveEffectiveZone(baseTextZone, style, attempt.compact)
+    const closingInset = resolveEffectiveZone(zones.closing, style, attempt.compact)
+    zonesByRole = { title: titleInset, body: bodyInset, closing: closingInset }
     const titleResult = autoArrangeLayers([contentLayers[0]], titleInset, imageAspect, measurer)
     const bodyResult = autoArrangeLayers([contentLayers[1], ...decorationLayers], bodyInset, imageAspect, measurer)
     const closingLayer = contentLayers[2]
-    const closingInset = insetZone(zones.closing, margin)
     const closingResult = closingLayer ? autoArrangeLayers([closingLayer], closingInset, imageAspect, measurer) : { layers: [], overflowed: false }
-    const titleLayers = applyRoleOffsets(titleResult.layers, style, titleInset, imageAspect, measurer)
-    let bodyLayers = applyRoleOffsets(bodyResult.layers, style, bodyInset, imageAspect, measurer)
-    bodyLayers = placeDecorationInZones(bodyLayers, zones.decoration)
-    const closingLayers = applyRoleOffsets(closingResult.layers, style, closingInset, imageAspect, measurer)
-    let combined = [...titleLayers, ...bodyLayers, ...closingLayers]
+    const titleOffset = applyRoleOffsets(titleResult.layers, style, titleInset, imageAspect, measurer)
+    const bodyOffset = applyRoleOffsets(bodyResult.layers, style, bodyInset, imageAspect, measurer)
+    const closingOffset = applyRoleOffsets(closingResult.layers, style, closingInset, imageAspect, measurer)
+    fits = titleOffset.fits && bodyOffset.fits && closingOffset.fits
+    const bodyLayers = placeDecorationInZones(bodyOffset.layers, zones.decoration)
+    let combined = [...titleOffset.layers, ...bodyLayers, ...closingOffset.layers]
     if (attempt.includeDecoration && treatment.emojiBesideTitle && zones.decoration.length === 0) {
       combined = placeEmojiBesideTitle(combined, titleInset, imageAspect, measurer)
     }
@@ -650,20 +786,29 @@ function attemptOnce(content: InvitationContent, event: FamilyEvent, template: I
     overflowed = titleResult.overflowed || bodyResult.overflowed || closingResult.overflowed
   }
 
+  textLayers = stampZoneWidths(textLayers, zonesByRole)
   const layers = photoLayer ? [photoLayer, ...textLayers] : textLayers
-  return { layers, overflowed }
+  return { layers, overflowed, fits, zonesByRole, photoZone }
 }
 
 /**
  * Valida el resultado REAL de un intento — no "cabe matemáticamente", sino "autoArrangeLayers, con el mismo
- * TextMeasurer que usa el editor real, no reporta overflow", Y ninguna capa invade una zona prohibida
- * calibrada a mano (sección 15). El contenido (título/cuerpo) siempre está — nunca es opcional en un
- * intento — así que no hace falta comprobar que "sobrevive": por construcción, siempre está.
+ * TextMeasurer que usa el editor real, no reporta overflow"; que `applyRoleOffsets` no haya encontrado
+ * ninguna caja degenerada (`attempt.fits`); que TITLE/BODY/CLOSING/PHOTO, YA con todos los tratamientos
+ * aplicados, quepan por completo (los cuatro bordes, no solo el centro) dentro de su zona efectiva
+ * (`contentLayersFitZones`/`layerBoundsWithinZone`, punto 2/16 del mandato de geometría segura); y que
+ * ninguna capa invada una zona prohibida calibrada a mano (sección 15). El contenido (título/cuerpo) siempre
+ * está — nunca es opcional en un intento — así que no hace falta comprobar que "sobrevive": por
+ * construcción, siempre está.
  */
-function validateComposition(attempt: AttemptResult, template: InvitationTemplateMeta, zoneWidthFrac: number, imageAspect: number, measurer: TextMeasurer | undefined): boolean {
+function validateComposition(attempt: AttemptResult, template: InvitationTemplateMeta, imageAspect: number, measurer: TextMeasurer | undefined): boolean {
   if (attempt.overflowed) return false
+  if (!attempt.fits) return false
+  if (!contentLayersFitZones(attempt.layers, attempt.zonesByRole, imageAspect, measurer)) return false
+  const photoLayer = attempt.layers.find((l) => l.id === 'auto-photo')
+  if (photoLayer && attempt.photoZone && !layerBoundsWithinZone(photoLayer, attempt.photoZone, imageAspect, measurer)) return false
   const forbidden = template.zones?.forbidden ?? []
-  if (invadesForbiddenZone(attempt.layers, forbidden, zoneWidthFrac, imageAspect, measurer)) return false
+  if (invadesForbiddenZone(attempt.layers, forbidden, attempt.zonesByRole, attempt.zonesByRole.body.width, imageAspect, measurer)) return false
   return true
 }
 
@@ -713,13 +858,12 @@ export function composeInvitationForMe(params: ComposeInvitationForMeParams): Au
   const geometryFamily = classifyTemplateGeometry(template)
   const attempts = buildAttemptSequence(style, geometryFamily)
   const imageAspect = template.imageAspect ?? 1
-  const zoneWidthFrac = (template.zones?.title ?? template.textArea ?? DEFAULT_TEXT_AREA).width
 
   let tried = 0
   for (const attempt of attempts) {
     tried++
     const result = attemptOnce(content, event, template, style, photoPath ?? undefined, measurer, attempt)
-    if (validateComposition(result, template, zoneWidthFrac, imageAspect, measurer)) {
+    if (validateComposition(result, template, imageAspect, measurer)) {
       return { status: 'success', style, geometryFamily, adaptation: attempt, attemptsTried: tried, layers: result.layers }
     }
   }

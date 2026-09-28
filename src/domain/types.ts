@@ -942,6 +942,16 @@ export interface InvitationLayer {
         bodyAtInsertion: string
         fields: { field: Exclude<InvitationEventFieldKey, 'closing'>; valueAtInsertion: string }[]
       }
+  // Geometria segura (2026-09-28) — que rol de zona ocupa esta capa (title/body/closing) y el ancho
+  // EFECTIVO (ya con el margen interior de seguridad aplicado) que el compositor uso para calcularla.
+  // Puente de compatibilidad: ausente en TODA capa guardada antes de este cambio (y en cualquier capa
+  // suelta sin rol, p.ej. una foto o una forma) — el renderer (InvitationDesigner.tsx) debe caer siempre
+  // a su calculo heredado cuando falta, para que ninguna invitacion ya guardada cambie de aspecto. Solo
+  // las capas frescas que genera el compositor (ver buildContentLayers, invitationAutoCompose.ts) llevan
+  // estos dos campos, y el renderer los usa en ese caso para que WYSIWYG y compositor midan exactamente
+  // la misma zona (ver resolveEffectiveZone).
+  zoneRole?: 'title' | 'body' | 'closing'
+  zoneWidthFrac?: number
 }
 
 // Fase 3 Bloque 5B — claves de "hecho real del evento" que puede llevar una invitación: título, fecha,

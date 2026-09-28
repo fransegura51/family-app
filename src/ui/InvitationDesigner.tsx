@@ -1120,7 +1120,12 @@ export function InvitationCanvasView({
   // siguiente, por mucho que se subiera AVG_CHAR_WIDTH_RATIO o se ampliara la zona. Se fija aquí el mismo
   // ancho (zoneWidthFrac) que ya usan esas funciones, igual que LINE_HEIGHT_RATIO se fija como line-height
   // real — para que el ajuste de línea real coincida con el estimado en las 100 plantillas.
-  const zoneWidthFrac = backgroundImageUrl ? DEFAULT_TEXT_AREA.width : (template?.textArea ?? DEFAULT_TEXT_AREA).width
+  // Geometría segura (2026-09-28) — este valor es el cálculo HEREDADO, para capas SIN `zoneWidthFrac` propio
+  // (toda invitación guardada antes de este cambio, y cualquier capa sin rol como foto/decoración). Una capa
+  // generada por el motor DESPUÉS de este cambio lleva su propio ancho efectivo grabado
+  // (`layer.zoneWidthFrac`, ver InvitationLayer en domain/types.ts) — se usa tal cual, sin recalcularlo aquí,
+  // para que WYSIWYG y el motor midan literalmente el mismo número (nunca dos fórmulas que puedan divergir).
+  const legacyZoneWidthFrac = backgroundImageUrl ? DEFAULT_TEXT_AREA.width : (template?.textArea ?? DEFAULT_TEXT_AREA).width
   return (
     <div
       ref={outerRef}
@@ -1155,6 +1160,7 @@ export function InvitationCanvasView({
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((layer) => {
           const isWrappingText = (layer.type === 'text' || layer.type === 'event_data') && !layer.curve
+          const zoneWidthFrac = layer.zoneWidthFrac ?? legacyZoneWidthFrac
           return (
             <div
               key={layer.id}
@@ -2090,11 +2096,12 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const logicalHeightPx = ASSUMED_CANVAS_SIZE_PX / imageAspectNumeric
   const canvasScale = useCanvasScale(canvasRef, logicalWidthPx)
   const canvasAspectRatio = `${imageAspectNumeric}`
-  // Ver el comentario junto a "zoneWidthFrac" en InvitationCanvasView: sin esto, el <div> de una capa de
+  // Ver el comentario junto a "legacyZoneWidthFrac" en InvitationCanvasView: sin esto, el <div> de una capa de
   // texto usa "shrink-to-fit" real (acotado por left, no por el ancho de la zona) y ajusta línea mucho antes
   // de lo que estimateWrappedLineCount asume, así que el bloque pintado de verdad puede ser más alto que el
-  // estimado y solapar con la capa siguiente — el mismo editor donde se reportó el bug real en vivo.
-  const zoneWidthFrac = backgroundImageUrl ? (customTextArea ?? DEFAULT_TEXT_AREA).width : (currentTemplate?.textArea ?? DEFAULT_TEXT_AREA).width
+  // estimado y solapar con la capa siguiente — el mismo editor donde se reportó el bug real en vivo. Valor
+  // HEREDADO, para capas sin `zoneWidthFrac` propio — ver el mismo comentario en InvitationCanvasView.
+  const legacyZoneWidthFrac = backgroundImageUrl ? (customTextArea ?? DEFAULT_TEXT_AREA).width : (currentTemplate?.textArea ?? DEFAULT_TEXT_AREA).width
 
   // INV-EDITOR-4 — barra contextual: solo las herramientas que aplican al tipo seleccionado (o, sin
   // selección, las acciones para añadir/elegir plantilla) — nunca los 9 controles de siempre a la vez.
@@ -2260,6 +2267,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   .sort((a, b) => a.zIndex - b.zIndex)
                   .map((layer) => {
                     const isWrappingText = (layer.type === 'text' || layer.type === 'event_data') && !layer.curve
+                    const zoneWidthFrac = layer.zoneWidthFrac ?? legacyZoneWidthFrac
                     return (
                     <div
                       key={layer.id}

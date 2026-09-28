@@ -931,11 +931,56 @@ export interface InvitationTemplatePalette {
   divertido?: InvitationStyleColorTreatment
 }
 
+// Geometría segura (2026-09-28), punto 17 (verificación visual real) — zona ÚNICA compartida por
+// title/body/closing (misma referencia de objeto en los tres, ver `resolveZones`/`sameZone` en
+// invitationAutoCompose.ts) para "clasico" y "cumpleanos_elegante": conserva el apilado continuo de
+// `autoArrangeLayers` (título/cuerpo/cierre siguen fluyendo como UN solo bloque, con el mismo
+// comportamiento de reducción de margen/tamaño/cierre-opcional que ya tenían las 98 plantillas sin
+// `zones`) — a diferencia de "alegre" (tres huecos REALMENTE independientes, con formas distintas cada
+// uno), aquí el problema no es que título/cuerpo/cierre necesiten geometrías distintas entre sí, sino que
+// el conjunto entero debe quedarse dentro de un rectángulo más conservador que `textArea` (ver comentario
+// en cada plantilla). Usar tres objetos DISTINTOS con los mismos números habría roto ese apilado conjunto
+// (cada rol se habría centrado por separado en su propio hueco) sin necesidad.
+const CLASICO_SAFE_ZONE: SafeZone = { x: 0.3, y: 0.16, width: 0.6, height: 0.62 }
+const CUMPLEANOS_ELEGANTE_SAFE_ZONE: SafeZone = { x: 0.22, y: 0.12, width: 0.56, height: 0.42 }
+
 export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
-  { key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti', image: invitaClasico, imageAspect: 1.1861, textArea: { x: 0.3, y: 0.16, width: 0.6, height: 0.705 } },
+  {
+    key: 'clasico', label: 'Clásico', gradient: 'linear-gradient(135deg, #4C6EF5, #7C3AED)', text: '#ffffff', artKey: 'confeti', image: invitaClasico, imageAspect: 1.1861,
+    textArea: { x: 0.3, y: 0.16, width: 0.6, height: 0.705 },
+    // Geometría segura (2026-09-28), punto 17 (verificación visual real) — comprobado en vivo: el borde
+    // inferior de `textArea` (arriba, SIN recalibrar — el rectángulo en sí sigue siendo correcto, ver punto
+    // 11 del mandato) cae, una vez recortada la imagen a `imageAspect` (más ancha que el archivo original,
+    // ver clasico.jpg), sobre la esquina donde los regalos se solapan con la tarjeta — invisible con el
+    // margen generoso de Clásico, pero el cierre de Divertido (más grande, negrita, margen más ajustado)
+    // llegaba lo bastante abajo para pisarlos. `zones.closing` (Nivel 2) da al cierre un hueco más corto,
+    // terminando bastante antes del borde inferior de `textArea`. Zona ÚNICA compartida (ver
+    // CLASICO_SAFE_ZONE arriba) — conserva el apilado continuo de título/cuerpo/cierre, solo dentro de un
+    // rectángulo más corto que `textArea`.
+    zones: { title: CLASICO_SAFE_ZONE, body: CLASICO_SAFE_ZONE, closing: CLASICO_SAFE_ZONE },
+  },
   // GRUPO A — certificada ("GLOBOS: buen resultado. Mantener especialmente la separación actual entre
   // título y cuerpo"). No tocar.
-  { key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos', image: invitaAlegre, imageAspect: 0.6531, textArea: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 } },
+  {
+    key: 'alegre', label: 'Globos', gradient: 'linear-gradient(160deg, #FBBF24, #FB923C)', text: '#1f2233', artKey: 'globos', image: invitaAlegre, imageAspect: 0.6531,
+    textArea: { x: 0.2284, y: 0.1571, width: 0.532, height: 0.5843 },
+    // Geometría segura (2026-09-28), punto 12 del mandato — Nivel 2: el hueco real no es un rectángulo, es un
+    // arco (ver alegre.jpg) — su interior se estrecha en las esquinas superiores (la curva del arco) y sus
+    // esquinas inferiores están ocupadas por ilustración importante (tarta abajo-derecha, regalos
+    // abajo-izquierda). `textArea` (arriba) sigue siendo el rectángulo general que ya usaban otras partes del
+    // editor (WYSIWYG cuando el usuario mueve capas a mano) — estas `zones` son SOLO lo que consulta el motor
+    // de "Pepa, hazla por mí" al generar, cada rol en su propio hueco seguro, aislado del resto:
+    // - title: más estrecho que `textArea` y pegado arriba — evita las esquinas curvas del arco.
+    // - body: conserva el ancho casi completo de `textArea` — el arco es más ancho a media altura.
+    // - closing: notablemente más estrecho y termina bastante antes del borde inferior de `textArea`
+    //   (0.65 aquí, frente al 0.741 de `textArea`) — dando aire de sobra antes de tocar tarta/regalos.
+    // "Una invitación con algo de aire es mejor que texto rozando decoración" — no se agota el hueco disponible.
+    zones: {
+      title: { x: 0.28, y: 0.17, width: 0.44, height: 0.15 },
+      body: { x: 0.2284, y: 0.33, width: 0.532, height: 0.22 },
+      closing: { x: 0.3, y: 0.56, width: 0.4, height: 0.1 },
+    },
+  },
   // Zona intencionadamente <0.45 de ancho: activa el modo "compact" de buildInvitationTemplateLayers
   // (fuente más pequeña automática) — el cartel blanco real es pequeño (sujeto por las manos de los
   // monstruos), no hay más superficie limpia que ganar ampliando, así que se reduce la fuente en vez de
@@ -1090,7 +1135,20 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
   // Cumpleaños infantil de "Globos").
   { key: 'bautizo_nina', label: 'Bautizo niña', gradient: 'linear-gradient(160deg, #FCE7F3, #FBCFE8)', text: '#9D174D', artKey: 'confeti', image: invitaBautizoNina, imageAspect: 0.4214, textArea: { x: 0.12, y: 0.07, width: 0.62, height: 0.62 } },
   { key: 'navidad', label: 'Navidad', gradient: 'linear-gradient(160deg, #166534, #7F1D1D)', text: '#FFF7ED', artKey: 'confeti', image: invitaNavidad, imageAspect: 0.4214, textArea: { x: 0.1, y: 0.08, width: 0.74, height: 0.5491 } },
-  { key: 'cumpleanos_elegante', label: 'Cumpleaños elegante', gradient: 'linear-gradient(160deg, #134E4A, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCumpleanosElegante, imageAspect: 0.4214, textArea: { x: 0.16, y: 0.07, width: 0.66, height: 0.6 } },
+  {
+    key: 'cumpleanos_elegante', label: 'Cumpleaños elegante', gradient: 'linear-gradient(160deg, #134E4A, #111827)', text: '#F5D57A', artKey: 'confeti', image: invitaCumpleanosElegante, imageAspect: 0.4214,
+    textArea: { x: 0.16, y: 0.07, width: 0.66, height: 0.6 },
+    // Geometría segura (2026-09-28), punto 17 (verificación visual real) — comprobado en vivo: igual que
+    // "alegre", el hueco real es un ÓVALO (ver cumpleanos_elegante.jpg), no un rectángulo — se estrecha en la
+    // parte de arriba y en la de abajo; `textArea` (arriba, SIN recalibrar — sigue siendo el rectángulo
+    // general correcto, ver punto 10 del mandato) es su caja envolvente, así que un título centrado cerca del
+    // borde superior podía asomar por encima de la curva del óvalo hacia el fondo oscuro, y el cierre podía
+    // acercarse demasiado a la tarta/copa de abajo. Zona ÚNICA compartida, más estrecha y más corta que
+    // `textArea` (ver CUMPLEANOS_ELEGANTE_SAFE_ZONE arriba) — conserva el apilado continuo de
+    // título/cuerpo/cierre, dentro de un rectángulo que cabe con margen dentro del óvalo incluso en su parte
+    // más estrecha (arriba/abajo).
+    zones: { title: CUMPLEANOS_ELEGANTE_SAFE_ZONE, body: CUMPLEANOS_ELEGANTE_SAFE_ZONE, closing: CUMPLEANOS_ELEGANTE_SAFE_ZONE },
+  },
   // Lote 8 — "Navidad varias" (pedido explícito en la lista de 26
   // temas: varias variantes navideñas, no solo una) + una hoja extra de
   // Halloween que no estaba en la lista pero encaja igual de bien en

@@ -1,19 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { autoArrangeLayers, buildInvitationDataFields, INVITATION_TEMPLATES } from '@/domain/events'
-import {
-  composeInvitationForMe,
-  getInvitationEventDataChanges,
-  isInvitationLayerManuallyEdited,
-  updateInvitationLayersFromEvent,
-  type AutoComposeSuccess,
-} from '@/domain/invitationAutoCompose'
-import type { FamilyEvent } from '@/domain/types'
+import { autoArrangeLayers, buildInvitationContent, buildInvitationDataFields, INVITATION_TEMPLATES } from '@/domain/events'
+import { composeInvitationForMe, getInvitationEventDataChanges, isInvitationLayerManuallyEdited, updateInvitationLayersFromEvent, type AutoComposeSuccess } from '@/domain/invitationAutoCompose'
+import type { FamilyEvent, InvitationLayer } from '@/domain/types'
 
 // Corrección "última tarea de esta noche" — integración de la hora de ceremonia (event.ceremonyTime, ya
-// editable desde CeremoniaSection para boda/comunion/bautizo) en el sistema de 5A/5B. El campo real ya
-// existía; lo que faltaba era separarlo de "ceremonia" (antes venía pegado en el mismo texto) para poder
-// detectarlo/actualizarlo de forma independiente — ver el comentario en buildInvitationDataFields
-// (domain/events.ts) y mergeCompactPair (domain/invitationAutoCompose.ts).
+// editable desde CeremoniaSection para boda/comunion/bautizo), evolucionado 2026-09-28 para el generador
+// narrativo: la hora de ceremonia ahora se teje DENTRO del párrafo BODY (buildInvitationContent,
+// domain/events.ts) en vez de vivir en su propia capa — el campo real (buildInvitationDataFields) no
+// cambió, solo cómo llega a la invitación.
 
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
   return {
@@ -35,6 +29,12 @@ function template(key: string) {
 }
 
 const EVENT_WITH_CEREMONY = makeEvent({})
+
+function bodyLayer(layers: InvitationLayer[]): InvitationLayer {
+  const l = layers.find((l) => l.id === 'auto-body')
+  if (!l) throw new Error('capa auto-body no encontrada')
+  return l
+}
 
 describe('1-4. campo real identificado correctamente (ceremonyTime, ya editable en CeremoniaSection)', () => {
   it('boda/comunion/bautizo con ceremonyTime da un campo "hora_ceremonia" independiente de "ceremonia"', () => {
@@ -63,24 +63,24 @@ describe('1-4. campo real identificado correctamente (ceremonyTime, ya editable 
   })
 })
 
-describe('5-7. "Pepa, hazla por mí" incluye la hora de ceremonia en las 3 recetas', () => {
-  it('Clásica', () => {
-    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasica' }) as AutoComposeSuccess
+describe('5-7. buildInvitationContent teje la hora de ceremonia dentro del BODY, para los dos estilos y con/sin foto', () => {
+  it('Clásico', () => {
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
     expect(result.status).toBe('success')
     const allText = result.layers.map((l) => l.text).join(' | ')
     expect(allText).toContain('10:00')
     expect(allText).toContain('Iglesia de San Andrés, Almoradí')
   })
 
-  it('Con foto', () => {
-    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('elegante'), style: 'con_foto', photoPath: 'x.jpg' }) as AutoComposeSuccess
+  it('Clásico con foto', () => {
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('elegante'), style: 'clasico', photoPath: 'x.jpg' }) as AutoComposeSuccess
     expect(result.status).toBe('success')
     const allText = result.layers.map((l) => l.text).join(' | ')
     expect(allText).toContain('10:00')
   })
 
-  it('Divertida', () => {
-    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('elegante'), style: 'divertida' }) as AutoComposeSuccess
+  it('Divertido', () => {
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('elegante'), style: 'divertido' }) as AutoComposeSuccess
     expect(result.status).toBe('success')
     const allText = result.layers.map((l) => l.text).join(' | ')
     expect(allText).toContain('10:00')
@@ -88,80 +88,83 @@ describe('5-7. "Pepa, hazla por mí" incluye la hora de ceremonia en las 3 recet
 
   it('16-17. nunca inventa una hora de celebración, y nunca usa eventTime como sustituto de la hora de ceremonia', () => {
     const eventWithGenericHora = makeEvent({ eventTime: '20:00:00' }) // hora general del evento, distinta de la de ceremonia
-    const result = composeInvitationForMe({ event: eventWithGenericHora, template: template('boda'), style: 'clasica' }) as AutoComposeSuccess
+    const result = composeInvitationForMe({ event: eventWithGenericHora, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
     const allText = result.layers.map((l) => l.text).join(' | ')
     expect(allText).toContain('10:00') // la hora de ceremonia real
-    // La celebración nunca lleva una hora inventada pegada a su texto.
-    const celebracionLayer = result.layers.find((l) => l.source?.field === 'celebracion')
-    expect(celebracionLayer?.text).toBe('🎉 Restaurante Trastevere, Almoradí')
+    expect(allText).not.toMatch(/20:00/) // eventTime nunca sustituye a la hora de ceremonia
+  })
+
+  it('la relación ceremonia→celebración se entiende, no se enumera ("...en X, y después...en Y")', () => {
+    const content = buildInvitationContent(EVENT_WITH_CEREMONY)
+    expect(content.body).toMatch(/Iglesia de San Andrés.*después.*Restaurante Trastevere/)
   })
 })
 
-describe('8. "Hazla bonita" conserva exactamente la hora de la ceremonia', () => {
-  it('el texto de la capa de hora no cambia al reorganizar (autoArrangeLayers solo mueve x/y/rotation)', () => {
-    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasica' }) as AutoComposeSuccess
-    const horaLayer = result.layers.find((l) => l.source?.field === 'hora_ceremonia')
-    expect(horaLayer?.text).toBe('🕐 10:00')
+describe('8. "Hazla bonita" conserva exactamente el párrafo (incluida la hora de la ceremonia)', () => {
+  it('el texto de la capa BODY no cambia al reorganizar (autoArrangeLayers solo mueve x/y/rotation)', () => {
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
+    const before = bodyLayer(result.layers)
+    expect(before.text).toContain('10:00')
     const rearranged = autoArrangeLayers(result.layers, template('boda').textArea, template('boda').imageAspect).layers
-    const horaAfter = rearranged.find((l) => l.id === horaLayer!.id)
-    expect(horaAfter?.text).toBe('🕐 10:00')
-    expect(horaAfter?.source).toEqual(horaLayer?.source)
+    const after = bodyLayer(rearranged)
+    expect(after.text).toBe(before.text)
+    expect(after.source).toEqual(before.source)
   })
 })
 
 describe('9-11. detección de cambio de hora de ceremonia', () => {
   it('10:00 → 11:00 se detecta, e identifica el campo como "hora_ceremonia"', () => {
-    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasica' }) as AutoComposeSuccess
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
     const changedEvent = { ...EVENT_WITH_CEREMONY, ceremonyTime: '11:00:00' }
     const changes = getInvitationEventDataChanges(result.layers, changedEvent)
     const horaChange = changes.find((c) => c.field === 'hora_ceremonia')
     expect(horaChange).toBeDefined()
     expect(horaChange!.previous).toBe('🕐 10:00')
     expect(horaChange!.current).toBe('🕐 11:00')
-    // El lugar no cambió: no debe aparecer como cambio.
+    // El lugar de la ceremonia no cambió: no debe aparecer como cambio.
     expect(changes.some((c) => c.field === 'ceremonia')).toBe(false)
   })
 })
 
-describe('12. actualización selectiva de la hora de ceremonia (nunca toca el lugar ni otros datos)', () => {
-  it('updateInvitationLayersFromEvent(..., ["hora_ceremonia"]) solo cambia esa capa', () => {
-    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasica' }) as AutoComposeSuccess
+describe('12. actualización selectiva de la hora de ceremonia — regenera el párrafo entero (sección 10)', () => {
+  it('updateInvitationLayersFromEvent(..., ["hora_ceremonia"]) regenera el BODY con la nueva hora, conservando el resto', () => {
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
     const changedEvent = { ...EVENT_WITH_CEREMONY, ceremonyTime: '11:00:00' }
     const updated = updateInvitationLayersFromEvent(result.layers, changedEvent, ['hora_ceremonia'])
-    const horaAfter = updated.find((l) => l.source?.field === 'hora_ceremonia')!
-    expect(horaAfter.text).toBe('🕐 11:00')
-    expect(horaAfter.source?.valueAtInsertion).toBe('🕐 11:00')
-    // La ceremonia (lugar) sigue siendo exactamente la misma capa (misma referencia).
-    const ceremoniaBefore = result.layers.find((l) => l.source?.field === 'ceremonia')
-    const ceremoniaAfter = updated.find((l) => l.source?.field === 'ceremonia')
-    expect(ceremoniaAfter).toBe(ceremoniaBefore)
+    const after = bodyLayer(updated)
+    expect(after.text).toContain('11:00')
+    expect(after.text).not.toContain('10:00')
+    expect(after.text).toContain('Iglesia de San Andrés, Almoradí') // el lugar sigue ahí, no se pierde
+    expect(after.text).toContain('Restaurante Trastevere, Almoradí')
   })
 })
 
-describe('14. hora modificada manualmente no se sobrescribe sin permiso', () => {
-  it('isInvitationLayerManuallyEdited detecta una personalización de la hora de ceremonia', () => {
-    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasica' }) as AutoComposeSuccess
-    const horaLayer = result.layers.find((l) => l.source?.field === 'hora_ceremonia')!
-    expect(isInvitationLayerManuallyEdited(horaLayer)).toBe(false)
-    const edited = { ...horaLayer, text: '🕐 10:15 — Llegad un poco antes' }
+describe('14. párrafo modificado manualmente no se sobrescribe sin permiso (sección 11)', () => {
+  it('isInvitationLayerManuallyEdited detecta una personalización del párrafo', () => {
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
+    const before = bodyLayer(result.layers)
+    expect(isInvitationLayerManuallyEdited(before)).toBe(false)
+    const edited = { ...before, text: 'Llegad a las 10:15, un poco antes de lo previsto' }
     expect(isInvitationLayerManuallyEdited(edited)).toBe(true)
-    // updateInvitationLayersFromEvent no sobrescribe por sí solo una capa personalizada sin que se le pida
-    // explícitamente ese campo — pero si se pide, sigue sustituyendo (la decisión de "mantener mi texto" es
-    // de la UI, ver applyEventDataUpdate en InvitationDesigner.tsx, sección 32 del Bloque 5B).
-    expect(edited.source?.field).toBe('hora_ceremonia')
+  })
+
+  it('updateInvitationLayersFromEvent NO sobrescribe el párrafo editado a mano, aunque se pida su campo explícitamente (principio obligatorio, sección 11)', () => {
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
+    const editedText = 'Os esperamos en la Iglesia de San Andrés, llegad con tiempo — ¡luego lo celebramos en Trastevere!'
+    const layersWithEdit = result.layers.map((l) => (l.id === 'auto-body' ? { ...l, text: editedText } : l))
+    const changedEvent = { ...EVENT_WITH_CEREMONY, ceremonyTime: '11:00:00' }
+    const updated = updateInvitationLayersFromEvent(layersWithEdit, changedEvent, ['hora_ceremonia'])
+    expect(bodyLayer(updated).text).toBe(editedText)
   })
 })
 
-describe('15. recetas compactas fusionan ceremonia+hora en una sola línea, sin romper el seguimiento', () => {
-  it('la capa fusionada nunca lleva procedencia (evita el mismo falso "cambió" ya corregido para fecha+hora)', () => {
-    // Familia 3/4 (horizontal extrema/compacta) fuerza recetas compactas para boda-tipo eventos.
-    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('princesa'), style: 'clasica' }) as AutoComposeSuccess
+describe('15. la hora de ceremonia siempre viaja tejida en el mismo párrafo que el resto — nunca una capa suelta que pueda desincronizarse', () => {
+  it('nunca hay una capa de texto separada que contenga solo "10:00" sin el resto del párrafo', () => {
+    const result = composeInvitationForMe({ event: EVENT_WITH_CEREMONY, template: template('princesa'), style: 'clasico' }) as AutoComposeSuccess
     expect(result.status).toBe('success')
-    expect(result.acceptedRecipe).toBe('C2') // compacta
-    const merged = result.layers.find((l) => l.text?.includes('Iglesia de San Andrés') && l.text?.includes('10:00'))
-    expect(merged).toBeDefined()
-    expect(merged?.source).toBeUndefined()
-    // Aun así, no hay ningún falso "cambió" para ese caso.
+    const loneHourLayer = result.layers.find((l) => l.text?.trim() === '🕐 10:00')
+    expect(loneHourLayer).toBeUndefined()
+    // Sigue sin haber falsos "cambió" para este caso.
     expect(getInvitationEventDataChanges(result.layers, EVENT_WITH_CEREMONY)).toEqual([])
   })
 })

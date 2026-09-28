@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-// Fase 3 Bloque 5B — "✨ Pepa, hazla por mí" integrado en el editor real. Sin React Testing Library (igual
-// que el resto de src/ui/*Ui*.test.ts): se comprueba cómo está cableado el código fuente real, mismo
-// patrón que invitationDesignerUndo.test.ts / invitationDesignerRedo.test.ts.
+// Fase 3 Bloque 5B — "✨ Pepa, hazla por mí" integrado en el editor real, evolucionado 2026-09-28: solo dos
+// estilos (Clásico/Divertido) y la foto pasa a ser una elección aparte, ORTOGONAL al estilo (sección 18) —
+// ya no un tercer estilo "Con foto" que había que elegir antes de poder subir la imagen. Sin React Testing
+// Library (igual que el resto de src/ui/*Ui*.test.ts): se comprueba cómo está cableado el código fuente
+// real, mismo patrón que invitationDesignerUndo.test.ts / invitationDesignerRedo.test.ts.
 const SRC = (import.meta.glob('/src/ui/InvitationDesigner.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
   '/src/ui/InvitationDesigner.tsx'
 ]
@@ -32,13 +34,13 @@ describe('sección 3-4 — la plantilla se elige ANTES, nunca al revés', () => 
   })
 })
 
-describe('sección 5-7 — compatibilidad real, sin casos especiales por nombre de plantilla', () => {
-  it('los 3 estilos se muestran siempre (nunca ocultos), desactivados con motivo cuando no son compatibles', () => {
+describe('sección 5-7, 17 — compatibilidad real, sin casos especiales por nombre de plantilla', () => {
+  it('los 2 estilos se muestran siempre (nunca ocultos), desactivados con motivo cuando no son compatibles — nunca un tercer estilo "con_foto"', () => {
     const start = SRC.indexOf("panel === 'pepa' && (")
     const panel = SRC.slice(start, SRC.indexOf("panel === 'emoji'", start))
-    expect(panel).toContain("style: 'clasica'")
-    expect(panel).toContain("style: 'con_foto'")
-    expect(panel).toContain("style: 'divertida'")
+    expect(panel).toContain("style: 'clasico'")
+    expect(panel).toContain("style: 'divertido'")
+    expect(panel).not.toContain("'con_foto'")
     expect(panel).toContain('disabled={disabled}')
     expect(panel).toContain('compat?.reason')
   })
@@ -52,19 +54,19 @@ describe('sección 5-7 — compatibilidad real, sin casos especiales por nombre 
   })
 })
 
-describe('sección 8 — la foto se pide SOLO tras elegir "Con foto"', () => {
-  it('handlePepaSelectStyle nunca genera directamente para con_foto — corta antes de requestPepaGeneration', () => {
+describe('sección 18 — la foto es ORTOGONAL al estilo, no un tercer estilo', () => {
+  it('handlePepaSelectStyle compone directamente para cualquiera de los 2 estilos, usando la foto ya elegida (o ninguna) — nunca corta a esperar una foto', () => {
     const body = fn('handlePepaSelectStyle')
-    const ifIdx = body.indexOf("if (style === 'con_foto') return")
-    const genIdx = body.indexOf('requestPepaGeneration(style, null)')
-    expect(ifIdx).toBeGreaterThan(-1)
-    expect(ifIdx).toBeLessThan(genIdx)
+    expect(body).toContain('requestPepaGeneration(style, pepaPhotoPath)')
+    expect(body).not.toContain("if (style === 'con_foto')")
   })
 
-  it('el input de foto del asistente solo se muestra cuando pepaStyle es "con_foto"', () => {
+  it('el control de foto del asistente siempre está visible (no depende de qué estilo esté elegido)', () => {
     const start = SRC.indexOf("panel === 'pepa' && (")
     const panel = SRC.slice(start, SRC.indexOf("panel === 'emoji'", start))
-    expect(panel).toContain("pepaStyle === 'con_foto' && (")
+    expect(panel).not.toContain("pepaStyle === 'con_foto'")
+    expect(panel).toContain('pepaPhotoPath')
+    expect(panel).toContain('handlePepaRemovePhoto')
   })
 
   it('handlePepaPhotoChange reutiliza el MISMO pipeline de subida/compresión que "+ Foto" (uploadInvitationPhoto + getInvitationPhotoUrl), nunca un segundo sistema', () => {
@@ -72,15 +74,26 @@ describe('sección 8 — la foto se pide SOLO tras elegir "Con foto"', () => {
     expect(body).toContain('uploadInvitationPhoto(event.id, file)')
     expect(body).toContain('getInvitationPhotoUrl(path)')
   })
+
+  it('añadir o quitar la foto con un estilo ya elegido regenera con ese mismo estilo (foto y estilo son dos decisiones independientes que se combinan)', () => {
+    const photoChange = fn('handlePepaPhotoChange')
+    expect(photoChange).toContain('if (pepaStyle) requestPepaGeneration(pepaStyle, path)')
+    const removePhoto = fn('handlePepaRemovePhoto')
+    expect(removePhoto).toContain('if (pepaStyle) requestPepaGeneration(pepaStyle, null)')
+  })
+
+  it('la compatibilidad se recalcula con la foto actual del asistente (una plantilla puede tener hueco sin foto pero no con ella)', () => {
+    expect(SRC).toContain('checkAllStyleCompatibility({ event, template: activeTemplateForPepa, photoPath: pepaPhotoPath')
+  })
 })
 
-describe('sección 17-18 — generación coordinada por React, compuesta por el dominio', () => {
+describe('secciones 17-23 — generación coordinada por React, compuesta por el dominio', () => {
   it('applyPepaGeneration llama a composeInvitationForMe (nunca construye capas a mano)', () => {
     const body = fn('applyPepaGeneration')
     expect(body).toContain('composeInvitationForMe({')
   })
 
-  it('un resultado fallido nunca toca `layers` (la composición anterior permanece intacta) — sección 42', () => {
+  it('un resultado fallido nunca toca `layers` (la composición anterior permanece intacta)', () => {
     const body = fn('applyPepaGeneration')
     const failIdx = body.indexOf("result.status !== 'success'")
     const setLayersIdx = body.indexOf('setLayers(result.layers)')
@@ -174,7 +187,7 @@ describe('secciones 10-16 — plantilla propia y su zona de escritura', () => {
   })
 })
 
-describe('secciones 26-39 — seguimiento de datos del evento', () => {
+describe('secciones 9-11, 26-39 — seguimiento de datos del evento, evolucionado para el párrafo narrativo', () => {
   it('el aviso de cambios se calcula con getInvitationEventDataChanges/invitationHasTrackedEventData (nunca una copia del evento aparte)', () => {
     expect(SRC).toContain('getInvitationEventDataChanges(layers, event)')
     expect(SRC).toContain('invitationHasTrackedEventData(layers)')
@@ -184,14 +197,26 @@ describe('secciones 26-39 — seguimiento de datos del evento', () => {
     expect(SRC).toContain('setChangesBannerDismissed(true)')
   })
 
-  it('applyEventDataUpdate nunca sobrescribe un campo personalizado sin permiso explícito (solo si la decisión es "update")', () => {
+  it('la búsqueda de la capa de un campo usa findLayerForField (soporta un dato suelto O un párrafo narrativo que lo teje), no solo `source.field`', () => {
+    expect(SRC).toContain('function findLayerForField(layers: InvitationLayer[], field: string)')
+    const body = fn('applyEventDataUpdate')
+    expect(body).toContain('findLayerForField(layers, change.field)')
+  })
+
+  it('applyEventDataUpdate nunca sobrescribe un campo/párrafo personalizado sin permiso explícito (solo si la decisión es "update")', () => {
     const body = fn('applyEventDataUpdate')
     expect(body).toContain("manualFieldDecisions[change.field] === 'update'")
   })
 
-  it('un campo eliminado del evento solo se quita si el usuario lo confirma (removedFieldDecisions), nunca en silencio', () => {
+  it('un campo eliminado del evento solo se quita si el usuario lo confirma, y NUNCA para un párrafo narrativo (se regenera, no se borra — sección 10)', () => {
     const body = fn('applyEventDataUpdate')
+    expect(body).toContain('if (change.current === null && !isNarrative)')
     expect(body).toContain('if (removedFieldDecisions[change.field]) fieldsToRemove.push(change.field)')
+  })
+
+  it('los cambios se agrupan por capa en la UI (groupEventDataChanges) — varios campos de un mismo párrafo comparten una sola decisión', () => {
+    expect(SRC).toContain('function groupEventDataChanges(')
+    expect(SRC).toContain('groupEventDataChanges(eventDataChanges, layers).map((group)')
   })
 
   it('la actualización (aunque afecte a varios campos) es una sola operación de historial', () => {

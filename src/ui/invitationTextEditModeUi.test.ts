@@ -98,11 +98,16 @@ describe('Fuente — previsualización visual real (Aa en su propia tipografía)
   })
 })
 
-describe('Color — Fase 4: abre DIRECTAMENTE el selector nativo, sin fila de presets (único sistema de selección)', () => {
-  it('ya no hay LAYER_COLOR_PRESETS en la barra de texto — el botón "Color" hace click() sobre un <input type="color"> oculto', () => {
+describe('Color — Fase 4 + corrección real (el botón no abría nada en el móvil): abre DIRECTAMENTE el selector nativo, sin fila de presets', () => {
+  it('ya no hay LAYER_COLOR_PRESETS en la barra de texto — el <input type="color"> real se superpone al círculo, el toque llega a él directamente (sin depender de un .click() programático)', () => {
     expect(editBar).not.toContain('LAYER_COLOR_PRESETS')
-    expect(editBar).toContain('onClick={() => colorInputRef.current?.click()}')
+    expect(editBar).not.toContain('colorInputRef.current?.click()')
+    expect(editBar).toContain('ref={colorInputRef}')
     expect(editBar).toContain('aria-label="Color"')
+    // El input está en position:absolute + inset:0 sobre el swatch, con opacity:0 (invisible pero sí
+    // interactivo — nunca pointerEvents:none, que impediría que el toque real llegara al input).
+    expect(editBar).toContain("position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0")
+    expect(editBar).not.toContain('pointerEvents')
   })
 
   it('el input de color sigue llamando a las mismas funciones que el resto del editor (updateSelectedContinuous + commit al soltar)', () => {
@@ -114,7 +119,7 @@ describe('Color — Fase 4: abre DIRECTAMENTE el selector nativo, sin fila de pr
 
   it('color y efectos aparecen juntos, en la segunda fila (Fase 4: "deben aparecer juntos visualmente")', () => {
     const row2 = slice(editBar, 'GRUPO 4 — apariencia', 'GRUPO 6 — capas/objeto')
-    expect(row2).toContain('onClick={() => colorInputRef.current?.click()}')
+    expect(row2).toContain('ref={colorInputRef}')
     expect(row2).toContain("setTextEditTool((t) => (t === 'effect' ? null : 'effect'))")
   })
 })
@@ -132,6 +137,13 @@ describe('Tamaño — A-/A+ igual que el resto del editor, una sola vez en todo 
     expect(editBar).toContain("textEditTool === 'size' && (")
     expect(editBar).toContain("updateSelectedDiscrete({ fontSize: Math.max(10, (selected.fontSize ?? 16) - 2) })")
     expect(editBar).toContain('updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + 2 })')
+  })
+
+  it('corrección real: el botón que abre el desplegable ya no usa el emoji 🔠 (se leía como "ABCD" en el móvil) — usa el texto literal "A±", igual en cualquier plataforma', () => {
+    const row1 = slice(editBar, 'GRUPO 3 — tipografía', 'GRUPO 4 — apariencia')
+    expect(row1).toContain('aria-label="Tamaño"')
+    expect(row1).toContain('A±')
+    expect(row1).not.toContain('🔠')
   })
 })
 
@@ -154,6 +166,25 @@ describe('Capas/objeto (GRUPO 6) — adelante/atrás/duplicar/borrar integrados 
     expect(row2).toContain('onClick={() => handleReorder(1)}')
     expect(row2).toContain('onClick={() => handleReorder(-1)}')
     expect(row2).toContain('onClick={handleDuplicate}')
+  })
+
+  it('corrección real: "Traer adelante"/"Enviar atrás" ya no usan flechas ⬆/⬇ (se confundían con mover el objeto en el lienzo, que ya existe por arrastre) — dos cuadrados superpuestos, sin ninguna flecha, con aria-label Y title accesibles', () => {
+    const row2 = slice(editBar, 'GRUPO 6 — capas/objeto', '</div>\n              </div>\n            )}')
+    expect(row2).not.toMatch(/>\s*⬆\s*</)
+    expect(row2).not.toMatch(/>\s*⬇\s*</)
+    expect(row2).toContain('aria-label="Traer adelante"')
+    expect(row2).toContain('title="Traer adelante"')
+    expect(row2).toContain('aria-label="Enviar atrás"')
+    expect(row2).toContain('title="Enviar atrás"')
+    // El icono es geométrico (cuadrados con currentColor via CSS), no un carácter: ambos botones montan al
+    // menos 2 <span> propios (el contenedor + los dos cuadrados superpuestos).
+    const frontIcon = slice(row2, 'aria-label="Traer adelante"', '</button>')
+    const backIcon = slice(row2, 'aria-label="Enviar atrás"', '</button>')
+    for (const icon of [frontIcon, backIcon]) {
+      expect(icon.match(/<span/g)?.length).toBeGreaterThanOrEqual(3)
+      expect(icon).toContain('background: \'currentColor\'')
+      expect(icon).toContain("border: '1.5px solid currentColor'")
+    }
   })
 
   it('borrar sigue pasando por ConfirmIconButton (tap-to-confirm), no un botón directo', () => {

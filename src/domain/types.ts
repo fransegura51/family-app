@@ -923,11 +923,25 @@ export interface InvitationLayer {
   // el texto después (comparando `layer.text` con `valueAtInsertion`) sin ningún flag aparte que pueda
   // desincronizarse. Opcional y retrocompatible: ausente en toda invitación anterior a este bloque y en
   // cualquier texto libre escrito a mano — esas capas simplemente no participan en el seguimiento.
-  source?: {
-    kind: 'event_field'
-    field: Exclude<InvitationEventFieldKey, 'closing'>
-    valueAtInsertion: string
-  }
+  //
+  // Evolución del generador narrativo (2026-09-28) — una capa "event_field" sigue naciendo de UN único
+  // hecho (p. ej. el título, o un dato suelto insertado a mano desde "📋 Datos"). Una capa "event_narrative"
+  // nace del párrafo redactado por PEPA (BODY), que puede tejer VARIOS hechos reales en una sola frase
+  // (fecha+hora+lugar+edad...) — por eso lleva una lista, no un único `field`, y además recuerda el texto
+  // COMPLETO que tenía al insertarse (`bodyAtInsertion`): al no ser una sustitución palabra-por-palabra, no
+  // basta con comparar un valor suelto para saber si el usuario reescribió el párrafo a mano (ver
+  // isInvitationLayerManuallyEdited, domain/invitationAutoCompose.ts).
+  source?:
+    | {
+        kind: 'event_field'
+        field: Exclude<InvitationEventFieldKey, 'closing'>
+        valueAtInsertion: string
+      }
+    | {
+        kind: 'event_narrative'
+        bodyAtInsertion: string
+        fields: { field: Exclude<InvitationEventFieldKey, 'closing'>; valueAtInsertion: string }[]
+      }
 }
 
 // Fase 3 Bloque 5B — claves de "hecho real del evento" que puede llevar una invitación: título, fecha,

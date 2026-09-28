@@ -14,7 +14,9 @@ import type {
   EventTask,
   EventType,
   FamilyEvent,
+  InvitationEventFieldKey,
   InvitationLayer,
+  InvitationTextStyle,
 } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
 
@@ -536,10 +538,15 @@ export function computeTableOccupancy(
   return count
 }
 
-function invitationDateClause(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate' | 'eventTime'>): string {
+// `includeTime` (por defecto true, mismo comportamiento de siempre) — los tipos con dos ubicaciones (boda/
+// comunión/bautizo) lo pasan a false: esos eventos tienen su propia hora de CEREMONIA (event.ceremonyTime,
+// tejida aparte, ver dualLocationBody) y el `eventTime` genérico del evento no significa nada ahí (ningún
+// sitio de la app lo pide ni lo muestra para un tipo con dos ubicaciones) — incluirlo aquí a la vez que la
+// hora de ceremonia produciría una frase con DOS horas distintas y sin aclarar a cuál se refiere cada una.
+function invitationDateClause(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate' | 'eventTime'>, includeTime = true): string {
   if (event.dateStatus === 'pendiente' || !event.eventDate) return 'en una fecha que anunciaremos pronto'
   const nice = new Date(event.eventDate + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
-  const time = event.eventTime ? ` a las ${event.eventTime.slice(0, 5)}` : ''
+  const time = includeTime && event.eventTime ? ` a las ${event.eventTime.slice(0, 5)}` : ''
   const suffix = event.dateStatus === 'provisional' ? ' (fecha provisional)' : ''
   return `el ${nice}${time}${suffix}`
 }
@@ -592,6 +599,146 @@ export function buildInvitationMessage(event: FamilyEvent): string {
       const where = venue ? ` en ${venue}` : ''
       return `${title}\nOs esperamos ${when}${where}.\n¡No os lo podéis perder!`
     }
+  }
+}
+
+// =======================================================================================================
+// Generador narrativo — evolución de "Pepa, hazla por mí" (2026-09-28). Petición real: "una invitación
+// terminada debe LEERSE COMO UNA INVITACIÓN, no como una ficha de datos" — en vez de una capa por cada
+// campo del evento (fecha, hora, lugar, edad...) más una frase de cierre suelta, PEPA redacta un párrafo
+// coherente que teje los hechos reales disponibles. FUENTE ÚNICA DE VERDAD para lo que PEPA redacta: el
+// motor de composición (domain/invitationAutoCompose.ts) construye las capas TITLE/BODY/CLOSING a partir
+// de esto, sin ninguna lógica de redacción propia. `buildInvitationMessage` (arriba) es un caso aparte —
+// solo lo usa `buildInvitationTemplateLayers` para el relleno inicial al elegir plantilla, un flujo
+// anterior y más estrecho que "Pepa, hazla por mí" — se deja intacto para no arriesgar ese camino, pero
+// comparte la misma cláusula de fecha/hora (`invitationDateClause`) para no divergir en lo básico.
+// =======================================================================================================
+
+export interface InvitationContent {
+  title: string
+  body: string
+  // Ausente solo si algún día un tipo de evento no tuviera cierre — hoy los 6 tipos siempre lo tienen
+  // (CLOSING_PHRASES es total), pero el tipo se deja opcional por si un tipo futuro decide no llevar uno.
+  closing?: string
+  // Hechos reales (claves de InvitationEventFieldKey, nunca 'closing' ni 'title' — esos se rastrean aparte,
+  // ver domain/invitationAutoCompose.ts) que participaron en `body` — base del seguimiento
+  // `source.kind:'event_narrative'`: sin esto no se podría saber más tarde qué comparar si el evento cambia.
+  bodyFields: Exclude<InvitationEventFieldKey, 'closing' | 'title'>[]
+}
+
+// Mismo catálogo/tono que ya usaba buildInvitationMessage por tipo — un cierre genérico, sin ningún hecho
+// (nunca fecha/hora/lugar), prescindible si no cupiera. Vive aquí (no en invitationAutoCompose.ts) porque
+// ahora es el mismo catálogo que usa buildInvitationContent — una sola tabla, no dos copias.
+const CLOSING_PHRASES: Record<EventType, string> = {
+  cumpleanos: '¡Queremos pasarlo en grande con vosotros!',
+  comunion: '¡Nos encantaría compartir este día con vosotros!',
+  bautizo: 'Queremos compartir este momento con vosotros.',
+  boda: '¡Queremos compartir este día con quienes más queremos!',
+  celebracion: '¡Nos encantaría contar con vosotros!',
+  personalizado: '¡No os lo podéis perder!',
+}
+
+// Sección 6 — la edad (`details.ageTurning`) se teje dentro del cuerpo en vez de vivir en una línea aparte
+// ("Cumple 27 años"), con más de una redacción posible (petición real: "no hardcodear un único texto
+// universal si la arquitectura permite variantes controladas"). La elección es determinista por evento (la
+// propia edad decide, nunca Math.random/Date.now — mismo principio de determinismo que el resto del motor)
+// en vez de aleatoria, para que "mismo evento → mismo resultado siempre" se mantenga.
+function ageClause(ageTurning: number): string {
+  return ageTurning % 2 === 0 ? `¡Cumple ${ageTurning} años!` : `Son ya ${ageTurning} años.`
+}
+
+type InvitationEventBodyFieldKey = Exclude<InvitationEventFieldKey, 'closing' | 'title'>
+
+interface InvitationBodyResult {
+  body: string
+  fields: InvitationEventBodyFieldKey[]
+}
+
+function ceremonyTimeSuffix(event: Pick<FamilyEvent, 'ceremonyTime'>): string {
+  return event.ceremonyTime ? ` a las ${event.ceremonyTime.slice(0, 5)}` : ''
+}
+
+// Sección 7 — boda/comunión/bautizo: cuando existen ceremonia Y celebración, la redacción entiende la
+// relación entre ambas ("nos casamos EN X, y después lo celebraremos EN Y") en vez de enumerarlas sin
+// contexto. Si solo hay una, la frase se adapta; nunca se inventa la que falta. `verb`/`title` distinguen
+// el tono de boda (sin mencionar el título — "Nos casamos" ya basta) del de comunión/bautizo (sí lo
+// menciona, igual que ya hacía buildInvitationMessage).
+function dualLocationBody(event: FamilyEvent, when: string, verb: string, withTitle: boolean): InvitationBodyResult {
+  const subject = withTitle ? `${verb} ${event.title.trim()} ${when}` : `${verb} ${when}`
+  const ceremony = event.ceremonyLocationLabel
+  const celebration = event.celebrationLocationLabel
+  const ceremonyTime = ceremonyTimeSuffix(event)
+
+  if (ceremony && celebration) {
+    const fields: InvitationEventBodyFieldKey[] = ['ceremonia', 'celebracion']
+    if (event.ceremonyTime) fields.push('hora_ceremonia')
+    return { body: `${subject} en ${ceremony}${ceremonyTime}, y después lo celebraremos en ${celebration}.`, fields }
+  }
+  if (ceremony) {
+    const fields: InvitationEventBodyFieldKey[] = ['ceremonia']
+    if (event.ceremonyTime) fields.push('hora_ceremonia')
+    return { body: `${subject} en ${ceremony}${ceremonyTime}.`, fields }
+  }
+  if (celebration) {
+    return { body: `${subject}. Os esperamos en ${celebration} para ${withTitle ? 'disfrutarlo' : 'celebrarlo'} juntos.`, fields: ['celebracion'] }
+  }
+  return { body: `${subject}.`, fields: [] }
+}
+
+// Sección 5 — un constructor de BODY por tipo de evento, en tabla (no un switch dentro de la función
+// pública) para que añadir un tipo de evento en el futuro sea una entrada más, sin rehacer el resto
+// (petición real explícita: "deja el generador diseñado de forma extensible"). `when` ya viene resuelto
+// (misma cláusula que buildInvitationMessage, invitationDateClause) — fecha/hora se rastrean aparte, en
+// buildInvitationContent, porque las comparte cualquier tipo de evento por igual.
+const INVITATION_BODY_BUILDERS: Record<EventType, (event: FamilyEvent, when: string) => InvitationBodyResult> = {
+  cumpleanos: (event, when) => {
+    const where = event.venueLabel ? ` en ${event.venueLabel}` : ''
+    let body = `Os esperamos ${when}${where} para celebrar ${event.title.trim()}.`
+    const fields: InvitationEventBodyFieldKey[] = event.venueLabel ? ['lugar'] : []
+    const ageTurning = event.details.ageTurning
+    if (typeof ageTurning === 'number') {
+      body += ` ${ageClause(ageTurning)}`
+      fields.push('subtitle')
+    }
+    return { body, fields }
+  },
+  comunion: (event, when) => dualLocationBody(event, when, 'Celebramos', true),
+  bautizo: (event, when) => dualLocationBody(event, when, 'Celebramos', true),
+  boda: (event, when) => dualLocationBody(event, when, 'Nos casamos', false),
+  celebracion: (event, when) => {
+    const where = event.venueLabel ? ` en ${event.venueLabel}` : ''
+    return { body: `Celebramos ${event.title.trim()} ${when}${where}.`, fields: event.venueLabel ? ['lugar'] : [] }
+  },
+  personalizado: (event, when) => {
+    const where = event.venueLabel ? ` en ${event.venueLabel}` : ''
+    return { body: `Os esperamos ${when}${where}.`, fields: event.venueLabel ? ['lugar'] : [] }
+  },
+}
+
+/**
+ * Redacta el contenido semántico de una invitación — TITLE/BODY/CLOSING (sección 8) — a partir SOLO de
+ * datos reales del evento, determinista (mismo evento → mismo resultado siempre), sin IA externa. Nunca
+ * inventa un dato ausente: cada cláusula de `body` es condicional a que el hecho exista de verdad. Fuente
+ * única para lo que "Pepa, hazla por mí" redacta (domain/invitationAutoCompose.ts consume esto, sin
+ * reimplementar ninguna regla de redacción).
+ */
+export function buildInvitationContent(event: FamilyEvent): InvitationContent {
+  // Sección 7 — un tipo con dos ubicaciones tiene su propia hora de CEREMONIA (tejida aparte, ver
+  // dualLocationBody); el `eventTime` genérico del evento nunca la sustituye ni se menciona a la vez.
+  const isDualLocation = DUAL_LOCATION_EVENT_TYPES.includes(event.type)
+  const when = invitationDateClause(event, !isDualLocation)
+  const dateFields: InvitationEventBodyFieldKey[] = []
+  if (event.dateStatus !== 'pendiente' && event.eventDate) {
+    dateFields.push('fecha')
+    if (event.eventTime && !isDualLocation) dateFields.push('hora')
+  }
+  const builder = INVITATION_BODY_BUILDERS[event.type] ?? INVITATION_BODY_BUILDERS.personalizado
+  const { body, fields: typeFields } = builder(event, when)
+  return {
+    title: event.title.trim(),
+    body,
+    closing: CLOSING_PHRASES[event.type],
+    bodyFields: [...dateFields, ...typeFields],
   }
 }
 
@@ -689,6 +836,54 @@ export interface InvitationTemplateMeta {
   // colocan dentro de esta caja en vez de en posiciones fijas iguales
   // para las 100 plantillas.
   textArea?: { x: number; y: number; width: number; height: number }
+  // ---------------------------------------------------------------------------------------------------
+  // Evolución "plantilla = geometría" (2026-09-28) — zonas semánticas OPCIONALES, además de `textArea`
+  // (que se conserva tal cual, sin excepción: sigue siendo la referencia de ancho de wrap para CUALQUIER
+  // capa ya guardada, en el editor y en las vistas — ver zoneWidthFrac en ui/InvitationDesigner.tsx. Las
+  // zonas de abajo NUNCA se leen para eso, solo durante generación/reorganización, ver
+  // domain/invitationAutoCompose.ts).
+  //
+  // Ninguna de las 100 plantillas define `zones` todavía — deliberado (petición real: "no quiero crear
+  // ahora una tabla gigantesca de nuevas coordenadas para las 100 plantillas"). Sin `zones`, el motor
+  // deriva una geometría segura a partir de `textArea` (mismo criterio que ya usaban las recetas antes de
+  // este bloque). `zones` es el hueco para calibrar una plantilla concreta más adelante, plantilla a
+  // plantilla, sin tocar las demás — igual que ya se hizo con `textArea` (grupos A/B/C certificados).
+  zones?: InvitationZones
+  // Paleta de tratamiento OPCIONAL por estilo — "color inteligente" (sección 21): cuando una plantilla no
+  // define nada aquí, el motor usa `text` (el color de contraste YA elegido a mano para las 100 plantillas
+  // al crearlas) como base para título/cuerpo/cierre — nunca #ffffff fijo. `palette` es solo para casos
+  // donde un tratamiento MÁS especial (p. ej. un efecto de texto concreto en el título Divertido) encaja
+  // con esa plantilla en concreto; ninguna de las 100 lo usa todavía, mismo criterio incremental que
+  // `zones` — nunca análisis de imagen en tiempo de ejecución, siempre metadato explícito y opcional.
+  palette?: InvitationTemplatePalette
+}
+
+// Sección 12 — "plantilla = geometría". Cada zona es opcional: una plantilla puede calibrar solo la que le
+// haga falta (p. ej. solo `photo`) y dejar el resto sin definir, cayendo al fallback derivado de `textArea`.
+// `decoration`/`forbidden` son listas (una plantilla puede tener varios huecos seguros, o varias zonas con
+// ilustración importante que evitar) — el resto son zonas únicas (como mucho un título/cuerpo/cierre/foto).
+export interface InvitationZones {
+  title?: SafeZone
+  body?: SafeZone
+  closing?: SafeZone
+  photo?: SafeZone
+  decoration?: SafeZone[]
+  forbidden?: SafeZone[]
+}
+
+// Sección 21 — tratamiento de color/efecto por rol semántico, para UN estilo concreto. Todo opcional: lo
+// que falte cae al fallback seguro (color de contraste `text` de la plantilla, sin efecto).
+export interface InvitationStyleColorTreatment {
+  titleColor?: string
+  bodyColor?: string
+  closingColor?: string
+  // Solo tiene sentido en el título (una línea) — nunca se aplica a BODY (legibilidad, sección 20).
+  titleTextStyle?: InvitationTextStyle
+}
+
+export interface InvitationTemplatePalette {
+  clasico?: InvitationStyleColorTreatment
+  divertido?: InvitationStyleColorTreatment
 }
 
 export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [

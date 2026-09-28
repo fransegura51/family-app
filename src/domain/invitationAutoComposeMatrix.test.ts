@@ -3,11 +3,11 @@ import { INVITATION_TEMPLATES } from '@/domain/events'
 import { classifyTemplateGeometry, composeInvitationForMe, type AutoComposeResult, type AutoComposeStyle } from '@/domain/invitationAutoCompose'
 import type { FamilyEvent } from '@/domain/types'
 
-// Fase 3 Bloque 5A, sección 38 — recorre las 100 plantillas reales para las 3 recetas, con un fixture de
-// contenido razonablemente completo. Esto NO sustituye la certificación visual de navegador (sección 39,
-// verificada aparte con el Canvas real) — detecta automáticamente casos claramente incompatibles con el
-// heurístico Node (ver sección 23: el TextMeasurer real de Canvas puede aceptar algo que este fallback
-// rechaza, nunca al revés en la práctica, porque el heurístico de caracteres es más conservador).
+// Fase 3 Bloque 5A, sección 38, evolucionado 2026-09-28 — recorre las 100 plantillas reales para los 2
+// estilos (con y sin foto), con un fixture de contenido razonablemente completo. Esto NO sustituye la
+// certificación visual de navegador — detecta automáticamente casos claramente incompatibles con el
+// heurístico Node (el TextMeasurer real de Canvas puede aceptar algo que este fallback rechaza, nunca al
+// revés en la práctica, porque el heurístico de caracteres es más conservador).
 
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
   return {
@@ -21,7 +21,7 @@ function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
   }
 }
 
-// Fixture "razonablemente completo" (título + fecha + hora + lugar + edad) para Clásica/Divertida.
+// Fixture "razonablemente completo" (título + fecha + hora + lugar + edad).
 const FULL_EVENT = makeEvent({
   type: 'cumpleanos',
   title: 'Cumpleaños de Valentina',
@@ -42,21 +42,17 @@ function runMatrix(style: AutoComposeStyle, photoPath?: string) {
 }
 
 function summarize(rows: { result: AutoComposeResult }[]) {
-  let accepted = 0,
-    fallback = 0,
+  let success = 0,
     fail = 0
   for (const r of rows) {
     if (r.result.status === 'fail') fail++
-    else if (r.result.status === 'success') {
-      if (r.result.acceptedRecipe === r.result.initialRecipe) accepted++
-      else fallback++
-    }
+    else success++
   }
-  return { accepted, fallback, fail, total: rows.length }
+  return { success, fail, total: rows.length }
 }
 
-describe('Matriz de las 100 plantillas — 📝 Clásica', () => {
-  const rows = runMatrix('clasica')
+describe('Matriz de las 100 plantillas — 📝 Clásico (sin foto)', () => {
+  const rows = runMatrix('clasico')
   const summary = summarize(rows)
 
   it('todas las 100 dan un resultado (success o fail), nunca lanzan', () => {
@@ -64,35 +60,32 @@ describe('Matriz de las 100 plantillas — 📝 Clásica', () => {
     for (const r of rows) expect(['success', 'fail']).toContain(r.result.status)
   })
 
-  it(`informe real (sin falsear): aceptadas=${summary.accepted} fallback=${summary.fallback} fail=${summary.fail} de 100`, () => {
-     
-    console.log('CLÁSICA:', summary, 'FAILs:', rows.filter((r) => r.result.status === 'fail').map((r) => r.key))
-    expect(summary.accepted + summary.fallback + summary.fail).toBe(100)
+  it(`informe real (sin falsear): success=${summary.success} fail=${summary.fail} de 100`, () => {
+
+    console.log('CLÁSICO:', summary, 'FAILs:', rows.filter((r) => r.result.status === 'fail').map((r) => r.key))
+    expect(summary.success + summary.fail).toBe(100)
   })
 
-  it('every FAIL de verdad agotó su cadena completa de fallback (no se rinde a la primera)', () => {
+  it('every FAIL de verdad agotó toda su secuencia de adaptación (nunca se rinde a la primera)', () => {
     for (const r of rows) {
-      if (r.result.status === 'fail') {
-        const last = r.result.attemptedRecipes[r.result.attemptedRecipes.length - 1]
-        expect(['C2']).toContain(last) // C2 es siempre el final de la cadena de Clásica
-      }
+      if (r.result.status === 'fail') expect(r.result.attemptsTried).toBeGreaterThan(1)
     }
   })
 })
 
-describe('Matriz de las 100 plantillas — 📷 Con foto', () => {
-  const rows = runMatrix('con_foto', TEST_PHOTO_PATH)
+describe('Matriz de las 100 plantillas — 📝 Clásico con foto', () => {
+  const rows = runMatrix('clasico', TEST_PHOTO_PATH)
   const summary = summarize(rows)
 
-  it('todas las 100 dan un resultado, nunca lanzan, y ninguna es needs_photo (se dio photoPath)', () => {
+  it('todas las 100 dan un resultado, nunca lanzan', () => {
     expect(rows.length).toBe(100)
     for (const r of rows) expect(['success', 'fail']).toContain(r.result.status)
   })
 
-  it(`informe real: aceptadas=${summary.accepted} fallback=${summary.fallback} fail=${summary.fail} de 100`, () => {
-     
-    console.log('CON FOTO:', summary, 'FAILs:', rows.filter((r) => r.result.status === 'fail').map((r) => r.key))
-    expect(summary.accepted + summary.fallback + summary.fail).toBe(100)
+  it(`informe real: success=${summary.success} fail=${summary.fail} de 100`, () => {
+
+    console.log('CLÁSICO CON FOTO:', summary, 'FAILs:', rows.filter((r) => r.result.status === 'fail').map((r) => r.key))
+    expect(summary.success + summary.fail).toBe(100)
   })
 
   it('la foto nunca invade el texto en ninguna de las 100 (banda de foto siempre por encima de la banda de texto)', () => {
@@ -105,8 +98,8 @@ describe('Matriz de las 100 plantillas — 📷 Con foto', () => {
   })
 })
 
-describe('Matriz de las 100 plantillas — 🎉 Divertida', () => {
-  const rows = runMatrix('divertida')
+describe('Matriz de las 100 plantillas — 🎉 Divertido', () => {
+  const rows = runMatrix('divertido')
   const summary = summarize(rows)
 
   it('todas las 100 dan un resultado, nunca lanzan', () => {
@@ -114,20 +107,22 @@ describe('Matriz de las 100 plantillas — 🎉 Divertida', () => {
     for (const r of rows) expect(['success', 'fail']).toContain(r.result.status)
   })
 
-  it(`informe real: aceptadas=${summary.accepted} fallback=${summary.fallback} fail=${summary.fail} de 100`, () => {
-     
-    console.log('DIVERTIDA:', summary, 'FAILs:', rows.filter((r) => r.result.status === 'fail').map((r) => r.key))
-    expect(summary.accepted + summary.fallback + summary.fail).toBe(100)
+  it(`informe real: success=${summary.success} fail=${summary.fail} de 100`, () => {
+
+    console.log('DIVERTIDO:', summary, 'FAILs:', rows.filter((r) => r.result.status === 'fail').map((r) => r.key))
+    expect(summary.success + summary.fail).toBe(100)
   })
 })
 
-describe('Conservación de datos en las 100 (para las que aceptan alguna receta)', () => {
-  it('el título siempre sobrevive en las 3 recetas, en las 100 plantillas donde hay éxito', () => {
-    for (const style of ['clasica', 'con_foto', 'divertida'] as const) {
-      const rows = runMatrix(style, TEST_PHOTO_PATH)
-      for (const r of rows) {
-        if (r.result.status !== 'success') continue
-        expect(r.result.layers.some((l) => l.text === FULL_EVENT.title), `${style}/${r.key}`).toBe(true)
+describe('Conservación de datos en las 100 (para las que aceptan alguna presentación)', () => {
+  it('el título siempre sobrevive en los 2 estilos, con y sin foto, en las 100 plantillas donde hay éxito', () => {
+    for (const style of ['clasico', 'divertido'] as const) {
+      for (const photoPath of [undefined, TEST_PHOTO_PATH]) {
+        const rows = runMatrix(style, photoPath)
+        for (const r of rows) {
+          if (r.result.status !== 'success') continue
+          expect(r.result.layers.some((l) => l.text === FULL_EVENT.title), `${style}/${photoPath ?? 'sin foto'}/${r.key}`).toBe(true)
+        }
       }
     }
   })

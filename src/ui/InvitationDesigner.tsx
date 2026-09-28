@@ -1213,6 +1213,43 @@ const EVENT_FIELD_LABELS: Record<Exclude<AutoComposeFieldKey, 'closing'>, string
   celebracion: 'la celebración',
 }
 
+// Evolución del generador narrativo (2026-09-28) — un campo real ya no vive necesariamente en su propia
+// capa: puede formar parte del párrafo BODY (`source.kind:'event_narrative'`), que teje varios campos a la
+// vez. Busca la capa que lleva CUALQUIERA de los dos tipos de procedencia para un campo dado, en vez de
+// asumir siempre `source.field` suelto.
+function findLayerForField(layers: InvitationLayer[], field: string): InvitationLayer | undefined {
+  return layers.find((l) => {
+    const source = l.source
+    if (!source) return false
+    if (source.kind === 'event_field') return source.field === field
+    return source.fields.some((f) => f.field === field)
+  })
+}
+
+// Agrupa los cambios detectados por la capa a la que pertenecen — varios campos de un mismo párrafo
+// narrativo se muestran/deciden JUNTOS (sección 10: el párrafo se regenera entero, nunca palabra por
+// palabra, así que no tiene sentido pedir una decisión distinta para cada campo que contiene).
+interface InvitationChangeGroup {
+  key: string
+  layer: InvitationLayer | undefined
+  changes: InvitationEventDataChange[]
+}
+
+function groupEventDataChanges(changes: InvitationEventDataChange[], layers: InvitationLayer[]): InvitationChangeGroup[] {
+  const groups = new Map<string, InvitationChangeGroup>()
+  for (const change of changes) {
+    const layer = findLayerForField(layers, change.field)
+    const key = layer ? layer.id : `field:${change.field}`
+    let group = groups.get(key)
+    if (!group) {
+      group = { key, layer, changes: [] }
+      groups.set(key, group)
+    }
+    group.changes.push(change)
+  }
+  return [...groups.values()]
+}
+
 interface DragState {
   mode: 'move' | 'transform'
   layerId: string
@@ -1373,9 +1410,12 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [customTextArea, setCustomTextArea] = useState<SafeZone | null>(null)
   const [definingTextArea, setDefiningTextArea] = useState(false)
   const [draftTextArea, setDraftTextArea] = useState<SafeZone>(DEFAULT_TEXT_AREA)
-  // Asistente "Pepa, hazla por mí" (secciones 3-9): estilo elegido, foto (solo para "con foto") y errores
-  // propios del asistente — nunca reutiliza `error` (ese es el de "Hazla bonita"/guardar).
+  // Asistente "Pepa, hazla por mí" (secciones 3-9, 17-18): estilo elegido, foto y errores propios del
+  // asistente — nunca reutiliza `error` (ese es el de "Hazla bonita"/guardar). Sección 18 — la foto es
+  // ORTOGONAL al estilo (Clásico/Divertido con o sin foto, las 4 combinaciones son válidas): su propio
+  // estado, independiente de `pepaStyle`, en vez de un tercer valor de estilo "con_foto".
   const [pepaStyle, setPepaStyle] = useState<AutoComposeStyle | null>(null)
+  const [pepaPhotoPath, setPepaPhotoPath] = useState<string | null>(null)
   const [pepaUploadingPhoto, setPepaUploadingPhoto] = useState(false)
   const [pepaError, setPepaError] = useState<string | null>(null)
   // Sección 20 — regenerar sobre contenido ya existente pide confirmación antes de sustituirlo.
@@ -1869,9 +1909,11 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
   const pepaCompatibility: StyleCompatibility[] = useMemo(() => {
     if (!activeTemplateForPepa) return []
-    return checkAllStyleCompatibility({ event, template: activeTemplateForPepa, measurer: domTextMeasurer })
+    // Sección 18 — la compatibilidad se recalcula con la foto actual del asistente (si hay una elegida):
+    // una plantilla puede tener hueco de sobra sin foto pero no con ella.
+    return checkAllStyleCompatibility({ event, template: activeTemplateForPepa, photoPath: pepaPhotoPath, measurer: domTextMeasurer })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event, activeTemplateForPepa?.key, activeTemplateForPepa?.textArea, activeTemplateForPepa?.imageAspect])
+  }, [event, activeTemplateForPepa?.key, activeTemplateForPepa?.textArea, activeTemplateForPepa?.imageAspect, pepaPhotoPath])
 
   function hasExistingInvitationContent(): boolean {
     return layers.length > 0 || !!backgroundImagePath
@@ -1890,7 +1932,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     }
     pushHistory()
     setLayers(result.layers)
-    setPepaStyle(null)
+    // Sección 18 — se deja `pepaStyle` puesto (no se resetea a null) para que, si el usuario añade o quita
+    // la foto después, se regenere con el MISMO estilo sin tener que volver a elegirlo.
+    setPepaStyle(style)
     setPepaError(null)
     setPanel(null)
     selectLayer(null)
@@ -1904,14 +1948,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     else applyPepaGeneration(style, photoPath)
   }
 
+  // Sección 17-18 — un estilo siempre compone directamente (Clásico/Divertido ya no dependen de la foto
+  // para generar): usa la foto ya elegida en el asistente, si hay una — nunca la pide antes ni la exige.
   function handlePepaSelectStyle(style: AutoComposeStyle) {
     const compat = pepaCompatibility.find((c) => c.style === style)
     if (!compat?.compatible) return
     setPepaStyle(style)
     setPepaError(null)
-    // Sección 8 — la foto se pide SOLO ahora que se ha elegido "Con foto", nunca antes.
-    if (style === 'con_foto') return
-    requestPepaGeneration(style, null)
+    requestPepaGeneration(style, pepaPhotoPath)
   }
 
   async function handlePepaPhotoChange(e: ChangeEvent<HTMLInputElement>) {
@@ -1925,12 +1969,20 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
       const path = await uploadInvitationPhoto(event.id, file)
       const url = await getInvitationPhotoUrl(path)
       setPhotoUrls((m) => ({ ...m, [path]: url }))
-      requestPepaGeneration('con_foto', path)
+      setPepaPhotoPath(path)
+      // Sección 18 — si ya hay un estilo elegido, la foto nueva regenera con ese mismo estilo; si todavía
+      // no se ha elegido ninguno, solo se guarda para cuando el usuario toque un estilo.
+      if (pepaStyle) requestPepaGeneration(pepaStyle, path)
     } catch (err) {
       setPepaError(errorMessage(err, 'No se pudo subir la foto'))
     } finally {
       setPepaUploadingPhoto(false)
     }
+  }
+
+  function handlePepaRemovePhoto() {
+    setPepaPhotoPath(null)
+    if (pepaStyle) requestPepaGeneration(pepaStyle, null)
   }
 
   function confirmPepaRegeneration() {
@@ -1987,19 +2039,26 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
 
   // Sección 29/33 — actualización SELECTIVA (solo los campos elegidos) aplicada como UNA sola operación de
   // historial, aunque afecte a varios campos a la vez; nunca toca texto libre, decoración, foto o plantilla.
+  //
+  // Evolución del generador narrativo (sección 10) — un campo "eliminado del evento" que forma parte de un
+  // párrafo BODY nunca borra la capa entera (perdería el resto de hechos que sigue teniendo): se resuelve
+  // regenerando el párrafo, igual que un campo simplemente cambiado — `updateInvitationLayersFromEvent` ya
+  // reconstruye la gramática sin la cláusula que falta. "Quitar esta capa" solo tiene sentido para un dato
+  // suelto (`event_field`, una capa = un hecho).
   function applyEventDataUpdate() {
     const fieldsToUpdate: Exclude<AutoComposeFieldKey, 'closing'>[] = []
     const fieldsToRemove: Exclude<AutoComposeFieldKey, 'closing'>[] = []
     for (const change of eventDataChanges) {
-      if (change.current === null) {
+      const layer = findLayerForField(layers, change.field)
+      const isNarrative = layer?.source?.kind === 'event_narrative'
+      if (change.current === null && !isNarrative) {
         // Sección 34 — dato eliminado del evento: solo se quita la capa si el usuario lo confirma aquí.
         if (removedFieldDecisions[change.field]) fieldsToRemove.push(change.field)
         continue
       }
-      const layer = layers.find((l) => l.source?.field === change.field)
       const manuallyEdited = layer ? isInvitationLayerManuallyEdited(layer) : false
       if (manuallyEdited) {
-        // Sección 32 — nunca se sobrescribe una personalización sin permiso explícito.
+        // Sección 11/32 — nunca se sobrescribe una personalización sin permiso explícito.
         if (manualFieldDecisions[change.field] === 'update') fieldsToUpdate.push(change.field)
       } else {
         fieldsToUpdate.push(change.field)
@@ -2416,20 +2475,6 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     />
                   </label>
                 )}
-                {/* Sección 4 — "Color" abre DIRECTAMENTE el selector nativo completo (sin fila de colores
-                    predefinidos aparte): este input está siempre montado pero invisible, y el botón de la
-                    fila 2 solo le hace click() por debajo. */}
-                <input
-                  ref={colorInputRef}
-                  type="color"
-                  className="color-wheel-input"
-                  style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
-                  value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
-                  onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
-                  onBlur={commitContinuousEdit}
-                  aria-label="Elegir color"
-                  tabIndex={-1}
-                />
                 <div className="invitation-text-toolbar-row">
                   <button
                     type="button"
@@ -2487,20 +2532,34 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     className={'invitation-text-edit-btn' + (textEditTool === 'size' ? ' invitation-text-edit-btn-active' : '')}
                     onClick={() => setTextEditTool((t) => (t === 'size' ? null : 'size'))}
                     aria-label="Tamaño"
+                    title="Tamaño"
                   >
-                    🔠
+                    A±
                   </button>
                 </div>
                 <div className="invitation-text-toolbar-row">
-                  {/* GRUPO 4 — apariencia (color y efectos juntos) */}
-                  <button
-                    type="button"
-                    className="invitation-text-edit-btn"
-                    onClick={() => colorInputRef.current?.click()}
-                    aria-label="Color"
-                  >
-                    <span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: selected.color || '#ffffff', border: '1px solid #d8dae8' }} />
-                  </button>
+                  {/* GRUPO 4 — apariencia (color y efectos juntos). Corrección real (el botón no abría nada
+                      en el móvil): en vez de un input oculto en otro punto del árbol al que este botón le
+                      hacía click() por código, el <input type="color"> real se superpone AQUÍ MISMO, encima
+                      del círculo que muestra el color actual — así el toque del usuario llega directamente al
+                      selector nativo (mismo patrón que cualquier "swatch" de color con input nativo debajo,
+                      sin depender de que el navegador acepte un .click() programático). */}
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <span className="invitation-text-edit-btn" aria-hidden="true">
+                      <span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: selected.color || '#ffffff', border: '1px solid #d8dae8' }} />
+                    </span>
+                    <input
+                      ref={colorInputRef}
+                      type="color"
+                      className="color-wheel-input"
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, border: 0, padding: 0, margin: 0, cursor: 'pointer' }}
+                      value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
+                      onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
+                      onBlur={commitContinuousEdit}
+                      aria-label="Color"
+                      title="Color"
+                    />
+                  </div>
                   <button
                     type="button"
                     className={'invitation-text-edit-btn' + (textEditTool === 'effect' ? ' invitation-text-edit-btn-active' : '')}
@@ -2524,12 +2583,21 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     </>
                   )}
                   <div className="invitation-text-toolbar-sep" />
-                  {/* GRUPO 6 — capas/objeto */}
-                  <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(1)} aria-label="Traer adelante">
-                    ⬆
+                  {/* GRUPO 6 — capas/objeto. Corrección real: ⬆/⬇ se confundían con "mover el objeto arriba/
+                      abajo" (ya hay arrastre libre en el lienzo) en vez de "orden de capas" — dos cuadrados
+                      superpuestos (uno relleno = la posición a la que pasa, otro solo con borde = la otra)
+                      leen como capas apiladas, nunca como movimiento físico. */}
+                  <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(1)} aria-label="Traer adelante" title="Traer adelante">
+                    <span style={{ position: 'relative', display: 'inline-block', width: 16, height: 16 }}>
+                      <span style={{ position: 'absolute', left: 0, top: 5, width: 10, height: 10, border: '1.5px solid currentColor', borderRadius: 2, opacity: 0.45 }} />
+                      <span style={{ position: 'absolute', right: 0, top: 1, width: 10, height: 10, background: 'currentColor', borderRadius: 2 }} />
+                    </span>
                   </button>
-                  <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(-1)} aria-label="Enviar atrás">
-                    ⬇
+                  <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(-1)} aria-label="Enviar atrás" title="Enviar atrás">
+                    <span style={{ position: 'relative', display: 'inline-block', width: 16, height: 16 }}>
+                      <span style={{ position: 'absolute', right: 0, top: 1, width: 10, height: 10, border: '1.5px solid currentColor', borderRadius: 2, opacity: 0.45 }} />
+                      <span style={{ position: 'absolute', left: 0, top: 5, width: 10, height: 10, background: 'currentColor', borderRadius: 2 }} />
+                    </span>
                   </button>
                   <button type="button" className="invitation-text-edit-btn" onClick={handleDuplicate} aria-label="Duplicar">
                     ⧉
@@ -2655,12 +2723,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                               {pepaError}
                             </p>
                           )}
+                          {/* Sección 17-18 — solo dos estilos; la foto es una elección aparte, ortogonal a
+                              cualquiera de los dos (Clásico/Divertido, con o sin foto, las 4 combinaciones
+                              son válidas) — nunca un tercer estilo "Con foto". */}
                           <div className="filter-row" style={{ flexWrap: 'wrap' }}>
                             {(
                               [
-                                { style: 'clasica' as const, label: '📝 Clásica' },
-                                { style: 'con_foto' as const, label: '📷 Con foto' },
-                                { style: 'divertida' as const, label: '🎉 Divertida' },
+                                { style: 'clasico' as const, label: '📝 Clásico' },
+                                { style: 'divertido' as const, label: '🎉 Divertido' },
                               ]
                             ).map(({ style, label }) => {
                               const compat = pepaCompatibility.find((c) => c.style === style)
@@ -2686,17 +2756,24 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                               )
                             })}
                           </div>
-                          {pepaStyle === 'con_foto' && (
-                            <div style={{ marginTop: 10 }}>
+                          <div style={{ marginTop: 10 }}>
+                            {pepaPhotoPath ? (
+                              <div className="filter-row" style={{ alignItems: 'center' }}>
+                                <span className="muted" style={{ fontSize: 12 }}>📷 Foto añadida</span>
+                                <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={handlePepaRemovePhoto}>
+                                  Quitar
+                                </button>
+                              </div>
+                            ) : (
                               <label className="chip" style={{ cursor: 'pointer' }}>
-                                {pepaUploadingPhoto ? 'Subiendo…' : '➕ Elegir foto'}
+                                {pepaUploadingPhoto ? 'Subiendo…' : '📷 Añadir foto (opcional)'}
                                 <input type="file" accept="image/*" onChange={handlePepaPhotoChange} style={{ display: 'none' }} disabled={pepaUploadingPhoto} />
                               </label>
-                              <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                                Si esta plantilla no admite foto, elige otra plantilla o vuelve a "Elegir estilo".
-                              </p>
-                            </div>
-                          )}
+                            )}
+                            <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                              Puedes elegir un estilo con o sin foto — si esta plantilla no tiene hueco para tu foto, quítala o elige otra plantilla.
+                            </p>
+                          </div>
                         </>
                       )}
                     </>
@@ -3061,12 +3138,21 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             Actualizar datos de la invitación
           </h2>
           <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {eventDataChanges.map((change) => {
-              const layer = layers.find((l) => l.source?.field === change.field)
-              const manuallyEdited = layer ? isInvitationLayerManuallyEdited(layer) : false
-              if (change.current === null) {
+            {/* Evolución del generador narrativo (sección 10) — los cambios se agrupan por la capa a la que
+                pertenecen: varios campos de un mismo párrafo BODY comparten UNA sola decisión (el párrafo se
+                regenera entero, nunca palabra por palabra), en vez de una fila independiente por campo que
+                podría contradecirse entre sí. Un dato suelto (`event_field`) sigue siendo su propio grupo de
+                un solo campo, con el mismo comportamiento de siempre. */}
+            {groupEventDataChanges(eventDataChanges, layers).map((group) => {
+              const isNarrative = group.layer?.source?.kind === 'event_narrative'
+              const labels = group.changes.map((c) => EVENT_FIELD_LABELS[c.field]).join(', ')
+              const manuallyEdited = group.layer ? isInvitationLayerManuallyEdited(group.layer) : false
+              const allRemoved = group.changes.every((c) => c.current === null)
+
+              if (allRemoved && !isNarrative) {
+                const change = group.changes[0]
                 return (
-                  <div key={change.field} style={{ fontSize: 13 }}>
+                  <div key={group.key} style={{ fontSize: 13 }}>
                     <p style={{ margin: 0 }}>
                       {EVENT_FIELD_LABELS[change.field]}: el dato ya no existe en el evento («{change.previous}»).
                     </p>
@@ -3082,25 +3168,25 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 )
               }
               if (manuallyEdited) {
-                const decision = manualFieldDecisions[change.field] ?? 'keep'
+                const decision = manualFieldDecisions[group.changes[0].field] ?? 'keep'
+                const setDecisionForGroup = (value: 'update' | 'keep') =>
+                  setManualFieldDecisions((m) => {
+                    const next = { ...m }
+                    for (const c of group.changes) next[c.field] = value
+                    return next
+                  })
                 return (
-                  <div key={change.field} style={{ fontSize: 13 }}>
+                  <div key={group.key} style={{ fontSize: 13 }}>
                     <p style={{ margin: 0 }}>
-                      Modificaste manualmente el texto de {EVENT_FIELD_LABELS[change.field]}. Actualizarlo lo sustituirá por «{change.current}».
+                      {isNarrative
+                        ? `Modificaste manualmente el párrafo que menciona ${labels}. Actualizarlo lo redactará de nuevo con los datos actuales.`
+                        : `Modificaste manualmente el texto de ${labels}. Actualizarlo lo sustituirá por «${group.changes[0].current}».`}
                     </p>
                     <div className="filter-row" style={{ marginTop: 4 }}>
-                      <button
-                        type="button"
-                        className={'chip' + (decision === 'update' ? ' chip-active' : '')}
-                        onClick={() => setManualFieldDecisions((m) => ({ ...m, [change.field]: 'update' }))}
-                      >
+                      <button type="button" className={'chip' + (decision === 'update' ? ' chip-active' : '')} onClick={() => setDecisionForGroup('update')}>
                         Actualizar
                       </button>
-                      <button
-                        type="button"
-                        className={'chip' + (decision === 'keep' ? ' chip-active' : '')}
-                        onClick={() => setManualFieldDecisions((m) => ({ ...m, [change.field]: 'keep' }))}
-                      >
+                      <button type="button" className={'chip' + (decision === 'keep' ? ' chip-active' : '')} onClick={() => setDecisionForGroup('keep')}>
                         Mantener mi texto
                       </button>
                     </div>
@@ -3108,8 +3194,8 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 )
               }
               return (
-                <p key={change.field} style={{ margin: 0, fontSize: 13 }}>
-                  {EVENT_FIELD_LABELS[change.field]}: «{change.previous}» → «{change.current}» (se actualizará)
+                <p key={group.key} style={{ margin: 0, fontSize: 13 }}>
+                  {isNarrative ? `${labels}: se redactará de nuevo el párrafo con los datos actuales` : `${EVENT_FIELD_LABELS[group.changes[0].field]}: «${group.changes[0].previous}» → «${group.changes[0].current}» (se actualizará)`}
                 </p>
               )
             })}

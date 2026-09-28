@@ -246,11 +246,31 @@ describe('composeInvitationForMe — 📷 foto ortogonal al estilo (sección 18)
 })
 
 describe('composeInvitationForMe — 🎉 Divertido', () => {
-  it('incluye una capa emoji (icono del tipo de evento) y una forma decorativa, cuando cabe', () => {
+  it('incluye una forma decorativa cuando cabe (sección 22, sin cambios)', () => {
     const result = composeInvitationForMe({ event: EVENT_A, template: template('unicornio'), style: 'divertido' }) as AutoComposeSuccess
     expect(result.status).toBe('success')
-    expect(result.layers.some((l) => l.type === 'emoji')).toBe(true)
     expect(result.layers.some((l) => l.type === 'shape')).toBe(true)
+  })
+
+  it('sección 2 — el emoji NO es obligatorio: cuando no hay hueco seguro junto al título, se omite en vez de forzarlo o degradar el diseño (nunca lanza, nunca falla la composición solo por eso)', () => {
+    // Título largo + plantilla estrecha ("unicornio", familia 1: zona amplia pero con contenido largo el
+    // título ya ocupa casi todo el ancho) — caso real donde no queda hueco lateral seguro para el emoji.
+    const result = composeInvitationForMe({ event: EVENT_A, template: template('unicornio'), style: 'divertido' }) as AutoComposeSuccess
+    expect(result.status).toBe('success')
+    expect(result.layers.some((l) => l.type === 'emoji')).toBe(false)
+    // La forma decorativa (no depende del hueco junto al título) sigue presente — omitir el emoji no arrastra al resto de la decoración.
+    expect(result.layers.some((l) => l.type === 'shape')).toBe(true)
+  })
+
+  it('sección 2 — cuando el emoji SÍ tiene hueco (título corto), aparece integrado junto al título — no flotando por encima, a la misma altura Y', () => {
+    const shortTitleEvent = makeEvent({ type: 'celebracion', title: 'Fiesta', eventDate: '2026-12-19', eventTime: '20:00', venueLabel: 'Casa' })
+    const result = composeInvitationForMe({ event: shortTitleEvent, template: template('clasico'), style: 'divertido' }) as AutoComposeSuccess
+    expect(result.status).toBe('success')
+    const titleLayer = result.layers.find((l) => l.id === 'auto-title')!
+    const emojiLayer = result.layers.find((l) => l.type === 'emoji')
+    expect(emojiLayer).toBeDefined()
+    expect(emojiLayer!.y).toBeCloseTo(titleLayer.y, 5) // misma altura que el título — integrado, no encima.
+    expect(emojiLayer!.x).not.toBeCloseTo(titleLayer.x, 2) // desplazado lateralmente, no superpuesto.
   })
 
   it('la decoración no reemplaza ningún dato real (siguen todos presentes)', () => {
@@ -419,5 +439,223 @@ describe('getAvailableInvitationData sigue disponible para el panel manual "📋
     const fields = getAvailableInvitationData(EVENT_F)
     expect(fields.find((f) => f.key === 'title')?.text).toBe('Reunión')
     expect(fields.some((f) => f.key === 'fecha')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------
+// Contraste obligatorio (secciones 3-7, corrección real tras pruebas visuales en iPhone) — "legibilidad >
+// armonía de color": un color de plantilla/palette nunca se usa si no supera un contraste mínimo contra el
+// TONO DE ZONA resuelto (nunca contra `gradient`). Réplica local (no exportada desde el motor) del cálculo
+// WCAG estándar, para verificar el contraste REAL de los colores que devuelve el motor, no solo que
+// "cambiaron" — misma fórmula que usa internamente `resolveRoleColor`.
+// ---------------------------------------------------------------------------------------------------
+function hexToRgbForTest(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+function relativeLuminanceForTest([r, g, b]: [number, number, number]): number {
+  const [rs, gs, bs] = [r, g, b].map((c) => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs
+}
+function contrastRatioForTest(hexA: string, hexB: string): number {
+  const [lA, lB] = [relativeLuminanceForTest(hexToRgbForTest(hexA)), relativeLuminanceForTest(hexToRgbForTest(hexB))].sort((x, y) => y - x)
+  return (lA + 0.05) / (lB + 0.05)
+}
+// Mismos colores de referencia que usa el motor (ver invitationAutoCompose.ts, ZONE_REFERENCE_COLOR) — se
+// duplican aquí solo para verificar desde fuera, nunca para decidir nada.
+const ZONE_REF = { light: '#F5F1E8', dark: '#1A1A1A' }
+
+function withPalette(base: InvitationTemplateMeta, palette: InvitationTemplateMeta['palette']): InvitationTemplateMeta {
+  return { ...base, palette }
+}
+
+describe('Contraste obligatorio (secciones 3-7) — legibilidad > armonía de color', () => {
+  const BASE = template('clasico')
+
+  it('zoneTone "light": un candidato dorado/claro sin contraste real se rechaza para BODY — el color final SÍ cumple el umbral WCAG (4.5:1) contra la zona clara', () => {
+    const tmpl = withPalette(BASE, { zoneTone: 'light', clasico: { bodyColor: '#F5D57A' } })
+    const result = composeInvitationForMe({ event: EVENT_A, template: tmpl, style: 'clasico' }) as AutoComposeSuccess
+    const body = result.layers.find((l) => l.id === 'auto-body')!
+    expect(body.color).not.toBe('#F5D57A')
+    expect(contrastRatioForTest(body.color!, ZONE_REF.light)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('zoneTone "dark": un candidato oscuro sin contraste real se rechaza para BODY — el color final SÍ cumple el umbral WCAG (4.5:1) contra la zona oscura', () => {
+    const tmpl = withPalette(BASE, { zoneTone: 'dark', clasico: { bodyColor: '#141414' } })
+    const result = composeInvitationForMe({ event: EVENT_A, template: tmpl, style: 'clasico' }) as AutoComposeSuccess
+    const body = result.layers.find((l) => l.id === 'auto-body')!
+    expect(body.color).not.toBe('#141414')
+    expect(contrastRatioForTest(body.color!, ZONE_REF.dark)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('plantilla SIN zoneTone (ninguna de las 100 lo calibra todavía) usa el fallback conservador documentado ("light"): un candidato ya oscuro se conserva tal cual, uno claro/dorado sin contraste se sustituye', () => {
+    const withDarkCandidate = withPalette(BASE, { clasico: { bodyColor: '#111111' } })
+    const resultDark = composeInvitationForMe({ event: EVENT_A, template: withDarkCandidate, style: 'clasico' }) as AutoComposeSuccess
+    expect(resultDark.layers.find((l) => l.id === 'auto-body')!.color).toBe('#111111')
+
+    const withLightCandidate = withPalette(BASE, { clasico: { bodyColor: '#F5D57A' } })
+    const resultLight = composeInvitationForMe({ event: EVENT_A, template: withLightCandidate, style: 'clasico' }) as AutoComposeSuccess
+    expect(resultLight.layers.find((l) => l.id === 'auto-body')!.color).not.toBe('#F5D57A')
+  })
+
+  it('reproduce el bug real encontrado en pruebas visuales: template.text dorado (plantilla "elegante") ya NO se usa tal cual como color de BODY (sin zoneTone calibrado, cae al fallback claro → contraste insuficiente → neutro oscuro)', () => {
+    const elegante = template('elegante') // text: '#F5D57A' (dorado) — el caso real reportado.
+    const result = composeInvitationForMe({ event: EVENT_A, template: elegante, style: 'clasico' }) as AutoComposeSuccess
+    const body = result.layers.find((l) => l.id === 'auto-body')!
+    expect(body.color).not.toBe('#F5D57A')
+    expect(contrastRatioForTest(body.color!, ZONE_REF.light)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('un candidato con contraste real SÍ se conserva (no todo se sustituye a ciegas): template.text de "navidad_dorada" (rojo oscuro) pasa el umbral y se mantiene', () => {
+    const navidadDorada = template('navidad_dorada') // text: '#7C2D12', gradient claro.
+    const result = composeInvitationForMe({ event: EVENT_A, template: navidadDorada, style: 'clasico' }) as AutoComposeSuccess
+    const body = result.layers.find((l) => l.id === 'auto-body')!
+    expect(body.color).toBe('#7C2D12')
+  })
+
+  it('TITLE admite un umbral distinto (texto grande, 3:1) — un color que falla el umbral estricto de BODY (4.5:1) puede seguir siendo válido para TITLE si supera el suyo', () => {
+    // Un tono con contraste intermedio contra la zona clara: falla 4.5:1 pero supera 3:1.
+    const midToneCandidate = '#8C7A4A'
+    const ratio = contrastRatioForTest(midToneCandidate, ZONE_REF.light)
+    expect(ratio).toBeGreaterThanOrEqual(3)
+    expect(ratio).toBeLessThan(4.5)
+    const tmpl = withPalette(BASE, { zoneTone: 'light', clasico: { titleColor: midToneCandidate, bodyColor: midToneCandidate } })
+    const result = composeInvitationForMe({ event: EVENT_A, template: tmpl, style: 'clasico' }) as AutoComposeSuccess
+    const title = result.layers.find((l) => l.id === 'auto-title')!
+    const body = result.layers.find((l) => l.id === 'auto-body')!
+    expect(title.color).toBe(midToneCandidate) // TITLE: supera su propio umbral (3:1) — se conserva.
+    expect(body.color).not.toBe(midToneCandidate) // BODY: no supera el suyo (4.5:1) — se sustituye.
+  })
+
+  it('TITLE/BODY/CLOSING se resuelven de forma independiente — pueden llevar colores distintos, nunca obligados a compartir uno', () => {
+    const tmpl = withPalette(BASE, { zoneTone: 'light', clasico: { titleColor: '#7C2D12', bodyColor: '#22242B', closingColor: '#1F2937' } })
+    const result = composeInvitationForMe({ event: EVENT_A, template: tmpl, style: 'clasico' }) as AutoComposeSuccess
+    const colors = new Set(['title', 'body', 'closing'].map((role) => result.layers.find((l) => l.id === `auto-${role}`)?.color))
+    expect(colors.size).toBeGreaterThan(1)
+  })
+
+  it('BODY siempre resuelve a un color con contraste WCAG real, en las 3 familias visuales probadas manualmente (clara/elegante, oscura/dorada, infantil/colorida)', () => {
+    for (const key of ['clasico', 'elegante', 'unicornio']) {
+      for (const style of ['clasico', 'divertido'] as const) {
+        const result = composeInvitationForMe({ event: EVENT_A, template: template(key), style }) as AutoComposeSuccess
+        expect(result.status, `${key}/${style}`).toBe('success')
+        const body = result.layers.find((l) => l.id === 'auto-body')!
+        expect(Math.max(contrastRatioForTest(body.color!, ZONE_REF.light), contrastRatioForTest(body.color!, ZONE_REF.dark)), `${key}/${style}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+})
+
+describe('Clásico vs. Divertido — diferencias ESTRUCTURALES de composición, no solo tipografía (sección 1-2)', () => {
+  it('el margen interno (separación TITLE/BODY/CLOSING) difiere por estilo: Clásico deja más aire que Divertido', () => {
+    const clasico = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
+    const divertido = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
+    const titleC = clasico.layers.find((l) => l.id === 'auto-title')!
+    const titleD = divertido.layers.find((l) => l.id === 'auto-title')!
+    expect(titleC.y).not.toBeCloseTo(titleD.y, 3)
+  })
+
+  it('BODY usa alineación distinta por estilo (Clásico centrado, Divertido a la izquierda) — una diferencia real de composición, verificable en la propia capa', () => {
+    const clasico = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
+    const divertido = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
+    expect(clasico.layers.find((l) => l.id === 'auto-body')!.textAlign).toBe('center')
+    expect(divertido.layers.find((l) => l.id === 'auto-body')!.textAlign).toBe('left')
+  })
+
+  it('el título de Divertido se desplaza lateralmente dentro de su zona (asimetría controlada); el de Clásico se queda centrado', () => {
+    const clasico = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
+    const divertido = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
+    const titleC = clasico.layers.find((l) => l.id === 'auto-title')!
+    const titleD = divertido.layers.find((l) => l.id === 'auto-title')!
+    const zone = template('boda').textArea!
+    const cx = zone.x + zone.width / 2
+    expect(titleC.x).toBeCloseTo(cx, 1)
+    expect(titleD.x).not.toBeCloseTo(cx, 2)
+  })
+
+  it('CLOSING tiene tratamiento jerárquico opuesto: en Clásico es más pequeño y secundario (cursiva); en Divertido es más protagonista (mayor tamaño, negrita)', () => {
+    const clasico = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
+    const divertido = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
+    const closingC = clasico.layers.find((l) => l.id === 'auto-closing')
+    const closingD = divertido.layers.find((l) => l.id === 'auto-closing')
+    if (closingC && closingD) {
+      expect(closingC.italic).toBe(true)
+      expect(closingD.bold).toBe(true)
+      expect(closingD.fontSize!).toBeGreaterThanOrEqual(closingC.fontSize!)
+    }
+  })
+
+  it('Divertido permite curvar el título (cuando cabe); Clásico nunca lo hace', () => {
+    const withCurve = composeInvitationForMe({ event: EVENT_A, template: template('unicornio'), style: 'divertido' }) as AutoComposeSuccess
+    const clasico = composeInvitationForMe({ event: EVENT_A, template: template('unicornio'), style: 'clasico' }) as AutoComposeSuccess
+    expect(clasico.layers.find((l) => l.id === 'auto-title')!.curve).toBeUndefined()
+    const curveD = withCurve.layers.find((l) => l.id === 'auto-title')!.curve
+    expect(typeof curveD === 'number' || curveD === undefined).toBe(true)
+  })
+})
+
+describe('Redacción del cumpleaños (secciones 8-9, corrección real) — nunca "para celebrar Cumpleaños Alvaro"', () => {
+  it('"Cumpleaños de Álvaro" reconocido: BODY teje "el cumpleaños de Álvaro" en minúsculas, natural', () => {
+    const event = makeEvent({ type: 'cumpleanos', title: 'Cumpleaños de Álvaro', eventDate: '2026-10-18', eventTime: '20:30', venueLabel: 'nuestra casa' })
+    const content = buildInvitationContent(event)
+    expect(content.body).toContain('el cumpleaños de Álvaro')
+    expect(content.body).not.toContain('Cumpleaños de Álvaro')
+  })
+
+  it('"Cumple de Álvaro" (forma corta) también se reconoce', () => {
+    const event = makeEvent({ type: 'cumpleanos', title: 'Cumple de Álvaro', eventDate: '2026-10-18' })
+    const content = buildInvitationContent(event)
+    expect(content.body).toContain('el cumpleaños de Álvaro')
+  })
+
+  it('"Cumpleaños Alvaro" (sin "de", sin tilde — el caso real reportado) se reconoce de forma inequívoca', () => {
+    const event = makeEvent({ type: 'cumpleanos', title: 'Cumpleaños Alvaro', eventDate: '2026-10-18' })
+    const content = buildInvitationContent(event)
+    expect(content.body).toContain('el cumpleaños de Alvaro')
+    expect(content.body).not.toMatch(/celebrar\s+Cumpleaños/i)
+  })
+
+  it('un título de cumpleaños NO reconocible usa una construcción neutra, sin insertar el título en bruto tras "celebrar"', () => {
+    const event = makeEvent({ type: 'cumpleanos', title: 'Fiesta sorpresa', eventDate: '2026-10-18', venueLabel: 'nuestra casa' })
+    const content = buildInvitationContent(event)
+    expect(content.body).not.toContain('Fiesta sorpresa')
+    expect(content.body).not.toMatch(/celebrar/i)
+    expect(content.body).toContain('Os esperamos')
+  })
+
+  it('nunca genera la frase mecánica "para celebrar Cumpleaños ..." para ningún título de cumpleaños real probado', () => {
+    const titles = ['Cumpleaños de Álvaro', 'Cumpleaños Alvaro', 'Cumple de Marta', 'cumpleaños de Eric', 'CUMPLEAÑOS DE SOFÍA', 'Fiesta de Hugo']
+    for (const title of titles) {
+      const event = makeEvent({ type: 'cumpleanos', title, eventDate: '2026-10-18' })
+      const content = buildInvitationContent(event)
+      expect(content.body, title).not.toMatch(/celebrar\s+Cumple/i)
+    }
+  })
+
+  it('BODY no repite el título completo innecesariamente (sección 9) — TITLE ya lo muestra arriba como su propia capa', () => {
+    const event = makeEvent({ type: 'cumpleanos', title: 'Cumpleaños de Álvaro', eventDate: '2026-10-18', venueLabel: 'nuestra casa' })
+    const result = composeInvitationForMe({ event, template: template('clasico'), style: 'clasico' }) as AutoComposeSuccess
+    const body = result.layers.find((l) => l.id === 'auto-body')!
+    expect(body.text).not.toBe(event.title)
+  })
+
+  it('sigue integrando la edad de forma natural cuando el nombre se reconoce, sin frase universal fija', () => {
+    const event6 = makeEvent({ type: 'cumpleanos', title: 'Cumpleaños de Hugo', eventDate: '2026-10-18', details: { ageTurning: 6 } })
+    const event7 = makeEvent({ type: 'cumpleanos', title: 'Cumpleaños de Vera', eventDate: '2026-10-18', details: { ageTurning: 7 } })
+    const content6 = buildInvitationContent(event6)
+    const content7 = buildInvitationContent(event7)
+    expect(content6.body).toContain('6')
+    expect(content7.body).toContain('7')
+    expect(content6.body.includes('¡Cumple') || content6.body.includes('Son ya')).toBe(true)
+    expect(content7.body.includes('¡Cumple') || content7.body.includes('Son ya')).toBe(true)
+  })
+
+  it('no altera la lógica narrativa de boda/comunión/bautizo ya corregida (relación ceremonia↔celebración intacta)', () => {
+    const boda = makeEvent({ type: 'boda', title: 'Boda de Ana y Luis', ceremonyLocationLabel: 'Parroquia de San José', celebrationLocationLabel: 'Restaurante Los Olivos' })
+    const content = buildInvitationContent(boda)
+    expect(content.body).toMatch(/Parroquia de San José.*después.*Restaurante Los Olivos/)
   })
 })

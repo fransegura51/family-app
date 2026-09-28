@@ -658,6 +658,25 @@ function ceremonyTimeSuffix(event: Pick<FamilyEvent, 'ceremonyTime'>): string {
   return event.ceremonyTime ? ` a las ${event.ceremonyTime.slice(0, 5)}` : ''
 }
 
+// Corrección real (2026-09-28, tras pruebas visuales) — el evento no guarda el nombre de quien cumple años
+// en ningún campo estructurado (comprobado: `details` solo tiene `ageTurning`, un número; no existe
+// `memberId` ni vínculo a un FamilyMember). `event.title` es texto libre que escribe la familia al crear el
+// evento — insertarlo tal cual como objeto de "celebrar" producía frases mecánicas ("para celebrar
+// Cumpleaños Alvaro."). En vez de inventar un nombre o hacer parsing agresivo, se reconoce ÚNICAMENTE el
+// patrón convencional que la propia app sugiere al crear el evento ("Cumpleaños de {Nombre}" — ver el
+// placeholder del formulario, ui/EventosScreen.tsx) y sus variantes razonables ("Cumple de X", con o sin
+// "de", con o sin tilde/ñ en "cumpleaños") — nunca vaciado interpretando pretextos, nunca cuando el título
+// no sigue un patrón reconocible (case anclado al INICIO del título, así "Fiesta de cumpleaños de X" —
+// donde "cumpleaños" no abre el título — no coincide, y cae al mismo fallback neutro que ya tenía).
+function extractCumpleanosSubject(title: string): string | null {
+  const trimmed = title.trim()
+  const withDe = /^cumple(?:a[nñ]os)?\s+de\s+(.+)$/i.exec(trimmed)
+  if (withDe && withDe[1].trim()) return withDe[1].trim()
+  const withoutDe = /^cumple(?:a[nñ]os)?\s+(.+)$/i.exec(trimmed)
+  if (withoutDe && withoutDe[1].trim()) return withoutDe[1].trim()
+  return null
+}
+
 // Sección 7 — boda/comunión/bautizo: cuando existen ceremonia Y celebración, la redacción entiende la
 // relación entre ambas ("nos casamos EN X, y después lo celebraremos EN Y") en vez de enumerarlas sin
 // contexto. Si solo hay una, la frase se adapta; nunca se inventa la que falta. `verb`/`title` distinguen
@@ -693,7 +712,12 @@ function dualLocationBody(event: FamilyEvent, when: string, verb: string, withTi
 const INVITATION_BODY_BUILDERS: Record<EventType, (event: FamilyEvent, when: string) => InvitationBodyResult> = {
   cumpleanos: (event, when) => {
     const where = event.venueLabel ? ` en ${event.venueLabel}` : ''
-    let body = `Os esperamos ${when}${where} para celebrar ${event.title.trim()}.`
+    // Sección 8-9 — TITLE ya muestra el título completo arriba (su propia capa): BODY no necesita repetirlo
+    // literalmente. Con un nombre reconocible, se teje en minúsculas dentro de una frase natural; sin él,
+    // una construcción neutra que no fuerza el título en bruto dentro de un hueco gramatical que no le
+    // corresponde (nunca "para celebrar {title}.").
+    const subject = extractCumpleanosSubject(event.title)
+    let body = subject ? `Os esperamos ${when}${where} para celebrar el cumpleaños de ${subject}.` : `Os esperamos ${when}${where}.`
     const fields: InvitationEventBodyFieldKey[] = event.venueLabel ? ['lugar'] : []
     const ageTurning = event.details.ageTurning
     if (typeof ageTurning === 'number') {
@@ -872,7 +896,12 @@ export interface InvitationZones {
 }
 
 // Sección 21 — tratamiento de color/efecto por rol semántico, para UN estilo concreto. Todo opcional: lo
-// que falte cae al fallback seguro (color de contraste `text` de la plantilla, sin efecto).
+// que falte cae al fallback seguro (color neutro de alta legibilidad para el tono de zona resuelto — ver
+// domain/invitationAutoCompose.ts, resolveRoleColor). Un color aquí es solo un CANDIDATO: nunca se usa si no
+// supera el contraste mínimo contra el tono de la zona donde va a aparecer — "legibilidad > armonía de
+// color" es una regla dura, no una preferencia (petición real, corrección tras pruebas visuales en iPhone:
+// un dorado que combinaba con una plantilla negro/dorado resultó ilegible sobre el panel crema real donde
+// cae el texto).
 export interface InvitationStyleColorTreatment {
   titleColor?: string
   bodyColor?: string
@@ -881,7 +910,23 @@ export interface InvitationStyleColorTreatment {
   titleTextStyle?: InvitationTextStyle
 }
 
+// Corrección real (2026-09-28, tras pruebas visuales) — "GRADIENT DE LA PLANTILLA != FONDO REAL DE LA ZONA
+// DE ESCRITURA": el `gradient` de una plantilla describe su aspecto general (a menudo el borde/fondo que
+// rodea la ilustración), no necesariamente el panel/superficie exacta donde cae `textArea` — una plantilla
+// puede tener un `gradient` oscuro con un panel claro en el centro, o al revés. Por eso el contraste NUNCA
+// se calcula contra `gradient`: se calcula contra este tono, explícito y aparte.
+export type InvitationZoneTone = 'light' | 'dark'
+
 export interface InvitationTemplatePalette {
+  // Tono de fondo de la ZONA DE ESCRITURA real (nunca del gradient general) — ver domain/invitationAutoCompose.ts,
+  // resolveZoneTone. Ausente = fallback conservador documentado allí (ninguna de las 100 lo calibra todavía).
+  // Los campos por rol son opcionales y solo hacen falta si UN rol concreto cae sobre un fondo distinto al
+  // resto (p. ej. un cierre sobre una franja más oscura que el título) — para casi todos los casos basta
+  // `zoneTone` general.
+  zoneTone?: InvitationZoneTone
+  titleTone?: InvitationZoneTone
+  bodyTone?: InvitationZoneTone
+  closingTone?: InvitationZoneTone
   clasico?: InvitationStyleColorTreatment
   divertido?: InvitationStyleColorTreatment
 }

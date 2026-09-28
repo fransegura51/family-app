@@ -33,6 +33,7 @@ import {
   INVITATION_SHAPES,
   type InvitationContent,
   type InvitationTemplateMeta,
+  type InvitationZoneTone,
   type SafeZone,
   type TextMeasurer,
 } from '@/domain/events'
@@ -139,6 +140,11 @@ interface StyleRoleTreatment {
   italic?: boolean
   fontSizeSteps: number[]
   textAlign: InvitationTextAlign
+  // Sección 1 (corrección real, 2026-09-28) — desplazamiento lateral controlado dentro de la zona (fracción
+  // del ancho de zona; 0 = centrado, como siempre). Se aplica DESPUÉS de que autoArrangeLayers calcule la
+  // posición vertical real (apilado por alto medido) — solo mueve X, nunca Y, y siempre queda acotado dentro
+  // de la zona (`applyRoleOffsets` nunca puede sacar la capa de su hueco seguro).
+  xOffsetFrac?: number
 }
 
 interface StyleTreatment {
@@ -146,44 +152,121 @@ interface StyleTreatment {
   body: StyleRoleTreatment
   closing: StyleRoleTreatment
   allowDecoration: boolean
+  // Sección 2 (corrección real) — el emoji decorativo se coloca junto al título en vez de flotar aparte
+  // encima de la zona, cuando hay hueco real (ver `placeEmojiBesideTitle`); si no lo hay, se omite.
+  emojiBesideTitle: boolean
+  // Sección 1 — separación TITLE/BODY/CLOSING propia del estilo: más aire para una sensación formal
+  // (Clásico), menos aire para ganar tamaño y sensación más dinámica (Divertido). Sustituye al antiguo
+  // ZONE_MARGIN fijo — `marginForAttempt` sigue encogiéndolo más como paso de adaptación si hace falta.
+  margin: { side: number; top: number; bottom: number }
 }
 
-// Sección 19 — CLÁSICO: elegante, limpio, equilibrado, jerarquía clara, decoración contenida (= ninguna
-// automática, igual que ya hacía "clásica" antes de este bloque — comportamiento conservado, no regresión).
-// El título usa una serifa (protagonismo sin recurrir a mayúsculas ni tamaños desmedidos); el cuerpo se
-// queda en la tipografía base, perfectamente legible; el cierre es más pequeño y en cursiva — diferenciado
-// pero secundario.
+// Sección 19 (corrección real, 2026-09-28) — CLÁSICO: composición ordenada y simétrica, todo centrado,
+// jerarquía de tamaño moderada, separación generosa (aire = sensación formal), decoración contenida (=
+// ninguna automática, igual que ya hacía "clásica" antes de este bloque). El título usa una serifa; el
+// cuerpo se queda en la tipografía base, perfectamente legible; el cierre es más pequeño y en cursiva —
+// diferenciado pero secundario.
 //
-// Sección 20 — DIVERTIDO: claramente distinto (título más grande, con curva disponible cuando cabe,
-// decoración permitida), sin sacrificar legibilidad en BODY (misma tipografía/tamaño base que Clásico) ni
-// invadir zonas protegidas (la curva y la decoración son las PRIMERAS en soltarse si no caben, antes que
-// reducir tamaño — ver `buildAttemptSequence`).
+// Sección 20 (corrección real) — DIVERTIDO: composición realmente distinta, no solo tipografía. Título más
+// grande, con curva disponible, ligeramente desplazado dentro de su zona (asimetría controlada); BODY
+// alineado a la izquierda (ragged, look editorial/desenfadado, en vez del centrado de Clásico); CLOSING
+// tratado como protagonista (más grande y en negrita, no secundario como en Clásico); menos margen interno
+// (más denso/dinámico); decoración permitida, con el emoji integrado junto al título. Nunca sacrifica
+// legibilidad en BODY (mismo tamaño base que Clásico) ni invade zonas protegidas — curva/decoración son las
+// PRIMERAS en soltarse si no caben, antes que reducir tamaño (ver `buildAttemptSequence`).
 const STYLE_TREATMENT: Record<AutoComposeStyle, StyleTreatment> = {
   clasico: {
-    title: { fontFamily: 'Georgia, serif', bold: true, fontSizeSteps: [24, 20, 16], textAlign: 'center', curveIdeal: 0 },
+    title: { fontFamily: 'Georgia, serif', bold: true, fontSizeSteps: [24, 20, 16], textAlign: 'center', curveIdeal: 0, xOffsetFrac: 0 },
     body: { fontFamily: 'inherit', bold: false, fontSizeSteps: [15, 13, 11], textAlign: 'center' },
     closing: { fontFamily: 'inherit', bold: false, italic: true, fontSizeSteps: [13, 12, 11], textAlign: 'center' },
     allowDecoration: false,
+    emojiBesideTitle: false,
+    margin: { side: 0.07, top: 0.05, bottom: 0.05 },
   },
   divertido: {
-    title: { fontFamily: 'inherit', bold: true, fontSizeSteps: [28, 22, 18], textAlign: 'center', curveIdeal: 14 },
-    body: { fontFamily: 'inherit', bold: false, fontSizeSteps: [15, 13, 11], textAlign: 'center' },
-    closing: { fontFamily: 'inherit', bold: true, fontSizeSteps: [14, 12, 11], textAlign: 'center' },
+    title: { fontFamily: 'inherit', bold: true, fontSizeSteps: [30, 24, 19], textAlign: 'center', curveIdeal: 14, xOffsetFrac: -0.05 },
+    body: { fontFamily: 'inherit', bold: false, fontSizeSteps: [15, 13, 11], textAlign: 'left' },
+    closing: { fontFamily: 'inherit', bold: true, fontSizeSteps: [16, 14, 12], textAlign: 'center' },
     allowDecoration: true,
+    emojiBesideTitle: true,
+    margin: { side: 0.045, top: 0.025, bottom: 0.025 },
   },
 }
 
-// Sección 21 — "color inteligente": nunca #ffffff fijo. Por defecto se usa `template.text` — el color de
-// contraste que YA se eligió a mano para cada una de las 100 plantillas al crearlas — como base para
-// TITLE/BODY/CLOSING. `template.palette` permite un tratamiento más especial (p. ej. un efecto de texto
-// concreto en el título) cuando de verdad encaja con ESA plantilla — ninguna de las 100 lo usa todavía
-// (mismo criterio incremental que `zones`, sección 14): nunca análisis de imagen en tiempo de ejecución.
+// ---------------------------------------------------------------------------------------------------
+// Sección 3-7 (corrección real, 2026-09-28) — "color inteligente" con contraste OBLIGATORIO. Causa del bug
+// real encontrado en pruebas visuales: el color por defecto (`template.text`) se aplicaba tal cual a
+// TITLE/BODY/CLOSING sin comprobar nada — un dorado pensado para verse bien contra el `gradient` general de
+// una plantilla negro/dorado resultaba casi ilegible sobre el panel crema real donde cae `textArea` (el
+// gradient describe el aspecto general de la tarjeta, NUNCA el fondo real de la zona de escritura — no son
+// lo mismo). Ahora todo candidato de color (el de la plantilla o un futuro override de `palette`) debe
+// superar un contraste mínimo contra el TONO DE ZONA resuelto antes de usarse; si no lo supera, se cae a un
+// neutro de alta legibilidad para ese tono. Legibilidad > armonía de color, siempre.
+// ---------------------------------------------------------------------------------------------------
+
+// Contraste WCAG estándar (luminancia relativa + ratio) — determinista, sin dependencias nuevas.
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const [rs, gs, bs] = [r, g, b].map((c) => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs
+}
+
+function contrastRatio(hexA: string, hexB: string): number {
+  const a = hexToRgb(hexA)
+  const b = hexToRgb(hexB)
+  if (!a || !b) return 1 // sin poder calcularlo, se trata como "sin contraste" — nunca se arriesga.
+  const [lLight, lDark] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x)
+  return (lLight + 0.05) / (lDark + 0.05)
+}
+
+// Umbral mínimo por rol (sección 4, 7): BODY y CLOSING son texto corrido, exigen el umbral AA completo
+// (4.5:1) — BODY nunca puede ser menos legible por "combinar" mejor. TITLE es texto grande/negrita, admite
+// el umbral AA reducido para texto grande (3:1, mismo criterio que WCAG) — puede ser más expresivo.
+const CONTRAST_THRESHOLD: Record<'title' | 'body' | 'closing', number> = { title: 3, body: 4.5, closing: 4.5 }
+
+// Sección 5-6 — el contraste se mide contra un color de referencia REPRESENTATIVO del tono de zona resuelto
+// (nunca contra `gradient`, nunca contra un píxel real — no hay análisis de imagen). No pretende ser el
+// color exacto del fondo real: solo sirve para decidir, de forma conservadora, si un candidato tiene margen
+// de sobra o no. El neutro de fallback es el color que se usa cuando ningún candidato supera el umbral.
+const ZONE_REFERENCE_COLOR: Record<InvitationZoneTone, string> = { light: '#F5F1E8', dark: '#1A1A1A' }
+const SAFE_NEUTRAL_COLOR: Record<InvitationZoneTone, string> = { light: '#22242B', dark: '#FBF8F2' }
+
+// Sección 6 — fallback CONSERVADOR y documentado cuando la plantilla no calibra `zoneTone` (ninguna de las
+// 100 lo hace todavía): 'light' fijo para TODAS, nunca derivado de `gradient` ni de `text` (el propio
+// diagnóstico probó que ambos pueden estar pensados para el aspecto general de la tarjeta, no para el panel
+// real de la zona de escritura — usarlos como pista, aunque fuera "débil", habría reproducido exactamente el
+// mismo bug en la plantilla que lo disparó). No es una suposición por plantilla: es la MISMA suposición para
+// las 100, hasta que cada una calibre su propio `zoneTone` — momento en el que este fallback deja de
+// aplicarle. Con `zoneTone: 'light'`, el neutro de seguridad es oscuro (`SAFE_NEUTRAL_COLOR.light`).
+const DEFAULT_ZONE_TONE: InvitationZoneTone = 'light'
+
+function resolveZoneTone(template: InvitationTemplateMeta, role: 'title' | 'body' | 'closing'): InvitationZoneTone {
+  const palette = template.palette
+  const roleTone = role === 'title' ? palette?.titleTone : role === 'body' ? palette?.bodyTone : palette?.closingTone
+  return roleTone ?? palette?.zoneTone ?? DEFAULT_ZONE_TONE
+}
+
+// Sección 21 — "color inteligente": el color de la plantilla (`template.text`, o un futuro override de
+// `palette`) sigue siendo el candidato preferido — se conserva siempre que tenga contraste real. Cuando no
+// lo tiene (sección 4: legibilidad > armonía), se sustituye por el neutro seguro del tono resuelto — nunca
+// se queda un color ilegible "porque combina". TITLE/BODY/CLOSING se resuelven de forma independiente
+// (sección 7): pueden llevar colores distintos, y uno puede caer al neutro mientras otro conserva el acento
+// de la plantilla si ese sí tiene contraste suficiente.
 function resolveRoleColor(template: InvitationTemplateMeta, style: AutoComposeStyle, role: 'title' | 'body' | 'closing'): string {
+  const tone = resolveZoneTone(template, role)
   const override = template.palette?.[style]
-  const base = template.text || '#ffffff'
-  if (role === 'title') return override?.titleColor ?? base
-  if (role === 'body') return override?.bodyColor ?? base
-  return override?.closingColor ?? base
+  const candidate = (role === 'title' ? override?.titleColor : role === 'body' ? override?.bodyColor : override?.closingColor) ?? template.text
+  if (candidate && contrastRatio(candidate, ZONE_REFERENCE_COLOR[tone]) >= CONTRAST_THRESHOLD[role]) return candidate
+  return SAFE_NEUTRAL_COLOR[tone]
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -213,12 +296,14 @@ function resolveZones(template: InvitationTemplateMeta): ResolvedZones {
   }
 }
 
-// Márgenes internos de zona (sección 12) — la composición nunca usa el 100% del rectángulo disponible. La
-// variante compacta dedica menos aire a margen para ganar la altura que necesita el contenido — un paso de
-// adaptación más, antes de encoger la letra (ver `buildAttemptSequence`).
-const ZONE_MARGIN = {
-  full: { side: 0.06, top: 0.04, bottom: 0.04 },
-  compact: { side: 0.04, top: 0.02, bottom: 0.02 },
+// Márgenes internos de zona (sección 1, 12) — la composición nunca usa el 100% del rectángulo disponible.
+// El margen BASE es propio de cada estilo (`STYLE_TREATMENT[style].margin` — más aire en Clásico, menos en
+// Divertido); la variante compacta lo encoge más todavía para ganar la altura que necesita el contenido —
+// un paso de adaptación más, antes de encoger la letra (ver `buildAttemptSequence`).
+function marginForAttempt(style: AutoComposeStyle, compact: boolean): { side: number; top: number; bottom: number } {
+  const base = STYLE_TREATMENT[style].margin
+  if (!compact) return base
+  return { side: base.side * 0.6, top: base.top * 0.5, bottom: base.bottom * 0.5 }
 }
 
 function insetZone(zone: SafeZone, margin: { side: number; top: number; bottom: number }): SafeZone {
@@ -324,6 +409,45 @@ function placeDecorationInZones(layers: InvitationLayer[], decorationZones: Safe
     i++
     return { ...l, x: zone.x + zone.width / 2, y: zone.y + zone.height / 2 }
   })
+}
+
+// Sección 1 (corrección real) — desplaza X de un rol dentro de su zona, según `xOffsetFrac` del estilo —
+// nunca Y (la posición vertical la sigue decidiendo el apilado por alto real de autoArrangeLayers, sin
+// tocar). Siempre acotado dentro de la zona usando la caja real de la capa (nunca puede sacarla del hueco
+// seguro) — mismo criterio de medición que ya usa el resto del motor (estimateLayerBoxFraction).
+function applyRoleOffsets(layers: InvitationLayer[], style: AutoComposeStyle, zone: SafeZone, imageAspect: number, measurer: TextMeasurer | undefined): InvitationLayer[] {
+  const treatment = STYLE_TREATMENT[style]
+  const roleTreatmentById: Record<string, StyleRoleTreatment> = { 'auto-title': treatment.title, 'auto-body': treatment.body, 'auto-closing': treatment.closing }
+  return layers.map((l) => {
+    const offsetFrac = roleTreatmentById[l.id]?.xOffsetFrac
+    if (!offsetFrac) return l
+    const box = estimateLayerBoxFraction(l, zone.width, imageAspect, measurer)
+    const minX = zone.x + box.halfWidth
+    const maxX = zone.x + zone.width - box.halfWidth
+    const targetX = l.x + offsetFrac * zone.width
+    return { ...l, x: Math.min(maxX, Math.max(minX, targetX)) }
+  })
+}
+
+// Sección 2 (corrección real) — el emoji decorativo, integrado junto al título en vez de flotar aparte por
+// encima de la zona: se intenta a la derecha del título ya resuelto (posición final, tras apilado y
+// desplazamiento), luego a la izquierda; si ninguna de las dos cabe dentro de la zona, se omite del todo —
+// "si empeora el diseño o no existe una ubicación segura, es preferible no ponerlo" (nunca invade, nunca se
+// fuerza). Solo se llama cuando el estilo lo permite (`emojiBesideTitle`) y no hay `zones.decoration`
+// calibradas a mano (esas tienen prioridad — ver `attemptOnce`).
+function placeEmojiBesideTitle(layers: InvitationLayer[], zone: SafeZone, imageAspect: number, measurer: TextMeasurer | undefined): InvitationLayer[] {
+  const titleLayer = layers.find((l) => l.id === 'auto-title')
+  const emoji = layers.find((l) => l.id === 'auto-decor-emoji')
+  if (!titleLayer || !emoji) return layers
+  const titleBox = estimateLayerBoxFraction(titleLayer, zone.width, imageAspect, measurer)
+  const emojiBox = estimateLayerBoxFraction(emoji, zone.width, imageAspect, measurer)
+  const gap = 0.02
+  const withinZone = (x: number) => x - emojiBox.halfWidth >= zone.x && x + emojiBox.halfWidth <= zone.x + zone.width
+  const rightX = titleLayer.x + titleBox.halfWidth + gap + emojiBox.halfWidth
+  const leftX = titleLayer.x - titleBox.halfWidth - gap - emojiBox.halfWidth
+  const chosenX = withinZone(rightX) ? rightX : withinZone(leftX) ? leftX : null
+  if (chosenX === null) return layers.filter((l) => l.id !== 'auto-decor-emoji') // sin hueco seguro — se omite (sección 2).
+  return layers.map((l) => (l.id === 'auto-decor-emoji' ? { ...l, x: chosenX, y: titleLayer.y } : l))
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -460,7 +584,7 @@ function attemptOnce(content: InvitationContent, event: FamilyEvent, template: I
   const zones = resolveZones(template)
   const family = classifyTemplateGeometry(template)
   const imageAspect = template.imageAspect ?? 1
-  const margin = attempt.compact ? ZONE_MARGIN.compact : ZONE_MARGIN.full
+  const margin = marginForAttempt(style, attempt.compact)
   const sameZone = zones.title === zones.body && zones.body === zones.closing
 
   let photoLayer: InvitationLayer | null = null
@@ -485,21 +609,44 @@ function attemptOnce(content: InvitationContent, event: FamilyEvent, template: I
   let textLayers: InvitationLayer[]
   let overflowed = false
 
+  // Sección 1-2 (corrección real) — tras el apilado vertical de autoArrangeLayers (sin tocar), dos pasadas
+  // de composición propias del estilo: desplazamiento lateral por rol (`applyRoleOffsets`) y, si el estilo
+  // integra el emoji con el título (`emojiBesideTitle`) y la plantilla no calibra `zones.decoration` a mano
+  // (esas tienen prioridad — respetan la decisión explícita del autor de la plantilla), reubicarlo junto al
+  // título en vez de dejarlo flotando aparte.
+  const treatment = STYLE_TREATMENT[style]
+
   if (sameZone) {
     const textZone = insetZone(baseTextZone, margin)
     const result = autoArrangeLayers([...contentLayers, ...decorationLayers], textZone, imageAspect, measurer)
-    textLayers = placeDecorationInZones(result.layers, zones.decoration)
+    let arranged = applyRoleOffsets(result.layers, style, textZone, imageAspect, measurer)
+    arranged = placeDecorationInZones(arranged, zones.decoration)
+    if (attempt.includeDecoration && treatment.emojiBesideTitle && zones.decoration.length === 0) {
+      arranged = placeEmojiBesideTitle(arranged, textZone, imageAspect, measurer)
+    }
+    textLayers = arranged
     overflowed = result.overflowed
   } else {
     // Zonas por rol calibradas a mano (todavía ninguna de las 100) — cada rol se apila en su propio
     // rectángulo, de forma independiente; la decoración sigue yendo en su propia zona si existe, o se
     // apoya en la zona de cuerpo como referencia si no.
     const titleZone = photoLayer && zones.title === (sameZone ? undefined : zones.body) ? baseTextZone : zones.title
-    const titleResult = autoArrangeLayers([contentLayers[0]], insetZone(titleZone, margin), imageAspect, measurer)
-    const bodyResult = autoArrangeLayers([contentLayers[1], ...decorationLayers], insetZone(baseTextZone, margin), imageAspect, measurer)
+    const titleInset = insetZone(titleZone, margin)
+    const bodyInset = insetZone(baseTextZone, margin)
+    const titleResult = autoArrangeLayers([contentLayers[0]], titleInset, imageAspect, measurer)
+    const bodyResult = autoArrangeLayers([contentLayers[1], ...decorationLayers], bodyInset, imageAspect, measurer)
     const closingLayer = contentLayers[2]
-    const closingResult = closingLayer ? autoArrangeLayers([closingLayer], insetZone(zones.closing, margin), imageAspect, measurer) : { layers: [], overflowed: false }
-    textLayers = [...titleResult.layers, ...placeDecorationInZones(bodyResult.layers, zones.decoration), ...closingResult.layers]
+    const closingInset = insetZone(zones.closing, margin)
+    const closingResult = closingLayer ? autoArrangeLayers([closingLayer], closingInset, imageAspect, measurer) : { layers: [], overflowed: false }
+    const titleLayers = applyRoleOffsets(titleResult.layers, style, titleInset, imageAspect, measurer)
+    let bodyLayers = applyRoleOffsets(bodyResult.layers, style, bodyInset, imageAspect, measurer)
+    bodyLayers = placeDecorationInZones(bodyLayers, zones.decoration)
+    const closingLayers = applyRoleOffsets(closingResult.layers, style, closingInset, imageAspect, measurer)
+    let combined = [...titleLayers, ...bodyLayers, ...closingLayers]
+    if (attempt.includeDecoration && treatment.emojiBesideTitle && zones.decoration.length === 0) {
+      combined = placeEmojiBesideTitle(combined, titleInset, imageAspect, measurer)
+    }
+    textLayers = combined
     overflowed = titleResult.overflowed || bodyResult.overflowed || closingResult.overflowed
   }
 

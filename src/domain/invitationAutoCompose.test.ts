@@ -7,6 +7,7 @@ import {
   getAvailableInvitationData,
   layerBoundsWithinZone,
   resolveEffectiveZone,
+  resolveStyleTreatment,
   resolveZones,
   type AutoComposeStyle,
   type AutoComposeSuccess,
@@ -256,26 +257,39 @@ describe('composeInvitationForMe — 📷 foto ortogonal al estilo (sección 18)
 })
 
 describe('composeInvitationForMe — 🎉 Divertido', () => {
-  it('incluye una forma decorativa cuando cabe (sección 22, sin cambios)', () => {
-    const result = composeInvitationForMe({ event: EVENT_A, template: template('unicornio'), style: 'divertido' }) as AutoComposeSuccess
+  // Identidad visual (2026-09-28) — decoración reducida a UN icono ANCLADO a TITLE o CLOSING (ver
+  // `placeAnchoredDecoration`, invitationAutoCompose.ts): ya no se genera la forma/confeti translúcida
+  // (`auto-decor-shape`, apilada sin ninguna posición intencional) — "una única decoración automática bien
+  // colocada vale mucho más que confeti/forma flotando sin intención" (ajuste aprobado).
+  it('incluye un icono decorativo anclado a TITLE o CLOSING cuando cabe (sección 22)', () => {
+    const shortTitleEvent = makeEvent({ type: 'celebracion', title: 'Fiesta', eventDate: '2026-12-19', eventTime: '20:00', venueLabel: 'Casa' })
+    const result = composeInvitationForMe({ event: shortTitleEvent, template: template('unicornio'), style: 'divertido' }) as AutoComposeSuccess
     expect(result.status).toBe('success')
-    expect(result.layers.some((l) => l.type === 'shape')).toBe(true)
+    const emojiLayer = result.layers.find((l) => l.type === 'emoji')
+    expect(emojiLayer).toBeDefined()
+    // Nunca genera la forma/confeti translúcida de antes — ni con la decoración presente.
+    expect(result.layers.some((l) => l.type === 'shape')).toBe(false)
   })
 
-  it('sección 2 — el emoji NO es obligatorio: cuando no hay hueco seguro junto al título, se omite en vez de forzarlo o degradar el diseño (nunca lanza, nunca falla la composición solo por eso)', () => {
-    // Título largo + plantilla estrecha ("unicornio", familia 1: zona amplia pero con contenido largo el
-    // título ya ocupa casi todo el ancho) — caso real donde no queda hueco lateral seguro para el emoji.
-    const result = composeInvitationForMe({ event: EVENT_A, template: template('unicornio'), style: 'divertido' }) as AutoComposeSuccess
-    expect(result.status).toBe('success')
-    expect(result.layers.some((l) => l.type === 'emoji')).toBe(false)
-    // La forma decorativa (no depende del hueco junto al título) sigue presente — omitir el emoji no arrastra al resto de la decoración.
-    expect(result.layers.some((l) => l.type === 'shape')).toBe(true)
+  it('sección 2 — el emoji NO es obligatorio: cuando no hay hueco seguro junto a su ancla, se omite en vez de forzarlo o degradar el diseño (nunca lanza, nunca falla la composición solo por eso)', () => {
+    // Plantilla propia sintética deliberadamente estrecha (familia 4 → solo variante A es geométricamente
+    // compatible, decoración anclada "encima" del título) con un título largo que deja el hueco de sobra
+    // por encima del título casi a cero — caso real donde no queda sitio seguro para el icono.
+    const narrow = buildCustomTemplateMeta({ x: 0.3, y: 0.35, width: 0.4, height: 0.3 })
+    const longTitleEvent = makeEvent({ type: 'celebracion', title: 'El gran cumpleaños sorpresa de toda la familia y sus amigos', eventDate: '2026-12-19' })
+    const result = composeInvitationForMe({ event: longTitleEvent, template: narrow, style: 'divertido' })
+    if (result.status === 'success') {
+      expect(result.layers.some((l) => l.type === 'emoji')).toBe(false)
+    } else {
+      expect(result.status).toBe('fail')
+    }
   })
 
-  it('sección 2 — cuando el emoji SÍ tiene hueco (título corto), aparece integrado junto al título — no flotando por encima, a la misma altura Y', () => {
+  it('sección 2 — cuando el emoji SÍ tiene hueco (título corto), aparece integrado junto a su ancla — no flotando por encima, a la misma altura Y (cuando el lado preferido es lateral)', () => {
     const shortTitleEvent = makeEvent({ type: 'celebracion', title: 'Fiesta', eventDate: '2026-12-19', eventTime: '20:00', venueLabel: 'Casa' })
     const result = composeInvitationForMe({ event: shortTitleEvent, template: template('clasico'), style: 'divertido' }) as AutoComposeSuccess
     expect(result.status).toBe('success')
+    expect(result.divertidoVariant).toBe('B') // "clasico" tiene visualMood 'festive' calibrado → B (decoración lateral, ver domain/events.ts).
     const titleLayer = result.layers.find((l) => l.id === 'auto-title')!
     const emojiLayer = result.layers.find((l) => l.type === 'emoji')
     expect(emojiLayer).toBeDefined()
@@ -581,11 +595,15 @@ describe('Clásico vs. Divertido — diferencias ESTRUCTURALES de composición, 
     expect(titleC.y).not.toBeCloseTo(titleD.y, 3)
   })
 
-  it('BODY usa alineación distinta por estilo (Clásico centrado, Divertido a la izquierda) — una diferencia real de composición, verificable en la propia capa', () => {
-    const clasico = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'clasico' }) as AutoComposeSuccess
-    const divertido = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
-    expect(clasico.layers.find((l) => l.id === 'auto-body')!.textAlign).toBe('center')
-    expect(divertido.layers.find((l) => l.id === 'auto-body')!.textAlign).toBe('left')
+  // Ajuste aprobado (identidad visual, 2026-09-28) — "left" en BODY ya NO es una característica fija de
+  // Divertido: es una posibilidad de la variante B, y solo en familias geométricas con ancho real de sobra
+  // (familia 1). Clásico SIEMPRE centrado. Ver los tests "causa raíz nº3" más abajo para el caso positivo
+  // (familia 1 → left) y negativo (familia 2 → sigue centrado), con la misma variante B.
+  it('BODY de Clásico está siempre centrado, en cualquier familia geométrica y variante que hubiera tenido Divertido', () => {
+    for (const key of ['boda', 'unicornio', 'clasico']) {
+      const result = composeInvitationForMe({ event: EVENT_A, template: template(key), style: 'clasico' }) as AutoComposeSuccess
+      expect(result.layers.find((l) => l.id === 'auto-body')!.textAlign, key).toBe('center')
+    }
   })
 
   it('el título de Divertido se desplaza lateralmente dentro de su zona cuando hay hueco real (asimetría controlada); el de Clásico se queda centrado', () => {
@@ -699,8 +717,8 @@ describe('Redacción del cumpleaños (secciones 8-9, corrección real) — nunca
 // `attemptOnce`/`validateComposition` internamente, nunca una reimplementación local que pudiera divergir.
 // ---------------------------------------------------------------------------------------------------
 describe('Geometría segura (2026-09-28) — caja completa dentro de la zona efectiva, en las 100 plantillas', () => {
-  function effectiveZoneFor(tmpl: InvitationTemplateMeta, role: 'title' | 'body' | 'closing', style: AutoComposeStyle, compact: boolean) {
-    return resolveEffectiveZone(resolveZones(tmpl)[role], style, compact)
+  function effectiveZoneFor(tmpl: InvitationTemplateMeta, role: 'title' | 'body' | 'closing', style: AutoComposeStyle, compact: boolean, event: FamilyEvent) {
+    return resolveEffectiveZone(resolveZones(tmpl)[role], resolveStyleTreatment(style, tmpl, event), compact)
   }
 
   it('TITLE/BODY/CLOSING: los 4 bordes de la caja real de cada capa con rol (ya con fuente/tamaño/negrita/curva/ajuste/alineación/desplazamiento/posición final aplicados) caben dentro de SU zona efectiva, en las 100 plantillas × 2 estilos (sin foto)', () => {
@@ -713,7 +731,7 @@ describe('Geometría segura (2026-09-28) — caja completa dentro de la zona efe
         for (const role of ['title', 'body', 'closing'] as const) {
           const layer = result.layers.find((l) => l.id === `auto-${role}`)
           if (!layer) continue
-          const zone = effectiveZoneFor(tmpl, role, style, result.adaptation.compact)
+          const zone = effectiveZoneFor(tmpl, role, style, result.adaptation.compact, EVENT_A)
           expect(layerBoundsWithinZone(layer, zone, imageAspect, undefined), `${tmpl.key}/${style}/${role}`).toBe(true)
           checked++
         }
@@ -722,23 +740,30 @@ describe('Geometría segura (2026-09-28) — caja completa dentro de la zona efe
     expect(checked).toBeGreaterThan(400) // asegura que el bucle realmente ejecutó las comprobaciones, no que se quedó vacío por error.
   })
 
+  // Evento tipo 'celebracion' (ánimo por defecto "festive", ver EVENT_TYPE_MOOD_HINT) para forzar de forma
+  // determinista la variante B en plantillas sin visualMood calibrado — B es la única de las tres que ofrece
+  // curva (curveIdeal 12) Y desplazamiento lateral (xOffsetFrac -0.06) a la vez, así que es la que de verdad
+  // ejercita "la curva no cabe → cae sin curva" y "el desplazamiento se acota al hueco libre real".
+  const longTitleFestiveEvent = makeEvent({ type: 'celebracion', title: 'Cumpleaños de Lucía', eventDate: '2026-12-19', eventTime: '20:00', venueLabel: 'Restaurante Trastevere' })
+
   it('un título curvado cuya caja real (medida sin conocer la zona, sección 1) no cabe en su zona nunca se acepta curvado — el motor cae al intento sin curva en vez de invadir', () => {
-    // Caso real reportado: título largo ("Cumpleaños de Lucía") en una plantilla de zona moderada ("boda")
-    // — con curva, la caja estimada es más ancha que la zona disponible (causa raíz nº1, ver comentario de
+    // Caso real reportado: título largo en una plantilla de zona moderada ("boda") — con curva, la caja
+    // estimada es más ancha que la zona disponible (causa raíz nº1, ver comentario de
     // `estimateLayerBoxFraction`, domain/events.ts); el motor debe rechazar ese intento y aceptar el
     // siguiente (sin curva), nunca aceptar una posición degenerada (causa raíz nº2).
-    const result = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
+    const result = composeInvitationForMe({ event: longTitleFestiveEvent, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
     expect(result.status).toBe('success')
+    expect(result.divertidoVariant).toBe('B') // confirma que el escenario ejercita la variante con curva+desplazamiento.
     const title = result.layers.find((l) => l.id === 'auto-title')!
     expect(title.curve).toBeUndefined()
-    const zone = effectiveZoneFor(template('boda'), 'title', 'divertido', result.adaptation.compact)
+    const zone = effectiveZoneFor(template('boda'), 'title', 'divertido', result.adaptation.compact, longTitleFestiveEvent)
     expect(layerBoundsWithinZone(title, zone, template('boda').imageAspect ?? 1, undefined)).toBe(true)
   })
 
   it('una capa cuya caja real ocupa casi todo el ancho disponible recibe un desplazamiento prácticamente nulo — la personalidad del estilo nunca tiene prioridad sobre la geometría (punto 4)', () => {
-    const result = composeInvitationForMe({ event: EVENT_A, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
+    const result = composeInvitationForMe({ event: longTitleFestiveEvent, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
     const title = result.layers.find((l) => l.id === 'auto-title')!
-    const zone = effectiveZoneFor(template('boda'), 'title', 'divertido', result.adaptation.compact)
+    const zone = effectiveZoneFor(template('boda'), 'title', 'divertido', result.adaptation.compact, longTitleFestiveEvent)
     const cx = zone.x + zone.width / 2
     expect(Math.abs(title.x - cx)).toBeLessThan(0.01)
   })
@@ -746,8 +771,9 @@ describe('Geometría segura (2026-09-28) — caja completa dentro de la zona efe
   it('con hueco lateral real (título corto), Divertido SÍ aplica una asimetría controlada, y la caja resultante sigue completa dentro de la zona', () => {
     const shortTitleEvent = makeEvent({ type: 'celebracion', title: 'Fiesta', eventDate: '2026-12-19', eventTime: '20:00', venueLabel: 'Casa' })
     const result = composeInvitationForMe({ event: shortTitleEvent, template: template('boda'), style: 'divertido' }) as AutoComposeSuccess
+    expect(result.divertidoVariant).toBe('B')
     const title = result.layers.find((l) => l.id === 'auto-title')!
-    const zone = effectiveZoneFor(template('boda'), 'title', 'divertido', result.adaptation.compact)
+    const zone = effectiveZoneFor(template('boda'), 'title', 'divertido', result.adaptation.compact, shortTitleEvent)
     const cx = zone.x + zone.width / 2
     expect(Math.abs(title.x - cx)).toBeGreaterThan(0.01) // asimetría real, no un desplazamiento ~0.
     expect(layerBoundsWithinZone(title, zone, template('boda').imageAspect ?? 1, undefined)).toBe(true) // pero nunca sale de su hueco.
@@ -756,13 +782,15 @@ describe('Geometría segura (2026-09-28) — caja completa dentro de la zona efe
   it('una caja más ancha que la zona (incluso centrada) nunca se acepta pegada a un borde — causa raíz nº2, corregida: el motor falla ese intento en vez de devolver `Math.min(maxX, Math.max(minX, targetX))` con minX > maxX', () => {
     // Plantilla propia sintética (buildCustomTemplateMeta) con una zona deliberadamente estrecha — ninguna
     // plantilla real de las 100 es tan angosta, así que se fuerza el caso aquí. Con un título largo en
-    // Divertido (curva + desplazamiento activos), la caja real es más ancha que la zona incluso sin curva.
+    // Divertido, la caja real es más ancha que la zona incluso sin curva — la comprobación de caja completa
+    // en `applyRoleOffsets` debe rechazar el intento (o "fits") independientemente de qué variante A/B/C se
+    // resuelva (la zona es tan estrecha, family 4, que solo A es geométricamente compatible).
     const narrow = buildCustomTemplateMeta({ x: 0.4, y: 0.1, width: 0.06, height: 0.4 })
     const longTitleEvent = makeEvent({ type: 'celebracion', title: 'El gran cumpleaños sorpresa de toda la familia', eventDate: '2026-12-19' })
     const result = composeInvitationForMe({ event: longTitleEvent, template: narrow, style: 'divertido' })
     if (result.status === 'success') {
       const title = result.layers.find((l) => l.id === 'auto-title')!
-      const zone = effectiveZoneFor(narrow, 'title', 'divertido', result.adaptation.compact)
+      const zone = effectiveZoneFor(narrow, 'title', 'divertido', result.adaptation.compact, longTitleEvent)
       expect(layerBoundsWithinZone(title, zone, narrow.imageAspect ?? 1, undefined)).toBe(true)
     } else {
       expect(result.status).toBe('fail') // sin hueco real, "fallar honestamente" es la respuesta correcta (nunca invadir).
@@ -788,7 +816,7 @@ describe('Geometría segura (2026-09-28) — caja completa dentro de la zona efe
       for (const role of ['title', 'body', 'closing'] as const) {
         const layer = result.layers.find((l) => l.id === `auto-${role}`)
         if (!layer) continue
-        const zone = effectiveZoneFor(tmpl, role, style, result.adaptation.compact)
+        const zone = effectiveZoneFor(tmpl, role, style, result.adaptation.compact, EVENT_A)
         expect(layerBoundsWithinZone(layer, zone, imageAspect, undefined), `${key}/${style}/${role}`).toBe(true)
       }
     }
@@ -803,7 +831,7 @@ describe('Geometría segura (2026-09-28) — caja completa dentro de la zona efe
         for (const role of ['title', 'body', 'closing'] as const) {
           const layer = result.layers.find((l) => l.id === `auto-${role}`)
           if (!layer) continue
-          const zone = effectiveZoneFor(tmpl, role, style, result.adaptation.compact)
+          const zone = effectiveZoneFor(tmpl, role, style, result.adaptation.compact, EVENT_A)
           expect(layer.zoneWidthFrac, `${key}/${style}/${role}`).toBeCloseTo(zone.width, 9)
           expect(layer.zoneRole).toBe(role)
         }
@@ -811,12 +839,26 @@ describe('Geometría segura (2026-09-28) — caja completa dentro de la zona efe
     }
   })
 
-  it('causa raíz nº3 (corregida): el ancho grabado en BODY para Divertido (alineado a la izquierda) es el ancho EFECTIVO ya con margen interior, nunca el ancho crudo de `textArea` — así el WYSIWYG respeta el margen en vez de pegar el texto al borde crudo de la zona', () => {
-    const tmpl = template('clasico')
-    const result = composeInvitationForMe({ event: EVENT_A, template: tmpl, style: 'divertido' }) as AutoComposeSuccess
+  it('causa raíz nº3 (corregida): cuando BODY de Divertido (variante B, familia geométrica amplia) se alinea a la izquierda, el ancho grabado es el ancho EFECTIVO ya con margen interior, nunca el ancho crudo de `textArea` — así el WYSIWYG respeta el margen en vez de pegar el texto al borde crudo de la zona', () => {
+    // "unicornio" es familia 1 (ancho real de sobra) sin visualMood calibrado — un evento tipo 'celebracion'
+    // (ánimo "festive") fuerza la variante B de forma determinista, y solo en familia 1 B usa BODY a la
+    // izquierda (ajuste aprobado — left es una posibilidad de B, no una obligación de Divertido).
+    const tmpl = template('unicornio')
+    const festiveEvent = makeEvent({ type: 'celebracion', title: 'Fiesta de Lucía', eventDate: '2026-12-19', eventTime: '20:00', venueLabel: 'Restaurante Trastevere' })
+    const result = composeInvitationForMe({ event: festiveEvent, template: tmpl, style: 'divertido' }) as AutoComposeSuccess
+    expect(result.divertidoVariant).toBe('B')
     const body = result.layers.find((l) => l.id === 'auto-body')!
     expect(body.textAlign).toBe('left')
     expect(body.zoneWidthFrac).toBeLessThan(tmpl.textArea!.width)
+  })
+
+  it('BODY de Divertido variante B en una familia geométrica MENOS ancha (2, "clasico") se queda centrado — left no es una obligación de Divertido, es una posibilidad de B solo con ancho real de sobra (ajuste aprobado)', () => {
+    const tmpl = template('clasico')
+    const festiveEvent = makeEvent({ type: 'celebracion', title: 'Fiesta de Lucía', eventDate: '2026-12-19', eventTime: '20:00', venueLabel: 'Restaurante Trastevere' })
+    const result = composeInvitationForMe({ event: festiveEvent, template: tmpl, style: 'divertido' }) as AutoComposeSuccess
+    expect(result.divertidoVariant).toBe('B')
+    const body = result.layers.find((l) => l.id === 'auto-body')!
+    expect(body.textAlign).toBe('center')
   })
 
   it('BODY resuelve siempre a uno de los dos neutros seguros documentados (SAFE_NEUTRAL_COLOR), nunca al candidato de la plantilla, en varias familias visuales y los 2 estilos', () => {

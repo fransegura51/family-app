@@ -873,6 +873,14 @@ export interface InvitationTemplateMeta {
   // este bloque). `zones` es el hueco para calibrar una plantilla concreta más adelante, plantilla a
   // plantilla, sin tocar las demás — igual que ya se hizo con `textArea` (grupos A/B/C certificados).
   zones?: InvitationZones
+  // Identidad visual de Divertido (2026-09-28) — clasificación DECLARATIVA y opcional del carácter de la
+  // plantilla (ver InvitationVisualMood más abajo): geometría decide qué variantes A/B/C son seguras aquí
+  // (nunca cuál "queda mejor"); `visualMood` decide cuál de las seguras se prefiere (ver
+  // resolveDivertidoVariant, domain/invitationAutoCompose.ts). Ninguna de las 100 lo calibra todavía salvo
+  // `cumpleanos_elegante`/`clasico`/`alegre` (banco de pruebas) — sin calibrar, el motor usa un valor por
+  // defecto según el tipo de evento, nunca fijo para las 100. Se añade plantilla a plantilla, sin tocar el
+  // compositor — mismo criterio incremental que `zones`/`palette`.
+  visualMood?: InvitationVisualMood
   // Paleta de tratamiento OPCIONAL por estilo — "color inteligente" (sección 21): cuando una plantilla no
   // define nada aquí, el motor usa `text` (el color de contraste YA elegido a mano para las 100 plantillas
   // al crearlas) como base para título/cuerpo/cierre — nunca #ffffff fijo. `palette` es solo para casos
@@ -917,6 +925,14 @@ export interface InvitationStyleColorTreatment {
 // se calcula contra `gradient`: se calcula contra este tono, explícito y aparte.
 export type InvitationZoneTone = 'light' | 'dark'
 
+// Identidad visual de Divertido (2026-09-28) — carácter declarado de una plantilla, usado SOLO para elegir
+// cuál de las variantes A/B/C de Divertido se prefiere (ver domain/invitationAutoCompose.ts,
+// resolveDivertidoVariant) — nunca decide geometría ni contenido. 'elegant' prefiere A (centrado/sereno),
+// 'festive' prefiere B (asimetría/color), 'playful' prefiere C (título protagonista/dos líneas), 'soft'
+// prefiere A/C (nada demasiado enérgico). Cuatro valores, deliberadamente pocos — no un sistema de reglas
+// grande.
+export type InvitationVisualMood = 'elegant' | 'festive' | 'playful' | 'soft'
+
 export interface InvitationTemplatePalette {
   // Tono de fondo de la ZONA DE ESCRITURA real (nunca del gradient general) — ver domain/invitationAutoCompose.ts,
   // resolveZoneTone. Ausente = fallback conservador documentado allí (ninguna de las 100 lo calibra todavía).
@@ -958,6 +974,14 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
     // CLASICO_SAFE_ZONE arriba) — conserva el apilado continuo de título/cuerpo/cierre, solo dentro de un
     // rectángulo más corto que `textArea`.
     zones: { title: CLASICO_SAFE_ZONE, body: CLASICO_SAFE_ZONE, closing: CLASICO_SAFE_ZONE },
+    // Identidad visual (2026-09-28) — banco de pruebas: confeti/globos/regalos de colores, prefiere B
+    // (asimetría/color) dentro de lo que su geometría permite. `palette.divertido` da a TITLE/CLOSING de
+    // Divertido un acento real en vez de caer siempre al neutro seguro (`template.text`, blanco, no supera
+    // el contraste contra el panel crema) — un burdeos/frambuesa verificado contra el umbral WCAG (6.96:1
+    // contra la referencia de zona clara, supera los dos umbrales 3:1/4.5:1). Solo bajo `divertido`: Clásico
+    // no se toca ("no lo reinventes").
+    visualMood: 'festive',
+    palette: { divertido: { titleColor: '#8C2F5C', closingColor: '#8C2F5C' } },
   },
   // GRUPO A — certificada ("GLOBOS: buen resultado. Mantener especialmente la separación actual entre
   // título y cuerpo"). No tocar.
@@ -980,6 +1004,12 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
       body: { x: 0.2284, y: 0.33, width: 0.532, height: 0.22 },
       closing: { x: 0.3, y: 0.56, width: 0.4, height: 0.1 },
     },
+    // Identidad visual (2026-09-28) — banco de pruebas: arco con globos/tarta, un carácter más lúdico que
+    // "festivo genérico", prefiere C (título protagonista/dos líneas). Acento terracota verificado contra el
+    // umbral WCAG (7.57:1 contra la referencia de zona clara) — más distintivo que el `template.text` propio
+    // (`#1f2233`, un azul-negro casi indistinguible del neutro seguro). Solo bajo `divertido`.
+    visualMood: 'playful',
+    palette: { divertido: { titleColor: '#7A3B12', closingColor: '#7A3B12' } },
   },
   // Zona intencionadamente <0.45 de ancho: activa el modo "compact" de buildInvitationTemplateLayers
   // (fuente más pequeña automática) — el cartel blanco real es pequeño (sujeto por las manos de los
@@ -1148,6 +1178,13 @@ export const INVITATION_TEMPLATES: InvitationTemplateMeta[] = [
     // título/cuerpo/cierre, dentro de un rectángulo que cabe con margen dentro del óvalo incluso en su parte
     // más estrecha (arriba/abajo).
     zones: { title: CUMPLEANOS_ELEGANTE_SAFE_ZONE, body: CUMPLEANOS_ELEGANTE_SAFE_ZONE, closing: CUMPLEANOS_ELEGANTE_SAFE_ZONE },
+    // Identidad visual (2026-09-28) — banco de pruebas: panel oscuro/dorado sobrio, prefiere A
+    // (centrado/sereno). Acento verde botella (el propio tono del degradado, `#134E4A`) verificado contra el
+    // umbral WCAG (8.41:1 contra la referencia de zona clara) — el `template.text` original (`#F5D57A`,
+    // dorado) es justo el candidato que fallaba el contraste (causa real reportada en pruebas visuales).
+    // Solo bajo `divertido`.
+    visualMood: 'elegant',
+    palette: { divertido: { titleColor: '#134E4A', closingColor: '#134E4A' } },
   },
   // Lote 8 — "Navidad varias" (pedido explícito en la lista de 26
   // temas: varias variantes navideñas, no solo una) + una hoja extra de

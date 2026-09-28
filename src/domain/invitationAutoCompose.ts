@@ -30,14 +30,14 @@ import {
   DEFAULT_TEXT_AREA,
   estimateLayerBoxFraction,
   EVENT_TYPE_META,
-  INVITATION_SHAPES,
   type InvitationContent,
   type InvitationTemplateMeta,
+  type InvitationVisualMood,
   type InvitationZoneTone,
   type SafeZone,
   type TextMeasurer,
 } from '@/domain/events'
-import type { FamilyEvent, InvitationEventFieldKey, InvitationLayer, InvitationTextAlign } from '@/domain/types'
+import type { EventType, FamilyEvent, InvitationEventFieldKey, InvitationLayer, InvitationTextAlign } from '@/domain/types'
 
 // ---------------------------------------------------------------------------------------------------
 // Familias geométricas (auditoría 2026-09-27, ver memoria de sesión "Auditoría geométrica de las 100
@@ -147,14 +147,21 @@ interface StyleRoleTreatment {
   xOffsetFrac?: number
 }
 
+// Identidad visual (2026-09-28) — configuración de la decoración automática: el icono se ANCLA a TITLE o
+// CLOSING (nunca flota suelto) y se coloca relativo a la caja REAL ya resuelta de ese elemento
+// (`placeAnchoredDecoration`), probando `preferredSide` primero y los otros dos lados después; si ninguno
+// cabe, se omite. Ausente en Clásico (sin decoración automática, como siempre).
+interface DecorationConfig {
+  anchor: 'title' | 'closing'
+  preferredSide: 'right' | 'left' | 'above'
+}
+
 interface StyleTreatment {
   title: StyleRoleTreatment & { curveIdeal: number }
   body: StyleRoleTreatment
   closing: StyleRoleTreatment
   allowDecoration: boolean
-  // Sección 2 (corrección real) — el emoji decorativo se coloca junto al título en vez de flotar aparte
-  // encima de la zona, cuando hay hueco real (ver `placeEmojiBesideTitle`); si no lo hay, se omite.
-  emojiBesideTitle: boolean
+  decoration?: DecorationConfig
   // Sección 1 — separación TITLE/BODY/CLOSING propia del estilo: más aire para una sensación formal
   // (Clásico), menos aire para ganar tamaño y sensación más dinámica (Divertido). Sustituye al antiguo
   // ZONE_MARGIN fijo — `marginForAttempt` sigue encogiéndolo más como paso de adaptación si hace falta.
@@ -165,32 +172,134 @@ interface StyleTreatment {
 // jerarquía de tamaño moderada, separación generosa (aire = sensación formal), decoración contenida (=
 // ninguna automática, igual que ya hacía "clásica" antes de este bloque). El título usa una serifa; el
 // cuerpo se queda en la tipografía base, perfectamente legible; el cierre es más pequeño y en cursiva —
-// diferenciado pero secundario.
-//
-// Sección 20 (corrección real) — DIVERTIDO: composición realmente distinta, no solo tipografía. Título más
-// grande, con curva disponible, ligeramente desplazado dentro de su zona (asimetría controlada); BODY
-// alineado a la izquierda (ragged, look editorial/desenfadado, en vez del centrado de Clásico); CLOSING
-// tratado como protagonista (más grande y en negrita, no secundario como en Clásico); menos margen interno
-// (más denso/dinámico); decoración permitida, con el emoji integrado junto al título. Nunca sacrifica
-// legibilidad en BODY (mismo tamaño base que Clásico) ni invade zonas protegidas — curva/decoración son las
-// PRIMERAS en soltarse si no caben, antes que reducir tamaño (ver `buildAttemptSequence`).
-const STYLE_TREATMENT: Record<AutoComposeStyle, StyleTreatment> = {
-  clasico: {
-    title: { fontFamily: 'Georgia, serif', bold: true, fontSizeSteps: [24, 20, 16], textAlign: 'center', curveIdeal: 0, xOffsetFrac: 0 },
-    body: { fontFamily: 'inherit', bold: false, fontSizeSteps: [15, 13, 11], textAlign: 'center' },
-    closing: { fontFamily: 'inherit', bold: false, italic: true, fontSizeSteps: [13, 12, 11], textAlign: 'center' },
-    allowDecoration: false,
-    emojiBesideTitle: false,
-    margin: { side: 0.07, top: 0.05, bottom: 0.05 },
-  },
-  divertido: {
-    title: { fontFamily: 'inherit', bold: true, fontSizeSteps: [30, 24, 19], textAlign: 'center', curveIdeal: 14, xOffsetFrac: -0.05 },
-    body: { fontFamily: 'inherit', bold: false, fontSizeSteps: [15, 13, 11], textAlign: 'left' },
+// diferenciado pero secundario. Sin cambios en esta revisión ("Clásico: no lo reinventes").
+const CLASICO_TREATMENT: StyleTreatment = {
+  title: { fontFamily: 'Georgia, serif', bold: true, fontSizeSteps: [24, 20, 16], textAlign: 'center', curveIdeal: 0, xOffsetFrac: 0 },
+  body: { fontFamily: 'inherit', bold: false, fontSizeSteps: [15, 13, 11], textAlign: 'center' },
+  closing: { fontFamily: 'inherit', bold: false, italic: true, fontSizeSteps: [13, 12, 11], textAlign: 'center' },
+  allowDecoration: false,
+  margin: { side: 0.07, top: 0.05, bottom: 0.05 },
+}
+
+// Identidad visual de Divertido (2026-09-28, revisión tras aprobación de geometría) — CAUSA de la revisión:
+// con solo un tratamiento fijo (título mayor + curva + desplazamiento fijo + BODY-siempre-left + cierre
+// bold), las seis plantillas de prueba quedaban casi idénticas entre sí — "cambia serif→sans, centrado→
+// izquierda y cursiva→negrita", no una identidad visual real. Sustituido por 3 tratamientos completos
+// (A/B/C) — la personalidad ya NO depende de una sola regla (alineación), sino de una combinación de
+// tipografía/tamaño/jerarquía/color/decoración/desplazamiento, variable por plantilla:
+//   A — Festivo centrado: protagonismo por TAMAÑO (título/cierre más grandes que Clásico) y un icono
+//       centrado ENCIMA del título — todo lo demás centrado y simétrico, la opción más segura.
+//   B — Juguetón asimétrico: título con desplazamiento lateral real (acotado al hueco libre, como ya
+//       garantiza `applyRoleOffsets`) e icono al lado CONTRARIO (compensa visualmente); BODY puede ir a la
+//       izquierda cuando la familia geométrica tiene ancho real de sobra (sección 2 del ajuste aprobado:
+//       "left" es una posibilidad de B, no la característica que define "Divertido" — con menos ancho se
+//       queda centrado, ver `buildDivertidoB`).
+//   C — Celebración: el título más grande de los tres — favorece que rompa a dos líneas por el propio ajuste
+//       de línea que ya existe (nunca un salto de línea artificial), sin curva (pelearía con el wrap), icono
+//       encima del título, cierre el más protagonista.
+// BODY usa el MISMO tamaño en las tres variantes (y el mismo que Clásico) — la lectura nunca es el elemento
+// que aporta la personalidad. Márgenes iguales a las tres (el margen es propiedad del ESTILO, no de la
+// variante) — mismos valores que ya estaban validados.
+const DIVERTIDO_MARGIN = { side: 0.045, top: 0.025, bottom: 0.025 }
+const DIVERTIDO_BODY_ROLE: StyleRoleTreatment = { fontFamily: 'inherit', bold: false, fontSizeSteps: [15, 13, 11], textAlign: 'center' }
+
+const DIVERTIDO_A: StyleTreatment = {
+  title: { fontFamily: 'inherit', bold: true, fontSizeSteps: [28, 23, 18], textAlign: 'center', curveIdeal: 10, xOffsetFrac: 0 },
+  body: DIVERTIDO_BODY_ROLE,
+  closing: { fontFamily: 'inherit', bold: true, fontSizeSteps: [17, 15, 13], textAlign: 'center' },
+  allowDecoration: true,
+  decoration: { anchor: 'title', preferredSide: 'above' },
+  margin: DIVERTIDO_MARGIN,
+}
+
+// Ajuste aprobado — BODY de B es 'left' solo en familias con ancho real de sobra (1: horizontal amplia);
+// en las demás familias donde B es geométricamente compatible (2: vertical amplia, la mayoría de las 100)
+// se queda centrado — "si el centrado queda más limpio, debe poder permanecer centrado", decidido por la
+// misma clasificación geométrica que ya existe, nunca por plantilla.
+function buildDivertidoB(family: GeometryFamily): StyleTreatment {
+  return {
+    title: { fontFamily: 'inherit', bold: true, fontSizeSteps: [29, 24, 19], textAlign: 'center', curveIdeal: 12, xOffsetFrac: -0.06 },
+    body: family === 1 ? { ...DIVERTIDO_BODY_ROLE, textAlign: 'left' } : DIVERTIDO_BODY_ROLE,
     closing: { fontFamily: 'inherit', bold: true, fontSizeSteps: [16, 14, 12], textAlign: 'center' },
     allowDecoration: true,
-    emojiBesideTitle: true,
-    margin: { side: 0.045, top: 0.025, bottom: 0.025 },
-  },
+    decoration: { anchor: 'title', preferredSide: 'right' }, // compensa el desplazamiento hacia la izquierda del título.
+    margin: DIVERTIDO_MARGIN,
+  }
+}
+
+const DIVERTIDO_C: StyleTreatment = {
+  title: { fontFamily: 'inherit', bold: true, fontSizeSteps: [32, 26, 20], textAlign: 'center', curveIdeal: 0, xOffsetFrac: 0 },
+  body: DIVERTIDO_BODY_ROLE,
+  closing: { fontFamily: 'inherit', bold: true, fontSizeSteps: [18, 16, 14], textAlign: 'center' },
+  allowDecoration: true,
+  decoration: { anchor: 'title', preferredSide: 'above' },
+  margin: DIVERTIDO_MARGIN,
+}
+
+export type DivertidoVariant = 'A' | 'B' | 'C'
+
+// Ajuste aprobado, punto 1 — la geometría decide QUÉ variantes son seguras en una plantilla (nunca cuál
+// "queda mejor"); la variante preferida dentro de ese conjunto la decide `visualMood` (sección siguiente).
+// Familias 3/4 (más estrechas, 16 plantillas): solo A. Familia 5 (estrecha y alta, 20 plantillas): A o C —
+// el ancho estrecho ya favorece el ajuste a dos líneas de C sin forzar nada. Familias 1/2 (las más amplias,
+// 64 plantillas): las tres.
+const GEOMETRY_COMPATIBLE_DIVERTIDO_VARIANTS: Record<GeometryFamily, DivertidoVariant[]> = {
+  1: ['A', 'B', 'C'],
+  2: ['A', 'B', 'C'],
+  3: ['A'],
+  4: ['A'],
+  5: ['A', 'C'],
+}
+
+// Ajuste aprobado, punto 1 — clasificación visual DECLARATIVA y pequeña (nunca un sistema de reglas grande,
+// nunca IA): qué variante prefiere cada estado de ánimo, dentro de lo que la geometría ya permite.
+const MOOD_VARIANT_PREFERENCE: Record<InvitationVisualMood, DivertidoVariant[]> = {
+  elegant: ['A', 'C', 'B'],
+  festive: ['B', 'C', 'A'],
+  playful: ['C', 'B', 'A'],
+  soft: ['A', 'C', 'B'],
+}
+
+// "visualMood + tipo de evento" (ajuste aprobado, punto 1) — `template.visualMood` manda cuando la
+// plantilla lo calibra (por ahora, `cumpleanos_elegante`/`clasico`/`alegre`, ver domain/events.ts); para las
+// 97 restantes (todavía sin calibrar), el tipo de evento da un ánimo por defecto razonable en vez de uno
+// fijo para las 100 — tabla pequeña, determinista, nunca aleatoria.
+const EVENT_TYPE_MOOD_HINT: Record<EventType, InvitationVisualMood> = {
+  boda: 'elegant',
+  comunion: 'elegant',
+  bautizo: 'soft',
+  cumpleanos: 'playful',
+  celebracion: 'festive',
+  personalizado: 'festive',
+}
+const DEFAULT_VISUAL_MOOD: InvitationVisualMood = 'festive'
+
+function resolveVisualMood(template: InvitationTemplateMeta, event: Pick<FamilyEvent, 'type'>): InvitationVisualMood {
+  return template.visualMood ?? EVENT_TYPE_MOOD_HINT[event.type] ?? DEFAULT_VISUAL_MOOD
+}
+
+/**
+ * Ajuste aprobado, punto 1 — geometría filtra ("¿qué cabe sin romper la invitación?"), visualMood+evento
+ * elige la preferida dentro de lo compatible ("¿qué estilo queda mejor?"). Determinista: mismos
+ * template/event → misma variante siempre. Nunca `Math.random()`, nunca un `if (template.key === ...)`.
+ */
+export function resolveDivertidoVariant(template: InvitationTemplateMeta, event: Pick<FamilyEvent, 'type'>): DivertidoVariant {
+  const compatible = GEOMETRY_COMPATIBLE_DIVERTIDO_VARIANTS[classifyTemplateGeometry(template)]
+  const mood = resolveVisualMood(template, event)
+  return MOOD_VARIANT_PREFERENCE[mood].find((v) => compatible.includes(v)) ?? 'A'
+}
+
+function buildDivertidoTreatment(variant: DivertidoVariant, family: GeometryFamily): StyleTreatment {
+  if (variant === 'A') return DIVERTIDO_A
+  if (variant === 'B') return buildDivertidoB(family)
+  return DIVERTIDO_C
+}
+
+/** Única función que resuelve QUÉ tratamiento usa un intento — exportada también para pruebas de geometría
+ * (ver invitationAutoCompose.test.ts), que necesitan la MISMA zona efectiva que usó el motor. */
+export function resolveStyleTreatment(style: AutoComposeStyle, template: InvitationTemplateMeta, event: Pick<FamilyEvent, 'type'>): StyleTreatment {
+  if (style === 'clasico') return CLASICO_TREATMENT
+  return buildDivertidoTreatment(resolveDivertidoVariant(template, event), classifyTemplateGeometry(template))
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -301,11 +410,12 @@ export function resolveZones(template: InvitationTemplateMeta): ResolvedZones {
 }
 
 // Márgenes internos de zona (sección 1, 12) — la composición nunca usa el 100% del rectángulo disponible.
-// El margen BASE es propio de cada estilo (`STYLE_TREATMENT[style].margin` — más aire en Clásico, menos en
-// Divertido); la variante compacta lo encoge más todavía para ganar la altura que necesita el contenido —
-// un paso de adaptación más, antes de encoger la letra (ver `buildAttemptSequence`).
-function marginForAttempt(style: AutoComposeStyle, compact: boolean): { side: number; top: number; bottom: number } {
-  const base = STYLE_TREATMENT[style].margin
+// El margen BASE es propio del tratamiento resuelto (`treatment.margin` — más aire en Clásico, menos en
+// Divertido, igual en las 3 variantes A/B/C); la variante compacta lo encoge más todavía para ganar la
+// altura que necesita el contenido — un paso de adaptación más, antes de encoger la letra (ver
+// `buildAttemptSequence`).
+function marginForAttempt(treatment: StyleTreatment, compact: boolean): { side: number; top: number; bottom: number } {
+  const base = treatment.margin
   if (!compact) return base
   return { side: base.side * 0.6, top: base.top * 0.5, bottom: base.bottom * 0.5 }
 }
@@ -328,8 +438,8 @@ function insetZone(zone: SafeZone, margin: { side: number; top: number; bottom: 
 // abajo) para que ambos usen literalmente el mismo número, no una segunda fórmula que pueda divergir con el
 // tiempo. Una capa SIN ese campo (toda invitación guardada antes de este cambio) sigue usando el cálculo
 // heredado en el renderer — compatibilidad explícita, ver InvitationLayer.zoneWidthFrac en domain/types.ts.
-export function resolveEffectiveZone(baseZone: SafeZone, style: AutoComposeStyle, compact: boolean): SafeZone {
-  return insetZone(baseZone, marginForAttempt(style, compact))
+export function resolveEffectiveZone(baseZone: SafeZone, treatment: StyleTreatment, compact: boolean): SafeZone {
+  return insetZone(baseZone, marginForAttempt(treatment, compact))
 }
 
 // Geometría segura (2026-09-28) — tolerancia de PUNTO FLOTANTE/REDONDEO DE PÍXEL, no de diseño: separa "cabe
@@ -467,25 +577,22 @@ function buildPhotoPlacement(shape: 'rect' | 'circle', explicitZone: SafeZone | 
   return { layer, textZone: { x: zone.x, y: textTop, width: zone.width, height: zone.y + zone.height - textTop }, photoZone }
 }
 
-// Sección 22 — decoración (emoji + una forma, mismo catálogo/asociación por tipo de evento que antes: nunca
-// se inventa una asociación nueva). Reutiliza `autoArrangeLayers` para colocarla (icono encima del título,
-// forma en una esquina fuera de la zona de texto) cuando la plantilla no calibra `zones.decoration` —
-// comportamiento de siempre. Cuando sí las calibra (ninguna de las 100 lo hace todavía), se reubica en el
-// centro de esas zonas en vez de las esquinas ciegas.
-function buildDecorationLayers(event: Pick<FamilyEvent, 'type'>): { emoji: InvitationLayer; shape: InvitationLayer } {
+// Identidad visual (2026-09-28) — decoración automática reducida a UN solo icono, el mismo catálogo por
+// tipo de evento que antes (nunca se inventa una asociación nueva). Ya NO se genera la forma/confeti
+// translúcida (`auto-decor-shape`): se apilaba sin ninguna posición intencional junto a título/cuerpo/cierre
+// (nunca anclada a nada) — exactamente la sensación de "algo flotando sin querer" que se pidió eliminar.
+// Sigue disponible como herramienta manual ("◆ Forma"), sin tocar. "Máximo 2, normalmente 1 bastará" — con
+// el icono anclado (`placeAnchoredDecoration`), 1 es suficiente en las tres variantes de Divertido.
+function buildDecorationLayers(event: Pick<FamilyEvent, 'type'>): { emoji: InvitationLayer } {
   const icon = EVENT_TYPE_META[event.type].icon
-  const shapeKey = INVITATION_SHAPES.find((s) => s.key === 'confeti')?.key ?? INVITATION_SHAPES[0].key
-  return {
-    emoji: { id: 'auto-decor-emoji', type: 'emoji', x: 0.5, y: 0.5, rotation: 0, scale: 1, zIndex: 1, text: icon, fontSize: 40 },
-    shape: { id: 'auto-decor-shape', type: 'shape', x: 0.5, y: 0.5, rotation: 0, scale: 1, zIndex: 0, shapeKey, color: '#ffffff', opacity: 0.55, fontSize: 46 },
-  }
+  return { emoji: { id: 'auto-decor-emoji', type: 'emoji', x: 0.5, y: 0.5, rotation: 0, scale: 1, zIndex: 1, text: icon, fontSize: 40 } }
 }
 
 function placeDecorationInZones(layers: InvitationLayer[], decorationZones: SafeZone[]): InvitationLayer[] {
   if (decorationZones.length === 0) return layers
   let i = 0
   return layers.map((l) => {
-    if (l.id !== 'auto-decor-emoji' && l.id !== 'auto-decor-shape') return l
+    if (l.id !== 'auto-decor-emoji') return l
     const zone = decorationZones[i % decorationZones.length]
     i++
     return { ...l, x: zone.x + zone.width / 2, y: zone.y + zone.height / 2 }
@@ -514,8 +621,7 @@ interface RoleOffsetResult {
 // comprueba que la caja real de la capa cabe siquiera CENTRADA en su zona (ancho y alto) — si no cabe, no
 // hay ninguna posición válida que "clampear": se señala como fallo (ver `RoleOffsetResult.fits`) en vez de
 // devolver una posición pegada a un borde que garantiza invadir el lado opuesto.
-function applyRoleOffsets(layers: InvitationLayer[], style: AutoComposeStyle, zone: SafeZone, imageAspect: number, measurer: TextMeasurer | undefined): RoleOffsetResult {
-  const treatment = STYLE_TREATMENT[style]
+function applyRoleOffsets(layers: InvitationLayer[], treatment: StyleTreatment, zone: SafeZone, imageAspect: number, measurer: TextMeasurer | undefined): RoleOffsetResult {
   const roleTreatmentById: Record<string, StyleRoleTreatment> = { 'auto-title': treatment.title, 'auto-body': treatment.body, 'auto-closing': treatment.closing }
   let fits = true
   const outLayers = layers.map((l) => {
@@ -537,25 +643,43 @@ function applyRoleOffsets(layers: InvitationLayer[], style: AutoComposeStyle, zo
   return { layers: outLayers, fits }
 }
 
-// Sección 2 (corrección real) — el emoji decorativo, integrado junto al título en vez de flotar aparte por
-// encima de la zona: se intenta a la derecha del título ya resuelto (posición final, tras apilado y
-// desplazamiento), luego a la izquierda; si ninguna de las dos cabe dentro de la zona, se omite del todo —
-// "si empeora el diseño o no existe una ubicación segura, es preferible no ponerlo" (nunca invade, nunca se
-// fuerza). Solo se llama cuando el estilo lo permite (`emojiBesideTitle`) y no hay `zones.decoration`
-// calibradas a mano (esas tienen prioridad — ver `attemptOnce`).
-function placeEmojiBesideTitle(layers: InvitationLayer[], zone: SafeZone, imageAspect: number, measurer: TextMeasurer | undefined): InvitationLayer[] {
-  const titleLayer = layers.find((l) => l.id === 'auto-title')
+const DECORATION_SIDE_FALLBACK: Record<DecorationConfig['preferredSide'], DecorationConfig['preferredSide'][]> = {
+  above: ['above', 'right', 'left'],
+  right: ['right', 'left', 'above'],
+  left: ['left', 'right', 'above'],
+}
+
+function decorationCandidatePosition(side: DecorationConfig['preferredSide'], anchorLayer: InvitationLayer, anchorBox: { halfWidth: number; halfHeight: number }, decoBox: { halfWidth: number; halfHeight: number }, gap: number): { x: number; y: number } {
+  if (side === 'right') return { x: anchorLayer.x + anchorBox.halfWidth + gap + decoBox.halfWidth, y: anchorLayer.y }
+  if (side === 'left') return { x: anchorLayer.x - anchorBox.halfWidth - gap - decoBox.halfWidth, y: anchorLayer.y }
+  return { x: anchorLayer.x, y: anchorLayer.y - anchorBox.halfHeight - gap - decoBox.halfHeight } // 'above'
+}
+
+// Sección 2, redefinida 2026-09-28 (identidad visual Divertido) — el icono decorativo automático se ANCLA a
+// TITLE o CLOSING (`treatment.decoration.anchor`, nunca flota suelto): se calcula desde la caja REAL ya
+// resuelta del elemento ancla (tras apilado/curva/desplazamiento/tamaño final), probando el lado preferido
+// del tratamiento y, si no cabe, los otros dos, en ese orden; si ninguno cabe dentro de la zona del ancla,
+// se omite del todo — "si empeora el diseño o no existe una ubicación segura, es preferible no ponerlo"
+// (nunca invade, nunca se fuerza). Generaliza `placeEmojiBesideTitle` (derecha→izquierda→omitir) a 3 lados
+// y a poder anclarse también a CLOSING. Solo se llama cuando el tratamiento lo permite
+// (`treatment.decoration`) y no hay `zones.decoration` calibradas a mano (esas tienen prioridad — ver
+// `attemptOnce`).
+function placeAnchoredDecoration(layers: InvitationLayer[], decoration: DecorationConfig | undefined, zonesByRole: Record<'title' | 'body' | 'closing', SafeZone>, imageAspect: number, measurer: TextMeasurer | undefined): InvitationLayer[] {
+  if (!decoration) return layers
+  const anchorLayer = layers.find((l) => l.id === `auto-${decoration.anchor}`)
   const emoji = layers.find((l) => l.id === 'auto-decor-emoji')
-  if (!titleLayer || !emoji) return layers
-  const titleBox = estimateLayerBoxFraction(titleLayer, zone.width, imageAspect, measurer)
+  if (!anchorLayer || !emoji) return layers
+  const zone = zonesByRole[decoration.anchor]
+  const anchorBox = estimateLayerBoxFraction(anchorLayer, zone.width, imageAspect, measurer)
   const emojiBox = estimateLayerBoxFraction(emoji, zone.width, imageAspect, measurer)
   const gap = 0.02
-  const withinZone = (x: number) => x - emojiBox.halfWidth >= zone.x && x + emojiBox.halfWidth <= zone.x + zone.width
-  const rightX = titleLayer.x + titleBox.halfWidth + gap + emojiBox.halfWidth
-  const leftX = titleLayer.x - titleBox.halfWidth - gap - emojiBox.halfWidth
-  const chosenX = withinZone(rightX) ? rightX : withinZone(leftX) ? leftX : null
-  if (chosenX === null) return layers.filter((l) => l.id !== 'auto-decor-emoji') // sin hueco seguro — se omite (sección 2).
-  return layers.map((l) => (l.id === 'auto-decor-emoji' ? { ...l, x: chosenX, y: titleLayer.y } : l))
+  for (const side of DECORATION_SIDE_FALLBACK[decoration.preferredSide]) {
+    const { x, y } = decorationCandidatePosition(side, anchorLayer, anchorBox, emojiBox, gap)
+    if (layerBoundsWithinZone({ ...emoji, x, y }, zone, imageAspect, measurer)) {
+      return layers.map((l) => (l.id === 'auto-decor-emoji' ? { ...l, x, y } : l))
+    }
+  }
+  return layers.filter((l) => l.id !== 'auto-decor-emoji') // sin hueco seguro en ningún lado — se omite (sección 2).
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -594,8 +718,7 @@ interface ComposeAttempt {
 // prescinde del cierre — nunca al revés, y nunca se toca el contenido (título/cuerpo siguen siendo
 // exactamente los mismos en todos los intentos). Las familias geométricas más estrechas (3/4) empiezan
 // directamente en margen compacto — mismo criterio que ya decidía la "receta inicial" antes de este bloque.
-function buildAttemptSequence(style: AutoComposeStyle, family: GeometryFamily): ComposeAttempt[] {
-  const treatment = STYLE_TREATMENT[style]
+function buildAttemptSequence(treatment: StyleTreatment, family: GeometryFamily): ComposeAttempt[] {
   const decorationOptions = treatment.allowDecoration ? [true, false] : [false]
   const curveOptions = treatment.title.curveIdeal > 0 ? [true, false] : [false]
   const compactFirst = family === 3 || family === 4
@@ -618,8 +741,7 @@ function buildAttemptSequence(style: AutoComposeStyle, family: GeometryFamily): 
   return attempts
 }
 
-function buildContentLayers(event: FamilyEvent, content: InvitationContent, style: AutoComposeStyle, template: InvitationTemplateMeta, attempt: ComposeAttempt): InvitationLayer[] {
-  const treatment = STYLE_TREATMENT[style]
+function buildContentLayers(event: FamilyEvent, content: InvitationContent, style: AutoComposeStyle, treatment: StyleTreatment, template: InvitationTemplateMeta, attempt: ComposeAttempt): InvitationLayer[] {
   const titleTextStyle = template.palette?.[style]?.titleTextStyle
   const layers: InvitationLayer[] = []
 
@@ -709,7 +831,7 @@ function stampZoneWidths(layers: InvitationLayer[], zonesByRole: Record<'title' 
   })
 }
 
-function attemptOnce(content: InvitationContent, event: FamilyEvent, template: InvitationTemplateMeta, style: AutoComposeStyle, photoPath: string | undefined, measurer: TextMeasurer | undefined, attempt: ComposeAttempt): AttemptResult {
+function attemptOnce(content: InvitationContent, event: FamilyEvent, template: InvitationTemplateMeta, style: AutoComposeStyle, treatment: StyleTreatment, photoPath: string | undefined, measurer: TextMeasurer | undefined, attempt: ComposeAttempt): AttemptResult {
   const zones = resolveZones(template)
   const family = classifyTemplateGeometry(template)
   const imageAspect = template.imageAspect ?? 1
@@ -729,11 +851,10 @@ function attemptOnce(content: InvitationContent, event: FamilyEvent, template: I
     photoZone = placement.photoZone
   }
 
-  const contentLayers = buildContentLayers(event, content, style, template, attempt)
+  const contentLayers = buildContentLayers(event, content, style, treatment, template, attempt)
   let decorationLayers: InvitationLayer[] = []
   if (attempt.includeDecoration) {
-    const { emoji, shape } = buildDecorationLayers(event)
-    decorationLayers = [emoji, shape]
+    decorationLayers = [buildDecorationLayers(event).emoji]
   }
 
   let textLayers: InvitationLayer[]
@@ -742,45 +863,43 @@ function attemptOnce(content: InvitationContent, event: FamilyEvent, template: I
   let zonesByRole: Record<'title' | 'body' | 'closing', SafeZone>
 
   // Sección 1-2 (corrección real) — tras el apilado vertical de autoArrangeLayers (sin tocar), dos pasadas
-  // de composición propias del estilo: desplazamiento lateral por rol (`applyRoleOffsets`) y, si el estilo
-  // integra el emoji con el título (`emojiBesideTitle`) y la plantilla no calibra `zones.decoration` a mano
-  // (esas tienen prioridad — respetan la decisión explícita del autor de la plantilla), reubicarlo junto al
-  // título en vez de dejarlo flotando aparte.
-  const treatment = STYLE_TREATMENT[style]
-
+  // de composición propias del estilo: desplazamiento lateral por rol (`applyRoleOffsets`) y, si el
+  // tratamiento integra un icono anclado (`treatment.decoration`) y la plantilla no calibra
+  // `zones.decoration` a mano (esas tienen prioridad — respetan la decisión explícita del autor de la
+  // plantilla), reubicarlo junto a su ancla en vez de dejarlo flotando aparte.
   if (sameZone) {
-    const textZone = resolveEffectiveZone(baseTextZone, style, attempt.compact)
+    const textZone = resolveEffectiveZone(baseTextZone, treatment, attempt.compact)
     zonesByRole = { title: textZone, body: textZone, closing: textZone }
     const result = autoArrangeLayers([...contentLayers, ...decorationLayers], textZone, imageAspect, measurer)
-    const offsetResult = applyRoleOffsets(result.layers, style, textZone, imageAspect, measurer)
+    const offsetResult = applyRoleOffsets(result.layers, treatment, textZone, imageAspect, measurer)
     fits = offsetResult.fits
     let arranged = placeDecorationInZones(offsetResult.layers, zones.decoration)
-    if (attempt.includeDecoration && treatment.emojiBesideTitle && zones.decoration.length === 0) {
-      arranged = placeEmojiBesideTitle(arranged, textZone, imageAspect, measurer)
+    if (attempt.includeDecoration && treatment.decoration && zones.decoration.length === 0) {
+      arranged = placeAnchoredDecoration(arranged, treatment.decoration, zonesByRole, imageAspect, measurer)
     }
     textLayers = arranged
     overflowed = result.overflowed
   } else {
-    // Zonas por rol calibradas a mano (`alegre`, desde este mismo cambio) — cada rol se apila en su propio
-    // rectángulo, de forma independiente; la decoración sigue yendo en su propia zona si existe, o se apoya
-    // en la zona de cuerpo como referencia si no.
+    // Zonas por rol calibradas a mano (`alegre`/`clasico`/`cumpleanos_elegante`) — cada rol se apila en su
+    // propio rectángulo, de forma independiente; la decoración sigue yendo en su propia zona si existe, o se
+    // apoya en la zona de cuerpo como referencia si no.
     const titleZone = photoLayer && zones.title === zones.body ? baseTextZone : zones.title
-    const titleInset = resolveEffectiveZone(titleZone, style, attempt.compact)
-    const bodyInset = resolveEffectiveZone(baseTextZone, style, attempt.compact)
-    const closingInset = resolveEffectiveZone(zones.closing, style, attempt.compact)
+    const titleInset = resolveEffectiveZone(titleZone, treatment, attempt.compact)
+    const bodyInset = resolveEffectiveZone(baseTextZone, treatment, attempt.compact)
+    const closingInset = resolveEffectiveZone(zones.closing, treatment, attempt.compact)
     zonesByRole = { title: titleInset, body: bodyInset, closing: closingInset }
     const titleResult = autoArrangeLayers([contentLayers[0]], titleInset, imageAspect, measurer)
     const bodyResult = autoArrangeLayers([contentLayers[1], ...decorationLayers], bodyInset, imageAspect, measurer)
     const closingLayer = contentLayers[2]
     const closingResult = closingLayer ? autoArrangeLayers([closingLayer], closingInset, imageAspect, measurer) : { layers: [], overflowed: false }
-    const titleOffset = applyRoleOffsets(titleResult.layers, style, titleInset, imageAspect, measurer)
-    const bodyOffset = applyRoleOffsets(bodyResult.layers, style, bodyInset, imageAspect, measurer)
-    const closingOffset = applyRoleOffsets(closingResult.layers, style, closingInset, imageAspect, measurer)
+    const titleOffset = applyRoleOffsets(titleResult.layers, treatment, titleInset, imageAspect, measurer)
+    const bodyOffset = applyRoleOffsets(bodyResult.layers, treatment, bodyInset, imageAspect, measurer)
+    const closingOffset = applyRoleOffsets(closingResult.layers, treatment, closingInset, imageAspect, measurer)
     fits = titleOffset.fits && bodyOffset.fits && closingOffset.fits
     const bodyLayers = placeDecorationInZones(bodyOffset.layers, zones.decoration)
     let combined = [...titleOffset.layers, ...bodyLayers, ...closingOffset.layers]
-    if (attempt.includeDecoration && treatment.emojiBesideTitle && zones.decoration.length === 0) {
-      combined = placeEmojiBesideTitle(combined, titleInset, imageAspect, measurer)
+    if (attempt.includeDecoration && treatment.decoration && zones.decoration.length === 0) {
+      combined = placeAnchoredDecoration(combined, treatment.decoration, zonesByRole, imageAspect, measurer)
     }
     textLayers = combined
     overflowed = titleResult.overflowed || bodyResult.overflowed || closingResult.overflowed
@@ -819,6 +938,9 @@ export interface AutoComposeSuccess {
   status: 'success'
   style: AutoComposeStyle
   geometryFamily: GeometryFamily
+  // Identidad visual — qué variante de Divertido se usó (ver `resolveDivertidoVariant`); ausente en Clásico.
+  // Para depuración/tests/verificación visual, nunca para decidir contenido.
+  divertidoVariant?: DivertidoVariant
   // Presentación finalmente aceptada — para depuración/tests, nunca para decidir contenido (ver arriba).
   adaptation: ComposeAttempt
   attemptsTried: number
@@ -852,19 +974,48 @@ export interface ComposeInvitationForMeParams {
  * dio una, y añade decoración cuando el estilo lo permite — siempre a partir de datos reales, nunca a
  * medias (ver AutoComposeFail).
  */
+// Intenta la escalera completa (`buildAttemptSequence`) de UN tratamiento resuelto — extraído para poder
+// reutilizarlo en el último recurso de la sección siguiente (variante preferida → variante A) sin duplicar
+// el bucle.
+function tryTreatmentLadder(content: InvitationContent, event: FamilyEvent, template: InvitationTemplateMeta, style: AutoComposeStyle, treatment: StyleTreatment, geometryFamily: GeometryFamily, photoPath: string | undefined, measurer: TextMeasurer | undefined, imageAspect: number): { layers: InvitationLayer[]; adaptation: ComposeAttempt; tried: number } | { tried: number } {
+  const attempts = buildAttemptSequence(treatment, geometryFamily)
+  let tried = 0
+  for (const attempt of attempts) {
+    tried++
+    const result = attemptOnce(content, event, template, style, treatment, photoPath, measurer, attempt)
+    if (validateComposition(result, template, imageAspect, measurer)) {
+      return { layers: result.layers, adaptation: attempt, tried }
+    }
+  }
+  return { tried }
+}
+
 export function composeInvitationForMe(params: ComposeInvitationForMeParams): AutoComposeResult {
   const { event, template, style, photoPath, measurer } = params
   const content = buildInvitationContent(event)
   const geometryFamily = classifyTemplateGeometry(template)
-  const attempts = buildAttemptSequence(style, geometryFamily)
   const imageAspect = template.imageAspect ?? 1
+  const photoPathOrUndefined = photoPath ?? undefined
+
+  const variant = style === 'divertido' ? resolveDivertidoVariant(template, event) : undefined
+  const treatment = resolveStyleTreatment(style, template, event)
 
   let tried = 0
-  for (const attempt of attempts) {
-    tried++
-    const result = attemptOnce(content, event, template, style, photoPath ?? undefined, measurer, attempt)
-    if (validateComposition(result, template, imageAspect, measurer)) {
-      return { status: 'success', style, geometryFamily, adaptation: attempt, attemptsTried: tried, layers: result.layers }
+  const first = tryTreatmentLadder(content, event, template, style, treatment, geometryFamily, photoPathOrUndefined, measurer, imageAspect)
+  tried += first.tried
+  if ('layers' in first) {
+    return { status: 'success', style, geometryFamily, divertidoVariant: variant, adaptation: first.adaptation, attemptsTried: tried, layers: first.layers }
+  }
+
+  // Último recurso (ajuste aprobado del mandato de identidad visual) — si la variante PREFERIDA agota su
+  // propia escalera sin encajar, un intento final con la escalera de A (la más conservadora) antes de
+  // fallar del todo. Determinista: nunca salta a otra plantilla ni a otro estilo, y sigue pasando por la
+  // MISMA validación de geometría completa que cualquier otro intento.
+  if (variant && variant !== 'A') {
+    const fallback = tryTreatmentLadder(content, event, template, style, DIVERTIDO_A, geometryFamily, photoPathOrUndefined, measurer, imageAspect)
+    tried += fallback.tried
+    if ('layers' in fallback) {
+      return { status: 'success', style, geometryFamily, divertidoVariant: 'A', adaptation: fallback.adaptation, attemptsTried: tried, layers: fallback.layers }
     }
   }
 

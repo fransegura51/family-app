@@ -47,7 +47,14 @@ const FORECAST_PAYMENT_DOCUMENT_PROMPT =
   'un texto suelto en otra parte del documento. Dentro de esa tabla, si hay varias columnas de importe ' +
   '(p. ej. "deuda", "intereses", "importe de cargo/total"), usa el importe que REALMENTE se cobrará de ' +
   'cada cuota (el total de esa fila, normalmente la última columna) para installmentAmount/' +
-  'installmentAmounts — nunca una columna parcial como solo el principal o solo los intereses.\n' +
+  'installmentAmounts — nunca una columna parcial como solo el principal o solo los intereses. Cuenta ' +
+  'TODAS las filas de esa tabla como cuotas, incluida cualquier fila con importe 0€ o de ajuste del primer ' +
+  'periodo (sigue siendo una fila real del calendario, con su propia fecha) — "installmentCount" DEBE ser ' +
+  'exactamente el número de filas que listas en installmentAmounts/installmentDueDates, nunca una cifra de ' +
+  'duración del préstamo en meses/años que hayas leído suelta en otra parte del documento si no coincide ' +
+  'con el número real de filas de la tabla (p. ej. "84 meses" en el texto del contrato y una tabla con 85 ' +
+  'filas no son una contradicción: la tabla incluye una fila de ajuste que el resumen en meses no cuenta — ' +
+  'en ese caso, installmentCount son las 85 filas de la tabla).\n' +
   '"totalAmount" es el importe total financiado, adeudado o pendiente ANTES de repartirlo en cuotas (el ' +
   'CAPITAL — p. ej. una fila o etiqueta explícita como "Importe total del préstamo", "Total financiado", ' +
   '"Capital" o "Total deuda") — usa SIEMPRE esa cifra explícita si el documento la declara en algún sitio ' +

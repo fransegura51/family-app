@@ -102,3 +102,49 @@ describe('ShoppingItemRow — un toque que empieza en un botón real nunca activ
     expect(fn).toContain('e.currentTarget.setPointerCapture(e.pointerId)')
   })
 })
+
+// Captura real en iPhone (2ª ronda) — "el círculo derecho (✓ comprado) sigue activando Eliminar". CAUSA
+// ANTERIOR SUPUESTA (round anterior): un problema de gesto/propagación en handleSwipeStart. CAUSA REAL
+// ENCONTRADA (verificada visualmente con un harness HTML mínimo que carga el CSS real, sin ningún gesto
+// táctil de por medio): NUNCA fue un bug de swipe/pointer. .shopping-row-delete-behind (fondo rojo opaco,
+// var(--error)) se montaba SIEMPRE que !shoppingMode, con translateX en 0 (tapado por completo por el
+// fondo opaco de .shopping-row-inner, var(--bg), así que normalmente invisible). Pero .shopping-item-done
+// aplica `opacity: 0.55` a TODA .shopping-row-inner (fondo incluido) para atenuar el producto — y opacity
+// no aclara colores, hace que el propio elemento (con su fondo) se componga semitransparente sobre lo que
+// tenga detrás en el mismo contexto de apilamiento, dejando asomar el panel rojo por debajo aunque
+// translateX siguiera en 0 y nadie hubiera deslizado nada. Por eso ocurría exactamente al marcar comprado
+// (el instante en que se añade la clase) y por eso los productos YA comprados de otras tiendas también lo
+// mostraban en la misma captura — es una consecuencia de opacity+CSS, no de onClick/propagación/estado de
+// selección. SWIPE_INTENT_THRESHOLD_PX y el guard de handleSwipeStart (arriba) ya eran correctos y no
+// necesitaban ningún cambio.
+describe('ShoppingItemRow — causa raíz real: opacity de "comprado" dejaba asomar el panel de Eliminar por transparencia (no un bug de gesto)', () => {
+  const outerFn = slice(ROW, 'return (\n    <div className="shopping-row-outer"', '\n      <div\n        className=')
+
+  it('.shopping-row-delete-behind solo se monta con un deslizamiento real en curso o ya abierto (translateX !== 0) — nunca solo por estar en modo normal', () => {
+    expect(outerFn).toContain('{!shoppingMode && translateX !== 0 && (')
+    expect(outerFn).toContain('<div className="shopping-row-delete-behind">')
+  })
+
+  it('la condición no depende de "done"/comprado — cubre pendiente→comprado y comprado→pendiente por igual (nunca aparece Eliminar en ningún sentido)', () => {
+    const condition = slice(outerFn, '{!shoppingMode && translateX !== 0 && (', ')}')
+    expect(condition).not.toContain('done')
+    expect(condition).not.toContain('item.status')
+  })
+
+  it('marcar comprado (el <button> shopping-check) nunca toca openX/liveX — no hay ningún efecto secundario sobre el estado de swipe al cambiar de estado', () => {
+    const checkBlock = slice(ROW, "className={'shopping-check'", '</button>')
+    expect(checkBlock).toContain('onClick={() => onSetStatus(item.id, done ? ')
+    expect(checkBlock).not.toContain('setOpenX')
+    expect(checkBlock).not.toContain('setLiveX')
+  })
+
+  it('Modo compra conserva su comportamiento — el panel de Eliminar sigue sin existir nunca ahí, con o sin swipe (no se toca su diseño)', () => {
+    expect(outerFn).toContain('{!shoppingMode && translateX !== 0 && (')
+  })
+
+  it('el mecanismo deliberado de borrado (deslizar hasta abrir) sigue intacto — mismo botón, mismo onDelete, se muestra en cuanto translateX !== 0 de verdad', () => {
+    const panelBlock = slice(outerFn, '{!shoppingMode && translateX !== 0 && (', '\n      )}')
+    expect(panelBlock).toContain('onClick={() => onDelete(item.id)}')
+    expect(panelBlock).toContain('🗑 Eliminar')
+  })
+})

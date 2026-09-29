@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 // movida a `profiles` (por usuario real, mismo patrón que finance_month_start_day).
 const SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx']
 const SETTINGS_SRC = (import.meta.glob('/src/ui/MenuSettingsScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/MenuSettingsScreen.tsx']
+const DATE_RANGES_SRC = (import.meta.glob('/src/domain/dateRanges.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/domain/dateRanges.ts']
 
 function slice(src: string, fromMarker: string, toMarker: string): string {
   const start = src.indexOf(fromMarker)
@@ -89,6 +90,31 @@ describe('Configuración → Filtros temporales — favorito y activar/desactiva
     const toggleFn = slice(fn, 'async function handleToggleActive', '\n\n  if (loading)')
     expect(toggleFn).toContain('prefs.disabled.filter((p) => p !== preset)')
     expect(toggleFn).toContain('[...prefs.disabled, preset]')
+  })
+
+  // Validación real en iPhone: "Mes contable" (id 'mes') SIEMPRE estuvo en DISABLEABLE_SPEND_RANGE_PRESETS
+  // — nunca faltó del catálogo — pero Configuración pintaba PRESET_LABELS['mes'] tal cual ("Este mes", el
+  // rótulo genérico que también usa Compras/Tickets), así que no se reconocía como el mismo filtro que
+  // Economía ya muestra como "Mes contable" (DateFilterTab, FinanceScreen.tsx, su propio `label`). "Mes
+  // contable anterior" sí aparecía porque PRESET_LABELS['mes_anterior'] ya lleva ese texto literal. Mismo
+  // id, mismo filtro, ninguna definición nueva — solo el rótulo local que ya existía en FinanceScreen.tsx,
+  // reutilizado aquí tal cual.
+  it('"mes" se muestra como "Mes contable" (igual que en Economía), nunca como el "Este mes" genérico de PRESET_LABELS', () => {
+    expect(fn).toContain("const label = p === 'mes' ? 'Mes contable' : PRESET_LABELS[p]")
+  })
+
+  it('Configuración muestra tanto "Mes contable" como "Mes contable anterior" — ninguno de los dos se omite', () => {
+    const catalog = slice(DATE_RANGES_SRC, 'export const ALL_SPEND_RANGE_PRESETS: SpendRangePreset[] = [', ']')
+    expect(catalog).toContain("'mes'")
+    expect(catalog).toContain("'mes_anterior'")
+    // Configuración recorre DISABLEABLE_SPEND_RANGE_PRESETS, que solo excluye 'rango' — 'mes' y
+    // 'mes_anterior' están en ALL_SPEND_RANGE_PRESETS, así que ambos quedan dentro.
+    expect(DATE_RANGES_SRC).toContain("DISABLEABLE_SPEND_RANGE_PRESETS: SpendRangePreset[] = ALL_SPEND_RANGE_PRESETS.filter((p) => p !== 'rango')")
+    expect(DATE_RANGES_SRC).toContain("mes_anterior: 'Mes contable anterior'")
+  })
+
+  it('PRESET_LABELS no se toca — Compras/Tickets sigue viendo "Este mes" para el mismo id, sin ningún cambio de comportamiento', () => {
+    expect(DATE_RANGES_SRC).toContain("mes: 'Este mes'")
   })
 })
 

@@ -254,9 +254,17 @@ function DateFilterSettingsSection() {
         {DISABLEABLE_SPEND_RANGE_PRESETS.map((p) => {
           const disabled = prefs.disabled.includes(p)
           const isFavorite = prefs.favorite === p
+          // Auditoría real: "Mes contable" (id 'mes') SÍ estaba en la lista — solo se veía como "Este mes"
+          // (PRESET_LABELS['mes'], el rótulo genérico que también usan Compras/Tickets sin distinción
+          // mes contable/real, ver el comentario junto a SpendRangePreset en dateRanges.ts) y por eso
+          // parecía ausente frente a "Mes contable anterior", que sí lleva ese texto en PRESET_LABELS. Se
+          // reutiliza tal cual el mismo rótulo local que ya usa DateFilterTab (FinanceScreen.tsx, `label`) —
+          // mismo id, mismo filtro, ninguna definición nueva ni duplicada; PRESET_LABELS no se toca (lo
+          // sigue usando Compras con "Este mes", sin cambios).
+          const label = p === 'mes' ? 'Mes contable' : PRESET_LABELS[p]
           return (
             <div key={p} className="inline-fields" style={{ alignItems: 'center' }}>
-              <span style={{ flex: 1, opacity: disabled ? 0.6 : 1 }}>{PRESET_LABELS[p]}</span>
+              <span style={{ flex: 1, opacity: disabled ? 0.6 : 1 }}>{label}</span>
               <button type="button" className={'chip' + (isFavorite ? ' chip-active' : '')} onClick={() => handleFavorite(p)} disabled={disabled}>
                 {isFavorite ? '★ Favorito' : '☆ Favorito'}
               </button>

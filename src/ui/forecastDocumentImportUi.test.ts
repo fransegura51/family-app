@@ -207,6 +207,33 @@ describe('useEffect de regeneración del plan — comprueba primero si hay que p
   })
 })
 
+// BUG REAL (reportado 2026-09-29, pago finito creado a mano) — payment.amount guarda el importe BASE de
+// una cuota (buildFinitePlanSubmission: parentAmount = baseAmount), nunca el total. Usarlo tal cual como
+// "Importe TOTAL" al editar mostraba un importe muchísimo menor que el real, y distributionCheck lo
+// comparaba contra la suma de las líneas (el total real) dándolo siempre por "no cuadra" — bloqueando
+// GUARDAR con "El reparto no cuadra" y forzando el "Plan de pagos" a quedarse siempre expandido, nunca el
+// resumen plegado. initialFinitePlanTotal reconstruye el total real sumando las líneas ya reconstruidas.
+describe('amount inicial al editar un plan finito ya guardado — se reconstruye el TOTAL real, nunca se reutiliza payment.amount (la base por cuota) tal cual', () => {
+  it('initialFinitePlanTotal suma las líneas reconstruidas (parseFinitePlanLinesFromSaved), tratando una línea "unknown" como 0 — igual que distributionCheck', () => {
+    expect(SRC).toContain('const initialFinitePlanTotal = (() => {')
+    expect(SRC).toContain(
+      'const lines = parseFinitePlanLinesFromSaved(payment.dueDate, freq, interval, validated.count, payment.amountStatus, payment.amount, payment.amountEstimatedBasis, overrides)',
+    )
+    expect(SRC).toContain("const totalCents = lines.reduce((sum, l) => sum + (l.amountStatus === 'unknown' ? 0 : (eurosStringToCents(l.amount) ?? 0)), 0)")
+  })
+
+  it('el estado `amount` usa initialFinitePlanTotal cuando existe, nunca payment.amount directamente para un plan finito', () => {
+    const fn = slice(SRC, 'const initialFinitePlanTotal = (() => {', '\n  const [amountBasis')
+    expect(fn).toContain('const [amount, setAmount] = useState(')
+    expect(fn).toContain('initialFinitePlanTotal != null ? String(initialFinitePlanTotal)')
+  })
+
+  it('planSignatureRef se siembra con el MISMO total reconstruido — si no coincidiera con `amount`, el useEffect regeneraría el plan entero nada más montar el formulario', () => {
+    const fn = slice(SRC, 'const planSignatureRef = useRef(', '\n  // BUG REAL (documento BBVA real, 85 cuotas)')
+    expect(fn).toContain("initialFinitePlanTotal != null ? String(initialFinitePlanTotal) : payment.amount != null ? String(payment.amount) : ''")
+  })
+})
+
 // "Ponlo en marcha" (petición del usuario, 2026-09-29) — "la gente es muy perezosa", prioriza comodidad
 // sobre exactitud: (A) permite indicar el importe de CADA cuota en vez de calcular el TOTAL; (B) el
 // "Plan de pagos" empieza plegado en un resumen agrupado, no en una tarjeta por cada una de las N cuotas.

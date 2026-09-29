@@ -10084,7 +10084,28 @@ function ForecastPaymentForm({
   // abre en "Pendiente" en vez de "Estimado": la restricción de la base de datos exige un importe no nulo
   // para 'estimated', y forzar un 0 sería inventar un dato que el documento no daba.
   const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? 'estimated' : 'unknown') : 'known'))
-  const [amount, setAmount] = useState(payment?.amount != null ? String(payment.amount) : prefill?.amount != null ? String(prefill.amount) : '')
+  // BUG REAL (reportado 2026-09-29, pago finito creado a mano) — payment.amount guarda el importe BASE de
+  // UNA cuota (ver buildFinitePlanSubmission: parentAmount = baseAmount, nunca el total), no el total del
+  // plan. Usarlo tal cual como "Importe TOTAL" al editar mostraba, p. ej., 150€ en vez de 1800€ para un
+  // plan de 12×150€ — y además rompía distributionCheck (comparaba 150€ contra la suma real de las 12
+  // líneas, 1800€, dando siempre "no cuadra"), lo que bloqueaba GUARDAR ("El reparto no cuadra") y forzaba
+  // el "Plan de pagos" a quedarse siempre expandido en vez de mostrar el resumen plegado. Se reconstruye
+  // aquí el TOTAL real como la suma de las líneas ya reconstruidas (parentAmount + overrides reales) —
+  // exactamente lo mismo que parseFinitePlanLinesFromSaved calcula más abajo para "planLines".
+  const initialFinitePlanTotal = (() => {
+    if (!payment) return null
+    const initial = parseRecurrenceRuleToFormState(payment.recurrenceRule ?? null, payment.dueDate)
+    if (!initial.repeats || initial.untilMode !== 'count' || payment.amountStatus === 'unknown') return null
+    const validated = validateInstallmentCount(initial.installmentCount)
+    if (!validated.ok) return null
+    const { freq, interval } = resolvedFreqInterval(initial.freqOption, initial.customFreq, initial.customInterval)
+    const lines = parseFinitePlanLinesFromSaved(payment.dueDate, freq, interval, validated.count, payment.amountStatus, payment.amount, payment.amountEstimatedBasis, overrides)
+    const totalCents = lines.reduce((sum, l) => sum + (l.amountStatus === 'unknown' ? 0 : (eurosStringToCents(l.amount) ?? 0)), 0)
+    return totalCents / 100
+  })()
+  const [amount, setAmount] = useState(
+    initialFinitePlanTotal != null ? String(initialFinitePlanTotal) : payment?.amount != null ? String(payment.amount) : prefill?.amount != null ? String(prefill.amount) : '',
+  )
   const [amountBasis, setAmountBasis] = useState(payment?.amountEstimatedBasis ?? prefill?.amountEstimatedBasis ?? '')
   const [currency, setCurrency] = useState(payment?.currency ?? 'EUR')
   const [dueDate, setDueDate] = useState(payment?.dueDate ?? prefill?.dueDate ?? '')
@@ -10223,7 +10244,11 @@ function ForecastPaymentForm({
           initialRecurrence.customInterval,
           payment.dueDate,
           payment.amountStatus,
-          payment.amount != null ? String(payment.amount) : '',
+          // Debe coincidir EXACTAMENTE con el valor inicial de `amount` (initialFinitePlanTotal, la suma
+          // real de las líneas — ver el BUG REAL justo arriba) — nunca payment.amount (la base por cuota),
+          // o esta firma no coincidiría con la primera signature calculada en vivo y el useEffect de más
+          // abajo regeneraría el plan entero (perdiendo overrides reales) nada más montar el formulario.
+          initialFinitePlanTotal != null ? String(initialFinitePlanTotal) : payment.amount != null ? String(payment.amount) : '',
           payment.amountEstimatedBasis ?? '',
         )
       : hasRealAmounts || hasRealDates

@@ -1874,6 +1874,20 @@ function ShoppingItemRow({
 
   function handleSwipeStart(e: ReactPointerEvent) {
     if (shoppingMode) return
+    // Causa real (confirmada en iPhone real, no solo con una página de prueba aislada): este onPointerDown
+    // vive en la FILA entera, así que un toque que empieza en el nombre/el check/el ojo (botones internos,
+    // sin su propio onPointerDown) BURBUJEABA hasta aquí igual que un toque en zona en blanco — y esta
+    // función capturaba el puntero EN LA FILA (setPointerCapture) para CUALQUIER toque, incluido uno que
+    // empezaba justo encima de un botón. El umbral de movimiento (SWIPE_INTENT_THRESHOLD_PX, corrección
+    // anterior) evita que ese toque ABRA visualmente el swipe, pero no evita que la fila capture el puntero
+    // de todas formas — y esa captura del ANCESTRO durante un toque que empezó en un DESCENDIENTE <button>
+    // es justo el tipo de interacción que Safari/iOS trata de forma distinta a Chrome de escritorio (por
+    // eso una página de prueba aislada con eventos sintéticos no lo reproducía). Arreglo estructural, no un
+    // ajuste de umbral: si el toque empieza dentro de un control interactivo real (botón/enlace/input), el
+    // gesto de swipe ni siquiera se inicia aquí — el control recibe el toque tal cual, sin que la fila
+    // capture nada. Mismo criterio que ya usaba el tirador de arrastrar (stopPropagation propio), aplicado
+    // aquí de raíz en vez de repetirlo botón por botón.
+    if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return
     swipeStartX.current = e.clientX
     swiping.current = true
     swipeIntent.current = false

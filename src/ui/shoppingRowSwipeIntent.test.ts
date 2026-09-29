@@ -50,3 +50,55 @@ describe('ShoppingItemRow — un toque no debe abrir el swipe de Eliminar (marge
     expect(fn).toContain('setLiveX(Math.min(0, Math.max(SWIPE_OPEN_X, openX + dx)))')
   })
 })
+
+// Diagnóstico real en iPhone (validación real): el umbral de arriba NO resolvió el bug — seguía pudiendo
+// activarse Eliminar al tocar un producto. CAUSA ANTERIOR SUPUESTA: temblor del dedo sin margen mínimo.
+// CAUSA REAL ENCONTRADA: handleSwipeStart vive en la FILA entera (onPointerDown de .shopping-row-inner);
+// un toque que empieza en el nombre/el check/el ojo (botones internos SIN su propio onPointerDown)
+// burbujeaba hasta la fila igual que un toque en zona en blanco, y la fila SIEMPRE llamaba a
+// setPointerCapture sobre sí misma para ESE puntero — incluso cuando el toque había empezado encima de un
+// <button>. El umbral evita que ese toque ABRA visualmente el swipe, pero no evita la captura del puntero
+// en el ancestro durante un toque que empezó en un descendiente interactivo — justo el tipo de secuencia
+// que Safari/iOS trata de forma distinta a la emulación de escritorio (por eso la página de prueba aislada
+// de la corrección anterior, con eventos sintéticos y sin botones reales de por medio, no lo reproducía).
+// POR QUÉ a849da6 NO LO RESOLVIÓ: el umbral solo protege el CÁLCULO de si la fila debe deslizarse
+// visualmente — nunca evitó que la fila capturara el puntero de un toque que había empezado en un botón.
+// CORRECCIÓN: handleSwipeStart ahora comprueba el target real ANTES de hacer nada — si el toque empieza
+// dentro de un control interactivo (botón/enlace/input), el gesto de swipe ni se inicia (no hay
+// setPointerCapture, no hay swiping.current=true): el control recibe el toque sin ninguna interferencia de
+// la fila. Mismo criterio que ya usaba el tirador de arrastrar (su propio stopPropagation), aplicado aquí
+// de raíz para los 3 botones que no lo tenían (nombre, check, ojo), sin repetirlo uno por uno.
+describe('ShoppingItemRow — un toque que empieza en un botón real nunca activa el swipe de la fila (causa real, no un ajuste de umbral)', () => {
+  it('handleSwipeStart comprueba el target ANTES de capturar el puntero — un toque dentro de un botón/enlace/input corta aquí, sin tocar swiping/swipeIntent/setPointerCapture', () => {
+    const fn = slice(ROW, 'function handleSwipeStart', '\n  function handleSwipeMove')
+    expect(fn).toContain("if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return")
+    // El guard debe estar ANTES de la llamada real a setPointerCapture (si estuviera después, ya sería
+    // demasiado tarde) — se busca la llamada completa, no la palabra suelta (que también aparece en el
+    // comentario explicativo de más arriba, antes del propio guard).
+    expect(fn.indexOf("closest('button, a, input, select, textarea')")).toBeLessThan(fn.indexOf('e.currentTarget.setPointerCapture(e.pointerId)'))
+  })
+
+  it('el guard cubre los 3 botones reales de la fila que no tienen su propio onPointerDown (nombre, check, ojo) — ninguno necesita protegerse uno por uno', () => {
+    expect(ROW).toContain('className="price-row-name price-row-name-button"')
+    expect(ROW).toContain("className={'shopping-check'")
+    expect(ROW).toContain('aria-label={`Ver foto de ${item.name}`}')
+    // Confirmación de que estos 3 botones dependen del guard centralizado en handleSwipeStart — ninguno
+    // lleva su propio onPointerDown (a diferencia del tirador de arrastrar, que sí tiene el suyo, más abajo).
+    const nameBlock = slice(ROW, 'className="price-row-name price-row-name-button"', '</button>')
+    expect(nameBlock).not.toContain('onPointerDown')
+    const checkBlock = slice(ROW, "className={'shopping-check'", '</button>')
+    expect(checkBlock).not.toContain('onPointerDown')
+  })
+
+  it('el tirador de arrastrar sigue con su propio stopPropagation (sin cambios) — el guard nuevo es complementario, no lo sustituye', () => {
+    const handleBlock = slice(ROW, 'className="shopping-drag-handle"', '</span>')
+    expect(handleBlock).toContain('e.stopPropagation()')
+  })
+
+  it('un gesto que empieza en zona en blanco de la fila (no en un botón) sigue entrando en handleSwipeStart con normalidad — el guard no bloquea el swipe real', () => {
+    const fn = slice(ROW, 'function handleSwipeStart', '\n  function handleSwipeMove')
+    expect(fn).toContain('swipeStartX.current = e.clientX')
+    expect(fn).toContain('swiping.current = true')
+    expect(fn).toContain('e.currentTarget.setPointerCapture(e.pointerId)')
+  })
+})

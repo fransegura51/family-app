@@ -10176,6 +10176,14 @@ function ForecastPaymentForm({
   // editar un plan ya guardado se reconstruye con parseFinitePlanLinesFromSaved (importe base del padre
   // + overrides reales de forecast_occurrences) — nunca se genera una propuesta nueva desde cero solo
   // por abrir el formulario.
+  // "Importar desde foto o documento" — si el propio documento listaba cuotas de importe DISTINTO entre sí
+  // (nunca un reparto inventado a partes iguales) y/o fechas reales de cada cuota (BUG REAL, documento
+  // SUMA: una fecha irregular, p. ej. la 2ª cuota dos días más tarde, se perdía siempre porque el plan solo
+  // sabía anclar la primera fecha y repetir por periodicidad pura). Declarado FUERA del useState de abajo
+  // (no solo dentro de su callback) porque planSignatureRef también lo necesita, para no repetir el cálculo
+  // — ver el BUG REAL de esa firma justo debajo.
+  const hasRealAmounts = !payment && !!prefill?.installmentAmounts && prefill.installmentAmounts.length > 1 && initialRecurrence.repeats && initialRecurrence.untilMode === 'count'
+  const hasRealDates = !payment && !!prefill?.installmentDueDates && prefill.installmentDueDates.length > 1 && initialRecurrence.repeats && initialRecurrence.untilMode === 'count'
   const [planLines, setPlanLines] = useState<ForecastPlanLineFormRow[]>(() => {
     if (payment && initialRecurrence.repeats && initialRecurrence.untilMode === 'count') {
       const validated = validateInstallmentCount(initialRecurrence.installmentCount)
@@ -10184,18 +10192,12 @@ function ForecastPaymentForm({
         return parseFinitePlanLinesFromSaved(payment.dueDate, freq, interval, validated.count, payment.amountStatus, payment.amount, payment.amountEstimatedBasis, overrides)
       }
     }
-    // "Importar desde foto o documento" — si el propio documento listaba cuotas de importe DISTINTO entre
-    // sí (nunca un reparto inventado a partes iguales) y/o fechas reales de cada cuota (BUG REAL, documento
-    // SUMA: una fecha irregular, p. ej. la 2ª cuota dos días más tarde, se perdía siempre porque el plan
-    // solo sabía anclar la primera fecha y repetir por periodicidad pura), cada línea se prefill con SU
-    // importe/fecha real — nunca forzados a un reparto uniforme o a una recurrencia pura cuando el propio
-    // documento ya decía otra cosa. Se parte SIEMPRE de proposeFinitePlanLines (mismo motor de reparto en
-    // céntimos que usa el resto de Previsión — prefill.amount ya es el TOTAL, nunca una cuota ya dividida,
-    // ver buildForecastDocumentPrefillFields) y solo se sobrescribe, línea a línea, lo que el documento
-    // realmente listaba — lo demás queda con el reparto uniforme propuesto, editable como siempre.
-    const hasRealAmounts = !!prefill?.installmentAmounts && prefill.installmentAmounts.length > 1
-    const hasRealDates = !!prefill?.installmentDueDates && prefill.installmentDueDates.length > 1
-    if (!payment && prefill && (hasRealAmounts || hasRealDates) && initialRecurrence.repeats && initialRecurrence.untilMode === 'count') {
+    // Cada línea se prefill con SU importe/fecha real — nunca forzados a un reparto uniforme o a una
+    // recurrencia pura cuando el propio documento ya decía otra cosa. Se parte SIEMPRE de
+    // proposeFinitePlanLines (mismo motor de reparto en céntimos que usa el resto de Previsión —
+    // prefill.amount ya es el TOTAL, nunca una cuota ya dividida, ver buildForecastDocumentPrefillFields) y
+    // solo se sobrescribe, línea a línea, lo que el documento realmente listaba.
+    if (prefill && (hasRealAmounts || hasRealDates)) {
       const { freq, interval } = resolvedFreqInterval(initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval)
       const validated = validateInstallmentCount(initialRecurrence.installmentCount)
       if (validated.ok) {
@@ -10212,6 +10214,13 @@ function ForecastPaymentForm({
     }
     return []
   })
+  // BUG REAL (2ª prueba real, documento SUMA) — esta firma solo se sembraba para el caso "editar un pago ya
+  // guardado" (payment). Para una previsión NUEVA con cuotas/fechas reales del documento (justo arriba),
+  // quedaba en '' — y el useEffect de más abajo (que reconstruye planLines cuando cambia el total/nº de
+  // cuotas) SIEMPRE se dispara al montar el formulario, porque cualquier firma real es distinta de ''. Eso
+  // sobreescribía en silencio, nada más abrir el formulario, el plan recién construido con los importes y
+  // fechas reales por un reparto uniforme + recurrencia pura — exactamente el síntoma reportado (144,76€ ×
+  // 6 y 05/12 en vez de 07/12) a pesar de que la propuesta ya llegaba correcta hasta aquí.
   const planSignatureRef = useRef(
     payment && initialRecurrence.repeats && initialRecurrence.untilMode === 'count'
       ? computeFinitePlanSignature(
@@ -10224,7 +10233,9 @@ function ForecastPaymentForm({
           payment.amount != null ? String(payment.amount) : '',
           payment.amountEstimatedBasis ?? '',
         )
-      : '',
+      : hasRealAmounts || hasRealDates
+        ? computeFinitePlanSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate, amountStatus, amount, amountBasis)
+        : '',
   )
   const [reminders, setReminders] = useState<{ value: number; unit: ForecastReminderUnit }[]>(
     payment?.reminders.map((r) => ({ value: r.value, unit: r.unit })) ?? [],

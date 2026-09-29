@@ -123,7 +123,7 @@ describe('ForecastPaymentPrefill — amount ahora admite null (documento sin imp
 // correcto. Estos tests fijan que, tras el arreglo, ese bloque SIEMPRE parte de proposeFinitePlanLines y
 // solo sobrescribe línea a línea lo que el documento realmente listaba (importes y/o fechas reales).
 describe('planLines (precarga) — "Importar desde foto o documento" reutiliza proposeFinitePlanLines, nunca reparte el total a mano', () => {
-  const fn = slice(SRC, 'const [planLines, setPlanLines] = useState<ForecastPlanLineFormRow[]>(() => {', '\n  const planSignatureRef = useRef(')
+  const fn = slice(SRC, 'const hasRealAmounts =', '\n  const planSignatureRef = useRef(')
 
   it('el bloque de "Importar desde foto o documento" parte de proposeFinitePlanLines — nunca de un .map directo sobre installmentAmounts (el bug real: eso repartía el total dos veces)', () => {
     expect(fn).toContain('proposeFinitePlanLines(dueDate, freq, interval, validated.count, amountStatus, prefill.amount, prefill.amountEstimatedBasis)')
@@ -131,7 +131,7 @@ describe('planLines (precarga) — "Importar desde foto o documento" reutiliza p
   })
 
   it('las fechas reales del documento (installmentDueDates) sustituyen a las de la recurrencia SOLO cuando su número coincide con el de cuotas', () => {
-    expect(fn).toContain('hasRealDates = !!prefill?.installmentDueDates && prefill.installmentDueDates.length > 1')
+    expect(fn).toContain('hasRealDates = !payment && !!prefill?.installmentDueDates && prefill.installmentDueDates.length > 1')
     expect(fn).toContain('realDates = hasRealDates && prefill.installmentDueDates!.length === validated.count ? prefill.installmentDueDates! : null')
     expect(fn).toContain('date: realDates ? realDates[i] : line.date')
   })
@@ -142,7 +142,28 @@ describe('planLines (precarga) — "Importar desde foto o documento" reutiliza p
   })
 
   it('se dispara con solo fechas reales, o solo importes reales, o ambos — nunca exige los dos a la vez', () => {
-    expect(fn).toContain('(hasRealAmounts || hasRealDates)')
+    expect(fn).toContain('if (prefill && (hasRealAmounts || hasRealDates)) {')
+  })
+})
+
+// BUG REAL — 3ª prueba real (documento SUMA, tras corregir la doble división): el diagnóstico (Etapa
+// C/D) demostró que buildForecastDocumentPrefillFields YA entregaba installmentAmounts/installmentDueDates
+// completos y correctos — el "Plan de pagos" seguía mostrando 144,76€ × 6 y 05/12 en vez de 07/12 de
+// todos modos. Causa real, demostrada leyendo el código (no otra hipótesis): planSignatureRef solo se
+// sembraba para el caso "editar un pago ya guardado" (payment) — para una previsión NUEVA quedaba en '',
+// así que el useEffect que reconstruye planLines cuando cambia el total/nº de cuotas SIEMPRE se disparaba
+// al montar el formulario (cualquier firma real es distinta de ''), sobreescribiendo en silencio el plan
+// recién construido con los importes/fechas reales por un reparto uniforme + recurrencia pura.
+describe('planSignatureRef — se siembra también para una previsión NUEVA con cuotas/fechas reales (BUG REAL: si no, el useEffect posterior sobreescribe el plan recién construido nada más montar)', () => {
+  const fn = slice(SRC, 'const planSignatureRef = useRef(', '\n  const [reminders, setReminders] = useState<')
+
+  it('cuando hay importes y/o fechas reales del documento, la firma inicial se calcula con los MISMOS valores que usará el plan recién construido (dueDate/amountStatus/amount/amountBasis actuales) — nunca se deja en \'\'', () => {
+    expect(fn).toContain('hasRealAmounts || hasRealDates')
+    expect(fn).toContain('computeFinitePlanSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate, amountStatus, amount, amountBasis)')
+  })
+
+  it('el caso de editar un pago ya guardado (payment) sigue igual — esta firma nunca lo toca', () => {
+    expect(fn.indexOf('payment && initialRecurrence.repeats')).toBeLessThan(fn.indexOf('hasRealAmounts || hasRealDates'))
   })
 })
 

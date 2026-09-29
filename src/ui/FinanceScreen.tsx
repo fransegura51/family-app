@@ -134,6 +134,7 @@ import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
 import { subscribeBudgetsChanged } from '@/state/budgetsChanged'
 import { getChartColorTheme } from '@/state/colorTheme'
+import { loadFavoriteDateFilterPreset, saveFavoriteDateFilterPreset } from '@/state/dateFilterPreset'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -1202,7 +1203,7 @@ function BalanceTrendCard() {
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [loading, setLoading] = useState(true)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [preset, setPreset] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)
   const [customFrom, setCustomFrom] = useState(toDateStrLocal(new Date()))
   const [customTo, setCustomTo] = useState(toDateStrLocal(new Date()))
 
@@ -1598,7 +1599,7 @@ function BankTab({
   // no veo ningún filtro" — misma pestaña "📅 Fecha" desplegable que
   // Resumen/Estadísticas/Presupuesto, aquí sobre los movimientos ya
   // enlazados a gastos.
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [preset, setPreset] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   // Petición real: "que me pongas una pestaña que sea gastos fijos,
@@ -1977,6 +1978,11 @@ function DateFilterTab({
   onCustomToChange: (d: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  // Bloque 5 (cola nocturna) — favorito persistido (localStorage), DISTINTO del `preset` de la sesión
+  // (que sigue viniendo de fuera, por pantalla, como siempre): solo cambia con "☆ Marcar como favorito",
+  // nunca solo por elegir un filtro para esta vez. `favorite` se relee al abrir el desplegable (no hace
+  // falta un evento global como movementColorMode: cada pantalla ya vuelve a montar este mismo control).
+  const [favorite, setFavoriteState] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)
   const presets: SpendRangePreset[] = ['dia', 'semana', 'mes', 'mes_real', 'año', 'rango']
   const label = (p: SpendRangePreset) => (p === 'mes' ? 'Mes contable' : PRESET_LABELS[p])
 
@@ -2000,6 +2006,22 @@ function DateFilterTab({
               {label(p)}
             </button>
           ))}
+          {/* "Rango de fecha" no se puede guardar como favorito (domain/dateFilterPreset.ts lo rechaza) —
+              un desde/hasta concreto deja de tener sentido pasado el tiempo. */}
+          {preset !== 'rango' && (
+            <button
+              type="button"
+              className="link-button"
+              style={{ margin: '6px 12px', fontSize: 12 }}
+              disabled={favorite === preset}
+              onClick={() => {
+                saveFavoriteDateFilterPreset(preset)
+                setFavoriteState(preset)
+              }}
+            >
+              {favorite === preset ? `☆ Favorito: ${label(preset)}` : `☆ Marcar "${label(preset)}" como favorito`}
+            </button>
+          )}
           {preset === 'rango' && (
             <div className="inline-fields" style={{ padding: '10px 12px' }}>
               <label>
@@ -2038,7 +2060,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const [resolvedTransferOut, setResolvedTransferOut] = useState<ResolvedInternalTransferDestination[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [preset, setPreset] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
@@ -2936,7 +2958,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   const [allReceipts, setAllReceipts] = useState<Receipt[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [preset, setPreset] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [view, setView] = useState<'categorias' | 'etiquetas' | 'dnq' | 'fijo'>('categorias')
@@ -3447,7 +3469,7 @@ function ExpensesTab({
   // Resumen, Estadísticas, Banco y Presupuesto Generales, en vez de la
   // navegación ‹ Mes › propia de esta pantalla. Se ignora mientras haya
   // un `filter` activo (viene de "Ver X registros →" en Estadísticas).
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [preset, setPreset] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
@@ -4960,7 +4982,7 @@ export function ReceiptsTab() {
   // defecto, solo el nombre/total a la vista; tocar la carpeta la
   // abre. Empieza vacío (todas plegadas) hasta que se toque alguna.
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
-  const [rangePreset, setRangePreset] = useState<SpendRangePreset>('mes')
+  const [rangePreset, setRangePreset] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)
   const [rangeCustomFrom, setRangeCustomFrom] = useState(toDateStr(new Date()))
   const [rangeCustomTo, setRangeCustomTo] = useState(toDateStr(new Date()))
 
@@ -6774,7 +6796,7 @@ export function BudgetsTab({
   // navegación ‹ Mes › de aquí y el propio "Fecha" de BudgetsOverview),
   // que podían quedar desincronizados. Ahora uno solo, para toda la
   // pestaña — mismo componente que ya se usaba en Resumen.
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+  const [preset, setPreset] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)
   const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)

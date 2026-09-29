@@ -199,7 +199,13 @@ import {
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto, type MeasurementUnit } from '@/services/receiptPhoto'
 import { analyzeForecastDocument, sha256HexOfFile, sha256HexOfText } from '@/services/forecastDocument'
-import { buildForecastContentFingerprintBasis, buildForecastDocumentPrefillFields, isEmptyForecastDocumentScan } from '@/domain/forecastDocumentImport'
+import {
+  buildForecastContentFingerprintBasis,
+  buildForecastDocumentPrefillFields,
+  isEmptyForecastDocumentScan,
+  type ForecastDocumentPrefillFields,
+  type ForecastDocumentScanResult,
+} from '@/domain/forecastDocumentImport'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
@@ -9676,9 +9682,17 @@ function ForecastDocumentImportModal({
   onContinueManually: () => void
 }) {
   const [file, setFile] = useState<File | null>(null)
-  const [status, setStatus] = useState<'idle' | 'checking' | 'analyzing' | 'duplicate' | 'empty' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'checking' | 'analyzing' | 'duplicate' | 'empty' | 'error' | 'debug'>('idle')
   const [duplicate, setDuplicate] = useState<ForecastPaymentDuplicateMatch | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // INSTRUMENTACIÓN TEMPORAL (2ª prueba real, documento SUMA — tras corregir la doble división del total,
+  // los importes/fechas de cada cuota individual seguían sin coincidir con el documento). Muestra lo que
+  // devuelve/decide cada etapa DEL CLIENTE antes de abrir el formulario (Etapa C: lo que llega del
+  // servicio; Etapa D: lo que construye buildForecastDocumentPrefillFields), para compararlo con los logs
+  // de la Edge Function (Etapa A/B, "[DEBUG forecastPaymentDocument]") y con el "Plan de pagos" ya visible
+  // en el formulario (Etapa E). Nunca queda en producción: se retira en cuanto se demuestre la causa real.
+  const [debugInfo, setDebugInfo] = useState<{ scan: ForecastDocumentScanResult; fields: ForecastDocumentPrefillFields } | null>(null)
+  const [pendingPrefill, setPendingPrefill] = useState<ForecastPaymentPrefill | null>(null)
 
   async function handleFile(picked: File | null) {
     setFile(picked)
@@ -9718,13 +9732,15 @@ function ForecastDocumentImportModal({
       }
 
       const fields = buildForecastDocumentPrefillFields(scan)
-      onPrefillReady({
+      setDebugInfo({ scan, fields })
+      setPendingPrefill({
         ...fields,
         bankAccountId: '',
         sourceFile: picked,
         sourceFileHash,
         contentFingerprint,
       })
+      setStatus('debug')
     } catch (err) {
       setError(errorMessage(err, 'No se pudo analizar el documento'))
       setStatus('error')
@@ -9735,6 +9751,8 @@ function ForecastDocumentImportModal({
     setFile(null)
     setDuplicate(null)
     setError(null)
+    setDebugInfo(null)
+    setPendingPrefill(null)
     setStatus('idle')
   }
 
@@ -9791,6 +9809,28 @@ function ForecastDocumentImportModal({
               )}
               <button type="button" className="link-button" onClick={onContinueManually}>
                 Continuar a mano
+              </button>
+            </div>
+          </div>
+        )}
+        {/* INSTRUMENTACIÓN TEMPORAL — ver comentario en el useState de debugInfo. Se retira tras diagnosticar. */}
+        {status === 'debug' && debugInfo && pendingPrefill && (
+          <div>
+            <p className="muted" style={{ fontSize: 13 }}>
+              🔧 Diagnóstico temporal — haz una captura de esta pantalla antes de pulsar "Continuar", y otra del
+              "Plan de pagos" cuando se abra a continuación.
+            </p>
+            <pre className="card" style={{ fontSize: 11, whiteSpace: 'pre-wrap', padding: 10, maxHeight: 320, overflow: 'auto' }}>
+              {'Etapa C — lo que devolvió analyzeForecastDocument:\n' + JSON.stringify(debugInfo.scan, null, 2)}
+              {'\n\nEtapa D — lo que construyó buildForecastDocumentPrefillFields:\n' +
+                JSON.stringify({ ...debugInfo.fields, amountEstimatedBasis: undefined }, null, 2)}
+            </pre>
+            <div className="form-actions">
+              <button type="button" onClick={() => onPrefillReady(pendingPrefill)}>
+                Continuar
+              </button>
+              <button type="button" className="link-button" onClick={reset}>
+                Probar con otro documento
               </button>
             </div>
           </div>
@@ -9990,6 +10030,10 @@ export interface ForecastPaymentPrefill {
   // "Importar desde foto o documento" — aviso opcional cuando el total leído y lo que implican las cuotas
   // no cuadran entre sí (ver buildForecastDocumentPrefillFields). Nunca bloquea, solo informa.
   amountReviewNote?: string | null
+  // "No aceptar fallback silencioso" — aviso opcional cuando se detecta un plan de varias cuotas pero el
+  // documento no dejó leer con seguridad todos los importes y/o fechas: el plan mostrado es un cálculo
+  // (reparto uniforme + recurrencia pura), no datos leídos del documento.
+  planReviewNote?: string | null
   categoryName: string | null
   dueDate?: string
   // Ya construida como texto (p. ej. "FREQ=MONTHLY") — reutiliza parseRecurrenceRuleToFormState tal cual
@@ -10844,6 +10888,14 @@ function ForecastPaymentForm({
           {isFinitePlanMode && planLines.length > 0 && (
             <div className="card" style={{ padding: 12 }}>
               <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Plan de pagos — {planLines.length} pagos</p>
+              {/* "No aceptar fallback silencioso" — si el documento no dejó leer todas las fechas/importes de
+                  cada cuota, este plan es un reparto CALCULADO (uniforme + recurrencia pura), no lo leído del
+                  documento. Solo al crear — un pago ya guardado no repite el aviso de una revisión pasada. */}
+              {!payment && prefill?.planReviewNote && (
+                <p className="error" style={{ margin: '0 0 8px', fontSize: 13 }}>
+                  ⚠️ {prefill.planReviewNote}
+                </p>
+              )}
               {renderDistributionBanner(planCheck)}
               {planLines.map((line, i) => (
                 <div key={i} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, marginTop: i === 0 ? 0 : 8 }}>

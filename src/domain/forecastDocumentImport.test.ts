@@ -211,6 +211,10 @@ describe('buildForecastDocumentPrefillFields — regresión documento SUMA (dobl
     expect(buildForecastDocumentPrefillFields(sumaScan).amountReviewNote).toBeNull()
   })
 
+  it('8) con los 6 importes y las 6 fechas completos, tampoco hay planReviewNote — el plan es lo leído del documento, no un cálculo', () => {
+    expect(buildForecastDocumentPrefillFields(sumaScan).planReviewNote).toBeNull()
+  })
+
   it('sin installmentAmounts explícitos (solo total + nº de cuotas, el caso real cuando la IA no lee la tabla cuota a cuota) tampoco se divide el total al construirlo', () => {
     const withoutAmounts = scan({ totalAmount: 868.56, installmentCount: 6, firstDueDate: '2026-11-05', periodicity: 'mensual' })
     expect(buildForecastDocumentPrefillFields(withoutAmounts).amount).toBe(868.56)
@@ -242,6 +246,61 @@ describe('buildForecastDocumentPrefillFields — validación aritmética (contra
     const fields = buildForecastDocumentPrefillFields(scan({ totalAmount: 1200, installmentCount: 12 }))
     expect(fields.amount).toBe(100)
     expect(fields.amountReviewNote).toContain('medio')
+  })
+})
+
+// BUG REAL — 2ª prueba real (documento SUMA, tras corregir la doble división): el total y el nº de cuotas
+// ya salían bien, pero las 6 fechas/importes individuales seguían sin coincidir con el documento — la
+// fecha irregular (07/12) seguía apareciendo como 05/12. Petición explícita: "No aceptar fallback
+// silencioso" — si se detecta un plan de N pagos pero el documento no permitió leer los importes y/o las
+// fechas una a una, el reparto calculado debe avisarse como tal, nunca presentarse como leído.
+describe('buildForecastDocumentPrefillFields — planReviewNote ("no aceptar fallback silencioso")', () => {
+  it('plan detectado (periodicidad + fecha + ≥2 cuotas) SIN installmentAmounts ni installmentDueDates → avisa de ambos', () => {
+    const fields = buildForecastDocumentPrefillFields(scan({ totalAmount: 868.56, installmentCount: 6, firstDueDate: '2026-11-05', periodicity: 'mensual' }))
+    expect(fields.planReviewNote).toContain('6 pagos')
+    expect(fields.planReviewNote).toContain('los importes')
+    expect(fields.planReviewNote).toContain('las fechas')
+  })
+
+  it('con installmentAmounts completos pero SIN installmentDueDates → avisa solo de las fechas', () => {
+    const fields = buildForecastDocumentPrefillFields(
+      scan({ totalAmount: 868.56, installmentCount: 6, installmentAmounts: [144.54, 144.54, 144.54, 144.53, 144.54, 145.87], firstDueDate: '2026-11-05', periodicity: 'mensual' }),
+    )
+    expect(fields.planReviewNote).toContain('las fechas')
+    expect(fields.planReviewNote).not.toContain('los importes')
+  })
+
+  it('con installmentDueDates completas pero SIN installmentAmounts → avisa solo de los importes', () => {
+    const fields = buildForecastDocumentPrefillFields(
+      scan({
+        totalAmount: 868.56,
+        installmentCount: 6,
+        installmentDueDates: ['2026-11-05', '2026-12-07', '2027-01-05', '2027-02-05', '2027-03-05', '2027-04-05'],
+        firstDueDate: '2026-11-05',
+        periodicity: 'mensual',
+      }),
+    )
+    expect(fields.planReviewNote).toContain('los importes')
+    expect(fields.planReviewNote).not.toContain('las fechas')
+  })
+
+  it('con installmentAmounts E installmentDueDates completos → sin aviso, el plan es lo leído del documento', () => {
+    const fields = buildForecastDocumentPrefillFields(
+      scan({
+        totalAmount: 868.56,
+        installmentCount: 6,
+        installmentAmounts: [144.54, 144.54, 144.54, 144.53, 144.54, 145.87],
+        installmentDueDates: ['2026-11-05', '2026-12-07', '2027-01-05', '2027-02-05', '2027-03-05', '2027-04-05'],
+        firstDueDate: '2026-11-05',
+        periodicity: 'mensual',
+      }),
+    )
+    expect(fields.planReviewNote).toBeNull()
+  })
+
+  it('sin plan de varias cuotas (pago único, o sin periodicidad/fecha) → nunca hay planReviewNote, aunque falten importes/fechas', () => {
+    expect(buildForecastDocumentPrefillFields(scan({ totalAmount: 200 })).planReviewNote).toBeNull()
+    expect(buildForecastDocumentPrefillFields(scan({ totalAmount: 1200, installmentCount: 12 })).planReviewNote).toBeNull()
   })
 })
 

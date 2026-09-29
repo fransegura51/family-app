@@ -51,15 +51,38 @@ describe('ForecastDocumentImportModal — orden de las comprobaciones (capa A an
     expect(fn.indexOf('isEmptyForecastDocumentScan(scan)')).toBeLessThan(fn.indexOf('buildForecastContentFingerprintBasis(scan)'))
   })
 
-  it('CAPA B: la huella lógica se comprueba ANTES de onPrefillReady — un duplicado detectado así nunca llega a abrir el formulario de revisión', () => {
-    expect(fn.indexOf('findForecastPaymentByContentFingerprint(contentFingerprint)')).toBeLessThan(fn.indexOf('onPrefillReady('))
+  it('CAPA B: la huella lógica se comprueba ANTES de dejar la propuesta lista — un duplicado detectado así nunca llega a abrir el formulario de revisión', () => {
+    expect(fn.indexOf('findForecastPaymentByContentFingerprint(contentFingerprint)')).toBeLessThan(fn.indexOf('setPendingPrefill('))
   })
 
   it('la propuesta final lleva el archivo original y las dos huellas — para poder subirlo/fijarlas solo al confirmar Guardar (nunca aquí)', () => {
-    const prefillCall = slice(fn, 'onPrefillReady({', '})')
+    const prefillCall = slice(fn, 'setPendingPrefill({', '})')
     expect(prefillCall).toContain('sourceFile: picked')
     expect(prefillCall).toContain('sourceFileHash')
     expect(prefillCall).toContain('contentFingerprint')
+  })
+
+  // INSTRUMENTACIÓN TEMPORAL (2ª prueba real, documento SUMA) — handleFile ya no llama a onPrefillReady
+  // directamente: deja la propuesta calculada en pendingPrefill y muestra un diagnóstico (Etapa C/D) antes
+  // de continuar, para poder compararlo con los logs de la Edge Function y con el "Plan de pagos" ya
+  // abierto (Etapa E). onPrefillReady solo se llama al pulsar "Continuar" en ese diagnóstico.
+  it('handleFile deja la propuesta en pendingPrefill y pasa a "debug" — no abre el formulario directamente (diagnóstico temporal)', () => {
+    expect(fn).toContain("setStatus('debug')")
+    expect(fn).not.toContain('onPrefillReady(')
+  })
+})
+
+describe('ForecastDocumentImportModal — diagnóstico temporal (Etapa C/D) antes de abrir el formulario', () => {
+  it('el botón "Continuar" es el único punto que llama a onPrefillReady, con la propuesta ya calculada (pendingPrefill)', () => {
+    expect(SRC).toContain('onClick={() => onPrefillReady(pendingPrefill)}')
+  })
+
+  it('el bloque de diagnóstico muestra lo que devolvió el servicio (Etapa C) y lo que construyó buildForecastDocumentPrefillFields (Etapa D)', () => {
+    const block = slice(SRC, "status === 'debug' && debugInfo && pendingPrefill && (", 'Probar con otro documento')
+    expect(block).toContain('Etapa C')
+    expect(block).toContain('JSON.stringify(debugInfo.scan')
+    expect(block).toContain('Etapa D')
+    expect(block).toContain('JSON.stringify({ ...debugInfo.fields')
   })
 })
 
@@ -130,6 +153,17 @@ describe('amountReviewNote — aviso cuando el total leído no cuadra con las cu
   it('se muestra solo al crear (nunca al reabrir un pago ya guardado) y solo si el prefill trae aviso', () => {
     const block = slice(SRC, '{!payment && prefill?.amountReviewNote && (', '\n      )}')
     expect(block).toContain('prefill.amountReviewNote')
+  })
+})
+
+// BUG REAL — 2ª prueba real (documento SUMA, tras corregir la doble división): "No aceptar fallback
+// silencioso" — si se detecta un plan de varias cuotas pero el documento no dejó leer con seguridad todos
+// los importes y/o todas las fechas, el plan mostrado es un cálculo, nunca datos leídos del documento.
+describe('planReviewNote — aviso junto al Plan de pagos cuando el plan propuesto es un cálculo, no lo leído del documento', () => {
+  it('se muestra dentro de la sección "Plan de pagos", solo al crear y solo si el prefill trae aviso', () => {
+    const block = slice(SRC, 'Plan de pagos — {planLines.length} pagos', 'renderDistributionBanner(planCheck)')
+    expect(block).toContain('!payment && prefill?.planReviewNote')
+    expect(block).toContain('prefill.planReviewNote')
   })
 })
 

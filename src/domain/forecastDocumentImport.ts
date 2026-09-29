@@ -77,6 +77,11 @@ export interface ForecastDocumentPrefillFields {
   // aquí en vez de proponer en silencio un número que podría estar mal — nunca bloquea el guardado, solo
   // informa (ver validación aritmética, más abajo).
   amountReviewNote: string | null
+  // "No aceptar fallback silencioso" (petición explícita tras la 2ª prueba real) — cuando SÍ se detecta un
+  // plan de varias cuotas pero el documento no dejó leer con seguridad TODOS los importes y/o TODAS las
+  // fechas de cada una, el plan que se propone es un CÁLCULO (reparto uniforme + recurrencia pura), no
+  // datos leídos del documento. Nunca se presenta como si lo fuera: este aviso lo deja explícito.
+  planReviewNote: string | null
   categoryName: string | null
   dueDate?: string
   recurrenceRule?: string
@@ -175,6 +180,18 @@ export function buildForecastDocumentPrefillFields(scan: ForecastDocumentScanRes
     }
   }
 
+  // "No aceptar fallback silencioso" — se detecta un plan de N cuotas (willBuildInstallmentPlan), pero el
+  // documento no dejó leer TODOS los importes y/o TODAS las fechas una a una: el plan que se propone reparte
+  // el total en partes iguales y genera las fechas por recurrencia pura — un CÁLCULO, no lo que dice el
+  // documento. Se avisa explícitamente, en vez de dar la apariencia de que se ha leído el calendario real.
+  let planReviewNote: string | null = null
+  if (willBuildInstallmentPlan) {
+    const missing = [installmentAmounts == null ? 'los importes' : null, installmentDueDates == null ? 'las fechas' : null].filter((s): s is string => s != null)
+    if (missing.length > 0) {
+      planReviewNote = `Se ha detectado un plan de ${scan.installmentCount} pagos, pero el documento no permitió leer con seguridad ${missing.join(' ni ')} de cada cuota — se propone un reparto calculado, revísalo antes de guardar.`
+    }
+  }
+
   return {
     title,
     amount,
@@ -183,6 +200,7 @@ export function buildForecastDocumentPrefillFields(scan: ForecastDocumentScanRes
     // null o no, ver ForecastPaymentForm); aquí solo se deja lista la explicación.
     amountEstimatedBasis: 'Importe leído de un documento importado — revisa que sea correcto.',
     amountReviewNote,
+    planReviewNote,
     categoryName: null,
     dueDate: scan.firstDueDate ?? undefined,
     recurrenceRule,

@@ -1922,32 +1922,24 @@ function ShoppingItemRow({
     }
   }
 
+  // CAUSA REAL demostrada con la instrumentación en vivo (iPhone real): en el rastro capturado, CASI TODOS
+  // los DOWN aterrizaban en target=BUTTON.price-row-name — el botón del nombre ocupa prácticamente todo el
+  // ancho de la fila (flex:1), así que casi no queda "zona en blanco" desde la que poder arrancar un swipe.
+  // El guard anterior ("si empieza en un botón, ni se sigue el toque") bloqueaba el gesto ANTES de que la
+  // lógica de umbral/eje pudiera decidir nada — el swipe era, en la práctica, casi inalcanzable. Ahora el
+  // toque se sigue SIEMPRE (el target da igual), pero sin capturar el puntero ni tocar preventDefault
+  // todavía — un toque puro (sin cruzar el umbral) nunca capturó nada, así que el <button> recibe su click nativo
+  // exactamente igual que si esta función no existiera. Solo cuando el movimiento confirma intención
+  // HORIZONTAL real (más abajo, en handleSwipeMove) se captura el puntero y se hace preventDefault — para
+  // entonces ya no es un toque, es un swipe, así que es correcto que el botón NO reciba su click.
   function handleSwipeStart(e: ReactPointerEvent) {
     if (shoppingMode) return
-    // Causa real (confirmada en iPhone real, no solo con una página de prueba aislada): este onPointerDown
-    // vive en la FILA entera, así que un toque que empieza en el nombre/el check/el ojo (botones internos,
-    // sin su propio onPointerDown) BURBUJEABA hasta aquí igual que un toque en zona en blanco — y esta
-    // función capturaba el puntero EN LA FILA (setPointerCapture) para CUALQUIER toque, incluido uno que
-    // empezaba justo encima de un botón. El umbral de movimiento (SWIPE_INTENT_THRESHOLD_PX, corrección
-    // anterior) evita que ese toque ABRA visualmente el swipe, pero no evita que la fila capture el puntero
-    // de todas formas — y esa captura del ANCESTRO durante un toque que empezó en un DESCENDIENTE <button>
-    // es justo el tipo de interacción que Safari/iOS trata de forma distinta a Chrome de escritorio (por
-    // eso una página de prueba aislada con eventos sintéticos no lo reproducía). Arreglo estructural, no un
-    // ajuste de umbral: si el toque empieza dentro de un control interactivo real (botón/enlace/input), el
-    // gesto de swipe ni siquiera se inicia aquí — el control recibe el toque tal cual, sin que la fila
-    // capture nada. Mismo criterio que ya usaba el tirador de arrastrar (stopPropagation propio), aplicado
-    // aquí de raíz en vez de repetirlo botón por botón.
     const targetEl = e.target as HTMLElement
-    if (targetEl.closest('button, a, input, select, textarea')) {
-      swipeDebugLog(`DOWN "${item.name}" → target=${targetEl.tagName}.${targetEl.className} → GUARD (es un control) → swipe NO se inicia`)
-      return
-    }
     swipeStartX.current = e.clientX
     swipeStartY.current = e.clientY
     swiping.current = true
     swipeIntent.current = false
-    e.currentTarget.setPointerCapture(e.pointerId)
-    swipeDebugLog(`DOWN "${item.name}" → target=${targetEl.tagName}.${targetEl.className} pointerType=${e.pointerType} x=${e.clientX.toFixed(0)} y=${e.clientY.toFixed(0)} → capturado`)
+    swipeDebugLog(`DOWN "${item.name}" → target=${targetEl.tagName}.${targetEl.className} pointerType=${e.pointerType} x=${e.clientX.toFixed(0)} y=${e.clientY.toFixed(0)} → siguiendo (sin capturar todavía)`)
   }
 
   // Reporte real: "sigue sin funcionar" — el deslizar nunca llegaba a revelar Eliminar, ni siquiera con el
@@ -1960,10 +1952,11 @@ function ShoppingItemRow({
   // nada — y una vez que WebKit se queda con el gesto para scroll nativo, ya no llegan más pointermove
   // útiles (o llega pointercancel, que también dispara handleSwipeEnd) — el swipe nunca se completa. Ahora
   // se decide el eje dominante en cuanto el movimiento supera el umbral en cualquier dirección: si domina
-  // el horizontal, se confirma la intención Y se llama a e.preventDefault() en ESE mismo instante (reclama
-  // el gesto para JS antes de que el pan-y nativo se lo quede) — si domina el vertical, se abandona el
-  // seguimiento por completo (swiping.current = false) sin tocar preventDefault, para que el scroll nativo
-  // de la lista siga funcionando exactamente igual que siempre.
+  // el horizontal, se confirma la intención, SE CAPTURA EL PUNTERO AQUÍ (no en handleSwipeStart — ver el
+  // porqué arriba) y se llama a e.preventDefault() en ESE mismo instante (reclama el gesto para JS antes de
+  // que el pan-y nativo se lo quede) — si domina el vertical, se abandona el seguimiento por completo
+  // (swiping.current = false) sin capturar ni tocar preventDefault, para que el scroll/tap nativos sigan
+  // funcionando exactamente igual que siempre.
   function handleSwipeMove(e: ReactPointerEvent) {
     if (!swiping.current) return
     const dx = e.clientX - swipeStartX.current
@@ -1978,7 +1971,8 @@ function ShoppingItemRow({
         return
       }
       swipeIntent.current = true
-      swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} → domina HORIZONTAL → swipeIntent=true, preventDefault()`)
+      e.currentTarget.setPointerCapture(e.pointerId)
+      swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} → domina HORIZONTAL → swipeIntent=true, capturado + preventDefault()`)
     }
     e.preventDefault()
     swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} defaultPrevented=${e.defaultPrevented} → setLiveX`)

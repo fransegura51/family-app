@@ -1,5 +1,6 @@
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
+import { ALL_SPEND_RANGE_PRESETS, type SpendRangePreset } from '@/domain/dateRanges'
 import type { FamilyMember, MemberSex, MemberType } from '@/domain/types'
 
 // Crea la familia + el perfil admin del usuario actual, de forma atómica,
@@ -229,6 +230,48 @@ export async function updateFinanceMonthStartDay(day: number): Promise<void> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
   const { error } = await supabase.from('profiles').update({ finance_month_start_day: day }).eq('id', userResult.user.id)
+  if (error) throw error
+}
+
+// "Configuración → Filtros temporales" — favorito y activar/desactivar filtros estándar, por USUARIO
+// real (profiles, mismo patrón exacto que finance_month_start_day arriba — nunca localStorage/por
+// dispositivo, para que se conserve al cambiar de móvil u ordenador). FAVORITO != FILTRO ACTUAL: esto
+// nunca se toca solo por elegir un filtro para la sesión de una pantalla — solo cambia desde Configuración.
+export interface DateFilterPreferences {
+  favorite: SpendRangePreset | null
+  disabled: SpendRangePreset[]
+}
+
+function isValidPreset(v: unknown): v is SpendRangePreset {
+  return typeof v === 'string' && (ALL_SPEND_RANGE_PRESETS as string[]).includes(v)
+}
+
+export async function getDateFilterPreferences(): Promise<DateFilterPreferences> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data, error } = await supabase.from('profiles').select('date_filter_favorite, date_filter_disabled').eq('id', userResult.user.id).single()
+  if (error) throw error
+  const favorite = isValidPreset(data.date_filter_favorite) ? data.date_filter_favorite : null
+  const disabled = Array.isArray(data.date_filter_disabled) ? data.date_filter_disabled.filter(isValidPreset) : []
+  return { favorite, disabled }
+}
+
+// null = quitar el favorito (nadie marcado); 'rango' nunca es un favorito válido (un desde/hasta concreto
+// deja de tener sentido guardado a futuro — mismo criterio que ya tenía el favorito anterior en localStorage).
+export async function updateDateFilterFavorite(preset: SpendRangePreset | null): Promise<void> {
+  if (preset === 'rango') return
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { error } = await supabase.from('profiles').update({ date_filter_favorite: preset }).eq('id', userResult.user.id)
+  if (error) throw error
+}
+
+// "Desactivar" = ocultar de los desplegables compartidos, NUNCA borrar el filtro del sistema — sigue
+// resolviéndose igual si en algún momento vuelve a estar activo, o si ya está seleccionado en una pantalla.
+export async function updateDateFilterDisabled(disabled: SpendRangePreset[]): Promise<void> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { error } = await supabase.from('profiles').update({ date_filter_disabled: disabled.filter((p) => p !== 'rango') }).eq('id', userResult.user.id)
   if (error) throw error
 }
 

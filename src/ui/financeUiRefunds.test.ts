@@ -189,10 +189,12 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // tampoco toca devoluciones, auditada en mercadonaTicketDedup.test.ts.
     // 0169 (event_budget_item_amount_optional, cola nocturna Bloque 11) solo relaja una restricción NOT NULL
     // en event_budget_items.planned_amount — tabla de Eventos, nada que ver con devoluciones/refunds.
+    // 0170 (date_filter_user_preferences, Configuración → Filtros temporales) añade 2 columnas nuevas a
+    // `profiles` (favorito/desactivados de fecha) — tampoco toca devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(169)
+    expect(Math.max(...numbers)).toBe(170)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

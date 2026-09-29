@@ -35,6 +35,32 @@ describe('rangeForPreset', () => {
   it('toDateStr usa hora local y rellena con ceros', () => {
     expect(toDateStr(new Date(2026, 0, 5))).toBe('2026-01-05')
   })
+
+  // "Configuración → Filtros temporales" — 5 presets nuevos, todos reutilizando accountingMonthRange (el
+  // mismo primitivo que ya usan 'mes'/accountingMonthsBack) o aritmética de días simple, nunca una segunda
+  // implementación de mes contable.
+  it('mes contable anterior: reutiliza accountingMonthRange(monthStartDay, -1) — calendario normal y con día de inicio propio', () => {
+    expect(rangeForPreset('mes_anterior', '', '')).toEqual(['2026-08-01', '2026-08-31'])
+    expect(rangeForPreset('mes_anterior', '', '', 25)).toEqual(['2026-07-25', '2026-08-24'])
+  })
+
+  it('mes real anterior: siempre calendario normal (monthStartDay=1 fijo), aunque se pase otro día de inicio', () => {
+    expect(rangeForPreset('mes_real_anterior', '', '')).toEqual(['2026-08-01', '2026-08-31'])
+    expect(rangeForPreset('mes_real_anterior', '', '', 25)).toEqual(['2026-08-01', '2026-08-31'])
+  })
+
+  it('año anterior', () => {
+    expect(rangeForPreset('año_anterior', '', '')).toEqual(['2025-01-01', '2025-12-31'])
+  })
+
+  it('últimos 30 días: hoy incluido, 30 días en total', () => {
+    expect(rangeForPreset('ultimos_30', '', '')).toEqual(['2026-08-13', '2026-09-11'])
+  })
+
+  it('últimos 3 meses: desde el inicio del periodo contable de hace 2 meses hasta hoy', () => {
+    expect(rangeForPreset('ultimos_3_meses', '', '')).toEqual(['2026-07-01', '2026-09-11'])
+    expect(rangeForPreset('ultimos_3_meses', '', '', 25)).toEqual(['2026-06-25', '2026-09-11'])
+  })
 })
 
 describe('accountingMonthsBack', () => {

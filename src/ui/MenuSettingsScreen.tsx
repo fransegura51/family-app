@@ -18,13 +18,18 @@ import {
   getBabyUntilMonths,
   updateBabyUntilMonths,
   getAccountsMode,
+  getDateFilterPreferences,
   getFamilyName,
   getFinanceMonthStartDay,
   updateAccountsMode,
+  updateDateFilterDisabled,
+  updateDateFilterFavorite,
   updateFamilyName,
   updateFinanceMonthStartDay,
   type AccountsMode,
+  type DateFilterPreferences,
 } from '@/data/family'
+import { DISABLEABLE_SPEND_RANGE_PRESETS, PRESET_LABELS, type SpendRangePreset } from '@/domain/dateRanges'
 import { listAppUsage } from '@/data/appUsage'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import {
@@ -176,6 +181,93 @@ function AccountingMonthSection() {
         />
         {saving && <span className="muted">Guardando…</span>}
       </label>
+      {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+// "Configuración → Filtros temporales" — validación real en iPhone: el favorito vivía dentro del propio
+// desplegable "📅 Fecha" como un texto que había que descubrir que era tocable, y no existía forma de
+// activar/desactivar qué filtros aparecen. Ahora se administra aquí, en un solo sitio — el desplegable
+// (DateFilterTab, FinanceScreen.tsx) solo SELECCIONA el periodo de esta sesión y enseña el favorito como
+// información, nunca como acción. FAVORITO != FILTRO ACTUAL: el favorito no cambia solo por elegir un
+// filtro distinto en una pantalla concreta, solo desde aquí. Por usuario real (profiles), mismo patrón que
+// AccountingMonthSection — cada persona de la familia puede tener sus propios filtros activos/favorito.
+function DateFilterSettingsSection() {
+  const [prefs, setPrefs] = useState<DateFilterPreferences>({ favorite: null, disabled: [] })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getDateFilterPreferences()
+      .then(setPrefs)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleFavorite(preset: SpendRangePreset) {
+    const next = prefs.favorite === preset ? null : preset
+    setPrefs((p) => ({ ...p, favorite: next }))
+    setSaving(true)
+    setError(null)
+    try {
+      await updateDateFilterFavorite(next)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // "Desactivar" oculta el filtro de los desplegables compartidos — nunca lo borra del sistema; reactivarlo
+  // lo devuelve exactamente igual. Si el favorito se desactiva, se queda como favorito (solo oculto) — para
+  // quitarlo del todo hace falta desmarcarlo aparte, tocando "★ Favorito" otra vez.
+  async function handleToggleActive(preset: SpendRangePreset) {
+    const isDisabled = prefs.disabled.includes(preset)
+    const nextDisabled = isDisabled ? prefs.disabled.filter((p) => p !== preset) : [...prefs.disabled, preset]
+    setPrefs((p) => ({ ...p, disabled: nextDisabled }))
+    setSaving(true)
+    setError(null)
+    try {
+      await updateDateFilterDisabled(nextDisabled)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>📅 Filtros temporales</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Qué filtros de fecha ("Hoy", "Mes contable"...) aparecen en los desplegables "📅 Fecha" de Economía y
+        Compras, y cuál usar como favorito — es solo tuyo, cada persona de la familia puede tener el suyo.
+        Desactivar uno lo oculta, nunca lo borra: puedes reactivarlo cuando quieras. El favorito es el punto
+        de partida de una pantalla nueva — elegir otro filtro para esta vez en una pantalla concreta nunca
+        lo cambia.
+      </p>
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {DISABLEABLE_SPEND_RANGE_PRESETS.map((p) => {
+          const disabled = prefs.disabled.includes(p)
+          const isFavorite = prefs.favorite === p
+          return (
+            <div key={p} className="inline-fields" style={{ alignItems: 'center' }}>
+              <span style={{ flex: 1, opacity: disabled ? 0.6 : 1 }}>{PRESET_LABELS[p]}</span>
+              <button type="button" className={'chip' + (isFavorite ? ' chip-active' : '')} onClick={() => handleFavorite(p)} disabled={disabled}>
+                {isFavorite ? '★ Favorito' : '☆ Favorito'}
+              </button>
+              <button type="button" className={'chip' + (!disabled ? ' chip-active' : '')} onClick={() => handleToggleActive(p)}>
+                {disabled ? 'Desactivado' : 'Activo'}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      {saving && <span className="muted">Guardando…</span>}
       {error && <p className="error">{error}</p>}
     </div>
   )
@@ -855,7 +947,7 @@ function MenuOrderSection() {
   )
 }
 
-type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'economia' | 'compras' | 'seguridad'
+type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales'
 
 export function MenuSettingsScreen() {
   // Un solo tema abierto a la vez — la pantalla queda como una lista
@@ -866,7 +958,7 @@ export function MenuSettingsScreen() {
   )
   const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
   // Un color por tema, con el estilo elegido en Colores.
-  const groupColors = pastelPalette(6)
+  const groupColors = pastelPalette(7)
 
   return (
     <div className="screen">
@@ -934,6 +1026,17 @@ export function MenuSettingsScreen() {
 
       <SettingsGroup color={groupColors[4]} icon="🔒" title="Seguridad" summary="PIN, huella y Face ID" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')}>
         <AppLockSection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        color={groupColors[6]}
+        icon="📅"
+        title="Filtros temporales"
+        summary="Qué filtros de fecha ves en Economía y Compras, y cuál es tu favorito"
+        open={openGroup === 'filtros_temporales'}
+        onToggle={() => toggle('filtros_temporales')}
+      >
+        <DateFilterSettingsSection />
       </SettingsGroup>
 
       <AdminUsageLink />

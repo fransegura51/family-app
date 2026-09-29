@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-// Cola nocturna, Bloque 5 — motor global de filtros temporales. Auditoría: DateFilterTab (el desplegable
-// "📅 Fecha: ...") ya era un componente ÚNICO reutilizado en las 7 pantallas de Economía/Compras que
-// filtran por fecha (nunca uno propio por pantalla) y domain/dateRanges.ts ya resolvía las fechas de forma
-// compartida — lo que faltaba era un "favorito" persistido (distinto del filtro elegido para esta sesión),
-// para no tener que recolocar el mismo filtro cada vez en cada pantalla. Aquí se comprueba el cableado:
-// las 7 pantallas arrancan leyendo el favorito guardado (no siempre 'mes' a pelo), y el propio
-// DateFilterTab ofrece marcar el filtro actual como favorito sin tocar el filtro de la sesión al hacerlo.
+// "Configuración → Filtros temporales" — validación real en iPhone tras el Bloque 5: "☆ Favorito: Mes
+// contable" aparecía dentro del desplegable "📅 Fecha" SIN ninguna forma clara/evidente de cambiarlo (un
+// texto tocable oculto), y el favorito vivía en localStorage (por dispositivo, no por usuario real).
+// Rediseño: el favorito se administra SOLO desde Configuración → Filtros temporales
+// (MenuSettingsScreen.tsx) — DateFilterTab (compartido por las 7 pantallas de Economía/Compras) solo
+// SELECCIONA el filtro de la sesión y enseña el favorito como información, nunca como botón. Persistencia
+// movida a `profiles` (por usuario real, mismo patrón que finance_month_start_day).
 const SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx']
+const SETTINGS_SRC = (import.meta.glob('/src/ui/MenuSettingsScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/MenuSettingsScreen.tsx']
 
 function slice(src: string, fromMarker: string, toMarker: string): string {
   const start = src.indexOf(fromMarker)
@@ -17,45 +18,84 @@ function slice(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
-describe('Las 7 pantallas con filtro de fecha arrancan desde el favorito guardado, no siempre "mes" a pelo', () => {
-  it('ninguna pantalla inicializa ya su preset con el literal \'mes\' fijo', () => {
+describe('Las 7 pantallas con filtro de fecha arrancan desde el favorito real (profiles), no siempre "mes" a pelo', () => {
+  it('ninguna pantalla inicializa ya su preset con el literal \'mes\' fijo a mano', () => {
     expect(SRC).not.toContain("useState<SpendRangePreset>('mes')")
   })
 
-  it('las 7 usan el mismo cargador (loadFavoriteDateFilterPreset), nunca una copia propia por pantalla', () => {
-    const matches = SRC.match(/useState<SpendRangePreset>\(loadFavoriteDateFilterPreset\)/g) ?? []
-    // 6x [preset, setPreset] + 1x [rangePreset, setRangePreset] (BudgetsTab) + 1x [favorite, setFavoriteState]
-    // (el propio DateFilterTab, para saber qué opción ya es la favorita — ver el describe de más abajo).
-    expect(matches.length).toBe(8)
-    expect(SRC).toContain('const [rangePreset, setRangePreset] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)')
+  it('las 7 usan el mismo hook compartido (useDateFilterPreset), nunca una copia propia por pantalla', () => {
+    const matches = SRC.match(/= useDateFilterPreset\(\)/g) ?? []
+    // 6x [preset, setPreset] + 1x [rangePreset, setRangePreset] (BudgetsTab).
+    expect(matches.length).toBe(7)
+    expect(SRC).toContain('const [rangePreset, setRangePreset] = useDateFilterPreset()')
   })
 
-  it('reutiliza el módulo compartido (state/dateFilterPreset.ts), no reinventa el almacenamiento aquí', () => {
-    expect(SRC).toContain("import { loadFavoriteDateFilterPreset, saveFavoriteDateFilterPreset } from '@/state/dateFilterPreset'")
+  it('reutiliza el módulo compartido (state/dateFilterPreset.ts), no reinventa la carga aquí', () => {
+    expect(SRC).toContain("import { useDateFilterPreset } from '@/state/dateFilterPreset'")
   })
 })
 
-describe('DateFilterTab — "☆ Marcar como favorito" no toca el filtro de la sesión, solo lo guarda como preferido', () => {
+describe('DateFilterTab — el favorito se ENSEÑA (información), nunca se EDITA desde aquí', () => {
   const fn = slice(SRC, 'function DateFilterTab', '\n// Señal DISCRETA de gastos pendientes')
 
-  it('el favorito es un estado propio del componente, inicializado leyendo el guardado — no depende del `preset` recibido por props', () => {
-    expect(fn).toContain('const [favorite, setFavoriteState] = useState<SpendRangePreset>(loadFavoriteDateFilterPreset)')
+  it('lee las preferencias reales (favorito + desactivados) de profiles, vía data/family.ts — no localStorage', () => {
+    expect(fn).toContain('const [prefs, setPrefs] = useState<DateFilterPreferences>({ favorite: null, disabled: [] })')
+    expect(fn).toContain('getDateFilterPreferences()')
+    // "localStorage" solo aparece en el comentario histórico explicando el rediseño — nunca como código real
+    // (ninguna llamada real usaría "localStorage." con punto, para leer/escribir algo).
+    expect(fn).not.toContain('localStorage.')
   })
 
-  it('marcar favorito llama a saveFavoriteDateFilterPreset con el preset ACTUAL de la sesión, nunca a onPresetChange (no cambia el filtro seleccionado)', () => {
-    const btnBlock = slice(fn, 'disabled={favorite === preset}', '{favorite === preset ? `☆ Favorito')
-    expect(btnBlock).toContain('saveFavoriteDateFilterPreset(preset)')
-    expect(btnBlock).toContain('setFavoriteState(preset)')
-    expect(btnBlock).not.toContain('onPresetChange(')
+  it('el favorito se muestra como texto informativo, nunca como <button> — no hay ninguna acción de "marcar" aquí', () => {
+    const favoriteBlock = slice(fn, '{prefs.favorite && (', '</p>\n          )}')
+    expect(favoriteBlock).toContain('<p className="muted"')
+    expect(favoriteBlock).not.toContain('<button')
+    expect(favoriteBlock).not.toContain('onClick')
+    expect(favoriteBlock).toContain('☆ Favorito: ')
+    // Apunta a dónde SÍ se puede cambiar, para que no parezca una acción muerta.
+    expect(favoriteBlock).toContain('Configuración → Filtros temporales')
   })
 
-  it('"Rango de fecha" no se puede marcar como favorito (un desde/hasta concreto no tiene sentido guardado a futuro)', () => {
-    expect(fn).toContain("{preset !== 'rango' && (")
+  it('el desplegable filtra los presets desactivados (Configuración → Filtros temporales), pero nunca oculta "rango" ni el preset ya seleccionado', () => {
+    expect(fn).toContain("const presets = ALL_SPEND_RANGE_PRESETS.filter((p) => p === 'rango' || p === preset || !prefs.disabled.includes(p))")
+  })
+})
+
+describe('Configuración → Filtros temporales — favorito y activar/desactivar, por usuario real', () => {
+  const fn = slice(SETTINGS_SRC, 'function DateFilterSettingsSection', '\n// Piso compartido')
+
+  it('carga y guarda vía data/family.ts (profiles), mismo patrón que AccountingMonthSection (mes contable)', () => {
+    expect(fn).toContain('getDateFilterPreferences()')
+    expect(fn).toContain('updateDateFilterFavorite(')
+    expect(fn).toContain('updateDateFilterDisabled(')
   })
 
-  it('el botón indica con claridad si el filtro actual YA es el favorito, o invita a marcarlo', () => {
-    expect(fn).toContain('favorite === preset')
-    expect(fn).toContain('☆ Favorito: ')
-    expect(fn).toContain('☆ Marcar "')
+  it('marcar favorito nunca toca la lista de desactivados, y viceversa — son dos preferencias independientes', () => {
+    const favFn = slice(fn, 'async function handleFavorite', '\n\n  // "Desactivar"')
+    expect(favFn).not.toContain('disabled:')
+    const toggleFn = slice(fn, 'async function handleToggleActive', '\n\n  if (loading)')
+    expect(toggleFn).not.toContain('favorite:')
+  })
+
+  it('tocar el favorito ya marcado lo desmarca (null) — favorito es opcional, no obligatorio tener uno', () => {
+    expect(fn).toContain("const next = prefs.favorite === preset ? null : preset")
+  })
+
+  it('"rango" nunca aparece en la lista de presets configurables (DISABLEABLE_SPEND_RANGE_PRESETS ya lo excluye)', () => {
+    expect(fn).toContain('DISABLEABLE_SPEND_RANGE_PRESETS.map(')
+  })
+
+  it('desactivar un preset lo oculta (se añade a la lista), nunca lo borra de ningún catálogo — reactivarlo (quitarlo de la lista) lo devuelve igual', () => {
+    const toggleFn = slice(fn, 'async function handleToggleActive', '\n\n  if (loading)')
+    expect(toggleFn).toContain('prefs.disabled.filter((p) => p !== preset)')
+    expect(toggleFn).toContain('[...prefs.disabled, preset]')
+  })
+})
+
+describe('Catálogo compartido — un único origen de presets/etiquetas, nunca listas repetidas por pantalla', () => {
+  it('DateFilterTab y Configuración recorren el mismo ALL_SPEND_RANGE_PRESETS/DISABLEABLE_SPEND_RANGE_PRESETS (domain/dateRanges.ts)', () => {
+    expect(SRC).toContain("import { ") // sanity: el import existe
+    expect(SRC).toContain('ALL_SPEND_RANGE_PRESETS')
+    expect(SETTINGS_SRC).toContain('DISABLEABLE_SPEND_RANGE_PRESETS')
   })
 })

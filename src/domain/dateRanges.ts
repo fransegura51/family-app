@@ -15,7 +15,23 @@ export function toDateStr(d: Date): string {
 // opción aparte donde tiene sentido elegir entre las dos (Presupuesto
 // Generales, Estadística compras); en Tickets, sin esa distinción,
 // 'mes' se queda con el rótulo genérico "Este mes".
-export type SpendRangePreset = 'dia' | 'semana' | 'mes' | 'mes_real' | 'año' | 'rango'
+//
+// "Configuración → Filtros temporales" — 5 valores nuevos (los 6 de siempre no cambian de nombre ni de
+// significado, por compatibilidad con lo ya guardado/filtrado en producción). Nacen desactivados por
+// defecto (ver migración 0170_date_filter_user_preferences.sql) — el catálogo crece, pero el desplegable
+// de cualquier pantalla existente se sigue viendo igual que antes hasta que alguien los active a propósito.
+export type SpendRangePreset =
+  | 'dia'
+  | 'semana'
+  | 'mes'
+  | 'mes_anterior'
+  | 'mes_real'
+  | 'mes_real_anterior'
+  | 'año'
+  | 'año_anterior'
+  | 'ultimos_30'
+  | 'ultimos_3_meses'
+  | 'rango'
 
 function daysInMonth(year: number, month0: number): number {
   return new Date(year, month0 + 1, 0).getDate()
@@ -38,6 +54,34 @@ export function rangeForPreset(
   if (preset === 'mes_real') return rangeForPreset('mes', customFrom, customTo, 1)
   const today = new Date()
   const todayStr = toDateStr(today)
+  // "anterior"/"últimos N" (Configuración → Filtros temporales) — reutilizan accountingMonthRange (mismo
+  // primitivo que 'mes'/accountingMonthsBack, nunca una segunda aritmética de meses) con offset negativo;
+  // mismo criterio de "mes real" (monthStartDay=1 fijo) para su propio "anterior".
+  if (preset === 'mes_anterior') {
+    const r = accountingMonthRange(monthStartDay, -1)
+    return [r.from, r.to]
+  }
+  if (preset === 'mes_real_anterior') {
+    const r = accountingMonthRange(1, -1)
+    return [r.from, r.to]
+  }
+  if (preset === 'año_anterior') {
+    const y = today.getFullYear() - 1
+    return [`${y}-01-01`, `${y}-12-31`]
+  }
+  // Ventanas de días, no de meses de calendario — mismo significado que "últimos N días/meses" ya resuelto
+  // para la voz de PEPA (financePeriod.ts, PeriodSpec last_days/last_months); aquí se recalcula con la
+  // aritmética de fechas propia de este archivo en vez de importar entre los dos motores (financePeriod.ts
+  // es el parser de texto libre de la voz — no debe depender de, ni ser dependido por, el selector visual).
+  if (preset === 'ultimos_30') {
+    const from = new Date(today)
+    from.setDate(from.getDate() - 29)
+    return [toDateStr(from), todayStr]
+  }
+  if (preset === 'ultimos_3_meses') {
+    const r = accountingMonthRange(monthStartDay, -2)
+    return [r.from, todayStr]
+  }
   if (preset === 'dia') return [todayStr, todayStr]
   if (preset === 'semana') {
     // Lunes a domingo de esta semana.
@@ -171,7 +215,33 @@ export const PRESET_LABELS: Record<SpendRangePreset, string> = {
   dia: 'Hoy',
   semana: 'Esta semana',
   mes: 'Este mes',
+  mes_anterior: 'Mes contable anterior',
   mes_real: 'Mes real',
+  mes_real_anterior: 'Mes real anterior',
   año: 'Este año',
+  año_anterior: 'Año anterior',
+  ultimos_30: 'Últimos 30 días',
+  ultimos_3_meses: 'Últimos 3 meses',
   rango: 'Rango de fecha',
 }
+
+// Catálogo completo, en el orden en el que se ofrecen — "Configuración → Filtros temporales" y
+// DateFilterTab (FinanceScreen.tsx) recorren este mismo array, nunca listas propias repetidas.
+export const ALL_SPEND_RANGE_PRESETS: SpendRangePreset[] = [
+  'dia',
+  'semana',
+  'mes',
+  'mes_anterior',
+  'mes_real',
+  'mes_real_anterior',
+  'año',
+  'año_anterior',
+  'ultimos_30',
+  'ultimos_3_meses',
+  'rango',
+]
+
+// 'rango' nunca se puede desactivar (es el escape a mano, siempre debe estar disponible) ni marcar como
+// favorito (domain/dateFilterPreset.ts ya rechazaba esto último; aquí se comparte la misma lista para las
+// dos reglas, en Configuración → Filtros temporales).
+export const DISABLEABLE_SPEND_RANGE_PRESETS: SpendRangePreset[] = ALL_SPEND_RANGE_PRESETS.filter((p) => p !== 'rango')

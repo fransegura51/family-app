@@ -51,38 +51,15 @@ describe('ForecastDocumentImportModal — orden de las comprobaciones (capa A an
     expect(fn.indexOf('isEmptyForecastDocumentScan(scan)')).toBeLessThan(fn.indexOf('buildForecastContentFingerprintBasis(scan)'))
   })
 
-  it('CAPA B: la huella lógica se comprueba ANTES de dejar la propuesta lista — un duplicado detectado así nunca llega a abrir el formulario de revisión', () => {
-    expect(fn.indexOf('findForecastPaymentByContentFingerprint(contentFingerprint)')).toBeLessThan(fn.indexOf('setPendingPrefill('))
+  it('CAPA B: la huella lógica se comprueba ANTES de onPrefillReady — un duplicado detectado así nunca llega a abrir el formulario de revisión', () => {
+    expect(fn.indexOf('findForecastPaymentByContentFingerprint(contentFingerprint)')).toBeLessThan(fn.indexOf('onPrefillReady('))
   })
 
   it('la propuesta final lleva el archivo original y las dos huellas — para poder subirlo/fijarlas solo al confirmar Guardar (nunca aquí)', () => {
-    const prefillCall = slice(fn, 'setPendingPrefill({', '})')
+    const prefillCall = slice(fn, 'onPrefillReady({', '})')
     expect(prefillCall).toContain('sourceFile: picked')
     expect(prefillCall).toContain('sourceFileHash')
     expect(prefillCall).toContain('contentFingerprint')
-  })
-
-  // INSTRUMENTACIÓN TEMPORAL (2ª prueba real, documento SUMA) — handleFile ya no llama a onPrefillReady
-  // directamente: deja la propuesta calculada en pendingPrefill y muestra un diagnóstico (Etapa C/D) antes
-  // de continuar, para poder compararlo con los logs de la Edge Function y con el "Plan de pagos" ya
-  // abierto (Etapa E). onPrefillReady solo se llama al pulsar "Continuar" en ese diagnóstico.
-  it('handleFile deja la propuesta en pendingPrefill y pasa a "debug" — no abre el formulario directamente (diagnóstico temporal)', () => {
-    expect(fn).toContain("setStatus('debug')")
-    expect(fn).not.toContain('onPrefillReady(')
-  })
-})
-
-describe('ForecastDocumentImportModal — diagnóstico temporal (Etapa C/D) antes de abrir el formulario', () => {
-  it('el botón "Continuar" es el único punto que llama a onPrefillReady, con la propuesta ya calculada (pendingPrefill)', () => {
-    expect(SRC).toContain('onClick={() => onPrefillReady(pendingPrefill)}')
-  })
-
-  it('el bloque de diagnóstico muestra lo que devolvió el servicio (Etapa C) y lo que construyó buildForecastDocumentPrefillFields (Etapa D)', () => {
-    const block = slice(SRC, "status === 'debug' && debugInfo && pendingPrefill && (", 'Probar con otro documento')
-    expect(block).toContain('Etapa C')
-    expect(block).toContain('JSON.stringify(debugInfo.scan')
-    expect(block).toContain('Etapa D')
-    expect(block).toContain('JSON.stringify({ ...debugInfo.fields')
   })
 })
 

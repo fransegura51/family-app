@@ -97,12 +97,6 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
   // cliente lo interpreta como "no se pudo extraer nada" y ofrece volver al formulario manual (mismo
   // criterio que documentExpiry: nunca un 502 por una respuesta rara del modelo).
   parseOutput(rawText) {
-    // INSTRUMENTACIÓN TEMPORAL (2ª prueba real, documento SUMA) — para diagnosticar por qué
-    // installmentAmounts/installmentDueDates no llegan completos al plan aunque el total y el nº de
-    // cuotas ya salen bien. Solo registra los campos estructurados pedidos (nunca la imagen ni el resto
-    // del OCR) en los logs de la propia función — visible únicamente desde el proyecto de Supabase, nunca
-    // en el dispositivo del usuario ni en la app. Se retira en cuanto se demuestre la causa real.
-    console.log('[DEBUG forecastPaymentDocument] Etapa A — rawText de Gemini:', rawText)
     const empty: ForecastPaymentDocumentOutput = {
       provider: null,
       concept: null,
@@ -133,7 +127,7 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
         ? (parsed.installmentDueDates as string[])
         : null
 
-    const output: ForecastPaymentDocumentOutput = {
+    return {
       provider: asCleanString(parsed.provider, 120),
       concept: asCleanString(parsed.concept, 120),
       totalAmount: asPositiveNumber(parsed.totalAmount),
@@ -146,11 +140,5 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
       paidInstallments: asPositiveInt(parsed.paidInstallments),
       installmentDueDates,
     }
-    // INSTRUMENTACIÓN TEMPORAL — Etapa B: lo que sobrevive a la validación (asPositiveNumber/asIsoDate/
-    // longitud de los arrays). Si aquí installmentAmounts/installmentDueDates ya vienen null pero en la
-    // Etapa A el JSON crudo sí los traía, la causa está en esta validación (p. ej. longitud <= 1, o algún
-    // valor que no pasa asIsoDate/asPositiveNumber) — no en el cliente.
-    console.log('[DEBUG forecastPaymentDocument] Etapa B — tras parseo/validación:', JSON.stringify(output))
-    return output
   },
 }

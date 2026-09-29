@@ -199,13 +199,7 @@ import {
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto, type MeasurementUnit } from '@/services/receiptPhoto'
 import { analyzeForecastDocument, sha256HexOfFile, sha256HexOfText } from '@/services/forecastDocument'
-import {
-  buildForecastContentFingerprintBasis,
-  buildForecastDocumentPrefillFields,
-  isEmptyForecastDocumentScan,
-  type ForecastDocumentPrefillFields,
-  type ForecastDocumentScanResult,
-} from '@/domain/forecastDocumentImport'
+import { buildForecastContentFingerprintBasis, buildForecastDocumentPrefillFields, isEmptyForecastDocumentScan } from '@/domain/forecastDocumentImport'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
@@ -9682,17 +9676,9 @@ function ForecastDocumentImportModal({
   onContinueManually: () => void
 }) {
   const [file, setFile] = useState<File | null>(null)
-  const [status, setStatus] = useState<'idle' | 'checking' | 'analyzing' | 'duplicate' | 'empty' | 'error' | 'debug'>('idle')
+  const [status, setStatus] = useState<'idle' | 'checking' | 'analyzing' | 'duplicate' | 'empty' | 'error'>('idle')
   const [duplicate, setDuplicate] = useState<ForecastPaymentDuplicateMatch | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // INSTRUMENTACIÓN TEMPORAL (2ª prueba real, documento SUMA — tras corregir la doble división del total,
-  // los importes/fechas de cada cuota individual seguían sin coincidir con el documento). Muestra lo que
-  // devuelve/decide cada etapa DEL CLIENTE antes de abrir el formulario (Etapa C: lo que llega del
-  // servicio; Etapa D: lo que construye buildForecastDocumentPrefillFields), para compararlo con los logs
-  // de la Edge Function (Etapa A/B, "[DEBUG forecastPaymentDocument]") y con el "Plan de pagos" ya visible
-  // en el formulario (Etapa E). Nunca queda en producción: se retira en cuanto se demuestre la causa real.
-  const [debugInfo, setDebugInfo] = useState<{ scan: ForecastDocumentScanResult; fields: ForecastDocumentPrefillFields } | null>(null)
-  const [pendingPrefill, setPendingPrefill] = useState<ForecastPaymentPrefill | null>(null)
 
   async function handleFile(picked: File | null) {
     setFile(picked)
@@ -9732,15 +9718,13 @@ function ForecastDocumentImportModal({
       }
 
       const fields = buildForecastDocumentPrefillFields(scan)
-      setDebugInfo({ scan, fields })
-      setPendingPrefill({
+      onPrefillReady({
         ...fields,
         bankAccountId: '',
         sourceFile: picked,
         sourceFileHash,
         contentFingerprint,
       })
-      setStatus('debug')
     } catch (err) {
       setError(errorMessage(err, 'No se pudo analizar el documento'))
       setStatus('error')
@@ -9751,8 +9735,6 @@ function ForecastDocumentImportModal({
     setFile(null)
     setDuplicate(null)
     setError(null)
-    setDebugInfo(null)
-    setPendingPrefill(null)
     setStatus('idle')
   }
 
@@ -9809,28 +9791,6 @@ function ForecastDocumentImportModal({
               )}
               <button type="button" className="link-button" onClick={onContinueManually}>
                 Continuar a mano
-              </button>
-            </div>
-          </div>
-        )}
-        {/* INSTRUMENTACIÓN TEMPORAL — ver comentario en el useState de debugInfo. Se retira tras diagnosticar. */}
-        {status === 'debug' && debugInfo && pendingPrefill && (
-          <div>
-            <p className="muted" style={{ fontSize: 13 }}>
-              🔧 Diagnóstico temporal — haz una captura de esta pantalla antes de pulsar "Continuar", y otra del
-              "Plan de pagos" cuando se abra a continuación.
-            </p>
-            <pre className="card" style={{ fontSize: 11, whiteSpace: 'pre-wrap', padding: 10, maxHeight: 320, overflow: 'auto' }}>
-              {'Etapa C — lo que devolvió analyzeForecastDocument:\n' + JSON.stringify(debugInfo.scan, null, 2)}
-              {'\n\nEtapa D — lo que construyó buildForecastDocumentPrefillFields:\n' +
-                JSON.stringify({ ...debugInfo.fields, amountEstimatedBasis: undefined }, null, 2)}
-            </pre>
-            <div className="form-actions">
-              <button type="button" onClick={() => onPrefillReady(pendingPrefill)}>
-                Continuar
-              </button>
-              <button type="button" className="link-button" onClick={reset}>
-                Probar con otro documento
               </button>
             </div>
           </div>

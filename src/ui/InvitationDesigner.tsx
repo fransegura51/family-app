@@ -3123,7 +3123,27 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 Home Indicator del iPhone (env(safe-area-inset-bottom)). */}
             {!textEditMode && (
             <div className="invitation-toolbar-wrap">
-              {panel && <div className="invitation-panel-overlay" onClick={() => setPanel(null)} />}
+              {/* CAUSA RAÍZ REAL del arrastre roto en "Ajustar foto" (demostrada con
+                  document.elementFromPoint sobre el DOM real, no una hipótesis de motor/WebKit) —
+                  .invitation-panel-overlay es position:fixed + inset:0 + z-index:55: cubre TODA la pantalla,
+                  incluido el lienzo, mientras cualquier panel está abierto (existe así desde 444eaa8, muy
+                  anterior a "Ajustar foto"). Al estar posicionado con z-index explícito, se pinta POR ENCIMA
+                  de canvasRef (position:relative pero z-index:auto — cualquier elemento posicionado con
+                  z-index explícito gana a uno con z-index:auto, sea cual sea su profundidad de anidamiento;
+                  ver CSS 2.1 §painting order). El panel de Ajustar foto se queda abierto (panel sigue
+                  siendo 'mas') durante TODO el gesto, así que un pointerdown sobre la foto en realidad
+                  aterriza en este overlay invisible, no en el <img> — handlePhotoAdjustPointerDown nunca
+                  llega a dispararse. El overlay no tiene touch-action ni preventDefault propios, así que el
+                  navegador interpreta el arrastre como un gesto de scroll normal y se lo entrega al
+                  ancestro scrollable más cercano EN SU PROPIA cadena del DOM (toolbar-wrap → designer-sheet
+                  → .modal-sheet, que tiene overflow-y:auto) — exactamente lo que se percibe como "se
+                  desplaza la invitación/lienzo de detrás". Ninguna corrección anterior (-webkit-user-drag,
+                  touch-action:none, preventDefault en el <img>) podía funcionar: esos handlers nunca llegan
+                  a ejecutarse si el evento ni siquiera llega al <img>. Corrección mínima: mientras se ajusta
+                  una foto (adjustingPhotoId), no se monta este overlay — así el toque llega directo al
+                  lienzo/foto de debajo. El resto de paneles (Color, Tamaño, Decorar, Plantilla...) no
+                  cambian: siguen cerrándose al tocar fuera exactamente igual que siempre. */}
+              {panel && !adjustingPhotoId && <div className="invitation-panel-overlay" onClick={() => setPanel(null)} />}
               {panel && (
                 <div className="invitation-panel" onClick={(e) => e.stopPropagation()}>
                   {panel === 'plantilla' && (

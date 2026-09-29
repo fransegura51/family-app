@@ -128,6 +128,32 @@ describe('Modo "🔧 Ajustar foto" — entrar/salir explícito, por capa (nunca 
   })
 })
 
+describe('CAUSA RAÍZ REAL (2ª ronda tras la buena en 88b8048): .invitation-panel-overlay tapaba el toque sobre la foto', () => {
+  // Demostrada con document.elementFromPoint sobre el DOM real (no hipótesis de motor): mientras cualquier
+  // panel está abierto, .invitation-panel-overlay (position:fixed, inset:0, z-index:55) cubre TODA la
+  // pantalla, incluido el lienzo — un elemento posicionado con z-index explícito se pinta por encima de
+  // canvasRef (position:relative, z-index:auto), sea cual sea su profundidad de anidamiento (CSS 2.1,
+  // painting order). El panel de "Ajustar foto" deja `panel` en 'mas' durante todo el gesto, así que un
+  // pointerdown sobre la foto aterrizaba en este overlay invisible, nunca en el <img> —
+  // handlePhotoAdjustPointerDown no llegaba a dispararse, y el navegador entregaba el arrastre como scroll
+  // a .modal-sheet (el ancestro scrollable más cercano EN LA CADENA DEL OVERLAY, no de la foto) — de ahí
+  // "se desplaza la invitación de detrás". Ninguna corrección anterior podía funcionar porque el evento no
+  // llegaba ni a tocar el <img>.
+  it('el overlay NO se monta mientras se ajusta una foto (adjustingPhotoId) — el toque llega directo al lienzo/foto', () => {
+    expect(DESIGNER_SRC).toContain("{panel && !adjustingPhotoId && <div className=\"invitation-panel-overlay\"")
+  })
+
+  it('el resto de paneles (Color, Tamaño, Decorar, Plantilla...) conservan el overlay tal cual — solo se excluye durante Ajustar foto', () => {
+    // adjustingPhotoId solo es no-nulo junto con panel==='mas' y una capa de foto seleccionada (ver el
+    // describe "Modo Ajustar foto" más abajo) — para cualquier otro panel, adjustingPhotoId es siempre
+    // null, así que `!adjustingPhotoId` es true y el overlay se sigue montando exactamente igual que antes.
+    const overlayLine = DESIGNER_SRC.split('\n').find((l) => l.includes('invitation-panel-overlay') && l.includes('onClick'))
+    expect(overlayLine).toBeTruthy()
+    expect(overlayLine).toContain('panel &&')
+    expect(overlayLine).toContain('!adjustingPhotoId')
+  })
+})
+
 describe('MOVER CAPA vs AJUSTAR CONTENIDO — separación real de gestos (nunca un toque hace las dos cosas)', () => {
   const fn = slice(DESIGNER_SRC, 'function handlePhotoAdjustPointerDown(', '\n  function handlePrettify')
 

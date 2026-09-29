@@ -1290,8 +1290,6 @@ function ShoppingListTab() {
       </div>
       {shareNotice && <p className="muted" style={{ fontSize: 12 }}>{shareNotice}</p>}
 
-      {!shoppingMode && <SwipeDebugPanel />}
-
       <h2 className="section-title">Pendientes</h2>
       {storeGroups.map(([store, storeItems]) => {
         // Petición real: "si solo hay un producto de una tienda quiero
@@ -1799,53 +1797,6 @@ function DraggableStoreGroup({
   )
 }
 
-// INSTRUMENTACIÓN TEMPORAL (3 rondas de correcciones a ciegas sin resolverlo — "sigue sin funcionar" cada
-// vez) — para ver en el iPhone real qué evento llega de verdad y en qué orden, en vez de seguir adivinando.
-// ELIMINAR TODO ESTE BLOQUE (hasta el marcador de cierre) en cuanto tengamos el diagnóstico real.
-const swipeDebugState = {
-  lines: [] as string[],
-}
-function swipeDebugLog(line: string) {
-  const ts = new Date().toISOString().slice(11, 23)
-  swipeDebugState.lines = [`${ts} ${line}`, ...swipeDebugState.lines].slice(0, 30)
-  swipeDebugListeners.forEach((fn) => fn())
-}
-const swipeDebugListeners = new Set<() => void>()
-function SwipeDebugPanel() {
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    const fn = () => setTick((t) => t + 1)
-    swipeDebugListeners.add(fn)
-    return () => {
-      swipeDebugListeners.delete(fn)
-    }
-  }, [])
-  return (
-    <div
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 40,
-        background: '#111',
-        color: '#0f0',
-        fontFamily: 'monospace',
-        fontSize: 10,
-        lineHeight: 1.4,
-        padding: 8,
-        maxHeight: 180,
-        overflowY: 'auto',
-        whiteSpace: 'pre-wrap',
-        borderRadius: 8,
-        marginBottom: 8,
-      }}
-    >
-      <div style={{ color: '#fff', fontWeight: 700 }}>🔧 DEBUG SWIPE (temporal) — desliza un producto y mira aquí</div>
-      {swipeDebugState.lines.length === 0 ? '(todavía sin eventos — toca y desliza un producto)' : swipeDebugState.lines.join('\n')}
-    </div>
-  )
-}
-// ─── FIN INSTRUMENTACIÓN TEMPORAL (el resto de este archivo es código real) ───
-
 const SWIPE_OPEN_X = -76
 // Margen mínimo antes de considerar que el dedo está deslizando de verdad (ver swipeIntent, más abajo) —
 // sin esto, el temblor normal de un toque ya abría el aviso de Eliminar en vez de editar.
@@ -1922,41 +1873,28 @@ function ShoppingItemRow({
     }
   }
 
-  // CAUSA REAL demostrada con la instrumentación en vivo (iPhone real): en el rastro capturado, CASI TODOS
-  // los DOWN aterrizaban en target=BUTTON.price-row-name — el botón del nombre ocupa prácticamente todo el
-  // ancho de la fila (flex:1), así que casi no queda "zona en blanco" desde la que poder arrancar un swipe.
-  // El guard anterior ("si empieza en un botón, ni se sigue el toque") bloqueaba el gesto ANTES de que la
-  // lógica de umbral/eje pudiera decidir nada — el swipe era, en la práctica, casi inalcanzable. Ahora el
-  // toque se sigue SIEMPRE (el target da igual), pero sin capturar el puntero ni tocar preventDefault
-  // todavía — un toque puro (sin cruzar el umbral) nunca capturó nada, así que el <button> recibe su click nativo
-  // exactamente igual que si esta función no existiera. Solo cuando el movimiento confirma intención
-  // HORIZONTAL real (más abajo, en handleSwipeMove) se captura el puntero y se hace preventDefault — para
-  // entonces ya no es un toque, es un swipe, así que es correcto que el botón NO reciba su click.
+  // Deslizar para revelar "Eliminar" — validado real en iPhone. Dos causas reales encontradas por el camino
+  // (confirmadas con instrumentación en vivo en el dispositivo, ya retirada):
+  // 1) La fila tiene touch-action:'pan-y' (para que la lista siga con scroll vertical al tocar un producto),
+  //    así que hace falta comparar dx contra dy y llamar a e.preventDefault() en cuanto domine el horizontal
+  //    — si no, con el mínimo componente vertical del gesto (casi inevitable con un dedo real), WebKit se
+  //    queda el toque para el pan-y nativo antes de que el código decida nada (ver handleSwipeMove).
+  // 2) El botón del nombre del producto ocupa casi todo el ancho de la fila (flex:1) — excluir de raíz
+  //    cualquier toque que empezara sobre un botón (como hacía una corrección anterior) dejaba, en la
+  //    práctica, casi ninguna "zona en blanco" desde la que arrancar un swipe real. Por eso el seguimiento
+  //    se inicia SIEMPRE aquí, sin mirar el target — lo que distingue un tap de un swipe ya no es DE DÓNDE
+  //    viene el toque, sino CUÁNDO se captura el puntero: setPointerCapture()/preventDefault() viven en
+  //    handleSwipeMove, y solo se ejecutan tras confirmar intención horizontal real. Un toque puro (sin
+  //    cruzar el umbral) nunca captura ni previene nada, así que el botón recibe su click nativo exactamente
+  //    igual que si esta fila no existiera.
   function handleSwipeStart(e: ReactPointerEvent) {
     if (shoppingMode) return
-    const targetEl = e.target as HTMLElement
     swipeStartX.current = e.clientX
     swipeStartY.current = e.clientY
     swiping.current = true
     swipeIntent.current = false
-    swipeDebugLog(`DOWN "${item.name}" → target=${targetEl.tagName}.${targetEl.className} pointerType=${e.pointerType} x=${e.clientX.toFixed(0)} y=${e.clientY.toFixed(0)} → siguiendo (sin capturar todavía)`)
   }
 
-  // Reporte real: "sigue sin funcionar" — el deslizar nunca llegaba a revelar Eliminar, ni siquiera con el
-  // panel ya arreglado (visibility). CAUSA REAL: la fila tiene touch-action:'pan-y' (para que la lista siga
-  // pudiendo hacer scroll vertical tocando encima de un producto) — pero esta función nunca miraba el
-  // desplazamiento VERTICAL ni llamaba a e.preventDefault(): decidía "hay intención de swipe" solo mirando
-  // dx, sin comparar con dy, y sin decírselo nunca al navegador. En iOS Safari, si el dedo tiene el más
-  // mínimo componente vertical (casi inevitable, un dedo real no se mueve en línea perfectamente recta),
-  // el reconocedor nativo de gestos puede reclamar el toque para el pan-y ANTES de que esta función decida
-  // nada — y una vez que WebKit se queda con el gesto para scroll nativo, ya no llegan más pointermove
-  // útiles (o llega pointercancel, que también dispara handleSwipeEnd) — el swipe nunca se completa. Ahora
-  // se decide el eje dominante en cuanto el movimiento supera el umbral en cualquier dirección: si domina
-  // el horizontal, se confirma la intención, SE CAPTURA EL PUNTERO AQUÍ (no en handleSwipeStart — ver el
-  // porqué arriba) y se llama a e.preventDefault() en ESE mismo instante (reclama el gesto para JS antes de
-  // que el pan-y nativo se lo quede) — si domina el vertical, se abandona el seguimiento por completo
-  // (swiping.current = false) sin capturar ni tocar preventDefault, para que el scroll/tap nativos sigan
-  // funcionando exactamente igual que siempre.
   function handleSwipeMove(e: ReactPointerEvent) {
     if (!swiping.current) return
     const dx = e.clientX - swipeStartX.current
@@ -1966,29 +1904,21 @@ function ShoppingItemRow({
       if (Math.abs(dy) >= Math.abs(dx)) {
         // Gesto predominantemente vertical: es scroll de la lista, no swipe — se deja de seguir este
         // toque por completo (nunca más se llama a setLiveX para él) y se cede el gesto al pan-y nativo.
-        swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} → domina VERTICAL → abandona (cede al scroll nativo)`)
         swiping.current = false
         return
       }
       swipeIntent.current = true
       e.currentTarget.setPointerCapture(e.pointerId)
-      swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} → domina HORIZONTAL → swipeIntent=true, capturado + preventDefault()`)
     }
     e.preventDefault()
-    swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} defaultPrevented=${e.defaultPrevented} → setLiveX`)
     setLiveX(Math.min(0, Math.max(SWIPE_OPEN_X, openX + dx)))
   }
 
-  function handleSwipeEnd(reason: 'up' | 'cancel') {
-    if (!swiping.current) {
-      swipeDebugLog(`${reason.toUpperCase()} "${item.name}" → swiping.current ya era false (ignorado)`)
-      return
-    }
+  function handleSwipeEnd() {
+    if (!swiping.current) return
     swiping.current = false
     const current = liveX ?? openX
-    const nextOpenX = current < SWIPE_OPEN_X / 2 ? SWIPE_OPEN_X : 0
-    swipeDebugLog(`${reason.toUpperCase()} "${item.name}" → swipeIntent=${swipeIntent.current} liveX=${liveX} → openX=${nextOpenX} (${nextOpenX !== 0 ? 'QUEDA ABIERTO' : 'cierra'})`)
-    setOpenX(nextOpenX)
+    setOpenX(current < SWIPE_OPEN_X / 2 ? SWIPE_OPEN_X : 0)
     setLiveX(null)
   }
 
@@ -2037,8 +1967,8 @@ function ShoppingItemRow({
         }}
         onPointerDown={handleSwipeStart}
         onPointerMove={handleSwipeMove}
-        onPointerUp={() => handleSwipeEnd('up')}
-        onPointerCancel={() => handleSwipeEnd('cancel')}
+        onPointerUp={handleSwipeEnd}
+        onPointerCancel={handleSwipeEnd}
       >
         {!shoppingMode && (
           <span

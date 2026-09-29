@@ -23,10 +23,10 @@ describe('ShoppingItemRow — un toque no debe abrir el swipe de Eliminar (marge
     expect(SRC).toContain('const SWIPE_INTENT_THRESHOLD_PX = 8')
   })
 
-  it('handleSwipeMove no mueve la fila (setLiveX) hasta superar el umbral de movimiento horizontal real', () => {
+  it('handleSwipeMove no mueve la fila (setLiveX) hasta superar el umbral de movimiento real (horizontal o vertical)', () => {
     const fn = slice(ROW, 'function handleSwipeMove', '\n  function handleSwipeEnd')
     expect(fn).toContain('if (!swipeIntent.current) {')
-    expect(fn).toContain('if (Math.abs(dx) < SWIPE_INTENT_THRESHOLD_PX) return')
+    expect(fn).toContain('if (Math.abs(dx) < SWIPE_INTENT_THRESHOLD_PX && Math.abs(dy) < SWIPE_INTENT_THRESHOLD_PX) return')
     // setLiveX solo puede alcanzarse tras marcar swipeIntent — comprobado por construcción: el guard de
     // arriba (con su "return") aparece ANTES de la llamada a setLiveX en el mismo cuerpo de función.
     expect(fn.indexOf('return')).toBeLessThan(fn.indexOf('setLiveX('))
@@ -48,6 +48,51 @@ describe('ShoppingItemRow — un toque no debe abrir el swipe de Eliminar (marge
   it('un deslizamiento real (por encima del umbral) sigue funcionando exactamente igual que antes — mismo cálculo de liveX, solo que ahora empieza más tarde', () => {
     const fn = slice(ROW, 'function handleSwipeMove', '\n  function handleSwipeEnd')
     expect(fn).toContain('setLiveX(Math.min(0, Math.max(SWIPE_OPEN_X, openX + dx)))')
+  })
+})
+
+// Reporte real (3ª ronda): "sigue sin funcionar" — el deslizar NUNCA llegaba a revelar Eliminar, ni con el
+// panel ya arreglado (visibility, commit 8388289) ni con el deploy verificado en vivo (se confirmó que el
+// bundle publicado contenía el arreglo, y que la app se había cerrado y reabierto del todo — no era caché).
+// CAUSA REAL: .shopping-row-inner tiene touch-action:'pan-y' (para que la lista siga pudiendo hacer scroll
+// vertical tocando encima de un producto), pero handleSwipeMove nunca miraba el desplazamiento VERTICAL ni
+// llamaba a e.preventDefault() — decidía "hay intención de swipe" solo con dx, sin comparar con dy y sin
+// decírselo nunca al navegador. En iOS Safari, con el más mínimo componente vertical en el gesto (casi
+// inevitable con un dedo real), el reconocedor nativo de pan-y puede reclamar el toque para scroll ANTES de
+// que esta función decida nada — y una vez que WebKit se queda con el gesto, ya no llegan más pointermove
+// útiles (o llega pointercancel, que también dispara handleSwipeEnd): el swipe nunca se completaba. La
+// captura "antes/después" que motivó todo esto (Eliminar apareciendo al marcar comprado) nunca vino de un
+// swipe real — venía del bleed-through de opacity ya corregido; el swipe genuino llevaba roto todo este
+// tiempo, enmascarado por ese otro bug.
+describe('ShoppingItemRow — causa raíz real (3ª ronda): touch-action pan-y ganaba la carrera al swipe porque nunca se comparaba con el eje vertical ni se llamaba a preventDefault', () => {
+  const fn = slice(ROW, 'function handleSwipeMove', '\n  function handleSwipeEnd')
+
+  it('handleSwipeStart guarda también el punto Y de inicio (swipeStartY) — hace falta para poder comparar ejes en handleSwipeMove', () => {
+    const startFn = slice(ROW, 'function handleSwipeStart', '\n  function handleSwipeMove')
+    expect(startFn).toContain('swipeStartY.current = e.clientY')
+  })
+
+  it('handleSwipeMove calcula dy y, si el gesto es más vertical que horizontal, abandona el seguimiento (swiping.current = false) SIN tocar preventDefault — el scroll nativo de la lista queda intacto', () => {
+    expect(fn).toContain('const dy = e.clientY - swipeStartY.current')
+    const verticalBranch = slice(fn, 'if (Math.abs(dy) >= Math.abs(dx)) {', '\n      }')
+    expect(verticalBranch).toContain('swiping.current = false')
+    expect(verticalBranch).not.toContain('preventDefault')
+    // El abandono debe ocurrir ANTES de que swipeIntent se confirme — si no, un gesto vertical podría
+    // colarse como swipe horizontal a medias.
+    expect(fn.indexOf('if (Math.abs(dy) >= Math.abs(dx))')).toBeLessThan(fn.indexOf('swipeIntent.current = true'))
+  })
+
+  it('si domina el eje horizontal, SÍ llama a e.preventDefault() — reclama el gesto para JS antes de que el pan-y nativo se lo quede', () => {
+    expect(fn).toContain('e.preventDefault()')
+    // preventDefault se llama tras decidir el eje (fuera del bloque "if (!swipeIntent.current)"), así que
+    // solo se ejecuta una vez confirmada la intención horizontal — nunca en cada pointermove sin criterio.
+    expect(fn.indexOf('swipeIntent.current = true')).toBeLessThan(fn.indexOf('e.preventDefault()'))
+    expect(fn.indexOf('e.preventDefault()')).toBeLessThan(fn.indexOf('setLiveX('))
+  })
+
+  it('un gesto puramente vertical (dy grande, dx pequeño) nunca ejecuta setLiveX — se corta en el "return" del abandono, antes de llegar a moverse', () => {
+    const verticalBranch = slice(fn, 'if (Math.abs(dy) >= Math.abs(dx)) {', '\n      }')
+    expect(verticalBranch).toContain('return')
   })
 })
 

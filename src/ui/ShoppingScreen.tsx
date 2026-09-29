@@ -1842,6 +1842,7 @@ function ShoppingItemRow({
   const [openX, setOpenX] = useState(0)
   const [liveX, setLiveX] = useState<number | null>(null)
   const swipeStartX = useRef(0)
+  const swipeStartY = useRef(0)
   const swiping = useRef(false)
   // Bug real (Bloque 3, cola nocturna): "tocar un producto en modo normal activa Eliminar". Causa —
   // handleSwipeMove no tenía ningún margen mínimo: hasta el temblor normal de un dedo al tocar (unos pocos
@@ -1889,18 +1890,41 @@ function ShoppingItemRow({
     // aquí de raíz en vez de repetirlo botón por botón.
     if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return
     swipeStartX.current = e.clientX
+    swipeStartY.current = e.clientY
     swiping.current = true
     swipeIntent.current = false
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
+  // Reporte real: "sigue sin funcionar" — el deslizar nunca llegaba a revelar Eliminar, ni siquiera con el
+  // panel ya arreglado (visibility). CAUSA REAL: la fila tiene touch-action:'pan-y' (para que la lista siga
+  // pudiendo hacer scroll vertical tocando encima de un producto) — pero esta función nunca miraba el
+  // desplazamiento VERTICAL ni llamaba a e.preventDefault(): decidía "hay intención de swipe" solo mirando
+  // dx, sin comparar con dy, y sin decírselo nunca al navegador. En iOS Safari, si el dedo tiene el más
+  // mínimo componente vertical (casi inevitable, un dedo real no se mueve en línea perfectamente recta),
+  // el reconocedor nativo de gestos puede reclamar el toque para el pan-y ANTES de que esta función decida
+  // nada — y una vez que WebKit se queda con el gesto para scroll nativo, ya no llegan más pointermove
+  // útiles (o llega pointercancel, que también dispara handleSwipeEnd) — el swipe nunca se completa. Ahora
+  // se decide el eje dominante en cuanto el movimiento supera el umbral en cualquier dirección: si domina
+  // el horizontal, se confirma la intención Y se llama a e.preventDefault() en ESE mismo instante (reclama
+  // el gesto para JS antes de que el pan-y nativo se lo quede) — si domina el vertical, se abandona el
+  // seguimiento por completo (swiping.current = false) sin tocar preventDefault, para que el scroll nativo
+  // de la lista siga funcionando exactamente igual que siempre.
   function handleSwipeMove(e: ReactPointerEvent) {
     if (!swiping.current) return
     const dx = e.clientX - swipeStartX.current
     if (!swipeIntent.current) {
-      if (Math.abs(dx) < SWIPE_INTENT_THRESHOLD_PX) return
+      const dy = e.clientY - swipeStartY.current
+      if (Math.abs(dx) < SWIPE_INTENT_THRESHOLD_PX && Math.abs(dy) < SWIPE_INTENT_THRESHOLD_PX) return
+      if (Math.abs(dy) >= Math.abs(dx)) {
+        // Gesto predominantemente vertical: es scroll de la lista, no swipe — se deja de seguir este
+        // toque por completo (nunca más se llama a setLiveX para él) y se cede el gesto al pan-y nativo.
+        swiping.current = false
+        return
+      }
       swipeIntent.current = true
     }
+    e.preventDefault()
     setLiveX(Math.min(0, Math.max(SWIPE_OPEN_X, openX + dx)))
   }
 

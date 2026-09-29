@@ -1798,6 +1798,9 @@ function DraggableStoreGroup({
 }
 
 const SWIPE_OPEN_X = -76
+// Margen mínimo antes de considerar que el dedo está deslizando de verdad (ver swipeIntent, más abajo) —
+// sin esto, el temblor normal de un toque ya abría el aviso de Eliminar en vez de editar.
+const SWIPE_INTENT_THRESHOLD_PX = 8
 
 // Fila de un producto: check ligero (círculo vacío hasta marcarlo,
 // petición real: el check cuadrado con el aspa siempre dibujada hacía
@@ -1840,6 +1843,15 @@ function ShoppingItemRow({
   const [liveX, setLiveX] = useState<number | null>(null)
   const swipeStartX = useRef(0)
   const swiping = useRef(false)
+  // Bug real (Bloque 3, cola nocturna): "tocar un producto en modo normal activa Eliminar". Causa —
+  // handleSwipeMove no tenía ningún margen mínimo: hasta el temblor normal de un dedo al tocar (unos pocos
+  // px, inevitable en pantalla táctil, a diferencia de un ratón) ya contaba como "empezar a deslizar", así
+  // que un toque pensado para editar podía acabar abriendo el aviso rojo de "🗑 Eliminar" en vez de la
+  // edición. swipeIntent solo se activa tras superar SWIPE_INTENT_THRESHOLD_PX de movimiento horizontal
+  // real — un toque sin ese movimiento nunca llega a mover liveX, así que handleSwipeEnd no cambia nada
+  // (mismo criterio que LONG_PRESS_MOVE_TOLERANCE_PX en el editor de invitaciones para el mismo tipo de
+  // problema: distinguir un toque de un gesto real).
+  const swipeIntent = useRef(false)
   // Inciso Compras — Parte B: ojo discreto, SOLO si hay foto — nunca
   // aumenta la altura de la fila (misma altura que las que no tienen).
   // No hay lightbox propio en la app: mismo patrón ya usado para tickets/
@@ -1864,13 +1876,18 @@ function ShoppingItemRow({
     if (shoppingMode) return
     swipeStartX.current = e.clientX
     swiping.current = true
+    swipeIntent.current = false
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   function handleSwipeMove(e: ReactPointerEvent) {
     if (!swiping.current) return
-    const raw = openX + (e.clientX - swipeStartX.current)
-    setLiveX(Math.min(0, Math.max(SWIPE_OPEN_X, raw)))
+    const dx = e.clientX - swipeStartX.current
+    if (!swipeIntent.current) {
+      if (Math.abs(dx) < SWIPE_INTENT_THRESHOLD_PX) return
+      swipeIntent.current = true
+    }
+    setLiveX(Math.min(0, Math.max(SWIPE_OPEN_X, openX + dx)))
   }
 
   function handleSwipeEnd() {

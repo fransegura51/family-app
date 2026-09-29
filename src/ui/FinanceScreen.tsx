@@ -7363,6 +7363,17 @@ export function BudgetsTab({
             ℹ️ La clasificación de cada producto es una sugerencia (heredada o adivinada por su nombre) — revísala y
             corrígela si no encaja, tocando el icono en Tickets o el nombre en Historial de precios.
           </p>
+          {/* Petición real: "creo que lo preguntarán más de una vez, deberíamos aclararlo en las dos
+              secciones" — reconciliados los ~351€ de diferencia real de una familia: eran compras pagadas
+              con tarjeta/banco sin ningún ticket subido (Total Registrado sí las cuenta, vía `expenses`;
+              "Reparto por tienda"/"Gasto mensual" más abajo son solo tickets, como ya dice su propio
+              título). Mismo aviso, con las palabras exactas que usa el usuario, en el otro extremo (más
+              abajo, junto a "Reparto por tienda — solo con ticket"). */}
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+            ℹ️ Este total cuenta también las compras pagadas con tarjeta o banco sin ticket subido. Más abajo,
+            "Reparto por tienda" y "Gasto mensual" solo cuentan tickets — pueden salir más bajos que este total,
+            y es normal.
+          </p>
         </div>
       )}
 

@@ -42,22 +42,34 @@ describe('resolvedFreqInterval', () => {
 })
 
 describe('validateInstallmentCount', () => {
-  it('acepta el rango válido (2..60)', () => {
+  it('acepta el rango válido (2..600)', () => {
     expect(validateInstallmentCount('2')).toEqual({ ok: true, count: 2 })
     expect(validateInstallmentCount('6')).toEqual({ ok: true, count: 6 })
-    expect(validateInstallmentCount('60')).toEqual({ ok: true, count: 60 })
+    expect(validateInstallmentCount('600')).toEqual({ ok: true, count: 600 })
+  })
+
+  // BUG REAL (documento BBVA real, préstamo de vehículo con 85 cuotas, 2026-09-29): con el tope anterior
+  // (60), un plan importado desde un documento con más cuotas de las que cabe un gasto doméstico normal
+  // (85 en este caso) pasaba la validación de total/frecuencia sin problema, pero "Plan de pagos" nunca
+  // llegaba a construirse — ni al precargar desde el documento (el useState cae al validated.ok===false),
+  // ni al reconstruirlo después (el useEffect también corta ahí) — la sección entera desaparecía del
+  // formulario SIN ningún aviso visible mientras se revisaba, solo un error tardío si se llegaba a pulsar
+  // Guardar. 600 cubre con margen una hipoteca a 50 años.
+  it('acepta 85 (documento BBVA real) y 360 (hipoteca a 30 años, mensual)', () => {
+    expect(validateInstallmentCount('85')).toEqual({ ok: true, count: 85 })
+    expect(validateInstallmentCount('360')).toEqual({ ok: true, count: 360 })
   })
 
   it('rechaza 0', () => {
-    expect(validateInstallmentCount('0')).toEqual({ ok: false, message: 'El número de cuotas debe estar entre 2 y 60.' })
+    expect(validateInstallmentCount('0')).toEqual({ ok: false, message: 'El número de cuotas debe estar entre 2 y 600.' })
   })
 
   it('rechaza 1 (mínimo real es 2 — con 1 no es un plan, es un pago único)', () => {
-    expect(validateInstallmentCount('1')).toEqual({ ok: false, message: 'El número de cuotas debe estar entre 2 y 60.' })
+    expect(validateInstallmentCount('1')).toEqual({ ok: false, message: 'El número de cuotas debe estar entre 2 y 600.' })
   })
 
-  it('rechaza 61 (por encima del máximo)', () => {
-    expect(validateInstallmentCount('61')).toEqual({ ok: false, message: 'El número de cuotas debe estar entre 2 y 60.' })
+  it('rechaza 601 (por encima del máximo)', () => {
+    expect(validateInstallmentCount('601')).toEqual({ ok: false, message: 'El número de cuotas debe estar entre 2 y 600.' })
   })
 
   it('rechaza negativos', () => {
@@ -81,9 +93,9 @@ describe('validateInstallmentCount', () => {
     }
   })
 
-  it('constantes exportadas coinciden con el mensaje (2 y 60)', () => {
+  it('constantes exportadas coinciden con el mensaje (2 y 600)', () => {
     expect(INSTALLMENT_COUNT_MIN).toBe(2)
-    expect(INSTALLMENT_COUNT_MAX).toBe(60)
+    expect(INSTALLMENT_COUNT_MAX).toBe(600)
   })
 })
 

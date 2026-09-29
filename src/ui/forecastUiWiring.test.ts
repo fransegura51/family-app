@@ -218,15 +218,16 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     expect(FS).toContain('INSTALLMENT_COUNT_MAX')
     expect(FS).toContain('formatSpanishDate')
     // Ajuste UX — "Número de pagos" es un único campo compartido entre el Caso A y el Caso B: su límite
-    // máximo cambia según recurs (60 para un plan finito, 12 para cargos por ciclo — límite real del
-    // propio módulo de dominio del Caso B, no un número inventado en la UI).
+    // máximo cambia según recurs (600 para un plan finito — cubre una hipoteca a 50 años, BUG REAL:
+    // documento BBVA real con 85 cuotas, ver forecastInstallmentPlanForm.ts — 12 para cargos por ciclo,
+    // límite real del propio módulo de dominio del Caso B, no un número inventado en la UI).
     expect(FS).toMatch(/max=\{recurs \? SPLIT_CHARGE_COUNT_MAX : INSTALLMENT_COUNT_MAX\}/)
   })
 
-  it('los límites de validación son 2 y 60 (auditoría previa), no un número inventado en la UI', () => {
+  it('los límites de validación son 2 y 600 (auditoría previa), no un número inventado en la UI', () => {
     const module = APP['/src/domain/forecastInstallmentPlanForm.ts']
     expect(module).toContain('export const INSTALLMENT_COUNT_MIN = 2')
-    expect(module).toContain('export const INSTALLMENT_COUNT_MAX = 60')
+    expect(module).toContain('export const INSTALLMENT_COUNT_MAX = 600')
   })
 
   it('el mensaje de validación es humano, nunca jerga técnica (RRULE/UNTIL/FREQ/INTERVAL)', () => {

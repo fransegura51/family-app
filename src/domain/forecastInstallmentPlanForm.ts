@@ -43,7 +43,15 @@ const DEFAULT_FORM_STATE: ForecastRecurrenceFormState = {
 }
 
 export const INSTALLMENT_COUNT_MIN = 2
-export const INSTALLMENT_COUNT_MAX = 60
+// BUG REAL (documento BBVA real, préstamo de vehículo con 85 cuotas, 2026-09-29) — 60 bastaba para
+// cualquier gasto doméstico fraccionado a mano, pero "Importar desde foto o documento" ahora trae planes
+// reales con muchas más cuotas (85 en este caso; una hipoteca a 25-30 años son 300-360 cuotas mensuales).
+// Con el tope en 60, validateInstallmentCount rechazaba el plan EN SILENCIO: el total/nº de pagos/
+// frecuencia se guardaban bien, pero "Plan de pagos" nunca llegaba a construirse (ni al precargar desde el
+// documento ni al reconstruirlo después), sin ningún aviso visible — la sección entera desaparecía. 600
+// cubre con margen una hipoteca a 50 años sin dejar de ser un límite razonable (evita un número
+// disparatado tecleado a mano por error).
+export const INSTALLMENT_COUNT_MAX = 600
 
 // freqOption (lo que ve el usuario) -> {freq, interval} (lo que entiende el motor). "Personalizado" usa
 // los campos libres ya existentes desde Fase 1C; el resto son las 4 frecuencias predefinidas de siempre.

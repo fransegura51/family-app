@@ -77,6 +77,7 @@ import {
   updateEventFavorItem,
   updateEventGuest,
   updateEventGuestMember,
+  updateEventBudgetItem,
   updateEventPayment,
   updateEventSpecialDetail,
   updateEventTask,
@@ -796,7 +797,7 @@ function EventDetail({
   const hasPaymentsModule = event.enabledModules.includes('pagos')
   const hasMenuModule = event.enabledModules.includes('menu_compra')
   const taskDoneCount = tasks.filter((t) => t.done).length
-  const budgetPlanned = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
+  const budgetPlanned = budgetItems.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
   const statusSummary = computeEventStatusSummary({ tasks, guests, payments, plannedBudget: budgetPlanned, spentBudget: budgetSpent })
 
   // Fase 12 — deep-link a la tarea concreta: computeEventConclusions
@@ -2690,6 +2691,9 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
   const [spent, setSpent] = useState<number | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Bloque 11 (cola nocturna) — un concepto propuesto por PEPA llega sin importe (plannedAmount:null);
+  // sin poder editar una partida ya creada, la única forma de ponerle cifra sería borrarla y rehacerla.
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
 
   function reload() {
     listEventBudgetItems(event.id)
@@ -2715,7 +2719,7 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
   }
   useEffect(reload, [event.id, event.tagId])
 
-  const planned = items.reduce((sum, i) => sum + i.plannedAmount, 0)
+  const planned = items.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
@@ -2735,13 +2739,26 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
       )}
       {error && <p className="error">{error}</p>}
       <div className="event-list">
-        {items.map((i) => (
-          <div key={i.id} className="inline-fields" style={{ alignItems: 'center' }}>
-            <span style={{ flex: 1 }}>{i.category}</span>
-            <span>{i.plannedAmount.toFixed(2)} €</span>
-            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar partida" onConfirm={() => deleteEventBudgetItem(i.id).then(reload)} />
-          </div>
-        ))}
+        {items.map((i) =>
+          editingItemId === i.id ? (
+            <EditBudgetItemInline key={i.id} item={i} onDone={() => setEditingItemId(null)} onSaved={() => { setEditingItemId(null); reload() }} />
+          ) : (
+            // Un <div> con onClick, no un <button> — ConfirmIconButton ya monta su propio <button> dentro
+            // y HTML no permite anidar botones (mismo patrón que MovementRow, FinanceScreen.tsx).
+            <div key={i.id} className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setEditingItemId(i.id)}>
+              <span style={{ flex: 1 }}>{i.category}</span>
+              {/* Bloque 11 (cola nocturna) — un concepto propuesto por PEPA (o creado a mano sin importe
+                  todavía) tiene plannedAmount:null; nunca se enseña como "0,00 €", que parecería una cifra
+                  real puesta a propósito. Tocar la fila la abre para editar (mismo patrón que Movimientos). */}
+              <span className={i.plannedAmount == null ? 'muted' : undefined}>{i.plannedAmount == null ? 'Sin importe todavía' : `${i.plannedAmount.toFixed(2)} €`}</span>
+              {/* La fila entera abre la edición al tocarla — este botón no debe además "colarse" como un
+                  toque a la fila (entraría en edición Y armaría el borrado a la vez). */}
+              <span onClick={(e) => e.stopPropagation()}>
+                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar partida" onConfirm={() => deleteEventBudgetItem(i.id).then(reload)} />
+              </span>
+            </div>
+          ),
+        )}
         {items.length === 0 && <p className="muted">Todavía no hay partidas de presupuesto.</p>}
       </div>
       <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
@@ -2776,7 +2793,9 @@ function AddBudgetItemModal({ eventId, onClose, onAdded }: { eventId: string; on
     setSaving(true)
     setError(null)
     try {
-      await addEventBudgetItem(eventId, category, Number(amount) || 0)
+      // Bloque 11 (cola nocturna) — un importe en blanco es "todavía no lo sé" (plannedAmount:null),
+      // nunca "0,00 €": antes Number('') || 0 colaba un cero silencioso como si fuera una cifra real.
+      await addEventBudgetItem(eventId, category, amount.trim() === '' ? null : Number(amount))
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -2812,6 +2831,47 @@ function AddBudgetItemModal({ eventId, onClose, onAdded }: { eventId: string; on
         </form>
       </div>
     </div>
+  )
+}
+
+// Bloque 11 (cola nocturna) — edita una partida ya creada, EN LA MISMA FILA (sin modal aparte): es lo
+// único que hacía falta para poder ponerle importe real a un concepto que PEPA propuso sin precio (o
+// corregir uno ya puesto), sin tener que borrarla y rehacerla.
+function EditBudgetItemInline({ item, onDone, onSaved }: { item: EventBudgetItem; onDone: () => void; onSaved: () => void }) {
+  const [category, setCategory] = useState(item.category)
+  const [amount, setAmount] = useState(item.plannedAmount == null ? '' : String(item.plannedAmount))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!category.trim()) {
+      setError('Ponle un nombre a la partida.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateEventBudgetItem(item.id, { category, plannedAmount: amount.trim() === '' ? null : Number(amount) })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="inline-fields" style={{ alignItems: 'center' }} onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()}>
+      {error && <p className="error">{error}</p>}
+      <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} style={{ flex: 1 }} autoFocus />
+      <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Sin importe" style={{ width: 100 }} />
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : 'Guardar'}
+      </button>
+      <button type="button" className="link-button" onClick={onDone}>
+        Cancelar
+      </button>
+    </form>
   )
 }
 
@@ -4301,7 +4361,7 @@ function PepaConclusions({ event }: { event: FamilyEvent }) {
       event.tagId && event.enabledModules.includes('presupuesto') ? listExpenses() : Promise.resolve(null),
       event.tagId && event.enabledModules.includes('presupuesto') ? listBudgetCategories() : Promise.resolve([]),
     ]).then(([guests, tasks, payments, budgetItems, expenses, categories]) => {
-      const plannedBudget = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
+      const plannedBudget = budgetItems.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
       const spentBudget = expenses
         ? expenses
             .filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories))
@@ -4370,7 +4430,7 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
         await addEnabledModules(event.id, event.enabledModules, [...modulesChecked])
       }
       await Promise.all([
-        ...plan.budgetItems.filter((_, i) => budgetChecked.has(i)).map((b) => addEventBudgetItem(event.id, b.category, b.plannedAmount)),
+        ...plan.budgetItems.filter((_, i) => budgetChecked.has(i)).map((b) => addEventBudgetItem(event.id, b.category, null)),
         ...plan.menuItems.filter((_, i) => menuChecked.has(i)).map((m) => addEventMenuItem(event.id, m.name)),
         ...plan.decorationItems.filter((_, i) => decorationChecked.has(i)).map((d) => addEventDecorationItem(event.id, d.name)),
         ...plan.activities.filter((_, i) => activitiesChecked.has(i)).map((a) => addEventActivity(event.id, { title: a.title, ageRange: a.ageRange ?? null })),
@@ -4431,7 +4491,9 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
                 <label key={b.category} className="inline-fields" style={{ alignItems: 'center' }}>
                   <input type="checkbox" checked={budgetChecked.has(i)} onChange={() => toggle(budgetChecked, setBudgetChecked, i)} />
                   <span style={{ flex: 1 }}>{b.category}</span>
-                  <span>{b.plannedAmount.toFixed(2)} €</span>
+                  {/* Bloque 11 (cola nocturna) — PEPA propone el CONCEPTO, nunca un importe inventado; se
+                      pone la cifra real después, desde Presupuesto. */}
+                  <span className="muted">Sin importe todavía</span>
                 </label>
               ))}
             </div>
@@ -4581,7 +4643,7 @@ function EndSummaryModal({ event, onClose, onConfirmed }: { event: FamilyEvent; 
       setConfirmedPeople(confirmed.reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0))
       setTaskStats({ done: tasks.filter((t) => t.done).length, total: tasks.length })
       if (event.enabledModules.includes('presupuesto')) {
-        setPlannedBudget(budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0))
+        setPlannedBudget(budgetItems.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0))
         setSpentBudget(
           expenses
             ? expenses

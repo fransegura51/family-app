@@ -275,39 +275,18 @@ function offsetDate(date: string, days: number): string {
 // (generateAutoTasks); repetirlas aquí las duplicaría.
 // ---------------------------------------------------------------------
 
-const BUDGET_PLAN_TEMPLATES: Record<EventType, { category: string; plannedAmount: number }[]> = {
-  cumpleanos: [
-    { category: 'Local o espacio', plannedAmount: 150 },
-    { category: 'Tarta', plannedAmount: 40 },
-    { category: 'Decoración', plannedAmount: 60 },
-    { category: 'Comida y bebida', plannedAmount: 120 },
-    { category: 'Detalles para invitados', plannedAmount: 30 },
-  ],
-  comunion: [
-    { category: 'Iglesia/parroquia', plannedAmount: 50 },
-    { category: 'Restaurante', plannedAmount: 1500 },
-    { category: 'Traje o vestido', plannedAmount: 300 },
-    { category: 'Fotógrafo', plannedAmount: 400 },
-    { category: 'Recuerdos', plannedAmount: 150 },
-  ],
-  bautizo: [
-    { category: 'Ceremonia', plannedAmount: 50 },
-    { category: 'Celebración', plannedAmount: 600 },
-    { category: 'Recuerdos', plannedAmount: 100 },
-  ],
-  celebracion: [
-    { category: 'Local o espacio', plannedAmount: 200 },
-    { category: 'Comida y bebida', plannedAmount: 300 },
-    { category: 'Decoración', plannedAmount: 80 },
-  ],
-  boda: [
-    { category: 'Ceremonia', plannedAmount: 300 },
-    { category: 'Celebración', plannedAmount: 3000 },
-    { category: 'Fotógrafo/vídeo', plannedAmount: 800 },
-    { category: 'Flores', plannedAmount: 200 },
-    { category: 'Música', plannedAmount: 300 },
-  ],
-  personalizado: [{ category: 'General', plannedAmount: 100 }],
+// Bloque 11 (cola nocturna) — CONCEPTOS solamente, nunca un importe inventado: PEPA no puede saber cuánto
+// va a costar la tarta o el restaurante de una familia concreta, así que antes proponía un precio de
+// fábrica que casi nunca coincidía con la realidad. Los importes anteriores (p. ej. "Tarta: 40 €",
+// "Celebración (boda): 3000 €") se retiran del todo — cada concepto se crea con plannedAmount:null
+// ("Sin importe todavía") y la familia pone su propia cifra real cuando la sepa.
+const BUDGET_PLAN_TEMPLATES: Record<EventType, string[]> = {
+  cumpleanos: ['Local o espacio', 'Tarta', 'Decoración', 'Comida y bebida', 'Detalles para invitados'],
+  comunion: ['Iglesia/parroquia', 'Restaurante', 'Traje o vestido', 'Fotógrafo', 'Recuerdos'],
+  bautizo: ['Ceremonia', 'Celebración', 'Recuerdos'],
+  celebracion: ['Local o espacio', 'Comida y bebida', 'Decoración'],
+  boda: ['Ceremonia', 'Celebración', 'Fotógrafo/vídeo', 'Flores', 'Música'],
+  personalizado: ['General'],
 }
 
 const MENU_PLAN_TEMPLATES: Record<EventType, string[]> = {
@@ -342,7 +321,7 @@ const ACTIVITY_PLAN_TEMPLATES: Record<EventType, { title: string; ageRange?: str
 
 export interface EventPlanProposal {
   missingModules: EventModuleKey[]
-  budgetItems: { category: string; plannedAmount: number }[]
+  budgetItems: { category: string }[]
   menuItems: { name: string }[]
   decorationItems: { name: string }[]
   activities: { title: string; ageRange?: string }[]
@@ -353,7 +332,7 @@ export function generateEventPlan(event: Pick<FamilyEvent, 'type' | 'enabledModu
   const missingModules = recommended.filter((m) => !event.enabledModules.includes(m))
   return {
     missingModules,
-    budgetItems: BUDGET_PLAN_TEMPLATES[event.type],
+    budgetItems: BUDGET_PLAN_TEMPLATES[event.type].map((category) => ({ category })),
     menuItems: MENU_PLAN_TEMPLATES[event.type].map((name) => ({ name })),
     decorationItems: DECORATION_PLAN_TEMPLATES[event.type].map((name) => ({ name })),
     activities: ACTIVITY_PLAN_TEMPLATES[event.type],

@@ -130,7 +130,7 @@ export async function loadAllEventAlerts(): Promise<EventAlertSummary[]> {
         has('pagos') ? listEventPayments(event.id) : Promise.resolve([]),
         has('presupuesto') ? listEventBudgetItems(event.id) : Promise.resolve([]),
       ])
-      const plannedBudget = budgetItems.reduce((sum, i) => sum + i.plannedAmount, 0)
+      const plannedBudget = budgetItems.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
       const spentBudget =
         event.tagId && has('presupuesto') && expenses && categories
           ? expenses.filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories)).reduce((sum, e) => sum + e.amount, 0)
@@ -915,7 +915,7 @@ function mapBudgetItem(r: any): EventBudgetItem {
     eventId: r.event_id,
     familyId: r.family_id,
     category: r.category,
-    plannedAmount: Number(r.planned_amount),
+    plannedAmount: r.planned_amount == null ? null : Number(r.planned_amount),
     sortOrder: r.sort_order,
     createdAt: r.created_at,
   }
@@ -931,7 +931,7 @@ export async function listEventBudgetItems(eventId: string): Promise<EventBudget
   return data.map(mapBudgetItem)
 }
 
-export async function addEventBudgetItem(eventId: string, category: string, plannedAmount: number): Promise<void> {
+export async function addEventBudgetItem(eventId: string, category: string, plannedAmount: number | null): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase
     .from('event_budget_items')
@@ -939,7 +939,7 @@ export async function addEventBudgetItem(eventId: string, category: string, plan
   if (error) throw error
 }
 
-export async function updateEventBudgetItem(id: string, patch: { category?: string; plannedAmount?: number }): Promise<void> {
+export async function updateEventBudgetItem(id: string, patch: { category?: string; plannedAmount?: number | null }): Promise<void> {
   const update: Record<string, unknown> = {}
   if (patch.category !== undefined) update.category = patch.category.trim()
   if (patch.plannedAmount !== undefined) update.planned_amount = patch.plannedAmount

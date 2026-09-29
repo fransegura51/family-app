@@ -101,11 +101,13 @@ describe('lo que esta fase NO toca', () => {
     // por id exacto, no de 6D.2/6D.3, auditada y con su propio test (commissionReversalMigration202609.test.ts).
     // 0168 (receipt_dedup_fingerprint) añade columnas de huella a `receipts` para evitar tickets duplicados —
     // tampoco toca devoluciones, auditada en mercadonaTicketDedup.test.ts.
+    // 0169 (event_budget_item_amount_optional, cola nocturna Bloque 11) solo relaja una restricción NOT NULL
+    // en event_budget_items.planned_amount — tabla de Eventos, nada que ver con devoluciones/refunds.
     // Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(168)
+    expect(Math.max(...numbers)).toBe(169)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

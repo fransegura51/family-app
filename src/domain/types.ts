@@ -708,7 +708,10 @@ export interface EventBudgetItem {
   eventId: string
   familyId: string
   category: string
-  plannedAmount: number
+  // Bloque 11 (cola nocturna) — null = concepto propuesto sin importe todavía (p. ej. PEPA solo propone
+  // CONCEPTOS, nunca precios inventados); nunca 0 como sustituto de "no lo sabemos" (mismo criterio que
+  // ForecastPayment.amount/amountStatus).
+  plannedAmount: number | null
   sortOrder: number
   createdAt: string
 }

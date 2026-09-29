@@ -2454,16 +2454,35 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     // canvasRef, derivados de canvasScale, ya están aplicados), así que no hace falta esperar un frame
     // más: un rAF aquí solo añade una dependencia innecesaria del bucle de pintado, que en pestañas en
     // segundo plano puede quedar pausado indefinidamente sin que el propio código tenga ningún fallo real.
-    // "Foto tapada" (validación real en iPhone, corrección del panel de Ajustar foto) — entrar en Ajustar
-    // foto (adjustingPhotoId) también recentra, igual que cambiar de modo: si la foto está en la mitad
-    // inferior del lienzo, el usuario no tiene por qué saber que debía subirla antes de tocar "Ajustar
-    // foto". Nunca toca selected.x/selected.y (coordenadas reales) — solo el scrollTop del contenedor.
     const targetY = selected.y * logicalHeightPx * editScale
     const wrapHeight = wrap.clientHeight
     const maxScroll = Math.max(0, logicalHeightPx * editScale - wrapHeight)
     wrap.scrollTop = clamp(targetY - wrapHeight / 2, 0, maxScroll)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoomMode, adjustingPhotoId])
+  }, [zoomMode])
+  // Regresión real (validación en iPhone): añadir `adjustingPhotoId` a las dependencias del efecto de
+  // arriba (para la corrección "foto tapada") coincidía con que, justo al entrar en Ajustar foto, dejaba de
+  // poder arrastrarse la foto — el efecto de arriba queda EXACTAMENTE como en el commit donde el arrastre sí
+  // funcionaba (88b8048), sin el añadido. "Foto tapada" se resuelve aquí, en un efecto APARTE y más
+  // conservador: solo mueve el scroll si la foto NO está ya razonablemente visible (margen del 15% en cada
+  // borde) — en el caso común (la foto ya se ve, que es más probable ahora que el panel es compacto), no
+  // toca el scroll en absoluto, así que no hay ninguna asignación de scrollTop que pueda coincidir con el
+  // arrastre que viene justo después. Nunca toca selected.x/selected.y — solo el scrollTop del contenedor,
+  // y solo cuando de verdad hace falta.
+  useEffect(() => {
+    if (zoomMode !== 'edit' || !adjustingPhotoId) return
+    const wrap = canvasWrapRef.current
+    if (!wrap || !selected || selected.id !== adjustingPhotoId) return
+    const wrapHeight = wrap.clientHeight
+    if (wrapHeight <= 0) return
+    const targetY = selected.y * logicalHeightPx * editScale
+    const margin = wrapHeight * 0.15
+    const alreadyVisible = targetY >= wrap.scrollTop + margin && targetY <= wrap.scrollTop + wrapHeight - margin
+    if (alreadyVisible) return
+    const maxScroll = Math.max(0, logicalHeightPx * editScale - wrapHeight)
+    wrap.scrollTop = clamp(targetY - wrapHeight / 2, 0, maxScroll)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adjustingPhotoId])
   // Ver el comentario junto a "legacyZoneWidthFrac" en InvitationCanvasView: sin esto, el <div> de una capa de
   // texto usa "shrink-to-fit" real (acotado por left, no por el ancho de la zona) y ajusta línea mucho antes
   // de lo que estimateWrappedLineCount asume, así que el bloque pintado de verdad puede ser más alto que el
@@ -2532,6 +2551,36 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
           title="Color"
         />
       </span>
+    )
+  }
+
+  // Corrección real (validación en iPhone: "siguen existiendo controles antiguos Adelante/Atrás con flechas
+  // en Foto") — Texto ya tenía el sistema aprobado (dos cuadrados superpuestos = capas, GRUPO 6 más abajo)
+  // pero el panel "Más" (usado por forma/foto/emoji) seguía con la implementación vieja (.link-button, texto
+  // "⬆ Adelante"/"⬇ Atrás"). Se extrae aquí como función compartida — mismo componente/icono/tamaño/estilo
+  // que Texto, reutilizado tal cual en los dos sitios, para que este tipo de desajuste no pueda volver a
+  // pasar por corregir un sitio y olvidar el otro. Nunca vuelve a haber una segunda implementación de este
+  // control aunque se añadan más tipos de capa en el futuro.
+  function renderLayerActionsRow() {
+    return (
+      <>
+        <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(1)} aria-label="Traer adelante" title="Traer adelante">
+          <span style={{ position: 'relative', display: 'inline-block', width: 16, height: 16 }}>
+            <span style={{ position: 'absolute', left: 0, top: 5, width: 10, height: 10, border: '1.5px solid currentColor', borderRadius: 2, opacity: 0.45 }} />
+            <span style={{ position: 'absolute', right: 0, top: 1, width: 10, height: 10, background: 'currentColor', borderRadius: 2 }} />
+          </span>
+        </button>
+        <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(-1)} aria-label="Enviar atrás" title="Enviar atrás">
+          <span style={{ position: 'relative', display: 'inline-block', width: 16, height: 16 }}>
+            <span style={{ position: 'absolute', right: 0, top: 1, width: 10, height: 10, border: '1.5px solid currentColor', borderRadius: 2, opacity: 0.45 }} />
+            <span style={{ position: 'absolute', left: 0, top: 5, width: 10, height: 10, background: 'currentColor', borderRadius: 2 }} />
+          </span>
+        </button>
+        <button type="button" className="invitation-text-edit-btn" onClick={handleDuplicate} aria-label="Duplicar">
+          ⧉
+        </button>
+        <ConfirmIconButton icon="✕" className="invitation-text-edit-btn" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
+      </>
     )
   }
 
@@ -3040,23 +3089,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   {/* GRUPO 6 — capas/objeto. Corrección real: ⬆/⬇ se confundían con "mover el objeto arriba/
                       abajo" (ya hay arrastre libre en el lienzo) en vez de "orden de capas" — dos cuadrados
                       superpuestos (uno relleno = la posición a la que pasa, otro solo con borde = la otra)
-                      leen como capas apiladas, nunca como movimiento físico. */}
-                  <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(1)} aria-label="Traer adelante" title="Traer adelante">
-                    <span style={{ position: 'relative', display: 'inline-block', width: 16, height: 16 }}>
-                      <span style={{ position: 'absolute', left: 0, top: 5, width: 10, height: 10, border: '1.5px solid currentColor', borderRadius: 2, opacity: 0.45 }} />
-                      <span style={{ position: 'absolute', right: 0, top: 1, width: 10, height: 10, background: 'currentColor', borderRadius: 2 }} />
-                    </span>
-                  </button>
-                  <button type="button" className="invitation-text-edit-btn" onClick={() => handleReorder(-1)} aria-label="Enviar atrás" title="Enviar atrás">
-                    <span style={{ position: 'relative', display: 'inline-block', width: 16, height: 16 }}>
-                      <span style={{ position: 'absolute', right: 0, top: 1, width: 10, height: 10, border: '1.5px solid currentColor', borderRadius: 2, opacity: 0.45 }} />
-                      <span style={{ position: 'absolute', left: 0, top: 5, width: 10, height: 10, background: 'currentColor', borderRadius: 2 }} />
-                    </span>
-                  </button>
-                  <button type="button" className="invitation-text-edit-btn" onClick={handleDuplicate} aria-label="Duplicar">
-                    ⧉
-                  </button>
-                  <ConfirmIconButton icon="✕" className="invitation-text-edit-btn" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
+                      leen como capas apiladas, nunca como movimiento físico. Compartido con el panel "Más"
+                      de forma/foto/emoji vía renderLayerActionsRow — un único sistema, nunca dos. */}
+                  {renderLayerActionsRow()}
                 </div>
               </div>
             )}
@@ -3509,18 +3544,10 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                             </button>
                           </div>
                         )}
-                        <div className="filter-row">
-                          <button type="button" className="link-button" onClick={() => handleReorder(1)}>
-                            ⬆ Adelante
-                          </button>
-                          <button type="button" className="link-button" onClick={() => handleReorder(-1)}>
-                            ⬇ Atrás
-                          </button>
-                          <button type="button" className="link-button" onClick={handleDuplicate}>
-                            ⧉ Duplicar
-                          </button>
-                          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
-                        </div>
+                        {/* Mismo sistema de capas/duplicar/eliminar que Texto (renderLayerActionsRow, definida
+                            más arriba) — antes esta fila usaba .link-button + "⬆ Adelante"/"⬇ Atrás" en texto
+                            plano, una segunda implementación distinta de la ya aprobada. */}
+                        <div className="filter-row">{renderLayerActionsRow()}</div>
                       </>
                     )
                   )}

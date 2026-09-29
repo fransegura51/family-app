@@ -118,10 +118,12 @@ describe('Cada capa conserva touchAction:none propio — arrastrar una capa nunc
 })
 
 describe('Flujo de localización — al pasar a Editar con una capa seleccionada, el scroll la centra (nunca cambia sus coordenadas)', () => {
-  // Corrección real (validación en iPhone, panel de "Ajustar foto") — este mismo efecto se reutiliza
-  // también para centrar la foto al entrar en Ajustar foto (adjustingPhotoId), no solo al cambiar de
-  // zoomMode — ver invitationPhotoAdjustUi.test.ts para esa parte específica.
-  const effectBlock = slice(DESIGNER_SRC, "if (zoomMode !== 'edit') return", '}, [zoomMode, adjustingPhotoId])')
+  // Regresión real (validación en iPhone): este efecto había ganado `adjustingPhotoId` como dependencia
+  // extra (para la corrección "foto tapada" de Ajustar foto) y, justo desde ese cambio, dejó de poder
+  // arrastrarse la foto en modo Ajustar. Vuelve a depender EXACTAMENTE de lo mismo que en el commit donde
+  // el arrastre sí funcionaba (88b8048) — "foto tapada" se resuelve en un efecto SEPARADO y más
+  // conservador, ver el describe de más abajo.
+  const effectBlock = slice(DESIGNER_SRC, "if (zoomMode !== 'edit') return", '}, [zoomMode])')
 
   it('calcula el scroll objetivo a partir de selected.y (posición LÓGICA) y lo aplica como scrollTop del contenedor — nunca reescribe selected.x/selected.y', () => {
     expect(effectBlock).toContain('const targetY = selected.y * logicalHeightPx * editScale')
@@ -129,16 +131,39 @@ describe('Flujo de localización — al pasar a Editar con una capa seleccionada
     expect(effectBlock).not.toMatch(/setLayers|updateSelectedDiscrete|updateSelectedContinuous/)
   })
 
-  it('depende SOLO de zoomMode y adjustingPhotoId (no de la capa seleccionada ni de la escala) — cambiar de selección ya en modo edit no debe mover la vista de golpe', () => {
-    // El propio effectBlock (de "if (zoomMode !== 'edit') return" a "}, [zoomMode, adjustingPhotoId])") ya
-    // prueba, por construcción (slice() busca ese cierre exacto), que el array de dependencias es
-    // exactamente ese — si dependiera de algo más, ese marcador de cierre no existiría tal cual y el
-    // slice() de la constante `effectBlock` (arriba) habría fallado en vez de encontrarlo.
+  it('depende SOLO de zoomMode (no de adjustingPhotoId, la capa seleccionada ni la escala) — cambiar de selección ya en modo edit no debe mover la vista de golpe', () => {
+    // El propio effectBlock (de "if (zoomMode !== 'edit') return" a "}, [zoomMode])") ya prueba, por
+    // construcción (slice() busca ese cierre exacto), que el array de dependencias es exactamente ese — si
+    // dependiera de algo más (como adjustingPhotoId, la regresión real encontrada), ese marcador de cierre
+    // no existiría tal cual y el slice() de la constante `effectBlock` (arriba) habría fallado en vez de
+    // encontrarlo.
     expect(effectBlock.length).toBeGreaterThan(0)
   })
 
   it('sin capa seleccionada, no fuerza ningún scroll (se deja donde estuviera)', () => {
     expect(effectBlock).toContain("if (!wrap || !selected) return")
+  })
+})
+
+describe('"Foto tapada" — efecto SEPARADO para Ajustar foto, solo si la foto no está ya visible (nunca interfiere con el arrastre)', () => {
+  const photoEffectBlock = slice(DESIGNER_SRC, "if (zoomMode !== 'edit' || !adjustingPhotoId) return", '}, [adjustingPhotoId])')
+
+  it('depende SOLO de adjustingPhotoId — un efecto propio, no comparte dependencias con el de zoomMode de arriba', () => {
+    expect(photoEffectBlock.length).toBeGreaterThan(0)
+  })
+
+  it('solo actúa si la capa que se está ajustando es la seleccionada, y solo en modo Editar', () => {
+    expect(photoEffectBlock).toContain('!selected || selected.id !== adjustingPhotoId')
+  })
+
+  it('NO mueve el scroll si la foto ya está razonablemente visible (margen del 15%) — el caso común no toca scrollTop en absoluto, evitando cualquier interferencia con el arrastre que sigue', () => {
+    expect(photoEffectBlock).toContain('const margin = wrapHeight * 0.15')
+    expect(photoEffectBlock).toContain('if (alreadyVisible) return')
+  })
+
+  it('nunca reescribe selected.x/selected.y — solo scrollTop del contenedor, igual que el efecto de zoomMode', () => {
+    expect(photoEffectBlock).not.toMatch(/setLayers|updateSelectedDiscrete|updateSelectedContinuous/)
+    expect(photoEffectBlock).toContain('wrap.scrollTop = clamp(targetY - wrapHeight / 2, 0, maxScroll)')
   })
 })
 

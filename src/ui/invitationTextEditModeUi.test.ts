@@ -107,7 +107,11 @@ describe('Color — corrección real (probado en iPhone real: el panel salía en
   // decorativo) no era fiable en Safari/iOS: el toque no siempre llegaba al input real. Se sustituye por
   // el <input type="color"> VISIBLE de siempre (.color-wheel-input, el mismo patrón que ya tenía Forma
   // antes de esta fase y que nunca se reportó roto) — el propio input es el botón.
-  const swatchFn = slice(DESIGNER_SRC, 'function renderColorSwatch() {', '\n  return (\n    <>')
+  // Corrección real (validación en iPhone, Adelante/Atrás) — renderLayerActionsRow ahora vive justo después
+  // de renderColorSwatch (mismo sitio de siempre para funciones compartidas del editor); el marcador de
+  // cierre se ajusta para no arrastrar esa función siguiente dentro de este slice (su icono de capas usa
+  // "opacity: 0.45", que rompería la comprobación de más abajo de "sin opacity:0 heredado del truco viejo").
+  const swatchFn = slice(DESIGNER_SRC, 'function renderColorSwatch() {', '\n  }\n\n  // Corrección real (validación en iPhone: "siguen existiendo controles antiguos')
 
   it('la barra de texto llama a renderColorSwatch (no monta su propio <input type="color"> en línea)', () => {
     expect(editBar).toContain('renderColorSwatch()')
@@ -188,25 +192,35 @@ describe('Curvar — solo el slider existente, solo para texto de una línea (no
 })
 
 describe('Capas/objeto (GRUPO 6) — adelante/atrás/duplicar/borrar integrados en la fila 2, mismas funciones', () => {
-  it('reutiliza handleReorder/handleDuplicate/handleDeleteSelected, sin lógica nueva', () => {
+  // Corrección real (validación en iPhone: "siguen existiendo controles antiguos Adelante/Atrás con flechas
+  // en Foto") — el panel "Más" de forma/foto/emoji seguía con .link-button + texto plano; se extrajo
+  // renderLayerActionsRow (definida junto a renderColorSwatch) como ÚNICA implementación, reutilizada aquí
+  // (Texto, GRUPO 6) y en el panel "Más" — nunca dos sistemas para lo mismo.
+  const layerActionsFn = slice(DESIGNER_SRC, 'function renderLayerActionsRow() {', '\n  return (\n    <>')
+
+  it('GRUPO 6 llama a renderLayerActionsRow — no monta su propia fila de botones en línea', () => {
     const row2 = slice(editBar, 'GRUPO 6 — capas/objeto', '</div>\n              </div>\n            )}')
-    expect(row2).toContain('onClick={() => handleReorder(1)}')
-    expect(row2).toContain('onClick={() => handleReorder(-1)}')
-    expect(row2).toContain('onClick={handleDuplicate}')
+    expect(row2).toContain('{renderLayerActionsRow()}')
+    expect(row2).not.toContain('onClick={() => handleReorder(1)}')
+  })
+
+  it('reutiliza handleReorder/handleDuplicate/handleDeleteSelected, sin lógica nueva', () => {
+    expect(layerActionsFn).toContain('onClick={() => handleReorder(1)}')
+    expect(layerActionsFn).toContain('onClick={() => handleReorder(-1)}')
+    expect(layerActionsFn).toContain('onClick={handleDuplicate}')
   })
 
   it('corrección real: "Traer adelante"/"Enviar atrás" ya no usan flechas ⬆/⬇ (se confundían con mover el objeto en el lienzo, que ya existe por arrastre) — dos cuadrados superpuestos, sin ninguna flecha, con aria-label Y title accesibles', () => {
-    const row2 = slice(editBar, 'GRUPO 6 — capas/objeto', '</div>\n              </div>\n            )}')
-    expect(row2).not.toMatch(/>\s*⬆\s*</)
-    expect(row2).not.toMatch(/>\s*⬇\s*</)
-    expect(row2).toContain('aria-label="Traer adelante"')
-    expect(row2).toContain('title="Traer adelante"')
-    expect(row2).toContain('aria-label="Enviar atrás"')
-    expect(row2).toContain('title="Enviar atrás"')
+    expect(layerActionsFn).not.toMatch(/>\s*⬆\s*</)
+    expect(layerActionsFn).not.toMatch(/>\s*⬇\s*</)
+    expect(layerActionsFn).toContain('aria-label="Traer adelante"')
+    expect(layerActionsFn).toContain('title="Traer adelante"')
+    expect(layerActionsFn).toContain('aria-label="Enviar atrás"')
+    expect(layerActionsFn).toContain('title="Enviar atrás"')
     // El icono es geométrico (cuadrados con currentColor via CSS), no un carácter: ambos botones montan al
     // menos 2 <span> propios (el contenedor + los dos cuadrados superpuestos).
-    const frontIcon = slice(row2, 'aria-label="Traer adelante"', '</button>')
-    const backIcon = slice(row2, 'aria-label="Enviar atrás"', '</button>')
+    const frontIcon = slice(layerActionsFn, 'aria-label="Traer adelante"', '</button>')
+    const backIcon = slice(layerActionsFn, 'aria-label="Enviar atrás"', '</button>')
     for (const icon of [frontIcon, backIcon]) {
       expect(icon.match(/<span/g)?.length).toBeGreaterThanOrEqual(3)
       expect(icon).toContain('background: \'currentColor\'')
@@ -215,7 +229,17 @@ describe('Capas/objeto (GRUPO 6) — adelante/atrás/duplicar/borrar integrados 
   })
 
   it('borrar sigue pasando por ConfirmIconButton (tap-to-confirm), no un botón directo', () => {
-    expect(editBar).toContain('<ConfirmIconButton icon="✕" className="invitation-text-edit-btn" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />')
+    expect(layerActionsFn).toContain('<ConfirmIconButton icon="✕" className="invitation-text-edit-btn" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />')
+  })
+
+  it('el mismo renderLayerActionsRow se reutiliza en el panel "Más" (forma/foto/emoji) — ya no queda ninguna fila propia con .link-button + flechas de texto plano', () => {
+    // "⬆ Adelante"/"⬇ Atrás" solo sobreviven dentro de comentarios explicativos (contexto histórico del
+    // porqué del cambio) — nunca como texto real de un botón, comprobado abajo por construcción: el único
+    // patrón "handleReorder" que queda en TODO el archivo es dentro de renderLayerActionsRow (2 llamadas al
+    // símbolo de función, nunca una segunda fila de botones con su propio onClick={() => handleReorder(...)}).
+    expect((DESIGNER_SRC.match(/onClick={\(\) => handleReorder\(1\)}/g) ?? []).length).toBe(1)
+    expect((DESIGNER_SRC.match(/onClick={\(\) => handleReorder\(-1\)}/g) ?? []).length).toBe(1)
+    expect((DESIGNER_SRC.match(/\{renderLayerActionsRow\(\)\}/g) ?? []).length).toBe(2)
   })
 })
 

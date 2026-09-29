@@ -2454,12 +2454,16 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     // canvasRef, derivados de canvasScale, ya están aplicados), así que no hace falta esperar un frame
     // más: un rAF aquí solo añade una dependencia innecesaria del bucle de pintado, que en pestañas en
     // segundo plano puede quedar pausado indefinidamente sin que el propio código tenga ningún fallo real.
+    // "Foto tapada" (validación real en iPhone, corrección del panel de Ajustar foto) — entrar en Ajustar
+    // foto (adjustingPhotoId) también recentra, igual que cambiar de modo: si la foto está en la mitad
+    // inferior del lienzo, el usuario no tiene por qué saber que debía subirla antes de tocar "Ajustar
+    // foto". Nunca toca selected.x/selected.y (coordenadas reales) — solo el scrollTop del contenedor.
     const targetY = selected.y * logicalHeightPx * editScale
     const wrapHeight = wrap.clientHeight
     const maxScroll = Math.max(0, logicalHeightPx * editScale - wrapHeight)
     wrap.scrollTop = clamp(targetY - wrapHeight / 2, 0, maxScroll)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoomMode])
+  }, [zoomMode, adjustingPhotoId])
   // Ver el comentario junto a "legacyZoneWidthFrac" en InvitationCanvasView: sin esto, el <div> de una capa de
   // texto usa "shrink-to-fit" real (acotado por left, no por el ancho de la zona) y ajusta línea mucho antes
   // de lo que estimateWrappedLineCount asume, así que el bloque pintado de verdad puede ser más alto que el
@@ -2501,23 +2505,33 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   //
   // Corrección visual (2026-09-29, probado en iPhone real: "el mecanismo funciona, pero el aro multicolor
   // no encaja visualmente con el resto de botones") — el MECANISMO no cambia (sigue siendo este mismo
-  // <input type="color"> real y visible, nunca un input oculto + click() programático), solo su apariencia:
-  // .invitation-color-swatch-input lo viste como una píldora del mismo tamaño/forma que
-  // .invitation-text-edit-btn (B, I, Aa, A±...), con el color actual dentro — sin ningún aro grande
-  // distinto del resto. Sigue siendo un único selector directo (sin presets), compartido tal cual por
-  // Texto y Forma.
+  // <input type="color"> real y visible, nunca un input oculto + click() programático), solo su apariencia.
+  //
+  // Segunda corrección visual (2026-09-29, validación real en iPhone: TODAVÍA aparecía como una pastilla
+  // grande rellena del color, p. ej. negro → botón entero negro) — la primera corrección intentaba encoger
+  // la muestra por DENTRO del input (padding grande + ::-webkit-color-swatch-wrapper/-webkit-color-swatch a
+  // un tamaño pequeño), pero Safari/iOS no respeta ese "encogido por padding" igual que Chrome: el navegador
+  // sigue rellenando toda la caja de contenido del input con el color, padding o no. Arreglo estructural,
+  // no dependiente de que un motor concreto honre un pseudo-elemento: el propio <input> pasa a medir
+  // pequeño DE VERDAD (width/height directos, sin depender de ningún ::-webkit-color-swatch*), envuelto en
+  // un <span> puramente decorativo que es el que aporta el tamaño/fondo/borde de botón normal — así el
+  // relleno de color nunca puede ocupar más que la propia muestra interior, sea cual sea el navegador. El
+  // input sigue siendo el elemento real y tocable (nunca opacity:0 ni superpuesto a otra cosa): el toque
+  // llega a él porque está encima, dentro de un contenedor sin más lógica que centrarlo.
   function renderColorSwatch() {
     if (!selected) return null
     return (
-      <input
-        type="color"
-        className="invitation-color-swatch-input"
-        value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
-        onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
-        onBlur={commitContinuousEdit}
-        aria-label="Color"
-        title="Color"
-      />
+      <span className="invitation-color-swatch-btn">
+        <input
+          type="color"
+          className="invitation-color-swatch-input"
+          value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
+          onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
+          onBlur={commitContinuousEdit}
+          aria-label="Color"
+          title="Color"
+        />
+      </span>
     )
   }
 
@@ -3401,92 +3415,114 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                     </div>
                   )}
 
-                  {panel === 'mas' && selected && (
+                  {/* Corrección real (validación en iPhone) — con el panel "Más" completo (Recorte + Ajustar
+                      foto + Zoom + Adelante/Atrás/Duplicar/Eliminar), la altura ocupaba media pantalla y
+                      tapaba la propia foto si estaba en la mitad inferior de la invitación, sin que hubiera
+                      forma de saberlo antes de entrar. Mientras se ajusta una foto (adjustingPhotoId===
+                      selected.id), el panel se reduce a SOLO lo necesario para encuadrar (Original/Círculo/
+                      Listo + Zoom) — nada de Adelante/Atrás/Duplicar/Eliminar ni el texto instructivo largo,
+                      así queda el máximo lienzo visible posible. Nunca toca photoOffsetX/Y/photoScale ni el
+                      mecanismo en sí (ya aprobado) — solo qué controles se muestran a la vez. */}
+                  {panel === 'mas' && selected && selected.type === 'photo' && adjustingPhotoId === selected.id ? (
                     <>
-                      {selected.type === 'shape' && (
-                        <label style={{ display: 'block' }}>
-                          Opacidad ({Math.round((selected.opacity ?? 1) * 100)}%)
-                          <input
-                            type="range"
-                            min={20}
-                            max={100}
-                            value={Math.round((selected.opacity ?? 1) * 100)}
-                            onChange={(e) => updateSelectedContinuous({ opacity: Number(e.target.value) / 100 }, 'opacity')}
-                            onPointerUp={commitContinuousEdit}
-                            onBlur={commitContinuousEdit}
-                            style={{ width: '100%' }}
-                          />
-                        </label>
-                      )}
-                      {selected.type === 'photo' && (
-                        <div className="filter-row" style={{ marginBottom: 10 }}>
-                          <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
-                            Recorte:
-                          </span>
-                          <button
-                            type="button"
-                            className={'chip' + ((selected.photoMask ?? 'none') === 'none' ? ' chip-active' : '')}
-                            onClick={() => updateSelectedDiscrete({ photoMask: 'none' })}
-                          >
-                            Original
-                          </button>
-                          <button
-                            type="button"
-                            className={'chip' + (selected.photoMask === 'circle' ? ' chip-active' : '')}
-                            onClick={() => updateSelectedDiscrete({ photoMask: 'circle' })}
-                          >
-                            ⚪ Círculo
-                          </button>
-                        </div>
-                      )}
-                      {/* Bloque A (cola nocturna) — "Ajustar foto": mismo concepto que "🔧 Ajustar fondo"
-                          (encuadre reversible, nunca recorte físico), pero por capa y sin pinch (petición
-                          real: "no necesito pinch-to-zoom") — arrastrar en el lienzo mueve, el slider hace
-                          zoom. Entrar/salir es el mismo botón (mismo patrón que el chip de Ajustar fondo). */}
-                      {selected.type === 'photo' && (
-                        <div style={{ marginBottom: 10 }}>
-                          <button
-                            type="button"
-                            className={'chip' + (adjustingPhotoId === selected.id ? ' chip-active' : '')}
-                            onClick={() => setAdjustingPhotoId((id) => (id === selected.id ? null : selected.id))}
-                          >
-                            {adjustingPhotoId === selected.id ? '✓ Listo' : '🔧 Ajustar foto'}
-                          </button>
-                          {adjustingPhotoId === selected.id && (
-                            <div style={{ marginTop: 8 }}>
-                              <p className="muted" style={{ fontSize: 12, margin: '0 0 6px' }}>
-                                Arrastra la foto en el lienzo para moverla dentro del marco.
-                              </p>
-                              <label style={{ display: 'block' }}>
-                                Zoom
-                                <input
-                                  type="range"
-                                  min={100}
-                                  max={300}
-                                  value={Math.round((selected.photoScale ?? 1) * 100)}
-                                  onChange={(e) => updateSelectedContinuous({ photoScale: Number(e.target.value) / 100 }, 'photoScale')}
-                                  onPointerUp={commitContinuousEdit}
-                                  onBlur={commitContinuousEdit}
-                                  style={{ width: '100%' }}
-                                />
-                              </label>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div className="filter-row">
-                        <button type="button" className="link-button" onClick={() => handleReorder(1)}>
-                          ⬆ Adelante
+                      <div className="filter-row" style={{ alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className={'chip' + ((selected.photoMask ?? 'none') === 'none' ? ' chip-active' : '')}
+                          onClick={() => updateSelectedDiscrete({ photoMask: 'none' })}
+                        >
+                          Original
                         </button>
-                        <button type="button" className="link-button" onClick={() => handleReorder(-1)}>
-                          ⬇ Atrás
+                        <button
+                          type="button"
+                          className={'chip' + (selected.photoMask === 'circle' ? ' chip-active' : '')}
+                          onClick={() => updateSelectedDiscrete({ photoMask: 'circle' })}
+                        >
+                          ⚪ Círculo
                         </button>
-                        <button type="button" className="link-button" onClick={handleDuplicate}>
-                          ⧉ Duplicar
+                        <button type="button" className="chip chip-active" style={{ marginLeft: 'auto' }} onClick={() => setAdjustingPhotoId(null)}>
+                          ✓ Listo
                         </button>
-                        <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
                       </div>
+                      <label style={{ display: 'block', marginTop: 8 }}>
+                        Zoom
+                        <input
+                          type="range"
+                          min={100}
+                          max={300}
+                          value={Math.round((selected.photoScale ?? 1) * 100)}
+                          onChange={(e) => updateSelectedContinuous({ photoScale: Number(e.target.value) / 100 }, 'photoScale')}
+                          onPointerUp={commitContinuousEdit}
+                          onBlur={commitContinuousEdit}
+                          style={{ width: '100%' }}
+                        />
+                      </label>
                     </>
+                  ) : (
+                    panel === 'mas' &&
+                    selected && (
+                      <>
+                        {selected.type === 'shape' && (
+                          <label style={{ display: 'block' }}>
+                            Opacidad ({Math.round((selected.opacity ?? 1) * 100)}%)
+                            <input
+                              type="range"
+                              min={20}
+                              max={100}
+                              value={Math.round((selected.opacity ?? 1) * 100)}
+                              onChange={(e) => updateSelectedContinuous({ opacity: Number(e.target.value) / 100 }, 'opacity')}
+                              onPointerUp={commitContinuousEdit}
+                              onBlur={commitContinuousEdit}
+                              style={{ width: '100%' }}
+                            />
+                          </label>
+                        )}
+                        {selected.type === 'photo' && (
+                          <div className="filter-row" style={{ marginBottom: 10 }}>
+                            <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
+                              Recorte:
+                            </span>
+                            <button
+                              type="button"
+                              className={'chip' + ((selected.photoMask ?? 'none') === 'none' ? ' chip-active' : '')}
+                              onClick={() => updateSelectedDiscrete({ photoMask: 'none' })}
+                            >
+                              Original
+                            </button>
+                            <button
+                              type="button"
+                              className={'chip' + (selected.photoMask === 'circle' ? ' chip-active' : '')}
+                              onClick={() => updateSelectedDiscrete({ photoMask: 'circle' })}
+                            >
+                              ⚪ Círculo
+                            </button>
+                          </div>
+                        )}
+                        {/* Bloque A (cola nocturna) — "Ajustar foto": mismo concepto que "🔧 Ajustar fondo"
+                            (encuadre reversible, nunca recorte físico), pero por capa y sin pinch (petición
+                            real: "no necesito pinch-to-zoom") — arrastrar en el lienzo mueve, el slider hace
+                            zoom. Entrar es este botón; salir es "✓ Listo" del panel compacto de arriba. */}
+                        {selected.type === 'photo' && (
+                          <div style={{ marginBottom: 10 }}>
+                            <button type="button" className="chip" onClick={() => setAdjustingPhotoId(selected.id)}>
+                              🔧 Ajustar foto
+                            </button>
+                          </div>
+                        )}
+                        <div className="filter-row">
+                          <button type="button" className="link-button" onClick={() => handleReorder(1)}>
+                            ⬆ Adelante
+                          </button>
+                          <button type="button" className="link-button" onClick={() => handleReorder(-1)}>
+                            ⬇ Atrás
+                          </button>
+                          <button type="button" className="link-button" onClick={handleDuplicate}>
+                            ⧉ Duplicar
+                          </button>
+                          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar elemento" onConfirm={handleDeleteSelected} />
+                        </div>
+                      </>
+                    )
                   )}
                 </div>
               )}
@@ -3538,8 +3574,13 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                 ) : (
                   // foto | emoji — sin controles de texto/color.
                   <>
+                    {/* Corrección real (validación en iPhone: "sigue apareciendo AB/CD/Tamaño" al elegir una
+                        foto) — el icono del botón de la barra (🔠, "símbolo de entrada de letras latinas")
+                        se veía como una rejilla de letras en iOS; el PANEL que abre ya usaba A−/A+ desde
+                        antes (ver más abajo, panel === 'tamano'), solo el icono del botón que lo abre se
+                        había quedado sin actualizar. Mismo icono "A±" que ya usa Forma, arriba. */}
                     <button type="button" className={'invitation-toolbar-btn' + (panel === 'tamano' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('tamano')}>
-                      <span className="invitation-toolbar-icon">🔠</span>
+                      <span className="invitation-toolbar-icon">A±</span>
                       <span>Tamaño</span>
                     </button>
                     <button type="button" className={'invitation-toolbar-btn' + (panel === 'mas' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('mas')}>

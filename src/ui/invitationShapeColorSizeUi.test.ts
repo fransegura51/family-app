@@ -39,7 +39,7 @@ describe('Tamaño de una forma — mismo patrón "A±" que Texto, ya no el icono
   })
 
   it('el panel de tamaño de forma sigue siendo A−/valor/A+, ahora con el mismo estilo de botón que Texto (invitation-text-edit-btn)', () => {
-    const sizePanel = slice(DESIGNER_SRC, "panel === 'tamano' && selected && (", "panel === 'mas' && selected && (")
+    const sizePanel = slice(DESIGNER_SRC, "panel === 'tamano' && selected && (", "panel === 'mas' &&\n                    selected && (")
     expect(sizePanel).toContain('className="invitation-text-edit-btn"')
     expect(sizePanel).toContain('A−')
     expect(sizePanel).toContain('A+')
@@ -47,8 +47,14 @@ describe('Tamaño de una forma — mismo patrón "A±" que Texto, ya no el icono
     expect(sizePanel).toContain('updateSelectedDiscrete({ fontSize: (selected.fontSize ?? 16) + 15 })')
   })
 
-  it('foto/emoji conservan su control de tamaño tal cual (esta corrección solo pedía el cambio para Forma)', () => {
+  // Corrección real (validación en iPhone, tras la corrección de esta misma fase): el icono de barra 🔠
+  // ("símbolo de entrada de letras latinas") se veía como una rejilla de letras ("AB/CD") en iOS — la
+  // premisa original de este describe ("foto/emoji conservan 🔠") era justo el bug; ahora también usan A±,
+  // igual que Forma y Texto arriba, aunque el PANEL que abren (ya A−/valor/A+) no cambió en esta corrección.
+  it('foto/emoji usan el mismo icono de barra "A±" que Forma y Texto — la rejilla de letras que se veía en iOS ha desaparecido del botón', () => {
     const restBranch = slice(DESIGNER_SRC, '// foto | emoji — sin controles de texto/color.', ')}\n              </div>\n            </div>')
-    expect(restBranch).toContain('🔠')
+    const sizeButton = slice(restBranch, "togglePanel('tamano')}>", '</button>')
+    expect(sizeButton).toContain('A±')
+    expect(sizeButton).not.toMatch(/invitation-toolbar-icon">[^<]*🔠/)
   })
 })

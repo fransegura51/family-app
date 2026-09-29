@@ -1273,19 +1273,32 @@ select {
    del color elegido — eso no cambia con esta corrección, ya era así. Lo que faltaba: encoger la muestra a
    un pequeño círculo centrado (más padding) y darle SU PROPIO borde neutro (nunca al botón exterior), para
    que blancos/cremas/amarillos muy claros sigan siendo visibles sobre ese fondo blanco. */
-.invitation-color-swatch-input {
-  -webkit-appearance: none;
-  appearance: none;
-  /* width (no solo min-width): un <input type="color"> tiene un ancho intrínseco propio que min-width no
-     limita por arriba — bug real encontrado al verificar esta corrección: sin width explícito, el botón
-     medía ~50px en vez de 36px, distinto del resto de la barra (justo lo que reportó el usuario: "sus
-     dimensiones/formato son distintos a los botones vecinos"). */
+/* Segunda corrección visual (2026-09-29, validación real en iPhone) — .invitation-color-swatch-btn es el
+   botón "de verdad" (mismo tamaño/forma/borde/fondo que .invitation-text-edit-btn, SIEMPRE neutro,
+   independiente del color elegido); .invitation-color-swatch-input es el <input type="color"> real dentro,
+   ahora pequeño por sí mismo (width/height directos) en vez de "encogido por padding" — así el relleno de
+   color nunca puede desbordar más allá de esa muestra pequeña, ni siquiera en un navegador que no respete
+   el resto de estilos del propio input (ver el comentario en InvitationDesigner.tsx, renderColorSwatch). */
+.invitation-color-swatch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 36px;
   height: 36px;
   border-radius: 18px;
   border: 1px solid #d8dae8;
   background: white;
-  padding: 10px;
+  flex-shrink: 0;
+}
+
+.invitation-color-swatch-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 23, 42, 0.25);
+  padding: 0;
   cursor: pointer;
 }
 
@@ -1295,12 +1308,12 @@ select {
 }
 
 .invitation-color-swatch-input::-webkit-color-swatch {
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: none;
   border-radius: 50%;
 }
 
 .invitation-color-swatch-input::-moz-color-swatch {
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: none;
   border-radius: 50%;
 }
 

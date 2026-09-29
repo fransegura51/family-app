@@ -65,18 +65,39 @@ describe('Modo "🔧 Ajustar foto" — entrar/salir explícito, por capa (nunca 
     expect(fn).toContain('setAdjustingPhotoId(null)')
   })
 
-  it('el botón del panel "Más" alterna entrar/salir sobre la capa seleccionada, con su propio rótulo en cada estado', () => {
-    const fn = slice(DESIGNER_SRC, "selected.type === 'photo' && (\n                        <div style={{ marginBottom: 10 }}>", '\n                      <div className="filter-row">')
-    expect(fn).toContain("onClick={() => setAdjustingPhotoId((id) => (id === selected.id ? null : selected.id))}")
-    expect(fn).toContain("adjustingPhotoId === selected.id ? '✓ Listo' : '🔧 Ajustar foto'")
+  // Corrección real (validación en iPhone): el panel "Más" completo tapaba media pantalla al ajustar una
+  // foto colocada en la mitad inferior de la invitación. Ahora, mientras adjustingPhotoId === selected.id,
+  // el panel "Más" se reduce a un bloque compacto (Original/Círculo/Listo + Zoom, nada más); entrar en el
+  // modo es un botón aparte en el panel NORMAL (ver el segundo test de este describe).
+  const compactPanel = slice(
+    DESIGNER_SRC,
+    "panel === 'mas' && selected && selected.type === 'photo' && adjustingPhotoId === selected.id ? (",
+    '\n                  ) : (',
+  )
+
+  it('el panel compacto de Ajustar foto solo tiene Original/Círculo/Listo y Zoom — nada de Adelante/Atrás/Duplicar/Eliminar ni el texto instructivo largo', () => {
+    expect(compactPanel).toContain('onClick={() => setAdjustingPhotoId(null)}')
+    expect(compactPanel).toContain('✓ Listo')
+    expect(compactPanel).toContain('Original')
+    expect(compactPanel).toContain('⚪ Círculo')
+    expect(compactPanel).not.toContain('⬆ Adelante')
+    expect(compactPanel).not.toContain('⬇ Atrás')
+    expect(compactPanel).not.toContain('⧉ Duplicar')
+    expect(compactPanel).not.toContain('Borrar elemento')
+    expect(compactPanel).not.toContain('Arrastra la foto en el lienzo')
+  })
+
+  it('el botón para ENTRAR en Ajustar foto vive en el panel normal (rama else), separado del panel compacto', () => {
+    const normalPanel = slice(DESIGNER_SRC, "panel === 'mas' &&\n                    selected && (", '</div>\n              )}\n\n              <div className="invitation-toolbar">')
+    expect(normalPanel).toContain("onClick={() => setAdjustingPhotoId(selected.id)}")
+    expect(normalPanel).toContain('🔧 Ajustar foto')
   })
 
   it('el zoom es un slider (nunca pinch/gesto), acotado 100%-300% igual que el rango de escala del fondo', () => {
-    const fn = slice(DESIGNER_SRC, "selected.type === 'photo' && (\n                        <div style={{ marginBottom: 10 }}>", '\n                      <div className="filter-row">')
-    expect(fn).toContain('type="range"')
-    expect(fn).toContain('min={100}')
-    expect(fn).toContain('max={300}')
-    expect(fn).toContain("updateSelectedContinuous({ photoScale: Number(e.target.value) / 100 }, 'photoScale')")
+    expect(compactPanel).toContain('type="range"')
+    expect(compactPanel).toContain('min={100}')
+    expect(compactPanel).toContain('max={300}')
+    expect(compactPanel).toContain("updateSelectedContinuous({ photoScale: Number(e.target.value) / 100 }, 'photoScale')")
   })
 
   it('mientras se ajusta la foto, el tirador de tamaño/rotación de la capa se oculta (dos modos distintos, nunca a la vez)', () => {

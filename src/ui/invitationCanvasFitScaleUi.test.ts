@@ -118,7 +118,10 @@ describe('Cada capa conserva touchAction:none propio — arrastrar una capa nunc
 })
 
 describe('Flujo de localización — al pasar a Editar con una capa seleccionada, el scroll la centra (nunca cambia sus coordenadas)', () => {
-  const effectBlock = slice(DESIGNER_SRC, "if (zoomMode !== 'edit') return", '}, [zoomMode])')
+  // Corrección real (validación en iPhone, panel de "Ajustar foto") — este mismo efecto se reutiliza
+  // también para centrar la foto al entrar en Ajustar foto (adjustingPhotoId), no solo al cambiar de
+  // zoomMode — ver invitationPhotoAdjustUi.test.ts para esa parte específica.
+  const effectBlock = slice(DESIGNER_SRC, "if (zoomMode !== 'edit') return", '}, [zoomMode, adjustingPhotoId])')
 
   it('calcula el scroll objetivo a partir de selected.y (posición LÓGICA) y lo aplica como scrollTop del contenedor — nunca reescribe selected.x/selected.y', () => {
     expect(effectBlock).toContain('const targetY = selected.y * logicalHeightPx * editScale')
@@ -126,11 +129,11 @@ describe('Flujo de localización — al pasar a Editar con una capa seleccionada
     expect(effectBlock).not.toMatch(/setLayers|updateSelectedDiscrete|updateSelectedContinuous/)
   })
 
-  it('depende SOLO de zoomMode (no de la capa seleccionada ni de la escala) — cambiar de selección ya en modo edit no debe mover la vista de golpe', () => {
-    // El propio effectBlock (de "if (zoomMode !== 'edit') return" a "}, [zoomMode])") ya prueba, por
-    // construcción (slice() busca ese cierre exacto), que el array de dependencias es exactamente
-    // "[zoomMode]" — si dependiera de algo más, ese marcador de cierre no existiría tal cual y el slice()
-    // de la constante `effectBlock` (arriba) habría fallado en vez de encontrarlo.
+  it('depende SOLO de zoomMode y adjustingPhotoId (no de la capa seleccionada ni de la escala) — cambiar de selección ya en modo edit no debe mover la vista de golpe', () => {
+    // El propio effectBlock (de "if (zoomMode !== 'edit') return" a "}, [zoomMode, adjustingPhotoId])") ya
+    // prueba, por construcción (slice() busca ese cierre exacto), que el array de dependencias es
+    // exactamente ese — si dependiera de algo más, ese marcador de cierre no existiría tal cual y el
+    // slice() de la constante `effectBlock` (arriba) habría fallado en vez de encontrarlo.
     expect(effectBlock.length).toBeGreaterThan(0)
   })
 

@@ -129,6 +129,16 @@ describe('Color — corrección real (probado en iPhone real: el panel salía en
     expect(swatchFn).not.toContain('color-wheel-input"')
   })
 
+  // Segunda corrección visual (validación real en iPhone: "todavía aparece como una pastilla grande
+  // rellena del color, p. ej. negro → botón entero negro") — .invitation-color-swatch-btn es un <span>
+  // puramente decorativo (tamaño/fondo/borde de botón normal, SIEMPRE neutro) que envuelve al <input> real;
+  // el input pasa a medir pequeño por sí mismo (width/height directos en el CSS, no por padding), así el
+  // relleno de color nunca puede desbordar más allá de la muestra interior, sea cual sea el navegador.
+  it('el <input> real va envuelto en un <span> decorativo (invitation-color-swatch-btn) que aporta el tamaño/fondo del botón — el input en sí ya no lleva el tamaño del botón entero', () => {
+    expect(swatchFn).toContain('<span className="invitation-color-swatch-btn">')
+    expect(swatchFn).toContain('</span>')
+  })
+
   it('renderColorSwatch llama a las mismas funciones que el resto del editor (updateSelectedContinuous + commit al soltar)', () => {
     expect(swatchFn).toContain("updateSelectedContinuous({ color: e.target.value }, 'color')")
     expect(swatchFn).toContain('onBlur={commitContinuousEdit}')

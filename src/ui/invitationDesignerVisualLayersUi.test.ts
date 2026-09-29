@@ -85,7 +85,10 @@ describe('◆ Formas — rectángulo/línea/corazón renderizables, resto sin to
 })
 
 describe('Opacidad (formas) y máscara de foto (círculo) — controles dentro de "Más", sin botones nuevos en la barra', () => {
-  const masPanel = slice(DESIGNER_SRC, "panel === 'mas' && selected && (", '</div>\n              )}\n\n              <div className="invitation-toolbar">')
+  // Corrección real (validación en iPhone) — mientras se ajusta una foto (adjustingPhotoId), el panel "Más"
+  // se compacta a solo Original/Círculo/Zoom/Listo (ver invitationPhotoAdjustUi.test.ts); este describe
+  // sigue probando el panel NORMAL (rama else del ternario), donde opacidad/recorte/reordenar siguen igual.
+  const masPanel = slice(DESIGNER_SRC, "panel === 'mas' &&\n                    selected && (", '</div>\n              )}\n\n              <div className="invitation-toolbar">')
 
   it('opacidad solo aparece para selected.type === "shape", cambio continuo entre 20% y 100%', () => {
     expect(masPanel).toContain("selected.type === 'shape' && (")

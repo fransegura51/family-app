@@ -191,10 +191,12 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // en event_budget_items.planned_amount — tabla de Eventos, nada que ver con devoluciones/refunds.
     // 0170 (date_filter_user_preferences, Configuración → Filtros temporales) añade 2 columnas nuevas a
     // `profiles` (favorito/desactivados de fecha) — tampoco toca devoluciones.
+    // 0171 (forecast_payment_document_import, "Importar desde foto o documento" en Previsión de pagos)
+    // añade 3 columnas a `forecast_payments` y un bucket de Storage nuevo — tampoco toca devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(170)
+    expect(Math.max(...numbers)).toBe(171)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

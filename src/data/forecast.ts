@@ -1,6 +1,7 @@
 // Previsión de pagos (Economía) — capa de datos mínima (Fase 1B: infraestructura, sin UI todavía).
 import { supabase } from '@/data/supabaseClient'
 import { createEvent, updateEvent, deleteEvent } from '@/data/calendar'
+import { compressImageFile } from '@/domain/imageCompression'
 import { nextForecastOccurrence } from '@/domain/forecast'
 import type {
   ForecastAmountStatus,
@@ -33,13 +34,14 @@ interface ForecastPaymentRow {
   show_in_calendar: boolean
   calendar_event_id: string | null
   active: boolean
+  source_storage_path: string | null
   forecast_reminders: { id: string; value: number; unit: string }[]
   forecast_payment_installments: { id: string; sequence_index: number; offset_days: number; amount_status: string; amount: number | null; amount_estimated_basis: string | null }[]
 }
 
 const FORECAST_PAYMENT_COLUMNS =
   'id, family_id, title, category_id, provider, notes, amount_status, amount, amount_estimated_basis, currency, ' +
-  'due_date, expected_payment_date, recurrence_rule, bank_account_id, owner_member_id, show_in_calendar, calendar_event_id, active, ' +
+  'due_date, expected_payment_date, recurrence_rule, bank_account_id, owner_member_id, show_in_calendar, calendar_event_id, active, source_storage_path, ' +
   'forecast_reminders(id, value, unit), ' +
   'forecast_payment_installments(id, sequence_index, offset_days, amount_status, amount, amount_estimated_basis)'
 
@@ -65,6 +67,7 @@ function toForecastPayment(row: ForecastPaymentRow): ForecastPaymentWithReminder
     showInCalendar: row.show_in_calendar,
     calendarEventId: row.calendar_event_id,
     active: row.active,
+    sourceStoragePath: row.source_storage_path,
     reminders: row.forecast_reminders.map((r) => ({ id: r.id, forecastPaymentId: row.id, value: r.value, unit: r.unit as ForecastReminderUnit })),
     installments: row.forecast_payment_installments
       .map((i) => ({
@@ -101,6 +104,13 @@ export interface ForecastPaymentInput {
   bankAccountId: string | null
   ownerMemberId: string | null
   showInCalendar: boolean
+  // "Importar desde foto o documento" — solo createForecastPayment los usa (se fijan una vez, al crear;
+  // updateForecastPayment los ignora a propósito, ver más abajo, para que editar un pago ya guardado nunca
+  // los borre ni los reescriba). Los tres van juntos o ninguno: sourceFileHash/contentFingerprint solo
+  // tienen sentido si también hay sourceStoragePath.
+  sourceStoragePath?: string | null
+  sourceFileHash?: string | null
+  contentFingerprint?: string | null
 }
 
 async function currentFamilyAndUser(): Promise<{ familyId: string; userId: string }> {
@@ -173,6 +183,9 @@ export async function createForecastPayment(input: ForecastPaymentInput): Promis
       owner_member_id: input.ownerMemberId,
       show_in_calendar: input.showInCalendar,
       created_by: userId,
+      source_storage_path: input.sourceStoragePath ?? null,
+      source_file_hash: input.sourceFileHash ?? null,
+      content_fingerprint: input.contentFingerprint ?? null,
     })
     .select('id')
     .single()
@@ -265,10 +278,65 @@ export async function setForecastPaymentActive(
   }
 }
 
-export async function deleteForecastPayment(calendarEventId: string | null, id: string): Promise<void> {
+// sourceStoragePath es opcional (undefined = no se sabe/no aplica, ver el único call site real en
+// FinanceScreen.tsx) — cuando existe, el archivo original se borra del bucket forecast_documents junto
+// con la fila, mismo criterio que deleteReceipt (nunca dejar un archivo huérfano sin ninguna fila que lo
+// referencie).
+export async function deleteForecastPayment(calendarEventId: string | null, id: string, sourceStoragePath?: string | null): Promise<void> {
   if (calendarEventId) await deleteEvent(calendarEventId)
+  if (sourceStoragePath) await supabase.storage.from('forecast_documents').remove([sourceStoragePath])
   const { error } = await supabase.from('forecast_payments').delete().eq('id', id)
   if (error) throw error
+}
+
+// ============================================================
+// "Importar desde foto o documento" — subida del archivo original, URL firmada para consultarlo después,
+// y las dos comprobaciones de duplicados (mismo patrón de dos capas que mercadona-ticket-webhook, ver
+// migración 0171). Se llaman ANTES de crear la Previsión de verdad — nunca desde createForecastPayment
+// (que solo persiste el resultado ya revisado y confirmado por el usuario).
+// ============================================================
+
+export interface ForecastPaymentDuplicateMatch {
+  id: string
+  title: string
+  dueDate: string
+}
+
+async function findForecastPaymentByColumn(column: 'source_file_hash' | 'content_fingerprint', value: string): Promise<ForecastPaymentDuplicateMatch | null> {
+  const { data, error } = await supabase.from('forecast_payments').select('id, title, due_date').eq(column, value).maybeSingle()
+  if (error) throw error
+  return data ? { id: data.id as string, title: data.title as string, dueDate: data.due_date as string } : null
+}
+
+// CAPA A — antes de llamar a la IA: ¿ya se subió este archivo exacto?
+export function findForecastPaymentBySourceHash(hash: string): Promise<ForecastPaymentDuplicateMatch | null> {
+  return findForecastPaymentByColumn('source_file_hash', hash)
+}
+
+// CAPA B — después de la extracción: ¿ya se guardó una Previsión con esta misma huella lógica (aunque el
+// archivo fuera técnicamente distinto)?
+export function findForecastPaymentByContentFingerprint(fingerprint: string): Promise<ForecastPaymentDuplicateMatch | null> {
+  return findForecastPaymentByColumn('content_fingerprint', fingerprint)
+}
+
+// Sube el archivo original al bucket privado "forecast_documents" bajo <family_id>/ — mismo patrón que
+// uploadReceipt, sin borrado a los 3 meses (a diferencia de receipts: un contrato puede hacer falta
+// consultarlo años después). Se llama solo al CONFIRMAR la Previsión (nunca durante la revisión, para no
+// subir archivos de análisis que el usuario acaba cancelando).
+export async function uploadForecastDocument(file: File): Promise<string> {
+  const { familyId } = await currentFamilyAndUser()
+  const compressed = await compressImageFile(file)
+  const ext = compressed.name.split('.').pop() || 'jpg'
+  const path = `${familyId}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('forecast_documents').upload(path, compressed)
+  if (error) throw error
+  return path
+}
+
+export async function getForecastDocumentUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('forecast_documents').createSignedUrl(storagePath, 3600)
+  if (error) throw error
+  return data.signedUrl
 }
 
 // Sustituye todos los recordatorios a la vez — mismo patrón que replaceReminders en data/calendar.ts.

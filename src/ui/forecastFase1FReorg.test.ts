@@ -31,7 +31,9 @@ describe('Fase 1F.A/A2 — "Gestionar pagos previstos" desaparece como listado a
     expect(b).toContain('setEditingPayment(parent)')
     expect(b).toContain('setForecastPaymentActive(parent, false).then(reload)')
     expect(b).toContain('setForecastPaymentActive(parent, true).then(reload)')
-    expect(b).toContain('deleteForecastPayment(parent.calendarEventId, parent.id).then(reload)')
+    // "Importar desde foto o documento" — deleteForecastPayment gana un 3er argumento (sourceStoragePath)
+    // para borrar también el documento original en Storage, si lo hay; nunca cambia el resto del patrón.
+    expect(b).toContain('deleteForecastPayment(parent.calendarEventId, parent.id, parent.sourceStoragePath).then(reload)')
   })
 
   it('el resumen de plan/ciclo (N de M restantes, cobros por ciclo, Se renueva) sigue existiendo, solo que reubicado', () => {

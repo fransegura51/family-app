@@ -204,17 +204,19 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     expect(guestRow).toContain("{g.notes ? ` · ${g.notes}` : ''}")
   })
 
-  it('no se ha tocado ninguna migración ni política RLS de la Fase 14B (0167/0168/0169/0170 son de fases totalmente distintas y posteriores)', () => {
+  it('no se ha tocado ninguna migración ni política RLS de la Fase 14B (0167/0168/0169/0170/0171 son de fases totalmente distintas y posteriores)', () => {
     // 0167 (reclassify_commission_reversal_pair_202609, FASE CA-4) es la corrección puntual del par
     // comisión+bonificación de septiembre. 0168 (receipt_dedup_fingerprint) añade huellas anti-duplicado a
     // `receipts`. 0169 (event_budget_item_amount_optional, cola nocturna Bloque 11) solo relaja una
     // restricción NOT NULL en event_budget_items.planned_amount. 0170 (date_filter_user_preferences,
-    // Configuración → Filtros temporales) añade 2 columnas a `profiles`. Ninguna de las cuatro tiene nada
-    // que ver con invitados/regalos de eventos.
+    // Configuración → Filtros temporales) añade 2 columnas a `profiles`. 0171
+    // (forecast_payment_document_import, "Importar desde foto o documento" en Previsión de pagos) añade 3
+    // columnas a `forecast_payments` y un bucket de Storage nuevo. Ninguna de las cinco tiene nada que ver
+    // con invitados/regalos de eventos.
     const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(170)
+    expect(Math.max(...numbers)).toBe(171)
   })
 })

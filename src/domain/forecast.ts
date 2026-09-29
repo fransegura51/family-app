@@ -32,6 +32,12 @@ export interface ForecastPayment {
   showInCalendar: boolean
   calendarEventId: string | null // proyección puramente visual, nunca lleva avisos
   active: boolean
+  // "Importar desde foto o documento" — dónde vive el documento/foto original (bucket forecast_documents),
+  // si esta Previsión se creó (o se le adjuntó luego) uno. null en cualquier pago creado a mano, como
+  // siempre. source_file_hash/content_fingerprint (protección de duplicados) son deliberadamente
+  // data-only: nunca se exponen aquí, ningún consumidor de este tipo los necesita (mismo criterio que
+  // Receipt, que tampoco los expone).
+  sourceStoragePath: string | null
 }
 
 export interface ForecastReminder {

@@ -36,6 +36,9 @@ import {
   deleteForecastPayment,
   deleteLoanDetails,
   dismissForecastRecurrence,
+  findForecastPaymentByContentFingerprint,
+  findForecastPaymentBySourceHash,
+  getForecastDocumentUrl,
   getLoanDetails,
   listAllMatchedForecastExpenseIds,
   listForecastOccurrenceOverrides,
@@ -50,7 +53,9 @@ import {
   unmatchForecastOccurrence,
   updateForecastPayment,
   updateLoanDetails,
+  uploadForecastDocument,
   type ForecastLoanDetailsInput,
+  type ForecastPaymentDuplicateMatch,
   type ForecastPaymentInput,
   type ForecastPaymentWithReminders,
 } from '@/data/forecast'
@@ -193,6 +198,8 @@ import {
 } from '@/domain/dateRanges'
 import { findKnownStore } from '@/domain/voiceQuery'
 import { analyzeReceiptPhoto, type MeasurementUnit } from '@/services/receiptPhoto'
+import { analyzeForecastDocument, sha256HexOfFile, sha256HexOfText } from '@/services/forecastDocument'
+import { buildForecastContentFingerprintBasis, buildForecastDocumentPrefillFields, isEmptyForecastDocumentScan } from '@/domain/forecastDocumentImport'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { StoreIcon } from '@/ui/StoreIcon'
 import { ProductTypesModal } from '@/ui/ProductTypesModal'
@@ -8903,6 +8910,11 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   // desclasificar un préstamo desde el propio formulario.
   const [loanDetails, setLoanDetails] = useState<ForecastLoanDetails[]>([])
   const [loanSectionOpen, setLoanSectionOpen] = useState(false)
+  // "Importar desde foto o documento" — estado propio del flujo de análisis, independiente del formulario
+  // (recurrencePrefill/showAddForm): solo cuando la IA produce una propuesta usable se reutiliza ese mismo
+  // canal (setRecurrencePrefill + setShowAddForm), igual que ya hace reviewRecurrenceCandidate — el
+  // formulario de revisión es el mismo de siempre, nunca una pantalla nueva.
+  const [showDocumentImport, setShowDocumentImport] = useState(false)
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -9280,7 +9292,18 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                     Reactivar
                   </button>
                 )}
-                <ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(parent.calendarEventId, parent.id).then(reload)} />
+                {/* "Importar desde foto o documento" — solo aparece si esta Previsión se creó así (o se le
+                    adjuntó un documento luego); una creada a mano nunca lleva sourceStoragePath. */}
+                {parent.sourceStoragePath && (
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => getForecastDocumentUrl(parent.sourceStoragePath!).then((url) => window.open(url, '_blank'))}
+                  >
+                    📄 Ver documento original
+                  </button>
+                )}
+                <ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(parent.calendarEventId, parent.id, parent.sourceStoragePath).then(reload)} />
               </div>
             </div>
           )}
@@ -9299,9 +9322,14 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       </p>
       {error && <p className="error">{error}</p>}
 
-      <button type="button" style={{ marginBottom: 8 }} onClick={() => setShowAddForm(true)}>
-        + Añadir pago
-      </button>
+      <div className="inline-fields" style={{ marginBottom: 8 }}>
+        <button type="button" onClick={() => setShowAddForm(true)}>
+          + Añadir pago
+        </button>
+        <button type="button" className="link-button" onClick={() => setShowDocumentImport(true)}>
+          📄 Importar desde foto o documento
+        </button>
+      </div>
 
       {payments.length === 0 ? (
         <div className="card event-card" style={{ marginTop: 12 }}>
@@ -9309,6 +9337,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
           <p className="muted" style={{ marginTop: 4 }}>Empieza añadiendo cosas que sabes que llegarán: seguros, IBI, cuotas, impuestos…</p>
           <button type="button" onClick={() => setShowAddForm(true)} style={{ marginTop: 8 }}>
             + Añadir primer pago
+          </button>
+          <button type="button" className="link-button" onClick={() => setShowDocumentImport(true)} style={{ marginTop: 4 }}>
+            📄 O importar desde foto o documento
           </button>
         </div>
       ) : (
@@ -9609,6 +9640,162 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
           </div>
         </div>
       )}
+
+      {showDocumentImport && (
+        <ForecastDocumentImportModal
+          onClose={() => setShowDocumentImport(false)}
+          onPrefillReady={(prefill) => {
+            setRecurrencePrefill(prefill)
+            setShowDocumentImport(false)
+            setShowAddForm(true)
+          }}
+          onContinueManually={() => {
+            setShowDocumentImport(false)
+            setShowAddForm(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// "Importar desde foto o documento" — mismo espíritu que "Subir ticket" en Compras, pero para Previsión de
+// pagos: financiación de una compra, préstamo/crédito, plan de cuotas, factura con pagos futuros, contrato
+// con vencimientos... DOCUMENTO → EXTRACCIÓN (IA) → PROPUESTA → REVISIÓN → CONFIRMACIÓN → PREVISIÓN, igual
+// que ya hace la detección de patrones bancarios (nunca "documento → previsión automática"). Este modal
+// SOLO produce una propuesta (ForecastPaymentPrefill) o decide que no hay nada que proponer — nunca guarda
+// nada él mismo; onPrefillReady abre el mismo ForecastPaymentForm de siempre para revisar/corregir/
+// confirmar, exactamente como con una propuesta bancaria.
+function ForecastDocumentImportModal({
+  onClose,
+  onPrefillReady,
+  onContinueManually,
+}: {
+  onClose: () => void
+  onPrefillReady: (prefill: ForecastPaymentPrefill) => void
+  onContinueManually: () => void
+}) {
+  const [file, setFile] = useState<File | null>(null)
+  const [status, setStatus] = useState<'idle' | 'checking' | 'analyzing' | 'duplicate' | 'empty' | 'error'>('idle')
+  const [duplicate, setDuplicate] = useState<ForecastPaymentDuplicateMatch | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleFile(picked: File | null) {
+    setFile(picked)
+    setDuplicate(null)
+    setError(null)
+    if (!picked) return
+    setStatus('checking')
+    try {
+      // CAPA A — hash del archivo tal cual, ANTES de gastar una llamada de IA: un reenvío/reintento del
+      // mismo archivo se detecta sin analizar nada de nuevo.
+      const sourceFileHash = await sha256HexOfFile(picked)
+      const existingByHash = await findForecastPaymentBySourceHash(sourceFileHash)
+      if (existingByHash) {
+        setDuplicate(existingByHash)
+        setStatus('duplicate')
+        return
+      }
+
+      setStatus('analyzing')
+      const scan = await analyzeForecastDocument(picked)
+      if (isEmptyForecastDocumentScan(scan)) {
+        setStatus('empty')
+        return
+      }
+
+      // CAPA B — huella lógica del documento ya interpretado: el mismo documento con bytes distintos
+      // (un PDF re-descargado, una foto repetida) tampoco debe colarse como una segunda Previsión.
+      const fingerprintBasis = buildForecastContentFingerprintBasis(scan)
+      const contentFingerprint = fingerprintBasis ? await sha256HexOfText(fingerprintBasis) : null
+      if (contentFingerprint) {
+        const existingByFingerprint = await findForecastPaymentByContentFingerprint(contentFingerprint)
+        if (existingByFingerprint) {
+          setDuplicate(existingByFingerprint)
+          setStatus('duplicate')
+          return
+        }
+      }
+
+      const fields = buildForecastDocumentPrefillFields(scan)
+      onPrefillReady({
+        ...fields,
+        bankAccountId: '',
+        sourceFile: picked,
+        sourceFileHash,
+        contentFingerprint,
+      })
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo analizar el documento'))
+      setStatus('error')
+    }
+  }
+
+  function reset() {
+    setFile(null)
+    setDuplicate(null)
+    setError(null)
+    setStatus('idle')
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            📄 Importar desde foto o documento
+          </h2>
+          <button type="button" className="modal-close" aria-label="Cerrar" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <p className="muted">
+          Financiación de una compra, préstamo, crédito, compra fraccionada, calendario de cuotas, factura
+          con pagos futuros o contrato con vencimientos — PEPA intenta leer lo que pueda; revisas y corriges
+          antes de guardar, como siempre.
+        </p>
+        {status === 'idle' && <FileOrPdfPicker file={file} onChange={handleFile} />}
+        {status === 'checking' && <p className="muted">Comprobando si ya se importó este documento…</p>}
+        {status === 'analyzing' && <p className="muted">Analizando documento… puede tardar unos segundos.</p>}
+        {status === 'duplicate' && duplicate && (
+          <div>
+            <p>
+              Este documento ya se importó: <strong>{duplicate.title}</strong> ({formatSpanishDate(duplicate.dueDate)}).
+            </p>
+            <button type="button" className="link-button" onClick={reset}>
+              Elegir otro documento
+            </button>
+          </div>
+        )}
+        {status === 'empty' && (
+          <div>
+            <p>No se ha podido leer nada útil de este documento.</p>
+            <div className="form-actions">
+              <button type="button" onClick={onContinueManually}>
+                Continuar a mano
+              </button>
+              <button type="button" className="link-button" onClick={reset}>
+                Probar con otro documento
+              </button>
+            </div>
+          </div>
+        )}
+        {status === 'error' && (
+          <div>
+            {error && <p className="error">{error}</p>}
+            <div className="form-actions">
+              {file && (
+                <button type="button" onClick={() => handleFile(file)}>
+                  Reintentar
+                </button>
+              )}
+              <button type="button" className="link-button" onClick={onContinueManually}>
+                Continuar a mano
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -9791,7 +9978,11 @@ function computeSplitChargesSignature(splitCount: string, dueDate: string, amoun
 // siempre — nunca hace falta una fecha falsa "para que compile".
 export interface ForecastPaymentPrefill {
   title: string
-  amount: number
+  // "Importar desde foto o documento" ensancha esto a `number | null` (antes solo lo alimentaba la
+  // detección bancaria, que siempre tiene un importe histórico) — null = importe realmente desconocido en
+  // el documento, el formulario debe abrir en "Pendiente" (amountStatus='unknown'), nunca inventar un 0
+  // ni forzar "Estimado" sin ningún número real detrás. Ver el useState de amountStatus/amount más abajo.
+  amount: number | null
   amountEstimatedBasis: string
   categoryName: string | null
   dueDate?: string
@@ -9803,6 +9994,17 @@ export interface ForecastPaymentPrefill {
   // patrón estructural claro de préstamo ("...PRESTAMO... N.XXXXXXXXXX") — nunca selecciona "Préstamo /
   // hipoteca" por sí sola, nunca rellena Referencia contractual (ver extractLoanBankReference).
   suggestedLoanBankReference?: string | null
+  // "Importar desde foto o documento" — solo lo rellena ese flujo (undefined en cualquier otro origen de
+  // prefill). installmentAmounts: cuotas de importe DISTINTO detectadas en el propio documento, en orden
+  // — si viene con más de un valor, sustituye el reparto uniforme de proposeFinitePlanLines por estos
+  // importes reales (nunca se fuerza una cuota fija cuando el documento decía otra cosa). sourceFile se
+  // mantiene en memoria — solo se sube a Storage al confirmar Guardar (ver handleSubmit), nunca durante la
+  // revisión, para no subir archivos de análisis que el usuario acaba cancelando; sourceFileHash/
+  // contentFingerprint viajan con él para fijarse en el mismo momento.
+  installmentAmounts?: number[] | null
+  sourceFile?: File | null
+  sourceFileHash?: string | null
+  contentFingerprint?: string | null
 }
 
 // Fase 1E.2 — sugerencia visual "💡 Parece una cuota de préstamo": puramente ESTRUCTURAL sobre el título
@@ -9840,8 +10042,11 @@ function ForecastPaymentForm({
   // Fase 1D-g — el estado del importe de una propuesta detectada SIEMPRE empieza en "Estimado", nunca
   // "Conocido": un patrón histórico (aunque los últimos cargos hayan sido idénticos) no garantiza el
   // importe futuro (decisión aprobada explícitamente). El usuario puede cambiarlo a mano si lo sabe fijo.
-  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? 'estimated' : 'known'))
-  const [amount, setAmount] = useState(payment?.amount != null ? String(payment.amount) : prefill ? String(prefill.amount) : '')
+  // "Importar desde foto o documento" — un prefill sin importe real detectado (prefill.amount === null)
+  // abre en "Pendiente" en vez de "Estimado": la restricción de la base de datos exige un importe no nulo
+  // para 'estimated', y forzar un 0 sería inventar un dato que el documento no daba.
+  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? 'estimated' : 'unknown') : 'known'))
+  const [amount, setAmount] = useState(payment?.amount != null ? String(payment.amount) : prefill?.amount != null ? String(prefill.amount) : '')
   const [amountBasis, setAmountBasis] = useState(payment?.amountEstimatedBasis ?? prefill?.amountEstimatedBasis ?? '')
   const [currency, setCurrency] = useState(payment?.currency ?? 'EUR')
   const [dueDate, setDueDate] = useState(payment?.dueDate ?? prefill?.dueDate ?? '')
@@ -9924,6 +10129,19 @@ function ForecastPaymentForm({
         return parseFinitePlanLinesFromSaved(payment.dueDate, freq, interval, validated.count, payment.amountStatus, payment.amount, payment.amountEstimatedBasis, overrides)
       }
     }
+    // "Importar desde foto o documento" — si el propio documento listaba cuotas de importe DISTINTO entre
+    // sí (nunca un reparto inventado a partes iguales), cada línea se prefill con SU importe real en vez
+    // de dejar que proposeFinitePlanLines reparta el total de forma uniforme (petición explícita: "no
+    // fuerces a una cuota fija si el modelo actual permite representarlas individualmente").
+    if (!payment && prefill?.installmentAmounts && prefill.installmentAmounts.length > 1 && initialRecurrence.repeats && initialRecurrence.untilMode === 'count') {
+      const { freq, interval } = resolvedFreqInterval(initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval)
+      return prefill.installmentAmounts.map((amt, i) => ({
+        date: occurrenceForCycle(dueDate, { freq, interval, until: null }, i),
+        amountStatus: 'estimated' as ForecastAmountStatus,
+        amount: String(amt),
+        amountEstimatedBasis: prefill.amountEstimatedBasis,
+      }))
+    }
     return []
   })
   const planSignatureRef = useRef(
@@ -9955,6 +10173,10 @@ function ForecastPaymentForm({
   // un segundo forecast_payment — una vez creado en este mismo formulario, los reintentos actualizan ese
   // mismo id en vez de volver a createForecastPayment.
   const createdPaymentIdRef = useRef<string | null>(null)
+  // "Importar desde foto o documento" — mismo criterio de reintento que createdPaymentIdRef: si la subida
+  // ya tuvo éxito en un intento anterior de ESTE formulario (p. ej. el fallo fue después, guardando los
+  // datos del préstamo), un reintento nunca vuelve a subir el archivo ni a calcular sus huellas.
+  const uploadedDocumentPathRef = useRef<string | null>(null)
 
   // Fase 1E.2 — "Tipo de pago": forecast_payments sigue siendo la ÚNICA fuente de verdad de
   // concepto/cuota/fechas/recurrencia/cuenta — esto solo decide si además existe un forecast_loan_details
@@ -10229,6 +10451,14 @@ function ForecastPaymentForm({
     )
     setSaving(true)
     try {
+      // "Importar desde foto o documento" — el archivo original se sube AQUÍ, al confirmar Guardar de
+      // verdad (nunca antes, durante la revisión: un análisis que el usuario acaba cancelando no debe
+      // dejar ningún archivo huérfano en Storage). Solo en la creación (nunca al editar un pago ya
+      // guardado) y solo una vez por formulario — un reintento posterior reutiliza la misma ruta ya subida
+      // (uploadedDocumentPathRef), nunca vuelve a subir el archivo ni a recalcular sus huellas.
+      if (!payment && prefill?.sourceFile && !uploadedDocumentPathRef.current) {
+        uploadedDocumentPathRef.current = await uploadForecastDocument(prefill.sourceFile)
+      }
       const input: ForecastPaymentInput = {
         title: title.trim(),
         categoryId: categories.find((c) => c.name === categoryName)?.id ?? null,
@@ -10244,6 +10474,9 @@ function ForecastPaymentForm({
         bankAccountId: bankAccountId || null,
         ownerMemberId: ownerMemberId || null,
         showInCalendar,
+        ...(uploadedDocumentPathRef.current
+          ? { sourceStoragePath: uploadedDocumentPathRef.current, sourceFileHash: prefill?.sourceFileHash ?? null, contentFingerprint: prefill?.contentFingerprint ?? null }
+          : {}),
       }
       let id: string
       if (payment) {

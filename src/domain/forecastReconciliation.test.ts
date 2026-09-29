@@ -224,6 +224,7 @@ describe('6/7) estado — skipped / previsión inactiva / cuota fuera de ciclo n
     dueDate: '2026-11-05', expectedPaymentDate: null,
     recurrenceRule: 'FREQ=MONTHLY;UNTIL=2027-04-05', // plan finito de 6 cuotas
     bankAccountId: ACCOUNT_A, ownerMemberId: null, showInCalendar: true, calendarEventId: null, active: true,
+    sourceStoragePath: null,
   }
 
   it('una cuota "skipped" nunca aparece en la lista de ocurrencias que se le pasa al motor de conciliación', () => {
@@ -267,6 +268,7 @@ describe('22/23) regresiones — Seguro Coche Ibiza y CASO REAL IBI y Residuos 8
       amountStatus: 'known', amount: 450, amountEstimatedBasis: null, currency: 'EUR',
       dueDate: '2027-06-08', expectedPaymentDate: null, recurrenceRule: 'FREQ=YEARLY',
       bankAccountId: ACCOUNT_A, ownerMemberId: null, showInCalendar: true, calendarEventId: null, active: true,
+      sourceStoragePath: null,
     }
     const [occurrence] = expandForecastOccurrences(seguro, [], '2027-06-08', '2027-06-08')
     const result = scoreReconciliationCandidate(occurrence, { bankAccountId: seguro.bankAccountId, title: seguro.title, provider: null }, movement({ date: '2027-06-08', amount: 450 }))

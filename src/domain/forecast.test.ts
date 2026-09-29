@@ -43,6 +43,7 @@ function payment(overrides: Partial<ForecastPayment> = {}): ForecastPayment {
     showInCalendar: true,
     calendarEventId: null,
     active: true,
+    sourceStoragePath: null,
     ...overrides,
   }
 }

@@ -154,7 +154,8 @@ describe('desactivar / reactivar / eliminar', () => {
   })
 
   it('Eliminar pide confirmación, como el resto de la app', () => {
-    expect(FS).toContain('<ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(parent.calendarEventId, parent.id).then(reload)} />')
+    // "Importar desde foto o documento" — deleteForecastPayment gana un 3er argumento (sourceStoragePath).
+    expect(FS).toContain('<ConfirmButton label="Eliminar" onConfirm={() => deleteForecastPayment(parent.calendarEventId, parent.id, parent.sourceStoragePath).then(reload)} />')
   })
 })
 
@@ -654,7 +655,11 @@ describe('Fase 1D-g — "Revisar" reutiliza EXACTAMENTE el formulario existente,
   })
 
   it('el importe SIEMPRE precarga como "Estimado" — un histórico idéntico nunca se vuelve "Conocido" automáticamente', () => {
-    expect(FS).toContain("useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? 'estimated' : 'known'))")
+    // "Importar desde foto o documento" amplía esto a un tercer caso: un prefill CON importe real → sigue
+    // siendo 'estimated' (esta prueba); un prefill SIN importe (documento sin dato numérico legible) →
+    // 'unknown' ("Pendiente"), nunca 'known' ni un 0 inventado — nunca este caso concreto, que sigue
+    // siendo idéntico a como era antes de ese bloque.
+    expect(FS).toContain("useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? 'estimated' : 'unknown') : 'known'))")
   })
 
   it('la recurrencia se reconstruye con parseRecurrenceRuleToFormState (el mismo motor de siempre) — nunca fija recurs/freqOption a mano por separado', () => {

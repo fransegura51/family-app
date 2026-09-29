@@ -105,11 +105,14 @@ describe('lo que esta fase NO toca', () => {
     // en event_budget_items.planned_amount — tabla de Eventos, nada que ver con devoluciones/refunds.
     // 0170 (date_filter_user_preferences, Configuración → Filtros temporales) añade 2 columnas nuevas a
     // `profiles` (favorito/desactivados de fecha) — tampoco toca devoluciones.
+    // 0171 (forecast_payment_document_import, "Importar desde foto o documento" en Previsión de pagos)
+    // añade 3 columnas a `forecast_payments` (documento original + huellas de duplicados) y un bucket de
+    // Storage nuevo — tabla de Previsión, nada que ver con devoluciones/refunds.
     // Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(170)
+    expect(Math.max(...numbers)).toBe(171)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

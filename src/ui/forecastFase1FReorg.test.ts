@@ -139,16 +139,23 @@ describe('Fase 1F.B/D — "Evolución temporal" tiene su propio selector explíc
 })
 
 describe('Fase 1F.C — "Comparado con el periodo anterior"', () => {
-  it('reutiliza comparablePrevious (financePeriod.ts) y groupSpending (financeCompute.ts), nunca reimplementa la aritmética de mes contable', () => {
+  // Bloque B (continuación de la cola nocturna) — PeriodComparison se generalizó para que Compras pudiera
+  // reutilizarlo agrupando por tienda: ya no llama a groupSpending/isInternalTransferCategory DIRECTAMENTE
+  // (recibe `groupBy`/`isComparableSpend` de quien lo usa) — Economía sigue pasando exactamente los mismos,
+  // solo que ahora desde su propio call site en vez de hardcodeados dentro del componente compartido.
+  it('reutiliza comparablePrevious (financePeriod.ts) dentro del componente compartido, nunca reimplementa la aritmética de mes contable', () => {
     const b = body(FS, 'function PeriodComparison', 'function EvolucionTemporal')
     expect(b).toContain('comparablePrevious(currentPeriod, today, effectiveMonthStartDay)')
-    expect(b).toContain('groupSpending(previousRows, financeData)')
-    expect(b).toContain('groupSpending(currentRows, financeData)')
   })
 
-  it('excluye movimientos internos y solo cuenta gasto real (nunca ingresos)', () => {
-    const b = body(FS, 'function PeriodComparison', 'function EvolucionTemporal')
-    expect(b).toContain("e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)")
+  it('Economía (EstadisticasTab) sigue pasando groupSpending como su agrupador — mismo cálculo por categoría de siempre, sin cambiar ni un píxel', () => {
+    const callSite = body(FS, '<PeriodComparison', '/>')
+    expect(callSite).toContain('groupSpending(rows, financeData)')
+  })
+
+  it('excluye movimientos internos y solo cuenta gasto real (nunca ingresos) — Economía pasa el mismo filtro de siempre como isComparableSpend', () => {
+    const callSite = body(FS, '<PeriodComparison', '/>')
+    expect(callSite).toContain("isComparableSpend={(e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)}")
   })
 
   it('anterior=0 nunca da un porcentaje infinito: se marca "Nuevo gasto en este periodo"', () => {

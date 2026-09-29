@@ -3153,7 +3153,18 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         )}
       </div>
 
-      <PeriodComparison expenses={expenses} categories={categories} preset={preset} from={from} to={to} monthStartDay={monthStartDay} />
+      <PeriodComparison
+        expenses={expenses}
+        isComparableSpend={(e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)}
+        groupBy={(rows) => {
+          const financeData = { expenses, categories, receipts: [], prices: [], products: [], storeNames: [], monthStartDay } as unknown as FinanceData
+          return groupSpending(rows, financeData).map((g) => ({ ...g, icon: categories.find((c) => c.name === g.name)?.icon ?? null }))
+        }}
+        preset={preset}
+        from={from}
+        to={to}
+        monthStartDay={monthStartDay}
+      />
 
       <EvolucionTemporal expenses={expenses} categories={categories} monthStartDay={monthStartDay} preset={preset} onViewMovements={onViewMovements} />
     </div>
@@ -3193,20 +3204,42 @@ interface CategoryDelta {
   isNew: boolean
 }
 
+// Bloque B (continuación de la cola nocturna) — grupo genérico que PeriodComparison compara antes/después;
+// Economía agrupa por categoría (groupSpending), Compras por tienda — cada quien decide QUÉ agrupa, este
+// componente solo sabe comparar dos periodos del mismo agrupador.
+interface PeriodComparisonGroup {
+  name: string
+  amount: number
+  icon?: string | null
+}
+
+// Generalizado (Bloque B) para que Compras pueda reutilizarlo agrupando por TIENDA en vez de por categoría,
+// sin duplicar el componente en una copia paralela específica de Compras ni de Economía. Economía
+// sigue pasando exactamente el mismo filtro/agrupador de siempre (isComparableSpend + groupBy con
+// groupSpending) — su comportamiento no cambia ni un píxel.
 function PeriodComparison({
   expenses,
-  categories,
+  isComparableSpend,
+  groupBy,
   preset,
   from,
   to,
   monthStartDay,
+  showTotals = false,
 }: {
   expenses: Expense[]
-  categories: BudgetCategory[]
+  // Mismo criterio que el donut de categorías de Economía: solo gasto real, nunca ingresos ni movimientos
+  // internos entre cuentas propias — pero es quien llama quien decide el filtro exacto (Compras usa el
+  // mismo, sin duplicar la función, pero podría diferir si algún día hiciera falta).
+  isComparableSpend: (e: Expense) => boolean
+  groupBy: (rows: Expense[]) => PeriodComparisonGroup[]
   preset: SpendRangePreset
   from: string
   to: string
   monthStartDay: number
+  // Compras (Bloque B) pide un resumen de totales (actual/anterior/diferencia) delante del desglose;
+  // Economía no lo pedía y se queda exactamente como estaba (showTotals sin pasar = false).
+  showTotals?: boolean
 }) {
   const today = new Date()
   const todayStr = toDateStr(today)
@@ -3220,42 +3253,46 @@ function PeriodComparison({
   }
   const cp = comparablePrevious(currentPeriod, today, effectiveMonthStartDay)
 
-  // Mismo criterio que el donut de categorías de arriba: solo gasto real, nunca ingresos ni
-  // movimientos internos entre cuentas propias de la familia — las devoluciones (is_income=true) ya
-  // quedan fuera igual que en el resto de Estadísticas, sin neteo por categoría (mismo tratamiento que
-  // ya tiene la vista de categorías).
-  const isComparableSpend = (e: Expense) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)
   const currentRows = expenses.filter((e) => isComparableSpend(e) && e.expenseDate >= cp.current.from && e.expenseDate <= cp.current.to)
   const previousRows = expenses.filter((e) => isComparableSpend(e) && e.expenseDate >= cp.previous.from && e.expenseDate <= cp.previous.to)
 
-  const financeData = { expenses, categories, receipts: [], prices: [], products: [], storeNames: [], monthStartDay } as unknown as FinanceData
-  const beforeByName = new Map(groupSpending(previousRows, financeData).map((g) => [g.name, g.amount]))
-  const afterByName = new Map(groupSpending(currentRows, financeData).map((g) => [g.name, g.amount]))
+  const beforeByName = new Map(groupBy(previousRows).map((g) => [g.name, g]))
+  const afterByName = new Map(groupBy(currentRows).map((g) => [g.name, g]))
   const names = new Set([...beforeByName.keys(), ...afterByName.keys()])
 
   const deltas: CategoryDelta[] = [...names]
     .map((name) => {
-      const before = beforeByName.get(name) ?? 0
-      const after = afterByName.get(name) ?? 0
-      const cat = categories.find((c) => c.name === name)
+      const before = beforeByName.get(name)?.amount ?? 0
+      const after = afterByName.get(name)?.amount ?? 0
+      const icon = afterByName.get(name)?.icon ?? beforeByName.get(name)?.icon ?? null
       return {
         name,
-        icon: cat?.icon ?? null,
+        icon,
         before,
         after,
         delta: Math.round((after - before) * 100) / 100,
+        // anterior=0 y actual>0 (grupo nuevo): sin porcentaje con sentido — nunca una división por cero.
         deltaPercent: before > 0 ? Math.round(((after - before) / before) * 1000) / 10 : null,
         isNew: before === 0 && after > 0,
       }
     })
     // both=0 no debería poder pasar (solo se listan nombres con gasto en alguno de los dos lados), pero
-    // se filtra por seguridad — nunca enseñar una categoría sin ningún gasto en ninguno de los periodos.
+    // se filtra por seguridad — nunca enseñar un grupo sin ningún gasto en ninguno de los periodos.
     .filter((d) => d.before > 0 || d.after > 0)
 
   const increases = deltas.filter((d) => d.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 4)
   const decreases = deltas.filter((d) => d.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 4)
 
-  if (increases.length === 0 && decreases.length === 0) return null
+  // Resumen de totales (Compras, Bloque B) — sobre las mismas currentRows/previousRows ya filtradas, no
+  // sobre los grupos (evita depender de que groupBy reparta el 100% del importe, como sí exige groupSpending
+  // en Economía; una fila "por tienda" sin tienda resuelta seguiría contando aquí).
+  const totalBefore = Math.round(previousRows.reduce((sum, e) => sum + e.amount, 0) * 100) / 100
+  const totalAfter = Math.round(currentRows.reduce((sum, e) => sum + e.amount, 0) * 100) / 100
+  const totalDelta = Math.round((totalAfter - totalBefore) * 100) / 100
+  const totalDeltaPercent = totalBefore > 0 ? Math.round(((totalAfter - totalBefore) / totalBefore) * 1000) / 10 : null
+  const hasTotals = showTotals && (totalBefore > 0 || totalAfter > 0)
+
+  if (increases.length === 0 && decreases.length === 0 && !hasTotals) return null
 
   // Corrección post-certificación iPhone — el problema era de composición, no de cálculo: name+importes
   // compartían una sola fila con justify-content: space-between, así que en pantallas estrechas el bloque
@@ -3291,6 +3328,16 @@ function PeriodComparison({
         {cp.previousLabel}
         {cp.cutoff ? ' (mismo tramo de días transcurridos, el periodo actual todavía no ha terminado)' : ''}
       </p>
+      {hasTotals && (
+        <p style={{ margin: '0 0 10px' }}>
+          <strong>{totalAfter.toFixed(2)} €</strong> ahora, {totalBefore.toFixed(2)} € antes
+          {' — '}
+          <strong style={{ color: totalDelta >= 0 ? '#b9770e' : '#1e8449' }}>
+            {totalDelta >= 0 ? '+' : ''}
+            {totalDelta.toFixed(2)} €{totalDeltaPercent !== null ? ` (${totalDeltaPercent >= 0 ? '+' : ''}${totalDeltaPercent.toFixed(0)}%)` : ''}
+          </strong>
+        </p>
+      )}
       {increases.length > 0 && (
         <>
           <p style={{ margin: '8px 0 2px', fontWeight: 600 }}>📈 Has gastado más</p>
@@ -7316,6 +7363,34 @@ export function BudgetsTab({
             corrígela si no encaja, tocando el icono en Tickets o el nombre en Historial de precios.
           </p>
         </div>
+      )}
+
+      {/* Bloque B (continuación de la cola nocturna) — "Comparado con el periodo anterior" para Compras,
+          agrupado por TIENDA (nunca por categoría de Economía: aquí se analiza Compras, no Economía).
+          Reutiliza el MISMO componente que ya usa Estadísticas de Economía (PeriodComparison,
+          generalizado para aceptar el agrupador), el mismo motor de fechas (comparablePrevious) y el mismo
+          filtro de "gasto real" que ya usa "Total Registrado en Compras" de arriba (monthRealExpenses) —
+          así los dos números pueden compararse sin sorpresas. `expenses` (SIN filtrar por fecha) es la
+          misma lista completa que ya carga esta pantalla; PeriodComparison calcula sus propios periodos
+          actual/anterior a partir de ella. */}
+      {group === 'alimentacion' && (
+        <PeriodComparison
+          expenses={expenses}
+          isComparableSpend={(e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)}
+          groupBy={(rows) => {
+            const totals = new Map<string, number>()
+            for (const e of rows) {
+              const store = canonicalStoreName(e.store, knownStores)
+              totals.set(store, (totals.get(store) ?? 0) + e.amount)
+            }
+            return [...totals.entries()].map(([name, amount]) => ({ name, amount: Math.round(amount * 100) / 100 }))
+          }}
+          preset={preset}
+          from={periodFrom}
+          to={periodTo}
+          monthStartDay={monthStartDay}
+          showTotals
+        />
       )}
 
       {group !== 'alimentacion' && dateFilter}

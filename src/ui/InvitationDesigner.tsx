@@ -362,7 +362,21 @@ function TextGradientDef({ id, style, color }: { id: string; style: InvitationTe
 // "fontSize" se reutiliza como tamaño base en píxeles para foto/forma,
 // no solo para texto — evita añadir un campo más al tipo por algo tan
 // parecido (ver domain/types.ts, InvitationLayer).
-function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; photoUrls: Record<string, string> }) {
+// Bloque A (cola nocturna) — photoAdjust es SOLO del editor interactivo (nunca lo pasa InvitationCanvasView,
+// la vista de solo lectura): mientras `active` es true para esta capa en concreto, el <img> recibe los
+// handlers de pan de "Ajustar foto" en vez de dejar que el toque llegue al wrapper de la capa (mover/
+// rotar). El encuadre en sí (photoOffsetX/Y, photoScale en el propio `layer`) se renderiza SIEMPRE igual,
+// haya o no interacción disponible — por eso editor y vista final (y la futura exportación PNG, que
+// también usa este mismo componente) nunca pueden desincronizarse: un único sitio interpreta esos números.
+function InvitationLayerVisual({
+  layer,
+  photoUrls,
+  photoAdjust,
+}: {
+  layer: InvitationLayer
+  photoUrls: Record<string, string>
+  photoAdjust?: { active: boolean; onPointerDown: (e: ReactPointerEvent<HTMLImageElement>) => void; onPointerMove: (e: ReactPointerEvent<HTMLImageElement>) => void; onPointerUp: (e: ReactPointerEvent<HTMLImageElement>) => void }
+}) {
   switch (layer.type) {
     case 'text':
     case 'event_data': {
@@ -451,8 +465,35 @@ function InvitationLayerVisual({ layer, photoUrls }: { layer: InvitationLayer; p
       // Fase 3 Bloque 3 — "Círculo" es una máscara geométrica (border-radius), no "quitar fondo"
       // (segmentación real del sujeto) — son funciones distintas, esta es la única implementada por ahora.
       const borderRadius = layer.photoMask === 'circle' ? '50%' : 12
+      // Bloque A — mismo mecanismo que el fondo (translate % + scale sobre un marco con overflow:hidden),
+      // por eso photoOffsetX/Y=0 y photoScale=1 (ausentes en cualquier invitación creada antes de esta
+      // fase) pintan EXACTAMENTE igual que el <img> suelto de siempre — translate(0%,0%) scale(1) es un
+      // no-op. Nunca se recorta/recodifica el archivo: es la MISMA imagen original, solo su encuadre visual.
+      const offsetX = layer.photoOffsetX ?? 0
+      const offsetY = layer.photoOffsetY ?? 0
+      const photoScale = layer.photoScale ?? 1
       return url ? (
-        <img src={url} alt="" draggable={false} style={{ width: size, height: size, objectFit: 'cover', borderRadius, display: 'block' }} />
+        <div style={{ width: size, height: size, borderRadius, overflow: 'hidden', position: 'relative' }}>
+          <img
+            src={url}
+            alt=""
+            draggable={false}
+            onPointerDown={photoAdjust?.active ? photoAdjust.onPointerDown : undefined}
+            onPointerMove={photoAdjust?.active ? photoAdjust.onPointerMove : undefined}
+            onPointerUp={photoAdjust?.active ? photoAdjust.onPointerUp : undefined}
+            onPointerCancel={photoAdjust?.active ? photoAdjust.onPointerUp : undefined}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: `translate(${offsetX * 100}%, ${offsetY * 100}%) scale(${photoScale})`,
+              touchAction: photoAdjust?.active ? 'none' : undefined,
+              cursor: photoAdjust?.active ? 'grab' : undefined,
+            }}
+          />
+        </div>
       ) : (
         <div style={{ width: size, height: size, borderRadius, background: 'rgba(255,255,255,0.35)' }} />
       )
@@ -1543,6 +1584,13 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [backgroundScale, setBackgroundScale] = useState(1)
   const [adjustingBackground, setAdjustingBackground] = useState(false)
   const bgDragRef = useRef<{ pointers: Map<number, { x: number; y: number }>; startOffsetX: number; startOffsetY: number; startScale: number; startDist: number } | null>(null)
+  // Bloque A (cola nocturna) — "Ajustar foto": mismo concepto de encuadre reversible que "Ajustar fondo"
+  // (offset + escala, nunca recorte físico), pero por CAPA — así que en vez de un booleano único guarda EL
+  // ID de la capa que se está ajustando ahora mismo (null = ninguna). Sin pinch (petición real: "no
+  // necesito pinch-to-zoom") — un dedo mueve (pan), el zoom es un slider en el panel "Más". Se resetea al
+  // cambiar de selección (ver selectLayer) para no dejarlo "colgado" en una capa que ya no se ve.
+  const [adjustingPhotoId, setAdjustingPhotoId] = useState<string | null>(null)
+  const photoDragRef = useRef<{ layerId: string; startClientX: number; startClientY: number; startOffsetX: number; startOffsetY: number; frameW: number; frameH: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -1782,6 +1830,9 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     setTextEditTool(null)
     setTextEditingActive(false)
     setSelectedId(id)
+    // Bloque A — cambiar de selección sale de "Ajustar foto" siempre (nunca se queda activo sobre una capa
+    // que ya no está seleccionada/visible).
+    setAdjustingPhotoId(null)
   }
 
   function togglePanel(p: DesignerPanel) {
@@ -1974,6 +2025,44 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   function handleBackgroundPointerUp(e: ReactPointerEvent<HTMLDivElement>) {
     bgDragRef.current?.pointers.delete(e.pointerId)
     if (bgDragRef.current && bgDragRef.current.pointers.size === 0) bgDragRef.current = null
+  }
+
+  // Bloque A — "Ajustar foto": un solo dedo desplaza la imagen DENTRO de su propio marco (nunca mueve la
+  // capa) — mismo espíritu que handleBackgroundPointer*, pero el desplazamiento se mide contra el marco de
+  // ESTA foto (su propio getBoundingClientRect, ya con el zoom del lienzo y el scale de la capa aplicados),
+  // no contra el lienzo entero, para que arrastrar se sienta proporcional al tamaño real de la foto en
+  // pantalla. e.stopPropagation() es lo que impide que el wrapper de la capa (handleLayerPointerDown) mueva
+  // la capa entera a la vez — la misma separación MOVER CAPA / AJUSTAR CONTENIDO que ya usa el fondo.
+  function handlePhotoAdjustPointerDown(e: ReactPointerEvent<HTMLImageElement>, layer: InvitationLayer) {
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pushHistory()
+    const rect = e.currentTarget.getBoundingClientRect()
+    photoDragRef.current = {
+      layerId: layer.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startOffsetX: layer.photoOffsetX ?? 0,
+      startOffsetY: layer.photoOffsetY ?? 0,
+      frameW: rect.width,
+      frameH: rect.height,
+    }
+  }
+
+  function handlePhotoAdjustPointerMove(e: ReactPointerEvent<HTMLImageElement>) {
+    const drag = photoDragRef.current
+    if (!drag) return
+    e.stopPropagation()
+    const dx = (e.clientX - drag.startClientX) / drag.frameW
+    const dy = (e.clientY - drag.startClientY) / drag.frameH
+    const nextX = clamp(drag.startOffsetX + dx, -0.5, 0.5)
+    const nextY = clamp(drag.startOffsetY + dy, -0.5, 0.5)
+    setLayers((ls) => ls.map((l) => (l.id === drag.layerId ? { ...l, photoOffsetX: nextX, photoOffsetY: nextY } : l)))
+  }
+
+  function handlePhotoAdjustPointerUp(e: ReactPointerEvent<HTMLImageElement>) {
+    if (photoDragRef.current) e.stopPropagation()
+    photoDragRef.current = null
   }
 
   function handlePrettify() {
@@ -2667,9 +2756,25 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                           }}
                         />
                       ) : (
-                        <InvitationLayerVisual layer={layer} photoUrls={photoUrls} />
+                        <InvitationLayerVisual
+                          layer={layer}
+                          photoUrls={photoUrls}
+                          photoAdjust={
+                            layer.type === 'photo'
+                              ? {
+                                  active: adjustingPhotoId === layer.id,
+                                  onPointerDown: (e) => handlePhotoAdjustPointerDown(e, layer),
+                                  onPointerMove: handlePhotoAdjustPointerMove,
+                                  onPointerUp: handlePhotoAdjustPointerUp,
+                                }
+                              : undefined
+                          }
+                        />
                       )}
-                      {layer.id === selectedId && (
+                      {/* Bloque A — mientras se ajusta el encuadre de la foto, se oculta el tirador de
+                          tamaño/rotación: son dos modos distintos (mover/rotar el MARCO vs. mover el
+                          CONTENIDO dentro de él) y mostrar los dos a la vez invitaría a confundirlos. */}
+                      {layer.id === selectedId && adjustingPhotoId !== layer.id && (
                         <div
                           onPointerDown={(e) => handleHandlePointerDown(e, layer)}
                           onPointerMove={handleDragPointerMove}
@@ -3332,6 +3437,41 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                           >
                             ⚪ Círculo
                           </button>
+                        </div>
+                      )}
+                      {/* Bloque A (cola nocturna) — "Ajustar foto": mismo concepto que "🔧 Ajustar fondo"
+                          (encuadre reversible, nunca recorte físico), pero por capa y sin pinch (petición
+                          real: "no necesito pinch-to-zoom") — arrastrar en el lienzo mueve, el slider hace
+                          zoom. Entrar/salir es el mismo botón (mismo patrón que el chip de Ajustar fondo). */}
+                      {selected.type === 'photo' && (
+                        <div style={{ marginBottom: 10 }}>
+                          <button
+                            type="button"
+                            className={'chip' + (adjustingPhotoId === selected.id ? ' chip-active' : '')}
+                            onClick={() => setAdjustingPhotoId((id) => (id === selected.id ? null : selected.id))}
+                          >
+                            {adjustingPhotoId === selected.id ? '✓ Listo' : '🔧 Ajustar foto'}
+                          </button>
+                          {adjustingPhotoId === selected.id && (
+                            <div style={{ marginTop: 8 }}>
+                              <p className="muted" style={{ fontSize: 12, margin: '0 0 6px' }}>
+                                Arrastra la foto en el lienzo para moverla dentro del marco.
+                              </p>
+                              <label style={{ display: 'block' }}>
+                                Zoom
+                                <input
+                                  type="range"
+                                  min={100}
+                                  max={300}
+                                  value={Math.round((selected.photoScale ?? 1) * 100)}
+                                  onChange={(e) => updateSelectedContinuous({ photoScale: Number(e.target.value) / 100 }, 'photoScale')}
+                                  onPointerUp={commitContinuousEdit}
+                                  onBlur={commitContinuousEdit}
+                                  style={{ width: '100%' }}
+                                />
+                              </label>
+                            </div>
+                          )}
                         </div>
                       )}
                       <div className="filter-row">

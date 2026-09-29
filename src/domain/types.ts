@@ -920,6 +920,14 @@ export interface InvitationLayer {
   // normal, como siempre) — 'circle' la recorta en círculo sin tocar el archivo subido.
   opacity?: number
   photoMask?: 'none' | 'circle'
+  // Bloque A (cola nocturna) — "Ajustar foto": mismo concepto de encuadre reversible que ya tiene el fondo
+  // (backgroundOffsetX/Y/Scale, InvitationCanvas), pero por capa. Opcionales y compatibles, igual criterio
+  // que el resto de este bloque: ausentes = 0/0/1, pinta EXACTAMENTE igual que una foto sin encuadrar nunca
+  // (translate(0%,0%) scale(1) es un no-op) — ninguna invitación antigua cambia de aspecto. NUNCA se
+  // recorta/recodifica el archivo original; es solo qué parte de la MISMA imagen se ve dentro del marco.
+  photoOffsetX?: number
+  photoOffsetY?: number
+  photoScale?: number
   // Fase 3 Bloque 5B — de qué dato real del evento nació esta capa (generada por "Pepa, hazla por mí" o
   // insertada a mano desde "📋 Datos"), y qué texto tenía el evento en ese momento. Permite detectar más
   // tarde si el evento cambió (comparando `valueAtInsertion` con el dato actual) y si el usuario personalizó

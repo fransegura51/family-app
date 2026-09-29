@@ -9952,6 +9952,25 @@ function computeFinitePlanSignature(
   ])
 }
 
+// BUG REAL (documento BBVA real, 85 cuotas, 2026-09-29) — tras precargar el plan con los importes/fechas
+// reales del documento, cambiar SOLO el "Estado del importe TOTAL" (p. ej. de Estimado a Conocido, sin
+// tocar el número de cuotas/frecuencia/vencimiento) disparaba computeFinitePlanSignature igual que un
+// cambio real, y el useEffect de más abajo sobreescribía las 85 líneas reales por un reparto uniforme
+// (20.790€/85 = 244,58€ cada una) — perdiendo de golpe los importes reales (319,63€/319,45€) que ya
+// estaban bien. Subconjunto SOLO de los ejes que de verdad invalidan la correspondencia "cuota N = fila N
+// del documento" (nº de cuotas, frecuencia, vencimiento) — nunca el estado/importe/basis del TOTAL, que
+// no cambia cuántas cuotas hay ni qué fecha les corresponde a cada una.
+function computeFinitePlanStructureSignature(
+  installmentCount: string,
+  freqOption: ForecastRecurrenceOption,
+  customFreq: ForecastCustomRecurrence['freq'],
+  customInterval: string,
+  dueDate: string,
+): string {
+  const validated = validateInstallmentCount(installmentCount)
+  return JSON.stringify([validated.ok ? validated.count : null, freqOption, customFreq, customInterval, dueDate])
+}
+
 // Misma idea que computeFinitePlanSignature, para el Caso B (cobro fraccionado por ciclo): cuántos
 // cobros y el TOTAL del ciclo. No incluye frecuencia/dueDate como ancla de la SERIE (eso lo sigue
 // llevando "¿Cuándo se repite?" de arriba) — dueDate aquí solo es el ancla del PRIMER cobro propuesto.
@@ -10197,6 +10216,18 @@ function ForecastPaymentForm({
         ? computeFinitePlanSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate, amountStatus, amount, amountBasis)
         : '',
   )
+  // BUG REAL (documento BBVA real, 85 cuotas) — mientras el plan siga representando lo importado del
+  // documento (nadie ha tocado nº de cuotas/frecuencia/vencimiento todavía), el useEffect de más abajo
+  // NUNCA debe regenerarlo por un cambio en el estado/importe/basis del TOTAL — ver
+  // computeFinitePlanStructureSignature. En cuanto SÍ cambie algo estructural, la correspondencia "cuota N
+  // = fila N del documento" deja de tener sentido de todas formas, y a partir de ahí el plan se comporta
+  // como uno manual (se propone de nuevo, como siempre).
+  const importedRealPlanRef = useRef(hasRealAmounts || hasRealDates)
+  const planStructureSignatureRef = useRef(
+    hasRealAmounts || hasRealDates
+      ? computeFinitePlanStructureSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate)
+      : '',
+  )
   const [reminders, setReminders] = useState<{ value: number; unit: ForecastReminderUnit }[]>(
     payment?.reminders.map((r) => ({ value: r.value, unit: r.unit })) ?? [],
   )
@@ -10305,6 +10336,17 @@ function ForecastPaymentForm({
   // línea suelta (eso solo cambia planLines/splitCharges, no esta firma, así que no se regenera nada).
   useEffect(() => {
     if (!isFinitePlanMode) return
+    // BUG REAL (documento BBVA real, 85 cuotas) — mientras el plan siga siendo el importado del documento,
+    // un cambio SOLO en el estado/importe/basis del TOTAL (p. ej. Estimado → Conocido, sin tocar nº de
+    // cuotas/frecuencia/vencimiento) no debe regenerar nada: las 85 líneas reales no dejan de ser reales
+    // porque el usuario haya corregido la confianza del total. Solo un cambio ESTRUCTURAL (que sí invalida
+    // la correspondencia "cuota N = fila N del documento") hace que el plan pase a comportarse como uno
+    // manual a partir de aquí.
+    if (importedRealPlanRef.current) {
+      const structureSignature = computeFinitePlanStructureSignature(paymentCount, freqOption, customFreq, customInterval, dueDate)
+      if (structureSignature === planStructureSignatureRef.current) return
+      importedRealPlanRef.current = false
+    }
     const signature = computeFinitePlanSignature(paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis)
     if (signature === planSignatureRef.current) return
     planSignatureRef.current = signature

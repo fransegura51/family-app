@@ -165,6 +165,44 @@ describe('planReviewNote — aviso junto al Plan de pagos cuando el plan propues
   })
 })
 
+// BUG REAL — documento BBVA real (85 cuotas): con las 85 líneas reales ya cargadas, cambiar SOLO el
+// "Estado del importe TOTAL" (p. ej. Estimado → Conocido, sin tocar nº de cuotas/frecuencia/vencimiento)
+// pisaba las 85 líneas reales con un reparto uniforme (20.790€/85 = 244,58€ cada una) — el mismo
+// mecanismo de "regenerar el plan al cambiar el total" que hace falta para la entrada manual, aplicado sin
+// querer también a un plan ya importado con datos reales.
+describe('planLines — un plan importado con datos reales sobrevive a cambios en el TOTAL (estado/importe/basis), solo se regenera ante un cambio estructural real', () => {
+  const fn = slice(SRC, 'const importedRealPlanRef = useRef(', '\n  const [reminders, setReminders] = useState<')
+
+  it('importedRealPlanRef se siembra igual que hasRealAmounts/hasRealDates — solo protege un plan realmente importado', () => {
+    expect(fn).toContain('const importedRealPlanRef = useRef(hasRealAmounts || hasRealDates)')
+  })
+
+  it('la firma estructural (planStructureSignatureRef) se siembra con los mismos valores iniciales que ya construyeron el plan real', () => {
+    expect(fn).toContain(
+      'computeFinitePlanStructureSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate)',
+    )
+  })
+})
+
+describe('useEffect de regeneración del plan — comprueba primero si hay que proteger un plan real antes de mirar el total', () => {
+  const fn = slice(SRC, "useEffect(() => {\n    if (!isFinitePlanMode) return\n    // BUG REAL", '\n  }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis])')
+
+  it('mientras importedRealPlanRef siga activo, un cambio SOLO en el TOTAL (que no altera la firma estructural) sale sin regenerar nada', () => {
+    expect(fn).toContain('if (importedRealPlanRef.current) {')
+    expect(fn).toContain('const structureSignature = computeFinitePlanStructureSignature(paymentCount, freqOption, customFreq, customInterval, dueDate)')
+    expect(fn).toContain('if (structureSignature === planStructureSignatureRef.current) return')
+  })
+
+  it('un cambio estructural real (nº de cuotas/frecuencia/vencimiento) desactiva la protección — a partir de ahí el plan vuelve a comportarse como uno manual', () => {
+    const block = slice(fn, 'if (importedRealPlanRef.current) {', 'const signature = computeFinitePlanSignature(')
+    expect(block).toContain('importedRealPlanRef.current = false')
+  })
+
+  it('la comprobación estructural ocurre ANTES de la firma completa (que sí incluye el total) — nunca al revés', () => {
+    expect(fn.indexOf('computeFinitePlanStructureSignature(paymentCount')).toBeLessThan(fn.indexOf('computeFinitePlanSignature(paymentCount'))
+  })
+})
+
 describe('"Ver documento original" — solo cuando la Previsión tiene uno (sourceStoragePath), y borrado limpio al eliminar', () => {
   it('el enlace solo se monta si sourceStoragePath existe — un pago creado a mano nunca lo muestra', () => {
     const fn = slice(SRC, '{parent.sourceStoragePath && (', '\n                )}')

@@ -482,16 +482,30 @@ function InvitationLayerVisual({
             onPointerMove={photoAdjust?.active ? photoAdjust.onPointerMove : undefined}
             onPointerUp={photoAdjust?.active ? photoAdjust.onPointerUp : undefined}
             onPointerCancel={photoAdjust?.active ? photoAdjust.onPointerUp : undefined}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              transform: `translate(${offsetX * 100}%, ${offsetY * 100}%) scale(${photoScale})`,
-              touchAction: photoAdjust?.active ? 'none' : undefined,
-              cursor: photoAdjust?.active ? 'grab' : undefined,
-            }}
+            style={
+              {
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                transform: `translate(${offsetX * 100}%, ${offsetY * 100}%) scale(${photoScale})`,
+                touchAction: photoAdjust?.active ? 'none' : undefined,
+                cursor: photoAdjust?.active ? 'grab' : undefined,
+                // Causa real del arrastre roto en iPhone (Safari/WebKit): un <img> tiene su PROPIO
+                // reconocedor de gesto nativo — "arrastrar para copiar la imagen" / menú de mantener
+                // pulsado — que es DISTINTO de touch-action (que solo gobierna el scroll/zoom de la
+                // página) y de draggable={false} (que solo afecta al drag&drop HTML5 de ratón). Sin
+                // desactivarlo explícitamente, WebKit puede quedarse con el gesto de arrastre nativo
+                // sobre la imagen y dejar de entregar pointermove al handler de React — el <div>
+                // envoltorio de la capa (mover la capa completa) nunca tiene este problema porque no es
+                // una etiqueta <img>. Con -webkit-user-drag:none el propio elemento renuncia a ese gesto
+                // nativo siempre (no solo mientras se ajusta), así el resto del ciclo de vida de la foto
+                // (selección, mover la capa, deseleccionar) no se ve afectado.
+                WebkitUserDrag: 'none',
+                WebkitTouchCallout: 'none',
+              } as CSSProperties
+            }
           />
         </div>
       ) : (

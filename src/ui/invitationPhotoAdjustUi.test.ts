@@ -47,6 +47,18 @@ describe('Render — InvitationLayerVisual interpreta el encuadre SIEMPRE igual 
     expect(fn).toContain("overflow: 'hidden'")
   })
 
+  // Validación real en iPhone: el arrastre dentro de "Ajustar foto" no movía nada (zoom y Original/Círculo
+  // sí funcionaban). Causa real encontrada tras comparar con el arrastre de la CAPA (que sí funciona,
+  // ver handleLayerPointerDown sobre un <div>): un <img> tiene su propio reconocedor de gesto nativo de
+  // WebKit ("arrastrar para copiar la imagen"), distinto de touch-action (que solo gobierna scroll/zoom
+  // de página) y de draggable={false} (que solo afecta al drag&drop HTML5 de ratón) — sin desactivarlo,
+  // Safari puede quedarse con el gesto y dejar de entregar pointermove a React. Se aplica siempre (no solo
+  // con photoAdjust activo) porque no afecta a ningún otro comportamiento de la foto.
+  it('-webkit-user-drag:none en el <img> — desactiva el arrastre nativo de imagen de WebKit que intercepta pointermove en iOS Safari', () => {
+    expect(fn).toContain("WebkitUserDrag: 'none'")
+    expect(fn).toContain("WebkitTouchCallout: 'none'")
+  })
+
   it('InvitationCanvasView (solo lectura, y la exportación PNG que la reutiliza) no pasa photoAdjust — se renderiza el mismo encuadre sin ninguna interactividad', () => {
     const viewCallIdx = DESIGNER_SRC.indexOf('export function InvitationCanvasView(')
     const viewCall = DESIGNER_SRC.slice(viewCallIdx, DESIGNER_SRC.indexOf('InvitationLayerVisual', viewCallIdx) + 200)

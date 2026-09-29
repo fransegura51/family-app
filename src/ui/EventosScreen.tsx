@@ -152,7 +152,8 @@ import type {
   ShoppingItem,
   InvitationCanvas,
 } from '@/domain/types'
-import { shareText } from '@/services/share'
+import { canShareFiles, shareFiles, shareText } from '@/services/share'
+import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { LocationPickerModal } from '@/ui/LocationPickerModal'
@@ -3212,7 +3213,28 @@ function InvitationModal({
     setSharing(true)
     setNotice(null)
     try {
-      const shown = await shareText({ title: event.title, text: buildShareText() })
+      // Bloque 1 (cola nocturna) — si hay un diseño propio (customCanvas), se intenta adjuntar también la
+      // imagen (PNG) de la invitación, no solo el texto. Si la generación de la imagen falla por lo que sea
+      // (red, plantilla rara, librería de captura) o el navegador no puede compartir archivos aquí, se cae
+      // sin más al plan de siempre (solo texto) — nunca bloquea el envío por no conseguir la imagen.
+      const text = buildShareText()
+      if (customCanvas) {
+        const file = await exportInvitationImage({
+          canvas: customCanvas,
+          templateKey: customTemplateKey,
+          photoUrls,
+          backgroundImageUrl: customBackgroundUrl,
+          eventTitle: event.title,
+        })
+        if (file && canShareFiles([file])) {
+          const shown = await shareFiles([file], { title: event.title, text })
+          if (shown) {
+            setNotice(null)
+            return
+          }
+        }
+      }
+      const shown = await shareText({ title: event.title, text })
       setNotice(shown ? null : 'Copiado al portapapeles.')
     } catch {
       setManualShare({ title: event.title, text: buildShareText() })

@@ -451,7 +451,9 @@ export function guestExportCsv(model: GuestExportModel, mode: GuestExportOrganiz
 // código fuente no lleve un carácter combinado invisible pegado.
 const COMBINING_MARKS = new RegExp(`[${String.fromCharCode(0x0300)}-${String.fromCharCode(0x036f)}]`, 'g')
 
-function slugify(text: string): string {
+// Exportada — reutilizada también para el nombre del PNG al compartir la invitación con imagen
+// (services/invitationExport.ts), en vez de reimplementar el mismo slug ahí.
+export function slugify(text: string): string {
   const slug = text
     .normalize('NFD')
     .replace(COMBINING_MARKS, '')

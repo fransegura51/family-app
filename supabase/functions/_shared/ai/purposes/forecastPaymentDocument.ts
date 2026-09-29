@@ -81,7 +81,16 @@ const FORECAST_PAYMENT_DOCUMENT_PROMPT =
 
 export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentInput, ForecastPaymentDocumentOutput> = {
   purpose: 'analyze-forecast-document',
-  maxOutputTokens: 768,
+  // BUG REAL (documento BBVA real, 58 páginas, préstamo de 85 cuotas, 2026-09-29) — 768 bastaba para el
+  // documento SUMA (6 cuotas) pero cortaba a Gemini a mitad del JSON en cuanto un documento tenía muchas
+  // cuotas: installmentAmounts + installmentDueDates son un array por cada cuota, y con 85 cuotas la
+  // respuesta ya no cabía en 768 tokens — el JSON quedaba inválido (nunca cerraba sus llaves) y
+  // parseJsonLoose lo descartaba ENTERO, dando la falsa impresión de que el documento "no tenía nada útil"
+  // cuando en realidad Gemini lo había leído perfectamente (input verificado con logs reales del servidor:
+  // proveedor, concepto, importe total, las 85 cuotas y sus fechas, incluida la 1ª cuota de 0€ y la última
+  // distinta, todo correcto). El límite del propio modelo es 65.536 — 16.384 deja margen amplio incluso
+  // para una hipoteca a 30-40 años (varios cientos de cuotas) sin acercarse a ese tope.
+  maxOutputTokens: 16384,
 
   readInput(body) {
     const { fileBase64, mimeType } = body
@@ -97,6 +106,21 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
   // cliente lo interpreta como "no se pudo extraer nada" y ofrece volver al formulario manual (mismo
   // criterio que documentExpiry: nunca un 502 por una respuesta rara del modelo).
   parseOutput(rawText) {
+    // INSTRUMENTACIÓN TEMPORAL (documento BBVA de 58 páginas / 84 cuotas — "No se ha podido leer nada
+    // útil de este documento") — para confirmar si maxOutputTokens corta la respuesta antes de que Gemini
+    // termine el JSON (84 fechas + 84 importes es mucho más texto que el documento SUMA de 6 cuotas).
+    // Solo registra longitud/inicio/final del texto crudo (nunca la imagen ni el PDF) en los logs de la
+    // propia función. Se retira en cuanto se demuestre la causa real.
+    console.log(
+      '[DEBUG forecastPaymentDocument] Etapa A — rawText.length:',
+      rawText.length,
+      'inicio:',
+      rawText.slice(0, 150),
+      'final:',
+      rawText.slice(-150),
+      'termina en }:',
+      /\}\s*```?\s*$/.test(rawText.trim()) || rawText.trim().endsWith('}'),
+    )
     const empty: ForecastPaymentDocumentOutput = {
       provider: null,
       concept: null,
@@ -111,7 +135,13 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
       installmentDueDates: null,
     }
     const parsed = asRecord(parseJsonLoose(rawText))
-    if (!parsed) return empty
+    // INSTRUMENTACIÓN TEMPORAL — si el JSON ni siquiera es válido (p. ej. cortado a mitad de un array),
+    // parseJsonLoose devuelve null y TODO el resultado se convierte en "vacío" — exactamente el síntoma
+    // "No se ha podido leer nada útil de este documento" con un documento que sí tiene datos de sobra.
+    if (!parsed) {
+      console.log('[DEBUG forecastPaymentDocument] Etapa B — parseJsonLoose devolvió null: el JSON no era válido (probable truncamiento)')
+      return empty
+    }
 
     const asPositiveNumber = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null)
     const asPositiveInt = (value: unknown): number | null => {
@@ -126,6 +156,17 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
       Array.isArray(parsed.installmentDueDates) && parsed.installmentDueDates.length > 1 && parsed.installmentDueDates.every((v) => asIsoDate(v) != null)
         ? (parsed.installmentDueDates as string[])
         : null
+    // INSTRUMENTACIÓN TEMPORAL — JSON válido: ¿cuántos elementos traían los arrays en crudo, y cuántos
+    // sobrevivieron a la validación (asPositiveNumber/asIsoDate)? Si el JSON es válido pero un array viene
+    // más corto que installmentCount, se descarta entero por prudencia (ver más abajo) — esto lo confirma.
+    console.log(
+      '[DEBUG forecastPaymentDocument] Etapa B — JSON válido. installmentCount:',
+      parsed.installmentCount,
+      'installmentAmounts en crudo:',
+      Array.isArray(parsed.installmentAmounts) ? parsed.installmentAmounts.length : parsed.installmentAmounts,
+      'installmentDueDates en crudo:',
+      Array.isArray(parsed.installmentDueDates) ? parsed.installmentDueDates.length : parsed.installmentDueDates,
+    )
 
     return {
       provider: asCleanString(parsed.provider, 120),

@@ -228,7 +228,13 @@ describe('buildForecastDocumentPrefillFields — validación aritmética (contra
     const fields = buildForecastDocumentPrefillFields(
       scan({ totalAmount: 144.76, installmentCount: 6, installmentAmounts: [144.54, 144.54, 144.54, 144.53, 144.54, 145.87], firstDueDate: '2026-11-05', periodicity: 'mensual' }),
     )
-    expect(fields.amountReviewNote).toContain('no coincide')
+    expect(fields.amountReviewNote).toContain('una sola cuota')
+  })
+
+  it('un préstamo real con intereses (el total —capital— es MUCHO menor que la suma de las cuotas —capital+intereses—) nunca genera aviso: esa diferencia es normal, no una contradicción (documento BBVA real: 20.790€ de capital vs 26.848,74€ de suma de 85 cuotas)', () => {
+    const installmentAmounts = [0, ...Array(83).fill(319.63), 319.45]
+    const fields = buildForecastDocumentPrefillFields(scan({ totalAmount: 20790.0, installmentCount: 85, installmentAmounts, firstDueDate: '2024-05-05', periodicity: 'mensual' }))
+    expect(fields.amountReviewNote).toBeNull()
   })
 
   it('pequeñas diferencias (intereses/comisiones) dentro de tolerancia NO generan aviso', () => {
@@ -319,5 +325,91 @@ describe('buildForecastDocumentPrefillFields — installmentDueDates (fechas exp
 
   it('sin plan finito, nunca se propagan installmentDueDates', () => {
     expect(buildForecastDocumentPrefillFields(scan({ installmentDueDates: ['2026-01-05', '2026-02-07', '2026-03-05'] })).installmentDueDates).toBeUndefined()
+  })
+})
+
+// BUG REAL — documento BBVA real (contrato de financiación de vehículo, PDF de 58 páginas, cuadro de
+// amortización en las páginas 7-9): "No se ha podido leer nada útil de este documento", con un documento
+// que sí tenía toda la información. Causa real, confirmada con los logs reales del servidor (rawText de
+// Gemini, 920 caracteres, "termina en }: false"): con 85 cuotas, installmentAmounts + installmentDueDates
+// (un array por cuota) ya no cabían en maxOutputTokens=768 — el JSON quedaba cortado a mitad de camino
+// (justo tras terminar de listar las 85 cuotas, a mitad de escribir "periodicity"), parseJsonLoose lo
+// descartaba ENTERO por inválido, y todo el resultado se convertía en "vacío" — aunque Gemini había leído
+// el documento perfectamente (input verificado: proveedor, concepto, importe total y las 85 cuotas con sus
+// importes reales, incluida la 1ª cuota de 0€ y la última distinta, todo correcto en los logs). Arreglado
+// subiendo maxOutputTokens a 16.384 (edge function, no cubierto por estos tests de dominio — ver más
+// abajo la comprobación estructural). Estos tests fijan que la capa de DOMINIO (donde si viviera un límite
+// de tamaño de array sería aquí) nunca tuvo ni tiene ningún tope oculto — funciona igual con 6 cuotas que
+// con 85, así que el arreglo real vive exclusivamente en el presupuesto de salida de la IA.
+describe('buildForecastDocumentPrefillFields — regresión documento BBVA real (85 cuotas, sin ningún tope oculto de tamaño de array)', () => {
+  // Datos reales del cuadro de amortización (páginas 7-9 del PDF): cuota 1 con importe 0€ (periodo de
+  // ajuste inicial), cuotas 2-84 de 319,63€ mensuales, última cuota (85) de 319,45€ — mismo patrón que el
+  // documento SUMA (última cuota distinta), pero a una escala mucho mayor.
+  const installmentAmounts = [0, ...Array(83).fill(319.63), 319.45]
+  const installmentDueDates = Array.from({ length: 85 }, (_, i) => {
+    const d = new Date(Date.UTC(2024, 4 + i, 5)) // 2024-05-05 en adelante, mensual
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+  })
+  const bbvaScan: ForecastDocumentScanResult = scan({
+    provider: 'BANCO BILBAO VIZCAYA ARGENTARIA, S.A.',
+    concept: 'Financiación vehículo HYUNDAI TUCSON',
+    totalAmount: 20790.0,
+    installmentCount: 85,
+    installmentAmounts,
+    firstDueDate: '2024-05-05',
+    periodicity: 'mensual',
+    installmentDueDates,
+  })
+
+  it('85 importes reales se propagan completos, sin recortarse ni redondearse a un número menor', () => {
+    const fields = buildForecastDocumentPrefillFields(bbvaScan)
+    expect(fields.installmentAmounts).toHaveLength(85)
+    expect(fields.installmentAmounts).toEqual(installmentAmounts)
+  })
+
+  it('85 fechas reales se propagan completas', () => {
+    const fields = buildForecastDocumentPrefillFields(bbvaScan)
+    expect(fields.installmentDueDates).toHaveLength(85)
+    expect(fields.installmentDueDates?.[0]).toBe('2024-05-05')
+    expect(fields.installmentDueDates?.[84]).toBe('2031-05-05') // coincide con el contrato real: "con fecha 05-05-2031 deberá quedar [amortizado]"
+  })
+
+  it('la 1ª cuota (0€, periodo de ajuste) no se descarta ni se confunde con "sin importe" — es un dato real del documento', () => {
+    expect(buildForecastDocumentPrefillFields(bbvaScan).installmentAmounts?.[0]).toBe(0)
+  })
+
+  it('la última cuota (319,45€, distinta de las demás) no se homogeneiza', () => {
+    expect(buildForecastDocumentPrefillFields(bbvaScan).installmentAmounts?.[84]).toBe(319.45)
+  })
+
+  it('el importe total sigue siendo el total real del préstamo (20.790€), nunca dividido ni recalculado a partir de las 85 cuotas', () => {
+    expect(buildForecastDocumentPrefillFields(bbvaScan).amount).toBe(20790.0)
+  })
+
+  it('el total (20.790€) y lo que suman las 85 cuotas reales no cuadran exactamente (hay intereses/comisión de apertura financiada) pero están dentro de tolerancia — sin aviso', () => {
+    // 0 + 83×319,63 + 319,45 = 26.848,68 — muy por encima del total porque el total es el CAPITAL
+    // financiado, no la suma de las cuotas (que incluyen intereses). No es el caso de prueba de la
+    // contradicción "un total que en realidad era una cuota" (esa combinación sí debe avisar, ver el
+    // describe de "validación aritmética" más arriba) — aquí simplemente no hay aviso porque no hay una
+    // segunda fuente independiente del MISMO dato (total financiado vs. importe de una cuota concreta).
+    expect(buildForecastDocumentPrefillFields(bbvaScan).amountReviewNote).toBeNull()
+  })
+
+  it('con las 85 cuotas y fechas completas, no hay planReviewNote — el plan es lo leído del documento, no un cálculo', () => {
+    expect(buildForecastDocumentPrefillFields(bbvaScan).planReviewNote).toBeNull()
+  })
+})
+
+describe('buildForecastDocumentPrefillFields — documento sin información suficiente (imperfecto de verdad, no truncado por la IA) sigue degradando limpiamente', () => {
+  it('scan completamente vacío → isEmptyForecastDocumentScan true, el llamador nunca intenta construir un prefill (vuelve a "Continuar a mano")', () => {
+    expect(isEmptyForecastDocumentScan(scan())).toBe(true)
+  })
+
+  it('con algún campo suelto pero sin datos de cuotas → prefill mínimo, sin plan ni avisos inventados', () => {
+    const fields = buildForecastDocumentPrefillFields(scan({ provider: 'Entidad desconocida' }))
+    expect(fields.amount).toBeNull()
+    expect(fields.recurrenceRule).toBeUndefined()
+    expect(fields.planReviewNote).toBeNull()
+    expect(fields.amountReviewNote).toBeNull()
   })
 })

@@ -118,16 +118,23 @@ export function buildForecastDocumentPrefillFields(scan: ForecastDocumentScanRes
   // formulario (proposeFinitePlanLines) lo volvería a dividir al proponer el plan.
   const willBuildInstallmentPlan = scan.periodicity != null && scan.firstDueDate != null && scan.installmentCount != null && scan.installmentCount >= 2
 
-  // Validación aritmética: si hay más de una fuente independiente del total (el propio "totalAmount" leído,
-  // y el total que implican las cuotas — su suma, o importe×número), y no cuadran razonablemente, PEPA no
-  // sabe cuál es la correcta. Nunca elige en silencio: se avisa para que el usuario lo revise antes de
-  // guardar (petición explícita — "eso es una contradicción evidente y debe marcarse para revisión").
+  // Validación aritmética — SOLO la contradicción concreta del bug real (documento SUMA): "totalAmount"
+  // en realidad era el importe de UNA cuota, no el total. NUNCA "total vs suma de las cuotas en general":
+  // eso rompía con cualquier préstamo real con intereses (documento BBVA real: 20.790 € de capital
+  // financiado frente a 26.848,74 € de suma de las 85 cuotas — una diferencia enorme y perfectamente
+  // normal, los intereses no son un error). La señal específica y fiable es que el total leído coincida
+  // con el importe MEDIO de una sola cuota (sum/count) en vez de con el total real — eso sí es la
+  // confusión exacta que causó el bug (144,76 € ≈ 868,56 €/6), y nunca ocurre por azar con un préstamo con
+  // intereses reales (el total del capital no se parece al importe de una cuota suelta).
   const impliedTotalFromAmounts = scan.installmentAmounts ? scan.installmentAmounts.reduce((sum, v) => sum + v, 0) : null
   const impliedTotalFromSingleAmount = scan.installmentAmount != null && scan.installmentCount != null ? scan.installmentAmount * scan.installmentCount : null
   const impliedTotal = impliedTotalFromAmounts ?? impliedTotalFromSingleAmount
   let amountReviewNote: string | null = null
-  if (scan.totalAmount != null && impliedTotal != null && !amountsRoughlyMatch(scan.totalAmount, impliedTotal)) {
-    amountReviewNote = `El total leído (${scan.totalAmount.toFixed(2)} €) no coincide con lo que suman las cuotas (${impliedTotal.toFixed(2)} €) — revisa los importes antes de guardar.`
+  if (scan.totalAmount != null && impliedTotal != null && scan.installmentCount != null && scan.installmentCount >= 2) {
+    const avgCuota = impliedTotal / scan.installmentCount
+    if (amountsRoughlyMatch(scan.totalAmount, avgCuota) && !amountsRoughlyMatch(scan.totalAmount, impliedTotal)) {
+      amountReviewNote = `El total leído (${scan.totalAmount.toFixed(2)} €) coincide con el importe de una sola cuota (≈ ${avgCuota.toFixed(2)} €), no con la suma de las ${scan.installmentCount} cuotas (${impliedTotal.toFixed(2)} €) — revisa si el total es correcto antes de guardar.`
+    }
   }
 
   let amount: number | null = null

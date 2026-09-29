@@ -1264,33 +1264,44 @@ select {
    siendo el mecanismo (nunca un input oculto + click() programático, poco fiable en Safari), pero antes
    se veía como un aro multicolor grande, distinto del resto de botones (B, I, Aa, A±...). Ahora es una
    píldora del MISMO tamaño/forma/borde que .invitation-text-edit-btn — el propio input sigue siendo el
-   botón (el toque llega directo al control nativo), solo cambia su apariencia para encajar visualmente;
-   el color ACTUAL se ve dentro (vía ::-webkit-color-swatch), sin ningún aro de "elegir color" aparte. */
+   botón (el toque llega directo al control nativo), solo cambia su apariencia para encajar visualmente.
+   Segunda corrección real (2026-09-29, probado en iPhone real otra vez) — con solo 6px de padding, la
+   muestra de color (::-webkit-color-swatch-wrapper, que por defecto rellena toda la caja de contenido del
+   input) ocupaba casi TODO el botón: un texto verde dejaba el botón entero verde, y uno blanco lo hacía
+   casi invisible sobre el fondo blanco de la barra — exactamente el aspecto que NO se quería, aunque el
+   tamaño exterior ya fuera el correcto. El botón EXTERIOR (fondo/borde/tamaño de aquí abajo) nunca depende
+   del color elegido — eso no cambia con esta corrección, ya era así. Lo que faltaba: encoger la muestra a
+   un pequeño círculo centrado (más padding) y darle SU PROPIO borde neutro (nunca al botón exterior), para
+   que blancos/cremas/amarillos muy claros sigan siendo visibles sobre ese fondo blanco. */
 .invitation-color-swatch-input {
   -webkit-appearance: none;
   appearance: none;
-  min-width: 36px;
+  /* width (no solo min-width): un <input type="color"> tiene un ancho intrínseco propio que min-width no
+     limita por arriba — bug real encontrado al verificar esta corrección: sin width explícito, el botón
+     medía ~50px en vez de 36px, distinto del resto de la barra (justo lo que reportó el usuario: "sus
+     dimensiones/formato son distintos a los botones vecinos"). */
+  width: 36px;
   height: 36px;
   border-radius: 18px;
   border: 1px solid #d8dae8;
   background: white;
-  padding: 6px;
+  padding: 10px;
   cursor: pointer;
 }
 
 .invitation-color-swatch-input::-webkit-color-swatch-wrapper {
   padding: 0;
-  border-radius: 12px;
+  border-radius: 50%;
 }
 
 .invitation-color-swatch-input::-webkit-color-swatch {
-  border: none;
-  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  border-radius: 50%;
 }
 
 .invitation-color-swatch-input::-moz-color-swatch {
-  border: none;
-  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  border-radius: 50%;
 }
 
 /* Petición real: "letras de brillos... como si fuese purpurina" — una

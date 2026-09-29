@@ -1260,35 +1260,37 @@ select {
   border-color: var(--primary);
 }
 
-/* Botón de color nativo (rueda completa del móvil) junto a los 6
-   colores rápidos del editor de invitaciones — sin esto, Chrome/Safari
-   dibujan el swatch cuadrado con relleno interno en vez de un círculo
-   limpio a juego con los presets. */
-.color-wheel-input {
+/* Corrección UX (2026-09-29, probado en iPhone real) — el <input type="color"> real y VISIBLE sigue
+   siendo el mecanismo (nunca un input oculto + click() programático, poco fiable en Safari), pero antes
+   se veía como un aro multicolor grande, distinto del resto de botones (B, I, Aa, A±...). Ahora es una
+   píldora del MISMO tamaño/forma/borde que .invitation-text-edit-btn — el propio input sigue siendo el
+   botón (el toque llega directo al control nativo), solo cambia su apariencia para encajar visualmente;
+   el color ACTUAL se ve dentro (vía ::-webkit-color-swatch), sin ningún aro de "elegir color" aparte. */
+.invitation-color-swatch-input {
   -webkit-appearance: none;
   appearance: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 18px;
   border: 1px solid #d8dae8;
-  padding: 0;
+  background: white;
+  padding: 6px;
   cursor: pointer;
-  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
 }
 
-.color-wheel-input::-webkit-color-swatch-wrapper {
-  padding: 2px;
-  border-radius: 50%;
+.invitation-color-swatch-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 12px;
 }
 
-.color-wheel-input::-webkit-color-swatch {
+.invitation-color-swatch-input::-webkit-color-swatch {
   border: none;
-  border-radius: 50%;
+  border-radius: 12px;
 }
 
-.color-wheel-input::-moz-color-swatch {
+.invitation-color-swatch-input::-moz-color-swatch {
   border: none;
-  border-radius: 50%;
+  border-radius: 12px;
 }
 
 /* Petición real: "letras de brillos... como si fuese purpurina" — una

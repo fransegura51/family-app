@@ -119,25 +119,56 @@ function useCanvasScale(containerRef: { current: HTMLElement | null }, logicalWi
 // cualquier capa ahí dentro geométricamente válida pero inalcanzable — ningún clamp de arrastre podía
 // arreglarlo porque el recorte pasaba ANTES, a nivel de contenedor.
 //
-// Esta variante calcula la escala como el MÍNIMO entre lo que permite el ancho y lo que permite el alto
-// disponibles (igual que `object-fit: contain`) — el lienzo completo cabe siempre entero, nunca se
-// recorta. Mide `wrapperRef` (el contenedor `.invitation-canvas-wrap`, NO el propio lienzo): su tamaño ya
-// es el hueco real que flexbox le ha asignado (cabecera + barra inferior + safe-area ya restados por el
-// propio motor de layout, sin sumar constantes a mano — flex:1 más min-height:0 en ese contenedor). Al ser
-// el panel Color/Tamaño/Más `position:absolute` (no participa del flujo normal), abrir o cerrar un panel
-// NO cambia la altura de `.invitation-canvas-wrap` — así que el lienzo no "salta" de tamaño al tocar esos
-// botones. El propio lienzo lógico (ASSUMED_CANVAS_SIZE_PX, coordenadas x/y, tamaños de capa,
-// autoArrangeLayers, resolveEffectiveZone, InvitationCanvasView) no cambia en absoluto: solo cambia cuánto
-// se escala visualmente el editor para caber entero.
-function useFitCanvasScale(wrapperRef: { current: HTMLElement | null }, logicalWidthPx: number, logicalHeightPx: number): number {
-  const [scale, setScale] = useState(1)
+// Cambio de enfoque (2026-09-29, tras probar la primera corrección en iPhone real) — en vez de un único
+// modo "cabe entero" (que en una plantilla muy vertical deja el lienzo pequeño, incómodo para editar con
+// precisión), el editor ahora tiene DOS MODOS explícitos (ver `zoomMode` en InvitationCanvasEditor):
+//   - 'fit' (🔍− Vista completa): la escala de siempre, el MÍNIMO entre lo que permite el ancho y el alto
+//     disponibles (igual que `object-fit: contain`) — el lienzo completo cabe siempre entero, para ver la
+//     composición general y localizar cualquier capa.
+//   - 'edit' (🔍+ Editar): la escala es solo por ANCHO (como el editor original) — el lienzo puede quedar
+//     más alto que el hueco visible, y `.invitation-canvas-wrap` se vuelve desplazable verticalmente (ver
+//     su estilo condicional más abajo) en vez de recortar. Nunca se recorta contenido de forma permanente.
+// Este hook mide una sola vez (mismo ResizeObserver) y devuelve LAS DOS escalas — el componente elige cuál
+// usar como `canvasScale` según `zoomMode`. Mide `wrapperRef` (el contenedor `.invitation-canvas-wrap`, NO
+// el propio lienzo): su tamaño ya es el hueco real que flexbox le ha asignado (cabecera + barra inferior +
+// safe-area ya restados por el propio motor de layout, sin sumar constantes a mano — flex:1 más
+// min-height:0 en ese contenedor). Al ser el panel Color/Tamaño/Más `position:absolute` (no participa del
+// flujo normal), abrir o cerrar un panel NO cambia la altura de `.invitation-canvas-wrap` — así que el
+// lienzo no "salta" de tamaño al tocar esos botones. El propio lienzo lógico (ASSUMED_CANVAS_SIZE_PX,
+// coordenadas x/y, tamaños de capa, autoArrangeLayers, resolveEffectiveZone, InvitationCanvasView) no
+// cambia en absoluto: solo cambia cuánto se escala visualmente el editor.
+function useCanvasZoomScales(
+  wrapperRef: { current: HTMLElement | null },
+  logicalWidthPx: number,
+  logicalHeightPx: number,
+): { fitScale: number; editScale: number } {
+  const [scales, setScales] = useState({ fitScale: 1, editScale: 1 })
   useLayoutEffect(() => {
     const el = wrapperRef.current
     if (!el) return
     const update = () => {
+      // Corrección real (bug encontrado en pruebas: el lienzo en modo Editar quedaba desalineado con su
+      // propio contenido — una capa arrastrada a la esquina dejaba mucho menos hueco táctil del esperado)
+      // — getBoundingClientRect() da el tamaño en BORDER-BOX, que en `.invitation-canvas-wrap` INCLUYE su
+      // propio padding (4px 16px). canvasRef, como hijo flex con un ancho/alto en PÍXELES, solo tiene sitio
+      // real hasta el CONTENT-BOX (sin el padding) — pedirle más de lo que cabe hace que flexbox lo encoja
+      // de verdad (flex-shrink, por defecto activo), mientras que el contenido interno (position:absolute,
+      // no es un hijo flex) sí se renderiza al tamaño "pedido" sin encogerse — los dos quedan
+      // desincronizados. Restar el padding calculado (nunca un número fijo) da el hueco real disponible.
       const rect = el.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) return
-      setScale(Math.min(rect.width / logicalWidthPx, rect.height / logicalHeightPx))
+      const style = window.getComputedStyle(el)
+      const paddingX = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0')
+      const paddingY = parseFloat(style.paddingTop || '0') + parseFloat(style.paddingBottom || '0')
+      const availableWidth = rect.width - paddingX
+      const availableHeight = rect.height - paddingY
+      if (availableWidth <= 0 || availableHeight <= 0) return
+      const widthScale = availableWidth / logicalWidthPx
+      const heightScale = availableHeight / logicalHeightPx
+      setScales((prev) => {
+        const fitScale = Math.min(widthScale, heightScale)
+        if (prev.fitScale === fitScale && prev.editScale === widthScale) return prev
+        return { fitScale, editScale: widthScale }
+      })
     }
     update()
     const ro = new ResizeObserver(update)
@@ -145,7 +176,7 @@ function useFitCanvasScale(wrapperRef: { current: HTMLElement | null }, logicalW
     return () => ro.disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wrapperRef.current, logicalWidthPx, logicalHeightPx])
-  return scale
+  return scales
 }
 
 // 2026-09-27 (investigación de layout, "corazones_terraza") — measurer real para autoArrangeLayers/
@@ -1547,8 +1578,13 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   // Corrección (2026-09-29) — ref al CONTENEDOR (.invitation-canvas-wrap), no al lienzo en sí, para medir
-  // el hueco real disponible con useFitCanvasScale (ver más arriba).
+  // el hueco real disponible con useCanvasZoomScales (ver más arriba).
   const canvasWrapRef = useRef<HTMLDivElement>(null)
+  // Cambio de enfoque (2026-09-29) — dos modos de zoom explícitos, nunca un slider/porcentaje/pinch-zoom
+  // del lienzo: 'fit' (🔍− Vista completa, el de siempre) y 'edit' (🔍+ Editar, aprovecha el ancho y deja
+  // que el lienzo sea más alto que el hueco visible — ver useCanvasZoomScales). Empieza en 'fit' (visión
+  // general al abrir), igual que el comportamiento actual.
+  const [zoomMode, setZoomMode] = useState<'fit' | 'edit'>('fit')
   const dragRef = useRef<DragState | null>(null)
   // Fase 3 Bloque 5B — arrastre del rectángulo de "zona de escritura" (mover/redimensionar), mismo patrón
   // que dragRef pero con su propio estado (geometría 0..1, no x/y/rotation/scale de una capa).
@@ -2311,9 +2347,30 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   const imageAspectNumeric = !backgroundImageUrl && currentTemplate?.imageAspect ? currentTemplate.imageAspect : 3 / 4
   const logicalWidthPx = ASSUMED_CANVAS_SIZE_PX
   const logicalHeightPx = ASSUMED_CANVAS_SIZE_PX / imageAspectNumeric
-  // Corrección (2026-09-29) — useFitCanvasScale (no useCanvasScale) para que el lienzo del editor quepa
-  // SIEMPRE entero (ancho Y alto), ver el comentario junto a su definición.
-  const canvasScale = useFitCanvasScale(canvasWrapRef, logicalWidthPx, logicalHeightPx)
+  // Corrección (2026-09-29) — useCanvasZoomScales (no useCanvasScale) da las DOS escalas de los dos modos
+  // de zoom; cuál se usa como `canvasScale` depende de `zoomMode` (ver su comentario junto a la definición).
+  const { fitScale, editScale } = useCanvasZoomScales(canvasWrapRef, logicalWidthPx, logicalHeightPx)
+  const canvasScale = zoomMode === 'fit' ? fitScale : editScale
+  // Flujo de localización (2026-09-29) — al pasar de 🔍− Vista completa a 🔍+ Editar con una capa
+  // seleccionada, desplaza el contenedor para que esa capa quede centrada en el hueco visible (nunca se
+  // toca su x/y — solo el scroll del contenedor). Sin selección, se deja el scroll donde estuviera (o al
+  // principio, la primera vez). Depende SOLO de `zoomMode` a propósito: cambiar de capa seleccionada
+  // mientras ya se está en 'edit' no debe mover la vista de golpe bajo el dedo del usuario.
+  useEffect(() => {
+    if (zoomMode !== 'edit') return
+    const wrap = canvasWrapRef.current
+    if (!wrap || !selected) return
+    // Sin requestAnimationFrame a propósito — useEffect (a diferencia de useLayoutEffect) ya se ejecuta
+    // DESPUÉS de que el navegador haya pintado el DOM confirmado de este render (el nuevo width/height de
+    // canvasRef, derivados de canvasScale, ya están aplicados), así que no hace falta esperar un frame
+    // más: un rAF aquí solo añade una dependencia innecesaria del bucle de pintado, que en pestañas en
+    // segundo plano puede quedar pausado indefinidamente sin que el propio código tenga ningún fallo real.
+    const targetY = selected.y * logicalHeightPx * editScale
+    const wrapHeight = wrap.clientHeight
+    const maxScroll = Math.max(0, logicalHeightPx * editScale - wrapHeight)
+    wrap.scrollTop = clamp(targetY - wrapHeight / 2, 0, maxScroll)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomMode])
   // Ver el comentario junto a "legacyZoneWidthFrac" en InvitationCanvasView: sin esto, el <div> de una capa de
   // texto usa "shrink-to-fit" real (acotado por left, no por el ancho de la zona) y ajusta línea mucho antes
   // de lo que estimateWrappedLineCount asume, así que el bloque pintado de verdad puede ser más alto que el
@@ -2350,18 +2407,22 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // Corrección real (2026-09-28, probado en iPhone real: el panel salía prácticamente en blanco y tocarlo
   // no hacía nada) — el truco anterior (un <input type="color"> invisible, opacity:0, superpuesto encima
   // de un swatch decorativo) no es fiable en Safari/iOS: el toque no siempre llega al input real cuando
-  // este no es el propio elemento visible. Se vuelve al patrón que SÍ funcionaba ya en este archivo antes
-  // de esta fase (el selector "elegir cualquier color" de Forma, nunca reportado como roto): el
-  // <input type="color"> real, VISIBLE, estilizado con la clase ya existente .color-wheel-input (un
-  // anillo de colores con el color actual dentro, vía ::-webkit-color-swatch) — el propio input ES el
-  // botón, así que el toque siempre llega directamente a un control nativo real, nunca a un decorado
-  // encima. Sigue siendo un único selector directo (sin presets), compartido tal cual por Texto y Forma.
+  // este no es el propio elemento visible. El mecanismo pasa a ser el <input type="color"> real, VISIBLE
+  // — el propio input ES el botón, el toque siempre llega directamente a un control nativo real.
+  //
+  // Corrección visual (2026-09-29, probado en iPhone real: "el mecanismo funciona, pero el aro multicolor
+  // no encaja visualmente con el resto de botones") — el MECANISMO no cambia (sigue siendo este mismo
+  // <input type="color"> real y visible, nunca un input oculto + click() programático), solo su apariencia:
+  // .invitation-color-swatch-input lo viste como una píldora del mismo tamaño/forma que
+  // .invitation-text-edit-btn (B, I, Aa, A±...), con el color actual dentro — sin ningún aro grande
+  // distinto del resto. Sigue siendo un único selector directo (sin presets), compartido tal cual por
+  // Texto y Forma.
   function renderColorSwatch() {
     if (!selected) return null
     return (
       <input
         type="color"
-        className="color-wheel-input"
+        className="invitation-color-swatch-input"
         value={selected.color && /^#[0-9a-fA-F]{6}$/.test(selected.color) ? selected.color : '#ffffff'}
         onChange={(e) => updateSelectedContinuous({ color: e.target.value }, 'color')}
         onBlur={commitContinuousEdit}
@@ -2408,6 +2469,19 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
         ) : (
           <>
             <div className="invitation-utility-row">
+              {/* Cambio de enfoque (2026-09-29) — dos modos de zoom explícitos (nunca slider/porcentaje/
+                  pinch-zoom del lienzo). Vive en la fila de arriba, SIEMPRE visible (a diferencia de la
+                  barra contextual de abajo, que desaparece del todo mientras se edita texto) — accesible
+                  haya o no una capa seleccionada, tal como se pidió. El texto muestra la acción que hará
+                  el botón al pulsarlo (a qué modo se pasa), no el modo actual. */}
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setZoomMode((m) => (m === 'fit' ? 'edit' : 'fit'))}
+                aria-label={zoomMode === 'fit' ? 'Pasar a modo Editar (más grande, con scroll)' : 'Pasar a Vista completa'}
+              >
+                {zoomMode === 'fit' ? '🔍+ Editar' : '🔍− Completa'}
+              </button>
               <button type="button" className="link-button" onClick={handleUndo} disabled={history.length === 0}>
                 ↩️ Deshacer
               </button>
@@ -2450,8 +2524,19 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             )}
 
             {/* El lienzo domina la pantalla: ocupa todo el espacio disponible entre la fila de arriba y
-                la barra contextual de abajo, en vez de ser una tarjeta más entre paneles y botones. */}
-            <div className="invitation-canvas-wrap" ref={canvasWrapRef}>
+                la barra contextual de abajo, en vez de ser una tarjeta más entre paneles y botones.
+                Cambio de enfoque (2026-09-29) — en modo 'edit' el lienzo puede ser más alto que este
+                contenedor (ver canvasRef más abajo): overflowY:'auto' permite desplazarlo verticalmente en
+                vez de recortarlo, y alignItems:'flex-start' evita el problema conocido de
+                flex+overflow+align-items:center (el contenido por ENCIMA del punto de scroll inicial queda
+                inalcanzable) — con flex-start el lienzo empieza arriba y el sobrante queda siempre
+                accesible haciendo scroll hacia abajo. En 'fit' el lienzo siempre cabe entero, así que se
+                mantiene el centrado vertical de siempre. */}
+            <div
+              className="invitation-canvas-wrap"
+              ref={canvasWrapRef}
+              style={zoomMode === 'edit' ? { overflowY: 'auto', alignItems: 'flex-start' } : undefined}
+            >
               <div
                 ref={canvasRef}
                 onPointerDown={() => selectLayer(null)}
@@ -2470,14 +2555,24 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                   // `maxHeight:100%`): con ese trío, el navegador nunca reducía el ANCHO aunque el ALTO
                   // quedara acotado por maxHeight, así que el contenido (más alto que el hueco real)
                   // quedaba recortado por overflow:hidden — justo el bug del corazón inaccesible. Ahora
-                  // canvasScale (useFitCanvasScale) ya es el mínimo entre lo que permite el ancho Y el
-                  // alto disponibles, así que este tamaño SIEMPRE cabe entero — nunca hace falta recortar.
+                  // canvasScale ya es la escala del modo activo (fitScale o editScale — ver
+                  // useCanvasZoomScales), así que este tamaño SIEMPRE es el real: en 'fit' cabe entero sin
+                  // recortar nada; en 'edit' puede ser más alto que el contenedor, y por eso este <div> ya
+                  // NUNCA recorta su propio contenido (overflow:hidden se mantiene solo para el
+                  // borderRadius visual, no como mecanismo de recorte de capas) — el contenedor de arriba
+                  // es quien decide si se ve entero o se desplaza.
                   width: logicalWidthPx * canvasScale,
                   height: logicalHeightPx * canvasScale,
                   borderRadius: 16,
                   overflow: 'hidden',
                   background: backgroundGradient,
-                  touchAction: 'none',
+                  // Cambio de enfoque (2026-09-29) — en 'edit' el fondo (zona sin ninguna capa) debe poder
+                  // desplazarse verticalmente con un dedo (pan-y nativo, más fluido/estándar que
+                  // reimplementarlo a mano); cada capa ya tiene su propio touchAction:'none' (ver su
+                  // estilo, sin cambios aquí) para que arrastrar una capa siga ganándole al scroll del
+                  // fondo — nunca "se roban" el gesto entre sí. En 'fit' el lienzo entero siempre es
+                  // visible, así que no hace falta ningún pan nativo.
+                  touchAction: zoomMode === 'edit' ? 'pan-y' : 'none',
                   WebkitTouchCallout: 'none',
                   WebkitUserSelect: 'none',
                   userSelect: 'none',

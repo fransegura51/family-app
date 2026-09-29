@@ -10,7 +10,7 @@ const SRC = (import.meta.glob('/src/ui/InvitationDesigner.tsx', { query: '?raw',
 ]
 
 function canvasRootBlock(): string {
-  const start = SRC.indexOf('<div className="invitation-canvas-wrap" ref={canvasWrapRef}>')
+  const start = SRC.indexOf('className="invitation-canvas-wrap"\n              ref={canvasWrapRef}')
   const end = SRC.indexOf('{backgroundImageUrl ? (', start)
   return SRC.slice(start, end)
 }

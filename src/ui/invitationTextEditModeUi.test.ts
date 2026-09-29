@@ -117,12 +117,16 @@ describe('Color — corrección real (probado en iPhone real: el panel salía en
 
   it('renderColorSwatch: el <input type="color"> es VISIBLE y ES el propio botón — nunca opacity:0 superpuesto a otro elemento decorativo (eso es justo lo que fallaba en Safari/iOS real)', () => {
     expect(swatchFn).toContain('type="color"')
-    expect(swatchFn).toContain('className="color-wheel-input"')
+    expect(swatchFn).toContain('className="invitation-color-swatch-input"')
     expect(swatchFn).toContain('aria-label="Color"')
     expect(swatchFn).not.toContain('opacity: 0')
     expect(swatchFn).not.toContain("position: 'absolute'")
     expect(swatchFn).not.toContain('pointerEvents')
     expect(swatchFn).not.toContain('colorInputRef')
+  })
+
+  it('corrección visual (2026-09-29) — la píldora del color usa el mismo tamaño/forma que los demás botones (B, I, Aa, A±), nunca el antiguo aro multicolor grande', () => {
+    expect(swatchFn).not.toContain('color-wheel-input"')
   })
 
   it('renderColorSwatch llama a las mismas funciones que el resto del editor (updateSelectedContinuous + commit al soltar)', () => {

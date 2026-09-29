@@ -473,7 +473,18 @@ function InvitationLayerVisual({
       const offsetY = layer.photoOffsetY ?? 0
       const photoScale = layer.photoScale ?? 1
       return url ? (
-        <div style={{ width: size, height: size, borderRadius, overflow: 'hidden', position: 'relative' }}>
+        // Validación real en iPhone (2ª ronda): -webkit-user-drag/-webkit-touch-callout (ronda anterior)
+        // NO eran la causa — se mantienen por higiene (evitan el callout nativo de guardar/copiar imagen)
+        // pero no resuelven el arrastre. Causa real observada: el gesto vertical lo capturaba el lienzo
+        // scrollable de debajo (canvasRef, touch-action:'pan-y' en modo 'edit', ver su estilo más abajo) en
+        // vez del ajustador de foto. Este MARCO (el <div> con overflow:hidden que envuelve el <img>) era el
+        // único elemento de toda la cadena capa→foto sin su propio touch-action:none explícito — a
+        // diferencia del wrapper de la capa (touchAction:'none' siempre) y del propio <img>, quedaba un
+        // "hueco" en la cadena. Se cierra aquí también, y además los handlers llaman ahora a
+        // e.preventDefault() en down/move — refuerzo directo (vía la Pointer Events API, no pasivo) para
+        // los casos en los que WebKit no respeta touch-action:none de un descendiente por encima de un
+        // ancestro con pan-y ya en curso de reconocimiento de gesto.
+        <div style={{ width: size, height: size, borderRadius, overflow: 'hidden', position: 'relative', touchAction: photoAdjust?.active ? 'none' : undefined } as CSSProperties}>
           <img
             src={url}
             alt=""
@@ -492,16 +503,6 @@ function InvitationLayerVisual({
                 transform: `translate(${offsetX * 100}%, ${offsetY * 100}%) scale(${photoScale})`,
                 touchAction: photoAdjust?.active ? 'none' : undefined,
                 cursor: photoAdjust?.active ? 'grab' : undefined,
-                // Causa real del arrastre roto en iPhone (Safari/WebKit): un <img> tiene su PROPIO
-                // reconocedor de gesto nativo — "arrastrar para copiar la imagen" / menú de mantener
-                // pulsado — que es DISTINTO de touch-action (que solo gobierna el scroll/zoom de la
-                // página) y de draggable={false} (que solo afecta al drag&drop HTML5 de ratón). Sin
-                // desactivarlo explícitamente, WebKit puede quedarse con el gesto de arrastre nativo
-                // sobre la imagen y dejar de entregar pointermove al handler de React — el <div>
-                // envoltorio de la capa (mover la capa completa) nunca tiene este problema porque no es
-                // una etiqueta <img>. Con -webkit-user-drag:none el propio elemento renuncia a ese gesto
-                // nativo siempre (no solo mientras se ajusta), así el resto del ciclo de vida de la foto
-                // (selección, mover la capa, deseleccionar) no se ve afectado.
                 WebkitUserDrag: 'none',
                 WebkitTouchCallout: 'none',
               } as CSSProperties
@@ -2047,7 +2048,14 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   // no contra el lienzo entero, para que arrastrar se sienta proporcional al tamaño real de la foto en
   // pantalla. e.stopPropagation() es lo que impide que el wrapper de la capa (handleLayerPointerDown) mueva
   // la capa entera a la vez — la misma separación MOVER CAPA / AJUSTAR CONTENIDO que ya usa el fondo.
+  // Validación real en iPhone (2ª ronda) — touch-action:none por sí solo no bastaba: el gesto vertical
+  // seguía siendo capturado por canvasRef (touch-action:'pan-y' en modo 'edit', el ancestro scrollable de
+  // todo el lienzo). e.preventDefault() aquí (Pointer Events, nunca listeners pasivos como los touch* de
+  // React) es el refuerzo directo contra ese pan-y del ancestro — nunca bloquea el scroll del editor fuera
+  // de este gesto, porque solo se llama dentro de handlers que ya solo existen mientras adjustingPhotoId
+  // apunta a ESTA capa (ver photoAdjust?.active en InvitationLayerVisual).
   function handlePhotoAdjustPointerDown(e: ReactPointerEvent<HTMLImageElement>, layer: InvitationLayer) {
+    e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     pushHistory()
@@ -2066,6 +2074,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
   function handlePhotoAdjustPointerMove(e: ReactPointerEvent<HTMLImageElement>) {
     const drag = photoDragRef.current
     if (!drag) return
+    e.preventDefault()
     e.stopPropagation()
     const dx = (e.clientX - drag.startClientX) / drag.frameW
     const dy = (e.clientY - drag.startClientY) / drag.frameH

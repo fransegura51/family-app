@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
+import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
 import { PEPA_PUBLIC_WEBSITE_URL } from '@/domain/brand'
 
 // Página pública de RSVP (Módulo Eventos, Fase 2) — el invitado no
@@ -205,21 +205,17 @@ export function RsvpScreen({ token, openToken }: { token: string | null; openTok
 // decir, a la pantalla de acceso de la propia app — pero quien responde un RSVP NO tiene por qué tener
 // cuenta PEPA, así que "tocar PEPA" acababa en un login sin sentido para él. Ahora lleva a la web pública
 // oficial (PEPA_PUBLIC_WEBSITE_URL, domain/brand.ts), donde puede conocer el producto sin necesitar cuenta.
-// Rediseño de marca (misma validación) — cara oficial pequeña + nombre + eslogan + enlace, mismos assets
-// oficiales que el resto de la marca (LoginScreen, InvitationModal) — nunca un dibujo nuevo ni un emoji.
+// Corrección (2ª validación real) — la ronda anterior reconstruía "PEPA Family App" / "Pepa te lo
+// soluciona" a mano con HTML, con solo la cara como imagen. Eso no es reutilizar la identidad oficial, es
+// recomponerla por texto. Ahora el MISMO asset completo que ya está aprobado en LoginScreen.tsx (logo +
+// nombre + eslogan, una sola imagen) — una única fuente de marca, sin duplicar su contenido en HTML aparte.
 function RsvpFooter() {
   return (
     <div style={{ marginTop: 22, textAlign: 'center' }}>
-      <img src={pepaFaceReference} alt="" style={{ width: 40, height: 40, borderRadius: '50%', display: 'block', margin: '0 auto 6px' }} />
-      <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
-        <strong>PEPA Family App</strong>
-        <br />
-        Pepa te lo soluciona
-        <br />
-        <a href={PEPA_PUBLIC_WEBSITE_URL} target="_blank" rel="noreferrer" style={{ color: '#6b7fe0' }}>
-          pepafamilyapp.es
-        </a>
-      </p>
+      <img src={pepaLogoSlogan} alt="Pepa Family App — Pepa te lo soluciona" style={{ width: '100%', maxWidth: 220, height: 'auto', display: 'block', margin: '0 auto 6px' }} />
+      <a href={PEPA_PUBLIC_WEBSITE_URL} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#6b7fe0' }}>
+        pepafamilyapp.es
+      </a>
     </div>
   )
 }

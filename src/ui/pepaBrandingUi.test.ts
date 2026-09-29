@@ -56,14 +56,29 @@ describe('RSVP público — RsvpFooter (los 6 estados del flujo) enlaza a la web
     expect(footerFn).toContain('href={PEPA_PUBLIC_WEBSITE_URL}')
   })
 
-  it('usa el mismo asset oficial (cara) que el resto de la marca — nunca un dibujo nuevo ni un emoji sustituto', () => {
-    expect(RSVP_SRC).toContain("import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'")
-    expect(footerFn).toContain('<img src={pepaFaceReference}')
+  // Corrección (2ª validación real): la ronda anterior reconstruía "PEPA Family App" / "Pepa te lo
+  // soluciona" a mano en HTML junto a la cara — eso no es reutilizar la identidad oficial. Ahora usa el
+  // MISMO asset completo (logo + nombre + eslogan en una sola imagen) que ya está aprobado en LoginScreen.
+  it('usa el mismo asset oficial COMPLETO (logo+nombre+eslogan) que Login — nunca reconstruido a mano con HTML', () => {
+    expect(RSVP_SRC).toContain("import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'")
+    expect(footerFn).toContain('<img src={pepaLogoSlogan}')
+    // El alt del propio <img> puede (y debe) describir la imagen — lo que no debe existir es una
+    // reconstrucción aparte del logotipo en HTML visible (un <strong>/<p> con el nombre y el eslogan).
+    expect(footerFn).not.toContain('<strong>PEPA Family App</strong>')
+    expect(footerFn).not.toContain('<p className="muted"')
   })
 
-  it('el pie sigue siendo el ÚNICO componente compartido por los 6 estados del flujo RSVP — nunca una copia por pantalla', () => {
+  it('el pie sigue siendo el ÚNICO componente compartido por los 6 estados del flujo RSVP (incluida la pantalla ¡Gracias!) — nunca una copia por pantalla', () => {
     expect((RSVP_SRC.match(/<RsvpFooter \/>/g) ?? []).length).toBe(6)
     expect((RSVP_SRC.match(/function RsvpFooter\(\)/g) ?? []).length).toBe(1)
+    expect(RSVP_SRC).toContain('<h1>¡Gracias!</h1>')
+  })
+
+  it('Login y RSVP importan literalmente el mismo archivo de asset — una única fuente de marca, sin copias', () => {
+    const loginImportLine = LOGIN_SRC.split('\n').find((l) => l.includes("from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'"))
+    const rsvpImportLine = RSVP_SRC.split('\n').find((l) => l.includes("from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'"))
+    expect(loginImportLine).toBeTruthy()
+    expect(rsvpImportLine).toBeTruthy()
   })
 })
 

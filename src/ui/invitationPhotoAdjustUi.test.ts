@@ -54,9 +54,20 @@ describe('Render — InvitationLayerVisual interpreta el encuadre SIEMPRE igual 
   // de página) y de draggable={false} (que solo afecta al drag&drop HTML5 de ratón) — sin desactivarlo,
   // Safari puede quedarse con el gesto y dejar de entregar pointermove a React. Se aplica siempre (no solo
   // con photoAdjust activo) porque no afecta a ningún otro comportamiento de la foto.
-  it('-webkit-user-drag:none en el <img> — desactiva el arrastre nativo de imagen de WebKit que intercepta pointermove en iOS Safari', () => {
+  it('-webkit-user-drag:none en el <img> — higiene (evita el callout nativo de guardar/copiar imagen), descartado como causa raíz del arrastre en la 2ª validación real', () => {
     expect(fn).toContain("WebkitUserDrag: 'none'")
     expect(fn).toContain("WebkitTouchCallout: 'none'")
+  })
+
+  // 2ª validación real en iPhone: -webkit-user-drag NO resolvió el arrastre — el gesto vertical lo seguía
+  // capturando el lienzo scrollable de debajo (canvasRef, touch-action:'pan-y' en modo 'edit'). Causa real:
+  // el MARCO (<div> overflow:hidden que envuelve el <img>) era el único elemento de la cadena capa→foto sin
+  // su propio touch-action:none explícito — el wrapper de la capa y el <img> sí lo tenían, pero quedaba ese
+  // hueco intermedio. Se cierra aquí, y además los handlers llaman a e.preventDefault() — refuerzo directo
+  // por si WebKit no respeta touch-action:none de un descendiente por encima del pan-y del ancestro.
+  it('el marco (<div> overflow:hidden) también lleva touch-action:none mientras se ajusta — cierra el hueco de la cadena capa→foto→<img>', () => {
+    const frameDiv = slice(fn, "return url ? (", '<img\n            src={url}')
+    expect(frameDiv).toContain("touchAction: photoAdjust?.active ? 'none' : undefined")
   })
 
   it('InvitationCanvasView (solo lectura, y la exportación PNG que la reutiliza) no pasa photoAdjust — se renderiza el mismo encuadre sin ninguna interactividad', () => {
@@ -122,6 +133,17 @@ describe('MOVER CAPA vs AJUSTAR CONTENIDO — separación real de gestos (nunca 
 
   it('handlePhotoAdjustPointerDown/Move/Up existen y usan setPointerCapture, igual que el resto de gestos del editor', () => {
     expect(fn).toContain('e.currentTarget.setPointerCapture(e.pointerId)')
+  })
+
+  // 2ª validación real: el gesto vertical seguía siendo capturado por canvasRef (touch-action:'pan-y' en
+  // modo 'edit') a pesar de touch-action:none en toda la cadena. e.preventDefault() en down/move refuerza
+  // directamente (vía Pointer Events, no listeners pasivos) contra ese pan-y del ancestro — solo existe
+  // dentro de estos handlers, que solo se activan mientras adjustingPhotoId apunta a esta capa, así que el
+  // scroll del editor fuera de este gesto (o sobre cualquier otra capa/zona) sigue funcionando igual.
+  it('e.preventDefault() en down/move — refuerzo directo contra el pan-y del lienzo ancestro (canvasRef) cuando WebKit no respeta touch-action:none del descendiente', () => {
+    expect(fn).toContain('e.preventDefault()')
+    const moveFnPD = slice(fn, 'function handlePhotoAdjustPointerMove(', '\n  function handlePhotoAdjustPointerUp')
+    expect(moveFnPD).toContain('e.preventDefault()')
   })
 
   it('el desplazamiento se mide contra el marco de LA PROPIA FOTO (su getBoundingClientRect), no contra el lienzo entero — proporcional al tamaño real en pantalla', () => {

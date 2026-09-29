@@ -117,16 +117,31 @@ describe('ShoppingItemRow — un toque que empieza en un botón real nunca activ
 // mostraban en la misma captura — es una consecuencia de opacity+CSS, no de onClick/propagación/estado de
 // selección. SWIPE_INTENT_THRESHOLD_PX y el guard de handleSwipeStart (arriba) ya eran correctos y no
 // necesitaban ningún cambio.
-describe('ShoppingItemRow — causa raíz real: opacity de "comprado" dejaba asomar el panel de Eliminar por transparencia (no un bug de gesto)', () => {
+//
+// Regresión real (commit bcbb59e, la 1ª corrección de esto): montar/desmontar .shopping-row-delete-behind
+// según translateX !== 0 — "ahora no se pueden eliminar los productos de la lista". Insertar o quitar un
+// hermano del DOM en mitad de un gesto táctil activo (cada pointermove que cruza el umbral, mientras el
+// puntero está capturado en .shopping-row-inner) es justo el tipo de mutación que puede desestabilizar la
+// captura de puntero/el propio gesto en iOS Safari. CORRECCIÓN v2: el panel vuelve a estar SIEMPRE montado
+// (cero inserciones/eliminaciones de nodos durante el gesto) — solo se oculta con `visibility:hidden`
+// mientras translateX es 0 (un elemento oculto así no se pinta — nada que asome por transparencia — y
+// tampoco recibe toques, sin necesitar pointer-events aparte).
+describe('ShoppingItemRow — panel de Eliminar SIEMPRE montado (nunca condicional al DOM) + oculto solo con visibility, nunca desmontado', () => {
   const outerFn = slice(ROW, 'return (\n    <div className="shopping-row-outer"', '\n      <div\n        className=')
 
-  it('.shopping-row-delete-behind solo se monta con un deslizamiento real en curso o ya abierto (translateX !== 0) — nunca solo por estar en modo normal', () => {
-    expect(outerFn).toContain('{!shoppingMode && translateX !== 0 && (')
-    expect(outerFn).toContain('<div className="shopping-row-delete-behind">')
+  it('.shopping-row-delete-behind se monta SIEMPRE que !shoppingMode — igual que antes de bcbb59e, sin condición sobre translateX en el propio montaje (evita mutar el DOM en mitad del gesto)', () => {
+    expect(outerFn).toContain('{!shoppingMode && (')
+    expect(outerFn).not.toContain('{!shoppingMode && translateX !== 0 && (')
+    expect(outerFn).toContain('<div className="shopping-row-delete-behind"')
   })
 
-  it('la condición no depende de "done"/comprado — cubre pendiente→comprado y comprado→pendiente por igual (nunca aparece Eliminar en ningún sentido)', () => {
-    const condition = slice(outerFn, '{!shoppingMode && translateX !== 0 && (', ')}')
+  it('se oculta con visibility (no con opacity, no con display:none, no desmontándolo) mientras translateX es 0 — visible en cuanto translateX !== 0', () => {
+    const panelBlock = slice(outerFn, '<div className="shopping-row-delete-behind"', '</div>\n      )}')
+    expect(panelBlock).toContain("style={{ visibility: translateX !== 0 ? 'visible' : 'hidden' }}")
+  })
+
+  it('la condición de montaje no depende de "done"/comprado — cubre pendiente→comprado y comprado→pendiente por igual (nunca aparece Eliminar en ningún sentido)', () => {
+    const condition = slice(outerFn, '{!shoppingMode && (', ')}')
     expect(condition).not.toContain('done')
     expect(condition).not.toContain('item.status')
   })
@@ -138,12 +153,12 @@ describe('ShoppingItemRow — causa raíz real: opacity de "comprado" dejaba aso
     expect(checkBlock).not.toContain('setLiveX')
   })
 
-  it('Modo compra conserva su comportamiento — el panel de Eliminar sigue sin existir nunca ahí, con o sin swipe (no se toca su diseño)', () => {
-    expect(outerFn).toContain('{!shoppingMode && translateX !== 0 && (')
+  it('Modo compra conserva su comportamiento — el panel de Eliminar sigue sin poder aparecer ahí (shoppingMode lo excluye del montaje, no se toca su diseño)', () => {
+    expect(outerFn).toContain('{!shoppingMode && (')
   })
 
-  it('el mecanismo deliberado de borrado (deslizar hasta abrir) sigue intacto — mismo botón, mismo onDelete, se muestra en cuanto translateX !== 0 de verdad', () => {
-    const panelBlock = slice(outerFn, '{!shoppingMode && translateX !== 0 && (', '\n      )}')
+  it('el mecanismo deliberado de borrado (deslizar hasta abrir) sigue intacto — mismo botón, mismo onDelete, visible en cuanto translateX !== 0 de verdad', () => {
+    const panelBlock = slice(outerFn, '{!shoppingMode && (', '\n      )}')
     expect(panelBlock).toContain('onClick={() => onDelete(item.id)}')
     expect(panelBlock).toContain('🗑 Eliminar')
   })

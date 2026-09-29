@@ -1916,21 +1916,23 @@ function ShoppingItemRow({
 
   return (
     <div className="shopping-row-outer" style={{ overflow: dragging ? 'visible' : 'hidden' }}>
-      {/* Causa raíz real (demostrada con un harness HTML mínimo cargando el CSS real, no una hipótesis de
-          gesto): este panel se pintaba SIEMPRE, incluso con translateX en 0 — completamente tapado por el
-          fondo opaco de .shopping-row-inner (var(--bg)) en ese caso, así que nunca se veía. Pero
-          .shopping-item-done aplica opacity:0.55 a TODA .shopping-row-inner (fondo incluido) para atenuar
-          el producto comprado — y opacity no solo aclara colores, hace que el propio elemento (con su fondo)
-          se componga semitransparente sobre lo que tenga detrás, dejando asomar este panel rojo "Eliminar"
-          por debajo, aunque translateX siguiera en 0 y nadie hubiera deslizado nada. Por eso ocurría
-          exactamente al marcar comprado (cuando se añade la clase) y por eso los productos YA comprados de
-          otras tiendas también lo mostraban en la misma captura — nunca fue un bug de swipe/pointer/
-          propagación (SWIPE_INTENT_THRESHOLD_PX y el guard de handleSwipeStart ya eran correctos). Corrección
-          mínima: solo se monta mientras de verdad hay un deslizamiento en curso o ya abierto
-          (translateX !== 0) — así nunca hay nada opaco detrás que pueda asomar por transparencia, y el
-          gesto de deslizar para borrar (el mecanismo deliberado existente) sigue exactamente igual. */}
-      {!shoppingMode && translateX !== 0 && (
-        <div className="shopping-row-delete-behind">
+      {/* Causa raíz real del bleed-through (demostrada con un harness HTML mínimo cargando el CSS real):
+          este panel se pintaba SIEMPRE, tapado por el fondo opaco de .shopping-row-inner (var(--bg)) con
+          translateX en 0. .shopping-item-done aplica opacity:0.55 a TODA .shopping-row-inner (fondo
+          incluido) para atenuar el producto comprado, y opacity compone el elemento entero semitransparente
+          sobre lo que tenga detrás — dejando asomar este panel rojo "Eliminar" por debajo sin que nadie
+          hubiera deslizado nada.
+          Regresión real (montar/desmontar este <div> según translateX, corrección anterior): insertar o
+          quitar un hermano del DOM en mitad de un gesto táctil activo (cada pointermove que cruza el
+          umbral) es justo el tipo de mutación que puede desestabilizar la captura de puntero en iOS Safari
+          y abortar el gesto — "ya no se pueden eliminar productos". Corrección: el panel vuelve a estar
+          SIEMPRE montado (cero inserciones/eliminaciones de nodos durante el gesto, igual que antes de
+          bcbb59e) — solo se OCULTA con visibility:hidden mientras translateX es 0 (un elemento oculto así
+          no se pinta, así que no hay nada opaco detrás que pueda asomar por la transparencia de
+          .shopping-item-done, y tampoco recibe toques). El gesto de deslizar para borrar (el mecanismo
+          deliberado existente) no cambia. */}
+      {!shoppingMode && (
+        <div className="shopping-row-delete-behind" style={{ visibility: translateX !== 0 ? 'visible' : 'hidden' }}>
           <button
             type="button"
             className="shopping-row-delete-btn"

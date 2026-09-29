@@ -639,6 +639,12 @@ function EventDetail({
   // ordenar) para garantizar que la tarea destacada esté siempre a la
   // vista sin un paso extra de "Ver todas".
   const [showAllTasks, setShowAllTasks] = useState(initialModule === 'tareas')
+  // Bloque 9 (cola nocturna) — Completadas/Historial: auditoría real (src/domain/events.ts,
+  // src/ui/EventosScreen.tsx) confirmó que una tarea hecha (done:true) desaparecía de la vista para
+  // siempre (solo quedaba el recuento "X de Y completadas"), sin ningún borrado — el dato ya se conservaba
+  // en la base de datos, solo faltaba un sitio para volver a verlo. Colapsado por defecto: no reordena ni
+  // agranda la vista de siempre de Preparativos.
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false)
   // Fase 8 — rediseño de Preparativos: qué tarea se está editando ahora
   // mismo (ficha compacta + modal de edición, en vez de una fila de
   // tabla con checkbox+texto+fecha+responsable+✕ compitiendo por sitio).
@@ -689,6 +695,8 @@ function EventDetail({
 
   const pendingTasks = tasks.filter((t) => !t.done)
   const visibleTasks = showAllTasks ? pendingTasks : pendingTasks.slice(0, 5)
+  // Bloque 9 — nunca se borran solas: mismo array `tasks` de siempre, solo el lado done:true.
+  const completedTasks = tasks.filter((t) => t.done)
   const hasTasksModule = event.enabledModules.includes('tareas')
 
   async function handleAddTask(ev: FormEvent) {
@@ -976,6 +984,26 @@ function EventDetail({
               <input type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="+ Añadir tarea" style={{ flex: 1 }} />
               <button type="submit">Añadir</button>
             </form>
+            {completedTasks.length > 0 && (
+              <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid #eee' }}>
+                <button type="button" className="link-button" onClick={() => setShowCompletedTasks((v) => !v)}>
+                  {showCompletedTasks ? '▲' : '▼'} ✔️ Completadas ({completedTasks.length})
+                </button>
+                {showCompletedTasks && (
+                  <div className="event-list" style={{ marginTop: 8 }}>
+                    {completedTasks.map((t) => (
+                      <TaskCard
+                        key={t.id}
+                        task={t}
+                        responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
+                        onToggleDone={() => updateEventTask(t.id, { done: false }).then(reloadTasks)}
+                        onEdit={() => setEditingTaskId(t.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {editingTask && (
               <TaskEditModal
                 task={editingTask}
@@ -1539,7 +1567,9 @@ function TaskCard({
   highlighted?: boolean
   onToggleDone: () => void
   onEdit: () => void
-  onDelete: () => void
+  // Bloque 9 (cola nocturna) — opcional: la vista de Completadas/Historial nunca ofrece borrar (una tarea
+  // hecha se conserva siempre), así que ese menú no pasa onDelete y el botón "🗑️ Borrar" no se pinta.
+  onDelete?: () => void
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const overdue = isOverdueTask(task)
@@ -1580,7 +1610,7 @@ function TaskCard({
               >
                 ✏️ Editar
               </button>
-              <ConfirmButton label="🗑️ Borrar" confirmLabel="Borrar" className="link-button" onConfirm={onDelete} />
+              {onDelete && <ConfirmButton label="🗑️ Borrar" confirmLabel="Borrar" className="link-button" onConfirm={onDelete} />}
             </div>
           </>
         )}

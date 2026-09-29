@@ -116,7 +116,9 @@ describe('ShoppingItemRow — causa raíz real (3ª ronda): touch-action pan-y g
 describe('ShoppingItemRow — un toque que empieza en un botón real nunca activa el swipe de la fila (causa real, no un ajuste de umbral)', () => {
   it('handleSwipeStart comprueba el target ANTES de capturar el puntero — un toque dentro de un botón/enlace/input corta aquí, sin tocar swiping/swipeIntent/setPointerCapture', () => {
     const fn = slice(ROW, 'function handleSwipeStart', '\n  function handleSwipeMove')
-    expect(fn).toContain("if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return")
+    // Instrumentación temporal (diagnóstico en curso) reescribió el guard a "const targetEl = ...; if
+    // (targetEl.closest(...))" para poder loguear el target — misma comprobación, forma distinta.
+    expect(fn).toContain("if (targetEl.closest('button, a, input, select, textarea')) {")
     // El guard debe estar ANTES de la llamada real a setPointerCapture (si estuviera después, ya sería
     // demasiado tarde) — se busca la llamada completa, no la palabra suelta (que también aparece en el
     // comentario explicativo de más arriba, antes del propio guard).

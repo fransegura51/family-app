@@ -1290,6 +1290,8 @@ function ShoppingListTab() {
       </div>
       {shareNotice && <p className="muted" style={{ fontSize: 12 }}>{shareNotice}</p>}
 
+      {!shoppingMode && <SwipeDebugPanel />}
+
       <h2 className="section-title">Pendientes</h2>
       {storeGroups.map(([store, storeItems]) => {
         // Petición real: "si solo hay un producto de una tienda quiero
@@ -1797,6 +1799,53 @@ function DraggableStoreGroup({
   )
 }
 
+// INSTRUMENTACIÓN TEMPORAL (3 rondas de correcciones a ciegas sin resolverlo — "sigue sin funcionar" cada
+// vez) — para ver en el iPhone real qué evento llega de verdad y en qué orden, en vez de seguir adivinando.
+// ELIMINAR TODO ESTE BLOQUE (hasta el marcador de cierre) en cuanto tengamos el diagnóstico real.
+const swipeDebugState = {
+  lines: [] as string[],
+}
+function swipeDebugLog(line: string) {
+  const ts = new Date().toISOString().slice(11, 23)
+  swipeDebugState.lines = [`${ts} ${line}`, ...swipeDebugState.lines].slice(0, 30)
+  swipeDebugListeners.forEach((fn) => fn())
+}
+const swipeDebugListeners = new Set<() => void>()
+function SwipeDebugPanel() {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const fn = () => setTick((t) => t + 1)
+    swipeDebugListeners.add(fn)
+    return () => {
+      swipeDebugListeners.delete(fn)
+    }
+  }, [])
+  return (
+    <div
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 40,
+        background: '#111',
+        color: '#0f0',
+        fontFamily: 'monospace',
+        fontSize: 10,
+        lineHeight: 1.4,
+        padding: 8,
+        maxHeight: 180,
+        overflowY: 'auto',
+        whiteSpace: 'pre-wrap',
+        borderRadius: 8,
+        marginBottom: 8,
+      }}
+    >
+      <div style={{ color: '#fff', fontWeight: 700 }}>🔧 DEBUG SWIPE (temporal) — desliza un producto y mira aquí</div>
+      {swipeDebugState.lines.length === 0 ? '(todavía sin eventos — toca y desliza un producto)' : swipeDebugState.lines.join('\n')}
+    </div>
+  )
+}
+// ─── FIN INSTRUMENTACIÓN TEMPORAL (el resto de este archivo es código real) ───
+
 const SWIPE_OPEN_X = -76
 // Margen mínimo antes de considerar que el dedo está deslizando de verdad (ver swipeIntent, más abajo) —
 // sin esto, el temblor normal de un toque ya abría el aviso de Eliminar en vez de editar.
@@ -1888,12 +1937,17 @@ function ShoppingItemRow({
     // gesto de swipe ni siquiera se inicia aquí — el control recibe el toque tal cual, sin que la fila
     // capture nada. Mismo criterio que ya usaba el tirador de arrastrar (stopPropagation propio), aplicado
     // aquí de raíz en vez de repetirlo botón por botón.
-    if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return
+    const targetEl = e.target as HTMLElement
+    if (targetEl.closest('button, a, input, select, textarea')) {
+      swipeDebugLog(`DOWN "${item.name}" → target=${targetEl.tagName}.${targetEl.className} → GUARD (es un control) → swipe NO se inicia`)
+      return
+    }
     swipeStartX.current = e.clientX
     swipeStartY.current = e.clientY
     swiping.current = true
     swipeIntent.current = false
     e.currentTarget.setPointerCapture(e.pointerId)
+    swipeDebugLog(`DOWN "${item.name}" → target=${targetEl.tagName}.${targetEl.className} pointerType=${e.pointerType} x=${e.clientX.toFixed(0)} y=${e.clientY.toFixed(0)} → capturado`)
   }
 
   // Reporte real: "sigue sin funcionar" — el deslizar nunca llegaba a revelar Eliminar, ni siquiera con el
@@ -1919,20 +1973,28 @@ function ShoppingItemRow({
       if (Math.abs(dy) >= Math.abs(dx)) {
         // Gesto predominantemente vertical: es scroll de la lista, no swipe — se deja de seguir este
         // toque por completo (nunca más se llama a setLiveX para él) y se cede el gesto al pan-y nativo.
+        swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} → domina VERTICAL → abandona (cede al scroll nativo)`)
         swiping.current = false
         return
       }
       swipeIntent.current = true
+      swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} dy=${dy.toFixed(0)} → domina HORIZONTAL → swipeIntent=true, preventDefault()`)
     }
     e.preventDefault()
+    swipeDebugLog(`MOVE "${item.name}" → dx=${dx.toFixed(0)} defaultPrevented=${e.defaultPrevented} → setLiveX`)
     setLiveX(Math.min(0, Math.max(SWIPE_OPEN_X, openX + dx)))
   }
 
-  function handleSwipeEnd() {
-    if (!swiping.current) return
+  function handleSwipeEnd(reason: 'up' | 'cancel') {
+    if (!swiping.current) {
+      swipeDebugLog(`${reason.toUpperCase()} "${item.name}" → swiping.current ya era false (ignorado)`)
+      return
+    }
     swiping.current = false
     const current = liveX ?? openX
-    setOpenX(current < SWIPE_OPEN_X / 2 ? SWIPE_OPEN_X : 0)
+    const nextOpenX = current < SWIPE_OPEN_X / 2 ? SWIPE_OPEN_X : 0
+    swipeDebugLog(`${reason.toUpperCase()} "${item.name}" → swipeIntent=${swipeIntent.current} liveX=${liveX} → openX=${nextOpenX} (${nextOpenX !== 0 ? 'QUEDA ABIERTO' : 'cierra'})`)
+    setOpenX(nextOpenX)
     setLiveX(null)
   }
 
@@ -1981,8 +2043,8 @@ function ShoppingItemRow({
         }}
         onPointerDown={handleSwipeStart}
         onPointerMove={handleSwipeMove}
-        onPointerUp={handleSwipeEnd}
-        onPointerCancel={handleSwipeEnd}
+        onPointerUp={() => handleSwipeEnd('up')}
+        onPointerCancel={() => handleSwipeEnd('cancel')}
       >
         {!shoppingMode && (
           <span

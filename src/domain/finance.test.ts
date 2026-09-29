@@ -5,6 +5,7 @@ import {
   categoryColors,
   computeSavingsDestinedByMember,
   stableCategoryColors,
+  isComprasExpense,
   isFoodCategory,
   isInternalTransferCategory,
   resolveCategoryClassification,
@@ -12,7 +13,7 @@ import {
   walletBalance,
   walletCategoryTotal,
 } from '@/domain/finance'
-import type { Budget, BudgetCategory, Expense, KidWalletTransaction } from '@/domain/types'
+import type { Budget, BudgetCategory, Expense, KidWalletTransaction, Receipt } from '@/domain/types'
 
 function cat(over: Partial<BudgetCategory> & Pick<BudgetCategory, 'id' | 'name'>): BudgetCategory {
   return { familyId: 'f', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: null, necessity: null, isFixed: null, catalogKey: null, ...over }
@@ -68,6 +69,85 @@ describe('isInternalTransferCategory', () => {
     expect(isInternalTransferCategory('Movimientos internos', categories)).toBe(true)
     expect(isInternalTransferCategory('Transferencias entre cuentas propias', categories)).toBe(true)
     expect(isInternalTransferCategory('Sueldo', categories)).toBe(false)
+  })
+})
+
+// Bug real (validación en iPhone): "Comparado con el periodo anterior" de Estadística compras mostraba
+// préstamos, clínica dental y otros gastos generales de Economía — usaba el mismo filtro GENÉRICO de
+// "gasto real" que la comparativa de Presupuesto Generales, nunca la definición real de "esto es una
+// compra" que ya aplicaba "Total Registrado en Compras" (antes embebida inline en FinanceScreen.tsx, el
+// bucle de `splits`). isComprasExpense es ahora la única fuente de esa definición, reutilizada por los dos
+// sitios — estos son los mismos 8 escenarios pedidos para demostrarlo, contra la función pura.
+describe('isComprasExpense — universo exacto de "Total Registrado en Compras", el mismo que usa la comparativa de periodo', () => {
+  const comprasCategories: BudgetCategory[] = [
+    ...categories, // ya trae 'Alimentación' (id 'ali') y 'Vivienda y hogar'/'Ocio y viajes', se reutilizan tal cual
+    cat({ id: 'cyf', name: 'Compras y familia' }),
+    cat({ id: 'ropa', name: 'Ropa y accesorios', parentId: 'cyf' }),
+    cat({ id: 'prestamos', name: 'Préstamos' }),
+    cat({ id: 'salud', name: 'Salud' }),
+  ]
+
+  function receipt(over: Partial<Receipt> & Pick<Receipt, 'category'>): Receipt {
+    return { id: 'r', familyId: 'f', storagePath: null, store: null, receiptDate: '2026-09-01', totalAmount: null, expenseId: null, notes: null, purchasedByMemberId: null, ...over }
+  }
+
+  // 1) Alimentación/compra válida → entra en comparativa.
+  it('un gasto de Alimentación entra', () => {
+    const e = exp({ expenseDate: '2026-09-05', amount: 40, category: 'Alimentación' })
+    expect(isComprasExpense(e, comprasCategories, null)).toBe(true)
+  })
+
+  it('un gasto de "Compras y familia" (o su subcategoría) entra', () => {
+    const e = exp({ expenseDate: '2026-09-05', amount: 60, category: 'Ropa y accesorios' })
+    expect(isComprasExpense(e, comprasCategories, null)).toBe(true)
+  })
+
+  // 2) Compra válida sin ticket → entra si también entra en Total Registrado en Compras.
+  it('un gasto de "Compras y familia" SIN ticket sigue entrando — el universo no depende de tener ticket', () => {
+    const e = exp({ expenseDate: '2026-09-05', amount: 25, category: 'Ropa y accesorios', source: 'banco' })
+    expect(isComprasExpense(e, comprasCategories, null)).toBe(true)
+  })
+
+  it('un gasto no-alimento CON ticket cuyo ticket sí lleva categoría no-alimento también entra (isTicketNonFood)', () => {
+    // Caso real: un cobro de banco pendiente de clasificar (category NULL) pero cuyo ticket adjunto ya
+    // dice "Ropa y accesorios" — se cuenta como compra por lo que dice el ticket, no por el gasto pelado.
+    const e = exp({ expenseDate: '2026-09-05', amount: 30, category: null })
+    expect(isComprasExpense(e, comprasCategories, receipt({ category: 'Ropa y accesorios' }))).toBe(true)
+  })
+
+  it('pendiente de clasificar CON ticket entra (sus productos se reparten por su propia naturaleza)', () => {
+    const e = exp({ expenseDate: '2026-09-05', amount: 15, category: null })
+    expect(isComprasExpense(e, comprasCategories, receipt({ category: null }))).toBe(true)
+  })
+
+  it('pendiente de clasificar SIN ticket no entra — no hay forma de saber si es compra', () => {
+    const e = exp({ expenseDate: '2026-09-05', amount: 15, category: null })
+    expect(isComprasExpense(e, comprasCategories, null)).toBe(false)
+  })
+
+  // 3) Préstamo → no entra.
+  it('un préstamo no entra', () => {
+    const e = exp({ expenseDate: '2026-08-31', amount: 450.5, category: 'Préstamos', store: 'PRESTAMOS ADEUDO CUOTA' })
+    expect(isComprasExpense(e, comprasCategories, null)).toBe(false)
+  })
+
+  // 4) Salud/clínica dental → no entra.
+  it('un gasto de Salud (clínica dental) no entra', () => {
+    const e = exp({ expenseDate: '2026-09-10', amount: 200, category: 'Salud', store: 'CLINICA DENTAL-ALMORADI' })
+    expect(isComprasExpense(e, comprasCategories, null)).toBe(false)
+  })
+
+  // 5) Otro gasto general de Economía → no entra.
+  it('un gasto de Vivienda y hogar (u otro grupo general) no entra', () => {
+    const e = exp({ expenseDate: '2026-09-10', amount: 120, category: 'Vivienda y hogar' })
+    expect(isComprasExpense(e, comprasCategories, null)).toBe(false)
+  })
+
+  it('un gasto de Ocio y viajes no entra, aunque tenga ticket adjunto sin categoría propia', () => {
+    const e = exp({ expenseDate: '2026-09-10', amount: 80, category: 'Ocio y viajes' })
+    // El ticket es de la MISMA categoría de comida que ya excluye — isTicketNonFood exige que el ticket
+    // tenga su PROPIA categoría no-alimento; uno sin categoría (null) no activa esa vía.
+    expect(isComprasExpense(e, comprasCategories, receipt({ category: null }))).toBe(false)
   })
 })
 

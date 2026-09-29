@@ -1,6 +1,6 @@
 import { daysBetween } from '@/domain/financePeriod'
 import { isPendingCategory } from '@/domain/pending'
-import type { Budget, BudgetCategory, Expense, KidWalletTransaction } from '@/domain/types'
+import type { Budget, BudgetCategory, Expense, KidWalletTransaction, Receipt } from '@/domain/types'
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -65,6 +65,23 @@ export function isComprasFamiliaCategory(category: string | null, categories: Bu
   const cat = categories.find((c) => c.name === category)
   if (!cat?.parentId) return false
   return categories.find((c) => c.id === cat.parentId)?.name === 'Compras y familia'
+}
+
+// Bug real (validación en iPhone): "Comparado con el periodo anterior" en Estadística compras mostraba
+// préstamos, clínica dental y otros gastos generales de Economía — usaba el mismo filtro genérico de
+// "gasto real" (kind==='real' && !isIncome && !traspaso interno) que la comparativa de Presupuesto
+// Generales, nunca la definición real de "esto es una compra" que ya usa "Total Registrado en Compras"
+// (FinanceScreen.tsx, la variable `splits`). Dos implementaciones independientes de la misma definición
+// podían (y ya lo hicieron) divergir — este helper es la ÚNICA fuente de verdad de "¿este gasto entra en
+// el universo de Compras?", reutilizada tal cual por ambos sitios: el total y la comparativa por periodo.
+// Es la misma regla exacta que ya vivía inline en el bucle de `splits`, solo extraída para no repetirla:
+// Alimentación (o su árbol), "Compras y familia" (o su árbol), no-alimento vía un ticket con categoría
+// propia, o pendiente de clasificar CON ticket (sus productos se reparten por su propia naturaleza).
+export function isComprasExpense(expense: Pick<Expense, 'category'>, categories: BudgetCategory[], receipt: Pick<Receipt, 'category'> | null): boolean {
+  const baseIsFood = isFoodCategory(expense.category, categories)
+  const isTicketNonFood = receipt != null && receipt.category != null && !isFoodCategory(receipt.category, categories)
+  const isPending = isPendingCategory(expense.category)
+  return baseIsFood || isComprasFamiliaCategory(expense.category, categories) || isTicketNonFood || (isPending && receipt != null)
 }
 
 // Petición real: "Categoría Movimientos internos debe estar también

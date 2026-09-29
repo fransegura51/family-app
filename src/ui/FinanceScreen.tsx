@@ -171,6 +171,7 @@ import {
   budgetSpent,
   computeSavingsDestinedByMember,
   stableCategoryColors,
+  isComprasExpense,
   isComprasFamiliaCategory,
   isFoodCategory,
   isInternalTransferCategory,
@@ -7031,12 +7032,12 @@ export function BudgetsTab({
   const splits: ExpenseSplit[] = []
   for (const e of monthRealExpenses) {
     const receipt = receiptByExpenseId.get(e.id)
-    // Un ticket SIN categoría (NULL, pendiente) no es «no alimentación»: simplemente no se sabe (Fase 6C.2B decidirá cómo mostrarlo).
-    const isTicketNonFood = receipt != null && receipt.category != null && !isFoodCategory(receipt.category, categories)
     const baseIsFood = isFoodCategory(e.category, categories)
     // Un gasto PENDIENTE de clasificar (category NULL) con ticket también entra: sus productos se reparten por su propia naturaleza.
     const isPending = isPendingCategory(e.category)
-    if (!baseIsFood && !isComprasFamiliaCategory(e.category, categories) && !isTicketNonFood && !(isPending && receipt != null)) continue
+    // isComprasExpense (domain/finance.ts) es la ÚNICA definición de "esto es una compra" — la misma que
+    // usa la comparativa "Comparado con el periodo anterior" de más abajo, para que nunca puedan divergir.
+    if (!isComprasExpense(e, categories, receipt ?? null)) continue
     const store = canonicalStoreName(e.store, knownStores)
     const lines = receipt ? (pricesByReceiptId.get(receipt.id) ?? []) : []
     let foodAmount = 0
@@ -7377,18 +7378,32 @@ export function BudgetsTab({
         </div>
       )}
 
-      {/* Bloque B (continuación de la cola nocturna) — "Comparado con el periodo anterior" para Compras,
-          agrupado por TIENDA (nunca por categoría de Economía: aquí se analiza Compras, no Economía).
-          Reutiliza el MISMO componente que ya usa Estadísticas de Economía (PeriodComparison,
-          generalizado para aceptar el agrupador), el mismo motor de fechas (comparablePrevious) y el mismo
-          filtro de "gasto real" que ya usa "Total Registrado en Compras" de arriba (monthRealExpenses) —
-          así los dos números pueden compararse sin sorpresas. `expenses` (SIN filtrar por fecha) es la
-          misma lista completa que ya carga esta pantalla; PeriodComparison calcula sus propios periodos
-          actual/anterior a partir de ella. */}
+      {/* Bug real (validación en iPhone): esta comparativa mostraba préstamos, clínica dental y otros
+          gastos generales de Economía — CAUSA encontrada: isComparableSpend solo aplicaba el filtro
+          GENÉRICO de "gasto real" (kind/isIncome/traspaso interno), el mismo que usa la comparativa de
+          Presupuesto Generales — nunca la definición real de "esto es una compra" que sí aplica "Total
+          Registrado en Compras" de arriba (el bucle de `splits`, más estrecha: Alimentación, Compras y
+          familia, no-alimento vía ticket, o pendiente con ticket). Dos implementaciones independientes de
+          la misma definición, y divergieron. CORRECCIÓN: isComprasExpense (domain/finance.ts) es ahora la
+          ÚNICA fuente de esa definición, reutilizada tal cual aquí y en el bucle de `splits` — mismo
+          universo de registros en los dos sitios, garantizado por construcción, no por disciplina. El
+          filtro genérico de "gasto real" (kind/isIncome/traspaso) se conserva encadenado ANTES, porque
+          isComprasExpense da por hecho que ya se aplicó (no repite esa parte). Agrupado por TIENDA (nunca
+          por categoría de Economía: aquí se analiza Compras, no Economía). Reutiliza el MISMO componente
+          que ya usa Estadísticas de Economía (PeriodComparison, generalizado para aceptar el agrupador) y
+          el mismo motor de fechas (comparablePrevious) — el periodo anterior sigue siendo el equivalente
+          exacto del preset elegido arriba (p. ej. Mes contable anterior si arriba está Mes contable), sin
+          tocar ese motor. `expenses` (SIN filtrar por fecha) es la misma lista completa que ya carga esta
+          pantalla; PeriodComparison calcula sus propios periodos actual/anterior a partir de ella. */}
       {group === 'alimentacion' && (
         <PeriodComparison
           expenses={expenses}
-          isComparableSpend={(e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)}
+          isComparableSpend={(e) =>
+            e.kind === 'real' &&
+            !e.isIncome &&
+            !isInternalTransferCategory(e.category, categories) &&
+            isComprasExpense(e, categories, receiptByExpenseId.get(e.id) ?? null)
+          }
           groupBy={(rows) => {
             const totals = new Map<string, number>()
             for (const e of rows) {

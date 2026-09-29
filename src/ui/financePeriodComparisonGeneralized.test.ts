@@ -62,8 +62,27 @@ describe('Compras (Estadística compras) — "Comparado con el periodo anterior"
     expect(callSite).not.toContain('groupSpending')
   })
 
-  it('usa el MISMO filtro de "gasto real" que ya usa Total Registrado en Compras (monthRealExpenses) — los dos números son comparables', () => {
-    expect(callSite).toContain("isComparableSpend={(e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)}")
+  // Bug real (validación en iPhone): esta comparativa mostraba préstamos, clínica dental y otros gastos
+  // generales — el filtro genérico de "gasto real" (kind/isIncome/traspaso) NO es lo mismo que "esto es
+  // una compra"; hacía falta además isComprasExpense (domain/finance.ts), la misma función que ahora usa
+  // también "Total Registrado en Compras" — nunca dos definiciones independientes que puedan divergir.
+  it('encadena el filtro genérico de "gasto real" Y ADEMÁS isComprasExpense — no basta con ser un gasto real, tiene que ser una COMPRA', () => {
+    expect(callSite).toContain("e.kind === 'real' &&")
+    expect(callSite).toContain('!e.isIncome &&')
+    expect(callSite).toContain('!isInternalTransferCategory(e.category, categories) &&')
+    expect(callSite).toContain('isComprasExpense(e, categories, receiptByExpenseId.get(e.id) ?? null)')
+  })
+
+  it('usa isComprasExpense con los MISMOS `categories`/`receiptByExpenseId` que ya calcula esta misma pantalla para "Total Registrado en Compras" — nunca una copia propia', () => {
+    // No se recalculan aparte: son los identificadores ya existentes de BudgetsTab, compartidos con el
+    // bucle de `splits` — así los dos sitios ven literalmente los mismos datos para el mismo periodo.
+    expect(SRC).toContain('const receiptByExpenseId = new Map(receipts.filter((r) => r.expenseId).map((r) => [r.expenseId as string, r]))')
+    expect(SRC.match(/receiptByExpenseId/g)?.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('isComprasExpense también gobierna el "continue" de Total Registrado en Compras (el bucle de `splits`) — única fuente de la definición, reutilizada en los dos sitios', () => {
+    const splitsFn = slice(SRC, 'const splits: ExpenseSplit[] = []', '\n  const alimentacionExpenses')
+    expect(splitsFn).toContain('if (!isComprasExpense(e, categories, receipt ?? null)) continue')
   })
 
   it('pide el resumen de totales (showTotals) — a diferencia de Economía, que no lo lleva', () => {

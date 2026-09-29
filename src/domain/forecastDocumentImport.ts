@@ -21,6 +21,12 @@ export interface ForecastDocumentScanResult {
   periodicity: 'mensual' | 'semanal' | 'trimestral' | 'anual' | null
   lastDueDate: string | null
   paidInstallments: number | null
+  // BUG REAL (documento SUMA — aplazamiento tributario, 2026-09-29): fechas de cada cuota, en orden, SOLO
+  // cuando el documento las lista explícitamente en su propio "cuadro de amortización" — nunca calculadas.
+  // Sin este campo, un calendario con una fecha irregular (p. ej. la 2ª cuota el día 7 en vez del día 5)
+  // era IMPOSIBLE de representar: el motor solo conocía firstDueDate + periodicidad, y regeneraba TODAS
+  // las fechas siguientes por recurrencia pura, borrando cualquier excepción real del documento.
+  installmentDueDates: string[] | null
 }
 
 export function isEmptyForecastDocumentScan(result: ForecastDocumentScanResult): boolean {
@@ -34,7 +40,8 @@ export function isEmptyForecastDocumentScan(result: ForecastDocumentScanResult):
     result.firstDueDate == null &&
     result.periodicity == null &&
     result.lastDueDate == null &&
-    result.paidInstallments == null
+    result.paidInstallments == null &&
+    result.installmentDueDates == null
   )
 }
 
@@ -66,10 +73,27 @@ export interface ForecastDocumentPrefillFields {
   title: string
   amount: number | null
   amountEstimatedBasis: string
+  // BUG REAL (documento SUMA): cuando el total leído no cuadra con la suma/reparto de las cuotas, se avisa
+  // aquí en vez de proponer en silencio un número que podría estar mal — nunca bloquea el guardado, solo
+  // informa (ver validación aritmética, más abajo).
+  amountReviewNote: string | null
   categoryName: string | null
   dueDate?: string
   recurrenceRule?: string
   installmentAmounts?: number[] | null
+  installmentDueDates?: string[] | null
+}
+
+const COHERENCE_TOLERANCE_ABS = 5
+const COHERENCE_TOLERANCE_RATIO = 0.15
+
+// ¿Dos estimaciones independientes del mismo importe total son razonablemente compatibles? No exige que
+// coincidan al céntimo (puede haber intereses/comisiones no representados) — solo descarta una
+// contradicción evidente (p. ej. "el total son 144,76€" y a la vez "hay 6 cuotas de ~144€ cada una", que
+// implican un total real de ~868€: un factor ×6 de diferencia, no un redondeo).
+function amountsRoughlyMatch(a: number, b: number): boolean {
+  const diff = Math.abs(a - b)
+  return diff <= COHERENCE_TOLERANCE_ABS || diff <= Math.max(a, b) * COHERENCE_TOLERANCE_RATIO
 }
 
 // Construye la propuesta editable a partir de lo extraído — SIEMPRE que isEmptyForecastDocumentScan sea
@@ -82,18 +106,50 @@ export function buildForecastDocumentPrefillFields(scan: ForecastDocumentScanRes
   // puede renombrar, no un dato financiero inventado).
   const title = scan.concept && scan.provider ? `${scan.concept} — ${scan.provider}` : (scan.concept ?? scan.provider ?? 'Pago importado')
 
-  // Importe de cuota: el explícito si lo hay; si no, el total repartido entre el número de cuotas (mismo
-  // criterio que ya usa el formulario manual para "Importe TOTAL" repartido en planLines); si tampoco hay
-  // cuotas, el total tal cual (pago único). Sin ninguno de los tres, null — "Pendiente", nunca inventado.
+  // Se construye un plan finito (varias fechas reales) exactamente cuando ForecastPaymentForm también lo
+  // construiría — mismo criterio que el bloque de recurrencia de más abajo. Es la condición clave del
+  // arreglo: cuando SÍ se construye un plan, "amount" tiene que significar el TOTAL a repartir (igual que
+  // en el formulario manual), nunca un importe ya dividido por cuota — si aquí se dividiera, el propio
+  // formulario (proposeFinitePlanLines) lo volvería a dividir al proponer el plan.
+  const willBuildInstallmentPlan = scan.periodicity != null && scan.firstDueDate != null && scan.installmentCount != null && scan.installmentCount >= 2
+
+  // Validación aritmética: si hay más de una fuente independiente del total (el propio "totalAmount" leído,
+  // y el total que implican las cuotas — su suma, o importe×número), y no cuadran razonablemente, PEPA no
+  // sabe cuál es la correcta. Nunca elige en silencio: se avisa para que el usuario lo revise antes de
+  // guardar (petición explícita — "eso es una contradicción evidente y debe marcarse para revisión").
+  const impliedTotalFromAmounts = scan.installmentAmounts ? scan.installmentAmounts.reduce((sum, v) => sum + v, 0) : null
+  const impliedTotalFromSingleAmount = scan.installmentAmount != null && scan.installmentCount != null ? scan.installmentAmount * scan.installmentCount : null
+  const impliedTotal = impliedTotalFromAmounts ?? impliedTotalFromSingleAmount
+  let amountReviewNote: string | null = null
+  if (scan.totalAmount != null && impliedTotal != null && !amountsRoughlyMatch(scan.totalAmount, impliedTotal)) {
+    amountReviewNote = `El total leído (${scan.totalAmount.toFixed(2)} €) no coincide con lo que suman las cuotas (${impliedTotal.toFixed(2)} €) — revisa los importes antes de guardar.`
+  }
+
   let amount: number | null = null
-  if (scan.installmentAmount != null) amount = scan.installmentAmount
-  else if (scan.totalAmount != null && scan.installmentCount != null && scan.installmentCount > 0) amount = Math.round((scan.totalAmount / scan.installmentCount) * 100) / 100
-  else if (scan.totalAmount != null) amount = scan.totalAmount
+  if (willBuildInstallmentPlan) {
+    // El total explícito manda; si no hay total pero sí cuotas (iguales o distintas), el total es lo que
+    // ellas implican — nunca "el importe de una cuota" tal cual, porque el formulario lo trataría como el
+    // TOTAL del plan y lo repartiría entre todas otra vez.
+    if (scan.totalAmount != null) amount = scan.totalAmount
+    else if (impliedTotal != null) amount = impliedTotal
+  } else {
+    // Sin plan de varias fechas que construir (falta periodicidad, fecha de primera cuota, o solo hay una
+    // cuota): el importe representa un único pago. El explícito de cuota manda; si no, y solo si se conoce
+    // el total y el número de cuotas (sin poder repartirlas en el tiempo), se ofrece el importe medio como
+    // estimación — avisando de que es un promedio, no un dato leído directamente.
+    if (scan.installmentAmount != null) amount = scan.installmentAmount
+    else if (scan.totalAmount != null && scan.installmentCount != null && scan.installmentCount > 0) {
+      amount = Math.round((scan.totalAmount / scan.installmentCount) * 100) / 100
+      amountReviewNote =
+        amountReviewNote ?? 'Importe medio por cuota calculado a partir del total y el número de cuotas — no se pudo construir el calendario porque falta la fecha o la periodicidad.'
+    } else if (scan.totalAmount != null) amount = scan.totalAmount
+  }
 
   // Solo con periodicidad Y fecha de primera cuota se puede construir una recurrencia real — sin fecha de
   // ancla no hay dónde anclarla, y ForecastPaymentPrefill.dueDate ya queda sin rellenar en ese caso.
   let recurrenceRule: string | undefined
   let installmentAmounts: number[] | null | undefined
+  let installmentDueDates: string[] | null | undefined
   if (scan.periodicity && scan.firstDueDate) {
     const { freq, interval } = PERIODICITY_TO_FREQ[scan.periodicity]
     if (scan.installmentCount != null && scan.installmentCount >= 2) {
@@ -105,6 +161,12 @@ export function buildForecastDocumentPrefillFields(scan: ForecastDocumentScanRes
       // que una lista mal alineada con las fechas reales).
       if (scan.installmentAmounts && scan.installmentAmounts.length === scan.installmentCount) {
         installmentAmounts = scan.installmentAmounts
+      }
+      // Fechas de cada cuota, SOLO si el documento las listaba una a una y coinciden en número — mismo
+      // criterio de prudencia que installmentAmounts. Sin esto, una fecha irregular (p. ej. la 2ª cuota
+      // desplazada un par de días) se perdía siempre: el calendario se regeneraba entero por recurrencia.
+      if (scan.installmentDueDates && scan.installmentDueDates.length === scan.installmentCount) {
+        installmentDueDates = scan.installmentDueDates
       }
     } else {
       // Periodicidad conocida, número de cuotas NO — recurrencia abierta ("No lo sé todavía" en el
@@ -120,9 +182,11 @@ export function buildForecastDocumentPrefillFields(scan: ForecastDocumentScanRes
     // texto humano cuando el estado es 'estimated' (el formulario decide amountStatus según si amount es
     // null o no, ver ForecastPaymentForm); aquí solo se deja lista la explicación.
     amountEstimatedBasis: 'Importe leído de un documento importado — revisa que sea correcto.',
+    amountReviewNote,
     categoryName: null,
     dueDate: scan.firstDueDate ?? undefined,
     recurrenceRule,
     installmentAmounts,
+    installmentDueDates,
   }
 }

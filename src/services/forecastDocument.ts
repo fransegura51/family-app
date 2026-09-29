@@ -71,5 +71,6 @@ export async function analyzeForecastDocument(file: File): Promise<ForecastDocum
     periodicity: asString(json.periodicity) as ForecastDocumentScanResult['periodicity'],
     lastDueDate: asString(json.lastDueDate),
     paidInstallments: asNumber(json.paidInstallments),
+    installmentDueDates: Array.isArray(json.installmentDueDates) ? json.installmentDueDates.filter((v: unknown) => typeof v === 'string') : null,
   }
 }

@@ -9982,8 +9982,14 @@ export interface ForecastPaymentPrefill {
   // detección bancaria, que siempre tiene un importe histórico) — null = importe realmente desconocido en
   // el documento, el formulario debe abrir en "Pendiente" (amountStatus='unknown'), nunca inventar un 0
   // ni forzar "Estimado" sin ningún número real detrás. Ver el useState de amountStatus/amount más abajo.
+  // Cuando hay plan de varias cuotas, este importe es SIEMPRE el TOTAL a repartir (igual que si el usuario
+  // lo escribiera a mano) — nunca el importe de una sola cuota ya dividido (bug real, documento SUMA: ver
+  // domain/forecastDocumentImport.ts).
   amount: number | null
   amountEstimatedBasis: string
+  // "Importar desde foto o documento" — aviso opcional cuando el total leído y lo que implican las cuotas
+  // no cuadran entre sí (ver buildForecastDocumentPrefillFields). Nunca bloquea, solo informa.
+  amountReviewNote?: string | null
   categoryName: string | null
   dueDate?: string
   // Ya construida como texto (p. ej. "FREQ=MONTHLY") — reutiliza parseRecurrenceRuleToFormState tal cual
@@ -10002,6 +10008,11 @@ export interface ForecastPaymentPrefill {
   // revisión, para no subir archivos de análisis que el usuario acaba cancelando; sourceFileHash/
   // contentFingerprint viajan con él para fijarse en el mismo momento.
   installmentAmounts?: number[] | null
+  // BUG REAL (documento SUMA): fechas reales de cada cuota, en el mismo orden que installmentAmounts —
+  // igual criterio de prudencia (solo se usa si su longitud coincide con el número de cuotas). Sin esto,
+  // una fecha irregular del propio documento (una cuota que cae unos días más tarde que las demás) se
+  // perdía siempre, porque el plan solo sabía anclar la primera fecha y repetir por periodicidad pura.
+  installmentDueDates?: string[] | null
   sourceFile?: File | null
   sourceFileHash?: string | null
   contentFingerprint?: string | null
@@ -10130,17 +10141,30 @@ function ForecastPaymentForm({
       }
     }
     // "Importar desde foto o documento" — si el propio documento listaba cuotas de importe DISTINTO entre
-    // sí (nunca un reparto inventado a partes iguales), cada línea se prefill con SU importe real en vez
-    // de dejar que proposeFinitePlanLines reparta el total de forma uniforme (petición explícita: "no
-    // fuerces a una cuota fija si el modelo actual permite representarlas individualmente").
-    if (!payment && prefill?.installmentAmounts && prefill.installmentAmounts.length > 1 && initialRecurrence.repeats && initialRecurrence.untilMode === 'count') {
+    // sí (nunca un reparto inventado a partes iguales) y/o fechas reales de cada cuota (BUG REAL, documento
+    // SUMA: una fecha irregular, p. ej. la 2ª cuota dos días más tarde, se perdía siempre porque el plan
+    // solo sabía anclar la primera fecha y repetir por periodicidad pura), cada línea se prefill con SU
+    // importe/fecha real — nunca forzados a un reparto uniforme o a una recurrencia pura cuando el propio
+    // documento ya decía otra cosa. Se parte SIEMPRE de proposeFinitePlanLines (mismo motor de reparto en
+    // céntimos que usa el resto de Previsión — prefill.amount ya es el TOTAL, nunca una cuota ya dividida,
+    // ver buildForecastDocumentPrefillFields) y solo se sobrescribe, línea a línea, lo que el documento
+    // realmente listaba — lo demás queda con el reparto uniforme propuesto, editable como siempre.
+    const hasRealAmounts = !!prefill?.installmentAmounts && prefill.installmentAmounts.length > 1
+    const hasRealDates = !!prefill?.installmentDueDates && prefill.installmentDueDates.length > 1
+    if (!payment && prefill && (hasRealAmounts || hasRealDates) && initialRecurrence.repeats && initialRecurrence.untilMode === 'count') {
       const { freq, interval } = resolvedFreqInterval(initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval)
-      return prefill.installmentAmounts.map((amt, i) => ({
-        date: occurrenceForCycle(dueDate, { freq, interval, until: null }, i),
-        amountStatus: 'estimated' as ForecastAmountStatus,
-        amount: String(amt),
-        amountEstimatedBasis: prefill.amountEstimatedBasis,
-      }))
+      const validated = validateInstallmentCount(initialRecurrence.installmentCount)
+      if (validated.ok) {
+        const base = proposeFinitePlanLines(dueDate, freq, interval, validated.count, amountStatus, prefill.amount, prefill.amountEstimatedBasis)
+        const realAmounts = hasRealAmounts && prefill.installmentAmounts!.length === validated.count ? prefill.installmentAmounts! : null
+        const realDates = hasRealDates && prefill.installmentDueDates!.length === validated.count ? prefill.installmentDueDates! : null
+        return base.map((line, i) => ({
+          date: realDates ? realDates[i] : line.date,
+          amountStatus: realAmounts ? ('estimated' as ForecastAmountStatus) : line.amountStatus,
+          amount: realAmounts ? String(realAmounts[i]) : line.amount,
+          amountEstimatedBasis: realAmounts ? prefill.amountEstimatedBasis : line.amountEstimatedBasis,
+        }))
+      }
     }
     return []
   })
@@ -10611,6 +10635,15 @@ function ForecastPaymentForm({
           {amountBasisFieldLabel}
           <input type="text" value={amountBasis} onChange={(e) => setAmountBasis(e.target.value)} placeholder="Por ejemplo: recibo del año pasado" required />
         </label>
+      )}
+      {/* "Importar desde foto o documento" — el total leído y lo que implican las cuotas no cuadraban
+          entre sí (ver amountReviewNote, buildForecastDocumentPrefillFields): nunca se oculta en silencio,
+          se avisa aquí para que se revise antes de guardar. Solo al crear — un pago ya guardado no vuelve
+          a traer este aviso de una revisión pasada. */}
+      {!payment && prefill?.amountReviewNote && (
+        <p className="error" style={{ margin: '-4px 0 0', fontSize: 13 }}>
+          ⚠️ {prefill.amountReviewNote}
+        </p>
       )}
 
       <label>

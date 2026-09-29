@@ -91,6 +91,48 @@ describe('ForecastPaymentPrefill — amount ahora admite null (documento sin imp
   })
 })
 
+// BUG REAL — documento SUMA (2026-09-29): "amount" del prefill llegaba ya dividido por el número de
+// cuotas (868,56€ → 144,76€), y el plan de pagos lo volvía a dividir otra vez al proponerlo (144,76€ → 6
+// cuotas de ~24€). La causa real estaba en dos sitios: buildForecastDocumentPrefillFields (arreglado,
+// domain/forecastDocumentImport.ts) y aquí — el bloque que precargaba planLines desde un documento
+// importado construía las cuotas A MANO (un .map directo) en vez de reutilizar proposeFinitePlanLines (el
+// mismo motor de reparto en céntimos que usa el resto de Previsión), así que nunca partía del total
+// correcto. Estos tests fijan que, tras el arreglo, ese bloque SIEMPRE parte de proposeFinitePlanLines y
+// solo sobrescribe línea a línea lo que el documento realmente listaba (importes y/o fechas reales).
+describe('planLines (precarga) — "Importar desde foto o documento" reutiliza proposeFinitePlanLines, nunca reparte el total a mano', () => {
+  const fn = slice(SRC, 'const [planLines, setPlanLines] = useState<ForecastPlanLineFormRow[]>(() => {', '\n  const planSignatureRef = useRef(')
+
+  it('el bloque de "Importar desde foto o documento" parte de proposeFinitePlanLines — nunca de un .map directo sobre installmentAmounts (el bug real: eso repartía el total dos veces)', () => {
+    expect(fn).toContain('proposeFinitePlanLines(dueDate, freq, interval, validated.count, amountStatus, prefill.amount, prefill.amountEstimatedBasis)')
+    expect(fn).not.toContain('prefill.installmentAmounts.map(')
+  })
+
+  it('las fechas reales del documento (installmentDueDates) sustituyen a las de la recurrencia SOLO cuando su número coincide con el de cuotas', () => {
+    expect(fn).toContain('hasRealDates = !!prefill?.installmentDueDates && prefill.installmentDueDates.length > 1')
+    expect(fn).toContain('realDates = hasRealDates && prefill.installmentDueDates!.length === validated.count ? prefill.installmentDueDates! : null')
+    expect(fn).toContain('date: realDates ? realDates[i] : line.date')
+  })
+
+  it('los importes reales del documento (installmentAmounts) sustituyen al reparto uniforme SOLO cuando su número coincide con el de cuotas, sin tocar la fecha propuesta si no hay fechas reales', () => {
+    expect(fn).toContain('realAmounts = hasRealAmounts && prefill.installmentAmounts!.length === validated.count ? prefill.installmentAmounts! : null')
+    expect(fn).toContain("amount: realAmounts ? String(realAmounts[i]) : line.amount")
+  })
+
+  it('se dispara con solo fechas reales, o solo importes reales, o ambos — nunca exige los dos a la vez', () => {
+    expect(fn).toContain('(hasRealAmounts || hasRealDates)')
+  })
+})
+
+// BUG REAL — mismo documento SUMA: el total leído (868,56€) y lo que sumaban las cuotas reales debían
+// cuadrar; cuando no cuadran (p. ej. si la IA confunde el total con el importe de una cuota), PEPA avisa
+// en vez de proponer en silencio un reparto que podría estar mal.
+describe('amountReviewNote — aviso cuando el total leído no cuadra con las cuotas, nunca oculto en silencio', () => {
+  it('se muestra solo al crear (nunca al reabrir un pago ya guardado) y solo si el prefill trae aviso', () => {
+    const block = slice(SRC, '{!payment && prefill?.amountReviewNote && (', '\n      )}')
+    expect(block).toContain('prefill.amountReviewNote')
+  })
+})
+
 describe('"Ver documento original" — solo cuando la Previsión tiene uno (sourceStoragePath), y borrado limpio al eliminar', () => {
   it('el enlace solo se monta si sourceStoragePath existe — un pago creado a mano nunca lo muestra', () => {
     const fn = slice(SRC, '{parent.sourceStoragePath && (', '\n                )}')

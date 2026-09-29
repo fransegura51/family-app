@@ -385,13 +385,14 @@ function BankAccountsSection() {
   )
 }
 
-// Enlace al panel de uso de la app (quién se ha dado de alta, cuándo
-// entró por última vez...) — solo para Jennifer y Paco
-// (profiles.is_app_owner). No hay forma de saber eso en el cliente sin
-// preguntar al servidor, así que se intenta cargar el panel una vez y
-// solo se muestra el enlace si de verdad ha devuelto algo; para
-// cualquier otra persona (incluidos admins de otras familias de
-// prueba) esto no aparece.
+// Enlace al panel de admin (uso de la app — quién se ha dado de alta,
+// cuándo entró por última vez... — y, desde la reorganización
+// "Familia / Panel de admin", también las Automatizaciones de tickets
+// por email) — solo para Jennifer y Paco (profiles.is_app_owner). No
+// hay forma de saber eso en el cliente sin preguntar al servidor, así
+// que se intenta cargar el panel una vez y solo se muestra el enlace
+// si de verdad ha devuelto algo; para cualquier otra persona
+// (incluidos admins de otras familias de prueba) esto no aparece.
 function AdminUsageLink() {
   const [visible, setVisible] = useState(false)
 
@@ -405,7 +406,7 @@ function AdminUsageLink() {
 
   return (
     <Link to="/admin-uso" className="link-button" style={{ display: 'block', margin: '12px 0 16px' }}>
-      📊 Panel de uso de la app
+      🛠️ Panel de admin
     </Link>
   )
 }

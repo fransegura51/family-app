@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { listAppUsage, type AppUsageRow } from '@/data/appUsage'
 import { deleteClientErrors, listClientErrors, type ClientErrorRow } from '@/data/errorReports'
 import { deleteFamilyInvite, generateFamilyInvite, listFamilyInvites, type FamilyInvite } from '@/data/familyInvites'
+import { getAmazonWebhookToken, regenerateAmazonWebhookToken } from '@/data/family'
 import { errorMessage } from '@/domain/errorMessage'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 
 function formatDate(iso: string | null): string {
   if (!iso) return 'Nunca'
@@ -21,6 +23,15 @@ function formatDate(iso: string | null): string {
 // 0085_app_owner_usage_panel.sql), no listado en el menú principal:
 // se llega desde el enlace que aparece en Ajustes solo si list_app_usage()
 // devuelve algo.
+//
+// Reorganización "Familia / Panel de admin" — este panel (antes "Panel de uso de la app") pasa a llamarse
+// "🛠️ Panel de admin" y agrupa TODA la herramienta técnica que solo necesitamos nosotros como
+// administradores de PEPA, no las familias normales: la sección "📊 Uso de la app" es exactamente el
+// contenido de siempre (sin cambios de lógica), y "⚙️ Automatizaciones" es AmazonWebhookSettings, movida
+// tal cual desde FamilyScreen.tsx (mismos webhooks, mismo token, mismos botones, ninguna reimplementación)
+// — antes vivía dentro de Familia detrás de isAdmin (admin de CADA familia, p. ej. Fran en "Familia
+// prueba"), ahora vive aquí detrás del mismo mecanismo is_app_owner de arriba (ver AdminUsageLink en
+// MenuSettingsScreen.tsx) — el acceso real sigue dependiendo de list_app_usage(), no de una ruta nueva.
 export function AdminUsageScreen() {
   const navigate = useNavigate()
   const [rows, setRows] = useState<AppUsageRow[]>([])
@@ -105,14 +116,24 @@ export function AdminUsageScreen() {
     errorGroups.get(key)!.push(e)
   }
 
+  // Mismo mecanismo que AdminUsageLink (MenuSettingsScreen.tsx) para decidir qué se ve dentro de esta
+  // pantalla: list_app_usage() es security definer y devuelve 0 filas para cualquiera que no sea
+  // is_app_owner, así que "hay filas" es la misma señal real de "soy dueño de la app" que ya decide si el
+  // enlace aparece — sin ella, alguien podría llegar aquí escribiendo /admin-uso a mano y ver de todos
+  // modos la sección de Automatizaciones (su fetch, getAmazonWebhookToken, no comprueba is_app_owner, solo
+  // pertenencia a la familia vía RLS). Reutiliza el mecanismo existente, no crea uno nuevo.
+  const isAppOwnerView = rows.length > 0
+
   return (
     <div className="screen">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Uso de la app</h1>
+        <h1 style={{ margin: 0 }}>🛠️ Panel de admin</h1>
         <button type="button" className="modal-close" onClick={() => navigate('/menu-organizar')} aria-label="Cerrar">
           ✕
         </button>
       </div>
+
+      <h2 className="section-title" style={{ marginTop: 0 }}>📊 Uso de la app</h2>
 
       <h2 className="section-title">
         🚨 Errores de la app {clientErrors.length > 0 && <span className="muted">({clientErrors.length})</span>}
@@ -244,6 +265,116 @@ export function AdminUsageScreen() {
           </div>
         </div>
       ))}
+
+      {isAppOwnerView && (
+        <>
+          <h2 className="section-title">⚙️ Automatizaciones</h2>
+          <AmazonWebhookSettings />
+        </>
+      )}
+    </div>
+  )
+}
+
+// Movida tal cual desde FamilyScreen.tsx (reorganización "Familia / Panel de admin") — mismos webhooks,
+// mismo token, mismos botones "Copiar URL"/"Regenerar token", ninguna reimplementación. Antes vivía detrás
+// de isAdmin (el admin de CADA familia, p. ej. Fran en "Familia prueba" también la veía); ahora solo se
+// monta cuando isAppOwnerView es true (ver más arriba), así que una familia normal no llega aquí ni
+// escribiendo /admin-uso a mano. Sigue operando sobre la familia de quien la ve (current_family_id() en la
+// RPC/consulta, no cambia): para Jennifer/Paco, sigue siendo exactamente la automatización de su propia
+// familia, ahora reubicada en vez de reimplementada.
+//
+// Muestra las URLs + el token secreto que hay que poner en los
+// workflows de Pipedream (ver conversación con el usuario) para que los
+// pedidos de Amazon, los tickets de Mercadona y los correos con
+// eventos reenviados por Outlook lleguen aquí solos — mismo token para
+// las tres automatizaciones, es el mismo mecanismo (identificar a la
+// familia sin un login de verdad). "Regenerar" invalida el token
+// anterior — útil si se ha compartido por error (rompe las TRES
+// automatizaciones a la vez, hay que actualizar el token en los tres
+// workflows de Pipedream si se regenera).
+function AmazonWebhookSettings() {
+  const [token, setToken] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
+
+  useEffect(() => {
+    getAmazonWebhookToken()
+      .then(setToken)
+      .catch((e: Error) => setError(e.message))
+  }, [])
+
+  const base = import.meta.env.VITE_SUPABASE_URL as string
+  const amazonUrl = `${base}/functions/v1/amazon-order-webhook`
+  const mercadonaUrl = `${base}/functions/v1/mercadona-ticket-webhook`
+  const eventEmailUrl = `${base}/functions/v1/import-event-email-webhook`
+
+  async function handleRegenerate() {
+    setBusy(true)
+    setError(null)
+    try {
+      setToken(await regenerateAmazonWebhookToken())
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo regenerar el token'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCopy(field: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedField(field)
+      setTimeout(() => setCopiedField(null), 1500)
+    } catch {
+      // Sin permiso de portapapeles: el texto ya está visible para copiar a mano.
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 8 }}>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Datos para los workflows de Pipedream que reciben, reenviados desde Outlook, los pedidos de
+        Amazon, los tickets digitales de Mercadona y correos con eventos (boletines del colegio,
+        confirmaciones de citas...) para crearlos solos en el Calendario.
+      </p>
+      {error && <p className="error">{error}</p>}
+      {token && (
+        <>
+          <label>
+            URL del webhook — Amazon
+            <input type="text" readOnly value={amazonUrl} onFocus={(e) => e.target.select()} />
+          </label>
+          <button type="button" className="link-button" onClick={() => handleCopy('amazon', amazonUrl)}>
+            {copiedField === 'amazon' ? '✓ Copiado' : 'Copiar URL'}
+          </button>
+          <label style={{ marginTop: 8, display: 'block' }}>
+            URL del webhook — Mercadona
+            <input type="text" readOnly value={mercadonaUrl} onFocus={(e) => e.target.select()} />
+          </label>
+          <button type="button" className="link-button" onClick={() => handleCopy('mercadona', mercadonaUrl)}>
+            {copiedField === 'mercadona' ? '✓ Copiado' : 'Copiar URL'}
+          </button>
+          <label style={{ marginTop: 8, display: 'block' }}>
+            URL del webhook — Eventos por correo (Calendario)
+            <input type="text" readOnly value={eventEmailUrl} onFocus={(e) => e.target.select()} />
+          </label>
+          <button type="button" className="link-button" onClick={() => handleCopy('eventEmail', eventEmailUrl)}>
+            {copiedField === 'eventEmail' ? '✓ Copiado' : 'Copiar URL'}
+          </button>
+          <label style={{ marginTop: 8, display: 'block' }}>
+            Token de la familia (el mismo para las tres)
+            <input type="text" readOnly value={token} onFocus={(e) => e.target.select()} />
+          </label>
+          <button type="button" className="link-button" onClick={() => handleCopy('token', token)}>
+            {copiedField === 'token' ? '✓ Copiado' : 'Copiar token'}
+          </button>
+          <div style={{ marginTop: 8 }}>
+            <ConfirmButton label={busy ? 'Regenerando…' : 'Regenerar token'} onConfirm={handleRegenerate} />
+          </div>
+        </>
+      )}
     </div>
   )
 }

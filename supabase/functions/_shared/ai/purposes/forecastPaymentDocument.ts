@@ -48,10 +48,16 @@ const FORECAST_PAYMENT_DOCUMENT_PROMPT =
   '(p. ej. "deuda", "intereses", "importe de cargo/total"), usa el importe que REALMENTE se cobrará de ' +
   'cada cuota (el total de esa fila, normalmente la última columna) para installmentAmount/' +
   'installmentAmounts — nunca una columna parcial como solo el principal o solo los intereses.\n' +
-  '"totalAmount" es el importe total financiado, adeudado o pendiente ANTES de repartirlo en cuotas (p. ' +
-  'ej. la fila "Total deuda" o el importe total de la compra/financiación) — NUNCA el importe de una sola ' +
-  'cuota, aunque una cuota individual se le parezca en magnitud. Si el documento no da un total explícito ' +
-  'pero sí una tabla de cuotas, dejar totalAmount en null es preferible a adivinarlo.\n' +
+  '"totalAmount" es el importe total financiado, adeudado o pendiente ANTES de repartirlo en cuotas (el ' +
+  'CAPITAL — p. ej. una fila o etiqueta explícita como "Importe total del préstamo", "Total financiado", ' +
+  '"Capital" o "Total deuda") — usa SIEMPRE esa cifra explícita si el documento la declara en algún sitio ' +
+  'fuera de la propia tabla de cuotas, aunque también haya un cuadro de amortización. NUNCA el importe de ' +
+  'una sola cuota, aunque una cuota individual se le parezca en magnitud, y NUNCA la suma de todas las ' +
+  'cuotas del cuadro de amortización — esa suma incluye intereses y es normal que sea bastante MAYOR que ' +
+  'el capital (un préstamo con intereses SIEMPRE hace que la suma de las cuotas sea mayor que lo ' +
+  'financiado; eso no es un error, es cómo funcionan los intereses). Si el documento NO declara en ' +
+  'ninguna parte una cifra explícita de capital/total financiado fuera de la tabla de cuotas, deja ' +
+  'totalAmount en null — nunca lo calcules tú sumando las cuotas, ni lo adivines.\n' +
   'Responde ÚNICAMENTE un objeto JSON con esta forma exacta, sin texto adicional ni markdown:\n' +
   '{"provider": "el organismo/entidad/comercio/acreedor real (p. ej. el nombre de la empresa o ' +
   'administración que emite el documento), o null", ' +

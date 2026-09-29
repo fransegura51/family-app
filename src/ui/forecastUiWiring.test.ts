@@ -270,8 +270,10 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     const idx = FS.indexOf('Plan de pagos — {planLines.length} pagos')
     expect(idx).toBeGreaterThan(-1)
     // Ventana ampliada tras añadir el aviso planReviewNote ("no aceptar fallback silencioso") justo
-    // después del título de esta sección.
-    const block = FS.slice(idx, idx + 2600)
+    // después del título de esta sección, y de nuevo tras "Ponlo en marcha" pieza (B): el resumen
+    // agrupado (summarizeFinitePlanLines) plegado por defecto se interpone antes de llegar a las líneas
+    // editables una a una.
+    const block = FS.slice(idx, idx + 4200)
     expect(block).toContain('updatePlanLine(i, { date: e.target.value })')
     expect(block).toContain('updatePlanLine(i, { amountStatus:')
     expect(block).toContain('updatePlanLine(i, { amount: e.target.value })')

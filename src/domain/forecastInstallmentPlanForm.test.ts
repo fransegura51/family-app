@@ -9,6 +9,7 @@ import {
   parseRecurrenceRuleToFormState,
   proposeFinitePlanLines,
   resolvedFreqInterval,
+  summarizeFinitePlanLines,
   validateInstallmentCount,
   type ForecastPlanLineFormRow,
   type ForecastRecurrenceFormState,
@@ -385,5 +386,104 @@ describe('parseFinitePlanLinesFromSaved — reconstrucción, sin que el usuario 
     const reconstructed = parseFinitePlanLinesFromSaved('2027-11-08', 'MONTHLY', 1, 2, 'known', 141, null, [splitOverride])
     expect(reconstructed[0].date).toBe('2027-11-08') // no contaminado por el override de cargo suelto
     expect(reconstructed[0].amount).toBe('141')
+  })
+})
+
+// "Ponlo en marcha" (2026-09-29) — "la gente es muy perezosa": para un préstamo típico, es más natural
+// saber la cuota mensual (319,63€) que el total exacto del préstamo. amountMode='perInstallment' trata el
+// importe tecleado como YA siendo el de cada cuota — nunca lo divide (a diferencia del modo 'total' de
+// siempre, que sí reparte en céntimos entre las N cuotas).
+describe('proposeFinitePlanLines — amountMode "perInstallment" (importe por cuota, sin repartir)', () => {
+  it('el importe tecleado se repite tal cual en cada línea — nunca se divide entre el número de cuotas', () => {
+    const lines = proposeFinitePlanLines('2024-05-05', 'MONTHLY', 1, 3, 'known', 319.63, null, 'perInstallment')
+    expect(lines.map((l) => l.amount)).toEqual(['319.63', '319.63', '319.63'])
+  })
+
+  it('con amountMode="total" (por defecto, sin tocar el comportamiento de siempre) el mismo importe SÍ se reparte', () => {
+    const lines = proposeFinitePlanLines('2024-05-05', 'MONTHLY', 1, 3, 'known', 319.63, null)
+    // 319,63 repartidos entre 3 no da 319,63 en cada línea — confirma que el modo por defecto no cambió.
+    expect(lines.map((l) => l.amount)).not.toEqual(['319.63', '319.63', '319.63'])
+  })
+
+  it('las fechas se calculan exactamente igual que en modo total (mismo motor, occurrenceForCycle)', () => {
+    const perInstallment = proposeFinitePlanLines('2024-05-05', 'MONTHLY', 1, 3, 'known', 100, null, 'perInstallment')
+    const total = proposeFinitePlanLines('2024-05-05', 'MONTHLY', 1, 3, 'known', 300, null, 'total')
+    expect(perInstallment.map((l) => l.date)).toEqual(total.map((l) => l.date))
+  })
+
+  it('con total "Pendiente" (unknown), perInstallment tampoco inventa nada — igual que en modo total', () => {
+    const lines = proposeFinitePlanLines('2024-05-05', 'MONTHLY', 1, 3, 'unknown', null, null, 'perInstallment')
+    expect(lines.every((l) => l.amountStatus === 'unknown' && l.amount === '')).toBe(true)
+  })
+})
+
+describe('buildFinitePlanSubmission — amountMode "perInstallment"', () => {
+  it('el importe base guardado (parentAmount) es el importe por cuota tal cual, no el total dividido', () => {
+    const lines = proposeFinitePlanLines('2024-05-05', 'MONTHLY', 1, 85, 'estimated', 319.63, 'Cuota del contrato', 'perInstallment')
+    const submission = buildFinitePlanSubmission('2024-05-05', 'MONTHLY', 1, lines, 'estimated', 319.63, 'Cuota del contrato', 'perInstallment')
+    expect(submission.parentAmount).toBe(319.63)
+  })
+
+  it('sin overrides cuando todas las líneas coinciden con el importe por cuota propuesto (caso simple: todas iguales)', () => {
+    const lines = proposeFinitePlanLines('2024-05-05', 'MONTHLY', 1, 5, 'known', 100, null, 'perInstallment')
+    const submission = buildFinitePlanSubmission('2024-05-05', 'MONTHLY', 1, lines, 'known', 100, null, 'perInstallment')
+    expect(submission.overrides).toEqual([])
+  })
+})
+
+// "Ponlo en marcha" — resumen compacto del plan: agrupa tramos consecutivos con el mismo estado+importe.
+// Petición explícita del enunciado: "84 pagos de x y un pago de z" en vez de 85 líneas — exactamente lo
+// que produce esto para el documento BBVA real (84×319,63€ + 1×319,45€).
+describe('summarizeFinitePlanLines', () => {
+  function line(amountStatus: ForecastPlanLineFormRow['amountStatus'], amount: string, date = '2024-01-01'): ForecastPlanLineFormRow {
+    return { date, amountStatus, amount, amountEstimatedBasis: '' }
+  }
+
+  it('todas las cuotas iguales → un único grupo', () => {
+    const lines = [line('known', '100'), line('known', '100'), line('known', '100')]
+    expect(summarizeFinitePlanLines(lines)).toEqual([{ count: 3, amountStatus: 'known', amount: 100 }])
+  })
+
+  it('caso real BBVA: 84 cuotas de 319,63€ + 1 de 319,45€ → dos grupos, en orden', () => {
+    const lines = [...Array(84).fill(null).map(() => line('estimated', '319.63')), line('estimated', '319.45')]
+    expect(summarizeFinitePlanLines(lines)).toEqual([
+      { count: 84, amountStatus: 'estimated', amount: 319.63 },
+      { count: 1, amountStatus: 'estimated', amount: 319.45 },
+    ])
+  })
+
+  it('caso real SUMA: 5 cuotas de 144,54€ + 1 distinta de 144,53€ + 1 de 145,87€ → tres grupos (nunca se fuerza a agrupar lo que no es igual)', () => {
+    const lines = [
+      line('estimated', '144.54'),
+      line('estimated', '144.54'),
+      line('estimated', '144.54'),
+      line('estimated', '144.53'),
+      line('estimated', '144.54'),
+      line('estimated', '145.87'),
+    ]
+    expect(summarizeFinitePlanLines(lines)).toEqual([
+      { count: 3, amountStatus: 'estimated', amount: 144.54 },
+      { count: 1, amountStatus: 'estimated', amount: 144.53 },
+      { count: 1, amountStatus: 'estimated', amount: 144.54 },
+      { count: 1, amountStatus: 'estimated', amount: 145.87 },
+    ])
+  })
+
+  it('cuotas "Pendiente" (unknown) se agrupan igual, con amount null — nunca un 0 inventado', () => {
+    const lines = [line('unknown', ''), line('unknown', '')]
+    expect(summarizeFinitePlanLines(lines)).toEqual([{ count: 2, amountStatus: 'unknown', amount: null }])
+  })
+
+  it('mismo importe pero distinto estado (p. ej. una Conocida entre Estimadas) NO se agrupa junto — son datos distintos', () => {
+    const lines = [line('estimated', '100'), line('known', '100'), line('estimated', '100')]
+    expect(summarizeFinitePlanLines(lines)).toEqual([
+      { count: 1, amountStatus: 'estimated', amount: 100 },
+      { count: 1, amountStatus: 'known', amount: 100 },
+      { count: 1, amountStatus: 'estimated', amount: 100 },
+    ])
+  })
+
+  it('lista vacía → sin grupos', () => {
+    expect(summarizeFinitePlanLines([])).toEqual([])
   })
 })

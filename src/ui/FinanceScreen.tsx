@@ -111,7 +111,9 @@ import {
   parseRecurrenceRuleToFormState,
   proposeFinitePlanLines,
   resolvedFreqInterval,
+  summarizeFinitePlanLines,
   validateInstallmentCount,
+  type FinitePlanAmountMode,
   type ForecastPlanLineFormRow,
 } from '@/domain/forecastInstallmentPlanForm'
 import {
@@ -9938,6 +9940,7 @@ function computeFinitePlanSignature(
   amountStatus: ForecastAmountStatus,
   amount: string,
   amountBasis: string,
+  amountEntryMode: FinitePlanAmountMode = 'total',
 ): string {
   const validated = validateInstallmentCount(installmentCount)
   return JSON.stringify([
@@ -9949,6 +9952,7 @@ function computeFinitePlanSignature(
     amountStatus,
     amountStatus === 'unknown' ? null : amount,
     amountStatus === 'estimated' ? amountBasis : null,
+    amountEntryMode,
   ])
 }
 
@@ -10129,6 +10133,16 @@ function ForecastPaymentForm({
   const initialPaymentMode: 'single' | 'multiple' = initialRecurrence.untilMode === 'count' || (payment?.installments.length ?? 0) > 0 ? 'multiple' : 'single'
   const [paymentMode, setPaymentMode] = useState<'single' | 'multiple'>(initialPaymentMode)
   const [paymentCount, setPaymentCount] = useState(payment && payment.installments.length > 0 ? String(payment.installments.length) : initialRecurrence.installmentCount)
+  // "Ponlo en marcha" (petición del usuario, 2026-09-29) — "la gente es muy perezosa": para un plan
+  // finito ENTRADO A MANO (nunca para uno importado con cuotas reales — ahí ya se sabe el importe de
+  // cada una, no hace falta elegir cómo indicarlo), permite escribir el importe de CADA cuota (319,63€,
+  // lo que uno sabe de memoria) en vez de tener que calcular y escribir el TOTAL del préstamo primero.
+  const [amountEntryMode, setAmountEntryMode] = useState<FinitePlanAmountMode>('total')
+  // "Ponlo en marcha", pieza (B) — comodidad sobre exactitud: el "Plan de pagos" empieza PLEGADO en un
+  // resumen agrupado (summarizeFinitePlanLines), no en la lista de una tarjeta por cuota. Solo se abre a
+  // mano, o solo (aquí en el propio render, sin efecto) cuando algo pide revisión: el reparto no cuadra
+  // (planCheck) o el plan importado avisa de algo (prefill?.planReviewNote).
+  const [showAllPlanLines, setShowAllPlanLines] = useState(false)
   // Caso A (plan finito, forecast_occurrences) exactamente cuando "varios pagos" + NO vuelve a repetirse;
   // Caso B (cargos por ciclo, forecast_payment_installments) exactamente cuando "varios pagos" + SÍ
   // vuelve a repetirse. untilMode ya no es elegible directamente por el usuario — se deriva aquí mismo,
@@ -10347,15 +10361,15 @@ function ForecastPaymentForm({
       if (structureSignature === planStructureSignatureRef.current) return
       importedRealPlanRef.current = false
     }
-    const signature = computeFinitePlanSignature(paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis)
+    const signature = computeFinitePlanSignature(paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode)
     if (signature === planSignatureRef.current) return
     planSignatureRef.current = signature
     const validated = validateInstallmentCount(paymentCount)
     if (!validated.ok || !dueDate) return
     const { freq, interval } = resolvedFreqInterval(freqOption, customFreq, customInterval)
     const totalAmountNum = amountStatus === 'unknown' ? null : Number(amount) || 0
-    setPlanLines(proposeFinitePlanLines(dueDate, freq, interval, validated.count, amountStatus, totalAmountNum, amountBasis))
-  }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis])
+    setPlanLines(proposeFinitePlanLines(dueDate, freq, interval, validated.count, amountStatus, totalAmountNum, amountBasis, amountEntryMode))
+  }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode])
 
   useEffect(() => {
     if (!isSplitCycleMode) return
@@ -10373,8 +10387,12 @@ function ForecastPaymentForm({
   // comprueba nada — nunca se inventa un importe para poder repartir algo que no se conoce.
   function distributionCheck(lines: { amountStatus: ForecastAmountStatus; amount: string }[]): CentsDistributionCheck | null {
     if (amountStatus === 'unknown' || lines.length === 0) return null
-    const totalCents = eurosStringToCents(amount)
-    if (totalCents == null) return null
+    const enteredCents = eurosStringToCents(amount)
+    if (enteredCents == null) return null
+    // "Ponlo en marcha" — con amountEntryMode='perInstallment' lo tecleado ya no es un TOTAL a repartir,
+    // es el importe de UNA cuota: el total implícito a comparar es ese importe × nº de cuotas. Nunca afecta
+    // al Caso B (splitCharges), que no tiene este selector.
+    const totalCents = isFinitePlanMode && amountEntryMode === 'perInstallment' ? enteredCents * lines.length : enteredCents
     const lineCentsList = lines.map((l) => (l.amountStatus === 'unknown' ? null : eurosStringToCents(l.amount)))
     return checkCentsDistribution(totalCents, lineCentsList)
   }
@@ -10396,6 +10414,12 @@ function ForecastPaymentForm({
   }
   const planCheck = isFinitePlanMode ? distributionCheck(planLines) : null
   const splitCheck = isSplitCycleMode ? distributionCheck(splitCharges) : null
+  // "Ponlo en marcha", pieza (B) — "comodidad sobre exactitud": el plan se abre solo (aunque el usuario no
+  // haya tocado el enlace) cuando hay algo que de verdad conviene revisar — el reparto no cuadra, o el
+  // documento importado avisó de algo —; fuera de eso, empieza plegado en el resumen agrupado.
+  const finitePlanNeedsReview = isFinitePlanMode && ((!payment && !!prefill?.planReviewNote) || (planCheck != null && !planCheck.matches))
+  const finitePlanExpanded = showAllPlanLines || finitePlanNeedsReview
+  const planLineGroups = isFinitePlanMode ? summarizeFinitePlanLines(planLines) : []
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -10490,6 +10514,7 @@ function ForecastPaymentForm({
         amountStatus,
         amountStatus === 'unknown' ? null : Number(amount) || 0,
         amountStatus === 'estimated' ? amountBasis.trim() : null,
+        amountEntryMode,
       )
     }
     // CASO B (obligación recurrente con varios cobros por ciclo) — validación de los cobros, solo si
@@ -10618,9 +10643,12 @@ function ForecastPaymentForm({
 
   // Ajuste UX tras certificación móvil — "Importe TOTAL" cuando el importe introducido reparte varias
   // líneas (plan finito o cobro fraccionado por ciclo); "Importe" a secas en cualquier otro caso.
-  const amountFieldLabel = isFinitePlanMode || isSplitCycleMode ? 'Importe TOTAL' : 'Importe'
-  const amountStatusFieldLabel = isFinitePlanMode || isSplitCycleMode ? 'Estado del importe TOTAL' : 'Estado del importe'
-  const amountBasisFieldLabel = isFinitePlanMode || isSplitCycleMode ? '¿En qué se basa el TOTAL?' : '¿En qué se basa?'
+  // "Ponlo en marcha" — en Caso A con amountEntryMode='perInstallment', lo tecleado ya no es un TOTAL a
+  // repartir sino el importe de cada cuota, así que las etiquetas dejan de hablar de "TOTAL".
+  const perInstallmentMode = isFinitePlanMode && amountEntryMode === 'perInstallment'
+  const amountFieldLabel = perInstallmentMode ? 'Importe de cada cuota' : isFinitePlanMode || isSplitCycleMode ? 'Importe TOTAL' : 'Importe'
+  const amountStatusFieldLabel = perInstallmentMode ? 'Estado del importe de cada cuota' : isFinitePlanMode || isSplitCycleMode ? 'Estado del importe TOTAL' : 'Estado del importe'
+  const amountBasisFieldLabel = perInstallmentMode ? '¿En qué se basa el importe de cada cuota?' : isFinitePlanMode || isSplitCycleMode ? '¿En qué se basa el TOTAL?' : '¿En qué se basa?'
 
   // Vista previa de los cobros del Caso B (Fase 1D-d) — motor real, mismo criterio de siempre: solo
   // la renovación ACTUAL (un ciclo), nunca años futuros de golpe ("no hace falta llenar la pantalla").
@@ -10691,6 +10719,20 @@ function ForecastPaymentForm({
         <label>
           {amountBasisFieldLabel}
           <input type="text" value={amountBasis} onChange={(e) => setAmountBasis(e.target.value)} placeholder="Por ejemplo: recibo del año pasado" required />
+        </label>
+      )}
+      {/* "Ponlo en marcha" (petición del usuario: "la gente es muy perezosa", prioriza comodidad sobre
+          exactitud) — para un plan finito ENTRADO A MANO, escribir el importe de cada cuota (lo que uno
+          sabe de memoria) es más cómodo que calcular el total del préstamo primero. Nunca se ofrece para
+          un plan ya importado con cuotas reales (hasRealAmounts/hasRealDates): ahí ya se conoce cada
+          importe por separado, no hay "una cuota" que indicar. */}
+      {isFinitePlanMode && !(hasRealAmounts || hasRealDates) && amountStatus !== 'unknown' && (
+        <label>
+          ¿Cómo prefieres indicarlo?
+          <select value={amountEntryMode} onChange={(e) => setAmountEntryMode(e.target.value as FinitePlanAmountMode)}>
+            <option value="total">El importe TOTAL del préstamo/deuda (PEPA lo reparte entre las cuotas)</option>
+            <option value="perInstallment">El importe de cada cuota (más fácil si ya sabes cuánto pagas)</option>
+          </select>
         </label>
       )}
       {/* "Importar desde foto o documento" — el total leído y lo que implican las cuotas no cuadraban
@@ -10910,45 +10952,71 @@ function ForecastPaymentForm({
                 </p>
               )}
               {renderDistributionBanner(planCheck)}
-              {planLines.map((line, i) => (
-                <div key={i} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, marginTop: i === 0 ? 0 : 8 }}>
-                  <strong style={{ fontSize: 13 }}>
-                    Pago {i + 1} de {planLines.length}
-                  </strong>
-                  <label>
-                    Fecha
-                    <input type="date" value={line.date} onChange={(e) => updatePlanLine(i, { date: e.target.value })} required />
-                  </label>
-                  <label>
-                    Estado del importe
-                    <select value={line.amountStatus} onChange={(e) => updatePlanLine(i, { amountStatus: e.target.value as ForecastAmountStatus })}>
-                      {(Object.keys(AMOUNT_STATUS_LABELS) as ForecastAmountStatus[]).map((s) => (
-                        <option key={s} value={s}>
-                          {AMOUNT_STATUS_LABELS[s]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {line.amountStatus !== 'unknown' && (
-                    <label>
-                      Importe
-                      <input type="number" step="0.01" min="0" value={line.amount} onChange={(e) => updatePlanLine(i, { amount: e.target.value })} required />
-                    </label>
-                  )}
-                  {line.amountStatus === 'estimated' && (
-                    <label>
-                      ¿En qué se basa?
-                      <input
-                        type="text"
-                        value={line.amountEstimatedBasis}
-                        onChange={(e) => updatePlanLine(i, { amountEstimatedBasis: e.target.value })}
-                        placeholder="Por ejemplo: recibo del año pasado"
-                        required
-                      />
-                    </label>
-                  )}
+              {/* "Ponlo en marcha", pieza (B) — resumen agrupado (summarizeFinitePlanLines) en vez de una
+                  tarjeta por cada una de las N cuotas: para el caso normal (importe uniforme, o "84 de x + 1
+                  de z") se lee en una línea, sin tener que repasar/editar cuota a cuota. */}
+              {!finitePlanExpanded && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                  {planLineGroups.map((group, i) => (
+                    <p key={i} style={{ margin: 0, fontSize: 14 }}>
+                      {group.count} {group.count === 1 ? 'pago' : 'pagos'} de{' '}
+                      {group.amount != null ? `${group.amount.toFixed(2)} €` : 'importe pendiente'}
+                      {group.amount != null && ` (${AMOUNT_STATUS_LABELS[group.amountStatus]})`}
+                    </p>
+                  ))}
+                  <button type="button" className="link-button" style={{ alignSelf: 'flex-start', fontSize: 13 }} onClick={() => setShowAllPlanLines(true)}>
+                    Ver y editar cada pago por separado
+                  </button>
                 </div>
-              ))}
+              )}
+              {finitePlanExpanded && (
+                <>
+                  {showAllPlanLines && !finitePlanNeedsReview && (
+                    <button type="button" className="link-button" style={{ marginBottom: 8, fontSize: 13 }} onClick={() => setShowAllPlanLines(false)}>
+                      Ver resumen agrupado
+                    </button>
+                  )}
+                  {planLines.map((line, i) => (
+                    <div key={i} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, marginTop: i === 0 ? 0 : 8 }}>
+                      <strong style={{ fontSize: 13 }}>
+                        Pago {i + 1} de {planLines.length}
+                      </strong>
+                      <label>
+                        Fecha
+                        <input type="date" value={line.date} onChange={(e) => updatePlanLine(i, { date: e.target.value })} required />
+                      </label>
+                      <label>
+                        Estado del importe
+                        <select value={line.amountStatus} onChange={(e) => updatePlanLine(i, { amountStatus: e.target.value as ForecastAmountStatus })}>
+                          {(Object.keys(AMOUNT_STATUS_LABELS) as ForecastAmountStatus[]).map((s) => (
+                            <option key={s} value={s}>
+                              {AMOUNT_STATUS_LABELS[s]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {line.amountStatus !== 'unknown' && (
+                        <label>
+                          Importe
+                          <input type="number" step="0.01" min="0" value={line.amount} onChange={(e) => updatePlanLine(i, { amount: e.target.value })} required />
+                        </label>
+                      )}
+                      {line.amountStatus === 'estimated' && (
+                        <label>
+                          ¿En qué se basa?
+                          <input
+                            type="text"
+                            value={line.amountEstimatedBasis}
+                            onChange={(e) => updatePlanLine(i, { amountEstimatedBasis: e.target.value })}
+                            placeholder="Por ejemplo: recibo del año pasado"
+                            required
+                          />
+                        </label>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 

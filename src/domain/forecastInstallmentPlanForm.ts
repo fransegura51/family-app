@@ -151,9 +151,18 @@ export interface ForecastPlanLineFormRow {
   amountEstimatedBasis: string
 }
 
+// "Ponlo en marcha" (petición del usuario, 2026-09-29) — "esta aplicación es para gestión familiar, no
+// empresarial... lo que debe prevalecer es la comodidad y sencillez más que la exactitud": para alguien
+// que sabe su cuota mensual de memoria (319,63€) pero no el total del préstamo, obligarle a calcular
+// 319,63×84 para poder escribirlo es justo la fricción que no queremos. 'perInstallment' trata el importe
+// tecleado como YA siendo el de cada cuota — nunca lo divide.
+export type FinitePlanAmountMode = 'total' | 'perInstallment'
+
 // Propuesta inicial: N fechas reales (el mismo motor que ya usa el resto de Previsión, nunca a mano) +
-// reparto del total en céntimos enteros. Con total "Pendiente" (unknown), cada línea propuesta también
-// queda "Pendiente" — nunca se inventa un importe para poder repartir algo que no se conoce.
+// reparto del total en céntimos enteros — o, en modo 'perInstallment', el mismo importe tal cual en cada
+// línea (no hay nada que repartir: cada cuota YA es ese importe). Con total "Pendiente" (unknown), cada
+// línea propuesta también queda "Pendiente" — nunca se inventa un importe para poder repartir algo que no
+// se conoce.
 export function proposeFinitePlanLines(
   dueDate: string,
   freq: ForecastCustomRecurrence['freq'],
@@ -162,10 +171,20 @@ export function proposeFinitePlanLines(
   totalStatus: ForecastAmountStatus,
   totalAmount: number | null,
   totalBasis: string | null,
+  amountMode: FinitePlanAmountMode = 'total',
 ): ForecastPlanLineFormRow[] {
   const dates = Array.from({ length: count }, (_, i) => occurrenceForCycle(dueDate, { freq, interval, until: null }, i))
   if (totalStatus === 'unknown' || totalAmount == null) {
     return dates.map((date) => ({ date, amountStatus: 'unknown', amount: '', amountEstimatedBasis: '' }))
+  }
+  if (amountMode === 'perInstallment') {
+    const perLineCents = eurosStringToCents(String(totalAmount)) ?? 0
+    return dates.map((date) => ({
+      date,
+      amountStatus: totalStatus,
+      amount: centsToEurosString(perLineCents),
+      amountEstimatedBasis: totalStatus === 'estimated' ? (totalBasis ?? '') : '',
+    }))
   }
   const totalCents = eurosStringToCents(String(totalAmount)) ?? 0
   const centsPerLine = distributeTotalCentsEvenly(totalCents, count)
@@ -233,12 +252,12 @@ export function buildFinitePlanSubmission(
   totalStatus: ForecastAmountStatus,
   totalAmount: number | null,
   totalBasis: string | null,
+  amountMode: FinitePlanAmountMode = 'total',
 ): FinitePlanSubmission {
   const pureDates = lines.map((_, i) => occurrenceForCycle(dueDate, { freq, interval, until: null }, i))
   let baseAmount: number | null = null
   if (totalStatus !== 'unknown' && totalAmount != null && lines.length > 0) {
-    const totalCents = eurosStringToCents(String(totalAmount)) ?? 0
-    baseAmount = distributeTotalCentsEvenly(totalCents, lines.length)[0] / 100
+    baseAmount = amountMode === 'perInstallment' ? totalAmount : distributeTotalCentsEvenly(eurosStringToCents(String(totalAmount)) ?? 0, lines.length)[0] / 100
   }
   const parentAmountStatus = totalStatus
   const parentAmount = totalStatus === 'unknown' ? null : (baseAmount ?? totalAmount)
@@ -266,4 +285,32 @@ export function buildFinitePlanSubmission(
     })
   })
   return { parentAmountStatus, parentAmount, parentAmountEstimatedBasis, overrides }
+}
+
+// "Ponlo en marcha" — presentación compacta del plan (petición explícita: "la gente es muy perezosa",
+// prioriza comodidad sobre exactitud). En vez de obligar a ver/revisar N tarjetas siempre, se agrupan
+// tramos CONSECUTIVOS con el mismo estado+importe — "84 cuotas de 319,63€ + 1 de 319,45€" en vez de 85
+// líneas — para que la UI pueda mostrar un resumen de una frase por defecto y solo abrir el desglose
+// completo (ya existente, sin tocar) si el usuario quiere revisar o corregir algo. Nunca decide qué
+// mostrar: solo agrupa los datos ya presentes en `lines`, tal cual están (reales de un documento
+// importado, o propuestos por reparto/`perInstallment`) — la UI decide con esto cómo presentarlo.
+export interface FinitePlanLinesGroup {
+  count: number
+  amountStatus: ForecastAmountStatus
+  // null únicamente cuando amountStatus es 'unknown' (Pendiente) — nunca un 0 inventado.
+  amount: number | null
+}
+
+export function summarizeFinitePlanLines(lines: ForecastPlanLineFormRow[]): FinitePlanLinesGroup[] {
+  const groups: FinitePlanLinesGroup[] = []
+  for (const line of lines) {
+    const amount = line.amountStatus === 'unknown' ? null : Number(line.amount.replace(',', '.'))
+    const last = groups[groups.length - 1]
+    if (last && last.amountStatus === line.amountStatus && last.amount === (Number.isFinite(amount) ? amount : null)) {
+      last.count++
+    } else {
+      groups.push({ count: 1, amountStatus: line.amountStatus, amount: Number.isFinite(amount) ? amount : null })
+    }
+  }
+  return groups
 }

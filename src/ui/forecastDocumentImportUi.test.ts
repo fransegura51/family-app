@@ -185,7 +185,11 @@ describe('planLines — un plan importado con datos reales sobrevive a cambios e
 })
 
 describe('useEffect de regeneración del plan — comprueba primero si hay que proteger un plan real antes de mirar el total', () => {
-  const fn = slice(SRC, "useEffect(() => {\n    if (!isFinitePlanMode) return\n    // BUG REAL", '\n  }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis])')
+  const fn = slice(
+    SRC,
+    "useEffect(() => {\n    if (!isFinitePlanMode) return\n    // BUG REAL",
+    '\n  }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode])',
+  )
 
   it('mientras importedRealPlanRef siga activo, un cambio SOLO en el TOTAL (que no altera la firma estructural) sale sin regenerar nada', () => {
     expect(fn).toContain('if (importedRealPlanRef.current) {')
@@ -200,6 +204,56 @@ describe('useEffect de regeneración del plan — comprueba primero si hay que p
 
   it('la comprobación estructural ocurre ANTES de la firma completa (que sí incluye el total) — nunca al revés', () => {
     expect(fn.indexOf('computeFinitePlanStructureSignature(paymentCount')).toBeLessThan(fn.indexOf('computeFinitePlanSignature(paymentCount'))
+  })
+})
+
+// "Ponlo en marcha" (petición del usuario, 2026-09-29) — "la gente es muy perezosa", prioriza comodidad
+// sobre exactitud: (A) permite indicar el importe de CADA cuota en vez de calcular el TOTAL; (B) el
+// "Plan de pagos" empieza plegado en un resumen agrupado, no en una tarjeta por cada una de las N cuotas.
+describe('selector "¿Cómo prefieres indicarlo?" (importe TOTAL vs importe de cada cuota) — nunca para un plan ya importado con cuotas reales', () => {
+  const fn = slice(SRC, '¿Cómo prefieres indicarlo?', '\n      )}')
+
+  it('solo se ofrece en un plan finito manual: nunca si hay cuotas/fechas reales importadas', () => {
+    expect(SRC).toContain('{isFinitePlanMode && !(hasRealAmounts || hasRealDates) && amountStatus !== \'unknown\' && (')
+  })
+
+  it('el toggle cambia amountEntryMode, que proposeFinitePlanLines/buildFinitePlanSubmission reciben tal cual', () => {
+    expect(fn).toContain('value={amountEntryMode}')
+    expect(fn).toContain("onChange={(e) => setAmountEntryMode(e.target.value as FinitePlanAmountMode)}")
+    expect(fn).toContain('value="total"')
+    expect(fn).toContain('value="perInstallment"')
+  })
+
+  it('las etiquetas del importe dejan de hablar de "TOTAL" cuando el modo es por cuota', () => {
+    expect(SRC).toContain("const perInstallmentMode = isFinitePlanMode && amountEntryMode === 'perInstallment'")
+    expect(SRC).toContain("perInstallmentMode ? 'Importe de cada cuota'")
+  })
+})
+
+describe('resumen agrupado del "Plan de pagos" — plegado por defecto, expandible a la lista editable línea a línea', () => {
+  it('empieza plegado: showAllPlanLines nace en false', () => {
+    expect(SRC).toContain('const [showAllPlanLines, setShowAllPlanLines] = useState(false)')
+  })
+
+  it('se auto-expande cuando el reparto no cuadra o el documento importado avisó de algo — nunca se oculta un problema real detrás del resumen', () => {
+    expect(SRC).toContain(
+      'const finitePlanNeedsReview = isFinitePlanMode && ((!payment && !!prefill?.planReviewNote) || (planCheck != null && !planCheck.matches))',
+    )
+    expect(SRC).toContain('const finitePlanExpanded = showAllPlanLines || finitePlanNeedsReview')
+  })
+
+  it('el resumen usa summarizeFinitePlanLines (agrupación real, no una lista recortada) y ofrece pasar a la edición línea a línea', () => {
+    const fn = slice(SRC, '{!finitePlanExpanded && (', '{finitePlanExpanded && (')
+    expect(fn).toContain('planLineGroups.map((group, i) => (')
+    expect(fn).toContain('setShowAllPlanLines(true)')
+  })
+
+  it('expandido, cada línea sigue siendo editable con updatePlanLine (nunca se pierde esa capacidad al añadir el resumen)', () => {
+    const idx = SRC.indexOf('{finitePlanExpanded && (')
+    expect(idx).toBeGreaterThan(-1)
+    const block = SRC.slice(idx, idx + 2200)
+    expect(block).toContain('updatePlanLine(i, { date: e.target.value })')
+    expect(block).toContain('setShowAllPlanLines(false)')
   })
 })
 

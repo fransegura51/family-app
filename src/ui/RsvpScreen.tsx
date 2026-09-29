@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
+import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
+import { PEPA_PUBLIC_WEBSITE_URL } from '@/domain/brand'
 
 // Página pública de RSVP (Módulo Eventos, Fase 2) — el invitado no
 // necesita cuenta ni la app instalada. Ruta pública de la propia SPA
@@ -199,14 +201,26 @@ export function RsvpScreen({ token, openToken }: { token: string | null; openTok
   )
 }
 
+// Bug real (validación en iPhone): el enlace de este pie llevaba a `window.location.origin + BASE_URL`, es
+// decir, a la pantalla de acceso de la propia app — pero quien responde un RSVP NO tiene por qué tener
+// cuenta PEPA, así que "tocar PEPA" acababa en un login sin sentido para él. Ahora lleva a la web pública
+// oficial (PEPA_PUBLIC_WEBSITE_URL, domain/brand.ts), donde puede conocer el producto sin necesitar cuenta.
+// Rediseño de marca (misma validación) — cara oficial pequeña + nombre + eslogan + enlace, mismos assets
+// oficiales que el resto de la marca (LoginScreen, InvitationModal) — nunca un dibujo nuevo ni un emoji.
 function RsvpFooter() {
   return (
-    <p className="muted" style={{ fontSize: 12, marginTop: 22, textAlign: 'center' }}>
-      Organizado con{' '}
-      <a href={window.location.origin + import.meta.env.BASE_URL} style={{ color: '#6b7fe0' }}>
-        PEPA 🎉
-      </a>
-    </p>
+    <div style={{ marginTop: 22, textAlign: 'center' }}>
+      <img src={pepaFaceReference} alt="" style={{ width: 40, height: 40, borderRadius: '50%', display: 'block', margin: '0 auto 6px' }} />
+      <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+        <strong>PEPA Family App</strong>
+        <br />
+        Pepa te lo soluciona
+        <br />
+        <a href={PEPA_PUBLIC_WEBSITE_URL} target="_blank" rel="noreferrer" style={{ color: '#6b7fe0' }}>
+          pepafamilyapp.es
+        </a>
+      </p>
+    </div>
   )
 }
 

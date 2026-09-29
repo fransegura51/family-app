@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
+import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
 import { supabase } from '@/data/supabaseClient'
 import { forgetSignupOrigin, parseSignupOrigin, rememberSignupOrigin, signupMetadata } from '@/domain/signupOrigin'
 
@@ -84,7 +85,12 @@ export function LoginScreen() {
 
   return (
     <div className="screen screen-centered">
-      <h1>Family App</h1>
+      {/* Validación real en iPhone: "Family App" genérico ya no representa la identidad actual del
+          producto — sustituido por el logo+nombre+eslogan oficiales (mismo asset que el pie de RSVP y la
+          invitación, PEPA_PUBLIC_WEBSITE_URL/pepa-face-reference-official — una única fuente visual). Solo
+          branding: Supabase Auth, sesión, recuperación, registro y las páginas de términos/privacidad de
+          más abajo no cambian. */}
+      <img src={pepaLogoSlogan} alt="Pepa Family App — Pepa te lo soluciona" style={{ width: '100%', maxWidth: 320, height: 'auto', marginBottom: 8 }} />
       <form onSubmit={handleSubmit} className="card">
         <label>
           Email

@@ -1,6 +1,7 @@
 import { type CSSProperties, FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
+import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
 import {
   addEventActivity,
   addEventBudgetItem,
@@ -2248,6 +2249,16 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
                   </label>
                 </div>
               )}
+              {/* Validación real en iPhone: la nota que el invitado escribe en su RSVP público ("Nota
+                  (alergia, algún comentario...)") se guardaba y confirmaba bien, pero no había dónde
+                  consultarla — auditoría confirmó que el dato (EventGuest.rsvpNote) llega correcto hasta
+                  aquí, solo faltaba pintarlo. Nunca se clasifica como "alergia" a la fuerza (puede ser
+                  cualquier comentario) — se muestra tal cual, solo cuando existe, sin ocupar hueco si no. */}
+              {g.rsvpNote && (
+                <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                  📝 Nota: {g.rsvpNote}
+                </p>
+              )}
             </div>
           </div>
         ))}
@@ -3404,6 +3415,18 @@ function InvitationModal({
             </div>
           </>
         )}
+
+        {/* Validación real en iPhone: "quiero añadir una firma de marca pequeña y elegante, asociada a la
+            invitación/mensaje" — nunca dentro del lienzo (nunca una InvitationLayer, nunca toca el diseño
+            del usuario ni el PNG exportado) ni en el texto de WhatsApp (un mensaje de texto no puede
+            incrustar el logo real, y "usar el asset oficial" exige una imagen) — vive aquí, en la propia
+            tarjeta de la app donde se revisa la invitación antes de compartirla. Mismo asset oficial que el
+            resto de la marca (pepa-face-reference-official, ver InvitationModal/RsvpFooter/LoginScreen —
+            una única fuente visual, nunca un dibujo nuevo ni un emoji sustituto). */}
+        <p className="muted" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginTop: 8 }}>
+          <img src={pepaFaceReference} alt="" style={{ width: 16, height: 16, borderRadius: '50%' }} />
+          Creado con PEPA
+        </p>
 
         <label style={{ marginTop: 12, display: 'block' }}>
           Mensaje

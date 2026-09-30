@@ -42,6 +42,7 @@ import {
   subscribe as subscribeSharing,
 } from '@/services/locationSharing'
 import { LocationMap } from '@/ui/LocationMap'
+import { LocationPickerModal } from '@/ui/LocationPickerModal'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type {
   AutomationRule,
@@ -1102,6 +1103,11 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Petición real: "si quiero buscar Mercadona Almoradí... que me lleve directamente al mapa...
+  // que me lo busque por el nombre y que lo pueda guardar" — antes solo se podía usar la ubicación
+  // actual del propio teléfono; ahora reutiliza el mismo buscador con mapa de Calendario/Eventos
+  // (LocationPickerModal) para buscar cualquier sitio por su nombre, esté donde esté.
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   async function handleUseCurrentPosition() {
     try {
@@ -1109,6 +1115,12 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
     } catch (err) {
       setError(errorMessage(err, 'No se pudo obtener la ubicación'))
     }
+  }
+
+  function handlePicked(result: { latitude: number; longitude: number; label: string | null }) {
+    setCoords({ latitude: result.latitude, longitude: result.longitude })
+    if (result.label) setName(result.label)
+    setPickerOpen(false)
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -1142,13 +1154,21 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
         Radio (m)
         <input type="number" value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} />
       </label>
-      <button type="button" className="link-button" onClick={handleUseCurrentPosition}>
-        {coords ? '✓ Ubicación capturada' : '📍 Usar mi ubicación actual'}
-      </button>
+      <div className="inline-fields">
+        <button type="button" className="link-button" onClick={() => setPickerOpen(true)}>
+          🔍 Buscar por nombre
+        </button>
+        <button type="button" className="link-button" onClick={handleUseCurrentPosition}>
+          {coords ? '✓ Ubicación capturada' : '📍 Usar mi ubicación actual'}
+        </button>
+      </div>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Guardar lugar'}
       </button>
+      {pickerOpen && (
+        <LocationPickerModal initialQuery={name} onConfirm={handlePicked} onClose={() => setPickerOpen(false)} />
+      )}
     </form>
   )
 }

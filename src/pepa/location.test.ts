@@ -20,10 +20,11 @@ import type { LocationPlace, MemberLocation } from '@/domain/types'
 
 const FARMACIA: LocationPlace = { id: 'p1', familyId: 'f', name: 'Farmacia', category: null, latitude: 40.42, longitude: -3.70, radiusM: 150 }
 const COLE: LocationPlace = { id: 'p2', familyId: 'f', name: 'Colegio San José', category: null, latitude: 40.43, longitude: -3.71, radiusM: 100 }
+const CARGOFRIO: LocationPlace = { id: 'p3', familyId: 'f', name: 'Cargofrío', category: 'Trabajo', latitude: 38.11, longitude: -0.79, radiusM: 150 }
 
 function makeDeps(overrides: Partial<LocationDeps> = {}): LocationDeps {
   return {
-    places: vi.fn().mockResolvedValue([FARMACIA, COLE]),
+    places: vi.fn().mockResolvedValue([FARMACIA, COLE, CARGOFRIO]),
     memberLocations: vi.fn().mockResolvedValue([]),
     members: vi.fn().mockResolvedValue([]),
     currentPosition: vi.fn().mockResolvedValue({ latitude: 40.4, longitude: -3.7 }),
@@ -104,7 +105,14 @@ describe('locationAction: tiempo en coche', () => {
 
   it('sin ese lugar guardado, lo dice', async () => {
     const outcome = await locationAction('cuánto se tarda en coche al aeropuerto', makeDeps())
-    expect(outcome).toEqual({ kind: 'answer', text: 'No tengo ningún lugar guardado llamado «aeropuerto». Revisa el nombre en Ubicación.' })
+    expect(outcome).toEqual({ kind: 'answer', text: 'No tengo ningún lugar guardado con ese nombre ni esa categoría: «aeropuerto». Revísalo en Ubicación.' })
+  })
+
+  it('también encuentra el lugar por su categoría, no solo por el nombre', async () => {
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 8, km: 3 })
+    const outcome = await locationAction('cuánto se tarda en coche a trabajo', makeDeps({ drivingEta }))
+    expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, CARGOFRIO)
+    expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Cargofrío se tarda unos 8 minutos en coche (3 km, con tráfico).' })
   })
 
   it('sin permiso de ubicación, lo avisa en vez de fallar', async () => {
@@ -131,5 +139,16 @@ describe('locationAction: quién está más cerca', () => {
   it('nadie compartiendo ubicación, lo dice', async () => {
     const outcome = await locationAction('quién está más cerca de la farmacia', makeDeps())
     expect(outcome).toEqual({ kind: 'answer', text: 'Nadie está compartiendo su ubicación ahora mismo.' })
+  })
+
+  it('también encuentra el lugar por su categoría, no solo por el nombre (petición real)', async () => {
+    const locations: MemberLocation[] = [{ memberId: 'm1', familyId: 'f', latitude: 38.111, longitude: -0.791, recordedAt: '2026-09-30T10:00:00Z' }]
+    const members = [{ id: 'm1', name: 'Jennifer' }]
+    const outcome = await locationAction(
+      'quién está más cerca de trabajo',
+      makeDeps({ memberLocations: vi.fn().mockResolvedValue(locations), members: vi.fn().mockResolvedValue(members) }),
+    )
+    expect(outcome).toMatchObject({ kind: 'answer' })
+    expect((outcome as { text: string }).text).toContain('Jennifer está más cerca de Cargofrío')
   })
 })

@@ -480,6 +480,9 @@ export function findMemberInText<T extends { name: string }>(text: string, membe
 const PLACE_QUERY_PREFIXES = [
   /^buscame\s+/,
   /^busca\s+/,
+  // Petición real: "buscar cargo frío mediterránea", "buscar casa" — el infinitivo, no solo el
+  // imperativo ("busca").
+  /^buscar\s+/,
   /^encuentrame\s+/,
   /^encuentra\s+/,
   /^quiero encontrar\s+/,

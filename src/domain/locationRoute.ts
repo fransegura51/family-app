@@ -31,7 +31,13 @@ const NEAREST_RE = /^quien(?:\s+(?:esta|anda|vive))?\s+mas cerca\s+(?:de(?:l)?|a
 // que sí lo tiene): ahí es seguro porque el botón "📍 Buscar sitio" ya deja claro que TODO lo dicho
 // es una búsqueda de sitio, pero aquí, en el botón general, "necesito comprar leche" tiene que
 // seguir yendo a la lista de la compra (domain/talkRoute.ts, BUY_STATEMENT) — no a Ubicación.
-const SEARCH_TRIGGER_RE = /^(?:buscame|busca|encuentrame|encuentra|quiero encontrar|donde hay|dime donde hay|donde esta|donde queda)\s+/
+// "buscar" (infinitivo, petición real: "buscar cargo frío mediterránea", "buscar casa"), además de
+// "busca"/"buscame" — con un ojo puesto en "buscar una receta de X": Cocina (pepa/talk.ts) ya se
+// comprueba ANTES que esto para "busca"/"buscame" + "receta", pero su propia lista de verbos no
+// incluye "buscar" (domain/kitchenQuery.ts), así que aquí se excluye a mano para que "buscar una
+// receta de tortilla" no se trate como si "una receta de tortilla" fuera el nombre de un sitio.
+const SEARCH_TRIGGER_RE = /^(?:buscame|busca|buscar|encuentrame|encuentra|quiero encontrar|donde hay|dime donde hay|donde esta|donde queda)\s+/
+const RECIPE_SEARCH_RE = /\breceta\b/
 
 export function routeLocation(text: string): LocationIntent | null {
   const n = normalize(text)
@@ -48,7 +54,7 @@ export function routeLocation(text: string): LocationIntent | null {
   if (savePlace) return { type: 'save', name: (savePlace[1] ?? '').trim() || null }
   if (SAVE_BARE_RE.test(n)) return { type: 'save', name: null }
 
-  if (SEARCH_TRIGGER_RE.test(n)) {
+  if (SEARCH_TRIGGER_RE.test(n) && !RECIPE_SEARCH_RE.test(n)) {
     const term = extractPlaceSearchTerm(text)
     if (term) return { type: 'search', term }
   }

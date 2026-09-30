@@ -33,20 +33,28 @@ function stripLeadingArticle(text: string): string {
   return text.replace(/^(?:el|la|los|las)\s+/, '')
 }
 
-function findPlaceByName(spoken: string, places: LocationPlace[]): LocationPlace | null {
+// Petición real: "le he puesto trabajo [de categoría]... y le he dicho a Pepa quién está más cerca
+// de trabajo y no lo ha reconocido... también quiero que reconozca las categorías" — busca tanto
+// por el nombre del lugar ("Cargofrío") como por su categoría ("Trabajo"), no solo el nombre. Con
+// varios lugares que compartan categoría (dos "Trabajo" distintos, uno por persona) se queda con la
+// coincidencia más larga/exacta — no distingue de quién es cada uno, no hay ese dato guardado.
+function findPlace(spoken: string, places: LocationPlace[]): LocationPlace | null {
   const target = stripLeadingArticle(normalize(spoken))
   if (!target) return null
-  let best: LocationPlace | null = null
+  let best: { place: LocationPlace; matchLength: number } | null = null
   for (const place of places) {
-    const name = normalize(place.name)
-    if (name === target || name.includes(target) || target.includes(name)) {
-      if (!best || name.length > normalize(best.name).length) best = place
+    for (const raw of [place.name, place.category]) {
+      if (!raw) continue
+      const candidate = normalize(raw)
+      if (candidate === target || candidate.includes(target) || target.includes(candidate)) {
+        if (!best || candidate.length > best.matchLength) best = { place, matchLength: candidate.length }
+      }
     }
   }
-  return best
+  return best?.place ?? null
 }
 
-const NO_PLACE = (spoken: string) => `No tengo ningún lugar guardado llamado «${spoken}». Revisa el nombre en Ubicación.`
+const NO_PLACE = (spoken: string) => `No tengo ningún lugar guardado con ese nombre ni esa categoría: «${spoken}». Revísalo en Ubicación.`
 
 async function handleSearch(term: string, deps: LocationDeps): Promise<TalkOutcome> {
   const found = await deps.searchFirstPlace(term)
@@ -79,7 +87,7 @@ async function handleSave(name: string | null): Promise<TalkOutcome> {
 
 async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
   const places = await deps.places()
-  const place = findPlaceByName(spokenPlace, places)
+  const place = findPlace(spokenPlace, places)
   if (!place) return { kind: 'answer', text: NO_PLACE(spokenPlace) }
   const origin = await deps.currentPosition()
   if (!origin) return { kind: 'answer', text: 'No he podido saber dónde estás ahora mismo — revisa el permiso de ubicación del teléfono.' }
@@ -90,7 +98,7 @@ async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkO
 
 async function handleNearest(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
   const [places, locations, members] = await Promise.all([deps.places(), deps.memberLocations(), deps.members()])
-  const place = findPlaceByName(spokenPlace, places)
+  const place = findPlace(spokenPlace, places)
   if (!place) return { kind: 'answer', text: NO_PLACE(spokenPlace) }
   const ranked = locations
     .map((loc) => {

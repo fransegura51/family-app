@@ -9,9 +9,19 @@ describe('routeLocation: buscar', () => {
     expect(routeLocation('dónde queda el colegio')).toEqual({ type: 'search', term: 'el colegio' })
   })
 
+  it('también reconoce el infinitivo "buscar" (petición real)', () => {
+    expect(routeLocation('buscar cargo frío mediterránea')).toEqual({ type: 'search', term: 'cargo frio mediterranea' })
+    expect(routeLocation('buscar casa')).toEqual({ type: 'search', term: 'casa' })
+    expect(routeLocation('buscar Mercadona Callosa')).toEqual({ type: 'search', term: 'mercadona callosa' })
+  })
+
   it('una frase sin ningún verbo de búsqueda no es de Ubicación', () => {
     expect(routeLocation('qué tengo mañana')).toBeNull()
-    expect(routeLocation('busca una receta de tortilla')).toEqual({ type: 'search', term: 'una receta de tortilla' })
+  })
+
+  it('"buscar/busca una receta de..." no es de Ubicación — eso lo resuelve Cocina', () => {
+    expect(routeLocation('busca una receta de tortilla')).toBeNull()
+    expect(routeLocation('buscar una receta de lentejas')).toBeNull()
   })
 })
 

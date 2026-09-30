@@ -334,6 +334,8 @@ export interface LocationPlace {
   id: string
   familyId: string
   name: string
+  // Etiqueta libre puesta por la familia ("Trabajo", "Casa madre"...) — null = sin categoría.
+  category: string | null
   latitude: number
   longitude: number
   radiusM: number

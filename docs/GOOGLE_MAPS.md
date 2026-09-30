@@ -1,11 +1,12 @@
 # El mapa con Google Maps
 
 La app usa Google Maps (mapa, buscador de direcciones y reconocimiento de
-sitios) en vez de OpenStreetMap, más cuatro extras: quién está más cerca de
-un lugar, el tiempo real en coche hasta allí, y compartir un lugar como
-imagen. El código ya está hecho; falta la parte que solo puede hacer
-Jennifer en Google (activar la facturación, nadie más puede meter una
-tarjeta) para que funcione de verdad.
+sitios) en vez de OpenStreetMap, más tres extras: quién está más cerca de un
+lugar, el tiempo real en coche hasta allí, y compartir la ubicación de un
+lugar (un enlace real de Google Maps, no una imagen — quien lo recibe puede
+abrirlo y navegar hasta allí). El código ya está hecho; falta la parte que
+solo puede hacer Jennifer en Google (activar la facturación, nadie más puede
+meter una tarjeta) para que funcione de verdad.
 
 **Mientras no haya clave configurada, el mapa simplemente no se pinta** — el
 resto de "Ubicación" (chips de miembros, lugares frecuentes, reglas) y el
@@ -19,11 +20,21 @@ resto de la app siguen funcionando exactamente igual.
 | Buscar una dirección (autocompletar) / coordenadas → dirección | `src/services/geocoding.ts` |
 | Reconocer el nombre de un sitio nuevo | `src/services/reverseGeocode.ts` |
 | Tiempo real en coche hasta un lugar | `src/services/drivingEta.ts` |
-| Imagen de un lugar para compartir | `src/services/placeMapImage.ts` |
 | Mapa de "Ubicación" (con fotos y tráfico en vivo) | `src/ui/LocationMap.tsx` |
 | Mapa del selector de sitio (Calendario/Eventos) | `src/ui/LocationPickerModal.tsx` |
-| "Quién está más cerca", botón de tiempo en coche y de compartir, en cada lugar frecuente | `src/ui/LocationScreen.tsx` (`PlaceRow`) |
+| "Quién está más cerca", botón de tiempo en coche y de compartir ubicación, en cada lugar frecuente | `src/ui/LocationScreen.tsx` (`PlaceRow`) — compartir usa `src/services/share.ts` (`shareText`), un enlace normal de Maps, no llama a ninguna API de Google |
 | Dónde se lee la clave al compilar | `.github/workflows/deploy.yml` (secreto `VITE_GOOGLE_MAPS_API_KEY`) |
+
+⚠️ **Bug real encontrado y arreglado el 30/09/2026, fácil de reintroducir sin querer**: la clave está
+restringida por sitio web (paso 3 más abajo), pero el navegador, al pedirle algo a un dominio
+DISTINTO (places/routes/maps.googleapis.com), por defecto solo manda el origen como Referer
+("https://.../", sin "/family-app/") — no encaja con la restricción y Google responde 403, aunque la
+clave y la restricción estén bien puestas. Cada `fetch()` a una API de Google Maps tiene que pedir
+explícitamente `referrerPolicy: 'no-referrer-when-downgrade'` (ver el comentario en
+`src/services/geocoding.ts`) para que el navegador mande la página completa. Si algún día se añade
+una llamada nueva a una API de Google Maps y se le olvida esto, fallará en el móvil de verdad aunque
+todo lo demás (clave, restricción, API activada) esté perfecto — y, sin este aviso, cuesta mucho
+adivinar por qué.
 
 ## Pasos en Google Cloud (los hace Jennifer)
 
@@ -31,21 +42,24 @@ Se reutiliza el mismo proyecto de Google Cloud que ya existe para "Conectar
 con Google Calendar" — no hace falta crear uno nuevo.
 
 1. **Activar la facturación.** En [console.cloud.google.com/billing](https://console.cloud.google.com/billing), vincular una tarjeta al proyecto. Es obligatorio aunque el uso real se quede en 0 €.
-2. **Activar 5 APIs**, en *APIs y servicios → Biblioteca*:
+2. **Activar 4 APIs**, en *APIs y servicios → Biblioteca*:
    - **Maps JavaScript API**
    - **Places API (New)**
    - **Geocoding API**
-   - **Routes API** — nueva, para el tiempo real en coche
-   - **Maps Static API** — nueva, para compartir un lugar como imagen
+   - **Routes API** — para el tiempo real en coche
+
+   (Nota: "Maps Static API" se activó y se restringió en la clave el 30/09/2026 para una función de
+   compartir el mapa como imagen que ya no existe — se sustituyó por compartir un enlace de
+   ubicación, que no usa ninguna API. Dejarla activada no hace daño ni cuesta nada si no se usa; se
+   puede quitar de la clave el día que se revise esto con calma, no es urgente.)
 3. **Crear la clave**, en *APIs y servicios → Credenciales → Crear credenciales → Clave de API*.
    - **Restringirla por sitio web** (HTTP referrer): añadir `https://fransegura51.github.io/family-app/*` (y el dominio propio, si algún día se usa uno).
-   - **Restringirla a esas 5 APIs**, para que no sirva para nada más si se filtrara.
+   - **Restringirla a esas APIs**, para que no sirva para nada más si se filtrara.
 4. **Poner cupos diarios** — esto es lo que de verdad evita pagar de más, el aviso por email no corta nada, el cupo sí. En *Google Maps Platform → Cuotas*, elegir cada API en el desplegable de arriba y, en la fila **"Map loads per day"** (o "Requests per day"), pulsar los tres puntos ⋮ → **Editar cuota**:
    - **Maps JavaScript API** → 300 al día
    - **Geocoding API** → 300 al día
    - **Places API (New)** → 150 al día (cada método: Autocomplete, Place Details)
    - **Routes API** → 100 al día
-   - **Maps Static API** → 50 al día
 
    Con estos números, el gasto se queda en 0 € mientras uséis PEPA vosotros y las familias de prueba. Al llegar a un cupo, esa función deja de responder el resto del día — no os van a cobrar de más, se corta antes.
 

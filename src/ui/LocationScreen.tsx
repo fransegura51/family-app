@@ -25,14 +25,14 @@ import {
   muteAutomationRule,
   setConsent,
   toggleAutomationRule,
+  updatePlace,
 } from '@/data/location'
 import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { distanceMeters, formatDistance } from '@/domain/geo'
 import { getCurrentPosition } from '@/services/geolocation'
 import { getDrivingEta, type DrivingEta } from '@/services/drivingEta'
-import { fetchPlaceMapImage } from '@/services/placeMapImage'
-import { shareFiles } from '@/services/share'
+import { shareText } from '@/services/share'
 import {
   getLastError as getSharingError,
   getLastPosition,
@@ -792,7 +792,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
       <h2 className="section-title">Lugares frecuentes</h2>
       <div className="event-list">
         {places.map((place) => (
-          <PlaceRow key={place.id} place={place} locations={locations} members={members} onDeleted={reload} />
+          <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} />
         ))}
         {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
       </div>
@@ -977,12 +977,12 @@ function PlaceRow({
   place,
   locations,
   members,
-  onDeleted,
+  onChanged,
 }: {
   place: LocationPlace
   locations: MemberLocation[]
   members: FamilyMember[]
-  onDeleted: () => void
+  onChanged: () => void
 }) {
   // Petición real: "quién está más cerca ahora mismo" — con la misma
   // distancia en línea recta que ya se calculaba (gratis, sin pedir nada
@@ -1000,19 +1000,42 @@ function PlaceRow({
   const [eta, setEta] = useState<DrivingEta | null>(null)
   const [etaLoading, setEtaLoading] = useState(false)
   const [sharing, setSharing] = useState(false)
-  const [shareError, setShareError] = useState<string | null>(null)
-  // Bug real reportado ("no se me comparte, no pasa nada"): sin ningún aviso cuando fallaba, y el
-  // plan B (window.open de una URL "blob:" varios `await` después del toque) llega tarde para
-  // contar como gesto del usuario — muchos móviles lo bloquean en silencio, sin avisar de nada. Un
-  // enlace real en la pantalla, que ella misma toca, no tiene ese problema.
-  const [fallbackImageUrl, setFallbackImageUrl] = useState<string | null>(null)
-  // Libera la "blob:" anterior tanto al pedir una nueva (mismo botón, dos veces) como al salir de
-  // esta tarjeta con una todavía puesta — si no, el navegador la mantiene en memoria para nada.
-  useEffect(() => {
-    return () => {
-      if (fallbackImageUrl) URL.revokeObjectURL(fallbackImageUrl)
+  const [shareNotice, setShareNotice] = useState<string | null>(null)
+  // Petición real: "quiero poder editarlo... poder ponerle la categoría que yo quiera" (trabajo,
+  // casa de mamá...) — no solo al crearlo, también después, sobre un lugar ya guardado.
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(place.name)
+  const [editCategory, setEditCategory] = useState(place.category ?? '')
+  const [editRadius, setEditRadius] = useState(place.radiusM)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  function startEditing() {
+    setEditName(place.name)
+    setEditCategory(place.category ?? '')
+    setEditRadius(place.radiusM)
+    setEditError(null)
+    setEditing(true)
+  }
+
+  async function handleSaveEdit(e: FormEvent) {
+    e.preventDefault()
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      await updatePlace(place.id, { name: editName.trim(), category: editCategory.trim() || null, radiusM: editRadius })
+      setEditing(false)
+      onChanged()
+    } catch (err) {
+      setEditError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setEditSaving(false)
     }
-  }, [fallbackImageUrl])
+  }
+  // Solo se rellena si ni el menú nativo ni el portapapeles han podido usarse (share.ts,
+  // shareText) — un enlace normal de Google Maps, seguro para enseñar y tocar directamente (no es
+  // la clave de la app, no expone nada).
+  const [shareFallbackUrl, setShareFallbackUrl] = useState<string | null>(null)
 
   async function handleEta(memberId: string, loc: MemberLocation) {
     setEtaFor(memberId)
@@ -1025,38 +1048,70 @@ function PlaceRow({
     }
   }
 
-  // Petición real: "poder compartir dónde es un sitio" — se comparte la
-  // imagen en sí (no un enlace a Google, que exigiría la clave de la
-  // app). Sin soporte de compartir archivos (típico en ordenador), o si
-  // el propio compartir falla, se enseña un enlace de verdad para verla
-  // o guardarla a mano.
-  async function handleShareMap() {
+  // Petición real: "cuando le doy a compartir, lo que comparte es una imagen... yo quiero que
+  // comparta la ubicación" — antes se mandaba una FOTO del mapa (Static Maps API); ahora se manda
+  // un enlace real de Google Maps a este punto exacto, que quien lo reciba puede abrir y usar para
+  // llegar. Un enlace normal de Maps no necesita la clave de la app (no es una llamada a la API,
+  // solo una URL que abre la app de Maps de quien la reciba), así que tampoco hay límite diario ni
+  // nada que pueda fallar por parte de Google — solo puede fallar compartir en sí, en cuyo caso cae
+  // al portapapeles y, si eso también falla, se enseña el enlace en la propia pantalla.
+  async function handleShareLocation() {
     setSharing(true)
-    setShareError(null)
-    setFallbackImageUrl(null)
+    setShareNotice(null)
+    setShareFallbackUrl(null)
+    const url = `https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}`
     try {
-      const result = await fetchPlaceMapImage(place.latitude, place.longitude, place.name)
-      if (!result.ok) {
-        setShareError(
-          result.reason === 'daily-limit'
-            ? 'Ya has usado hoy el número de veces que este teléfono puede compartir mapas (es un freno para no gastar de más, no un fallo). Se puede volver a usar mañana.'
-            : result.reason === 'missing-key'
-              ? 'Esta función no está configurada todavía.'
-              : 'No se ha podido conectar con Google para preparar el mapa. Comprueba tu conexión e inténtalo de nuevo.',
-        )
-        return
-      }
-      const shared = await shareFiles([result.file], { title: place.name })
-      if (!shared) setFallbackImageUrl(URL.createObjectURL(result.file))
+      const shared = await shareText({ title: place.name, text: `${place.name}\n${url}` })
+      if (!shared) setShareNotice('Copiado al portapapeles.')
+    } catch {
+      setShareFallbackUrl(url)
     } finally {
       setSharing(false)
     }
+  }
+
+  if (editing) {
+    return (
+      <form onSubmit={handleSaveEdit} className="card member-form">
+        <label>
+          Nombre
+          <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+        </label>
+        <label>
+          Categoría (opcional)
+          <input
+            type="text"
+            value={editCategory}
+            onChange={(e) => setEditCategory(e.target.value)}
+            placeholder="Trabajo, casa de mamá, campo de papá…"
+          />
+        </label>
+        <label>
+          Radio (m)
+          <input type="number" value={editRadius} onChange={(e) => setEditRadius(Number(e.target.value))} />
+        </label>
+        {editError && <p className="error">{editError}</p>}
+        <div className="inline-fields">
+          <button type="submit" disabled={editSaving}>
+            {editSaving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+          <button type="button" className="link-button" onClick={() => setEditing(false)}>
+            Cancelar
+          </button>
+        </div>
+      </form>
+    )
   }
 
   return (
     <div className="card task-card">
       <div className="task-card-main">
         <strong>{place.name}</strong>
+        {place.category && (
+          <span className="chip" style={{ marginLeft: 6 }}>
+            {place.category}
+          </span>
+        )}
         <p className="muted">Radio {place.radiusM} m</p>
         {ranked.map(({ member, loc, dist }, i) => {
           const near = dist <= place.radiusM
@@ -1084,27 +1139,31 @@ function PlaceRow({
             </div>
           )
         })}
-        <button type="button" className="link-button" onClick={handleShareMap} disabled={sharing} style={{ marginTop: 6 }}>
-          {sharing ? 'Preparando…' : '📤 Compartir mapa de este lugar'}
+        <button type="button" className="link-button" onClick={handleShareLocation} disabled={sharing} style={{ marginTop: 6 }}>
+          {sharing ? 'Preparando…' : '📍 Compartir esta ubicación'}
         </button>
-        {shareError && <p className="error">{shareError}</p>}
-        {fallbackImageUrl && (
+        {shareNotice && <p className="muted">{shareNotice}</p>}
+        {shareFallbackUrl && (
           <p className="muted">
-            Tu teléfono no ha abierto el menú de compartir —{' '}
-            <a href={fallbackImageUrl} download={`${place.name}.png`} target="_blank" rel="noopener noreferrer">
-              toca aquí para ver o guardar la imagen
+            No se ha podido compartir ni copiar directamente —{' '}
+            <a href={shareFallbackUrl} target="_blank" rel="noopener noreferrer">
+              toca aquí para abrir la ubicación
             </a>
             .
           </p>
         )}
+        <button type="button" className="link-button" onClick={startEditing} style={{ marginTop: 6 }}>
+          ✎ Editar
+        </button>
       </div>
-      <ConfirmButton label="Eliminar" onConfirm={() => deletePlace(place.id).then(onDeleted)} />
+      <ConfirmButton label="Eliminar" onConfirm={() => deletePlace(place.id).then(onChanged)} />
     </div>
   )
 }
 
 function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
   const [name, setName] = useState('')
+  const [category, setCategory] = useState('')
   const [radiusM, setRadiusM] = useState(150)
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -1138,8 +1197,9 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      await addPlace({ name, latitude: coords.latitude, longitude: coords.longitude, radiusM })
+      await addPlace({ name, category: category.trim() || null, latitude: coords.latitude, longitude: coords.longitude, radiusM })
       setName('')
+      setCategory('')
       setCoords(null)
       onAdded()
     } catch (err) {
@@ -1155,6 +1215,15 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
       <label>
         Nombre
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Supermercado" required />
+      </label>
+      <label>
+        Categoría (opcional)
+        <input
+          type="text"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="Trabajo, casa de mamá, campo de papá…"
+        />
       </label>
       <label>
         Radio (m)

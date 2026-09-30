@@ -341,7 +341,7 @@ describe('location.addPlace', () => {
     const result = proposeAction('location.addPlace', valid, ctx())
     if (!result.ok) throw new Error('debería ser válida')
     const message = await result.proposal.confirm(result.proposal.initialSelection)
-    expect(addPlace).toHaveBeenCalledWith({ name: 'Farmacia de la esquina', latitude: 40.4168, longitude: -3.7038, radiusM: 150 })
+    expect(addPlace).toHaveBeenCalledWith({ name: 'Farmacia de la esquina', category: null, latitude: 40.4168, longitude: -3.7038, radiusM: 150 })
     expect(message).toBe('Guardado «Farmacia de la esquina» en tus lugares frecuentes.')
   })
 

@@ -18,8 +18,8 @@ import { locationAction, type LocationDeps } from '@/pepa/location'
 import { forgetFoundPlace } from '@/pepa/recentContext'
 import type { LocationPlace, MemberLocation } from '@/domain/types'
 
-const FARMACIA: LocationPlace = { id: 'p1', familyId: 'f', name: 'Farmacia', latitude: 40.42, longitude: -3.70, radiusM: 150 }
-const COLE: LocationPlace = { id: 'p2', familyId: 'f', name: 'Colegio San José', latitude: 40.43, longitude: -3.71, radiusM: 100 }
+const FARMACIA: LocationPlace = { id: 'p1', familyId: 'f', name: 'Farmacia', category: null, latitude: 40.42, longitude: -3.70, radiusM: 150 }
+const COLE: LocationPlace = { id: 'p2', familyId: 'f', name: 'Colegio San José', category: null, latitude: 40.43, longitude: -3.71, radiusM: 100 }
 
 function makeDeps(overrides: Partial<LocationDeps> = {}): LocationDeps {
   return {
@@ -73,7 +73,7 @@ describe('locationAction: guardar', () => {
     expect(outcome?.kind).toBe('proposal')
     if (outcome?.kind !== 'proposal') throw new Error('debería ser una propuesta')
     await outcome.proposal.confirm(outcome.proposal.initialSelection)
-    expect(addPlace).toHaveBeenCalledWith({ name: 'Farmacia Rodríguez', latitude: 40.41, longitude: -3.69, radiusM: 150 })
+    expect(addPlace).toHaveBeenCalledWith({ name: 'Farmacia Rodríguez', category: null, latitude: 40.41, longitude: -3.69, radiusM: 150 })
   })
 
   it('"guárdalo como..." usa el nombre dicho, no el encontrado', async () => {

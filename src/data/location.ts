@@ -28,12 +28,13 @@ async function currentFamilyId(): Promise<string> {
 export async function listPlaces(): Promise<LocationPlace[]> {
   const { data, error } = await supabase
     .from('location_places')
-    .select('id, family_id, name, latitude, longitude, radius_m')
+    .select('id, family_id, name, category, latitude, longitude, radius_m')
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
     familyId: r.family_id,
     name: r.name,
+    category: r.category,
     latitude: r.latitude,
     longitude: r.longitude,
     radiusM: r.radius_m,
@@ -42,6 +43,7 @@ export async function listPlaces(): Promise<LocationPlace[]> {
 
 export async function addPlace(input: {
   name: string
+  category: string | null
   latitude: number
   longitude: number
   radiusM: number
@@ -50,10 +52,22 @@ export async function addPlace(input: {
   const { error } = await supabase.from('location_places').insert({
     family_id: familyId,
     name: input.name,
+    category: input.category,
     latitude: input.latitude,
     longitude: input.longitude,
     radius_m: input.radiusM,
   })
+  if (error) throw error
+}
+
+// Petición real: "quiero poder editarlo... poder ponerle la categoría que yo quiera" — cambia el
+// nombre/categoría/radio de un lugar ya guardado, sin tocar dónde está (para eso, borrar y volver a
+// crearlo con el buscador).
+export async function updatePlace(id: string, input: { name: string; category: string | null; radiusM: number }): Promise<void> {
+  const { error } = await supabase
+    .from('location_places')
+    .update({ name: input.name, category: input.category, radius_m: input.radiusM })
+    .eq('id', id)
   if (error) throw error
 }
 

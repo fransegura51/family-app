@@ -198,11 +198,12 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // 0173 (forecast_reconciliation_category_inherit) redefine match_forecast_occurrence para heredar la
     // categoría de la previsión al confirmar — toca conciliación, nunca la identidad/cálculo de una
     // devolución. 0174 (forecast_reconciliation_dismissals) añade una tabla nueva para persistir "No es
-    // este" — tampoco toca devoluciones.
+    // este" — tampoco toca devoluciones. 0175 (location_places_category, Ubicación: categoría libre por
+    // lugar guardado) añade `location_places.category` — tabla de Ubicación, tampoco toca devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(174)
+    expect(Math.max(...numbers)).toBe(175)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

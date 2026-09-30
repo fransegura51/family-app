@@ -63,7 +63,7 @@ export const locationAddPlaceAction = defineAction<LocationAddPlaceParams>({
   },
 
   async execute(params) {
-    await addPlace({ name: params.name, latitude: params.latitude, longitude: params.longitude, radiusM: params.radiusM })
+    await addPlace({ name: params.name, category: null, latitude: params.latitude, longitude: params.longitude, radiusM: params.radiusM })
     // LocationScreen (Ubicación) refresca sola cada 30s, pero igual que en el resto de acciones de
     // Pepa (shopping.add, calendar.create) conviene que se vea al momento si esa pantalla ya está abierta.
     window.dispatchEvent(new CustomEvent('family-app:location-changed'))

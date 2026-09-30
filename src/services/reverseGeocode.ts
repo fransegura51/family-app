@@ -1,26 +1,31 @@
 // Reconoce el nombre de un sitio a partir de sus coordenadas — petición
 // real: "que lo reconozca según las tiendas que haya en los mapas...
-// automáticamente". Usa Nominatim (OpenStreetMap), gratis y sin clave
-// de API, en vez de Google Places (de pago pasado un uso muy limitado
-// — no encaja con la regla de "todo gratis" del proyecto). Solo se
-// llama cuando alguien se queda parado de verdad en un sitio nuevo (ver
-// locationSharing.ts), así que el volumen de peticiones es mínimo y
-// queda muy por debajo del límite de uso de Nominatim (1 petición/seg).
+// automáticamente". Usa la Places API (New) de Google, buscando el
+// sitio más cercano al punto exacto (radio de 25 m). Solo se llama
+// cuando alguien se queda parado de verdad en un sitio nuevo (ver
+// locationSharing.ts), así que el volumen de peticiones es mínimo.
 export async function reverseGeocodePlaceName(latitude: number, longitude: number): Promise<string | null> {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
+  if (!apiKey) return null
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=jsonv2&zoom=18&addressdetails=1`
-    const res = await fetch(url, { headers: { Accept: 'application/json' } })
+    const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.displayName',
+      },
+      body: JSON.stringify({
+        maxResultCount: 1,
+        rankPreference: 'DISTANCE',
+        locationRestriction: {
+          circle: { center: { latitude, longitude }, radius: 25 },
+        },
+      }),
+    })
     if (!res.ok) return null
-    const data = await res.json()
-    const addr = data.address ?? {}
-    // Prioridad: el propio nombre del sitio (tienda, negocio...) sobre
-    // la dirección genérica — es lo que de verdad ayuda a reconocer "el
-    // supermercado" en vez de solo una calle.
-    const name: string | undefined =
-      data.name || addr.shop || addr.amenity || addr.office || addr.building || addr.tourism
-    if (name) return name
-    if (addr.road) return addr.suburb ? `${addr.road}, ${addr.suburb}` : addr.road
-    return null
+    const data: { places?: { displayName?: { text: string } }[] } = await res.json()
+    return data.places?.[0]?.displayName?.text ?? null
   } catch {
     return null
   }

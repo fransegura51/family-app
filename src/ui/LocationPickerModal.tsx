@@ -1,18 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import { reverseGeocode, searchPlaces, type PlaceResult } from '@/services/geocoding'
+import { loadGoogleMaps } from '@/services/googleMapsLoader'
 import { getCurrentPosition } from '@/services/geolocation'
 import { errorMessage } from '@/domain/errorMessage'
 
-const DEFAULT_CENTER: [number, number] = [40.4168, -3.7038] // Madrid, solo como punto de partida sin ubicación previa
+const DEFAULT_CENTER = { lat: 40.4168, lng: -3.7038 } // Madrid, solo como punto de partida sin ubicación previa
 
 // Petición real: "que dar a buscar te lleve directamente al mapa, y
-// dentro del mapa busques la ubicación que quieras" — sustituye el
-// patrón anterior (escribir texto → lista de sugerencias en texto) por
-// un mapa interactivo de verdad (Leaflet + OpenStreetMap, gratis, sin
-// clave) donde además de buscar se puede tocar/arrastrar para afinar el
-// punto exacto. Compartido entre Calendario y Eventos.
+// dentro del mapa busques la ubicación que quieras" — un mapa
+// interactivo (Google Maps) donde además de buscar se puede tocar o
+// arrastrar para afinar el punto exacto. Compartido entre Calendario y
+// Eventos.
 export function LocationPickerModal({
   initialQuery,
   initialCoords,
@@ -25,8 +23,8 @@ export function LocationPickerModal({
   onClose: () => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<L.Map | null>(null)
-  const markerRef = useRef<L.Marker | null>(null)
+  const mapRef = useRef<google.maps.Map | null>(null)
+  const markerRef = useRef<google.maps.Marker | null>(null)
   const [query, setQuery] = useState(initialQuery ?? '')
   const [searching, setSearching] = useState(false)
   const [suggestions, setSuggestions] = useState<PlaceResult[]>([])
@@ -34,6 +32,7 @@ export function LocationPickerModal({
   const [picked, setPicked] = useState<{ latitude: number; longitude: number } | null>(initialCoords ?? null)
   const [label, setLabel] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [mapError, setMapError] = useState<string | null>(null)
 
   async function updateLabel(lat: number, lng: number) {
     setLabel(null)
@@ -47,49 +46,54 @@ export function LocationPickerModal({
   function placeMarker(lat: number, lng: number, recenter: boolean) {
     const map = mapRef.current
     if (!map) return
+    const position = { lat, lng }
     if (markerRef.current) {
-      markerRef.current.setLatLng([lat, lng])
+      markerRef.current.setPosition(position)
     } else {
-      markerRef.current = L.marker([lat, lng], { draggable: true })
-        .addTo(map)
-        .on('dragend', () => {
-          const pos = markerRef.current!.getLatLng()
-          setPicked({ latitude: pos.lat, longitude: pos.lng })
-          void updateLabel(pos.lat, pos.lng)
-        })
+      markerRef.current = new google.maps.Marker({ map, position, draggable: true })
+      markerRef.current.addListener('dragend', () => {
+        const pos = markerRef.current!.getPosition()
+        if (!pos) return
+        setPicked({ latitude: pos.lat(), longitude: pos.lng() })
+        void updateLabel(pos.lat(), pos.lng())
+      })
     }
-    if (recenter) map.setView([lat, lng], Math.max(map.getZoom(), 15))
+    if (recenter) {
+      map.setCenter(position)
+      map.setZoom(Math.max(map.getZoom() ?? 15, 15))
+    }
     setPicked({ latitude: lat, longitude: lng })
   }
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
-    const start = initialCoords
-      ? ([initialCoords.latitude, initialCoords.longitude] as [number, number])
-      : DEFAULT_CENTER
-    const map = L.map(containerRef.current).setView(start, initialCoords ? 15 : 6)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
-      maxZoom: 19,
-    }).addTo(map)
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      placeMarker(e.latlng.lat, e.latlng.lng, false)
-      void updateLabel(e.latlng.lat, e.latlng.lng)
-    })
-    mapRef.current = map
-    if (initialCoords) {
-      placeMarker(initialCoords.latitude, initialCoords.longitude, false)
-      void updateLabel(initialCoords.latitude, initialCoords.longitude)
-    }
-    // El mapa nace dentro de una hoja modal que aún se está animando —
-    // sin este empujón Leaflet calcula su tamaño antes de tener alto
-    // real y se queda con solo un trozo de los tiles pintado.
-    const kick = setTimeout(() => map.invalidateSize(), 0)
+    let cancelled = false
+    loadGoogleMaps()
+      .then((g) => {
+        if (cancelled || !containerRef.current || mapRef.current) return
+        const start = initialCoords ? { lat: initialCoords.latitude, lng: initialCoords.longitude } : DEFAULT_CENTER
+        const map = new g.maps.Map(containerRef.current, {
+          center: start,
+          zoom: initialCoords ? 15 : 6,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+        })
+        map.addListener('click', (e: google.maps.MapMouseEvent) => {
+          if (!e.latLng) return
+          placeMarker(e.latLng.lat(), e.latLng.lng(), false)
+          void updateLabel(e.latLng.lat(), e.latLng.lng())
+        })
+        mapRef.current = map
+        if (initialCoords) {
+          placeMarker(initialCoords.latitude, initialCoords.longitude, false)
+          void updateLabel(initialCoords.latitude, initialCoords.longitude)
+        }
+      })
+      .catch((err) => setMapError(errorMessage(err, 'No se pudo cargar el mapa')))
     return () => {
-      clearTimeout(kick)
-      map.remove()
-      mapRef.current = null
+      cancelled = true
       markerRef.current = null
+      mapRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -176,7 +180,7 @@ export function LocationPickerModal({
             ))}
           </div>
         )}
-        <div ref={containerRef} className="location-picker-map" />
+        {mapError ? <p className="error">{mapError}</p> : <div ref={containerRef} className="location-picker-map" />}
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
           Toca cualquier punto del mapa, o arrastra el marcador, para ajustar el sitio exacto.
         </p>

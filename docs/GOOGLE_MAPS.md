@@ -1,0 +1,64 @@
+# El mapa con Google Maps
+
+La app usa Google Maps (mapa, buscador de direcciones y reconocimiento de
+sitios) en vez de OpenStreetMap. El código ya está hecho; falta la parte que
+solo puede hacer Jennifer en Google (activar la facturación, nadie más puede
+meter una tarjeta) para que funcione de verdad.
+
+**Mientras no haya clave configurada, el mapa simplemente no se pinta** — el
+resto de "Ubicación" (chips de miembros, lugares frecuentes, reglas) y el
+resto de la app siguen funcionando exactamente igual.
+
+## Qué archivos tocan esto
+
+| Qué | Archivo |
+|---|---|
+| Carga el script de Google Maps una vez | `src/services/googleMapsLoader.ts` |
+| Buscar una dirección / coordenadas → dirección | `src/services/geocoding.ts` |
+| Reconocer el nombre de un sitio nuevo | `src/services/reverseGeocode.ts` |
+| Mapa de "Ubicación" (con fotos y tráfico en vivo) | `src/ui/LocationMap.tsx` |
+| Mapa del selector de sitio (Calendario/Eventos) | `src/ui/LocationPickerModal.tsx` |
+| Dónde se lee la clave al compilar | `.github/workflows/deploy.yml` (secreto `VITE_GOOGLE_MAPS_API_KEY`) |
+
+## Pasos en Google Cloud (los hace Jennifer)
+
+Se reutiliza el mismo proyecto de Google Cloud que ya existe para "Conectar
+con Google Calendar" — no hace falta crear uno nuevo.
+
+1. **Activar la facturación.** En [console.cloud.google.com/billing](https://console.cloud.google.com/billing), vincular una tarjeta al proyecto. Es obligatorio aunque el uso real se quede en 0 €.
+2. **Activar 3 APIs**, en *APIs y servicios → Biblioteca*:
+   - **Maps JavaScript API**
+   - **Places API (New)**
+   - **Geocoding API**
+3. **Crear la clave**, en *APIs y servicios → Credenciales → Crear credenciales → Clave de API*.
+   - **Restringirla por sitio web** (HTTP referrer): añadir `https://fransegura51.github.io/family-app/*` (y el dominio propio, si algún día se usa uno).
+   - **Restringirla a esas 3 APIs**, para que no sirva para nada más si se filtrara.
+4. **Poner cupos diarios**, en *APIs y servicios → Panel → (elegir cada API) → Cuotas*. Esto es lo que de verdad evita pagar de más — el aviso por email no corta nada, el cupo sí:
+   - **Maps JavaScript API** → 300 solicitudes al día
+   - **Geocoding API** → 300 solicitudes al día
+   - **Places API (New)** → 150 solicitudes al día (cada método de búsqueda: Text Search y Nearby Search)
+
+   Con estos números, el gasto se queda en 0 € mientras uséis PEPA vosotros y las familias de prueba. Al llegar a un cupo, esa función deja de responder el resto del día (por ejemplo, el mapa no cargaría para alguien) — no os van a cobrar de más, se corta antes.
+5. **Alerta de presupuesto** (opcional pero recomendable), en *Facturación → Presupuestos y alertas*: crear un presupuesto de, por ejemplo, 5 €/mes con avisos al 50/90/100%, como segunda red de seguridad.
+6. **Añadir la clave a GitHub**: en el repositorio, *Settings → Secrets and variables → Actions → New repository secret*, nombre `VITE_GOOGLE_MAPS_API_KEY`, valor la clave del paso 3. Al hacer `git push`, el siguiente despliegue ya la usa.
+
+## Si no convence y hay que volver a OpenStreetMap
+
+Es un único commit para deshacer (revertir estos cambios trae de vuelta
+Leaflet + Nominatim, gratis y sin clave, tal como estaba). No hace falta
+tocar nada en Google Cloud para volver: basta con dejar de usar la clave.
+
+## Cuánto puede llegar a costar si se sube el cupo más adelante
+
+Con el uso típico de hoy (una persona abre "Ubicación" un par de veces al
+día, y de vez en cuando elige un sitio en un evento):
+
+| Personas usando el mapa a diario | Coste al mes |
+|---|---|
+| Hasta ~150 | 0 € (el cupo de arriba ni se nota) |
+| 500 | ≈ 140 € |
+| 1.000 | ≈ 430 € |
+| 5.000 | ≈ 3.250 € |
+
+Si algún día se decide crecer y aceptar ese gasto, hay que subir los cupos
+del paso 4 (o quitarlos) para que el mapa no se corte al llegar al límite.

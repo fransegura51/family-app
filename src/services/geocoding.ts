@@ -33,11 +33,11 @@ export interface PlaceSuggestion {
 // frente a 5.000 de Text Search, y con menos coste pasado ese tope).
 // Solo da el nombre y un identificador; las coordenadas se piden aparte,
 // con resolvePlace(), y solo del que se elija de la lista.
-export async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
+export async function searchPlaces(query: string, bias?: { latitude: number; longitude: number } | null): Promise<PlaceSuggestion[]> {
   if (!query.trim()) return []
   if (!allowGoogleMapsUse('search')) return []
   try {
-    const data = await callGoogleMaps({ action: 'autocomplete', input: query })
+    const data = await callGoogleMaps({ action: 'autocomplete', input: query, bias: bias ?? undefined })
     return Array.isArray(data.suggestions) ? (data.suggestions as PlaceSuggestion[]) : []
   } catch {
     return []

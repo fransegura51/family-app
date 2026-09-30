@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildNearbySearchUrl, extractPlaceSearchTerm, isUnsupportedDelete, normalize, stripWakeWord } from '@/domain/voiceQuery'
+import { extractPlaceSearchTerm, isUnsupportedDelete, normalize, stripWakeWord } from '@/domain/voiceQuery'
 
 describe('normalize', () => {
   it('minúsculas y sin acentos, para comparar como habla la gente', () => {
@@ -26,17 +26,6 @@ describe('extractPlaceSearchTerm', () => {
   })
   it('sin coletillas, se queda tal cual (normalizado)', () => {
     expect(extractPlaceSearchTerm('gasolinera')).toBe('gasolinera')
-  })
-})
-
-describe('buildNearbySearchUrl', () => {
-  it('con coordenadas, centra el mapa ahí', () => {
-    expect(buildNearbySearchUrl('restaurante', { latitude: 40.1, longitude: -3.2 })).toBe(
-      'https://www.google.com/maps/search/restaurante/@40.1,-3.2,15z',
-    )
-  })
-  it('sin coordenadas, busca solo por texto', () => {
-    expect(buildNearbySearchUrl('restaurante', null)).toBe('https://www.google.com/maps/search/?api=1&query=restaurante')
   })
 })
 

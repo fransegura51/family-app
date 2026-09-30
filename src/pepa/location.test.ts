@@ -57,7 +57,7 @@ describe('locationAction: buscar', () => {
   it('encuentra un sitio y lo recuerda para poder guardarlo después', async () => {
     const searchFirstPlace = vi.fn().mockResolvedValue(found('Farmacia Rodríguez, Calle Mayor 3', 40.41, -3.69))
     const outcome = await locationAction('busca una farmacia de guardia', makeDeps({ searchFirstPlace }))
-    expect(searchFirstPlace).toHaveBeenCalledWith('una farmacia de guardia')
+    expect(searchFirstPlace).toHaveBeenCalledWith('una farmacia de guardia', { latitude: 40.4, longitude: -3.7 })
     expect(outcome).toEqual({ kind: 'focus-place', text: 'He encontrado Farmacia Rodríguez, Calle Mayor 3. Si quieres guardarlo como lugar frecuente, di «guárdalo».' })
   })
 
@@ -131,7 +131,7 @@ describe('locationAction: tiempo en coche', () => {
     const searchFirstPlace = vi.fn().mockResolvedValue(found('Madrid, España', 40.4168, -3.7038))
     const drivingEta = vi.fn().mockResolvedValue({ minutes: 90, km: 80 })
     const outcome = await locationAction('cuánto tiempo tengo hasta Madrid', makeDeps({ searchFirstPlace, drivingEta }))
-    expect(searchFirstPlace).toHaveBeenCalledWith('madrid')
+    expect(searchFirstPlace).toHaveBeenCalledWith('madrid', { latitude: 40.4, longitude: -3.7 })
     expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, { latitude: 40.4168, longitude: -3.7038, label: 'Madrid, España' })
     expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Madrid, España se tarda unos 90 minutos en coche (80 km, con tráfico).' })
   })

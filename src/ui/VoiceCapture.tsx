@@ -18,7 +18,6 @@ import { expandOccurrences } from '@/domain/calendar'
 import { reminderLabel } from '@/domain/reminders'
 import { recurrenceLabel } from '@/domain/recurrence'
 import {
-  buildNearbySearchUrl,
   extractPlaceSearchTerm,
   extractShoppingStore,
   findMemberInText,
@@ -52,7 +51,7 @@ import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
 import { ActionConfirmSheet } from '@/ui/ActionConfirmSheet'
 import { RecipeDraftSheet } from '@/ui/RecipeDraftSheet'
-import { forgetFoundPlace, forgetRecentRecipes, type RecipeRequest } from '@/pepa/recentContext'
+import { forgetFoundPlace, forgetRecentRecipes, rememberFoundPlace, type RecipeRequest } from '@/pepa/recentContext'
 import { StoreQuestionSheet } from '@/ui/StoreQuestionSheet'
 import type { Recipe } from '@/domain/types'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
@@ -260,10 +259,11 @@ const PANEL_INFO: Record<
     icon: '📍',
     title: '📍 Buscar sitio cercano',
     instructions: [
-      'Abre Google Maps ya buscando lo que digas cerca de donde estás — nunca apunta ni responde nada.',
+      'Busca lo que digas cerca de donde estás y te lleva a Ubicación para verlo — nunca apunta nada.',
       'En cuanto veas "Te escucho", di qué buscas (p. ej. "un restaurante cercano"); se busca sola al quedarte 3s callado.',
-      'La primera vez te pedirá permiso de ubicación — sin él, busca igual pero sin centrar el mapa cerca de ti.',
-      'Se cierra sola al abrir el mapa — para buscar otra cosa, toca este icono otra vez.',
+      'La primera vez te pedirá permiso de ubicación — sin él, busca igual pero sin acercar los resultados a donde estás.',
+      'Una vez encontrado, di «guárdalo» para añadirlo a tus lugares frecuentes.',
+      'Se cierra sola al encontrarlo — para buscar otra cosa, toca este icono otra vez.',
     ],
     submitLabel: 'Buscar',
     examples: SEARCH_PLACE_EXAMPLES,
@@ -701,12 +701,12 @@ const locationDeps: LocationDeps = {
       return null
     }
   },
-  searchFirstPlace: async (term) => {
+  searchFirstPlace: async (term, bias) => {
     // Comprobar el freno ANTES de buscar (sin gastar un uso más si ya está a cero): así se puede
     // distinguir "hoy ya no quedan búsquedas" de "no existe ese sitio" — antes se veían igual (bug
     // real: "Pepa no encuentra Madrid", que en realidad era el freno diario ya agotado).
     if (hasReachedGoogleMapsLimit('search')) return { ok: false, reason: 'daily-limit' }
-    const suggestions = await searchPlaces(term)
+    const suggestions = await searchPlaces(term, bias)
     if (suggestions.length === 0) return { ok: false, reason: 'not-found' }
     const resolved = await resolvePlace(suggestions[0].placeId)
     return resolved ? { ok: true, place: { label: resolved.label, latitude: resolved.latitude, longitude: resolved.longitude } } : { ok: false, reason: 'not-found' }
@@ -826,6 +826,12 @@ export function VoiceCapture() {
   // intención → acción antes de nada más elaborado). El permiso de
   // ubicación se pide aquí mismo, justo antes de usarlo — nunca al
   // abrir la app.
+  // Bug real (30/09/2026, "dice abriendo el mapa y luego no dice nada"): abría Google Maps en una
+  // pestaña nueva con window.open() varios `await` después del toque — el mismo problema de
+  // ventana bloqueada que ya se arregló hoy en "compartir ubicación" (ver LocationScreen.tsx).
+  // Ahora busca dentro de la propia app (igual que "busca X" en el botón general de Pepa, con el
+  // mismo freno diario y el mismo servidor), y lleva a Ubicación para verlo, sin ninguna ventana
+  // que un móvil pueda bloquear.
   async function handleSearchPlace(text: string) {
     const term = extractPlaceSearchTerm(text)
     if (!term) {
@@ -833,19 +839,20 @@ export function VoiceCapture() {
       await respond('No he entendido qué quieres buscar — dime, por ejemplo, "un restaurante cercano".')
       return
     }
-    let coords: { latitude: number; longitude: number } | null = null
-    if (isGeolocationSupported()) {
-      try {
-        coords = await getCurrentPosition()
-      } catch {
-        // Sin ubicación (permiso denegado, GPS apagado...) se busca
-        // igual, solo sin centrar el mapa cerca — mejor que no buscar
-        // nada.
-      }
-    }
-    window.open(buildNearbySearchUrl(term, coords), '_blank', 'noopener,noreferrer')
+    const bias = await locationDeps.currentPosition()
+    const result = await locationDeps.searchFirstPlace(term, bias)
     setStatus('done')
-    await respond(`Abriendo el mapa para buscar: ${term}.`)
+    if (!result.ok) {
+      await respond(
+        result.reason === 'daily-limit'
+          ? 'Ya has usado hoy el número de veces que este teléfono puede buscar sitios en el mapa (es un freno para no gastar de más, no un fallo). Se puede volver a usar mañana.'
+          : `No he encontrado ningún sitio llamado «${term}». Prueba a buscarlo a mano en Ubicación.`,
+      )
+      return
+    }
+    rememberFoundPlace(result.place)
+    navigate('/ubicacion')
+    await respond(`He encontrado ${result.place.label}. Si quieres guardarlo como lugar frecuente, di «guárdalo».`)
   }
 
   function closeTalkDialogs() {

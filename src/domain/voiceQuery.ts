@@ -502,14 +502,3 @@ export function extractPlaceSearchTerm(text: string): string {
   for (const re of PLACE_QUERY_SUFFIXES) t = t.replace(re, '')
   return t.trim()
 }
-
-// Enlace directo a Google Maps (sin API de pago, tal como pide la
-// skill para esta primera fase) — con coordenadas, centra el mapa
-// justo ahí para que la búsqueda salga de verdad "cerca"; sin ellas
-// (permiso de ubicación denegado, por ejemplo), busca solo por texto.
-export function buildNearbySearchUrl(term: string, coords: { latitude: number; longitude: number } | null): string {
-  if (coords) {
-    return `https://www.google.com/maps/search/${encodeURIComponent(term)}/@${coords.latitude},${coords.longitude},15z`
-  }
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(term)}`
-}

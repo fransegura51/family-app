@@ -54,10 +54,18 @@ Deno.serve(async (req) => {
     if (action === "autocomplete") {
       const input = typeof body.input === "string" ? body.input.trim() : ""
       if (!input) return json({ error: "missing input" }, 400)
+      // "bias" opcional (dónde está quien busca): acerca los resultados sin excluir los de lejos —
+      // petición real del botón "📍 Buscar sitio cercano" (antes abría Google Maps aparte, ahora
+      // busca aquí dentro, y sin esto perdía el "cercano" de su propio nombre).
+      const bias = body.bias
+      const requestBody: Record<string, unknown> = { input, languageCode: "es", regionCode: "ES" }
+      if (bias && typeof bias.latitude === "number" && typeof bias.longitude === "number") {
+        requestBody.locationBias = { circle: { center: { latitude: bias.latitude, longitude: bias.longitude }, radius: 50000 } }
+      }
       const res = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey },
-        body: JSON.stringify({ input, languageCode: "es", regionCode: "ES" }),
+        body: JSON.stringify(requestBody),
       })
       if (!res.ok) return json({ error: "google_error", detail: await res.text() }, 502)
       const data = await res.json()

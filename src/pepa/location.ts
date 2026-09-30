@@ -25,7 +25,9 @@ export interface LocationDeps {
   members(): Promise<{ id: string; name: string }[]>
   // null = sin permiso, GPS apagado, o el dispositivo no lo soporta — se avisa, no se rompe nada.
   currentPosition(): Promise<{ latitude: number; longitude: number } | null>
-  searchFirstPlace(term: string): Promise<SearchOutcome>
+  // bias = acerca los resultados a esas coordenadas sin excluir los de lejos (p. ej. "Madrid" sigue
+  // encontrándose aunque no estés cerca) — sobre todo para el botón "📍 Buscar sitio cercano".
+  searchFirstPlace(term: string, bias?: { latitude: number; longitude: number } | null): Promise<SearchOutcome>
   drivingEta(origin: { latitude: number; longitude: number }, destination: { latitude: number; longitude: number }): Promise<{ minutes: number; km: number } | null>
 }
 
@@ -78,14 +80,16 @@ interface Destination {
 async function resolveDestination(spoken: string, deps: LocationDeps): Promise<{ ok: true; destination: Destination } | { ok: false; reason: 'daily-limit' | 'not-found' }> {
   const saved = findPlace(spoken, await deps.places())
   if (saved) return { ok: true, destination: { latitude: saved.latitude, longitude: saved.longitude, label: saved.name } }
-  const result = await deps.searchFirstPlace(spoken)
+  const bias = await deps.currentPosition()
+  const result = await deps.searchFirstPlace(spoken, bias)
   if (!result.ok) return result
   rememberFoundPlace(result.place)
   return { ok: true, destination: { latitude: result.place.latitude, longitude: result.place.longitude, label: result.place.label } }
 }
 
 async function handleSearch(term: string, deps: LocationDeps): Promise<TalkOutcome> {
-  const result = await deps.searchFirstPlace(term)
+  const bias = await deps.currentPosition()
+  const result = await deps.searchFirstPlace(term, bias)
   if (!result.ok) {
     return {
       kind: 'answer',

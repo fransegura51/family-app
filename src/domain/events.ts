@@ -10,9 +10,11 @@ import type {
   EventGuestMember,
   EventModuleKey,
   EventPayment,
+  EventServiceId,
   EventTableSeat,
   EventTask,
   EventType,
+  EventVenueType,
   FamilyEvent,
   InvitationEventFieldKey,
   InvitationLayer,
@@ -133,6 +135,20 @@ export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }>
 }
 
 export const EVENT_TYPES: EventType[] = ['cumpleanos', 'comunion', 'bautizo', 'celebracion', 'boda', 'personalizado']
+
+// Etiquetas visibles del vocabulario de servicios (paso 2 del alta, Fase 1 del "inicio inteligente") —
+// ver EventServiceId en domain/types.ts para de dónde sale cada uno.
+export const EVENT_SERVICE_META: Record<EventServiceId, { label: string }> = {
+  food: { label: 'Comida' },
+  drinks: { label: 'Bebidas' },
+  cake: { label: 'Tarta' },
+  decoration: { label: 'Decoración' },
+  flowers: { label: 'Flores' },
+  music: { label: 'Música/DJ' },
+  photography: { label: 'Fotógrafo/vídeo' },
+  entertainment: { label: 'Animación' },
+  favors: { label: 'Recuerdos/detalles para invitados' },
+}
 
 // Subtipos de Celebración — la propia Skill los deja abiertos
 // ("Other"), así que el último valor siempre es editable a mano.
@@ -319,6 +335,75 @@ const ACTIVITY_PLAN_TEMPLATES: Record<EventType, { title: string; ageRange?: str
   personalizado: [],
 }
 
+// ---------------------------------------------------------------------
+// Fase 1 del "inicio inteligente" (2026-09-30) — contexto opcional del alta: dónde se celebra
+// (venueType, reutiliza la columna events.venue_type) y, solo si el lugar presta servicios, qué incluye
+// ya (includedServices). Sin contexto (undefined/null en todos los campos), generateEventPlan se
+// comporta EXACTAMENTE igual que antes de esta fase — compatibilidad total con eventos ya creados.
+//
+// Revisado tarea por tarea antes de implementar (contratar ≠ confirmar ≠ decidir): ninguna
+// TASK_TEMPLATES se suprime por contexto — "Confirmar la tarta", "Decidir la decoración" y las
+// "Confirmar menú..." de cada tipo son confirmaciones/decisiones que sobreviven a que el servicio venga
+// incluido (sabor, diseño, colores... siguen sin decidir). Por eso el contexto solo actúa sobre
+// Presupuesto (evita una línea de coste separada para algo que ya va dentro del paquete del lugar) —
+// nunca sobre Tareas, Menú, Decoración ni Actividades, que siguen proponiéndose igual: el usuario sigue
+// queriendo decidir/ver el menú, los colores de la decoración, o guardar el contacto del proveedor
+// (Proveedores no se toca en absoluto por este contexto).
+// ---------------------------------------------------------------------
+
+export interface EventPlanningContext {
+  venueType: EventVenueType | null
+  includedServices: EventServiceId[]
+}
+
+// Checklist del paso 2 ("¿Qué incluye ya el lugar/proveedor?") por tipo — únicamente los servicios que
+// de verdad suprimen algo (ver BUDGET_SERVICE_REQUIREMENTS): cada pregunta que se ofrece tiene un efecto
+// comprobable, nunca una opción puramente decorativa que no cambia nada. 'personalizado' no tiene
+// checklist fijo (solo 'General' en presupuesto) — se resuelve con texto libre en la UI, sin structurar.
+export const INCLUDABLE_SERVICES_BY_TYPE: Record<EventType, EventServiceId[]> = {
+  cumpleanos: ['cake', 'decoration', 'food', 'drinks', 'favors'],
+  comunion: ['photography', 'favors'],
+  bautizo: ['favors'],
+  celebracion: ['food', 'drinks', 'decoration'],
+  boda: ['photography', 'flowers', 'music'],
+  personalizado: [],
+}
+
+// category → servicios que TODOS deben estar marcados como incluidos para suprimir esa línea de
+// Presupuesto. Deliberadamente NO incluye 'Local o espacio'/'Restaurante'/'Ceremonia'/'Celebración' de
+// ningún tipo: son el coste del propio lugar/reserva, nunca "un servicio que el lugar incluye" — se
+// generan siempre, sin importar el contexto. 'Comida y bebida' exige food+drinks juntos porque es una
+// única línea que cubre ambos (marcar solo uno no basta para darla por resuelta).
+const BUDGET_SERVICE_REQUIREMENTS: Record<EventType, { category: string; requires: EventServiceId[] }[]> = {
+  cumpleanos: [
+    { category: 'Tarta', requires: ['cake'] },
+    { category: 'Decoración', requires: ['decoration'] },
+    { category: 'Comida y bebida', requires: ['food', 'drinks'] },
+    { category: 'Detalles para invitados', requires: ['favors'] },
+  ],
+  comunion: [
+    { category: 'Fotógrafo', requires: ['photography'] },
+    { category: 'Recuerdos', requires: ['favors'] },
+  ],
+  bautizo: [{ category: 'Recuerdos', requires: ['favors'] }],
+  celebracion: [
+    { category: 'Comida y bebida', requires: ['food', 'drinks'] },
+    { category: 'Decoración', requires: ['decoration'] },
+  ],
+  boda: [
+    { category: 'Fotógrafo/vídeo', requires: ['photography'] },
+    { category: 'Flores', requires: ['flowers'] },
+    { category: 'Música', requires: ['music'] },
+  ],
+  personalizado: [],
+}
+
+function isBudgetCategoryIncluded(type: EventType, category: string, includedServices: EventServiceId[]): boolean {
+  const rule = BUDGET_SERVICE_REQUIREMENTS[type].find((r) => r.category === category)
+  if (!rule) return false
+  return rule.requires.every((serviceId) => includedServices.includes(serviceId))
+}
+
 export interface EventPlanProposal {
   missingModules: EventModuleKey[]
   budgetItems: { category: string }[]
@@ -327,12 +412,17 @@ export interface EventPlanProposal {
   activities: { title: string; ageRange?: string }[]
 }
 
-export function generateEventPlan(event: Pick<FamilyEvent, 'type' | 'enabledModules'>): EventPlanProposal {
+export function generateEventPlan(event: Pick<FamilyEvent, 'type' | 'enabledModules'>, context?: EventPlanningContext | null): EventPlanProposal {
   const recommended = RECOMMENDED_MODULES[event.type]
   const missingModules = recommended.filter((m) => !event.enabledModules.includes(m))
+  const includedServices = context?.includedServices ?? []
   return {
     missingModules,
-    budgetItems: BUDGET_PLAN_TEMPLATES[event.type].map((category) => ({ category })),
+    budgetItems: BUDGET_PLAN_TEMPLATES[event.type]
+      .filter((category) => !isBudgetCategoryIncluded(event.type, category, includedServices))
+      .map((category) => ({ category })),
+    // Menú/Decoración/Actividades nunca se filtran por contexto — siguen siendo decisiones abiertas
+    // (sabor, colores, animación concreta) aunque el coste esté resuelto por el proveedor.
     menuItems: MENU_PLAN_TEMPLATES[event.type].map((name) => ({ name })),
     decorationItems: DECORATION_PLAN_TEMPLATES[event.type].map((name) => ({ name })),
     activities: ACTIVITY_PLAN_TEMPLATES[event.type],

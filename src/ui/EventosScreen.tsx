@@ -112,8 +112,10 @@ import {
   eventDateLine,
   eventLocationLines,
   eventLocationMapLines,
+  EVENT_SERVICE_META,
   type EventHealthLevel,
   generateEventPlan,
+  INCLUDABLE_SERVICES_BY_TYPE,
   INVITATION_TEMPLATES,
   isOverdueTask,
   isToday,
@@ -144,11 +146,13 @@ import type {
   EventModuleKey,
   EventPayment,
   EventProvider,
+  EventServiceId,
   EventSpecialDetail,
   EventTableSeat,
   EventTask,
   EventTemplate,
   EventType,
+  EventVenueType,
   FamilyEvent,
   FamilyMember,
   ShoppingItem,
@@ -270,11 +274,24 @@ function eventShortDateLabel(ev: FamilyEvent): string {
   return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${d}/${m}/${y}`
 }
 
-function ModulePickerChips({ modules, onChange }: { modules: EventModuleKey[]; onChange: (next: EventModuleKey[]) => void }) {
+// "Ponlo en marcha" del alta de Eventos (Fase 1 del "inicio inteligente", 2026-09-30) — sustituye el
+// antiguo toggle "Recomendado"/"Elegir yo": PEPA recomienda → el usuario revisa → el usuario decide.
+// Los 14 EVENT_MODULES están SIEMPRE visibles y elegibles; `recommended` solo cambia el estado inicial
+// (premarcado) y la etiqueta visual — nunca oculta ni bloquea nada.
+function ModulePickerChips({
+  modules,
+  onChange,
+  recommended,
+}: {
+  modules: EventModuleKey[]
+  onChange: (next: EventModuleKey[]) => void
+  recommended?: Set<EventModuleKey>
+}) {
   return (
     <div className="filter-row" style={{ flexWrap: 'wrap' }}>
       {EVENT_MODULES.map((m) => {
         const checked = modules.includes(m.key)
+        const isRecommended = recommended?.has(m.key)
         return (
           <button
             key={m.key}
@@ -283,6 +300,7 @@ function ModulePickerChips({ modules, onChange }: { modules: EventModuleKey[]; o
             onClick={() => onChange(checked ? modules.filter((k) => k !== m.key) : [...modules, m.key])}
           >
             {m.icon} {m.label}
+            {isRecommended && <span className="muted"> · Recomendado</span>}
           </button>
         )
       })}
@@ -428,7 +446,10 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [ageTurning, setAgeTurning] = useState('')
   const [dateStatus, setDateStatus] = useState<FamilyEvent['dateStatus']>('pendiente')
   const [eventDate, setEventDate] = useState('')
-  const [moduleMode, setModuleMode] = useState<'recomendado' | 'elegir'>('recomendado')
+  // Fase 1 del "inicio inteligente" (2026-09-30) — paso 1/2 del alta: dónde se celebra y, solo si hay
+  // servicios, qué incluye ya. '' = no respondido todavía (nunca se envía como '', ver handleSubmit).
+  const [venueType, setVenueType] = useState<EventVenueType | ''>('')
+  const [includedServices, setIncludedServices] = useState<EventServiceId[]>([])
   const [modules, setModules] = useState<EventModuleKey[]>(RECOMMENDED_MODULES.cumpleanos)
   const [theme, setTheme] = useState<string | null>(null)
   const [templates, setTemplates] = useState<EventTemplate[]>([])
@@ -442,9 +463,23 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
       .catch(() => {})
   }, [])
 
+  const recommendedModules = RECOMMENDED_MODULES[type]
+  const includableServices = INCLUDABLE_SERVICES_BY_TYPE[type]
+  // Solo cuando el paso 1 dice explícitamente "hay servicios incluidos" — 'casa_propia' y 'otro' no
+  // presuponen nada, nunca se muestra el checklist para esos dos casos (petición explícita: "otro" no
+  // implica que exista ningún proveedor).
+  const showIncludedServicesStep = venueType === 'restaurante_local' && includableServices.length > 0
+
   function handleTypeChange(next: EventType) {
     setType(next)
-    if (moduleMode === 'recomendado') setModules(RECOMMENDED_MODULES[next])
+    setModules(RECOMMENDED_MODULES[next])
+    // El checklist de servicios depende del tipo (INCLUDABLE_SERVICES_BY_TYPE) — una selección de un
+    // tipo anterior podría ya no significar nada en el nuevo tipo, así que se limpia.
+    setIncludedServices([])
+  }
+
+  function toggleIncludedService(id: EventServiceId) {
+    setIncludedServices((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
   }
 
   function handleUseTemplate(id: string) {
@@ -454,7 +489,6 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
     setType(t.type)
     if (t.subtype) setSubtype(t.subtype)
     setTheme(t.theme)
-    setModuleMode('elegir')
     setModules(t.enabledModules)
   }
 
@@ -482,6 +516,8 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
         details,
         enabledModules: modules,
         theme,
+        venueType: venueType || null,
+        includedServices: showIncludedServicesStep && includedServices.length > 0 ? includedServices : null,
       })
       onCreated(id)
     } catch (err) {
@@ -581,23 +617,47 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
             </label>
           )}
 
-          <strong style={{ marginTop: 8 }}>¿Qué quieres usar en este evento?</strong>
-          <div className="filter-row">
-            <button
-              type="button"
-              className={'chip' + (moduleMode === 'recomendado' ? ' chip-active' : '')}
-              onClick={() => {
-                setModuleMode('recomendado')
-                setModules(RECOMMENDED_MODULES[type])
-              }}
-            >
-              Recomendado
-            </button>
-            <button type="button" className={'chip' + (moduleMode === 'elegir' ? ' chip-active' : '')} onClick={() => setModuleMode('elegir')}>
-              Elegir yo
-            </button>
-          </div>
-          {moduleMode === 'elegir' && <ModulePickerChips modules={modules} onChange={setModules} />}
+          {/* Fase 1 del "inicio inteligente" (2026-09-30) — paso 1: dónde se celebra. En los tipos con
+              doble ubicación (boda/comunión/bautizo) se pregunta por la celebración/banquete, nunca por
+              la ceremonia — esa ya tiene su propio campo (CeremoniaSection, tras crear el evento) y una
+              iglesia/parroquia nunca "incluye" catering/música/decoración, así que no aporta nada aquí. */}
+          <label>
+            {DUAL_LOCATION_EVENT_TYPES.includes(type) ? '¿Dónde es la celebración (después de la ceremonia)?' : '¿Dónde se celebra?'}
+            <select value={venueType} onChange={(e) => setVenueType(e.target.value as EventVenueType | '')}>
+              <option value="">Prefiero no decirlo ahora</option>
+              <option value="restaurante_local">Restaurante/local con servicios incluidos</option>
+              <option value="casa_propia">Casa o espacio propio, lo organizamos nosotros</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
+          {showIncludedServicesStep && (
+            <label>
+              ¿Qué incluye ya el lugar/proveedor?
+              <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                {includableServices.map((s) => {
+                  const checked = includedServices.includes(s)
+                  return (
+                    <button key={s} type="button" className={'chip' + (checked ? ' chip-active' : '')} onClick={() => toggleIncludedService(s)}>
+                      {EVENT_SERVICE_META[s].label}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                Lo que marques aquí no hace falta volver a presupuestarlo aparte — pero seguirás pudiendo
+                decidir sabor, colores, contacto del proveedor y todo lo demás desde el propio evento.
+              </p>
+            </label>
+          )}
+
+          {/* Paso 3 — sustituye el antiguo "Recomendado"/"Elegir yo": los 14 módulos están siempre
+              visibles, los recomendados llegan premarcados, y el usuario decide libremente (marcar,
+              desmarcar, combinar) — nunca ocultos, nunca bloqueados. */}
+          <strong style={{ marginTop: 8 }}>¿Qué quieres organizar en PEPA?</strong>
+          <p className="muted" style={{ fontSize: 12, margin: '-4px 0 0' }}>
+            ✨ Pepa te recomienda {recommendedModules.length} de {EVENT_MODULES.length} módulos para este tipo de evento.
+          </p>
+          <ModulePickerChips modules={modules} onChange={setModules} recommended={new Set(recommendedModules)} />
           <p className="muted" style={{ fontSize: 12 }}>
             Podrás activar o desactivar módulos más adelante desde el propio evento.
           </p>
@@ -4427,7 +4487,10 @@ function PepaConclusions({ event }: { event: FamilyEvent }) {
 // ---------------------------------------------------------------------
 
 function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent; onClose: () => void; onApplied: () => void }) {
-  const plan = generateEventPlan(event)
+  // Fase 1 del "inicio inteligente" — el contexto respondido en el alta (o null en un evento creado
+  // antes de esta fase, que se comporta exactamente igual que sin contexto) se lee del propio evento
+  // guardado, no se vuelve a preguntar aquí.
+  const plan = generateEventPlan(event, { venueType: event.venueType, includedServices: event.includedServices ?? [] })
   const [modulesChecked, setModulesChecked] = useState(() => new Set(plan.missingModules))
   const [budgetChecked, setBudgetChecked] = useState(() => new Set(plan.budgetItems.map((_, i) => i)))
   const [menuChecked, setMenuChecked] = useState(() => new Set(plan.menuItems.map((_, i) => i)))

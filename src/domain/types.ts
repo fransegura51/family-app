@@ -578,6 +578,17 @@ export type EventType = 'cumpleanos' | 'comunion' | 'bautizo' | 'celebracion' | 
 export type EventDateStatus = 'pendiente' | 'provisional' | 'confirmada'
 export type EventStatus = 'planificacion' | 'archivado'
 
+// Fase 1 del "inicio inteligente" (2026-09-30) — respuesta a "¿Dónde se celebra?" en el alta. Solo
+// 'restaurante_local' activa la pregunta de servicios incluidos (paso 2); 'casa_propia'/'otro' no
+// presuponen ningún servicio. Reutiliza venue_type, columna viva en el esquema desde 0106 pero que
+// hasta ahora ningún formulario rellenaba.
+export type EventVenueType = 'restaurante_local' | 'casa_propia' | 'otro'
+// Vocabulario semántico pequeño y estable para "¿qué incluye ya el lugar/proveedor?" — deducido de los
+// conceptos reales de BUDGET_PLAN_TEMPLATES/MENU_PLAN_TEMPLATES/DECORATION_PLAN_TEMPLATES/
+// ACTIVITY_PLAN_TEMPLATES (ver generateEventPlan en src/domain/events.ts), nunca los textos visibles de
+// esas listas directamente — los textos pueden cambiar y un mismo servicio puede afectar a varios módulos.
+export type EventServiceId = 'food' | 'drinks' | 'cake' | 'decoration' | 'flowers' | 'music' | 'photography' | 'entertainment' | 'favors'
+
 // Claves de los módulos del motor común — no todos los tipos de evento
 // usan todos (ver referencia de cada tipo en la Skill). "invitaciones"
 // cubre a la vez Invitaciones y RSVP.
@@ -607,7 +618,10 @@ export interface FamilyEvent {
   eventDate: string | null
   eventTime: string | null
   venueLabel: string | null
-  venueType: string | null
+  venueType: EventVenueType | null
+  // Solo tiene sentido si venueType === 'restaurante_local' (paso 2 del alta) — null = pregunta no
+  // respondida, comportamiento idéntico a un evento creado antes de esta fase.
+  includedServices: EventServiceId[] | null
   // "Lugar" (venueLabel) es lo que se ve en la invitación — puede ser
   // algo informal como "en mi casa". Estas coordenadas son la
   // ubicación real elegida con el buscador (Nominatim), para el

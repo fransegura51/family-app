@@ -37,7 +37,7 @@ function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
     eventDate: null,
     eventTime: null,
     venueLabel: null,
-    venueType: null,
+    venueType: null, includedServices: null,
     venueLatitude: null,
     venueLongitude: null,
     ceremonyLocationLabel: null,

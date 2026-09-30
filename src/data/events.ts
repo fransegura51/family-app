@@ -41,6 +41,8 @@ import type {
   EventTask,
   EventTemplate,
   EventType,
+  EventServiceId,
+  EventVenueType,
   FamilyEvent,
   InvitationCanvas,
 } from '@/domain/types'
@@ -55,7 +57,7 @@ async function currentFamilyId(): Promise<string> {
 }
 
 const EVENT_SELECT =
-  'id, family_id, type, subtype, title, date_status, event_date, event_time, venue_label, venue_type, venue_latitude, venue_longitude, ceremony_location_label, ceremony_location_latitude, ceremony_location_longitude, ceremony_time, celebration_location_label, celebration_location_latitude, celebration_location_longitude, theme, details, enabled_modules, status, tag_id, calendar_event_id, rsvp_deadline, rsvp_deadline_calendar_event_id, open_rsvp_token, created_by, created_at, updated_at'
+  'id, family_id, type, subtype, title, date_status, event_date, event_time, venue_label, venue_type, included_services, venue_latitude, venue_longitude, ceremony_location_label, ceremony_location_latitude, ceremony_location_longitude, ceremony_time, celebration_location_label, celebration_location_latitude, celebration_location_longitude, theme, details, enabled_modules, status, tag_id, calendar_event_id, rsvp_deadline, rsvp_deadline_calendar_event_id, open_rsvp_token, created_by, created_at, updated_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapEvent(r: any): FamilyEvent {
@@ -70,6 +72,7 @@ function mapEvent(r: any): FamilyEvent {
     eventTime: r.event_time,
     venueLabel: r.venue_label,
     venueType: r.venue_type,
+    includedServices: r.included_services,
     venueLatitude: r.venue_latitude,
     venueLongitude: r.venue_longitude,
     ceremonyLocationLabel: r.ceremony_location_label,
@@ -188,6 +191,12 @@ export async function createEvent(input: {
   details?: Record<string, unknown>
   enabledModules: EventModuleKey[]
   theme?: string | null
+  // Fase 1 del "inicio inteligente" (2026-09-30) — respuestas del paso 1/2 del alta. Ambas opcionales:
+  // un alta que no responde queda con venueType/includedServices en null, exactamente igual que un
+  // evento creado antes de esta fase (generateAutoTasks no las usa; generateEventPlan las lee más
+  // tarde, bajo demanda, desde el propio evento guardado — ver "Organízamelo Pepa").
+  venueType?: EventVenueType | null
+  includedServices?: EventServiceId[] | null
 }): Promise<string> {
   const familyId = await currentFamilyId()
   const { data: userResult } = await supabase.auth.getUser()
@@ -208,6 +217,8 @@ export async function createEvent(input: {
       details: input.details ?? {},
       enabled_modules: input.enabledModules,
       theme: input.theme ?? null,
+      venue_type: input.venueType ?? null,
+      included_services: input.includedServices ?? null,
       tag_id: tagId,
       created_by: userResult.user.id,
     })
@@ -243,7 +254,8 @@ export async function updateEvent(
     eventDate: string | null
     eventTime: string | null
     venueLabel: string | null
-    venueType: string | null
+    venueType: EventVenueType | null
+    includedServices: EventServiceId[] | null
     venueLatitude: number | null
     venueLongitude: number | null
     theme: string | null
@@ -266,6 +278,7 @@ export async function updateEvent(
   if (patch.eventTime !== undefined) update.event_time = patch.eventTime
   if (patch.venueLabel !== undefined) update.venue_label = patch.venueLabel
   if (patch.venueType !== undefined) update.venue_type = patch.venueType
+  if (patch.includedServices !== undefined) update.included_services = patch.includedServices
   if (patch.venueLatitude !== undefined) update.venue_latitude = patch.venueLatitude
   if (patch.venueLongitude !== undefined) update.venue_longitude = patch.venueLongitude
   if (patch.theme !== undefined) update.theme = patch.theme
@@ -367,6 +380,8 @@ export async function duplicateEvent(id: string): Promise<string> {
     details: original.details,
     enabledModules: original.enabledModules,
     theme: original.theme,
+    venueType: original.venueType,
+    includedServices: original.includedServices,
   })
 }
 

@@ -12,7 +12,7 @@ import type { FamilyEvent, InvitationLayer } from '@/domain/types'
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
   return {
     id: 'e1', familyId: 'f1', type: 'boda', subtype: null, title: 'Boda de Ana y Luis', dateStatus: 'confirmada',
-    eventDate: '2026-10-02', eventTime: null, venueLabel: null, venueType: null, venueLatitude: null, venueLongitude: null,
+    eventDate: '2026-10-02', eventTime: null, venueLabel: null, venueType: null, includedServices: null, venueLatitude: null, venueLongitude: null,
     ceremonyLocationLabel: 'Iglesia de San Andrés, Almoradí', ceremonyLocationLatitude: null, ceremonyLocationLongitude: null,
     ceremonyTime: '10:00:00',
     celebrationLocationLabel: 'Restaurante Trastevere, Almoradí', celebrationLocationLatitude: null, celebrationLocationLongitude: null,

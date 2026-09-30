@@ -1,0 +1,13 @@
+-- Eventos — Fase 1 del "inicio inteligente" (2026-09-30): en el alta, PEPA pregunta dónde se celebra y,
+-- solo si el usuario elige "restaurante/local con servicios", qué incluye ya el proveedor. La primera
+-- respuesta reutiliza la columna venue_type ya existente (viva en el esquema desde 0106, nunca rellenada
+-- hasta ahora por ningún formulario). La segunda respuesta necesita persistencia nueva — no se reutiliza
+-- events.details a propósito: es información permanente y útil después de generar el plan (qué venía
+-- incluido sigue siendo un hecho real del evento meses después), no un dato puramente generativo de
+-- usar-y-tirar, así que merece una columna tipada propia en vez de vivir dentro de un jsonb genérico.
+--
+-- Vocabulario de valores (documentado en código, no como CHECK todavía — ver src/domain/events.ts
+-- EventServiceId): 'food', 'drinks', 'cake', 'decoration', 'flowers', 'music', 'photography',
+-- 'entertainment', 'favors'. Cambio aditivo y seguro: nullable, sin default, ningún evento existente
+-- cambia de comportamiento (null se trata exactamente igual que "sin contexto").
+alter table events add column included_services text[];

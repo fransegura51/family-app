@@ -37,7 +37,7 @@ function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
     eventDate: null,
     eventTime: null,
     venueLabel: null,
-    venueType: null,
+    venueType: null, includedServices: null,
     venueLatitude: null,
     venueLongitude: null,
     ceremonyLocationLabel: null,
@@ -312,6 +312,88 @@ describe('generateEventPlan', () => {
     expect(plan.decorationItems).toHaveLength(0)
     expect(plan.activities).toHaveLength(0)
     expect(plan.budgetItems.length).toBeGreaterThan(0)
+  })
+
+  // Fase 1 del "inicio inteligente" (2026-09-30) — sin contexto (undefined, o context===null, o
+  // includedServices vacío) el comportamiento debe ser IDÉNTICO al de antes de esta fase: compatibilidad
+  // total con eventos creados antes de que existiera EventPlanningContext.
+  describe('EventPlanningContext — compatibilidad total sin contexto', () => {
+    it('sin segundo argumento se comporta exactamente igual que antes', () => {
+      const withoutArg = generateEventPlan({ type: 'cumpleanos', enabledModules: [] })
+      const withNullContext = generateEventPlan({ type: 'cumpleanos', enabledModules: [] }, null)
+      const withEmptyContext = generateEventPlan({ type: 'cumpleanos', enabledModules: [] }, { venueType: null, includedServices: [] })
+      expect(withNullContext).toEqual(withoutArg)
+      expect(withEmptyContext).toEqual(withoutArg)
+    })
+
+    it('venueType casa_propia u otro, sin includedServices, no cambia nada', () => {
+      const base = generateEventPlan({ type: 'boda', enabledModules: [] })
+      const casaPropia = generateEventPlan({ type: 'boda', enabledModules: [] }, { venueType: 'casa_propia', includedServices: [] })
+      expect(casaPropia).toEqual(base)
+    })
+  })
+
+  // "Incluido ≠ decidido ≠ completado" — revisado tarea por tarea antes de implementar: el contexto
+  // SOLO suprime una línea de Presupuesto cuando de verdad representa un coste separado del propio
+  // lugar; nunca toca Menú/Decoración/Actividades (siguen siendo decisiones abiertas) ni Tareas
+  // (generateAutoTasks no recibe contexto — ver test dedicado más abajo).
+  describe('EventPlanningContext — solo suprime Presupuesto, nunca Menú/Decoración/Actividades', () => {
+    it('cumpleaños: tarta+decoración+comida y bebida incluidas quita esas 3 líneas de presupuesto, pero no toca menú/decoración/actividades', () => {
+      const withoutContext = generateEventPlan({ type: 'cumpleanos', enabledModules: [] })
+      const plan = generateEventPlan(
+        { type: 'cumpleanos', enabledModules: [] },
+        { venueType: 'restaurante_local', includedServices: ['cake', 'decoration', 'food', 'drinks'] },
+      )
+      const categories = plan.budgetItems.map((b) => b.category)
+      expect(categories).not.toContain('Tarta')
+      expect(categories).not.toContain('Decoración')
+      expect(categories).not.toContain('Comida y bebida')
+      // 'Local o espacio' es el coste del propio lugar — nunca se suprime.
+      expect(categories).toContain('Local o espacio')
+      expect(categories).toContain('Detalles para invitados')
+      // Menú/Decoración/Actividades: exactamente igual que sin contexto, nada se filtra nunca.
+      expect(plan.menuItems).toEqual(withoutContext.menuItems)
+      expect(plan.decorationItems).toEqual(withoutContext.decorationItems)
+      expect(plan.activities).toEqual(withoutContext.activities)
+    })
+
+    it('cumpleaños: marcar solo "food" sin "drinks" NO quita "Comida y bebida" (exige ambos)', () => {
+      const plan = generateEventPlan({ type: 'cumpleanos', enabledModules: [] }, { venueType: 'restaurante_local', includedServices: ['food'] })
+      expect(plan.budgetItems.map((b) => b.category)).toContain('Comida y bebida')
+    })
+
+    it('comunión: fotógrafo incluido no toca "Restaurante" (coste del propio lugar, incluye la comida) ni el menú', () => {
+      const withoutContext = generateEventPlan({ type: 'comunion', enabledModules: [] })
+      const plan = generateEventPlan({ type: 'comunion', enabledModules: [] }, { venueType: 'restaurante_local', includedServices: ['photography'] })
+      const categories = plan.budgetItems.map((b) => b.category)
+      expect(categories).not.toContain('Fotógrafo')
+      expect(categories).toContain('Restaurante')
+      expect(categories).toContain('Recuerdos')
+      expect(plan.menuItems).toEqual(withoutContext.menuItems)
+    })
+
+    it('comunión: marcar "food"/"drinks" no afecta a nada (esos serviceId no aparecen en ninguna categoría de BUDGET_PLAN_TEMPLATES.comunion, la comida ya va dentro de "Restaurante")', () => {
+      const withoutContext = generateEventPlan({ type: 'comunion', enabledModules: [] })
+      const plan = generateEventPlan({ type: 'comunion', enabledModules: [] }, { venueType: 'restaurante_local', includedServices: ['food', 'drinks'] })
+      expect(plan).toEqual(withoutContext)
+    })
+
+    it('boda: flores+música incluidas quita esas líneas, pero nunca "Ceremonia"/"Celebración" (coste del lugar) ni decoración/actividades (ya vacías por diseño)', () => {
+      const plan = generateEventPlan({ type: 'boda', enabledModules: [] }, { venueType: 'restaurante_local', includedServices: ['flowers', 'music'] })
+      const categories = plan.budgetItems.map((b) => b.category)
+      expect(categories).not.toContain('Flores')
+      expect(categories).not.toContain('Música')
+      expect(categories).toContain('Ceremonia')
+      expect(categories).toContain('Celebración')
+      expect(categories).toContain('Fotógrafo/vídeo')
+      expect(plan.decorationItems).toHaveLength(0)
+      expect(plan.activities).toHaveLength(0)
+    })
+
+    it('personalizado: ningún contexto quita "General" (demasiado genérico para filtrar)', () => {
+      const plan = generateEventPlan({ type: 'personalizado', enabledModules: [] }, { venueType: 'restaurante_local', includedServices: ['food', 'drinks', 'cake'] })
+      expect(plan.budgetItems.map((b) => b.category)).toEqual(['General'])
+    })
   })
 })
 

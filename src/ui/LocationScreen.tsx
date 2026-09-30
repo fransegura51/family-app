@@ -999,6 +999,19 @@ function PlaceRow({
   const [eta, setEta] = useState<DrivingEta | null>(null)
   const [etaLoading, setEtaLoading] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [shareError, setShareError] = useState<string | null>(null)
+  // Bug real reportado ("no se me comparte, no pasa nada"): sin ningún aviso cuando fallaba, y el
+  // plan B (window.open de una URL "blob:" varios `await` después del toque) llega tarde para
+  // contar como gesto del usuario — muchos móviles lo bloquean en silencio, sin avisar de nada. Un
+  // enlace real en la pantalla, que ella misma toca, no tiene ese problema.
+  const [fallbackImageUrl, setFallbackImageUrl] = useState<string | null>(null)
+  // Libera la "blob:" anterior tanto al pedir una nueva (mismo botón, dos veces) como al salir de
+  // esta tarjeta con una todavía puesta — si no, el navegador la mantiene en memoria para nada.
+  useEffect(() => {
+    return () => {
+      if (fallbackImageUrl) URL.revokeObjectURL(fallbackImageUrl)
+    }
+  }, [fallbackImageUrl])
 
   async function handleEta(memberId: string, loc: MemberLocation) {
     setEtaFor(memberId)
@@ -1013,15 +1026,21 @@ function PlaceRow({
 
   // Petición real: "poder compartir dónde es un sitio" — se comparte la
   // imagen en sí (no un enlace a Google, que exigiría la clave de la
-  // app). Sin soporte de compartir archivos (típico en ordenador) se abre
-  // en una pestaña nueva para guardarla a mano.
+  // app). Sin soporte de compartir archivos (típico en ordenador), o si
+  // el propio compartir falla, se enseña un enlace de verdad para verla
+  // o guardarla a mano.
   async function handleShareMap() {
     setSharing(true)
+    setShareError(null)
+    setFallbackImageUrl(null)
     try {
       const file = await fetchPlaceMapImage(place.latitude, place.longitude, place.name)
-      if (!file) return
+      if (!file) {
+        setShareError('No se ha podido preparar la imagen del mapa ahora mismo. Prueba otra vez en un momento.')
+        return
+      }
       const shared = await shareFiles([file], { title: place.name })
-      if (!shared) window.open(URL.createObjectURL(file), '_blank')
+      if (!shared) setFallbackImageUrl(URL.createObjectURL(file))
     } finally {
       setSharing(false)
     }
@@ -1061,6 +1080,16 @@ function PlaceRow({
         <button type="button" className="link-button" onClick={handleShareMap} disabled={sharing} style={{ marginTop: 6 }}>
           {sharing ? 'Preparando…' : '📤 Compartir mapa de este lugar'}
         </button>
+        {shareError && <p className="error">{shareError}</p>}
+        {fallbackImageUrl && (
+          <p className="muted">
+            Tu teléfono no ha abierto el menú de compartir —{' '}
+            <a href={fallbackImageUrl} download={`${place.name}.png`} target="_blank" rel="noopener noreferrer">
+              toca aquí para ver o guardar la imagen
+            </a>
+            .
+          </p>
+        )}
       </div>
       <ConfirmButton label="Eliminar" onConfirm={() => deletePlace(place.id).then(onDeleted)} />
     </div>

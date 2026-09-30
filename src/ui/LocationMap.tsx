@@ -9,61 +9,82 @@ function markerIconHtml(member: FamilyMember, photoUrl: string | undefined): str
     : `<span style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:3px solid ${member.color};background:${member.color};color:white;font-weight:600">${member.name.charAt(0)}</span>`
 }
 
+type PhotoMarkerOverlay = google.maps.OverlayView & {
+  setClickHandler: (handler: () => void) => void
+  setHtml: (html: string) => void
+  setPosition: (position: google.maps.LatLngLiteral) => void
+}
+
 // Marcador con foto/inicial redonda (Google Maps no trae ese estilo de
 // serie) — un OverlayView que sigue al mapa, igual que hacía el divIcon
 // de Leaflet antes.
-class PhotoMarkerOverlay extends google.maps.OverlayView {
-  private div: HTMLDivElement | null = null
-  private position: google.maps.LatLng
-  private onClick: (() => void) | undefined
+//
+// OJO: la clase se construye AQUÍ, no en el módulo — «extends
+// google.maps.OverlayView» se evaluaría en cuanto se importa el
+// archivo, y el script de Google (que crea `google`) se carga aparte,
+// de forma asíncrona. Definirla a este nivel rompía la pantalla entera
+// con «google is not defined» antes incluso de intentar pintar el
+// mapa (bug real, visto en producción). Se construye una única vez, la
+// primera vez que hace falta, y se reutiliza siempre después.
+let PhotoMarkerOverlayClass: (new (position: google.maps.LatLngLiteral, html: string) => PhotoMarkerOverlay) | null = null
 
-  constructor(
-    position: google.maps.LatLngLiteral,
-    private html: string,
-  ) {
-    super()
-    this.position = new google.maps.LatLng(position)
-  }
+function getPhotoMarkerOverlayClass(g: typeof google) {
+  if (!PhotoMarkerOverlayClass) {
+    PhotoMarkerOverlayClass = class extends g.maps.OverlayView {
+      private div: HTMLDivElement | null = null
+      private position: google.maps.LatLng
+      private onClick: (() => void) | undefined
 
-  setClickHandler(handler: () => void) {
-    this.onClick = handler
-    if (this.div) this.div.onclick = handler
-  }
+      constructor(
+        position: google.maps.LatLngLiteral,
+        private html: string,
+      ) {
+        super()
+        this.position = new g.maps.LatLng(position)
+      }
 
-  setHtml(html: string) {
-    this.html = html
-    if (this.div) this.div.innerHTML = html
-  }
+      setClickHandler(handler: () => void) {
+        this.onClick = handler
+        if (this.div) this.div.onclick = handler
+      }
 
-  setPosition(position: google.maps.LatLngLiteral) {
-    this.position = new google.maps.LatLng(position)
-    this.draw()
-  }
+      setHtml(html: string) {
+        this.html = html
+        if (this.div) this.div.innerHTML = html
+      }
 
-  override onAdd() {
-    const div = document.createElement('div')
-    div.style.position = 'absolute'
-    div.style.cursor = 'pointer'
-    div.innerHTML = this.html
-    if (this.onClick) div.onclick = this.onClick
-    this.div = div
-    this.getPanes()?.overlayMouseTarget.appendChild(div)
-  }
+      setPosition(position: google.maps.LatLngLiteral) {
+        this.position = new g.maps.LatLng(position)
+        this.draw()
+      }
 
-  override draw() {
-    if (!this.div) return
-    const projection = this.getProjection()
-    if (!projection) return
-    const point = projection.fromLatLngToDivPixel(this.position)
-    if (!point) return
-    this.div.style.left = `${point.x - 18}px`
-    this.div.style.top = `${point.y - 18}px`
-  }
+      override onAdd() {
+        const div = document.createElement('div')
+        div.style.position = 'absolute'
+        div.style.cursor = 'pointer'
+        div.innerHTML = this.html
+        if (this.onClick) div.onclick = this.onClick
+        this.div = div
+        this.getPanes()?.overlayMouseTarget.appendChild(div)
+      }
 
-  override onRemove() {
-    this.div?.remove()
-    this.div = null
+      override draw() {
+        if (!this.div) return
+        const projection = this.getProjection()
+        if (!projection) return
+        const point = projection.fromLatLngToDivPixel(this.position)
+        if (!point) return
+        this.div.style.left = `${point.x - 18}px`
+        this.div.style.top = `${point.y - 18}px`
+      }
+
+      override onRemove() {
+        this.div?.remove()
+        this.div = null
+      }
+    }
   }
+  return PhotoMarkerOverlayClass
 }
 
 // Mapa interactivo (Google Maps, con el tráfico en vivo activado) con
@@ -85,6 +106,7 @@ export function LocationMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
+  const googleRef = useRef<typeof google | null>(null)
   const markersRef = useRef<Map<string, PhotoMarkerOverlay>>(new Map())
   const polylinesRef = useRef<Map<string, google.maps.Polyline>>(new Map())
   // Recuerda a quién se le ajustó ya el encuadre — así solo se vuelve a
@@ -113,6 +135,7 @@ export function LocationMap({
     loadGoogleMaps()
       .then((g) => {
         if (cancelled || !containerRef.current || mapRef.current) return
+        googleRef.current = g
         const map = new g.maps.Map(containerRef.current, {
           center: { lat: 40.4168, lng: -3.7038 },
           zoom: 12,
@@ -147,10 +170,12 @@ export function LocationMap({
     photoUrls: Record<string, string>
   }) {
     const map = mapRef.current
-    if (!map) return
+    const g = googleRef.current
+    if (!map || !g) return
+    const Overlay = getPhotoMarkerOverlayClass(g)
 
     const seenIds = new Set<string>()
-    const bounds = new google.maps.LatLngBounds()
+    const bounds = new g.maps.LatLngBounds()
     let hasBounds = false
 
     for (const loc of locations) {
@@ -168,7 +193,7 @@ export function LocationMap({
         existingMarker.setPosition(position)
         existingMarker.setHtml(html)
       } else {
-        const marker = new PhotoMarkerOverlay(position, html)
+        const marker = new Overlay(position, html)
         marker.setClickHandler(() => onSelectMemberRef.current?.(member.id))
         marker.setMap(map)
         markersRef.current.set(member.id, marker)
@@ -183,7 +208,7 @@ export function LocationMap({
         if (existingLine) {
           existingLine.setPath(path)
         } else {
-          const line = new google.maps.Polyline({ path, strokeColor: member.color, strokeWeight: 3, strokeOpacity: 0.7, map })
+          const line = new g.maps.Polyline({ path, strokeColor: member.color, strokeWeight: 3, strokeOpacity: 0.7, map })
           polylinesRef.current.set(member.id, line)
         }
         for (const p of path) bounds.extend(p)
@@ -206,12 +231,12 @@ export function LocationMap({
     const idsKey = [...seenIds].sort().join(',')
     if (hasBounds && idsKey !== fittedIdsRef.current) {
       map.fitBounds(bounds, 30)
-      const maxZoomListener = google.maps.event.addListenerOnce(map, 'bounds_changed', () => {
+      const maxZoomListener = g.maps.event.addListenerOnce(map, 'bounds_changed', () => {
         if ((map.getZoom() ?? 0) > 16) map.setZoom(16)
       })
       fittedIdsRef.current = idsKey
       // Evita que el listener se quede colgado si el mapa se destruye justo después.
-      setTimeout(() => google.maps.event.removeListener(maxZoomListener), 2000)
+      setTimeout(() => g.maps.event.removeListener(maxZoomListener), 2000)
     }
   }
 

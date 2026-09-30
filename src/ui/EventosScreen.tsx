@@ -277,7 +277,11 @@ function eventShortDateLabel(ev: FamilyEvent): string {
 // "Ponlo en marcha" del alta de Eventos (Fase 1 del "inicio inteligente", 2026-09-30) — sustituye el
 // antiguo toggle "Recomendado"/"Elegir yo": PEPA recomienda → el usuario revisa → el usuario decide.
 // Los 14 EVENT_MODULES están SIEMPRE visibles y elegibles; `recommended` solo cambia el estado inicial
-// (premarcado) y la etiqueta visual — nunca oculta ni bloquea nada.
+// (premarcado) y la marca visual (✨) — nunca oculta ni bloquea nada. Retoque UX (2026-09-30, tras
+// validar en producción): el texto "· Recomendado" se sustituye por un simple "✨" — mismo contraste que
+// el resto del chip, no depende de "muted" sobre fondo azul seleccionado. La ✨ es puramente informativa
+// (viene de PEPA) e independiente de `checked` (si el usuario decide) — desmarcar un recomendado no le
+// quita la ✨, y marcar uno no recomendado nunca se la pone.
 function ModulePickerChips({
   modules,
   onChange,
@@ -300,7 +304,7 @@ function ModulePickerChips({
             onClick={() => onChange(checked ? modules.filter((k) => k !== m.key) : [...modules, m.key])}
           >
             {m.icon} {m.label}
-            {isRecommended && <span className="muted"> · Recomendado</span>}
+            {isRecommended && ' ✨'}
           </button>
         )
       })}
@@ -655,7 +659,7 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
               desmarcar, combinar) — nunca ocultos, nunca bloqueados. */}
           <strong style={{ marginTop: 8 }}>¿Qué quieres organizar en PEPA?</strong>
           <p className="muted" style={{ fontSize: 12, margin: '-4px 0 0' }}>
-            ✨ Pepa te recomienda {recommendedModules.length} de {EVENT_MODULES.length} módulos para este tipo de evento.
+            ✨ Pepa te recomienda {recommendedModules.length} de {EVENT_MODULES.length} módulos para este evento.
           </p>
           <ModulePickerChips modules={modules} onChange={setModules} recommended={new Set(recommendedModules)} />
           <p className="muted" style={{ fontSize: 12 }}>
@@ -4486,11 +4490,24 @@ function PepaConclusions({ event }: { event: FamilyEvent }) {
 // puede destildar cualquier línea suelta antes de confirmar.
 // ---------------------------------------------------------------------
 
+// Retoque UX (2026-09-30, tras validar en producción) — junta los nombres visibles de EVENT_SERVICE_META
+// en una frase natural ("comida, bebidas y decoración"), reutilizando el MISMO vocabulario que ya usa el
+// checklist del paso 2 del alta — nunca uno nuevo. Puramente de presentación: no decide nada.
+function joinSpanishList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? ''
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`
+}
+
 function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent; onClose: () => void; onApplied: () => void }) {
   // Fase 1 del "inicio inteligente" — el contexto respondido en el alta (o null en un evento creado
   // antes de esta fase, que se comporta exactamente igual que sin contexto) se lee del propio evento
   // guardado, no se vuelve a preguntar aquí.
-  const plan = generateEventPlan(event, { venueType: event.venueType, includedServices: event.includedServices ?? [] })
+  const includedServices = event.includedServices ?? []
+  const plan = generateEventPlan(event, { venueType: event.venueType, includedServices })
+  // Retoque UX — informativo únicamente (no cambia `plan`): si el evento no respondió el paso 2, o
+  // respondió que no hay servicios incluidos, includedServices queda vacío y esta frase no se muestra.
+  const includedServicesSentence =
+    includedServices.length > 0 ? `Pepa ha tenido en cuenta que el lugar incluye ${joinSpanishList(includedServices.map((s) => EVENT_SERVICE_META[s].label.toLowerCase()))}.` : null
   const [modulesChecked, setModulesChecked] = useState(() => new Set(plan.missingModules))
   const [budgetChecked, setBudgetChecked] = useState(() => new Set(plan.budgetItems.map((_, i) => i)))
   const [menuChecked, setMenuChecked] = useState(() => new Set(plan.menuItems.map((_, i) => i)))
@@ -4547,6 +4564,11 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
           Propuesta típica de {EVENT_TYPE_META[event.type].label.toLowerCase()} — destilda lo que no te haga falta antes de aplicar. Las tareas no están
           aquí porque ya se crearon solas al hacer el evento.
         </p>
+        {includedServicesSentence && (
+          <p className="muted" style={{ fontSize: 13 }}>
+            ✨ {includedServicesSentence}
+          </p>
+        )}
 
         {nothingToPropose && plan.missingModules.length === 0 && <p className="muted">Este tipo de evento no tiene ninguna propuesta automática de partida.</p>}
 
@@ -4557,7 +4579,11 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
               {plan.missingModules.map((m) => {
                 const meta = EVENT_MODULES.find((em) => em.key === m)
                 return (
-                  <label key={m} className="inline-fields" style={{ alignItems: 'center' }}>
+                  // Retoque UX (2026-09-30) — flexDirection:'row' explícito: el <label> base de la app es
+                  // flex-direction:column (para "Nombre\n<input>"), y .inline-fields solo pone display:flex
+                  // sin fijar la dirección, así que sin esto el checkbox y el texto quedaban uno debajo del
+                  // otro en vez de en la misma fila.
+                  <label key={m} className="inline-fields" style={{ alignItems: 'center', flexDirection: 'row' }}>
                     <input type="checkbox" checked={modulesChecked.has(m)} onChange={() => toggle(modulesChecked, setModulesChecked, m)} />
                     <span>
                       {meta?.icon} {meta?.label}
@@ -4574,12 +4600,18 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
             <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>💰 Presupuesto</strong>
             <div className="event-list" style={{ marginTop: 4 }}>
               {plan.budgetItems.map((b, i) => (
-                <label key={b.category} className="inline-fields" style={{ alignItems: 'center' }}>
+                <label key={b.category} className="inline-fields" style={{ alignItems: 'center', flexDirection: 'row' }}>
                   <input type="checkbox" checked={budgetChecked.has(i)} onChange={() => toggle(budgetChecked, setBudgetChecked, i)} />
-                  <span style={{ flex: 1 }}>{b.category}</span>
-                  {/* Bloque 11 (cola nocturna) — PEPA propone el CONCEPTO, nunca un importe inventado; se
-                      pone la cifra real después, desde Presupuesto. */}
-                  <span className="muted">Sin importe todavía</span>
+                  {/* Retoque UX (2026-09-30) — nombre + subtexto en una sola columna compacta, en vez de
+                      dos <span> separados a lo ancho de la fila (obligaba a más alto en móvil). */}
+                  <span style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    <span>{b.category}</span>
+                    {/* Bloque 11 (cola nocturna) — PEPA propone el CONCEPTO, nunca un importe inventado;
+                        se pone la cifra real después, desde Presupuesto. */}
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      Sin importe todavía
+                    </span>
+                  </span>
                 </label>
               ))}
             </div>
@@ -4591,7 +4623,7 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
             <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>🍽️ Menú</strong>
             <div className="event-list" style={{ marginTop: 4 }}>
               {plan.menuItems.map((m, i) => (
-                <label key={m.name} className="inline-fields" style={{ alignItems: 'center' }}>
+                <label key={m.name} className="inline-fields" style={{ alignItems: 'center', flexDirection: 'row' }}>
                   <input type="checkbox" checked={menuChecked.has(i)} onChange={() => toggle(menuChecked, setMenuChecked, i)} />
                   <span>{m.name}</span>
                 </label>
@@ -4605,7 +4637,7 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
             <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>🎈 Decoración</strong>
             <div className="event-list" style={{ marginTop: 4 }}>
               {plan.decorationItems.map((d, i) => (
-                <label key={d.name} className="inline-fields" style={{ alignItems: 'center' }}>
+                <label key={d.name} className="inline-fields" style={{ alignItems: 'center', flexDirection: 'row' }}>
                   <input type="checkbox" checked={decorationChecked.has(i)} onChange={() => toggle(decorationChecked, setDecorationChecked, i)} />
                   <span>{d.name}</span>
                 </label>
@@ -4619,7 +4651,7 @@ function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent
             <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>🎲 Actividades</strong>
             <div className="event-list" style={{ marginTop: 4 }}>
               {plan.activities.map((a, i) => (
-                <label key={a.title} className="inline-fields" style={{ alignItems: 'center' }}>
+                <label key={a.title} className="inline-fields" style={{ alignItems: 'center', flexDirection: 'row' }}>
                   <input type="checkbox" checked={activitiesChecked.has(i)} onChange={() => toggle(activitiesChecked, setActivitiesChecked, i)} />
                   <span>{a.title}</span>
                 </label>

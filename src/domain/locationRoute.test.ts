@@ -55,6 +55,13 @@ describe('routeLocation: tiempo en coche', () => {
     expect(routeLocation('cuánto tiempo se tarda a casa de la abuela')).toEqual({ type: 'eta', place: 'casa de la abuela' })
     expect(routeLocation('cuánto se tarda en coche al aeropuerto')).toEqual({ type: 'eta', place: 'aeropuerto' })
   })
+
+  it('peticiones reales: "cuánto tiempo tengo hasta X", "qué tiempo tengo hasta X", "qué distancia tengo hasta X"', () => {
+    expect(routeLocation('cuánto tiempo tengo hasta trabajo')).toEqual({ type: 'eta', place: 'trabajo' })
+    expect(routeLocation('qué tiempo tengo hasta Madrid')).toEqual({ type: 'eta', place: 'madrid' })
+    expect(routeLocation('qué distancia tengo hasta Madrid')).toEqual({ type: 'eta', place: 'madrid' })
+    expect(routeLocation('qué distancia hay hasta el cole')).toEqual({ type: 'eta', place: 'el cole' })
+  })
 })
 
 describe('routeLocation: quién está más cerca', () => {

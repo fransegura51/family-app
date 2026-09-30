@@ -54,7 +54,28 @@ function findPlace(spoken: string, places: LocationPlace[]): LocationPlace | nul
   return best?.place ?? null
 }
 
-const NO_PLACE = (spoken: string) => `No tengo ningún lugar guardado con ese nombre ni esa categoría: «${spoken}». Revísalo en Ubicación.`
+const NOT_FOUND = (spoken: string) => `No he encontrado «${spoken}», ni entre tus lugares guardados ni buscándolo en el mapa.`
+
+// Petición real: "quiero preguntarle... cuánto tiempo tengo hasta trabajo... o qué tiempo tengo
+// hasta Madrid... incluyendo Madrid y todos los lugares que están en Google Maps" — antes "cuánto
+// se tarda"/"quién está más cerca" solo miraban los lugares ya guardados; ahora, si no hay ninguno
+// guardado con ese nombre o categoría, lo busca de verdad en Google Maps (la misma búsqueda que
+// "busca X"), igual que si estuviera guardado. Si viene de esa búsqueda, se recuerda (como al
+// buscar) para poder decir "guárdalo" justo después sin tener que buscarlo otra vez.
+interface Destination {
+  latitude: number
+  longitude: number
+  label: string
+}
+
+async function resolveDestination(spoken: string, deps: LocationDeps): Promise<Destination | null> {
+  const saved = findPlace(spoken, await deps.places())
+  if (saved) return { latitude: saved.latitude, longitude: saved.longitude, label: saved.name }
+  const found = await deps.searchFirstPlace(spoken)
+  if (!found) return null
+  rememberFoundPlace(found)
+  return { latitude: found.latitude, longitude: found.longitude, label: found.label }
+}
 
 async function handleSearch(term: string, deps: LocationDeps): Promise<TalkOutcome> {
   const found = await deps.searchFirstPlace(term)
@@ -86,30 +107,28 @@ async function handleSave(name: string | null): Promise<TalkOutcome> {
 }
 
 async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
-  const places = await deps.places()
-  const place = findPlace(spokenPlace, places)
-  if (!place) return { kind: 'answer', text: NO_PLACE(spokenPlace) }
+  const destination = await resolveDestination(spokenPlace, deps)
+  if (!destination) return { kind: 'answer', text: NOT_FOUND(spokenPlace) }
   const origin = await deps.currentPosition()
   if (!origin) return { kind: 'answer', text: 'No he podido saber dónde estás ahora mismo — revisa el permiso de ubicación del teléfono.' }
-  const eta = await deps.drivingEta(origin, place)
-  if (!eta) return { kind: 'answer', text: `No he podido calcular el tiempo en coche hasta ${place.name} ahora mismo.` }
-  return { kind: 'answer', text: `Desde donde estás, hasta ${place.name} se tarda unos ${eta.minutes} minutos en coche (${eta.km} km, con tráfico).` }
+  const eta = await deps.drivingEta(origin, destination)
+  if (!eta) return { kind: 'answer', text: `No he podido calcular el tiempo en coche hasta ${destination.label} ahora mismo.` }
+  return { kind: 'answer', text: `Desde donde estás, hasta ${destination.label} se tarda unos ${eta.minutes} minutos en coche (${eta.km} km, con tráfico).` }
 }
 
 async function handleNearest(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
-  const [places, locations, members] = await Promise.all([deps.places(), deps.memberLocations(), deps.members()])
-  const place = findPlace(spokenPlace, places)
-  if (!place) return { kind: 'answer', text: NO_PLACE(spokenPlace) }
+  const [destination, locations, members] = await Promise.all([resolveDestination(spokenPlace, deps), deps.memberLocations(), deps.members()])
+  if (!destination) return { kind: 'answer', text: NOT_FOUND(spokenPlace) }
   const ranked = locations
     .map((loc) => {
       const member = members.find((m) => m.id === loc.memberId)
-      return member ? { member, dist: distanceMeters(loc.latitude, loc.longitude, place.latitude, place.longitude) } : null
+      return member ? { member, dist: distanceMeters(loc.latitude, loc.longitude, destination.latitude, destination.longitude) } : null
     })
     .filter((x): x is { member: { id: string; name: string }; dist: number } => x !== null)
     .sort((a, b) => a.dist - b.dist)
   if (ranked.length === 0) return { kind: 'answer', text: 'Nadie está compartiendo su ubicación ahora mismo.' }
   const nearest = ranked[0]
-  return { kind: 'answer', text: `${nearest.member.name} está más cerca de ${place.name}, a ${formatDistance(nearest.dist)}.` }
+  return { kind: 'answer', text: `${nearest.member.name} está más cerca de ${destination.label}, a ${formatDistance(nearest.dist)}.` }
 }
 
 export async function locationAction(text: string, deps: LocationDeps): Promise<TalkOutcome | null> {

@@ -550,6 +550,9 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // salir de esta pantalla (ver comentario en ese archivo). Aquí solo se
   // refleja su estado.
   const [sharingAs, setSharingAs] = useState<string>(() => getSharingMemberId() ?? '')
+  // Petición real: "los lugares frecuentes... en un desplegable". Cerrado por defecto — la pantalla
+  // ya tiene bastante arriba (mapa, compartir, formulario de añadir).
+  const [placesOpen, setPlacesOpen] = useState(false)
 
   // `silent` = refresco en segundo plano (la actualización periódica de
   // cada 30s) sin poner toda la pantalla en "Cargando…" — con `setLoading(true)`
@@ -791,14 +794,27 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
         </div>
       )}
 
-      <h2 className="section-title">Lugares frecuentes</h2>
-      <div className="event-list">
-        {places.map((place) => (
-          <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} />
-        ))}
-        {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
-      </div>
+      {/* Petición real: "lo de añadir otro lo pones arriba para que se vea lo primero y debajo los
+          lugares frecuentes [en un desplegable]" — antes la lista de lugares salía siempre entera,
+          delante del formulario para añadir uno nuevo. */}
       <AddPlaceForm onAdded={reload} />
+
+      <button type="button" className="guest-breakdown-toggle" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen} style={{ marginTop: 20 }}>
+        <span className="section-title" style={{ marginTop: 0 }}>
+          Lugares frecuentes
+        </span>
+        <span className="guest-breakdown-chevron" aria-hidden="true">
+          {placesOpen ? '︿' : '⌄'}
+        </span>
+      </button>
+      {placesOpen && (
+        <div className="event-list">
+          {places.map((place) => (
+            <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} />
+          ))}
+          {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
+        </div>
+      )}
 
       <PlaceHistorySection members={members} consents={consents} />
     </div>

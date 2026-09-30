@@ -99,19 +99,34 @@ describe('locationAction: tiempo en coche', () => {
   it('calcula el tiempo hasta un lugar guardado', async () => {
     const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5 })
     const outcome = await locationAction('cuánto se tarda en coche a la farmacia', makeDeps({ drivingEta }))
-    expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, FARMACIA)
+    expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, { latitude: 40.42, longitude: -3.7, label: 'Farmacia' })
     expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Farmacia se tarda unos 12 minutos en coche (4.5 km, con tráfico).' })
   })
 
-  it('sin ese lugar guardado, lo dice', async () => {
+  it('reconoce "cuánto tiempo tengo hasta X" y "qué distancia tengo hasta X" (peticiones reales), no solo "se tarda"', async () => {
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5 })
+    expect(await locationAction('cuánto tiempo tengo hasta la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
+    expect(await locationAction('qué distancia tengo hasta la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
+  })
+
+  it('si no es un lugar guardado, lo busca de verdad en Google Maps (petición real: "incluyendo Madrid")', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue({ label: 'Madrid, España', latitude: 40.4168, longitude: -3.7038 })
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 90, km: 80 })
+    const outcome = await locationAction('cuánto tiempo tengo hasta Madrid', makeDeps({ searchFirstPlace, drivingEta }))
+    expect(searchFirstPlace).toHaveBeenCalledWith('madrid')
+    expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, { latitude: 40.4168, longitude: -3.7038, label: 'Madrid, España' })
+    expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Madrid, España se tarda unos 90 minutos en coche (80 km, con tráfico).' })
+  })
+
+  it('ni guardado ni encontrado en el mapa, lo dice', async () => {
     const outcome = await locationAction('cuánto se tarda en coche al aeropuerto', makeDeps())
-    expect(outcome).toEqual({ kind: 'answer', text: 'No tengo ningún lugar guardado con ese nombre ni esa categoría: «aeropuerto». Revísalo en Ubicación.' })
+    expect(outcome).toEqual({ kind: 'answer', text: 'No he encontrado «aeropuerto», ni entre tus lugares guardados ni buscándolo en el mapa.' })
   })
 
   it('también encuentra el lugar por su categoría, no solo por el nombre', async () => {
     const drivingEta = vi.fn().mockResolvedValue({ minutes: 8, km: 3 })
     const outcome = await locationAction('cuánto se tarda en coche a trabajo', makeDeps({ drivingEta }))
-    expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, CARGOFRIO)
+    expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, { latitude: 38.11, longitude: -0.79, label: 'Cargofrío' })
     expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Cargofrío se tarda unos 8 minutos en coche (3 km, con tráfico).' })
   })
 
@@ -150,5 +165,17 @@ describe('locationAction: quién está más cerca', () => {
     )
     expect(outcome).toMatchObject({ kind: 'answer' })
     expect((outcome as { text: string }).text).toContain('Jennifer está más cerca de Cargofrío')
+  })
+
+  it('si no es un lugar guardado, también lo busca en Google Maps', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue({ label: 'Madrid, España', latitude: 40.4168, longitude: -3.7038 })
+    const locations: MemberLocation[] = [{ memberId: 'm1', familyId: 'f', latitude: 40.42, longitude: -3.7, recordedAt: '2026-09-30T10:00:00Z' }]
+    const members = [{ id: 'm1', name: 'Eric' }]
+    const outcome = await locationAction(
+      'quién está más cerca de Madrid',
+      makeDeps({ searchFirstPlace, memberLocations: vi.fn().mockResolvedValue(locations), members: vi.fn().mockResolvedValue(members) }),
+    )
+    expect(outcome).toMatchObject({ kind: 'answer' })
+    expect((outcome as { text: string }).text).toContain('Eric está más cerca de Madrid, España')
   })
 })

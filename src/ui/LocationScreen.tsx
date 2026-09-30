@@ -763,13 +763,15 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
 
       <h2 className="section-title">Este dispositivo</h2>
       {sharingAs ? (
-        <div className="card banner">
-          <p>Compartiendo como {members.find((m) => m.id === sharingAs)?.name}.</p>
-          <p className="muted">Sigue actualizándose aunque salgas de esta pantalla, no hace falta dejarla abierta.</p>
-          <button type="button" onClick={stopSharingGlobal}>
+        // Petición real: "quiero que me la hagas mucho más pequeña, de una sola línea" — antes era
+        // una tarjeta grande (título + aviso + botón grande); sigue actualizándose sola igual, solo
+        // que ahora no hace falta explicarlo cada vez que se ve la pantalla.
+        <p className="muted inline-fields" style={{ alignItems: 'center' }}>
+          📍 Compartiendo como {members.find((m) => m.id === sharingAs)?.name}.
+          <button type="button" className="link-button" onClick={stopSharingGlobal}>
             Dejar de compartir
           </button>
-        </div>
+        </p>
       ) : (
         <div className="card member-form">
           <p className="muted">¿Quién lleva este dispositivo?</p>

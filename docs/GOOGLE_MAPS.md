@@ -8,33 +8,47 @@ abrirlo y navegar hasta allí). El código ya está hecho; falta la parte que
 solo puede hacer Jennifer en Google (activar la facturación, nadie más puede
 meter una tarjeta) para que funcione de verdad.
 
-**Mientras no haya clave configurada, el mapa simplemente no se pinta** — el
+**Mientras no haya claves configuradas, el mapa simplemente no se pinta** — el
 resto de "Ubicación" (chips de miembros, lugares frecuentes, reglas) y el
 resto de la app siguen funcionando exactamente igual.
+
+## Dos claves, dos sitios distintos (desde el 30/09/2026)
+
+⚠️ **Bug real encontrado el 30/09/2026: "Pepa no encuentra Madrid", confirmado
+en dos teléfonos y dos cuentas distintas (uno de ellos un iPhone)**. Al
+principio TODO se pedía directo desde el navegador con una única clave
+restringida "solo desde nuestra web" (HTTP referrer). Eso exige que el
+navegador mande exactamente el Referer que Google espera en cada petición —
+se pudo forzar razonablemente bien en Chrome/Android
+(`referrerPolicy: 'no-referrer-when-downgrade'`), pero en Safari/iOS no se
+puede confiar en que se porte igual (sus propias protecciones de privacidad
+pueden recortar esa información). Por eso ahora hay **dos claves con dos
+trabajos distintos**:
+
+| Clave | Para qué | Dónde vive | Restricción |
+|---|---|---|---|
+| **Clave del navegador** (`VITE_GOOGLE_MAPS_API_KEY`) | Solo dibujar el mapa interactivo en sí (el `<script>` de Maps JavaScript API — eso SÍ tiene que cargarlo cada navegador, no se puede mover a un servidor) | Secreto de GitHub Actions, se compila dentro de la app | Por sitio web (HTTP referrer) |
+| **Clave del servidor** (`GOOGLE_MAPS_SERVER_KEY`) | Buscar un sitio, ver su dirección, calcular tiempo en coche — todo lo que antes fallaba en Safari/iOS | Supabase Vault, la lee la función `google-maps` (`supabase/functions/google-maps/`) | Sin restricción de sitio web (nadie fuera de nuestro propio servidor la ve nunca) — restringida solo a las APIs necesarias |
+
+La app ya no pide nada de lo segundo directamente al navegador de nadie: pasa
+por nuestro propio servidor (`src/services/googleMapsProxy.ts`), exactamente
+igual que ya hace Pepa con la IA de Gemini o el buscador de recetas con
+FatSecret — así no depende de cómo se porte el navegador de cada persona.
 
 ## Qué archivos tocan esto
 
 | Qué | Archivo |
 |---|---|
-| Carga el script de Google Maps una vez | `src/services/googleMapsLoader.ts` |
+| Carga el script de Google Maps una vez (clave del navegador) | `src/services/googleMapsLoader.ts` |
+| Llama a la función de servidor (clave del servidor) | `src/services/googleMapsProxy.ts` |
+| Función de servidor: autocompletar/detalles/geocodificar/cercano/ruta | `supabase/functions/google-maps/index.ts` |
 | Buscar una dirección (autocompletar) / coordenadas → dirección | `src/services/geocoding.ts` |
 | Reconocer el nombre de un sitio nuevo | `src/services/reverseGeocode.ts` |
 | Tiempo real en coche hasta un lugar | `src/services/drivingEta.ts` |
 | Mapa de "Ubicación" (con fotos y tráfico en vivo) | `src/ui/LocationMap.tsx` |
 | Mapa del selector de sitio (Calendario/Eventos) | `src/ui/LocationPickerModal.tsx` |
 | "Quién está más cerca", botón de tiempo en coche y de compartir ubicación, en cada lugar frecuente | `src/ui/LocationScreen.tsx` (`PlaceRow`) — compartir usa `src/services/share.ts` (`shareText`), un enlace normal de Maps, no llama a ninguna API de Google |
-| Dónde se lee la clave al compilar | `.github/workflows/deploy.yml` (secreto `VITE_GOOGLE_MAPS_API_KEY`) |
-
-⚠️ **Bug real encontrado y arreglado el 30/09/2026, fácil de reintroducir sin querer**: la clave está
-restringida por sitio web (paso 3 más abajo), pero el navegador, al pedirle algo a un dominio
-DISTINTO (places/routes/maps.googleapis.com), por defecto solo manda el origen como Referer
-("https://.../", sin "/family-app/") — no encaja con la restricción y Google responde 403, aunque la
-clave y la restricción estén bien puestas. Cada `fetch()` a una API de Google Maps tiene que pedir
-explícitamente `referrerPolicy: 'no-referrer-when-downgrade'` (ver el comentario en
-`src/services/geocoding.ts`) para que el navegador mande la página completa. Si algún día se añade
-una llamada nueva a una API de Google Maps y se le olvida esto, fallará en el móvil de verdad aunque
-todo lo demás (clave, restricción, API activada) esté perfecto — y, sin este aviso, cuesta mucho
-adivinar por qué.
+| Dónde se lee la clave del navegador al compilar | `.github/workflows/deploy.yml` (secreto `VITE_GOOGLE_MAPS_API_KEY`) |
 
 ## Pasos en Google Cloud (los hace Jennifer)
 
@@ -52,10 +66,14 @@ con Google Calendar" — no hace falta crear uno nuevo.
    compartir el mapa como imagen que ya no existe — se sustituyó por compartir un enlace de
    ubicación, que no usa ninguna API. Dejarla activada no hace daño ni cuesta nada si no se usa; se
    puede quitar de la clave el día que se revise esto con calma, no es urgente.)
-3. **Crear la clave**, en *APIs y servicios → Credenciales → Crear credenciales → Clave de API*.
+3. **Crear la clave del navegador** (la de siempre), en *APIs y servicios → Credenciales → Crear credenciales → Clave de API*.
    - **Restringirla por sitio web** (HTTP referrer): añadir `https://fransegura51.github.io/family-app/*` (y el dominio propio, si algún día se usa uno).
-   - **Restringirla a esas APIs**, para que no sirva para nada más si se filtrara.
-4. **Poner cupos diarios** — esto es lo que de verdad evita pagar de más, el aviso por email no corta nada, el cupo sí. En *Google Maps Platform → Cuotas*, elegir cada API en el desplegable de arriba y, en la fila **"Map loads per day"** (o "Requests per day"), pulsar los tres puntos ⋮ → **Editar cuota**:
+   - **Restringirla a Maps JavaScript API** únicamente (es lo único que ahora usa esta clave).
+4. **Crear la clave del servidor** (nueva, 30/09/2026) — otra "Crear credenciales → Clave de API", aparte de la anterior.
+   - **Sin restricción de sitio web** — no la usa ningún navegador, así que esa restricción no pega y, si se pone, todo esto vuelve a fallar igual que antes.
+   - **Restringirla a Places API (New), Geocoding API y Routes API** (las tres que usa el servidor).
+   - Pégame esta clave en el chat cuando la tengas — la guardo yo directamente en Supabase (Vault, secreto `GOOGLE_MAPS_SERVER_KEY`), nunca en el código ni en GitHub.
+5. **Poner cupos diarios** — esto es lo que de verdad evita pagar de más, el aviso por email no corta nada, el cupo sí. En *Google Maps Platform → Cuotas*, elegir cada API en el desplegable de arriba y, en la fila **"Map loads per day"** (o "Requests per day"), pulsar los tres puntos ⋮ → **Editar cuota**:
    - **Maps JavaScript API** → 300 al día
    - **Geocoding API** → 300 al día
    - **Places API (New)** → 150 al día (cada método: Autocomplete, Place Details)
@@ -63,17 +81,17 @@ con Google Calendar" — no hace falta crear uno nuevo.
 
    Con estos números, el gasto se queda en 0 € mientras uséis PEPA vosotros y las familias de prueba. Al llegar a un cupo, esa función deja de responder el resto del día — no os van a cobrar de más, se corta antes.
 
-   ⚠️ **Comprobado el 30/09/2026: mientras la cuenta esté en la "prueba gratuita" de Google (el crédito de bienvenida, ~90 días), este paso está bloqueado** — el propio Google avisa de que no se pueden cambiar cupos en ese estado. En cuanto la cuenta pase a facturación normal (se acabe el crédito o los 90 días, o se actualice a mano), hay que volver aquí y poner estos 3 cupos. Mientras tanto, hay dos redes de seguridad ya activas sin este paso:
+   ⚠️ **Comprobado el 30/09/2026: mientras la cuenta esté en la "prueba gratuita" de Google (el crédito de bienvenida, ~90 días), este paso está bloqueado** — el propio Google avisa de que no se pueden cambiar cupos en ese estado. En cuanto la cuenta pase a facturación normal (se acabe el crédito o los 90 días, o se actualice a mano), hay que volver aquí y poner estos cupos. Mientras tanto, hay dos redes de seguridad ya activas sin este paso:
    - El propio crédito de bienvenida (unos 257 € cuando se escribió esto) absorbe cualquier gasto antes de tocar la tarjeta.
-   - Un freno metido en el código (`src/services/googleMapsUsageGuard.ts`): cada móvil deja de pedir mapas o búsquedas a Google si supera un uso alto en un mismo día (80 cargas de mapa, 40 búsquedas). No es un tope de gasto real — es para que un fallo o un bucle no dispare llamadas sin control mientras no se pueda poner el cupo de verdad.
-5. **Alerta de presupuesto** (recomendable, y esta sí funciona en la prueba gratuita), en *Facturación → Presupuestos y alertas*: crear un presupuesto de, por ejemplo, 5 €/mes con avisos al 50/90/100%.
-6. **Añadir la clave a GitHub**: en el repositorio, *Settings → Secrets and variables → Actions → New repository secret*, nombre `VITE_GOOGLE_MAPS_API_KEY`, valor la clave del paso 3. Al hacer `git push`, el siguiente despliegue ya la usa.
+   - Un freno metido en el código (`src/services/googleMapsUsageGuard.ts`): cada móvil deja de pedir mapas o búsquedas a Google si supera un uso alto en un mismo día (80 cargas de mapa, 40 búsquedas, 30 cálculos de ruta). No es un tope de gasto real — es para que un fallo o un bucle no dispare llamadas sin control mientras no se pueda poner el cupo de verdad. Esto sigue funcionando igual aunque las búsquedas ahora pasen por el servidor.
+6. **Alerta de presupuesto** (recomendable, y esta sí funciona en la prueba gratuita), en *Facturación → Presupuestos y alertas*: crear un presupuesto de, por ejemplo, 5 €/mes con avisos al 50/90/100%.
+7. **Añadir la clave del navegador a GitHub**: en el repositorio, *Settings → Secrets and variables → Actions → New repository secret*, nombre `VITE_GOOGLE_MAPS_API_KEY`, valor la clave del paso 3. Al hacer `git push`, el siguiente despliegue ya la usa. (La clave del servidor, paso 4, NO va aquí — va a Supabase Vault, lo hago yo con el valor que me pases.)
 
 ## Si no convence y hay que volver a OpenStreetMap
 
 Es un único commit para deshacer (revertir estos cambios trae de vuelta
 Leaflet + Nominatim, gratis y sin clave, tal como estaba). No hace falta
-tocar nada en Google Cloud para volver: basta con dejar de usar la clave.
+tocar nada en Google Cloud para volver: basta con dejar de usar las claves.
 
 ## Cuánto puede llegar a costar si se sube el cupo más adelante
 
@@ -88,4 +106,4 @@ día, y de vez en cuando elige un sitio en un evento):
 | 5.000 | ≈ 3.250 € |
 
 Si algún día se decide crecer y aceptar ese gasto, hay que subir los cupos
-del paso 4 (o quitarlos) para que el mapa no se corte al llegar al límite.
+del paso 5 (o quitarlos) para que el mapa no se corte al llegar al límite.

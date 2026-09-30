@@ -22,12 +22,15 @@ const SAVE_PLACE_RE = /^guarda(?:lo|la|me(?:lo|la)?)?\s+(?:este\s+)?(?:sitio|lug
 const SAVE_AS_RE = /^guarda(?:lo|la|me(?:lo|la)?)?\s+como\s+(.+)$/
 
 // "Cuánto se tarda en coche a X", "cuánto tardo hasta X", "cuánto tiempo se tarda al aeropuerto",
-// y también, petición real: "cuánto tiempo tengo hasta trabajo", "¿qué tiempo tengo hasta Madrid?",
-// "qué distancia tengo hasta X" — no solo "se tarda/tardo", también "tengo/hay/queda", con "cuanto"
-// o "que" delante, y "distancia" además de "tiempo" (la respuesta ya lleva minutos Y km siempre,
-// pepa/location.ts, así que da igual por cuál de las dos se pregunte).
+// y también, peticiones reales: "cuánto tiempo tengo hasta trabajo", "qué tiempo tengo hasta
+// Madrid", "qué distancia tengo hasta X", "cuánto queda hasta Valencia", "cuántos kilómetros
+// tenemos a Bilbao", "qué se tarda en llegar a Alicante" — con "cuanto"/"cuantos"/"cuantas"/"que"
+// delante; "tiempo"/"kilómetros"/"km"/"distancia" de por medio (o nada); varios verbos
+// (tarda/tardamos/tardo/tengo/tenemos/hay/queda/quedan); y "en coche"/"en llegar"/"en el coche"
+// antes de la "a"/"hasta" final, o nada. La respuesta ya lleva minutos Y km siempre
+// (pepa/location.ts), así que da igual por cuál de las dos se pregunte.
 const ETA_RE =
-  /^(?:(?:cuanto|que)(?:\s+tiempo)?\s+(?:se tarda|tardamos|tardo|tengo|hay|queda)|que distancia\s+(?:tengo|hay))(?:\s+en coche)?\s+(?:a(?:l)?|hasta)\s+(.+)$/
+  /^(?:cuant[oa]s?|que)\s+(?:(?:tiempo|kilometros|km|distancia)\s+)?(?:se tarda|tardamos|tardo|tengo|tenemos|hay|quedan?)(?:\s+en\s+(?:coche|el coche|llegar))?\s+(?:a(?:l)?|hasta)\s+(.+)$/
 
 // "Quién está más cerca de X", "quién anda más cerca del cole".
 const NEAREST_RE = /^quien(?:\s+(?:esta|anda|vive))?\s+mas cerca\s+(?:de(?:l)?|a)\s+(.+)$/

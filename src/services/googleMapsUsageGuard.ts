@@ -17,7 +17,7 @@ const LIMITS = {
   eta: 30, // calcular el tiempo de llegada en coche (Routes API)
 } as const
 
-type GuardKind = keyof typeof LIMITS
+export type GuardKind = keyof typeof LIMITS
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -54,6 +54,14 @@ export function allowGoogleMapsUse(kind: GuardKind): boolean {
   if (count >= LIMITS[kind]) return false
   writeCount(kind, count + 1)
   return true
+}
+
+// Solo mira si YA se ha llegado al tope de hoy, sin contar un uso más — para poder avisar de que el
+// motivo es el freno diario (y no un fallo real) ANTES de intentar la llamada de verdad. Bug real
+// reportado ("Pepa no encuentra Madrid"): sin esto, agotar el cupo probando cosas se veía igual que
+// un fallo real de búsqueda — no había forma de saber cuál de las dos cosas era.
+export function hasReachedGoogleMapsLimit(kind: GuardKind): boolean {
+  return readCount(kind) >= LIMITS[kind]
 }
 
 export class GoogleMapsDailyLimitError extends Error {

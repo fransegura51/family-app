@@ -13,13 +13,19 @@ import { forgetFoundPlace, pendingFoundPlace, rememberFoundPlace, type FoundPlac
 import type { TalkOutcome } from '@/pepa/talk'
 import type { LocationPlace, MemberLocation } from '@/domain/types'
 
+// Antes era `Promise<FoundPlace | null>`, así que agotar el freno diario (búsquedas de hoy ya
+// gastadas, googleMapsUsageGuard.ts) se veía IGUAL que "no existe ese sitio" — bug real reportado:
+// "la gilipollas de Pepa no encuentra Madrid" (que obviamente existe) tras un día entero probando
+// cosas que ya habían consumido el cupo de búsquedas. Con el motivo aparte, el aviso dice la verdad.
+export type SearchOutcome = { ok: true; place: FoundPlace } | { ok: false; reason: 'daily-limit' | 'not-found' }
+
 export interface LocationDeps {
   places(): Promise<LocationPlace[]>
   memberLocations(): Promise<MemberLocation[]>
   members(): Promise<{ id: string; name: string }[]>
   // null = sin permiso, GPS apagado, o el dispositivo no lo soporta — se avisa, no se rompe nada.
   currentPosition(): Promise<{ latitude: number; longitude: number } | null>
-  searchFirstPlace(term: string): Promise<FoundPlace | null>
+  searchFirstPlace(term: string): Promise<SearchOutcome>
   drivingEta(origin: { latitude: number; longitude: number }, destination: { latitude: number; longitude: number }): Promise<{ minutes: number; km: number } | null>
 }
 
@@ -55,6 +61,7 @@ function findPlace(spoken: string, places: LocationPlace[]): LocationPlace | nul
 }
 
 const NOT_FOUND = (spoken: string) => `No he encontrado «${spoken}», ni entre tus lugares guardados ni buscándolo en el mapa.`
+const DAILY_LIMIT = 'Ya has usado hoy el número de veces que este teléfono puede buscar sitios en el mapa (es un freno para no gastar de más, no un fallo). Se puede volver a usar mañana.'
 
 // Petición real: "quiero preguntarle... cuánto tiempo tengo hasta trabajo... o qué tiempo tengo
 // hasta Madrid... incluyendo Madrid y todos los lugares que están en Google Maps" — antes "cuánto
@@ -68,22 +75,25 @@ interface Destination {
   label: string
 }
 
-async function resolveDestination(spoken: string, deps: LocationDeps): Promise<Destination | null> {
+async function resolveDestination(spoken: string, deps: LocationDeps): Promise<{ ok: true; destination: Destination } | { ok: false; reason: 'daily-limit' | 'not-found' }> {
   const saved = findPlace(spoken, await deps.places())
-  if (saved) return { latitude: saved.latitude, longitude: saved.longitude, label: saved.name }
-  const found = await deps.searchFirstPlace(spoken)
-  if (!found) return null
-  rememberFoundPlace(found)
-  return { latitude: found.latitude, longitude: found.longitude, label: found.label }
+  if (saved) return { ok: true, destination: { latitude: saved.latitude, longitude: saved.longitude, label: saved.name } }
+  const result = await deps.searchFirstPlace(spoken)
+  if (!result.ok) return result
+  rememberFoundPlace(result.place)
+  return { ok: true, destination: { latitude: result.place.latitude, longitude: result.place.longitude, label: result.place.label } }
 }
 
 async function handleSearch(term: string, deps: LocationDeps): Promise<TalkOutcome> {
-  const found = await deps.searchFirstPlace(term)
-  if (!found) {
-    return { kind: 'answer', text: `No he encontrado ningún sitio llamado «${term}». Prueba a buscarlo a mano en Ubicación.` }
+  const result = await deps.searchFirstPlace(term)
+  if (!result.ok) {
+    return {
+      kind: 'answer',
+      text: result.reason === 'daily-limit' ? DAILY_LIMIT : `No he encontrado ningún sitio llamado «${term}». Prueba a buscarlo a mano en Ubicación.`,
+    }
   }
-  rememberFoundPlace(found)
-  return { kind: 'focus-place', text: `He encontrado ${found.label}. Si quieres guardarlo como lugar frecuente, di «guárdalo».` }
+  rememberFoundPlace(result.place)
+  return { kind: 'focus-place', text: `He encontrado ${result.place.label}. Si quieres guardarlo como lugar frecuente, di «guárdalo».` }
 }
 
 async function handleSave(name: string | null): Promise<TalkOutcome> {
@@ -107,8 +117,9 @@ async function handleSave(name: string | null): Promise<TalkOutcome> {
 }
 
 async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
-  const destination = await resolveDestination(spokenPlace, deps)
-  if (!destination) return { kind: 'answer', text: NOT_FOUND(spokenPlace) }
+  const resolved = await resolveDestination(spokenPlace, deps)
+  if (!resolved.ok) return { kind: 'answer', text: resolved.reason === 'daily-limit' ? DAILY_LIMIT : NOT_FOUND(spokenPlace) }
+  const destination = resolved.destination
   const origin = await deps.currentPosition()
   if (!origin) return { kind: 'answer', text: 'No he podido saber dónde estás ahora mismo — revisa el permiso de ubicación del teléfono.' }
   const eta = await deps.drivingEta(origin, destination)
@@ -117,8 +128,9 @@ async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkO
 }
 
 async function handleNearest(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
-  const [destination, locations, members] = await Promise.all([resolveDestination(spokenPlace, deps), deps.memberLocations(), deps.members()])
-  if (!destination) return { kind: 'answer', text: NOT_FOUND(spokenPlace) }
+  const [resolved, locations, members] = await Promise.all([resolveDestination(spokenPlace, deps), deps.memberLocations(), deps.members()])
+  if (!resolved.ok) return { kind: 'answer', text: resolved.reason === 'daily-limit' ? DAILY_LIMIT : NOT_FOUND(spokenPlace) }
+  const destination = resolved.destination
   const ranked = locations
     .map((loc) => {
       const member = members.find((m) => m.id === loc.memberId)

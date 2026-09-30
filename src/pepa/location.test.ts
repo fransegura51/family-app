@@ -14,7 +14,7 @@ vi.mock('@/data/calendar', () => ({ createEvent: vi.fn().mockResolvedValue(undef
 vi.mock('@/data/location', () => ({ addPlace: vi.fn().mockResolvedValue(undefined) }))
 
 import { addPlace } from '@/data/location'
-import { locationAction, type LocationDeps } from '@/pepa/location'
+import { locationAction, type LocationDeps, type SearchOutcome } from '@/pepa/location'
 import { forgetFoundPlace } from '@/pepa/recentContext'
 import type { LocationPlace, MemberLocation } from '@/domain/types'
 
@@ -22,13 +22,19 @@ const FARMACIA: LocationPlace = { id: 'p1', familyId: 'f', name: 'Farmacia', cat
 const COLE: LocationPlace = { id: 'p2', familyId: 'f', name: 'Colegio San José', category: null, latitude: 40.43, longitude: -3.71, radiusM: 100 }
 const CARGOFRIO: LocationPlace = { id: 'p3', familyId: 'f', name: 'Cargofrío', category: 'Trabajo', latitude: 38.11, longitude: -0.79, radiusM: 150 }
 
+function found(label: string, latitude: number, longitude: number): SearchOutcome {
+  return { ok: true, place: { label, latitude, longitude } }
+}
+const NOT_FOUND_RESULT: SearchOutcome = { ok: false, reason: 'not-found' }
+const DAILY_LIMIT_RESULT: SearchOutcome = { ok: false, reason: 'daily-limit' }
+
 function makeDeps(overrides: Partial<LocationDeps> = {}): LocationDeps {
   return {
     places: vi.fn().mockResolvedValue([FARMACIA, COLE, CARGOFRIO]),
     memberLocations: vi.fn().mockResolvedValue([]),
     members: vi.fn().mockResolvedValue([]),
     currentPosition: vi.fn().mockResolvedValue({ latitude: 40.4, longitude: -3.7 }),
-    searchFirstPlace: vi.fn().mockResolvedValue(null),
+    searchFirstPlace: vi.fn().mockResolvedValue(NOT_FOUND_RESULT),
     drivingEta: vi.fn().mockResolvedValue(null),
     ...overrides,
   }
@@ -49,7 +55,7 @@ describe('locationAction: frases que no son de Ubicación', () => {
 
 describe('locationAction: buscar', () => {
   it('encuentra un sitio y lo recuerda para poder guardarlo después', async () => {
-    const searchFirstPlace = vi.fn().mockResolvedValue({ label: 'Farmacia Rodríguez, Calle Mayor 3', latitude: 40.41, longitude: -3.69 })
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('Farmacia Rodríguez, Calle Mayor 3', 40.41, -3.69))
     const outcome = await locationAction('busca una farmacia de guardia', makeDeps({ searchFirstPlace }))
     expect(searchFirstPlace).toHaveBeenCalledWith('una farmacia de guardia')
     expect(outcome).toEqual({ kind: 'focus-place', text: 'He encontrado Farmacia Rodríguez, Calle Mayor 3. Si quieres guardarlo como lugar frecuente, di «guárdalo».' })
@@ -58,6 +64,15 @@ describe('locationAction: buscar', () => {
   it('sin resultados, lo dice claro', async () => {
     const outcome = await locationAction('busca un sitio inventado que no existe', makeDeps())
     expect(outcome).toEqual({ kind: 'answer', text: 'No he encontrado ningún sitio llamado «un sitio inventado que no existe». Prueba a buscarlo a mano en Ubicación.' })
+  })
+
+  it('si el freno diario ya está gastado, lo dice claro en vez de parecer que no existe (bug real: "Pepa no encuentra Madrid")', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue(DAILY_LIMIT_RESULT)
+    const outcome = await locationAction('busca Madrid', makeDeps({ searchFirstPlace }))
+    expect(outcome).toEqual({
+      kind: 'answer',
+      text: 'Ya has usado hoy el número de veces que este teléfono puede buscar sitios en el mapa (es un freno para no gastar de más, no un fallo). Se puede volver a usar mañana.',
+    })
   })
 })
 
@@ -68,7 +83,7 @@ describe('locationAction: guardar', () => {
   })
 
   it('tras una búsqueda, "guárdalo" propone la tarjeta con el nombre encontrado', async () => {
-    const deps = makeDeps({ searchFirstPlace: vi.fn().mockResolvedValue({ label: 'Farmacia Rodríguez', latitude: 40.41, longitude: -3.69 }) })
+    const deps = makeDeps({ searchFirstPlace: vi.fn().mockResolvedValue(found('Farmacia Rodríguez', 40.41, -3.69)) })
     await locationAction('busca la farmacia', deps)
     const outcome = await locationAction('guárdalo', deps)
     expect(outcome?.kind).toBe('proposal')
@@ -78,7 +93,7 @@ describe('locationAction: guardar', () => {
   })
 
   it('"guárdalo como..." usa el nombre dicho, no el encontrado', async () => {
-    const deps = makeDeps({ searchFirstPlace: vi.fn().mockResolvedValue({ label: 'Farmacia Rodríguez', latitude: 40.41, longitude: -3.69 }) })
+    const deps = makeDeps({ searchFirstPlace: vi.fn().mockResolvedValue(found('Farmacia Rodríguez', 40.41, -3.69)) })
     await locationAction('busca la farmacia', deps)
     const outcome = await locationAction('guárdalo como Farmacia de la esquina', deps)
     if (outcome?.kind !== 'proposal') throw new Error('debería ser una propuesta')
@@ -87,7 +102,7 @@ describe('locationAction: guardar', () => {
   })
 
   it('guardar olvida el sitio recordado, para que un segundo "guárdalo" no lo repita', async () => {
-    const deps = makeDeps({ searchFirstPlace: vi.fn().mockResolvedValue({ label: 'Farmacia Rodríguez', latitude: 40.41, longitude: -3.69 }) })
+    const deps = makeDeps({ searchFirstPlace: vi.fn().mockResolvedValue(found('Farmacia Rodríguez', 40.41, -3.69)) })
     await locationAction('busca la farmacia', deps)
     await locationAction('guárdalo', deps)
     const second = await locationAction('guárdalo', deps)
@@ -103,14 +118,17 @@ describe('locationAction: tiempo en coche', () => {
     expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Farmacia se tarda unos 12 minutos en coche (4.5 km, con tráfico).' })
   })
 
-  it('reconoce "cuánto tiempo tengo hasta X" y "qué distancia tengo hasta X" (peticiones reales), no solo "se tarda"', async () => {
+  it('reconoce varias formas reales de preguntarlo, no solo "se tarda"', async () => {
     const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5 })
     expect(await locationAction('cuánto tiempo tengo hasta la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
     expect(await locationAction('qué distancia tengo hasta la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
+    expect(await locationAction('cuánto queda hasta la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
+    expect(await locationAction('cuántos kilómetros tenemos a la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
+    expect(await locationAction('qué se tarda en llegar a la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
   })
 
   it('si no es un lugar guardado, lo busca de verdad en Google Maps (petición real: "incluyendo Madrid")', async () => {
-    const searchFirstPlace = vi.fn().mockResolvedValue({ label: 'Madrid, España', latitude: 40.4168, longitude: -3.7038 })
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('Madrid, España', 40.4168, -3.7038))
     const drivingEta = vi.fn().mockResolvedValue({ minutes: 90, km: 80 })
     const outcome = await locationAction('cuánto tiempo tengo hasta Madrid', makeDeps({ searchFirstPlace, drivingEta }))
     expect(searchFirstPlace).toHaveBeenCalledWith('madrid')
@@ -121,6 +139,15 @@ describe('locationAction: tiempo en coche', () => {
   it('ni guardado ni encontrado en el mapa, lo dice', async () => {
     const outcome = await locationAction('cuánto se tarda en coche al aeropuerto', makeDeps())
     expect(outcome).toEqual({ kind: 'answer', text: 'No he encontrado «aeropuerto», ni entre tus lugares guardados ni buscándolo en el mapa.' })
+  })
+
+  it('si el freno diario de búsquedas ya está gastado, lo dice claro (bug real: "Pepa no encuentra Madrid")', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue(DAILY_LIMIT_RESULT)
+    const outcome = await locationAction('cuánto tiempo tengo hasta Madrid', makeDeps({ searchFirstPlace }))
+    expect(outcome).toEqual({
+      kind: 'answer',
+      text: 'Ya has usado hoy el número de veces que este teléfono puede buscar sitios en el mapa (es un freno para no gastar de más, no un fallo). Se puede volver a usar mañana.',
+    })
   })
 
   it('también encuentra el lugar por su categoría, no solo por el nombre', async () => {
@@ -168,7 +195,7 @@ describe('locationAction: quién está más cerca', () => {
   })
 
   it('si no es un lugar guardado, también lo busca en Google Maps', async () => {
-    const searchFirstPlace = vi.fn().mockResolvedValue({ label: 'Madrid, España', latitude: 40.4168, longitude: -3.7038 })
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('Madrid, España', 40.4168, -3.7038))
     const locations: MemberLocation[] = [{ memberId: 'm1', familyId: 'f', latitude: 40.42, longitude: -3.7, recordedAt: '2026-09-30T10:00:00Z' }]
     const members = [{ id: 'm1', name: 'Eric' }]
     const outcome = await locationAction(

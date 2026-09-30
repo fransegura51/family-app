@@ -38,6 +38,7 @@ import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/o
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
 import { resolvePlace, searchPlaces } from '@/services/geocoding'
 import { getDrivingEta } from '@/services/drivingEta'
+import { hasReachedGoogleMapsLimit } from '@/services/googleMapsUsageGuard'
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 import { showToast } from '@/state/toast'
@@ -701,10 +702,14 @@ const locationDeps: LocationDeps = {
     }
   },
   searchFirstPlace: async (term) => {
+    // Comprobar el freno ANTES de buscar (sin gastar un uso más si ya está a cero): así se puede
+    // distinguir "hoy ya no quedan búsquedas" de "no existe ese sitio" — antes se veían igual (bug
+    // real: "Pepa no encuentra Madrid", que en realidad era el freno diario ya agotado).
+    if (hasReachedGoogleMapsLimit('search')) return { ok: false, reason: 'daily-limit' }
     const suggestions = await searchPlaces(term)
-    if (suggestions.length === 0) return null
+    if (suggestions.length === 0) return { ok: false, reason: 'not-found' }
     const resolved = await resolvePlace(suggestions[0].placeId)
-    return resolved ? { label: resolved.label, latitude: resolved.latitude, longitude: resolved.longitude } : null
+    return resolved ? { ok: true, place: { label: resolved.label, latitude: resolved.latitude, longitude: resolved.longitude } } : { ok: false, reason: 'not-found' }
   },
   drivingEta: (origin, destination) => getDrivingEta(origin, destination),
 }

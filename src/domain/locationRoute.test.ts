@@ -62,6 +62,14 @@ describe('routeLocation: tiempo en coche', () => {
     expect(routeLocation('qué distancia tengo hasta Madrid')).toEqual({ type: 'eta', place: 'madrid' })
     expect(routeLocation('qué distancia hay hasta el cole')).toEqual({ type: 'eta', place: 'el cole' })
   })
+
+  it('más peticiones reales: "cuánto queda...", "cuántos kilómetros tenemos a...", "qué se tarda en llegar a..."', () => {
+    expect(routeLocation('cuánto queda hasta Valencia')).toEqual({ type: 'eta', place: 'valencia' })
+    expect(routeLocation('cuántos kilómetros tenemos a Valencia')).toEqual({ type: 'eta', place: 'valencia' })
+    expect(routeLocation('cuántos kilómetros tenemos a Madrid')).toEqual({ type: 'eta', place: 'madrid' })
+    expect(routeLocation('cuántos kilómetros tenemos a Bilbao')).toEqual({ type: 'eta', place: 'bilbao' })
+    expect(routeLocation('qué se tarda en llegar a Alicante')).toEqual({ type: 'eta', place: 'alicante' })
+  })
 })
 
 describe('routeLocation: quién está más cerca', () => {

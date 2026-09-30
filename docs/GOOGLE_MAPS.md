@@ -1,9 +1,11 @@
 # El mapa con Google Maps
 
 La app usa Google Maps (mapa, buscador de direcciones y reconocimiento de
-sitios) en vez de OpenStreetMap. El código ya está hecho; falta la parte que
-solo puede hacer Jennifer en Google (activar la facturación, nadie más puede
-meter una tarjeta) para que funcione de verdad.
+sitios) en vez de OpenStreetMap, más cuatro extras: quién está más cerca de
+un lugar, el tiempo real en coche hasta allí, y compartir un lugar como
+imagen. El código ya está hecho; falta la parte que solo puede hacer
+Jennifer en Google (activar la facturación, nadie más puede meter una
+tarjeta) para que funcione de verdad.
 
 **Mientras no haya clave configurada, el mapa simplemente no se pinta** — el
 resto de "Ubicación" (chips de miembros, lugares frecuentes, reglas) y el
@@ -14,10 +16,13 @@ resto de la app siguen funcionando exactamente igual.
 | Qué | Archivo |
 |---|---|
 | Carga el script de Google Maps una vez | `src/services/googleMapsLoader.ts` |
-| Buscar una dirección / coordenadas → dirección | `src/services/geocoding.ts` |
+| Buscar una dirección (autocompletar) / coordenadas → dirección | `src/services/geocoding.ts` |
 | Reconocer el nombre de un sitio nuevo | `src/services/reverseGeocode.ts` |
+| Tiempo real en coche hasta un lugar | `src/services/drivingEta.ts` |
+| Imagen de un lugar para compartir | `src/services/placeMapImage.ts` |
 | Mapa de "Ubicación" (con fotos y tráfico en vivo) | `src/ui/LocationMap.tsx` |
 | Mapa del selector de sitio (Calendario/Eventos) | `src/ui/LocationPickerModal.tsx` |
+| "Quién está más cerca", botón de tiempo en coche y de compartir, en cada lugar frecuente | `src/ui/LocationScreen.tsx` (`PlaceRow`) |
 | Dónde se lee la clave al compilar | `.github/workflows/deploy.yml` (secreto `VITE_GOOGLE_MAPS_API_KEY`) |
 
 ## Pasos en Google Cloud (los hace Jennifer)
@@ -26,17 +31,21 @@ Se reutiliza el mismo proyecto de Google Cloud que ya existe para "Conectar
 con Google Calendar" — no hace falta crear uno nuevo.
 
 1. **Activar la facturación.** En [console.cloud.google.com/billing](https://console.cloud.google.com/billing), vincular una tarjeta al proyecto. Es obligatorio aunque el uso real se quede en 0 €.
-2. **Activar 3 APIs**, en *APIs y servicios → Biblioteca*:
+2. **Activar 5 APIs**, en *APIs y servicios → Biblioteca*:
    - **Maps JavaScript API**
    - **Places API (New)**
    - **Geocoding API**
+   - **Routes API** — nueva, para el tiempo real en coche
+   - **Maps Static API** — nueva, para compartir un lugar como imagen
 3. **Crear la clave**, en *APIs y servicios → Credenciales → Crear credenciales → Clave de API*.
    - **Restringirla por sitio web** (HTTP referrer): añadir `https://fransegura51.github.io/family-app/*` (y el dominio propio, si algún día se usa uno).
-   - **Restringirla a esas 3 APIs**, para que no sirva para nada más si se filtrara.
-4. **Poner cupos diarios** — esto es lo que de verdad evita pagar de más, el aviso por email no corta nada, el cupo sí. En *Google Maps Platform → Cuotas*, elegir cada API en el desplegable de arriba y, en la fila **"Map loads per day"** (o "Requests per day" en Geocoding/Places), pulsar los tres puntos ⋮ → **Editar cuota**:
+   - **Restringirla a esas 5 APIs**, para que no sirva para nada más si se filtrara.
+4. **Poner cupos diarios** — esto es lo que de verdad evita pagar de más, el aviso por email no corta nada, el cupo sí. En *Google Maps Platform → Cuotas*, elegir cada API en el desplegable de arriba y, en la fila **"Map loads per day"** (o "Requests per day"), pulsar los tres puntos ⋮ → **Editar cuota**:
    - **Maps JavaScript API** → 300 al día
    - **Geocoding API** → 300 al día
-   - **Places API (New)** → 150 al día (cada método: Text Search y Nearby Search)
+   - **Places API (New)** → 150 al día (cada método: Autocomplete, Place Details)
+   - **Routes API** → 100 al día
+   - **Maps Static API** → 50 al día
 
    Con estos números, el gasto se queda en 0 € mientras uséis PEPA vosotros y las familias de prueba. Al llegar a un cupo, esa función deja de responder el resto del día — no os van a cobrar de más, se corta antes.
 

@@ -30,6 +30,9 @@ import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { distanceMeters, formatDistance } from '@/domain/geo'
 import { getCurrentPosition } from '@/services/geolocation'
+import { getDrivingEta, type DrivingEta } from '@/services/drivingEta'
+import { fetchPlaceMapImage } from '@/services/placeMapImage'
+import { shareFiles } from '@/services/share'
 import {
   getLastError as getSharingError,
   getLastPosition,
@@ -980,22 +983,84 @@ function PlaceRow({
   members: FamilyMember[]
   onDeleted: () => void
 }) {
+  // Petición real: "quién está más cerca ahora mismo" — con la misma
+  // distancia en línea recta que ya se calculaba (gratis, sin pedir nada
+  // a Google), ahora se ordena y se destaca a quien tiene más cerca.
+  const ranked = locations
+    .map((loc) => {
+      const member = members.find((m) => m.id === loc.memberId)
+      if (!member) return null
+      return { member, loc, dist: distanceMeters(loc.latitude, loc.longitude, place.latitude, place.longitude) }
+    })
+    .filter((x): x is { member: FamilyMember; loc: MemberLocation; dist: number } => x !== null)
+    .sort((a, b) => a.dist - b.dist)
+
+  const [etaFor, setEtaFor] = useState<string | null>(null)
+  const [eta, setEta] = useState<DrivingEta | null>(null)
+  const [etaLoading, setEtaLoading] = useState(false)
+  const [sharing, setSharing] = useState(false)
+
+  async function handleEta(memberId: string, loc: MemberLocation) {
+    setEtaFor(memberId)
+    setEta(null)
+    setEtaLoading(true)
+    try {
+      setEta(await getDrivingEta(loc, place))
+    } finally {
+      setEtaLoading(false)
+    }
+  }
+
+  // Petición real: "poder compartir dónde es un sitio" — se comparte la
+  // imagen en sí (no un enlace a Google, que exigiría la clave de la
+  // app). Sin soporte de compartir archivos (típico en ordenador) se abre
+  // en una pestaña nueva para guardarla a mano.
+  async function handleShareMap() {
+    setSharing(true)
+    try {
+      const file = await fetchPlaceMapImage(place.latitude, place.longitude, place.name)
+      if (!file) return
+      const shared = await shareFiles([file], { title: place.name })
+      if (!shared) window.open(URL.createObjectURL(file), '_blank')
+    } finally {
+      setSharing(false)
+    }
+  }
+
   return (
     <div className="card task-card">
       <div className="task-card-main">
         <strong>{place.name}</strong>
         <p className="muted">Radio {place.radiusM} m</p>
-        {locations.map((loc) => {
-          const member = members.find((m) => m.id === loc.memberId)
-          if (!member) return null
-          const dist = distanceMeters(loc.latitude, loc.longitude, place.latitude, place.longitude)
+        {ranked.map(({ member, loc, dist }, i) => {
           const near = dist <= place.radiusM
+          const nearest = i === 0
           return (
-            <p key={loc.memberId} className="muted">
-              {member.name}: {formatDistance(dist)} {near && '· cerca'}
-            </p>
+            <div key={member.id}>
+              <p className="muted">
+                {nearest && '⭐ '}
+                {member.name}: {formatDistance(dist)} {near && '· cerca'} {nearest && '· más cerca'}
+                {nearest && (
+                  <>
+                    {' · '}
+                    <button type="button" className="link-button" onClick={() => handleEta(member.id, loc)} disabled={etaLoading && etaFor === member.id}>
+                      🚗 {etaLoading && etaFor === member.id ? 'Calculando…' : 'ver tiempo en coche'}
+                    </button>
+                  </>
+                )}
+              </p>
+              {etaFor === member.id && eta && (
+                <p className="muted">
+                  🚗 {eta.minutes} min ({eta.km} km, con tráfico)
+                </p>
+              )}
+              {etaFor === member.id && !eta && !etaLoading && <p className="muted">No se pudo calcular el tiempo ahora mismo.</p>}
+            </div>
           )
         })}
+        <button type="button" className="link-button" onClick={handleShareMap} disabled={sharing} style={{ marginTop: 6 }}>
+          {sharing ? 'Preparando…' : '📤 Compartir mapa de este lugar'}
+        </button>
       </div>
       <ConfirmButton label="Eliminar" onConfirm={() => deletePlace(place.id).then(onDeleted)} />
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { reverseGeocode, searchPlaces, type PlaceResult } from '@/services/geocoding'
+import { resolvePlace, reverseGeocode, searchPlaces, type PlaceSuggestion } from '@/services/geocoding'
 import { loadGoogleMaps } from '@/services/googleMapsLoader'
 import { allowGoogleMapsUse, GoogleMapsDailyLimitError } from '@/services/googleMapsUsageGuard'
 import { getCurrentPosition } from '@/services/geolocation'
@@ -28,7 +28,7 @@ export function LocationPickerModal({
   const markerRef = useRef<google.maps.Marker | null>(null)
   const [query, setQuery] = useState(initialQuery ?? '')
   const [searching, setSearching] = useState(false)
-  const [suggestions, setSuggestions] = useState<PlaceResult[]>([])
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
   const [locating, setLocating] = useState(false)
   const [picked, setPicked] = useState<{ latitude: number; longitude: number } | null>(initialCoords ?? null)
   const [label, setLabel] = useState<string | null>(null)
@@ -116,10 +116,21 @@ export function LocationPickerModal({
     }
   }
 
-  function pickSuggestion(s: PlaceResult) {
-    placeMarker(s.latitude, s.longitude, true)
-    setLabel(s.label)
+  async function pickSuggestion(s: PlaceSuggestion) {
     setSuggestions([])
+    setSearching(true)
+    setError(null)
+    try {
+      const resolved = await resolvePlace(s.placeId)
+      if (!resolved) {
+        setError('No se pudo obtener ese sitio ahora mismo.')
+        return
+      }
+      placeMarker(resolved.latitude, resolved.longitude, true)
+      setLabel(resolved.label)
+    } finally {
+      setSearching(false)
+    }
   }
 
   async function handleUseCurrentPosition() {

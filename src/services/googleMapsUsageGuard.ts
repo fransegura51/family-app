@@ -14,6 +14,8 @@
 const LIMITS = {
   map: 80, // cargar el mapa (Ubicación + selector de sitio)
   search: 40, // buscar una dirección o reconocer un sitio nuevo
+  eta: 30, // calcular el tiempo de llegada en coche (Routes API)
+  share: 15, // generar la imagen de un lugar para compartir (Static Maps)
 } as const
 
 type GuardKind = keyof typeof LIMITS

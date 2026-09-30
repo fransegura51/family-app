@@ -17,6 +17,7 @@ vi.mock('@/data/food', () => ({
 vi.mock('@/data/shoppingStores', () => ({ listShoppingStores: vi.fn(async () => storeNames.map((name, i) => ({ id: `s${i}`, name }))) }))
 vi.mock('@/data/shopping', () => ({ listShoppingItems: vi.fn(async () => []), addShoppingItem: vi.fn() }))
 vi.mock('@/data/calendar', () => ({ createEvent: vi.fn() }))
+vi.mock('@/data/location', () => ({ addPlace: vi.fn() }))
 vi.mock('@/data/family', () => ({
   listFamilyMembers: vi.fn(async () => {
     if (memberCount < 0) throw new Error('sin red')

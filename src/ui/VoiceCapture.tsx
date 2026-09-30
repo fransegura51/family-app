@@ -4,6 +4,7 @@ import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
+import { listMemberLocations, listPlaces } from '@/data/location'
 import { createEvent, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
 import {
   listExternalEventCompletions,
@@ -35,6 +36,8 @@ import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenContinuous, primeSpeech, speakAsync } from '@/services/voice'
 import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/output'
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
+import { resolvePlace, searchPlaces } from '@/services/geocoding'
+import { getDrivingEta } from '@/services/drivingEta'
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
 import { showToast } from '@/state/toast'
@@ -42,12 +45,13 @@ import { handleKitchenText, ingredientsFlowFor, type KitchenOutcome } from '@/pe
 import { handleDialogReply, pendingBlockingCount, pendingDialogCount } from '@/pepa/dialog'
 import { forgetFinanceContext, handleFinanceText } from '@/pepa/finance'
 import { forgetBudgetActions, handleBudgetAction } from '@/pepa/financeActions'
+import { locationAction, type LocationDeps } from '@/pepa/location'
 import { NOT_UNDERSTOOD, runTalk, type TalkDeps, type TalkOutcome } from '@/pepa/talk'
 import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
 import { ActionConfirmSheet } from '@/ui/ActionConfirmSheet'
 import { RecipeDraftSheet } from '@/ui/RecipeDraftSheet'
-import { forgetRecentRecipes, type RecipeRequest } from '@/pepa/recentContext'
+import { forgetFoundPlace, forgetRecentRecipes, type RecipeRequest } from '@/pepa/recentContext'
 import { StoreQuestionSheet } from '@/ui/StoreQuestionSheet'
 import type { Recipe } from '@/domain/types'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
@@ -680,12 +684,38 @@ async function handleCalendarEntry(text: string): Promise<string> {
   return `Apuntado en el calendario: ${title} — ${dateLabel}${timeLabel}${endTimeLabel}${memberLabel}${recurrenceText}${reminderText}`
 }
 
+// Lo que necesita Ubicación (pepa/location.ts) de "Hablar con PEPA": buscar el primer resultado de
+// verdad (sin lista para elegir, no hay pantalla que la enseñe mientras se habla), la posición
+// actual (null si no hay permiso, en vez de romper nada) y los mismos servicios ya guardados por la
+// pantalla de Ubicación (usan la misma cuota diaria, googleMapsUsageGuard.ts).
+const locationDeps: LocationDeps = {
+  places: () => listPlaces(),
+  memberLocations: () => listMemberLocations(),
+  members: () => listFamilyMembers(),
+  currentPosition: async () => {
+    if (!isGeolocationSupported()) return null
+    try {
+      return await getCurrentPosition()
+    } catch {
+      return null
+    }
+  },
+  searchFirstPlace: async (term) => {
+    const suggestions = await searchPlaces(term)
+    if (suggestions.length === 0) return null
+    const resolved = await resolvePlace(suggestions[0].placeId)
+    return resolved ? { label: resolved.label, latitude: resolved.latitude, longitude: resolved.longitude } : null
+  },
+  drivingEta: (origin, destination) => getDrivingEta(origin, destination),
+}
+
 // Lo que necesita "Hablar con PEPA" del resto de la app: las mismas
 // respuestas de siempre a preguntas, y los mismos datos.
 const talkDeps: TalkDeps = {
   today: () => new Date(),
   kitchen: (text) => handleKitchenText(text, 'create', new Date(), { recipeRequests: true, conversation: true }),
   financeAction: (text) => handleBudgetAction(text),
+  location: (text) => locationAction(text, locationDeps),
   finance: (text) => handleFinanceText(text),
   forgetFinance: () => {
     forgetFinanceContext()
@@ -838,6 +868,8 @@ export function VoiceCapture() {
     } else if (outcome.kind === 'focus-store') {
       navigate(DESTINATION_INFO.compras.path)
       window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
+    } else if (outcome.kind === 'focus-place') {
+      navigate('/ubicacion')
     }
   }
 
@@ -859,6 +891,7 @@ export function VoiceCapture() {
     if (hadPending && outcome.kind === 'answer' && !outcome.keepPending && outcome.text !== NOT_UNDERSTOOD) {
       closeTalkDialogs()
       forgetRecentRecipes()
+      forgetFoundPlace()
       closedPending = true
       spoken = `${outcome.text} He cerrado lo que tenía pendiente, sin guardar nada.`
     }

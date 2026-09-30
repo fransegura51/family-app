@@ -7,6 +7,7 @@ vi.mock('@/data/food', () => ({
 }))
 vi.mock('@/data/shopping', () => ({ addShoppingItem: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/data/calendar', () => ({ createEvent: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/data/location', () => ({ addPlace: vi.fn().mockResolvedValue(undefined) }))
 
 import { createEvent } from '@/data/calendar'
 import { addShoppingItem } from '@/data/shopping'
@@ -62,6 +63,33 @@ describe('runTalk: primero reglas', () => {
     const outcome = await runTalk('borra la cita del nueve de septiembre', makeDeps())
     expect(outcome).toMatchObject({ kind: 'answer' })
     expect((outcome as { text: string }).text).toContain('Borrar')
+  })
+})
+
+describe('runTalk: Ubicación, después de Cocina y antes de calendario/compra', () => {
+  it('si deps.location entiende la frase, gana a las reglas de calendario/compra', async () => {
+    const location = vi.fn().mockResolvedValue({ kind: 'answer', text: 'He encontrado la farmacia.' })
+    const deps = makeDeps({ location })
+    expect(await runTalk('busca la farmacia', deps)).toEqual({ kind: 'answer', text: 'He encontrado la farmacia.' })
+    expect(location).toHaveBeenCalledWith('busca la farmacia')
+    expect(deps.answerCalendar).not.toHaveBeenCalled()
+  })
+
+  it('si Cocina ya ha contestado, ni se llama a Ubicación', async () => {
+    const location = vi.fn()
+    const deps = makeDeps({ kitchen: vi.fn().mockResolvedValue({ kind: 'answer', text: 'Cenamos tortilla.' }), location })
+    await runTalk('busca una receta de tortilla', deps)
+    expect(location).not.toHaveBeenCalled()
+  })
+
+  it('si deps.location no entiende la frase (null), sigue el camino de siempre', async () => {
+    const location = vi.fn().mockResolvedValue(null)
+    const deps = makeDeps({ location })
+    expect(await runTalk('¿qué tengo mañana?', deps)).toEqual({ kind: 'answer', text: 'Hoy no tienes nada.' })
+  })
+
+  it('sin deps.location (compatibilidad), funciona exactamente igual que antes', async () => {
+    expect(await runTalk('¿qué tengo mañana?', makeDeps())).toEqual({ kind: 'answer', text: 'Hoy no tienes nada.' })
   })
 })
 

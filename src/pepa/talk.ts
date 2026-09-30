@@ -30,6 +30,9 @@ export type TalkOutcome =
   | { kind: 'answer'; text: string; keepPending?: boolean }
   | { kind: 'proposal'; text: string; proposal: ActionProposal }
   | { kind: 'focus-store'; store: string; text: string }
+  // Un sitio encontrado por voz (Ubicación): lleva a esa pestaña para verlo. Nada se guarda todavía
+  // — hace falta decir "guárdalo" después (pepa/location.ts).
+  | { kind: 'focus-place'; text: string }
   // Receta que no existe: ofrece prepararla (la IA solo se llama si la persona acepta).
   | { kind: 'recipe-offer'; text: string; request: RecipeRequest }
   // Pregunta de tienda al añadir los ingredientes de una receta.
@@ -52,6 +55,8 @@ export interface TalkDeps {
   // Economía (solo consulta): devuelve la respuesta, o null si la frase no es de Economía.
   finance?(text: string): Promise<string | null>
   forgetFinance?(): void
+  // Ubicación (buscar/guardar un sitio, tiempo en coche, quién está más cerca): null = la frase no es de eso.
+  location?(text: string): Promise<TalkOutcome | null>
   storeNames(): Promise<string[]>
   members(): Promise<{ id: string; name: string }[]>
   // Solo para el aviso de posibles duplicados/conflictos al crear un evento por voz (ver
@@ -199,6 +204,13 @@ export async function runTalk(text: string, deps: TalkDeps): Promise<TalkOutcome
 
   const kitchen = await deps.kitchen(text)
   if (kitchen) return kitchen
+
+  // Ubicación ("busca la farmacia", "guárdalo", "cuánto se tarda a...", "quién está más cerca
+  // de..."): después de Cocina, para que "busca una receta de tortilla" lo siga resolviendo Cocina.
+  if (deps.location) {
+    const location = await deps.location(text)
+    if (location) return location
+  }
 
   const storeNames = await deps.storeNames()
   switch (routeTalk(text, storeNames, today)) {

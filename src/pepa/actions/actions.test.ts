@@ -8,9 +8,11 @@ vi.mock('@/data/food', () => ({
 
 vi.mock('@/data/shopping', () => ({ addShoppingItem: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/data/calendar', () => ({ createEvent: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/data/location', () => ({ addPlace: vi.fn().mockResolvedValue(undefined) }))
 
 import { createEvent } from '@/data/calendar'
 import { addRecipeIngredientsToShoppingList, setMenuEntry, updateMenuEntry } from '@/data/food'
+import { addPlace } from '@/data/location'
 import { addShoppingItem } from '@/data/shopping'
 import { actionIds, proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext } from '@/pepa/actions/types'
@@ -50,7 +52,15 @@ beforeEach(() => {
 
 describe('registro de acciones', () => {
   it('solo existen las acciones registradas', () => {
-    expect(actionIds()).toEqual(['menu.set', 'menu.ingredients_to_shopping', 'shopping.add', 'calendar.create', 'recipe.create', 'budget.set'])
+    expect(actionIds()).toEqual([
+      'menu.set',
+      'menu.ingredients_to_shopping',
+      'shopping.add',
+      'calendar.create',
+      'recipe.create',
+      'budget.set',
+      'location.addPlace',
+    ])
     expect(proposeAction('calendar.deleteEverything', {}, ctx())).toEqual({ ok: false, errors: ['Acción no permitida'] })
   })
 })
@@ -321,5 +331,39 @@ describe('calendar.create: notas de la tarjeta', () => {
     expect(proposeAction('calendar.create', { ...base, notes: 'texto' }, ctx()).ok).toBe(false)
     expect(proposeAction('calendar.create', { ...base, notes: ['a', 'b', 'c', 'd'] }, ctx()).ok).toBe(false)
     expect(proposeAction('calendar.create', { ...base, notes: [5] }, ctx()).ok).toBe(false)
+  })
+})
+
+describe('location.addPlace', () => {
+  const valid = { name: 'Farmacia de la esquina', latitude: 40.4168, longitude: -3.7038, radiusM: 150 }
+
+  it('guarda el lugar y avisa por dónde', async () => {
+    const result = proposeAction('location.addPlace', valid, ctx())
+    if (!result.ok) throw new Error('debería ser válida')
+    const message = await result.proposal.confirm(result.proposal.initialSelection)
+    expect(addPlace).toHaveBeenCalledWith({ name: 'Farmacia de la esquina', latitude: 40.4168, longitude: -3.7038, radiusM: 150 })
+    expect(message).toBe('Guardado «Farmacia de la esquina» en tus lugares frecuentes.')
+  })
+
+  it('la tarjeta deja cambiar el nombre antes de guardar', async () => {
+    const result = proposeAction('location.addPlace', valid, ctx())
+    if (!result.ok) throw new Error('debería ser válida')
+    const selection = { ...result.proposal.initialSelection, values: { name: 'Farmacia Nueva' } }
+    await result.proposal.confirm(selection)
+    expect(vi.mocked(addPlace).mock.calls[0][0].name).toBe('Farmacia Nueva')
+  })
+
+  it('rechaza nombre, coordenadas o radio no válidos', () => {
+    const cases = [
+      { ...valid, name: '' },
+      { ...valid, name: 'x'.repeat(81) },
+      { ...valid, latitude: 91 },
+      { ...valid, longitude: -181 },
+      { ...valid, radiusM: 0 },
+      { ...valid, radiusM: 5001 },
+      { ...valid, extra: 1 },
+      'texto',
+    ]
+    for (const raw of cases) expect(proposeAction('location.addPlace', raw, ctx()).ok).toBe(false)
   })
 })

@@ -1,4 +1,5 @@
 import { budgetSetAction } from '@/pepa/actions/financeActions'
+import { locationAddPlaceAction } from '@/pepa/actions/locationActions'
 import { ingredientsToShoppingAction, menuSetAction } from '@/pepa/actions/menuActions'
 import { recipeCreateAction } from '@/pepa/actions/recipeActions'
 import { calendarCreateAction, shoppingAddAction } from '@/pepa/actions/talkActions'
@@ -8,7 +9,15 @@ import type { ActionContext, ProposeResult, RegisteredAction } from '@/pepa/acti
 // solo puede pedir un id de esta lista; cualquier otro se rechaza. Para
 // permitir algo nuevo hay que escribir su acción, con su validación, y
 // añadirla aquí a propósito.
-const ACTIONS: RegisteredAction[] = [menuSetAction, ingredientsToShoppingAction, shoppingAddAction, calendarCreateAction, recipeCreateAction, budgetSetAction]
+const ACTIONS: RegisteredAction[] = [
+  menuSetAction,
+  ingredientsToShoppingAction,
+  shoppingAddAction,
+  calendarCreateAction,
+  recipeCreateAction,
+  budgetSetAction,
+  locationAddPlaceAction,
+]
 
 export function actionIds(): string[] {
   return ACTIONS.map((a) => a.id)

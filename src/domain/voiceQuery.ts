@@ -486,6 +486,10 @@ const PLACE_QUERY_PREFIXES = [
   /^necesito\s+/,
   /^donde hay\s+/,
   /^dime donde hay\s+/,
+  // "Hablar con PEPA" (botón general, sin el botón "📍 Buscar sitio" delante para dar la pista):
+  // hacen falta también estas dos formas de preguntar por un sitio conocido, no solo "busca uno cerca".
+  /^donde esta\s+/,
+  /^donde queda\s+/,
 ]
 const PLACE_QUERY_SUFFIXES = [/\s+cerca de aqui$/, /\s+cerca de mi$/, /\s+cercano$/, /\s+cercana$/, /\s+cerca$/, /\s+por aqui$/]
 

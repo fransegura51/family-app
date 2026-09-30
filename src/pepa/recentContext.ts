@@ -35,3 +35,26 @@ export function forgetRecentRecipes(): void {
   recentRequest = null
   recent = { recipeIds: [], at: 0 }
 }
+
+// El último sitio que Pepa ha encontrado buscando por voz ("busca la farmacia de guardia"), para
+// poder guardarlo justo después diciendo solo "guárdalo" sin repetir el nombre ni las coordenadas.
+export interface FoundPlace {
+  label: string
+  latitude: number
+  longitude: number
+}
+
+const FOUND_PLACE_MS = 5 * 60 * 1000
+let recentPlace: { place: FoundPlace; at: number } | null = null
+
+export function rememberFoundPlace(place: FoundPlace): void {
+  recentPlace = { place, at: Date.now() }
+}
+
+export function pendingFoundPlace(): FoundPlace | null {
+  return recentPlace && Date.now() - recentPlace.at <= FOUND_PLACE_MS ? recentPlace.place : null
+}
+
+export function forgetFoundPlace(): void {
+  recentPlace = null
+}

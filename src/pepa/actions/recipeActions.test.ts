@@ -8,6 +8,7 @@ vi.mock('@/data/food', () => ({
 }))
 vi.mock('@/data/shopping', () => ({ addShoppingItem: vi.fn() }))
 vi.mock('@/data/calendar', () => ({ createEvent: vi.fn() }))
+vi.mock('@/data/location', () => ({ addPlace: vi.fn() }))
 
 import { createRecipe } from '@/data/food'
 import { proposeAction } from '@/pepa/actions/registry'

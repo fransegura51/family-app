@@ -13,8 +13,13 @@ const ROLLBACK = FILES['/supabase/rollbacks/0157_forecast_reconciliation_down.sq
 const SQL = MIGRATION.replace(/--[^\n]*/g, '')
 const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const DATA_FORECAST = APP['/src/data/forecast.ts']
+const FINANCE_SCREEN = APP['/src/ui/FinanceScreen.tsx']
 const ALL_MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const FORECAST_PAYMENTS_MIGRATION = ALL_MIGRATIONS['/supabase/migrations/0155_forecast_payments.sql']
+// 0173 — hereda automáticamente la categoría de la previsión al confirmar (2026-09-30). REPLACE de la
+// misma función: el texto de 0157 de arriba sigue siendo historia inmutable de cómo se aplicó esa fase;
+// esta es la versión REAL vigente hoy, se lee aparte.
+const SQL_0173 = ALL_MIGRATIONS['/supabase/migrations/0173_forecast_reconciliation_category_inherit.sql'].replace(/--[^\n]*/g, '')
 
 describe('11/12) un mismo expense no puede conciliar dos ocurrencias — protección real en la base de datos, nunca solo en React', () => {
   it('índice único parcial sobre matched_expense_id (WHERE not null) — no existía antes de esta fase', () => {
@@ -115,6 +120,63 @@ describe('21) RLS — una familia jamás puede conciliar contra movimientos de o
     expect(SQL).toContain('insert into forecast_occurrences (')
     expect(SQL).not.toMatch(/set role/i)
     expect(SQL).not.toMatch(/bypass/i)
+  })
+})
+
+// 0173 — corrección real (2026-09-30): Hipoteca/Préstamo Moto ya tenían su categoría correcta antes de
+// conciliar, pero el movimiento entraba como "Otros" del banco y quedaba así hasta que el usuario abría
+// "Gestionar movimiento" A MANO y guardaba — dejando el estado "conciliado = sí / categoría conocida pero
+// todavía no aplicada". Se hereda ahora DENTRO de la misma transacción atómica que confirma.
+describe('0173 — match_forecast_occurrence hereda automáticamente la categoría de la previsión, atómicamente', () => {
+  it('resuelve el nombre de categoría desde forecast_payments.category_id → budget_categories.name — nunca un nombre hardcodeado', () => {
+    expect(SQL_0173).toContain('select bc.name into v_category_name')
+    expect(SQL_0173).toContain('from forecast_payments fp')
+    expect(SQL_0173).toContain('join budget_categories bc on bc.id = fp.category_id')
+    expect(SQL_0173).toContain('where fp.id = p_forecast_payment_id')
+    // Genérico: ningún nombre de categoría concreto (Préstamos, Hipoteca...) aparece en el código SQL.
+    expect(SQL_0173.toLowerCase()).not.toMatch(/'préstamo|'prestamo|'hipoteca/)
+  })
+
+  it('reutiliza classify_purchase (0150) tal cual — nunca un UPDATE directo a expenses.category ni una segunda función de clasificación', () => {
+    expect(SQL_0173).toContain('perform classify_purchase(p_expense_id := p_expense_id, p_category := v_category_name)')
+    expect(SQL_0173).not.toMatch(/update\s+expenses\s+set\s+category/i)
+  })
+
+  it('si la previsión no tiene categoría real, no se llama a classify_purchase — el movimiento conserva la que ya tuviera (classify_purchase ni se invoca)', () => {
+    const guardIdx = SQL_0173.indexOf('if v_category_name is not null then')
+    expect(guardIdx).toBeGreaterThan(-1)
+    const guardBlock = SQL_0173.slice(guardIdx, SQL_0173.indexOf('end if;', guardIdx))
+    expect(guardBlock).toContain('perform classify_purchase')
+  })
+
+  it('la herencia de categoría ocurre DESPUÉS del insert/upsert de forecast_occurrences — nunca antes, nunca en una transacción separada', () => {
+    const insertIdx = SQL_0173.indexOf('insert into forecast_occurrences')
+    const categoryIdx = SQL_0173.indexOf('select bc.name into v_category_name')
+    expect(insertIdx).toBeGreaterThan(-1)
+    expect(categoryIdx).toBeGreaterThan(insertIdx)
+  })
+
+  it('sigue siendo SECURITY INVOKER — la herencia de categoría respeta la RLS real de classify_purchase, no se salta nada', () => {
+    expect(SQL_0173).toContain('security invoker')
+    expect(SQL_0173).not.toMatch(/security definer/i)
+  })
+})
+
+describe('0173 — cliente: "Gestionar movimiento" solo se abre si queda una decisión real pendiente', () => {
+  const idx = FINANCE_SCREEN.indexOf('async function confirmCandidate(')
+  const body = FINANCE_SCREEN.slice(idx, FINANCE_SCREEN.indexOf('\n  }', idx))
+
+  it('ya no abre setManaging incondicionalmente tras confirmar — se calcula hasConflict con resolveManagedExpenseCategory antes', () => {
+    expect(body).toContain('resolveManagedExpenseCategory(updatedExpense.category, forecastCategoryName).hasConflict')
+    expect(body).toContain('if (stillPending) {')
+    expect(body).toContain('setManaging({ expenseId: c.movement.expenseId, forecastCategoryId: c.occurrence.categoryId })')
+  })
+
+  it('lee la categoría real del movimiento YA actualizada (getExpenseById) tras matchForecastOccurrence, nunca la categoría previa a conciliar', () => {
+    const matchIdx = body.indexOf('await matchForecastOccurrence(')
+    const getExpenseIdx = body.indexOf('await getExpenseById(')
+    expect(matchIdx).toBeGreaterThan(-1)
+    expect(getExpenseIdx).toBeGreaterThan(matchIdx)
   })
 })
 

@@ -110,11 +110,13 @@ describe('lo que esta fase NO toca', () => {
     // Storage nuevo — tabla de Previsión, nada que ver con devoluciones/refunds.
     // 0172 (event_planning_context, Fase 1 del "inicio inteligente" de Eventos) añade
     // `events.included_services` — tabla de Eventos, nada que ver con devoluciones/refunds.
+    // 0173/0174 (conciliación bancaria: herencia de categoría + "No es este" persistido) tocan
+    // match_forecast_occurrence y una tabla nueva de descartes — conciliación, nunca devoluciones.
     // Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(172)
+    expect(Math.max(...numbers)).toBe(174)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

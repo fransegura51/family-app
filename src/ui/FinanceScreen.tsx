@@ -35,6 +35,7 @@ import {
   createLoanDetails,
   deleteForecastPayment,
   deleteLoanDetails,
+  dismissForecastReconciliationCandidate,
   dismissForecastRecurrence,
   findForecastPaymentByContentFingerprint,
   findForecastPaymentBySourceHash,
@@ -43,6 +44,7 @@ import {
   listAllMatchedForecastExpenseIds,
   listForecastOccurrenceOverrides,
   listForecastPayments,
+  listForecastReconciliationDismissals,
   listForecastRecurrenceDismissals,
   listLoanDetails,
   matchForecastOccurrence,
@@ -87,6 +89,7 @@ import {
 import {
   findReconciliationCandidates,
   hasSharedWord,
+  reconciliationPairKey,
   resolveManagedExpenseCategory,
   type BankMovementForMatching,
   type OccurrenceForMatching,
@@ -8936,9 +8939,23 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     // ForecastPaymentForm, que llama a la misma reload() al guardar (onSaved -> saveCommon).
     listLoanDetails().then(setLoanDetails).catch(() => {})
   }
+  // Revisión de seguridad/regresión (2026-09-30) — antes eran 3 promesas sueltas, cada una con su propio
+  // setState en su propio .then(): sin ninguna garantía de orden entre ellas, listBankTransactions()
+  // podía resolver ANTES que listForecastReconciliationDismissals(), dejando un render intermedio con
+  // bankTransactions ya poblado pero dismissedCandidateKeys todavía vacío — una pareja "No es este" ya
+  // descartada podía reaparecer un instante hasta que la segunda promesa también resolviera. Promise.all +
+  // un único setState conjunto hace que las 3 lleguen SIEMPRE juntas al mismo render — nunca un instante
+  // con datos a medias. Efecto secundario aceptado: si una de las 3 peticiones falla, ya no se actualiza
+  // ninguna de las otras dos (antes sí) — correcto aquí: las 3 deben ser consistentes ENTRE SÍ para que
+  // findReconciliationCandidates calcule bien, mostrar solo 2 de 3 sería peor que no actualizar nada.
   function reloadReconciliation() {
-    listBankTransactions().then(setBankTransactions).catch(() => {})
-    listAllMatchedForecastExpenseIds().then(setMatchedExpenseIds).catch(() => {})
+    Promise.all([listBankTransactions(), listAllMatchedForecastExpenseIds(), listForecastReconciliationDismissals()])
+      .then(([transactions, matched, dismissed]) => {
+        setBankTransactions(transactions)
+        setMatchedExpenseIds(matched)
+        setDismissedCandidateKeys(dismissed)
+      })
+      .catch(() => {})
   }
   // Fase 1D-g — aparte de reloadReconciliation: la categoría de los movimientos y los descartes guardados
   // solo hace falta recargarlos tras "No me interesa", nunca en cada confirmación/desconciliación normal.
@@ -9035,10 +9052,14 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       currency: t.currency,
       description: t.description,
       isIncome: false,
+      // Fase 3B — la categoría YA asignada al expense vinculado (ya cargada para "posibles pagos
+      // recurrentes", se reutiliza aquí tal cual, nunca una segunda carga/consulta).
+      category: t.matchedExpenseId ? (expenseCategoryByExpenseId.get(t.matchedExpenseId) ?? null) : null,
     }))
-  const reconciliationCandidates = findReconciliationCandidates(reconciliationCandidateInputs, reconciliationMovements, matchedExpenseIds).filter(
-    (c) => !dismissedCandidateKeys.has(candidateKey(c)),
-  )
+  // dismissedCandidateKeys ahora viaja como 4º argumento del propio motor (en vez de filtrar el resultado
+  // ya calculado): así una pareja descartada no oculta la ocurrencia entera — el motor sigue buscando su
+  // siguiente mejor candidato entre el resto de movimientos disponibles, tal como se pidió.
+  const reconciliationCandidates = findReconciliationCandidates(reconciliationCandidateInputs, reconciliationMovements, matchedExpenseIds, dismissedCandidateKeys)
   const reconciledRecently = reconciliationOccurrences.filter((o) => !!o.matchedExpenseId)
 
   // Fase 1D-g — detección de posibles pagos recurrentes: TODO el histórico bancario real (nunca solo la
@@ -9094,8 +9115,10 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     }
   }
 
+  // Misma clave que usa el propio motor (domain/forecastReconciliation.ts) — nunca una segunda forma de
+  // construirla aquí, para que cliente y filtro de descartados no puedan desincronizarse.
   function candidateKey(c: ReconciliationCandidate): string {
-    return `${c.occurrence.forecastPaymentId}:${c.occurrence.occurrenceDate}:${c.occurrence.installmentSequenceIndex ?? 0}:${c.movement.bankTransactionId}`
+    return reconciliationPairKey(c.occurrence, c.movement)
   }
 
   async function confirmCandidate(c: ReconciliationCandidate) {
@@ -9104,6 +9127,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     setReconcileBusyKey(key)
     setReconcileError(null)
     try {
+      // match_forecast_occurrence (0173) ya hereda dentro de la MISMA transacción la categoría de la
+      // previsión (si tiene una real asignada) — nunca queda el estado "conciliado = sí / categoría
+      // conocida pero todavía no aplicada". La conciliación YA ha quedado guardada en este punto.
       await matchForecastOccurrence(c.occurrence.forecastPaymentId, c.occurrence.occurrenceDate, c.occurrence.installmentSequenceIndex, c.movement.expenseId, {
         amountStatus: c.occurrence.amountStatus,
         amount: c.occurrence.amount,
@@ -9111,17 +9137,37 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       })
       reload()
       reloadReconciliation()
-      // La conciliación YA ha quedado guardada — "Gestionar movimiento" es un paso SEPARADO y opcional
-      // a continuación (si el usuario lo cierra sin guardar nada, la conciliación no se pierde).
-      setManaging({ expenseId: c.movement.expenseId, forecastCategoryId: c.occurrence.categoryId })
+      // "Gestionar movimiento" solo se abre si de verdad queda una decisión pendiente sobre la categoría
+      // — reutiliza EXACTAMENTE resolveManagedExpenseCategory (ya testeado), nunca una condición nueva.
+      // hasConflict es false tanto si la categoría ya quedó bien heredada como si la previsión no tenía
+      // ninguna categoría que ofrecer (nada más que PEPA pueda proponer automáticamente aquí) — en ambos
+      // casos "Gestionar" sigue disponible después desde "Conciliados recientemente", sin forzarlo ahora.
+      const updatedExpense = await getExpenseById(c.movement.expenseId)
+      const forecastCategoryName = categories.find((cat) => cat.id === c.occurrence.categoryId)?.name ?? null
+      const stillPending = updatedExpense ? resolveManagedExpenseCategory(updatedExpense.category, forecastCategoryName).hasConflict : false
+      if (stillPending) {
+        setManaging({ expenseId: c.movement.expenseId, forecastCategoryId: c.occurrence.categoryId })
+      }
     } catch (err) {
       setReconcileError(errorMessage(err, 'No se pudo conciliar'))
     } finally {
       setReconcileBusyKey(null)
     }
   }
-  function dismissCandidate(c: ReconciliationCandidate) {
-    setDismissedCandidateKeys((prev) => new Set(prev).add(candidateKey(c)))
+  // Persistido (0174) — "No es este" debe sobrevivir a salir de la pantalla, cerrar la PWA o volver otro
+  // día; ya no basta con el useState en memoria de antes.
+  async function dismissCandidate(c: ReconciliationCandidate) {
+    const key = candidateKey(c)
+    setReconcileBusyKey(key)
+    setReconcileError(null)
+    try {
+      await dismissForecastReconciliationCandidate(c.occurrence.forecastPaymentId, c.occurrence.occurrenceDate, c.occurrence.installmentSequenceIndex, c.movement.bankTransactionId)
+      setDismissedCandidateKeys((prev) => new Set(prev).add(key))
+    } catch (err) {
+      setReconcileError(errorMessage(err, 'No se pudo descartar la propuesta'))
+    } finally {
+      setReconcileBusyKey(null)
+    }
   }
   async function unmatchOccurrence(o: ForecastOccurrence) {
     if (!o.matchedExpenseId) return

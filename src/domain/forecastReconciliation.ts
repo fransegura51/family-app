@@ -6,6 +6,7 @@
 // todavía, ni para "high"). La IA no participa en absoluto en este cálculo — todo es aritmética y
 // comparación de fechas/importes/cuenta, código determinista de principio a fin.
 import { eurosNumberToCents } from './forecastMoneyCents'
+import { isPendingCategory } from './pending'
 import type { ForecastOccurrence } from './forecast'
 
 // Un movimiento bancario real, ya reducido a lo que hace falta para compararlo — el motor nunca lee
@@ -23,6 +24,12 @@ export interface BankMovementForMatching {
   currency: string
   description: string | null
   isIncome: boolean // credit_debit === 'CRDT'
+  // Fase 3B (2026-09-30) — la categoría YA asignada al expense vinculado (el sync bancario la adivina al
+  // sincronizar, o el usuario la corrige a mano después) — null si sigue sin clasificar. Señal AUXILIAR,
+  // nunca una verdad absoluta: la auditoría real de Hipoteca/Préstamo Moto demostró que el sync puede
+  // adivinar mal (cae en "Otros" cuando no reconoce el comercio) — ver isUninformativeCategory más abajo,
+  // que trata ese fallback igual que "sin clasificar" para esta comparación.
+  category: string | null
 }
 
 export type ReconciliationReasonCode =
@@ -33,6 +40,7 @@ export type ReconciliationReasonCode =
   | 'date_near'
   | 'text_match'
   | 'category_match'
+  | 'category_agrees'
 
 export interface ReconciliationReason {
   code: ReconciliationReasonCode
@@ -66,6 +74,19 @@ export const RECONCILIATION_DATE_WINDOW_DAYS = 3
 // deja de sumar puntos — pero nunca excluye el candidato por sí solo (cuenta+fecha pueden bastar).
 export const RECONCILIATION_AMOUNT_TOLERANCE_RATIO = 0.15
 
+// ── Incompatibilidad fuerte de importe (Fase 3A, 2026-09-30) — señal SEPARADA de la tolerancia normal de
+// arriba, que se queda intacta (144,54 €/146,20 €, 1,15% de diferencia, sigue siendo "amount_close", ni
+// se acerca a estos límites). Exige AMBOS límites a la vez, nunca uno solo:
+//   - relativo: sin él, una diferencia grande en euros pero pequeña en % (importes altos) pasaría
+//     desapercibida por mirar solo el porcentaje;
+//   - absoluto: sin él, una diferencia del 100% sobre un importe pequeño (pocos euros reales) se trataría
+//     como "fuertemente incompatible" cuando en la práctica es una diferencia irrelevante en dinero real.
+// CASO REAL que motiva estos valores: previsto 200,00 €, banco 65,93 € → 67% relativo Y 134,07 € absolutos,
+// ambos por encima — comportamiento deseado: incompatible. Previsto 144,54 €, banco 146,20 € → 1,15%
+// relativo — muy por debajo de ambos límites, no se ve afectado.
+export const RECONCILIATION_AMOUNT_INCOMPATIBLE_RELATIVE_RATIO = 0.5
+export const RECONCILIATION_AMOUNT_INCOMPATIBLE_MIN_ABS_CENTS = 3000 // 30,00 €
+
 const SCORE_SAME_ACCOUNT = 30
 const SCORE_AMOUNT_EXACT = 40
 const SCORE_AMOUNT_CLOSE = 20
@@ -73,6 +94,20 @@ const SCORE_DATE_EXACT = 30
 const SCORE_DATE_PER_DAY_PENALTY = 5 // por cada día de distancia hasta la ventana — nunca negativo
 const SCORE_TEXT_MATCH = 10
 const SCORE_CATEGORY_MATCH = 5
+// Mismo peso que SCORE_TEXT_MATCH — señal confirmatoria estructurada (categoría↔categoría, ver
+// isUninformativeCategory), nunca decisiva por sí sola.
+const SCORE_CATEGORY_AGREES = 10
+
+// "Otros" es la categoría de reserva del sync bancario (enable-banking-sync-transactions: guessCategory)
+// cuando no reconoce el comercio — un valor REAL guardado en expenses.category (a diferencia de
+// null/isPendingCategory), pero de baja confianza: la auditoría real de Hipoteca/Préstamo Moto (2026-09-30)
+// demostró que puede adivinar mal. Se trata igual que "sin clasificar" para la comparación de categorías
+// de esta fase — único nombre de categoría hardcodeado en todo este módulo, por el tratamiento técnico
+// explícitamente permitido para "Otros", nunca como regla de negocio nueva.
+const CATEGORY_GUESS_FALLBACK = 'Otros'
+function isUninformativeCategory(category: string | null | undefined): boolean {
+  return isPendingCategory(category) || category === CATEGORY_GUESS_FALLBACK
+}
 
 // Umbrales de confianza — deliberadamente conservadores: "high" solo con cuenta+importe+fecha alineados
 // a la vez (el caso SUMA: misma cuenta + importe exacto + 2 días = 30+40+20 = 90). Documentados aquí,
@@ -165,6 +200,38 @@ export function scoreReconciliationCandidate(
   const dayOffset = daysBetween(occurrence.expectedPaymentDate, movement.date) // + = el banco cobra DESPUÉS de lo previsto
   if (Math.abs(dayOffset) > RECONCILIATION_DATE_WINDOW_DAYS) return null
 
+  // Importe conocido de la ocurrencia — se calcula UNA sola vez: alimenta tanto la exclusión fuerte de
+  // abajo como la puntuación normal (amount_exact/amount_close), nunca dos cálculos que puedan
+  // desincronizarse entre sí.
+  let expectedCents: number | null = null
+  let movementCents: number | null = null
+  let amountDiffCents: number | null = null
+  if (occurrence.amountStatus !== 'unknown' && occurrence.amount != null) {
+    expectedCents = eurosNumberToCents(occurrence.amount)
+    movementCents = eurosNumberToCents(movement.amount)
+    amountDiffCents = Math.abs(expectedCents - movementCents)
+  }
+
+  // ── Exclusión fuerte, deliberadamente conservadora (Fase 3, 2026-09-30) ─────────────────────────────
+  // CASO REAL: "E. I. LAS CASITAS" (200 €, Educación) proponía como candidato "MERCADONA" (65,93 €,
+  // Supermercado) solo por cuenta+fecha próxima. Se excluye SOLO cuando importe Y categoría son a la vez
+  // fuertemente incompatibles — ninguna de las dos señales basta por sí sola (importe muy distinto con
+  // categoría Otros/sin clasificar, o categoría distinta con importe cercano, SIGUEN pudiendo proponerse).
+  // El texto/concepto NUNCA participa en esta exclusión — su ausencia de coincidencia es neutral, nunca
+  // una prueba de incompatibilidad (el banco puede describir el cargo de forma muy distinta al título que
+  // el usuario le puso a la previsión).
+  const amountStronglyIncompatible =
+    amountDiffCents != null &&
+    expectedCents != null &&
+    amountDiffCents / Math.max(1, Math.abs(expectedCents)) >= RECONCILIATION_AMOUNT_INCOMPATIBLE_RELATIVE_RATIO &&
+    amountDiffCents >= RECONCILIATION_AMOUNT_INCOMPATIBLE_MIN_ABS_CENTS
+  // Ambos lados deben tener una categoría REAL (nunca Otros/sin clasificar) y distinta entre sí — nunca se
+  // excluye por una categoría genérica de reserva en ninguno de los dos lados.
+  const forecastCategoryInformative = !!categoryName && !isUninformativeCategory(categoryName)
+  const movementCategoryInformative = !isUninformativeCategory(movement.category)
+  const categoryStronglyConflicts = forecastCategoryInformative && movementCategoryInformative && movement.category !== categoryName
+  if (amountStronglyIncompatible && categoryStronglyConflicts) return null
+
   const reasons: ReconciliationReason[] = []
   let score = 0
 
@@ -173,15 +240,12 @@ export function scoreReconciliationCandidate(
     reasons.push({ code: 'same_account', label: 'misma cuenta' })
   }
 
-  if (occurrence.amountStatus !== 'unknown' && occurrence.amount != null) {
-    const expectedCents = eurosNumberToCents(occurrence.amount)
-    const movementCents = eurosNumberToCents(movement.amount)
-    const diffCents = Math.abs(expectedCents - movementCents)
-    if (diffCents === 0) {
+  if (expectedCents != null && movementCents != null && amountDiffCents != null) {
+    if (amountDiffCents === 0) {
       score += SCORE_AMOUNT_EXACT
       reasons.push({ code: 'amount_exact', label: 'mismo importe' })
     } else {
-      const relativeDiff = diffCents / Math.max(1, Math.abs(expectedCents))
+      const relativeDiff = amountDiffCents / Math.max(1, Math.abs(expectedCents))
       if (relativeDiff <= RECONCILIATION_AMOUNT_TOLERANCE_RATIO) {
         score += SCORE_AMOUNT_CLOSE
         reasons.push({ code: 'amount_close', label: `importe parecido (esperado ${(expectedCents / 100).toFixed(2)} €, real ${(movementCents / 100).toFixed(2)} €)` })
@@ -210,6 +274,17 @@ export function scoreReconciliationCandidate(
     reasons.push({ code: 'category_match', label: 'coincide con la categoría prevista' })
   }
 
+  // Fase 3B (2026-09-30) — comparación ESTRUCTURADA categoría↔categoría, distinta de category_match de
+  // arriba (que es texto: el nombre de la categoría aparece en la descripción del banco). Solo suma si el
+  // movimiento YA tiene una categoría real (nunca Otros/sin clasificar) y coincide con la de la previsión
+  // (también real) — nunca resta puntos si no coincide: esa señal negativa vive únicamente en la
+  // exclusión fuerte de más arriba, nunca aquí sola (una categoría distinta nunca es, por sí sola, prueba
+  // suficiente para penalizar ni excluir).
+  if (forecastCategoryInformative && movementCategoryInformative && movement.category === categoryName) {
+    score += SCORE_CATEGORY_AGREES
+    reasons.push({ code: 'category_agrees', label: 'coincide con la categoría real ya asignada al movimiento' })
+  }
+
   return { score, confidence: confidenceForScore(score), reasons }
 }
 
@@ -226,16 +301,34 @@ export interface OccurrenceForMatching {
   categoryName?: string | null
 }
 
+// Identidad de UNA pareja (ocurrencia previsión ↔ movimiento bancario) para "No es este" — misma forma
+// que ya usaba candidateKey en FinanceScreen.tsx, ahora exportada desde el propio motor para que el
+// cliente y el filtro de descartados nunca puedan desincronizarse construyendo la clave de dos formas
+// distintas. Nunca identifica solo un lado: rechazar A↔B no bloquea A con otro movimiento ni B con otra
+// previsión, solo esta pareja exacta.
+export function reconciliationPairKey(
+  occurrence: Pick<ForecastOccurrence, 'forecastPaymentId' | 'occurrenceDate' | 'installmentSequenceIndex'>,
+  movement: Pick<BankMovementForMatching, 'bankTransactionId'>,
+): string {
+  return `${occurrence.forecastPaymentId}:${occurrence.occurrenceDate}:${occurrence.installmentSequenceIndex ?? 0}:${movement.bankTransactionId}`
+}
+
 // Busca, para CADA ocurrencia pendiente, el mejor movimiento candidato entre los disponibles — nunca al
 // revés (un mismo movimiento no puede proponerse ya usado, ver `alreadyMatchedExpenseIds`). Devuelve como
 // mucho UN candidato por ocurrencia (el de mayor puntuación) y como mucho UN candidato por movimiento (si
 // el mismo movimiento fuera el mejor para dos ocurrencias, se queda con la de mayor puntuación y la otra
 // ocurrencia no se propone con ese movimiento — nunca se duplica una propuesta del mismo movimiento).
 // Ordenado por puntuación descendente.
+//
+// dismissedPairKeys ("No es este" persistido) — una pareja descartada se trata como si no puntuara para
+// ESA combinación exacta: la ocurrencia sigue buscando su siguiente mejor candidato entre el resto de
+// movimientos, y el movimiento descartado sigue disponible para cualquier OTRA ocurrencia — nunca se
+// excluye ninguno de los dos lados por completo, solo esta pareja.
 export function findReconciliationCandidates(
   candidates: OccurrenceForMatching[],
   movements: BankMovementForMatching[],
   alreadyMatchedExpenseIds: ReadonlySet<string>,
+  dismissedPairKeys: ReadonlySet<string> = new Set(),
 ): ReconciliationCandidate[] {
   const availableMovements = movements.filter((m) => !m.expenseId || !alreadyMatchedExpenseIds.has(m.expenseId))
 
@@ -244,6 +337,7 @@ export function findReconciliationCandidates(
     if (occurrence.matchedExpenseId) continue
     let best: ReconciliationCandidate | null = null
     for (const movement of availableMovements) {
+      if (dismissedPairKeys.has(reconciliationPairKey(occurrence, movement))) continue
       const result = scoreReconciliationCandidate(occurrence, payment, movement, categoryName)
       if (!result) continue
       if (!best || result.score > best.score) {

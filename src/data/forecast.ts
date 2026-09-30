@@ -592,6 +592,41 @@ export async function dismissForecastRecurrence(accountId: string, merchantKey: 
   if (error) throw error
 }
 
+// ── Conciliación bancaria — "No es este" persistido (0174) ─────────────────────────────────────────
+//
+// Tabla propia, distinta de forecast_recurrence_dismissals (esa descarta un PATRÓN de comercio, esta
+// descarta una PAREJA exacta previsión↔movimiento). Misma clave que domain/forecastReconciliation.ts
+// reconciliationPairKey, para que cliente y motor nunca puedan desincronizarse construyéndola de dos
+// formas distintas.
+export async function listForecastReconciliationDismissals(): Promise<Set<string>> {
+  const { data, error } = await supabase.from('forecast_reconciliation_dismissals').select('forecast_payment_id, occurrence_date, installment_sequence_index, bank_transaction_id')
+  if (error) throw error
+  return new Set((data ?? []).map((r) => `${r.forecast_payment_id}:${r.occurrence_date}:${r.installment_sequence_index}:${r.bank_transaction_id}`))
+}
+
+// Descartar la misma pareja dos veces es idempotente (upsert por la unique de la migración 0174) —
+// nunca un error por volver a pulsar "No es este" sobre la misma propuesta.
+export async function dismissForecastReconciliationCandidate(
+  forecastPaymentId: string,
+  occurrenceDate: string,
+  installmentSequenceIndex: number | null,
+  bankTransactionId: string,
+): Promise<void> {
+  const { familyId, userId } = await currentFamilyAndUser()
+  const { error } = await supabase.from('forecast_reconciliation_dismissals').upsert(
+    {
+      family_id: familyId,
+      forecast_payment_id: forecastPaymentId,
+      occurrence_date: occurrenceDate,
+      installment_sequence_index: installmentSequenceIndex ?? 0,
+      bank_transaction_id: bankTransactionId,
+      dismissed_by: userId,
+    },
+    { onConflict: 'forecast_payment_id,occurrence_date,installment_sequence_index,bank_transaction_id' },
+  )
+  if (error) throw error
+}
+
 // ── Fase 1E.0/1E.1 — infraestructura de préstamos/hipotecas (forecast_loan_details) ────────────────
 //
 // Solo infraestructura: SIN UI todavía. La relación con forecast_payments es 1:1 opcional — un

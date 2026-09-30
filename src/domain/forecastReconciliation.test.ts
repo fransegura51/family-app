@@ -4,6 +4,9 @@ import {
   findReconciliationCandidates,
   hasSharedWord,
   meaningfulWords,
+  reconciliationPairKey,
+  RECONCILIATION_AMOUNT_INCOMPATIBLE_MIN_ABS_CENTS,
+  RECONCILIATION_AMOUNT_INCOMPATIBLE_RELATIVE_RATIO,
   RECONCILIATION_CONFIDENCE_HIGH_MIN,
   RECONCILIATION_CONFIDENCE_MEDIUM_MIN,
   RECONCILIATION_DATE_WINDOW_DAYS,
@@ -45,6 +48,7 @@ function movement(overrides: Partial<BankMovementForMatching> = {}): BankMovemen
     currency: 'EUR',
     description: 'SUMA GESTION TRIBUTARIA',
     isIncome: false,
+    category: null,
     ...overrides,
   }
 }
@@ -154,6 +158,110 @@ describe('scoreReconciliationCandidate — CASO REAL: SUMA (IBI 1/6)', () => {
   })
 })
 
+// CASO REAL, Fase 3 (2026-09-30) — auditoría del matcher: "E. I. LAS CASITAS" (200 €, Educación, 02/10)
+// proponía como candidato "MERCADONA ALMORADI" (65,93 €, Supermercado, 29/09) solo por cuenta + 3 días de
+// proximidad. Importe y categoría se tratan como señales SEPARADAS (nunca la misma), y el texto/concepto
+// se mantiene neutral cuando no coincide — nunca una prueba de incompatibilidad por sí solo.
+describe('Fase 3 — importe/categoría/concepto como señales separadas, exclusión fuerte conservadora', () => {
+  const LAS_CASITAS_OCCURRENCE: ForecastOccurrence = {
+    forecastPaymentId: 'fp-casitas',
+    title: 'E. I. LAS CASITAS 2015 S.L.',
+    occurrenceDate: '2026-10-02',
+    installmentSequenceIndex: null,
+    dueDate: '2026-10-02',
+    expectedPaymentDate: '2026-10-02',
+    amountStatus: 'known',
+    amount: 200,
+    currency: 'EUR',
+    categoryId: null,
+    matchedExpenseId: null,
+  }
+  const LAS_CASITAS_PAYMENT: ForecastPaymentContextForMatching = { bankAccountId: ACCOUNT_A, title: 'E. I. LAS CASITAS 2015 S.L.', provider: null }
+  const MERCADONA_MOVEMENT: BankMovementForMatching = movement({
+    bankTransactionId: 'bt-mercadona',
+    expenseId: 'exp-mercadona',
+    date: '2026-09-29', // 3 días antes de lo previsto — dentro de la ventana
+    amount: 65.93,
+    description: 'COMPRA TARJ. 5402XXXXXXXX4041 MERCADONA ALMORADI-ALMORADI',
+    category: 'Supermercado, carnicería y tiendas de alimentación',
+  })
+
+  it('CASO REAL: importe (67% / 134,07 €) Y categoría (Educación ≠ Supermercado) fuertemente incompatibles a la vez → excluido antes de llegar a puntuar', () => {
+    const result = scoreReconciliationCandidate(LAS_CASITAS_OCCURRENCE, LAS_CASITAS_PAYMENT, MERCADONA_MOVEMENT, 'Educación')
+    expect(result).toBeNull()
+  })
+
+  it('144,54 € ↔ 146,20 € (1,15% de diferencia) sigue siendo candidato exactamente igual que antes — muy por debajo de los límites de incompatibilidad fuerte, aunque las categorías también difieran', () => {
+    const result = scoreReconciliationCandidate(IBI_OCCURRENCE, PAYMENT_WITH_ACCOUNT, movement({ amount: 146.2, category: 'Supermercado, carnicería y tiendas de alimentación' }), 'Impuestos')
+    expect(result).not.toBeNull()
+    expect(result!.confidence).not.toBe('low')
+  })
+
+  it('importe muy distinto (67%/134€) + categoría del movimiento "Otros" (adivinada, no fiable) → NO se excluye por la nueva barrera', () => {
+    const result = scoreReconciliationCandidate(
+      LAS_CASITAS_OCCURRENCE,
+      LAS_CASITAS_PAYMENT,
+      movement({ date: '2026-09-29', amount: 65.93, category: 'Otros' }),
+      'Educación',
+    )
+    expect(result).not.toBeNull()
+  })
+
+  it('importe muy distinto (67%/134€) + categoría del movimiento ausente (sin clasificar todavía) → NO se excluye por la nueva barrera', () => {
+    const result = scoreReconciliationCandidate(LAS_CASITAS_OCCURRENCE, LAS_CASITAS_PAYMENT, movement({ date: '2026-09-29', amount: 65.93, category: null }), 'Educación')
+    expect(result).not.toBeNull()
+  })
+
+  it('categoría real distinta + importe razonablemente próximo (dentro de tolerancia) → NO se excluye (una categoría distinta nunca basta sola)', () => {
+    const result = scoreReconciliationCandidate(
+      IBI_OCCURRENCE, // 144,54 €
+      PAYMENT_WITH_ACCOUNT,
+      movement({ amount: 146.2, category: 'Supermercado, carnicería y tiendas de alimentación' }), // 1,15% de diferencia, categoría distinta
+      'Impuestos',
+    )
+    expect(result).not.toBeNull()
+  })
+
+  it('importe MUY distinto por sí solo (categoría neutra en ambos lados) → sigue sin excluir, comportamiento igual que antes de la Fase 3', () => {
+    const result = scoreReconciliationCandidate(LAS_CASITAS_OCCURRENCE, LAS_CASITAS_PAYMENT, movement({ date: '2026-09-29', amount: 65.93 }))
+    expect(result).not.toBeNull()
+  })
+
+  it('concepto sin palabras comunes ("LAS CASITAS" vs "MERCADONA") + importe/categoría compatibles → nunca se excluye por el texto por sí solo', () => {
+    const compatibleAmount: ForecastOccurrence = { ...LAS_CASITAS_OCCURRENCE, amount: 65.93 }
+    const result = scoreReconciliationCandidate(compatibleAmount, LAS_CASITAS_PAYMENT, MERCADONA_MOVEMENT, 'Supermercado, carnicería y tiendas de alimentación')
+    expect(result).not.toBeNull()
+    expect(result!.reasons.some((r) => r.code === 'text_match')).toBe(false) // sin coincidencia de texto — neutral, no negativa
+  })
+
+  it('categoría real coincidente (movimiento↔previsión) aporta la señal positiva nueva "category_agrees" — nunca si alguno de los dos lados es Otros/sin clasificar', () => {
+    const agrees = scoreReconciliationCandidate(IBI_OCCURRENCE, PAYMENT_WITH_ACCOUNT, movement({ category: 'Impuestos' }), 'Impuestos')!
+    const otrosNeverAgrees = scoreReconciliationCandidate(IBI_OCCURRENCE, PAYMENT_WITH_ACCOUNT, movement({ category: 'Otros' }), 'Otros')!
+    expect(agrees.reasons.some((r) => r.code === 'category_agrees')).toBe(true)
+    expect(otrosNeverAgrees.reasons.some((r) => r.code === 'category_agrees')).toBe(false)
+  })
+
+  it('coincidencia significativa de concepto sigue aportando la señal positiva existente (text_match), sin tocar su lógica', () => {
+    const result = scoreReconciliationCandidate(IBI_OCCURRENCE, { ...PAYMENT_WITH_ACCOUNT, title: 'IBI' }, movement({ description: 'RECIBO IBI AYUNTAMIENTO' }))!
+    expect(result.reasons.some((r) => r.code === 'text_match')).toBe(true)
+  })
+
+  it('las constantes de incompatibilidad fuerte están documentadas y exportadas — nunca un número mágico sin nombre', () => {
+    expect(RECONCILIATION_AMOUNT_INCOMPATIBLE_RELATIVE_RATIO).toBe(0.5)
+    expect(RECONCILIATION_AMOUNT_INCOMPATIBLE_MIN_ABS_CENTS).toBe(3000)
+  })
+
+  it('SCORE_SAME_ACCOUNT, la ventana temporal y RECONCILIATION_CONFIDENCE_MEDIUM_MIN no se han tocado', () => {
+    // Indirecto: el caso "high" de siempre (misma cuenta 30 + importe exacto 40 + misma fecha 30) sigue
+    // dando exactamente 100 puntos — si alguna de esas tres constantes cambiara, este número cambiaría con
+    // ella.
+    const result = scoreReconciliationCandidate(IBI_OCCURRENCE, PAYMENT_WITH_ACCOUNT, movement())!
+    expect(result.score).toBe(100)
+    expect(RECONCILIATION_CONFIDENCE_MEDIUM_MIN).toBe(35)
+    expect(RECONCILIATION_DATE_WINDOW_DAYS).toBe(3)
+  })
+})
+
 describe('findReconciliationCandidates — dedup y planes finitos/recurrentes', () => {
   function candidateInput(occurrence: ForecastOccurrence, payment: ForecastPaymentContextForMatching = PAYMENT_WITH_ACCOUNT): OccurrenceForMatching {
     return { occurrence, payment }
@@ -214,6 +322,60 @@ describe('findReconciliationCandidates — dedup y planes finitos/recurrentes', 
     )
     expect(results.length).toBeGreaterThan(0)
     expect(results[0].score).toBeGreaterThanOrEqual(results[results.length - 1].score)
+  })
+})
+
+// CASO REAL (2026-09-30) — "No es este" debe persistir la pareja exacta, sin bloquear ningún lado por
+// separado: el movimiento sigue disponible para OTRA previsión, y la previsión sigue pudiendo recibir OTRO
+// movimiento como candidato. La identidad ya era correcta en el cliente (candidateKey combinaba ambos
+// lados) — solo faltaba persistencia; aquí se prueba el filtro puro del motor una vez persistido.
+describe('findReconciliationCandidates — dismissedPairKeys ("No es este" persistido)', () => {
+  function candidateInput(occurrence: ForecastOccurrence, payment: ForecastPaymentContextForMatching = PAYMENT_WITH_ACCOUNT): OccurrenceForMatching {
+    return { occurrence, payment }
+  }
+
+  it('sin dismissedPairKeys (parámetro omitido) el comportamiento es idéntico a antes — compatibilidad total', () => {
+    const withoutArg = findReconciliationCandidates([candidateInput(IBI_OCCURRENCE)], [movement()], new Set())
+    const withEmptySet = findReconciliationCandidates([candidateInput(IBI_OCCURRENCE)], [movement()], new Set(), new Set())
+    expect(withEmptySet).toEqual(withoutArg)
+    expect(withoutArg).toHaveLength(1)
+  })
+
+  it('una pareja descartada no vuelve a proponerse, aunque siga siendo la de mayor puntuación bruta', () => {
+    const dismissedKey = reconciliationPairKey(IBI_OCCURRENCE, movement())
+    const results = findReconciliationCandidates([candidateInput(IBI_OCCURRENCE)], [movement()], new Set(), new Set([dismissedKey]))
+    expect(results).toHaveLength(0)
+  })
+
+  it('la previsión SIGUE recibiendo otro movimiento como candidato — descartar una pareja no descarta la ocurrencia entera, busca el siguiente mejor', () => {
+    const goodButDismissed = movement({ bankTransactionId: 'bt-dismissed', expenseId: 'exp-dismissed', date: '2026-11-05', amount: 144.54 })
+    const otherRealMovement = movement({ bankTransactionId: 'bt-other', expenseId: 'exp-other', date: '2026-11-06', amount: 144.54 })
+    const dismissedKey = reconciliationPairKey(IBI_OCCURRENCE, goodButDismissed)
+    const results = findReconciliationCandidates([candidateInput(IBI_OCCURRENCE)], [goodButDismissed, otherRealMovement], new Set(), new Set([dismissedKey]))
+    expect(results).toHaveLength(1)
+    expect(results[0].movement.bankTransactionId).toBe('bt-other')
+  })
+
+  it('el movimiento descartado para UNA previsión SIGUE disponible como candidato de OTRA previsión distinta', () => {
+    const sharedMovement = movement({ bankTransactionId: 'bt-shared', expenseId: 'exp-shared' })
+    const otherOccurrence: ForecastOccurrence = { ...IBI_OCCURRENCE, forecastPaymentId: 'fp-otro-pago' }
+    const dismissedKey = reconciliationPairKey(IBI_OCCURRENCE, sharedMovement)
+    const results = findReconciliationCandidates(
+      [candidateInput(IBI_OCCURRENCE), candidateInput(otherOccurrence)],
+      [sharedMovement],
+      new Set(),
+      new Set([dismissedKey]),
+    )
+    expect(results).toHaveLength(1)
+    expect(results[0].occurrence.forecastPaymentId).toBe('fp-otro-pago')
+  })
+
+  it('reconciliationPairKey identifica la pareja COMPLETA (previsión + fecha + cuota + movimiento) — nunca solo un lado', () => {
+    const keyA = reconciliationPairKey(IBI_OCCURRENCE, movement({ bankTransactionId: 'bt-1' }))
+    const keyB = reconciliationPairKey(IBI_OCCURRENCE, movement({ bankTransactionId: 'bt-2' }))
+    const keyC = reconciliationPairKey({ ...IBI_OCCURRENCE, forecastPaymentId: 'fp-otro' }, movement({ bankTransactionId: 'bt-1' }))
+    expect(keyA).not.toBe(keyB) // mismo lado previsión, distinto movimiento → clave distinta
+    expect(keyA).not.toBe(keyC) // mismo movimiento, distinta previsión → clave distinta
   })
 })
 
@@ -355,6 +517,7 @@ describe('CASO REAL OBLIGATORIO — Endesa factura de luz (certificación móvil
     currency: 'EUR',
     description: 'ENDESA ENERGIA S.A.',
     isIncome: false,
+    category: null,
   }
 
   it('1. PEPA detecta el candidato con confianza alta: misma cuenta + mismo importe + mismo día', () => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { reverseGeocode, searchPlaces, type PlaceResult } from '@/services/geocoding'
 import { loadGoogleMaps } from '@/services/googleMapsLoader'
+import { allowGoogleMapsUse, GoogleMapsDailyLimitError } from '@/services/googleMapsUsageGuard'
 import { getCurrentPosition } from '@/services/geolocation'
 import { errorMessage } from '@/domain/errorMessage'
 
@@ -67,6 +68,10 @@ export function LocationPickerModal({
 
   useEffect(() => {
     let cancelled = false
+    if (!allowGoogleMapsUse('map')) {
+      setMapError(errorMessage(new GoogleMapsDailyLimitError(), 'No se pudo cargar el mapa'))
+      return
+    }
     loadGoogleMaps()
       .then((g) => {
         if (cancelled || !containerRef.current || mapRef.current) return

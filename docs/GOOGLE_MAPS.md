@@ -33,13 +33,17 @@ con Google Calendar" — no hace falta crear uno nuevo.
 3. **Crear la clave**, en *APIs y servicios → Credenciales → Crear credenciales → Clave de API*.
    - **Restringirla por sitio web** (HTTP referrer): añadir `https://fransegura51.github.io/family-app/*` (y el dominio propio, si algún día se usa uno).
    - **Restringirla a esas 3 APIs**, para que no sirva para nada más si se filtrara.
-4. **Poner cupos diarios**, en *APIs y servicios → Panel → (elegir cada API) → Cuotas*. Esto es lo que de verdad evita pagar de más — el aviso por email no corta nada, el cupo sí:
-   - **Maps JavaScript API** → 300 solicitudes al día
-   - **Geocoding API** → 300 solicitudes al día
-   - **Places API (New)** → 150 solicitudes al día (cada método de búsqueda: Text Search y Nearby Search)
+4. **Poner cupos diarios** — esto es lo que de verdad evita pagar de más, el aviso por email no corta nada, el cupo sí. En *Google Maps Platform → Cuotas*, elegir cada API en el desplegable de arriba y, en la fila **"Map loads per day"** (o "Requests per day" en Geocoding/Places), pulsar los tres puntos ⋮ → **Editar cuota**:
+   - **Maps JavaScript API** → 300 al día
+   - **Geocoding API** → 300 al día
+   - **Places API (New)** → 150 al día (cada método: Text Search y Nearby Search)
 
-   Con estos números, el gasto se queda en 0 € mientras uséis PEPA vosotros y las familias de prueba. Al llegar a un cupo, esa función deja de responder el resto del día (por ejemplo, el mapa no cargaría para alguien) — no os van a cobrar de más, se corta antes.
-5. **Alerta de presupuesto** (opcional pero recomendable), en *Facturación → Presupuestos y alertas*: crear un presupuesto de, por ejemplo, 5 €/mes con avisos al 50/90/100%, como segunda red de seguridad.
+   Con estos números, el gasto se queda en 0 € mientras uséis PEPA vosotros y las familias de prueba. Al llegar a un cupo, esa función deja de responder el resto del día — no os van a cobrar de más, se corta antes.
+
+   ⚠️ **Comprobado el 30/09/2026: mientras la cuenta esté en la "prueba gratuita" de Google (el crédito de bienvenida, ~90 días), este paso está bloqueado** — el propio Google avisa de que no se pueden cambiar cupos en ese estado. En cuanto la cuenta pase a facturación normal (se acabe el crédito o los 90 días, o se actualice a mano), hay que volver aquí y poner estos 3 cupos. Mientras tanto, hay dos redes de seguridad ya activas sin este paso:
+   - El propio crédito de bienvenida (unos 257 € cuando se escribió esto) absorbe cualquier gasto antes de tocar la tarjeta.
+   - Un freno metido en el código (`src/services/googleMapsUsageGuard.ts`): cada móvil deja de pedir mapas o búsquedas a Google si supera un uso alto en un mismo día (80 cargas de mapa, 40 búsquedas). No es un tope de gasto real — es para que un fallo o un bucle no dispare llamadas sin control mientras no se pueda poner el cupo de verdad.
+5. **Alerta de presupuesto** (recomendable, y esta sí funciona en la prueba gratuita), en *Facturación → Presupuestos y alertas*: crear un presupuesto de, por ejemplo, 5 €/mes con avisos al 50/90/100%.
 6. **Añadir la clave a GitHub**: en el repositorio, *Settings → Secrets and variables → Actions → New repository secret*, nombre `VITE_GOOGLE_MAPS_API_KEY`, valor la clave del paso 3. Al hacer `git push`, el siguiente despliegue ya la usa.
 
 ## Si no convence y hay que volver a OpenStreetMap

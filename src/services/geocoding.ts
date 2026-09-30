@@ -5,9 +5,14 @@
 // pasado a Google Maps a petición explícita: mapa más fino y resultados
 // más precisos, a los que la gente ya está acostumbrada. Tiene coste
 // por uso pasados los primeros 10.000 usos gratis al mes de cada API
-// (5.000 para Places) — con cupos diarios puestos en Google Cloud para
-// no pasarse (ver docs/GOOGLE_MAPS.md), el gasto se queda en 0 €.
+// (5.000 para Places). El cupo diario de Google Cloud que cortaría el
+// gasto en seco no se puede poner mientras la cuenta esté en la prueba
+// gratuita (ver docs/GOOGLE_MAPS.md); mientras tanto, allowGoogleMapsUse
+// actúa de freno por dispositivo para que un fallo no dispare llamadas
+// sin control.
 // Necesita VITE_GOOGLE_MAPS_API_KEY (ver .env.example).
+
+import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
 
 export interface PlaceResult {
   label: string
@@ -25,6 +30,7 @@ function apiKey(): string {
 // ("Mercadona Calle Mayor", "farmacia cerca de..."), hasta 5 resultados.
 export async function searchPlaces(query: string): Promise<PlaceResult[]> {
   if (!query.trim()) return []
+  if (!allowGoogleMapsUse('search')) return []
   const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {
@@ -50,6 +56,7 @@ export async function searchPlaces(query: string): Promise<PlaceResult[]> {
 // Geocoding API — de coordenadas a una dirección legible (al tocar o
 // arrastrar el marcador del mapa).
 export async function reverseGeocode(latitude: number, longitude: number): Promise<string | null> {
+  if (!allowGoogleMapsUse('search')) return null
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&language=es&key=${encodeURIComponent(apiKey())}`
   const res = await fetch(url)
   if (!res.ok) return null

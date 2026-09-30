@@ -3,10 +3,15 @@
 // automáticamente". Usa la Places API (New) de Google, buscando el
 // sitio más cercano al punto exacto (radio de 25 m). Solo se llama
 // cuando alguien se queda parado de verdad en un sitio nuevo (ver
-// locationSharing.ts), así que el volumen de peticiones es mínimo.
+// locationSharing.ts), así que el volumen de peticiones es mínimo. Al
+// ser automática (nadie la pide a mano), lleva el freno de
+// allowGoogleMapsUse por si un fallo la disparase en bucle.
+import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
+
 export async function reverseGeocodePlaceName(latitude: number, longitude: number): Promise<string | null> {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
   if (!apiKey) return null
+  if (!allowGoogleMapsUse('search')) return null
   try {
     const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
       method: 'POST',

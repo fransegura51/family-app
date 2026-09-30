@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { loadGoogleMaps } from '@/services/googleMapsLoader'
+import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
 import type { FamilyMember, MemberLocation, MemberLocationPoint } from '@/domain/types'
 
 function markerIconHtml(member: FamilyMember, photoUrl: string | undefined): string {
@@ -108,6 +109,7 @@ export function LocationMap({
     let cancelled = false
     const markers = markersRef.current
     const polylines = polylinesRef.current
+    if (!allowGoogleMapsUse('map')) return
     loadGoogleMaps()
       .then((g) => {
         if (cancelled || !containerRef.current || mapRef.current) return

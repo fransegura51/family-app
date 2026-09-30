@@ -1035,13 +1035,19 @@ function PlaceRow({
     setShareError(null)
     setFallbackImageUrl(null)
     try {
-      const file = await fetchPlaceMapImage(place.latitude, place.longitude, place.name)
-      if (!file) {
-        setShareError('No se ha podido preparar la imagen del mapa ahora mismo. Prueba otra vez en un momento.')
+      const result = await fetchPlaceMapImage(place.latitude, place.longitude, place.name)
+      if (!result.ok) {
+        setShareError(
+          result.reason === 'daily-limit'
+            ? 'Ya has usado hoy el número de veces que este teléfono puede compartir mapas (es un freno para no gastar de más, no un fallo). Se puede volver a usar mañana.'
+            : result.reason === 'missing-key'
+              ? 'Esta función no está configurada todavía.'
+              : 'No se ha podido conectar con Google para preparar el mapa. Comprueba tu conexión e inténtalo de nuevo.',
+        )
         return
       }
-      const shared = await shareFiles([file], { title: place.name })
-      if (!shared) setFallbackImageUrl(URL.createObjectURL(file))
+      const shared = await shareFiles([result.file], { title: place.name })
+      if (!shared) setFallbackImageUrl(URL.createObjectURL(result.file))
     } finally {
       setSharing(false)
     }

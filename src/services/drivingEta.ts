@@ -6,6 +6,12 @@
 
 import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
 
+// Bug real (30/09/2026): con la clave restringida por sitio web, el navegador, al pedirle esto a
+// OTRO dominio (routes.googleapis.com), por defecto solo manda el origen como Referer, no la página
+// completa — no encaja con la restricción y Google lo rechaza con 403 (comprobado directo contra la
+// API). Ver el comentario más largo en services/geocoding.ts, REFERRER_POLICY.
+const REFERRER_POLICY: ReferrerPolicy = 'no-referrer-when-downgrade'
+
 export interface DrivingEta {
   minutes: number
   km: number
@@ -33,6 +39,7 @@ export async function getDrivingEta(
         routingPreference: 'TRAFFIC_AWARE',
         languageCode: 'es',
       }),
+      referrerPolicy: REFERRER_POLICY,
     })
     if (!res.ok) return null
     const data: { routes?: { duration?: string; distanceMeters?: number }[] } = await res.json()

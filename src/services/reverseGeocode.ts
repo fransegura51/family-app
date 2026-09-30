@@ -8,6 +8,12 @@
 // allowGoogleMapsUse por si un fallo la disparase en bucle.
 import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
 
+// Bug real (30/09/2026): con la clave restringida por sitio web, el navegador, al pedirle esto a
+// OTRO dominio (places.googleapis.com), por defecto solo manda el origen como Referer, no la página
+// completa — no encaja con la restricción y Google lo rechaza con 403 (comprobado directo contra la
+// API). Ver el comentario más largo en services/geocoding.ts, REFERRER_POLICY.
+const REFERRER_POLICY: ReferrerPolicy = 'no-referrer-when-downgrade'
+
 export async function reverseGeocodePlaceName(latitude: number, longitude: number): Promise<string | null> {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
   if (!apiKey) return null
@@ -27,6 +33,7 @@ export async function reverseGeocodePlaceName(latitude: number, longitude: numbe
           circle: { center: { latitude, longitude }, radius: 25 },
         },
       }),
+      referrerPolicy: REFERRER_POLICY,
     })
     if (!res.ok) return null
     const data: { places?: { displayName?: { text: string } }[] } = await res.json()

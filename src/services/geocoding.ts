@@ -33,6 +33,16 @@ function apiKey(): string {
   return key
 }
 
+// Bug real (30/09/2026, "la búsqueda no encuentra nada"): la clave está restringida por sitio web a
+// "https://.../family-app/*" (docs/GOOGLE_MAPS.md), pero el navegador, al ser esta una petición a
+// OTRO dominio (places.googleapis.com), por defecto solo manda el origen como Referer ("https://...
+// github.io/", sin "/family-app/") — no encaja con la restricción y Google la rechaza con 403, sin
+// que el código lo distinga de "no hay resultados". Comprobado directamente contra la API: con el
+// origen suelto como Referer, 403; con la página completa, 200. Esto se lo pide explícitamente al
+// navegador en cada petición para que mande la página completa (solo se omite si hubiera que bajar
+// de https a http, que aquí nunca pasa).
+const REFERRER_POLICY: ReferrerPolicy = 'no-referrer-when-downgrade'
+
 // Places API (New) — Autocomplete: igual de bien que "Text Search" para
 // esta misma búsqueda libre ("Mercadona Calle Mayor", "farmacia
 // cerca..."), pero sale mucho más barata (gratis hasta 10.000 al mes,
@@ -49,6 +59,7 @@ export async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
       'X-Goog-Api-Key': apiKey(),
     },
     body: JSON.stringify({ input: query, languageCode: 'es', regionCode: 'ES' }),
+    referrerPolicy: REFERRER_POLICY,
   })
   if (!res.ok) return []
   const json: { suggestions?: { placePrediction?: { placeId: string; text?: { text: string } } }[] } = await res.json()
@@ -68,6 +79,7 @@ export async function resolvePlace(placeId: string): Promise<PlaceResult | null>
       'X-Goog-Api-Key': apiKey(),
       'X-Goog-FieldMask': 'displayName,formattedAddress,location',
     },
+    referrerPolicy: REFERRER_POLICY,
   })
   if (!res.ok) return null
   const json: { displayName?: { text: string }; formattedAddress?: string; location?: { latitude: number; longitude: number } } = await res.json()
@@ -84,7 +96,7 @@ export async function resolvePlace(placeId: string): Promise<PlaceResult | null>
 export async function reverseGeocode(latitude: number, longitude: number): Promise<string | null> {
   if (!allowGoogleMapsUse('search')) return null
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&language=es&key=${encodeURIComponent(apiKey())}`
-  const res = await fetch(url)
+  const res = await fetch(url, { referrerPolicy: REFERRER_POLICY })
   if (!res.ok) return null
   const json: { results?: { formatted_address?: string }[] } = await res.json()
   return json.results?.[0]?.formatted_address ?? null

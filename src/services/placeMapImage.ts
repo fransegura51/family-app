@@ -14,6 +14,15 @@ import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
 // googleMapsUsageGuard.ts) sin que se notara la diferencia con un fallo real.
 export type PlaceMapImageResult = { ok: true; file: File } | { ok: false; reason: 'missing-key' | 'daily-limit' | 'network' }
 
+// Bug real (30/09/2026, "sigue sin funcionar" tras el primer intento de arreglo): la causa de
+// verdad no era el freno diario ni un fallo de red — con la clave restringida por sitio web, el
+// navegador, al pedirle esto a OTRO dominio (maps.googleapis.com), por defecto solo manda el origen
+// como Referer, no la página completa ("https://.../" en vez de "https://.../family-app/..."), y
+// eso no encaja con la restricción de la clave: Google lo rechaza con 403. Comprobado directo
+// contra la API real: con el origen suelto, 403; con la página completa, 200. Ver también
+// services/geocoding.ts, REFERRER_POLICY (mismo problema en las demás llamadas a Google Maps).
+const REFERRER_POLICY: ReferrerPolicy = 'no-referrer-when-downgrade'
+
 export async function fetchPlaceMapImage(latitude: number, longitude: number, label: string): Promise<PlaceMapImageResult> {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
   if (!apiKey) return { ok: false, reason: 'missing-key' }
@@ -27,7 +36,7 @@ export async function fetchPlaceMapImage(latitude: number, longitude: number, la
     key: apiKey,
   })
   try {
-    const res = await fetch(`https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`)
+    const res = await fetch(`https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`, { referrerPolicy: REFERRER_POLICY })
     if (!res.ok) return { ok: false, reason: 'network' }
     const blob = await res.blob()
     const safeName = (label || 'ubicacion').replace(/[^a-z0-9]+/gi, '-').toLowerCase()

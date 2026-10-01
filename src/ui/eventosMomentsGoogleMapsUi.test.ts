@@ -139,6 +139,74 @@ describe('MomentForm — nombre personalizado se conserva, Google solo rellena s
   })
 })
 
+// Bug real (iPhone, segunda ronda): el buscador nunca mostraba resultados y tocar un establecimiento
+// del mapa no capturaba su place_id. Causa raíz A: geocoding.ts convertía CUALQUIER fallo (cupo
+// diario agotado, red caída, error real de la API) en el mismo [] / null que "Google no ha
+// encontrado nada" — indistinguible. Causa raíz B: el listener de click del mapa solo miraba
+// e.latLng, nunca e.placeId (el campo que Google ya manda cuando se toca un icono de
+// establecimiento). Corrección: dejar propagar los errores reales y leer e.placeId reutilizando
+// exactamente la misma vía que elegir un resultado del buscador — nunca inferir por proximidad.
+describe('geocoding.ts — ya no convierte cupo agotado / error real en "sin resultados"', () => {
+  it('las 3 funciones comprueban hasReachedGoogleMapsLimit y lanzan GoogleMapsDailyLimitError antes de llamar, sin tragarlo', () => {
+    expect(GEOCODING_SRC).toContain("import { allowGoogleMapsUse, GoogleMapsDailyLimitError, hasReachedGoogleMapsLimit } from '@/services/googleMapsUsageGuard'")
+    const search = slice(GEOCODING_SRC, 'export async function searchPlaces(', '\n}')
+    const resolve = slice(GEOCODING_SRC, 'export async function resolvePlace(', '\n}')
+    const reverse = slice(GEOCODING_SRC, 'export async function reverseGeocode(', '\n}')
+    for (const fn of [search, resolve, reverse]) {
+      expect(fn).toContain("if (hasReachedGoogleMapsLimit('search')) throw new GoogleMapsDailyLimitError()")
+    }
+  })
+
+  it('ninguna de las 3 funciones vuelve a tragar un error real con try/catch-return-[]/null', () => {
+    const search = slice(GEOCODING_SRC, 'export async function searchPlaces(', '\n}')
+    const resolve = slice(GEOCODING_SRC, 'export async function resolvePlace(', '\n}')
+    const reverse = slice(GEOCODING_SRC, 'export async function reverseGeocode(', '\n}')
+    for (const fn of [search, resolve, reverse]) {
+      expect(fn).not.toContain('try {')
+      expect(fn).not.toContain('catch')
+    }
+  })
+})
+
+describe('LocationPickerModal — errores reales distinguidos de "sin resultados", nunca el mismo mensaje genérico', () => {
+  it('handleSearch usa errorMessage() (el mismo patrón que ya usa el resto del archivo) en vez de un texto fijo para cualquier fallo', () => {
+    const fn = slice(PICKER_SRC, 'async function handleSearch(', '\n  }')
+    expect(fn).toContain("setError(errorMessage(err, 'No se pudo buscar esa dirección ahora mismo.'))")
+  })
+
+  it('pickSuggestion también usa errorMessage() en su catch, no solo en el caso !resolved', () => {
+    const fn = slice(PICKER_SRC, 'async function pickSuggestion(', '\n  }')
+    expect(fn).toContain("setError(errorMessage(err, 'No se pudo obtener ese sitio ahora mismo.'))")
+  })
+
+  it('"sin resultados" solo se muestra tras una búsqueda real sin error — nunca a la vez que un mensaje de error', () => {
+    expect(PICKER_SRC).toContain('{searched && suggestions.length === 0 && !error && (')
+    expect(PICKER_SRC).toContain('No se han encontrado lugares con ese nombre.')
+  })
+})
+
+describe('LocationPickerModal — tocar un establecimiento del mapa captura su place_id (nunca por proximidad)', () => {
+  const clickHandler = slice(PICKER_SRC, "map.addListener('click',", '\n        })')
+
+  it('lee e.placeId (IconMouseEvent) y llama e.stop() para que Google no abra su propia ficha encima', () => {
+    expect(clickHandler).toContain('(e as google.maps.IconMouseEvent).placeId')
+    expect(clickHandler).toContain('e.stop()')
+  })
+
+  it('cuando hay placeId, resuelve por la MISMA vía que elegir del buscador — llama a pickSuggestion(), no duplica la lógica de resolvePlace', () => {
+    expect(clickHandler).toContain('void pickSuggestion({ label: \'\', placeId: clickedPlaceId })')
+  })
+
+  it('nunca infiere un placeId por proximidad ni busca el más cercano', () => {
+    expect(clickHandler).not.toMatch(/nearby|closest|proximity/i)
+  })
+
+  it('cuando NO hay placeId (punto sin establecimiento), se mantiene el comportamiento anterior: coordenadas + geocodificación inversa', () => {
+    expect(clickHandler).toContain('placeMarker(e.latLng.lat(), e.latLng.lng(), false)')
+    expect(clickHandler).toContain('void updateLabel(e.latLng.lat(), e.latLng.lng())')
+  })
+})
+
 describe('MomentCard — presentación humana: dirección legible en vez de coordenadas', () => {
   const fn = slice(SCREEN_SRC, 'function MomentCard(', '\nfunction MomentsEditor(')
 

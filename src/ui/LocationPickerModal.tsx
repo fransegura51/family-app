@@ -32,6 +32,7 @@ export function LocationPickerModal({
   const [query, setQuery] = useState(initialQuery ?? '')
   const [searching, setSearching] = useState(false)
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
+  const [searched, setSearched] = useState(false)
   const [locating, setLocating] = useState(false)
   const [picked, setPicked] = useState<{ latitude: number; longitude: number } | null>(initialCoords ?? null)
   const [label, setLabel] = useState<string | null>(null)
@@ -98,6 +99,16 @@ export function LocationPickerModal({
         })
         map.addListener('click', (e: google.maps.MapMouseEvent) => {
           if (!e.latLng) return
+          // Google manda placeId cuando se toca directamente un icono de establecimiento ya
+          // etiquetado en el mapa (IconMouseEvent) — en ese caso se resuelve exactamente igual que
+          // si se hubiese elegido desde el buscador (pickSuggestion), nunca por proximidad.
+          // e.stop() evita que Google abra encima su propia ficha nativa.
+          const clickedPlaceId = (e as google.maps.IconMouseEvent).placeId
+          if (clickedPlaceId) {
+            e.stop()
+            void pickSuggestion({ label: '', placeId: clickedPlaceId })
+            return
+          }
           placeMarker(e.latLng.lat(), e.latLng.lng(), false)
           void updateLabel(e.latLng.lat(), e.latLng.lng())
         })
@@ -116,14 +127,22 @@ export function LocationPickerModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Corrección real (iPhone: "el buscador no encuentra nada" resultó ser el cupo diario agotado, no
+  // cero resultados) — antes cualquier fallo (cupo, red, API) se convertía en el mismo "no se pudo
+  // buscar" genérico; ahora errorMessage() muestra el motivo real de cada excepción (incluido el
+  // mensaje propio de GoogleMapsDailyLimitError), y un resultado vacío sin error se distingue como
+  // "sin resultados" de verdad.
   async function handleSearch() {
     if (!query.trim()) return
     setSearching(true)
     setError(null)
+    setSearched(false)
     try {
-      setSuggestions(await searchPlaces(query.trim()))
-    } catch {
-      setError('No se pudo buscar esa dirección ahora mismo.')
+      const results = await searchPlaces(query.trim())
+      setSuggestions(results)
+      setSearched(true)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo buscar esa dirección ahora mismo.'))
     } finally {
       setSearching(false)
     }
@@ -144,6 +163,8 @@ export function LocationPickerModal({
       setPlaceName(resolved.name)
       setPlaceAddress(resolved.address)
       setPlaceId(resolved.placeId ?? s.placeId)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo obtener ese sitio ahora mismo.'))
     } finally {
       setSearching(false)
     }
@@ -183,7 +204,10 @@ export function LocationPickerModal({
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setSearched(false)
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
@@ -211,6 +235,11 @@ export function LocationPickerModal({
               </button>
             ))}
           </div>
+        )}
+        {searched && suggestions.length === 0 && !error && (
+          <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+            No se han encontrado lugares con ese nombre.
+          </p>
         )}
         {mapError ? <p className="error">{mapError}</p> : <div ref={containerRef} className="location-picker-map" />}
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>

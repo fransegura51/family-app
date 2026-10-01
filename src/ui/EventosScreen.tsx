@@ -1971,12 +1971,32 @@ function EventLocationCoordsPicker({
 }) {
   const [showMap, setShowMap] = useState(false)
   const [pickedLabel, setPickedLabel] = useState<string | null>(null)
+  // Corrección real (comprobada en iPhone): este componente ya reenviaba name/address/placeId hacia
+  // MomentForm vía onPlaceDetails, pero nunca se quedaba su propia copia — su PROPIO enlace "Ver en
+  // Google Maps" (el de aquí abajo, el que se ve justo al confirmar en el mapa, antes de guardar) caía
+  // siempre a coordenadas aunque Google sí hubiera dado un place_id real. Se guardan aquí también, solo
+  // para que ESTE enlace y este resumen puedan usarlos — MomentForm sigue teniendo su propia copia
+  // (locationAddress/locationPlaceId) para lo que de verdad se guarda, sin relación con esto.
+  const [pickedName, setPickedName] = useState<string | null>(null)
+  const [pickedAddress, setPickedAddress] = useState<string | null>(null)
+  const [pickedPlaceId, setPickedPlaceId] = useState<string | null>(null)
 
   function handleConfirmMapLocation(result: { latitude: number; longitude: number; label: string | null; name: string | null; address: string | null; placeId: string | null }) {
     onCoordsChange({ latitude: result.latitude, longitude: result.longitude })
     setPickedLabel(result.label)
+    setPickedName(result.name)
+    setPickedAddress(result.address)
+    setPickedPlaceId(result.placeId)
     onPlaceDetails?.({ name: result.name, address: result.address, placeId: result.placeId })
     setShowMap(false)
+  }
+
+  function handleClear() {
+    onCoordsChange(null)
+    setPickedLabel(null)
+    setPickedName(null)
+    setPickedAddress(null)
+    setPickedPlaceId(null)
   }
 
   return (
@@ -1997,25 +2017,37 @@ function EventLocationCoordsPicker({
         />
       )}
       {coords && (
-        <div className="filter-row" style={{ marginTop: 4, alignItems: 'center' }}>
-          <span className="muted" style={{ fontSize: 12 }}>✓ {pickedLabel ?? 'Ubicación real guardada'}</span>
-          {/* Petición real: "esa ubicación se puede abrir también en
-              Google Maps?" — para comprobar que el punto elegido es el
-              correcto antes de guardar, no solo cuando lo reciben los
-              invitados. */}
-          <a href={buildMapsUrl(pickedLabel ?? '', coords)} target="_blank" rel="noopener noreferrer" className="link-button" style={{ textDecoration: 'none' }}>
-            🔍 Ver en Google Maps
-          </a>
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              onCoordsChange(null)
-              setPickedLabel(null)
-            }}
-          >
-            Quitar
-          </button>
+        <div style={{ marginTop: 4 }}>
+          {/* Nombre y dirección en líneas separadas — un único texto fusionado (antes "✓ {pickedLabel}")
+              no dejaba claro cuál de los dos era, sobre todo cuando ambos tienen una pinta similar. */}
+          <div className="muted" style={{ fontSize: 12 }}>
+            {pickedName ? (
+              <>
+                <div>✓ {pickedName}</div>
+                {pickedAddress && <div>{pickedAddress}</div>}
+              </>
+            ) : (
+              <div>✓ {pickedAddress ?? pickedLabel ?? 'Ubicación real guardada'}</div>
+            )}
+          </div>
+          <div className="filter-row" style={{ marginTop: 4, alignItems: 'center' }}>
+            {/* Petición real: "esa ubicación se puede abrir también en Google Maps?" — para comprobar que
+                el punto elegido es el correcto antes de guardar, no solo cuando lo reciben los invitados.
+                Prioridad real (buildMapsUrl): place_id (abre la ficha exacta del establecimiento) >
+                coordenadas (un punto marcado a mano, sin negocio asociado) > texto, nunca al revés. */}
+            <a
+              href={buildMapsUrl(pickedAddress ?? pickedLabel ?? '', coords, pickedPlaceId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="link-button"
+              style={{ textDecoration: 'none' }}
+            >
+              🔍 Ver en Google Maps
+            </a>
+            <button type="button" className="link-button" onClick={handleClear}>
+              Quitar
+            </button>
+          </div>
         </div>
       )}
       <p className="muted" style={{ fontSize: 11, marginTop: 2 }}>

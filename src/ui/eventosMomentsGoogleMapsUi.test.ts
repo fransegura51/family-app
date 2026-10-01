@@ -77,6 +77,46 @@ describe('EventLocationCoordsPicker — onPlaceDetails opcional, no rompe al "Lu
   })
 })
 
+// Corrección real (comprobada en iPhone): "Ver en Google Maps" DENTRO del formulario (antes de guardar)
+// seguía abriendo por coordenadas aunque Google diera un place_id real, porque EventLocationCoordsPicker
+// reenviaba name/address/placeId hacia MomentForm pero nunca se quedaba su propia copia para su PROPIO
+// enlace. MomentCard (la ficha ya guardada) ya estaba bien — este bloque cubre específicamente el otro.
+describe('EventLocationCoordsPicker — "Ver en Google Maps" (dentro del formulario) usa place_id, no solo coordenadas', () => {
+  const fn = slice(SCREEN_SRC, 'function EventLocationCoordsPicker(', '\nfunction ')
+
+  it('handleConfirmMapLocation guarda su propia copia de name/address/placeId, no solo los reenvía', () => {
+    const confirmFn = slice(fn, 'function handleConfirmMapLocation(', '\n  }')
+    expect(confirmFn).toContain('setPickedName(result.name)')
+    expect(confirmFn).toContain('setPickedAddress(result.address)')
+    expect(confirmFn).toContain('setPickedPlaceId(result.placeId)')
+    // Sigue reenviando a MomentForm exactamente igual que antes — este cambio es aditivo.
+    expect(confirmFn).toContain('onPlaceDetails?.({ name: result.name, address: result.address, placeId: result.placeId })')
+  })
+
+  it('el enlace pasa pickedPlaceId como 3er argumento de buildMapsUrl (place_id manda sobre coordenadas, ver buildMapsUrl)', () => {
+    expect(fn).toContain('buildMapsUrl(pickedAddress ?? pickedLabel ?? \'\', coords, pickedPlaceId)')
+  })
+
+  it('Caso B (punto manual, sin place_id): pickedPlaceId se queda null — nunca se infiere por proximidad, nada en este componente llama a una búsqueda "nearby" para adivinarlo', () => {
+    expect(fn).not.toMatch(/nearby|closest|proximity/i)
+  })
+
+  it('Quitar limpia también nombre/dirección/place_id, no solo coordenadas y pickedLabel', () => {
+    const clearFn = slice(fn, 'function handleClear()', '\n  }')
+    expect(clearFn).toContain('onCoordsChange(null)')
+    expect(clearFn).toContain('setPickedLabel(null)')
+    expect(clearFn).toContain('setPickedName(null)')
+    expect(clearFn).toContain('setPickedAddress(null)')
+    expect(clearFn).toContain('setPickedPlaceId(null)')
+  })
+
+  it('nombre y dirección se muestran en líneas separadas, no fusionados en un único texto ambiguo', () => {
+    expect(fn).toContain('{pickedName ? (')
+    expect(fn).toContain('<div>✓ {pickedName}</div>')
+    expect(fn).toContain('{pickedAddress && <div>{pickedAddress}</div>}')
+  })
+})
+
 describe('MomentForm — nombre personalizado se conserva, Google solo rellena si estaba vacío', () => {
   const fn = slice(SCREEN_SRC, 'function MomentForm(', '\nfunction MomentCard(')
 

@@ -73,3 +73,23 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
   const data = await callGoogleMaps({ action: 'geocode', latitude, longitude })
   return (data.address as string | null) ?? null
 }
+
+// Bug real reportado: "me dice que me he quedado sin límites otra vez, no puede ser" — Pepa (por
+// voz: tiempo en coche, el tiempo meteorológico, quién está más cerca...) buscaba el primer
+// resultado llamando a searchPlaces() + resolvePlace() SEGUIDOS, y cada una gastaba un uso del
+// freno diario por su cuenta — una sola pregunta de verdad ("qué tiempo hace en Rafal") gastaba
+// DOS usos sin que se notara, así que el freno se agotaba al doble de velocidad de lo que parecía
+// desde fuera. Aquí se comprueba y se cuenta UNA sola vez para las dos llamadas a Google juntas
+// (llama directo a callGoogleMaps, sin pasar por searchPlaces/resolvePlace, que siguen gastando
+// uso aparte cada vez — eso sigue siendo correcto para LocationPickerModal, donde cada letra
+// tecleada SÍ es una llamada real a Google que conviene frenar por separado).
+export async function searchAndResolveFirst(query: string, bias?: { latitude: number; longitude: number } | null): Promise<PlaceResult | null> {
+  if (!query.trim()) return null
+  if (hasReachedGoogleMapsLimit('search')) throw new GoogleMapsDailyLimitError()
+  allowGoogleMapsUse('search')
+  const suggestionsData = await callGoogleMaps({ action: 'autocomplete', input: query, bias: bias ?? undefined })
+  const suggestions = Array.isArray(suggestionsData.suggestions) ? (suggestionsData.suggestions as PlaceSuggestion[]) : []
+  if (suggestions.length === 0) return null
+  const detailsData = await callGoogleMaps({ action: 'details', placeId: suggestions[0].placeId })
+  return (detailsData.place as PlaceResult | null) ?? null
+}

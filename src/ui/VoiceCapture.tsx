@@ -35,7 +35,7 @@ import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenContinuous, primeSpeech, speakAsync } from '@/services/voice'
 import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/output'
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
-import { resolvePlace, searchPlaces } from '@/services/geocoding'
+import { searchAndResolveFirst } from '@/services/geocoding'
 import { getDrivingEta } from '@/services/drivingEta'
 import { getWeather } from '@/services/weather'
 import { hasReachedGoogleMapsLimit } from '@/services/googleMapsUsageGuard'
@@ -707,9 +707,10 @@ const locationDeps: LocationDeps = {
     // distinguir "hoy ya no quedan búsquedas" de "no existe ese sitio" — antes se veían igual (bug
     // real: "Pepa no encuentra Madrid", que en realidad era el freno diario ya agotado).
     if (hasReachedGoogleMapsLimit('search')) return { ok: false, reason: 'daily-limit' }
-    const suggestions = await searchPlaces(term, bias)
-    if (suggestions.length === 0) return { ok: false, reason: 'not-found' }
-    const resolved = await resolvePlace(suggestions[0].placeId)
+    // searchAndResolveFirst (no searchPlaces+resolvePlace por separado): una sola pregunta de Pepa
+    // gastaba DOS usos del freno sin que se notara — bug real: "me he quedado sin límites otra vez,
+    // no puede ser".
+    const resolved = await searchAndResolveFirst(term, bias)
     return resolved ? { ok: true, place: { label: resolved.label, latitude: resolved.latitude, longitude: resolved.longitude } } : { ok: false, reason: 'not-found' }
   },
   drivingEta: (origin, destination) => getDrivingEta(origin, destination),

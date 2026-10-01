@@ -14,10 +14,17 @@
 // Petición real: "quiero que me amplíes el freno a 5 veces más mientras estoy con las pruebas" —
 // x5 temporal mientras prueba todo lo nuevo de Ubicación (rutas, avisos de lugar...) sin toparse
 // con el freno a media tarde. Si hace falta volver a los de antes, son 80/40/30.
+//
+// "search" y "eta" otra vez más arriba (01/10/2026, "me he quedado sin límites otra vez, no puede
+// ser") — bug real encontrado de paso: cada pregunta de Pepa por un sitio no guardado gastaba DOS
+// usos de "search" en vez de uno (buscaba el nombre Y confirmaba sus coordenadas como dos pasos
+// sueltos, cada uno contando aparte — ver services/geocoding.ts, searchAndResolveFirst, ya
+// arreglado para que cuente como uno). Con eso arreglado el cupo cunde el doble de lo que cundía,
+// pero de todas formas se sube también el número, por si el día sigue siendo de pruebas intensas.
 const LIMITS = {
   map: 400, // cargar el mapa (Ubicación + selector de sitio)
-  search: 200, // buscar una dirección o reconocer un sitio nuevo
-  eta: 150, // calcular el tiempo de llegada en coche (Routes API)
+  search: 500, // buscar una dirección o reconocer un sitio nuevo
+  eta: 300, // calcular el tiempo de llegada en coche (Routes API)
 } as const
 
 export type GuardKind = keyof typeof LIMITS

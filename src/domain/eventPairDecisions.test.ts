@@ -3,22 +3,25 @@ import {
   decisionStatus,
   desiredForAlianzas,
   desiredForComplementos,
-  desiredForDetalleEspecial,
+  desiredForDetalleEspecialResolucion,
   desiredForFloral,
   desiredForPeluqueriaResolucion,
-  desiredForVestuario,
+  desiredForVestuarioResolucion,
+  floralItemSelected,
   isBudgetItemUntouched,
   isTaskUntouched,
   listPairBlockQuestions,
   partnerName,
   reconcilePairGeneration,
   summarizePairBlock,
+  withFloralSelected,
   type AlianzasAnswer,
   type ComplementosAnswer,
   type CustomResolution,
-  type DetalleEspecialAnswer,
+  type DetalleEspecialTipoAnswer,
   type PeluqueriaNecesidadAnswer,
   type PeluqueriaResolucionAnswer,
+  type VestuarioTipoAnswer,
 } from '@/domain/eventPairDecisions'
 import type { EventBudgetItem, EventDecision, EventTask, FamilyEvent } from '@/domain/types'
 
@@ -152,12 +155,40 @@ describe('listPairBlockQuestions / summarizePairBlock — revelado progresivo y 
     expect(questions2.some((q) => q.questionKey === 'pareja.partner1.peluqueria_maquillaje.resolucion')).toBe(true)
   })
 
-  it('un ítem floral sin marcar (sin fila) no cuenta como pregunta pendiente', () => {
+  it('la resolución de vestuario NO cuenta como pregunta hasta que el tipo es concreto', () => {
+    const sinTipo = listPairBlockQuestions(makeEvent(), [])
+    expect(sinTipo.some((q) => q.questionKey === 'pareja.partner1.vestuario.resolucion')).toBe(false)
+
+    const tipoPorDecidir = [makeDecision({ questionKey: 'pareja.partner1.vestuario', answer: { choice: 'todavia_no_lo_sabemos' } })]
+    expect(listPairBlockQuestions(makeEvent(), tipoPorDecidir).some((q) => q.questionKey === 'pareja.partner1.vestuario.resolucion')).toBe(false)
+
+    const tipoConcreto = [makeDecision({ questionKey: 'pareja.partner1.vestuario', answer: { choice: 'vestido' } })]
+    const questions = listPairBlockQuestions(makeEvent(), tipoConcreto)
+    expect(questions.some((q) => q.questionKey === 'pareja.partner1.vestuario.resolucion')).toBe(true)
+    expect(questions.find((q) => q.questionKey === 'pareja.partner1.vestuario')?.status).toBe('decidida')
+    expect(questions.find((q) => q.questionKey === 'pareja.partner1.vestuario.resolucion')?.status).toBe('sin_empezar')
+  })
+
+  it('la resolución de detalle especial NO cuenta hasta que el tipo implica preparación', () => {
+    const tipoNo = [makeDecision({ questionKey: 'pareja.detalle_especial', answer: { choice: 'no' } })]
+    expect(listPairBlockQuestions(makeEvent(), tipoNo).some((q) => q.questionKey === 'pareja.detalle_especial.resolucion')).toBe(false)
+
+    const tipoRegalo = [makeDecision({ questionKey: 'pareja.detalle_especial', answer: { choice: 'regalo' } })]
+    expect(listPairBlockQuestions(makeEvent(), tipoRegalo).some((q) => q.questionKey === 'pareja.detalle_especial.resolucion')).toBe(true)
+  })
+
+  it('un ítem floral sin marcar (ni details ni fila) no cuenta como pregunta pendiente', () => {
     const questions = listPairBlockQuestions(makeEvent(), [])
     expect(questions.some((q) => q.questionKey === 'pareja.partner1.floral.ramo')).toBe(false)
   })
 
-  it('un ítem floral marcado (con fila) sí cuenta', () => {
+  it('un ítem floral marcado en details SIN ninguna decisión de resolución: Sin empezar, no Por decidir', () => {
+    const event = makeEvent({ details: { partner1FloralSelected: ['ramo'] } })
+    const questions = listPairBlockQuestions(event, [])
+    expect(questions.find((q) => q.questionKey === 'pareja.partner1.floral.ramo')?.status).toBe('sin_empezar')
+  })
+
+  it('un ítem floral con decisión de resolución real ya cuenta aunque los details no se hayan actualizado', () => {
     const decisions = [makeDecision({ questionKey: 'pareja.partner1.floral.ramo', answer: { choice: 'todavia_no_lo_sabemos' } })]
     const questions = listPairBlockQuestions(makeEvent(), decisions)
     expect(questions.find((q) => q.questionKey === 'pareja.partner1.floral.ramo')?.status).toBe('por_decidir')
@@ -180,26 +211,49 @@ describe('listPairBlockQuestions / summarizePairBlock — revelado progresivo y 
   })
 })
 
-describe('Vestuario — qué genera cada respuesta', () => {
-  it('vestido/traje: tarea + presupuesto con el nombre real', () => {
-    expect(desiredForVestuario({ choice: 'vestido' }, 'Laura')).toEqual({ taskTitle: 'Elegir vestido de Laura', budgetCategory: 'Vestido de Laura', providerCategory: null })
-    expect(desiredForVestuario({ choice: 'traje' }, 'Miguel')).toEqual({ taskTitle: 'Elegir traje de Miguel', budgetCategory: 'Traje de Miguel', providerCategory: null })
+describe('Vestuario — tipo ≠ resolución: elegir "vestido" solo dice QUÉ, nunca implica comprarlo/presupuestarlo', () => {
+  const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
+
+  it('tipo "todavía no lo sabemos": la resolución nunca genera nada, aunque se le pase una respuesta', () => {
+    expect(desiredForVestuarioResolucion({ choice: 'todavia_no_lo_sabemos' }, { choice: 'elegir_comprar' }, 'Laura')).toEqual(none)
   })
-  it('ya_lo_tenemos / todavia_no_lo_sabemos: nada', () => {
-    const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
-    expect(desiredForVestuario({ choice: 'ya_lo_tenemos' }, 'Laura')).toEqual(none)
-    expect(desiredForVestuario({ choice: 'todavia_no_lo_sabemos' }, 'Laura')).toEqual(none)
+  it('resolución "ya lo tenemos" / "todavía no lo sabemos" / sin responder: nada', () => {
+    const tipo: VestuarioTipoAnswer = { choice: 'vestido' }
+    expect(desiredForVestuarioResolucion(tipo, { choice: 'ya_lo_tenemos' }, 'Laura')).toEqual(none)
+    expect(desiredForVestuarioResolucion(tipo, { choice: 'todavia_no_lo_sabemos' }, 'Laura')).toEqual(none)
+    expect(desiredForVestuarioResolucion(tipo, undefined, 'Laura')).toEqual(none)
   })
-  it('otro: nunca infiere del texto — sin custom.action no genera nada; con "preparar" genera tarea sin presupuesto', () => {
-    expect(desiredForVestuario({ choice: 'otro' }, 'Laura')).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null })
-    const custom: CustomResolution = { label: 'Mono de fiesta', action: 'preparar', hasCost: null }
-    expect(desiredForVestuario({ choice: 'otro', custom }, 'Laura')).toEqual({ taskTitle: 'Elegir Mono de fiesta de Laura', budgetCategory: null, providerCategory: null })
+  it('elegir/comprar: tarea + presupuesto con el nombre real, solo cuando la resolución lo dice', () => {
+    expect(desiredForVestuarioResolucion({ choice: 'vestido' }, { choice: 'elegir_comprar' }, 'Laura')).toEqual({
+      taskTitle: 'Elegir/comprar vestido de Laura',
+      budgetCategory: 'Vestido de Laura',
+      providerCategory: null,
+    })
+    expect(desiredForVestuarioResolucion({ choice: 'traje' }, { choice: 'elegir_comprar' }, 'Miguel')).toEqual({
+      taskTitle: 'Elegir/comprar traje de Miguel',
+      budgetCategory: 'Traje de Miguel',
+      providerCategory: null,
+    })
   })
-  it('otro con buscar_contratar: solo genera presupuesto si hasCost === "si" — nunca lo infiere del texto', () => {
-    const sinCoste: CustomResolution = { label: 'Mono de fiesta', action: 'buscar_contratar', hasCost: 'no' }
-    expect(desiredForVestuario({ choice: 'otro', custom: sinCoste }, 'Laura').budgetCategory).toBeNull()
-    const conCoste: CustomResolution = { label: 'Mono de fiesta', action: 'buscar_contratar', hasCost: 'si' }
-    expect(desiredForVestuario({ choice: 'otro', custom: conCoste }, 'Laura').budgetCategory).toBe('Mono de fiesta de Laura')
+  it('buscando proveedor: tarea + presupuesto, nunca crea el proveedor (igual que peluquería/floristería)', () => {
+    const desired = desiredForVestuarioResolucion({ choice: 'vestido' }, { choice: 'buscando_proveedor' }, 'Laura')
+    expect(desired.taskTitle).toBe('Buscar dónde conseguir vestido de Laura')
+    expect(desired.budgetCategory).toBe('Vestido de Laura')
+  })
+  it('tipo "otro" usa su customLabel en el texto generado por la resolución, nunca lo interpreta', () => {
+    const tipo: VestuarioTipoAnswer = { choice: 'otro', customLabel: 'Mono de fiesta' }
+    expect(desiredForVestuarioResolucion(tipo, { choice: 'elegir_comprar' }, 'Laura')).toEqual({
+      taskTitle: 'Elegir/comprar Mono de fiesta de Laura',
+      budgetCategory: 'Mono de fiesta de Laura',
+      providerCategory: null,
+    })
+  })
+  it('resolución "otro": motor explícito, presupuesto solo con hasCost === "si"', () => {
+    const tipo: VestuarioTipoAnswer = { choice: 'vestido' }
+    const sinCoste: CustomResolution = { label: 'Alquilarlo', action: 'buscar_contratar', hasCost: 'no' }
+    expect(desiredForVestuarioResolucion(tipo, { choice: 'otro', custom: sinCoste }, 'Laura').budgetCategory).toBeNull()
+    const conCoste: CustomResolution = { label: 'Alquilarlo', action: 'buscar_contratar', hasCost: 'si' }
+    expect(desiredForVestuarioResolucion(tipo, { choice: 'otro', custom: conCoste }, 'Laura').budgetCategory).toBe('Alquilarlo de Laura')
   })
 })
 
@@ -281,15 +335,62 @@ describe('Alianzas — compartida, sin fecha dentro de la decisión', () => {
   })
 })
 
-describe('Detalle especial — opcional, nunca presupuesto salvo "otro" con coste explícito', () => {
-  it('no / todavía no lo sabemos: nada', () => {
-    const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
-    const choices: DetalleEspecialAnswer['choice'][] = ['no', 'todavia_no_lo_sabemos']
-    for (const choice of choices) expect(desiredForDetalleEspecial({ choice })).toEqual(none)
+describe('Detalle especial — tipo ≠ resolución, mismo patrón que Vestuario/Floral', () => {
+  const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
+  it('tipo "no"/"todavía no lo sabemos": la resolución nunca genera nada', () => {
+    expect(desiredForDetalleEspecialResolucion({ choice: 'no' }, { choice: 'tenemos_que_prepararlo' })).toEqual(none)
+    expect(desiredForDetalleEspecialResolucion({ choice: 'todavia_no_lo_sabemos' }, { choice: 'tenemos_que_prepararlo' })).toEqual(none)
   })
-  it('regalo/carta/sorpresa: tarea, nunca presupuesto', () => {
-    expect(desiredForDetalleEspecial({ choice: 'regalo' }).budgetCategory).toBeNull()
-    expect(desiredForDetalleEspecial({ choice: 'carta' }).taskTitle).toBe('Preparar una carta para el otro')
+  it('resolución "ya lo tenemos" / "todavía no lo sabemos" / sin responder: nada', () => {
+    const tipo: DetalleEspecialTipoAnswer = { choice: 'regalo' }
+    expect(desiredForDetalleEspecialResolucion(tipo, { choice: 'ya_lo_tenemos' })).toEqual(none)
+    expect(desiredForDetalleEspecialResolucion(tipo, { choice: 'todavia_no_lo_sabemos' })).toEqual(none)
+    expect(desiredForDetalleEspecialResolucion(tipo, undefined)).toEqual(none)
+  })
+  it('tenemos que prepararlo: tarea, nunca presupuesto', () => {
+    expect(desiredForDetalleEspecialResolucion({ choice: 'carta' }, { choice: 'tenemos_que_prepararlo' })).toEqual({
+      taskTitle: 'Preparar una carta para el otro',
+      budgetCategory: null,
+      providerCategory: null,
+    })
+  })
+  it('buscando: tarea, tampoco presupuesto (nunca se pregunta precio en el cuestionario)', () => {
+    expect(desiredForDetalleEspecialResolucion({ choice: 'sorpresa' }, { choice: 'buscando' }).budgetCategory).toBeNull()
+  })
+  it('resolución "otro": motor explícito, presupuesto solo con coste explícito', () => {
+    const tipo: DetalleEspecialTipoAnswer = { choice: 'otro', customLabel: 'Vídeo sorpresa' }
+    const conCoste: CustomResolution = { label: 'Vídeo sorpresa', action: 'buscar_contratar', hasCost: 'si' }
+    expect(desiredForDetalleEspecialResolucion(tipo, { choice: 'otro', custom: conCoste })).toEqual({
+      taskTitle: 'Preparar: Vídeo sorpresa',
+      budgetCategory: 'Vídeo sorpresa',
+      providerCategory: null,
+    })
+  })
+})
+
+describe('floralItemSelected / withFloralSelected — marca de selección SEPARADA de la decisión de resolución', () => {
+  it('sin details: ningún ítem seleccionado', () => {
+    expect(floralItemSelected(makeEvent(), 'partner1', 'ramo')).toBe(false)
+  })
+  it('withFloralSelected añade el ítem manteniendo el resto de details intacto (merge explícito)', () => {
+    const event = makeEvent({ details: { partner1Name: 'Laura' } })
+    const patch = withFloralSelected(event, 'partner1', 'ramo', true)
+    expect(patch).toEqual({ partner1Name: 'Laura', partner1FloralSelected: ['ramo'] })
+  })
+  it('withFloralSelected no duplica si ya estaba marcado', () => {
+    const event = makeEvent({ details: { partner1FloralSelected: ['ramo'] } })
+    const patch = withFloralSelected(event, 'partner1', 'ramo', true)
+    expect(patch.partner1FloralSelected).toEqual(['ramo'])
+  })
+  it('withFloralSelected(false) quita el ítem sin tocar los demás', () => {
+    const event = makeEvent({ details: { partner1FloralSelected: ['ramo', 'prendido'] } })
+    const patch = withFloralSelected(event, 'partner1', 'ramo', false)
+    expect(patch.partner1FloralSelected).toEqual(['prendido'])
+  })
+  it('partner1 y partner2 usan campos independientes', () => {
+    const event = makeEvent({ details: { partner1FloralSelected: ['ramo'] } })
+    expect(floralItemSelected(event, 'partner1', 'ramo')).toBe(true)
+    expect(floralItemSelected(event, 'partner2', 'ramo')).toBe(false)
   })
 })
 

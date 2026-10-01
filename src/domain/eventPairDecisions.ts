@@ -7,6 +7,14 @@
 // "todavía no lo sabemos" genera nunca Preparativo/Presupuesto/Proveedor. Una opción personalizada
 // ("otro") nunca se interpreta por el texto libre que contiene — siempre usa el motor explícito de
 // CustomResolution (qué hay que hacer / si tendrá coste), nunca se adivina a partir de la etiqueta.
+//
+// Corrección real (prueba manual en iPhone): "seleccionar QUÉ queremos" y "decidir CÓMO lo resolvemos"
+// son dos decisiones distintas, nunca una sola. Vestuario, Floral (ramo/prendido) y Detalle especial
+// siguen todos el mismo patrón de dos niveles: una pregunta de TIPO/selección (qué es) que por sí sola
+// nunca genera nada, y una pregunta de RESOLUCIÓN revelada solo cuando el tipo es concreto, que es la
+// única que puede generar Preparativo/Presupuesto/relación con Proveedores. Peluquería/maquillaje ya
+// tenía este patrón desde el diseño original (necesidad → resolución); Alianzas y Complementos generales
+// no lo necesitan porque su nivel único YA es una respuesta de resolución (nunca "qué tipo", ver abajo).
 import type { EventBudgetItem, EventDecision, EventTask, FamilyEvent } from '@/domain/types'
 
 export type DecisionStatus = 'sin_empezar' | 'decidida' | 'por_decidir'
@@ -20,9 +28,16 @@ export interface CustomResolution {
   hasCost: CustomHasCost | null
 }
 
-export type VestuarioChoice = 'vestido' | 'traje' | 'otro' | 'ya_lo_tenemos' | 'todavia_no_lo_sabemos'
-export interface VestuarioAnswer {
-  choice: VestuarioChoice
+// Vestuario — tipo (qué llevará, nunca implica por sí solo que haya que comprarlo/elegirlo) + resolución
+// (cómo está resuelto, revelada solo cuando el tipo es concreto).
+export type VestuarioTipoChoice = 'vestido' | 'traje' | 'otro' | 'todavia_no_lo_sabemos'
+export interface VestuarioTipoAnswer {
+  choice: VestuarioTipoChoice
+  customLabel?: string
+}
+export type VestuarioResolucionChoice = 'ya_lo_tenemos' | 'elegir_comprar' | 'buscando_proveedor' | 'otro' | 'todavia_no_lo_sabemos'
+export interface VestuarioResolucionAnswer {
+  choice: VestuarioResolucionChoice
   custom?: CustomResolution
 }
 
@@ -37,6 +52,10 @@ export interface PeluqueriaResolucionAnswer {
   choice: PeluqueriaResolucionChoice
 }
 
+// Complementos generales — el nivel único YA es una respuesta de resolución ("queremos prepararlos" es
+// una decisión tomada, no un tipo pendiente de resolver); la lista de qué complementos es solo un detalle
+// dentro de "preparar" confirmado, nunca una selección de tipo independiente. No tiene el mismo patrón de
+// dos niveles que Vestuario/Floral/Detalle especial.
 export type ComplementosChoice = 'preparar' | 'no_necesitamos' | 'todavia_no_lo_sabemos'
 export interface ComplementosAnswer {
   choice: ComplementosChoice
@@ -51,15 +70,24 @@ export interface FloralAnswer {
   custom?: CustomResolution
 }
 
+// Alianzas — el nivel único YA es una respuesta de resolución ("Tenemos que elegirlas"/"Ya las tenemos"
+// son estados de proceso, no un "tipo de alianza" previo) — no existe aquí la ambigüedad de Vestuario.
 export type AlianzasChoice = 'elegir' | 'comprar_encargar' | 'ya_las_tenemos' | 'no_tendremos' | 'otro' | 'todavia_no_lo_sabemos'
 export interface AlianzasAnswer {
   choice: AlianzasChoice
   custom?: CustomResolution
 }
 
-export type DetalleEspecialChoice = 'regalo' | 'carta' | 'sorpresa' | 'otro' | 'no' | 'todavia_no_lo_sabemos'
-export interface DetalleEspecialAnswer {
-  choice: DetalleEspecialChoice
+// Detalle especial — mismo patrón de dos niveles que Vestuario/Floral: el tipo (regalo/carta/sorpresa) no
+// implica por sí solo que haya que prepararlo o ya esté resuelto.
+export type DetalleEspecialTipoChoice = 'regalo' | 'carta' | 'sorpresa' | 'otro' | 'no' | 'todavia_no_lo_sabemos'
+export interface DetalleEspecialTipoAnswer {
+  choice: DetalleEspecialTipoChoice
+  customLabel?: string
+}
+export type DetalleEspecialResolucionChoice = 'ya_lo_tenemos' | 'tenemos_que_prepararlo' | 'buscando' | 'otro' | 'todavia_no_lo_sabemos'
+export interface DetalleEspecialResolucionAnswer {
+  choice: DetalleEspecialResolucionChoice
   custom?: CustomResolution
 }
 
@@ -102,6 +130,31 @@ export function pairQuestionKey(slot: PartnerSlot, suffix: string): string {
 
 export const ALIANZAS_QUESTION_KEY = 'pareja.alianzas'
 export const DETALLE_ESPECIAL_QUESTION_KEY = 'pareja.detalle_especial'
+export const DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY = 'pareja.detalle_especial.resolucion'
+
+// Marca de selección de un elemento floral — deliberadamente NUNCA una fila de event_decisions (eso
+// falsificaría una respuesta que la familia no ha dado): vive en events.details, igual que los nombres de
+// la pareja, mismo merge explícito al guardar. "Seleccionado" y "resuelto" son dos hechos distintos: un
+// ítem puede estar marcado sin que exista todavía ninguna decisión de resolución.
+function floralSelectedField(slot: PartnerSlot): 'partner1FloralSelected' | 'partner2FloralSelected' {
+  return slot === 'partner1' ? 'partner1FloralSelected' : 'partner2FloralSelected'
+}
+
+export function floralItemSelected(event: Pick<FamilyEvent, 'details'>, slot: PartnerSlot, item: FloralItemKey): boolean {
+  const details = event.details as Record<string, unknown>
+  const raw = details[floralSelectedField(slot)]
+  return Array.isArray(raw) && raw.includes(item)
+}
+
+// Patch de `details` con merge explícito (igual que los nombres) — quien llame debe fusionarlo con
+// event.details completo antes de guardar vía updateEvent, nunca sobrescribirlo entero.
+export function withFloralSelected(event: Pick<FamilyEvent, 'details'>, slot: PartnerSlot, item: FloralItemKey, selected: boolean): Record<string, unknown> {
+  const details = event.details as Record<string, unknown>
+  const field = floralSelectedField(slot)
+  const current = Array.isArray(details[field]) ? (details[field] as FloralItemKey[]) : []
+  const next = selected ? Array.from(new Set([...current, item])) : current.filter((x) => x !== item)
+  return { ...details, [field]: next }
+}
 
 function findDecision(decisions: EventDecision[], questionKey: string): EventDecision | undefined {
   return decisions.find((d) => d.questionKey === questionKey)
@@ -124,9 +177,10 @@ export interface PairQuestionInfo {
   status: DecisionStatus
 }
 
-// Revelado progresivo real: una pregunta de segundo nivel (resolución de peluquería/maquillaje, resolución
-// de un elemento floral) solo CUENTA como pregunta relevante cuando la de primer nivel ya la hace
-// pertinente — antes de eso no es "Sin empezar", simplemente no existe todavía como pregunta.
+// Revelado progresivo real: una pregunta de segundo nivel (resolución de vestuario/peluquería/floral/
+// detalle especial) solo CUENTA como pregunta relevante cuando la de primer nivel (o, para floral, el
+// simple hecho de estar marcado) ya la hace pertinente — antes de eso no es "Sin empezar", simplemente no
+// existe todavía como pregunta relevante.
 export function listPairBlockQuestions(event: FamilyEvent, decisions: EventDecision[]): PairQuestionInfo[] {
   if (event.type !== 'boda') return []
   const result: PairQuestionInfo[] = []
@@ -134,7 +188,20 @@ export function listPairBlockQuestions(event: FamilyEvent, decisions: EventDecis
     const name = partnerName(event, slot)
 
     const vestuarioKey = pairQuestionKey(slot, 'vestuario')
-    result.push({ questionKey: vestuarioKey, blockKey: 'pareja', label: `Vestuario de ${name}`, status: decisionStatus(findDecision(decisions, vestuarioKey)) })
+    const vestuarioDecision = findDecision(decisions, vestuarioKey)
+    result.push({ questionKey: vestuarioKey, blockKey: 'pareja', label: `Vestuario de ${name}`, status: decisionStatus(vestuarioDecision) })
+    if (vestuarioDecision) {
+      const tipo = vestuarioDecision.answer as unknown as VestuarioTipoAnswer
+      if (tipo.choice !== 'todavia_no_lo_sabemos') {
+        const resolucionKey = pairQuestionKey(slot, 'vestuario.resolucion')
+        result.push({
+          questionKey: resolucionKey,
+          blockKey: 'pareja',
+          label: `Cómo está resuelto el vestuario de ${name}`,
+          status: decisionStatus(findDecision(decisions, resolucionKey)),
+        })
+      }
+    }
 
     const necesidadKey = pairQuestionKey(slot, 'peluqueria_maquillaje')
     const necesidadDecision = findDecision(decisions, necesidadKey)
@@ -158,22 +225,33 @@ export function listPairBlockQuestions(event: FamilyEvent, decisions: EventDecis
     for (const item of FLORAL_ITEMS) {
       const floralKey = pairQuestionKey(slot, `floral.${item.key}`)
       const d = findDecision(decisions, floralKey)
-      // Sin marcar el ítem no existe fila — y sin fila no cuenta como pregunta pendiente (sería contar
-      // algo que la familia ni siquiera ha abierto todavía).
-      if (d) result.push({ questionKey: floralKey, blockKey: 'pareja', label: `${item.label} de ${name}`, status: decisionStatus(d) })
+      // Marcado (con o sin decisión de resolución todavía) cuenta como pregunta relevante — sin marcar,
+      // ni siquiera eso: no existe como pregunta pendiente.
+      if (d || floralItemSelected(event, slot, item.key)) {
+        result.push({ questionKey: floralKey, blockKey: 'pareja', label: `${item.label} de ${name}`, status: decisionStatus(d) })
+      }
     }
     const customPrefix = pairQuestionKey(slot, 'floral.custom:')
     for (const d of decisions.filter((x) => x.questionKey.startsWith(customPrefix))) {
       result.push({ questionKey: d.questionKey, blockKey: 'pareja', label: `Complemento floral de ${name}`, status: decisionStatus(d) })
     }
   }
+
   result.push({ questionKey: ALIANZAS_QUESTION_KEY, blockKey: 'pareja', label: 'Alianzas', status: decisionStatus(findDecision(decisions, ALIANZAS_QUESTION_KEY)) })
-  result.push({
-    questionKey: DETALLE_ESPECIAL_QUESTION_KEY,
-    blockKey: 'pareja',
-    label: 'Detalle especial entre la pareja',
-    status: decisionStatus(findDecision(decisions, DETALLE_ESPECIAL_QUESTION_KEY)),
-  })
+
+  const detalleDecision = findDecision(decisions, DETALLE_ESPECIAL_QUESTION_KEY)
+  result.push({ questionKey: DETALLE_ESPECIAL_QUESTION_KEY, blockKey: 'pareja', label: 'Detalle especial entre la pareja', status: decisionStatus(detalleDecision) })
+  if (detalleDecision) {
+    const tipo = detalleDecision.answer as unknown as DetalleEspecialTipoAnswer
+    if (tipo.choice !== 'no' && tipo.choice !== 'todavia_no_lo_sabemos') {
+      result.push({
+        questionKey: DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY,
+        blockKey: 'pareja',
+        label: 'Cómo está resuelto el detalle especial',
+        status: decisionStatus(findDecision(decisions, DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY)),
+      })
+    }
+  }
   return result
 }
 
@@ -195,7 +273,8 @@ export function summarizePairBlock(event: FamilyEvent, decisions: EventDecision[
 // ---------------------------------------------------------------------
 // Generación — qué Preparativo/concepto de Presupuesto implica cada respuesta. Como mucho UNA tarea y UN
 // concepto de presupuesto por decisión en todo este bloque (nunca una lista), lo que simplifica la
-// reconciliación de más abajo a comparar un único título/categoría esperados contra lo ya existente.
+// reconciliación de más abajo a comparar un único título/categoría esperados contra lo ya existente. Solo
+// las preguntas de RESOLUCIÓN generan — un tipo/selección por sí solo nunca genera nada.
 // ---------------------------------------------------------------------
 
 export interface DesiredPairGeneration {
@@ -216,11 +295,26 @@ function fromCustom(custom: CustomResolution | undefined, taskTitle: (label: str
   return { taskTitle: taskTitle(custom.label), budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null, providerCategory: null }
 }
 
-export function desiredForVestuario(answer: VestuarioAnswer, name: string): DesiredPairGeneration {
-  if (answer.choice === 'ya_lo_tenemos' || answer.choice === 'todavia_no_lo_sabemos') return NONE
-  if (answer.choice === 'otro') return fromCustom(answer.custom, (label) => `Elegir ${label} de ${name}`, (label) => `${label} de ${name}`)
-  const word = answer.choice === 'vestido' ? 'Vestido' : 'Traje'
-  return { taskTitle: `Elegir ${word.toLowerCase()} de ${name}`, budgetCategory: `${word} de ${name}`, providerCategory: null }
+function vestuarioTipoLabel(tipo: VestuarioTipoAnswer): string {
+  if (tipo.choice === 'vestido') return 'vestido'
+  if (tipo.choice === 'traje') return 'traje'
+  return tipo.customLabel || 'vestuario'
+}
+
+// El tipo (vestido/traje/otro/todavía no lo sabemos) por sí solo nunca genera nada — responde solo a QUÉ
+// llevará, no a si hace falta comprarlo/elegirlo. Solo la resolución genera, y solo cuando el tipo es
+// concreto (nunca se llama con tipo.choice === 'todavia_no_lo_sabemos', ver listPairBlockQuestions).
+export function desiredForVestuarioResolucion(tipo: VestuarioTipoAnswer, resolucion: VestuarioResolucionAnswer | undefined, name: string): DesiredPairGeneration {
+  if (tipo.choice === 'todavia_no_lo_sabemos') return NONE
+  if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos' || resolucion.choice === 'ya_lo_tenemos') return NONE
+  const label = vestuarioTipoLabel(tipo)
+  const capitalized = label.charAt(0).toUpperCase() + label.slice(1)
+  if (resolucion.choice === 'elegir_comprar') return { taskTitle: `Elegir/comprar ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null }
+  if (resolucion.choice === 'buscando_proveedor') {
+    return { taskTitle: `Buscar dónde conseguir ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null }
+  }
+  // 'otro'
+  return fromCustom(resolucion.custom, (l) => `Resolver ${l} de ${name}`, (l) => `${l} de ${name}`)
 }
 
 export function desiredForPeluqueriaResolucion(necesidad: PeluqueriaNecesidadAnswer, resolucion: PeluqueriaResolucionAnswer | undefined, name: string): DesiredPairGeneration {
@@ -255,11 +349,25 @@ export function desiredForAlianzas(answer: AlianzasAnswer): DesiredPairGeneratio
   return fromCustom(answer.custom, (label) => `Alianzas: ${label}`, (label) => `Alianzas: ${label}`)
 }
 
-export function desiredForDetalleEspecial(answer: DetalleEspecialAnswer): DesiredPairGeneration {
-  if (answer.choice === 'no' || answer.choice === 'todavia_no_lo_sabemos') return NONE
-  if (answer.choice === 'otro') return fromCustom(answer.custom, (label) => `Preparar: ${label}`, (label) => label)
-  const texto = answer.choice === 'regalo' ? 'un regalo' : answer.choice === 'carta' ? 'una carta' : 'una sorpresa'
-  return { taskTitle: `Preparar ${texto} para el otro`, budgetCategory: null, providerCategory: null }
+function detalleTipoLabel(tipo: DetalleEspecialTipoAnswer): string {
+  if (tipo.choice === 'regalo') return 'un regalo'
+  if (tipo.choice === 'carta') return 'una carta'
+  if (tipo.choice === 'sorpresa') return 'una sorpresa'
+  return tipo.customLabel || 'algo especial'
+}
+
+// El tipo (regalo/carta/sorpresa/otro/no/todavía no lo sabemos) por sí solo nunca genera nada — solo
+// responde a QUÉ, no a si hace falta prepararlo. Solo se llama con un tipo que implica preparación (nunca
+// 'no'/'todavia_no_lo_sabemos', ver listPairBlockQuestions). Nunca genera presupuesto salvo "otro" con
+// coste explícito — igual que el diseño original aprobado.
+export function desiredForDetalleEspecialResolucion(tipo: DetalleEspecialTipoAnswer, resolucion: DetalleEspecialResolucionAnswer | undefined): DesiredPairGeneration {
+  if (tipo.choice === 'no' || tipo.choice === 'todavia_no_lo_sabemos') return NONE
+  if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos' || resolucion.choice === 'ya_lo_tenemos') return NONE
+  const label = detalleTipoLabel(tipo)
+  if (resolucion.choice === 'tenemos_que_prepararlo') return { taskTitle: `Preparar ${label} para el otro`, budgetCategory: null, providerCategory: null }
+  if (resolucion.choice === 'buscando') return { taskTitle: `Buscar ${label} para el otro`, budgetCategory: null, providerCategory: null }
+  // 'otro'
+  return fromCustom(resolucion.custom, (l) => `Preparar: ${l}`, (l) => l)
 }
 
 // ---------------------------------------------------------------------

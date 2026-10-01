@@ -147,13 +147,15 @@ import {
   ALIANZAS_QUESTION_KEY,
   COMPLEMENTOS_OPTIONS,
   DETALLE_ESPECIAL_QUESTION_KEY,
+  DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY,
   desiredForAlianzas,
   desiredForComplementos,
-  desiredForDetalleEspecial,
+  desiredForDetalleEspecialResolucion,
   desiredForFloral,
   desiredForPeluqueriaResolucion,
-  desiredForVestuario,
+  desiredForVestuarioResolucion,
   type DesiredPairGeneration,
+  floralItemSelected,
   FLORAL_ITEMS,
   pairQuestionKey,
   partnerName,
@@ -161,6 +163,7 @@ import {
   PARTNER_SLOTS,
   type PartnerRole,
   summarizePairBlock,
+  withFloralSelected,
   type AlianzasAnswer,
   type AlianzasChoice,
   type ComplementosAnswer,
@@ -168,8 +171,10 @@ import {
   type CustomAction,
   type CustomHasCost,
   type CustomResolution,
-  type DetalleEspecialAnswer,
-  type DetalleEspecialChoice,
+  type DetalleEspecialResolucionAnswer,
+  type DetalleEspecialResolucionChoice,
+  type DetalleEspecialTipoAnswer,
+  type DetalleEspecialTipoChoice,
   type FloralAnswer,
   type FloralChoice,
   type FloralItemKey,
@@ -178,8 +183,10 @@ import {
   type PeluqueriaNecesidadChoice,
   type PeluqueriaResolucionAnswer,
   type PeluqueriaResolucionChoice,
-  type VestuarioAnswer,
-  type VestuarioChoice,
+  type VestuarioResolucionAnswer,
+  type VestuarioResolucionChoice,
+  type VestuarioTipoAnswer,
+  type VestuarioTipoChoice,
 } from '@/domain/eventPairDecisions'
 import { notifyEventMomentsChanged, useEventMomentsChangeSignal } from '@/state/eventMomentsSync'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
@@ -1294,7 +1301,14 @@ function EventDetail({
           implementados. El propio componente decide si tiene algo que mostrar
           (isEventStructuredByMoments); el resto de bloques del documento maestro (Invitados, Momentos
           especiales...) llegan en fases posteriores, no en esta. */}
-      <EventPlanningConfigurator event={event} onChanged={onChanged} />
+      <EventPlanningConfigurator
+        event={event}
+        onChanged={onChanged}
+        onDerivedDataChanged={() => {
+          reloadTasks()
+          reloadDashboardStats()
+        }}
+      />
 
       {/* Fase 2 — "Estado del evento": auditoría real encontró que
           "Preparación del evento" (media de %tareas y %invitados) podía
@@ -2191,7 +2205,19 @@ function EventLocationCoordsPicker({
 // determina ninguna prioridad de tareas — es puro orden de lectura.
 // ---------------------------------------------------------------------
 
-function EventPlanningConfigurator({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
+function EventPlanningConfigurator({
+  event,
+  onChanged,
+  onDerivedDataChanged,
+}: {
+  event: FamilyEvent
+  onChanged: () => void
+  // Fallo 1 (Fase 3) — PairBlock escribe event_tasks/event_budget_items directamente en Supabase; sin
+  // esto, Preparativos y la tarjeta-resumen de Presupuesto en EventDetail se quedan con el estado cargado
+  // al montar, invisibles hasta recargar la página entera. Mismo hueco que nunca existió con Momentos
+  // (Fase 2), que nunca toca esas dos tablas.
+  onDerivedDataChanged: () => void
+}) {
   const [open, setOpen] = useState(() => loadConfiguratorOpen(event.id))
   const [blockOpen, setBlockOpen] = useState(() => loadConfiguratorOpen(event.id, 'ceremonia_celebracion'))
   // "👰🤵 La pareja" — segundo bloque, solo para boda (DUAL_LOCATION_EVENT_TYPES también incluye
@@ -2261,7 +2287,7 @@ function EventPlanningConfigurator({ event, onChanged }: { event: FamilyEvent; o
               </button>
               {pairOpen && (
                 <div style={{ marginTop: 4 }}>
-                  <PairBlock event={event} />
+                  <PairBlock event={event} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />
                 </div>
               )}
             </div>
@@ -2278,11 +2304,18 @@ function EventPlanningConfigurator({ event, onChanged }: { event: FamilyEvent; o
 // preguntas de "cómo lo resolvéis"/proveedor hasta que una respuesta anterior las hace relevantes.
 // ---------------------------------------------------------------------
 
-const VESTUARIO_OPTIONS: { value: VestuarioChoice; label: string }[] = [
+const VESTUARIO_TIPO_OPTIONS: { value: VestuarioTipoChoice; label: string }[] = [
   { value: 'vestido', label: 'Vestido' },
   { value: 'traje', label: 'Traje' },
   { value: 'otro', label: 'Otro tipo de vestuario' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+const VESTUARIO_RESOLUCION_OPTIONS: { value: VestuarioResolucionChoice; label: string }[] = [
   { value: 'ya_lo_tenemos', label: 'Ya lo tenemos' },
+  { value: 'elegir_comprar', label: 'Tenemos que elegirlo/comprarlo/encargarlo' },
+  { value: 'buscando_proveedor', label: 'Estamos buscando dónde/proveedor' },
+  { value: 'otro', label: 'Otra situación' },
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
 ]
 
@@ -2324,12 +2357,20 @@ const ALIANZAS_OPTIONS: { value: AlianzasChoice; label: string }[] = [
   { value: 'otro', label: 'Otra opción' },
 ]
 
-const DETALLE_ESPECIAL_OPTIONS: { value: DetalleEspecialChoice; label: string }[] = [
+const DETALLE_ESPECIAL_TIPO_OPTIONS: { value: DetalleEspecialTipoChoice; label: string }[] = [
   { value: 'regalo', label: 'Regalo' },
   { value: 'carta', label: 'Carta' },
   { value: 'sorpresa', label: 'Sorpresa' },
   { value: 'otro', label: 'Otro' },
   { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+const DETALLE_ESPECIAL_RESOLUCION_OPTIONS: { value: DetalleEspecialResolucionChoice; label: string }[] = [
+  { value: 'ya_lo_tenemos', label: 'Ya lo tenemos' },
+  { value: 'tenemos_que_prepararlo', label: 'Tenemos que prepararlo' },
+  { value: 'buscando', label: 'Estamos buscando' },
+  { value: 'otro', label: 'Otra situación' },
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
 ]
 
@@ -2530,6 +2571,197 @@ function CustomAwareQuestion<C extends string>({
   )
 }
 
+// Vestuario — mismo patrón de 2 niveles que Peluquería/maquillaje: el tipo (qué llevará) nunca genera
+// nada por sí solo, solo responde a QUÉ; la resolución (cómo está resuelto), revelada solo cuando el tipo
+// es concreto, es la única que puede generar Preparativo/Presupuesto.
+function VestuarioQuestion({
+  event,
+  slot,
+  decisions,
+  savingKey,
+  onSaveTipo,
+  onSaveResolucion,
+}: {
+  event: FamilyEvent
+  slot: PartnerSlot
+  decisions: EventDecision[]
+  savingKey: string | null
+  onSaveTipo: (slot: PartnerSlot, answer: VestuarioTipoAnswer) => void
+  onSaveResolucion: (slot: PartnerSlot, answer: VestuarioResolucionAnswer) => void
+}) {
+  const name = partnerName(event, slot)
+  const tipoKey = pairQuestionKey(slot, 'vestuario')
+  const tipoDecision = decisions.find((d) => d.questionKey === tipoKey)
+  const tipo = tipoDecision?.answer as unknown as VestuarioTipoAnswer | undefined
+  const saving = savingKey === tipoKey
+  const [customLabelDraft, setCustomLabelDraft] = useState<string | null>(null)
+
+  function selectTipo(choice: VestuarioTipoChoice) {
+    if (choice === 'otro') {
+      setCustomLabelDraft(tipo?.customLabel ?? '')
+      return
+    }
+    setCustomLabelDraft(null)
+    onSaveTipo(slot, { choice })
+  }
+  function saveCustomTipo() {
+    if (!customLabelDraft?.trim()) return
+    onSaveTipo(slot, { choice: 'otro', customLabel: customLabelDraft.trim() })
+    setCustomLabelDraft(null)
+  }
+
+  const resolucionKey = pairQuestionKey(slot, 'vestuario.resolucion')
+  const resolucionDecision = decisions.find((d) => d.questionKey === resolucionKey)
+  const existingResolucion = resolucionDecision?.answer as unknown as VestuarioResolucionAnswer | undefined
+  const [resolucionDraft, setResolucionDraft] = useState<VestuarioResolucionAnswer | null>(null)
+  const currentResolucion = resolucionDraft ?? existingResolucion
+  const savingResolucion = savingKey === resolucionKey
+  const showResolucion = tipo !== undefined && tipo.choice !== 'todavia_no_lo_sabemos'
+
+  function selectResolucion(choice: VestuarioResolucionChoice) {
+    if (choice === 'otro') {
+      setResolucionDraft({ choice, custom: existingResolucion?.custom ?? { label: '', action: 'preparar', hasCost: null } })
+      return
+    }
+    setResolucionDraft(null)
+    onSaveResolucion(slot, { choice })
+  }
+  function updateResolucionCustom(next: CustomResolution) {
+    if (!currentResolucion) return
+    setResolucionDraft({ choice: 'otro', custom: next })
+  }
+  function saveResolucionCustom() {
+    if (!currentResolucion?.custom?.label.trim()) return
+    onSaveResolucion(slot, { choice: 'otro', custom: currentResolucion.custom })
+    setResolucionDraft(null)
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Cómo vais con el vestuario de {name}?
+      </div>
+      <ChoiceRow options={VESTUARIO_TIPO_OPTIONS} value={tipo?.choice} disabled={saving} onSelect={selectTipo} />
+      {tipo?.choice === 'otro' && (
+        <div className="inline-fields" style={{ marginTop: 4 }}>
+          <input type="text" value={customLabelDraft ?? tipo.customLabel ?? ''} disabled={saving} placeholder="¿Qué tipo de vestuario?" onChange={(e) => setCustomLabelDraft(e.target.value)} />
+          <button type="button" className="link-button" disabled={saving || !(customLabelDraft ?? '').trim()} onClick={saveCustomTipo}>
+            Guardar
+          </button>
+        </div>
+      )}
+      {showResolucion && (
+        <div style={{ marginTop: 4 }}>
+          <div className="muted" style={{ fontSize: 12 }}>
+            ¿Cómo está resuelto?
+          </div>
+          <ChoiceRow options={VESTUARIO_RESOLUCION_OPTIONS} value={currentResolucion?.choice} disabled={savingResolucion} onSelect={selectResolucion} />
+          {currentResolucion?.choice === 'otro' && currentResolucion.custom && (
+            <>
+              <CustomResolutionFields value={currentResolucion.custom} disabled={savingResolucion} onChange={updateResolucionCustom} />
+              <button type="button" className="link-button" disabled={savingResolucion || !currentResolucion.custom.label.trim()} onClick={saveResolucionCustom}>
+                Guardar
+              </button>
+              {currentResolucion.custom.action === 'buscar_contratar' && resolucionDecision && <ProviderLinker event={event} decision={resolucionDecision} />}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Detalle especial — mismo patrón de 2 niveles: el tipo (regalo/carta/sorpresa/otro) nunca genera nada por
+// sí solo; la resolución, revelada solo cuando el tipo implica preparación, es la única que genera.
+function DetalleEspecialQuestion({
+  decisions,
+  savingKey,
+  onSaveTipo,
+  onSaveResolucion,
+}: {
+  decisions: EventDecision[]
+  savingKey: string | null
+  onSaveTipo: (answer: DetalleEspecialTipoAnswer) => void
+  onSaveResolucion: (answer: DetalleEspecialResolucionAnswer) => void
+}) {
+  const tipoDecision = decisions.find((d) => d.questionKey === DETALLE_ESPECIAL_QUESTION_KEY)
+  const tipo = tipoDecision?.answer as unknown as DetalleEspecialTipoAnswer | undefined
+  const saving = savingKey === DETALLE_ESPECIAL_QUESTION_KEY
+  const [customLabelDraft, setCustomLabelDraft] = useState<string | null>(null)
+
+  function selectTipo(choice: DetalleEspecialTipoChoice) {
+    if (choice === 'otro') {
+      setCustomLabelDraft(tipo?.customLabel ?? '')
+      return
+    }
+    setCustomLabelDraft(null)
+    onSaveTipo({ choice })
+  }
+  function saveCustomTipo() {
+    if (!customLabelDraft?.trim()) return
+    onSaveTipo({ choice: 'otro', customLabel: customLabelDraft.trim() })
+    setCustomLabelDraft(null)
+  }
+
+  const resolucionDecision = decisions.find((d) => d.questionKey === DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY)
+  const existingResolucion = resolucionDecision?.answer as unknown as DetalleEspecialResolucionAnswer | undefined
+  const [resolucionDraft, setResolucionDraft] = useState<DetalleEspecialResolucionAnswer | null>(null)
+  const currentResolucion = resolucionDraft ?? existingResolucion
+  const savingResolucion = savingKey === DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY
+  const showResolucion = tipo !== undefined && tipo.choice !== 'no' && tipo.choice !== 'todavia_no_lo_sabemos'
+
+  function selectResolucion(choice: DetalleEspecialResolucionChoice) {
+    if (choice === 'otro') {
+      setResolucionDraft({ choice, custom: existingResolucion?.custom ?? { label: '', action: 'preparar', hasCost: null } })
+      return
+    }
+    setResolucionDraft(null)
+    onSaveResolucion({ choice })
+  }
+  function updateResolucionCustom(next: CustomResolution) {
+    if (!currentResolucion) return
+    setResolucionDraft({ choice: 'otro', custom: next })
+  }
+  function saveResolucionCustom() {
+    if (!currentResolucion?.custom?.label.trim()) return
+    onSaveResolucion({ choice: 'otro', custom: currentResolucion.custom })
+    setResolucionDraft(null)
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Queréis preparar algo especial el uno para el otro?
+      </div>
+      <ChoiceRow options={DETALLE_ESPECIAL_TIPO_OPTIONS} value={tipo?.choice} disabled={saving} onSelect={selectTipo} />
+      {tipo?.choice === 'otro' && (
+        <div className="inline-fields" style={{ marginTop: 4 }}>
+          <input type="text" value={customLabelDraft ?? tipo.customLabel ?? ''} disabled={saving} placeholder="¿Qué es?" onChange={(e) => setCustomLabelDraft(e.target.value)} />
+          <button type="button" className="link-button" disabled={saving || !(customLabelDraft ?? '').trim()} onClick={saveCustomTipo}>
+            Guardar
+          </button>
+        </div>
+      )}
+      {showResolucion && (
+        <div style={{ marginTop: 4 }}>
+          <div className="muted" style={{ fontSize: 12 }}>
+            ¿Cómo está resuelto?
+          </div>
+          <ChoiceRow options={DETALLE_ESPECIAL_RESOLUCION_OPTIONS} value={currentResolucion?.choice} disabled={savingResolucion} onSelect={selectResolucion} />
+          {currentResolucion?.choice === 'otro' && currentResolucion.custom && (
+            <>
+              <CustomResolutionFields value={currentResolucion.custom} disabled={savingResolucion} onChange={updateResolucionCustom} />
+              <button type="button" className="link-button" disabled={savingResolucion || !currentResolucion.custom.label.trim()} onClick={saveResolucionCustom}>
+                Guardar
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PeluqueriaQuestion({
   event,
   slot,
@@ -2621,31 +2853,36 @@ function ComplementosQuestion({
   const key = pairQuestionKey(slot, 'complementos')
   const saving = savingKey === key
   const existing = decision?.answer as unknown as ComplementosAnswer | undefined
+  // Corrección real (iPhone): sin decisión ni borrador, `current` debe quedar undefined — nunca un
+  // objeto de repuesto con choice:'todavia_no_lo_sabemos', que hacía que ese chip apareciera marcado sin
+  // que nadie lo hubiera elegido. Los arrays vacíos se resuelven con `?? []` solo donde hacen falta.
   const [draft, setDraft] = useState<ComplementosAnswer | null>(null)
-  const current = draft ?? existing ?? { choice: 'todavia_no_lo_sabemos' as ComplementosChoice, selected: [], customItems: [] }
+  const current = draft ?? existing
   const [customInput, setCustomInput] = useState('')
 
   function selectChoice(choice: ComplementosChoice) {
     if (choice === 'preparar') {
-      setDraft({ ...current, choice })
+      setDraft({ choice, selected: current?.selected ?? [], customItems: current?.customItems ?? [] })
       return
     }
     setDraft(null)
     onSave({ choice, selected: [], customItems: [] })
   }
   function toggleSelected(item: string) {
-    const selected = current.selected.includes(item) ? current.selected.filter((x) => x !== item) : [...current.selected, item]
-    setDraft({ ...current, choice: 'preparar', selected })
+    const selected = current?.selected ?? []
+    const nextSelected = selected.includes(item) ? selected.filter((x) => x !== item) : [...selected, item]
+    setDraft({ choice: 'preparar', selected: nextSelected, customItems: current?.customItems ?? [] })
   }
   function addCustom() {
     if (!customInput.trim()) return
-    setDraft({ ...current, choice: 'preparar', customItems: [...current.customItems, customInput.trim()] })
+    setDraft({ choice: 'preparar', selected: current?.selected ?? [], customItems: [...(current?.customItems ?? []), customInput.trim()] })
     setCustomInput('')
   }
   function removeCustom(item: string) {
-    setDraft({ ...current, choice: 'preparar', customItems: current.customItems.filter((x) => x !== item) })
+    setDraft({ choice: 'preparar', selected: current?.selected ?? [], customItems: (current?.customItems ?? []).filter((x) => x !== item) })
   }
   function save() {
+    if (!current) return
     onSave(current)
     setDraft(null)
   }
@@ -2655,16 +2892,16 @@ function ComplementosQuestion({
       <div className="muted" style={{ fontSize: 13 }}>
         ¿Qué complementos necesitáis preparar para {name}?
       </div>
-      <ChoiceRow options={COMPLEMENTOS_CHOICE_OPTIONS} value={current.choice} disabled={saving} onSelect={selectChoice} />
-      {current.choice === 'preparar' && (
+      <ChoiceRow options={COMPLEMENTOS_CHOICE_OPTIONS} value={current?.choice} disabled={saving} onSelect={selectChoice} />
+      {current?.choice === 'preparar' && (
         <>
           <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
             {COMPLEMENTOS_OPTIONS.map((o) => (
-              <button key={o} type="button" className={'chip' + (current.selected.includes(o) ? ' chip-active' : '')} disabled={saving} onClick={() => toggleSelected(o)}>
+              <button key={o} type="button" className={'chip' + ((current.selected ?? []).includes(o) ? ' chip-active' : '')} disabled={saving} onClick={() => toggleSelected(o)}>
                 {o}
               </button>
             ))}
-            {current.customItems.map((o) => (
+            {(current.customItems ?? []).map((o) => (
               <button key={o} type="button" className="chip chip-active" disabled={saving} onClick={() => removeCustom(o)}>
                 {o} ✕
               </button>
@@ -2685,24 +2922,29 @@ function ComplementosQuestion({
   )
 }
 
+// Corrección real (iPhone): marcar Ramo/Prendido ≠ responder su resolución — son dos decisiones
+// distintas. `selected` (events.details, nunca event_decisions) es solo "la familia contempla este
+// elemento"; `decision` es la resolución real, y solo existe cuando se elige expresamente una. Marcar la
+// casilla nunca guarda "todavía no lo sabemos" como respuesta ficticia — eso solo se guarda si alguien
+// pulsa ese chip de verdad.
 function FloralItemQuestion({
   event,
   slot,
   item,
+  selected,
   decision,
   savingKey,
-  onAdd,
+  onToggleSelected,
   onSave,
-  onRemove,
 }: {
   event: FamilyEvent
   slot: PartnerSlot
   item: { key: FloralItemKey; label: string; icon: string }
+  selected: boolean
   decision: EventDecision | undefined
   savingKey: string | null
-  onAdd: () => void
+  onToggleSelected: (checked: boolean) => void
   onSave: (answer: FloralAnswer) => void
-  onRemove: () => void
 }) {
   const name = partnerName(event, slot)
   const key = pairQuestionKey(slot, `floral.${item.key}`)
@@ -2731,28 +2973,32 @@ function FloralItemQuestion({
 
   return (
     <div style={{ marginTop: 4 }}>
-      <label className="inline-fields" style={{ alignItems: 'center' }}>
-        <input type="checkbox" checked={!!decision} disabled={saving} onChange={(e) => (e.target.checked ? onAdd() : onRemove())} />
+      {/* El <label> base de la app es flex-direction:column — sin flexDirection:'row' explícito, la
+          casilla y el texto quedaban apilados en vez de en una sola fila compacta (mismo gotcha ya
+          conocido en INCLUDABLE_SERVICES_BY_TYPE). Toda la fila es pulsable porque el <label> envuelve
+          el input, no solo el propio checkbox. */}
+      <label className="inline-fields" style={{ flexDirection: 'row', alignItems: 'center', cursor: 'pointer' }}>
+        <input type="checkbox" checked={selected} disabled={saving} onChange={(e) => onToggleSelected(e.target.checked)} />
         <span>
           {item.icon} {item.label}
         </span>
       </label>
-      {decision && current && (
+      {selected && (
         <div style={{ marginLeft: 20 }}>
           <div className="muted" style={{ fontSize: 12 }}>
             ¿Cómo resolvéis {item.label.toLowerCase()} de {name}?
           </div>
-          <ChoiceRow options={FLORAL_CHOICE_OPTIONS} value={current.choice} disabled={saving} onSelect={selectChoice} />
-          {current.choice === 'otro' && current.custom && (
+          <ChoiceRow options={FLORAL_CHOICE_OPTIONS} value={current?.choice} disabled={saving} onSelect={selectChoice} />
+          {current?.choice === 'otro' && current.custom && (
             <>
               <CustomResolutionFields value={current.custom} disabled={saving} onChange={updateCustom} />
               <button type="button" className="link-button" disabled={saving || !current.custom.label.trim()} onClick={saveCustom}>
                 Guardar
               </button>
-              {current.custom.action === 'buscar_contratar' && <ProviderLinker event={event} decision={decision} />}
+              {current.custom.action === 'buscar_contratar' && decision && <ProviderLinker event={event} decision={decision} />}
             </>
           )}
-          {current.choice === 'floristeria' && <ProviderLinker event={event} decision={decision} />}
+          {current?.choice === 'floristeria' && decision && <ProviderLinker event={event} decision={decision} />}
         </div>
       )}
     </div>
@@ -2794,7 +3040,15 @@ function CustomFloralItem({
   )
 }
 
-function PairBlock({ event }: { event: FamilyEvent }) {
+function PairBlock({
+  event,
+  onChanged,
+  onDerivedDataChanged,
+}: {
+  event: FamilyEvent
+  onChanged: () => void
+  onDerivedDataChanged: () => void
+}) {
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -2815,6 +3069,11 @@ function PairBlock({ event }: { event: FamilyEvent }) {
     return decisions.find((d) => d.questionKey === questionKey)
   }
 
+  // Fallo 1 (prueba real en iPhone) — PairBlock escribe event_tasks/event_budget_items directamente en
+  // Supabase; EventDetail (Preparativos en línea, tarjeta-resumen de Presupuesto) mantiene su propio
+  // estado cargado solo al montar y nunca se entera. onDerivedDataChanged() SIEMPRE se llama DESPUÉS de
+  // que la escritura haya terminado con éxito (dentro del try, tras los await), nunca antes ni en el
+  // catch — recargar antes de confirmar la escritura mostraría el estado viejo igual que antes.
   async function saveQuestion(questionKey: string, answer: Record<string, unknown>, isCustomOption: boolean, desired: DesiredPairGeneration) {
     setSavingKey(questionKey)
     setError(null)
@@ -2822,6 +3081,48 @@ function PairBlock({ event }: { event: FamilyEvent }) {
       const decision = await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey, answer, isCustomOption })
       await applyPairDecisionGeneration(event.id, decision.id, desired)
       await reload()
+      onDerivedDataChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveVestuarioTipo(slot: PartnerSlot, answer: VestuarioTipoAnswer) {
+    const key = pairQuestionKey(slot, 'vestuario')
+    setSavingKey(key)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey: key, answer: answer as unknown as Record<string, unknown>, isCustomOption: answer.choice === 'otro' })
+      // El tipo en sí nunca genera nada — pero si cambia y ya existía una resolución, su texto generado
+      // (p. ej. "Elegir vestido de Laura") debe recalcularse con el nuevo tipo.
+      const resDecision = findDecision(pairQuestionKey(slot, 'vestuario.resolucion'))
+      if (resDecision) {
+        const resAnswer = resDecision.answer as unknown as VestuarioResolucionAnswer
+        await applyPairDecisionGeneration(event.id, resDecision.id, desiredForVestuarioResolucion(answer, resAnswer, partnerName(event, slot)))
+      }
+      await reload()
+      onDerivedDataChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveVestuarioResolucion(slot: PartnerSlot, answer: VestuarioResolucionAnswer) {
+    const tipoDecision = findDecision(pairQuestionKey(slot, 'vestuario'))
+    if (!tipoDecision) return
+    const resKey = pairQuestionKey(slot, 'vestuario.resolucion')
+    setSavingKey(resKey)
+    setError(null)
+    try {
+      const tipo = tipoDecision.answer as unknown as VestuarioTipoAnswer
+      const decision = await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey: resKey, answer: answer as unknown as Record<string, unknown>, isCustomOption: answer.choice === 'otro' })
+      await applyPairDecisionGeneration(event.id, decision.id, desiredForVestuarioResolucion(tipo, answer, partnerName(event, slot)))
+      await reload()
+      onDerivedDataChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -2841,6 +3142,7 @@ function PairBlock({ event }: { event: FamilyEvent }) {
         await applyPairDecisionGeneration(event.id, resDecision.id, desiredForPeluqueriaResolucion(answer, resAnswer, partnerName(event, slot)))
       }
       await reload()
+      onDerivedDataChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -2859,6 +3161,54 @@ function PairBlock({ event }: { event: FamilyEvent }) {
       const decision = await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey: resKey, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
       await applyPairDecisionGeneration(event.id, decision.id, desiredForPeluqueriaResolucion(necesidad, answer, partnerName(event, slot)))
       await reload()
+      onDerivedDataChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveDetalleTipo(answer: DetalleEspecialTipoAnswer) {
+    setSavingKey(DETALLE_ESPECIAL_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, {
+        blockKey: 'pareja',
+        questionKey: DETALLE_ESPECIAL_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: answer.choice === 'otro',
+      })
+      const resDecision = findDecision(DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY)
+      if (resDecision) {
+        const resAnswer = resDecision.answer as unknown as DetalleEspecialResolucionAnswer
+        await applyPairDecisionGeneration(event.id, resDecision.id, desiredForDetalleEspecialResolucion(answer, resAnswer))
+      }
+      await reload()
+      onDerivedDataChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveDetalleResolucion(answer: DetalleEspecialResolucionAnswer) {
+    const tipoDecision = findDecision(DETALLE_ESPECIAL_QUESTION_KEY)
+    if (!tipoDecision) return
+    setSavingKey(DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY)
+    setError(null)
+    try {
+      const tipo = tipoDecision.answer as unknown as DetalleEspecialTipoAnswer
+      const decision = await upsertEventDecision(event.id, {
+        blockKey: 'pareja',
+        questionKey: DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: answer.choice === 'otro',
+      })
+      await applyPairDecisionGeneration(event.id, decision.id, desiredForDetalleEspecialResolucion(tipo, answer))
+      await reload()
+      onDerivedDataChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -2873,8 +3223,36 @@ function PairBlock({ event }: { event: FamilyEvent }) {
       await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null })
       await deleteEventDecision(decision.id)
       await reload()
+      onDerivedDataChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo quitar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  // Corrección real (iPhone) — marcar/desmarcar Ramo/Prendido nunca escribe una decisión ficticia: solo
+  // actualiza events.details (igual que los nombres de la pareja, merge explícito). Si al desmarcar ya
+  // existía una resolución real, se reconcilia primero (prístina se borra, enriquecida se desvincula) y
+  // SOLO ENTONCES se borra la propia decisión — la información nunca desaparece en silencio.
+  async function setFloralSelected(slot: PartnerSlot, item: FloralItemKey, selected: boolean) {
+    const key = pairQuestionKey(slot, `floral.${item}`)
+    setSavingKey(key)
+    setError(null)
+    try {
+      if (!selected) {
+        const decision = findDecision(key)
+        if (decision) {
+          await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null })
+          await deleteEventDecision(decision.id)
+          onDerivedDataChanged()
+        }
+      }
+      await updateEvent(event.id, { details: withFloralSelected(event, slot, item, selected) })
+      onChanged()
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
       setSavingKey(null)
     }
@@ -2912,22 +3290,11 @@ function PairBlock({ event }: { event: FamilyEvent }) {
       {error && <p className="error">{error}</p>}
       {PARTNER_SLOTS.map((slot) => {
         const name = partnerName(event, slot)
-        const vestuarioKey = pairQuestionKey(slot, 'vestuario')
         const complementosKey = pairQuestionKey(slot, 'complementos')
         return (
           <div key={slot} className="card" style={{ padding: 8, marginTop: 8 }}>
             <strong>{name}</strong>
-            <CustomAwareQuestion
-              event={event}
-              questionLabel={`¿Cómo vais con el vestuario de ${name}?`}
-              options={VESTUARIO_OPTIONS}
-              questionKey={vestuarioKey}
-              decision={findDecision(vestuarioKey)}
-              savingKey={savingKey}
-              onSave={(answer) =>
-                saveQuestion(vestuarioKey, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForVestuario(answer as VestuarioAnswer, name))
-              }
-            />
+            <VestuarioQuestion event={event} slot={slot} decisions={decisions} savingKey={savingKey} onSaveTipo={saveVestuarioTipo} onSaveResolucion={saveVestuarioResolucion} />
             <PeluqueriaQuestion event={event} slot={slot} decisions={decisions} savingKey={savingKey} onSaveNecesidad={saveNecesidad} onSaveResolucion={saveResolucion} />
             <ComplementosQuestion
               event={event}
@@ -2942,17 +3309,18 @@ function PairBlock({ event }: { event: FamilyEvent }) {
             {FLORAL_ITEMS.map((item) => {
               const key = pairQuestionKey(slot, `floral.${item.key}`)
               const decision = findDecision(key)
+              const selected = decision !== undefined || floralItemSelected(event, slot, item.key)
               return (
                 <FloralItemQuestion
                   key={item.key}
                   event={event}
                   slot={slot}
                   item={item}
+                  selected={selected}
                   decision={decision}
                   savingKey={savingKey}
-                  onAdd={() => saveQuestion(key, { choice: 'todavia_no_lo_sabemos' }, false, desiredForFloral({ choice: 'todavia_no_lo_sabemos' }, item.label, name))}
+                  onToggleSelected={(checked) => setFloralSelected(slot, item.key, checked)}
                   onSave={(answer) => saveQuestion(key, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForFloral(answer, item.label, name))}
-                  onRemove={() => decision && removeFloral(key, decision)}
                 />
               )
             })}
@@ -2989,22 +3357,7 @@ function PairBlock({ event }: { event: FamilyEvent }) {
             saveQuestion(ALIANZAS_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForAlianzas(answer as AlianzasAnswer))
           }
         />
-        <CustomAwareQuestion
-          event={event}
-          questionLabel="¿Queréis preparar algo especial el uno para el otro?"
-          options={DETALLE_ESPECIAL_OPTIONS}
-          questionKey={DETALLE_ESPECIAL_QUESTION_KEY}
-          decision={findDecision(DETALLE_ESPECIAL_QUESTION_KEY)}
-          savingKey={savingKey}
-          onSave={(answer) =>
-            saveQuestion(
-              DETALLE_ESPECIAL_QUESTION_KEY,
-              answer as unknown as Record<string, unknown>,
-              answer.choice === 'otro',
-              desiredForDetalleEspecial(answer as DetalleEspecialAnswer),
-            )
-          }
-        />
+        <DetalleEspecialQuestion decisions={decisions} savingKey={savingKey} onSaveTipo={saveDetalleTipo} onSaveResolucion={saveDetalleResolucion} />
       </div>
     </div>
   )

@@ -14,7 +14,7 @@ vi.mock('@/data/calendar', () => ({ createEvent: vi.fn().mockResolvedValue(undef
 vi.mock('@/data/location', () => ({ addPlace: vi.fn().mockResolvedValue(undefined) }))
 
 import { addPlace } from '@/data/location'
-import { locationAction, type LocationDeps, type SearchOutcome } from '@/pepa/location'
+import { locationAction, weatherAnswerForPlace, type LocationDeps, type SearchOutcome } from '@/pepa/location'
 import { forgetFoundPlace } from '@/pepa/recentContext'
 import type { LocationPlace, MemberLocation } from '@/domain/types'
 import type { WeatherReport } from '@/domain/weather'
@@ -276,5 +276,30 @@ describe('locationAction: el tiempo (meteorológico) y la previsión', () => {
     const weather = vi.fn().mockResolvedValue(null)
     const outcome = await locationAction('qué tiempo hace en la farmacia', makeDeps({ weather }))
     expect(outcome).toEqual({ kind: 'answer', text: 'No he podido consultar el tiempo en Farmacia ahora mismo.' })
+  })
+})
+
+// Petición real: "tiene que reconocer todas las frases que se le digan" — weatherAnswerForPlace es
+// lo que llama la IA de respaldo (pepa/talk.ts, askWithAi) cuando NINGÚN patrón de voz ha entendido
+// la frase, así que tiene que dar la misma respuesta de siempre (mismo texto, mismos lugares
+// guardados o búsqueda en Google Maps) a partir de solo el nombre del sitio.
+describe('weatherAnswerForPlace (respaldo de la IA cuando ningún patrón entiende la frase)', () => {
+  it('da el mismo texto que el camino normal, a partir de un lugar guardado', async () => {
+    const weather = vi.fn().mockResolvedValue({ now: { temperatureC: 21, code: 0 }, forecast: [{ date: '2026-10-01', maxC: 26, minC: 17, code: 0, rainChance: 10 }] })
+    const text = await weatherAnswerForPlace('la farmacia', makeDeps({ weather }))
+    expect(weather).toHaveBeenCalledWith(40.42, -3.7)
+    expect(text).toBe('En Farmacia ahora mismo hay 21°, despejado.')
+  })
+
+  it('también busca en Google Maps si no es un lugar guardado', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('Rafal, Alicante', 38.19, -0.81))
+    const weather = vi.fn().mockResolvedValue({ now: { temperatureC: 24, code: 1 }, forecast: [] })
+    const text = await weatherAnswerForPlace('Rafal', makeDeps({ searchFirstPlace, weather }))
+    expect(text).toBe('En Rafal, Alicante ahora mismo hay 24°, mayormente despejado.')
+  })
+
+  it('ni guardado ni encontrado, lo dice igual que el camino normal', async () => {
+    const text = await weatherAnswerForPlace('un sitio inventado', makeDeps())
+    expect(text).toBe('No he encontrado «un sitio inventado», ni entre tus lugares guardados ni buscándolo en el mapa.')
   })
 })

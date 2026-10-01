@@ -26,7 +26,7 @@ function makeTalkDeps(): TalkDeps {
     members: async () => [],
     answerCalendar: async () => 'No hay nada en el calendario.',
     answerShopping: async () => SHOPPING_ANSWER,
-    classifyWithAi: async () => ({ intent: 'none', explicitDate: null, when: 'today', memberHint: null, storeHint: null, nowOnly: false }),
+    classifyWithAi: async () => ({ intent: 'none', explicitDate: null, when: 'today', memberHint: null, storeHint: null, nowOnly: false, placeHint: null }),
     answerFromAi: async () => null,
     splitWithAi: async () => [],
   }

@@ -46,7 +46,7 @@ import { handleKitchenText, ingredientsFlowFor, type KitchenOutcome } from '@/pe
 import { handleDialogReply, pendingBlockingCount, pendingDialogCount } from '@/pepa/dialog'
 import { forgetFinanceContext, handleFinanceText } from '@/pepa/finance'
 import { forgetBudgetActions, handleBudgetAction } from '@/pepa/financeActions'
-import { locationAction, type LocationDeps } from '@/pepa/location'
+import { locationAction, weatherAnswerForPlace, type LocationDeps } from '@/pepa/location'
 import { NOT_UNDERSTOOD, runTalk, type TalkDeps, type TalkOutcome } from '@/pepa/talk'
 import { classifyQuestionWithAi } from '@/services/pepaIntent'
 import type { ActionProposal } from '@/pepa/actions/types'
@@ -754,6 +754,9 @@ const talkDeps: TalkDeps = {
     }
     if (question.intent === 'next_calendar_event') return answerNextCalendarEvent()
     if (question.intent === 'shopping_list') return answerShoppingQuery(question.storeHint, !question.storeHint)
+    if (question.intent === 'weather') {
+      return question.placeHint ? weatherAnswerForPlace(question.placeHint, locationDeps) : 'No he entendido de qué sitio quieres saber el tiempo.'
+    }
     return null
   },
   splitWithAi: splitGroceryListWithAi,

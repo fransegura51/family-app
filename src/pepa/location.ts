@@ -152,13 +152,26 @@ async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkO
 // concreto y la previsión". Reutiliza resolveDestination (lugar guardado, o búsqueda en Google Maps
 // si no — "incluyendo Madrid y todos los lugares"), igual que "cuánto se tarda"/"quién está más
 // cerca" — pero sin necesitar saber dónde estás TÚ (el tiempo de un sitio no depende de tu origen).
-async function handleWeather(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
+async function weatherTextForPlace(spokenPlace: string, deps: LocationDeps): Promise<string> {
   const resolved = await resolveDestination(spokenPlace, deps)
-  if (!resolved.ok) return { kind: 'answer', text: resolved.reason === 'daily-limit' ? DAILY_LIMIT : NOT_FOUND(spokenPlace) }
+  if (!resolved.ok) return resolved.reason === 'daily-limit' ? DAILY_LIMIT : NOT_FOUND(spokenPlace)
   const destination = resolved.destination
   const report = await deps.weather(destination.latitude, destination.longitude)
-  if (!report) return { kind: 'answer', text: `No he podido consultar el tiempo en ${destination.label} ahora mismo.` }
-  return { kind: 'answer', text: formatWeatherReport(destination.label, report) }
+  if (!report) return `No he podido consultar el tiempo en ${destination.label} ahora mismo.`
+  return formatWeatherReport(destination.label, report)
+}
+
+async function handleWeather(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
+  return { kind: 'answer', text: await weatherTextForPlace(spokenPlace, deps) }
+}
+
+// Petición real (01/10/2026): "tiene que reconocer todas las frases que se le digan" — el
+// reconocimiento rápido por patrones (domain/locationRoute.ts, WEATHER_RE) cubre la gran mayoría,
+// pero nunca cubre TODAS las formas reales de preguntar. Se llama desde pepa/talk.ts (askWithAi)
+// SOLO cuando ni eso ni ningún otro patrón ha entendido la frase — la misma IA de respaldo que ya
+// usaban las preguntas de calendario/compra, ahora también sabe de tiempo meteorológico.
+export async function weatherAnswerForPlace(spokenPlace: string, deps: LocationDeps): Promise<string> {
+  return weatherTextForPlace(spokenPlace, deps)
 }
 
 async function handleNearest(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {

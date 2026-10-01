@@ -59,12 +59,21 @@ const NEAREST_RE = /^quien(?:\s+(?:esta|anda|vive))?\s+mas cerca\s+(?:de(?:l)?|a
 // Bug real reportado (01/10/2026): "le he preguntado por el tiempo en Rafal y leyó una nota del
 // calendario" — con la primera versión (solo "qué tiempo hace"/"cómo está el tiempo"/"previsión"),
 // una frase real tan natural como "cómo va el tiempo en Rafal" o "dime el tiempo en Rafal" no
-// encajaba en nada de Ubicación, así que caía hasta el final de todo (pepa/talk.ts, askWithAi) —
-// una IA de repuesto que SOLO sabe de tareas/calendario/compra (no tiene ni idea de qué es el
-// tiempo meteorológico) y, al no encontrar nada mejor, contestó con la cita más parecida que
-// encontró. Ampliado con más formas reales de preguntarlo.
+// encajaba en nada de Ubicación. Ampliado con más formas reales de preguntarlo, Y (segundo bug
+// real, misma tarde, "tiene que reconocer todas las frases que se le digan") con cualquier relleno
+// de por medio entre el disparador y el sitio (antes solo toleraba "hoy"/"mañana"/"pasado mañana"
+// exactos ahí — "qué tiempo hace ahora mismo en Rafal" ya no encajaba por un «ahora mismo» de más).
+// "para" quitado a propósito de los conectores (a diferencia de ETA_RE): "tiempo para X" es
+// ambiguo de verdad en español ("no tengo tiempo PARA ir a Madrid" no es del tiempo) — "en"/"de"
+// cubren con creces cómo se pregunta esto de verdad, sin ese riesgo.
+//
+// Esto YA NO es la única red: si ni esto ni nada más entiende la frase, pepa/talk.ts (askWithAi)
+// se lo pregunta a la IA de respaldo (ver pepaIntent.ts / supabase/functions/_shared/ai/purposes/
+// pepaIntent.ts), que ahora también sabe reconocer el tiempo meteorológico en cualquier forma —
+// antes esa IA solo entendía de tareas/calendario/compra, así que una frase que no encajara aquí
+// acababa contestada con lo más parecido de ESO en vez de con el tiempo.
 const WEATHER_RE =
-  /(?:que tiempo\s+(?:hace|va a hacer|hara)|que tal\s+(?:esta\s+)?el tiempo|como\s+(?:esta|va(?:\s+a estar)?)\s+el tiempo|dime(?:\s+(?:que tiempo hace|el tiempo))?|prevision(?:\s+(?:del tiempo|meteorologica))?)(?:\s+(?:hoy|manana|pasado manana))?\s+(?:en|para|de)\s+(.+)$/
+  /(?:que tiempo\s+(?:hace|va a hacer|hara|tenemos|tendremos)|que tal\s+(?:esta\s+)?el tiempo|como\s+(?:esta|va(?:\s+a estar)?)\s+el tiempo|dime(?:\s+(?:que tiempo hace|el tiempo))?|prevision(?:\s+(?:del tiempo|meteorologica))?|el tiempo)[\s\S]*?\s(?:en|de)\s+(.+)$/
 
 // A propósito NO incluye "necesito" (a diferencia de domain/voiceQuery.ts, PLACE_QUERY_PREFIXES,
 // que sí lo tiene): ahí es seguro porque el botón "📍 Buscar sitio" ya deja claro que TODO lo dicho

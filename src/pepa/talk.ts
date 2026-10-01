@@ -39,12 +39,14 @@ export type TalkOutcome =
   | { kind: 'store-question'; text: string; recipe: Recipe; recipes: Recipe[]; stores: string[] }
 
 export interface AiQuestion {
-  intent: 'tasks_today' | 'next_calendar_event' | 'shopping_list' | 'none'
+  intent: 'tasks_today' | 'next_calendar_event' | 'shopping_list' | 'weather' | 'none'
   explicitDate: string | null
   when: 'today' | 'tomorrow'
   memberHint: string | null
   storeHint: string | null
   nowOnly: boolean
+  // Solo para intent="weather" — el sitio del que se pregunta, tal como se ha dicho.
+  placeHint: string | null
 }
 
 export interface TalkDeps {

@@ -145,7 +145,9 @@ import {
 import { loadConfiguratorOpen, saveConfiguratorOpen } from '@/state/eventPlanningConfiguratorState'
 import {
   ALIANZAS_QUESTION_KEY,
+  BUDGET_UPDATED_MESSAGE,
   COMPLEMENTOS_OPTIONS,
+  describeEffects,
   DETALLE_ESPECIAL_QUESTION_KEY,
   DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY,
   desiredForAlianzas,
@@ -162,7 +164,10 @@ import {
   PARTNER_ROLE_OPTIONS,
   PARTNER_SLOTS,
   type PartnerRole,
+  type ReconcileAction,
   summarizePairBlock,
+  TASK_COMPLETED_AND_BUDGET_UPDATED_MESSAGE,
+  TASK_COMPLETED_MESSAGE,
   withFloralSelected,
   type AlianzasAnswer,
   type AlianzasChoice,
@@ -189,6 +194,7 @@ import {
   type VestuarioTipoChoice,
 } from '@/domain/eventPairDecisions'
 import { notifyEventMomentsChanged, useEventMomentsChangeSignal } from '@/state/eventMomentsSync'
+import { showToast } from '@/state/toast'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
 // Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
 // una función pura sin ninguna dependencia de Previsión/Economía.
@@ -3069,6 +3075,21 @@ function PairBlock({
     return decisions.find((d) => d.questionKey === questionKey)
   }
 
+  // Feedback (§12-13 de la corrección aprobada) — un único toast agrupado por acción real, construido
+  // SIEMPRE a partir de lo que applyPairDecisionGeneration ejecutó de verdad (nunca de la respuesta
+  // elegida). Si además queda una partida resuelta sin importe, el modal de cierre de coste se abre
+  // directamente y el toast se pospone — nunca "Preparativo completado" seguido del modal.
+  const [costPrompt, setCostPrompt] = useState<{ item: { id: string; category: string }; taskCompleted: boolean } | null>(null)
+
+  function handleEffects(actions: ReconcileAction[], pendingBudgetItem: { id: string; category: string } | null) {
+    if (pendingBudgetItem) {
+      setCostPrompt({ item: pendingBudgetItem, taskCompleted: actions.some((a) => a.op === 'complete_task') })
+      return
+    }
+    const message = describeEffects(actions)
+    if (message) showToast(message)
+  }
+
   // Fallo 1 (prueba real en iPhone) — PairBlock escribe event_tasks/event_budget_items directamente en
   // Supabase; EventDetail (Preparativos en línea, tarjeta-resumen de Presupuesto) mantiene su propio
   // estado cargado solo al montar y nunca se entera. onDerivedDataChanged() SIEMPRE se llama DESPUÉS de
@@ -3079,9 +3100,10 @@ function PairBlock({
     setError(null)
     try {
       const decision = await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey, answer, isCustomOption })
-      await applyPairDecisionGeneration(event.id, decision.id, desired)
+      const { actions, pendingBudgetItem } = await applyPairDecisionGeneration(event.id, decision.id, desired)
       await reload()
       onDerivedDataChanged()
+      handleEffects(actions, pendingBudgetItem)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -3094,16 +3116,28 @@ function PairBlock({
     setSavingKey(key)
     setError(null)
     try {
-      await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey: key, answer: answer as unknown as Record<string, unknown>, isCustomOption: answer.choice === 'otro' })
-      // El tipo en sí nunca genera nada — pero si cambia y ya existía una resolución, su texto generado
-      // (p. ej. "Elegir vestido de Laura") debe recalcularse con el nuevo tipo.
+      const tipoDecision = await upsertEventDecision(event.id, {
+        blockKey: 'pareja',
+        questionKey: key,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: answer.choice === 'otro',
+      })
+      // Residuo del modelo de 1 solo nivel (corrección real, iPhone): esta misma clave generaba
+      // directamente un Preparativo/Presupuesto antes de existir la resolución — el tipo nunca debe
+      // generar nada, así que se reconcilia SIEMPRE a "nada", lo que también limpia cualquier resto
+      // heredado de esa época en cuanto se vuelve a guardar el tipo.
+      let { actions } = await applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+      let pendingBudgetItem: { id: string; category: string } | null = null
       const resDecision = findDecision(pairQuestionKey(slot, 'vestuario.resolucion'))
       if (resDecision) {
         const resAnswer = resDecision.answer as unknown as VestuarioResolucionAnswer
-        await applyPairDecisionGeneration(event.id, resDecision.id, desiredForVestuarioResolucion(answer, resAnswer, partnerName(event, slot)))
+        const result = await applyPairDecisionGeneration(event.id, resDecision.id, desiredForVestuarioResolucion(answer, resAnswer, partnerName(event, slot)))
+        actions = [...actions, ...result.actions]
+        pendingBudgetItem = result.pendingBudgetItem
       }
       await reload()
       onDerivedDataChanged()
+      handleEffects(actions, pendingBudgetItem)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -3120,9 +3154,10 @@ function PairBlock({
     try {
       const tipo = tipoDecision.answer as unknown as VestuarioTipoAnswer
       const decision = await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey: resKey, answer: answer as unknown as Record<string, unknown>, isCustomOption: answer.choice === 'otro' })
-      await applyPairDecisionGeneration(event.id, decision.id, desiredForVestuarioResolucion(tipo, answer, partnerName(event, slot)))
+      const { actions, pendingBudgetItem } = await applyPairDecisionGeneration(event.id, decision.id, desiredForVestuarioResolucion(tipo, answer, partnerName(event, slot)))
       await reload()
       onDerivedDataChanged()
+      handleEffects(actions, pendingBudgetItem)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -3136,13 +3171,20 @@ function PairBlock({
     setError(null)
     try {
       await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey: key, answer: answer as unknown as Record<string, unknown>, isCustomOption: answer.choice === 'otro' })
+      // La necesidad en sí nunca ha generado nada directamente en ningún momento de este desarrollo —
+      // solo la resolución, si ya existía — así que no hace falta el mismo autosaneado que en Vestuario.
+      let actions: ReconcileAction[] = []
+      let pendingBudgetItem: { id: string; category: string } | null = null
       const resDecision = findDecision(pairQuestionKey(slot, 'peluqueria_maquillaje.resolucion'))
       if (resDecision) {
         const resAnswer = resDecision.answer as unknown as PeluqueriaResolucionAnswer
-        await applyPairDecisionGeneration(event.id, resDecision.id, desiredForPeluqueriaResolucion(answer, resAnswer, partnerName(event, slot)))
+        const result = await applyPairDecisionGeneration(event.id, resDecision.id, desiredForPeluqueriaResolucion(answer, resAnswer, partnerName(event, slot)))
+        actions = result.actions
+        pendingBudgetItem = result.pendingBudgetItem
       }
       await reload()
       onDerivedDataChanged()
+      handleEffects(actions, pendingBudgetItem)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -3159,9 +3201,10 @@ function PairBlock({
     try {
       const necesidad = necesidadDecision.answer as unknown as PeluqueriaNecesidadAnswer
       const decision = await upsertEventDecision(event.id, { blockKey: 'pareja', questionKey: resKey, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
-      await applyPairDecisionGeneration(event.id, decision.id, desiredForPeluqueriaResolucion(necesidad, answer, partnerName(event, slot)))
+      const { actions, pendingBudgetItem } = await applyPairDecisionGeneration(event.id, decision.id, desiredForPeluqueriaResolucion(necesidad, answer, partnerName(event, slot)))
       await reload()
       onDerivedDataChanged()
+      handleEffects(actions, pendingBudgetItem)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -3173,19 +3216,26 @@ function PairBlock({
     setSavingKey(DETALLE_ESPECIAL_QUESTION_KEY)
     setError(null)
     try {
-      await upsertEventDecision(event.id, {
+      const tipoDecision = await upsertEventDecision(event.id, {
         blockKey: 'pareja',
         questionKey: DETALLE_ESPECIAL_QUESTION_KEY,
         answer: answer as unknown as Record<string, unknown>,
         isCustomOption: answer.choice === 'otro',
       })
+      // Mismo autosaneado que Vestuario — esta clave también generaba directamente bajo el modelo de 1
+      // solo nivel.
+      let { actions } = await applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+      let pendingBudgetItem: { id: string; category: string } | null = null
       const resDecision = findDecision(DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY)
       if (resDecision) {
         const resAnswer = resDecision.answer as unknown as DetalleEspecialResolucionAnswer
-        await applyPairDecisionGeneration(event.id, resDecision.id, desiredForDetalleEspecialResolucion(answer, resAnswer))
+        const result = await applyPairDecisionGeneration(event.id, resDecision.id, desiredForDetalleEspecialResolucion(answer, resAnswer))
+        actions = [...actions, ...result.actions]
+        pendingBudgetItem = result.pendingBudgetItem
       }
       await reload()
       onDerivedDataChanged()
+      handleEffects(actions, pendingBudgetItem)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -3206,9 +3256,10 @@ function PairBlock({
         answer: answer as unknown as Record<string, unknown>,
         isCustomOption: answer.choice === 'otro',
       })
-      await applyPairDecisionGeneration(event.id, decision.id, desiredForDetalleEspecialResolucion(tipo, answer))
+      const { actions, pendingBudgetItem } = await applyPairDecisionGeneration(event.id, decision.id, desiredForDetalleEspecialResolucion(tipo, answer))
       await reload()
       onDerivedDataChanged()
+      handleEffects(actions, pendingBudgetItem)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -3220,7 +3271,7 @@ function PairBlock({
     setSavingKey(questionKey)
     setError(null)
     try {
-      await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null })
+      await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
       await deleteEventDecision(decision.id)
       await reload()
       onDerivedDataChanged()
@@ -3243,7 +3294,7 @@ function PairBlock({
       if (!selected) {
         const decision = findDecision(key)
         if (decision) {
-          await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null })
+          await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
           await deleteEventDecision(decision.id)
           onDerivedDataChanged()
         }
@@ -3291,6 +3342,8 @@ function PairBlock({
       {PARTNER_SLOTS.map((slot) => {
         const name = partnerName(event, slot)
         const complementosKey = pairQuestionKey(slot, 'complementos')
+        const complementosDecision = findDecision(complementosKey)
+        const complementosAnswer = complementosDecision?.answer as unknown as ComplementosAnswer | undefined
         return (
           <div key={slot} className="card" style={{ padding: 8, marginTop: 8 }}>
             <strong>{name}</strong>
@@ -3299,48 +3352,55 @@ function PairBlock({
             <ComplementosQuestion
               event={event}
               slot={slot}
-              decision={findDecision(complementosKey)}
+              decision={complementosDecision}
               savingKey={savingKey}
               onSave={(answer) => saveQuestion(complementosKey, answer as unknown as Record<string, unknown>, false, desiredForComplementos(answer, name))}
             />
-            <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-              💐 Complementos florales
-            </div>
-            {FLORAL_ITEMS.map((item) => {
-              const key = pairQuestionKey(slot, `floral.${item.key}`)
-              const decision = findDecision(key)
-              const selected = decision !== undefined || floralItemSelected(event, slot, item.key)
-              return (
-                <FloralItemQuestion
-                  key={item.key}
-                  event={event}
-                  slot={slot}
-                  item={item}
-                  selected={selected}
-                  decision={decision}
-                  savingKey={savingKey}
-                  onToggleSelected={(checked) => setFloralSelected(slot, item.key, checked)}
-                  onSave={(answer) => saveQuestion(key, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForFloral(answer, item.label, name))}
-                />
-              )
-            })}
-            {decisions
-              .filter((d) => d.questionKey.startsWith(pairQuestionKey(slot, 'floral.custom:')))
-              .map((d) => (
-                <CustomFloralItem
-                  key={d.id}
-                  event={event}
-                  decision={d}
-                  savingKey={savingKey}
-                  onSave={(custom) =>
-                    saveQuestion(d.questionKey, { choice: 'otro', custom }, true, desiredForFloral({ choice: 'otro', custom }, 'Complemento floral', name))
-                  }
-                  onRemove={() => removeFloral(d.questionKey, d)}
-                />
-              ))}
-            <button type="button" className="link-button" onClick={() => addCustomFloral(slot)} style={{ marginTop: 4 }}>
-              + Otro complemento floral
-            </button>
+            {/* Corrección real (iPhone): los florales aparecían SIEMPRE, antes incluso de responder
+                Complementos generales. Revelado único: solo "Queremos preparar complementos" los muestra —
+                Sin empezar/No necesitaremos/Todavía no lo sabemos los ocultan, sin excepción permanente. */}
+            {complementosAnswer?.choice === 'preparar' && (
+              <>
+                <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+                  💐 Complementos florales
+                </div>
+                {FLORAL_ITEMS.map((item) => {
+                  const key = pairQuestionKey(slot, `floral.${item.key}`)
+                  const decision = findDecision(key)
+                  const selected = decision !== undefined || floralItemSelected(event, slot, item.key)
+                  return (
+                    <FloralItemQuestion
+                      key={item.key}
+                      event={event}
+                      slot={slot}
+                      item={item}
+                      selected={selected}
+                      decision={decision}
+                      savingKey={savingKey}
+                      onToggleSelected={(checked) => setFloralSelected(slot, item.key, checked)}
+                      onSave={(answer) => saveQuestion(key, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForFloral(answer, item.label, name))}
+                    />
+                  )
+                })}
+                {decisions
+                  .filter((d) => d.questionKey.startsWith(pairQuestionKey(slot, 'floral.custom:')))
+                  .map((d) => (
+                    <CustomFloralItem
+                      key={d.id}
+                      event={event}
+                      decision={d}
+                      savingKey={savingKey}
+                      onSave={(custom) =>
+                        saveQuestion(d.questionKey, { choice: 'otro', custom }, true, desiredForFloral({ choice: 'otro', custom }, 'Complemento floral', name))
+                      }
+                      onRemove={() => removeFloral(d.questionKey, d)}
+                    />
+                  ))}
+                <button type="button" className="link-button" onClick={() => addCustomFloral(slot)} style={{ marginTop: 4 }}>
+                  + Otro complemento floral
+                </button>
+              </>
+            )}
           </div>
         )
       })}
@@ -3358,6 +3418,84 @@ function PairBlock({
           }
         />
         <DetalleEspecialQuestion decisions={decisions} savingKey={savingKey} onSaveTipo={saveDetalleTipo} onSaveResolucion={saveDetalleResolucion} />
+      </div>
+      {costPrompt && (
+        <BudgetAmountPromptModal
+          item={costPrompt.item}
+          onClose={() => {
+            if (costPrompt.taskCompleted) showToast(TASK_COMPLETED_MESSAGE)
+            setCostPrompt(null)
+          }}
+          onSaved={() => {
+            showToast(costPrompt.taskCompleted ? TASK_COMPLETED_AND_BUDGET_UPDATED_MESSAGE : BUDGET_UPDATED_MESSAGE)
+            onDerivedDataChanged()
+            setCostPrompt(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Cierre de coste reutilizable (§6-7 de la corrección aprobada) — trabaja siempre sobre una partida REAL
+// ya existente, identificada por su id; el título mostrado es el propio `category` ya guardado, nunca un
+// texto fijo por tipo de pregunta. Guardar/Sin coste actualizan esa misma partida; Ahora no no escribe
+// nada — la partida sigue "Sin importe todavía" hasta que alguien la rellene, aquí o desde Presupuesto.
+function BudgetAmountPromptModal({
+  item,
+  onClose,
+  onSaved,
+}: {
+  item: { id: string; category: string }
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [amount, setAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save(value: number) {
+    setSaving(true)
+    setError(null)
+    try {
+      await updateEventBudgetItem(item.id, { plannedAmount: value })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+      setSaving(false)
+    }
+  }
+
+  const amountValue = Number(amount.replace(',', '.'))
+  const amountValid = amount.trim() !== '' && !Number.isNaN(amountValue) && amountValue >= 0
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            {item.category}
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+        <label>
+          ¿Cuánto ha costado?
+          <input type="number" min={0} step="0.01" inputMode="decimal" value={amount} disabled={saving} onChange={(e) => setAmount(e.target.value)} placeholder="€" autoFocus />
+        </label>
+        <div className="filter-row" style={{ marginTop: 8 }}>
+          <button type="button" onClick={() => save(amountValue)} disabled={saving || !amountValid}>
+            Guardar
+          </button>
+          <button type="button" className="link-button" onClick={() => save(0)} disabled={saving}>
+            Sin coste
+          </button>
+          <button type="button" className="link-button" onClick={onClose} disabled={saving}>
+            Ahora no
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -275,6 +275,13 @@ export function summarizePairBlock(event: FamilyEvent, decisions: EventDecision[
 // concepto de presupuesto por decisión en todo este bloque (nunca una lista), lo que simplifica la
 // reconciliación de más abajo a comparar un único título/categoría esperados contra lo ya existente. Solo
 // las preguntas de RESOLUCIÓN generan — un tipo/selección por sí solo nunca genera nada.
+//
+// Corrección real (prueba manual en iPhone) — "resuelto" ≠ "cancelado": antes, cualquier respuesta sin
+// tarea/presupuesto propios ("ya lo tenemos" igual que "todavía no lo sabemos" igual que "no tendremos")
+// colapsaba en el mismo "NONE", y la reconciliación retiraba por igual cualquier tarea prístina asociada.
+// Pero "ya lo tenemos" significa que la necesidad SE HA CUMPLIDO — el Preparativo no desaparece, se marca
+// hecho y pasa a Completados/Historial. `resolved` lo dice cada función de forma explícita según la
+// opción exacta elegida, nunca inferido del texto visible.
 // ---------------------------------------------------------------------
 
 export interface DesiredPairGeneration {
@@ -283,16 +290,22 @@ export interface DesiredPairGeneration {
   // Categoría interna sugerida para relacionar un proveedor real cuando corresponda (no crea nada por
   // sí sola — ver §4: "Estamos buscando" nunca crea un proveedor ficticio).
   providerCategory: string | null
+  // true únicamente en las opciones que significan "esto ya está conseguido" (Ya lo tenemos / Ya las
+  // tenemos / CustomResolution.action === 'resuelto'). Nunca junto a taskTitle/budgetCategory — una
+  // decisión o pide algo nuevo, o certifica que ya estaba resuelto, nunca las dos cosas a la vez.
+  resolved: boolean
 }
 
-const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null }
+const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
+const RESOLVED: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true }
 
 function fromCustom(custom: CustomResolution | undefined, taskTitle: (label: string) => string, budgetCategory: (label: string) => string): DesiredPairGeneration {
   if (!custom) return NONE
-  if (custom.action === 'resuelto' || custom.action === 'todavia_no_lo_sabemos') return NONE
-  if (custom.action === 'preparar') return { taskTitle: taskTitle(custom.label), budgetCategory: null, providerCategory: null }
+  if (custom.action === 'resuelto') return RESOLVED
+  if (custom.action === 'todavia_no_lo_sabemos') return NONE
+  if (custom.action === 'preparar') return { taskTitle: taskTitle(custom.label), budgetCategory: null, providerCategory: null, resolved: false }
   // 'buscar_contratar' | 'otro' — nunca se infiere coste del texto: solo si hasCost === 'si' se genera presupuesto.
-  return { taskTitle: taskTitle(custom.label), budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null, providerCategory: null }
+  return { taskTitle: taskTitle(custom.label), budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null, providerCategory: null, resolved: false }
 }
 
 function vestuarioTipoLabel(tipo: VestuarioTipoAnswer): string {
@@ -306,12 +319,15 @@ function vestuarioTipoLabel(tipo: VestuarioTipoAnswer): string {
 // concreto (nunca se llama con tipo.choice === 'todavia_no_lo_sabemos', ver listPairBlockQuestions).
 export function desiredForVestuarioResolucion(tipo: VestuarioTipoAnswer, resolucion: VestuarioResolucionAnswer | undefined, name: string): DesiredPairGeneration {
   if (tipo.choice === 'todavia_no_lo_sabemos') return NONE
-  if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos' || resolucion.choice === 'ya_lo_tenemos') return NONE
+  if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos') return NONE
+  if (resolucion.choice === 'ya_lo_tenemos') return RESOLVED
   const label = vestuarioTipoLabel(tipo)
   const capitalized = label.charAt(0).toUpperCase() + label.slice(1)
-  if (resolucion.choice === 'elegir_comprar') return { taskTitle: `Elegir/comprar ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null }
+  if (resolucion.choice === 'elegir_comprar') {
+    return { taskTitle: `Elegir/comprar ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null, resolved: false }
+  }
   if (resolucion.choice === 'buscando_proveedor') {
-    return { taskTitle: `Buscar dónde conseguir ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null }
+    return { taskTitle: `Buscar dónde conseguir ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null, resolved: false }
   }
   // 'otro'
   return fromCustom(resolucion.custom, (l) => `Resolver ${l} de ${name}`, (l) => `${l} de ${name}`)
@@ -319,31 +335,47 @@ export function desiredForVestuarioResolucion(tipo: VestuarioTipoAnswer, resoluc
 
 export function desiredForPeluqueriaResolucion(necesidad: PeluqueriaNecesidadAnswer, resolucion: PeluqueriaResolucionAnswer | undefined, name: string): DesiredPairGeneration {
   if (necesidad.choice === 'no' || necesidad.choice === 'todavia_no_lo_sabemos') return NONE
-  if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos' || resolucion.choice === 'ya_lo_tenemos') return NONE
+  if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos') return NONE
+  if (resolucion.choice === 'ya_lo_tenemos') return RESOLVED
   // 'buscando' — nunca crea el proveedor, solo la necesidad (§4/§19).
-  return { taskTitle: `Buscar peluquería/maquillaje para ${name}`, budgetCategory: `Peluquería/maquillaje de ${name}`, providerCategory: DECISION_PROVIDER_CATEGORIES.peluqueria_maquillaje }
+  return {
+    taskTitle: `Buscar peluquería/maquillaje para ${name}`,
+    budgetCategory: `Peluquería/maquillaje de ${name}`,
+    providerCategory: DECISION_PROVIDER_CATEGORIES.peluqueria_maquillaje,
+    resolved: false,
+  }
 }
 
 export function desiredForComplementos(answer: ComplementosAnswer, name: string): DesiredPairGeneration {
   if (answer.choice !== 'preparar') return NONE
   if (answer.selected.length === 0 && answer.customItems.length === 0) return NONE
-  return { taskTitle: `Preparar complementos de ${name}`, budgetCategory: null, providerCategory: null }
+  return { taskTitle: `Preparar complementos de ${name}`, budgetCategory: null, providerCategory: null, resolved: false }
 }
 
 export function desiredForFloral(answer: FloralAnswer, itemLabel: string, name: string): DesiredPairGeneration {
-  if (answer.choice === 'ya_lo_tenemos' || answer.choice === 'todavia_no_lo_sabemos') return NONE
-  if (answer.choice === 'preparamos') return { taskTitle: `Preparar ${itemLabel.toLowerCase()} de ${name}`, budgetCategory: null, providerCategory: null }
+  if (answer.choice === 'todavia_no_lo_sabemos') return NONE
+  if (answer.choice === 'ya_lo_tenemos') return RESOLVED
+  if (answer.choice === 'preparamos') return { taskTitle: `Preparar ${itemLabel.toLowerCase()} de ${name}`, budgetCategory: null, providerCategory: null, resolved: false }
   if (answer.choice === 'floristeria') {
-    return { taskTitle: `Encargar ${itemLabel.toLowerCase()} de ${name}`, budgetCategory: `${itemLabel} de ${name}`, providerCategory: DECISION_PROVIDER_CATEGORIES.floristeria }
+    return {
+      taskTitle: `Encargar ${itemLabel.toLowerCase()} de ${name}`,
+      budgetCategory: `${itemLabel} de ${name}`,
+      providerCategory: DECISION_PROVIDER_CATEGORIES.floristeria,
+      resolved: false,
+    }
   }
   // 'otro'
   return fromCustom(answer.custom, (label) => `Resolver ${label} de ${name}`, (label) => `${label} de ${name}`)
 }
 
 export function desiredForAlianzas(answer: AlianzasAnswer): DesiredPairGeneration {
-  if (answer.choice === 'ya_las_tenemos' || answer.choice === 'no_tendremos' || answer.choice === 'todavia_no_lo_sabemos') return NONE
+  if (answer.choice === 'todavia_no_lo_sabemos') return NONE
+  // "No tendremos" es cancelación real, no resolución: nunca certifica que las alianzas "ya se
+  // consiguieron" — sería marcar como completado algo que en realidad no va a existir.
+  if (answer.choice === 'no_tendremos') return NONE
+  if (answer.choice === 'ya_las_tenemos') return RESOLVED
   if (answer.choice === 'elegir' || answer.choice === 'comprar_encargar') {
-    return { taskTitle: 'Elegir/Encargar las alianzas', budgetCategory: 'Alianzas', providerCategory: null }
+    return { taskTitle: 'Elegir/Encargar las alianzas', budgetCategory: 'Alianzas', providerCategory: null, resolved: false }
   }
   // 'otro'
   return fromCustom(answer.custom, (label) => `Alianzas: ${label}`, (label) => `Alianzas: ${label}`)
@@ -362,10 +394,11 @@ function detalleTipoLabel(tipo: DetalleEspecialTipoAnswer): string {
 // coste explícito — igual que el diseño original aprobado.
 export function desiredForDetalleEspecialResolucion(tipo: DetalleEspecialTipoAnswer, resolucion: DetalleEspecialResolucionAnswer | undefined): DesiredPairGeneration {
   if (tipo.choice === 'no' || tipo.choice === 'todavia_no_lo_sabemos') return NONE
-  if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos' || resolucion.choice === 'ya_lo_tenemos') return NONE
+  if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos') return NONE
+  if (resolucion.choice === 'ya_lo_tenemos') return RESOLVED
   const label = detalleTipoLabel(tipo)
-  if (resolucion.choice === 'tenemos_que_prepararlo') return { taskTitle: `Preparar ${label} para el otro`, budgetCategory: null, providerCategory: null }
-  if (resolucion.choice === 'buscando') return { taskTitle: `Buscar ${label} para el otro`, budgetCategory: null, providerCategory: null }
+  if (resolucion.choice === 'tenemos_que_prepararlo') return { taskTitle: `Preparar ${label} para el otro`, budgetCategory: null, providerCategory: null, resolved: false }
+  if (resolucion.choice === 'buscando') return { taskTitle: `Buscar ${label} para el otro`, budgetCategory: null, providerCategory: null, resolved: false }
   // 'otro'
   return fromCustom(resolucion.custom, (l) => `Preparar: ${l}`, (l) => l)
 }
@@ -391,6 +424,7 @@ export function isBudgetItemUntouched(item: Pick<EventBudgetItem, 'plannedAmount
 export type ReconcileAction =
   | { op: 'create_task'; title: string }
   | { op: 'update_task'; id: string; title: string }
+  | { op: 'complete_task'; id: string }
   | { op: 'delete_task'; id: string }
   | { op: 'detach_task'; id: string }
   | { op: 'create_budget'; category: string }
@@ -398,11 +432,16 @@ export type ReconcileAction =
   | { op: 'delete_budget'; id: string }
   | { op: 'detach_budget'; id: string }
 
-export function reconcilePairGeneration(
-  desired: DesiredPairGeneration,
-  existingTask: EventTask | undefined,
-  existingBudget: EventBudgetItem | undefined,
-): ReconcileAction[] {
+export interface ReconcileResult {
+  actions: ReconcileAction[]
+  // Partida de presupuesto real, ligada a esta decisión, que acaba de quedar resuelta pero sigue sin
+  // importe — candidata a preguntar el coste (ver BudgetAmountPromptModal). Se detecta solo por esta
+  // combinación de hechos estructurales (resuelto + partida real + importe null), nunca por palabras
+  // como "vestido"/"ramo" — funciona igual para cualquier pregunta presente o futura.
+  pendingBudgetItem: { id: string; category: string } | null
+}
+
+export function reconcilePairGeneration(desired: DesiredPairGeneration, existingTask: EventTask | undefined, existingBudget: EventBudgetItem | undefined): ReconcileResult {
   const actions: ReconcileAction[] = []
 
   if (desired.taskTitle) {
@@ -412,7 +451,13 @@ export function reconcilePairGeneration(
     }
     // Si el título difiere y la tarea ya no está intacta, se deja tal cual — no se sobrescribe algo que
     // la familia ya ha editado.
+  } else if (desired.resolved) {
+    // Resuelto ≠ cancelado: una tarea pendiente real se completa y se conserva (pasa a Completados/
+    // Historial), nunca se borra — independientemente de si sigue "prístina" o no (completar nunca
+    // destruye fecha/responsable/calendario, solo añade el hecho de que ya está hecho).
+    if (existingTask && !existingTask.done) actions.push({ op: 'complete_task', id: existingTask.id })
   } else if (existingTask) {
+    // Cancelado / por decidir: mismo criterio prístino de siempre — nunca borra algo enriquecido.
     if (isTaskUntouched(existingTask)) actions.push({ op: 'delete_task', id: existingTask.id })
     else actions.push({ op: 'detach_task', id: existingTask.id })
   }
@@ -422,10 +467,40 @@ export function reconcilePairGeneration(
     else if (existingBudget.category !== desired.budgetCategory && isBudgetItemUntouched(existingBudget)) {
       actions.push({ op: 'update_budget', id: existingBudget.id, category: desired.budgetCategory })
     }
-  } else if (existingBudget) {
+  } else if (!desired.resolved && existingBudget) {
+    // Resuelto NUNCA toca el presupuesto, ni para borrarlo ni para desvincularlo — "ya lo tenemos" no
+    // significa 0€. La partida se queda exactamente como esté hasta un cierre de coste explícito.
     if (isBudgetItemUntouched(existingBudget)) actions.push({ op: 'delete_budget', id: existingBudget.id })
     else actions.push({ op: 'detach_budget', id: existingBudget.id })
   }
 
-  return actions
+  const pendingBudgetItem =
+    desired.resolved && existingBudget && existingBudget.plannedAmount === null ? { id: existingBudget.id, category: existingBudget.category } : null
+
+  return { actions, pendingBudgetItem }
+}
+
+// ---------------------------------------------------------------------
+// Feedback — el mensaje se construye SIEMPRE a partir de las acciones realmente ejecutadas
+// (ReconcileAction[], la verdad de lo que pasó), nunca a partir de qué respuesta se eligió. Una lista
+// vacía (o solo updates silenciosos de título/categoría) no produce ningún mensaje.
+// ---------------------------------------------------------------------
+
+export const TASK_COMPLETED_MESSAGE = '✓ Preparativo completado'
+export const TASK_COMPLETED_AND_BUDGET_UPDATED_MESSAGE = '✓ Preparativo completado · Presupuesto actualizado'
+export const BUDGET_UPDATED_MESSAGE = '✓ Presupuesto actualizado'
+
+function joinSpanishList(items: string[]): string {
+  if (items.length === 0) return ''
+  if (items.length === 1) return items[0]
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`
+}
+
+export function describeEffects(actions: ReconcileAction[]): string | null {
+  const created: string[] = []
+  if (actions.some((a) => a.op === 'create_task')) created.push('Preparativos')
+  if (actions.some((a) => a.op === 'create_budget')) created.push('Presupuesto')
+  if (created.length > 0) return `✅ Añadido a ${joinSpanishList(created)}`
+  if (actions.some((a) => a.op === 'complete_task')) return TASK_COMPLETED_MESSAGE
+  return null
 }

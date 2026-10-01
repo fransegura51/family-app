@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   decisionStatus,
+  describeEffects,
   desiredForAlianzas,
   desiredForComplementos,
   desiredForDetalleEspecialResolucion,
@@ -14,8 +15,8 @@ import {
   partnerName,
   reconcilePairGeneration,
   summarizePairBlock,
+  TASK_COMPLETED_MESSAGE,
   withFloralSelected,
-  type AlianzasAnswer,
   type ComplementosAnswer,
   type CustomResolution,
   type DetalleEspecialTipoAnswer,
@@ -212,33 +213,44 @@ describe('listPairBlockQuestions / summarizePairBlock — revelado progresivo y 
 })
 
 describe('Vestuario — tipo ≠ resolución: elegir "vestido" solo dice QUÉ, nunca implica comprarlo/presupuestarlo', () => {
-  const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
+  const none = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
 
   it('tipo "todavía no lo sabemos": la resolución nunca genera nada, aunque se le pase una respuesta', () => {
     expect(desiredForVestuarioResolucion({ choice: 'todavia_no_lo_sabemos' }, { choice: 'elegir_comprar' }, 'Laura')).toEqual(none)
   })
-  it('resolución "ya lo tenemos" / "todavía no lo sabemos" / sin responder: nada', () => {
+  it('resolución "todavía no lo sabemos" / sin responder: nada, resolved:false', () => {
     const tipo: VestuarioTipoAnswer = { choice: 'vestido' }
-    expect(desiredForVestuarioResolucion(tipo, { choice: 'ya_lo_tenemos' }, 'Laura')).toEqual(none)
     expect(desiredForVestuarioResolucion(tipo, { choice: 'todavia_no_lo_sabemos' }, 'Laura')).toEqual(none)
     expect(desiredForVestuarioResolucion(tipo, undefined, 'Laura')).toEqual(none)
+  })
+  it('resolución "ya lo tenemos": RESUELTO — nunca "nada", es una categoría propia que completa, no cancela', () => {
+    const tipo: VestuarioTipoAnswer = { choice: 'vestido' }
+    expect(desiredForVestuarioResolucion(tipo, { choice: 'ya_lo_tenemos' }, 'Laura')).toEqual({
+      taskTitle: null,
+      budgetCategory: null,
+      providerCategory: null,
+      resolved: true,
+    })
   })
   it('elegir/comprar: tarea + presupuesto con el nombre real, solo cuando la resolución lo dice', () => {
     expect(desiredForVestuarioResolucion({ choice: 'vestido' }, { choice: 'elegir_comprar' }, 'Laura')).toEqual({
       taskTitle: 'Elegir/comprar vestido de Laura',
       budgetCategory: 'Vestido de Laura',
       providerCategory: null,
+      resolved: false,
     })
     expect(desiredForVestuarioResolucion({ choice: 'traje' }, { choice: 'elegir_comprar' }, 'Miguel')).toEqual({
       taskTitle: 'Elegir/comprar traje de Miguel',
       budgetCategory: 'Traje de Miguel',
       providerCategory: null,
+      resolved: false,
     })
   })
   it('buscando proveedor: tarea + presupuesto, nunca crea el proveedor (igual que peluquería/floristería)', () => {
     const desired = desiredForVestuarioResolucion({ choice: 'vestido' }, { choice: 'buscando_proveedor' }, 'Laura')
     expect(desired.taskTitle).toBe('Buscar dónde conseguir vestido de Laura')
     expect(desired.budgetCategory).toBe('Vestido de Laura')
+    expect(desired.resolved).toBe(false)
   })
   it('tipo "otro" usa su customLabel en el texto generado por la resolución, nunca lo interpreta', () => {
     const tipo: VestuarioTipoAnswer = { choice: 'otro', customLabel: 'Mono de fiesta' }
@@ -246,6 +258,7 @@ describe('Vestuario — tipo ≠ resolución: elegir "vestido" solo dice QUÉ, n
       taskTitle: 'Elegir/comprar Mono de fiesta de Laura',
       budgetCategory: 'Mono de fiesta de Laura',
       providerCategory: null,
+      resolved: false,
     })
   })
   it('resolución "otro": motor explícito, presupuesto solo con hasCost === "si"', () => {
@@ -255,19 +268,27 @@ describe('Vestuario — tipo ≠ resolución: elegir "vestido" solo dice QUÉ, n
     const conCoste: CustomResolution = { label: 'Alquilarlo', action: 'buscar_contratar', hasCost: 'si' }
     expect(desiredForVestuarioResolucion(tipo, { choice: 'otro', custom: conCoste }, 'Laura').budgetCategory).toBe('Alquilarlo de Laura')
   })
+  it('resolución "otro" con action "resuelto": también RESUELTO — misma infraestructura que "ya lo tenemos"', () => {
+    const tipo: VestuarioTipoAnswer = { choice: 'vestido' }
+    const resuelto: CustomResolution = { label: 'Alquilado', action: 'resuelto', hasCost: null }
+    expect(desiredForVestuarioResolucion(tipo, { choice: 'otro', custom: resuelto }, 'Laura').resolved).toBe(true)
+  })
 })
 
 describe('Peluquería/maquillaje — necesidad + resolución, nunca crea proveedor', () => {
+  const none = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
   it('necesidad "no" o "todavía no lo sabemos": nada, sin mirar la resolución', () => {
-    const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
     const resolucion: PeluqueriaResolucionAnswer = { choice: 'buscando' }
     expect(desiredForPeluqueriaResolucion({ choice: 'no' }, resolucion, 'Laura')).toEqual(none)
     expect(desiredForPeluqueriaResolucion({ choice: 'todavia_no_lo_sabemos' }, resolucion, 'Laura')).toEqual(none)
   })
-  it('necesidad real sin resolución todavía, o "ya lo tenemos": nada', () => {
+  it('necesidad real sin resolución todavía: nada, resolved:false', () => {
     const necesidad: PeluqueriaNecesidadAnswer = { choice: 'peluqueria' }
-    expect(desiredForPeluqueriaResolucion(necesidad, undefined, 'Laura').taskTitle).toBeNull()
-    expect(desiredForPeluqueriaResolucion(necesidad, { choice: 'ya_lo_tenemos' }, 'Laura').taskTitle).toBeNull()
+    expect(desiredForPeluqueriaResolucion(necesidad, undefined, 'Laura')).toEqual(none)
+  })
+  it('"ya lo tenemos": RESUELTO', () => {
+    const necesidad: PeluqueriaNecesidadAnswer = { choice: 'peluqueria' }
+    expect(desiredForPeluqueriaResolucion(necesidad, { choice: 'ya_lo_tenemos' }, 'Laura').resolved).toBe(true)
   })
   it('"buscando": genera tarea + presupuesto, nunca un proveedor (eso solo lo crea la familia)', () => {
     const necesidad: PeluqueriaNecesidadAnswer = { choice: 'ambos' }
@@ -275,12 +296,13 @@ describe('Peluquería/maquillaje — necesidad + resolución, nunca crea proveed
     expect(desired.taskTitle).toBe('Buscar peluquería/maquillaje para Laura')
     expect(desired.budgetCategory).toBe('Peluquería/maquillaje de Laura')
     expect(desired.providerCategory).toBe('Peluquería/Maquillaje')
+    expect(desired.resolved).toBe(false)
   })
 })
 
-describe('Complementos generales — 3 estados reales, multiselección opcional', () => {
+describe('Complementos generales — 3 estados reales, multiselección opcional, nunca "resuelto" (no existe ese concepto aquí)', () => {
   it('"no_necesitamos"/"todavía no lo sabemos": nunca genera nada, aunque haya algo en selected por error', () => {
-    const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
+    const none = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
     const a: ComplementosAnswer = { choice: 'no_necesitamos', selected: ['Zapatos'], customItems: [] }
     expect(desiredForComplementos(a, 'Laura')).toEqual(none)
   })
@@ -290,43 +312,75 @@ describe('Complementos generales — 3 estados reales, multiselección opcional'
   })
   it('"preparar" con algo seleccionado: UNA sola tarea bundle, nunca una por complemento', () => {
     const a: ComplementosAnswer = { choice: 'preparar', selected: ['Zapatos', 'Joyas'], customItems: ['Pulsera de la abuela'] }
-    expect(desiredForComplementos(a, 'Laura')).toEqual({ taskTitle: 'Preparar complementos de Laura', budgetCategory: null, providerCategory: null })
+    expect(desiredForComplementos(a, 'Laura')).toEqual({ taskTitle: 'Preparar complementos de Laura', budgetCategory: null, providerCategory: null, resolved: false })
   })
 })
 
 describe('Floral — ramo/prendido/otro, nunca infiere por proximidad ni por texto', () => {
-  const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
-  it('ya_lo_tenemos / todavía no lo sabemos: nada', () => {
-    expect(desiredForFloral({ choice: 'ya_lo_tenemos' }, 'Ramo', 'Laura')).toEqual(none)
+  const none = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
+  it('todavía no lo sabemos: nada', () => {
     expect(desiredForFloral({ choice: 'todavia_no_lo_sabemos' }, 'Ramo', 'Laura')).toEqual(none)
   })
+  it('ya lo tenemos: RESUELTO — nunca "nada"', () => {
+    expect(desiredForFloral({ choice: 'ya_lo_tenemos' }, 'Ramo', 'Laura')).toEqual({
+      taskTitle: null,
+      budgetCategory: null,
+      providerCategory: null,
+      resolved: true,
+    })
+  })
   it('preparamos: tarea, nunca presupuesto', () => {
-    expect(desiredForFloral({ choice: 'preparamos' }, 'Ramo', 'Laura')).toEqual({ taskTitle: 'Preparar ramo de Laura', budgetCategory: null, providerCategory: null })
+    expect(desiredForFloral({ choice: 'preparamos' }, 'Ramo', 'Laura')).toEqual({
+      taskTitle: 'Preparar ramo de Laura',
+      budgetCategory: null,
+      providerCategory: null,
+      resolved: false,
+    })
   })
   it('floristería: tarea + presupuesto independiente + categoría interna para sugerir proveedor (nunca lo crea)', () => {
     const desired = desiredForFloral({ choice: 'floristeria' }, 'Ramo', 'Laura')
-    expect(desired).toEqual({ taskTitle: 'Encargar ramo de Laura', budgetCategory: 'Ramo de Laura', providerCategory: 'Floristería' })
+    expect(desired).toEqual({ taskTitle: 'Encargar ramo de Laura', budgetCategory: 'Ramo de Laura', providerCategory: 'Floristería', resolved: false })
   })
-  it('otro: motor explícito, nunca interpreta el texto de la etiqueta', () => {
+  it('otro con action "resuelto": RESUELTO, misma infraestructura que "ya lo tenemos" — nunca interpreta el texto de la etiqueta', () => {
     const resuelto: CustomResolution = { label: 'Corona de flores', action: 'resuelto', hasCost: null }
-    expect(desiredForFloral({ choice: 'otro', custom: resuelto }, 'Corona de flores', 'Laura')).toEqual(none)
+    expect(desiredForFloral({ choice: 'otro', custom: resuelto }, 'Corona de flores', 'Laura')).toEqual({
+      taskTitle: null,
+      budgetCategory: null,
+      providerCategory: null,
+      resolved: true,
+    })
+  })
+  it('otro con action "buscar_contratar": motor explícito, nunca interpreta el texto de la etiqueta', () => {
     const conCoste: CustomResolution = { label: 'Corona de flores', action: 'buscar_contratar', hasCost: 'si' }
     expect(desiredForFloral({ choice: 'otro', custom: conCoste }, 'Corona de flores', 'Laura')).toEqual({
       taskTitle: 'Resolver Corona de flores de Laura',
       budgetCategory: 'Corona de flores de Laura',
       providerCategory: null,
+      resolved: false,
     })
   })
 })
 
-describe('Alianzas — compartida, sin fecha dentro de la decisión', () => {
-  const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
-  it('ya_las_tenemos / no_tendremos / todavía no lo sabemos: nada', () => {
-    const choices: AlianzasAnswer['choice'][] = ['ya_las_tenemos', 'no_tendremos', 'todavia_no_lo_sabemos']
-    for (const choice of choices) expect(desiredForAlianzas({ choice })).toEqual(none)
+describe('Alianzas — compartida, resuelto ≠ cancelado, sin fecha dentro de la decisión', () => {
+  const none = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
+  it('todavía no lo sabemos: nada', () => {
+    expect(desiredForAlianzas({ choice: 'todavia_no_lo_sabemos' })).toEqual(none)
+  })
+  it('"No tendremos": CANCELADO, nunca RESUELTO — no tener alianzas no es lo mismo que haberlas conseguido', () => {
+    const desired = desiredForAlianzas({ choice: 'no_tendremos' })
+    expect(desired).toEqual(none)
+    expect(desired.resolved).toBe(false)
+  })
+  it('"Ya las tenemos": RESUELTO — confirmación explícita pedida', () => {
+    expect(desiredForAlianzas({ choice: 'ya_las_tenemos' })).toEqual({
+      taskTitle: null,
+      budgetCategory: null,
+      providerCategory: null,
+      resolved: true,
+    })
   })
   it('elegir/comprar_encargar: tarea + presupuesto compartidos, nunca "de nombre"', () => {
-    expect(desiredForAlianzas({ choice: 'elegir' })).toEqual({ taskTitle: 'Elegir/Encargar las alianzas', budgetCategory: 'Alianzas', providerCategory: null })
+    expect(desiredForAlianzas({ choice: 'elegir' })).toEqual({ taskTitle: 'Elegir/Encargar las alianzas', budgetCategory: 'Alianzas', providerCategory: null, resolved: false })
   })
   it('no pide ni genera ninguna fecha — eso es un Preparativo aparte, no parte de la decisión', () => {
     const desired = desiredForAlianzas({ choice: 'comprar_encargar' })
@@ -336,22 +390,31 @@ describe('Alianzas — compartida, sin fecha dentro de la decisión', () => {
 })
 
 describe('Detalle especial — tipo ≠ resolución, mismo patrón que Vestuario/Floral', () => {
-  const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
+  const none = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
   it('tipo "no"/"todavía no lo sabemos": la resolución nunca genera nada', () => {
     expect(desiredForDetalleEspecialResolucion({ choice: 'no' }, { choice: 'tenemos_que_prepararlo' })).toEqual(none)
     expect(desiredForDetalleEspecialResolucion({ choice: 'todavia_no_lo_sabemos' }, { choice: 'tenemos_que_prepararlo' })).toEqual(none)
   })
-  it('resolución "ya lo tenemos" / "todavía no lo sabemos" / sin responder: nada', () => {
+  it('resolución "todavía no lo sabemos" / sin responder: nada', () => {
     const tipo: DetalleEspecialTipoAnswer = { choice: 'regalo' }
-    expect(desiredForDetalleEspecialResolucion(tipo, { choice: 'ya_lo_tenemos' })).toEqual(none)
     expect(desiredForDetalleEspecialResolucion(tipo, { choice: 'todavia_no_lo_sabemos' })).toEqual(none)
     expect(desiredForDetalleEspecialResolucion(tipo, undefined)).toEqual(none)
+  })
+  it('resolución "ya lo tenemos": RESUELTO', () => {
+    const tipo: DetalleEspecialTipoAnswer = { choice: 'regalo' }
+    expect(desiredForDetalleEspecialResolucion(tipo, { choice: 'ya_lo_tenemos' })).toEqual({
+      taskTitle: null,
+      budgetCategory: null,
+      providerCategory: null,
+      resolved: true,
+    })
   })
   it('tenemos que prepararlo: tarea, nunca presupuesto', () => {
     expect(desiredForDetalleEspecialResolucion({ choice: 'carta' }, { choice: 'tenemos_que_prepararlo' })).toEqual({
       taskTitle: 'Preparar una carta para el otro',
       budgetCategory: null,
       providerCategory: null,
+      resolved: false,
     })
   })
   it('buscando: tarea, tampoco presupuesto (nunca se pregunta precio en el cuestionario)', () => {
@@ -364,6 +427,7 @@ describe('Detalle especial — tipo ≠ resolución, mismo patrón que Vestuario
       taskTitle: 'Preparar: Vídeo sorpresa',
       budgetCategory: 'Vídeo sorpresa',
       providerCategory: null,
+      resolved: false,
     })
   })
 })
@@ -394,10 +458,13 @@ describe('floralItemSelected / withFloralSelected — marca de selección SEPARA
   })
 })
 
-describe('Reconciliación — nunca "borrar siempre" ni "nunca borrar"', () => {
+const PENDING_NONE = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
+const RESOLVED = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true }
+
+describe('Reconciliación — nunca "borrar siempre" ni "nunca borrar" (acción pendiente / cancelado / por decidir)', () => {
   it('nada existe, se desea algo: crear', () => {
-    const desired = { taskTitle: 'Elegir vestido de Laura', budgetCategory: 'Vestido de Laura', providerCategory: null }
-    const actions = reconcilePairGeneration(desired, undefined, undefined)
+    const desired = { taskTitle: 'Elegir vestido de Laura', budgetCategory: 'Vestido de Laura', providerCategory: null, resolved: false }
+    const { actions } = reconcilePairGeneration(desired, undefined, undefined)
     expect(actions).toEqual(
       expect.arrayContaining([
         { op: 'create_task', title: 'Elegir vestido de Laura' },
@@ -407,17 +474,17 @@ describe('Reconciliación — nunca "borrar siempre" ni "nunca borrar"', () => {
   })
 
   it('ya existe y coincide: no hace nada (responder dos veces lo mismo no duplica)', () => {
-    const desired = { taskTitle: 'Elegir vestido de Laura', budgetCategory: 'Vestido de Laura', providerCategory: null }
+    const desired = { taskTitle: 'Elegir vestido de Laura', budgetCategory: 'Vestido de Laura', providerCategory: null, resolved: false }
     const task = makeTask({ title: 'Elegir vestido de Laura' })
     const budget = makeBudgetItem({ category: 'Vestido de Laura' })
-    expect(reconcilePairGeneration(desired, task, budget)).toEqual([])
+    expect(reconcilePairGeneration(desired, task, budget).actions).toEqual([])
   })
 
   it('cambio de nombre: tarea/presupuesto prístinos se actualizan en el sitio', () => {
-    const desired = { taskTitle: 'Elegir vestido de Laura María', budgetCategory: 'Vestido de Laura María', providerCategory: null }
+    const desired = { taskTitle: 'Elegir vestido de Laura María', budgetCategory: 'Vestido de Laura María', providerCategory: null, resolved: false }
     const task = makeTask({ title: 'Elegir vestido de Laura' })
     const budget = makeBudgetItem({ category: 'Vestido de Laura' })
-    expect(reconcilePairGeneration(desired, task, budget)).toEqual(
+    expect(reconcilePairGeneration(desired, task, budget).actions).toEqual(
       expect.arrayContaining([
         { op: 'update_task', id: 't1', title: 'Elegir vestido de Laura María' },
         { op: 'update_budget', id: 'b1', category: 'Vestido de Laura María' },
@@ -426,9 +493,9 @@ describe('Reconciliación — nunca "borrar siempre" ni "nunca borrar"', () => {
   })
 
   it('tarea ya marcada hecha: NO se actualiza el título aunque el nombre cambie — ya no es prístina', () => {
-    const desired = { taskTitle: 'Elegir vestido de Laura María', budgetCategory: null, providerCategory: null }
+    const desired = { taskTitle: 'Elegir vestido de Laura María', budgetCategory: null, providerCategory: null, resolved: false }
     const task = makeTask({ title: 'Elegir vestido de Laura', done: true })
-    expect(reconcilePairGeneration(desired, task, undefined)).toEqual([])
+    expect(reconcilePairGeneration(desired, task, undefined).actions).toEqual([])
   })
   it('tarea con fecha puesta: tampoco prístina, aunque el título siga intacto', () => {
     const task = makeTask({ dueDate: '2026-12-01' })
@@ -454,19 +521,88 @@ describe('Reconciliación — nunca "borrar siempre" ni "nunca borrar"', () => {
     expect(isBudgetItemUntouched(makeBudgetItem())).toBe(true)
   })
 
-  it('ya no se implica nada y la tarea está prístina: se borra de verdad (nunca queda como resto)', () => {
-    const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
+  it('cancelado (resolved:false, sin taskTitle), tarea prístina: se borra de verdad (nunca queda como resto)', () => {
     const task = makeTask()
-    expect(reconcilePairGeneration(none, task, undefined)).toEqual([{ op: 'delete_task', id: 't1' }])
+    expect(reconcilePairGeneration(PENDING_NONE, task, undefined).actions).toEqual([{ op: 'delete_task', id: 't1' }])
   })
-  it('ya no se implica nada y la tarea NO está prístina (ya marcada hecha): se conserva, solo se desvincula', () => {
-    const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
+  it('cancelado, tarea NO prístina (ya marcada hecha a mano): se conserva, solo se desvincula — nunca se marca falsamente como completado "por" el motor', () => {
     const task = makeTask({ done: true })
-    expect(reconcilePairGeneration(none, task, undefined)).toEqual([{ op: 'detach_task', id: 't1' }])
+    expect(reconcilePairGeneration(PENDING_NONE, task, undefined).actions).toEqual([{ op: 'detach_task', id: 't1' }])
   })
-  it('lo mismo para presupuesto: prístino se borra, con importe real se desvincula', () => {
-    const none = { taskTitle: null, budgetCategory: null, providerCategory: null }
-    expect(reconcilePairGeneration(none, undefined, makeBudgetItem())).toEqual([{ op: 'delete_budget', id: 'b1' }])
-    expect(reconcilePairGeneration(none, undefined, makeBudgetItem({ plannedAmount: 300 }))).toEqual([{ op: 'detach_budget', id: 'b1' }])
+  it('"todavía no lo sabemos" (resolved:false) con datos enriquecidos: se desvincula, NUNCA se destruye silenciosamente', () => {
+    const task = makeTask({ assignedMemberId: 'm1' })
+    const budget = makeBudgetItem({ plannedAmount: 200 })
+    const result = reconcilePairGeneration(PENDING_NONE, task, budget)
+    expect(result.actions).toEqual(expect.arrayContaining([{ op: 'detach_task', id: 't1' }, { op: 'detach_budget', id: 'b1' }]))
+    expect(result.actions).not.toContainEqual({ op: 'delete_task', id: 't1' })
+    expect(result.actions).not.toContainEqual({ op: 'delete_budget', id: 'b1' })
+  })
+  it('lo mismo para presupuesto: prístino se borra, con importe real se desvincula (caso cancelado/por decidir)', () => {
+    expect(reconcilePairGeneration(PENDING_NONE, undefined, makeBudgetItem()).actions).toEqual([{ op: 'delete_budget', id: 'b1' }])
+    expect(reconcilePairGeneration(PENDING_NONE, undefined, makeBudgetItem({ plannedAmount: 300 })).actions).toEqual([{ op: 'detach_budget', id: 'b1' }])
+  })
+})
+
+describe('Reconciliación — RESUELTO ≠ CANCELADO (corrección aprobada)', () => {
+  it('resolved:true + tarea pendiente real: complete_task, NUNCA delete_task', () => {
+    const task = makeTask()
+    const result = reconcilePairGeneration(RESOLVED, task, undefined)
+    expect(result.actions).toEqual([{ op: 'complete_task', id: 't1' }])
+  })
+  it('resuelto sin tarea previa: no fabrica una tarea ya completada de la nada', () => {
+    const result = reconcilePairGeneration(RESOLVED, undefined, undefined)
+    expect(result.actions).toEqual([])
+  })
+  it('resuelto + tarea ya completada antes (a mano): no hace nada (idempotente, no hay "doble completar")', () => {
+    const task = makeTask({ done: true })
+    const result = reconcilePairGeneration(RESOLVED, task, undefined)
+    expect(result.actions).toEqual([])
+  })
+  it('resuelto + tarea con fecha/responsable/calendario: se completa igualmente — completar nunca borra esos datos, el reconciliador no los toca', () => {
+    const task = makeTask({ dueDate: '2026-12-01', assignedMemberId: 'm1', calendarEventId: 'c1' })
+    const result = reconcilePairGeneration(RESOLVED, task, undefined)
+    expect(result.actions).toEqual([{ op: 'complete_task', id: 't1' }])
+  })
+  it('resuelto + presupuesto con importe null: se conserva intacto (ninguna acción) + pendingBudgetItem lo recoge', () => {
+    const budget = makeBudgetItem()
+    const result = reconcilePairGeneration(RESOLVED, undefined, budget)
+    expect(result.actions).toEqual([])
+    expect(result.pendingBudgetItem).toEqual({ id: 'b1', category: 'Vestido de Laura' })
+  })
+  it('resuelto + presupuesto con importe real: se conserva intacto, ninguna acción, pendingBudgetItem es null (nunca vuelve a preguntar)', () => {
+    const budget = makeBudgetItem({ plannedAmount: 650 })
+    const result = reconcilePairGeneration(RESOLVED, undefined, budget)
+    expect(result.actions).toEqual([])
+    expect(result.pendingBudgetItem).toBeNull()
+  })
+  it('resuelto sin ninguna partida: pendingBudgetItem es null (nunca se fabrica una partida solo para preguntar)', () => {
+    const result = reconcilePairGeneration(RESOLVED, undefined, undefined)
+    expect(result.pendingBudgetItem).toBeNull()
+  })
+  it('pendiente (no resuelto) con presupuesto null: nunca pendingBudgetItem, aunque el importe sea null', () => {
+    const desired = { taskTitle: 'Elegir vestido de Laura', budgetCategory: null, providerCategory: null, resolved: false }
+    const budget = makeBudgetItem()
+    expect(reconcilePairGeneration(desired, undefined, budget).pendingBudgetItem).toBeNull()
+  })
+})
+
+describe('describeEffects — el toast se construye SIEMPRE de las acciones reales, nunca de la respuesta elegida', () => {
+  it('lista vacía: ningún mensaje', () => {
+    expect(describeEffects([])).toBeNull()
+  })
+  it('solo updates (renombrados silenciosos): ningún mensaje', () => {
+    expect(describeEffects([{ op: 'update_task', id: 't1', title: 'x' }, { op: 'update_budget', id: 'b1', category: 'y' }])).toBeNull()
+  })
+  it('solo retirada (detach/delete): ningún mensaje — no se pide feedback para esto', () => {
+    expect(describeEffects([{ op: 'delete_task', id: 't1' }, { op: 'detach_budget', id: 'b1' }])).toBeNull()
+  })
+  it('crea solo tarea: "Añadido a Preparativos"', () => {
+    expect(describeEffects([{ op: 'create_task', title: 'x' }])).toBe('✅ Añadido a Preparativos')
+  })
+  it('crea tarea + presupuesto: lista unida con "y", un único mensaje', () => {
+    expect(describeEffects([{ op: 'create_task', title: 'x' }, { op: 'create_budget', category: 'y' }])).toBe('✅ Añadido a Preparativos y Presupuesto')
+  })
+  it('completa una tarea: "Preparativo completado"', () => {
+    expect(describeEffects([{ op: 'complete_task', id: 't1' }])).toBe(TASK_COMPLETED_MESSAGE)
   })
 })

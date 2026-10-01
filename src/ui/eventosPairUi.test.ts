@@ -209,7 +209,7 @@ describe('PairBlock — setFloralSelected nunca crea Preparativo/Presupuesto/dec
 describe('PairBlock — Vestuario/Detalle especial de 2 niveles: el tipo nunca genera, cambiar el tipo recalcula la resolución existente', () => {
   const pairBlock = slice(SRC, 'function PairBlock({', '\n\n// ---------------------------------------------------------------------\n// Fase 2 — Momentos genéricos')
 
-  it('saveVestuarioTipo nunca llama a applyPairDecisionGeneration para la propia decisión de tipo, solo recalcula la resolución si ya existía', () => {
+  it('saveVestuarioTipo recalcula la resolución si ya existía', () => {
     const fn = slice(pairBlock, 'async function saveVestuarioTipo(', '\n  }')
     expect(fn).toContain("pairQuestionKey(slot, 'vestuario.resolucion')")
     expect(fn).toContain('desiredForVestuarioResolucion(')
@@ -219,6 +219,85 @@ describe('PairBlock — Vestuario/Detalle especial de 2 niveles: el tipo nunca g
     const fn = slice(pairBlock, 'async function saveDetalleTipo(', '\n  }')
     expect(fn).toContain('DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY')
     expect(fn).toContain('desiredForDetalleEspecialResolucion(')
+  })
+
+  // Corrección real (residuo de Jennifer en producción): el tipo ya NO se limita a "nunca generar" en
+  // teoría — también se reconcilia SIEMPRE a "nada" en cada guardado, lo que retira cualquier resto
+  // heredado del modelo de 1 solo nivel (donde esta misma clave sí generaba directamente).
+  it('saveVestuarioTipo SIEMPRE reconcilia su propia fila a "nada" — autosanea residuos del modelo antiguo', () => {
+    const fn = slice(pairBlock, 'async function saveVestuarioTipo(', '\n  }')
+    expect(fn).toContain('applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })')
+  })
+  it('saveDetalleTipo hace lo mismo con su propia fila', () => {
+    const fn = slice(pairBlock, 'async function saveDetalleTipo(', '\n  }')
+    expect(fn).toContain('applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })')
+  })
+})
+
+describe('Complementos — los florales son contenido revelado de "Queremos preparar complementos", nunca visibles antes', () => {
+  const pairBlock = slice(SRC, 'function PairBlock({', '\n\n// ---------------------------------------------------------------------\n// Fase 2 — Momentos genéricos')
+
+  it('el bloque floral completo está condicionado a complementosAnswer?.choice === "preparar"', () => {
+    expect(pairBlock).toContain("complementosAnswer?.choice === 'preparar' && (")
+  })
+
+  it('"💐 Complementos florales", los checkboxes y "+ Otro complemento floral" están DENTRO de esa condición, no antes', () => {
+    const gated = slice(pairBlock, "complementosAnswer?.choice === 'preparar' && (", '+ Otro complemento floral')
+    expect(gated).toContain('💐 Complementos florales')
+    expect(gated).toContain('<FloralItemQuestion')
+  })
+})
+
+describe('Feedback — toast construido de las acciones reales, nunca de la respuesta (corrección aprobada §12-13)', () => {
+  const pairBlock = slice(SRC, 'function PairBlock({', 'function BudgetAmountPromptModal(')
+
+  it('handleEffects es el único punto que decide toast vs modal, y lo hace a partir de pendingBudgetItem', () => {
+    const fn = slice(pairBlock, 'function handleEffects(', '\n  }')
+    expect(fn).toContain('if (pendingBudgetItem) {')
+    expect(fn).toContain('setCostPrompt(')
+    expect(fn).toContain('describeEffects(actions)')
+    expect(fn).toContain('showToast(message)')
+  })
+
+  it('cuando hay pendingBudgetItem, handleEffects NUNCA llama a showToast — se pospone hasta que el modal se resuelva', () => {
+    const fn = slice(pairBlock, 'function handleEffects(', '\n  }')
+    const pendingBranch = fn.slice(fn.indexOf('if (pendingBudgetItem) {'), fn.indexOf('return\n    }') + 'return\n    }'.length)
+    expect(pendingBranch).not.toContain('showToast')
+  })
+
+  it.each(['saveQuestion', 'saveVestuarioTipo', 'saveVestuarioResolucion', 'saveNecesidad', 'saveResolucion', 'saveDetalleTipo', 'saveDetalleResolucion'])(
+    '%s pasa por handleEffects después de onDerivedDataChanged (nunca un showToast suelto)',
+    (fnName) => {
+      const fn = slice(pairBlock, `async function ${fnName}(`, '\n  }')
+      const tryBlock = fn.slice(fn.indexOf('try {'), fn.indexOf('} catch'))
+      expect(tryBlock).toContain('handleEffects(')
+      expect(tryBlock).not.toContain('showToast(')
+    },
+  )
+
+  it('el modal de cierre de coste decide el toast final según taskCompleted: combinado si Guardar/Sin coste, simple si Ahora no', () => {
+    const render = slice(pairBlock, '{costPrompt && (', '/>\n      )}')
+    expect(render).toContain('onClose={() => {')
+    expect(render).toContain('if (costPrompt.taskCompleted) showToast(TASK_COMPLETED_MESSAGE)')
+    expect(render).toContain('showToast(costPrompt.taskCompleted ? TASK_COMPLETED_AND_BUDGET_UPDATED_MESSAGE : BUDGET_UPDATED_MESSAGE)')
+  })
+})
+
+describe('BudgetAmountPromptModal — cierre de coste genérico y reutilizable (corrección aprobada §6-7)', () => {
+  const fn = slice(SRC, 'function BudgetAmountPromptModal(', '\n\n// ---------------------------------------------------------------------\n// Fase 2 — Momentos genéricos')
+
+  it('trabaja siempre sobre la partida real por id — nunca crea una partida nueva', () => {
+    expect(fn).toContain('updateEventBudgetItem(item.id, { plannedAmount: value })')
+    expect(fn).not.toContain('addEventBudgetItem')
+  })
+
+  it('el título mostrado es el propio category de la partida real, nunca un texto fijo por tipo de pregunta', () => {
+    expect(fn).toContain('{item.category}')
+  })
+
+  it('"Sin coste" guarda explícitamente 0, "Ahora no" no llama a save en absoluto', () => {
+    expect(fn).toContain('onClick={() => save(0)}')
+    expect(fn).toContain('onClick={onClose}')
   })
 })
 

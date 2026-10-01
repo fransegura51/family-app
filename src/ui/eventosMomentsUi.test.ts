@@ -220,7 +220,11 @@ describe('Acordeón — plegable globalmente y por bloque, estado simple en loca
   })
 
   it('no hay ningún porcentaje/barra de progreso agregado en el configurador (CSS width:100% no cuenta, eso es maquetación)', () => {
-    const fn = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
+    // Acotado a la propia EventPlanningConfigurator (hasta el siguiente componente, ChoiceRow) — antes
+    // llegaba hasta MomentForm e incluía de paso todos los componentes de "La pareja" (Fase 3), cuyo
+    // propio toast "✓ Preparativo completado" usa legítimamente la palabra "completado" sin ser una barra
+    // de progreso ni un porcentaje — nada que ver con lo que esta prueba vigila.
+    const fn = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction ChoiceRow<')
     expect(fn).not.toMatch(/progress|completado|\d+\s*%(?!'\s*,)/i)
   })
 

@@ -12,7 +12,7 @@ import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { replaceEventMembers } from '@/data/calendar'
 import { distinctTagColor } from '@/domain/colors'
 import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary } from '@/domain/events'
-import { reconcilePairGeneration, type DesiredPairGeneration } from '@/domain/eventPairDecisions'
+import { reconcilePairGeneration, type DesiredPairGeneration, type ReconcileResult } from '@/domain/eventPairDecisions'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { showToast } from '@/state/toast'
 import type { EventReminder } from '@/domain/reminders'
@@ -1830,7 +1830,7 @@ export async function unlinkDecisionProvider(id: string): Promise<void> {
 // Ejecuta exactamente lo que reconcilePairGeneration (puro, src/domain/eventPairDecisions.ts) decide para
 // esta decisión: como mucho hay una tarea y un concepto de presupuesto por decisión en todo este bloque,
 // así que basta con mirar lo que ya existe por decision_id y aplicar la lista de acciones tal cual.
-export async function applyPairDecisionGeneration(eventId: string, decisionId: string, desired: DesiredPairGeneration): Promise<void> {
+export async function applyPairDecisionGeneration(eventId: string, decisionId: string, desired: DesiredPairGeneration): Promise<ReconcileResult> {
   const familyId = await currentFamilyId()
   const [{ data: tasks, error: tasksError }, { data: budgetItems, error: budgetError }] = await Promise.all([
     supabase.from('event_tasks').select(TASK_SELECT).eq('decision_id', decisionId),
@@ -1841,7 +1841,8 @@ export async function applyPairDecisionGeneration(eventId: string, decisionId: s
   const existingTask = tasks.map(mapTask)[0]
   const existingBudget = budgetItems.map(mapBudgetItem)[0]
 
-  for (const action of reconcilePairGeneration(desired, existingTask, existingBudget)) {
+  const result = reconcilePairGeneration(desired, existingTask, existingBudget)
+  for (const action of result.actions) {
     switch (action.op) {
       case 'create_task': {
         const { error } = await supabase
@@ -1853,6 +1854,13 @@ export async function applyPairDecisionGeneration(eventId: string, decisionId: s
       case 'update_task': {
         const { error } = await supabase.from('event_tasks').update({ title: action.title }).eq('id', action.id)
         if (error) throw error
+        break
+      }
+      // Resuelto ≠ cancelado (corrección real) — se conserva y se completa, nunca se borra. updateEventTask
+      // ya existe y no dispara resincronización de Calendario para un patch de solo "done" (ver su propia
+      // condición), así que reutilizarla aquí no tiene efectos secundarios no deseados.
+      case 'complete_task': {
+        await updateEventTask(action.id, { done: true })
         break
       }
       case 'delete_task': {
@@ -1889,6 +1897,7 @@ export async function applyPairDecisionGeneration(eventId: string, decisionId: s
       }
     }
   }
+  return result
 }
 
 // ---------------------------------------------------------------------

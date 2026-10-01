@@ -229,10 +229,16 @@ describe('Acordeón — plegable globalmente y por bloque, estado simple en loca
   })
 })
 
-describe('Solo el bloque "Ceremonia y celebración" existe en esta fase', () => {
-  it('ningún otro bloque del documento maestro (Pareja, Invitados, Momentos especiales...) está implementado todavía', () => {
+describe('Solo "Ceremonia y celebración" y "La pareja" existen en esta fase (Fase 3)', () => {
+  it('Ceremonia y celebración (Fase 2) y La pareja (Fase 3) están implementados', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
-    for (const forbidden of ['La pareja', 'Momentos especiales', 'Comida y celebración', 'Música, fiesta', 'Fotos y recuerdos', 'Detalles y regalos', 'Decoración']) {
+    expect(configurator).toContain('🕊️ Ceremonia y celebración')
+    expect(configurator).toContain('👰🤵 La pareja')
+  })
+
+  it('ningún otro bloque del documento maestro (Invitados, Momentos especiales...) está implementado todavía', () => {
+    const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
+    for (const forbidden of ['Momentos especiales', 'Comida y celebración', 'Música, fiesta', 'Fotos y recuerdos', 'Detalles y regalos', 'Decoración']) {
       expect(configurator).not.toContain(forbidden)
     }
   })

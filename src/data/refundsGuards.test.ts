@@ -121,11 +121,13 @@ describe('lo que esta fase NO toca', () => {
     // `location_place_id` a `event_moments` — tabla de Eventos, tampoco devoluciones.
     // 0178 (location_places_notify_arrivals, Ubicación: avisar al llegar/irse de un lugar, estilo
     // Google Maps) añade `location_places.notify_arrivals` — tabla de Ubicación, tampoco devoluciones.
+    // 0179 (event_decision_providers, Fase 3 "La pareja" de Eventos) añade la relación muchos-a-muchos
+    // decisión↔proveedor — tabla de Eventos, tampoco devoluciones.
     // Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(178)
+    expect(Math.max(...numbers)).toBe(179)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

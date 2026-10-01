@@ -206,11 +206,12 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
   // 0178 (location_places_notify_arrivals, Ubicación: avisar al llegar/irse de un lugar, estilo
   // Google Maps) añade `location_places.notify_arrivals` — tabla de Ubicación, nada que ver con
-  // Eventos.
-  it('0178 (location_places_notify_arrivals) es la última migración del repositorio', () => {
+  // Eventos. 0179 (event_decision_providers, Fase 3 "La pareja") sí es de Eventos — primer uso real de
+  // event_decisions más la relación muchos-a-muchos decisión↔proveedor, ver eventPairDecisions.test.ts.
+  it('0179 (event_decision_providers) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(178)
+    expect(Math.max(...numbers)).toBe(179)
   })
 })

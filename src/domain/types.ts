@@ -957,6 +957,18 @@ export interface EventDecision {
   updatedAt: string
 }
 
+// Fase 3 (La pareja) — relación muchos-a-muchos entre una decisión y un proveedor real (migración 0179):
+// un mismo proveedor (p. ej. una floristería) puede relacionarse con varias decisiones sin duplicarse.
+// event_providers.decision_id no cambia de significado — sigue siendo quién lo creó la primera vez.
+export interface EventDecisionProvider {
+  id: string
+  decisionId: string
+  providerId: string
+  eventId: string
+  familyId: string
+  createdAt: string
+}
+
 // Diseño de la invitación en capas (Fase 3) — una fila por evento.
 // canvasJson guarda las capas (fondo/decoración/foto/texto/emoji) con
 // posición/rotación/escala; el invite_scope de cada invitado no cambia

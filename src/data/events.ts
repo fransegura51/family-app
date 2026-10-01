@@ -12,6 +12,7 @@ import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { replaceEventMembers } from '@/data/calendar'
 import { distinctTagColor } from '@/domain/colors'
 import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary } from '@/domain/events'
+import { reconcilePairGeneration, type DesiredPairGeneration } from '@/domain/eventPairDecisions'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { showToast } from '@/state/toast'
 import type { EventReminder } from '@/domain/reminders'
@@ -20,6 +21,7 @@ import type {
   EventBudgetItem,
   EventDayPlanItem,
   EventDecision,
+  EventDecisionProvider,
   EventDecorationItem,
   EventDecorationStatus,
   EventFavorItem,
@@ -1792,6 +1794,101 @@ export async function upsertEventDecision(
 export async function deleteEventDecision(id: string): Promise<void> {
   const { error } = await supabase.from('event_decisions').delete().eq('id', id)
   if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// "👰🤵 La pareja" — relación muchos-a-muchos decisión↔proveedor (migración 0179) y aplicación de lo que
+// decide el motor puro de src/domain/eventPairDecisions.ts. Nunca se crea un EventProvider aquí — un
+// proveedor real solo lo da de alta la familia desde Proveedores; esta relación solo vincula lo ya
+// existente con la decisión que lo necesita.
+// ---------------------------------------------------------------------
+
+const DECISION_PROVIDER_SELECT = 'id, decision_id, provider_id, event_id, family_id, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapDecisionProvider(r: any): EventDecisionProvider {
+  return { id: r.id, decisionId: r.decision_id, providerId: r.provider_id, eventId: r.event_id, familyId: r.family_id, createdAt: r.created_at }
+}
+
+export async function listDecisionProviders(decisionId: string): Promise<EventDecisionProvider[]> {
+  const { data, error } = await supabase.from('event_decision_providers').select(DECISION_PROVIDER_SELECT).eq('decision_id', decisionId)
+  if (error) throw error
+  return data.map(mapDecisionProvider)
+}
+
+export async function linkDecisionProvider(eventId: string, decisionId: string, providerId: string): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_decision_providers').insert({ event_id: eventId, family_id: familyId, decision_id: decisionId, provider_id: providerId })
+  if (error) throw error
+}
+
+export async function unlinkDecisionProvider(id: string): Promise<void> {
+  const { error } = await supabase.from('event_decision_providers').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Ejecuta exactamente lo que reconcilePairGeneration (puro, src/domain/eventPairDecisions.ts) decide para
+// esta decisión: como mucho hay una tarea y un concepto de presupuesto por decisión en todo este bloque,
+// así que basta con mirar lo que ya existe por decision_id y aplicar la lista de acciones tal cual.
+export async function applyPairDecisionGeneration(eventId: string, decisionId: string, desired: DesiredPairGeneration): Promise<void> {
+  const familyId = await currentFamilyId()
+  const [{ data: tasks, error: tasksError }, { data: budgetItems, error: budgetError }] = await Promise.all([
+    supabase.from('event_tasks').select(TASK_SELECT).eq('decision_id', decisionId),
+    supabase.from('event_budget_items').select(BUDGET_ITEM_SELECT).eq('decision_id', decisionId),
+  ])
+  if (tasksError) throw tasksError
+  if (budgetError) throw budgetError
+  const existingTask = tasks.map(mapTask)[0]
+  const existingBudget = budgetItems.map(mapBudgetItem)[0]
+
+  for (const action of reconcilePairGeneration(desired, existingTask, existingBudget)) {
+    switch (action.op) {
+      case 'create_task': {
+        const { error } = await supabase
+          .from('event_tasks')
+          .insert({ event_id: eventId, family_id: familyId, title: action.title, source: 'auto', sort_order: Date.now(), decision_id: decisionId })
+        if (error) throw error
+        break
+      }
+      case 'update_task': {
+        const { error } = await supabase.from('event_tasks').update({ title: action.title }).eq('id', action.id)
+        if (error) throw error
+        break
+      }
+      case 'delete_task': {
+        const { error } = await supabase.from('event_tasks').delete().eq('id', action.id)
+        if (error) throw error
+        break
+      }
+      case 'detach_task': {
+        const { error } = await supabase.from('event_tasks').update({ decision_id: null }).eq('id', action.id)
+        if (error) throw error
+        break
+      }
+      case 'create_budget': {
+        const { error } = await supabase
+          .from('event_budget_items')
+          .insert({ event_id: eventId, family_id: familyId, category: action.category, planned_amount: null, sort_order: Date.now(), decision_id: decisionId })
+        if (error) throw error
+        break
+      }
+      case 'update_budget': {
+        const { error } = await supabase.from('event_budget_items').update({ category: action.category }).eq('id', action.id)
+        if (error) throw error
+        break
+      }
+      case 'delete_budget': {
+        const { error } = await supabase.from('event_budget_items').delete().eq('id', action.id)
+        if (error) throw error
+        break
+      }
+      case 'detach_budget': {
+        const { error } = await supabase.from('event_budget_items').update({ decision_id: null }).eq('id', action.id)
+        if (error) throw error
+        break
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------

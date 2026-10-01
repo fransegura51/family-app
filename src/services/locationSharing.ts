@@ -49,6 +49,29 @@ const listeners = new Set<Listener>()
 const STAY_RADIUS_M = 120
 const STAY_MIN_MS = 6 * 60 * 1000
 
+// Petición real: "eso es una burla de llamadas" — 32 visitas de "Casa"
+// en un solo día, muchas casi seguidas (minutos de diferencia). Dos
+// causas, mismo síntoma — el candidato de parada (de dónde a dónde
+// cuenta como "seguir en el mismo sitio") solo vivía en esta variable,
+// en memoria: (1) el móvil recarga la aplicación muy a menudo (pantalla
+// apagada, poca memoria, cambiar de app y volver...), y cada recarga
+// perdía el candidato entero, así que la MISMA estancia se volvía a
+// contar desde cero; (2) dentro de una sesión que sigue viva, el GPS en
+// interiores puede dar un salto puntual de más de STAY_RADIUS_M sin que
+// la persona se haya movido un metro (rebote de la señal en paredes),
+// y un solo salto bastaba para cerrar la parada y empezar otra.
+//
+// AWAY_CONFIRM_MS: una lectura sola fuera del radio no cuenta como "se
+// ha ido" — solo si sigue fuera de verdad durante un rato (una
+// distracción de GPS no dura minutos seguidos; un trayecto real sí).
+// RESUME_GAP_MS: al no encontrar candidato en memoria (típicamente
+// justo después de una recarga), antes de empezar una parada nueva se
+// mira si hay una guardada reciente para el mismo sitio y se retoma —
+// así la recarga no corta nada mientras el hueco sea corto.
+const AWAY_CONFIRM_MS = 3 * 60 * 1000
+const RESUME_GAP_MS = 20 * 60 * 1000
+const CANDIDATE_STORAGE_KEY = 'familyapp:location-visit-candidate'
+
 interface VisitCandidate {
   memberId: string
   centerLat: number
@@ -56,8 +79,37 @@ interface VisitCandidate {
   startedAt: number
   lastSeenAt: number
   loggedVisitId: string | null
+  // Primera vez que una lectura aparece fuera del radio desde que se
+  // llegó — null mientras se sigue "dentro" de verdad. Ver
+  // AWAY_CONFIRM_MS arriba.
+  awayStartedAt: number | null
 }
 let visitCandidate: VisitCandidate | null = null
+
+function newCandidate(memberId: string, latitude: number, longitude: number, now: number): VisitCandidate {
+  return { memberId, centerLat: latitude, centerLon: longitude, startedAt: now, lastSeenAt: now, loggedVisitId: null, awayStartedAt: null }
+}
+
+function persistCandidate(candidate: VisitCandidate | null) {
+  try {
+    if (candidate) localStorage.setItem(CANDIDATE_STORAGE_KEY, JSON.stringify(candidate))
+    else localStorage.removeItem(CANDIDATE_STORAGE_KEY)
+  } catch {
+    // localStorage puede fallar (privado/incógnito) — en el peor caso
+    // se pierde la continuidad tras una recarga, como antes de esto.
+  }
+}
+
+function loadStoredCandidate(memberId: string): VisitCandidate | null {
+  try {
+    const raw = localStorage.getItem(CANDIDATE_STORAGE_KEY)
+    if (!raw) return null
+    const stored = JSON.parse(raw) as VisitCandidate
+    return stored.memberId === memberId ? stored : null
+  } catch {
+    return null
+  }
+}
 
 async function resolvePlaceName(latitude: number, longitude: number): Promise<string | null> {
   try {
@@ -73,16 +125,29 @@ async function resolvePlaceName(latitude: number, longitude: number): Promise<st
 
 async function trackVisit(memberId: string, latitude: number, longitude: number) {
   const now = Date.now()
-  const candidate = visitCandidate
+  let candidate = visitCandidate
 
   if (!candidate || candidate.memberId !== memberId) {
-    visitCandidate = { memberId, centerLat: latitude, centerLon: longitude, startedAt: now, lastSeenAt: now, loggedVisitId: null }
-    return
+    const stored = loadStoredCandidate(memberId)
+    const resumable = stored && now - stored.lastSeenAt <= RESUME_GAP_MS && distanceMeters(stored.centerLat, stored.centerLon, latitude, longitude) <= STAY_RADIUS_M
+    if (resumable && stored) {
+      candidate = { ...stored, lastSeenAt: now, awayStartedAt: null }
+    } else {
+      // Nada que retomar (o demasiado lejos/tarde) — si quedó una
+      // parada abierta de antes, se cierra con lo último que se supo
+      // de ella en vez de dejarla para siempre sin "hasta cuándo".
+      if (stored?.loggedVisitId) closePlaceVisit(stored.loggedVisitId, new Date(stored.lastSeenAt).toISOString()).catch(() => {})
+      candidate = newCandidate(memberId, latitude, longitude, now)
+    }
+    visitCandidate = candidate
+    persistCandidate(candidate)
   }
 
   const dist = distanceMeters(candidate.centerLat, candidate.centerLon, latitude, longitude)
   if (dist <= STAY_RADIUS_M) {
     candidate.lastSeenAt = now
+    candidate.awayStartedAt = null
+    persistCandidate(candidate)
     if (!candidate.loggedVisitId && now - candidate.startedAt >= STAY_MIN_MS) {
       const placeName = await resolvePlaceName(candidate.centerLat, candidate.centerLon)
       // Puede haber cambiado mientras se esperaba la respuesta (otra
@@ -97,18 +162,29 @@ async function trackVisit(memberId: string, latitude: number, longitude: number)
             longitude: candidate.centerLon,
             arrivedAt: new Date(candidate.startedAt).toISOString(),
           })
+          persistCandidate(candidate)
         } catch {
           // Si falla el guardado, se reintenta solo en la siguiente
           // posición (loggedVisitId sigue sin fijar).
         }
       }
     }
-  } else {
-    visitCandidate = { memberId, centerLat: latitude, centerLon: longitude, startedAt: now, lastSeenAt: now, loggedVisitId: null }
+  } else if (!candidate.awayStartedAt) {
+    // Primera lectura fuera del radio: todavía no se da la parada por
+    // terminada (podría ser solo ruido de GPS) — se marca el reloj de
+    // confirmación y se espera a ver si se repite.
+    candidate.awayStartedAt = now
+    persistCandidate(candidate)
+  } else if (now - candidate.awayStartedAt >= AWAY_CONFIRM_MS) {
+    // Lleva de verdad un buen rato fuera: ahora sí es otra parada.
     if (candidate.loggedVisitId) {
       closePlaceVisit(candidate.loggedVisitId, new Date(candidate.lastSeenAt).toISOString()).catch(() => {})
     }
+    visitCandidate = newCandidate(memberId, latitude, longitude, now)
+    persistCandidate(visitCandidate)
   }
+  // Si sigue fuera pero AWAY_CONFIRM_MS no ha pasado todavía, no se
+  // toca nada — se sigue esperando confirmación sin perder la parada.
 }
 
 // El navegador (sobre todo en móvil, con la pantalla apagada o la app
@@ -172,6 +248,7 @@ export function stopSharing() {
     closePlaceVisit(visitCandidate.loggedVisitId, new Date().toISOString()).catch(() => {})
   }
   visitCandidate = null
+  persistCandidate(null)
   notify()
 }
 

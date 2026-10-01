@@ -11,6 +11,7 @@ vi.mock('@/data/location', () => ({
   recordPlaceVisit: vi.fn().mockResolvedValue('visita-por-defecto'),
   closePlaceVisit: vi.fn().mockResolvedValue(undefined),
   updateMemberLocation: vi.fn().mockResolvedValue(undefined),
+  appendLocationHistoryPoint: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/services/reverseGeocode', () => ({
   reverseGeocodePlaceName: vi.fn().mockResolvedValue('Casa'),
@@ -36,10 +37,13 @@ function fakeStorage() {
 
 const HOME = { latitude: 40, longitude: -3 }
 const FAR = { latitude: 40.01, longitude: -3 } // ~1.1 km — bien fuera del radio de 120 m
+const JITTER_NEAR_HOME = { latitude: 40.00005, longitude: -3 } // ~5.5 m — ruido de GPS, no un movimiento real
+const NEARBY_MOVED = { latitude: 40.0005, longitude: -3 } // ~55 m — un movimiento real, aunque corto
 
 const STAY_MIN_MS = 6 * 60 * 1000
 const AWAY_CONFIRM_MS = 3 * 60 * 1000
 const RESUME_GAP_MS = 20 * 60 * 1000
+const MIN_HISTORY_INTERVAL_MS = 5 * 60 * 1000
 
 async function flush() {
   await vi.advanceTimersByTimeAsync(0)
@@ -157,6 +161,42 @@ describe('historial de sitios: recargar la aplicación a media estancia (bug rea
     await ping(HOME)
 
     expect(second.data.closePlaceVisit).toHaveBeenCalledWith('visita-casa', expect.any(String))
+  })
+})
+
+describe('rastro de 24h en el mapa (bug real: "ha llevado a Erik al colegio y no aparece ese movimiento")', () => {
+  it('el ruido de GPS quieta en el mismo sitio no añade puntos nuevos al rastro', async () => {
+    const { mod, data } = await freshModule()
+    mod.startSharing('m1')
+    await ping(HOME)
+    expect(data.appendLocationHistoryPoint).toHaveBeenCalledTimes(1) // el primer punto siempre se guarda
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    await ping(JITTER_NEAR_HOME) // ruido GPS de unos metros, sin tiempo suficiente de por medio
+    await vi.advanceTimersByTimeAsync(10_000)
+    await ping(HOME)
+
+    expect(data.appendLocationHistoryPoint).toHaveBeenCalledTimes(1)
+  })
+
+  it('un movimiento real (aunque corto) sí añade un punto nuevo', async () => {
+    const { mod, data } = await freshModule()
+    mod.startSharing('m1')
+    await ping(HOME)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await ping(NEARBY_MOVED)
+
+    expect(data.appendLocationHistoryPoint).toHaveBeenCalledTimes(2)
+  })
+
+  it('aunque siga quieta del todo, de vez en cuando se guarda un punto (para que se note "ha estado aquí desde-hasta")', async () => {
+    const { mod, data } = await freshModule()
+    mod.startSharing('m1')
+    await ping(HOME)
+    await vi.advanceTimersByTimeAsync(MIN_HISTORY_INTERVAL_MS)
+    await ping(HOME)
+
+    expect(data.appendLocationHistoryPoint).toHaveBeenCalledTimes(2)
   })
 })
 

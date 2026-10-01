@@ -119,26 +119,36 @@ export async function listMemberLocations(): Promise<MemberLocation[]> {
   }))
 }
 
-// Sustituye (upsert) la última posición conocida, y ADEMÁS añade un
-// punto al rastro de las últimas 24h (member_location_history, con
-// purga automática — nunca queda más histórico que eso) para poder
-// dibujar la ruta del día en el mapa.
+// Sustituye (upsert) la última posición conocida — esto sí en CADA
+// posición GPS que llega, para que el punto en el mapa esté siempre al
+// día. El rastro de las últimas 24h es aparte (appendLocationHistoryPoint
+// más abajo): guardar ahí también en cada posición desbordaba el límite
+// de puntos en pocas horas quieta en un solo sitio (ver
+// services/locationSharing.ts).
 export async function updateMemberLocation(memberId: string, latitude: number, longitude: number): Promise<void> {
   const familyId = await currentFamilyId()
-  const recordedAt = new Date().toISOString()
   const { error } = await supabase.from('member_locations').upsert({
     member_id: memberId,
     family_id: familyId,
     latitude,
     longitude,
-    recorded_at: recordedAt,
+    recorded_at: new Date().toISOString(),
   })
   if (error) throw error
+}
 
-  const { error: historyError } = await supabase
+// Añade un punto al rastro de las últimas 24h (member_location_history,
+// con purga automática — nunca queda más histórico que eso) para poder
+// dibujar la ruta del día en el mapa. A diferencia de updateMemberLocation
+// (arriba), NO se llama en cada posición GPS — ver services/locationSharing.ts,
+// shouldRecordHistoryPoint: solo cuando de verdad aporta algo nuevo al
+// trazo (se ha movido, o ha pasado un rato quieta en el mismo sitio).
+export async function appendLocationHistoryPoint(memberId: string, latitude: number, longitude: number): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
     .from('member_location_history')
-    .insert({ member_id: memberId, family_id: familyId, latitude, longitude, recorded_at: recordedAt })
-  if (historyError) throw historyError
+    .insert({ member_id: memberId, family_id: familyId, latitude, longitude, recorded_at: new Date().toISOString() })
+  if (error) throw error
 }
 
 // Rastro de las últimas 24h de un miembro, más antiguo primero (para

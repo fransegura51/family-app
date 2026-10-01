@@ -15,7 +15,7 @@
 // cambia es que, una vez elegido, se recuerda (localStorage) y se
 // retoma solo al volver a abrir la aplicación, en vez de tener que
 // volver a la pantalla de Ubicación y tocarlo cada vez.
-import { closePlaceVisit, listPlaces, recordPlaceVisit, updateMemberLocation } from '@/data/location'
+import { appendLocationHistoryPoint, closePlaceVisit, listPlaces, recordPlaceVisit, updateMemberLocation } from '@/data/location'
 import { watchPosition } from '@/services/geolocation'
 import { distanceMeters } from '@/domain/geo'
 import { reverseGeocodePlaceName } from '@/services/reverseGeocode'
@@ -36,6 +36,30 @@ let lastError: string | null = null
 let lastPosition: LastPosition | null = null
 let lastUpdateAt = 0
 const listeners = new Set<Listener>()
+
+// Rastro de las últimas 24h en crudo (member_location_history, lo que
+// dibuja la ruta del día en el mapa — distinto del historial de SITIOS de
+// abajo) — petición real: "Jennifer ha hecho movimientos distintos esta
+// mañana a los que salen en el mapa... ha llevado a Erik al colegio y no
+// aparece ese movimiento". Antes se guardaba un punto en CADA posición GPS
+// (cada pocos segundos, incluso completamente quieta en casa, por el ruido
+// normal de la señal en interiores) — con el límite de 2000 puntos/24h
+// (data/location.ts, listMemberLocationHistory) eso se agotaba en unas
+// pocas horas quieta en un solo sitio, así que la consulta de "los últimos
+// 2000 puntos" dejaba fuera tramos reales de más temprano, como un
+// trayecto en coche (y de paso explica el garabato de líneas cruzadas, casi
+// todas en el mismo punto, que se veía en el mapa). Ahora solo se guarda un
+// punto nuevo si de verdad aporta algo: se ha movido lo suficiente, o ha
+// pasado un buen rato desde el último.
+const MIN_HISTORY_DISTANCE_M = 30
+const MIN_HISTORY_INTERVAL_MS = 5 * 60 * 1000
+let lastHistoryPoint: { latitude: number; longitude: number; at: number } | null = null
+
+function shouldRecordHistoryPoint(latitude: number, longitude: number, now: number): boolean {
+  if (!lastHistoryPoint) return true
+  if (now - lastHistoryPoint.at >= MIN_HISTORY_INTERVAL_MS) return true
+  return distanceMeters(lastHistoryPoint.latitude, lastHistoryPoint.longitude, latitude, longitude) >= MIN_HISTORY_DISTANCE_M
+}
 
 // Historial de SITIOS (no de puntos GPS en crudo, ver migración
 // 0058_place_visits) — petición real: "un desplegable con los sitios
@@ -240,6 +264,7 @@ export function stopSharing() {
   lastError = null
   lastPosition = null
   lastUpdateAt = 0
+  lastHistoryPoint = null
   persist(null)
   // Cierra la parada actual (si llegó a reconocerse) al dejar de
   // compartir — que "hasta cuándo" quede fijado en vez de abierto para
@@ -259,6 +284,11 @@ export function stopSharing() {
 // necesite reiniciarse.
 export function startSharing(memberId: string, force = false) {
   if (currentMemberId === memberId && currentStop && !force) return // ya en marcha como esta persona
+  // Al cambiar de persona (no al reiniciar el watch de la misma, que pasa
+  // a menudo por las redes de seguridad de abajo) se olvida el último punto
+  // del rastro — si no, el primer punto de alguien nuevo se compararía con
+  // la posición de quien compartía antes.
+  if (currentMemberId !== memberId) lastHistoryPoint = null
   currentStop?.()
   lastError = null
   currentMemberId = memberId
@@ -277,6 +307,10 @@ export function startSharing(memberId: string, force = false) {
           lastError = err.message
           notify()
         })
+      if (shouldRecordHistoryPoint(coords.latitude, coords.longitude, lastUpdateAt)) {
+        lastHistoryPoint = { latitude: coords.latitude, longitude: coords.longitude, at: lastUpdateAt }
+        appendLocationHistoryPoint(memberId, coords.latitude, coords.longitude).catch(() => {})
+      }
       // Independiente del guardado de arriba: no debe romper el
       // compartir en sí si falla el reconocimiento del sitio.
       trackVisit(memberId, coords.latitude, coords.longitude).catch(() => {})

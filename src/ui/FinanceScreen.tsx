@@ -6215,6 +6215,7 @@ function ReceiptForm({
           <label>Foto o archivo</label>
           <FileOrPdfPicker
             file={file}
+            sheetTitle="Añadir ticket"
             onChange={(f) => {
               setFile(f)
               setLines([])

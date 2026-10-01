@@ -26,11 +26,21 @@ const SAVE_AS_RE = /^guarda(?:lo|la|me(?:lo|la)?)?\s+como\s+(.+)$/
 // Madrid", "qué distancia tengo hasta X", "cuánto queda hasta Valencia", "cuántos kilómetros
 // tenemos a Bilbao", "qué se tarda en llegar a Alicante" — con "cuanto"/"cuantos"/"cuantas"/"que"
 // delante; "tiempo"/"kilómetros"/"km"/"distancia" de por medio (o nada); varios verbos
-// (tarda/tardamos/tardo/tengo/tenemos/hay/queda/quedan); y "en coche"/"en llegar"/"en el coche"
-// antes de la "a"/"hasta" final, o nada. La respuesta ya lleva minutos Y km siempre
-// (pepa/location.ts), así que da igual por cuál de las dos se pregunte.
+// (tarda/tardamos/tardo/tengo/tenemos/hay/queda/quedan/falta/faltan); y "en coche"/"en llegar"/"en
+// el coche"/"para llegar" antes de la "a"/"hasta"/"hacia" final, o nada. La respuesta ya lleva
+// minutos Y km siempre (pepa/location.ts), así que da igual por cuál de las dos se pregunte.
+//
+// SIN "^" delante a propósito (petición real, 01/10/2026: "le estoy preguntando cuánto se tarda
+// hasta Barcelona y no sabe decírmelo... a la tercera o a la cuarta vez" lo entendía bien, con la
+// MISMA pregunta repetida) — el dictado por voz a veces mete ruido delante sin que la persona lo
+// note (un carraspeo, un "eh" que el teléfono transcribe, un trocito de "Pepa" que no se ha quitado
+// del todo): exigir que la frase entera empezara justo por "cuánto"/"qué" tiraba a la basura
+// preguntas que, quitando ese ruido inicial, eran perfectamente válidas. Ahora basta con que el
+// patrón aparezca en algún punto de lo dicho, siga sin romperse hasta el final, y el sitio sea
+// literalmente lo último (así no confunde "cuánto cuesta la cena de esta noche" con una pregunta de
+// Ubicación, que no termina en "a/hasta/hacia + sitio").
 const ETA_RE =
-  /^(?:cuant[oa]s?|que)\s+(?:(?:tiempo|kilometros|km|distancia)\s+)?(?:se tarda|tardamos|tardo|tengo|tenemos|hay|quedan?)(?:\s+en\s+(?:coche|el coche|llegar))?\s+(?:a(?:l)?|hasta)\s+(.+)$/
+  /(?:cuant[oa]s?|que)\s+(?:(?:tiempo|kilometros|km|distancia)\s+)?(?:se tarda|tardamos|tardo|tengo|tenemos|hay|quedan?|faltan?)(?:\s+(?:en\s+(?:coche|el coche|llegar)|para\s+llegar))?\s+(?:a(?:l)?|hasta|hacia)\s+(.+)$/
 
 // "Quién está más cerca de X", "quién anda más cerca del cole".
 const NEAREST_RE = /^quien(?:\s+(?:esta|anda|vive))?\s+mas cerca\s+(?:de(?:l)?|a)\s+(.+)$/

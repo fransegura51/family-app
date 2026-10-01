@@ -70,6 +70,21 @@ describe('routeLocation: tiempo en coche', () => {
     expect(routeLocation('cuántos kilómetros tenemos a Bilbao')).toEqual({ type: 'eta', place: 'bilbao' })
     expect(routeLocation('qué se tarda en llegar a Alicante')).toEqual({ type: 'eta', place: 'alicante' })
   })
+
+  it('con ruido delante de la frase, del dictado por voz (petición real: "a la tercera o a la cuarta vez" lo entendía)', () => {
+    expect(routeLocation('eh, cuánto tiempo tengo hasta Barcelona')).toEqual({ type: 'eta', place: 'barcelona' })
+    expect(routeLocation('bueno, cuánto se tarda hasta Barcelona')).toEqual({ type: 'eta', place: 'barcelona' })
+  })
+
+  it('"hacia" y "para llegar", además de "a"/"hasta"/"en coche"/"en llegar"', () => {
+    expect(routeLocation('cuánto se tarda hacia Barcelona')).toEqual({ type: 'eta', place: 'barcelona' })
+    expect(routeLocation('cuánto tardo para llegar a Barcelona')).toEqual({ type: 'eta', place: 'barcelona' })
+  })
+
+  it('"cuánto falta..." (petición real, misma familia que "cuánto queda...")', () => {
+    expect(routeLocation('cuánto falta hasta Barcelona')).toEqual({ type: 'eta', place: 'barcelona' })
+    expect(routeLocation('cuántos kilómetros faltan hasta Barcelona')).toEqual({ type: 'eta', place: 'barcelona' })
+  })
 })
 
 describe('routeLocation: quién está más cerca', () => {

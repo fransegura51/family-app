@@ -31,7 +31,7 @@ export interface LocationDeps {
   drivingEta(
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number },
-  ): Promise<{ minutes: number; km: number; delayMinutes: number } | null>
+  ): Promise<{ minutes: number; km: number; delayMinutes: number; polyline: string | null } | null>
 }
 
 function emptyContext(): ActionContext {
@@ -131,6 +131,12 @@ async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkO
   if (!origin) return { kind: 'answer', text: 'No he podido saber dónde estás ahora mismo — revisa el permiso de ubicación del teléfono.' }
   const eta = await deps.drivingEta(origin, destination)
   if (!eta) return { kind: 'answer', text: `No he podido calcular el tiempo en coche hasta ${destination.label} ahora mismo.` }
+  // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — si la pantalla de
+  // Ubicación está abierta (en este u otro momento), dibuja la ruta; si no, no pasa nada (el mismo
+  // patrón que ya usaba "busca una tienda" con "family-app:focus-store", en VoiceCapture.tsx).
+  if (eta.polyline && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('family-app:route-computed', { detail: { polyline: eta.polyline } }))
+  }
   return {
     kind: 'answer',
     text: `Desde donde estás, hasta ${destination.label} se tarda unos ${formatDuration(eta.minutes)} en coche (${eta.km} km), ${trafficDescription(eta.minutes, eta.delayMinutes)}.`,

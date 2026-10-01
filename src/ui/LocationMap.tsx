@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { loadGoogleMaps } from '@/services/googleMapsLoader'
 import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
+import { decodePolyline } from '@/domain/geo'
 import type { FamilyMember, MemberLocation, MemberLocationPoint } from '@/domain/types'
 
 function markerIconHtml(member: FamilyMember, photoUrl: string | undefined): string {
@@ -97,18 +98,26 @@ export function LocationMap({
   histories,
   photoUrls,
   onSelectMember,
+  routePolyline,
 }: {
   members: FamilyMember[]
   locations: MemberLocation[]
   histories: Record<string, MemberLocationPoint[]>
   photoUrls: Record<string, string>
   onSelectMember?: (memberId: string) => void
+  // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — el trazado (formato
+  // polyline de Google, sin decodificar) de la última ruta calculada, o null si no hay ninguna.
+  routePolyline?: string | null
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const googleRef = useRef<typeof google | null>(null)
   const markersRef = useRef<Map<string, PhotoMarkerOverlay>>(new Map())
   const polylinesRef = useRef<Map<string, google.maps.Polyline>>(new Map())
+  const routeLineRef = useRef<google.maps.Polyline | null>(null)
+  // Solo se vuelve a encuadrar el mapa cuando la ruta CAMBIA (no en cada
+  // render con la misma ruta) — mismo motivo que fittedIdsRef más abajo.
+  const fittedRouteRef = useRef<string | null>(null)
   // Recuerda a quién se le ajustó ya el encuadre — así solo se vuelve a
   // centrar/hacer zoom cuando aparece o desaparece alguien, no en cada
   // actualización de posición (antes el mapa "parpadeaba": se
@@ -156,6 +165,7 @@ export function LocationMap({
       mapRef.current = null
       markers.clear()
       polylines.clear()
+      routeLineRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -245,6 +255,40 @@ export function LocationMap({
     if (mapRef.current) render(pendingRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members, locations, histories, photoUrls])
+
+  // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — una línea aparte de
+  // las del rastro de 24h (esas son por persona, de su color; esta es LA ruta planeada hasta un
+  // destino, en el azul de Google Maps). Si el mapa todavía no ha cargado cuando llega la ruta, se
+  // pierde (no hay nada pendiente que reintentar) — en la práctica no pasa, porque una ruta solo
+  // llega después de pedirla a propósito, con la pantalla ya abierta un rato.
+  useEffect(() => {
+    const map = mapRef.current
+    const g = googleRef.current
+    if (!map || !g) return
+
+    if (!routePolyline) {
+      routeLineRef.current?.setMap(null)
+      routeLineRef.current = null
+      fittedRouteRef.current = null
+      return
+    }
+
+    const path = decodePolyline(routePolyline)
+    if (path.length === 0) return
+
+    if (routeLineRef.current) {
+      routeLineRef.current.setPath(path)
+    } else {
+      routeLineRef.current = new g.maps.Polyline({ path, strokeColor: '#4285F4', strokeWeight: 5, strokeOpacity: 0.85, map })
+    }
+
+    if (fittedRouteRef.current !== routePolyline) {
+      const bounds = new g.maps.LatLngBounds()
+      for (const point of path) bounds.extend(point)
+      map.fitBounds(bounds, 40)
+      fittedRouteRef.current = routePolyline
+    }
+  }, [routePolyline])
 
   return <div ref={containerRef} className="location-map" />
 }

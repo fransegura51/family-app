@@ -147,7 +147,17 @@ Deno.serve(async (req) => {
         // de las carreteras") — duration ya tiene en cuenta el tráfico actual (routingPreference
         // TRAFFIC_AWARE), staticDuration es sin tráfico; la diferencia entre las dos es cuánto
         // está afectando el tráfico de verdad ahora mismo, sin necesidad de pedir nada más.
-        headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters" },
+        // "routes.polyline.encodedPolyline" (petición real: "que me marque la ruta hasta Madrid
+        // como en Google Maps") — el trazado para dibujar en el mapa. Va en la MISMA llamada que ya
+        // se hacía para el tiempo en coche (no es una petición nueva), y no cambia el nivel de
+        // precio: ya se paga el nivel "Pro" por pedir TRAFFIC_AWARE; el trazado en sí (sin tráfico
+        // coloreado por tramos, eso sí sería "Enterprise") no sube de nivel según la documentación
+        // de precios de Google.
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters,routes.polyline.encodedPolyline",
+        },
         body: JSON.stringify({
           origin: { location: { latLng: { latitude: origin.latitude, longitude: origin.longitude } } },
           destination: { location: { latLng: { latitude: destination.latitude, longitude: destination.longitude } } },
@@ -165,7 +175,12 @@ Deno.serve(async (req) => {
       const staticSeconds = route.staticDuration ? parseInt(String(route.staticDuration).replace("s", ""), 10) : seconds
       const delayMinutes = Number.isFinite(staticSeconds) ? Math.round((seconds - staticSeconds) / 60) : 0
       return json({
-        eta: { minutes: Math.max(1, Math.round(seconds / 60)), km: Math.round((route.distanceMeters ?? 0) / 100) / 10, delayMinutes },
+        eta: {
+          minutes: Math.max(1, Math.round(seconds / 60)),
+          km: Math.round((route.distanceMeters ?? 0) / 100) / 10,
+          delayMinutes,
+          polyline: route.polyline?.encodedPolyline ?? null,
+        },
       })
     }
 

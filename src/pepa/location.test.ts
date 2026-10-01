@@ -112,13 +112,25 @@ describe('locationAction: guardar', () => {
 
 describe('locationAction: tiempo en coche', () => {
   it('calcula el tiempo hasta un lugar guardado', async () => {
-    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5, delayMinutes: 0 })
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5, delayMinutes: 0, polyline: null })
     const outcome = await locationAction('cuánto se tarda en coche a la farmacia', makeDeps({ drivingEta }))
     expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, { latitude: 40.42, longitude: -3.7, label: 'Farmacia' })
     expect(outcome).toEqual({
       kind: 'answer',
       text: 'Desde donde estás, hasta Farmacia se tarda unos 12 minutos en coche (4.5 km), con tráfico fluido, sin retenciones.',
     })
+  })
+
+  it('petición real: "que me marque la ruta hasta Madrid como en Google Maps" — avisa a la pantalla con el trazado', async () => {
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5, delayMinutes: 0, polyline: 'abc123' })
+    await locationAction('cuánto se tarda en coche a la farmacia', makeDeps({ drivingEta }))
+    expect(window.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'family-app:route-computed', detail: { polyline: 'abc123' } }))
+  })
+
+  it('sin trazado (Google no lo ha podido calcular), no avisa a la pantalla', async () => {
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5, delayMinutes: 0, polyline: null })
+    await locationAction('cuánto se tarda en coche a la farmacia', makeDeps({ drivingEta }))
+    expect(window.dispatchEvent).not.toHaveBeenCalled()
   })
 
   it('reconoce varias formas reales de preguntarlo, no solo "se tarda"', async () => {

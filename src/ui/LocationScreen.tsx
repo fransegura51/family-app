@@ -560,6 +560,20 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // cada persona) el contenido se reparte en estas 3 pestañas en vez de ir todo seguido en una sola
   // pantalla larga.
   const [panelTab, setPanelTab] = useState<'lugares' | 'estoy-aqui' | 'compartir'>('lugares')
+  // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — el trazado de la
+  // última ruta calculada, para dibujarla en LocationMap. Llega de dos sitios: tocar "ver tiempo en
+  // coche" en un lugar guardado (PlaceRow, aquí abajo, prop onRoute) o pedírselo a Pepa por voz
+  // desde cualquier pantalla (pepa/location.ts, evento "family-app:route-computed" — igual que ya
+  // hacía "busca una tienda" con "family-app:focus-store").
+  const [routePolyline, setRoutePolyline] = useState<string | null>(null)
+  useEffect(() => {
+    function handleRouteComputed(e: Event) {
+      const detail = (e as CustomEvent<{ polyline: string }>).detail
+      if (detail?.polyline) setRoutePolyline(detail.polyline)
+    }
+    window.addEventListener('family-app:route-computed', handleRouteComputed)
+    return () => window.removeEventListener('family-app:route-computed', handleRouteComputed)
+  }, [])
 
   // `silent` = refresco en segundo plano (la actualización periódica de
   // cada 30s) sin poner toda la pantalla en "Cargando…" — con `setLoading(true)`
@@ -712,6 +726,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           histories={histories}
           photoUrls={photoUrls}
           onSelectMember={setSelectedMemberId}
+          routePolyline={routePolyline}
         />
         <div className="location-map-chips">
           {members.map((m) => {
@@ -801,7 +816,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           {placesOpen && (
             <div className="event-list">
               {places.map((place) => (
-                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} />
+                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} onRoute={setRoutePolyline} />
               ))}
               {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
             </div>
@@ -1127,11 +1142,15 @@ function PlaceRow({
   locations,
   members,
   onChanged,
+  onRoute,
 }: {
   place: LocationPlace
   locations: MemberLocation[]
   members: FamilyMember[]
   onChanged: () => void
+  // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — se llama con el
+  // trazado en cuanto se calcula el tiempo en coche, para dibujarlo en el mapa de arriba.
+  onRoute: (polyline: string | null) => void
 }) {
   // Petición real: "quién está más cerca ahora mismo" — con la misma
   // distancia en línea recta que ya se calculaba (gratis, sin pedir nada
@@ -1194,7 +1213,9 @@ function PlaceRow({
     setEta(null)
     setEtaLoading(true)
     try {
-      setEta(await getDrivingEta(loc, place))
+      const result = await getDrivingEta(loc, place)
+      setEta(result)
+      if (result?.polyline) onRoute(result.polyline)
     } finally {
       setEtaLoading(false)
     }

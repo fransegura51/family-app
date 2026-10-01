@@ -12,6 +12,10 @@ export interface DrivingEta {
   // Minutos de más (o de menos, si es negativo) respecto a sin tráfico — petición real: "quiero
   // que me diga... el estado de las carreteras". 0 o negativo = fluido.
   delayMinutes: number
+  // El trazado de la ruta, codificado (formato polyline de Google) — petición real: "que me
+  // marque la ruta hasta Madrid como en Google Maps". null si Google no lo ha podido calcular.
+  // Se decodifica con domain/geo.ts, decodePolyline, justo antes de dibujarlo.
+  polyline: string | null
 }
 
 export async function getDrivingEta(

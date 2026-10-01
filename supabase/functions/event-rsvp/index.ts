@@ -94,6 +94,8 @@ function publicEvent(event: EventRow) {
   }
 }
 
+// Fallback heredado — se mantiene INTACTA, byte a byte: es el camino que debe seguir funcionando
+// exactamente igual para cualquier evento que todavía no tenga event_moments reales (Fase 1/Cierre Fase 2).
 function locationLines(event: EventRow, guest: Pick<GuestRow, "invite_scope"> | null): { icon: string; label: string }[] {
   const lines: { icon: string; label: string }[] = []
   if (DUAL_LOCATION_TYPES.has(event.type)) {
@@ -111,6 +113,71 @@ function locationLines(event: EventRow, guest: Pick<GuestRow, "invite_scope"> | 
     lines.push({ icon: "📍", label: event.venue_label })
   }
   return lines
+}
+
+// Cierre de Fase 2 — cuando el evento ya tiene event_moments reales, la página pública debe leer de ahí,
+// no de los campos heredados (que pueden haber quedado desactualizados en cuanto se edita un momento
+// desde la nueva UI de Gestionar evento/Configurador). Solo se exponen los campos que el invitado
+// necesita (título, fecha, hora, lugar mostrado) — nunca coordenadas/mapa (esta página hoy no pinta
+// ningún mapa; añadir el dato sin que nada lo use sería "campo interno de más" sin sentido), nunca
+// ningún campo interno. Un momento nunca se identifica por su título literal: solo se usa como texto.
+interface MomentRow {
+  id: string
+  title: string
+  moment_date: string | null
+  moment_time: string | null
+  location_label: string | null
+}
+
+function momentsLocationLines(moments: MomentRow[]): { icon: string; label: string }[] {
+  const lines: { icon: string; label: string }[] = []
+  let lastDate: string | null = null
+  for (const m of moments) {
+    if (m.moment_date && m.moment_date !== lastDate) {
+      const weekday = new Date(`${m.moment_date}T00:00`).toLocaleDateString("es-ES", { weekday: "long" })
+      const [y, mo, d] = m.moment_date.split("-")
+      lines.push({ icon: "📅", label: `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${d}/${mo}/${y}` })
+      lastDate = m.moment_date
+    }
+    const time = m.moment_time ? ` · ${m.moment_time.slice(0, 5)}` : ""
+    const location = m.location_label ? `: ${m.location_label}` : ""
+    lines.push({ icon: "📍", label: `${m.title}${location}${time}` })
+  }
+  return lines
+}
+
+// Compatibilidad — mismo criterio que resolveGuestInvitedMoments (src/domain/events.ts, Fase 1): enlaces
+// explícitos de event_guest_moments mandan siempre que existan; sin ellos, se deriva de invite_scope. Esa
+// comparación de título SOLO tiene sentido aquí porque el backfill de la Fase 1 nombró esos 2 momentos
+// heredados literalmente "Ceremonia"/"Celebración" — no es una regla general de identificar por título.
+function visibleMomentsForGuest(moments: MomentRow[], guestMomentIds: Set<string> | null, inviteScope: string | null): MomentRow[] {
+  if (guestMomentIds && guestMomentIds.size > 0) return moments.filter((m) => guestMomentIds.has(m.id))
+  const scope = inviteScope ?? "ambas"
+  if (scope === "solo_ceremonia") return moments.filter((m) => m.title === "Ceremonia")
+  if (scope === "solo_celebracion") return moments.filter((m) => m.title === "Celebración")
+  return moments
+}
+
+async function resolveLocationLines(
+  admin: ReturnType<typeof createClient>,
+  event: EventRow,
+  guest: Pick<GuestRow, "invite_scope"> | null,
+  guestId: string | null,
+): Promise<{ icon: string; label: string }[]> {
+  const { data: momentsData } = await admin
+    .from("event_moments")
+    .select("id, title, moment_date, moment_time, location_label")
+    .eq("event_id", event.id)
+    .order("sort_order", { ascending: true })
+  const moments = (momentsData ?? []) as MomentRow[]
+  if (moments.length === 0) return locationLines(event, guest)
+
+  let guestMomentIds: Set<string> | null = null
+  if (guestId) {
+    const { data: links } = await admin.from("event_guest_moments").select("moment_id").eq("guest_id", guestId)
+    guestMomentIds = new Set((links ?? []).map((l) => l.moment_id as string))
+  }
+  return momentsLocationLines(visibleMomentsForGuest(moments, guestMomentIds, guest?.invite_scope ?? null))
 }
 
 const EVENT_SELECT =
@@ -158,9 +225,10 @@ Deno.serve(async (req) => {
 
       const ev = event as EventRow
       if (ev.status === "archivado") return json({ state: "archived", event: publicEvent(ev) })
+      const openLines = await resolveLocationLines(admin, ev, null, null)
       return json({
         state: "open_form",
-        event: { ...publicEvent(ev), infoLines: [...publicEvent(ev).infoLines, ...locationLines(ev, null)] },
+        event: { ...publicEvent(ev), infoLines: [...publicEvent(ev).infoLines, ...openLines] },
       })
     }
 
@@ -200,9 +268,10 @@ Deno.serve(async (req) => {
     }
 
     if (ev.status === "archivado") return json({ state: "archived", event: publicEvent(ev) })
+    const guestLines = await resolveLocationLines(admin, ev, g, g.id)
     return json({
       state: "form",
-      event: { ...publicEvent(ev), infoLines: [...publicEvent(ev).infoLines, ...locationLines(ev, g)] },
+      event: { ...publicEvent(ev), infoLines: [...publicEvent(ev).infoLines, ...guestLines] },
       guest: {
         displayName: g.display_name,
         adultsCount: g.adults_count,

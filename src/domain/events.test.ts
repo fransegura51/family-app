@@ -18,8 +18,11 @@ import {
   eventLocationMapLines,
   eventPlanningConfiguratorTitle,
   generateEventPlan,
+  hasRealMoments,
   INVITATION_TEMPLATES,
   isOverdueTask,
+  momentsLocationLines,
+  momentsLocationMapLines,
   pickNextMilestone,
   resolveEventMoments,
   resolveGuestInvitedMoments,
@@ -929,6 +932,90 @@ describe('eventPlanningConfiguratorTitle — Fase 2, título del acordeón adapt
     expect(eventPlanningConfiguratorTitle('cumpleanos')).toBe('Cómo queréis que sea el evento')
     expect(eventPlanningConfiguratorTitle('celebracion')).toBe('Cómo queréis que sea el evento')
     expect(eventPlanningConfiguratorTitle('personalizado')).toBe('Cómo queréis que sea el evento')
+  })
+})
+
+describe('hasRealMoments — Cierre de Fase 2, una sola fuente de verdad', () => {
+  it('es false para una lista vacía (evento sin momentos ni campos heredados)', () => {
+    expect(hasRealMoments([])).toBe(false)
+  })
+
+  it('es false para momentos sintetizados (isLegacy) — esos nunca cuentan como "reales"', () => {
+    expect(hasRealMoments([makeMoment({ isLegacy: true })])).toBe(false)
+  })
+
+  it('es true en cuanto hay al menos un momento real', () => {
+    expect(hasRealMoments([makeMoment({})])).toBe(true)
+  })
+})
+
+describe('momentsLocationLines — Cierre de Fase 2, nunca identifica un momento por su título literal', () => {
+  it('agrupa por fecha cuando varios momentos son de días distintos (boda de varios días)', () => {
+    const lines = momentsLocationLines([
+      makeMoment({ id: 'm1', title: 'Matrimonio civil', momentDate: '2027-02-12', momentTime: '11:00:00', locationLabel: 'Juzgado de Orihuela' }),
+      makeMoment({ id: 'm2', title: 'Ceremonia simbólica', momentDate: '2027-02-13', momentTime: '12:00:00', locationLabel: 'Finca X' }),
+      makeMoment({ id: 'm3', title: 'Celebración', momentDate: '2027-02-13', momentTime: '14:00:00', locationLabel: 'Finca X' }),
+    ])
+    const dateHeaders = lines.filter((l) => l.startsWith('📅'))
+    expect(dateHeaders).toHaveLength(2) // un encabezado por día distinto, no por momento
+    expect(lines).toContain('📍 Matrimonio civil: Juzgado de Orihuela · 11:00')
+    expect(lines).toContain('📍 Ceremonia simbólica: Finca X · 12:00')
+    expect(lines).toContain('📍 Celebración: Finca X · 14:00')
+  })
+
+  it('un nombre de momento totalmente libre se muestra tal cual, sin que el código lo reconozca', () => {
+    const lines = momentsLocationLines([makeMoment({ title: 'Brunch de despedida', locationLabel: 'Casa de la abuela' })])
+    expect(lines).toContain('📍 Brunch de despedida: Casa de la abuela')
+  })
+
+  it('momento sin hora/lugar no rompe nada — solo se omite esa parte', () => {
+    const lines = momentsLocationLines([makeMoment({ title: 'Fiesta', momentTime: null, locationLabel: null })])
+    expect(lines).toContain('📍 Fiesta')
+  })
+})
+
+describe('momentsLocationMapLines — Cierre de Fase 2', () => {
+  it('un enlace por momento con lugar, usando el título solo como etiqueta', () => {
+    const lines = momentsLocationMapLines([makeMoment({ title: 'Juzgado', locationLabel: 'Juzgado de Orihuela' })])
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('Cómo llegar a Juzgado')
+    expect(lines[0]).toContain(encodeURIComponent('Juzgado de Orihuela'))
+  })
+
+  it('omite los momentos sin lugar (nada que enlazar)', () => {
+    expect(momentsLocationMapLines([makeMoment({ locationLabel: null })])).toHaveLength(0)
+  })
+})
+
+describe('buildInvitationMessage — Cierre de Fase 2, moments-first cuando hay momentos reales', () => {
+  it('con momentos reales, lista cada uno genéricamente (nunca asume exactamente Ceremonia+Celebración)', () => {
+    const event = makeEvent({ type: 'boda', dateStatus: 'confirmada', eventDate: '2027-02-13', title: 'Boda de Ana y Luis' })
+    const moments = [
+      makeMoment({ title: 'Matrimonio civil', locationLabel: 'Juzgado de Orihuela', momentTime: '11:00:00' }),
+      makeMoment({ title: 'Ceremonia simbólica', locationLabel: 'Finca X', momentTime: '12:00:00' }),
+      makeMoment({ title: 'Celebración', locationLabel: 'Finca X', momentTime: '14:00:00' }),
+    ]
+    const text = buildInvitationMessage(event, moments)
+    expect(text).toContain('Matrimonio civil en Juzgado de Orihuela a las 11:00')
+    expect(text).toContain('Ceremonia simbólica en Finca X a las 12:00')
+    expect(text).toContain('Celebración en Finca X a las 14:00')
+  })
+
+  it('sin pasar momentos (o con la lista vacía), el comportamiento heredado queda exactamente igual que antes', () => {
+    const event = makeEvent({ type: 'boda', dateStatus: 'confirmada', eventDate: '2027-02-13', ceremonyLocationLabel: 'Iglesia', celebrationLocationLabel: 'Restaurante' })
+    expect(buildInvitationMessage(event)).toBe(buildInvitationMessage(event, []))
+    expect(buildInvitationMessage(event)).toContain('💍 Iglesia')
+  })
+
+  it('con momentos solo sintéticos (isLegacy), cae al mismo texto heredado de siempre', () => {
+    const event = makeEvent({ type: 'boda', dateStatus: 'confirmada', eventDate: '2027-02-13', ceremonyLocationLabel: 'Iglesia', celebrationLocationLabel: 'Restaurante' })
+    const legacyMoments = resolveEventMoments(event, [])
+    expect(buildInvitationMessage(event, legacyMoments)).toBe(buildInvitationMessage(event))
+  })
+
+  it('un cumpleaños (no es de doble ubicación) ignora cualquier momento que le pasen — su redacción no cambia', () => {
+    const event = makeEvent({ type: 'cumpleanos', dateStatus: 'confirmada', eventDate: '2027-02-13', venueLabel: 'Casa' })
+    expect(buildInvitationMessage(event, [makeMoment({})])).toBe(buildInvitationMessage(event))
   })
 })
 

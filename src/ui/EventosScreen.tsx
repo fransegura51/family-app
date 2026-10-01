@@ -122,13 +122,17 @@ import {
   EVENT_SERVICE_META,
   type EventHealthLevel,
   generateEventPlan,
+  hasRealMoments,
   INCLUDABLE_SERVICES_BY_TYPE,
   INVITATION_TEMPLATES,
   isOverdueTask,
   isToday,
+  momentsLocationLines,
+  momentsLocationMapLines,
   rankUpcomingTasks,
   RECOMMENDED_MODULES,
   resolveEventMoments,
+  resolveGuestInvitedMoments,
   sortInvitationTemplatesForEvent,
 } from '@/domain/events'
 import { loadConfiguratorOpen, saveConfiguratorOpen } from '@/state/eventPlanningConfiguratorState'
@@ -149,6 +153,7 @@ import type {
   EventGuestInviteScope,
   EventGuestMember,
   EventGuestMemberType,
+  EventGuestMoment,
   EventGuestRsvpStatus,
   EventInvitation,
   EventMenuItem,
@@ -2679,9 +2684,13 @@ function EventOpenLinkBlock({ event }: { event: FamilyEvent }) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
+  // Cierre de Fase 2 — enlace abierto: sin invitado concreto, así que todos los momentos reales se
+  // consideran visibles (mismo criterio que ya tenía inviteScope:null → 'ambas').
+  const [moments, setMoments] = useState<EventMoment[]>([])
 
   useEffect(() => {
     if (event.openRsvpToken) getEventOpenRsvpUrl(event.id).then(setUrl).catch(() => {})
+    listEventMoments(event.id).then(setMoments).catch(() => {})
   }, [event.id, event.openRsvpToken])
 
   async function handleActivate() {
@@ -2728,7 +2737,9 @@ function EventOpenLinkBlock({ event }: { event: FamilyEvent }) {
 
   async function handleShare() {
     if (!url) return
-    const text = [`Confirma tu asistencia a "${event.title}" aquí: ${url}`, ...eventLocationMapLines(event, { inviteScope: null })].join('\n')
+    const resolvedMoments = resolveEventMoments(event, moments)
+    const mapLines = hasRealMoments(resolvedMoments) ? momentsLocationMapLines(resolvedMoments) : eventLocationMapLines(event, { inviteScope: null })
+    const text = [`Confirma tu asistencia a "${event.title}" aquí: ${url}`, ...mapLines].join('\n')
     try {
       const shown = await shareText({ title: event.title, text })
       setNotice(shown ? null : 'Copiado al portapapeles.')
@@ -3645,12 +3656,18 @@ function InvitationModal({
   const [customTemplateKey, setCustomTemplateKey] = useState<string | null>(null)
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null)
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+  // Cierre de Fase 2 — event_moments es la fuente de verdad cuando existe; eventLocationLines/
+  // eventLocationMapLines (heredadas) solo se usan si el evento todavía no tiene momentos reales.
+  const [moments, setMoments] = useState<EventMoment[]>([])
+  const [guestMomentLinks, setGuestMomentLinks] = useState<EventGuestMoment[]>([])
 
   useEffect(() => {
     getGuestRsvpUrl(guest.id)
       .then(setRsvpUrl)
       .catch((err) => setError(errorMessage(err, 'No se pudo generar el enlace')))
       .finally(() => setLoading(false))
+    listEventMoments(event.id).then(setMoments).catch(() => {})
+    listEventGuestMoments(event.id).then(setGuestMomentLinks).catch(() => {})
     // El diseño en capas (Fase 3) es opcional — si no se ha creado
     // ninguno todavía, seguimos con la tarjeta de tema simple de
     // siempre; un fallo aquí no debe bloquear el enlace de RSVP.
@@ -3678,7 +3695,10 @@ function InvitationModal({
   }, [guest.id, event.id])
 
   const template = INVITATION_TEMPLATES.find((t) => t.key === templateKey) ?? INVITATION_TEMPLATES[0]
-  const infoLines = [eventDateLine(event), ...eventLocationLines(event, guest)]
+  const resolvedMoments = resolveEventMoments(event, moments)
+  const usingRealMoments = hasRealMoments(resolvedMoments)
+  const guestMoments = resolveGuestInvitedMoments(guest, resolvedMoments, guestMomentLinks)
+  const infoLines = [eventDateLine(event), ...(usingRealMoments ? momentsLocationLines(guestMoments) : eventLocationLines(event, guest))]
 
   // Petición real: "prepara que cuando se mande la invitación se mande
   // automáticamente también la ubicación" — la invitación es una
@@ -3686,7 +3706,8 @@ function InvitationModal({
   // de mapa real va en el mismo texto que la acompaña al compartir, no
   // hace falta un paso aparte.
   function buildShareText(): string {
-    return [`${EVENT_TYPE_META[event.type].icon} ${event.title}`, ...infoLines, ...eventLocationMapLines(event, guest), '', message, '', `Confirma tu asistencia aquí: ${rsvpUrl}`].join('\n')
+    const mapLines = usingRealMoments ? momentsLocationMapLines(guestMoments) : eventLocationMapLines(event, guest)
+    return [`${EVENT_TYPE_META[event.type].icon} ${event.title}`, ...infoLines, ...mapLines, '', message, '', `Confirma tu asistencia aquí: ${rsvpUrl}`].join('\n')
   }
 
   async function handleShare() {

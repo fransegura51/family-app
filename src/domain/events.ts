@@ -605,6 +605,67 @@ export function resolveGuestInvitedMoments(guest: Pick<EventGuest, 'id' | 'invit
   return moments.filter((m) => m.title === 'Celebración')
 }
 
+// Cierre de Fase 2 — ¿debe un consumidor (invitación/RSVP) construir su texto a partir de event_moments
+// reales, o seguir con el fallback heredado? resolveEventMoments ya devuelve TODO sintético o TODO real
+// (nunca mixto), así que basta con mirar el primero. Nunca mantiene una sincronización bidireccional con
+// los campos heredados — cuando hay momentos reales, son la única fuente que se lee.
+export function hasRealMoments(moments: EventMoment[]): boolean {
+  return moments.length > 0 && !moments[0].isLegacy
+}
+
+function shortSpanishDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-')
+  return `${d}/${m}/${y}`
+}
+
+// Cierre de Fase 2 — versión genérica para cuando el evento ya tiene event_moments reales: agrupa por
+// fecha (un encabezado por día distinto, para bodas de varios días) y nunca identifica un momento por su
+// título literal — el título solo se usa como texto a mostrar, el orden y la fecha ya los dan los propios
+// datos. Sustituye a eventLocationLines SOLO en esa situación; eventLocationLines sigue intacta como
+// fallback cuando no hay momentos reales.
+export function momentsLocationLines(moments: EventMoment[]): string[] {
+  const lines: string[] = []
+  let lastDate: string | null = null
+  for (const m of moments) {
+    if (m.momentDate && m.momentDate !== lastDate) {
+      const weekday = new Date(`${m.momentDate}T00:00`).toLocaleDateString('es-ES', { weekday: 'long' })
+      lines.push(`📅 ${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${shortSpanishDate(m.momentDate)}`)
+      lastDate = m.momentDate
+    }
+    const time = m.momentTime ? ` · ${m.momentTime.slice(0, 5)}` : ''
+    const location = m.locationLabel ? `: ${m.locationLabel}` : ''
+    lines.push(`📍 ${m.title}${location}${time}`)
+  }
+  return lines
+}
+
+// Cierre de Fase 2 — equivalente moments-first de eventLocationMapLines: un enlace de mapa por momento con
+// lugar, usando sus coordenadas reales si las tiene (igual que ya hace buildMapsUrl en todo el resto de la
+// app). Mismo criterio de "nunca por título": el nombre del momento es solo la etiqueta del enlace.
+export function momentsLocationMapLines(moments: EventMoment[]): string[] {
+  const lines: string[] = []
+  for (const m of moments) {
+    if (!m.locationLabel) continue
+    const coords = m.locationLatitude != null && m.locationLongitude != null ? { latitude: m.locationLatitude, longitude: m.locationLongitude } : null
+    lines.push(`📍 Cómo llegar a ${m.title}: ${buildMapsUrl(m.locationLabel, coords)}`)
+  }
+  return lines
+}
+
+// Cierre de Fase 2 — redacción corta y genérica para buildInvitationMessage cuando hay momentos reales:
+// una frase de apertura + una línea por momento, en el orden ya guardado. Nunca asume exactamente 2
+// momentos ni los identifica por título — a diferencia de la rama heredada de abajo (que sí sabe que son
+// "ceremonia"/"celebración" porque son los únicos 2 conceptos que ese modelo antiguo podía representar).
+function momentsInvitationMessage(event: Pick<FamilyEvent, 'type' | 'title'>, moments: EventMoment[], when: string): string {
+  const verb = event.type === 'boda' ? 'Nos casamos' : `Celebramos ${event.title.trim()}`
+  const lines = moments.map((m) => {
+    const time = m.momentTime ? ` a las ${m.momentTime.slice(0, 5)}` : ''
+    const where = m.locationLabel ? ` en ${m.locationLabel}` : ''
+    return `${m.title}${where}${time}`
+  })
+  return [`${verb} ${when}.`, ...lines].join('\n')
+}
+
 // Eventos Fase 14B — desglose OPCIONAL de personas dentro de una
 // unidad invitada. adults_count/children_count (event_guests) SIGUEN
 // siendo la fuente de verdad — esta función nunca los recalcula, solo
@@ -718,12 +779,19 @@ function invitationDateClause(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate
 // tipos con dos ubicaciones (DUAL_LOCATION_EVENT_TYPES) tienen versión
 // para cuando están las dos y para cuando solo hay una rellena — no se
 // inventa una ubicación que el evento todavía no tiene.
-export function buildInvitationMessage(event: FamilyEvent): string {
+export function buildInvitationMessage(event: FamilyEvent, moments: EventMoment[] = []): string {
   const when = invitationDateClause(event)
   const title = event.title.trim()
   const ceremony = event.ceremonyLocationLabel
   const celebration = event.celebrationLocationLabel
   const venue = event.venueLabel
+
+  // Cierre de Fase 2 — con event_moments reales, la información procede de ahí (nunca de los campos
+  // heredados, que pueden haber quedado desactualizados en cuanto se edita un momento desde la nueva UI).
+  if (DUAL_LOCATION_EVENT_TYPES.includes(event.type)) {
+    const resolved = resolveEventMoments(event, moments)
+    if (hasRealMoments(resolved)) return momentsInvitationMessage(event, resolved, when)
+  }
 
   switch (event.type) {
     case 'cumpleanos': {

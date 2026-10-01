@@ -1875,6 +1875,32 @@ select {
   font-weight: 600;
 }
 
+.store-manager-details summary {
+  cursor: pointer;
+  padding: 2px;
+  font-size: 15px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.store-manager-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.store-manager-details summary::after {
+  content: '▸';
+  float: right;
+  color: var(--muted);
+}
+
+.store-manager-details[open] summary::after {
+  content: '▾';
+}
+
+.store-manager-details > *:not(summary) {
+  margin-top: 10px;
+}
+
 .member-row-actions .link-button {
   padding: 4px 0;
   font-size: 13px;

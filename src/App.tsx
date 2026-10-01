@@ -8,6 +8,7 @@ import { HomeScreen } from '@/ui/HomeScreen'
 import { NavShell } from '@/ui/NavShell'
 
 const RsvpScreen = lazy(() => import('@/ui/RsvpScreen').then((m) => ({ default: m.RsvpScreen })))
+const AlexaLinkScreen = lazy(() => import('@/ui/AlexaLinkScreen').then((m) => ({ default: m.AlexaLinkScreen })))
 
 // Preparación de escala / "que sea la mejor": el bundle único pesaba
 // ~1 MB (Vite avisaba en cada build) y en un móvil con datos eso es la
@@ -86,6 +87,44 @@ function isPasswordRecoveryLink(): boolean {
   return window.location.hash.includes('type=recovery')
 }
 
+// Enlace de autorización de Alexa (account linking) — petición real: "¿Se puede integrar la app de
+// Pepa con Alexa?... que cuando la vendamos, la familia se puedan conectar con Alexa si lo
+// quieren". La app de Alexa abre esto en un navegador embebido del móvil, con los parámetros que
+// marca el protocolo OAuth2 (client_id/redirect_uri/state) — mismo motivo que RSVP y el regreso del
+// banco para entrar por la RAÍZ ("/?alexa_link=1...") y no por una ruta nueva: "/" es un archivo
+// real en GitHub Pages, sin el salto frágil de 404.html justo después de un enlace externo largo.
+// A diferencia de RSVP, aquí SÍ hace falta sesión real (es la propia familia autorizando, no un
+// invitado sin cuenta) — por eso AlexaAuthedLink, más abajo, sí pasa por useSession.
+export interface AlexaLinkParams {
+  clientId: string | null
+  redirectUri: string | null
+  state: string | null
+  responseType: string | null
+}
+
+function alexaLinkParamsFromLocation(): AlexaLinkParams | null {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('alexa_link') !== '1') return null
+  return {
+    clientId: params.get('client_id'),
+    redirectUri: params.get('redirect_uri'),
+    state: params.get('state'),
+    responseType: params.get('response_type'),
+  }
+}
+
+function AlexaAuthedLink({ params }: { params: AlexaLinkParams }) {
+  const { session, profile, loading, refreshProfile } = useSession()
+  if (loading) return <div className="screen screen-centered">Cargando…</div>
+  if (!session) return <LoginScreen />
+  if (!profile) return <OnboardingScreen onCreated={refreshProfile} />
+  return (
+    <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
+      <AlexaLinkScreen params={params} profile={profile} />
+    </Suspense>
+  )
+}
+
 export function App() {
   if (isPasswordRecoveryLink()) {
     return <ResetPasswordScreen />
@@ -98,6 +137,8 @@ export function App() {
       </Suspense>
     )
   }
+  const alexaParams = alexaLinkParamsFromLocation()
+  if (alexaParams) return <AlexaAuthedLink params={alexaParams} />
   return <AuthedApp />
 }
 

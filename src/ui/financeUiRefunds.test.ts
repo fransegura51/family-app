@@ -208,10 +208,12 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // location_places.notify_arrivals — tabla de Ubicación, tampoco toca devoluciones.
     // 0179 (event_decision_providers, Fase 3 "La pareja" de Eventos) añade la relación muchos-a-muchos
     // decisión↔proveedor — tabla de Eventos, tampoco toca devoluciones.
+    // 0180 (alexa_account_linking, integración con Alexa) añade alexa_links/alexa_auth_codes —
+    // tampoco toca devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(179)
+    expect(Math.max(...numbers)).toBe(180)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

@@ -18,9 +18,9 @@ import { locationAction, type LocationDeps, type SearchOutcome } from '@/pepa/lo
 import { forgetFoundPlace } from '@/pepa/recentContext'
 import type { LocationPlace, MemberLocation } from '@/domain/types'
 
-const FARMACIA: LocationPlace = { id: 'p1', familyId: 'f', name: 'Farmacia', category: null, latitude: 40.42, longitude: -3.70, radiusM: 150 }
-const COLE: LocationPlace = { id: 'p2', familyId: 'f', name: 'Colegio San José', category: null, latitude: 40.43, longitude: -3.71, radiusM: 100 }
-const CARGOFRIO: LocationPlace = { id: 'p3', familyId: 'f', name: 'Cargofrío', category: 'Trabajo', latitude: 38.11, longitude: -0.79, radiusM: 150 }
+const FARMACIA: LocationPlace = { id: 'p1', familyId: 'f', name: 'Farmacia', category: null, latitude: 40.42, longitude: -3.70, radiusM: 150, notifyArrivals: false }
+const COLE: LocationPlace = { id: 'p2', familyId: 'f', name: 'Colegio San José', category: null, latitude: 40.43, longitude: -3.71, radiusM: 100, notifyArrivals: false }
+const CARGOFRIO: LocationPlace = { id: 'p3', familyId: 'f', name: 'Cargofrío', category: 'Trabajo', latitude: 38.11, longitude: -0.79, radiusM: 150, notifyArrivals: false }
 
 function found(label: string, latitude: number, longitude: number): SearchOutcome {
   return { ok: true, place: { label, latitude, longitude } }

@@ -28,7 +28,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listPlaces(): Promise<LocationPlace[]> {
   const { data, error } = await supabase
     .from('location_places')
-    .select('id, family_id, name, category, latitude, longitude, radius_m')
+    .select('id, family_id, name, category, latitude, longitude, radius_m, notify_arrivals')
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
@@ -38,7 +38,38 @@ export async function listPlaces(): Promise<LocationPlace[]> {
     latitude: r.latitude,
     longitude: r.longitude,
     radiusM: r.radius_m,
+    notifyArrivals: r.notify_arrivals,
   }))
+}
+
+// Avisos de llegada/salida por lugar, estilo Google Maps (petición real: "lo quiero así") — por
+// dentro gestiona dos automation_rules ocultas (ver AutomationWatcher.tsx, que ya sabía evaluar
+// "llegada"/"salida" — así no hace falta reinventar la detección, solo dar un interruptor más
+// sencillo que crear una regla a mano). Los mensajes usan {miembro}/{lugar}: AutomationWatcher los
+// sustituye al disparar, así que cambiar el nombre del lugar más tarde no deja el aviso
+// desactualizado. El nombre de la regla lleva un prefijo reconocible (PLACE_NOTIFY_RULE_PREFIX) para
+// poder encontrarlas y borrarlas al apagar el interruptor sin tocar las reglas que la familia haya
+// creado a mano para el mismo lugar — y para que RulesTab (la pestaña "Reglas") las oculte de la
+// lista en vez de enseñar el texto sin sustituir.
+export const PLACE_NOTIFY_RULE_PREFIX = '🔔 Aviso automático:'
+
+async function createPlaceNotifyRules(placeId: string): Promise<void> {
+  const name = `${PLACE_NOTIFY_RULE_PREFIX} {lugar}`
+  await createAutomationRule({ name, triggerType: 'llegada', memberId: null, placeId, timeOfDay: null, message: '📍 {miembro} ha llegado a {lugar}.' })
+  await createAutomationRule({ name, triggerType: 'salida', memberId: null, placeId, timeOfDay: null, message: '🚪 {miembro} se ha ido de {lugar}.' })
+}
+
+async function deletePlaceNotifyRules(placeId: string): Promise<void> {
+  const rules = await listAutomationRules()
+  const toDelete = rules.filter((r) => r.placeId === placeId && r.name.startsWith(PLACE_NOTIFY_RULE_PREFIX))
+  for (const r of toDelete) await deleteAutomationRule(r.id)
+}
+
+export async function setPlaceNotifyArrivals(placeId: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.from('location_places').update({ notify_arrivals: enabled }).eq('id', placeId)
+  if (error) throw error
+  if (enabled) await createPlaceNotifyRules(placeId)
+  else await deletePlaceNotifyRules(placeId)
 }
 
 export async function addPlace(input: {
@@ -47,22 +78,31 @@ export async function addPlace(input: {
   latitude: number
   longitude: number
   radiusM: number
-}): Promise<void> {
+  notifyArrivals?: boolean
+}): Promise<string> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase.from('location_places').insert({
-    family_id: familyId,
-    name: input.name,
-    category: input.category,
-    latitude: input.latitude,
-    longitude: input.longitude,
-    radius_m: input.radiusM,
-  })
+  const { data, error } = await supabase
+    .from('location_places')
+    .insert({
+      family_id: familyId,
+      name: input.name,
+      category: input.category,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      radius_m: input.radiusM,
+      notify_arrivals: input.notifyArrivals ?? false,
+    })
+    .select('id')
+    .single()
   if (error) throw error
+  if (input.notifyArrivals) await createPlaceNotifyRules(data.id)
+  return data.id
 }
 
 // Petición real: "quiero poder editarlo... poder ponerle la categoría que yo quiera" — cambia el
 // nombre/categoría/radio de un lugar ya guardado, sin tocar dónde está (para eso, borrar y volver a
-// crearlo con el buscador).
+// crearlo con el buscador). El aviso de llegada/salida es aparte (setPlaceNotifyArrivals): tiene que
+// gestionar las reglas ocultas, así que no se puede colar aquí como un campo más.
 export async function updatePlace(id: string, input: { name: string; category: string | null; radiusM: number }): Promise<void> {
   const { error } = await supabase
     .from('location_places')

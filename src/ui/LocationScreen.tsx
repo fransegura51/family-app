@@ -23,7 +23,9 @@ import {
   listPlaces,
   listPlaceVisits,
   muteAutomationRule,
+  PLACE_NOTIFY_RULE_PREFIX,
   setConsent,
+  setPlaceNotifyArrivals,
   toggleAutomationRule,
   updatePlace,
 } from '@/data/location'
@@ -553,6 +555,11 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // Petición real: "los lugares frecuentes... en un desplegable". Cerrado por defecto — la pantalla
   // ya tiene bastante arriba (mapa, compartir, formulario de añadir).
   const [placesOpen, setPlacesOpen] = useState(false)
+  // Petición real: "lo quiero así" (capturas de Google Maps: pestañas abajo del mapa "Lugares" /
+  // "¡Estoy aquí!" / "Compartir ubicación") — debajo del mapa (que se queda fijo, como el chip de
+  // cada persona) el contenido se reparte en estas 3 pestañas en vez de ir todo seguido en una sola
+  // pantalla larga.
+  const [panelTab, setPanelTab] = useState<'lugares' | 'estoy-aqui' | 'compartir'>('lugares')
 
   // `silent` = refresco en segundo plano (la actualización periódica de
   // cada 30s) sin poner toda la pantalla en "Cargando…" — con `setLoading(true)`
@@ -764,59 +771,183 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
         )
       )}
 
-      <h2 className="section-title">Este dispositivo</h2>
-      {sharingAs ? (
-        // Petición real: "quiero que me la hagas mucho más pequeña, de una sola línea" — antes era
-        // una tarjeta grande (título + aviso + botón grande); sigue actualizándose sola igual, solo
-        // que ahora no hace falta explicarlo cada vez que se ve la pantalla.
-        <p className="muted inline-fields" style={{ alignItems: 'center' }}>
-          📍 Compartiendo como {members.find((m) => m.id === sharingAs)?.name}.
-          <button type="button" className="link-button" onClick={stopSharingGlobal}>
-            Dejar de compartir
+      <div className="segmented" style={{ marginTop: 16 }} role="tablist">
+        <button type="button" role="tab" aria-selected={panelTab === 'lugares'} className={panelTab === 'lugares' ? 'segmented-active' : ''} onClick={() => setPanelTab('lugares')}>
+          🏠 Lugares
+        </button>
+        <button type="button" role="tab" aria-selected={panelTab === 'estoy-aqui'} className={panelTab === 'estoy-aqui' ? 'segmented-active' : ''} onClick={() => setPanelTab('estoy-aqui')}>
+          📍 ¡Estoy aquí!
+        </button>
+        <button type="button" role="tab" aria-selected={panelTab === 'compartir'} className={panelTab === 'compartir' ? 'segmented-active' : ''} onClick={() => setPanelTab('compartir')}>
+          👥 Compartir ubicación
+        </button>
+      </div>
+
+      {panelTab === 'lugares' && (
+        <div>
+          {/* Petición real: "lo de añadir otro lo pones arriba para que se vea lo primero y debajo
+              los lugares frecuentes [en un desplegable]" — antes la lista de lugares salía siempre
+              entera, delante del formulario para añadir uno nuevo. */}
+          <AddPlaceForm onAdded={reload} />
+
+          <button type="button" className="guest-breakdown-toggle" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen} style={{ marginTop: 20 }}>
+            <span className="section-title" style={{ marginTop: 0 }}>
+              Lugares frecuentes
+            </span>
+            <span className="guest-breakdown-chevron" aria-hidden="true">
+              {placesOpen ? '︿' : '⌄'}
+            </span>
           </button>
-        </p>
-      ) : (
-        <div className="card member-form">
-          <p className="muted">¿Quién lleva este dispositivo?</p>
-          <div className="filter-row">
-            {members
-              .filter((m) => consents.find((c) => c.memberId === m.id)?.enabled)
-              .map((m) => (
-                <button key={m.id} className="chip" onClick={() => startSharingGlobal(m.id)}>
-                  <MemberAvatar member={m} size={18} />
-                  {m.name}
-                </button>
+          {placesOpen && (
+            <div className="event-list">
+              {places.map((place) => (
+                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} />
               ))}
-          </div>
-          {members.every((m) => !consents.find((c) => c.memberId === m.id)?.enabled) && (
-            <p className="muted">Ningún miembro tiene el consentimiento activado todavía.</p>
+              {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
+            </div>
           )}
+
+          <PlaceHistorySection members={members} consents={consents} />
         </div>
       )}
 
-      {/* Petición real: "lo de añadir otro lo pones arriba para que se vea lo primero y debajo los
-          lugares frecuentes [en un desplegable]" — antes la lista de lugares salía siempre entera,
-          delante del formulario para añadir uno nuevo. */}
-      <AddPlaceForm onAdded={reload} />
+      {panelTab === 'estoy-aqui' && <EstoyAquiTab onPlaceAdded={reload} />}
 
-      <button type="button" className="guest-breakdown-toggle" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen} style={{ marginTop: 20 }}>
-        <span className="section-title" style={{ marginTop: 0 }}>
-          Lugares frecuentes
-        </span>
-        <span className="guest-breakdown-chevron" aria-hidden="true">
-          {placesOpen ? '︿' : '⌄'}
-        </span>
+      {panelTab === 'compartir' && (
+        <div>
+          <h2 className="section-title">Este dispositivo</h2>
+          {sharingAs ? (
+            // Petición real: "quiero que me la hagas mucho más pequeña, de una sola línea" — antes
+            // era una tarjeta grande (título + aviso + botón grande); sigue actualizándose sola
+            // igual, solo que ahora no hace falta explicarlo cada vez que se ve la pantalla.
+            <p className="muted inline-fields" style={{ alignItems: 'center' }}>
+              📍 Compartiendo como {members.find((m) => m.id === sharingAs)?.name}.
+              <button type="button" className="link-button" onClick={stopSharingGlobal}>
+                Dejar de compartir
+              </button>
+            </p>
+          ) : (
+            <div className="card member-form">
+              <p className="muted">¿Quién lleva este dispositivo?</p>
+              <div className="filter-row">
+                {members
+                  .filter((m) => consents.find((c) => c.memberId === m.id)?.enabled)
+                  .map((m) => (
+                    <button key={m.id} className="chip" onClick={() => startSharingGlobal(m.id)}>
+                      <MemberAvatar member={m} size={18} />
+                      {m.name}
+                    </button>
+                  ))}
+              </div>
+              {members.every((m) => !consents.find((c) => c.memberId === m.id)?.enabled) && (
+                <p className="muted">Ningún miembro tiene el consentimiento activado todavía.</p>
+              )}
+            </div>
+          )}
+
+          <h2 className="section-title">¿Quién puede compartir?</h2>
+          <p className="muted">
+            {isAdmin ? 'Activa o desactiva a cada miembro de la familia.' : 'Solo puedes activar o desactivar tu propia ubicación.'}
+          </p>
+          <div className="event-list">
+            {members
+              .filter((m) => isAdmin || m.linkedProfileId === profileId)
+              .map((m) => {
+                const enabled = consents.find((c) => c.memberId === m.id)?.enabled ?? false
+                return (
+                  <div key={m.id} className="card task-card">
+                    <MemberAvatar member={m} size={32} />
+                    <div className="task-card-main">
+                      <strong>{m.name}</strong>
+                    </div>
+                    <button type="button" className="task-toggle" onClick={() => handleToggleConsent(m.id, !enabled)}>
+                      {enabled ? 'Activado' : 'Desactivado'}
+                    </button>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Petición real: "lo quiero así" (captura "¡Estoy aquí!" de Google Maps) — compartir dónde estás
+// AHORA MISMO, de una vez, sin que haga falta guardarlo como lugar frecuente antes; y, si quieres,
+// guardar este sitio de un toque como "Casa" o "Trabajo" (con el aviso de llegada/salida encendido
+// de entrada, como en la captura: "Y recibe notificaciones de lugar").
+function EstoyAquiTab({ onPlaceAdded }: { onPlaceAdded: () => void }) {
+  const [sharing, setSharing] = useState(false)
+  const [shareNotice, setShareNotice] = useState<string | null>(null)
+  const [shareFallbackUrl, setShareFallbackUrl] = useState<string | null>(null)
+  const [addingQuick, setAddingQuick] = useState<'Casa' | 'Trabajo' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleShareHere() {
+    setSharing(true)
+    setShareNotice(null)
+    setShareFallbackUrl(null)
+    setError(null)
+    try {
+      const coords = await getCurrentPosition()
+      const url = `https://www.google.com/maps/search/?api=1&query=${coords.latitude},${coords.longitude}`
+      try {
+        const shared = await shareText({ title: 'Mi ubicación actual', text: `Estoy aquí\n${url}` })
+        if (!shared) setShareNotice('Copiado al portapapeles.')
+      } catch {
+        setShareFallbackUrl(url)
+      }
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo obtener tu ubicación'))
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  async function handleQuickAdd(name: 'Casa' | 'Trabajo') {
+    setAddingQuick(name)
+    setError(null)
+    try {
+      const coords = await getCurrentPosition()
+      await addPlace({ name, category: null, latitude: coords.latitude, longitude: coords.longitude, radiusM: 150, notifyArrivals: true })
+      onPlaceAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setAddingQuick(null)
+    }
+  }
+
+  return (
+    <div className="card member-form">
+      <p className="muted">Comparte dónde estás ahora mismo, o guarda este sitio como lugar frecuente.</p>
+      <button type="button" onClick={handleShareHere} disabled={sharing}>
+        {sharing ? 'Obteniendo tu ubicación…' : '📍 Compartir mi ubicación actual'}
       </button>
-      {placesOpen && (
-        <div className="event-list">
-          {places.map((place) => (
-            <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} />
-          ))}
-          {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
-        </div>
+      {shareNotice && <p className="muted">{shareNotice}</p>}
+      {shareFallbackUrl && (
+        <p className="muted">
+          No se ha podido compartir ni copiar directamente —{' '}
+          <a href={shareFallbackUrl} target="_blank" rel="noopener noreferrer">
+            toca aquí para abrir la ubicación
+          </a>
+          .
+        </p>
       )}
-
-      <PlaceHistorySection members={members} consents={consents} />
+      <p className="muted" style={{ marginTop: 14 }}>
+        Seleccionar un lugar favorito
+      </p>
+      <div className="inline-fields">
+        <button type="button" className="link-button" onClick={() => handleQuickAdd('Casa')} disabled={addingQuick !== null}>
+          {addingQuick === 'Casa' ? 'Guardando…' : '🏠 Añadir este sitio como «Casa»'}
+        </button>
+        <button type="button" className="link-button" onClick={() => handleQuickAdd('Trabajo')} disabled={addingQuick !== null}>
+          {addingQuick === 'Trabajo' ? 'Guardando…' : '💼 Añadir este sitio como «Trabajo»'}
+        </button>
+      </div>
+      <p className="muted">Y avisa cuando alguien llegue o se vaya de aquí.</p>
+      {error && <p className="error">{error}</p>}
     </div>
   )
 }
@@ -1025,6 +1156,7 @@ function PlaceRow({
   const [editName, setEditName] = useState(place.name)
   const [editCategory, setEditCategory] = useState(place.category ?? '')
   const [editRadius, setEditRadius] = useState(place.radiusM)
+  const [editNotify, setEditNotify] = useState(place.notifyArrivals)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -1032,6 +1164,7 @@ function PlaceRow({
     setEditName(place.name)
     setEditCategory(place.category ?? '')
     setEditRadius(place.radiusM)
+    setEditNotify(place.notifyArrivals)
     setEditError(null)
     setEditing(true)
   }
@@ -1042,6 +1175,7 @@ function PlaceRow({
     setEditError(null)
     try {
       await updatePlace(place.id, { name: editName.trim(), category: editCategory.trim() || null, radiusM: editRadius })
+      if (editNotify !== place.notifyArrivals) await setPlaceNotifyArrivals(place.id, editNotify)
       setEditing(false)
       onChanged()
     } catch (err) {
@@ -1108,6 +1242,10 @@ function PlaceRow({
           Radio (m)
           <input type="number" value={editRadius} onChange={(e) => setEditRadius(Number(e.target.value))} />
         </label>
+        <label className="inline-fields" style={{ alignItems: 'center' }}>
+          <input type="checkbox" checked={editNotify} onChange={(e) => setEditNotify(e.target.checked)} />
+          🔔 Avisarme cuando alguien llegue o se vaya de aquí
+        </label>
         {editError && <p className="error">{editError}</p>}
         <div className="inline-fields">
           <button type="submit" disabled={editSaving}>
@@ -1131,6 +1269,7 @@ function PlaceRow({
           </span>
         )}
         <p className="muted">Radio {place.radiusM} m</p>
+        {place.notifyArrivals && <p className="muted">🔔 Avisa cuando alguien llega o se va de aquí</p>}
         {ranked.map(({ member, loc, dist }, i) => {
           const near = dist <= place.radiusM
           const nearest = i === 0
@@ -1183,6 +1322,7 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
   const [name, setName] = useState('')
   const [category, setCategory] = useState('')
   const [radiusM, setRadiusM] = useState(150)
+  const [notifyArrivals, setNotifyArrivals] = useState(false)
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -1215,9 +1355,10 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      await addPlace({ name, category: category.trim() || null, latitude: coords.latitude, longitude: coords.longitude, radiusM })
+      await addPlace({ name, category: category.trim() || null, latitude: coords.latitude, longitude: coords.longitude, radiusM, notifyArrivals })
       setName('')
       setCategory('')
+      setNotifyArrivals(false)
       setCoords(null)
       onAdded()
     } catch (err) {
@@ -1246,6 +1387,10 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
       <label>
         Radio (m)
         <input type="number" value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} />
+      </label>
+      <label className="inline-fields" style={{ alignItems: 'center' }}>
+        <input type="checkbox" checked={notifyArrivals} onChange={(e) => setNotifyArrivals(e.target.checked)} />
+        🔔 Avisarme cuando alguien llegue o se vaya de aquí
       </label>
       <div className="inline-fields">
         <button type="button" className="link-button" onClick={() => setPickerOpen(true)}>
@@ -1299,11 +1444,16 @@ function RulesTab() {
 
   if (loading) return <p className="muted">Cargando reglas…</p>
 
+  // Las reglas que crea el interruptor "🔔 avisarme" de cada lugar (LocationTab, PlaceRow) no se
+  // enseñan aquí — su nombre/mensaje llevan {miembro}/{lugar} sin sustituir (eso solo lo resuelve
+  // AutomationWatcher al disparar), así que aquí se verían rotas. Se gestionan desde el propio lugar.
+  const visibleRules = rules.filter((rule) => !rule.name.startsWith(PLACE_NOTIFY_RULE_PREFIX))
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
       <div className="event-list">
-        {rules.map((rule) => (
+        {visibleRules.map((rule) => (
           <div key={rule.id} className="card task-card">
             <div className="task-card-main">
               <strong>{rule.name}</strong>
@@ -1335,7 +1485,7 @@ function RulesTab() {
             <ConfirmButton label="Eliminar" onConfirm={() => deleteAutomationRule(rule.id).then(reload)} />
           </div>
         ))}
-        {rules.length === 0 && <p className="muted">No hay reglas todavía.</p>}
+        {visibleRules.length === 0 && <p className="muted">No hay reglas todavía.</p>}
       </div>
       <AddRuleForm places={places} members={members} onAdded={reload} />
     </div>

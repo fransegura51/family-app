@@ -222,11 +222,13 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // REFERENCIAN (event_guest_moments) y decision_id en otras 5 tablas, nada de esto es la Fase 14B.
     // 0177 (event_moment_location_details, cierre de Fase 2 — Google Maps) añade location_address/
     // location_place_id a event_moments — tampoco toca event_guests/event_guest_members/event_tables.
-    // Ninguna de las once tiene nada que ver con invitados/regalos de eventos.
+    // 0178 (location_places_notify_arrivals, Ubicación: avisar al llegar/irse de un lugar) añade
+    // location_places.notify_arrivals — tabla de Ubicación, tampoco toca eventos.
+    // Ninguna de las doce tiene nada que ver con invitados/regalos de eventos.
     const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(177)
+    expect(Math.max(...numbers)).toBe(178)
   })
 })

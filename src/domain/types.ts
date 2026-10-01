@@ -339,6 +339,9 @@ export interface LocationPlace {
   latitude: number
   longitude: number
   radiusM: number
+  // Avisar (notificación) cuando alguien llegue o se vaya de aquí, estilo Google Maps — por dentro
+  // gestiona dos automation_rules ocultas (ver data/location.ts, setPlaceNotifyArrivals).
+  notifyArrivals: boolean
 }
 
 export interface LocationConsent {

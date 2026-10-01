@@ -204,10 +204,12 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // tablas y columnas nuevas en Eventos — tampoco toca devoluciones.
     // 0177 (event_moment_location_details, cierre de Fase 2 — Google Maps) añade dirección/place_id a
     // event_moments — tampoco toca devoluciones.
+    // 0178 (location_places_notify_arrivals, Ubicación: avisar al llegar/irse de un lugar) añade
+    // location_places.notify_arrivals — tabla de Ubicación, tampoco toca devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(177)
+    expect(Math.max(...numbers)).toBe(178)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

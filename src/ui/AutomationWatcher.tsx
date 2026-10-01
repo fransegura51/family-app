@@ -1,7 +1,16 @@
 import { useEffect, useRef } from 'react'
+import { listFamilyMembers } from '@/data/family'
 import { listAutomationRules, listMemberLocations, listPlaces } from '@/data/location'
 import { distanceMeters } from '@/domain/geo'
 import { showNotification } from '@/services/notifications'
+
+// Las reglas ocultas que crea el interruptor "avisarme" de un lugar (ver data/location.ts,
+// PLACE_NOTIFY_RULE_PREFIX/setPlaceNotifyArrivals) escriben {miembro}/{lugar} en vez de un nombre
+// fijo — así no hace falta reescribirlas si cambia el nombre del lugar. Una regla escrita a mano,
+// sin esas llaves, sale tal cual (String.replace no toca nada si no encuentra el patrón).
+function applyTemplate(text: string, memberName: string, placeName: string): string {
+  return text.replace(/\{miembro\}/g, memberName).replace(/\{lugar\}/g, placeName)
+}
 
 const CHECK_INTERVAL_MS = 30_000
 const NEAR_STATE_KEY = 'family-app:automation-near-state'
@@ -42,10 +51,11 @@ export function AutomationWatcher() {
 
     async function check() {
       try {
-        const [rules, locations, places] = await Promise.all([
+        const [rules, locations, places, members] = await Promise.all([
           listAutomationRules(),
           listMemberLocations(),
           listPlaces(),
+          listFamilyMembers(),
         ])
         if (cancelled) return
         const now = new Date()
@@ -80,10 +90,10 @@ export function AutomationWatcher() {
               const key = `${rule.id}:${loc.memberId}`
               const wasNear = nearState.current[key] ?? false
 
-              if (rule.triggerType === 'llegada' && near && !wasNear) {
-                showNotification(rule.name, rule.message)
-              } else if (rule.triggerType === 'salida' && !near && wasNear) {
-                showNotification(rule.name, rule.message)
+              const fire = (rule.triggerType === 'llegada' && near && !wasNear) || (rule.triggerType === 'salida' && !near && wasNear)
+              if (fire) {
+                const memberName = members.find((m) => m.id === loc.memberId)?.name ?? 'Alguien'
+                showNotification(applyTemplate(rule.name, memberName, place.name), applyTemplate(rule.message, memberName, place.name))
               }
 
               nearState.current[key] = near

@@ -20,11 +20,13 @@ import {
   INVITATION_TEMPLATES,
   isOverdueTask,
   pickNextMilestone,
+  resolveEventMoments,
+  resolveGuestInvitedMoments,
   sortInvitationTemplatesForEvent,
   type EventAlertInput,
 } from '@/domain/events'
 import type { InvitationTemplateMeta, SafeZone } from '@/domain/events'
-import type { EventGuest, EventTask, FamilyEvent, InvitationLayer } from '@/domain/types'
+import type { EventGuest, EventGuestMoment, EventMoment, EventTask, FamilyEvent, InvitationLayer } from '@/domain/types'
 
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
   return {
@@ -84,6 +86,7 @@ function makeTask(overrides: Partial<EventTask>): EventTask {
     createdAt: '2026-01-01T00:00:00Z',
     assignedMemberId: null,
     calendarEventId: null,
+    decisionId: null,
     ...overrides,
   }
 }
@@ -108,6 +111,23 @@ function makeGuest(overrides: Partial<EventGuest>): EventGuest {
     rsvpRespondedAt: null,
     tableId: null,
     sortOrder: guestCounter,
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function makeMoment(overrides: Partial<EventMoment>): EventMoment {
+  return {
+    id: 'm1',
+    eventId: 'e1',
+    familyId: 'f1',
+    title: 'Momento',
+    momentDate: null,
+    momentTime: null,
+    locationLabel: null,
+    locationLatitude: null,
+    locationLongitude: null,
+    sortOrder: 0,
     createdAt: '2026-01-01T00:00:00Z',
     ...overrides,
   }
@@ -807,6 +827,93 @@ describe('eventLocationMapLines', () => {
     const event = makeEvent({ type: 'cumpleanos', venueLabel: 'en mi casa', venueLatitude: null, venueLongitude: null })
     const lines = eventLocationMapLines(event, { inviteScope: null })
     expect(lines[0]).toContain('https://www.google.com/maps/search/?api=1&query=')
+  })
+})
+
+describe('resolveEventMoments — Fase 1 del modelo genérico de momentos, compatibilidad de lectura', () => {
+  // Test obligatorio 1: evento antiguo sin datos de ceremonia/celebración.
+  it('returns no moments for an event with no legacy ceremony/celebration data and no stored moments', () => {
+    const event = makeEvent({ type: 'cumpleanos' })
+    expect(resolveEventMoments(event, [])).toEqual([])
+  })
+
+  // Test obligatorio 2: evento antiguo solo con ceremonia.
+  it('synthesizes only a Ceremonia moment when only the legacy ceremony fields are set', () => {
+    const event = makeEvent({ type: 'boda', eventDate: '2026-06-12', ceremonyLocationLabel: 'Iglesia de la Concepción', ceremonyTime: '12:00:00' })
+    const moments = resolveEventMoments(event, [])
+    expect(moments).toHaveLength(1)
+    expect(moments[0]).toMatchObject({ title: 'Ceremonia', momentDate: '2026-06-12', momentTime: '12:00:00', locationLabel: 'Iglesia de la Concepción', isLegacy: true })
+  })
+
+  // Test obligatorio 3: evento antiguo solo con celebración.
+  it('synthesizes only a Celebración moment when only the legacy celebration field is set', () => {
+    const event = makeEvent({ type: 'boda', eventDate: '2026-06-12', eventTime: '20:00:00', celebrationLocationLabel: 'Finca Los Almendros' })
+    const moments = resolveEventMoments(event, [])
+    expect(moments).toHaveLength(1)
+    expect(moments[0]).toMatchObject({ title: 'Celebración', momentDate: '2026-06-12', momentTime: '20:00:00', locationLabel: 'Finca Los Almendros', isLegacy: true })
+  })
+
+  // Test obligatorio 4: evento antiguo con ambas.
+  it('synthesizes both moments, in order, when both legacy locations are set', () => {
+    const event = makeEvent({ type: 'boda', eventDate: '2026-06-12', ceremonyLocationLabel: 'Iglesia', celebrationLocationLabel: 'Finca' })
+    const moments = resolveEventMoments(event, [])
+    expect(moments.map((m) => m.title)).toEqual(['Ceremonia', 'Celebración'])
+  })
+
+  it('never synthesizes once real event_moments rows exist, regardless of legacy fields', () => {
+    const event = makeEvent({ type: 'boda', ceremonyLocationLabel: 'Iglesia', celebrationLocationLabel: 'Finca' })
+    const stored = [makeMoment({ id: 'real-1', title: 'Civil' })]
+    expect(resolveEventMoments(event, stored)).toBe(stored)
+  })
+
+  // Test obligatorio 8: evento nuevo con varios momentos en fechas diferentes.
+  it('returns stored moments as-is, each with its own date, for a new multi-day event', () => {
+    const event = makeEvent({ type: 'boda' })
+    const stored = [
+      makeMoment({ id: 'm-civil', title: 'Matrimonio civil', momentDate: '2026-06-12' }),
+      makeMoment({ id: 'm-ceremonia', title: 'Ceremonia simbólica', momentDate: '2026-06-13' }),
+      makeMoment({ id: 'm-celebracion', title: 'Celebración', momentDate: '2026-06-13' }),
+    ]
+    const moments = resolveEventMoments(event, stored)
+    expect(moments).toHaveLength(3)
+    expect(moments[0].momentDate).toBe('2026-06-12')
+    expect(moments[1].momentDate).toBe('2026-06-13')
+  })
+})
+
+describe('resolveGuestInvitedMoments — Fase 1, invitados por momento', () => {
+  const moments = [makeMoment({ id: 'ceremonia', title: 'Ceremonia' }), makeMoment({ id: 'celebracion', title: 'Celebración' })]
+
+  // Test obligatorio 5: invitado "ambas".
+  it('invites the guest to every moment when inviteScope is ambas', () => {
+    const guest = makeGuest({ inviteScope: 'ambas' })
+    expect(resolveGuestInvitedMoments(guest, moments, [])).toHaveLength(2)
+  })
+
+  // Test obligatorio 6: invitado "solo_ceremonia".
+  it('invites the guest only to Ceremonia when inviteScope is solo_ceremonia', () => {
+    const guest = makeGuest({ inviteScope: 'solo_ceremonia' })
+    const result = resolveGuestInvitedMoments(guest, moments, [])
+    expect(result.map((m) => m.title)).toEqual(['Ceremonia'])
+  })
+
+  // Test obligatorio 7: invitado "solo_celebracion".
+  it('invites the guest only to Celebración when inviteScope is solo_celebracion', () => {
+    const guest = makeGuest({ inviteScope: 'solo_celebracion' })
+    const result = resolveGuestInvitedMoments(guest, moments, [])
+    expect(result.map((m) => m.title)).toEqual(['Celebración'])
+  })
+
+  it('defaults a guest with no inviteScope at all to every moment (same permissive default as eventLocationLines)', () => {
+    const guest = makeGuest({ inviteScope: null })
+    expect(resolveGuestInvitedMoments(guest, moments, [])).toHaveLength(2)
+  })
+
+  it('prefers explicit event_guest_moments links over the legacy inviteScope fallback', () => {
+    const guest = makeGuest({ id: 'g-explicit', inviteScope: 'ambas' })
+    const links: EventGuestMoment[] = [{ id: 'l1', guestId: 'g-explicit', momentId: 'ceremonia', eventId: 'e1', familyId: 'f1', createdAt: '2026-01-01T00:00:00Z' }]
+    const result = resolveGuestInvitedMoments(guest, moments, links)
+    expect(result.map((m) => m.title)).toEqual(['Ceremonia'])
   })
 })
 

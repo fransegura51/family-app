@@ -114,11 +114,14 @@ describe('lo que esta fase NO toca', () => {
     // match_forecast_occurrence y una tabla nueva de descartes — conciliación, nunca devoluciones.
     // 0175 (location_places_category, Ubicación: categoría libre por lugar guardado) añade
     // `location_places.category` — tabla de Ubicación, tampoco devoluciones.
+    // 0176 (event_decisions_and_moments, Fase 1 del motor de decisiones + modelo genérico de momentos de
+    // Eventos) añade `event_decisions`, `event_moments`, `event_guest_moments` y `decision_id` en 5 tablas
+    // de Eventos — nada que ver con devoluciones/refunds.
     // Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(175)
+    expect(Math.max(...numbers)).toBe(176)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

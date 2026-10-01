@@ -8,7 +8,9 @@ import type {
   EventGuest,
   EventGuestInviteScope,
   EventGuestMember,
+  EventGuestMoment,
   EventModuleKey,
+  EventMoment,
   EventPayment,
   EventServiceId,
   EventTableSeat,
@@ -516,6 +518,80 @@ export function eventLocationMapLines(
     lines.push(`📍 Cómo llegar: ${buildMapsUrl(event.venueLabel, coords)}`)
   }
   return lines
+}
+
+// Fase 1 del modelo genérico de momentos — compatibilidad de lectura. Mientras no exista la Fase 2 de UI,
+// "Gestionar evento" sigue escribiendo únicamente ceremonyLocationLabel/celebrationLocationLabel (nunca
+// event_moments), así que esta función SIEMPRE sintetiza en caliente a partir de esos campos heredados
+// cuando el evento no tiene ninguna fila real en event_moments — no basta con el backfill de la migración
+// 0176, que solo cubre el instante en que se ejecutó: un evento editado después por la UI antigua debe
+// seguir resolviéndose bien. Si ya existen filas reales (backfill o, más adelante, creadas a mano), esas
+// mandan siempre y la síntesis no se usa.
+export function resolveEventMoments(
+  event: Pick<
+    FamilyEvent,
+    | 'eventDate'
+    | 'eventTime'
+    | 'ceremonyLocationLabel'
+    | 'ceremonyLocationLatitude'
+    | 'ceremonyLocationLongitude'
+    | 'ceremonyTime'
+    | 'celebrationLocationLabel'
+    | 'celebrationLocationLatitude'
+    | 'celebrationLocationLongitude'
+  >,
+  storedMoments: EventMoment[],
+): EventMoment[] {
+  if (storedMoments.length > 0) return storedMoments
+  const synthetic: EventMoment[] = []
+  if (event.ceremonyLocationLabel) {
+    synthetic.push({
+      id: 'legacy:ceremonia',
+      eventId: '',
+      familyId: '',
+      title: 'Ceremonia',
+      momentDate: event.eventDate,
+      momentTime: event.ceremonyTime,
+      locationLabel: event.ceremonyLocationLabel,
+      locationLatitude: event.ceremonyLocationLatitude,
+      locationLongitude: event.ceremonyLocationLongitude,
+      sortOrder: 0,
+      createdAt: '',
+      isLegacy: true,
+    })
+  }
+  if (event.celebrationLocationLabel) {
+    synthetic.push({
+      id: 'legacy:celebracion',
+      eventId: '',
+      familyId: '',
+      title: 'Celebración',
+      momentDate: event.eventDate,
+      momentTime: event.eventTime,
+      locationLabel: event.celebrationLocationLabel,
+      locationLatitude: event.celebrationLocationLatitude,
+      locationLongitude: event.celebrationLocationLongitude,
+      sortOrder: 1,
+      createdAt: '',
+      isLegacy: true,
+    })
+  }
+  return synthetic
+}
+
+// Fase 1 del modelo genérico de momentos — a qué momentos (de los ya resueltos por resolveEventMoments)
+// está invitado un invitado concreto. Si ya hay enlaces explícitos en event_guest_moments, mandan ellos
+// siempre. Si no (invitado nunca asignado todavía, o momentos "legacy" sintetizados que nunca tienen
+// enlaces reales), se deriva del inviteScope heredado con el MISMO criterio que ya usan hoy
+// eventLocationLines/eventLocationMapLines (null = 'ambas', el valor más permisivo — nunca más
+// restrictivo que el comportamiento actual).
+export function resolveGuestInvitedMoments(guest: Pick<EventGuest, 'id' | 'inviteScope'>, moments: EventMoment[], guestMomentLinks: EventGuestMoment[]): EventMoment[] {
+  const linkedMomentIds = new Set(guestMomentLinks.filter((l) => l.guestId === guest.id).map((l) => l.momentId))
+  if (linkedMomentIds.size > 0) return moments.filter((m) => linkedMomentIds.has(m.id))
+  const scope = guest.inviteScope ?? 'ambas'
+  if (scope === 'ambas') return moments
+  if (scope === 'solo_ceremonia') return moments.filter((m) => m.title === 'Ceremonia')
+  return moments.filter((m) => m.title === 'Celebración')
 }
 
 // Eventos Fase 14B — desglose OPCIONAL de personas dentro de una

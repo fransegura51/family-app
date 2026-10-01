@@ -19,6 +19,7 @@ import type {
   EventActivity,
   EventBudgetItem,
   EventDayPlanItem,
+  EventDecision,
   EventDecorationItem,
   EventDecorationStatus,
   EventFavorItem,
@@ -28,10 +29,12 @@ import type {
   EventGuestInviteScope,
   EventGuestMember,
   EventGuestMemberType,
+  EventGuestMoment,
   EventGuestRsvpStatus,
   EventInvitation,
   EventMenuItem,
   EventModuleKey,
+  EventMoment,
   EventPayment,
   EventPaymentStatus,
   EventProvider,
@@ -389,7 +392,7 @@ export async function duplicateEvent(id: string): Promise<string> {
 // Preparativos / tareas
 // ---------------------------------------------------------------------
 
-const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id'
+const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id, decision_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapTask(r: any): EventTask {
@@ -405,6 +408,7 @@ function mapTask(r: any): EventTask {
     createdAt: r.created_at,
     assignedMemberId: r.assigned_member_id,
     calendarEventId: r.calendar_event_id,
+    decisionId: r.decision_id,
   }
 }
 
@@ -419,11 +423,11 @@ export async function listEventTasks(eventId: string): Promise<EventTask[]> {
   return data.map(mapTask)
 }
 
-export async function addEventTask(eventId: string, title: string, dueDate: string | null = null): Promise<void> {
+export async function addEventTask(eventId: string, title: string, dueDate: string | null = null, decisionId: string | null = null): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase
     .from('event_tasks')
-    .insert({ event_id: eventId, family_id: familyId, title: title.trim(), due_date: dueDate, source: 'manual', sort_order: Date.now() })
+    .insert({ event_id: eventId, family_id: familyId, title: title.trim(), due_date: dueDate, source: decisionId ? 'auto' : 'manual', sort_order: Date.now(), decision_id: decisionId })
   if (error) throw error
 }
 
@@ -921,7 +925,7 @@ export async function deleteEventGuestMember(id: string): Promise<void> {
 // events.tagId desde la propia pantalla, sin duplicar nada de Economía).
 // ---------------------------------------------------------------------
 
-const BUDGET_ITEM_SELECT = 'id, event_id, family_id, category, planned_amount, sort_order, created_at'
+const BUDGET_ITEM_SELECT = 'id, event_id, family_id, category, planned_amount, sort_order, created_at, decision_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapBudgetItem(r: any): EventBudgetItem {
@@ -933,6 +937,7 @@ function mapBudgetItem(r: any): EventBudgetItem {
     plannedAmount: r.planned_amount == null ? null : Number(r.planned_amount),
     sortOrder: r.sort_order,
     createdAt: r.created_at,
+    decisionId: r.decision_id,
   }
 }
 
@@ -946,11 +951,11 @@ export async function listEventBudgetItems(eventId: string): Promise<EventBudget
   return data.map(mapBudgetItem)
 }
 
-export async function addEventBudgetItem(eventId: string, category: string, plannedAmount: number | null): Promise<void> {
+export async function addEventBudgetItem(eventId: string, category: string, plannedAmount: number | null, decisionId: string | null = null): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase
     .from('event_budget_items')
-    .insert({ event_id: eventId, family_id: familyId, category: category.trim(), planned_amount: plannedAmount, sort_order: Date.now() })
+    .insert({ event_id: eventId, family_id: familyId, category: category.trim(), planned_amount: plannedAmount, sort_order: Date.now(), decision_id: decisionId })
   if (error) throw error
 }
 
@@ -1041,7 +1046,7 @@ export async function transferMenuToShopping(eventId: string): Promise<number> {
 // Proveedores — registro ligero, sin marketplace externo.
 // ---------------------------------------------------------------------
 
-const PROVIDER_SELECT = 'id, event_id, family_id, name, type, contact_note, notes, created_at'
+const PROVIDER_SELECT = 'id, event_id, family_id, name, type, contact_note, notes, created_at, decision_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProvider(r: any): EventProvider {
@@ -1054,6 +1059,7 @@ function mapProvider(r: any): EventProvider {
     contactNote: r.contact_note,
     notes: r.notes,
     createdAt: r.created_at,
+    decisionId: r.decision_id,
   }
 }
 
@@ -1065,7 +1071,7 @@ export async function listEventProviders(eventId: string): Promise<EventProvider
 
 export async function addEventProvider(
   eventId: string,
-  input: { name: string; type?: string | null; contactNote?: string | null; notes?: string | null },
+  input: { name: string; type?: string | null; contactNote?: string | null; notes?: string | null; decisionId?: string | null },
 ): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('event_providers').insert({
@@ -1075,6 +1081,7 @@ export async function addEventProvider(
     type: input.type ?? null,
     contact_note: input.contactNote ?? null,
     notes: input.notes ?? null,
+    decision_id: input.decisionId ?? null,
   })
   if (error) throw error
 }
@@ -1222,7 +1229,7 @@ export async function disableEventOpenLink(eventId: string): Promise<void> {
 // algo/nada (nunca se asume que un evento necesita decoración).
 // ---------------------------------------------------------------------
 
-const DECORATION_SELECT = 'id, event_id, family_id, name, note, status, price_estimate, transferred_to_shopping, sort_order, created_at'
+const DECORATION_SELECT = 'id, event_id, family_id, name, note, status, price_estimate, transferred_to_shopping, sort_order, created_at, decision_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapDecorationItem(r: any): EventDecorationItem {
@@ -1235,6 +1242,7 @@ function mapDecorationItem(r: any): EventDecorationItem {
     status: r.status,
     priceEstimate: r.price_estimate === null ? null : Number(r.price_estimate),
     transferredToShopping: r.transferred_to_shopping,
+    decisionId: r.decision_id,
     sortOrder: r.sort_order,
     createdAt: r.created_at,
   }
@@ -1250,11 +1258,11 @@ export async function listEventDecorationItems(eventId: string): Promise<EventDe
   return data.map(mapDecorationItem)
 }
 
-export async function addEventDecorationItem(eventId: string, name: string, priceEstimate: number | null = null): Promise<void> {
+export async function addEventDecorationItem(eventId: string, name: string, priceEstimate: number | null = null, decisionId: string | null = null): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase
     .from('event_decoration_items')
-    .insert({ event_id: eventId, family_id: familyId, name: name.trim(), price_estimate: priceEstimate, sort_order: Date.now() })
+    .insert({ event_id: eventId, family_id: familyId, name: name.trim(), price_estimate: priceEstimate, sort_order: Date.now(), decision_id: decisionId })
   if (error) throw error
 }
 
@@ -1549,7 +1557,7 @@ export async function deleteEventGift(id: string): Promise<void> {
 // evento (ver modo "día del evento" en EventosScreen.tsx).
 // ---------------------------------------------------------------------
 
-const DAY_PLAN_SELECT = 'id, event_id, family_id, item_time, title, note, sort_order, created_at'
+const DAY_PLAN_SELECT = 'id, event_id, family_id, item_time, title, note, sort_order, created_at, decision_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapDayPlanItem(r: any): EventDayPlanItem {
@@ -1562,6 +1570,7 @@ function mapDayPlanItem(r: any): EventDayPlanItem {
     note: r.note,
     sortOrder: r.sort_order,
     createdAt: r.created_at,
+    decisionId: r.decision_id,
   }
 }
 
@@ -1576,16 +1585,187 @@ export async function listEventDayPlan(eventId: string): Promise<EventDayPlanIte
   return data.map(mapDayPlanItem)
 }
 
-export async function addEventDayPlanItem(eventId: string, title: string, itemTime: string | null, note: string | null = null): Promise<void> {
+export async function addEventDayPlanItem(eventId: string, title: string, itemTime: string | null, note: string | null = null, decisionId: string | null = null): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase
     .from('event_day_plan_items')
-    .insert({ event_id: eventId, family_id: familyId, title: title.trim(), item_time: itemTime, note, sort_order: Date.now() })
+    .insert({ event_id: eventId, family_id: familyId, title: title.trim(), item_time: itemTime, note, sort_order: Date.now(), decision_id: decisionId })
   if (error) throw error
 }
 
 export async function deleteEventDayPlanItem(id: string): Promise<void> {
   const { error } = await supabase.from('event_day_plan_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Fase 1 del modelo genérico de momentos (migración 0176) — infraestructura para la futura Fase 2 de UI.
+// Sin UI todavía: nada llama a addEventMoment/setGuestMoments fuera de los tests de esta fase.
+// ---------------------------------------------------------------------
+
+const MOMENT_SELECT = 'id, event_id, family_id, title, moment_date, moment_time, location_label, location_latitude, location_longitude, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapMoment(r: any): EventMoment {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    title: r.title,
+    momentDate: r.moment_date,
+    momentTime: r.moment_time,
+    locationLabel: r.location_label,
+    locationLatitude: r.location_latitude,
+    locationLongitude: r.location_longitude,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventMoments(eventId: string): Promise<EventMoment[]> {
+  const { data, error } = await supabase.from('event_moments').select(MOMENT_SELECT).eq('event_id', eventId).order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapMoment)
+}
+
+export async function addEventMoment(
+  eventId: string,
+  input: { title: string; momentDate?: string | null; momentTime?: string | null; locationLabel?: string | null; locationLatitude?: number | null; locationLongitude?: number | null },
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_moments').insert({
+    event_id: eventId,
+    family_id: familyId,
+    title: input.title.trim(),
+    moment_date: input.momentDate ?? null,
+    moment_time: input.momentTime ?? null,
+    location_label: input.locationLabel ?? null,
+    location_latitude: input.locationLatitude ?? null,
+    location_longitude: input.locationLongitude ?? null,
+    sort_order: Date.now(),
+  })
+  if (error) throw error
+}
+
+export async function updateEventMoment(
+  id: string,
+  patch: Partial<{ title: string; momentDate: string | null; momentTime: string | null; locationLabel: string | null; locationLatitude: number | null; locationLongitude: number | null }>,
+): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.title !== undefined) update.title = patch.title.trim()
+  if (patch.momentDate !== undefined) update.moment_date = patch.momentDate
+  if (patch.momentTime !== undefined) update.moment_time = patch.momentTime
+  if (patch.locationLabel !== undefined) update.location_label = patch.locationLabel
+  if (patch.locationLatitude !== undefined) update.location_latitude = patch.locationLatitude
+  if (patch.locationLongitude !== undefined) update.location_longitude = patch.locationLongitude
+  const { error } = await supabase.from('event_moments').update(update).eq('id', id)
+  if (error) throw error
+}
+
+// Borrado seguro: event_guest_moments.moment_id tiene ON DELETE CASCADE (migración 0176), así que borrar
+// un momento nunca deja una relación de invitado colgando de un momento inexistente — no hace falta
+// limpiar nada a mano aquí.
+export async function deleteEventMoment(id: string): Promise<void> {
+  const { error } = await supabase.from('event_moments').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Reordenación explícita (sin drag&drop — ver auditoría de Eventos): asigna sort_order secuencial según
+// el orden del array recibido.
+export async function reorderEventMoments(momentIds: string[]): Promise<void> {
+  await Promise.all(momentIds.map((id, index) => supabase.from('event_moments').update({ sort_order: index }).eq('id', id)))
+}
+
+// ---------------------------------------------------------------------
+// Fase 1 del modelo genérico de momentos — invitado <-> momento (sustituirá a EventGuest.inviteScope en
+// la Fase 2 de UI). Mismo patrón "reemplazar todo el conjunto" que replaceEventMembers (Calendario).
+// ---------------------------------------------------------------------
+
+export async function listEventGuestMoments(eventId: string): Promise<EventGuestMoment[]> {
+  const { data, error } = await supabase.from('event_guest_moments').select('id, guest_id, moment_id, event_id, family_id, created_at').eq('event_id', eventId)
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return data.map((r: any) => ({ id: r.id, guestId: r.guest_id, momentId: r.moment_id, eventId: r.event_id, familyId: r.family_id, createdAt: r.created_at }))
+}
+
+// Sustituye TODO el conjunto de momentos de un invitado por `momentIds` (vacío = sin enlaces explícitos,
+// cae al fallback de resolveGuestInvitedMoments). Operación en 2 pasos sin transacción explícita porque
+// Supabase/PostgREST no expone una desde el cliente — mismo riesgo ya aceptado hoy por replaceEventMembers.
+export async function setGuestMoments(guest: Pick<EventGuest, 'id' | 'eventId' | 'familyId'>, momentIds: string[]): Promise<void> {
+  const { error: deleteError } = await supabase.from('event_guest_moments').delete().eq('guest_id', guest.id)
+  if (deleteError) throw deleteError
+  if (momentIds.length === 0) return
+  const { error: insertError } = await supabase
+    .from('event_guest_moments')
+    .insert(momentIds.map((momentId) => ({ guest_id: guest.id, moment_id: momentId, event_id: guest.eventId, family_id: guest.familyId })))
+  if (insertError) throw insertError
+}
+
+// ---------------------------------------------------------------------
+// Fase 1 del motor de decisiones (migración 0176) — infraestructura. Ningún formulario llama todavía a
+// upsertEventDecision/applyDecision fuera de los tests de esta fase: no se genera nada automáticamente.
+// ---------------------------------------------------------------------
+
+const DECISION_SELECT = 'id, event_id, family_id, block_key, question_key, answer, is_custom_option, created_by, created_at, updated_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapDecision(r: any): EventDecision {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    blockKey: r.block_key,
+    questionKey: r.question_key,
+    answer: r.answer ?? {},
+    isCustomOption: r.is_custom_option,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }
+}
+
+export async function listEventDecisions(eventId: string): Promise<EventDecision[]> {
+  const { data, error } = await supabase.from('event_decisions').select(DECISION_SELECT).eq('event_id', eventId)
+  if (error) throw error
+  return data.map(mapDecision)
+}
+
+// Crea o actualiza la decisión de esta pregunta (una fila por event_id+questionKey para una pregunta NO
+// personalizada; una "+ otra opción" debe llamar con un questionKey propio y único, p. ej.
+// `custom:${crypto.randomUUID()}`, para no pisar otras opciones personalizadas del mismo bloque).
+export async function upsertEventDecision(
+  eventId: string,
+  input: { blockKey: string; questionKey: string; answer: Record<string, unknown>; isCustomOption?: boolean },
+): Promise<EventDecision> {
+  const familyId = await currentFamilyId()
+  const { data: existing } = await supabase.from('event_decisions').select(DECISION_SELECT).eq('event_id', eventId).eq('question_key', input.questionKey).maybeSingle()
+  if (existing) {
+    const { data, error } = await supabase.from('event_decisions').update({ answer: input.answer, updated_at: new Date().toISOString() }).eq('id', existing.id).select(DECISION_SELECT).single()
+    if (error) throw error
+    return mapDecision(data)
+  }
+  const { data: userResult } = await supabase.auth.getUser()
+  const { data, error } = await supabase
+    .from('event_decisions')
+    .insert({
+      event_id: eventId,
+      family_id: familyId,
+      block_key: input.blockKey,
+      question_key: input.questionKey,
+      answer: input.answer,
+      is_custom_option: input.isCustomOption ?? false,
+      created_by: userResult.user?.id ?? null,
+    })
+    .select(DECISION_SELECT)
+    .single()
+  if (error) throw error
+  return mapDecision(data)
+}
+
+// Borrado seguro: decision_id en las 5 tablas generables tiene ON DELETE SET NULL (migración 0176), así
+// que borrar una decisión nunca borra el elemento que generó — solo deja de "saber" quién lo generó.
+export async function deleteEventDecision(id: string): Promise<void> {
+  const { error } = await supabase.from('event_decisions').delete().eq('id', id)
   if (error) throw error
 }
 

@@ -717,6 +717,11 @@ export interface EventTask {
   // 0163_event_task_calendar_link.sql. Enlace estable, nunca se
   // resuelve buscando por título.
   calendarEventId: string | null
+  // Fase 1 del motor de decisiones — qué decisión del futuro
+  // configurador generó esta tarea (null = creada a mano, o anterior a
+  // esta fase). ON DELETE SET NULL: borrar la decisión nunca borra la
+  // tarea — ver migración 0176_event_decisions_and_moments.sql.
+  decisionId: string | null
 }
 
 export interface EventBudgetItem {
@@ -730,6 +735,8 @@ export interface EventBudgetItem {
   plannedAmount: number | null
   sortOrder: number
   createdAt: string
+  // Fase 1 del motor de decisiones — ver EventTask.decisionId.
+  decisionId: string | null
 }
 
 // Menú — petición de la Skill: "Menu comes BEFORE shopping". Una vez
@@ -756,6 +763,8 @@ export interface EventProvider {
   contactNote: string | null
   notes: string | null
   createdAt: string
+  // Fase 1 del motor de decisiones — ver EventTask.decisionId.
+  decisionId: string | null
 }
 
 export type EventPaymentStatus = 'pendiente' | 'parcial' | 'pagado'
@@ -789,6 +798,8 @@ export interface EventDecorationItem {
   status: EventDecorationStatus
   priceEstimate: number | null
   transferredToShopping: boolean
+  // Fase 1 del motor de decisiones — ver EventTask.decisionId.
+  decisionId: string | null
   sortOrder: number
   createdAt: string
 }
@@ -883,6 +894,59 @@ export interface EventDayPlanItem {
   note: string | null
   sortOrder: number
   createdAt: string
+  // Fase 1 del motor de decisiones — ver EventTask.decisionId.
+  decisionId: string | null
+}
+
+// Fase 1 del modelo genérico de momentos — sustituirá en la UI a
+// ceremonyLocationLabel/celebrationLocationLabel (fijos a 2 ubicaciones)
+// cuando exista la Fase 2, pero convive con ellos sin tocarlos mientras
+// tanto. Un `id` que empieza por "legacy:" es una fila SINTETIZADA en
+// caliente por resolveEventMoments (nunca persistida) a partir de los
+// campos heredados del evento — nunca se debe pasar a updateEventMoment/
+// deleteEventMoment, de ahí `isLegacy`.
+export interface EventMoment {
+  id: string
+  eventId: string
+  familyId: string
+  title: string
+  momentDate: string | null
+  momentTime: string | null
+  locationLabel: string | null
+  locationLatitude: number | null
+  locationLongitude: number | null
+  sortOrder: number
+  createdAt: string
+  isLegacy?: boolean
+}
+
+// Invitado <-> momento, muchos a muchos (sustituirá a EventGuest.inviteScope,
+// cerrado a exactamente 2 ubicaciones, cuando exista la Fase 2 de UI).
+export interface EventGuestMoment {
+  id: string
+  guestId: string
+  momentId: string
+  eventId: string
+  familyId: string
+  createdAt: string
+}
+
+// Fase 1 del motor de decisiones — una fila por pregunta respondida del
+// futuro configurador "Cómo queréis que sea vuestro evento". No la
+// escribe todavía ningún formulario; solo existe la infraestructura
+// (tabla + funciones de datos) para que la UI futura no tenga que
+// rediseñar el modelo cuando se construya.
+export interface EventDecision {
+  id: string
+  eventId: string
+  familyId: string
+  blockKey: string
+  questionKey: string
+  answer: Record<string, unknown>
+  isCustomOption: boolean
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 // Diseño de la invitación en capas (Fase 3) — una fila por evento.

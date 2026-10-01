@@ -12,6 +12,7 @@ import {
   addEventGuest,
   addEventGuestMember,
   addEventMenuItem,
+  addEventMoment,
   addEventPayment,
   addEventProvider,
   addEventSpecialDetail,
@@ -34,6 +35,7 @@ import {
   deleteEventGuest,
   deleteEventGuestMember,
   deleteEventMenuItem,
+  deleteEventMoment,
   deleteEventPayment,
   deleteEventProvider,
   deleteEventSpecialDetail,
@@ -56,8 +58,10 @@ import {
   listEventGifts,
   listEventGuestMembers,
   listEventGuestMembersForEvent,
+  listEventGuestMoments,
   listEventGuests,
   listEventMenuItems,
+  listEventMoments,
   listEventPayments,
   listEventProviders,
   listEventSpecialDetails,
@@ -68,6 +72,7 @@ import {
   recalculateAutoTasks,
   regenerateEventOpenRsvpUrl,
   regenerateGuestRsvpUrl,
+  reorderEventMoments,
   saveEventTemplate,
   transferActivityMaterialsToShopping,
   transferDecorationItemToShopping,
@@ -79,6 +84,7 @@ import {
   updateEventGuest,
   updateEventGuestMember,
   updateEventBudgetItem,
+  updateEventMoment,
   updateEventPayment,
   updateEventSpecialDetail,
   updateEventTask,
@@ -112,6 +118,7 @@ import {
   eventDateLine,
   eventLocationLines,
   eventLocationMapLines,
+  eventPlanningConfiguratorTitle,
   EVENT_SERVICE_META,
   type EventHealthLevel,
   generateEventPlan,
@@ -121,8 +128,10 @@ import {
   isToday,
   rankUpcomingTasks,
   RECOMMENDED_MODULES,
+  resolveEventMoments,
   sortInvitationTemplatesForEvent,
 } from '@/domain/events'
+import { loadConfiguratorOpen, saveConfiguratorOpen } from '@/state/eventPlanningConfiguratorState'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
 // Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
 // una función pura sin ninguna dependencia de Previsión/Economía.
@@ -144,6 +153,7 @@ import type {
   EventInvitation,
   EventMenuItem,
   EventModuleKey,
+  EventMoment,
   EventPayment,
   EventProvider,
   EventServiceId,
@@ -264,6 +274,14 @@ function countdownTone(days: number | null): 'normal' | 'warn' | 'alert' {
   if (days <= 7) return 'alert'
   if (days <= 14) return 'warn'
   return 'normal'
+}
+
+// Fase 2 del configurador — ¿este evento se organiza por MOMENTOS (varios lugares/fechas posibles) en vez
+// de un único "Lugar" genérico? Mismo criterio que ya decidía hoy si se mostraba la antigua
+// CeremoniaSection: tipo de doble ubicación + módulo "ceremonia" activo. Un único sitio para esta
+// condición — la usan la cabecera, "Gestionar evento" y el configurador, para que las 3 nunca diverjan.
+function isEventStructuredByMoments(event: Pick<FamilyEvent, 'type' | 'enabledModules'>): boolean {
+  return DUAL_LOCATION_EVENT_TYPES.includes(event.type) && event.enabledModules.includes('ceremonia')
 }
 
 // Fecha corta para la cabecera del evento ("Domingo, 18/10/2026"), para que quepa en una línea.
@@ -1178,7 +1196,11 @@ function EventDetail({
                 </button>
               )}
             </FitText>
-            {event.venueLabel && (
+            {/* Fase 2 — un evento estructurado por momentos (boda/comunión/bautizo con Ceremonia y
+                Celebración) no tiene un único "Lugar": mostrarlo aquí además del bloque de Momentos de
+                más abajo era el mismo dato duplicado que "Gestionar evento" (auditoría real: "Boda de
+                plata" tenía venue_label = celebration_location_label, el mismo restaurante dos veces). */}
+            {event.venueLabel && !isEventStructuredByMoments(event) && (
               <FitText as="p" maxSize={14} className="muted event-hero-line" style={{ margin: '2px 0 0' }}>
                 🏠 {event.venueLabel}
               </FitText>
@@ -1214,6 +1236,12 @@ function EventDetail({
 
       {event.status === 'planificacion' && event.dateStatus === 'confirmada' && isToday(event.eventDate) && <EventDayBanner event={event} />}
       {event.status === 'planificacion' && <PepaConclusions event={event} />}
+
+      {/* Fase 2 del configurador — único bloque implementado por ahora: Ceremonia y celebración. El
+          propio componente decide si tiene algo que mostrar (isEventStructuredByMoments); el resto de
+          bloques del documento maestro (Pareja, Invitados, Momentos especiales...) llegan en fases
+          posteriores, no en esta. */}
+      <EventPlanningConfigurator event={event} onChanged={onChanged} />
 
       {/* Fase 2 — "Estado del evento": auditoría real encontró que
           "Preparación del evento" (media de %tareas y %invitados) podía
@@ -1536,11 +1564,19 @@ function ManageEventModal({
               <input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
             </label>
           )}
-          <label>
-            Lugar (como se ve en la invitación)
-            <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} placeholder="Ej. en mi casa, Restaurante La Terraza…" />
-          </label>
-          <EventLocationCoordsPicker coords={venueCoords} onCoordsChange={setVenueCoords} />
+          {/* Fase 2 — un evento estructurado por momentos (más abajo, sección "Momentos") no tiene un
+              único "Lugar": mostrarlo aquí sería el mismo dato duplicado que ya detectó la auditoría real
+              (venue_label = celebration_location_label en "Boda de plata"). Eventos simples (cumpleaños,
+              comidas...) siguen exactamente igual que siempre. */}
+          {!isEventStructuredByMoments(event) && (
+            <>
+              <label>
+                Lugar (como se ve en la invitación)
+                <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} placeholder="Ej. en mi casa, Restaurante La Terraza…" />
+              </label>
+              <EventLocationCoordsPicker coords={venueCoords} onCoordsChange={setVenueCoords} />
+            </>
+          )}
           <label>
             Tema
             <input type="text" value={theme} onChange={(e) => setTheme(e.target.value)} />
@@ -1554,8 +1590,14 @@ function ManageEventModal({
           </button>
         </form>
 
-        {DUAL_LOCATION_EVENT_TYPES.includes(event.type) && event.enabledModules.includes('ceremonia') && (
-          <CeremoniaSection event={event} onChanged={onChanged} />
+        {isEventStructuredByMoments(event) && (
+          <div className="card event-card" style={{ marginTop: 8 }}>
+            <strong>Momentos</strong>
+            <p className="muted" style={{ fontSize: 13 }}>
+              Ceremonia, celebración o cualquier otro momento con su propio lugar y hora — al invitar a cada familia, eliges a cuáles va.
+            </p>
+            <MomentsEditor event={event} onChanged={onChanged} />
+          </div>
         )}
 
         <strong style={{ fontSize: 13, display: 'block', marginTop: 16 }}>Secciones del evento</strong>
@@ -1972,76 +2014,350 @@ function EventLocationCoordsPicker({
 }
 
 // ---------------------------------------------------------------------
-// Ceremonia — solo Comunión/Bautizo/Boda (dos ubicaciones posibles).
-// Reutilizada tal cual dentro de "Información del evento" en
-// ManageEventModal (Fase 1) — no se duplica ningún dato ni lógica de
-// guardado, solo cambia dónde se muestra.
+// Fase 2 del configurador — "✨ Cómo queréis que sea vuestra boda", acordeón plegable globalmente y por
+// bloque (persistencia simple en localStorage, ver src/state/eventPlanningConfiguratorState.ts). Por
+// ahora solo existe un bloque (Ceremonia y celebración); el resto del documento maestro (Pareja,
+// Invitados, Momentos especiales...) llega en fases posteriores. El orden de los bloques NO determina
+// ninguna prioridad de tareas — es puro orden de lectura.
 // ---------------------------------------------------------------------
 
-function CeremoniaSection({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
-  const [ceremonyLocationLabel, setCeremonyLocationLabel] = useState(event.ceremonyLocationLabel ?? '')
-  const [ceremonyCoords, setCeremonyCoords] = useState(
-    event.ceremonyLocationLatitude != null && event.ceremonyLocationLongitude != null
-      ? { latitude: event.ceremonyLocationLatitude, longitude: event.ceremonyLocationLongitude }
-      : null,
+function EventPlanningConfigurator({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
+  const [open, setOpen] = useState(() => loadConfiguratorOpen(event.id))
+  const [blockOpen, setBlockOpen] = useState(() => loadConfiguratorOpen(event.id, 'ceremonia_celebracion'))
+  // Los hooks van siempre antes de cualquier return condicional (Reglas de los Hooks): si la familia
+  // desactiva el módulo "ceremonia" con el acordeón ya montado, este componente debe poder dejar de
+  // pintar nada sin romper el orden de hooks entre renders.
+  if (!isEventStructuredByMoments(event)) return null
+
+  function toggleOpen() {
+    const next = !open
+    setOpen(next)
+    saveConfiguratorOpen(event.id, null, next)
+  }
+  function toggleBlock() {
+    const next = !blockOpen
+    setBlockOpen(next)
+    saveConfiguratorOpen(event.id, 'ceremonia_celebracion', next)
+  }
+
+  return (
+    <div className="card event-card" style={{ marginTop: 8 }}>
+      <button
+        type="button"
+        className="link-button"
+        onClick={toggleOpen}
+        style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', textAlign: 'left' }}
+        aria-expanded={open}
+      >
+        <strong>✨ {eventPlanningConfiguratorTitle(event.type)}</strong>
+        <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className="link-button"
+            onClick={toggleBlock}
+            style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+            aria-expanded={blockOpen}
+          >
+            🕊️ Ceremonia y celebración
+            <span aria-hidden="true">{blockOpen ? '▾' : '▸'}</span>
+          </button>
+          {blockOpen && (
+            <div style={{ marginTop: 4 }}>
+              <MomentsEditor event={event} onChanged={onChanged} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
-  const [ceremonyTime, setCeremonyTime] = useState(event.ceremonyTime ?? '')
-  const [celebrationLocationLabel, setCelebrationLocationLabel] = useState(event.celebrationLocationLabel ?? '')
-  const [celebrationCoords, setCelebrationCoords] = useState(
-    event.celebrationLocationLatitude != null && event.celebrationLocationLongitude != null
-      ? { latitude: event.celebrationLocationLatitude, longitude: event.celebrationLocationLongitude }
-      : null,
+}
+
+// ---------------------------------------------------------------------
+// Fase 2 — Momentos genéricos (event_moments, modelo creado en la Fase 1). Sustituye a la antigua
+// CeremoniaSection (2 ubicaciones fijas, Ceremonia/Celebración): un evento puede tener cualquier número
+// de momentos libres, cada uno con su propio nombre/fecha/hora/lugar. ÚNICA fuente de verdad: este mismo
+// componente se monta tanto dentro de "Gestionar evento" como dentro del configurador del dashboard —
+// mismas funciones de datos (listEventMoments/addEventMoment/updateEventMoment/deleteEventMoment/
+// reorderEventMoments, Fase 1), nunca una copia local propia ni una segunda llamada que pudiera divergir.
+// ---------------------------------------------------------------------
+
+const MOMENT_TITLE_SUGGESTIONS = ['Matrimonio civil', 'Ceremonia religiosa', 'Ceremonia simbólica', 'Celebración', 'Comida', 'Fiesta', 'Brunch']
+
+function momentSummaryLine(m: EventMoment): string {
+  const date = m.momentDate ? formatSpanishDate(m.momentDate) : 'Fecha por decidir'
+  const time = m.momentTime ? m.momentTime.slice(0, 5) : 'Hora por decidir'
+  return `${date} · ${time}`
+}
+
+interface MomentFormValues {
+  title: string
+  momentDate: string | null
+  momentTime: string | null
+  locationLabel: string | null
+  coords: { latitude: number; longitude: number } | null
+}
+
+function MomentForm({ initial, onCancel, onSave }: { initial?: EventMoment; onCancel: () => void; onSave: (patch: MomentFormValues) => Promise<void> }) {
+  const [title, setTitle] = useState(initial?.title ?? '')
+  const [momentDate, setMomentDate] = useState(initial?.momentDate ?? '')
+  const [momentTime, setMomentTime] = useState(initial?.momentTime?.slice(0, 5) ?? '')
+  const [locationLabel, setLocationLabel] = useState(initial?.locationLabel ?? '')
+  const [coords, setCoords] = useState(
+    initial?.locationLatitude != null && initial?.locationLongitude != null ? { latitude: initial.locationLatitude, longitude: initial.locationLongitude } : null,
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function handleSave() {
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!title.trim()) return
     setSaving(true)
     setError(null)
     try {
-      await updateEvent(event.id, {
-        ceremonyLocationLabel: ceremonyLocationLabel || null,
-        ceremonyLocationLatitude: ceremonyCoords?.latitude ?? null,
-        ceremonyLocationLongitude: ceremonyCoords?.longitude ?? null,
-        ceremonyTime: ceremonyTime || null,
-        celebrationLocationLabel: celebrationLocationLabel || null,
-        celebrationLocationLatitude: celebrationCoords?.latitude ?? null,
-        celebrationLocationLongitude: celebrationCoords?.longitude ?? null,
-      })
-      onChanged()
+      await onSave({ title: title.trim(), momentDate: momentDate || null, momentTime: momentTime || null, locationLabel: locationLabel.trim() || null, coords })
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
-    } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="card event-card" style={{ marginTop: 8 }}>
-      <strong>🕊️ Ceremonia</strong>
-      <p className="muted" style={{ fontSize: 13 }}>
-        Dos sitios posibles — al invitar a cada familia, eliges si va a los dos o solo a uno.
-      </p>
+    <form className="card member-form" onSubmit={handleSubmit} style={{ marginTop: 8 }}>
       {error && <p className="error">{error}</p>}
-      <div className="card member-form">
-        <label>
-          Iglesia / lugar de la ceremonia (como se ve en la invitación)
-          <input type="text" value={ceremonyLocationLabel} onChange={(e) => setCeremonyLocationLabel(e.target.value)} />
-        </label>
-        <EventLocationCoordsPicker coords={ceremonyCoords} onCoordsChange={setCeremonyCoords} />
-        <label>
-          Hora de la ceremonia
-          <input type="time" value={ceremonyTime} onChange={(e) => setCeremonyTime(e.target.value)} />
-        </label>
-        <label>
-          Lugar de la celebración (como se ve en la invitación)
-          <input type="text" value={celebrationLocationLabel} onChange={(e) => setCelebrationLocationLabel(e.target.value)} />
-        </label>
-        <EventLocationCoordsPicker coords={celebrationCoords} onCoordsChange={setCelebrationCoords} />
-        <button type="button" onClick={handleSave} disabled={saving}>
+      <label>
+        Nombre del momento
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej. Ceremonia, Matrimonio civil…" autoFocus />
+      </label>
+      {!initial && (
+        <div className="filter-row" style={{ marginTop: 2 }}>
+          {MOMENT_TITLE_SUGGESTIONS.map((s) => (
+            <button key={s} type="button" className="chip" onClick={() => setTitle(s)}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+      <label>
+        Fecha <span className="muted">(opcional — puede decidirse más adelante)</span>
+        <input type="date" value={momentDate} onChange={(e) => setMomentDate(e.target.value)} />
+      </label>
+      <label>
+        Hora <span className="muted">(opcional)</span>
+        <input type="time" value={momentTime} onChange={(e) => setMomentTime(e.target.value)} />
+      </label>
+      <label>
+        Lugar <span className="muted">(como se ve en la invitación, opcional)</span>
+        <input type="text" value={locationLabel} onChange={(e) => setLocationLabel(e.target.value)} />
+      </label>
+      <EventLocationCoordsPicker coords={coords} onCoordsChange={setCoords} />
+      <div className="filter-row" style={{ marginTop: 4 }}>
+        <button type="submit" disabled={saving || !title.trim()}>
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
       </div>
+    </form>
+  )
+}
+
+function MomentCard({
+  moment,
+  guestCount,
+  canMoveUp,
+  canMoveDown,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+}: {
+  moment: EventMoment
+  guestCount: number
+  canMoveUp: boolean
+  canMoveDown: boolean
+  onEdit: () => void
+  onDelete: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+}) {
+  const coords = moment.locationLatitude != null && moment.locationLongitude != null ? { latitude: moment.locationLatitude, longitude: moment.locationLongitude } : null
+  return (
+    <div className="card event-task-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 600 }}>{moment.title}</div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            {momentSummaryLine(moment)}
+          </div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            {moment.locationLabel || 'Lugar por decidir'}
+          </div>
+          {moment.locationLabel && (
+            <a href={buildMapsUrl(moment.locationLabel, coords)} target="_blank" rel="noopener noreferrer" className="link-button" style={{ textDecoration: 'none', fontSize: 13 }}>
+              📍 Ver ubicación
+            </a>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
+          <div className="filter-row" style={{ gap: 4 }}>
+            <button type="button" className="link-button" onClick={onMoveUp} disabled={!canMoveUp} aria-label={`Mover "${moment.title}" antes`}>
+              ↑
+            </button>
+            <button type="button" className="link-button" onClick={onMoveDown} disabled={!canMoveDown} aria-label={`Mover "${moment.title}" después`}>
+              ↓
+            </button>
+          </div>
+          <button type="button" className="link-button" onClick={onEdit}>
+            Editar
+          </button>
+          {guestCount > 0 && (
+            <p className="muted" style={{ fontSize: 11, textAlign: 'right', maxWidth: 170, margin: 0 }}>
+              {guestCount} invitado{guestCount === 1 ? '' : 's'} vinculado{guestCount === 1 ? '' : 's'} — al eliminar, dejará{guestCount === 1 ? '' : 'n'} de estarlo a este momento.
+            </p>
+          )}
+          <ConfirmButton label="Eliminar" confirmLabel="Eliminar" className="link-button" onConfirm={onDelete} ariaLabel={`Eliminar momento "${moment.title}"`} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
+  const [moments, setMoments] = useState<EventMoment[] | null>(null)
+  const [guestCounts, setGuestCounts] = useState<Map<string, number>>(new Map())
+  const [error, setError] = useState<string | null>(null)
+  const [addingOpen, setAddingOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  // Se carga SIEMPRE desde event_moments (nunca se copia nada al abrir la pantalla) — resolveEventMoments
+  // solo sintetiza una vista de lectura a partir de los campos heredados cuando la tabla está vacía para
+  // este evento (Fase 1); no inserta nada en la base de datos por sí sola.
+  async function load() {
+    try {
+      const [real, links] = await Promise.all([listEventMoments(event.id), listEventGuestMoments(event.id)])
+      setMoments(resolveEventMoments(event, real))
+      const counts = new Map<string, number>()
+      for (const link of links) counts.set(link.momentId, (counts.get(link.momentId) ?? 0) + 1)
+      setGuestCounts(counts)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudieron cargar los momentos'))
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  async function handleAdd(input: MomentFormValues) {
+    await addEventMoment(event.id, {
+      title: input.title,
+      momentDate: input.momentDate,
+      momentTime: input.momentTime,
+      locationLabel: input.locationLabel,
+      locationLatitude: input.coords?.latitude ?? null,
+      locationLongitude: input.coords?.longitude ?? null,
+    })
+    setAddingOpen(false)
+    await load()
+    onChanged()
+  }
+
+  // Un momento "legacy" (sintetizado por resolveEventMoments) no tiene fila real todavía — guardar una
+  // edición lo crea por primera vez (materializarlo), nunca pisa un dato que ya existiera.
+  async function handleEditSave(moment: EventMoment, patch: MomentFormValues) {
+    if (moment.isLegacy) {
+      await addEventMoment(event.id, {
+        title: patch.title,
+        momentDate: patch.momentDate,
+        momentTime: patch.momentTime,
+        locationLabel: patch.locationLabel,
+        locationLatitude: patch.coords?.latitude ?? null,
+        locationLongitude: patch.coords?.longitude ?? null,
+      })
+    } else {
+      await updateEventMoment(moment.id, {
+        title: patch.title,
+        momentDate: patch.momentDate,
+        momentTime: patch.momentTime,
+        locationLabel: patch.locationLabel,
+        locationLatitude: patch.coords?.latitude ?? null,
+        locationLongitude: patch.coords?.longitude ?? null,
+      })
+    }
+    setEditingId(null)
+    await load()
+    onChanged()
+  }
+
+  async function handleDelete(moment: EventMoment) {
+    if (moment.isLegacy) {
+      // No hay fila real que borrar: "eliminar" vacía el par de campos heredados correspondiente —
+      // nunca se crea una fila nueva solo para borrarla.
+      if (moment.title === 'Ceremonia') {
+        await updateEvent(event.id, { ceremonyLocationLabel: null, ceremonyLocationLatitude: null, ceremonyLocationLongitude: null, ceremonyTime: null })
+      } else {
+        await updateEvent(event.id, { celebrationLocationLabel: null, celebrationLocationLatitude: null, celebrationLocationLongitude: null })
+      }
+    } else {
+      await deleteEventMoment(moment.id)
+    }
+    await load()
+    onChanged()
+  }
+
+  async function handleReorder(moment: EventMoment, direction: -1 | 1) {
+    if (!moments) return
+    const realMoments = moments.filter((m) => !m.isLegacy)
+    const index = realMoments.findIndex((m) => m.id === moment.id)
+    const swapIndex = index + direction
+    if (index === -1 || swapIndex < 0 || swapIndex >= realMoments.length) return
+    const reordered = [...realMoments]
+    ;[reordered[index], reordered[swapIndex]] = [reordered[swapIndex], reordered[index]]
+    await reorderEventMoments(reordered.map((m) => m.id))
+    await load()
+  }
+
+  if (moments === null) return <p className="muted">Cargando…</p>
+
+  const realMomentIds = moments.filter((m) => !m.isLegacy).map((m) => m.id)
+
+  return (
+    <div>
+      {error && <p className="error">{error}</p>}
+      {moments.length === 0 && !addingOpen && <p className="muted">Todavía no hay ningún momento añadido.</p>}
+      <div className="event-list">
+        {moments.map((moment) => {
+          if (editingId === moment.id) {
+            return <MomentForm key={moment.id} initial={moment} onCancel={() => setEditingId(null)} onSave={(patch) => handleEditSave(moment, patch)} />
+          }
+          const realIndex = realMomentIds.indexOf(moment.id)
+          return (
+            <MomentCard
+              key={moment.id}
+              moment={moment}
+              guestCount={guestCounts.get(moment.id) ?? 0}
+              canMoveUp={realIndex > 0}
+              canMoveDown={realIndex !== -1 && realIndex < realMomentIds.length - 1}
+              onEdit={() => setEditingId(moment.id)}
+              onDelete={() => handleDelete(moment)}
+              onMoveUp={() => handleReorder(moment, -1)}
+              onMoveDown={() => handleReorder(moment, 1)}
+            />
+          )
+        })}
+      </div>
+      {addingOpen ? (
+        <MomentForm onCancel={() => setAddingOpen(false)} onSave={handleAdd} />
+      ) : (
+        <button type="button" className="link-button" onClick={() => setAddingOpen(true)} style={{ marginTop: 8 }}>
+          + Añadir momento
+        </button>
+      )}
     </div>
   )
 }

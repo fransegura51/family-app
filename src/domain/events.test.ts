@@ -16,6 +16,7 @@ import {
   EVENT_MODULES,
   eventAlertsToAttentionItems,
   eventLocationMapLines,
+  eventPlanningConfiguratorTitle,
   generateEventPlan,
   INVITATION_TEMPLATES,
   isOverdueTask,
@@ -914,6 +915,20 @@ describe('resolveGuestInvitedMoments — Fase 1, invitados por momento', () => {
     const links: EventGuestMoment[] = [{ id: 'l1', guestId: 'g-explicit', momentId: 'ceremonia', eventId: 'e1', familyId: 'f1', createdAt: '2026-01-01T00:00:00Z' }]
     const result = resolveGuestInvitedMoments(guest, moments, links)
     expect(result.map((m) => m.title)).toEqual(['Ceremonia'])
+  })
+})
+
+describe('eventPlanningConfiguratorTitle — Fase 2, título del acordeón adaptado por tipo', () => {
+  it('adapts the phrase for boda/comunión/bautizo', () => {
+    expect(eventPlanningConfiguratorTitle('boda')).toBe('Cómo queréis que sea vuestra boda')
+    expect(eventPlanningConfiguratorTitle('comunion')).toBe('Cómo queréis que sea la comunión')
+    expect(eventPlanningConfiguratorTitle('bautizo')).toBe('Cómo queréis que sea el bautizo')
+  })
+
+  it('falls back to a generic phrase for types the configurator does not cover in this phase', () => {
+    expect(eventPlanningConfiguratorTitle('cumpleanos')).toBe('Cómo queréis que sea el evento')
+    expect(eventPlanningConfiguratorTitle('celebracion')).toBe('Cómo queréis que sea el evento')
+    expect(eventPlanningConfiguratorTitle('personalizado')).toBe('Cómo queréis que sea el evento')
   })
 })
 

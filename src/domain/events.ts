@@ -441,6 +441,17 @@ export function generateEventPlan(event: Pick<FamilyEvent, 'type' | 'enabledModu
 
 export const DUAL_LOCATION_EVENT_TYPES: EventType[] = ['comunion', 'bautizo', 'boda']
 
+// Fase 2 del configurador "Cómo queréis que sea vuestro evento" — título del acordeón, adaptado por tipo
+// (petición explícita: "en otros tipos de evento cambiará el texto"). Solo cubre los 3 tipos que hoy tienen
+// algo que mostrar en el único bloque construido en esta fase (Ceremonia y celebración); si en el futuro el
+// configurador se extiende a más tipos, esta función es el único sitio que hay que ampliar.
+export function eventPlanningConfiguratorTitle(type: EventType): string {
+  if (type === 'boda') return 'Cómo queréis que sea vuestra boda'
+  if (type === 'comunion') return 'Cómo queréis que sea la comunión'
+  if (type === 'bautizo') return 'Cómo queréis que sea el bautizo'
+  return 'Cómo queréis que sea el evento'
+}
+
 export function eventDateLine(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate' | 'eventTime'>): string {
   if (event.dateStatus === 'pendiente' || !event.eventDate) return '📅 Fecha todavía por confirmar'
   const label = event.dateStatus === 'provisional' ? 'Fecha provisional' : 'Fecha'

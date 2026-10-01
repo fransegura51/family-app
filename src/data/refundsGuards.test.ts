@@ -126,12 +126,13 @@ describe('lo que esta fase NO toca', () => {
     // 0180 (alexa_account_linking, integración con Alexa) añade alexa_links/alexa_auth_codes — tampoco
     // devoluciones. 0181 (alexa_account_linking_drop) la deshace por completo — tampoco devoluciones.
     // 0182 (store_chains_logo_and_shopping_link, catálogo global de cadenas para Compras) añade
-    // store_chains.logo_asset y shopping_stores.chain_key — tampoco devoluciones.
+    // store_chains.logo_asset y shopping_stores.chain_key — tampoco devoluciones. 0183
+    // (store_chains_catalog_expansion) añade más cadenas al mismo catálogo — tampoco devoluciones.
     // Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(182)
+    expect(Math.max(...numbers)).toBe(183)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

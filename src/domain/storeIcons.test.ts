@@ -20,4 +20,13 @@ describe('getStoreIcon — resolución por logoAsset (cadenas) con fallback al c
     expect(getStoreIcon('Frutería de la esquina')).toEqual({ kind: 'emoji', icon: '🏬' })
     expect(getStoreIcon('Frutería de la esquina', 'inexistente')).toEqual({ kind: 'emoji', icon: '🏬' })
   })
+
+  it('cadenas del catálogo base añadidas en la Fase 2 (Carrefour/Eroski/Dia/Alcampo ya existían; El Corte Inglés/Hipercor son nuevas) resuelven a su propio favicon, nunca al de la otra', () => {
+    expect(getStoreIcon('Carrefour')).toEqual({ kind: 'logo', domain: 'carrefour.es' })
+    expect(getStoreIcon('Eroski')).toEqual({ kind: 'logo', domain: 'eroski.es' })
+    expect(getStoreIcon('Dia')).toEqual({ kind: 'logo', domain: 'dia.es' })
+    expect(getStoreIcon('Alcampo')).toEqual({ kind: 'logo', domain: 'alcampo.es' })
+    expect(getStoreIcon('El Corte Inglés')).toEqual({ kind: 'logo', domain: 'elcorteingles.es' })
+    expect(getStoreIcon('Hipercor')).toEqual({ kind: 'logo', domain: 'hipercor.es' })
+  })
 })

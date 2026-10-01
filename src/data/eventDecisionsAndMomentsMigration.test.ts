@@ -212,11 +212,13 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // ver con Eventos. 0181 (alexa_account_linking_drop) la deshace por completo (petición real:
   // "Quita todo lo que has hecho de Alexa... Quítalo todo de la aplicación") — tampoco Eventos. 0182
   // (store_chains_logo_and_shopping_link, catálogo global de cadenas para Compras) añade
-  // store_chains.logo_asset y shopping_stores.chain_key — tampoco toca Eventos.
-  it('0182 (store_chains_logo_and_shopping_link) es la última migración del repositorio', () => {
+  // store_chains.logo_asset y shopping_stores.chain_key — tampoco toca Eventos. 0183
+  // (store_chains_catalog_expansion) añade Carrefour/Eroski/Dia/Alcampo/El Corte Inglés/Hipercor al
+  // mismo catálogo — tampoco toca Eventos.
+  it('0183 (store_chains_catalog_expansion) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(182)
+    expect(Math.max(...numbers)).toBe(183)
   })
 })

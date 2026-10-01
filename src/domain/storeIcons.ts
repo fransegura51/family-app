@@ -45,6 +45,8 @@ const STORE_LOGOS: Record<string, string> = {
   alcampo: 'alcampo.es',
   dia: 'dia.es',
   spar: 'spar.es',
+  'el corte ingles': 'elcorteingles.es',
+  hipercor: 'hipercor.es',
 }
 
 // Cadenas regionales cuyo logo real ha dado el usuario directamente

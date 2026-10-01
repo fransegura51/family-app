@@ -212,10 +212,11 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // tampoco toca devoluciones. 0181 (alexa_account_linking_drop) la deshace por completo —
     // tampoco toca devoluciones. 0182 (store_chains_logo_and_shopping_link, catálogo global de cadenas
     // para Compras) añade store_chains.logo_asset y shopping_stores.chain_key — tampoco toca devoluciones.
+    // 0183 (store_chains_catalog_expansion) añade más cadenas al mismo catálogo — tampoco devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(182)
+    expect(Math.max(...numbers)).toBe(183)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

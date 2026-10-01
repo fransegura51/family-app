@@ -37,6 +37,7 @@ import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/o
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
 import { resolvePlace, searchPlaces } from '@/services/geocoding'
 import { getDrivingEta } from '@/services/drivingEta'
+import { getWeather } from '@/services/weather'
 import { hasReachedGoogleMapsLimit } from '@/services/googleMapsUsageGuard'
 import { splitGroceryListWithAi } from '@/services/splitGroceryList'
 import { getSelectedCalendarDate } from '@/state/calendarSelection'
@@ -712,6 +713,7 @@ const locationDeps: LocationDeps = {
     return resolved ? { ok: true, place: { label: resolved.label, latitude: resolved.latitude, longitude: resolved.longitude } } : { ok: false, reason: 'not-found' }
   },
   drivingEta: (origin, destination) => getDrivingEta(origin, destination),
+  weather: (latitude, longitude) => getWeather(latitude, longitude),
 }
 
 // Lo que necesita "Hablar con PEPA" del resto de la app: las mismas

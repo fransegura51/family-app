@@ -17,6 +17,7 @@ import { addPlace } from '@/data/location'
 import { locationAction, type LocationDeps, type SearchOutcome } from '@/pepa/location'
 import { forgetFoundPlace } from '@/pepa/recentContext'
 import type { LocationPlace, MemberLocation } from '@/domain/types'
+import type { WeatherReport } from '@/domain/weather'
 
 const FARMACIA: LocationPlace = { id: 'p1', familyId: 'f', name: 'Farmacia', category: null, latitude: 40.42, longitude: -3.70, radiusM: 150, notifyArrivals: false }
 const COLE: LocationPlace = { id: 'p2', familyId: 'f', name: 'Colegio San José', category: null, latitude: 40.43, longitude: -3.71, radiusM: 100, notifyArrivals: false }
@@ -36,6 +37,7 @@ function makeDeps(overrides: Partial<LocationDeps> = {}): LocationDeps {
     currentPosition: vi.fn().mockResolvedValue({ latitude: 40.4, longitude: -3.7 }),
     searchFirstPlace: vi.fn().mockResolvedValue(NOT_FOUND_RESULT),
     drivingEta: vi.fn().mockResolvedValue(null),
+    weather: vi.fn().mockResolvedValue(null),
     ...overrides,
   }
 }
@@ -225,5 +227,54 @@ describe('locationAction: quién está más cerca', () => {
     )
     expect(outcome).toMatchObject({ kind: 'answer' })
     expect((outcome as { text: string }).text).toContain('Eric está más cerca de Madrid, España')
+  })
+})
+
+describe('locationAction: el tiempo (meteorológico) y la previsión', () => {
+  const REPORT: WeatherReport = {
+    now: { temperatureC: 21, code: 0 },
+    forecast: [
+      { date: '2026-10-01', maxC: 26, minC: 17, code: 0, rainChance: 10 },
+      { date: '2026-10-02', maxC: 24, minC: 16, code: 95, rainChance: 70 },
+    ],
+  }
+
+  it('dice el tiempo y la previsión de un lugar guardado', async () => {
+    const weather = vi.fn().mockResolvedValue(REPORT)
+    const outcome = await locationAction('qué tiempo hace en la farmacia', makeDeps({ weather }))
+    expect(weather).toHaveBeenCalledWith(40.42, -3.7)
+    expect(outcome).toEqual({
+      kind: 'answer',
+      text: 'En Farmacia ahora mismo hay 21°, despejado. Previsión: mañana 24°/16°, con un 70% de posibilidades de lluvia.',
+    })
+  })
+
+  it('si no es un lugar guardado, también lo busca en Google Maps (petición real: "incluyendo Madrid")', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('Madrid, España', 40.4168, -3.7038))
+    const weather = vi.fn().mockResolvedValue(REPORT)
+    const outcome = await locationAction('qué tiempo hace en Madrid', makeDeps({ searchFirstPlace, weather }))
+    expect(searchFirstPlace).toHaveBeenCalledWith('madrid', { latitude: 40.4, longitude: -3.7 })
+    expect(weather).toHaveBeenCalledWith(40.4168, -3.7038)
+    expect(outcome).toMatchObject({ kind: 'answer' })
+    expect((outcome as { text: string }).text).toContain('En Madrid, España ahora mismo hay 21°')
+  })
+
+  it('no necesita saber dónde estás tú (a diferencia del tiempo en coche)', async () => {
+    const currentPosition = vi.fn().mockResolvedValue(null)
+    const weather = vi.fn().mockResolvedValue(REPORT)
+    const outcome = await locationAction('qué tiempo hace en la farmacia', makeDeps({ currentPosition, weather }))
+    expect(outcome).toMatchObject({ kind: 'answer' })
+    expect((outcome as { text: string }).text).not.toContain('permiso de ubicación')
+  })
+
+  it('ni guardado ni encontrado en el mapa, lo dice', async () => {
+    const outcome = await locationAction('qué tiempo hace en un sitio inventado', makeDeps())
+    expect(outcome).toEqual({ kind: 'answer', text: 'No he encontrado «un sitio inventado», ni entre tus lugares guardados ni buscándolo en el mapa.' })
+  })
+
+  it('si Open-Meteo falla, lo dice sin romper nada', async () => {
+    const weather = vi.fn().mockResolvedValue(null)
+    const outcome = await locationAction('qué tiempo hace en la farmacia', makeDeps({ weather }))
+    expect(outcome).toEqual({ kind: 'answer', text: 'No he podido consultar el tiempo en Farmacia ahora mismo.' })
   })
 })

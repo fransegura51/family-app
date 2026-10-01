@@ -87,6 +87,25 @@ describe('routeLocation: tiempo en coche', () => {
   })
 })
 
+describe('routeLocation: el tiempo (meteorológico) y la previsión', () => {
+  it('peticiones reales: "qué tiempo hace en...", "cómo está el tiempo en...", "previsión en..."', () => {
+    expect(routeLocation('qué tiempo hace en Madrid')).toEqual({ type: 'weather', place: 'madrid' })
+    expect(routeLocation('cómo está el tiempo en Valencia')).toEqual({ type: 'weather', place: 'valencia' })
+    expect(routeLocation('previsión en Madrid')).toEqual({ type: 'weather', place: 'madrid' })
+    expect(routeLocation('previsión del tiempo en Madrid')).toEqual({ type: 'weather', place: 'madrid' })
+  })
+
+  it('con un día de por medio ("mañana", "hoy"), igual se reconoce', () => {
+    expect(routeLocation('qué tiempo hará mañana en Madrid')).toEqual({ type: 'weather', place: 'madrid' })
+    expect(routeLocation('qué tiempo hace hoy en el cole')).toEqual({ type: 'weather', place: 'el cole' })
+    expect(routeLocation('cómo va a estar el tiempo en Bilbao')).toEqual({ type: 'weather', place: 'bilbao' })
+  })
+
+  it('"qué tiempo tengo hasta X" (duración) no se confunde con el tiempo meteorológico', () => {
+    expect(routeLocation('qué tiempo tengo hasta Madrid')).toEqual({ type: 'eta', place: 'madrid' })
+  })
+})
+
 describe('routeLocation: quién está más cerca', () => {
   it('reconoce varias formas de preguntarlo', () => {
     expect(routeLocation('quién está más cerca de la farmacia')).toEqual({ type: 'nearest', place: 'la farmacia' })

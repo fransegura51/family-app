@@ -6,6 +6,7 @@
 import { distanceMeters, formatDistance, formatDuration, trafficDescription } from '@/domain/geo'
 import { routeLocation } from '@/domain/locationRoute'
 import { normalize } from '@/domain/voiceQuery'
+import { formatWeatherReport, type WeatherReport } from '@/domain/weather'
 import { DEFAULT_PLACE_RADIUS_M } from '@/pepa/actions/locationActions'
 import { proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext } from '@/pepa/actions/types'
@@ -32,6 +33,10 @@ export interface LocationDeps {
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number },
   ): Promise<{ minutes: number; km: number; delayMinutes: number; polyline: string | null } | null>
+  // Petición real: "quiero que el asistente de Pepa me diga también el tiempo que hace en un sitio
+  // en concreto y la previsión". Gratis (Open-Meteo, sin clave, ver services/weather.ts) — no pasa
+  // por el freno de Google Maps (googleMapsUsageGuard.ts), ese es solo para lo que sí tiene coste.
+  weather(latitude: number, longitude: number): Promise<WeatherReport | null>
 }
 
 function emptyContext(): ActionContext {
@@ -143,6 +148,19 @@ async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkO
   }
 }
 
+// Petición real: "quiero que el asistente de Pepa me diga también el tiempo que hace en un sitio en
+// concreto y la previsión". Reutiliza resolveDestination (lugar guardado, o búsqueda en Google Maps
+// si no — "incluyendo Madrid y todos los lugares"), igual que "cuánto se tarda"/"quién está más
+// cerca" — pero sin necesitar saber dónde estás TÚ (el tiempo de un sitio no depende de tu origen).
+async function handleWeather(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
+  const resolved = await resolveDestination(spokenPlace, deps)
+  if (!resolved.ok) return { kind: 'answer', text: resolved.reason === 'daily-limit' ? DAILY_LIMIT : NOT_FOUND(spokenPlace) }
+  const destination = resolved.destination
+  const report = await deps.weather(destination.latitude, destination.longitude)
+  if (!report) return { kind: 'answer', text: `No he podido consultar el tiempo en ${destination.label} ahora mismo.` }
+  return { kind: 'answer', text: formatWeatherReport(destination.label, report) }
+}
+
 async function handleNearest(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
   const [resolved, locations, members] = await Promise.all([resolveDestination(spokenPlace, deps), deps.memberLocations(), deps.members()])
   if (!resolved.ok) return { kind: 'answer', text: resolved.reason === 'daily-limit' ? DAILY_LIMIT : NOT_FOUND(spokenPlace) }
@@ -171,5 +189,7 @@ export async function locationAction(text: string, deps: LocationDeps): Promise<
       return handleEta(intent.place, deps)
     case 'nearest':
       return handleNearest(intent.place, deps)
+    case 'weather':
+      return handleWeather(intent.place, deps)
   }
 }

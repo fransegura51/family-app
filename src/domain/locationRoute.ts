@@ -11,6 +11,7 @@ export type LocationIntent =
   | { type: 'save'; name: string | null }
   | { type: 'eta'; place: string }
   | { type: 'nearest'; place: string }
+  | { type: 'weather'; place: string }
 
 // "Guárdalo", "guárdame esto", "guarda este sitio", "guárdalo como Farmacia de la esquina" — a
 // propósito NO incluye el resto de verbos de guardar de siempre (domain/voiceQuery.ts,
@@ -45,6 +46,16 @@ const ETA_RE =
 // "Quién está más cerca de X", "quién anda más cerca del cole".
 const NEAREST_RE = /^quien(?:\s+(?:esta|anda|vive))?\s+mas cerca\s+(?:de(?:l)?|a)\s+(.+)$/
 
+// "Qué tiempo hace en Madrid", "qué tiempo va a hacer en el cole", "cómo está el tiempo en
+// Valencia", "previsión en Madrid", "previsión del tiempo en Madrid", "qué tiempo hará mañana en
+// Madrid" — petición real: "quiero que el asistente de Pepa me diga también el tiempo que hace en
+// un sitio en concreto y la previsión". Un día de por medio (hoy/mañana/pasado mañana) es
+// opcional y no cambia la respuesta: siempre se dice el tiempo de ahora Y la previsión de los
+// próximos días juntos (pepa/location.ts, handleWeather) — no merece la pena distinguir qué día
+// exacto se ha pedido por voz. Sin "^" delante, mismo motivo que ETA_RE.
+const WEATHER_RE =
+  /(?:que tiempo\s+(?:hace|va a hacer|hara)|como\s+(?:esta|va a estar)\s+el tiempo|prevision(?:\s+del tiempo)?)(?:\s+(?:hoy|manana|pasado manana))?\s+(?:en|para|de)\s+(.+)$/
+
 // A propósito NO incluye "necesito" (a diferencia de domain/voiceQuery.ts, PLACE_QUERY_PREFIXES,
 // que sí lo tiene): ahí es seguro porque el botón "📍 Buscar sitio" ya deja claro que TODO lo dicho
 // es una búsqueda de sitio, pero aquí, en el botón general, "necesito comprar leche" tiene que
@@ -65,6 +76,9 @@ export function routeLocation(text: string): LocationIntent | null {
 
   const nearest = NEAREST_RE.exec(n)
   if (nearest) return { type: 'nearest', place: nearest[1].trim() }
+
+  const weather = WEATHER_RE.exec(n)
+  if (weather) return { type: 'weather', place: weather[1].trim() }
 
   const saveAs = SAVE_AS_RE.exec(n)
   if (saveAs) return { type: 'save', name: saveAs[1].trim() || null }

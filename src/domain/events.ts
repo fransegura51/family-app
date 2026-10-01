@@ -491,7 +491,12 @@ export function eventLocationLines(
 // sitios, ver EventLocationCoordsPicker) el enlace va directo a esas
 // coordenadas, sin depender de que el texto sea buscable; sin
 // coordenadas, cae al texto tal cual (como antes).
-export function buildMapsUrl(label: string, coords?: { latitude: number; longitude: number } | null): string {
+// Cierre de Fase 2 (Google Maps) — placeId opcional, tercer parámetro aditivo: cuando existe es el
+// identificador más preciso que puede dar Google (mejor que unas coordenadas, que pueden quedarse
+// imprecisas tras arrastrar el marcador), así que manda sobre coords/texto cuando está disponible.
+// Ninguna llamada existente pasa este parámetro, así que su comportamiento no cambia.
+export function buildMapsUrl(label: string, coords?: { latitude: number; longitude: number } | null, placeId?: string | null): string {
+  if (placeId) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}&query_place_id=${encodeURIComponent(placeId)}`
   if (coords) return `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`
 }
@@ -566,6 +571,10 @@ export function resolveEventMoments(
       locationLabel: event.ceremonyLocationLabel,
       locationLatitude: event.ceremonyLocationLatitude,
       locationLongitude: event.ceremonyLocationLongitude,
+      // Cierre de Fase 2 (Google Maps) — los campos heredados nunca tuvieron dirección/place_id propios
+      // (solo un texto libre), así que no hay nada que sintetizar aquí: null hasta que se vuelva a elegir.
+      locationAddress: null,
+      locationPlaceId: null,
       sortOrder: 0,
       createdAt: '',
       isLegacy: true,
@@ -582,6 +591,8 @@ export function resolveEventMoments(
       locationLabel: event.celebrationLocationLabel,
       locationLatitude: event.celebrationLocationLatitude,
       locationLongitude: event.celebrationLocationLongitude,
+      locationAddress: null,
+      locationPlaceId: null,
       sortOrder: 1,
       createdAt: '',
       isLegacy: true,
@@ -633,21 +644,24 @@ export function momentsLocationLines(moments: EventMoment[]): string[] {
       lastDate = m.momentDate
     }
     const time = m.momentTime ? ` · ${m.momentTime.slice(0, 5)}` : ''
-    const location = m.locationLabel ? `: ${m.locationLabel}` : ''
+    // Cierre de Fase 2 (Google Maps) — cuando hay dirección legible, se añade como aclaración del lugar
+    // ("Iglesia de San Andrés — Plaza X, Almoradí"), nunca coordenadas como texto principal.
+    const location = m.locationLabel ? `: ${m.locationLabel}${m.locationAddress ? ' — ' + m.locationAddress : ''}` : ''
     lines.push(`📍 ${m.title}${location}${time}`)
   }
   return lines
 }
 
 // Cierre de Fase 2 — equivalente moments-first de eventLocationMapLines: un enlace de mapa por momento con
-// lugar, usando sus coordenadas reales si las tiene (igual que ya hace buildMapsUrl en todo el resto de la
-// app). Mismo criterio de "nunca por título": el nombre del momento es solo la etiqueta del enlace.
+// lugar, usando el place_id/coordenadas reales si los tiene (igual que ya hace buildMapsUrl en todo el
+// resto de la app). Mismo criterio de "nunca por título": el nombre del momento es solo la etiqueta del
+// enlace.
 export function momentsLocationMapLines(moments: EventMoment[]): string[] {
   const lines: string[] = []
   for (const m of moments) {
     if (!m.locationLabel) continue
     const coords = m.locationLatitude != null && m.locationLongitude != null ? { latitude: m.locationLatitude, longitude: m.locationLongitude } : null
-    lines.push(`📍 Cómo llegar a ${m.title}: ${buildMapsUrl(m.locationLabel, coords)}`)
+    lines.push(`📍 Cómo llegar a ${m.title}: ${buildMapsUrl(m.locationAddress ?? m.locationLabel, coords, m.locationPlaceId)}`)
   }
   return lines
 }

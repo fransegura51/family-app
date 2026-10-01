@@ -918,6 +918,11 @@ export interface EventMoment {
   sortOrder: number
   createdAt: string
   isLegacy?: boolean
+  // Cierre de Fase 2 (Google Maps) — dirección legible y Place ID de Google, por separado de
+  // locationLabel (nombre que ve el invitado, puede ser personalizado: "Casa de los abuelos"). Nulos en
+  // momentos antiguos (solo coordenadas) hasta que se vuelva a elegir la ubicación con el buscador.
+  locationAddress: string | null
+  locationPlaceId: string | null
 }
 
 // Invitado <-> momento, muchos a muchos (sustituirá a EventGuest.inviteScope,

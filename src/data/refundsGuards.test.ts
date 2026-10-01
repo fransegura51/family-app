@@ -117,11 +117,13 @@ describe('lo que esta fase NO toca', () => {
     // 0176 (event_decisions_and_moments, Fase 1 del motor de decisiones + modelo genérico de momentos de
     // Eventos) añade `event_decisions`, `event_moments`, `event_guest_moments` y `decision_id` en 5 tablas
     // de Eventos — nada que ver con devoluciones/refunds.
+    // 0177 (event_moment_location_details, cierre de Fase 2 — Google Maps) añade `location_address`/
+    // `location_place_id` a `event_moments` — tabla de Eventos, tampoco devoluciones.
     // Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(176)
+    expect(Math.max(...numbers)).toBe(177)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

@@ -11,12 +11,17 @@ export function ConfirmButton({
   onConfirm,
   label = 'Borrar',
   confirmLabel = 'Confirmar',
+  // Cierre de Fase 2 — opcional: cuando borrar algo afecta a otra cosa (p. ej. invitados vinculados a un
+  // momento), el sitio que llama puede explicarlo aquí en vez de un "¿Seguro?" genérico. Nunca se calcula
+  // dentro de este componente — el dato de qué se vería afectado lo conoce quien lo usa, no este botón.
+  confirmMessage = '¿Seguro?',
   className = 'link-button',
   ariaLabel,
 }: {
   onConfirm: () => void
   label?: string
   confirmLabel?: string
+  confirmMessage?: string
   className?: string
   ariaLabel?: string
 }) {
@@ -25,7 +30,7 @@ export function ConfirmButton({
   if (confirming) {
     return (
       <span className="confirm-delete">
-        <span className="muted">¿Seguro?</span>
+        <span className="muted">{confirmMessage}</span>
         <button type="button" className={className} onClick={onConfirm}>
           {confirmLabel}
         </button>

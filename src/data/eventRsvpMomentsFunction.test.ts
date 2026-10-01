@@ -37,20 +37,29 @@ describe('event-rsvp — moments-first, nunca identifica un momento por su títu
 })
 
 describe('event-rsvp — superficie pública sin ampliar', () => {
-  it('MomentRow solo expone título/fecha/hora/lugar — nunca coordenadas ni ningún campo interno', () => {
+  it('MomentRow expone título/fecha/hora/lugar/dirección — nunca coordenadas, place_id ni ningún campo interno', () => {
     const idx = SRC.indexOf('interface MomentRow {')
     const body = SRC.slice(idx, SRC.indexOf('}', idx))
     expect(body).toContain('title: string')
     expect(body).toContain('moment_date: string | null')
     expect(body).toContain('moment_time: string | null')
     expect(body).toContain('location_label: string | null')
-    expect(body).not.toMatch(/latitude|longitude|decision_id|family_id/)
+    expect(body).toContain('location_address: string | null')
+    expect(body).not.toMatch(/latitude|longitude|place_id|decision_id|family_id/)
+  })
+
+  it('la dirección se concatena dentro del mismo "label" de texto que ya existía — nunca un campo nuevo en el JSON público', () => {
+    const idx = SRC.indexOf('function momentsLocationLines(')
+    const body = SRC.slice(idx, SRC.indexOf('\n}', idx))
+    expect(body).toContain('m.location_address')
+    expect(body).not.toMatch(/label:\s*m\.location_address/) // se concatena en el label, nunca es su propio campo
   })
 
   it('la consulta a event_moments/event_guest_moments pide solo esas columnas, nunca "*"', () => {
-    expect(SRC).toContain('.select("id, title, moment_date, moment_time, location_label")')
+    expect(SRC).toContain('.select("id, title, moment_date, moment_time, location_label, location_address")')
     expect(SRC).toContain('.select("moment_id")')
     expect(SRC).not.toMatch(/\.from\("event_moments"\)\s*\n?\s*\.select\("\*"\)/)
+    expect(SRC).not.toMatch(/location_place_id|location_latitude|location_longitude/)
   })
 })
 

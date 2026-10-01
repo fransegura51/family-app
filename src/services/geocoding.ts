@@ -14,8 +14,15 @@
 import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
 import { callGoogleMaps } from '@/services/googleMapsProxy'
 
+// Cierre de Fase 2 (Momentos/Google Maps) — name/address/placeId son aditivos: label se sigue calculando
+// exactamente igual que antes (prioriza la dirección), así que Calendario y el "Lugar" simple de Eventos,
+// que solo miran label/latitude/longitude, no cambian de comportamiento. Solo Momentos (MomentForm) lee
+// los 3 campos nuevos para separar nombre visible de dirección real.
 export interface PlaceResult {
   label: string
+  name: string | null
+  address: string | null
+  placeId: string | null
   latitude: number
   longitude: number
 }

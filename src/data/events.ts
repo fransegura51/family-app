@@ -1603,7 +1603,8 @@ export async function deleteEventDayPlanItem(id: string): Promise<void> {
 // Sin UI todavía: nada llama a addEventMoment/setGuestMoments fuera de los tests de esta fase.
 // ---------------------------------------------------------------------
 
-const MOMENT_SELECT = 'id, event_id, family_id, title, moment_date, moment_time, location_label, location_latitude, location_longitude, sort_order, created_at'
+const MOMENT_SELECT =
+  'id, event_id, family_id, title, moment_date, moment_time, location_label, location_latitude, location_longitude, location_address, location_place_id, sort_order, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapMoment(r: any): EventMoment {
@@ -1617,6 +1618,8 @@ function mapMoment(r: any): EventMoment {
     locationLabel: r.location_label,
     locationLatitude: r.location_latitude,
     locationLongitude: r.location_longitude,
+    locationAddress: r.location_address,
+    locationPlaceId: r.location_place_id,
     sortOrder: r.sort_order,
     createdAt: r.created_at,
   }
@@ -1630,7 +1633,16 @@ export async function listEventMoments(eventId: string): Promise<EventMoment[]> 
 
 export async function addEventMoment(
   eventId: string,
-  input: { title: string; momentDate?: string | null; momentTime?: string | null; locationLabel?: string | null; locationLatitude?: number | null; locationLongitude?: number | null },
+  input: {
+    title: string
+    momentDate?: string | null
+    momentTime?: string | null
+    locationLabel?: string | null
+    locationLatitude?: number | null
+    locationLongitude?: number | null
+    locationAddress?: string | null
+    locationPlaceId?: string | null
+  },
 ): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('event_moments').insert({
@@ -1642,6 +1654,8 @@ export async function addEventMoment(
     location_label: input.locationLabel ?? null,
     location_latitude: input.locationLatitude ?? null,
     location_longitude: input.locationLongitude ?? null,
+    location_address: input.locationAddress ?? null,
+    location_place_id: input.locationPlaceId ?? null,
     sort_order: Date.now(),
   })
   if (error) throw error
@@ -1649,7 +1663,16 @@ export async function addEventMoment(
 
 export async function updateEventMoment(
   id: string,
-  patch: Partial<{ title: string; momentDate: string | null; momentTime: string | null; locationLabel: string | null; locationLatitude: number | null; locationLongitude: number | null }>,
+  patch: Partial<{
+    title: string
+    momentDate: string | null
+    momentTime: string | null
+    locationLabel: string | null
+    locationLatitude: number | null
+    locationLongitude: number | null
+    locationAddress: string | null
+    locationPlaceId: string | null
+  }>,
 ): Promise<void> {
   const update: Record<string, unknown> = {}
   if (patch.title !== undefined) update.title = patch.title.trim()
@@ -1658,6 +1681,8 @@ export async function updateEventMoment(
   if (patch.locationLabel !== undefined) update.location_label = patch.locationLabel
   if (patch.locationLatitude !== undefined) update.location_latitude = patch.locationLatitude
   if (patch.locationLongitude !== undefined) update.location_longitude = patch.locationLongitude
+  if (patch.locationAddress !== undefined) update.location_address = patch.locationAddress
+  if (patch.locationPlaceId !== undefined) update.location_place_id = patch.locationPlaceId
   const { error } = await supabase.from('event_moments').update(update).eq('id', id)
   if (error) throw error
 }

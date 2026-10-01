@@ -89,9 +89,18 @@ Deno.serve(async (req) => {
       if (!res.ok) return json({ error: "google_error", detail: await res.text() }, 502)
       const data = await res.json()
       if (!data.location) return json({ place: null })
+      // Cierre de Fase 2 (Momentos/Google Maps) — Google YA devolvía displayName (nombre del sitio) y
+      // formattedAddress (dirección) por separado, pero antes se colapsaban en un único "label" quedándose
+      // solo con la dirección — el nombre real ("Iglesia de San Andrés") se perdía en cuanto había
+      // dirección. Ahora se devuelven los 3 por separado (más placeId, que ya teníamos pero nunca
+      // volvíamos a mandar) SIN tocar "label": los consumidores que ya existían (Calendario, el "Lugar"
+      // simple de Eventos) siguen recibiendo exactamente el mismo valor de siempre.
       return json({
         place: {
           label: data.formattedAddress ?? data.displayName?.text ?? "Sin nombre",
+          name: data.displayName?.text ?? null,
+          address: data.formattedAddress ?? null,
+          placeId,
           latitude: data.location.latitude,
           longitude: data.location.longitude,
         },

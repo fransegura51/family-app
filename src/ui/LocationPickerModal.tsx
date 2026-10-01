@@ -20,7 +20,10 @@ export function LocationPickerModal({
 }: {
   initialQuery?: string
   initialCoords?: { latitude: number; longitude: number } | null
-  onConfirm: (result: { latitude: number; longitude: number; label: string | null }) => void
+  // Cierre de Fase 2 (Momentos/Google Maps) — name/address/placeId son aditivos: Calendario sigue pasando
+  // un onConfirm que solo declara {latitude,longitude,label} y sigue compilando y funcionando igual
+  // (los campos de más los ignora). Solo Momentos (vía EventLocationCoordsPicker.onPlaceDetails) los usa.
+  onConfirm: (result: { latitude: number; longitude: number; label: string | null; name: string | null; address: string | null; placeId: string | null }) => void
   onClose: () => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -32,13 +35,23 @@ export function LocationPickerModal({
   const [locating, setLocating] = useState(false)
   const [picked, setPicked] = useState<{ latitude: number; longitude: number } | null>(initialCoords ?? null)
   const [label, setLabel] = useState<string | null>(null)
+  // Solo se rellenan al elegir una SUGERENCIA de búsqueda (Place Details ya trae nombre+dirección
+  // separados); tocar/arrastrar el mapa solo da geocodificación inversa (una dirección, nunca un nombre
+  // de negocio) — moverlo a mano invalida cualquier nombre/placeId resuelto antes.
+  const [placeName, setPlaceName] = useState<string | null>(null)
+  const [placeAddress, setPlaceAddress] = useState<string | null>(null)
+  const [placeId, setPlaceId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
 
   async function updateLabel(lat: number, lng: number) {
     setLabel(null)
+    setPlaceName(null)
+    setPlaceId(null)
     try {
-      setLabel(await reverseGeocode(lat, lng))
+      const address = await reverseGeocode(lat, lng)
+      setLabel(address)
+      setPlaceAddress(address)
     } catch {
       // La etiqueta es solo informativa — las coordenadas ya han quedado guardadas.
     }
@@ -128,6 +141,9 @@ export function LocationPickerModal({
       }
       placeMarker(resolved.latitude, resolved.longitude, true)
       setLabel(resolved.label)
+      setPlaceName(resolved.name)
+      setPlaceAddress(resolved.address)
+      setPlaceId(resolved.placeId ?? s.placeId)
     } finally {
       setSearching(false)
     }
@@ -149,7 +165,7 @@ export function LocationPickerModal({
 
   function handleConfirm() {
     if (!picked) return
-    onConfirm({ ...picked, label })
+    onConfirm({ ...picked, label, name: placeName, address: placeAddress, placeId })
   }
 
   return (

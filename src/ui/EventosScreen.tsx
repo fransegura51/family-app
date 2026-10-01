@@ -136,6 +136,7 @@ import {
   sortInvitationTemplatesForEvent,
 } from '@/domain/events'
 import { loadConfiguratorOpen, saveConfiguratorOpen } from '@/state/eventPlanningConfiguratorState'
+import { notifyEventMomentsChanged, useEventMomentsChangeSignal } from '@/state/eventMomentsSync'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
 // Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
 // una función pura sin ninguna dependencia de Previsión/Economía.
@@ -1959,16 +1960,22 @@ function EventShoppingSection({ items }: { items: ShoppingItem[] }) {
 function EventLocationCoordsPicker({
   coords,
   onCoordsChange,
+  onPlaceDetails,
 }: {
   coords: { latitude: number; longitude: number } | null
   onCoordsChange: (c: { latitude: number; longitude: number } | null) => void
+  // Cierre de Fase 2 (Momentos/Google Maps) — opcional: nombre/dirección/place_id del sitio elegido, por
+  // separado. Nadie más lo pasa (Calendario, "Lugar" simple de Eventos), así que su comportamiento no
+  // cambia; solo Momentos lo usa para no perder el nombre real que Google ya daba y antes se descartaba.
+  onPlaceDetails?: (details: { name: string | null; address: string | null; placeId: string | null }) => void
 }) {
   const [showMap, setShowMap] = useState(false)
   const [pickedLabel, setPickedLabel] = useState<string | null>(null)
 
-  function handleConfirmMapLocation(result: { latitude: number; longitude: number; label: string | null }) {
+  function handleConfirmMapLocation(result: { latitude: number; longitude: number; label: string | null; name: string | null; address: string | null; placeId: string | null }) {
     onCoordsChange({ latitude: result.latitude, longitude: result.longitude })
     setPickedLabel(result.label)
+    onPlaceDetails?.({ name: result.name, address: result.address, placeId: result.placeId })
     setShowMap(false)
   }
 
@@ -2102,6 +2109,8 @@ interface MomentFormValues {
   momentDate: string | null
   momentTime: string | null
   locationLabel: string | null
+  locationAddress: string | null
+  locationPlaceId: string | null
   coords: { latitude: number; longitude: number } | null
 }
 
@@ -2110,11 +2119,26 @@ function MomentForm({ initial, onCancel, onSave }: { initial?: EventMoment; onCa
   const [momentDate, setMomentDate] = useState(initial?.momentDate ?? '')
   const [momentTime, setMomentTime] = useState(initial?.momentTime?.slice(0, 5) ?? '')
   const [locationLabel, setLocationLabel] = useState(initial?.locationLabel ?? '')
+  // Cierre de Fase 2 (Google Maps) — dirección/place_id por separado del nombre visible. locationLabel
+  // sigue siendo el nombre que ve el invitado (editable libremente); estos dos solo los rellena el
+  // buscador de Google Maps, nunca se escriben a mano.
+  const [locationAddress, setLocationAddress] = useState(initial?.locationAddress ?? null)
+  const [locationPlaceId, setLocationPlaceId] = useState(initial?.locationPlaceId ?? null)
   const [coords, setCoords] = useState(
     initial?.locationLatitude != null && initial?.locationLongitude != null ? { latitude: initial.locationLatitude, longitude: initial.locationLongitude } : null,
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Petición real: "no obligar a que el nombre visible sea exactamente el nombre de Google" — si la
+  // familia ya escribió un nombre propio ("Casa de los abuelos"), elegir una ubicación en el mapa nunca
+  // lo sustituye, solo guarda dirección/coordenadas/place_id por detrás. Con el campo vacío, se rellena
+  // con el nombre real de Google y, si no tiene nombre (una dirección suelta), con la propia dirección.
+  function handlePlaceDetails(details: { name: string | null; address: string | null; placeId: string | null }) {
+    setLocationAddress(details.address)
+    setLocationPlaceId(details.placeId)
+    if (!locationLabel.trim()) setLocationLabel(details.name ?? details.address ?? '')
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -2122,7 +2146,15 @@ function MomentForm({ initial, onCancel, onSave }: { initial?: EventMoment; onCa
     setSaving(true)
     setError(null)
     try {
-      await onSave({ title: title.trim(), momentDate: momentDate || null, momentTime: momentTime || null, locationLabel: locationLabel.trim() || null, coords })
+      await onSave({
+        title: title.trim(),
+        momentDate: momentDate || null,
+        momentTime: momentTime || null,
+        locationLabel: locationLabel.trim() || null,
+        locationAddress,
+        locationPlaceId,
+        coords,
+      })
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
       setSaving(false)
@@ -2154,10 +2186,15 @@ function MomentForm({ initial, onCancel, onSave }: { initial?: EventMoment; onCa
         <input type="time" value={momentTime} onChange={(e) => setMomentTime(e.target.value)} />
       </label>
       <label>
-        Lugar <span className="muted">(como se ve en la invitación, opcional)</span>
+        Lugar <span className="muted">(como se ve en la invitación, opcional — puedes dejar tu propio nombre, p. ej. "Casa de los abuelos")</span>
         <input type="text" value={locationLabel} onChange={(e) => setLocationLabel(e.target.value)} />
       </label>
-      <EventLocationCoordsPicker coords={coords} onCoordsChange={setCoords} />
+      <EventLocationCoordsPicker coords={coords} onCoordsChange={setCoords} onPlaceDetails={handlePlaceDetails} />
+      {locationAddress && (
+        <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>
+          📍 {locationAddress}
+        </p>
+      )}
       <div className="filter-row" style={{ marginTop: 4 }}>
         <button type="submit" disabled={saving || !title.trim()}>
           {saving ? 'Guardando…' : 'Guardar'}
@@ -2190,6 +2227,17 @@ function MomentCard({
   onMoveDown: () => void
 }) {
   const coords = moment.locationLatitude != null && moment.locationLongitude != null ? { latitude: moment.locationLatitude, longitude: moment.locationLongitude } : null
+  // Cierre de Fase 2 (Google Maps) — "Ver ubicación" usa lo más preciso disponible: place_id primero,
+  // luego coordenadas, luego texto (misma prioridad en buildMapsUrl); la dirección real (si existe) manda
+  // sobre el nombre libre como texto de búsqueda de respaldo.
+  const mapsHref = buildMapsUrl(moment.locationAddress ?? moment.locationLabel ?? '', coords, moment.locationPlaceId)
+  // Cierre de Fase 2 — el aviso de invitados vinculados ya no vive permanentemente en la ficha (ocupaba
+  // demasiado espacio y parecía una advertencia constante); solo aparece al pulsar Eliminar, como mensaje
+  // de confirmación.
+  const deleteConfirmMessage =
+    guestCount > 0
+      ? `Este momento tiene ${guestCount} invitado${guestCount === 1 ? '' : 's'} vinculado${guestCount === 1 ? '' : 's'}. Si lo eliminas, dejará${guestCount === 1 ? '' : 'n'} de estar invitado${guestCount === 1 ? '' : 's'} a este momento. ¿Quieres continuar?`
+      : '¿Seguro?'
   return (
     <div className="card event-task-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
@@ -2201,8 +2249,16 @@ function MomentCard({
           <div className="muted" style={{ fontSize: 13 }}>
             {moment.locationLabel || 'Lugar por decidir'}
           </div>
-          {moment.locationLabel && (
-            <a href={buildMapsUrl(moment.locationLabel, coords)} target="_blank" rel="noopener noreferrer" className="link-button" style={{ textDecoration: 'none', fontSize: 13 }}>
+          {/* Cierre de Fase 2 (Google Maps) — dirección legible como línea secundaria, nunca coordenadas
+              como sustituto: si no hay dirección (ubicación antigua, o el usuario solo tecleó un nombre
+              sin buscarlo en el mapa), simplemente no se muestra esta línea. */}
+          {moment.locationAddress && (
+            <div className="muted" style={{ fontSize: 12 }}>
+              {moment.locationAddress}
+            </div>
+          )}
+          {(moment.locationLabel || moment.locationAddress) && (
+            <a href={mapsHref} target="_blank" rel="noopener noreferrer" className="link-button" style={{ textDecoration: 'none', fontSize: 13 }}>
               📍 Ver ubicación
             </a>
           )}
@@ -2219,12 +2275,14 @@ function MomentCard({
           <button type="button" className="link-button" onClick={onEdit}>
             Editar
           </button>
-          {guestCount > 0 && (
-            <p className="muted" style={{ fontSize: 11, textAlign: 'right', maxWidth: 170, margin: 0 }}>
-              {guestCount} invitado{guestCount === 1 ? '' : 's'} vinculado{guestCount === 1 ? '' : 's'} — al eliminar, dejará{guestCount === 1 ? '' : 'n'} de estarlo a este momento.
-            </p>
-          )}
-          <ConfirmButton label="Eliminar" confirmLabel="Eliminar" className="link-button" onConfirm={onDelete} ariaLabel={`Eliminar momento "${moment.title}"`} />
+          <ConfirmButton
+            label="Eliminar"
+            confirmLabel="Eliminar"
+            confirmMessage={deleteConfirmMessage}
+            className="link-button"
+            onConfirm={onDelete}
+            ariaLabel={`Eliminar momento "${moment.title}"`}
+          />
         </div>
       </div>
     </div>
@@ -2258,6 +2316,13 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event.id])
 
+  // Cierre de Fase 2 — hay 2 instancias de MomentsEditor montadas a la vez (Gestionar evento + el
+  // configurador del dashboard). Sin esto, cada una solo refrescaba su propio estado tras su propia
+  // mutación — la otra se quedaba con el dato antiguo hasta desmontar/remontar. Se suscribe aquí (recarga
+  // cuando CUALQUIER instancia, incluida esta misma, avisa de un cambio) y se avisa al final de las 4
+  // mutaciones de abajo.
+  useEventMomentsChangeSignal(event.id, load)
+
   async function handleAdd(input: MomentFormValues) {
     await addEventMoment(event.id, {
       title: input.title,
@@ -2266,10 +2331,13 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
       locationLabel: input.locationLabel,
       locationLatitude: input.coords?.latitude ?? null,
       locationLongitude: input.coords?.longitude ?? null,
+      locationAddress: input.locationAddress,
+      locationPlaceId: input.locationPlaceId,
     })
     setAddingOpen(false)
     await load()
     onChanged()
+    notifyEventMomentsChanged(event.id)
   }
 
   // Un momento "legacy" (sintetizado por resolveEventMoments) no tiene fila real todavía — guardar una
@@ -2283,6 +2351,8 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
         locationLabel: patch.locationLabel,
         locationLatitude: patch.coords?.latitude ?? null,
         locationLongitude: patch.coords?.longitude ?? null,
+        locationAddress: patch.locationAddress,
+        locationPlaceId: patch.locationPlaceId,
       })
     } else {
       await updateEventMoment(moment.id, {
@@ -2292,11 +2362,14 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
         locationLabel: patch.locationLabel,
         locationLatitude: patch.coords?.latitude ?? null,
         locationLongitude: patch.coords?.longitude ?? null,
+        locationAddress: patch.locationAddress,
+        locationPlaceId: patch.locationPlaceId,
       })
     }
     setEditingId(null)
     await load()
     onChanged()
+    notifyEventMomentsChanged(event.id)
   }
 
   async function handleDelete(moment: EventMoment) {
@@ -2313,6 +2386,7 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
     }
     await load()
     onChanged()
+    notifyEventMomentsChanged(event.id)
   }
 
   async function handleReorder(moment: EventMoment, direction: -1 | 1) {
@@ -2325,6 +2399,7 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
     ;[reordered[index], reordered[swapIndex]] = [reordered[swapIndex], reordered[index]]
     await reorderEventMoments(reordered.map((m) => m.id))
     await load()
+    notifyEventMomentsChanged(event.id)
   }
 
   if (moments === null) return <p className="muted">Cargando…</p>

@@ -202,12 +202,12 @@ describe('src/domain/types.ts — EventMoment marca las filas sintetizadas, nunc
   })
 })
 
-describe('ratchet de migraciones — Fase 1 de Eventos es la 0176, ninguna otra se coló en el camino', () => {
+describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el cierre de Fase 2 (Google Maps), nada más se coló en el camino', () => {
   const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-  it('0176 es la última migración del repositorio', () => {
+  it('0177 (event_moment_location_details) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(176)
+    expect(Math.max(...numbers)).toBe(177)
   })
 })

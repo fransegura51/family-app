@@ -152,15 +152,18 @@ describe('Borrar un momento — comprobación de relaciones antes de confirmar (
     expect(fn).toContain('counts.set(link.momentId, (counts.get(link.momentId) ?? 0) + 1)')
   })
 
-  it('si hay invitados vinculados, se avisa con el número exacto antes del doble toque de confirmación', () => {
+  it('el aviso de invitados vinculados NO vive permanentemente en la ficha — solo como mensaje de confirmación al pulsar Eliminar (cierre de Fase 2, ajuste visual)', () => {
     const fn = slice(SRC, 'function MomentCard(', '\nfunction MomentsEditor(')
-    expect(fn).toContain('{guestCount > 0 && (')
-    expect(fn).toMatch(/invitado\{guestCount === 1 \? '' : 's'\} vinculado/)
+    expect(fn).not.toMatch(/\{guestCount > 0 && \(\s*<p/)
+    expect(fn).toContain('const deleteConfirmMessage =')
+    expect(fn).toMatch(/invitado\$\{guestCount === 1 \? '' : 's'\} vinculado/)
+    expect(fn).toContain("¿Quieres continuar?")
   })
 
-  it('reutiliza ConfirmButton (doble toque) para el borrado real, no un botón de un solo toque', () => {
+  it('reutiliza ConfirmButton (doble toque) para el borrado real, pasándole el mensaje dinámico — no un botón de un solo toque ni un "¿Seguro?" genérico cuando hay invitados', () => {
     const fn = slice(SRC, 'function MomentCard(', '\nfunction MomentsEditor(')
-    expect(fn).toContain('<ConfirmButton label="Eliminar" confirmLabel="Eliminar" className="link-button" onConfirm={onDelete}')
+    expect(fn).toContain('<ConfirmButton')
+    expect(fn).toContain('confirmMessage={deleteConfirmMessage}')
   })
 
   it('borrar un momento legacy nunca crea una fila real solo para borrarla — vacía los campos heredados directamente', () => {

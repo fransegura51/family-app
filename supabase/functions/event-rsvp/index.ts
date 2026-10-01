@@ -118,15 +118,19 @@ function locationLines(event: EventRow, guest: Pick<GuestRow, "invite_scope"> | 
 // Cierre de Fase 2 — cuando el evento ya tiene event_moments reales, la página pública debe leer de ahí,
 // no de los campos heredados (que pueden haber quedado desactualizados en cuanto se edita un momento
 // desde la nueva UI de Gestionar evento/Configurador). Solo se exponen los campos que el invitado
-// necesita (título, fecha, hora, lugar mostrado) — nunca coordenadas/mapa (esta página hoy no pinta
-// ningún mapa; añadir el dato sin que nada lo use sería "campo interno de más" sin sentido), nunca
-// ningún campo interno. Un momento nunca se identifica por su título literal: solo se usa como texto.
+// necesita (título, fecha, hora, lugar mostrado, dirección legible cuando existe) — nunca coordenadas,
+// nunca place_id (esta página hoy no pinta ningún mapa; exponerlos sin que nada los use sería "campo
+// interno de más" sin sentido), nunca ningún otro campo interno. Un momento nunca se identifica por su
+// título literal: solo se usa como texto. Cierre de Fase 2 (Google Maps): location_address se añade a la
+// consulta, pero NO como campo nuevo del JSON público — se concatena dentro del mismo "label" de texto
+// que ya existía, mismo criterio que momentsLocationLines en src/domain/events.ts.
 interface MomentRow {
   id: string
   title: string
   moment_date: string | null
   moment_time: string | null
   location_label: string | null
+  location_address: string | null
 }
 
 function momentsLocationLines(moments: MomentRow[]): { icon: string; label: string }[] {
@@ -140,7 +144,7 @@ function momentsLocationLines(moments: MomentRow[]): { icon: string; label: stri
       lastDate = m.moment_date
     }
     const time = m.moment_time ? ` · ${m.moment_time.slice(0, 5)}` : ""
-    const location = m.location_label ? `: ${m.location_label}` : ""
+    const location = m.location_label ? `: ${m.location_label}${m.location_address ? " — " + m.location_address : ""}` : ""
     lines.push({ icon: "📍", label: `${m.title}${location}${time}` })
   }
   return lines
@@ -166,7 +170,7 @@ async function resolveLocationLines(
 ): Promise<{ icon: string; label: string }[]> {
   const { data: momentsData } = await admin
     .from("event_moments")
-    .select("id, title, moment_date, moment_time, location_label")
+    .select("id, title, moment_date, moment_time, location_label, location_address")
     .eq("event_id", event.id)
     .order("sort_order", { ascending: true })
   const moments = (momentsData ?? []) as MomentRow[]

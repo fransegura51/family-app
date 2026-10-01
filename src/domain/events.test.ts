@@ -131,6 +131,8 @@ function makeMoment(overrides: Partial<EventMoment>): EventMoment {
     locationLabel: null,
     locationLatitude: null,
     locationLongitude: null,
+    locationAddress: null,
+    locationPlaceId: null,
     sortOrder: 0,
     createdAt: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -972,6 +974,18 @@ describe('momentsLocationLines — Cierre de Fase 2, nunca identifica un momento
     const lines = momentsLocationLines([makeMoment({ title: 'Fiesta', momentTime: null, locationLabel: null })])
     expect(lines).toContain('📍 Fiesta')
   })
+
+  // Cierre de Fase 2 (Google Maps) — la dirección legible se añade como aclaración, nunca coordenadas.
+  it('añade la dirección legible cuando existe, nunca coordenadas en su lugar', () => {
+    const lines = momentsLocationLines([makeMoment({ title: 'Ceremonia', locationLabel: 'Iglesia de San Andrés', locationAddress: 'Plaza X, Almoradí, Alicante', momentTime: '10:00:00' })])
+    expect(lines).toContain('📍 Ceremonia: Iglesia de San Andrés — Plaza X, Almoradí, Alicante · 10:00')
+    expect(lines.join('')).not.toMatch(/\d+\.\d{4,},\s*-?\d+\.\d{4,}/) // nunca algo con forma de "38.10xx, -0.79xx"
+  })
+
+  it('sin dirección (ubicación antigua), se muestra exactamente igual que antes — solo el nombre', () => {
+    const lines = momentsLocationLines([makeMoment({ title: 'Ceremonia', locationLabel: 'Iglesia de San Andrés', locationAddress: null })])
+    expect(lines).toContain('📍 Ceremonia: Iglesia de San Andrés')
+  })
 })
 
 describe('momentsLocationMapLines — Cierre de Fase 2', () => {
@@ -980,6 +994,12 @@ describe('momentsLocationMapLines — Cierre de Fase 2', () => {
     expect(lines).toHaveLength(1)
     expect(lines[0]).toContain('Cómo llegar a Juzgado')
     expect(lines[0]).toContain(encodeURIComponent('Juzgado de Orihuela'))
+  })
+
+  it('usa el place_id cuando existe (enlace más preciso que coordenadas)', () => {
+    const lines = momentsLocationMapLines([makeMoment({ title: 'Juzgado', locationLabel: 'Juzgado de Orihuela', locationAddress: 'Calle X, Orihuela', locationPlaceId: 'ChIJ123' })])
+    expect(lines[0]).toContain('query_place_id=ChIJ123')
+    expect(lines[0]).toContain(encodeURIComponent('Calle X, Orihuela')) // la dirección manda sobre el nombre libre como texto de respaldo
   })
 
   it('omite los momentos sin lugar (nada que enlazar)', () => {
@@ -1029,6 +1049,16 @@ describe('buildMapsUrl', () => {
   it('prefers real coordinates over the label text when both are given', () => {
     const url = buildMapsUrl('en mi casa', { latitude: 40.4168, longitude: -3.7038 })
     expect(url).toBe('https://www.google.com/maps?q=40.4168,-3.7038')
+  })
+
+  // Cierre de Fase 2 (Google Maps) — place_id es el 3er parámetro, opcional y aditivo.
+  it('prefers place_id over coordinates when both are given (más preciso: Google abre el sitio exacto)', () => {
+    const url = buildMapsUrl('Iglesia de San Andrés', { latitude: 38.1, longitude: -0.79 }, 'ChIJ123')
+    expect(url).toBe('https://www.google.com/maps/search/?api=1&query=Iglesia%20de%20San%20Andr%C3%A9s&query_place_id=ChIJ123')
+  })
+
+  it('without place_id, behaves exactly as before (no 3rd argument passed)', () => {
+    expect(buildMapsUrl('en mi casa', { latitude: 40.4168, longitude: -3.7038 })).toBe('https://www.google.com/maps?q=40.4168,-3.7038')
   })
 })
 

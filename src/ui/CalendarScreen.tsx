@@ -14,6 +14,7 @@ import {
   type CalendarioMenuItemKey,
 } from '@/state/calendarioMenu'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { useSectionHome } from '@/ui/useSectionHome'
 import {
   completeEventOccurrence,
   createEvent,
@@ -205,6 +206,9 @@ export function CalendarScreen() {
   }
   const [editingId, setEditingId] = useState<string | null>(null)
   const [view, setView] = useState<ViewMode>(() => firstCalendarioView(loadCalendarioMenuLayout()))
+  // "Calendario" del breadcrumb siempre vuelve a 'Vista general' (el identificador interno de "Inicio"
+  // en UI) — no a firstCalendarioView(), que puede ser otra vista si la familia reordenó su menú ☰.
+  useSectionHome(() => setView('Vista general'))
   // Petición real: "esas pestañas las metes en una con tres rayas
   // igual, un desplegable... con el mismo formato que economía, que se
   // puedan sacar, que se puedan quitar, que se puedan editar" — mismo

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { useSectionHome } from '@/ui/useSectionHome'
 import {
   UBICACION_MENU_ITEM_META,
   ubicacionMenuEntryMeta,
@@ -71,6 +72,8 @@ function isUbicacionSubTab(key: UbicacionMenuItemKey): key is SubTab {
 
 export function LocationScreen({ role, profileId }: { role: FamilyRole; profileId: string }) {
   const [tab, setTab] = useState<SubTab>('Inicio')
+  // "Ubicación" del breadcrumb siempre vuelve a Inicio, incluso ya estando en /ubicacion.
+  useSectionHome(() => setTab('Inicio'))
   // Petición real: "el formato que has hecho ahora para meter todas
   // las pestañas me gusta mucho, aplícalo a toda la aplicación" —
   // mismo desplegable ☰ con sacar/meter/editar que Economía.

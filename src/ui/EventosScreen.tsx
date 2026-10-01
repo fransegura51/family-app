@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { useSectionHome } from '@/ui/useSectionHome'
 import {
   addEventActivity,
   addEventBudgetItem,
@@ -419,6 +420,13 @@ export function EventosScreen() {
   const [showArchived, setShowArchived] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const [initialModule, setInitialModule] = useState<EventModuleKey | null>(null)
+  // "Eventos" del breadcrumb siempre vuelve a la lista (Inicio), incluso ya estando en /eventos.
+  // initialModule se resetea también: si no, el próximo evento que se abra (normal, no por deep-link)
+  // heredaría un módulo que ya no tiene sentido en vez de abrir en su propio Inicio.
+  useSectionHome(() => {
+    setSelectedId(null)
+    setInitialModule(null)
+  })
 
   function reload() {
     listEvents(showArchived)

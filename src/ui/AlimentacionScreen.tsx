@@ -31,6 +31,7 @@ import {
 } from '@/data/food'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { useSectionHome } from '@/ui/useSectionHome'
 import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResult } from '@/services/recipeSearch'
 import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult } from '@/services/fatsecretRecipes'
 import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
@@ -93,6 +94,8 @@ function initialTabFromParam(param: string | null): SubTab {
 export function AlimentacionScreen() {
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<SubTab>(() => initialTabFromParam(searchParams.get('tab')))
+  // "La cocina de Pepa" del breadcrumb siempre vuelve a Inicio, incluso ya estando en /alimentacion.
+  useSectionHome(() => setTab('Inicio'))
   // Petición real: "todas estas pestañas... quiero que hagamos como en
   // economía... el mismo formato que el menú de economía" — mismo
   // desplegable ☰ con sacar/meter/editar (ver economiaMenu.ts /

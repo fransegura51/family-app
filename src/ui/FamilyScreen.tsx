@@ -15,6 +15,7 @@ import {
 } from '@/data/family'
 import { adminResetProfilePin } from '@/data/appLock'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { useSectionHome } from '@/ui/useSectionHome'
 import { effectiveMemberType } from '@/domain/growth'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -82,6 +83,9 @@ const BodyTab = lazy(() => import('@/ui/BodyScreen').then((m) => ({ default: m.B
 export function FamilyScreen({ profile }: { profile: Profile }) {
   const location = useLocation()
   const [tab, setTab] = useState<FamilyTab>(() => ((location.state as { tab?: FamilyTab } | null)?.tab === 'Peso y medidas' ? 'Peso y medidas' : 'Miembros'))
+  // "Familia" del breadcrumb siempre vuelve a Miembros, incluso ya estando en /familia — clave distinta
+  // de state.tab de arriba (el redirect de /peso), conviven sin pisarse.
+  useSectionHome(() => setTab('Miembros'))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)

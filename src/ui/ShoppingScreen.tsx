@@ -56,6 +56,7 @@ import { listStoreChainAliases, listSupermarketChains } from '@/data/storeChains
 import { resolveStoreChain, type StoreChainAliasRow, type StoreChainRow } from '@/domain/storeChains'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { useSectionHome } from '@/ui/useSectionHome'
 import { listReceipts } from '@/data/receipts'
 import { listBudgetCategories } from '@/data/finance'
 import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodPurchase, isLikelyAlcohol, purchaseNature } from '@/domain/products'
@@ -191,6 +192,9 @@ export function ShoppingScreen() {
     const requested = (location.state as { tab?: string } | null)?.tab
     return SUB_TABS.find((t) => t === requested) ?? 'Inicio'
   })
+  // "Compras" del breadcrumb siempre vuelve a Inicio, incluso ya estando en /compras (ver useSectionHome)
+  // — clave distinta de state.tab de arriba, conviven sin pisarse.
+  useSectionHome(() => setTab('Inicio'))
   // Petición real: "todas estas pestañas... quiero que hagamos como en
   // economía... el mismo formato que el menú de economía" — mismo
   // desplegable ☰ con sacar/meter/editar (ver economiaMenu.ts /

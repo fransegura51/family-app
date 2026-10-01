@@ -14,7 +14,7 @@ const ALL_SECTIONS: NavTab[] = [...NAV_TABS, ...EXTRA_SECTIONS]
 
 // Actividad (/actividad) y el Panel de admin (/admin-uso) no están aquí a propósito — no son secciones
 // normales del menú (sin entrada en NAV_TABS ni en el ☰), así que no llevan SectionBreadcrumb.
-function sectionForPath(pathname: string): NavTab | null {
+export function sectionForPath(pathname: string): NavTab | null {
   const matches = ALL_SECTIONS.filter((t) => t.to !== '/' && (pathname === t.to || pathname.startsWith(`${t.to}/`)))
   if (matches.length === 0) return null
   // Más específica primero — ninguna ruta real está anidada hoy, pero esto deja el criterio correcto
@@ -33,7 +33,9 @@ export function SectionBreadcrumb({ subsection }: { subsection: string }) {
   if (!section) return null
   return (
     <nav className="section-breadcrumb" aria-label="Ubicación actual">
-      <Link to={section.to} className="section-breadcrumb-section">
+      {/* state.sectionHome: pulsar la sección siempre significa "vuelve a tu Inicio real", incluso
+          cuando ya se está en esa misma ruta (ver useSectionHome) — un <Link> real, sin onClick propio. */}
+      <Link to={section.to} state={{ sectionHome: true }} className="section-breadcrumb-section">
         {section.label}
       </Link>
       <span className="section-breadcrumb-sep" aria-hidden="true">

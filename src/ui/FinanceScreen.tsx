@@ -142,6 +142,7 @@ import {
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { useSectionHome } from '@/ui/useSectionHome'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
 import { subscribeBudgetsChanged } from '@/state/budgetsChanged'
@@ -409,6 +410,8 @@ function isDineroRestricted(profile: Profile): boolean {
 export function FinanceScreen({ profile }: { profile: Profile }) {
   const dineroRestricted = isDineroRestricted(profile)
   const [tab, setTab] = useState<SubTab>(dineroRestricted ? 'Educación financiera' : 'Resumen')
+  // "Economía" del breadcrumb siempre vuelve a Resumen, incluso ya estando en /dinero (ver useSectionHome).
+  useSectionHome(() => setTab('Resumen'))
   const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
   // Petición real: "al tocar un área del dónut no debe llevarme
   // directamente a los movimientos filtrados... desde los movimientos

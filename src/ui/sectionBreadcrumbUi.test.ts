@@ -15,7 +15,7 @@ const NAV_TABS_SRC = readFile('/src/domain/navTabs.ts')
 describe('SectionBreadcrumb — componente', () => {
   it('la sección es un Link real de React Router (accesible, no un span con onClick)', () => {
     expect(BREADCRUMB_SRC).toContain("import { Link, useLocation } from 'react-router-dom'")
-    expect(BREADCRUMB_SRC).toContain('<Link to={section.to} className="section-breadcrumb-section">')
+    expect(BREADCRUMB_SRC).toContain('<Link to={section.to} state={{ sectionHome: true }} className="section-breadcrumb-section">')
     expect(BREADCRUMB_SRC).not.toMatch(/<span[^>]*onClick/)
   })
 

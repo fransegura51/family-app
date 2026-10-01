@@ -104,6 +104,19 @@ describe('routeLocation: el tiempo (meteorológico) y la previsión', () => {
   it('"qué tiempo tengo hasta X" (duración) no se confunde con el tiempo meteorológico', () => {
     expect(routeLocation('qué tiempo tengo hasta Madrid')).toEqual({ type: 'eta', place: 'madrid' })
   })
+
+  it('bug real: "le he preguntado por el tiempo en Rafal y leyó una nota del calendario" — más formas reales de preguntarlo', () => {
+    expect(routeLocation('cómo va el tiempo en Rafal')).toEqual({ type: 'weather', place: 'rafal' })
+    expect(routeLocation('qué tal el tiempo en Rafal')).toEqual({ type: 'weather', place: 'rafal' })
+    expect(routeLocation('qué tal está el tiempo en Rafal')).toEqual({ type: 'weather', place: 'rafal' })
+    expect(routeLocation('dime el tiempo en Rafal')).toEqual({ type: 'weather', place: 'rafal' })
+    expect(routeLocation('dime qué tiempo hace en Rafal')).toEqual({ type: 'weather', place: 'rafal' })
+    expect(routeLocation('previsión meteorológica en Rafal')).toEqual({ type: 'weather', place: 'rafal' })
+  })
+
+  it('"dime dónde hay..." (buscar un sitio) no se confunde con pedir el tiempo', () => {
+    expect(routeLocation('dime donde hay una farmacia')).toEqual({ type: 'search', term: 'una farmacia' })
+  })
 })
 
 describe('routeLocation: quién está más cerca', () => {

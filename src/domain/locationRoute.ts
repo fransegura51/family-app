@@ -47,14 +47,24 @@ const ETA_RE =
 const NEAREST_RE = /^quien(?:\s+(?:esta|anda|vive))?\s+mas cerca\s+(?:de(?:l)?|a)\s+(.+)$/
 
 // "Qué tiempo hace en Madrid", "qué tiempo va a hacer en el cole", "cómo está el tiempo en
-// Valencia", "previsión en Madrid", "previsión del tiempo en Madrid", "qué tiempo hará mañana en
-// Madrid" — petición real: "quiero que el asistente de Pepa me diga también el tiempo que hace en
-// un sitio en concreto y la previsión". Un día de por medio (hoy/mañana/pasado mañana) es
-// opcional y no cambia la respuesta: siempre se dice el tiempo de ahora Y la previsión de los
-// próximos días juntos (pepa/location.ts, handleWeather) — no merece la pena distinguir qué día
-// exacto se ha pedido por voz. Sin "^" delante, mismo motivo que ETA_RE.
+// Valencia", "cómo va el tiempo en Rafal", "qué tal el tiempo en Madrid", "dime el tiempo en
+// Rafal", "dime qué tiempo hace en Rafal", "previsión en Madrid", "previsión del tiempo en
+// Madrid", "previsión meteorológica en Madrid", "qué tiempo hará mañana en Madrid" — petición
+// real: "quiero que el asistente de Pepa me diga también el tiempo que hace en un sitio en
+// concreto y la previsión". Un día de por medio (hoy/mañana/pasado mañana) es opcional y no
+// cambia la respuesta: siempre se dice el tiempo de ahora Y la previsión de los próximos días
+// juntos (pepa/location.ts, handleWeather) — no merece la pena distinguir qué día exacto se ha
+// pedido por voz. Sin "^" delante, mismo motivo que ETA_RE.
+//
+// Bug real reportado (01/10/2026): "le he preguntado por el tiempo en Rafal y leyó una nota del
+// calendario" — con la primera versión (solo "qué tiempo hace"/"cómo está el tiempo"/"previsión"),
+// una frase real tan natural como "cómo va el tiempo en Rafal" o "dime el tiempo en Rafal" no
+// encajaba en nada de Ubicación, así que caía hasta el final de todo (pepa/talk.ts, askWithAi) —
+// una IA de repuesto que SOLO sabe de tareas/calendario/compra (no tiene ni idea de qué es el
+// tiempo meteorológico) y, al no encontrar nada mejor, contestó con la cita más parecida que
+// encontró. Ampliado con más formas reales de preguntarlo.
 const WEATHER_RE =
-  /(?:que tiempo\s+(?:hace|va a hacer|hara)|como\s+(?:esta|va a estar)\s+el tiempo|prevision(?:\s+del tiempo)?)(?:\s+(?:hoy|manana|pasado manana))?\s+(?:en|para|de)\s+(.+)$/
+  /(?:que tiempo\s+(?:hace|va a hacer|hara)|que tal\s+(?:esta\s+)?el tiempo|como\s+(?:esta|va(?:\s+a estar)?)\s+el tiempo|dime(?:\s+(?:que tiempo hace|el tiempo))?|prevision(?:\s+(?:del tiempo|meteorologica))?)(?:\s+(?:hoy|manana|pasado manana))?\s+(?:en|para|de)\s+(.+)$/
 
 // A propósito NO incluye "necesito" (a diferencia de domain/voiceQuery.ts, PLACE_QUERY_PREFIXES,
 // que sí lo tiene): ahí es seguro porque el botón "📍 Buscar sitio" ya deja claro que TODO lo dicho

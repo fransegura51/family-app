@@ -6,8 +6,8 @@ import { getStoreIcon } from '@/domain/storeIcons'
 // envuelve ya hace algo al tocarse (p. ej. la carpeta de tickets en
 // Dinero, que se pliega/despliega). Compras usa su propia versión
 // (StoreIconBadge) que además navega a la lista de esa tienda.
-export function StoreIcon({ name, size = 18 }: { name: string; size?: number }) {
-  const icon = getStoreIcon(name)
+export function StoreIcon({ name, size = 18, logoAsset }: { name: string; size?: number; logoAsset?: string | null }) {
+  const icon = getStoreIcon(name, logoAsset)
   const [broken, setBroken] = useState(false)
 
   if (icon.kind === 'image') {

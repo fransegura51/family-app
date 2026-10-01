@@ -14,6 +14,7 @@ import {
   type AccountsMode,
 } from '@/data/family'
 import { adminResetProfilePin } from '@/data/appLock'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { effectiveMemberType } from '@/domain/growth'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -172,6 +173,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       <div className="kitchen-header">
         <img src={familiaHeaderImg} alt="Familia" className="kitchen-header-img" />
       </div>
+      <SectionBreadcrumb subsection={tab === 'Miembros' ? 'Inicio' : tab} />
       <div className="segmented" role="tablist" style={{ margin: '4px 0 12px' }}>
         {(['Miembros', 'Peso y medidas'] as const).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'segmented-active' : ''} onClick={() => setTab(t)}>

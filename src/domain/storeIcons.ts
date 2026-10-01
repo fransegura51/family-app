@@ -74,6 +74,13 @@ const STORE_EMOJIS: Record<string, string> = {
 
 const DEFAULT_EMOJI = '🏬'
 
+// Resolutor TÉCNICO de store_chains.logo_asset — la base de datos decide qué logo_asset tiene cada
+// cadena (null = todavía ninguno); este mapa solo sabe convertir ese identificador en el asset
+// empaquetado correspondiente. No es un segundo catálogo cadena→logo: vacío hasta que una fase
+// posterior incorpore los logos reales y las entradas aquí (petición real: "deja preparada la
+// arquitectura... los logos definitivos los haremos después como fase específica").
+const STORE_CHAIN_LOGOS: Record<string, string> = {}
+
 function normalizeKey(name: string): string {
   return name
     .toLowerCase()
@@ -82,7 +89,8 @@ function normalizeKey(name: string): string {
     .trim()
 }
 
-export function getStoreIcon(name: string): StoreIcon {
+export function getStoreIcon(name: string, logoAsset?: string | null): StoreIcon {
+  if (logoAsset && STORE_CHAIN_LOGOS[logoAsset]) return { kind: 'image', src: STORE_CHAIN_LOGOS[logoAsset] }
   const key = normalizeKey(name)
   if (STORE_IMAGE_LOGOS[key]) return { kind: 'image', src: STORE_IMAGE_LOGOS[key] }
   if (STORE_LOGOS[key]) return { kind: 'logo', domain: STORE_LOGOS[key] }

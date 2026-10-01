@@ -45,12 +45,17 @@ import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
 import { colorForClass, pastelPalette, storeColorResolver } from '@/domain/colors'
 import {
   createShoppingStore,
+  createShoppingStoreFromChain,
   deleteShoppingStore,
+  linkShoppingStoreToChain,
   listShoppingStores,
   renameShoppingStore,
   reorderShoppingStores,
 } from '@/data/shoppingStores'
+import { listStoreChainAliases, listSupermarketChains } from '@/data/storeChains'
+import { resolveStoreChain, type StoreChainAliasRow, type StoreChainRow } from '@/domain/storeChains'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { listReceipts } from '@/data/receipts'
 import { listBudgetCategories } from '@/data/finance'
 import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodPurchase, isLikelyAlcohol, purchaseNature } from '@/domain/products'
@@ -242,6 +247,9 @@ export function ShoppingScreen() {
           {menuOpen ? '✕' : '☰'} Menú
         </button>
       </div>
+      {/* "Lista de la Compra" en el breadcrumb coincide a propósito con el nuevo título de la propia
+          pestaña (antes "Pendientes") — el menú ☰ sigue diciendo "Lista de la compra", sin tocar. */}
+      <SectionBreadcrumb subsection={tab === 'Lista' ? 'Lista de la Compra' : COMPRAS_MENU_ITEM_META[tab].label} />
       {menuOpen && (
         <ComprasMenuDropdown
           activeTab={tab}
@@ -958,6 +966,10 @@ function ShoppingListTab() {
   const [items, setItems] = useState<ShoppingItem[]>([])
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
   const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
+  // Catálogo global de cadenas conocidas (solo supermercados activos) + sus alias, para el selector de
+  // StoreManager y para sugerir (nunca fusionar sola) el vínculo con una tienda ya creada a mano.
+  const [storeChains, setStoreChains] = useState<StoreChainRow[]>([])
+  const [storeChainAliases, setStoreChainAliases] = useState<StoreChainAliasRow[]>([])
   // Petición real: "vamos a organizarla por clases de alimentos...
   // conforme se apunten que la app vaya organizándolas por clases
   // conforme a las clases que ya tenemos" — mismo catálogo de
@@ -1056,13 +1068,17 @@ function ShoppingListTab() {
       listBudgetCategories(),
       listFamilyFoodTypes('alimentacion'),
       listFamilyFoodTypes('no_alimentos'),
+      listSupermarketChains(),
+      listStoreChainAliases(),
     ])
-      .then(([shoppingItems, products, prices, shoppingStores, receipts, categories, foodKinds, noFoodKinds]) => {
+      .then(([shoppingItems, products, prices, shoppingStores, receipts, categories, foodKinds, noFoodKinds, chains, aliases]) => {
         setItems(shoppingItems)
         setSuggestions(buildSuggestions(products, prices, buildFoodReceiptIds(receipts, categories)))
         setStores(shoppingStores)
         setAllProducts(products)
         setFoodTypesByKind({ alimentacion: foodKinds, no_alimentos: noFoodKinds })
+        setStoreChains(chains)
+        setStoreChainAliases(aliases)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => {
@@ -1143,6 +1159,15 @@ function ShoppingListTab() {
     const colorOf = storeColorResolver(stores)
     return new Map(stores.map((s) => [s.name, colorOf(s.name)]))
   }, [stores])
+  // logo_asset de la cadena vinculada a cada tienda de la familia, por NOMBRE de tienda (igual que
+  // storeColors) — listShoppingStores() ya llega ordenada por sort_order, así que el índice de cada
+  // tienda en `stores` ES su orden real tal cual lo dejó StoreManager.
+  const logoAssetByChainKey = useMemo(() => new Map(storeChains.map((c) => [c.key, c.logoAsset])), [storeChains])
+  const storeOrderIndex = useMemo(() => new Map(stores.map((s, i) => [s.name, i] as const)), [stores])
+  const logoAssetByStoreName = useMemo(
+    () => new Map(stores.map((s) => [s.name, s.chainKey ? (logoAssetByChainKey.get(s.chainKey) ?? null) : null])),
+    [stores, logoAssetByChainKey],
+  )
   // Mismo criterio, para las clases — incluye tanto las de fábrica
   // como las creadas a mano por la familia (ver classColorsFromFamilyTypes).
   const classColors = useMemo(
@@ -1172,9 +1197,18 @@ function ShoppingListTab() {
     list.push(item)
     itemsByStore.set(key, list)
   }
+  // Respeta el orden de StoreManager (shopping_stores.sort_order, vía el índice de `stores` que ya llega
+  // ordenada así): las tiendas registradas van en ese orden; un nombre suelto en algún producto que
+  // todavía no tiene fila en shopping_stores no desaparece — se sigue mostrando, pero detrás de todas las
+  // registradas, en orden alfabético entre sí. "Sin tienda" siempre el último bloque, pase lo que pase.
   const storeGroups = [...itemsByStore.entries()].sort((a, b) => {
     if (a[0] === 'Sin tienda') return 1
     if (b[0] === 'Sin tienda') return -1
+    const ia = storeOrderIndex.get(a[0])
+    const ib = storeOrderIndex.get(b[0])
+    if (ia != null && ib != null) return ia - ib
+    if (ia != null) return -1
+    if (ib != null) return 1
     return a[0].localeCompare(b[0])
   })
 
@@ -1290,8 +1324,10 @@ function ShoppingListTab() {
       </div>
       {shareNotice && <p className="muted" style={{ fontSize: 12 }}>{shareNotice}</p>}
 
-      <h2 className="section-title">Pendientes</h2>
+      <h2 className="section-title">Lista de la Compra</h2>
       {storeGroups.map(([store, storeItems]) => {
+        const pendingItems = storeItems.filter((i) => i.status === 'pendiente')
+        const doneItems = storeItems.filter((i) => i.status === 'comprado')
         // Petición real: "si solo hay un producto de una tienda quiero
         // que también salga el nombre de la tienda y su logotipo" —
         // antes la cabecera (nombre, logo, plegar, compartir) solo
@@ -1311,7 +1347,7 @@ function ShoppingListTab() {
             }}
           >
             <span className="shopping-store-chevron">{collapsed ? '▸' : '▾'}</span>
-            {store === 'Sin tienda' ? '🏬' : <StoreIconBadge name={store} size={20} />} {store}
+            {store === 'Sin tienda' ? '🏬' : <StoreIconBadge name={store} size={30} logoAsset={logoAssetByStoreName.get(store)} />} {store}
             <span className="muted"> ({storeItems.length})</span>
             <button
               type="button"
@@ -1328,7 +1364,7 @@ function ShoppingListTab() {
           </h3>
           {!collapsed && (
             <>
-              {classGroupsFor(storeItems).map((group) => (
+              {classGroupsFor(pendingItems).map((group) => (
                 <div key={`${store}:${group.kind}:${group.label}`} className="shopping-class-group">
                   <p className="shopping-class-heading" style={{ background: classColors.get(group.label) }}>
                     {group.icon} {group.label}
@@ -1345,8 +1381,23 @@ function ShoppingListTab() {
                   />
                 </div>
               ))}
-              {/* Los comprados se quedan tachados a la vista; solo se
-                  limpia la tienda entera al terminar de comprar allí. */}
+              {/* Comprados: fuera de las clases, en bloque plano al final de SU tienda (nunca
+                  reordenados por clase) — se quedan tachados a la vista; solo se limpia la tienda
+                  entera al terminar de comprar allí ("Finalizar compra", sin cambios). */}
+              {doneItems.length > 0 && (
+                <div className="shopping-class-group">
+                  <p className="shopping-class-heading">✓ Completados</p>
+                  <DraggableStoreGroup
+                    items={doneItems}
+                    suggestions={suggestions}
+                    shoppingMode={shoppingMode}
+                    onSetStatus={setStatus}
+                    onDeleted={reload}
+                    onReordered={reload}
+                    onEdit={setEditingItem}
+                  />
+                </div>
+              )}
               <ConfirmButton
                 className="link-button shopping-finish-button"
                 label="✅ Finalizar compra"
@@ -1379,7 +1430,7 @@ function ShoppingListTab() {
         </button>
       )}
 
-      <StoreManager stores={stores} storeColors={storeColors} onChanged={reload} />
+      <StoreManager stores={stores} storeColors={storeColors} chains={storeChains} aliases={storeChainAliases} onChanged={reload} />
 
       {!shoppingMode && (
         <button type="button" className="screen-fab" onClick={() => setAddingItem(true)}>
@@ -1456,7 +1507,7 @@ function ShoppingListTab() {
 // "Pepa, Mercadona", solo que disparado con un toque. stopPropagation
 // para no arrastrar el toque a lo que tenga alrededor (p. ej. el
 // nombre en Tiendas, que sigue abriendo el renombrado como siempre).
-function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
+function StoreIconBadge({ name, size = 18, logoAsset }: { name: string; size?: number; logoAsset?: string | null }) {
   function handleClick(e: { stopPropagation: () => void }) {
     e.stopPropagation()
     window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: name } }))
@@ -1464,7 +1515,7 @@ function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
 
   return (
     <span role="button" aria-label={`Ir a la lista de ${name}`} onClick={handleClick} style={{ cursor: 'pointer' }}>
-      <StoreIcon name={name} size={size} />
+      <StoreIcon name={name} size={size} logoAsset={logoAsset} />
     </span>
   )
 }
@@ -1483,10 +1534,14 @@ function StoreIconBadge({ name, size = 18 }: { name: string; size?: number }) {
 function StoreManager({
   stores,
   storeColors,
+  chains,
+  aliases,
   onChanged,
 }: {
   stores: ShoppingStoreEntry[]
   storeColors: Map<string, string>
+  chains: StoreChainRow[]
+  aliases: StoreChainAliasRow[]
   onChanged: () => void
 }) {
   const [newName, setNewName] = useState('')
@@ -1494,6 +1549,7 @@ function StoreManager({
   const [editingName, setEditingName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [linkingChain, setLinkingChain] = useState<{ chain: StoreChainRow; match: ShoppingStoreEntry } | null>(null)
   const [order, setOrder] = useState(stores)
   const dragRef = useRef<{ id: string; startY: number; startIndex: number; itemHeight: number } | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -1587,6 +1643,42 @@ function StoreManager({
     }
   }
 
+  // Cadenas del catálogo global que esta familia todavía no tiene vinculadas a ninguna de sus tiendas.
+  const linkedChainKeys = new Set(stores.map((s) => s.chainKey).filter((k): k is string => !!k))
+  const unlinkedChains = chains.filter((c) => !linkedChainKeys.has(c.key))
+  // Para cada cadena sin vincular, ¿alguna tienda YA creada a mano por la familia podría ser ella? Solo
+  // una sugerencia (aliases/normalizeStoreName) — nunca se fusiona sola, el usuario confirma siempre.
+  function suggestedMatchFor(chain: StoreChainRow): ShoppingStoreEntry | null {
+    for (const s of stores) {
+      if (s.chainKey) continue
+      const resolution = resolveStoreChain(s.name, chains, aliases)
+      if (resolution.status === 'resolved' && resolution.chainKey === chain.key) return s
+    }
+    return null
+  }
+
+  async function handleAddChain(chain: StoreChainRow) {
+    setError(null)
+    try {
+      await createShoppingStoreFromChain(chain.key, chain.name)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir la cadena'))
+    }
+  }
+
+  async function handleConfirmLink() {
+    if (!linkingChain) return
+    setError(null)
+    try {
+      await linkShoppingStoreToChain(linkingChain.match.id, linkingChain.chain.key)
+      setLinkingChain(null)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo vincular'))
+    }
+  }
+
   return (
     <div className="card">
       {/* Petición real: "estas tarjetas quiero que las metas todas en un
@@ -1604,6 +1696,49 @@ function StoreManager({
           "Mercadona, patatas" o "Hipervel, leche" — y Pepa lo pone en la lista de esa tienda.
         </p>
         {error && <p className="error">{error}</p>}
+        {unlinkedChains.length > 0 && (
+          <div className="store-chain-catalog">
+            <p className="muted" style={{ fontSize: 13, margin: '8px 0 4px' }}>
+              Cadenas conocidas de PEPA:
+            </p>
+            <div className="chip-row">
+              {unlinkedChains.map((chain) => {
+                const match = suggestedMatchFor(chain)
+                return (
+                  <button
+                    key={chain.key}
+                    type="button"
+                    className="chip"
+                    onClick={() => (match ? setLinkingChain({ chain, match }) : handleAddChain(chain))}
+                  >
+                    <StoreIcon name={chain.name} size={16} logoAsset={chain.logoAsset} /> {chain.name}
+                  </button>
+                )
+              })}
+            </div>
+            {linkingChain && (
+              <div className="card task-card" style={{ marginTop: 8 }}>
+                <p style={{ flex: 1 }}>
+                  ¿"{linkingChain.match.name}" es {linkingChain.chain.name}?
+                </p>
+                <button type="button" className="link-button" onClick={handleConfirmLink}>
+                  Sí, vincular
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    const chain = linkingChain.chain
+                    setLinkingChain(null)
+                    handleAddChain(chain)
+                  }}
+                >
+                  No, es otra tienda
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="event-list">
           {order.map((s) =>
           editingId === s.id ? (
@@ -1648,7 +1783,7 @@ function StoreManager({
                 }}
                 style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, flex: 1 }}
               >
-                <StoreIconBadge name={s.name} />
+                <StoreIconBadge name={s.name} logoAsset={s.chainKey ? (chains.find((c) => c.key === s.chainKey)?.logoAsset ?? null) : null} />
                 {s.name}
               </span>
               <ConfirmIconButton className="link-button" ariaLabel={`Quitar ${s.name}`} onConfirm={() => handleDelete(s.id)} />
@@ -1662,7 +1797,7 @@ function StoreManager({
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Nueva tienda (p. ej. Mercadona)"
+            placeholder="+ Añadir otra tienda (p. ej. Carnicería Manolo)"
           />
           <button type="submit" disabled={saving || !newName.trim()}>
             Añadir

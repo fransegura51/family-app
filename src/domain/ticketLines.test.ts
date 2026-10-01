@@ -8,7 +8,7 @@ const FILES = import.meta.glob(
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
 const CHAINS_SQL = FILES['/supabase/migrations/0142_store_chains.sql']
-const CHAINS: StoreChainRow[] = [...CHAINS_SQL.matchAll(/\(\s*'([a-z0-9_]+)',\s*'((?:[^']|'')*)',\s*'(supermarket|marketplace|fuel_retail|local_shop)',\s*(true|false)/g)].map((m) => ({ key: m[1], name: m[2], kind: m[3] as StoreChainKind, learnable: m[4] === 'true', status: 'active' as const }))
+const CHAINS: StoreChainRow[] = [...CHAINS_SQL.matchAll(/\(\s*'([a-z0-9_]+)',\s*'((?:[^']|'')*)',\s*'(supermarket|marketplace|fuel_retail|local_shop)',\s*(true|false)/g)].map((m) => ({ key: m[1], name: m[2], kind: m[3] as StoreChainKind, learnable: m[4] === 'true', status: 'active' as const, logoAsset: null }))
 const ALIASES: StoreChainAliasRow[] = [...CHAINS_SQL.matchAll(/\(\s*'([a-z0-9_]+)',\s*'([a-z0-9 ]+)',\s*'(exact|word_prefix)',/g)].map((m) => ({ chain_key: m[1], alias_norm: m[2], match_mode: m[3] as 'exact' | 'word_prefix' }))
 
 const NON_PRODUCT = 'non_product'

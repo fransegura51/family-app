@@ -9,6 +9,7 @@ import type { FamilyMember, Reward, RewardRedemption } from '@/domain/types'
 import type { EventCompletion } from '@/data/calendar'
 import puntosHeaderImg from '@/assets/puntos/puntos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 
 // Antes esto era la pestaña "Tareas" (lista de tareas + recompensas
 // juntas). Las tareas ahora son eventos del calendario (petición real:
@@ -63,6 +64,7 @@ export function RewardsScreen() {
       <div className="kitchen-header kitchen-header-wide">
         <img src={puntosHeaderImg} alt="Puntos y recompensas" className="kitchen-header-img" />
       </div>
+      <SectionBreadcrumb subsection="Inicio" />
       <p className="muted">
         Se ganan puntos al marcar "Hecho" un evento del calendario que lleve puntos (se pone al crear o editar el
         evento, cuando es de una sola persona).

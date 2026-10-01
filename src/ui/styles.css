@@ -1916,12 +1916,52 @@ select {
   margin-top: 28px;
 }
 
+/* SectionBreadcrumb — "Sección / Ubicación actual" bajo la cabecera de cada pantalla. flex-wrap para que
+   una subsección larga (p. ej. "Documentación del vehículo") rompa de línea limpiamente en vez de
+   desbordar o necesitar un ancho fijo. */
+.section-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 2px 0 14px;
+  font-size: 15px;
+}
+
+.section-breadcrumb-section {
+  color: var(--primary);
+  text-decoration: underline;
+  font-weight: 500;
+  padding: 8px 2px;
+  margin: -8px -2px;
+  border-radius: 6px;
+}
+
+.section-breadcrumb-sep {
+  color: var(--muted);
+}
+
+.section-breadcrumb-current {
+  font-weight: 700;
+  color: var(--text);
+}
+
 .shopping-store-heading {
   margin: 16px 0 8px;
-  font-size: 14px;
-  color: var(--muted);
+  /* Jerarquía pedida: por debajo de "Lista de la Compra" (.section-title, h2 sin tamaño propio ≈ 24px),
+     pero con bastante más presencia que antes (era 14px, igual que un texto secundario cualquiera) para
+     separar claramente una tienda de otra de un vistazo. */
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
   border-radius: 10px;
   padding: 4px 8px;
+}
+
+.store-chain-catalog .chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* Cabecera de tienda plegable — petición real: "que la lista de cada

@@ -11,6 +11,7 @@ const CHAINS: StoreChainRow[] = [...MIGRATION.matchAll(/\(\s*'([a-z0-9_]+)',\s*'
   kind: m[3] as StoreChainKind,
   learnable: m[4] === 'true',
   status: 'active' as const,
+  logoAsset: null,
 }))
 const ALIASES: StoreChainAliasRow[] = [...MIGRATION.matchAll(/\(\s*'([a-z0-9_]+)',\s*'([a-z0-9 ]+)',\s*'(exact|word_prefix)',/g)].map((m) => ({
   chain_key: m[1],
@@ -154,8 +155,8 @@ describe('resolveStoreChain: sin adivinar', () => {
 
   it('alias que apuntan a dos cadenas distintas → ambiguo, sin resolver', () => {
     const chains: StoreChainRow[] = [
-      { key: 'uno', name: 'Uno', kind: 'supermarket', learnable: true, status: 'active' },
-      { key: 'dos', name: 'Dos', kind: 'supermarket', learnable: true, status: 'active' },
+      { key: 'uno', name: 'Uno', kind: 'supermarket', learnable: true, status: 'active', logoAsset: null },
+      { key: 'dos', name: 'Dos', kind: 'supermarket', learnable: true, status: 'active', logoAsset: null },
     ]
     const aliases: StoreChainAliasRow[] = [
       { chain_key: 'uno', alias_norm: 'super sol', match_mode: 'word_prefix' },
@@ -174,7 +175,7 @@ describe('resolveStoreChain: sin adivinar', () => {
 describe('la cadena no determina la clase ni la categoría', () => {
   it('la resolución solo contiene la cadena y si es aprendible', () => {
     expect(Object.keys(resolve('Repsol')).sort()).toEqual(['chainKey', 'learnable', 'status'])
-    expect(Object.keys(CHAINS[0]).sort()).toEqual(['key', 'kind', 'learnable', 'name', 'status'])
+    expect(Object.keys(CHAINS[0]).sort()).toEqual(['key', 'kind', 'learnable', 'logoAsset', 'name', 'status'])
   })
 
   it('Repsol es una cadena de venta mixta y una bombona de butano no se convierte en Combustible por venir de Repsol', () => {

@@ -30,6 +30,7 @@ import {
   type DateFilterPreferences,
 } from '@/data/family'
 import { DISABLEABLE_SPEND_RANGE_PRESETS, PRESET_LABELS, type SpendRangePreset } from '@/domain/dateRanges'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { listAppUsage } from '@/data/appUsage'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import {
@@ -974,6 +975,7 @@ export function MenuSettingsScreen() {
       <div className="kitchen-header kitchen-header-familia">
         <img src={configuracionHeaderImg} alt="Configuración" className="kitchen-header-img" />
       </div>
+      <SectionBreadcrumb subsection="Inicio" />
 
       <FamilyNameSection />
 

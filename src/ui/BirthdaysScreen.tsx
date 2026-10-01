@@ -6,6 +6,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { Contact, FamilyMember } from '@/domain/types'
 import cumpleanosHeaderImg from '@/assets/cumpleanos/cumpleanos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 
 interface UpcomingItem extends UpcomingBirthday {
   name: string
@@ -96,6 +97,9 @@ export function BirthdaysScreen() {
       <div className="kitchen-header">
         <img src={cumpleanosHeaderImg} alt="Cumpleaños" className="kitchen-header-img" />
       </div>
+      {/* Próximos/Favoritos es un filtro sobre la misma lista, no una subsección real (ver comentario
+          de arriba) — el breadcrumb se queda fijo en "Inicio", no refleja el filtro elegido. */}
+      <SectionBreadcrumb subsection="Inicio" />
       {error && <p className="error">{error}</p>}
 
       <div className="filter-row">

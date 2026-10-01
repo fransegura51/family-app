@@ -94,19 +94,25 @@ describe('Fase 3: aislamiento y rollback', () => {
     expect(statements).not.toMatch(/catalog_|delete from|truncate|budget|product|receipt|expense/i)
   })
 
-  it('la app todavía no consulta las tablas de cadenas (fase de infraestructura)', () => {
+  // Fase siguiente (petición real: "catálogo global de cadenas conocidas de PEPA" para el selector de
+  // tiendas de Compras) conecta esta infraestructura a propósito — ya no está aislada, pero sigue
+  // acotada: solo el catálogo global (src/data/storeChains.ts, de solo lectura) y los dos sitios que
+  // guardan su logo_asset/comentan el vínculo (storeIcons.ts, types.ts) nombran las tablas SQL.
+  it('solo el catálogo global de cadenas (y lo que documenta su vínculo) nombra store_chains/store_chain_aliases', () => {
+    const EXPECTED = ['/src/data/storeChains.ts', '/src/domain/storeIcons.ts', '/src/domain/types.ts']
     const users = Object.entries(APP)
       .filter(([file, text]) => file !== '/src/domain/storeChains.ts' && /store_chains|store_chain_aliases|resolve_store_chain/.test(text))
       .map(([file]) => file)
-    expect(users).toEqual([])
+    expect(users.sort()).toEqual(EXPECTED.sort())
   })
 
-  it('las utilidades nuevas son puras y aún no están conectadas a ningún flujo', () => {
+  it('las utilidades nuevas son puras; domain/storeChains.ts solo lo usan sharedLearning.ts y el selector de tiendas de Compras', () => {
     for (const file of ['/src/domain/storeChains.ts', '/src/domain/productText.ts']) {
       expect(APP[file], file).not.toMatch(/^import /m)
     }
+    const ALLOWED_IMPORTERS = ['/src/domain/sharedLearning.ts', '/src/ui/ShoppingScreen.tsx']
     const importers = Object.entries(APP)
-      .filter(([file, text]) => !file.endsWith('/storeChains.ts') && !file.endsWith('/productText.ts') && file !== '/src/domain/sharedLearning.ts' && /from ['"](?:@\/domain|\.\.?)\/(?:storeChains|productText)['"]/.test(text))
+      .filter(([file, text]) => !file.endsWith('/storeChains.ts') && !file.endsWith('/productText.ts') && !ALLOWED_IMPORTERS.includes(file) && /from ['"](?:@\/domain|\.\.?)\/(?:storeChains|productText)['"]/.test(text))
       .map(([file]) => file)
     expect(importers).toEqual([])
   })

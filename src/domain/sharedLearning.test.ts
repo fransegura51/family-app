@@ -19,6 +19,7 @@ const CHAINS: StoreChainRow[] = [...CHAINS_SQL.matchAll(/\(\s*'([a-z0-9_]+)',\s*
   kind: m[3] as StoreChainKind,
   learnable: m[4] === 'true',
   status: 'active' as const,
+  logoAsset: null,
 }))
 const ALIASES: StoreChainAliasRow[] = [...CHAINS_SQL.matchAll(/\(\s*'([a-z0-9_]+)',\s*'([a-z0-9 ]+)',\s*'(exact|word_prefix)',/g)].map((m) => ({
   chain_key: m[1],

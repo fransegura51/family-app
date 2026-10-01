@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import {
   UBICACION_MENU_ITEM_META,
   ubicacionMenuEntryMeta,
@@ -116,6 +117,7 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
           {menuOpen ? '✕' : '☰'} Menú
         </button>
       </div>
+      <SectionBreadcrumb subsection={UBICACION_MENU_ITEM_META[tab].label} />
       <p className="muted">
         Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El
         mapa muestra la ruta de las últimas 24h — pasado ese tiempo se borra sola.

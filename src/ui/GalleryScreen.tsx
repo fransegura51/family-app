@@ -5,6 +5,7 @@ import type { GalleryPhoto } from '@/domain/types'
 import galeriaHeaderImg from '@/assets/galeria/galeria-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 
 // Petición real: "Galería: compartir una o varias fotos" — cada foto ya
 // tiene su URL firmada cargada (reload la pide de golpe para toda la
@@ -93,6 +94,7 @@ export function GalleryScreen() {
       <div className="kitchen-header kitchen-header-familia">
         <img src={galeriaHeaderImg} alt="Galería" className="kitchen-header-img" />
       </div>
+      <SectionBreadcrumb subsection="Inicio" />
       {error && <p className="error">{error}</p>}
       <button
         type="button"

@@ -183,7 +183,7 @@ describe('casos reales del inventario aprobado (cadena real + texto real, resolu
   const FILES = import.meta.glob(['/supabase/migrations/0142_store_chains.sql', '/supabase/migrations/0143_shared_product_learning.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
   const CHAINS_SQL = FILES['/supabase/migrations/0142_store_chains.sql']
   const SEED_SQL = FILES['/supabase/migrations/0143_shared_product_learning.sql']
-  const chains: StoreChainRow[] = [...CHAINS_SQL.matchAll(/\(\s*'([a-z0-9_]+)',\s*'((?:[^']|'')*)',\s*'(supermarket|marketplace|fuel_retail|local_shop)',\s*(true|false)/g)].map((m) => ({ key: m[1], name: m[2], kind: m[3] as StoreChainKind, learnable: m[4] === 'true', status: 'active' as const }))
+  const chains: StoreChainRow[] = [...CHAINS_SQL.matchAll(/\(\s*'([a-z0-9_]+)',\s*'((?:[^']|'')*)',\s*'(supermarket|marketplace|fuel_retail|local_shop)',\s*(true|false)/g)].map((m) => ({ key: m[1], name: m[2], kind: m[3] as StoreChainKind, learnable: m[4] === 'true', status: 'active' as const, logoAsset: null }))
   const aliases: StoreChainAliasRow[] = [...CHAINS_SQL.matchAll(/\(\s*'([a-z0-9_]+)',\s*'([a-z0-9 ]+)',\s*'(exact|word_prefix)',/g)].map((m) => ({ chain_key: m[1], alias_norm: m[2], match_mode: m[3] as 'exact' | 'word_prefix' }))
   const learning: SharedLearningRow[] = [
     ...[...SEED_SQL.matchAll(/\('([a-z_]+)', '([^']+)', '((?:food|other)\.[a-z_]+)', 'approved', 'pepa_seed_v1', 'pepa_admin', now\(\)\)/g)].map((m) => ({ chain_key: m[1], text_key: m[2], food_type_key: m[3], status: 'approved' as const })),

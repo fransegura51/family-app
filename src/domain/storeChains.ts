@@ -14,6 +14,9 @@ export interface StoreChainRow {
   kind: StoreChainKind
   learnable: boolean
   status: 'active' | 'inactive'
+  // Identificador del logo empaquetado con la app (ver domain/storeIcons.ts) — null = sin logo propio
+  // todavía, se usa el resolutor por nombre de siempre (favicon/imagen/emoji).
+  logoAsset: string | null
 }
 
 export interface StoreChainAliasRow {

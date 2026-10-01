@@ -132,6 +132,7 @@ import { centsToEurosString, checkCentsDistribution, eurosStringToCents, type Ce
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import { getAccountsMode, getDateFilterPreferences, getFinanceMonthStartDay, listFamilyMembers, type AccountsMode, type DateFilterPreferences } from '@/data/family'
 import {
+  ECONOMIA_MENU_ITEM_META,
   economiaMenuEntryMeta,
   isCustomEconomiaMenuKey,
   loadEconomiaMenuLayout,
@@ -140,6 +141,7 @@ import {
   type EconomiaMenuGroup,
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
 import { subscribeBudgetsChanged } from '@/state/budgetsChanged'
@@ -540,6 +542,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
         <div className="kitchen-header">
           <img src={economiaHeaderImg} alt="Economía" className="kitchen-header-img" />
         </div>
+        <SectionBreadcrumb subsection="Educación financiera" />
         <KidsFinanceTab />
       </div>
     )
@@ -573,6 +576,10 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           {economiaMenuOpen ? '✕' : '☰'} Menú
         </button>
       </div>
+      {/* "Presupuestos" es una corrección deliberada sobre la etiqueta del menú ("Presupuesto(s)") —
+          coincide con el <h2> real dentro de esa pestaña (petición real: "se llama Presupuestos, porque
+          cada usuario puede crear uno o varios"). El resto reutiliza tal cual ECONOMIA_MENU_ITEM_META. */}
+      <SectionBreadcrumb subsection={tab === 'Presupuesto Generales' ? 'Presupuestos' : ECONOMIA_MENU_ITEM_META[tab].label} />
       {economiaMenuOpen && (
         <EconomiaMenuDropdown
           activeTab={tab}

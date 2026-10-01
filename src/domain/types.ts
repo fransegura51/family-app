@@ -127,6 +127,8 @@ export interface ShoppingStoreEntry {
   familyId: string
   name: string
   createdAt: string
+  // Vínculo opcional a una cadena global conocida (store_chains.key) — null = tienda personalizada.
+  chainKey: string | null
 }
 
 export interface InventoryItem {

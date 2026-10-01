@@ -30,6 +30,7 @@ import {
   uploadRecipePhoto,
 } from '@/data/food'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResult } from '@/services/recipeSearch'
 import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult } from '@/services/fatsecretRecipes'
 import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
@@ -145,6 +146,7 @@ export function AlimentacionScreen() {
           {menuOpen ? '✕' : '☰'} Menú
         </button>
       </div>
+      <SectionBreadcrumb subsection={ALIMENTACION_MENU_ITEM_META[tab].label} />
       {menuOpen && (
         <AlimentacionMenuDropdown
           activeTab={tab}

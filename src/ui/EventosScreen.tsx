@@ -2,6 +2,7 @@ import { type CSSProperties, FormEvent, type ReactNode, useEffect, useLayoutEffe
 import { Link, useSearchParams } from 'react-router-dom'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import {
   addEventActivity,
   addEventBudgetItem,
@@ -456,6 +457,9 @@ export function EventosScreen() {
       <div className="kitchen-header">
         <img src={eventosHeaderImg} alt="Eventos" className="kitchen-header-img" />
       </div>
+      {/* Máximo dos niveles siempre: un módulo abierto dentro del evento (Invitados, Presupuesto...)
+          sigue mostrando solo el nombre del evento, nunca un tercer nivel con el módulo. */}
+      <SectionBreadcrumb subsection={selected ? selected.title : 'Inicio'} />
       {error && <p className="error">{error}</p>}
 
       {selected ? (

@@ -8,6 +8,7 @@ import {
 } from '@/data/documents'
 import { createDocumentCategory, listDocumentCategories, type DocumentCategory } from '@/data/documentCategories'
 import { listFamilyMembers } from '@/data/family'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import type { FamilyMember, MemberDocument } from '@/domain/types'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -114,6 +115,7 @@ export function DocumentsScreen() {
       <div className="kitchen-header">
         <img src={documentosHeaderImg} alt="Documentos" className="kitchen-header-img" />
       </div>
+      <SectionBreadcrumb subsection="Inicio" />
       {error && <p className="error">{error}</p>}
 
       {/* Carpetas grandes de colores en rejilla, con el icono de cada

@@ -4,10 +4,10 @@ import type { ShoppingStoreEntry } from '@/domain/types'
 export async function listShoppingStores(): Promise<ShoppingStoreEntry[]> {
   const { data, error } = await supabase
     .from('shopping_stores')
-    .select('id, family_id, name, created_at')
+    .select('id, family_id, name, created_at, chain_key')
     .order('sort_order', { ascending: true })
   if (error) throw error
-  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, createdAt: r.created_at }))
+  return data.map((r) => ({ id: r.id, familyId: r.family_id, name: r.name, createdAt: r.created_at, chainKey: r.chain_key }))
 }
 
 // Arrastrar con el dedo para cambiar el orden de las tiendas (petición
@@ -61,5 +61,31 @@ export async function renameShoppingStore(id: string, name: string): Promise<voi
 
 export async function deleteShoppingStore(id: string): Promise<void> {
   const { error } = await supabase.from('shopping_stores').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Crea la tienda de la familia ya vinculada a una cadena conocida del catálogo global (nombre oficial +
+// chain_key) — se usa al elegir una cadena en StoreManager cuando la familia todavía no tiene una tienda
+// que pueda corresponder a ella (ver resolveStoreChain para el caso en que sí la tiene).
+export async function createShoppingStoreFromChain(chainKey: string, officialName: string): Promise<void> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data: profileRow, error: profileError } = await supabase
+    .from('profiles')
+    .select('family_id')
+    .eq('id', userResult.user.id)
+    .single()
+  if (profileError) throw profileError
+
+  const { error } = await supabase
+    .from('shopping_stores')
+    .insert({ family_id: profileRow.family_id, name: officialName.trim(), chain_key: chainKey })
+  if (error) throw error
+}
+
+// Vincula una tienda YA creada por la familia a una cadena global — nunca automático: el usuario confirma
+// siempre la sugerencia en StoreManager antes de llamar a esto. No toca el nombre que ya tenía la tienda.
+export async function linkShoppingStoreToChain(id: string, chainKey: string): Promise<void> {
+  const { error } = await supabase.from('shopping_stores').update({ chain_key: chainKey }).eq('id', id)
   if (error) throw error
 }

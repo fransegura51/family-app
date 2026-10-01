@@ -1,6 +1,7 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { findMemberInText } from '@/domain/voiceQuery'
 import {
+  CALENDARIO_MENU_ITEM_META,
   calendarioMenuEntryMeta,
   isCustomCalendarioMenuKey,
   firstCalendarioView,
@@ -12,6 +13,7 @@ import {
   type CalendarioMenuGroup,
   type CalendarioMenuItemKey,
 } from '@/state/calendarioMenu'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import {
   completeEventOccurrence,
   createEvent,
@@ -727,6 +729,7 @@ export function CalendarScreen() {
           {calendarMenuOpen ? '✕' : '☰'} Menú
         </button>
       </div>
+      <SectionBreadcrumb subsection={CALENDARIO_MENU_ITEM_META[view].label} />
       {error && <p className="error">{error}</p>}
       {shareNotice && <p className="points-badge">{shareNotice}</p>}
 

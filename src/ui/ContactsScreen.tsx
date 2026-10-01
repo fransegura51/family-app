@@ -8,6 +8,7 @@ import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
 import contactosHeaderImg from '@/assets/contactos/contactos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { paletteByName } from '@/domain/colors'
@@ -125,6 +126,7 @@ export function ContactsScreen() {
       <div className="kitchen-header kitchen-header-wide">
         <img src={contactosHeaderImg} alt="Contactos" className="kitchen-header-img" />
       </div>
+      <SectionBreadcrumb subsection="Inicio" />
       {error && <p className="error">{error}</p>}
       {shareNotice && <p className="points-badge">{shareNotice}</p>}
       <datalist id="contact-categories">

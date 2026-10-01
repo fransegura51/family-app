@@ -11,10 +11,13 @@
 // Cuenta por dispositivo (localStorage), no por familia entera: cada
 // móvil lleva su propia cuenta. Se reinicia solo cada día.
 
+// Petición real: "quiero que me amplíes el freno a 5 veces más mientras estoy con las pruebas" —
+// x5 temporal mientras prueba todo lo nuevo de Ubicación (rutas, avisos de lugar...) sin toparse
+// con el freno a media tarde. Si hace falta volver a los de antes, son 80/40/30.
 const LIMITS = {
-  map: 80, // cargar el mapa (Ubicación + selector de sitio)
-  search: 40, // buscar una dirección o reconocer un sitio nuevo
-  eta: 30, // calcular el tiempo de llegada en coche (Routes API)
+  map: 400, // cargar el mapa (Ubicación + selector de sitio)
+  search: 200, // buscar una dirección o reconocer un sitio nuevo
+  eta: 150, // calcular el tiempo de llegada en coche (Routes API)
 } as const
 
 export type GuardKind = keyof typeof LIMITS

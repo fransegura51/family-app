@@ -61,6 +61,26 @@ function shouldRecordHistoryPoint(latitude: number, longitude: number, now: numb
   return distanceMeters(lastHistoryPoint.latitude, lastHistoryPoint.longitude, latitude, longitude) >= MIN_HISTORY_DISTANCE_M
 }
 
+// La posición EN VIVO (member_locations, el punto de "dónde está ahora" que
+// ven los demás en el mapa) se guardaba en Supabase en CADA lectura de GPS
+// sin ningún freno — petición real: "si una llamada a Supabase es cada 34
+// segundos y es más de las necesarias, por qué no lo reduces y dejas solo
+// las necesarias". Nadie mira ese punto más seguido de cada 30s de todas
+// formas (ver LocationScreen.tsx, el intervalo que trae la posición de los
+// demás), así que escribirlo más a menudo que eso no aporta nada a quien lo
+// ve — solo gasta peticiones de más. El propio pin de ESTE teléfono en su
+// pantalla (lastPosition/notify, justo abajo) sigue actualizándose al
+// instante en cada lectura, eso es gratis (solo memoria) y no se toca.
+const MIN_LIVE_DISTANCE_M = 15
+const MIN_LIVE_INTERVAL_MS = 20 * 1000
+let lastLiveWrite: { latitude: number; longitude: number; at: number } | null = null
+
+function shouldWriteLivePosition(latitude: number, longitude: number, now: number): boolean {
+  if (!lastLiveWrite) return true
+  if (now - lastLiveWrite.at >= MIN_LIVE_INTERVAL_MS) return true
+  return distanceMeters(lastLiveWrite.latitude, lastLiveWrite.longitude, latitude, longitude) >= MIN_LIVE_DISTANCE_M
+}
+
 // Historial de SITIOS (no de puntos GPS en crudo, ver migración
 // 0058_place_visits) — petición real: "un desplegable con los sitios
 // en los que ha estado cada día... que lo reconozca según las tiendas
@@ -265,6 +285,7 @@ export function stopSharing() {
   lastPosition = null
   lastUpdateAt = 0
   lastHistoryPoint = null
+  lastLiveWrite = null
   persist(null)
   // Cierra la parada actual (si llegó a reconocerse) al dejar de
   // compartir — que "hasta cuándo" quede fijado en vez de abierto para
@@ -285,10 +306,14 @@ export function stopSharing() {
 export function startSharing(memberId: string, force = false) {
   if (currentMemberId === memberId && currentStop && !force) return // ya en marcha como esta persona
   // Al cambiar de persona (no al reiniciar el watch de la misma, que pasa
-  // a menudo por las redes de seguridad de abajo) se olvida el último punto
-  // del rastro — si no, el primer punto de alguien nuevo se compararía con
-  // la posición de quien compartía antes.
-  if (currentMemberId !== memberId) lastHistoryPoint = null
+  // a menudo por las redes de seguridad de abajo) se olvidan los últimos
+  // puntos de referencia (rastro y posición en vivo) — si no, el primer
+  // punto de alguien nuevo se compararía con la posición de quien
+  // compartía antes.
+  if (currentMemberId !== memberId) {
+    lastHistoryPoint = null
+    lastLiveWrite = null
+  }
   currentStop?.()
   lastError = null
   currentMemberId = memberId
@@ -298,20 +323,24 @@ export function startSharing(memberId: string, force = false) {
     (coords) => {
       lastError = null
       lastUpdateAt = Date.now()
-      updateMemberLocation(memberId, coords.latitude, coords.longitude)
-        .then(() => {
-          lastPosition = { memberId, latitude: coords.latitude, longitude: coords.longitude }
-          notify()
-        })
-        .catch((err: Error) => {
+      // El pin de ESTE teléfono en su propia pantalla se actualiza al
+      // instante, en cada lectura — es solo memoria, no cuesta nada.
+      // Escribir en Supabase (lo que ven los DEMÁS) es aparte y con freno,
+      // justo abajo.
+      lastPosition = { memberId, latitude: coords.latitude, longitude: coords.longitude }
+      notify()
+      if (shouldWriteLivePosition(coords.latitude, coords.longitude, lastUpdateAt)) {
+        lastLiveWrite = { latitude: coords.latitude, longitude: coords.longitude, at: lastUpdateAt }
+        updateMemberLocation(memberId, coords.latitude, coords.longitude).catch((err: Error) => {
           lastError = err.message
           notify()
         })
+      }
       if (shouldRecordHistoryPoint(coords.latitude, coords.longitude, lastUpdateAt)) {
         lastHistoryPoint = { latitude: coords.latitude, longitude: coords.longitude, at: lastUpdateAt }
         appendLocationHistoryPoint(memberId, coords.latitude, coords.longitude).catch(() => {})
       }
-      // Independiente del guardado de arriba: no debe romper el
+      // Independiente de los guardados de arriba: no debe romper el
       // compartir en sí si falla el reconocimiento del sitio.
       trackVisit(memberId, coords.latitude, coords.longitude).catch(() => {})
     },

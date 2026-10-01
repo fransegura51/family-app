@@ -44,6 +44,7 @@ const STAY_MIN_MS = 6 * 60 * 1000
 const AWAY_CONFIRM_MS = 3 * 60 * 1000
 const RESUME_GAP_MS = 20 * 60 * 1000
 const MIN_HISTORY_INTERVAL_MS = 5 * 60 * 1000
+const MIN_LIVE_INTERVAL_MS = 20 * 1000
 
 async function flush() {
   await vi.advanceTimersByTimeAsync(0)
@@ -161,6 +162,52 @@ describe('historial de sitios: recargar la aplicación a media estancia (bug rea
     await ping(HOME)
 
     expect(second.data.closePlaceVisit).toHaveBeenCalledWith('visita-casa', expect.any(String))
+  })
+})
+
+describe('posición en vivo (bug real: "una llamada a Supabase cada 34 segundos... deja solo las necesarias")', () => {
+  it('no escribe en Supabase en cada lectura si apenas se ha movido y no ha pasado mucho tiempo', async () => {
+    const { mod, data } = await freshModule()
+    mod.startSharing('m1')
+    await ping(HOME)
+    expect(data.updateMemberLocation).toHaveBeenCalledTimes(1) // la primera lectura siempre se escribe
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    await ping(JITTER_NEAR_HOME) // ruido GPS de unos metros, sin tiempo suficiente de por medio
+    await vi.advanceTimersByTimeAsync(5_000)
+    await ping(HOME)
+
+    expect(data.updateMemberLocation).toHaveBeenCalledTimes(1)
+  })
+
+  it('un movimiento real sí se escribe enseguida, no espera al reloj', async () => {
+    const { mod, data } = await freshModule()
+    mod.startSharing('m1')
+    await ping(HOME)
+    await vi.advanceTimersByTimeAsync(2_000)
+    await ping(NEARBY_MOVED)
+
+    expect(data.updateMemberLocation).toHaveBeenCalledTimes(2)
+  })
+
+  it('aunque siga quieta del todo, no pasan más de MIN_LIVE_INTERVAL_MS sin refrescarse', async () => {
+    const { mod, data } = await freshModule()
+    mod.startSharing('m1')
+    await ping(HOME)
+    await vi.advanceTimersByTimeAsync(MIN_LIVE_INTERVAL_MS)
+    await ping(HOME)
+
+    expect(data.updateMemberLocation).toHaveBeenCalledTimes(2)
+  })
+
+  it('el pin del propio teléfono se actualiza al instante en cada lectura, aunque no se escriba en Supabase', async () => {
+    const { mod } = await freshModule()
+    mod.startSharing('m1')
+    await ping(HOME)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await ping(JITTER_NEAR_HOME) // no llega a escribirse en Supabase (visto en el test de arriba)...
+
+    expect(mod.getLastPosition()).toEqual({ memberId: 'm1', ...JITTER_NEAR_HOME }) // ...pero el pin local sí lo refleja
   })
 })
 

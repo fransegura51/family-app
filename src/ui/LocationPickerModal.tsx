@@ -96,6 +96,9 @@ export function LocationPickerModal({
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
+          // Mismo motivo que en LocationMap.tsx: con un solo dedo se mueve el mapa y pellizcando se
+          // hace zoom, sin pedir los 2 dedos que exige Google Maps por defecto en móvil.
+          gestureHandling: 'greedy',
         })
         map.addListener('click', (e: google.maps.MapMouseEvent) => {
           if (!e.latLng) return

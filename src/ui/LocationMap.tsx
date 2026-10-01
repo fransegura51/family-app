@@ -151,6 +151,12 @@ export function LocationMap({
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
+          // Petición real: "que se pueda mover con un dedo no con los 2 dedos como ahora y que se
+          // pueda ampliar y disminuir pellizcando" — por defecto, en móvil, Google Maps exige 2
+          // dedos para mover el mapa (así el dedo de toda la pantalla no se queda "atrapado" si el
+          // mapa está dentro de una página con scroll). 'greedy' hace que un solo dedo mueva el
+          // mapa y el pellizco haga zoom, sin pedir los 2 dedos.
+          gestureHandling: 'greedy',
         })
         new g.maps.TrafficLayer().setMap(map)
         mapRef.current = map

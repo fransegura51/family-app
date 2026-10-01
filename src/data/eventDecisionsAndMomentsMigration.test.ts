@@ -209,11 +209,12 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // Eventos. 0179 (event_decision_providers, Fase 3 "La pareja") sí es de Eventos — primer uso real de
   // event_decisions más la relación muchos-a-muchos decisión↔proveedor, ver eventPairDecisions.test.ts.
   // 0180 (alexa_account_linking, integración con Alexa) añade alexa_links/alexa_auth_codes — nada que
-  // ver con Eventos.
-  it('0180 (alexa_account_linking) es la última migración del repositorio', () => {
+  // ver con Eventos. 0181 (alexa_account_linking_drop) la deshace por completo (petición real:
+  // "Quita todo lo que has hecho de Alexa... Quítalo todo de la aplicación") — tampoco Eventos.
+  it('0181 (alexa_account_linking_drop) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(180)
+    expect(Math.max(...numbers)).toBe(181)
   })
 })

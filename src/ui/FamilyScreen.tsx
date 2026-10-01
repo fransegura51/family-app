@@ -14,7 +14,6 @@ import {
   type AccountsMode,
 } from '@/data/family'
 import { adminResetProfilePin } from '@/data/appLock'
-import { disconnectAlexa, getAlexaLinkStatus, type AlexaLinkStatus } from '@/data/alexaLink'
 import { effectiveMemberType } from '@/domain/growth'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -290,52 +289,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             + Añadir miembro
           </button>
         ))}
-
-      {isAdmin && <AlexaLinkCard />}
         </>
       )}
-    </div>
-  )
-}
-
-// Estado de la vinculación con Alexa (account linking) — petición real: "que cuando la vendamos,
-// la familia se puedan conectar con Alexa si lo quieren". Mismo patrón que el bloque de Google
-// Calendar en CalendarScreen.tsx: solo admin, "Desconectar" corta el acceso al instante (cualquier
-// Echo que use ese token deja de responder).
-function AlexaLinkCard() {
-  const [status, setStatus] = useState<AlexaLinkStatus | null>(null)
-  const [error, setError] = useState('')
-
-  function load() {
-    getAlexaLinkStatus()
-      .then(setStatus)
-      .catch((err: Error) => setError(err.message))
-  }
-
-  useEffect(load, [])
-
-  async function disconnect() {
-    setError('')
-    try {
-      await disconnectAlexa()
-      load()
-    } catch (err) {
-      setError(errorMessage(err, String(err)))
-    }
-  }
-
-  if (!status?.connected) return null
-
-  return (
-    <div className="card member-form">
-      <h2>Alexa</h2>
-      <p className="muted">
-        {status.createdAt
-          ? `Conectado desde ${new Date(status.createdAt).toLocaleDateString('es-ES', { dateStyle: 'medium' })}.`
-          : 'Conectado.'}
-      </p>
-      {error && <p className="error">{error}</p>}
-      <ConfirmButton label="Desconectar" onConfirm={disconnect} />
     </div>
   )
 }

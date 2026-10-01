@@ -3,7 +3,7 @@
 // podamos buscar sitios por voz... a través del botón general de Pepa". Se comprueba en
 // pepa/talk.ts (runTalk) DESPUÉS de Cocina, así que "busca una receta de tortilla" lo sigue
 // resolviendo Cocina, nunca esto.
-import { distanceMeters, formatDistance } from '@/domain/geo'
+import { distanceMeters, formatDistance, formatDuration, trafficDescription } from '@/domain/geo'
 import { routeLocation } from '@/domain/locationRoute'
 import { normalize } from '@/domain/voiceQuery'
 import { DEFAULT_PLACE_RADIUS_M } from '@/pepa/actions/locationActions'
@@ -28,7 +28,10 @@ export interface LocationDeps {
   // bias = acerca los resultados a esas coordenadas sin excluir los de lejos (p. ej. "Madrid" sigue
   // encontrándose aunque no estés cerca) — sobre todo para el botón "📍 Buscar sitio cercano".
   searchFirstPlace(term: string, bias?: { latitude: number; longitude: number } | null): Promise<SearchOutcome>
-  drivingEta(origin: { latitude: number; longitude: number }, destination: { latitude: number; longitude: number }): Promise<{ minutes: number; km: number } | null>
+  drivingEta(
+    origin: { latitude: number; longitude: number },
+    destination: { latitude: number; longitude: number },
+  ): Promise<{ minutes: number; km: number; delayMinutes: number } | null>
 }
 
 function emptyContext(): ActionContext {
@@ -128,7 +131,10 @@ async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkO
   if (!origin) return { kind: 'answer', text: 'No he podido saber dónde estás ahora mismo — revisa el permiso de ubicación del teléfono.' }
   const eta = await deps.drivingEta(origin, destination)
   if (!eta) return { kind: 'answer', text: `No he podido calcular el tiempo en coche hasta ${destination.label} ahora mismo.` }
-  return { kind: 'answer', text: `Desde donde estás, hasta ${destination.label} se tarda unos ${eta.minutes} minutos en coche (${eta.km} km, con tráfico).` }
+  return {
+    kind: 'answer',
+    text: `Desde donde estás, hasta ${destination.label} se tarda unos ${formatDuration(eta.minutes)} en coche (${eta.km} km), ${trafficDescription(eta.minutes, eta.delayMinutes)}.`,
+  }
 }
 
 async function handleNearest(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {

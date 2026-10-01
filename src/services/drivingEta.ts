@@ -9,6 +9,9 @@ import { callGoogleMaps } from '@/services/googleMapsProxy'
 export interface DrivingEta {
   minutes: number
   km: number
+  // Minutos de más (o de menos, si es negativo) respecto a sin tráfico — petición real: "quiero
+  // que me diga... el estado de las carreteras". 0 o negativo = fluido.
+  delayMinutes: number
 }
 
 export async function getDrivingEta(

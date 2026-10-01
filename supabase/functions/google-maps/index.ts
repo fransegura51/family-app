@@ -134,7 +134,11 @@ Deno.serve(async (req) => {
       if (!destination || !isFiniteNumber(destination.latitude) || !isFiniteNumber(destination.longitude)) return json({ error: "missing destination" }, 400)
       const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "routes.duration,routes.distanceMeters" },
+        // "staticDuration" además de "duration" (petición real: "quiero que me diga... el estado
+        // de las carreteras") — duration ya tiene en cuenta el tráfico actual (routingPreference
+        // TRAFFIC_AWARE), staticDuration es sin tráfico; la diferencia entre las dos es cuánto
+        // está afectando el tráfico de verdad ahora mismo, sin necesidad de pedir nada más.
+        headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters" },
         body: JSON.stringify({
           origin: { location: { latLng: { latitude: origin.latitude, longitude: origin.longitude } } },
           destination: { location: { latLng: { latitude: destination.latitude, longitude: destination.longitude } } },
@@ -149,8 +153,10 @@ Deno.serve(async (req) => {
       if (!route?.duration) return json({ eta: null })
       const seconds = parseInt(String(route.duration).replace("s", ""), 10)
       if (!Number.isFinite(seconds)) return json({ eta: null })
+      const staticSeconds = route.staticDuration ? parseInt(String(route.staticDuration).replace("s", ""), 10) : seconds
+      const delayMinutes = Number.isFinite(staticSeconds) ? Math.round((seconds - staticSeconds) / 60) : 0
       return json({
-        eta: { minutes: Math.max(1, Math.round(seconds / 60)), km: Math.round((route.distanceMeters ?? 0) / 100) / 10 },
+        eta: { minutes: Math.max(1, Math.round(seconds / 60)), km: Math.round((route.distanceMeters ?? 0) / 100) / 10, delayMinutes },
       })
     }
 

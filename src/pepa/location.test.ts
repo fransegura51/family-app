@@ -112,14 +112,17 @@ describe('locationAction: guardar', () => {
 
 describe('locationAction: tiempo en coche', () => {
   it('calcula el tiempo hasta un lugar guardado', async () => {
-    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5 })
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5, delayMinutes: 0 })
     const outcome = await locationAction('cuánto se tarda en coche a la farmacia', makeDeps({ drivingEta }))
     expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, { latitude: 40.42, longitude: -3.7, label: 'Farmacia' })
-    expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Farmacia se tarda unos 12 minutos en coche (4.5 km, con tráfico).' })
+    expect(outcome).toEqual({
+      kind: 'answer',
+      text: 'Desde donde estás, hasta Farmacia se tarda unos 12 minutos en coche (4.5 km), con tráfico fluido, sin retenciones.',
+    })
   })
 
   it('reconoce varias formas reales de preguntarlo, no solo "se tarda"', async () => {
-    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5 })
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5, delayMinutes: 0 })
     expect(await locationAction('cuánto tiempo tengo hasta la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
     expect(await locationAction('qué distancia tengo hasta la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
     expect(await locationAction('cuánto queda hasta la farmacia', makeDeps({ drivingEta }))).toMatchObject({ kind: 'answer' })
@@ -129,11 +132,14 @@ describe('locationAction: tiempo en coche', () => {
 
   it('si no es un lugar guardado, lo busca de verdad en Google Maps (petición real: "incluyendo Madrid")', async () => {
     const searchFirstPlace = vi.fn().mockResolvedValue(found('Madrid, España', 40.4168, -3.7038))
-    const drivingEta = vi.fn().mockResolvedValue({ minutes: 90, km: 80 })
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 90, km: 80, delayMinutes: 5 })
     const outcome = await locationAction('cuánto tiempo tengo hasta Madrid', makeDeps({ searchFirstPlace, drivingEta }))
     expect(searchFirstPlace).toHaveBeenCalledWith('madrid', { latitude: 40.4, longitude: -3.7 })
     expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, { latitude: 40.4168, longitude: -3.7038, label: 'Madrid, España' })
-    expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Madrid, España se tarda unos 90 minutos en coche (80 km, con tráfico).' })
+    expect(outcome).toEqual({
+      kind: 'answer',
+      text: 'Desde donde estás, hasta Madrid, España se tarda unos 1 hora y 30 minutos en coche (80 km), con algo de tráfico, unos 5 minutos más de lo normal.',
+    })
   })
 
   it('ni guardado ni encontrado en el mapa, lo dice', async () => {
@@ -151,10 +157,13 @@ describe('locationAction: tiempo en coche', () => {
   })
 
   it('también encuentra el lugar por su categoría, no solo por el nombre', async () => {
-    const drivingEta = vi.fn().mockResolvedValue({ minutes: 8, km: 3 })
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 8, km: 3, delayMinutes: 0 })
     const outcome = await locationAction('cuánto se tarda en coche a trabajo', makeDeps({ drivingEta }))
     expect(drivingEta).toHaveBeenCalledWith({ latitude: 40.4, longitude: -3.7 }, { latitude: 38.11, longitude: -0.79, label: 'Cargofrío' })
-    expect(outcome).toEqual({ kind: 'answer', text: 'Desde donde estás, hasta Cargofrío se tarda unos 8 minutos en coche (3 km, con tráfico).' })
+    expect(outcome).toEqual({
+      kind: 'answer',
+      text: 'Desde donde estás, hasta Cargofrío se tarda unos 8 minutos en coche (3 km), con tráfico fluido, sin retenciones.',
+    })
   })
 
   it('sin permiso de ubicación, lo avisa en vez de fallar', async () => {

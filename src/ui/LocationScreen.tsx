@@ -29,7 +29,7 @@ import {
 } from '@/data/location'
 import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
-import { distanceMeters, formatDistance } from '@/domain/geo'
+import { distanceMeters, formatDistance, formatDuration, trafficDescription } from '@/domain/geo'
 import { getCurrentPosition } from '@/services/geolocation'
 import { getDrivingEta, type DrivingEta } from '@/services/drivingEta'
 import { shareText } from '@/services/share'
@@ -1150,7 +1150,7 @@ function PlaceRow({
               </p>
               {etaFor === member.id && eta && (
                 <p className="muted">
-                  🚗 {eta.minutes} min ({eta.km} km, con tráfico)
+                  🚗 {formatDuration(eta.minutes)} ({eta.km} km), {trafficDescription(eta.minutes, eta.delayMinutes)}
                 </p>
               )}
               {etaFor === member.id && !eta && !etaLoading && <p className="muted">No se pudo calcular el tiempo ahora mismo.</p>}

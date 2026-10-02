@@ -425,6 +425,18 @@ export function isWeekend(dateStr: string): boolean {
   return day === 0 || day === 6
 }
 
+// Personal (vista "lo mío"): un Evento/Tarea pertenece a Personal si está asignado a mí, O si es
+// privado — un privado mío sigue siendo mío aunque esté asignado a "Toda la familia" (memberIds
+// vacío): privacidad y asignación son conceptos distintos (BUG REAL corregido en auditoría
+// 2026-10-02: antes solo miraba memberIds y un privado "Toda la familia" desaparecía de Personal).
+// No hace falta comparar created_by aquí (ni está seleccionado en el cliente): la RLS de
+// calendar_events (migración 0089) ya garantiza que un visibility='private' que llega a la lista de
+// eventos del cliente SOLO puede pertenecer al usuario actual — su sola presencia ya lo certifica.
+export function shouldIncludeInPersonal(event: { visibility: 'shared' | 'private'; memberIds: string[] }, myMemberId: string | null): boolean {
+  if (event.visibility === 'private') return true
+  return !!myMemberId && event.memberIds.includes(myMemberId)
+}
+
 export const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 export const MONTH_LABELS = [

@@ -73,6 +73,7 @@ import {
   MONTH_LABELS,
   occurrenceAt,
   readableTextColor,
+  shouldIncludeInPersonal,
   WEEKDAY_LABELS,
 } from '@/domain/calendar'
 import { toPastel } from '@/domain/colors'
@@ -1697,12 +1698,13 @@ function PersonalView({
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const dayNotes = notes.filter((n) => n.noteDate === selectedDate)
-  // Solo mis propios Eventos/Tareas (asignados a MI miembro) — nunca "Toda la familia" ni los de otra
-  // persona: eso ya se ve en Mes/Agenda/Familiar, Personal es específicamente "lo mío".
+  // Mis propios Eventos/Tareas: asignados a MI miembro, MÁS cualquier privado mío (ver
+  // shouldIncludeInPersonal) — nunca "Toda la familia" sin más ni los de otra persona, eso ya se ve
+  // en Mes/Agenda/Familiar.
   const myEntries = entries.filter((entry) => {
     if (entry.isExternal) return false
     const ev = events.find((e) => e.id === entry.id)
-    return !!ev && !!myMemberId && ev.memberIds.includes(myMemberId)
+    return !!ev && shouldIncludeInPersonal(ev, myMemberId)
   })
 
   async function handleAdd(e: FormEvent) {

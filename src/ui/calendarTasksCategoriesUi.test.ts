@@ -265,9 +265,9 @@ describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, sal
     expect(FAMILY_VIEW).not.toMatch(/e\.kind\s*===|ev\.kind\s*===/)
   })
 
-  it('Personal filtra por MI miembro (myMemberId), nunca por kind — Eventos y Tareas propios conviven', () => {
+  it('Personal filtra por MI miembro O por ser privado mío (shouldIncludeInPersonal), nunca por kind — Eventos y Tareas propios conviven', () => {
     const personal = slice(CALENDAR_SRC, 'function PersonalView({', 'interface TimeGridBlock {')
-    expect(personal).toContain('ev.memberIds.includes(myMemberId)')
+    expect(personal).toContain('shouldIncludeInPersonal(ev, myMemberId)')
     expect(personal).not.toMatch(/ev\.kind\s*===/)
   })
 

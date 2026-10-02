@@ -11,6 +11,7 @@ import {
   intervalsOverlap,
   findScheduleWarnings,
   groupScheduleWarnings,
+  shouldIncludeInPersonal,
   type ScheduleEvent,
 } from '@/domain/calendar'
 
@@ -411,5 +412,59 @@ describe('eventDotColors — tres modos de color mutuamente excluyentes, nunca i
     for (const mode of ['miembros', 'categorias', 'solo_categorias'] as const) {
       expect(eventDotColors({ color: null, memberIds: [], categoryId: null }, memberColorById, mode, categoryColorById)).toEqual(['#9ca3af'])
     }
+  })
+})
+
+// BUG REAL (auditoría 2026-10-02): Calendario → Personal, un Evento/Tarea privado creado desde
+// Personal con "Toda la familia" como asignación desaparecía de la propia vista Personal de su
+// creador — porque el filtro de "lo mío" solo miraba la asignación (memberIds), nunca la
+// privacidad. Privacidad y asignación son conceptos distintos: estos tests prueban el
+// COMPORTAMIENTO de la función que decide la inclusión en Personal (no solo el texto del código),
+// cubriendo los casos 1/2/5/7 del informe — los casos 4/8 ("Usuario B nunca ve nada de A") no son
+// responsabilidad de esta función: se garantizan en la RLS de calendar_events (migración 0089),
+// que ya impide que un privado ajeno llegue siquiera a la lista `events` del cliente. Esta función
+// solo decide, DADO que un evento ya llegó (por tanto ya es legítimamente visible para el usuario
+// actual), si pertenece a la sub-vista "Personal" o no.
+describe('shouldIncludeInPersonal — "lo mío" en Personal: asignado a mí, O privado (nunca ambas condiciones a la vez)', () => {
+  const ME = 'member-jennifer'
+  const OTHER = 'member-paco'
+
+  // CASO 1/2/7 — el bug en sí: un privado "Toda la familia" (memberIds vacío) sigue siendo mío.
+  it('privado + "Toda la familia" (memberIds vacío) → SÍ se incluye (el bug corregido)', () => {
+    expect(shouldIncludeInPersonal({ visibility: 'private', memberIds: [] }, ME)).toBe(true)
+  })
+
+  it('privado + asignado a mí → SÍ se incluye', () => {
+    expect(shouldIncludeInPersonal({ visibility: 'private', memberIds: [ME] }, ME)).toBe(true)
+  })
+
+  // Un privado que llegó a la lista del cliente YA es mío por construcción de la RLS (ver
+  // comentario de cabecera) — la función no distingue por memberIds en absoluto cuando es privado,
+  // ni falla si memberIds "parece" de otra persona (dato históricamente inconsistente, por ejemplo).
+  it('privado + memberIds de OTRO miembro (dato heredado/inconsistente) → igualmente SÍ se incluye, porque la privacidad manda', () => {
+    expect(shouldIncludeInPersonal({ visibility: 'private', memberIds: [OTHER] }, ME)).toBe(true)
+  })
+
+  // CASO 5 — un familiar normal asignado a mí sigue exactamente igual que antes del fix.
+  it('familiar (shared) + asignado a mí → SÍ se incluye (comportamiento de siempre, sin cambios)', () => {
+    expect(shouldIncludeInPersonal({ visibility: 'shared', memberIds: [ME] }, ME)).toBe(true)
+  })
+
+  // Un familiar "Toda la familia" (no privado) NUNCA debe aparecer en Personal — eso ya se ve en
+  // Mes/Agenda/Familiar; distingue el fix de un "todo aparece en Personal" accidental.
+  it('familiar (shared) + "Toda la familia" (memberIds vacío) → NO se incluye', () => {
+    expect(shouldIncludeInPersonal({ visibility: 'shared', memberIds: [] }, ME)).toBe(false)
+  })
+
+  it('familiar (shared) + asignado a OTRO miembro → NO se incluye', () => {
+    expect(shouldIncludeInPersonal({ visibility: 'shared', memberIds: [OTHER] }, ME)).toBe(false)
+  })
+
+  it('sin miembro propio enlazado (myMemberId null) + familiar asignado a alguien → NO se incluye (nada que pudiera ser "mío" por asignación)', () => {
+    expect(shouldIncludeInPersonal({ visibility: 'shared', memberIds: [OTHER] }, null)).toBe(false)
+  })
+
+  it('sin miembro propio enlazado (myMemberId null) + privado → SÍ se incluye igualmente (la privacidad no depende de tener miembro enlazado)', () => {
+    expect(shouldIncludeInPersonal({ visibility: 'private', memberIds: [] }, null)).toBe(true)
   })
 })

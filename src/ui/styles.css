@@ -1272,6 +1272,27 @@ select {
   box-shadow: 0 0 0 2px var(--primary);
 }
 
+/* "🎨 Otro color" — RETOQUE UX (validación real iPhone): antes el <input type="color"> nativo iba
+   suelto dentro de .calendar-category-color-row, mismo tamaño que una muestra, y parecía una 9ª
+   opción de la paleta sin explicar qué hacía. Ahora es su propia fila con texto, fuera de la rejilla de
+   muestras — un <label> (ver JSX) que envuelve ese MISMO input: tocar cualquier parte de la fila abre
+   el selector nativo, sin js ni selector nuevo. align-self:flex-start para no estirarse a todo el ancho. */
+.calendar-category-color-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 8px 12px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
 .checkbox-label {
   flex-direction: row;
   align-items: center;

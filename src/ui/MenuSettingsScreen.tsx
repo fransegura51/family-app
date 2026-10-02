@@ -1210,19 +1210,25 @@ function CalendarCategoryColorPicker({ value, onChange }: { value: string; onCha
             aria-pressed={value === c}
           />
         ))}
-        {/* Mismo círculo que ya usa InvitationDesigner.tsx para "otro color" (.invitation-color-swatch-btn
-            por fuera, siempre neutro; .invitation-color-swatch-input, el <input type="color"> real,
-            encogido dentro) — el escape hatch para cualquier color fuera de las muestras del estilo. */}
-        <span className="invitation-color-swatch-btn" title="Otro color">
-          <input
-            type="color"
-            className="invitation-color-swatch-input"
-            value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#9ca3af'}
-            onChange={(e) => onChange(e.target.value)}
-            aria-label="Elegir otro color"
-          />
-        </span>
       </div>
+      {/* RETOQUE UX (validación real iPhone) — antes este mismo <input type="color"> nativo (sin cambiar
+          nada de su mecanismo) iba DENTRO de la fila de muestras, como un círculo suelto del mismo
+          tamaño: parecía una 9ª muestra de la paleta y no explicaba qué hacía. Ahora es su propia fila,
+          con texto ("🎨 Otro color") — un <label> envolviendo el input: tocar el texto o el círculo
+          abre el MISMO selector nativo (comportamiento HTML estándar de <label>+<input>, no hace falta
+          JS), sin construir ningún selector nuevo. Las 8 muestras del estilo activo son una
+          recomendación, nunca un límite: "Otro color" sigue permitiendo cualquier color sin restricción. */}
+      <label className="calendar-category-color-custom-row">
+        <span aria-hidden="true">🎨</span>
+        <span>Otro color</span>
+        <input
+          type="color"
+          className="invitation-color-swatch-input"
+          value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#9ca3af'}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label="Elegir otro color"
+        />
+      </label>
       {value && (
         <button type="button" className="link-button" onClick={() => onChange('')} style={{ alignSelf: 'flex-start' }}>
           Sin color

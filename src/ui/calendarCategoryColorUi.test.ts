@@ -141,6 +141,43 @@ describe('Layout móvil — el color nunca comparte fila con emoji+nombre+botón
   })
 })
 
+// RETOQUE UX (validación real iPhone, tras la versión anterior) — el <input type="color"> nativo para
+// "otro color" iba suelto dentro de .calendar-category-color-row, mismo tamaño que una muestra de la
+// paleta: el usuario no podía distinguirlo de una 9ª muestra ni saber que servía para elegir cualquier
+// color. Mismo input, mismo mecanismo nativo — solo cambia la presentación (propia fila, con texto).
+describe('"Otro color" — acción explícita, separada de las 8 muestras, sin construir otro selector', () => {
+  it('las 8 muestras del estilo activo siguen apareciendo, en su propia fila (.calendar-category-color-row), sin el input de color mezclado dentro', () => {
+    const row = slice(PICKER, '<div className="calendar-category-color-row"', '</div>')
+    expect(row).toContain('{swatches.map((c, i) => (')
+    expect(row).not.toContain('type="color"')
+    expect(row).not.toContain('invitation-color-swatch')
+  })
+
+  it('"Otro color" es una fila propia, con texto explícito — nunca un círculo aislado sin explicar qué hace', () => {
+    expect(PICKER).toContain('<label className="calendar-category-color-custom-row">')
+    expect(PICKER).toContain('<span>Otro color</span>')
+  })
+
+  it('reutiliza EXACTAMENTE el mismo <input type="color"> nativo de siempre (mismo onChange, mismo cálculo de value) — un <label> nativo lo envuelve, no hace falta JS ni un selector nuevo', () => {
+    const customRow = slice(PICKER, '<label className="calendar-category-color-custom-row">', '</label>')
+    expect(customRow).toContain('type="color"')
+    expect(customRow).toContain('className="invitation-color-swatch-input"')
+    expect(customRow).toContain("value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#9ca3af'}")
+    expect(customRow).toContain('onChange={(e) => onChange(e.target.value)}')
+    expect(customRow).toContain("aria-label=\"Elegir otro color\"")
+  })
+
+  it('no existe ningún círculo de color personalizado aislado como única pista de esa función (sin el envoltorio .invitation-color-swatch-btn de la versión anterior)', () => {
+    expect(PICKER).not.toContain('className="invitation-color-swatch-btn"')
+  })
+
+  it('las 8 muestras son una recomendación, nunca un límite: no hay ningún tope de categorías en el alta (ni comprobación de longitud, ni bloqueo por superar las 8 muestras)', () => {
+    const section = slice(MENU_SETTINGS_SRC, 'function CalendarCategoriesSection() {', '\n  if (loading) return null')
+    expect(section).not.toMatch(/categories\.length\s*>=?\s*CALENDAR_CATEGORY_COLOR_COUNT/)
+    expect(section).not.toMatch(/categories\.length\s*>=?\s*8/)
+  })
+})
+
 describe('No regresión — el modo "Ver colores de categorías"/"Ver colores de miembros" y su fallback no se han tocado', () => {
   it('eventColor sigue con el mismo fallback: color propio del evento → color de categoría (solo en modo categorías) → color de miembro → gris', () => {
     const fn = slice(CALENDAR_SCREEN_SRC, 'function eventColor(ev: CalendarEvent', 'function hhmm(')

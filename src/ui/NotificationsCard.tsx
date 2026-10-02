@@ -7,7 +7,11 @@ import { getPermissionState, hasPushSubscription, isNotificationsDisabledByUser,
 function deniedHelp(): string {
   const ua = navigator.userAgent
   if (/android/i.test(ua)) {
-    return 'En Android: mantén pulsado el icono de PEPA, toca "Información de la aplicación" (la i), Notificaciones, y actívalas. Si abres PEPA desde Chrome: toca el candado junto a la dirección, Permisos, Notificaciones, Permitir.'
+    const installed = window.matchMedia?.('(display-mode: standalone)').matches
+    if (installed) {
+      return 'En Android: mantén pulsado el icono de PEPA, toca "Información de la aplicación" (la i), Notificaciones, y actívalas.'
+    }
+    return 'En Chrome: toca el icono a la izquierda de la dirección (el candado o los ajustes), luego Permisos, Notificaciones, y elige Permitir; si no aparece ahí, toca "Restablecer permisos". Otra forma: los tres puntos, Configuración, Configuración de sitios, Notificaciones, y quita el bloqueo a esta página. Para que los avisos funcionen mejor, instala PEPA: los tres puntos, "Instalar aplicación", y ábrela desde su icono.'
   }
   if (/iphone|ipad/i.test(ua)) return 'En iPhone: Ajustes, Notificaciones, PEPA, y activa "Permitir notificaciones".'
   return 'Para activarlos: Ajustes del móvil, Aplicaciones, PEPA, Notificaciones, y permitirlas.'
@@ -25,6 +29,11 @@ export function NotificationsCard() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // Chrome (sobre todo en Android) contesta "denegado" SIN llegar a preguntar cuando ya se rechazó o se
+  // ignoró la pregunta varias veces para esa página, y mientras tanto Notification.permission sigue
+  // diciendo "default": sin esto la tarjeta parecía "sin activar" y el botón no hacía nada visible (caso
+  // real: el Android de la familia).
+  const [blockedByBrowser, setBlockedByBrowser] = useState(false)
 
   function refresh() {
     setPermission(getPermissionState())
@@ -80,6 +89,13 @@ export function NotificationsCard() {
           </p>
           {error && <p className="error">{error}</p>}
           {notice && <p className="muted">{notice}</p>}
+          {blockedByBrowser && permission !== 'granted' && (
+            <p className="error">
+              El navegador ha bloqueado la pregunta de permiso para esta página (pasa cuando se ha rechazado o ignorado
+              varias veces), por eso no te ha preguntado nada. {deniedHelp()} Después recarga la página y toca otra vez
+              "Activar avisos".
+            </p>
+          )}
           <div className="inline-fields">
             {active ? (
               <>
@@ -107,6 +123,7 @@ export function NotificationsCard() {
                   run(async () => {
                     const result = await enablePushNotifications()
                     if (result !== 'granted') void reportPushProblem(`activar terminó con permiso=${result}`)
+                    setBlockedByBrowser(result === 'denied' && getPermissionState() !== 'denied')
                     if (result === 'default') {
                       setNotice('No has contestado a la pregunta del móvil. Toca otra vez el botón y elige "Permitir".')
                     }

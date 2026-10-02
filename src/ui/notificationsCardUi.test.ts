@@ -115,6 +115,13 @@ describe('que funcione igual en Android y en iPhone', () => {
     expect(CARD).toContain('/iphone|ipad/i.test(ua)')
   })
 
+  it('si Chrome contesta "denegado" sin preguntar (el permiso sigue en "default"), la tarjeta lo explica con los pasos exactos en vez de parecer rota', () => {
+    expect(CARD).toContain("setBlockedByBrowser(result === 'denied' && getPermissionState() !== 'denied')")
+    expect(CARD).toContain('El navegador ha bloqueado la pregunta de permiso para esta página')
+    expect(CARD).toContain('Restablecer permisos')
+    expect(CARD).toContain('Instalar aplicación')
+  })
+
   it('un móvil con la app vieja (archivos ya borrados) se recarga solo UNA vez por minuto, nunca en bucle', () => {
     expect(MAIN).toContain("window.addEventListener('vite:preloadError'")
     expect(MAIN).toContain('Date.now() - last < 60_000')

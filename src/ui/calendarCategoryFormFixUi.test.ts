@@ -43,7 +43,7 @@ describe('Parte 1 — bug responsive: la fila de "nueva categoría" nunca fuerza
 })
 
 describe('Parte 2 — selector de emoji real (CalendarCategoryEmojiPicker), reutilizando el patrón modal-overlay/modal-sheet/chip ya existente — nunca un componente de overlay nuevo', () => {
-  const PICKER = slice(MENU_SETTINGS_SRC, 'function CalendarCategoryEmojiPicker({', 'function CalendarCategoryRow(')
+  const PICKER = slice(MENU_SETTINGS_SRC, 'function CalendarCategoryEmojiPicker({', 'function CalendarCategoryColorPicker(')
 
   it('tocar el control abre el selector (modal-overlay + modal-sheet, mismo lenguaje que WhoDropdown/CategoryDropdown)', () => {
     expect(PICKER).toContain('className="calendar-category-emoji-toggle"')
@@ -116,7 +116,7 @@ describe('Parte 3 — el botón de crear SIEMPRE responde, nunca parece roto', (
   })
 
   it('submit funciona de verdad: handleAdd llama a createCalendarCategory con el emoji y el nombre tal cual se escribieron', () => {
-    expect(SECTION).toContain('await createCalendarCategory({ name: name.trim(), emoji: emoji.trim(), color: null, sortOrder: categories.length })')
+    expect(SECTION).toContain('await createCalendarCategory({ name: name.trim(), emoji: emoji.trim(), color: color.trim() || null, sortOrder: categories.length })')
   })
 
   it('creación limpia el formulario y la categoría aparece sin recargar la página (reload() propio, nunca window.location.reload)', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass, storeColorResolver, distinctTagColor, toneFor } from './colors'
+import { pastelPalette, toPastel, paletteByName, pastelFromHsl, colorForName, colorForClass, storeColorResolver, distinctTagColor, toneFor, solidPalette, solidToneHex } from './colors'
 
 describe('toneFor', () => {
   it('keeps the hue in both styles; vivo is more saturated and darker but never below 58% lightness', () => {
@@ -26,6 +26,54 @@ describe('distinctTagColor', () => {
     const colors = Array.from({ length: 12 }, (_, i) => distinctTagColor(i))
     for (const c of colors) expect(c).toMatch(/^#[0-9a-f]{6}$/)
     expect(new Set(colors).size).toBe(12)
+  })
+})
+
+// Petición real (categorías del Calendario): "quiero reutilizar la MISMA paleta de los estilos
+// globales Pastel/Vivo/Neutro, no una paleta nueva" — pero el color de una categoría se usa en sitios
+// que esperan siempre hex plano (readableTextColor en domain/calendar.ts no entiende hsl(...) ni el
+// degradado de "neutro"). solidPalette/solidToneHex reutilizan toneFor (la fuente real) y convierten
+// su resultado a hex — estos tests comprueban que la conversión es exacta, no solo "parece un color".
+describe('solidToneHex / solidPalette', () => {
+  it('siempre da hex plano, nunca hsl(...) ni el degradado de neutro, en los tres estilos', () => {
+    for (const theme of ['pastel', 'vivo', 'neutro'] as const) {
+      for (const h of [0, 90, 180, 270]) {
+        expect(solidToneHex(theme, h)).toMatch(/^#[0-9a-f]{6}$/)
+      }
+    }
+  })
+
+  it('pastel: mismo tono que toneFor(\'pastel\', h) convertido a hex exacto', () => {
+    // toneFor('pastel', 0) === 'hsl(0, 70%, 90%)' (ver describe('toneFor') arriba) — conversión manual.
+    expect(solidToneHex('pastel', 0)).toBe('#f7d4d4')
+  })
+
+  it('vivo: mismo tono que toneFor(\'vivo\', h) convertido a hex exacto', () => {
+    // toneFor('vivo', 0) === 'hsl(0, 80%, 70%)' — conversión manual.
+    expect(solidToneHex('vivo', 0)).toBe('#f07575')
+  })
+
+  it('neutro: usa la franja de acento sólida (hsl(h, 65%, 62%)), nunca el degradado completo', () => {
+    expect(solidToneHex('neutro', 0)).toBe('#dd5f5f')
+    // El acento de "neutro" no depende de s/l (a diferencia de pastel/vivo) — solo del tono.
+    expect(solidToneHex('neutro', 120, 10, 10)).toBe(solidToneHex('neutro', 120, 99, 99))
+  })
+
+  it('cada estilo global da un color distinto para el mismo índice — el selector refleja de verdad el estilo activo', () => {
+    const pastel = solidToneHex('pastel', 40)
+    const vivo = solidToneHex('vivo', 40)
+    const neutro = solidToneHex('neutro', 40)
+    expect(new Set([pastel, vivo, neutro]).size).toBe(3)
+  })
+
+  it('solidPalette reparte por el mismo ángulo dorado que pastelPalette (índice 0 = tono 0)', () => {
+    expect(solidPalette(1, 'pastel')[0]).toBe(solidToneHex('pastel', 0))
+  })
+
+  it('nunca repite un color dentro de una paleta razonable, en ningún estilo', () => {
+    for (const theme of ['pastel', 'vivo', 'neutro'] as const) {
+      expect(new Set(solidPalette(8, theme)).size).toBe(8)
+    }
   })
 })
 

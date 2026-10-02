@@ -1232,6 +1232,46 @@ select {
   cursor: pointer;
 }
 
+/* Color de categoría — columna propia (etiqueta del estilo activo + fila de muestras), nunca metida en
+   la misma fila que emoji+nombre: ese fue exactamente el bug de desbordamiento original (ver
+   .calendar-category-form arriba), así que el color se apila debajo en vez de competir por ancho. */
+.calendar-category-color-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* "Color actual" — solo aparece cuando el color guardado de la categoría no pertenece a la paleta del
+   estilo global activo (p. ej. se eligió en Pastel y la app está ahora en Vivo): nunca se pierde ni se
+   reinterpreta, se enseña aparte de las muestras del estilo actual. */
+.calendar-category-color-current {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calendar-category-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.calendar-category-color-swatch {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #d1d5db;
+  padding: 0;
+  cursor: pointer;
+}
+
+.calendar-category-color-swatch-active {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
 .checkbox-label {
   flex-direction: row;
   align-items: center;

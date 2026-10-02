@@ -13,7 +13,7 @@ import {
   type ChartColorTheme,
   type ColorTheme,
 } from '@/state/colorTheme'
-import { pastelPalette } from '@/domain/colors'
+import { pastelPalette, solidPalette } from '@/domain/colors'
 import {
   createCalendarCategory,
   deleteCalendarCategory,
@@ -1150,6 +1150,88 @@ function CalendarCategoryEmojiPicker({ value, onChange }: { value: string; onCha
   )
 }
 
+// ACLARACIÓN DEL USUARIO (tras la primera versión) — el color de categoría NO debe tener una paleta
+// propia: PEPA ya tiene en Configuración → Colores → Menús y pantallas el ajuste global Pastel/Vivo/
+// Neutro (src/state/colorTheme.ts, ColorTheme), y SU paleta (domain/colors.ts: toneFor/pastelPalette,
+// la misma que usan tarjetas, calendario y categorías de Economía) es la única fuente de verdad —
+// nunca una lista fija independiente para Calendario. Ningún selector de muestras/círculos existía en
+// PEPA (auditado: miembros, etiquetas de Economía e InvitationDesigner usan todos un <input
+// type="color"> nativo suelto; InvitationDesigner es el único que lo viste como círculo —
+// .invitation-color-swatch-btn/-input, SÍ reutilizado tal cual abajo para el hueco "otro color").
+//
+// El color GUARDADO (calendar_categories.color) sigue siendo siempre un hex plano, como ya exige
+// readableTextColor() en domain/calendar.ts (espera hex, nunca hsl(...) ni el degradado de "neutro")
+// — por eso las muestras salen de domain/colors.ts#solidPalette, que reutiliza la MISMA toneFor() de
+// siempre (pastel/vivo/neutro) convertida a hex, en vez de un tono nuevo sin relación.
+//
+// Cambiar el estilo global NUNCA reescribe colores ya guardados (nunca se reinterpreta el índice): si
+// el color de la categoría no está entre las muestras del estilo ACTUAL (p. ej. era Pastel y ahora la
+// app está en Vivo), se enseña aparte como "Color actual" — se sigue viendo y se conserva tal cual
+// hasta que el usuario elija otro a propósito.
+const CALENDAR_CATEGORY_COLOR_COUNT = 8
+
+const CALENDAR_CATEGORY_COLOR_THEME_LABEL: Record<ColorTheme, string> = {
+  pastel: 'Colores del estilo Pastel',
+  vivo: 'Colores del estilo Vivo',
+  neutro: 'Colores del estilo Neutro',
+}
+
+function CalendarCategoryColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  const theme = getColorTheme()
+  const swatches = solidPalette(CALENDAR_CATEGORY_COLOR_COUNT, theme)
+  const currentOutsidePalette = value !== '' && !swatches.includes(value)
+
+  return (
+    <div className="calendar-category-color-field">
+      {currentOutsidePalette && (
+        <div className="calendar-category-color-current">
+          <span className="muted" style={{ fontSize: 12 }}>
+            Color actual
+          </span>
+          <span
+            className="calendar-category-color-swatch calendar-category-color-swatch-active"
+            style={{ background: value, cursor: 'default' }}
+            aria-hidden="true"
+          />
+        </div>
+      )}
+      <span className="muted" style={{ fontSize: 12 }}>
+        {CALENDAR_CATEGORY_COLOR_THEME_LABEL[theme]}
+      </span>
+      <div className="calendar-category-color-row" role="group" aria-label="Color de la categoría">
+        {swatches.map((c, i) => (
+          <button
+            key={c}
+            type="button"
+            className={'calendar-category-color-swatch' + (value === c ? ' calendar-category-color-swatch-active' : '')}
+            style={{ background: c }}
+            onClick={() => onChange(c)}
+            aria-label={`Color ${i + 1}`}
+            aria-pressed={value === c}
+          />
+        ))}
+        {/* Mismo círculo que ya usa InvitationDesigner.tsx para "otro color" (.invitation-color-swatch-btn
+            por fuera, siempre neutro; .invitation-color-swatch-input, el <input type="color"> real,
+            encogido dentro) — el escape hatch para cualquier color fuera de las muestras del estilo. */}
+        <span className="invitation-color-swatch-btn" title="Otro color">
+          <input
+            type="color"
+            className="invitation-color-swatch-input"
+            value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#9ca3af'}
+            onChange={(e) => onChange(e.target.value)}
+            aria-label="Elegir otro color"
+          />
+        </span>
+      </div>
+      {value && (
+        <button type="button" className="link-button" onClick={() => onChange('')} style={{ alignSelf: 'flex-start' }}>
+          Sin color
+        </button>
+      )}
+    </div>
+  )
+}
+
 // FASE CALENDARIO — Parte 27: gestión de categorías propias del Calendario (nunca budget_categories ni
 // tags de otro dominio). Crear/editar nombre+emoji+color opcional/borrar — borrar nunca se lleva los
 // Eventos/Tareas que la llevaban (category_id queda en null, on delete set null, migración 0184).
@@ -1186,34 +1268,45 @@ function CalendarCategoryRow({ category, onSaved, onDeleted }: { category: Calen
   if (!editing) {
     return (
       <div className="inline-fields" style={{ alignItems: 'center' }}>
-        <span style={{ flex: 1 }}>
-          {category.emoji} {category.name}
-          {category.color && <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', background: category.color, marginLeft: 8, verticalAlign: 'middle' }} />}
+        <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Color PRIMERO, antes del emoji — visible sin entrar en Editar, en vez de al final de la
+              línea como antes (fácil de pasar por alto). Hueco reservado también sin color, para que
+              las filas con y sin color no "bailen" en la lista. */}
+          <span
+            aria-hidden="true"
+            style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', background: category.color ?? '#e5e7eb', flexShrink: 0 }}
+          />
+          <span>
+            {category.emoji} {category.name}
+          </span>
         </span>
         <button type="button" className="link-button" onClick={() => setEditing(true)}>
           Editar
         </button>
-        <ConfirmIconButton onConfirm={onDeleted} ariaLabel={`Borrar categoría ${category.name}`} />
+        {/* Corrección visual (validación real iPhone) — sin className, ConfirmIconButton heredaba el
+            <button> por defecto de toda la app (fondo azul, padding 14px, 16px) y aparecía como un
+            bloque desproporcionado junto a "Editar". icon-button es el mismo patrón ya usado en
+            EventosScreen.tsx junto a su propio "Editar" — compacto, sin tocar la lógica de confirmación. */}
+        <ConfirmIconButton onConfirm={onDeleted} ariaLabel={`Borrar categoría ${category.name}`} className="icon-button" />
       </div>
     )
   }
 
   return (
-    <form onSubmit={handleSave} className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-      <CalendarCategoryEmojiPicker value={emoji} onChange={setEmoji} />
-      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" style={{ flex: 1, minWidth: 100 }} required />
-      <input type="color" value={color || '#9ca3af'} onChange={(e) => setColor(e.target.value)} style={{ width: 40, padding: 0 }} />
-      {color && (
-        <button type="button" className="link-button" onClick={() => setColor('')}>
-          Sin color
+    <form onSubmit={handleSave} className="calendar-category-form">
+      <div className="calendar-category-form-fields">
+        <CalendarCategoryEmojiPicker value={emoji} onChange={setEmoji} />
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" />
+      </div>
+      <CalendarCategoryColorPicker value={color} onChange={setColor} />
+      <div className="inline-fields" style={{ alignItems: 'center' }}>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
         </button>
-      )}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Guardar'}
-      </button>
-      <button type="button" className="link-button" onClick={() => setEditing(false)}>
-        Cancelar
-      </button>
+        <button type="button" className="link-button" onClick={() => setEditing(false)}>
+          Cancelar
+        </button>
+      </div>
       {error && <p className="error">{error}</p>}
     </form>
   )
@@ -1224,12 +1317,21 @@ function CalendarCategoriesSection() {
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('')
+  const [color, setColor] = useState('')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
     return listCalendarCategories()
-      .then(setCategories)
+      .then((cats) => {
+        setCategories(cats)
+        // Color predeterminado — Parte 5: "no quiero obligar a elegir color, pero debe existir uno
+        // válido, y debe salir de la paleta del estilo global actual, no un azul fijo". Nunca pisa una
+        // elección ya hecha por el usuario (prev ||): solo rellena si el campo sigue vacío, tanto en el
+        // primer montaje como justo después de crear una categoría (handleAdd vacía color a propósito
+        // para que la siguiente reciba una muestra distinta de la paleta del estilo activo).
+        setColor((prev) => prev || solidPalette(CALENDAR_CATEGORY_COLOR_COUNT, getColorTheme())[cats.length % CALENDAR_CATEGORY_COLOR_COUNT])
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
@@ -1251,9 +1353,10 @@ function CalendarCategoriesSection() {
     setAdding(true)
     setError(null)
     try {
-      await createCalendarCategory({ name: name.trim(), emoji: emoji.trim(), color: null, sortOrder: categories.length })
+      await createCalendarCategory({ name: name.trim(), emoji: emoji.trim(), color: color.trim() || null, sortOrder: categories.length })
       setName('')
       setEmoji('')
+      setColor('')
       await reload()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear la categoría'))
@@ -1298,6 +1401,7 @@ function CalendarCategoriesSection() {
           <CalendarCategoryEmojiPicker value={emoji} onChange={setEmoji} />
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre de la categoría" />
         </div>
+        <CalendarCategoryColorPicker value={color} onChange={setColor} />
         <button type="submit" className="calendar-category-form-submit" disabled={adding}>
           {adding ? 'Creando…' : '+ Añadir categoría'}
         </button>

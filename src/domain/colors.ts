@@ -21,9 +21,16 @@ const GOLDEN_ANGLE = 137.508
 // del color de siempre a la izquierda: sigue reconociéndose qué categoría,
 // tienda o clase es cada fila, sin pintarla entera. (Es un degradado, así
 // que solo vale como fondo — los gráficos usan siempre pastel o vivo.)
+// La franja de acento de "neutro" (ver toneFor) extraída aparte: es el único tono SÓLIDO que ese estilo
+// usa de verdad (el resto del degradado es un gris fijo de fondo, #f3f4f6) — solidToneHex la reutiliza
+// para dar un color plano también en estilo neutro, en vez de duplicar el 65%/62% por su cuenta.
+function neutroAccentHsl(h: number): string {
+  return `hsl(${h}, 65%, 62%)`
+}
+
 export function toneFor(theme: ColorTheme, h: number, s = 70, l = 90): string {
   if (theme === 'neutro') {
-    const stripe = `hsl(${h}, 65%, 62%)`
+    const stripe = neutroAccentHsl(h)
     return `linear-gradient(90deg, ${stripe} 0, ${stripe} 5px, #f3f4f6 5px, #f3f4f6 100%) border-box`
   }
   if (theme === 'vivo') return `hsl(${h}, ${Math.max(s, 80)}%, ${Math.max(58, l - 20)}%)`
@@ -205,16 +212,10 @@ export function colorForClass(name: string, use: ColorUse = 'ui'): string {
   return tone(hash % 360, saturation, lightness, use)
 }
 
-// Petición real: "las etiquetas generadas automáticamente que tengan
-// colores diferentes, no todos iguales" — las etiquetas que crea un
-// evento salían todas con el mismo azul. Un tono por número de orden
-// (ángulo dorado, como pastelPalette) en hex, porque la columna
-// tags.color guarda hex y la etiqueta se ve viva (punto) o pastel
-// (fondo) según dónde.
-export function distinctTagColor(index: number): string {
-  const h = (index * GOLDEN_ANGLE) % 360
-  const s = 0.72
-  const l = 0.55
+// h en grados (0-360), s/l en fracción (0-1) — conversión HSL→hex estándar, sin dependencias. Extraída
+// de lo que antes era el cuerpo entero de distinctTagColor, para poder reutilizarla también desde
+// solidToneHex (paleta de categorías del Calendario) sin repetir la fórmula dos veces.
+function hslToHex(h: number, s: number, l: number): string {
   const c = (1 - Math.abs(2 * l - 1)) * s
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
   const m = l - c / 2
@@ -224,6 +225,38 @@ export function distinctTagColor(index: number): string {
       .toString(16)
       .padStart(2, '0')
   return `#${hex(r)}${hex(g)}${hex(b)}`
+}
+
+// Petición real: "las etiquetas generadas automáticamente que tengan
+// colores diferentes, no todos iguales" — las etiquetas que crea un
+// evento salían todas con el mismo azul. Un tono por número de orden
+// (ángulo dorado, como pastelPalette) en hex, porque la columna
+// tags.color guarda hex y la etiqueta se ve viva (punto) o pastel
+// (fondo) según dónde.
+export function distinctTagColor(index: number): string {
+  const h = (index * GOLDEN_ANGLE) % 360
+  return hslToHex(h, 0.72, 0.55)
+}
+
+function hslStringToHex(hslStr: string): string {
+  const m = /hsl\(\s*(-?[\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/.exec(hslStr)
+  if (!m) return '#9ca3af'
+  return hslToHex(Number(m[1]), Number(m[2]) / 100, Number(m[3]) / 100)
+}
+
+// Petición real (categorías del Calendario): "quiero reutilizar la MISMA paleta de los estilos globales
+// Pastel/Vivo/Neutro, no una paleta nueva" — pero un color de categoría se usa en sitios que necesitan
+// SIEMPRE un hex plano (p. ej. readableTextColor en domain/calendar.ts, que calcula contraste de texto
+// y no entiende hsl(...) ni mucho menos el degradado de "neutro"). solidToneHex/solidPalette llaman a
+// toneFor (la MISMA fuente que usa toda la app para pastel/vivo/neutro) y convierten su resultado a hex
+// — nunca inventan un tono nuevo; solo cambian el formato en el que se guarda.
+export function solidToneHex(theme: ColorTheme, h: number, s = 70, l = 90): string {
+  const hslStr = theme === 'neutro' ? neutroAccentHsl(h) : toneFor(theme, h, s, l)
+  return hslStringToHex(hslStr)
+}
+
+export function solidPalette(count: number, theme: ColorTheme = getColorTheme()): string[] {
+  return Array.from({ length: count }, (_, i) => solidToneHex(theme, Math.round((i * GOLDEN_ANGLE) % 360)))
 }
 
 // Petición real: etiquetas de receta no tienen un color guardado en la

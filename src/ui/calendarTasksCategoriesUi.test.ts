@@ -193,7 +193,10 @@ describe('Gestión de categorías — Configuración → Calendario (Parte 27)',
   it('la fila de edición permite nombre, emoji y color — y quitar el color (opcional de verdad), con confirmación antes de borrar', () => {
     const row = slice(MENU_SETTINGS_SRC, 'function CalendarCategoryRow({', 'function CalendarCategoriesSection() {')
     expect(row).toContain('updateCalendarCategory(category.id,')
-    expect(row).toContain('Sin color')
+    // "Sin color" vive ahora dentro de CalendarCategoryColorPicker (reutilizado en alta y edición,
+    // corrección quirúrgica de color de categoría) en vez de repetido a mano en cada formulario.
+    expect(row).toContain('<CalendarCategoryColorPicker value={color} onChange={setColor} />')
+    expect(MENU_SETTINGS_SRC).toContain('Sin color')
     expect(row).toContain('<ConfirmIconButton onConfirm={onDeleted}')
   })
 

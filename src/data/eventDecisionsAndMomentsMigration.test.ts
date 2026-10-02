@@ -219,11 +219,13 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // 0185 (calendar_color_mode_three_modes) solo cambia el CHECK y el default de
   // profiles.calendar_color_mode — tampoco toca Eventos. 0186 (server_side_automations, avisos de
   // llegada/salida y hora diaria calculados en el servidor) añade tablas de estado de automatizaciones y
-  // un trigger en member_locations — tampoco toca Eventos.
-  it('0186 (server_side_automations) es la última migración del repositorio', () => {
+  // un trigger en member_locations — tampoco toca Eventos. 0187
+  // (calendar_task_completion_prefs_and_privacy_fixes, RETOQUE Calendario) añade preferencias de Tareas
+  // completadas a profiles y corrige privacidad de recordatorios/adjuntos — tampoco toca Eventos.
+  it('0187 (calendar_task_completion_prefs_and_privacy_fixes) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(186)
+    expect(Math.max(...numbers)).toBe(187)
   })
 })

@@ -21,7 +21,10 @@ import {
   listCalendarCategories,
   updateCalendarCategory,
   updateCalendarColorMode,
+  updateCalendarTaskDoneColor,
+  updateCalendarTaskMoveCompleted,
   updateCalendarTaskOrder,
+  updateCalendarTaskStrikethrough,
   type CalendarColorMode,
   type CalendarTaskOrder,
 } from '@/data/calendar'
@@ -1001,6 +1004,9 @@ const CALENDAR_COLOR_MODE_OPTIONS: { id: CalendarColorMode; icon: string; title:
 function CalendarPreferencesSection() {
   const [colorMode, setColorMode] = useState<CalendarColorMode>('categorias')
   const [taskOrder, setTaskOrder] = useState<CalendarTaskOrder>('eventos_primero')
+  const [strikethrough, setStrikethrough] = useState(true)
+  const [doneColor, setDoneColor] = useState<string | null>(null)
+  const [moveCompleted, setMoveCompleted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1010,6 +1016,9 @@ function CalendarPreferencesSection() {
       .then((prefs) => {
         setColorMode(prefs.colorMode)
         setTaskOrder(prefs.taskOrder)
+        setStrikethrough(prefs.taskCompletion.strikethrough)
+        setDoneColor(prefs.taskCompletion.doneColor)
+        setMoveCompleted(prefs.taskCompletion.moveCompletedToEnd)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -1041,14 +1050,73 @@ function CalendarPreferencesSection() {
     }
   }
 
+  async function handleStrikethrough(value: boolean) {
+    setStrikethrough(value)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateCalendarTaskStrikethrough(value)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // "Cambiar color al completar" es un interruptor, pero el color en sí vive en una sola columna
+  // (calendar_task_done_color, nullable = apagado) — apagar el interruptor equivale a guardar null,
+  // encenderlo sin color elegido todavía propone la primera muestra de la paleta activa en vez de
+  // dejarlo en blanco (nunca un estado "encendido pero sin color" de verdad).
+  async function handleDoneColorToggle(value: boolean) {
+    const next = value ? doneColor || solidPalette(CALENDAR_CATEGORY_COLOR_COUNT, getColorTheme())[0] : null
+    setDoneColor(next)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateCalendarTaskDoneColor(next)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDoneColorChange(color: string) {
+    const next = color || null
+    setDoneColor(next)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateCalendarTaskDoneColor(next)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleMoveCompleted(value: boolean) {
+    setMoveCompleted(value)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateCalendarTaskMoveCompleted(value)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) return null
 
   return (
     <div className="card event-card" style={{ marginBottom: 16 }}>
-      <strong>🎨 Colores del calendario</strong>
+      <strong>Configuración personal</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-        Es solo tuyo — cada persona de la familia puede ver el calendario a su manera.
+        Cada persona de la familia puede ver el calendario a su manera.
       </p>
+      <strong style={{ display: 'block', marginTop: 16 }}>🎨 Colores del calendario</strong>
       <div className="calendar-color-mode-list" role="radiogroup" aria-label="Cómo colorear Eventos y Tareas" style={{ marginTop: 8 }}>
         {CALENDAR_COLOR_MODE_OPTIONS.map((opt) => (
           <button
@@ -1078,6 +1146,34 @@ function CalendarPreferencesSection() {
           Tareas primero
         </button>
       </div>
+      {/* RETOQUE (PRUEBAS MANUALES REALES EN IPHONE) — tres preferencias independientes, no excluyentes
+          entre sí (las 3 pueden estar activas, o ninguna). Los defaults (tachar=true, color=null,
+          mover=false) reproducen tal cual el comportamiento de siempre, para no cambiar nada a quien no
+          entre aquí a tocarlo. */}
+      <strong style={{ display: 'block', marginTop: 16 }}>✅ Tareas completadas</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Cómo se ven tus Tareas cuando las marcas hechas.
+      </p>
+      <label className="checkbox-label" style={{ marginTop: 8 }}>
+        <input type="checkbox" checked={strikethrough} onChange={(e) => handleStrikethrough(e.target.checked)} />
+        Tachar al completar
+      </label>
+      <label className="checkbox-label">
+        <input type="checkbox" checked={doneColor != null} onChange={(e) => handleDoneColorToggle(e.target.checked)} />
+        Cambiar color al completar
+      </label>
+      {doneColor != null && (
+        <div style={{ marginLeft: 24, marginTop: 4 }}>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Color de completadas
+          </span>
+          <CalendarCategoryColorPicker value={doneColor} onChange={handleDoneColorChange} />
+        </div>
+      )}
+      <label className="checkbox-label">
+        <input type="checkbox" checked={moveCompleted} onChange={(e) => handleMoveCompleted(e.target.checked)} />
+        Mover al final
+      </label>
       {saving && <span className="muted">Guardando…</span>}
       {error && <p className="error">{error}</p>}
     </div>

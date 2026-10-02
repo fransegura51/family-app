@@ -117,16 +117,21 @@ Deno.serve(async (req) => {
           await Promise.all([
             admin
               .from("calendar_events")
-              .select("id, title, description, start_at, end_at, all_day, recurrence_rule, exception_dates, google_source_member_id, sync_to_google")
+              .select("id, title, description, start_at, end_at, all_day, recurrence_rule, exception_dates, google_source_member_id, sync_to_google, visibility, created_by")
               .eq("family_id", familyId),
             admin.from("calendar_event_members").select("event_id, member_id"),
             admin.from("calendar_event_reminders").select("event_id, minutes_before, anchor"),
-            admin.from("family_members").select("id, name").eq("family_id", familyId),
+            admin.from("family_members").select("id, name, linked_profile_id").eq("family_id", familyId),
             admin.from("external_calendar_feeds").select("id").eq("family_id", familyId).eq("is_holiday_calendar", true),
             admin.from("calendar_event_google_sync").select("event_id, google_event_id").eq("member_id", memberId),
           ])
 
         const memberNameById = new Map((familyMembers ?? []).map((m) => [m.id as string, m.name as string]))
+        // "Solo yo" (visibility='private') nunca sale al Google personal de OTRO miembro — ni siquiera
+        // como aviso genérico (igual que export-calendar-ics y los recordatorios, migración 0187). Al
+        // propio propietario sí se le sigue sincronizando a su propio Google, comparando por profile
+        // (created_by), no por member_id: son espacios de id distintos.
+        const ownLinkedProfileId = (familyMembers ?? []).find((m) => m.id === memberId)?.linked_profile_id as string | undefined
         const membersByEvent = new Map<string, string[]>()
         for (const em of eventMembers ?? []) {
           const name = memberNameById.get(em.member_id as string)
@@ -165,6 +170,11 @@ Deno.serve(async (req) => {
           // borra de Google igual que cualquier evento eliminado de la app — mismo camino, sin duplicar
           // lógica de borrado.
           if (ev.sync_to_google === false) continue
+          // Privacidad (RETOQUE, migración 0187): un evento/tarea "Solo yo" de OTRO miembro nunca sale
+          // hacia el Google personal de este. Tampoco se marca en seenEventIds por la misma razón que
+          // sync_to_google=false — si antes era familiar y ahora es privado, el bucle de huérfanos de
+          // abajo lo borra de este Google igual que un evento eliminado de la app.
+          if (ev.visibility === "private" && ev.created_by !== ownLinkedProfileId) continue
 
           seenEventIds.add(ev.id as string)
           const allDay = ev.all_day as boolean

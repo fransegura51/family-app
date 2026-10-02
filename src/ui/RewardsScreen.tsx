@@ -66,8 +66,8 @@ export function RewardsScreen() {
       </div>
       <SectionBreadcrumb subsection="Inicio" />
       <p className="muted">
-        Se ganan puntos al marcar "Hecho" un evento del calendario que lleve puntos (se pone al crear o editar el
-        evento, cuando es de una sola persona).
+        Se ganan puntos al marcar "Hecho" un evento o una tarea del calendario que lleve puntos (se pone al crear o
+        editar, cuando es de una sola persona).
       </p>
       {error && <p className="error">{error}</p>}
 

@@ -32,7 +32,8 @@ import {
   uploadEventFile,
   uploadEventPhoto,
   type CalendarColorMode,
-  type CalendarTaskOrder,
+  type CalendarPreferences,
+  type CalendarTaskCompletionPrefs,
   type EventCompletion,
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
@@ -163,9 +164,10 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   // Valor inicial = el nuevo default ('categorias', el modo híbrido) — solo se ve en el instante antes
   // de que reload() resuelva getCalendarPreferences(), y en ese instante tampoco hay categories/events
   // todavía, así que no llega a notarse ningún color "equivocado".
-  const [calendarPrefs, setCalendarPrefs] = useState<{ colorMode: CalendarColorMode; taskOrder: CalendarTaskOrder }>({
+  const [calendarPrefs, setCalendarPrefs] = useState<CalendarPreferences>({
     colorMode: 'categorias',
     taskOrder: 'eventos_primero',
+    taskCompletion: { strikethrough: true, doneColor: null, moveCompletedToEnd: false },
   })
   // RETOQUE — engranaje ⚙️ junto a "Categoría (opcional)" (Evento/Tarea, alta y edición): gestionar
   // calendar_categories SIN salir del formulario que se tenga a medias. Nunca se navega a Configuración
@@ -680,18 +682,21 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         // persona esté viendo colores por miembro.
         const category = ev.categoryId ? categoryById.get(ev.categoryId) : null
         const titleWithCategory = category ? `${category.emoji} ${ev.title}` : ev.title
+        const baseColor = eventColor(ev, memberById, calendarPrefs.colorMode, categoryColorById)
         return {
           key: `ev-${ev.id}`,
           id: ev.id,
           title: ev.visibility === 'private' ? `🔒 ${titleWithCategory}` : titleWithCategory,
           subtitle,
-          color: eventColor(ev, memberById, calendarPrefs.colorMode, categoryColorById),
+          color: effectiveEntryColor(ev.kind, baseColor, done, calendarPrefs.taskCompletion),
           allDay: ev.allDay,
           startTime: ev.allDay ? null : hhmm(ev.startAt),
           endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
           isExternal: false,
           recurring: !!ev.recurrenceRule,
           done,
+          kind: ev.kind,
+          strikethrough: shouldStrikethroughEntry(ev.kind, done, calendarPrefs.taskCompletion),
           onEdit: () => setEditingId(ev.id),
           onDeleteSeries: () => handleDelete(ev.id),
           onDeleteOccurrence: () => handleDeleteOccurrence(ev.id, dateStr),
@@ -724,6 +729,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           isExternal: true,
           recurring: !!ev.recurrenceRule,
           done,
+          strikethrough: done,
           onDeleteSeries: () => handleDismissExternalSeries(ev.feedId, ev.uid),
           onDeleteOccurrence: () => handleDismissExternalOccurrence(ev.feedId, ev.uid, dateStr),
           onComplete: done ? undefined : () => handleCompleteExternal(ev.feedId, ev.uid, dateStr),
@@ -742,6 +748,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         isExternal: false,
         recurring: true,
         done: false,
+        strikethrough: false,
       })),
     ].sort((a, b) => {
       if (a.allDay !== b.allDay) return a.allDay ? -1 : 1
@@ -1036,6 +1043,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           categories={categories}
           categoryColorById={categoryColorById}
           colorMode={calendarPrefs.colorMode}
+          taskCompletion={calendarPrefs.taskCompletion}
           dayEvents={eventsByDate.get(selectedDate) ?? []}
           eventCompletions={eventCompletions}
           editingId={editingId}
@@ -1098,8 +1106,12 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             categoryById={categoryById}
             categoryColorById={categoryColorById}
             colorMode={calendarPrefs.colorMode}
+            eventCompletions={eventCompletions}
+            taskCompletion={calendarPrefs.taskCompletion}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
+            onComplete={handleCompleteEvent}
+            onUncomplete={handleUncompleteEvent}
             swipeHandlers={view === 'Semana' ? weekSwipe : view === '3 días' ? threeDaySwipe : daySwipe}
           />
           <DayModal
@@ -1181,6 +1193,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
                 setAddingEventMemberId(null)
               }}
               onManageCategories={() => setManagingCategories(true)}
+              defaultVisibility={view === 'Personal' ? 'private' : 'shared'}
             />
           </div>
         </div>
@@ -1206,6 +1219,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
                 setAddingTask(false)
               }}
               onManageCategories={() => setManagingCategories(true)}
+              defaultVisibility={view === 'Personal' ? 'private' : 'shared'}
             />
           </div>
         </div>
@@ -1274,6 +1288,24 @@ function eventColor(ev: CalendarEvent, memberById: Map<string, FamilyMember>, co
   return first?.color ?? '#9ca3af'
 }
 
+// RETOQUE — "Tareas completadas" (Configuración → Calendario): tachar/color de completada son
+// preferencias PERSONALES, pero solo para Tareas — un Evento completado sigue tachándose SIEMPRE, igual
+// que antes de este retoque (auditado: nunca hubo ajuste para Eventos, no se toca su comportamiento
+// histórico). El color de completada es una capa visual FINAL: gana sobre el resultado de los tres
+// modos (auditado: ev.color — "el color propio del evento" — no lo escribe ningún formulario hoy,
+// createEvent/updateEvent no aceptan ese campo; es una columna heredada sin UI que la rellene, así que
+// no hay conflicto real con hacer que el color de completada gane también sobre ella).
+function shouldStrikethroughEntry(kind: 'event' | 'task' | undefined, done: boolean, taskCompletion: CalendarTaskCompletionPrefs): boolean {
+  if (!done) return false
+  if (kind !== 'task') return true
+  return taskCompletion.strikethrough
+}
+
+function effectiveEntryColor(kind: 'event' | 'task' | undefined, baseColor: string, done: boolean, taskCompletion: CalendarTaskCompletionPrefs): string {
+  if (kind === 'task' && done && taskCompletion.doneColor) return taskCompletion.doneColor
+  return baseColor
+}
+
 function hhmm(iso: string): string {
   const d = new Date(iso)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -1294,6 +1326,13 @@ interface AgendaEntry {
   isExternal: boolean
   recurring: boolean
   done: boolean
+  // RETOQUE — 'event' | 'task' para los apuntes propios (externos/cumpleaños no lo llevan, no
+  // aplica): decide si el tachado/color de completada siguen el comportamiento histórico de Eventos
+  // (siempre) o las preferencias personales de Tareas completadas.
+  kind?: 'event' | 'task'
+  // Ya calculado aquí (shouldStrikethroughEntry) para que AgendaRow/EventCard sean puramente
+  // presentacionales — nunca vuelven a mirar kind/preferencias por su cuenta.
+  strikethrough: boolean
   onEdit?: () => void
   onDeleteSeries?: () => void
   onDeleteOccurrence?: () => void
@@ -1477,6 +1516,7 @@ function FamilyDayView({
   categories,
   categoryColorById,
   colorMode,
+  taskCompletion,
   dayEvents,
   eventCompletions,
   editingId,
@@ -1499,6 +1539,7 @@ function FamilyDayView({
   categories: CalendarCategory[]
   categoryColorById: Map<string, string>
   colorMode: CalendarColorMode
+  taskCompletion: CalendarTaskCompletionPrefs
   dayEvents: CalendarEvent[]
   eventCompletions: EventCompletion[]
   editingId: string | null
@@ -1538,14 +1579,16 @@ function FamilyDayView({
       )
     }
     const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === selectedDate)
+    const baseColor = eventColor(ev, memberById, colorMode, categoryColorById)
     return (
       <EventCard
         key={ev.id}
         event={ev}
-        color={eventColor(ev, memberById, colorMode, categoryColorById)}
+        color={effectiveEntryColor(ev.kind, baseColor, done, taskCompletion)}
         memberById={memberById}
         categoryById={categoryById}
         done={done}
+        strikethrough={shouldStrikethroughEntry(ev.kind, done, taskCompletion)}
         onComplete={() => onComplete(ev.id, selectedDate)}
         onUncomplete={() => onUncomplete(ev.id, selectedDate)}
         onEdit={() => onEdit(ev.id)}
@@ -1574,8 +1617,18 @@ function FamilyDayView({
         </button>
       </div>
       <div className="family-view-columns">
+        {/* BUG CALENDARIO (validación real iPhone) — el fondo de columna usaba SIEMPRE el pastel del
+            miembro, incluso en "Colores de categorías", contradiciendo ese modo (las tarjetas de dentro
+            sí lo respetaban, la columna no). Regla exacta por modo: 'miembros'/'categorias' (híbrido)
+            conservan la identificación cromática de la persona en la columna — el híbrido lo permite a
+            propósito (cae en persona cuando falta categoría); 'solo_categorias' nunca usa color de
+            miembro como codificación, columna neutra. */}
         {columns.map((col) => (
-          <div key={col.key} className="family-view-column" style={{ background: toPastel(col.member?.color ?? '#9ca3af') }}>
+          <div
+            key={col.key}
+            className="family-view-column"
+            style={{ background: colorMode === 'solo_categorias' ? '#f3f4f6' : toPastel(col.member?.color ?? '#9ca3af') }}
+          >
             <div className="family-view-column-header">
               {col.member && <MemberAvatar member={col.member} size={28} />}
               <strong>{col.label}</strong>
@@ -1778,8 +1831,12 @@ function TimeGridView({
   categoryById,
   categoryColorById,
   colorMode,
+  eventCompletions,
+  taskCompletion,
   selectedDate,
   onSelectDate,
+  onComplete,
+  onUncomplete,
   swipeHandlers,
 }: {
   days: { dateStr: string; date: Date }[]
@@ -1791,8 +1848,12 @@ function TimeGridView({
   categoryById: Map<string, CalendarCategory>
   categoryColorById: Map<string, string>
   colorMode: CalendarColorMode
+  eventCompletions: EventCompletion[]
+  taskCompletion: CalendarTaskCompletionPrefs
   selectedDate: string
   onSelectDate: (dateStr: string) => void
+  onComplete: (eventId: string, dateStr: string) => void
+  onUncomplete: (eventId: string, dateStr: string) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
 }) {
   const HOUR_HEIGHT = 52
@@ -1835,10 +1896,13 @@ function TimeGridView({
     return blocks
   }
 
+  // "Todo el día" es solo para Eventos de día completo de verdad —
+  // una Tarea sin hora NUNCA es un evento de todo el día (Parte 7),
+  // así que se excluye aquí y se representa aparte en tasksForDate().
   function allDayChipsForDate(dateStr: string): { key: string; title: string; color: string }[] {
     const chips: { key: string; title: string; color: string }[] = []
     for (const ev of eventsByDate.get(dateStr) ?? []) {
-      if (!ev.allDay) continue
+      if (!ev.allDay || ev.kind === 'task') continue
       const hasPhoto = ev.attachmentKind === 'foto'
       const hasLocation = !!ev.locationLabel || (ev.locationLatitude != null && ev.locationLongitude != null)
       const prefix = (ev.visibility === 'private' ? '🔒' : '') + (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
@@ -1852,6 +1916,42 @@ function TimeGridView({
       chips.push({ key: `bday-${b.name}`, title: `🎂 ${b.name}`, color: b.color })
     }
     return chips
+  }
+
+  // Bloque "Tareas" propio (Parte 8): nunca se inventa una hora, se
+  // listan las Tareas de ese día con su circulito de completar, color
+  // y tachado según las preferencias (mismas funciones que ya usan
+  // AgendaRow/FamilyDayView, para que el resultado sea idéntico).
+  function tasksForDate(dateStr: string): {
+    key: string
+    eventId: string
+    dateStr: string
+    title: string
+    color: string
+    done: boolean
+    strikethrough: boolean
+  }[] {
+    const tasks: { key: string; eventId: string; dateStr: string; title: string; color: string; done: boolean; strikethrough: boolean }[] = []
+    for (const ev of eventsByDate.get(dateStr) ?? []) {
+      if (ev.kind !== 'task') continue
+      const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === dateStr)
+      const baseColor = eventColor(ev, memberById, colorMode, categoryColorById)
+      const hasPhoto = ev.attachmentKind === 'foto'
+      const hasLocation = !!ev.locationLabel || (ev.locationLatitude != null && ev.locationLongitude != null)
+      const prefix = (ev.visibility === 'private' ? '🔒' : '') + (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
+      const title = titleWithCategoryEmoji(ev)
+      tasks.push({
+        key: `task-${ev.id}`,
+        eventId: ev.id,
+        dateStr,
+        title: prefix ? `${prefix} ${title}` : title,
+        color: effectiveEntryColor(ev.kind, baseColor, done, taskCompletion),
+        done,
+        strikethrough: shouldStrikethroughEntry(ev.kind, done, taskCompletion),
+      })
+    }
+    if (!taskCompletion.moveCompletedToEnd) return tasks
+    return [...tasks.filter((t) => !t.done), ...tasks.filter((t) => t.done)]
   }
 
   let minHour = 8
@@ -1886,12 +1986,49 @@ function TimeGridView({
         {days.map((d) => (
           <div key={d.dateStr} className="time-grid-allday-cell">
             {allDayChipsForDate(d.dateStr).map((c) => (
-              <span key={c.key} className="time-grid-allday-chip" style={{ background: c.color }}>
+              <span key={c.key} className="time-grid-allday-chip" style={{ background: c.color, color: readableTextColor(c.color) }}>
                 {c.title}
               </span>
             ))}
           </div>
         ))}
+      </div>
+
+      <div className="time-grid-tasks-row">
+        <div className="time-grid-hour-spacer" />
+        {days.map((d) => {
+          const tasks = tasksForDate(d.dateStr)
+          if (tasks.length === 0) return <div key={d.dateStr} className="time-grid-tasks-cell" />
+          const doneCount = tasks.filter((t) => t.done).length
+          const showDoneHeader = taskCompletion.moveCompletedToEnd && doneCount > 0
+          const firstDoneIndex = showDoneHeader ? tasks.findIndex((t) => t.done) : -1
+          return (
+            <div key={d.dateStr} className="time-grid-tasks-cell">
+              <div className="time-grid-tasks-label">Tareas</div>
+              {tasks.map((t, i) => (
+                <div key={t.key}>
+                  {i === firstDoneIndex && <div className="time-grid-tasks-subheader">Completadas</div>}
+                  <div className="time-grid-task-row">
+                    <span className="completion-circle-chip" style={{ background: t.color }}>
+                      <CompletionCircle
+                        done={t.done}
+                        color={t.color}
+                        onComplete={() => onComplete(t.eventId, t.dateStr)}
+                        onUncomplete={() => onUncomplete(t.eventId, t.dateStr)}
+                      />
+                    </span>
+                    <span
+                      className={'time-grid-task-title' + (t.strikethrough ? ' time-grid-task-title-struck' : '')}
+                      onClick={() => onSelectDate(d.dateStr)}
+                    >
+                      {t.title}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })}
       </div>
 
       <div className="time-grid-body">
@@ -1933,6 +2070,7 @@ function TimeGridView({
                       left: `${(b.lane / b.laneCount) * 100}%`,
                       width: `${100 / b.laneCount}%`,
                       background: b.color,
+                      color: readableTextColor(b.color),
                     }}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -2052,6 +2190,39 @@ const agendaCheckSvg = (
   </svg>
 )
 
+// RETOQUE — lenguaje visual único de pendiente/completado en todo Calendario: antes AgendaRow usaba
+// este círculo+check y EventCard (Vista Familiar) un botón de texto aparte ("✓ Hecho"/"↺ Deshacer"),
+// visualmente irreconciliables entre sí (validación real iPhone). Ahora los dos reutilizan este MISMO
+// componente — el círculo de AgendaRow es la referencia, por ser el que ya se veía en más vistas
+// (Mes/Agenda/Personal/Día). "Editar"/"Borrar" siguen aparte, no se tocan.
+function CompletionCircle({
+  done,
+  color,
+  onComplete,
+  onUncomplete,
+}: {
+  done: boolean
+  color: string
+  onComplete?: () => void
+  onUncomplete?: () => void
+}) {
+  if (!onComplete && !onUncomplete) return null
+  return (
+    <button
+      type="button"
+      className={'completion-circle' + (done ? ' completion-circle-done' : '')}
+      style={done ? { color } : undefined}
+      onClick={(e) => {
+        e.stopPropagation()
+        ;(done ? onUncomplete : onComplete)?.()
+      }}
+      aria-label={done ? 'Marcar como pendiente' : 'Marcar como hecho'}
+    >
+      {agendaCheckSvg}
+    </button>
+  )
+}
+
 // Franja de color ancha con el check dentro (petición real: "una
 // franja de color al principio... más ancha... dentro de la franja
 // pondría el círculo para tocarlo como hecho"), hora a la derecha
@@ -2146,7 +2317,7 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
         </div>
       )}
       <div
-        className={'agenda-row-inner' + (entry.done ? ' agenda-row-done' : '')}
+        className={'agenda-row-inner' + (entry.done ? ' agenda-row-done' : '') + (entry.strikethrough ? ' agenda-row-struck' : '')}
         style={{
           // Petición real: "en los chips de los apuntes... pondría el
           // fondo de la tarjeta en una versión pastel del color
@@ -2164,20 +2335,7 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
         onTouchEnd={canDelete ? stopTouchPropagation : undefined}
       >
         <div className="agenda-stripe" style={{ background: entry.color }}>
-          {(entry.onComplete || entry.onUncomplete) && (
-            <button
-              type="button"
-              className="agenda-check"
-              style={entry.done ? { color: entry.color } : undefined}
-              onClick={(e) => {
-                e.stopPropagation()
-                ;(entry.onComplete ?? entry.onUncomplete)?.()
-              }}
-              aria-label={entry.done ? 'Marcar como pendiente' : 'Marcar como hecho'}
-            >
-              {agendaCheckSvg}
-            </button>
-          )}
+          <CompletionCircle done={entry.done} color={entry.color} onComplete={entry.onComplete} onUncomplete={entry.onUncomplete} />
         </div>
         <button
           type="button"
@@ -2343,6 +2501,7 @@ function EventCard({
   memberById,
   categoryById,
   done = false,
+  strikethrough,
   onComplete,
   onUncomplete,
   onEdit,
@@ -2363,6 +2522,10 @@ function EventCard({
   // calendar_event_completions ya existiera y DayModal/Agenda sí lo usaran — mismo motor, mismo
   // mecanismo, nunca uno nuevo (completeEventOccurrence/uncompleteEventOccurrence, data/calendar.ts).
   done?: boolean
+  // RETOQUE — ya resuelto por el llamador (shouldStrikethroughEntry), igual que color: un Evento
+  // completado se tacha siempre (comportamiento histórico); una Tarea sigue "Tachar al completar".
+  // Por defecto = done, para que un llamador que no la pase (ninguno hoy) conserve el aspecto de siempre.
+  strikethrough?: boolean
   onComplete?: () => void
   onUncomplete?: () => void
   onEdit: () => void
@@ -2394,7 +2557,7 @@ function EventCard({
       {showingPhoto && ev.attachmentStoragePath && (
         <PhotoLightbox storagePath={ev.attachmentStoragePath} onClose={() => setShowingPhoto(false)} />
       )}
-      <strong style={done ? { textDecoration: 'line-through', color: 'var(--muted)' } : undefined}>
+      <strong style={strikethrough ?? done ? { textDecoration: 'line-through', color: 'var(--muted)' } : undefined}>
         {ev.visibility === 'private' && '🔒 '}
         {ev.categoryId && categoryById?.get(ev.categoryId) ? `${categoryById.get(ev.categoryId)!.emoji} ` : ''}
         {ev.title}
@@ -2436,10 +2599,13 @@ function EventCard({
         })}
       </div>
       <div className="member-card-actions">
+        {/* AgendaRow apoya este mismo círculo sobre su propia franja de color (.agenda-stripe) para que
+            el aro blanco/check de color contrasten — aquí, sin franja, se envuelve en un fondo del
+            mismo color en miniatura para el mismo contraste, sin tocar nada de AgendaRow. */}
         {(onComplete || onUncomplete) && (
-          <button type="button" className="link-button" onClick={done ? onUncomplete : onComplete}>
-            {done ? '↺ Deshacer' : '✓ Hecho'}
-          </button>
+          <span className="completion-circle-chip" style={{ background: color }}>
+            <CompletionCircle done={done} color={color} onComplete={onComplete} onUncomplete={onUncomplete} />
+          </span>
         )}
         <button type="button" className="link-button" onClick={onEdit}>
           Editar
@@ -3295,7 +3461,10 @@ function EditEventForm({
         locationLatitude: coords?.latitude ?? null,
         locationLongitude: coords?.longitude ?? null,
         note: note.trim() || null,
-        visibility: isTask ? 'shared' : visibility,
+        // RETOQUE — antes se forzaba 'shared' para toda Tarea aquí mismo (bug de privacidad real: una
+        // Tarea no podía ser privada ni aunque el usuario lo pidiera) — ahora el checkbox "🔒 Solo yo"
+        // se ofrece y se respeta igual para Evento y para Tarea.
+        visibility,
         categoryId,
         ...attachment,
       })
@@ -3317,6 +3486,22 @@ function EditEventForm({
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
+      {/* Petición real: "quiero que las notas se puedan poner con una
+          etiqueta de personal y que se vean solo en el calendario del
+          usuario que las pone... que los demás usuarios aunque sean de
+          la familia no lo puedan ver" — convive con el resto de
+          eventos de la familia (mismas vistas), pero el servidor
+          filtra quién puede llegar a leerlo (RLS, ver migración 0089).
+          RETOQUE: antes vivía dentro de {!isTask && ...} (bug real: una Tarea no podía marcarse
+          privada) — ahora se ofrece igual para Evento y para Tarea. */}
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={visibility === 'private'}
+          onChange={(e) => setVisibility(e.target.checked ? 'private' : 'shared')}
+        />
+        🔒 Privado — Solo yo puedo verlo
+      </label>
       {!isTask && (
         <>
           {!allDay && (
@@ -3334,20 +3519,6 @@ function EditEventForm({
           <label className="checkbox-label">
             <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
             Todo el día
-          </label>
-          {/* Petición real: "quiero que las notas se puedan poner con una
-              etiqueta de personal y que se vean solo en el calendario del
-              usuario que las pone... que los demás usuarios aunque sean de
-              la familia no lo puedan ver" — convive con el resto de
-              eventos de la familia (mismas vistas), pero el servidor
-              filtra quién puede llegar a leerlo (RLS, ver migración 0089). */}
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={visibility === 'private'}
-              onChange={(e) => setVisibility(e.target.checked ? 'private' : 'shared')}
-            />
-            🔒 Solo yo (privado — el resto de la familia no lo verá)
           </label>
           <FieldDropdown
             label="Repetición"
@@ -3418,6 +3589,7 @@ function AddEventForm({
   defaultMemberIds,
   hideHeading,
   onManageCategories,
+  defaultVisibility = 'shared',
 }: {
   members: FamilyMember[]
   events: CalendarEvent[]
@@ -3427,6 +3599,10 @@ function AddEventForm({
   defaultMemberIds?: string[]
   hideHeading?: boolean
   onManageCategories: () => void
+  // RETOQUE — 'private' cuando se crea desde Calendario → Personal (ver CalendarScreen): el checkbox
+  // empieza marcado, dejando claro que "aquí se crea privado por defecto" sin tener que tocar nada más;
+  // desde cualquier otra vista sigue siendo 'shared' por defecto, como siempre.
+  defaultVisibility?: 'shared' | 'private'
 }) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(defaultDate ?? '')
@@ -3447,7 +3623,7 @@ function AddEventForm({
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
-  const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
+  const [visibility, setVisibility] = useState<'shared' | 'private'>(defaultVisibility)
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -3540,7 +3716,7 @@ function AddEventForm({
       setCoords(null)
       setAttachmentFile(null)
       setNote('')
-      setVisibility('shared')
+      setVisibility(defaultVisibility)
       setCategoryId(null)
       onAdded()
     } catch (err) {
@@ -3594,7 +3770,7 @@ function AddEventForm({
           checked={visibility === 'private'}
           onChange={(e) => setVisibility(e.target.checked ? 'private' : 'shared')}
         />
-        🔒 Solo yo (privado — el resto de la familia no lo verá)
+        🔒 Privado — Solo yo puedo verlo
       </label>
       <FieldDropdown
         label="Repetición"
@@ -3651,12 +3827,14 @@ function AddTaskForm({
   onAdded,
   defaultDate,
   onManageCategories,
+  defaultVisibility = 'shared',
 }: {
   members: FamilyMember[]
   categories: CalendarCategory[]
   onAdded: () => void
   defaultDate?: string
   onManageCategories: () => void
+  defaultVisibility?: 'shared' | 'private'
 }) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(defaultDate ?? '')
@@ -3667,6 +3845,9 @@ function AddTaskForm({
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
+  // RETOQUE — una Tarea también puede ser privada (antes no había ningún control: createEvent siempre
+  // recibía 'shared' sin que el usuario pudiera elegir, bug real confirmado en pruebas con Personal).
+  const [visibility, setVisibility] = useState<'shared' | 'private'>(defaultVisibility)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -3696,6 +3877,7 @@ function AddTaskForm({
         locationLatitude: coords?.latitude ?? null,
         locationLongitude: coords?.longitude ?? null,
         note: note.trim() || null,
+        visibility,
         kind: 'task',
         categoryId,
         syncToGoogle: false,
@@ -3710,6 +3892,7 @@ function AddTaskForm({
       setCoords(null)
       setAttachmentFile(null)
       setNote('')
+      setVisibility(defaultVisibility)
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear la tarea'))
@@ -3727,6 +3910,14 @@ function AddTaskForm({
       <label>
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+      </label>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={visibility === 'private'}
+          onChange={(e) => setVisibility(e.target.checked ? 'private' : 'shared')}
+        />
+        🔒 Privado — Solo yo puedo verlo
       </label>
       <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
       <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />

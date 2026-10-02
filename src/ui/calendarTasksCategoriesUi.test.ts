@@ -24,6 +24,7 @@ const CALENDAR_SRC = readFile('/src/ui/CalendarScreen.tsx')
 const EVENTOS_SRC = readFile('/src/ui/EventosScreen.tsx')
 const MENU_SETTINGS_SRC = readFile('/src/ui/MenuSettingsScreen.tsx')
 const CALENDAR_DATA_SRC = readFile('/src/data/calendar.ts')
+const HOME_SCREEN_SRC = readFile('/src/ui/HomeScreen.tsx')
 
 describe('data/calendar.ts — kind y categoría viajan en create/update, nunca se adivinan', () => {
   it('createEvent: sin indicar, kind=\'event\' (comportamiento idéntico a antes de esta columna)', () => {
@@ -97,7 +98,7 @@ describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comp
     const form = slice(CALENDAR_SRC, 'function AddEventForm({', 'function AddTaskForm({')
     expect(form).toContain('RecurrenceControl')
     expect(form).toContain('ReminderPicker')
-    expect(form).toContain('🔒 Solo yo (privado')
+    expect(form).toContain('🔒 Privado — Solo yo puedo verlo')
     expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
   })
 
@@ -109,7 +110,7 @@ describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comp
   })
 
   it('EditEventForm nunca cambia `kind` al guardar (sin conversión Evento↔Tarea esta fase)', () => {
-    const submit = slice(CALENDAR_SRC, 'async function handleSubmit(e: FormEvent) {\n    e.preventDefault()\n    setSaving(true)\n    setError(null)\n    try {\n      const effectiveAllDay', 'return (\n    <form onSubmit={handleSubmit} className="card member-form">\n      <label>\n        Título\n        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />\n      </label>\n      <label>\n        Fecha\n        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />\n      </label>\n      {!isTask')
+    const submit = slice(CALENDAR_SRC, 'async function handleSubmit(e: FormEvent) {\n    e.preventDefault()\n    setSaving(true)\n    setError(null)\n    try {\n      const effectiveAllDay', 'return (\n    <form onSubmit={handleSubmit} className="card member-form">\n      <label>\n        Título\n        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />\n      </label>\n      <label>\n        Fecha\n        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />\n      </label>')
     expect(submit).toContain('await updateEvent(event.id, {')
     expect(submit).not.toMatch(/\n\s*kind:/)
   })
@@ -208,6 +209,42 @@ describe('Gestión de categorías — Configuración → Calendario (Parte 27)',
   })
 })
 
+describe('RETOQUE (PRUEBAS MANUALES REALES EN IPHONE) — "Configuración personal" + preferencias de Tareas completadas', () => {
+  const SECTION = slice(MENU_SETTINGS_SRC, 'function CalendarPreferencesSection() {', 'function CalendarCategoryEmojiPicker(')
+
+  it('Parte 1: el texto se reparte en encabezado corto + subtexto, en vez de una sola frase larga', () => {
+    expect(SECTION).toContain('<strong>Configuración personal</strong>')
+    expect(SECTION).toContain('Cada persona de la familia puede ver el calendario a su manera.')
+    expect(SECTION).not.toContain('Es solo tuyo — cada persona de la familia puede ver el calendario a su manera.')
+  })
+
+  it('Parte 2: tres interruptores independientes, nunca mutuamente excluyentes (ninguno desactiva a otro)', () => {
+    expect(SECTION).toContain('Tachar al completar')
+    expect(SECTION).toContain('Cambiar color al completar')
+    expect(SECTION).toContain('Mover al final')
+    // Los tres se guardan con su propia llamada — no hay un solo "modo" que solo permita uno activo.
+    expect(SECTION).toContain('updateCalendarTaskStrikethrough(value)')
+    expect(SECTION).toContain('updateCalendarTaskDoneColor(next)')
+    expect(SECTION).toContain('updateCalendarTaskMoveCompleted(value)')
+  })
+
+  it('Parte 2B: "Color de completadas" reutiliza tal cual CalendarCategoryColorPicker (mismo patrón de paleta/Otro color/Sin color que Categorías) — nunca una segunda implementación visual', () => {
+    expect(SECTION).toContain('<CalendarCategoryColorPicker value={doneColor} onChange={handleDoneColorChange} />')
+    expect(SECTION).not.toContain('function CalendarCategoryColorPicker(')
+  })
+
+  it('Parte 3: defaults = comportamiento actual de siempre (tachar=true, color=null/apagado, mover=false) — un usuario que no entra aquí no nota ningún cambio', () => {
+    expect(SECTION).toContain('const [strikethrough, setStrikethrough] = useState(true)')
+    expect(SECTION).toContain('const [doneColor, setDoneColor] = useState<string | null>(null)')
+    expect(SECTION).toContain('const [moveCompleted, setMoveCompleted] = useState(false)')
+  })
+
+  it('el picker de color solo se muestra cuando el interruptor está encendido (doneColor != null) — apagarlo vuelve a guardar null, no solo lo oculta visualmente', () => {
+    expect(SECTION).toContain('{doneColor != null && (')
+    expect(SECTION).toContain('const next = value ? doneColor || solidPalette(CALENDAR_CATEGORY_COLOR_COUNT, getColorTheme())[0] : null')
+  })
+})
+
 describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, salvo Externos (ajeno) y Personal (filtra por miembro, no por tipo)', () => {
   const BUILD_ENTRIES = slice(CALENDAR_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function persistCalendarMenuLayout(')
   const TIME_GRID = slice(CALENDAR_SRC, 'function TimeGridView({', 'function AgendaListView(')
@@ -217,9 +254,11 @@ describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, sal
     expect(BUILD_ENTRIES).not.toMatch(/ev\.kind\s*===/)
   })
 
-  it('TimeGridView (Semana/3 días/Día) nunca filtra por ev.kind — una Tarea (allDay:true) cae sola en la franja "todo el día" existente, sin hora inventada', () => {
-    expect(TIME_GRID).not.toMatch(/ev\.kind\s*===/)
-    expect(TIME_GRID).toContain('if (ev.allDay) continue')
+  it('TimeGridView (Semana/3 días/Día) separa a propósito las Tareas de "Todo el día" (RETOQUE: una Tarea sin hora nunca es un evento de todo el día) en su propia franja "Tareas", sin inventar una hora', () => {
+    expect(TIME_GRID).toContain("if (!ev.allDay || ev.kind === 'task') continue")
+    expect(TIME_GRID).toContain("if (ev.kind !== 'task') continue")
+    expect(TIME_GRID).toContain('function tasksForDate(')
+    expect(TIME_GRID).toContain('time-grid-tasks-row')
   })
 
   it('FamilyDayView nunca filtra por kind — agrupa por miembro, Eventos y Tareas conviven en la misma columna', () => {
@@ -240,12 +279,13 @@ describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, sal
 })
 
 describe('Familiar — corrección de bug de auditoría (Parte 15): Evento Y Tarea completables, reutilizando calendar_event_completions', () => {
-  it('EventCard ahora acepta done/onComplete/onUncomplete (antes no los tenía)', () => {
+  it('EventCard ahora acepta done/onComplete/onUncomplete (antes no los tenía) — RETOQUE: el botón de texto "✓ Hecho" se unificó con el mismo CompletionCircle (círculo ○/✓) del resto de Calendario, con fondo de color para contraste (.completion-circle-chip)', () => {
     const card = slice(CALENDAR_SRC, 'function EventCard({', 'function MemberFilterDropdown(')
     expect(card).toContain('done?: boolean')
     expect(card).toContain('onComplete?: () => void')
     expect(card).toContain('onUncomplete?: () => void')
-    expect(card).toMatch(/'✓ Hecho'/)
+    expect(card).toContain('<CompletionCircle done={done} color={color} onComplete={onComplete} onUncomplete={onUncomplete} />')
+    expect(card).toContain('completion-circle-chip')
   })
 
   it('FamilyDayView calcula "done" desde eventCompletions (mismo array que ya usa DayModal/Agenda) y llama a onComplete/onUncomplete — nunca un mecanismo nuevo', () => {
@@ -326,5 +366,17 @@ describe('No regresión de Eventos ni de "+ Añadir tarea" de Preparativos (Part
   it('"+ Añadir tarea" de Preparativos (Eventos) sigue intacto — es un concepto distinto de las Tareas de Calendario, nunca se ha confundido con él', () => {
     expect(EVENTOS_SRC).toContain('placeholder="+ Añadir tarea"')
     expect(EVENTOS_SRC).toContain('onSubmit={handleAddTask}')
+  })
+})
+
+describe('Inicio — la diapositiva "Hoy en el calendario" también lleva 🔒 en un privado propio (Parte 10/37)', () => {
+  const SLIDE = slice(HOME_SCREEN_SRC, 'listUpcomingEvents()', 'listShoppingItems()')
+
+  it('antepone 🔒 al título cuando el evento/tarea es privado, igual que el resto de vistas — nunca queda confinado a Personal', () => {
+    expect(SLIDE).toContain("const title = ev.visibility === 'private' ? `🔒 ${ev.title}` : ev.title")
+  })
+
+  it('no añade ningún filtro SQL por visibility (RLS ya resuelve quién llega aquí: un privado de otro miembro nunca aparece en esta consulta)', () => {
+    expect(SLIDE).not.toMatch(/\.eq\(.visibility/)
   })
 })

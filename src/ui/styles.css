@@ -3125,7 +3125,9 @@ textarea {
   justify-content: center;
 }
 
-.agenda-check {
+/* RETOQUE — círculo de pendiente/completado ÚNICO en todo Calendario (antes AgendaRow tenía el suyo,
+   .agenda-check, y Vista Familiar un botón de texto "✓ Hecho" aparte — ver CompletionCircle). */
+.completion-circle {
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -3137,16 +3139,26 @@ textarea {
   justify-content: center;
   padding: 0;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-.agenda-check svg {
+.completion-circle svg {
   width: 13px;
   height: 13px;
 }
 
-.agenda-row-done .agenda-check {
+.completion-circle-done {
   background: white;
   color: var(--primary);
+}
+
+/* Envoltorio con fondo de color para dar al círculo el mismo contraste que .agenda-stripe le da en
+   AgendaRow, en sitios sin franja de color propia (Vista Familiar). */
+.completion-circle-chip {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .agenda-row-body {
@@ -3212,9 +3224,11 @@ textarea {
 
 /* Marcado como "hecho" pero sin desaparecer del calendario — se queda
    ahí, solo que apagado y con el título tachado, para poder ver
-   después qué se hizo y cuándo (petición real). */
-.agenda-row-done .agenda-row-title,
-.agenda-row-done .agenda-row-time {
+   después qué se hizo y cuándo (petición real). RETOQUE — el tachado en sí ahora es condicional
+   (agenda-row-struck, calculado en buildEntriesForDate según "Tachar al completar" — solo afecta a
+   Tareas; un Evento completado se tacha siempre, igual que antes de este retoque). */
+.agenda-row-struck .agenda-row-title,
+.agenda-row-struck .agenda-row-time {
   color: var(--muted);
   text-decoration: line-through;
 }
@@ -4999,12 +5013,75 @@ textarea {
 
 .time-grid-allday-chip {
   font-size: 10px;
-  color: white;
   border-radius: 4px;
   padding: 1px 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Bloque "Tareas" propio (RETOQUE, Parte 7-8): una Tarea sin hora nunca es un evento de "Todo el
+   día" ni se inventa un hueco en la rejilla horaria — vive en su propia franja entre ambos, con el
+   mismo circulito de completar que el resto de Calendario (ver CompletionCircle/.completion-circle-chip). */
+.time-grid-tasks-row {
+  display: flex;
+  margin-bottom: 6px;
+}
+
+.time-grid-tasks-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 2px;
+}
+
+.time-grid-tasks-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.time-grid-tasks-subheader {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.time-grid-task-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.time-grid-task-row .completion-circle-chip {
+  padding: 1px;
+}
+
+.time-grid-task-row .completion-circle {
+  width: 16px;
+  height: 16px;
+  border-width: 1.5px;
+}
+
+.time-grid-task-row .completion-circle svg {
+  width: 9px;
+  height: 9px;
+}
+
+.time-grid-task-title {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.time-grid-task-title-struck {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 
 .time-grid-body {
@@ -5058,7 +5135,6 @@ textarea {
   position: absolute;
   border: none;
   border-radius: 6px;
-  color: white;
   font-size: 11px;
   font-weight: 600;
   text-align: left;

@@ -443,9 +443,20 @@ export async function deleteCalendarCategory(id: string): Promise<void> {
 export type CalendarColorMode = 'miembros' | 'categorias' | 'solo_categorias'
 export type CalendarTaskOrder = 'eventos_primero' | 'tareas_primero'
 
+// RETOQUE — "Tareas completadas", tres preferencias PERSONALES independientes (no excluyentes entre sí,
+// a diferencia de colorMode) — migración 0187. Defaults elegidos para reproducir EXACTAMENTE el
+// comportamiento de antes de este retoque (ver comentario de la migración): tachar siempre ON,
+// doneColor siempre null (ningún color especial), moveCompletedToEnd siempre OFF.
+export interface CalendarTaskCompletionPrefs {
+  strikethrough: boolean
+  doneColor: string | null
+  moveCompletedToEnd: boolean
+}
+
 export interface CalendarPreferences {
   colorMode: CalendarColorMode
   taskOrder: CalendarTaskOrder
+  taskCompletion: CalendarTaskCompletionPrefs
 }
 
 export async function getCalendarPreferences(): Promise<CalendarPreferences> {
@@ -453,7 +464,7 @@ export async function getCalendarPreferences(): Promise<CalendarPreferences> {
   if (!userResult.user) throw new Error('No autenticado')
   const { data, error } = await supabase
     .from('profiles')
-    .select('calendar_color_mode, calendar_task_order')
+    .select('calendar_color_mode, calendar_task_order, calendar_task_strikethrough, calendar_task_done_color, calendar_task_move_completed')
     .eq('id', userResult.user.id)
     .single()
   if (error) throw error
@@ -462,6 +473,11 @@ export async function getCalendarPreferences(): Promise<CalendarPreferences> {
   return {
     colorMode,
     taskOrder: data.calendar_task_order === 'tareas_primero' ? 'tareas_primero' : 'eventos_primero',
+    taskCompletion: {
+      strikethrough: data.calendar_task_strikethrough !== false,
+      doneColor: data.calendar_task_done_color ?? null,
+      moveCompletedToEnd: data.calendar_task_move_completed === true,
+    },
   }
 }
 
@@ -476,6 +492,28 @@ export async function updateCalendarTaskOrder(order: CalendarTaskOrder): Promise
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
   const { error } = await supabase.from('profiles').update({ calendar_task_order: order }).eq('id', userResult.user.id)
+  if (error) throw error
+}
+
+export async function updateCalendarTaskStrikethrough(value: boolean): Promise<void> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { error } = await supabase.from('profiles').update({ calendar_task_strikethrough: value }).eq('id', userResult.user.id)
+  if (error) throw error
+}
+
+// color === null significa "Cambiar color al completar" desactivado (sin capa de color especial).
+export async function updateCalendarTaskDoneColor(color: string | null): Promise<void> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { error } = await supabase.from('profiles').update({ calendar_task_done_color: color }).eq('id', userResult.user.id)
+  if (error) throw error
+}
+
+export async function updateCalendarTaskMoveCompleted(value: boolean): Promise<void> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { error } = await supabase.from('profiles').update({ calendar_task_move_completed: value }).eq('id', userResult.user.id)
   if (error) throw error
 }
 

@@ -101,7 +101,11 @@ describe('Regla exacta de resolución de color — eventColor, fuente única par
 describe('K — el modo activo se aplica de forma consistente en TODAS las vistas internas, nunca una regla distinta en cada una', () => {
   it('buildEntriesForDate (Mes/Agenda/DayModal/Personal) resuelve con calendarPrefs.colorMode', () => {
     const fn = slice(CALENDAR_SCREEN_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function persistCalendarMenuLayout(')
-    expect(fn).toContain('color: eventColor(ev, memberById, calendarPrefs.colorMode, categoryColorById),')
+    // RETOQUE — el color base sigue resolviéndose con eventColor()/calendarPrefs.colorMode tal cual;
+    // ahora se envuelve con effectiveEntryColor() para que una Tarea completada con "color al completar"
+    // (preferencia nueva) pueda sustituirlo como capa final, sin tocar la resolución del modo de color.
+    expect(fn).toContain('const baseColor = eventColor(ev, memberById, calendarPrefs.colorMode, categoryColorById)')
+    expect(fn).toContain('color: effectiveEntryColor(ev.kind, baseColor, done, calendarPrefs.taskCompletion),')
   })
 
   it('los puntitos de "Vista general" (eventDotColors) resuelven con el mismo calendarPrefs.colorMode', () => {
@@ -111,14 +115,20 @@ describe('K — el modo activo se aplica de forma consistente en TODAS las vista
   it('TimeGridView (Semana/3 días/Día) recibe el modo activo como prop, no un mapa ya filtrado a medias — y lo usa en sus dos sitios (bloques con hora y chips "todo el día")', () => {
     expect(CALENDAR_SCREEN_SRC).toContain('categoryColorById={categoryColorById}\n            colorMode={calendarPrefs.colorMode}')
     const fn = slice(CALENDAR_SCREEN_SRC, 'function TimeGridView({', 'function AgendaListView(')
-    expect([...fn.matchAll(/eventColor\(ev, memberById, colorMode, categoryColorById\)/g)]).toHaveLength(2)
+    // RETOQUE — una Tarea sin hora ya no cae en "todo el día" (franja propia "Tareas"), así que ahora
+    // hay un tercer sitio que resuelve el mismo color: timedBlocksForDate (con hora), allDayChipsForDate
+    // (Eventos de todo el día de verdad) y tasksForDate (la nueva franja "Tareas").
+    expect([...fn.matchAll(/eventColor\(ev, memberById, colorMode, categoryColorById\)/g)]).toHaveLength(3)
   })
 
   it('Familiar (EventCard) YA NO usa su propia regla aparte (antes: borderColor: ev.color ?? undefined, ignoraba categoría/miembro) — ahora resuelve con la misma eventColor()', () => {
     expect(CALENDAR_SCREEN_SRC).not.toContain('borderColor: ev.color ?? undefined')
     expect(CALENDAR_SCREEN_SRC).toContain('style={{ borderColor: color }}')
     const familyView = slice(CALENDAR_SCREEN_SRC, 'function FamilyDayView({', 'function PersonalView({')
-    expect(familyView).toContain('color={eventColor(ev, memberById, colorMode, categoryColorById)}')
+    // RETOQUE — igual que en buildEntriesForDate: el color base sigue siendo eventColor() tal cual,
+    // envuelto en effectiveEntryColor() para la nueva preferencia "color al completar" de Tareas.
+    expect(familyView).toContain('const baseColor = eventColor(ev, memberById, colorMode, categoryColorById)')
+    expect(familyView).toContain('color={effectiveEntryColor(ev.kind, baseColor, done, taskCompletion)}')
   })
 
   it('Externos sigue siendo una fuente de datos aparte (dotColorForFeed, nunca categoryColorById/colorMode) — no se ha tocado', () => {

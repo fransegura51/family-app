@@ -237,7 +237,13 @@ function PhotoBanner() {
       .then((events) => {
         const items = events
           .filter((ev) => expandOccurrences(ev, today, today).includes(today))
-          .map((ev) => ({ sortKey: ev.allDay ? '' : hhmm(ev.startAt), label: ev.allDay ? ev.title : `${hhmm(ev.startAt)} ${ev.title}` }))
+          .map((ev) => {
+            // RETOQUE (Parte 10/37) — esta diapositiva no filtra por visibility (RLS ya se encarga: un
+            // privado de OTRO miembro ni siquiera llega aquí); un privado PROPIO sí debe seguir viendo
+            // Inicio, con el mismo 🔒 que el resto de vistas, no solo en Personal.
+            const title = ev.visibility === 'private' ? `🔒 ${ev.title}` : ev.title
+            return { sortKey: ev.allDay ? '' : hhmm(ev.startAt), label: ev.allDay ? title : `${hhmm(ev.startAt)} ${title}` }
+          })
           .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
           .map((e) => e.label)
         setAgendaItems(items)

@@ -238,12 +238,15 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // event_guests/event_guest_members/event_tables ni su RLS. 0185 (calendar_color_mode_three_modes)
     // solo cambia el CHECK y el default de profiles.calendar_color_mode — tampoco. 0186
     // (server_side_automations) añade tablas de estado de automatizaciones y un trigger en
-    // member_locations — tampoco toca event_guests/event_guest_members/event_tables ni su RLS.
-    // Ninguna de las veinte tiene nada que ver con invitados/regalos de eventos.
+    // member_locations — tampoco toca event_guests/event_guest_members/event_tables ni su RLS. 0187
+    // (calendar_task_completion_prefs_and_privacy_fixes, RETOQUE Calendario) añade preferencias de
+    // Tareas completadas a profiles y corrige privacidad de recordatorios/adjuntos — tampoco toca
+    // event_guests/event_guest_members/event_tables ni su RLS.
+    // Ninguna de las veintiuna tiene nada que ver con invitados/regalos de eventos.
     const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(186)
+    expect(Math.max(...numbers)).toBe(187)
   })
 })

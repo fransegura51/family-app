@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { savePushSubscription } from '@/data/push'
+import { reportPushProblem, savePushSubscription } from '@/data/push'
 import { getPermissionState, isNotificationsDisabledByUser, subscribeToPush, VAPID_PUBLIC_KEY } from '@/services/notifications'
 
 // Componente sin UI. Petición real: "los avisos... están llegando mucho después... en todos los
@@ -17,8 +17,10 @@ export function PushSubscriptionKeeper() {
     if (!VAPID_PUBLIC_KEY || getPermissionState() !== 'granted' || isNotificationsDisabledByUser()) return
     subscribeToPush(VAPID_PUBLIC_KEY)
       .then((subscription) => (subscription ? savePushSubscription(subscription) : undefined))
-      .catch(() => {
-        // Sin red o sin service worker todavía: se reintenta la próxima vez que se abra la app.
+      .catch((err) => {
+        // Sin red o sin service worker todavía: se reintenta la próxima vez que se abra la app. Se deja
+        // constancia (client_errors) porque un móvil que nunca consigue registrarse no avisa de nada.
+        void reportPushProblem('registro automático al abrir la app', err)
       })
   }, [])
 

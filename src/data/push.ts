@@ -1,4 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
+import { reportClientError } from '@/data/errorReports'
 import {
   getPermissionState,
   requestPermission,
@@ -73,6 +74,34 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
       },
     )
   })
+}
+
+// Petición real: "Tiene que funcionar los dos teléfonos... en el iPhone funciona, pero en el Android no".
+// Un fallo de activación en un móvil concreto no se puede ver desde fuera, así que cada intento que no
+// termina bien deja una fila en client_errors (la misma tabla de fallos de siempre) con el estado real
+// del navegador: permiso, service worker, suscripción... Sin datos personales, solo ese estado.
+async function describePushEnvironment(): Promise<string> {
+  const parts = [
+    `permiso=${getPermissionState()}`,
+    `sw=${'serviceWorker' in navigator}`,
+    `pushManager=${'PushManager' in window}`,
+    `instalada=${window.matchMedia?.('(display-mode: standalone)').matches ?? 'n/d'}`,
+  ]
+  try {
+    const registration = await withTimeout(navigator.serviceWorker.getRegistration(), 3000, 'sin respuesta')
+    parts.push(
+      `registro=${registration ? (registration.active ? 'activo' : registration.waiting ? 'esperando' : registration.installing ? 'instalando' : 'sin worker') : 'ninguno'}`,
+    )
+    if (registration) parts.push(`suscripcion=${(await registration.pushManager.getSubscription()) ? 'sí' : 'no'}`)
+  } catch (err) {
+    parts.push(`registro=error(${err instanceof Error ? err.message : 'desconocido'})`)
+  }
+  return parts.join(' ')
+}
+
+export async function reportPushProblem(context: string, err?: unknown): Promise<void> {
+  const cause = err instanceof Error ? `${err.name}: ${err.message}` : err ? String(err) : ''
+  await reportClientError(new Error(`[avisos] ${context}${cause ? ` — ${cause}` : ''} | ${await describePushEnvironment()}`))
 }
 
 // Desactiva los avisos en ESTE móvil: lo marca (para que no se vuelva a registrar solo al abrir la app),

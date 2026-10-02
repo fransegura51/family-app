@@ -96,6 +96,32 @@ describe('activar/desactivar de verdad (data/push.ts)', () => {
   })
 })
 
+describe('que funcione igual en Android y en iPhone', () => {
+  const EXTRA = import.meta.glob(['/src/main.tsx'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+  const MAIN = EXTRA['/src/main.tsx']
+
+  it('cada intento que no termina bien deja constancia del estado real del navegador (client_errors) para poder diagnosticar un móvil concreto', () => {
+    expect(PUSH_DATA).toContain('export async function reportPushProblem')
+    expect(PUSH_DATA).toContain('permiso=')
+    expect(PUSH_DATA).toContain('registro=')
+    expect(PUSH_DATA).toContain('suscripcion=')
+    expect(CARD).toContain("void reportPushProblem('fallo en la tarjeta de avisos', err)")
+    expect(KEEPER).toContain("reportPushProblem('registro automático al abrir la app', err)")
+  })
+
+  it('las instrucciones de "bloqueado" son distintas en Android y en iPhone (cada sistema lo esconde en un sitio)', () => {
+    expect(CARD).toContain('/android/i.test(ua)')
+    expect(CARD).toContain('Información de la aplicación')
+    expect(CARD).toContain('/iphone|ipad/i.test(ua)')
+  })
+
+  it('un móvil con la app vieja (archivos ya borrados) se recarga solo UNA vez por minuto, nunca en bucle', () => {
+    expect(MAIN).toContain("window.addEventListener('vite:preloadError'")
+    expect(MAIN).toContain('Date.now() - last < 60_000')
+    expect(MAIN).toContain('window.location.reload()')
+  })
+})
+
 describe('aviso de prueba — send_test_push_to_me (migración 0188)', () => {
   it('solo lo puede ejecutar quien ha iniciado sesión (nunca anon)', () => {
     expect(SQL).toContain('revoke execute on function public.send_test_push_to_me() from public, anon')

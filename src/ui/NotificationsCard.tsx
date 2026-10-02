@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react'
-import { disablePushNotifications, enablePushNotifications, sendTestPush } from '@/data/push'
+import { disablePushNotifications, enablePushNotifications, reportPushProblem, sendTestPush } from '@/data/push'
 import { errorMessage } from '@/domain/errorMessage'
 import { getPermissionState, hasPushSubscription, isNotificationsDisabledByUser, type NotificationPermissionState } from '@/services/notifications'
+
+// Cada sistema esconde el permiso en un sitio distinto: decir solo "Ajustes del móvil" no basta.
+function deniedHelp(): string {
+  const ua = navigator.userAgent
+  if (/android/i.test(ua)) {
+    return 'En Android: mantén pulsado el icono de PEPA, toca "Información de la aplicación" (la i), Notificaciones, y actívalas. Si abres PEPA desde Chrome: toca el candado junto a la dirección, Permisos, Notificaciones, Permitir.'
+  }
+  if (/iphone|ipad/i.test(ua)) return 'En iPhone: Ajustes, Notificaciones, PEPA, y activa "Permitir notificaciones".'
+  return 'Para activarlos: Ajustes del móvil, Aplicaciones, PEPA, Notificaciones, y permitirlas.'
+}
 
 // Petición real: "¿Dónde se activan los recordatorios en la app? No sé dónde se activan... añade un
 // botón para activar los avisos desde la aplicación de Pepa, para activarlo o desactivarlo". Antes solo
@@ -32,6 +42,7 @@ export function NotificationsCard() {
       await action()
     } catch (err) {
       setError(errorMessage(err, 'No se ha podido completar'))
+      void reportPushProblem('fallo en la tarjeta de avisos', err)
     } finally {
       refresh()
       setBusy(false)
@@ -53,8 +64,8 @@ export function NotificationsCard() {
 
       {permission === 'denied' && (
         <p className="muted">
-          Los avisos están bloqueados en este móvil, y la app no puede cambiarlo sola. Para activarlos: Ajustes del móvil,
-          Aplicaciones, PEPA, Notificaciones, y permitirlas. Después vuelve aquí.
+          Los avisos están bloqueados en este móvil, y la app no puede cambiarlo sola. {deniedHelp()} Después vuelve aquí y
+          toca "Activar avisos".
         </p>
       )}
 
@@ -95,6 +106,7 @@ export function NotificationsCard() {
                 onClick={() =>
                   run(async () => {
                     const result = await enablePushNotifications()
+                    if (result !== 'granted') void reportPushProblem(`activar terminó con permiso=${result}`)
                     if (result === 'default') {
                       setNotice('No has contestado a la pregunta del móvil. Toca otra vez el botón y elige "Permitir".')
                     }

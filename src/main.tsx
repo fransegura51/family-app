@@ -8,6 +8,23 @@ import { applyColorTheme } from '@/state/colorTheme'
 
 applyColorTheme()
 
+// Un móvil que se quedó con una versión vieja de la app (el despliegue borra los archivos con nombre
+// antiguo) falla al abrir una pantalla: "Failed to fetch dynamically imported module" — visto de verdad
+// en el Android de la familia, que no podía ni abrir Familia (donde está el botón de avisos). Vite avisa
+// con este evento; se recarga UNA vez para coger la versión nueva, con un tope de uno por minuto para
+// que un fallo de red real no deje la app recargándose en bucle.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault()
+  try {
+    const last = Number(sessionStorage.getItem('family-app:preload-reload-at') ?? 0)
+    if (Date.now() - last < 60_000) return
+    sessionStorage.setItem('family-app:preload-reload-at', String(Date.now()))
+  } catch {
+    return
+  }
+  window.location.reload()
+})
+
 // El registro básico (registerSW.js, autoinyectado) instala el service
 // worker nuevo pero la pestaña ya abierta se queda corriendo el código
 // VIEJO en memoria hasta que se recarga sola — causa real, confirmada,

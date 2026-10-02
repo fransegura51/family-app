@@ -2,8 +2,8 @@ import { type CSSProperties, FormEvent, type ReactNode, useEffect, useLayoutEffe
 import { Link, useSearchParams } from 'react-router-dom'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
-import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
-import { useSectionHome } from '@/ui/useSectionHome'
+import { SectionBreadcrumb, type BreadcrumbLevel } from '@/ui/SectionBreadcrumb'
+import { useSectionHome, useLocationFlag } from '@/ui/useSectionHome'
 import {
   addEventActivity,
   addEventBudgetItem,
@@ -452,6 +452,11 @@ export function EventosScreen() {
     setSelectedId(null)
     setInitialModule(null)
   })
+  // Tercer nivel del breadcrumb ("Eventos / Boda de plata / Preparativos"): el módulo abierto vive como
+  // estado LOCAL dentro de EventDetail (openModule), así que EventDetail avisa aquí arriba de su label
+  // cada vez que cambia, en vez de subir todo ese estado — evita una reescritura grande de EventDetail
+  // por un cambio que es puramente de navegación/breadcrumb.
+  const [openModuleLabel, setOpenModuleLabel] = useState<string | null>(null)
 
   function reload() {
     listEvents(showArchived)
@@ -490,9 +495,22 @@ export function EventosScreen() {
       <div className="kitchen-header">
         <img src={eventosHeaderImg} alt="Eventos" className="kitchen-header-img" />
       </div>
-      {/* Máximo dos niveles siempre: un módulo abierto dentro del evento (Invitados, Presupuesto...)
-          sigue mostrando solo el nombre del evento, nunca un tercer nivel con el módulo. */}
-      <SectionBreadcrumb subsection={selected ? selected.title : 'Inicio'} />
+      {/* Dos niveles normalmente ("Eventos / Boda de plata"); tres cuando hay un módulo abierto dentro
+          del evento ("Eventos / Boda de plata / Preparativos") — "Boda de plata" pasa a ser un enlace real
+          que vuelve al dashboard de ESE evento (state.eventHome, ver EventDetail más abajo), nunca solo a
+          /eventos a secas. */}
+      <SectionBreadcrumb
+        subsection={
+          !selected
+            ? 'Inicio'
+            : !openModuleLabel
+              ? selected.title
+              : ([
+                  { label: selected.title, to: '/eventos', state: { eventHome: true } },
+                  { label: openModuleLabel },
+                ] satisfies BreadcrumbLevel[])
+        }
+      />
       {error && <p className="error">{error}</p>}
 
       {selected ? (
@@ -500,6 +518,7 @@ export function EventosScreen() {
           event={selected}
           initialModule={initialModule}
           onBack={() => setSelectedId(null)}
+          onModuleLabelChange={setOpenModuleLabel}
           onChanged={reload}
           onArchivedOrDeleted={() => {
             setSelectedId(null)
@@ -809,6 +828,7 @@ function EventDetail({
   event,
   initialModule = null,
   onBack,
+  onModuleLabelChange,
   onChanged,
   onArchivedOrDeleted,
   onDuplicated,
@@ -816,16 +836,16 @@ function EventDetail({
   event: FamilyEvent
   initialModule?: EventModuleKey | null
   onBack: () => void
+  onModuleLabelChange: (label: string | null) => void
   onChanged: () => void
   onArchivedOrDeleted: () => void
   onDuplicated: (id: string) => void
 }) {
   const [tasks, setTasks] = useState<EventTask[]>([])
-  // Fase 12 — si se llega a Preparativos desde un aviso, se enseñan
-  // todas las pendientes de entrada (no solo las 5 primeras sin
-  // ordenar) para garantizar que la tarea destacada esté siempre a la
-  // vista sin un paso extra de "Ver todas".
-  const [showAllTasks, setShowAllTasks] = useState(initialModule === 'tareas')
+  // Preparativos aparece siempre desplegado al entrar (antes solo si se llegaba desde un aviso de tarea;
+  // la entrada normal, desde la tarjeta del dashboard, se quedaba en las 5 primeras con "Ver todas" —
+  // petición real: que empiece desplegado siempre, conservando el control para plegarlo a mano).
+  const [showAllTasks, setShowAllTasks] = useState(true)
   // Bloque 9 (cola nocturna) — Completadas/Historial: auditoría real (src/domain/events.ts,
   // src/ui/EventosScreen.tsx) confirmó que una tarea hecha (done:true) desaparecía de la vista para
   // siempre (solo quedaba el recuento "X de Y completadas"), sin ningún borrado — el dato ya se conservaba
@@ -845,6 +865,17 @@ function EventDetail({
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [showEndSummary, setShowEndSummary] = useState(false)
   const [openModule, setOpenModule] = useState<EventModuleKey | 'compras' | null>(initialModule)
+  // Nivel intermedio del breadcrumb ("Boda de plata"): al pulsarlo, cierra el módulo abierto y vuelve al
+  // dashboard de ESTE evento — mismo mecanismo que sectionHome (state.eventHome + useLocationFlag), nunca
+  // history.back(), para que el destino sea determinista aunque se haya llegado por deep-link directo a
+  // un módulo. selectedId vive en el padre (EventosScreen) y no se toca aquí.
+  useLocationFlag('eventHome', () => setOpenModule(null))
+  // El label del módulo abierto se reporta al padre para el tercer nivel del breadcrumb — 'compras' no es
+  // un EventModuleKey real (ver moduleCards más abajo), de ahí el fallback literal.
+  useEffect(() => {
+    onModuleLabelChange(openModule ? (EVENT_MODULES.find((m) => m.key === openModule)?.label ?? 'Compras') : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openModule])
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
   // Un evento con la fecha confirmada que todavía no está en el Calendario (p. ej. uno
@@ -1237,11 +1268,11 @@ function EventDetail({
   }
 
   if (openModule !== null) {
+    // Sin "‹ {icono} {título}" aquí: el breadcrumb de arriba (SectionBreadcrumb, en EventosScreen) ya
+    // muestra "Eventos / {título} / {módulo}" con "{título}" como enlace real de vuelta a este mismo
+    // dashboard (state.eventHome) — un segundo control para el mismo destino era navegación duplicada.
     return (
       <div>
-        <button type="button" className="link-button" onClick={() => setOpenModule(null)}>
-          ‹ {EVENT_TYPE_META[event.type].icon} {event.title}
-        </button>
         {error && <p className="error">{error}</p>}
         <div style={{ marginTop: 8 }}>{renderOpenModule()}</div>
       </div>

@@ -1916,16 +1916,25 @@ select {
   margin-top: 28px;
 }
 
-/* SectionBreadcrumb — "Sección / Ubicación actual" bajo la cabecera de cada pantalla. flex-wrap para que
-   una subsección larga (p. ej. "Documentación del vehículo") rompa de línea limpiamente en vez de
-   desbordar o necesitar un ancho fijo. */
+/* SectionBreadcrumb — "Sección / Ubicación actual" (o "Sección / Contexto / Ubicación actual" con un
+   nivel intermedio real, p. ej. Eventos) bajo la cabecera de cada pantalla. Cada nivel es un
+   .section-breadcrumb-item que lleva su separador "/" pegado dentro de sí mismo, para que flex-wrap
+   rompa de línea por NIVEL COMPLETO en vez de poder dejar una "/" suelta al final de una línea — así un
+   nombre largo (p. ej. "Aniversario de boda de Paco y Jennifer") rompe limpiamente sin desbordar ni
+   necesitar un ancho fijo. */
 .section-breadcrumb {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px;
+  row-gap: 2px;
   margin: 2px 0 14px;
   font-size: 15px;
+}
+
+.section-breadcrumb-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .section-breadcrumb-section {

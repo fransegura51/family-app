@@ -24,7 +24,7 @@ describe('Fase 12 — deep-link a la tarea concreta', () => {
     expect(fnBody).toContain('event-task-card-highlighted')
   })
 
-  it('showAllTasks arranca en true cuando se llega directo a Preparativos, para que la tarea destacada esté siempre visible sin un paso extra', () => {
-    expect(SRC).toContain("useState(initialModule === 'tareas')")
+  it('showAllTasks arranca en true siempre (Parte 14 — "Preparativos desplegado por defecto"), así que la tarea destacada por deep-link sigue visible sin un paso extra', () => {
+    expect(SRC).toContain('const [showAllTasks, setShowAllTasks] = useState(true)')
   })
 })

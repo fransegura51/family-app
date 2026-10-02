@@ -119,7 +119,8 @@ describe('Eventos — pulsar "Eventos" deselecciona el evento (vuelve a la lista
   })
 
   it('el breadcrumb resuelve a "Inicio" exactamente cuando selectedId es null (mismo ternario ya probado en sectionBreadcrumbUi.test.ts)', () => {
-    expect(EVENTOS).toContain("subsection={selected ? selected.title : 'Inicio'}")
+    expect(EVENTOS).toContain('!selected')
+    expect(EVENTOS).toContain("? 'Inicio'")
   })
 
   it('initialModule se resetea para que el PRÓXIMO evento abierto normalmente empiece en su propio Inicio, no herede un módulo de una navegación anterior', () => {
@@ -166,13 +167,59 @@ describe('Ubicación — pulsar "Ubicación" desde una vista interna vuelve a In
   })
 })
 
-describe('SectionBreadcrumb — el Link pasa state.sectionHome, sin onClick propio', () => {
+describe('SectionBreadcrumb — el nivel de Sección pasa state.sectionHome, sin onClick propio', () => {
   const BREADCRUMB = src('/src/ui/SectionBreadcrumb.tsx')
 
   it('usa <Link state={{ sectionHome: true }}>, nunca un onClick/navigate manual', () => {
-    expect(BREADCRUMB).toContain('<Link to={section.to} state={{ sectionHome: true }} className="section-breadcrumb-section">')
+    expect(BREADCRUMB).toContain('{ label: section.label, to: section.to, state: { sectionHome: true } }')
+    expect(BREADCRUMB).toContain('<Link to={level.to} state={level.state} className="section-breadcrumb-section">')
     expect(BREADCRUMB).not.toMatch(/section-breadcrumb-section[^>]*onClick/)
     expect(BREADCRUMB).not.toContain('useNavigate')
+  })
+})
+
+describe('Eventos — nivel intermedio "eventHome": vuelve al dashboard de ESE evento (cierra el módulo), nunca resetea selectedId', () => {
+  const EVENTOS = src('/src/ui/EventosScreen.tsx')
+
+  it('useLocationFlag(\'eventHome\', ...) solo cierra el módulo (setOpenModule(null)), vive dentro de EventDetail — nunca toca selectedId ni initialModule (eso es cosa exclusiva de sectionHome, en el padre)', () => {
+    const detail = EVENTOS.slice(EVENTOS.indexOf('function EventDetail('), EVENTOS.indexOf('function TaskCard('))
+    expect(detail).toContain("useLocationFlag('eventHome', () => setOpenModule(null))")
+    expect(detail).not.toContain('setSelectedId')
+  })
+
+  it('el label del módulo abierto se reporta al padre (onModuleLabelChange) cada vez que openModule cambia, para el tercer nivel del breadcrumb', () => {
+    const detail = EVENTOS.slice(EVENTOS.indexOf('function EventDetail('), EVENTOS.indexOf('function TaskCard('))
+    expect(detail).toContain('onModuleLabelChange(openModule ?')
+    expect(detail).toMatch(/\}, \[openModule\]\)/)
+  })
+
+  it('useSectionHome (el nivel "Eventos") sigue reseteando selectedId E initialModule — sin cambios por esta fase', () => {
+    const call = EVENTOS.slice(EVENTOS.indexOf('useSectionHome(() => {'), EVENTOS.indexOf('})', EVENTOS.indexOf('useSectionHome(() => {')) + 2)
+    expect(call).toContain('setSelectedId(null)')
+    expect(call).toContain('setInitialModule(null)')
+  })
+})
+
+describe('Preparativos — desplegado por defecto al entrar, con control para plegarlo (Parte 14)', () => {
+  const EVENTOS = src('/src/ui/EventosScreen.tsx')
+
+  it('showAllTasks arranca en true SIEMPRE (ya no solo cuando se llega por deep-link a tareas)', () => {
+    expect(EVENTOS).toContain('const [showAllTasks, setShowAllTasks] = useState(true)')
+    expect(EVENTOS).not.toContain("useState(initialModule === 'tareas')")
+  })
+
+  it('el control para plegarlo ("Ver menos" / "Ver todas (N)") sigue existiendo tal cual, sin eliminar el toggle', () => {
+    expect(EVENTOS).toContain("{showAllTasks ? 'Ver menos' : `Ver todas (${pendingTasks.length})`}")
+    expect(EVENTOS).toContain('onClick={() => setShowAllTasks((v) => !v)}')
+  })
+
+  it('"+ Añadir tarea" permanece funcionalmente intacto — no se toca en esta fase', () => {
+    expect(EVENTOS).toContain('placeholder="+ Añadir tarea"')
+    expect(EVENTOS).toContain('onSubmit={handleAddTask}')
+  })
+
+  it('Completadas/Historial sigue colapsado por defecto — esta fase solo cambia Preparativos, no esto', () => {
+    expect(EVENTOS).toContain('const [showCompletedTasks, setShowCompletedTasks] = useState(false)')
   })
 })
 

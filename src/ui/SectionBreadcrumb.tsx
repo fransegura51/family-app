@@ -22,28 +22,59 @@ export function sectionForPath(pathname: string): NavTab | null {
   return matches.sort((a, b) => b.to.length - a.to.length)[0]
 }
 
-// Navegación de orientación "Sección / Ubicación actual" — capa puramente aditiva, nunca sustituye la
-// navegación real de cada pantalla (tabs, vistas, deep-links siguen exactamente igual). La sección se
-// resuelve sola a partir de la ruta; la subsección es la única pieza que depende del estado interno de
-// cada pantalla, así que se recibe por prop. Máximo dos niveles siempre — nunca un tercero (petición
-// real: dentro de un evento con un módulo abierto, "Eventos / Boda de plata", nunca "/Invitados").
-export function SectionBreadcrumb({ subsection }: { subsection: string }) {
+// Un nivel del breadcrumb, más allá de la Sección (que siempre se resuelve sola de la ruta). `to` +
+// `state` solo tienen sentido en un nivel que NO es el último: es un destino determinista, nunca basado
+// en volver atrás en el navegador, y el `state` es la misma pieza que `state={{ sectionHome: true }}` ya usaba — un flag
+// que la propia pantalla detecta (useSectionHome / useLocationFlag) para volver a ESE nivel real aunque
+// la ruta no cambie, porque React Router no remonta al navegar a la misma URL en la que ya se está.
+export interface BreadcrumbLevel {
+  label: string
+  to?: string
+  state?: Record<string, boolean>
+}
+
+// Navegación de orientación "Sección / Ubicación actual", o "Sección / Contexto real / Ubicación actual"
+// cuando la propia pantalla tiene un nivel intermedio genuino (hoy solo Eventos: dentro de un evento con
+// un módulo abierto — "Eventos / Boda de plata / Preparativos"). Capa puramente aditiva, nunca sustituye
+// la navegación real de cada pantalla (tabs, vistas, deep-links siguen exactamente igual). La Sección se
+// resuelve sola a partir de la ruta; todo lo demás depende del estado interno de cada pantalla, así que
+// se recibe por `subsection` — un string simple (el caso normal, un único nivel más) o una lista de
+// niveles cuando hace falta más de uno. Nunca un número fijo: cada pantalla aporta los que necesite de
+// verdad, nunca niveles artificiales solo porque técnicamente exista un componente interno.
+export function SectionBreadcrumb({ subsection }: { subsection: string | BreadcrumbLevel[] }) {
   const location = useLocation()
   const section = sectionForPath(location.pathname)
   if (!section) return null
+  const extraLevels: BreadcrumbLevel[] = typeof subsection === 'string' ? [{ label: subsection }] : subsection
+  // state.sectionHome: pulsar la Sección siempre significa "vuelve a tu Inicio real", incluso cuando ya
+  // se está en esa misma ruta (ver useSectionHome) — un <Link> real, sin onClick propio.
+  const levels: BreadcrumbLevel[] = [{ label: section.label, to: section.to, state: { sectionHome: true } }, ...extraLevels]
   return (
-    <nav className="section-breadcrumb" aria-label="Ubicación actual">
-      {/* state.sectionHome: pulsar la sección siempre significa "vuelve a tu Inicio real", incluso
-          cuando ya se está en esa misma ruta (ver useSectionHome) — un <Link> real, sin onClick propio. */}
-      <Link to={section.to} state={{ sectionHome: true }} className="section-breadcrumb-section">
-        {section.label}
-      </Link>
-      <span className="section-breadcrumb-sep" aria-hidden="true">
-        /
-      </span>
-      <span className="section-breadcrumb-current" aria-current="page">
-        {subsection}
-      </span>
+    <nav className="section-breadcrumb" aria-label="Migas de pan">
+      {levels.map((level, i) => {
+        const isCurrent = i === levels.length - 1
+        return (
+          <span className="section-breadcrumb-item" key={`${i}-${level.label}`}>
+            {i > 0 && (
+              <span className="section-breadcrumb-sep" aria-hidden="true">
+                /
+              </span>
+            )}
+            {!isCurrent && level.to ? (
+              <Link to={level.to} state={level.state} className="section-breadcrumb-section">
+                {level.label}
+              </Link>
+            ) : (
+              // El último nivel es la ubicación actual: texto destacado, nunca un enlace (aria-current
+              // marca "estás aquí"). Un nivel intermedio sin `to` (no debería darse hoy) cae también aquí
+              // en vez de romper, con el estilo de enlace pero sin comportamiento — nunca sin etiqueta.
+              <span className={isCurrent ? 'section-breadcrumb-current' : 'section-breadcrumb-section'} aria-current={isCurrent ? 'page' : undefined}>
+                {level.label}
+              </span>
+            )}
+          </span>
+        )
+      })}
     </nav>
   )
 }

@@ -1176,6 +1176,62 @@ select {
   background: #f5f5f5;
 }
 
+/* CORRECCIÓN QUIRÚRGICA — Configuración → Calendario → Categorías. Apilado en móvil (nunca 3 controles
+   forzados en una sola fila sin wrap, que en iPhone desbordaba y dejaba el botón recortado fuera del
+   viewport por el overflow-x:hidden a propósito del <body>, ver arriba en este archivo). En pantallas
+   ≥640px (mismo punto de corte que .modal-sheet) los campos y el botón comparten línea. */
+.calendar-category-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.calendar-category-form-fields {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* El mínimo de encogimiento de un <input> en flexbox NO es 0 por defecto (usa su ancho intrínseco de
+   contenido como suelo) — sin esto, el campo de nombre se niega a encoger en una pantalla estrecha y
+   fuerza el desbordamiento que causaba este bug. */
+.calendar-category-form-fields input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-category-form-submit {
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .calendar-category-form {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .calendar-category-form-fields {
+    flex: 1;
+  }
+  .calendar-category-form-submit {
+    width: auto;
+  }
+}
+
+.calendar-category-emoji-toggle {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
 .checkbox-label {
   flex-direction: row;
   align-items: center;

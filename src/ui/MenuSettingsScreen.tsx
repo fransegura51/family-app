@@ -1,4 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation } from 'react-router-dom'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder, saveTabOrder } from '@/state/tabOrder'
@@ -1049,6 +1050,106 @@ function CalendarPreferencesSection() {
   )
 }
 
+// CORRECCIÓN QUIRÚRGICA — auditoría previa (reutilización): PEPA no tenía ningún selector de emoji
+// reutilizable tal cual — el único picker de emoji real (InvitationDesigner.tsx) está soldado al lienzo
+// de invitaciones (crea una capa arrastrable, no un valor de formulario) y su librería grande
+// (INVITATION_EMOJI_CATEGORIES, domain/events.ts) es para buscar entre cientos de emoji de boda/fiesta —
+// desproporcionado para "elige un icono de categoría". Se construye uno ligero nuevo, pero reutilizando
+// el ÚNICO patrón visual que la app ya usa para "elegir una opción de una lista con una ventana propia"
+// (modal-overlay + modal-sheet + chip, el mismo lenguaje que WhoDropdown/CategoryDropdown en
+// CalendarScreen.tsx) — nunca un componente nuevo de overlay.
+const CALENDAR_CATEGORY_EMOJI_SUGGESTIONS = ['🏥', '🩺', '🏫', '🎒', '⚽', '🎂', '💼', '🏠', '🚗', '✈️', '🎵', '💇', '🐶', '❤️']
+
+function CalendarCategoryEmojiPicker({ value, onChange }: { value: string; onChange: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [custom, setCustom] = useState('')
+
+  function pick(next: string) {
+    onChange(next)
+    setCustom('')
+    setOpen(false)
+  }
+
+  function handleCustomSubmit(e: FormEvent) {
+    e.preventDefault()
+    // stopPropagation es imprescindible: aunque el <div className="modal-overlay"> esté en un portal
+    // (otro punto del DOM), React sigue burbujeando los eventos sintéticos según el árbol de React, no
+    // el del DOM — así que el submit de este formulario interno llegaba también al onSubmit del
+    // formulario exterior (alta o edición de categoría) con el emoji todavía desactualizado (closure
+    // obsoleta), guardando el emoji antiguo en silencio y sin que el usuario lo notara.
+    e.stopPropagation()
+    if (custom.trim()) pick(custom.trim())
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="calendar-category-emoji-toggle"
+        onClick={() => setOpen(true)}
+        aria-label={value ? `Emoji de la categoría: ${value}. Tocar para cambiarlo` : 'Elegir emoji de la categoría'}
+      >
+        {value || '🙂'}
+      </button>
+      {open &&
+        // Portal, no inline: este picker vive dentro del <form> de alta/edición de
+        // categoría, y su propio "Otro emoji" también es un <form> — dos <form>
+        // anidados es HTML inválido y el submit interno burbujeaba hasta disparar
+        // también el onSubmit del formulario exterior (closures con el valor viejo,
+        // por eso el emoji elegido "se perdía" y el acordeón de Calendario se
+        // cerraba). Mismo patrón ya usado en FinanceScreen.tsx para ProductTypesModal.
+        createPortal(
+          <div className="modal-overlay" onClick={() => setOpen(false)}>
+            <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="section-title" style={{ margin: 0 }}>
+                  Elegir emoji
+                </h2>
+                <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+                  ✕
+                </button>
+              </div>
+              <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+                Algunos habituales, o escribe/pega cualquier otro emoji abajo.
+              </p>
+              <div className="filter-row" role="group" aria-label="Emoji sugeridos">
+                {CALENDAR_CATEGORY_EMOJI_SUGGESTIONS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    className={'chip' + (value === e ? ' chip-active' : '')}
+                    style={{ fontSize: 18 }}
+                    onClick={() => pick(e)}
+                    aria-label={`Usar ${e}`}
+                    aria-pressed={value === e}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+              <form onSubmit={handleCustomSubmit} className="inline-fields" style={{ marginTop: 12 }}>
+                <label style={{ flex: 1 }}>
+                  Otro emoji
+                  <input
+                    type="text"
+                    value={custom}
+                    onChange={(e) => setCustom(e.target.value)}
+                    placeholder="Escríbelo o pégalo aquí"
+                    autoFocus
+                  />
+                </label>
+                <button type="submit" disabled={!custom.trim()} style={{ alignSelf: 'flex-end' }}>
+                  Usar este
+                </button>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
 // FASE CALENDARIO — Parte 27: gestión de categorías propias del Calendario (nunca budget_categories ni
 // tags de otro dominio). Crear/editar nombre+emoji+color opcional/borrar — borrar nunca se lleva los
 // Eventos/Tareas que la llevaban (category_id queda en null, on delete set null, migración 0184).
@@ -1062,6 +1163,13 @@ function CalendarCategoryRow({ category, onSaved, onDeleted }: { category: Calen
 
   async function handleSave(e: FormEvent) {
     e.preventDefault()
+    // CORRECCIÓN QUIRÚRGICA — Parte 3: el botón nunca debe parecer que no responde. emoji ya no es un
+    // <input required> nativo (ahora es el selector, ver CalendarCategoryEmojiPicker), así que la
+    // validación se hace aquí, con un mensaje visible — nunca un botón mudo que no explica nada.
+    if (!emoji.trim() || !name.trim()) {
+      setError('Elige un emoji y escribe un nombre para la categoría.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -1092,7 +1200,7 @@ function CalendarCategoryRow({ category, onSaved, onDeleted }: { category: Calen
 
   return (
     <form onSubmit={handleSave} className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-      <input type="text" value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="🩺" style={{ width: 48 }} required />
+      <CalendarCategoryEmojiPicker value={emoji} onChange={setEmoji} />
       <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" style={{ flex: 1, minWidth: 100 }} required />
       <input type="color" value={color || '#9ca3af'} onChange={(e) => setColor(e.target.value)} style={{ width: 40, padding: 0 }} />
       {color && (
@@ -1132,7 +1240,14 @@ function CalendarCategoriesSection() {
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !emoji.trim()) return
+    // CORRECCIÓN QUIRÚRGICA — Parte 3: causa real de "el botón no hace nada" — antes el envío se
+    // ignoraba en silencio si faltaba emoji o nombre, sin ningún aviso (y el propio botón estaba
+    // `disabled` sin explicar por qué, indistinguible de "no funciona"). Ahora SIEMPRE responde: si
+    // falta algo, lo dice.
+    if (!name.trim() || !emoji.trim()) {
+      setError('Elige un emoji y escribe un nombre para la categoría.')
+      return
+    }
     setAdding(true)
     setError(null)
     try {
@@ -1172,11 +1287,19 @@ function CalendarCategoriesSection() {
         ))}
         {categories.length === 0 && <p className="muted">Todavía no hay categorías.</p>}
       </div>
-      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
-        <input type="text" value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="🩺" style={{ width: 48 }} />
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre de la categoría" style={{ flex: 1 }} />
-        <button type="submit" disabled={adding || !name.trim() || !emoji.trim()}>
-          {adding ? 'Creando…' : '+ Añadir'}
+      {/* CORRECCIÓN QUIRÚRGICA — Parte 1: antes esto era un único .inline-fields (flex sin wrap) con 3
+          controles — en iPhone (375px) la suma de sus anchos mínimos no cabía, y como <body> tiene
+          overflow-x:hidden A PROPÓSITO en toda la app (para que nada se desplace de lado), el botón
+          quedaba recortado fuera del viewport en vez de provocar scroll horizontal — ni visible del
+          todo ni, en la práctica, tocable. Apilado en móvil (campos arriba, botón ancho completo
+          abajo); en pantallas ≥640px (mismo punto de corte que .modal-sheet) vuelve a la línea. */}
+      <form onSubmit={handleAdd} className="calendar-category-form">
+        <div className="calendar-category-form-fields">
+          <CalendarCategoryEmojiPicker value={emoji} onChange={setEmoji} />
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre de la categoría" />
+        </div>
+        <button type="submit" className="calendar-category-form-submit" disabled={adding}>
+          {adding ? 'Creando…' : '+ Añadir categoría'}
         </button>
       </form>
       {error && <p className="error">{error}</p>}

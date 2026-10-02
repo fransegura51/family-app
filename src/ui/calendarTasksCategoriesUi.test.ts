@@ -261,8 +261,8 @@ describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, sal
     expect(TIME_GRID).toContain('time-grid-tasks-row')
   })
 
-  it('FamilyDayView nunca filtra por kind — agrupa por miembro, Eventos y Tareas conviven en la misma columna', () => {
-    expect(FAMILY_VIEW).not.toMatch(/e\.kind\s*===|ev\.kind\s*===/)
+  it('FamilyDayView agrupa primero por miembro (columnas), y RETOQUE: dentro de cada columna separa a propósito Eventos de Tareas (groupEventsAndTasks, misma función que DayEntriesBody) — ya no las mezcla', () => {
+    expect(FAMILY_VIEW).toContain('groupEventsAndTasks(col.events, taskOrder)')
   })
 
   it('Personal filtra por MI miembro O por ser privado mío (shouldIncludeInPersonal), nunca por kind — Eventos y Tareas propios conviven', () => {
@@ -378,5 +378,88 @@ describe('Inicio — la diapositiva "Hoy en el calendario" también lleva 🔒 e
 
   it('no añade ningún filtro SQL por visibility (RLS ya resuelve quién llega aquí: un privado de otro miembro nunca aparece en esta consulta)', () => {
     expect(SLIDE).not.toMatch(/\.eq\(.visibility/)
+  })
+})
+
+describe('CALENDARIO — SIGUIENTE FASE: compactación de Familiar (EventCard), sin perder info importante', () => {
+  const CARD = slice(CALENDAR_SRC, 'function EventCard({', 'function MemberFilterDropdown(')
+
+  // CASO H — la fecha ya aparece arriba de la vista Familiar ("lunes, 5 de octubre"); repetirla
+  // dentro de cada tarjeta era la redundancia más grande. Ya no debe llamarse a
+  // toLocaleString con dateStyle (el patrón que repetía la fecha completa).
+  it('no repite la fecha dentro de la tarjeta (ya no usa dateStyle)', () => {
+    expect(CARD).not.toContain('dateStyle')
+    expect(CARD).toContain('entryTimeLabel({')
+  })
+
+  // CASO I — el avatar de la persona ya está en la cabecera de su columna (family-view-column-header).
+  it('no repite el avatar de la persona dentro de la tarjeta (sin member-chips ni MemberAvatar)', () => {
+    expect(CARD).not.toContain('member-chips')
+    expect(CARD).not.toContain('MemberAvatar')
+    expect(CARD).not.toContain('memberById')
+  })
+
+  // CASO J — varios recordatorios se resumen en un solo 🔔, nunca la lista completa en texto.
+  it('con recordatorios muestra solo 🔔 (nunca la lista de reminderLabel por cada uno)', () => {
+    expect(CARD).toContain("ev.reminders.length > 0 && ' · 🔔'")
+    expect(CARD).not.toMatch(/reminders\.map\(\(r\) => reminderLabel/)
+  })
+
+  // CASO K — ubicación resumida + enlace de mapa, nunca la dirección postal completa en la tarjeta.
+  it('ubicación: nombre resumido (shortLocationLabel) + "Ver mapa", nunca el locationLabel completo suelto', () => {
+    expect(CARD).toContain('shortLocationLabel(ev.locationLabel)')
+    expect(CARD).toContain('Ver mapa')
+    expect(CARD).not.toContain('Ver en el mapa')
+    expect(CARD).not.toMatch(/📍 \{ev\.locationLabel\}(?!\s*\?)/)
+  })
+
+  // CASO L — el mismo CompletionCircle compartido con el resto de Calendario (ya cubierto en el
+  // describe "Familiar — corrección de bug de auditoría", se repite aquí como parte del mismo
+  // paquete de pruebas de esta fase).
+  it('completado: sigue siendo el mismo CompletionCircle compartido, no un círculo propio de Familiar', () => {
+    expect(CARD).toContain('<CompletionCircle done={done} color={color} onComplete={onComplete} onUncomplete={onUncomplete} />')
+  })
+
+  // CASO M — Editar/Compartir/Borrar con icono + aria-label/title accesibles, reutilizando el mismo
+  // icono de compartir (📤) que ya usaba PEPA aquí — nunca uno nuevo.
+  it('Editar/Borrar pasan a icono (✏️/✕) con aria-label y title — Compartir reutiliza el icono 📤 ya existente, ninguno nuevo', () => {
+    expect(CARD).toContain('onClick={onEdit} aria-label="Editar" title="Editar"')
+    expect(CARD).toContain('>\n          ✏️')
+    expect(CARD).toContain('aria-label="Borrar" title="Borrar"')
+    expect(CARD).toContain('>\n            ✕')
+    expect(CARD).toContain('aria-label="Compartir" title="Compartir"')
+    expect(CARD).toContain('📤')
+  })
+
+  it('los tres botones de acción reutilizan la MISMA clase .icon-button-share (mismo tamaño/borde/grosor), ninguno inventa una clase nueva', () => {
+    const iconButtonCount = (CARD.match(/className="icon-button-share"/g) ?? []).length
+    expect(iconButtonCount).toBeGreaterThanOrEqual(3) // Editar + Borrar (disparador inicial) + Compartir
+  })
+
+  // CASO N — el candado de privado se conserva tal cual (sin tocar esa lógica ya validada).
+  it('privado: conserva el 🔒 delante del título, sin cambios', () => {
+    expect(CARD).toContain("{ev.visibility === 'private' && '🔒 '}")
+  })
+
+  // El sub-flujo de confirmación de borrado (recurrencia: solo este día / toda la serie) no se ha
+  // tocado — solo cambió su disparador inicial (✕ en vez de "Borrar").
+  it('el sub-flujo de confirmar borrado (solo un día / toda la serie / cancelar) sigue intacto', () => {
+    expect(CARD).toContain('Borrar ese día')
+    expect(CARD).toContain("{ev.recurrenceRule ? 'Toda la serie' : 'Borrar'}")
+    expect(CARD).toContain('Solo un día')
+  })
+})
+
+describe('CALENDARIO — SIGUIENTE FASE: bloques "Eventos"/"Tareas" en todas las vistas de detalle (Parte 1)', () => {
+  it('DayEntriesBody (Mes/Vista general/Semana/3 días/Día/Agenda/Personal) agrupa con groupEventsAndTasks y pinta un encabezado por grupo no vacío', () => {
+    const body = slice(CALENDAR_SRC, 'function DayEntriesBody({', 'function FamilyDayView({')
+    expect(body).toContain('groupEventsAndTasks(entries, taskOrder)')
+    expect(body).toContain('group.items.length > 0 && (')
+    expect(body).toContain('<div className="calendar-section-header">{group.label}</div>')
+  })
+
+  it('las 3 llamadas a DayModal (Mes/Vista general/Semana-3días-Día) y AgendaListView/PersonalView/FamilyDayView pasan taskOrder — ninguna preferencia nueva, reutilizan calendarPrefs.taskOrder', () => {
+    const count = (CALENDAR_SRC.match(/taskOrder=\{calendarPrefs\.taskOrder\}/g) ?? []).length
+    expect(count).toBe(6) // 3x DayModal + AgendaListView + PersonalView + FamilyDayView
   })
 })

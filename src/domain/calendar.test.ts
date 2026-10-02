@@ -12,6 +12,9 @@ import {
   findScheduleWarnings,
   groupScheduleWarnings,
   shouldIncludeInPersonal,
+  groupEventsAndTasks,
+  entryTimeLabel,
+  shortLocationLabel,
   type ScheduleEvent,
 } from '@/domain/calendar'
 
@@ -466,5 +469,112 @@ describe('shouldIncludeInPersonal — "lo mío" en Personal: asignado a mí, O p
 
   it('sin miembro propio enlazado (myMemberId null) + privado → SÍ se incluye igualmente (la privacidad no depende de tener miembro enlazado)', () => {
     expect(shouldIncludeInPersonal({ visibility: 'private', memberIds: [] }, null)).toBe(true)
+  })
+})
+
+// RETOQUE (CALENDARIO — SIGUIENTE FASE, 2026-10-02): Eventos y Tareas son bloques visuales
+// distintos en TODAS las vistas de detalle de un día, con el orden de la preferencia YA existente
+// (taskOrder). Cubre los casos A/B/C/D del informe: orden por defecto, orden inverso, día con solo
+// eventos (bloque Tareas vacío), día con solo tareas (bloque Eventos vacío).
+describe('groupEventsAndTasks — Eventos y Tareas en bloques separados, orden según taskOrder', () => {
+  const event1 = { kind: 'event' as const, id: 'e1' }
+  const event2 = { kind: 'event' as const, id: 'e2' }
+  const task1 = { kind: 'task' as const, id: 't1' }
+  const external = { kind: undefined, id: 'ext1' } // sin kind — externos/cumpleaños cuentan como "Eventos", nunca Tareas
+
+  // CASO A — orden por defecto: Eventos primero, Tareas después.
+  it('"eventos_primero" (default): el primer grupo es Eventos, el segundo Tareas', () => {
+    const groups = groupEventsAndTasks([event1, task1], 'eventos_primero')
+    expect(groups.map((g) => g.label)).toEqual(['Eventos', 'Tareas'])
+    expect(groups[0].items).toEqual([event1])
+    expect(groups[1].items).toEqual([task1])
+  })
+
+  // CASO B — preferencia inversa: Tareas primero, Eventos después.
+  it('"tareas_primero": el primer grupo es Tareas, el segundo Eventos — mismos items, solo cambia el orden', () => {
+    const groups = groupEventsAndTasks([event1, task1], 'tareas_primero')
+    expect(groups.map((g) => g.label)).toEqual(['Tareas', 'Eventos'])
+    expect(groups[0].items).toEqual([task1])
+    expect(groups[1].items).toEqual([event1])
+  })
+
+  // CASO C — día con solo eventos: el grupo Tareas existe pero vacío (el llamador no lo pinta).
+  it('solo eventos: el grupo Tareas queda vacío, el de Eventos con todos', () => {
+    const groups = groupEventsAndTasks([event1, event2, external], 'eventos_primero')
+    const tasks = groups.find((g) => g.label === 'Tareas')!
+    const events = groups.find((g) => g.label === 'Eventos')!
+    expect(tasks.items).toEqual([])
+    expect(events.items).toEqual([event1, event2, external])
+  })
+
+  // CASO D — día con solo tareas: el grupo Eventos existe pero vacío.
+  it('solo tareas: el grupo Eventos queda vacío, el de Tareas con todas', () => {
+    const groups = groupEventsAndTasks([task1], 'eventos_primero')
+    const events = groups.find((g) => g.label === 'Eventos')!
+    const tasks = groups.find((g) => g.label === 'Tareas')!
+    expect(events.items).toEqual([])
+    expect(tasks.items).toEqual([task1])
+  })
+
+  it('un externo/cumpleaños (sin kind) nunca cuenta como Tarea', () => {
+    const groups = groupEventsAndTasks([external], 'eventos_primero')
+    expect(groups.find((g) => g.label === 'Eventos')!.items).toEqual([external])
+    expect(groups.find((g) => g.label === 'Tareas')!.items).toEqual([])
+  })
+})
+
+// Cubre los casos E/F/G: una Tarea nunca se representa como "Todo el día" (aunque internamente siga
+// guardándose con all_day=true), un Evento de todo el día de verdad lo sigue mostrando, y un Evento
+// con hora sigue mostrando su hora — mismo criterio que ya usaba TimeGridView para su franja
+// "Tareas", ahora centralizado para que CUALQUIER vista lo use igual.
+describe('entryTimeLabel — una Tarea nunca es "Todo el día"', () => {
+  // CASO E
+  it('Tarea (kind="task"), aunque allDay sea true: "Tarea", nunca "Todo el día"', () => {
+    expect(entryTimeLabel({ kind: 'task', allDay: true, startTime: null, endTime: null })).toBe('Tarea')
+  })
+
+  it('Tarea con startTime/endTime "heredados" (no debería pasar, pero por si acaso): sigue siendo "Tarea"', () => {
+    expect(entryTimeLabel({ kind: 'task', allDay: true, startTime: '10:00', endTime: '11:00' })).toBe('Tarea')
+  })
+
+  // CASO F
+  it('Evento de todo el día de verdad (kind="event", allDay=true): "Todo el día"', () => {
+    expect(entryTimeLabel({ kind: 'event', allDay: true, startTime: null, endTime: null })).toBe('Todo el día')
+  })
+
+  it('cumpleaños/externo (sin kind, allDay=true): también "Todo el día" — nunca "Tarea"', () => {
+    expect(entryTimeLabel({ allDay: true, startTime: null, endTime: null })).toBe('Todo el día')
+  })
+
+  // CASO G
+  it('Evento con hora de inicio y fin: "HH:mm – HH:mm"', () => {
+    expect(entryTimeLabel({ kind: 'event', allDay: false, startTime: '16:30', endTime: '17:30' })).toBe('16:30 – 17:30')
+  })
+
+  it('Evento con hora de inicio, sin hora de fin: solo la hora de inicio', () => {
+    expect(entryTimeLabel({ kind: 'event', allDay: false, startTime: '16:30', endTime: null })).toBe('16:30')
+  })
+
+  it('sin hora ni allDay (caso borde): null, no una cadena vacía', () => {
+    expect(entryTimeLabel({ kind: 'event', allDay: false, startTime: null, endTime: null })).toBeNull()
+  })
+})
+
+// Caso K — Familiar muestra el nombre del sitio resumido, nunca la dirección postal completa
+// guardada (que PRIORIZA la dirección completa, ver services/geocoding.ts) — puramente de
+// presentación, el dato guardado (locationLabel) nunca se reescribe.
+describe('shortLocationLabel — nombre corto del sitio, nunca la dirección postal completa', () => {
+  it('dirección completa con comas: se queda solo con el primer segmento', () => {
+    expect(shortLocationLabel('Colegio Trinitario Seva II, Avenida de la Estación, Rafal, Alicante, España')).toBe(
+      'Colegio Trinitario Seva II',
+    )
+  })
+
+  it('nombre corto ya sin comas: se queda igual', () => {
+    expect(shortLocationLabel('Colegio Trinitario Seva II')).toBe('Colegio Trinitario Seva II')
+  })
+
+  it('espacios alrededor de la coma no dejan rastro', () => {
+    expect(shortLocationLabel('Farmacia Rafal  ,  Calle Mayor 3, Rafal')).toBe('Farmacia Rafal')
   })
 })

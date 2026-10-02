@@ -4932,6 +4932,24 @@ textarea {
   border-radius: 8px;
 }
 
+/* RETOQUE (PRUEBAS MANUALES REALES EN IPHONE, Parte 1) — encabezado ligero y reutilizable para
+   separar los bloques "Eventos"/"Tareas" dentro del detalle de un día: deliberadamente más discreto
+   que .agenda-day-header (esa es la cabecera del DÍA entero en Agenda; esta es una sub-sección
+   dentro del detalle, nunca compite en peso visual con ella). Compartido entre DayEntriesBody
+   (Mes/Vista general/Semana/3 días/Día/Agenda/Personal) y cada columna de FamilyDayView.*/
+.calendar-section-header {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 12px 2px 6px;
+}
+
+.calendar-section-header:first-child {
+  margin-top: 0;
+}
+
 .family-view-columns {
   display: flex;
   gap: 10px;

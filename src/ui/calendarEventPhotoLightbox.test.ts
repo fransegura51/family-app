@@ -120,7 +120,7 @@ describe('6. reutilización real: un único visor, una única función de URL fi
     expect((SRC.match(/async function getEventAttachmentUrl|function getEventAttachmentUrl/g) ?? []).length).toBe(0) // no se reimplementa en este archivo, solo se importa
   })
   it('EventAttachmentPhoto (EventCard/Vista Familiar) usa PhotoLightbox: el mismo visor, no uno nuevo', () => {
-    const cardBlock = body(SRC, 'function EventCard({', "className=\"member-chips\"")
+    const cardBlock = body(SRC, 'function EventCard({', 'className="member-card-actions"')
     expect(cardBlock).toContain('<EventAttachmentPhoto storagePath={ev.attachmentStoragePath} onClick={() => setShowingPhoto(true)} />')
     expect(cardBlock).toContain('<PhotoLightbox storagePath={ev.attachmentStoragePath} onClose={() => setShowingPhoto(false)} />')
   })

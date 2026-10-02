@@ -34,6 +34,7 @@ import {
   type CalendarColorMode,
   type CalendarPreferences,
   type CalendarTaskCompletionPrefs,
+  type CalendarTaskOrder,
   type EventCompletion,
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
@@ -66,13 +67,16 @@ import {
   type GoogleCalendarStatus,
 } from '@/data/googleCalendarSync'
 import {
+  entryTimeLabel,
   eventDotColors,
   expandOccurrences,
   getMonthGridDays,
+  groupEventsAndTasks,
   isWeekend,
   MONTH_LABELS,
   occurrenceAt,
   readableTextColor,
+  shortLocationLabel,
   shouldIncludeInPersonal,
   WEEKDAY_LABELS,
 } from '@/domain/calendar'
@@ -929,6 +933,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             events={events}
             members={members}
             categories={categories}
+            taskOrder={calendarPrefs.taskOrder}
             editingId={editingId}
             onCancelEdit={() => setEditingId(null)}
             onEventChanged={() => {
@@ -1009,6 +1014,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             events={events}
             members={members}
             categories={categories}
+            taskOrder={calendarPrefs.taskOrder}
             editingId={editingId}
             onCancelEdit={() => setEditingId(null)}
             onEventChanged={() => {
@@ -1027,6 +1033,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           events={events}
           members={members}
           categories={categories}
+          taskOrder={calendarPrefs.taskOrder}
           editingId={editingId}
           onCancelEdit={() => setEditingId(null)}
           onEventChanged={() => {
@@ -1045,6 +1052,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           categoryColorById={categoryColorById}
           colorMode={calendarPrefs.colorMode}
           taskCompletion={calendarPrefs.taskCompletion}
+          taskOrder={calendarPrefs.taskOrder}
           dayEvents={eventsByDate.get(selectedDate) ?? []}
           eventCompletions={eventCompletions}
           editingId={editingId}
@@ -1074,6 +1082,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           events={events}
           members={members}
           categories={categories}
+          taskOrder={calendarPrefs.taskOrder}
           editingId={editingId}
           onCancelEdit={() => setEditingId(null)}
           onEventChanged={() => {
@@ -1121,6 +1130,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             events={events}
             members={members}
             categories={categories}
+            taskOrder={calendarPrefs.taskOrder}
             editingId={editingId}
             onCancelEdit={() => setEditingId(null)}
             onEventChanged={() => {
@@ -1371,6 +1381,7 @@ function DayModal({
   events,
   members,
   categories,
+  taskOrder,
   editingId,
   onCancelEdit,
   onEventChanged,
@@ -1383,6 +1394,7 @@ function DayModal({
   events: CalendarEvent[]
   members: FamilyMember[]
   categories: CalendarCategory[]
+  taskOrder: CalendarTaskOrder
   editingId: string | null
   onCancelEdit: () => void
   onEventChanged: () => void
@@ -1424,6 +1436,7 @@ function DayModal({
         events={events}
         members={members}
         categories={categories}
+        taskOrder={taskOrder}
         onEventChanged={onEventChanged}
         onCancelEdit={onCancelEdit}
         onManageCategories={onManageCategories}
@@ -1442,6 +1455,7 @@ function DayEntriesBody({
   events,
   members,
   categories,
+  taskOrder,
   onEventChanged,
   onCancelEdit,
   emptyLabel = 'Nada este día.',
@@ -1452,14 +1466,12 @@ function DayEntriesBody({
   events: CalendarEvent[]
   members: FamilyMember[]
   categories: CalendarCategory[]
+  taskOrder: CalendarTaskOrder
   onEventChanged: () => void
   onCancelEdit: () => void
   emptyLabel?: string
   onManageCategories: () => void
 }) {
-  const allDayEntries = entries.filter((e) => e.allDay)
-  const timedEntries = entries.filter((e) => !e.allDay)
-
   function renderCard(entry: AgendaEntry) {
     if (editingId === entry.id) {
       const ev = events.find((e) => e.id === entry.id)!
@@ -1478,28 +1490,31 @@ function DayEntriesBody({
     return <AgendaRow key={entry.key} entry={entry} />
   }
 
+  // RETOQUE (Parte 1) — Eventos y Tareas son bloques visuales distintos, con su propio encabezado,
+  // en vez de una sola lista mezclada (antes: "todo el día" primero, con hora después, sin mirar
+  // kind — una Tarea, siempre all_day, se colaba entre los Eventos de todo el día de verdad). El
+  // orden de los dos bloques respeta calendarPrefs.taskOrder (la preferencia YA existente, nunca una
+  // nueva); dentro del bloque "Eventos" se conserva el orden de siempre (todo el día antes que con
+  // hora: ya venía así en `entries`, groupEventsAndTasks solo filtra, nunca reordena). Un bloque sin
+  // nada no se pinta — ni su encabezado ni el bloque vacío.
+  const groups = groupEventsAndTasks(entries, taskOrder)
+
   return (
     <>
       {entries.length === 0 && <p className="muted">{emptyLabel}</p>}
 
-      {/* Un solo bloque por día (petición real, junto a la maqueta
-          aprobada: "eventos del mismo día unidos" en vez de una
-          pastilla suelta por evento) — los cumpleaños y demás eventos
-          "todo el día" comparten ahora el mismo formato de fila que
-          los que tienen hora (petición real: "a los cumples hay que
-          cambiarles el formato también"), en vez de la antigua pastilla
-          de color entero con "Hecho"/✕ sueltos. Se distinguen con
-          "Todo el día" en el mismo hueco donde las demás llevan la
-          hora, en vez de una etiqueta aparte arriba del grupo. */}
-      {(allDayEntries.length > 0 || timedEntries.length > 0) && (
-        <div className="agenda-day-block">
-          {allDayEntries.map((entry) => (
-            <div key={entry.key}>{renderCard(entry)}</div>
-          ))}
-          {timedEntries.map((entry) => (
-            <div key={entry.key}>{renderCard(entry)}</div>
-          ))}
-        </div>
+      {groups.map(
+        (group) =>
+          group.items.length > 0 && (
+            <div key={group.label}>
+              <div className="calendar-section-header">{group.label}</div>
+              <div className="agenda-day-block">
+                {group.items.map((entry) => (
+                  <div key={entry.key}>{renderCard(entry)}</div>
+                ))}
+              </div>
+            </div>
+          ),
       )}
     </>
   )
@@ -1518,6 +1533,7 @@ function FamilyDayView({
   categoryColorById,
   colorMode,
   taskCompletion,
+  taskOrder,
   dayEvents,
   eventCompletions,
   editingId,
@@ -1541,6 +1557,7 @@ function FamilyDayView({
   categoryColorById: Map<string, string>
   colorMode: CalendarColorMode
   taskCompletion: CalendarTaskCompletionPrefs
+  taskOrder: CalendarTaskOrder
   dayEvents: CalendarEvent[]
   eventCompletions: EventCompletion[]
   editingId: string | null
@@ -1586,7 +1603,6 @@ function FamilyDayView({
         key={ev.id}
         event={ev}
         color={effectiveEntryColor(ev.kind, baseColor, done, taskCompletion)}
-        memberById={memberById}
         categoryById={categoryById}
         done={done}
         strikethrough={shouldStrikethroughEntry(ev.kind, done, taskCompletion)}
@@ -1640,7 +1656,18 @@ function FamilyDayView({
             {col.events.length === 0 ? (
               <p className="muted">No hay eventos</p>
             ) : (
-              col.events.map((ev) => renderEvent(ev))
+              // RETOQUE (Parte 1/4) — misma regla transversal que DayEntriesBody: Eventos y Tareas
+              // son bloques distintos dentro de cada columna, con el mismo orden configurado
+              // (calendarPrefs.taskOrder), un encabezado solo cuando ese bloque tiene algo.
+              groupEventsAndTasks(col.events, taskOrder).map(
+                (group) =>
+                  group.items.length > 0 && (
+                    <div key={group.label}>
+                      <div className="calendar-section-header">{group.label}</div>
+                      {group.items.map((ev) => renderEvent(ev))}
+                    </div>
+                  ),
+              )
             )}
           </div>
         ))}
@@ -1665,6 +1692,7 @@ function PersonalView({
   events,
   members,
   categories,
+  taskOrder,
   editingId,
   onCancelEdit,
   onEventChanged,
@@ -1683,6 +1711,7 @@ function PersonalView({
   events: CalendarEvent[]
   members: FamilyMember[]
   categories: CalendarCategory[]
+  taskOrder: CalendarTaskOrder
   editingId: string | null
   onCancelEdit: () => void
   onEventChanged: () => void
@@ -1741,6 +1770,7 @@ function PersonalView({
           events={events}
           members={members}
           categories={categories}
+          taskOrder={taskOrder}
           onEventChanged={onEventChanged}
           onCancelEdit={onCancelEdit}
           emptyLabel="Nada tuyo este día."
@@ -2100,6 +2130,7 @@ function AgendaListView({
   events,
   members,
   categories,
+  taskOrder,
   editingId,
   onCancelEdit,
   onEventChanged,
@@ -2110,6 +2141,7 @@ function AgendaListView({
   events: CalendarEvent[]
   members: FamilyMember[]
   categories: CalendarCategory[]
+  taskOrder: CalendarTaskOrder
   editingId: string | null
   onCancelEdit: () => void
   onEventChanged: () => void
@@ -2148,6 +2180,7 @@ function AgendaListView({
             events={events}
             members={members}
             categories={categories}
+            taskOrder={taskOrder}
             onEventChanged={onEventChanged}
             onCancelEdit={onCancelEdit}
             emptyLabel="Nada hoy."
@@ -2364,20 +2397,11 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
           </span>
           <span className="agenda-row-meta">
             <span className="agenda-row-sub">{entry.locationLabel ? `📍 ${entry.locationLabel}` : entry.subtitle}</span>
-            {/* "Todo el día" ocupa el mismo hueco que la hora en las
-                demás filas (petición real: "pon 'todo el día' donde en
-                los demás viene la hora") en vez de una etiqueta aparte
-                arriba del grupo. */}
-            <span className="agenda-row-time">
-              {entry.allDay
-                ? 'Todo el día'
-                : (entry.startTime || entry.endTime) && (
-                    <>
-                      {entry.startTime}
-                      {entry.endTime && ` – ${entry.endTime}`}
-                    </>
-                  )}
-            </span>
+            {/* "Todo el día"/"Tarea" ocupa el mismo hueco que la hora en las demás filas (petición
+                real: "pon 'todo el día' donde en los demás viene la hora") en vez de una etiqueta
+                aparte arriba del grupo. RETOQUE (Parte 2): una Tarea nunca se representa como "Todo
+                el día" (entryTimeLabel), aunque siga guardándose con all_day=true por compatibilidad. */}
+            <span className="agenda-row-time">{entryTimeLabel(entry)}</span>
           </span>
         </button>
         {entry.attachmentKind === 'foto' && entry.attachmentStoragePath && (
@@ -2500,7 +2524,6 @@ function EventAttachmentFileLink({ storagePath, name }: { storagePath: string; n
 function EventCard({
   event: ev,
   color,
-  memberById,
   categoryById,
   done = false,
   strikethrough,
@@ -2518,7 +2541,6 @@ function EventCard({
   // (FamilyDayView) resuelve el color con la misma eventColor() de siempre y lo pasa ya hecho aquí, para
   // que ninguna vista tenga su propia regla aparte.
   color: string
-  memberById: Map<string, FamilyMember>
   categoryById?: Map<string, CalendarCategory>
   // BUG CALENDARIO-15 (auditoría): esta tarjeta (Vista Familiar) no ofrecía "Hecho" aunque
   // calendar_event_completions ya existiera y DayModal/Agenda sí lo usaran — mismo motor, mismo
@@ -2564,26 +2586,28 @@ function EventCard({
         {ev.categoryId && categoryById?.get(ev.categoryId) ? `${categoryById.get(ev.categoryId)!.emoji} ` : ''}
         {ev.title}
       </strong>
+      {/* RETOQUE (Parte 4.1/4.3) — compactación de Familiar: la fecha ya aparece arriba del todo
+          ("lunes, 5 de octubre"), repetirla aquí dentro de cada tarjeta era la info redundante más
+          grande de la tarjeta — ahora solo la hora/"Todo el día"/"Tarea" (entryTimeLabel, misma
+          regla transversal que el resto de vistas). Los recordatorios, antes listados en texto
+          completo ("10 minutos antes de que empiece, 1 hora antes..."), se resumen en un solo 🔔 — el
+          detalle completo sigue disponible al editar. */}
       <p className="muted">
-        {new Date(ev.startAt).toLocaleString('es-ES', {
-          dateStyle: 'medium',
-          timeStyle: ev.allDay ? undefined : 'short',
-        })}
-        {!ev.allDay &&
-          ev.endAt &&
-          ` – ${new Date(ev.endAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`}
+        {entryTimeLabel({ kind: ev.kind, allDay: ev.allDay, startTime: ev.allDay ? null : hhmm(ev.startAt), endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null })}
         {ev.recurrenceRule && ` · ${recurrenceLabel(ev.recurrenceRule)}`}
-        {ev.reminders.length > 0 &&
-          ` · 🔔 ${ev.reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}`}
+        {ev.reminders.length > 0 && ' · 🔔'}
       </p>
+      {/* RETOQUE (Parte 4.4) — locationLabel puede ser una dirección postal completa (prioriza la
+          dirección, ver services/geocoding.ts): aquí se enseña solo el primer segmento
+          (shortLocationLabel, puramente de presentación, el dato guardado no cambia). */}
       {(ev.locationLabel || mapsUrl) && (
         <p className="muted">
-          📍 {ev.locationLabel}
+          📍 {ev.locationLabel ? shortLocationLabel(ev.locationLabel) : ''}
           {mapsUrl && (
             <>
-              {' '}
+              {ev.locationLabel ? ' · ' : ''}
               <a href={mapsUrl} target="_blank" rel="noreferrer">
-                Ver en el mapa
+                Ver mapa
               </a>
             </>
           )}
@@ -2593,13 +2617,9 @@ function EventCard({
         <EventAttachmentFileLink storagePath={ev.attachmentStoragePath} name={ev.attachmentOriginalName} />
       )}
       {ev.note && <p className="muted">📝 {ev.note}</p>}
-      <div className="member-chips">
-        {ev.memberIds.map((id) => {
-          const m = memberById.get(id)
-          if (!m) return null
-          return <MemberAvatar key={id} member={m} size={24} />
-        })}
-      </div>
+      {/* RETOQUE (Parte 4.2) — el avatar de esta persona ya está en la cabecera de su columna
+          (family-view-column-header); repetirlo en cada tarjeta era redundante, se quita de aquí sin
+          tocar el avatar de la cabecera. */}
       <div className="member-card-actions">
         {/* AgendaRow apoya este mismo círculo sobre su propia franja de color (.agenda-stripe) para que
             el aro blanco/check de color contrasten — aquí, sin franja, se envuelve en un fondo del
@@ -2609,17 +2629,22 @@ function EventCard({
             <CompletionCircle done={done} color={color} onComplete={onComplete} onUncomplete={onUncomplete} />
           </span>
         )}
-        <button type="button" className="link-button" onClick={onEdit}>
-          Editar
+        {/* RETOQUE (Parte 5) — "Editar"/"Borrar" en palabras pasan a icono (✏️/✕), igual formato
+            compacto que 📤 (el mismo icono de compartir que PEPA ya usa aquí, sin inventar uno
+            nuevo) — reutiliza la MISMA clase .icon-button-share (mismo tamaño/borde/grosor), con su
+            aria-label/title propios. El sub-flujo de confirmación de borrado (¿Seguro?/Solo un
+            día/Toda la serie/Cancelar) no se toca, solo su disparador inicial. */}
+        <button type="button" className="icon-button-share" onClick={onEdit} aria-label="Editar" title="Editar">
+          ✏️
         </button>
         {onShare && (
-          <button type="button" className="icon-button-share" onClick={onShare} aria-label="Compartir">
+          <button type="button" className="icon-button-share" onClick={onShare} aria-label="Compartir" title="Compartir">
             📤
           </button>
         )}
         {!confirming ? (
-          <button type="button" className="link-button" onClick={() => setConfirming(true)}>
-            Borrar
+          <button type="button" className="icon-button-share" onClick={() => setConfirming(true)} aria-label="Borrar" title="Borrar">
+            ✕
           </button>
         ) : pickingDay ? (
           <>

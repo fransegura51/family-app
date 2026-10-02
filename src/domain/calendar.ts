@@ -437,6 +437,56 @@ export function shouldIncludeInPersonal(event: { visibility: 'shared' | 'private
   return !!myMemberId && event.memberIds.includes(myMemberId)
 }
 
+// RETOQUE (PRUEBAS MANUALES REALES EN IPHONE, 2026-10-02) — regla transversal para TODAS las
+// vistas internas de Calendario que muestran el detalle de un día: un Evento y una Tarea son
+// bloques visuales DISTINTOS, nunca mezclados en una sola lista. "eventos_primero"/"tareas_primero"
+// (la misma preferencia ya existente, ver CalendarTaskOrder en data/calendar.ts — nunca una
+// preferencia nueva) decide solo el ORDEN de los dos bloques, no si se muestran: un bloque vacío
+// nunca se muestra (el llamador comprueba items.length > 0 antes de pintar su encabezado). El tipo
+// de la preferencia se repite aquí en línea, literal por literal, por la misma razón que el resto
+// del archivo: sin ninguna dependencia de data/calendar.ts.
+export interface EventTaskGroup<T> {
+  label: 'Eventos' | 'Tareas'
+  items: T[]
+}
+
+export function groupEventsAndTasks<T extends { kind?: 'event' | 'task' }>(
+  items: T[],
+  taskOrder: 'eventos_primero' | 'tareas_primero',
+): EventTaskGroup<T>[] {
+  const events = items.filter((i) => i.kind !== 'task')
+  const tasks = items.filter((i) => i.kind === 'task')
+  const groups: EventTaskGroup<T>[] = [
+    { label: 'Eventos', items: events },
+    { label: 'Tareas', items: tasks },
+  ]
+  return taskOrder === 'tareas_primero' ? groups.reverse() : groups
+}
+
+// Representación compacta de "cuándo" para un apunte de Calendario — regla transversal (Parte 2):
+// una Tarea NUNCA se representa como "Todo el día" (ese texto es solo para un Evento de día
+// completo de verdad), aunque internamente siga guardándose con all_day=true por compatibilidad —
+// ver TimeGridView, que ya aplicaba exactamente este mismo criterio para su franja "Tareas".
+export function entryTimeLabel(
+  entry: { kind?: 'event' | 'task'; allDay: boolean; startTime: string | null; endTime: string | null },
+): string | null {
+  if (entry.kind === 'task') return 'Tarea'
+  if (entry.allDay) return 'Todo el día'
+  if (!entry.startTime && !entry.endTime) return null
+  return entry.endTime ? `${entry.startTime ?? ''} – ${entry.endTime}` : entry.startTime
+}
+
+// Representación compacta de una ubicación guardada (Parte 4.4, vista Familiar) — `locationLabel`
+// puede ser un nombre corto ("Colegio Trinitario Seva II") o una dirección completa con comas
+// (resultado de "Buscar en el mapa"/"Usar mi ubicación actual", que PRIORIZAN la dirección
+// completa — ver services/geocoding.ts). No hay un campo "nombre corto" guardado aparte, así que
+// esto es puramente de presentación: el primer segmento antes de la coma, igual en ambos casos
+// (un nombre corto sin comas se queda tal cual). Nunca se toca ni se reescribe el dato guardado.
+export function shortLocationLabel(locationLabel: string): string {
+  const [first] = locationLabel.split(',')
+  return first.trim() || locationLabel
+}
+
 export const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 export const MONTH_LABELS = [

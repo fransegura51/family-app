@@ -43,9 +43,9 @@ export async function listPlaces(): Promise<LocationPlace[]> {
 }
 
 // Avisos de llegada/salida por lugar, estilo Google Maps (petición real: "lo quiero así") — por
-// dentro gestiona dos automation_rules ocultas (ver AutomationWatcher.tsx, que ya sabía evaluar
-// "llegada"/"salida" — así no hace falta reinventar la detección, solo dar un interruptor más
-// sencillo que crear una regla a mano). Los mensajes usan {miembro}/{lugar}: AutomationWatcher los
+// dentro gestiona dos automation_rules ocultas (las evalúa la base de datos en el instante en que se
+// guarda una posición, ver migración 0186_server_side_automations.sql — solo se da un interruptor más
+// sencillo que crear una regla a mano). Los mensajes usan {miembro}/{lugar}: el servidor los
 // sustituye al disparar, así que cambiar el nombre del lugar más tarde no deja el aviso
 // desactualizado. El nombre de la regla lleva un prefijo reconocible (PLACE_NOTIFY_RULE_PREFIX) para
 // poder encontrarlas y borrarlas al apagar el interruptor sin tocar las reglas que la familia haya

@@ -1,8 +1,8 @@
-// Notificaciones del navegador (Web Notifications API). Gratis, sin
-// backend adicional. Límite conocido: solo se disparan con la pestaña
-// abierta (activa o en segundo plano) — no con la app totalmente cerrada.
-// Eso requeriría Web Push + service worker + servidor de envío, fuera de
-// alcance por ahora (se puede añadir después si hace falta).
+// Notificaciones del navegador. Dos caminos distintos:
+// - showNotification: aviso LOCAL, solo con la app abierta (ReminderWatcher).
+// - subscribeToPush (más abajo) + service worker (src/sw.ts): Web Push, el que llega con la app
+//   cerrada. Lo mandan las Edge Functions send-due-reminders (calendario, pagos) y
+//   send-family-push (llegada/salida de un lugar y avisos de hora diaria, ver migración 0186).
 
 export type NotificationPermissionState = 'default' | 'granted' | 'denied' | 'unsupported'
 
@@ -16,10 +16,28 @@ export async function requestPermission(): Promise<NotificationPermissionState> 
   return Notification.requestPermission()
 }
 
+// Aviso local (app abierta). En Android Chrome `new Notification()` desde la página lanza "Illegal
+// constructor" — solo permite mostrarlas a través del service worker — y el error se perdía en
+// silencio, así que ahí ni siquiera salía el aviso local. Se usa primero el service worker (vale en
+// todas partes) y el constructor solo como reserva. El icono va con la ruta real de la app, no
+// "/pwa-192.png": en producción vive bajo "/family-app/".
 export function showNotification(title: string, body: string): void {
   if (!('Notification' in window) || Notification.permission !== 'granted') return
 
-  new Notification(title, { body, icon: '/pwa-192.png' })
+  const options = { body, icon: `${import.meta.env.BASE_URL}pwa-192.png` }
+  const fallback = () => {
+    try {
+      new Notification(title, options)
+    } catch {
+      // Este navegador no permite el constructor y tampoco hay service worker: sin aviso local.
+    }
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then((registration) => registration.showNotification(title, options)).catch(fallback)
+    return
+  }
+  fallback()
 }
 
 // VAPID espera la clave pública en base64url; PushManager.subscribe la

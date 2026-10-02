@@ -1472,7 +1472,8 @@ function RulesTab() {
 
   // Las reglas que crea el interruptor "🔔 avisarme" de cada lugar (LocationTab, PlaceRow) no se
   // enseñan aquí — su nombre/mensaje llevan {miembro}/{lugar} sin sustituir (eso solo lo resuelve
-  // AutomationWatcher al disparar), así que aquí se verían rotas. Se gestionan desde el propio lugar.
+  // el servidor al disparar, ver migración 0186), así que aquí se verían rotas. Se gestionan desde el
+  // propio lugar.
   const visibleRules = rules.filter((rule) => !rule.name.startsWith(PLACE_NOTIFY_RULE_PREFIX))
 
   return (

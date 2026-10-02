@@ -12,6 +12,14 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
+// Petición real: "los avisos... están llegando mucho después". Sin estas opciones web-push manda con
+// urgencia "normal" y caducidad de 4 semanas: Android (modo Doze) e iOS pueden retener un aviso normal
+// con el móvil en reposo hasta minutos u horas, y uno que llega con horas de retraso ya no sirve. Con
+// urgencia "high" se entrega al momento, y la caducidad corta evita que un recordatorio de las 8:00
+// aparezca a las 14:00 si el móvil estuvo apagado.
+const PUSH_OPTIONS_SOON = { TTL: 3600, urgency: "high" as const }
+const PUSH_OPTIONS_DAY = { TTL: 6 * 3600, urgency: "high" as const }
+
 // ============================================================
 // Previsión de pagos (Economía) — pipeline de avisos financieros. Independiente del de arriba: nunca
 // toca calendar_event_reminders/claim_due_reminders. El motor de recurrencia (stepMonthsClamped con
@@ -285,6 +293,7 @@ async function sendDueForecastReminders(): Promise<{ checked: number; sent: numb
       await webpush.sendNotification(
         { endpoint: c.out_endpoint, keys: { p256dh: c.out_p256dh, auth: c.out_auth } },
         JSON.stringify({ title: `Previsión: ${c.out_title}`, body: "Vence pronto", url: "/dinero" }),
+        PUSH_OPTIONS_DAY,
       )
       sent++
     } catch (err) {
@@ -324,6 +333,7 @@ async function sendDueCalendarReminders(): Promise<{ checked: number; sent: numb
           keys: { p256dh: r.out_p256dh, auth: r.out_auth },
         },
         JSON.stringify({ title: r.out_event_title, body }),
+        PUSH_OPTIONS_SOON,
       )
       sent++
     } catch (err) {

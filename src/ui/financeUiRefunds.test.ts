@@ -215,11 +215,12 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // 0183 (store_chains_catalog_expansion) añade más cadenas al mismo catálogo — tampoco devoluciones.
     // 0184 (calendar_tasks_categories, FASE CALENDARIO) añade kind/categorías/preferencias al
     // Calendario — tampoco devoluciones. 0185 (calendar_color_mode_three_modes) solo cambia el CHECK y
-    // el default de profiles.calendar_color_mode — tampoco.
+    // el default de profiles.calendar_color_mode — tampoco. 0186 (server_side_automations) añade
+    // tablas de estado de automatizaciones y un trigger en member_locations — tampoco devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(185)
+    expect(Math.max(...numbers)).toBe(186)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

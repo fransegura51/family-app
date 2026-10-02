@@ -90,13 +90,29 @@ export function NotificationsCard() {
                 </button>
               </>
             ) : (
-              <button type="button" onClick={() => run(async () => void (await enablePushNotifications()))} disabled={busy}>
+              <button
+                type="button"
+                onClick={() =>
+                  run(async () => {
+                    const result = await enablePushNotifications()
+                    if (result === 'default') {
+                      setNotice('No has contestado a la pregunta del móvil. Toca otra vez el botón y elige "Permitir".')
+                    }
+                  })
+                }
+                disabled={busy}
+              >
                 {busy ? 'Activando…' : 'Activar avisos'}
               </button>
             )}
           </div>
         </>
       )}
+
+      <p className="muted" style={{ fontSize: 11, marginBottom: 0 }}>
+        Detalle: permiso {permission}, registrado {subscribed === null ? '…' : subscribed ? 'sí' : 'no'}
+        {disabled ? ', desactivado por ti' : ''}
+      </p>
     </div>
   )
 }

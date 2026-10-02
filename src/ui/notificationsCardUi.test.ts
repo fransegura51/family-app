@@ -69,6 +69,23 @@ describe('activar/desactivar de verdad (data/push.ts)', () => {
     expect(body).toContain('savePushSubscription(subscription)')
   })
 
+  it('activar NO falla en silencio: sin clave, sin registro posible o sin respuesta del móvil lanza un error con la causa', () => {
+    const body = PUSH_DATA.slice(PUSH_DATA.indexOf('export async function enablePushNotifications'), PUSH_DATA.indexOf('export async function disablePushNotifications'))
+    expect(body).toContain("throw new Error('Falta la clave de avisos en esta versión de la app.')")
+    expect(body).toContain('if (!subscription) {')
+    expect(body).toContain('Este navegador no puede recibir avisos con la app cerrada')
+    expect(body).toContain('withTimeout(')
+  })
+
+  it('si el permiso queda denegado o sin contestar, devuelve ese estado (la pantalla lo explica) en vez de seguir', () => {
+    expect(PUSH_DATA).toContain("if (permission !== 'granted') return permission")
+  })
+
+  it('la tarjeta avisa si el móvil se quedó sin respuesta del usuario, y deja un detalle técnico visible para poder diagnosticar', () => {
+    expect(CARD).toContain('No has contestado a la pregunta del móvil')
+    expect(CARD).toContain('Detalle: permiso {permission}, registrado')
+  })
+
   it('la tarjeta de Inicio y la de Familia hacen exactamente lo mismo (una sola función)', () => {
     expect(HOME).toContain('enablePushNotifications')
     expect(HOME).not.toContain('subscribeToPush')

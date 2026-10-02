@@ -32,15 +32,47 @@ export async function savePushSubscription(sub: PushSubscriptionData): Promise<v
 // Activa los avisos en ESTE móvil: pide el permiso si todavía no se ha decidido, da de alta el envío y
 // quita la marca de "desactivado". Lo usan el botón de Familia y la tarjeta de Inicio, para que los dos
 // hagan exactamente lo mismo.
+//
+// Nada falla en silencio: si el permiso está concedido pero el registro no se puede completar, lanza un
+// error con la causa (antes, "no hacía nada" y el botón parecía roto). Si el permiso queda denegado o sin
+// contestar, devuelve ese estado para que la pantalla lo explique.
 export async function enablePushNotifications(): Promise<NotificationPermissionState> {
   setNotificationsDisabledByUser(false)
   let permission = getPermissionState()
   if (permission === 'default') permission = await requestPermission()
-  if (permission === 'granted' && VAPID_PUBLIC_KEY) {
-    const subscription = await subscribeToPush(VAPID_PUBLIC_KEY)
-    if (subscription) await savePushSubscription(subscription)
+  if (permission !== 'granted') return permission
+
+  if (!VAPID_PUBLIC_KEY) throw new Error('Falta la clave de avisos en esta versión de la app.')
+  const subscription = await withTimeout(
+    subscribeToPush(VAPID_PUBLIC_KEY),
+    12_000,
+    'El móvil no ha respondido al registrar los avisos. Cierra la app del todo, ábrela otra vez y vuelve a probar.',
+  )
+  if (!subscription) {
+    throw new Error(
+      'Este navegador no puede recibir avisos con la app cerrada. En iPhone hay que abrir PEPA desde su icono en la pantalla de inicio, no desde Safari.',
+    )
   }
+  await savePushSubscription(subscription)
   return permission
+}
+
+// `navigator.serviceWorker.ready` no termina nunca si no hay service worker activo: sin un límite, el
+// botón se quedaba en "Activando…" para siempre.
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
 }
 
 // Desactiva los avisos en ESTE móvil: lo marca (para que no se vuelva a registrar solo al abrir la app),

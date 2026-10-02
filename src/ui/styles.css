@@ -1742,7 +1742,21 @@ select {
   border-left-width: 4px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+/* RETOQUE (PRUEBAS MANUALES REALES EN IPHONE, 2026-10-02) — causa real del hueco enorme entre
+   título/hora/ubicación en Familiar: los `<p className="muted">` de EventCard nunca tuvieron su
+   margen por defecto del navegador reseteado (~16px arriba Y abajo cada uno, de la hoja de estilos
+   nativa) — como son items de un flex en columna, esos márgenes NUNCA colapsan entre sí (al
+   contrario que en flujo normal), así que se SUMABAN al `gap` de la tarjeta: con dos párrafos
+   (hora/ubicación) llegaba a ~32px de aire puro entre líneas que deberían ir pegadas. Al quitar el
+   margen, el único espaciado que queda es el `gap` de la tarjeta (pequeño, consistente) — y antes
+   de las acciones queda "moderado" gracias al margin-top ya existente de .member-card-actions
+   (6px + 6px = 12px), sin ninguna regla nueva. La tarjeta sigue sin alto fijo: crece con el
+   contenido real (título largo, varias líneas de ubicación...), nunca al revés. */
+.event-card p {
+  margin: 0;
 }
 
 /* Rediseño del dashboard de un evento (petición real: "reorganizar

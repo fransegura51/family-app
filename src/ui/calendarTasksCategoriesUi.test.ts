@@ -463,3 +463,44 @@ describe('CALENDARIO — SIGUIENTE FASE: bloques "Eventos"/"Tareas" en todas las
     expect(count).toBe(6) // 3x DayModal + AgendaListView + PersonalView + FamilyDayView
   })
 })
+
+describe('CALENDARIO — ÚLTIMO RETOQUE: Familiar compacta de verdad (altura automática) + "Sin planes"', () => {
+  const FAMILY_VIEW = slice(CALENDAR_SRC, 'function FamilyDayView({', 'function PersonalView(')
+
+  // CASO A — una persona sin NINGÚN plan (ni Evento ni Tarea) ese día: "Sin planes", nunca
+  // "No hay eventos" (ya no describía bien el caso, Familiar mezcla Eventos y Tareas).
+  it('columna totalmente vacía (col.events.length === 0): "Sin planes", nunca "No hay eventos"', () => {
+    expect(FAMILY_VIEW).toContain('<p className="muted">Sin planes</p>')
+    expect(FAMILY_VIEW).not.toContain('No hay eventos')
+  })
+
+  // CASO B/C — el mensaje vacío SOLO se pinta cuando col.events (Eventos + Tareas juntos) está
+  // vacío de verdad; si solo hay tareas o solo eventos, col.events.length > 0 y se entra por la
+  // otra rama (groupEventsAndTasks), que ya pinta solo el bloque que tiene algo — nunca un mensaje
+  // "vacío" a medias para el bloque que sí tiene contenido.
+  it('el mensaje "Sin planes" es la única rama posible cuando no hay NADA — con solo tareas o solo eventos se pinta el bloque correspondiente, no el mensaje', () => {
+    const emptyBranch = FAMILY_VIEW.indexOf('{col.events.length === 0 ? (')
+    const groupBranch = FAMILY_VIEW.indexOf('groupEventsAndTasks(col.events, taskOrder)')
+    expect(emptyBranch).toBeGreaterThan(-1)
+    expect(groupBranch).toBeGreaterThan(emptyBranch) // la rama de grupos es el ": (" de ese mismo condicional
+  })
+
+  // CASO I — causa real del hueco grande (auditoría): los <p className="muted"> de EventCard nunca
+  // tenían su margen por defecto reseteado, y al ser items de un flex en columna esos márgenes no
+  // colapsaban entre sí, sumándose al gap. La tarjeta en sí nunca declaró una altura fija/mínima —
+  // confirmado aquí a nivel de JSX (ningún style con height/minHeight en el contenedor de la
+  // tarjeta); el reseteo de margen en sí vive en styles.css (.event-card p { margin: 0 }), ya
+  // verificado en vivo con el navegador (computed styles antes/después) en esta misma fase.
+  it('EventCard nunca fija una altura — su único style inline es borderColor (color), la altura depende solo del contenido real', () => {
+    const CARD = slice(CALENDAR_SRC, 'function EventCard({', 'function MemberFilterDropdown(')
+    expect(CARD).toContain('style={{ borderColor: color }}')
+    expect(CARD).not.toMatch(/style=\{\{[^}]*[hH]eight/)
+  })
+
+  // CASO D — sin ubicación, el párrafo de ubicación ni se renderiza (no hay wrapper reservando
+  // espacio para un dato que no existe) — mismo condicional de siempre, sin tocar.
+  it('sin locationLabel ni mapsUrl, el párrafo de ubicación no se renderiza en absoluto (nunca un wrapper vacío)', () => {
+    const CARD = slice(CALENDAR_SRC, 'function EventCard({', 'function MemberFilterDropdown(')
+    expect(CARD).toContain('{(ev.locationLabel || mapsUrl) && (')
+  })
+})

@@ -1653,8 +1653,14 @@ function FamilyDayView({
             <button type="button" className="link-button family-view-add" onClick={() => onQuickAdd(col.member?.id ?? null)}>
               + Añadir
             </button>
+            {/* RETOQUE — el texto vacío anterior (que solo mencionaba "eventos") ya no era correcto:
+                esta columna mezcla Eventos Y Tareas (ver groupEventsAndTasks más abajo), así que un
+                texto que solo hablara de un tipo describía mal a alguien con únicamente del otro.
+                "Sin planes" cubre ambos sin distinguir. Si solo hay tareas (o solo eventos),
+                col.events.length > 0 y se entra por la otra rama: el bloque correspondiente se
+                pinta solo, sin ningún mensaje de vacío a medias. */}
             {col.events.length === 0 ? (
-              <p className="muted">No hay eventos</p>
+              <p className="muted">Sin planes</p>
             ) : (
               // RETOQUE (Parte 1/4) — misma regla transversal que DayEntriesBody: Eventos y Tareas
               // son bloques distintos dentro de cada columna, con el mismo orden configurado

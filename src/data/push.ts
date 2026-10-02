@@ -30,6 +30,8 @@ export async function savePushSubscription(sub: PushSubscriptionData): Promise<v
   if (error) throw error
 }
 
+let gestureAtRequest = 'n/d'
+
 // Activa los avisos en ESTE móvil: pide el permiso si todavía no se ha decidido, da de alta el envío y
 // quita la marca de "desactivado". Lo usan el botón de Familia y la tarjeta de Inicio, para que los dos
 // hagan exactamente lo mismo.
@@ -40,7 +42,12 @@ export async function savePushSubscription(sub: PushSubscriptionData): Promise<v
 export async function enablePushNotifications(): Promise<NotificationPermissionState> {
   setNotificationsDisabledByUser(false)
   let permission = getPermissionState()
-  if (permission === 'default') permission = await requestPermission()
+  if (permission === 'default') {
+    // Chrome solo deja preguntar por los avisos como respuesta a un toque: se anota si en ese instante
+    // había "gesto de usuario" activo, para descartarlo (o confirmarlo) cuando un móvil contesta "denegado".
+    gestureAtRequest = String((navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation?.isActive ?? 'n/d')
+    permission = await requestPermission()
+  }
   if (permission !== 'granted') return permission
 
   if (!VAPID_PUBLIC_KEY) throw new Error('Falta la clave de avisos en esta versión de la app.')
@@ -86,7 +93,17 @@ async function describePushEnvironment(): Promise<string> {
     `sw=${'serviceWorker' in navigator}`,
     `pushManager=${'PushManager' in window}`,
     `instalada=${window.matchMedia?.('(display-mode: standalone)').matches ?? 'n/d'}`,
+    // Cómo está abierta la ventana (una app instalada y una ventana de Chrome sin barra no se distinguen a
+    // simple vista, y el permiso de avisos se comporta distinto en cada una).
+    `modo=${['standalone', 'fullscreen', 'minimal-ui', 'browser'].find((m) => window.matchMedia?.(`(display-mode: ${m})`).matches) ?? 'n/d'}`,
+    `gestoAlPedir=${gestureAtRequest}`,
   ]
+  try {
+    const api = await withTimeout(navigator.permissions.query({ name: 'notifications' }), 2000, 'sin respuesta')
+    parts.push(`permissionsApi=${api.state}`)
+  } catch {
+    parts.push('permissionsApi=n/d')
+  }
   try {
     const registration = await withTimeout(navigator.serviceWorker.getRegistration(), 3000, 'sin respuesta')
     parts.push(

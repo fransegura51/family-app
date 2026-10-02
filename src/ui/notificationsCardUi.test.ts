@@ -39,7 +39,7 @@ describe('NotificationsCard — botón fijo para activar y desactivar los avisos
     expect(CARD).toContain("permission === 'unsupported'")
     expect(CARD).toContain('Añadir a')
     expect(CARD).toContain("permission === 'denied'")
-    expect(CARD).toContain('Ajustes del móvil')
+    expect(CARD).toContain('Abre los ajustes del móvil')
     expect(CARD).toContain('✓ Activados')
     expect(CARD).toContain('Desactivados en este móvil')
   })
@@ -65,7 +65,8 @@ describe('activar/desactivar de verdad (data/push.ts)', () => {
   it('activar quita la marca, pide el permiso solo si no se ha decidido y registra el móvil', () => {
     const body = PUSH_DATA.slice(PUSH_DATA.indexOf('export async function enablePushNotifications'), PUSH_DATA.indexOf('export async function disablePushNotifications'))
     expect(body).toContain('setNotificationsDisabledByUser(false)')
-    expect(body).toContain("if (permission === 'default') permission = await requestPermission()")
+    expect(body).toContain("if (permission === 'default') {")
+    expect(body).toContain('permission = await requestPermission()')
     expect(body).toContain('savePushSubscription(subscription)')
   })
 
@@ -105,21 +106,27 @@ describe('que funcione igual en Android y en iPhone', () => {
     expect(PUSH_DATA).toContain('permiso=')
     expect(PUSH_DATA).toContain('registro=')
     expect(PUSH_DATA).toContain('suscripcion=')
+    expect(PUSH_DATA).toContain('modo=')
+    expect(PUSH_DATA).toContain('gestoAlPedir=')
+    expect(PUSH_DATA).toContain('permissionsApi=')
     expect(CARD).toContain("void reportPushProblem('fallo en la tarjeta de avisos', err)")
     expect(KEEPER).toContain("reportPushProblem('registro automático al abrir la app', err)")
   })
 
   it('las instrucciones de "bloqueado" son distintas en Android y en iPhone (cada sistema lo esconde en un sitio)', () => {
     expect(CARD).toContain('/android/i.test(ua)')
-    expect(CARD).toContain('Información de la aplicación')
+    expect(CARD).toContain('Abre Chrome desde su icono')
     expect(CARD).toContain('/iphone|ipad/i.test(ua)')
+    expect(CARD).toContain('<ol ')
+    expect(CARD.replace(/\/\/[^\n]*/g, '')).not.toMatch(/Borrar y restablecer|Borrar datos/)
   })
 
   it('si Chrome contesta "denegado" sin preguntar (el permiso sigue en "default"), la tarjeta lo explica con los pasos exactos en vez de parecer rota', () => {
     expect(CARD).toContain("setBlockedByBrowser(result === 'denied' && getPermissionState() !== 'denied')")
     expect(CARD).toContain('El navegador ha bloqueado la pregunta de permiso para esta página')
-    expect(CARD).toContain('Restablecer permisos')
-    expect(CARD).toContain('Instalar aplicación')
+    expect(CARD).toContain('<StepsList />')
+    expect(CARD).toContain('Activar avisos')
+    expect(CARD).toContain('el candado a la izquierda de la dirección')
   })
 
   it('un móvil con la app vieja (archivos ya borrados) se recarga solo UNA vez por minuto, nunca en bucle', () => {

@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const SOURCES = import.meta.glob(
   [
     '/src/ui/NotificationsCard.tsx',
+    '/src/ui/NotificationsOnboarding.tsx',
+    '/src/ui/notificationHelp.tsx',
     '/src/ui/FamilyScreen.tsx',
     '/src/ui/HomeScreen.tsx',
     '/src/ui/PushSubscriptionKeeper.tsx',
@@ -16,6 +18,8 @@ const SOURCES = import.meta.glob(
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
 const CARD = SOURCES['/src/ui/NotificationsCard.tsx']
+const ONBOARDING = SOURCES['/src/ui/NotificationsOnboarding.tsx']
+const HELP = SOURCES['/src/ui/notificationHelp.tsx']
 const FAMILY = SOURCES['/src/ui/FamilyScreen.tsx']
 const HOME = SOURCES['/src/ui/HomeScreen.tsx']
 const KEEPER = SOURCES['/src/ui/PushSubscriptionKeeper.tsx']
@@ -39,7 +43,7 @@ describe('NotificationsCard — botón fijo para activar y desactivar los avisos
     expect(CARD).toContain("permission === 'unsupported'")
     expect(CARD).toContain('Añadir a')
     expect(CARD).toContain("permission === 'denied'")
-    expect(CARD).toContain('Abre los ajustes del móvil')
+    expect(HELP).toContain('Abre los ajustes del móvil')
     expect(CARD).toContain('✓ Activados')
     expect(CARD).toContain('Desactivados en este móvil')
   })
@@ -88,8 +92,10 @@ describe('activar/desactivar de verdad (data/push.ts)', () => {
   })
 
   it('la tarjeta de Inicio y la de Familia hacen exactamente lo mismo (una sola función)', () => {
-    expect(HOME).toContain('enablePushNotifications')
+    expect(ONBOARDING).toContain('enablePushNotifications')
+    expect(HOME).toContain('<NotificationsOnboarding />')
     expect(HOME).not.toContain('subscribeToPush')
+    expect(HOME).not.toContain('NotificationsBanner')
   })
 
   it('PushSubscriptionKeeper NO vuelve a registrar un móvil que su dueño desactivó', () => {
@@ -114,11 +120,11 @@ describe('que funcione igual en Android y en iPhone', () => {
   })
 
   it('las instrucciones de "bloqueado" son distintas en Android y en iPhone (cada sistema lo esconde en un sitio)', () => {
-    expect(CARD).toContain('/android/i.test(ua)')
-    expect(CARD).toContain('Abre Chrome desde su icono')
-    expect(CARD).toContain('/iphone|ipad/i.test(ua)')
-    expect(CARD).toContain('<ol ')
-    expect(CARD.replace(/\/\/[^\n]*/g, '')).not.toMatch(/Borrar y restablecer|Borrar datos/)
+    expect(HELP).toContain('/android/i.test(ua)')
+    expect(HELP).toContain('Abre Chrome desde su icono')
+    expect(HELP).toContain('/iphone|ipad/i.test(ua)')
+    expect(HELP).toContain('<ol ')
+    expect(HELP.replace(/\/\/[^\n]*/g, '')).not.toMatch(/Borrar y restablecer|Borrar datos/)
   })
 
   it('si Chrome contesta "denegado" sin preguntar (el permiso sigue en "default"), la tarjeta lo explica con los pasos exactos en vez de parecer rota', () => {
@@ -126,13 +132,51 @@ describe('que funcione igual en Android y en iPhone', () => {
     expect(CARD).toContain('El navegador ha bloqueado la pregunta de permiso para esta página')
     expect(CARD).toContain('<StepsList />')
     expect(CARD).toContain('Activar avisos')
-    expect(CARD).toContain('el candado a la izquierda de la dirección')
+    expect(HELP).toContain('el candado a la izquierda de la dirección')
   })
 
   it('un móvil con la app vieja (archivos ya borrados) se recarga solo UNA vez por minuto, nunca en bucle', () => {
     expect(MAIN).toContain("window.addEventListener('vite:preloadError'")
     expect(MAIN).toContain('Date.now() - last < 60_000')
     expect(MAIN).toContain('window.location.reload()')
+  })
+})
+
+describe('primer arranque: tiene que funcionar a la primera en cualquier familia nueva', () => {
+  it('NO pregunta al navegador hasta que la persona toca "Activar avisos" (Chrome castiga la pregunta ignorada o rechazada)', () => {
+    // La única llamada que pide el permiso está dentro de activate(), que solo cuelga del botón.
+    expect(ONBOARDING.match(/await enablePushNotifications\(\)/g)?.length).toBe(1)
+    expect(ONBOARDING).toContain('onClick={activate}')
+    expect(ONBOARDING).not.toContain('useEffect')
+  })
+
+  it('"Ahora no" no toca el navegador: solo esconde la tarjeta una semana', () => {
+    expect(ONBOARDING).toContain('const DISMISS_FOR_MS = 7 * 24 * 60 * 60 * 1000')
+    expect(ONBOARDING).toContain('Ahora no')
+    const dismiss = ONBOARDING.slice(ONBOARDING.indexOf('function dismiss()'), ONBOARDING.indexOf('async function activate()'))
+    expect(dismiss).toContain('rememberDismissed()')
+    expect(dismiss).not.toContain('enablePushNotifications')
+  })
+
+  it('en iPhone abierto en Safari (sin soporte) explica ANTES cómo instalarla, en vez de desaparecer sin decir nada', () => {
+    expect(ONBOARDING).toContain("permission === 'unsupported'")
+    expect(ONBOARDING).toContain('isIos()')
+    expect(ONBOARDING).toContain('Añadir a pantalla de inicio')
+  })
+
+  it('si el navegador se niega aun así, enseña los pasos (la misma ayuda que Familia) y deja constancia para diagnosticar', () => {
+    expect(ONBOARDING).toContain('<StepsList />')
+    expect(ONBOARDING).toContain("reportPushProblem('primer arranque terminó con permiso=denied')")
+  })
+
+  it('al conseguirlo manda un aviso de prueba real, para que la persona vea que llega', () => {
+    expect(ONBOARDING).toContain('void sendTestPush()')
+    expect(ONBOARDING).toContain('Te acabamos de mandar un aviso de prueba')
+  })
+
+  it('no sale si la persona desactivó los avisos en este móvil, ni si el permiso ya está decidido', () => {
+    expect(ONBOARDING).toContain('isNotificationsDisabledByUser()')
+    expect(ONBOARDING).toContain("if (permission !== 'default' || dismissed) return null")
   })
 })
 

@@ -8,6 +8,10 @@ export type NotificationPermissionState = 'default' | 'granted' | 'denied' | 'un
 
 export const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
+export function isIos(): boolean {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent)
+}
+
 export function getPermissionState(): NotificationPermissionState {
   if (!('Notification' in window)) return 'unsupported'
   return Notification.permission

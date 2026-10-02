@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from
 import { Link } from 'react-router-dom'
 import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
-import { getPermissionState } from '@/services/notifications'
-import { enablePushNotifications } from '@/data/push'
+import { NotificationsOnboarding } from '@/ui/NotificationsOnboarding'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 import { listFamilyMembers } from '@/data/family'
 import { listUpcomingEvents } from '@/data/calendar'
@@ -19,7 +18,6 @@ import { NAV_TABS, navSectionId, NAV_SECTION_COLORS } from '@/domain/navTabs'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
 import agendaBg from '@/assets/home/agenda-background.jpg'
-import { errorMessage } from '@/domain/errorMessage'
 
 interface HomeCardDef {
   id: string
@@ -138,7 +136,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
 
       <PhotoBanner />
 
-      <NotificationsBanner />
+      <NotificationsOnboarding />
 
       {/* Petición real: "quiero que se puedan organizar como yo quiera,
           que se puedan mover de sitio" — el orden es solo de este
@@ -417,39 +415,6 @@ function PhotoBanner() {
         <p className="home-photo-banner-title">📷 {current.caption}</p>
       </div>
       {dots}
-    </div>
-  )
-}
-
-function NotificationsBanner() {
-  const [state, setState] = useState(getPermissionState())
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  if (state !== 'default') return null
-
-  async function activate() {
-    setLoading(true)
-    setError(null)
-    try {
-      setState(await enablePushNotifications())
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudieron activar los recordatorios'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="card banner">
-      <p>
-        Activa las notificaciones para recibir los recordatorios del calendario, incluso con la
-        app cerrada.
-      </p>
-      {error && <p className="error">{error}</p>}
-      <button type="button" onClick={activate} disabled={loading}>
-        {loading ? 'Activando…' : 'Activar recordatorios'}
-      </button>
     </div>
   )
 }

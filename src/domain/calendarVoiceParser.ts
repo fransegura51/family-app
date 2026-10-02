@@ -152,6 +152,26 @@ function extractHour(
   return { time, remaining: remaining.replace(fullSpan, ' ') }
 }
 
+// FASE CALENDARIO (Parte 26) — distinción Evento/Tarea por voz, SOLO para el dictado directo de "🎤
+// Apuntar · Calendario" (handleCalendarEntry, VoiceCapture.tsx). Determinista, sin IA, igual criterio que
+// el resto de este archivo. Sin ninguna palabra marcadora de tarea, el resultado es 'event' — EXACTAMENTE
+// el comportamiento de siempre (todo lo dictado hasta ahora se guardaba como evento), así que ningún
+// dictado existente cambia de comportamiento. 'task' solo cuando el usuario lo pide inequívocamente
+// ("tarea", "tengo que"). 'ambiguous' solo en el caso genuinamente contradictorio: la frase lleva a la
+// vez una palabra de tarea Y una palabra de evento — nunca se adivina en ese caso (ver el histórico
+// "Pepa confunde tareas con eventos" en EventosScreen/eventPairDecisions): se pregunta en vez de guardar.
+const TASK_MARKER = /\b(tarea|tengo que)\b/
+const EVENT_MARKER = /\b(evento|cita|reunion|cumpleanos)\b/
+
+export function detectCalendarEntryKind(text: string): 'event' | 'task' | 'ambiguous' {
+  const n = normalize(text)
+  const hasTask = TASK_MARKER.test(n)
+  const hasEvent = EVENT_MARKER.test(n)
+  if (hasTask && hasEvent) return 'ambiguous'
+  if (hasTask) return 'task'
+  return 'event'
+}
+
 export interface ParsedCalendarEntry {
   title: string
   date: string // YYYY-MM-DD

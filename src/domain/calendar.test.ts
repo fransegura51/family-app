@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   expandOccurrences,
+  eventDotColors,
   occurrenceAt,
   isWeekend,
   normalizeEventTitleForCompare,
@@ -348,5 +349,40 @@ describe('isWeekend', () => {
   it('el resto de la semana no lo es', () => {
     expect(isWeekend('2026-09-21')).toBe(false) // lunes
     expect(isWeekend('2026-09-25')).toBe(false) // viernes
+  })
+})
+
+// FASE CALENDARIO — Parte 7: modo de color por categorías, con fallback seguro. categoryColorById solo
+// se pasa cuando la persona tiene activado ese modo (ver CalendarScreen.tsx) — aquí se prueba la función
+// pura en sí, con y sin ese segundo argumento.
+describe('eventDotColors — modo categorías (Parte 7), nunca invisible', () => {
+  const memberColorById = new Map([
+    ['m1', '#111111'],
+    ['m2', '#222222'],
+  ])
+  const categoryColorById = new Map([['cat-con-color', '#ff0000']])
+
+  it('color propio del evento manda siempre, con o sin categoryColorById', () => {
+    expect(eventDotColors({ color: '#abcdef', memberIds: ['m1'], categoryId: 'cat-con-color' }, memberColorById, categoryColorById)).toEqual(['#abcdef'])
+  })
+
+  it('sin categoryColorById (modo miembros): el comportamiento es EXACTAMENTE el de siempre, aunque el evento tenga categoría', () => {
+    expect(eventDotColors({ color: null, memberIds: ['m1', 'm2'], categoryId: 'cat-con-color' }, memberColorById)).toEqual(['#111111', '#222222'])
+  })
+
+  it('con categoryColorById (modo categorías) y categoría CON color: un solo punto, el de la categoría', () => {
+    expect(eventDotColors({ color: null, memberIds: ['m1', 'm2'], categoryId: 'cat-con-color' }, memberColorById, categoryColorById)).toEqual(['#ff0000'])
+  })
+
+  it('modo categorías, categoría SIN color (no está en categoryColorById): fallback seguro al color de miembro de siempre', () => {
+    expect(eventDotColors({ color: null, memberIds: ['m1'], categoryId: 'cat-sin-color' }, memberColorById, categoryColorById)).toEqual(['#111111'])
+  })
+
+  it('modo categorías, sin categoría en absoluto: fallback al color de miembro de siempre', () => {
+    expect(eventDotColors({ color: null, memberIds: ['m1'], categoryId: null }, memberColorById, categoryColorById)).toEqual(['#111111'])
+  })
+
+  it('sin categoría, sin miembros, en cualquier modo: gris de siempre — nunca invisible', () => {
+    expect(eventDotColors({ color: null, memberIds: [], categoryId: null }, memberColorById, categoryColorById)).toEqual(['#9ca3af'])
   })
 })

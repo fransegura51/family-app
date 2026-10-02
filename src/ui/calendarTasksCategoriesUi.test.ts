@@ -1,0 +1,326 @@
+import { describe, expect, it } from 'vitest'
+
+// FASE CALENDARIO — Tareas + Categorías + preferencias. Mismo patrón estructural que el resto del
+// repo (sin jsdom/testing-library): se lee el código fuente como texto y se comprueba que la pieza
+// exacta que debería existir existe donde debe, en vez de renderizar nada.
+const UI_FILES = import.meta.glob('/src/ui/*.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const DATA_FILES = import.meta.glob('/src/data/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+
+function readFile(path: string): string {
+  const content = UI_FILES[path] ?? DATA_FILES[path]
+  expect(content, `no se encontró ${path}`).toBeTruthy()
+  return content
+}
+
+function slice(src: string, fromMarker: string, toMarker: string): string {
+  const start = src.indexOf(fromMarker)
+  expect(start, `no se encontró "${fromMarker}"`).toBeGreaterThan(-1)
+  const end = src.indexOf(toMarker, start + fromMarker.length)
+  expect(end, `no se encontró "${toMarker}" después de "${fromMarker}"`).toBeGreaterThan(start)
+  return src.slice(start, end)
+}
+
+const CALENDAR_SRC = readFile('/src/ui/CalendarScreen.tsx')
+const EVENTOS_SRC = readFile('/src/ui/EventosScreen.tsx')
+const MENU_SETTINGS_SRC = readFile('/src/ui/MenuSettingsScreen.tsx')
+const CALENDAR_DATA_SRC = readFile('/src/data/calendar.ts')
+
+describe('data/calendar.ts — kind y categoría viajan en create/update, nunca se adivinan', () => {
+  it('createEvent: sin indicar, kind=\'event\' (comportamiento idéntico a antes de esta columna)', () => {
+    expect(CALENDAR_DATA_SRC).toContain("kind: input.kind ?? 'event'")
+  })
+
+  it('createEvent/updateEvent: category_id viaja tal cual (null si no se indica)', () => {
+    expect(CALENDAR_DATA_SRC).toContain('category_id: input.categoryId ?? null')
+  })
+
+  it('updateEvent nunca escribe `kind` — no existe conversión Evento↔Tarea en esta fase', () => {
+    const updateFn = slice(CALENDAR_DATA_SRC, 'export async function updateEvent(', 'export async function deleteEvent(')
+    expect(updateFn).not.toMatch(/\bkind:/)
+  })
+
+  it('categorías: listCalendarCategories/create/update/delete existen, reutilizando el mismo patrón de currentFamilyId que el resto del archivo', () => {
+    expect(CALENDAR_DATA_SRC).toContain('export async function listCalendarCategories')
+    expect(CALENDAR_DATA_SRC).toContain('export async function createCalendarCategory')
+    expect(CALENDAR_DATA_SRC).toContain('export async function updateCalendarCategory')
+    expect(CALENDAR_DATA_SRC).toContain('export async function deleteCalendarCategory')
+  })
+
+  it('preferencias: getCalendarPreferences/updateCalendarColorMode/updateCalendarTaskOrder — mismo patrón POR USUARIO (auth.getUser + profiles) que getDateFilterPreferences', () => {
+    const prefsBlock = slice(CALENDAR_DATA_SRC, 'export async function getCalendarPreferences', 'export interface ReminderEvent')
+    expect(prefsBlock).toContain("supabase.auth.getUser()")
+    expect(prefsBlock).toContain(".from('profiles')")
+    expect(prefsBlock).not.toMatch(/\.from\('families'\)/)
+    expect(prefsBlock).not.toContain('localStorage')
+  })
+})
+
+describe('AddTaskForm — formulario reducido (Parte 2/3): nunca hora/fin/recurrencia/recordatorios, nunca una hora inventada', () => {
+  const FORM = slice(CALENDAR_SRC, 'function AddTaskForm({', 'function ExternalCalendarTab(')
+
+  it('solo Título y Fecha son obligatorios — ningún input de hora/fin', () => {
+    expect(FORM).toContain('Título')
+    expect(FORM).toContain('Fecha')
+    expect(FORM).not.toMatch(/type="time"/)
+  })
+
+  it('allDay:true fijo, endAt:null fijo, recurrenceRule:null fijo, reminders:[] fijo — nunca inventa una hora', () => {
+    expect(FORM).toContain('allDay: true')
+    expect(FORM).toContain('endAt: null')
+    expect(FORM).toContain('recurrenceRule: null')
+    expect(FORM).toContain('reminders: []')
+  })
+
+  it("kind: 'task' explícito al crear", () => {
+    expect(FORM).toContain("kind: 'task'")
+  })
+
+  it('Parte 25: syncToGoogle:false fijo — una Tarea nunca sincroniza por defecto, reutilizando sync_to_google sin columna nueva', () => {
+    expect(FORM).toContain('syncToGoogle: false')
+  })
+
+  it('reutiliza WhoDropdown ("¿Para quién?", incluye "Toda la familia" = selección vacía) — nunca un selector nuevo', () => {
+    expect(FORM).toContain('<WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />')
+    expect(FORM).not.toContain('function WhoDropdown(')
+  })
+
+  it('reutiliza CategoryDropdown, EventExtrasFields (ubicación/adjunto/nota) y el campo de puntos — todo opcional, nunca sistemas paralelos', () => {
+    expect(FORM).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />')
+    expect(FORM).toContain('<EventExtrasFields')
+    expect(FORM).toMatch(/Puntos al marcarla "Hecha"/)
+    expect(FORM).not.toContain('function EventExtrasFields(')
+  })
+})
+
+describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comportamiento, solo se añade categoría', () => {
+  it('AddEventForm sigue pidiendo hora/fin/repetición/recordatorios/privado — nada se ha simplificado', () => {
+    const form = slice(CALENDAR_SRC, 'function AddEventForm({', 'function AddTaskForm({')
+    expect(form).toContain('RecurrenceControl')
+    expect(form).toContain('ReminderPicker')
+    expect(form).toContain('🔒 Solo yo (privado')
+    expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />')
+  })
+
+  it('EditEventForm: la Tarea se edita con el formulario reducido (isTask oculta hora/repetición/recordatorios/privado), el Evento conserva el completo', () => {
+    const form = slice(CALENDAR_SRC, 'function EditEventForm({', 'function AddEventForm({')
+    expect(form).toContain("const isTask = event.kind === 'task'")
+    expect(form).toContain('{!isTask && (')
+    expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />')
+  })
+
+  it('EditEventForm nunca cambia `kind` al guardar (sin conversión Evento↔Tarea esta fase)', () => {
+    const submit = slice(CALENDAR_SRC, 'async function handleSubmit(e: FormEvent) {\n    e.preventDefault()\n    setSaving(true)\n    setError(null)\n    try {\n      const effectiveAllDay', 'return (\n    <form onSubmit={handleSubmit} className="card member-form">\n      <label>\n        Título\n        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />\n      </label>\n      <label>\n        Fecha\n        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />\n      </label>\n      {!isTask')
+    expect(submit).toContain('await updateEvent(event.id, {')
+    expect(submit).not.toMatch(/\n\s*kind:/)
+  })
+})
+
+describe('Categoría — opcional para Evento y Tarea, "Sin categoría" explícito, nunca taxonomía obligatoria', () => {
+  const DROPDOWN = slice(CALENDAR_SRC, 'function CategoryDropdown({', 'function ReminderPicker(')
+
+  it('sin categorías creadas, no renderiza nada — nunca fuerza a crear una', () => {
+    expect(DROPDOWN).toContain('if (categories.length === 0) return null')
+  })
+
+  it('"Sin categoría" es una opción explícita, siempre disponible, además de cada categoría real', () => {
+    expect(DROPDOWN).toContain('Sin categoría')
+    expect(DROPDOWN).toContain('onChange(null)')
+  })
+})
+
+describe('Emoji de categoría — nunca depende del modo de color (Parte 6), visible donde hay texto, NUNCA en los puntitos de Inicio', () => {
+  it('buildEntriesForDate (Mes/Agenda/DayModal/Personal) antepone el emoji de categoría al título', () => {
+    const fn = slice(CALENDAR_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function persistCalendarMenuLayout(')
+    expect(fn).toContain("const titleWithCategory = category ? `${category.emoji} ${ev.title}` : ev.title")
+  })
+
+  it('TimeGridView (Semana/3 días/Día) también antepone el emoji, independiente de categoryColorById (modo de color)', () => {
+    const fn = slice(CALENDAR_SRC, 'function TimeGridView({', 'function AgendaListView(')
+    expect(fn).toContain('function titleWithCategoryEmoji(ev: CalendarEvent): string {')
+    expect(fn).toContain('categoryById.get(ev.categoryId)')
+  })
+
+  it('EventCard (Vista Familiar) también antepone el emoji de categoría junto al título', () => {
+    const fn = slice(CALENDAR_SRC, 'function EventCard({', 'function MemberFilterDropdown(')
+    expect(fn).toContain("categoryById.get(ev.categoryId)!.emoji")
+  })
+
+  it('Vista general (Inicio): los puntitos NUNCA llevan emoji — solo color (dots sigue siendo solo eventDotColors, un array de colores)', () => {
+    const vistaGeneral = slice(CALENDAR_SRC, ") : view === 'Vista general' ? (", ") : view === 'Agenda' ? (")
+    expect(vistaGeneral).not.toContain('.emoji')
+    expect(vistaGeneral).toContain('eventDotColors(')
+  })
+})
+
+describe('Colores — modo miembros (default) exactamente igual que siempre; modo categorías con fallback seguro', () => {
+  it('eventColor acepta categoryColorById opcional — en modo miembros (sin pasarlo) el resultado es idéntico al de antes de esta fase', () => {
+    const fn = slice(CALENDAR_SRC, 'function eventColor(ev: CalendarEvent', 'function hhmm(')
+    expect(fn).toContain('if (ev.color) return ev.color')
+    expect(fn).toContain('categoryColorById && ev.categoryId')
+    expect(fn).toContain("return first?.color ?? '#9ca3af'")
+  })
+
+  it('CalendarScreen solo pasa categoryColorById cuando calendarPrefs.colorMode === \'categorias\' — nunca en modo miembros', () => {
+    expect(CALENDAR_SRC).toContain("categoryColorById={calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined}")
+  })
+})
+
+describe('Orden Eventos/Tareas — Configuración → Calendario, por usuario (Parte 8/9)', () => {
+  it('eventsByDate ordena por kind según calendarPrefs.taskOrder, con sort ESTABLE (conserva el orden dentro de cada tipo)', () => {
+    const fn = slice(CALENDAR_SRC, 'const eventsByDate = useMemo(() => {', '}, [filteredEvents, monthDays, holidayDates, calendarPrefs.taskOrder])')
+    expect(fn).toContain("const taskFirst = calendarPrefs.taskOrder === 'tareas_primero'")
+    expect(fn).toContain("if (a.kind === b.kind) return 0")
+  })
+
+  it('Configuración → Calendario expone las dos preferencias con sus dos opciones cada una, con default correcto', () => {
+    const section = slice(MENU_SETTINGS_SRC, 'function CalendarPreferencesSection() {', 'function CalendarCategoryRow(')
+    expect(section).toContain('Ver colores de miembros')
+    expect(section).toContain('Ver colores de categorías')
+    expect(section).toContain('Eventos primero')
+    expect(section).toContain('Tareas primero')
+    expect(section).toContain("useState<CalendarColorMode>('miembros')")
+    expect(section).toContain("useState<CalendarTaskOrder>('eventos_primero')")
+  })
+})
+
+describe('Gestión de categorías — Configuración → Calendario (Parte 27)', () => {
+  it('crear/editar nombre+emoji+color opcional/borrar — con confirmación antes de borrar', () => {
+    const section = slice(MENU_SETTINGS_SRC, 'function CalendarCategoriesSection() {', 'type SettingsGroupId')
+    expect(section).toContain('createCalendarCategory(')
+    expect(section).toContain('onDeleted={() => handleDelete(c.id)}')
+  })
+
+  it('la fila de edición permite nombre, emoji y color — y quitar el color (opcional de verdad), con confirmación antes de borrar', () => {
+    const row = slice(MENU_SETTINGS_SRC, 'function CalendarCategoryRow({', 'function CalendarCategoriesSection() {')
+    expect(row).toContain('updateCalendarCategory(category.id,')
+    expect(row).toContain('Sin color')
+    expect(row).toContain('<ConfirmIconButton onConfirm={onDeleted}')
+  })
+
+  it('el grupo "Calendario" reúne modo de color, orden y categorías en un único sitio de Configuración, sin saturar (mismo patrón SettingsGroup que el resto)', () => {
+    const group = slice(MENU_SETTINGS_SRC, 'title="Calendario"', '</SettingsGroup>')
+    expect(group).toContain('<CalendarPreferencesSection />')
+    expect(group).toContain('<CalendarCategoriesSection />')
+  })
+})
+
+describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, salvo Externos (ajeno) y Personal (filtra por miembro, no por tipo)', () => {
+  const BUILD_ENTRIES = slice(CALENDAR_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function persistCalendarMenuLayout(')
+  const TIME_GRID = slice(CALENDAR_SRC, 'function TimeGridView({', 'function AgendaListView(')
+  const FAMILY_VIEW = slice(CALENDAR_SRC, 'function FamilyDayView({', 'function PersonalView(')
+
+  it('buildEntriesForDate (Mes/Agenda/DayModal/Personal) nunca filtra por ev.kind', () => {
+    expect(BUILD_ENTRIES).not.toMatch(/ev\.kind\s*===/)
+  })
+
+  it('TimeGridView (Semana/3 días/Día) nunca filtra por ev.kind — una Tarea (allDay:true) cae sola en la franja "todo el día" existente, sin hora inventada', () => {
+    expect(TIME_GRID).not.toMatch(/ev\.kind\s*===/)
+    expect(TIME_GRID).toContain('if (ev.allDay) continue')
+  })
+
+  it('FamilyDayView nunca filtra por kind — agrupa por miembro, Eventos y Tareas conviven en la misma columna', () => {
+    expect(FAMILY_VIEW).not.toMatch(/e\.kind\s*===|ev\.kind\s*===/)
+  })
+
+  it('Personal filtra por MI miembro (myMemberId), nunca por kind — Eventos y Tareas propios conviven', () => {
+    const personal = slice(CALENDAR_SRC, 'function PersonalView({', 'interface TimeGridBlock {')
+    expect(personal).toContain('ev.memberIds.includes(myMemberId)')
+    expect(personal).not.toMatch(/ev\.kind\s*===/)
+  })
+
+  it('Externos (calendarios externos) sigue siendo una fuente de datos totalmente distinta — nunca mezcla calendar_events ni kind', () => {
+    const externos = slice(CALENDAR_SRC, 'function ExternalCalendarTab({', 'function GoogleCalendarSyncCard(')
+    expect(externos).not.toContain('calendar_categories')
+    expect(externos).not.toMatch(/\bkind\b/)
+  })
+})
+
+describe('Familiar — corrección de bug de auditoría (Parte 15): Evento Y Tarea completables, reutilizando calendar_event_completions', () => {
+  it('EventCard ahora acepta done/onComplete/onUncomplete (antes no los tenía)', () => {
+    const card = slice(CALENDAR_SRC, 'function EventCard({', 'function MemberFilterDropdown(')
+    expect(card).toContain('done?: boolean')
+    expect(card).toContain('onComplete?: () => void')
+    expect(card).toContain('onUncomplete?: () => void')
+    expect(card).toMatch(/'✓ Hecho'/)
+  })
+
+  it('FamilyDayView calcula "done" desde eventCompletions (mismo array que ya usa DayModal/Agenda) y llama a onComplete/onUncomplete — nunca un mecanismo nuevo', () => {
+    expect(FAMILY_VIEW_SRC()).toContain("eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === selectedDate)")
+    expect(FAMILY_VIEW_SRC()).toContain('onComplete={() => onComplete(ev.id, selectedDate)}')
+    expect(FAMILY_VIEW_SRC()).toContain('onUncomplete={() => onUncomplete(ev.id, selectedDate)}')
+  })
+
+  it('el padre conecta Familiar directamente a handleCompleteEvent/handleUncompleteEvent — las mismas funciones que ya usan Mes/Agenda/Día, nunca una copia', () => {
+    expect(CALENDAR_SRC).toContain('onComplete={handleCompleteEvent}')
+    expect(CALENDAR_SRC).toContain('onUncomplete={handleUncompleteEvent}')
+  })
+
+  it('nunca se crea task_completions ni ninguna tabla nueva de completados', () => {
+    expect(CALENDAR_SRC).not.toContain('task_completions')
+    expect(CALENDAR_DATA_SRC).not.toContain('task_completions')
+  })
+
+  function FAMILY_VIEW_SRC(): string {
+    return slice(CALENDAR_SRC, 'function FamilyDayView({', 'function PersonalView(')
+  }
+})
+
+describe('Personal — deja de ser "solo notas" (Parte 16), notas existentes intactas', () => {
+  const PERSONAL = slice(CALENDAR_SRC, 'function PersonalView({', 'interface TimeGridBlock {')
+
+  it('muestra Eventos/Tareas propios (DayEntriesBody con myEntries) Y las notas personales, ambas cosas, nunca solo una', () => {
+    expect(PERSONAL).toContain('<DayEntriesBody')
+    expect(PERSONAL).toContain('myEntries')
+    expect(PERSONAL).toContain('dayNotes.map((n) =>')
+  })
+
+  it('las notas siguen siendo privadas y siguen usando exactamente addPersonalNote/deletePersonalNote/personal_calendar_notes — sin tocar ese mecanismo', () => {
+    expect(PERSONAL).toContain('🔒 Notas privadas')
+    expect(CALENDAR_SRC).toContain('await addPersonalNote(selectedDate, text)')
+    expect(CALENDAR_SRC).toContain('await deletePersonalNote(id)')
+  })
+
+  it('si no hay miembro propio enlazado (myMemberId null), se explica en vez de romper — y las notas se quedan disponibles igual', () => {
+    expect(PERSONAL).toContain('myMemberId ?')
+    expect(PERSONAL).toMatch(/Tu cuenta no está enlazada/)
+  })
+
+  it('CalendarScreen resuelve myMemberId con linkedProfileId, mismo patrón que FinanceScreen/HomeScreen — nunca un mecanismo nuevo', () => {
+    expect(CALENDAR_SRC).toContain('members.find((m) => m.linkedProfileId === profile.id)?.id ?? null')
+  })
+})
+
+describe('FABs — "+ Nuevo evento" y "+ Nueva tarea" (Parte 22/23)', () => {
+  it('grupo vertical propio (.calendar-fab-group), nunca toca .screen-fab global ni .finance-fab-group', () => {
+    expect(CALENDAR_SRC).toContain('<div className="calendar-fab-group">')
+    expect(CALENDAR_SRC).toContain('+ Nuevo evento')
+    expect(CALENDAR_SRC).toContain('+ Nueva tarea')
+  })
+
+  it('Personal ya NO oculta el grupo de FABs — antes se escondía solo porque Personal era "solo notas"', () => {
+    expect(CALENDAR_SRC).not.toMatch(/view !== 'Personal' &&\s*\(\s*<button[\s\S]{0,40}className="screen-fab"/)
+  })
+
+  it('"Nueva tarea" abre AddTaskForm en un modal propio, independiente del de "Nuevo evento"', () => {
+    expect(CALENDAR_SRC).toContain('{addingTask && (')
+    expect(CALENDAR_SRC).toContain('<AddTaskForm')
+  })
+})
+
+describe('Breadcrumb de Calendario — sigue funcionando exactamente igual (sin tocar el sistema jerárquico global)', () => {
+  it('SectionBreadcrumb sigue recibiendo CALENDARIO_MENU_ITEM_META[view].label, sin cambios', () => {
+    expect(CALENDAR_SRC).toContain('<SectionBreadcrumb subsection={CALENDARIO_MENU_ITEM_META[view].label} />')
+  })
+})
+
+describe('No regresión de Eventos ni de "+ Añadir tarea" de Preparativos (Parte 35/49)', () => {
+  it('EventosScreen.tsx no se ha tocado para nada de esta fase — ninguna referencia a calendar_categories/kind de Calendario', () => {
+    expect(EVENTOS_SRC).not.toContain('calendar_categories')
+    expect(EVENTOS_SRC).not.toContain("kind: 'task'")
+  })
+
+  it('"+ Añadir tarea" de Preparativos (Eventos) sigue intacto — es un concepto distinto de las Tareas de Calendario, nunca se ha confundido con él', () => {
+    expect(EVENTOS_SRC).toContain('placeholder="+ Añadir tarea"')
+    expect(EVENTOS_SRC).toContain('onSubmit={handleAddTask}')
+  })
+})

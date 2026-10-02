@@ -126,7 +126,7 @@ function AuthedApp() {
         <Routes>
           <Route element={<NavShell profile={profile} />}>
             <Route path="/" element={<HomeOrBankReturn profile={profile} />} />
-            <Route path="/calendario" element={<CalendarScreen />} />
+            <Route path="/calendario" element={<CalendarScreen profile={profile} />} />
             <Route path="/eventos" element={<EventosScreen />} />
             <Route path="/puntos" element={<RewardsScreen />} />
             <Route path="/compras" element={<ShoppingScreen />} />

@@ -509,6 +509,23 @@ export interface CalendarEvent {
   // los demás usuarios aunque sean de la familia no lo puedan ver" —
   // 'private' se filtra ya en el propio servidor (RLS), no aquí.
   visibility: 'shared' | 'private'
+  // FASE CALENDARIO — UN único motor, dos tipos (nunca una tabla "tasks" aparte: la fusión de dos
+  // motores en uno ya se hizo una vez, migración 0040, y no se repite). Una Tarea es un calendar_events
+  // más, sin hora propia inicialmente (ver allDay) — nunca se le inventa una hora ficticia.
+  kind: 'event' | 'task'
+  categoryId: string | null
+}
+
+// Categoría propia del Calendario — nunca budget_categories ni tags de otro dominio (petición
+// explícita). Opcional tanto para Evento como para Tarea; el emoji siempre existe, el color es opcional
+// (modo de color por categorías, con fallback seguro cuando no hay color de categoría).
+export interface CalendarCategory {
+  id: string
+  familyId: string
+  name: string
+  emoji: string
+  color: string | null
+  sortOrder: number
 }
 
 // Módulo Banco (Enable Banking) — una familia puede tener varias

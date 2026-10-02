@@ -31,7 +31,7 @@ import {
   stripListFillers,
   stripWakeWord,
 } from '@/domain/voiceQuery'
-import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
+import { detectCalendarEntryKind, parseCalendarEntry } from '@/domain/calendarVoiceParser'
 import { isDictationSupported, isSpeechSupported, listenContinuous, primeSpeech, speakAsync } from '@/services/voice'
 import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/output'
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
@@ -621,11 +621,30 @@ async function answerShoppingQuery(storeHint: string | null, general: boolean): 
   return `En la lista de la compra${storeLabel}: ${filtered.map((i) => i.name).join(', ')}.`
 }
 
+// FASE CALENDARIO (Parte 26) — adaptación MÍNIMA del punto de creación por voz: una Tarea es un
+// calendar_events más (kind), así que basta con decidir ese `kind` aquí y, si es 'task', recortar el
+// resto de campos al formulario reducido (sin hora/recurrencia/recordatorios, igual que AddTaskForm en
+// CalendarScreen.tsx) — nada más del flujo de voz cambia. El caso "Hablar con PEPA" (conversación con
+// confirmación, pepa/actions/talkActions.ts) queda FUERA de esta fase a propósito: tiene su propio flujo
+// de "presentar/elegir/confirmar" y añadirle un selector de tipo es una pieza nueva de UI de conversación,
+// no una adaptación mínima — se deja preparado (createEvent ya acepta `kind`) para una fase futura.
 async function handleCalendarEntry(text: string): Promise<string> {
+  const kind = detectCalendarEntryKind(text)
+  // Ambigüedad real (lleva a la vez "tarea"/"tengo que" Y "evento"/"cita"/"reunión"/"cumpleaños"): nunca
+  // se adivina — se pregunta y no se guarda nada, igual que pide la Parte 26 explícitamente ("Pepa debe
+  // preguntar"). El usuario puede repetirlo con una frase más clara.
+  if (kind === 'ambiguous') return '¿Lo guardo como tarea o como evento?'
+
   const parsed = parseCalendarEntry(text, new Date())
   const members = await listFamilyMembers()
   let member = parsed.memberHint ? matchMemberByHint(parsed.memberHint, members) : null
   let title = parsed.title
+  // La propia marca de tarea ("tarea", "tengo que") no es parte del título — "tarea sacar la basura" es
+  // la tarea "Sacar la basura", no una tarea llamada literalmente "Tarea sacar la basura".
+  if (kind === 'task') {
+    title = title.replace(/^(tarea:?\s+|tengo que\s+)/i, '').trim()
+    title = title ? title.charAt(0).toUpperCase() + title.slice(1) : parsed.title
+  }
 
   // Si la frase no decía ninguna fecha, se usa el día que tengas abierto
   // en Calendario (su ventana emergente) en vez de caer siempre en hoy —
@@ -659,14 +678,20 @@ async function handleCalendarEntry(text: string): Promise<string> {
     anchor: r.anchor === 'end' && !parsed.endTime ? ('start' as const) : r.anchor,
   }))
 
+  const isTask = kind === 'task'
   await createEvent({
     title,
-    startAt: new Date(`${date}T${parsed.time ?? '09:00'}`).toISOString(),
-    endAt: parsed.endTime ? new Date(`${date}T${parsed.endTime}`).toISOString() : null,
-    allDay: parsed.time === null,
-    recurrenceRule: parsed.recurrenceRule,
-    reminders,
+    startAt: new Date(`${date}T${isTask ? '00:00' : (parsed.time ?? '09:00')}`).toISOString(),
+    // Una Tarea nunca tiene hora/fin/recurrencia/recordatorios inicialmente (Parte 3) — nunca se le
+    // inventa una hora ficticia aunque la frase dictada llevara una.
+    endAt: isTask ? null : parsed.endTime ? new Date(`${date}T${parsed.endTime}`).toISOString() : null,
+    allDay: isTask ? true : parsed.time === null,
+    recurrenceRule: isTask ? null : parsed.recurrenceRule,
+    reminders: isTask ? [] : reminders,
     memberIds: member ? [member.id] : [],
+    kind,
+    // Parte 25: una Tarea nunca sincroniza con Google Calendar por defecto.
+    syncToGoogle: !isTask,
   })
 
   // VoiceCapture vive fuera de la pantalla de Calendario (está montado en
@@ -677,9 +702,10 @@ async function handleCalendarEntry(text: string): Promise<string> {
   window.dispatchEvent(new CustomEvent('family-app:calendar-changed', { detail: { date } }))
 
   const dateLabel = new Date(date + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+  const memberLabel = member ? ` · para ${member.name}` : ''
+  if (isTask) return `Apuntada como tarea: ${title} — ${dateLabel}${memberLabel}`
   const timeLabel = parsed.time ? ` a las ${parsed.time}` : ''
   const endTimeLabel = parsed.endTime ? ` – ${parsed.endTime}` : ''
-  const memberLabel = member ? ` · para ${member.name}` : ''
   const reminderText =
     reminders.length > 0 ? ` · 🔔 ${reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}` : ''
   const recurrenceText = parsed.recurrenceRule ? ` · ${recurrenceLabel(parsed.recurrenceRule)}` : ''

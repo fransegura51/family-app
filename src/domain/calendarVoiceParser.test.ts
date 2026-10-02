@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseCalendarEntry } from '@/domain/calendarVoiceParser'
+import { detectCalendarEntryKind, parseCalendarEntry } from '@/domain/calendarVoiceParser'
 
 // Cada caso de aquí es un bug real ya corregido (ver comentarios del
 // propio parser) o una forma de hablar que la familia usa de verdad: si
@@ -114,5 +114,35 @@ describe('limpieza del título', () => {
   })
   it('si no queda nada de título, "Cita"', () => {
     expect(parseCalendarEntry('el 25 de septiembre a las 10 horas', today).title).toBe('Cita')
+  })
+})
+
+// FASE CALENDARIO — Parte 26: distinción Evento/Tarea por voz, solo para el dictado directo (🎤 Apuntar
+// · Calendario). Sin marca ninguna, 'event' siempre — ningún dictado existente cambia de comportamiento.
+describe('detectCalendarEntryKind', () => {
+  it('"tarea" explícito → task', () => {
+    expect(detectCalendarEntryKind('crea una tarea sacar la basura')).toBe('task')
+    expect(detectCalendarEntryKind('añade una tarea: llamar al fontanero')).toBe('task')
+  })
+
+  it('"tengo que" explícito → task', () => {
+    expect(detectCalendarEntryKind('tengo que recoger el coche del taller')).toBe('task')
+  })
+
+  it('"evento"/"cita"/"reunión"/"cumpleaños" explícitos → event', () => {
+    expect(detectCalendarEntryKind('crea un evento para el sábado')).toBe('event')
+    expect(detectCalendarEntryKind('cita con el dentista el jueves')).toBe('event')
+    expect(detectCalendarEntryKind('reunión de padres el lunes')).toBe('event')
+    expect(detectCalendarEntryKind('cumpleaños de Eric el 3 de octubre')).toBe('event')
+  })
+
+  it('sin ninguna marca → event (comportamiento de siempre, nunca cambia por esta fase)', () => {
+    expect(detectCalendarEntryKind('entrenamiento fútbol Eric 14 de septiembre a las 18 horas')).toBe('event')
+    expect(detectCalendarEntryKind('dentista mañana a las diez')).toBe('event')
+  })
+
+  it('ambigüedad real (lleva tarea Y evento a la vez) → ambiguous, nunca se adivina', () => {
+    expect(detectCalendarEntryKind('tengo que ir a la reunión del jueves')).toBe('ambiguous')
+    expect(detectCalendarEntryKind('tarea: preparar la cita del dentista')).toBe('ambiguous')
   })
 })

@@ -20,13 +20,17 @@ import {
   createEvent,
   deleteEvent,
   deleteEventOccurrence,
+  getCalendarPreferences,
   getEventAttachmentUrl,
+  listCalendarCategories,
   listEventCompletions,
   listUpcomingEvents,
   uncompleteEventOccurrence,
   updateEvent,
   uploadEventFile,
   uploadEventPhoto,
+  type CalendarColorMode,
+  type CalendarTaskOrder,
   type EventCompletion,
 } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
@@ -81,7 +85,7 @@ import {
   type ReminderUnit,
 } from '@/domain/reminders'
 import { MemberAvatar } from '@/ui/MemberAvatar'
-import type { CalendarEvent, Contact, FamilyMember } from '@/domain/types'
+import type { CalendarCategory, CalendarEvent, Contact, FamilyMember, Profile } from '@/domain/types'
 import calendarHeaderImg from '@/assets/calendario/calendar-header.jpg'
 import { getCurrentPosition } from '@/services/geolocation'
 import { reverseGeocode } from '@/services/geocoding'
@@ -141,7 +145,7 @@ function useSwipeHandlers(onSwipeLeft: () => void, onSwipeRight: () => void) {
   }
 }
 
-export function CalendarScreen() {
+export function CalendarScreen({ profile }: { profile: Profile }) {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [eventCompletions, setEventCompletions] = useState<EventCompletion[]>([])
   const [externalEvents, setExternalEvents] = useState<ExternalCalendarEvent[]>([])
@@ -151,11 +155,23 @@ export function CalendarScreen() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [personalNotes, setPersonalNotes] = useState<PersonalNote[]>([])
+  // FASE CALENDARIO — categorías propias del Calendario y preferencias de visualización POR USUARIO
+  // (profiles: calendar_color_mode/calendar_task_order, nunca families/localStorage — ver data/calendar.ts).
+  const [categories, setCategories] = useState<CalendarCategory[]>([])
+  const [calendarPrefs, setCalendarPrefs] = useState<{ colorMode: CalendarColorMode; taskOrder: CalendarTaskOrder }>({
+    colorMode: 'miembros',
+    taskOrder: 'eventos_primero',
+  })
+  // Quién soy yo dentro de la familia (si tengo un miembro propio enlazado) — lo necesita Personal para
+  // enseñar MIS Eventos/Tareas, además de mis notas. Mismo patrón que myMemberId en FinanceScreen.tsx.
+  const myMemberId = useMemo(() => members.find((m) => m.linkedProfileId === profile.id)?.id ?? null, [members, profile.id])
   // Botón flotante "Nuevo evento", tocable desde cualquier parte de la
   // pestaña — petición real: "esa misma idea [la de Contactos] la
   // vamos a aplicar al calendario: botón flotante Nuevo evento y
   // formulario en ventana emergente".
   const [addingEvent, setAddingEvent] = useState(false)
+  // FASE CALENDARIO — segundo FAB, formulario reducido (ver AddTaskForm).
+  const [addingTask, setAddingTask] = useState(false)
   // Con qué miembro preseleccionado se abrió "+ Añadir" desde la
   // columna de esa persona en la vista Familiar — null en el resto de
   // casos (botón flotante normal).
@@ -248,8 +264,10 @@ export function CalendarScreen() {
       listExternalEventDismissals(),
       listExternalEventCompletions(),
       listPersonalNotes(),
+      listCalendarCategories(),
+      getCalendarPreferences(),
     ])
-      .then(([e, m, h, ee, ef, ct, evc, ed, eec, pn]) => {
+      .then(([e, m, h, ee, ef, ct, evc, ed, eec, pn, cat, prefs]) => {
         setEvents(e)
         setMembers(m)
         setHolidayDates(h)
@@ -260,6 +278,8 @@ export function CalendarScreen() {
         setExternalDismissals(ed)
         setExternalCompletions(eec)
         setPersonalNotes(pn)
+        setCategories(cat)
+        setCalendarPrefs(prefs)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
@@ -299,6 +319,10 @@ export function CalendarScreen() {
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const memberColorById = useMemo(() => new Map(members.map((m) => [m.id, m.color])), [members])
+  const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
+  // Solo las categorías CON color — "sin color de categoría" cae de forma segura en el color de miembro
+  // (ver eventColor/eventDotColors más abajo), nunca en un string vacío que pudiera pintar algo invisible.
+  const categoryColorById = useMemo(() => new Map(categories.filter((c) => c.color).map((c) => [c.id, c.color as string])), [categories])
 
   const monthDays = useMemo(() => getMonthGridDays(visibleYear, visibleMonth), [visibleYear, visibleMonth])
 
@@ -319,8 +343,19 @@ export function CalendarScreen() {
         map.set(dateStr, list)
       }
     }
+    // FASE CALENDARIO — orden Eventos/Tareas cuando ambos caen el mismo día (Configuración → Calendario).
+    // Un único punto de orden para TODA la pantalla: DayModal/Agenda/Mes/TimeGridView/Familiar parten
+    // todos de este mismo mapa. Sort ESTABLE (garantizado desde ES2019): dentro de cada tipo se conserva
+    // el orden que ya traía la lista, nunca se reordena por ningún otro criterio aquí.
+    const taskFirst = calendarPrefs.taskOrder === 'tareas_primero'
+    for (const list of map.values()) {
+      list.sort((a, b) => {
+        if (a.kind === b.kind) return 0
+        return (a.kind === 'task') === taskFirst ? -1 : 1
+      })
+    }
     return map
-  }, [filteredEvents, monthDays, holidayDates])
+  }, [filteredEvents, monthDays, holidayDates, calendarPrefs.taskOrder])
 
   const feedById = useMemo(() => new Map(externalFeeds.map((f) => [f.id, f])), [externalFeeds])
 
@@ -624,12 +659,16 @@ export function CalendarScreen() {
                 .join(', ')
             : recurrenceLabel(ev.recurrenceRule) || 'Toda la familia'
         const subtitle = ev.points > 0 && ev.memberIds.length === 1 ? `${who} · ⭐ ${ev.points}` : who
+        // El emoji de categoría NUNCA depende del modo de color (Parte 6) — sigue visible aunque la
+        // persona esté viendo colores por miembro.
+        const category = ev.categoryId ? categoryById.get(ev.categoryId) : null
+        const titleWithCategory = category ? `${category.emoji} ${ev.title}` : ev.title
         return {
           key: `ev-${ev.id}`,
           id: ev.id,
-          title: ev.visibility === 'private' ? `🔒 ${ev.title}` : ev.title,
+          title: ev.visibility === 'private' ? `🔒 ${titleWithCategory}` : titleWithCategory,
           subtitle,
-          color: eventColor(ev, memberById),
+          color: eventColor(ev, memberById, calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined),
           allDay: ev.allDay,
           startTime: ev.allDay ? null : hhmm(ev.startAt),
           endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
@@ -864,6 +903,7 @@ export function CalendarScreen() {
             entries={buildEntriesForDate(selectedDate)}
             events={events}
             members={members}
+            categories={categories}
             editingId={editingId}
             onCancelEdit={() => setEditingId(null)}
             onEventChanged={() => {
@@ -908,7 +948,7 @@ export function CalendarScreen() {
               const birthdayDots = dayBirthdays.map((b) => b.color)
               const dots = [
                 ...new Set([
-                  ...dayEvents.flatMap((e) => eventDotColors(e, memberColorById)),
+                  ...dayEvents.flatMap((e) => eventDotColors(e, memberColorById, calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined)),
                   ...externalDots,
                   ...birthdayDots,
                 ]),
@@ -942,6 +982,7 @@ export function CalendarScreen() {
             entries={buildEntriesForDate(selectedDate)}
             events={events}
             members={members}
+            categories={categories}
             editingId={editingId}
             onCancelEdit={() => setEditingId(null)}
             onEventChanged={() => {
@@ -958,6 +999,7 @@ export function CalendarScreen() {
           buildEntriesForDate={buildEntriesForDate}
           events={events}
           members={members}
+          categories={categories}
           editingId={editingId}
           onCancelEdit={() => setEditingId(null)}
           onEventChanged={() => {
@@ -970,7 +1012,10 @@ export function CalendarScreen() {
           selectedDate={selectedDate}
           members={members}
           memberById={memberById}
+          categoryById={categoryById}
+          categories={categories}
           dayEvents={eventsByDate.get(selectedDate) ?? []}
+          eventCompletions={eventCompletions}
           editingId={editingId}
           onEdit={setEditingId}
           onCancelEdit={() => setEditingId(null)}
@@ -986,10 +1031,23 @@ export function CalendarScreen() {
             setAddingEvent(true)
           }}
           onShareEvent={handleShareEvent}
+          onComplete={handleCompleteEvent}
+          onUncomplete={handleUncompleteEvent}
         />
       ) : view === 'Personal' ? (
-        <PersonalNotesView
+        <PersonalView
           selectedDate={selectedDate}
+          myMemberId={myMemberId}
+          entries={buildEntriesForDate(selectedDate)}
+          events={events}
+          members={members}
+          categories={categories}
+          editingId={editingId}
+          onCancelEdit={() => setEditingId(null)}
+          onEventChanged={() => {
+            setEditingId(null)
+            reload()
+          }}
           notes={personalNotes}
           onNavigateDay={changeSelectedDate}
           swipeHandlers={daySwipe}
@@ -1013,6 +1071,8 @@ export function CalendarScreen() {
             birthdaysByDate={birthdaysByDate}
             memberById={memberById}
             feedById={feedById}
+            categoryById={categoryById}
+            categoryColorById={calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             swipeHandlers={view === 'Semana' ? weekSwipe : view === '3 días' ? threeDaySwipe : daySwipe}
@@ -1022,6 +1082,7 @@ export function CalendarScreen() {
             entries={buildEntriesForDate(selectedDate)}
             events={events}
             members={members}
+            categories={categories}
             editingId={editingId}
             onCancelEdit={() => setEditingId(null)}
             onEventChanged={() => {
@@ -1034,10 +1095,16 @@ export function CalendarScreen() {
         </>
       )}
 
-      {view !== 'Personal' && (
+      {/* FASE CALENDARIO — Parte 23: Personal ya no se queda fuera (antes se ocultaba porque Personal
+          era solo notas; ahora también enseña Eventos/Tareas propios, así que crear uno tiene el mismo
+          sentido aquí que en cualquier otra vista). Dos FABs en vez de uno — mismo patrón de grupo
+          vertical que .finance-fab-group (Economía), clase propia para no tocar ningún otro .screen-fab
+          de la app. "Nuevo evento" se queda en el mismo sitio exacto de siempre (bottom:90px/right:16px,
+          column-reverse) para no desplazar el control ya conocido. */}
+      <div className="calendar-fab-group">
         <button
           type="button"
-          className="screen-fab"
+          className="calendar-fab"
           onClick={() => {
             setAddingEventMemberId(null)
             setAddingEvent(true)
@@ -1045,7 +1112,10 @@ export function CalendarScreen() {
         >
           + Nuevo evento
         </button>
-      )}
+        <button type="button" className="calendar-fab calendar-fab-task" onClick={() => setAddingTask(true)}>
+          + Nueva tarea
+        </button>
+      </div>
 
       {addingEvent && (
         <div
@@ -1075,6 +1145,7 @@ export function CalendarScreen() {
             <AddEventForm
               members={members}
               events={events}
+              categories={categories}
               defaultDate={selectedDate}
               defaultMemberIds={addingEventMemberId ? [addingEventMemberId] : undefined}
               hideHeading
@@ -1088,6 +1159,30 @@ export function CalendarScreen() {
         </div>
       )}
 
+      {addingTask && (
+        <div className="modal-overlay" onClick={() => setAddingTask(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Nueva tarea
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setAddingTask(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <AddTaskForm
+              members={members}
+              categories={categories}
+              defaultDate={selectedDate}
+              onAdded={() => {
+                reload()
+                setAddingTask(false)
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {manualShare && (
         <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />
       )}
@@ -1095,8 +1190,16 @@ export function CalendarScreen() {
   )
 }
 
-function eventColor(ev: CalendarEvent, memberById: Map<string, FamilyMember>): string {
+// FASE CALENDARIO — categoryColorById solo se pasa en modo "categorías" (Configuración → Calendario);
+// en modo "miembros" (default) el comportamiento es EXACTAMENTE el de siempre. Fallback seguro: sin
+// color de categoría, cae en el color de miembro de siempre; sin eso tampoco, en el gris de siempre —
+// nunca invisible.
+function eventColor(ev: CalendarEvent, memberById: Map<string, FamilyMember>, categoryColorById?: Map<string, string>): string {
   if (ev.color) return ev.color
+  if (categoryColorById && ev.categoryId) {
+    const categoryColor = categoryColorById.get(ev.categoryId)
+    if (categoryColor) return categoryColor
+  }
   const first = ev.memberIds[0] ? memberById.get(ev.memberIds[0]) : null
   return first?.color ?? '#9ca3af'
 }
@@ -1157,6 +1260,7 @@ function DayModal({
   entries,
   events,
   members,
+  categories,
   editingId,
   onCancelEdit,
   onEventChanged,
@@ -1167,6 +1271,7 @@ function DayModal({
   entries: AgendaEntry[]
   events: CalendarEvent[]
   members: FamilyMember[]
+  categories: CalendarCategory[]
   editingId: string | null
   onCancelEdit: () => void
   onEventChanged: () => void
@@ -1206,6 +1311,7 @@ function DayModal({
         editingId={editingId}
         events={events}
         members={members}
+        categories={categories}
         onEventChanged={onEventChanged}
         onCancelEdit={onCancelEdit}
       />
@@ -1222,6 +1328,7 @@ function DayEntriesBody({
   editingId,
   events,
   members,
+  categories,
   onEventChanged,
   onCancelEdit,
   emptyLabel = 'Nada este día.',
@@ -1230,6 +1337,7 @@ function DayEntriesBody({
   editingId: string | null
   events: CalendarEvent[]
   members: FamilyMember[]
+  categories: CalendarCategory[]
   onEventChanged: () => void
   onCancelEdit: () => void
   emptyLabel?: string
@@ -1240,7 +1348,7 @@ function DayEntriesBody({
   function renderCard(entry: AgendaEntry) {
     if (editingId === entry.id) {
       const ev = events.find((e) => e.id === entry.id)!
-      return <EditEventForm key={entry.key} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
+      return <EditEventForm key={entry.key} event={ev} members={members} categories={categories} onDone={onEventChanged} onCancel={onCancelEdit} />
     }
     return <AgendaRow key={entry.key} entry={entry} />
   }
@@ -1280,7 +1388,10 @@ function FamilyDayView({
   selectedDate,
   members,
   memberById,
+  categoryById,
+  categories,
   dayEvents,
+  eventCompletions,
   editingId,
   onEdit,
   onCancelEdit,
@@ -1290,11 +1401,16 @@ function FamilyDayView({
   onNavigateDay,
   onQuickAdd,
   onShareEvent,
+  onComplete,
+  onUncomplete,
 }: {
   selectedDate: string
   members: FamilyMember[]
   memberById: Map<string, FamilyMember>
+  categoryById: Map<string, CalendarCategory>
+  categories: CalendarCategory[]
   dayEvents: CalendarEvent[]
+  eventCompletions: EventCompletion[]
   editingId: string | null
   onEdit: (id: string) => void
   onCancelEdit: () => void
@@ -1304,6 +1420,11 @@ function FamilyDayView({
   onNavigateDay: (deltaDays: number) => void
   onQuickAdd: (memberId: string | null) => void
   onShareEvent: (event: CalendarEvent, dateStr: string) => void
+  // BUG CALENDARIO-15 (auditoría): Familiar no ofrecía completar ni Evento ni Tarea — reutiliza
+  // exactamente handleCompleteEvent/handleUncompleteEvent (calendar_event_completions), nunca un
+  // mecanismo propio de esta vista.
+  onComplete: (id: string, dateStr: string) => void
+  onUncomplete: (id: string, dateStr: string) => void
 }) {
   const unassigned = dayEvents.filter((e) => e.memberIds.length === 0)
   const columns: { key: string; label: string; member: FamilyMember | null; events: CalendarEvent[] }[] = [
@@ -1313,13 +1434,18 @@ function FamilyDayView({
 
   function renderEvent(ev: CalendarEvent) {
     if (editingId === ev.id) {
-      return <EditEventForm key={ev.id} event={ev} members={members} onDone={onEventChanged} onCancel={onCancelEdit} />
+      return <EditEventForm key={ev.id} event={ev} members={members} categories={categories} onDone={onEventChanged} onCancel={onCancelEdit} />
     }
+    const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === selectedDate)
     return (
       <EventCard
         key={ev.id}
         event={ev}
         memberById={memberById}
+        categoryById={categoryById}
+        done={done}
+        onComplete={() => onComplete(ev.id, selectedDate)}
+        onUncomplete={() => onUncomplete(ev.id, selectedDate)}
         onEdit={() => onEdit(ev.id)}
         onDeleteSeries={() => onDelete(ev.id)}
         onDeleteOccurrence={(dateStr) => onDeleteOccurrence(ev.id, dateStr)}
@@ -1368,14 +1494,24 @@ function FamilyDayView({
   )
 }
 
-// Petición real: "un nuevo modo... personal... lo que cada usuario
-// quiera poner y que solo lo pueda ver ese usuario, lo que se apunte
-// ahí tiene que ser privado" — notes viene ya filtrado por user_id
-// desde el servidor (RLS de personal_calendar_notes, ver migración
-// 0088), así que aquí no hace falta ningún filtro de "quién puede
-// verlo": lo que llega es siempre de quien tiene la sesión abierta.
-function PersonalNotesView({
+// Petición real original: "un nuevo modo... personal... lo que cada usuario quiera poner y que solo lo
+// pueda ver ese usuario" — las notas siguen siendo EXACTAMENTE eso (notes viene ya filtrado por user_id
+// desde el servidor, RLS de personal_calendar_notes, migración 0088). FASE CALENDARIO (Parte 16,
+// corrección de bug de auditoría): Personal dejó de ser "solo notas" — la auditoría encontró que no
+// mostraba Eventos ni Tareas propios, y eso no era el comportamiento querido. Ahora también enseña MIS
+// Eventos y Tareas (las de mi propio miembro enlazado, myMemberId — ver CalendarScreen), reutilizando
+// DayEntriesBody tal cual (mismo editar/completar/compartir que Mes/Agenda, ningún mecanismo nuevo) —
+// las notas personales se quedan exactamente igual, debajo, sin perder ningún dato ni comportamiento.
+function PersonalView({
   selectedDate,
+  myMemberId,
+  entries,
+  events,
+  members,
+  categories,
+  editingId,
+  onCancelEdit,
+  onEventChanged,
   notes,
   onNavigateDay,
   swipeHandlers,
@@ -1385,6 +1521,14 @@ function PersonalNotesView({
   sharingNoteId,
 }: {
   selectedDate: string
+  myMemberId: string | null
+  entries: AgendaEntry[]
+  events: CalendarEvent[]
+  members: FamilyMember[]
+  categories: CalendarCategory[]
+  editingId: string | null
+  onCancelEdit: () => void
+  onEventChanged: () => void
   notes: PersonalNote[]
   onNavigateDay: (deltaDays: number) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
@@ -1396,6 +1540,13 @@ function PersonalNotesView({
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const dayNotes = notes.filter((n) => n.noteDate === selectedDate)
+  // Solo mis propios Eventos/Tareas (asignados a MI miembro) — nunca "Toda la familia" ni los de otra
+  // persona: eso ya se ve en Mes/Agenda/Familiar, Personal es específicamente "lo mío".
+  const myEntries = entries.filter((entry) => {
+    if (entry.isExternal) return false
+    const ev = events.find((e) => e.id === entry.id)
+    return !!ev && !!myMemberId && ev.memberIds.includes(myMemberId)
+  })
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault()
@@ -1424,8 +1575,26 @@ function PersonalNotesView({
         </button>
       </div>
 
-      <p className="muted" style={{ fontSize: 12 }}>
-        🔒 Privado — solo tú puedes ver lo que apuntes aquí, ni el resto de la familia lo verá.
+      {myMemberId ? (
+        <DayEntriesBody
+          entries={myEntries}
+          editingId={editingId}
+          events={events}
+          members={members}
+          categories={categories}
+          onEventChanged={onEventChanged}
+          onCancelEdit={onCancelEdit}
+          emptyLabel="Nada tuyo este día."
+        />
+      ) : (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Tu cuenta no está enlazada a ningún miembro de la familia todavía, así que aquí no se pueden mostrar tus Eventos y
+          Tareas — las notas de abajo siguen funcionando igual.
+        </p>
+      )}
+
+      <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
+        🔒 Notas privadas — solo tú puedes ver lo que apuntes aquí, ni el resto de la familia lo verá.
       </p>
 
       <form onSubmit={handleAdd} className="inline-fields">
@@ -1501,6 +1670,8 @@ function TimeGridView({
   birthdaysByDate,
   memberById,
   feedById,
+  categoryById,
+  categoryColorById,
   selectedDate,
   onSelectDate,
   swipeHandlers,
@@ -1511,11 +1682,20 @@ function TimeGridView({
   birthdaysByDate: Map<string, { name: string; color: string }[]>
   memberById: Map<string, FamilyMember>
   feedById: Map<string, ExternalCalendarFeed>
+  categoryById: Map<string, CalendarCategory>
+  categoryColorById?: Map<string, string>
   selectedDate: string
   onSelectDate: (dateStr: string) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
 }) {
   const HOUR_HEIGHT = 52
+
+  // El emoji de categoría nunca depende del modo de color (Parte 6) — por eso usa categoryById (siempre
+  // disponible) y no categoryColorById (solo presente en modo "categorías").
+  function titleWithCategoryEmoji(ev: CalendarEvent): string {
+    const category = ev.categoryId ? categoryById.get(ev.categoryId) : null
+    return category ? `${category.emoji} ${ev.title}` : ev.title
+  }
 
   function timedBlocksForDate(dateStr: string): TimeGridBlock[] {
     const blocks: TimeGridBlock[] = []
@@ -1525,10 +1705,11 @@ function TimeGridView({
       const startMin = start.getHours() * 60 + start.getMinutes()
       const end = ev.endAt ? new Date(ev.endAt) : null
       const endMin = end ? Math.max(end.getHours() * 60 + end.getMinutes(), startMin + 20) : startMin + 60
+      const title = titleWithCategoryEmoji(ev)
       blocks.push({
         key: `ev-${ev.id}`,
-        title: ev.visibility === 'private' ? `🔒 ${ev.title}` : ev.title,
-        color: eventColor(ev, memberById),
+        title: ev.visibility === 'private' ? `🔒 ${title}` : title,
+        color: eventColor(ev, memberById, categoryColorById),
         startMin,
         endMin,
         dateStr,
@@ -1554,7 +1735,8 @@ function TimeGridView({
       const hasPhoto = ev.attachmentKind === 'foto'
       const hasLocation = !!ev.locationLabel || (ev.locationLatitude != null && ev.locationLongitude != null)
       const prefix = (ev.visibility === 'private' ? '🔒' : '') + (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
-      chips.push({ key: `ev-${ev.id}`, title: prefix ? `${prefix} ${ev.title}` : ev.title, color: eventColor(ev, memberById) })
+      const title = titleWithCategoryEmoji(ev)
+      chips.push({ key: `ev-${ev.id}`, title: prefix ? `${prefix} ${title}` : title, color: eventColor(ev, memberById, categoryColorById) })
     }
     for (const ev of externalEventsByDate.get(dateStr) ?? []) {
       if (ev.allDay) chips.push({ key: `ext-${ev.id}`, title: ev.title, color: '#6b7280' })
@@ -1670,6 +1852,7 @@ function AgendaListView({
   buildEntriesForDate,
   events,
   members,
+  categories,
   editingId,
   onCancelEdit,
   onEventChanged,
@@ -1678,6 +1861,7 @@ function AgendaListView({
   buildEntriesForDate: (dateStr: string) => AgendaEntry[]
   events: CalendarEvent[]
   members: FamilyMember[]
+  categories: CalendarCategory[]
   editingId: string | null
   onCancelEdit: () => void
   onEventChanged: () => void
@@ -1714,6 +1898,7 @@ function AgendaListView({
             editingId={editingId}
             events={events}
             members={members}
+            categories={categories}
             onEventChanged={onEventChanged}
             onCancelEdit={onCancelEdit}
             emptyLabel="Nada hoy."
@@ -2045,6 +2230,10 @@ function EventAttachmentFileLink({ storagePath, name }: { storagePath: string; n
 function EventCard({
   event: ev,
   memberById,
+  categoryById,
+  done = false,
+  onComplete,
+  onUncomplete,
   onEdit,
   onDeleteSeries,
   onDeleteOccurrence,
@@ -2052,6 +2241,13 @@ function EventCard({
 }: {
   event: CalendarEvent
   memberById: Map<string, FamilyMember>
+  categoryById?: Map<string, CalendarCategory>
+  // BUG CALENDARIO-15 (auditoría): esta tarjeta (Vista Familiar) no ofrecía "Hecho" aunque
+  // calendar_event_completions ya existiera y DayModal/Agenda sí lo usaran — mismo motor, mismo
+  // mecanismo, nunca uno nuevo (completeEventOccurrence/uncompleteEventOccurrence, data/calendar.ts).
+  done?: boolean
+  onComplete?: () => void
+  onUncomplete?: () => void
   onEdit: () => void
   onDeleteSeries: () => void
   onShare?: () => void
@@ -2081,8 +2277,9 @@ function EventCard({
       {showingPhoto && ev.attachmentStoragePath && (
         <PhotoLightbox storagePath={ev.attachmentStoragePath} onClose={() => setShowingPhoto(false)} />
       )}
-      <strong>
+      <strong style={done ? { textDecoration: 'line-through', color: 'var(--muted)' } : undefined}>
         {ev.visibility === 'private' && '🔒 '}
+        {ev.categoryId && categoryById?.get(ev.categoryId) ? `${categoryById.get(ev.categoryId)!.emoji} ` : ''}
         {ev.title}
       </strong>
       <p className="muted">
@@ -2122,6 +2319,11 @@ function EventCard({
         })}
       </div>
       <div className="member-card-actions">
+        {(onComplete || onUncomplete) && (
+          <button type="button" className="link-button" onClick={done ? onUncomplete : onComplete}>
+            {done ? '↺ Deshacer' : '✓ Hecho'}
+          </button>
+        )}
         <button type="button" className="link-button" onClick={onEdit}>
           Editar
         </button>
@@ -2374,6 +2576,80 @@ function WhoDropdown({
                     {m.name}
                   </span>
                   {selected.includes(m.id) && <span aria-hidden="true">✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// FASE CALENDARIO — categoría opcional, compartida por Evento y Tarea (Parte 4/5). Mismo patrón visual
+// exacto que WhoDropdown (justo arriba): un desplegable en ventana emergente, "Sin categoría" como
+// opción explícita además de cada categoría real — nunca una taxonomía obligatoria. Las categorías en
+// sí se crean/editan solo desde Configuración → Calendario (Parte 27), nunca desde aquí.
+function CategoryDropdown({
+  categories,
+  selected,
+  onChange,
+}: {
+  categories: CalendarCategory[]
+  selected: string | null
+  onChange: (id: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  if (categories.length === 0) return null
+  const selectedCategory = selected ? categories.find((c) => c.id === selected) : null
+  const summary = selectedCategory ? `${selectedCategory.emoji} ${selectedCategory.name}` : 'Sin categoría'
+
+  return (
+    <div>
+      <p className="muted">Categoría (opcional)</p>
+      <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
+        <span className="muted">▼</span>
+      </button>
+      {open && (
+        <div className="modal-overlay" onClick={() => setOpen(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Categoría
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
+              <button
+                type="button"
+                className="category-picker-row"
+                style={{ justifyContent: 'space-between' }}
+                onClick={() => {
+                  onChange(null)
+                  setOpen(false)
+                }}
+              >
+                <span>Sin categoría</span>
+                {!selected && <span aria-hidden="true">✓</span>}
+              </button>
+              {categories.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="category-picker-row"
+                  style={{ justifyContent: 'space-between' }}
+                  onClick={() => {
+                    onChange(c.id)
+                    setOpen(false)
+                  }}
+                >
+                  <span>
+                    {c.emoji} {c.name}
+                  </span>
+                  {selected === c.id && <span aria-hidden="true">✓</span>}
                 </button>
               ))}
             </div>
@@ -2785,14 +3061,20 @@ async function resolveEventAttachment(
 function EditEventForm({
   event,
   members,
+  categories,
   onDone,
   onCancel,
 }: {
   event: CalendarEvent
   members: FamilyMember[]
+  categories: CalendarCategory[]
   onDone: () => void
   onCancel: () => void
 }) {
+  // FASE CALENDARIO — una Tarea se edita con el mismo formulario reducido con el que se crea (Parte 2/3:
+  // sin hora, sin repetición, sin recordatorios) — nunca se le ofrecen campos que nunca tuvo. El `kind`
+  // de un registro no cambia nunca desde aquí (no hay conversión Evento↔Tarea en esta fase).
+  const isTask = event.kind === 'task'
   const start = new Date(event.startAt)
   const pad = (n: number) => String(n).padStart(2, '0')
   const [title, setTitle] = useState(event.title)
@@ -2831,6 +3113,7 @@ function EditEventForm({
   const [attachmentRemoved, setAttachmentRemoved] = useState(false)
   const [note, setNote] = useState(event.note ?? '')
   const [visibility, setVisibility] = useState<'shared' | 'private'>(event.visibility)
+  const [categoryId, setCategoryId] = useState<string | null>(event.categoryId)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -2843,8 +3126,9 @@ function EditEventForm({
     setSaving(true)
     setError(null)
     try {
-      const startAt = new Date(`${date}T${allDay ? '00:00' : time || '00:00'}`).toISOString()
-      const endAt = !allDay && endTime ? new Date(`${date}T${endTime}`).toISOString() : null
+      const effectiveAllDay = isTask ? true : allDay
+      const startAt = new Date(`${date}T${effectiveAllDay ? '00:00' : time || '00:00'}`).toISOString()
+      const endAt = !effectiveAllDay && endTime ? new Date(`${date}T${endTime}`).toISOString() : null
       // Mismo respaldo que al crear: si no hay nadie marcado pero el
       // título ya dice quién es, se asigna solo en vez de quedarse gris.
       const detectedMember = selectedMembers.length === 0 ? findMemberInText(title, members) : null
@@ -2862,27 +3146,24 @@ function EditEventForm({
         title,
         startAt,
         endAt,
-        allDay,
-        recurrenceRule: buildRecurrenceRule(
-          recurrence.freq,
-          recurrence.byDay,
-          recurrence.skipHolidays,
-          recurrence.until || null,
-          recurrence.interval,
-        ),
-        reminders,
+        allDay: effectiveAllDay,
+        recurrenceRule: isTask
+          ? null
+          : buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval),
+        reminders: isTask ? [] : reminders,
         memberIds: effectiveMembers,
         points: effectiveMembers.length === 1 ? points : 0,
         locationLabel: locationLabel.trim() || null,
         locationLatitude: coords?.latitude ?? null,
         locationLongitude: coords?.longitude ?? null,
         note: note.trim() || null,
-        visibility,
+        visibility: isTask ? 'shared' : visibility,
+        categoryId,
         ...attachment,
       })
       onDone()
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar el evento'))
+      setError(errorMessage(err, isTask ? 'No se pudo guardar la tarea' : 'No se pudo guardar el evento'))
     } finally {
       setSaving(false)
     }
@@ -2898,52 +3179,57 @@ function EditEventForm({
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
-      {!allDay && (
-        <div className="inline-fields">
-          <label>
-            Empieza
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+      {!isTask && (
+        <>
+          {!allDay && (
+            <div className="inline-fields">
+              <label>
+                Empieza
+                <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              </label>
+              <label>
+                Termina (opcional)
+                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              </label>
+            </div>
+          )}
+          <label className="checkbox-label">
+            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+            Todo el día
           </label>
-          <label>
-            Termina (opcional)
-            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          {/* Petición real: "quiero que las notas se puedan poner con una
+              etiqueta de personal y que se vean solo en el calendario del
+              usuario que las pone... que los demás usuarios aunque sean de
+              la familia no lo puedan ver" — convive con el resto de
+              eventos de la familia (mismas vistas), pero el servidor
+              filtra quién puede llegar a leerlo (RLS, ver migración 0089). */}
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={visibility === 'private'}
+              onChange={(e) => setVisibility(e.target.checked ? 'private' : 'shared')}
+            />
+            🔒 Solo yo (privado — el resto de la familia no lo verá)
           </label>
-        </div>
+          <FieldDropdown
+            label="Repetición"
+            summary={
+              recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
+              'No se repite'
+            }
+          >
+            <RecurrenceControl value={recurrence} onChange={setRecurrence} />
+          </FieldDropdown>
+          <FieldDropdown
+            label="Recordatorio"
+            summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
+          >
+            <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
+          </FieldDropdown>
+        </>
       )}
-      <label className="checkbox-label">
-        <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
-        Todo el día
-      </label>
-      {/* Petición real: "quiero que las notas se puedan poner con una
-          etiqueta de personal y que se vean solo en el calendario del
-          usuario que las pone... que los demás usuarios aunque sean de
-          la familia no lo puedan ver" — convive con el resto de
-          eventos de la familia (mismas vistas), pero el servidor
-          filtra quién puede llegar a leerlo (RLS, ver migración 0089). */}
-      <label className="checkbox-label">
-        <input
-          type="checkbox"
-          checked={visibility === 'private'}
-          onChange={(e) => setVisibility(e.target.checked ? 'private' : 'shared')}
-        />
-        🔒 Solo yo (privado — el resto de la familia no lo verá)
-      </label>
-      <FieldDropdown
-        label="Repetición"
-        summary={
-          recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
-          'No se repite'
-        }
-      >
-        <RecurrenceControl value={recurrence} onChange={setRecurrence} />
-      </FieldDropdown>
-      <FieldDropdown
-        label="Recordatorio"
-        summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
-      >
-        <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
-      </FieldDropdown>
       <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
+      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />
       {/* Puntos: solo tiene sentido cuando el evento es de una sola
           persona — para un niño, o también para un adulto si se quiere
           (petición real: "cuando le asignemos un evento a un niño...
@@ -2988,6 +3274,7 @@ function EditEventForm({
 function AddEventForm({
   members,
   events,
+  categories,
   onAdded,
   defaultDate,
   defaultMemberIds,
@@ -2995,6 +3282,7 @@ function AddEventForm({
 }: {
   members: FamilyMember[]
   events: CalendarEvent[]
+  categories: CalendarCategory[]
   onAdded: () => void
   defaultDate?: string
   defaultMemberIds?: string[]
@@ -3020,6 +3308,7 @@ function AddEventForm({
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
   const [visibility, setVisibility] = useState<'shared' | 'private'>('shared')
+  const [categoryId, setCategoryId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -3096,6 +3385,7 @@ function AddEventForm({
         locationLongitude: coords?.longitude ?? null,
         note: note.trim() || null,
         visibility,
+        categoryId,
         ...attachment,
       })
       setTitle('')
@@ -3111,6 +3401,7 @@ function AddEventForm({
       setAttachmentFile(null)
       setNote('')
       setVisibility('shared')
+      setCategoryId(null)
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear el evento'))
@@ -3181,6 +3472,7 @@ function AddEventForm({
         <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       </FieldDropdown>
       <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
+      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />
       {selectedMembers.length === 1 && (
         <label>
           Puntos al marcarlo "Hecho" (opcional)
@@ -3202,6 +3494,121 @@ function AddEventForm({
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Crear evento'}
+      </button>
+    </form>
+  )
+}
+
+// FASE CALENDARIO — formulario REDUCIDO de Tarea (Parte 2/3): Título + Fecha (obligatorios);
+// ¿Para quién?/Categoría/Ubicación/Adjunto/Nota/Puntos (opcionales, reutilizando EXACTAMENTE los mismos
+// componentes que el Evento completo — WhoDropdown, CategoryDropdown, EventExtrasFields — nunca
+// sistemas paralelos). Sin hora, sin fin, sin repetición, sin recordatorios: allDay:true fijo, nunca una
+// hora inventada. syncToGoogle:false fijo (Parte 25: una Tarea nunca sincroniza por defecto — ver la
+// migración 0184, que reutiliza calendar_events.sync_to_google tal cual, sin columna nueva).
+function AddTaskForm({
+  members,
+  categories,
+  onAdded,
+  defaultDate,
+}: {
+  members: FamilyMember[]
+  categories: CalendarCategory[]
+  onAdded: () => void
+  defaultDate?: string
+}) {
+  const [title, setTitle] = useState('')
+  const [date, setDate] = useState(defaultDate ?? '')
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [categoryId, setCategoryId] = useState<string | null>(null)
+  const [points, setPoints] = useState(0)
+  const [locationLabel, setLocationLabel] = useState('')
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  function toggleMember(id: string) {
+    setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!date) return
+    setSaving(true)
+    setError(null)
+    try {
+      const detectedMember = selectedMembers.length === 0 ? findMemberInText(title, members) : null
+      const effectiveMembers = selectedMembers.length > 0 ? selectedMembers : detectedMember ? [detectedMember.id] : []
+      const attachment = await resolveEventAttachment(attachmentFile)
+      await createEvent({
+        title,
+        startAt: new Date(`${date}T00:00`).toISOString(),
+        endAt: null,
+        allDay: true,
+        recurrenceRule: null,
+        reminders: [],
+        memberIds: effectiveMembers,
+        points: effectiveMembers.length === 1 ? points : 0,
+        locationLabel: locationLabel.trim() || null,
+        locationLatitude: coords?.latitude ?? null,
+        locationLongitude: coords?.longitude ?? null,
+        note: note.trim() || null,
+        kind: 'task',
+        categoryId,
+        syncToGoogle: false,
+        ...attachment,
+      })
+      setTitle('')
+      setDate(defaultDate ?? '')
+      setSelectedMembers([])
+      setCategoryId(null)
+      setPoints(0)
+      setLocationLabel('')
+      setCoords(null)
+      setAttachmentFile(null)
+      setNote('')
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo crear la tarea'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <label>
+        Título
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      </label>
+      <label>
+        Fecha
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+      </label>
+      <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
+      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />
+      {selectedMembers.length === 1 && (
+        <label>
+          Puntos al marcarla "Hecha" (opcional)
+          <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
+        </label>
+      )}
+      <EventExtrasFields
+        locationLabel={locationLabel}
+        onLocationLabelChange={setLocationLabel}
+        coords={coords}
+        onCoordsChange={setCoords}
+        attachmentFile={attachmentFile}
+        onAttachmentFileChange={setAttachmentFile}
+        existingAttachment={null}
+        onRemoveExistingAttachment={() => {}}
+        note={note}
+        onNoteChange={setNote}
+      />
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : 'Crear tarea'}
       </button>
     </form>
   )

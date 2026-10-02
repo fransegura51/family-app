@@ -14,6 +14,19 @@ import {
 } from '@/state/colorTheme'
 import { pastelPalette } from '@/domain/colors'
 import {
+  createCalendarCategory,
+  deleteCalendarCategory,
+  getCalendarPreferences,
+  listCalendarCategories,
+  updateCalendarCategory,
+  updateCalendarColorMode,
+  updateCalendarTaskOrder,
+  type CalendarColorMode,
+  type CalendarTaskOrder,
+} from '@/data/calendar'
+import type { CalendarCategory } from '@/domain/types'
+import { ConfirmIconButton } from '@/ui/ConfirmButton'
+import {
   DEFAULT_BABY_UNTIL_MONTHS,
   getBabyUntilMonths,
   updateBabyUntilMonths,
@@ -957,7 +970,221 @@ function MenuOrderSection() {
   )
 }
 
-type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales'
+// FASE CALENDARIO — Parte 8/28: modo de color y orden Eventos/Tareas, POR USUARIO real (profiles, mismo
+// patrón exacto que DateFilterSettingsSection arriba — nunca families/localStorage).
+function CalendarPreferencesSection() {
+  const [colorMode, setColorMode] = useState<CalendarColorMode>('miembros')
+  const [taskOrder, setTaskOrder] = useState<CalendarTaskOrder>('eventos_primero')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getCalendarPreferences()
+      .then((prefs) => {
+        setColorMode(prefs.colorMode)
+        setTaskOrder(prefs.taskOrder)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleColorMode(mode: CalendarColorMode) {
+    setColorMode(mode)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateCalendarColorMode(mode)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleTaskOrder(order: CalendarTaskOrder) {
+    setTaskOrder(order)
+    setSaving(true)
+    setError(null)
+    try {
+      await updateCalendarTaskOrder(order)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>🎨 Colores del calendario</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Es solo tuyo — cada persona de la familia puede ver el calendario a su manera.
+      </p>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" className={'chip' + (colorMode === 'miembros' ? ' chip-active' : '')} onClick={() => handleColorMode('miembros')}>
+          Ver colores de miembros
+        </button>
+        <button type="button" className={'chip' + (colorMode === 'categorias' ? ' chip-active' : '')} onClick={() => handleColorMode('categorias')}>
+          Ver colores de categorías
+        </button>
+      </div>
+      <strong style={{ display: 'block', marginTop: 16 }}>📋 Orden en el calendario</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Cuando Eventos y Tareas aparecen el mismo día, cuál va primero.
+      </p>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" className={'chip' + (taskOrder === 'eventos_primero' ? ' chip-active' : '')} onClick={() => handleTaskOrder('eventos_primero')}>
+          Eventos primero
+        </button>
+        <button type="button" className={'chip' + (taskOrder === 'tareas_primero' ? ' chip-active' : '')} onClick={() => handleTaskOrder('tareas_primero')}>
+          Tareas primero
+        </button>
+      </div>
+      {saving && <span className="muted">Guardando…</span>}
+      {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+// FASE CALENDARIO — Parte 27: gestión de categorías propias del Calendario (nunca budget_categories ni
+// tags de otro dominio). Crear/editar nombre+emoji+color opcional/borrar — borrar nunca se lleva los
+// Eventos/Tareas que la llevaban (category_id queda en null, on delete set null, migración 0184).
+function CalendarCategoryRow({ category, onSaved, onDeleted }: { category: CalendarCategory; onSaved: () => void; onDeleted: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(category.name)
+  const [emoji, setEmoji] = useState(category.emoji)
+  const [color, setColor] = useState(category.color ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await updateCalendarCategory(category.id, { name: name.trim(), emoji: emoji.trim(), color: color.trim() || null, sortOrder: category.sortOrder })
+      setEditing(false)
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="inline-fields" style={{ alignItems: 'center' }}>
+        <span style={{ flex: 1 }}>
+          {category.emoji} {category.name}
+          {category.color && <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', background: category.color, marginLeft: 8, verticalAlign: 'middle' }} />}
+        </span>
+        <button type="button" className="link-button" onClick={() => setEditing(true)}>
+          Editar
+        </button>
+        <ConfirmIconButton onConfirm={onDeleted} ariaLabel={`Borrar categoría ${category.name}`} />
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSave} className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+      <input type="text" value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="🩺" style={{ width: 48 }} required />
+      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" style={{ flex: 1, minWidth: 100 }} required />
+      <input type="color" value={color || '#9ca3af'} onChange={(e) => setColor(e.target.value)} style={{ width: 40, padding: 0 }} />
+      {color && (
+        <button type="button" className="link-button" onClick={() => setColor('')}>
+          Sin color
+        </button>
+      )}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Guardando…' : 'Guardar'}
+      </button>
+      <button type="button" className="link-button" onClick={() => setEditing(false)}>
+        Cancelar
+      </button>
+      {error && <p className="error">{error}</p>}
+    </form>
+  )
+}
+
+function CalendarCategoriesSection() {
+  const [categories, setCategories] = useState<CalendarCategory[]>([])
+  const [loading, setLoading] = useState(true)
+  const [name, setName] = useState('')
+  const [emoji, setEmoji] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    return listCalendarCategories()
+      .then(setCategories)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    reload()
+  }, [])
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim() || !emoji.trim()) return
+    setAdding(true)
+    setError(null)
+    try {
+      await createCalendarCategory({ name: name.trim(), emoji: emoji.trim(), color: null, sortOrder: categories.length })
+      setName('')
+      setEmoji('')
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo crear la categoría'))
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setError(null)
+    try {
+      await deleteCalendarCategory(id)
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar'))
+    }
+  }
+
+  if (loading) return null
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>🗂️ Categorías del calendario</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Opcionales, para Eventos y Tareas — por ejemplo 🩺 Médico, ⚽ Deporte, 🎒 Colegio. Borrar una categoría nunca borra
+        lo que la llevaba, solo le quita la categoría.
+      </p>
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {categories.map((c) => (
+          <CalendarCategoryRow key={c.id} category={c} onSaved={reload} onDeleted={() => handleDelete(c.id)} />
+        ))}
+        {categories.length === 0 && <p className="muted">Todavía no hay categorías.</p>}
+      </div>
+      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
+        <input type="text" value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="🩺" style={{ width: 48 }} />
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre de la categoría" style={{ flex: 1 }} />
+        <button type="submit" disabled={adding || !name.trim() || !emoji.trim()}>
+          {adding ? 'Creando…' : '+ Añadir'}
+        </button>
+      </form>
+      {error && <p className="error">{error}</p>}
+    </div>
+  )
+}
+
+type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
 
 export function MenuSettingsScreen() {
   // Un solo tema abierto a la vez — la pantalla queda como una lista
@@ -968,7 +1195,7 @@ export function MenuSettingsScreen() {
   )
   const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
   // Un color por tema, con el estilo elegido en Colores.
-  const groupColors = pastelPalette(7)
+  const groupColors = pastelPalette(8)
 
   return (
     <div className="screen">
@@ -1048,6 +1275,18 @@ export function MenuSettingsScreen() {
         onToggle={() => toggle('filtros_temporales')}
       >
         <DateFilterSettingsSection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        color={groupColors[7]}
+        icon="🗓️"
+        title="Calendario"
+        summary="Colores, orden de Eventos/Tareas y categorías"
+        open={openGroup === 'calendario'}
+        onToggle={() => toggle('calendario')}
+      >
+        <CalendarPreferencesSection />
+        <CalendarCategoriesSection />
       </SettingsGroup>
 
       <AdminUsageLink />

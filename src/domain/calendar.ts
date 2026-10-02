@@ -159,11 +159,22 @@ export function expandOccurrences(
 // detectado probando: un evento de Jennifer y Eric solo pintaba el
 // color de Jennifer). Si el evento tiene un color propio explícito, ese
 // manda; si no tiene miembros ni color, cae en gris.
+//
+// FASE CALENDARIO — `categoryColorById` solo se pasa cuando la preferencia de la persona es "ver
+// colores de categorías" (nunca en modo miembros, donde el comportamiento es EXACTAMENTE el de
+// siempre); en ese modo, un solo punto con el color de la categoría sustituye a los puntos por
+// miembro — fallback seguro (nunca invisible): sin color de categoría, cae en el color de cada
+// miembro de siempre; sin eso tampoco, en el gris de siempre.
 export function eventDotColors(
-  event: { color: string | null; memberIds: string[] },
+  event: { color: string | null; memberIds: string[]; categoryId?: string | null },
   memberColorById: Map<string, string>,
+  categoryColorById?: Map<string, string>,
 ): string[] {
   if (event.color) return [event.color]
+  if (categoryColorById && event.categoryId) {
+    const categoryColor = categoryColorById.get(event.categoryId)
+    if (categoryColor) return [categoryColor]
+  }
   if (event.memberIds.length > 0) {
     return event.memberIds.map((id) => memberColorById.get(id)).filter((c): c is string => !!c)
   }

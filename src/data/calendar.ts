@@ -1,7 +1,7 @@
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
-import type { CalendarEvent } from '@/domain/types'
+import type { CalendarCategory, CalendarEvent } from '@/domain/types'
 import type { EventReminder, ReminderAnchor } from '@/domain/reminders'
 
 interface EventRow {
@@ -24,6 +24,8 @@ interface EventRow {
   attachment_original_name: string | null
   note: string | null
   visibility: string
+  kind: string
+  category_id: string | null
   calendar_event_members: { member_id: string }[]
   calendar_event_reminders: { minutes_before: number; anchor: string }[]
 }
@@ -31,7 +33,7 @@ interface EventRow {
 const EVENT_COLUMNS =
   'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, exception_dates, points, ' +
   'location_label, location_latitude, location_longitude, attachment_storage_path, attachment_kind, attachment_original_name, note, visibility, ' +
-  'calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)'
+  'kind, category_id, calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)'
 
 function toEvent(row: EventRow): CalendarEvent {
   return {
@@ -59,6 +61,8 @@ function toEvent(row: EventRow): CalendarEvent {
     attachmentOriginalName: row.attachment_original_name,
     note: row.note,
     visibility: row.visibility === 'private' ? 'private' : 'shared',
+    kind: row.kind === 'task' ? 'task' : 'event',
+    categoryId: row.category_id,
   }
 }
 
@@ -177,6 +181,9 @@ export async function createEvent(input: {
   // Calendar personal de nadie. Sin indicar, se sincroniza igual que siempre (comportamiento idéntico
   // para todo lo que ya existía antes de esta columna).
   syncToGoogle?: boolean
+  // FASE CALENDARIO — sin indicar, 'event' (comportamiento idéntico a antes de esta columna).
+  kind?: 'event' | 'task'
+  categoryId?: string | null
 }): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
@@ -208,6 +215,8 @@ export async function createEvent(input: {
       note: input.note ?? null,
       visibility: input.visibility ?? 'shared',
       sync_to_google: input.syncToGoogle ?? true,
+      kind: input.kind ?? 'event',
+      category_id: input.categoryId ?? null,
     })
     .select('id')
     .single()
@@ -250,6 +259,7 @@ export async function updateEvent(
     note?: string | null
     visibility?: 'shared' | 'private'
     syncToGoogle?: boolean
+    categoryId?: string | null
   },
 ): Promise<void> {
   const { error } = await supabase
@@ -271,6 +281,7 @@ export async function updateEvent(
       note: input.note ?? null,
       visibility: input.visibility ?? 'shared',
       sync_to_google: input.syncToGoogle ?? true,
+      category_id: input.categoryId ?? null,
     })
     .eq('id', id)
   if (error) throw error
@@ -362,6 +373,98 @@ export async function uncompleteEventOccurrence(eventId: string, occurrenceDate:
     .eq('event_id', eventId)
     .eq('occurrence_date', occurrenceDate)
   if (error) throw new Error(error.message)
+}
+
+// ── Categorías del Calendario (propias — nunca budget_categories ni tags de otro dominio) ──
+
+interface CategoryRow {
+  id: string
+  family_id: string
+  name: string
+  emoji: string
+  color: string | null
+  sort_order: number
+}
+
+function toCategory(row: CategoryRow): CalendarCategory {
+  return { id: row.id, familyId: row.family_id, name: row.name, emoji: row.emoji, color: row.color, sortOrder: row.sort_order }
+}
+
+export async function listCalendarCategories(): Promise<CalendarCategory[]> {
+  const { data, error } = await supabase
+    .from('calendar_categories')
+    .select('id, family_id, name, emoji, color, sort_order')
+    .order('sort_order')
+    .order('name')
+  if (error) throw error
+  return (data as CategoryRow[]).map(toCategory)
+}
+
+export async function createCalendarCategory(input: { name: string; emoji: string; color: string | null; sortOrder: number }): Promise<string> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase
+    .from('calendar_categories')
+    .insert({ family_id: familyId, name: input.name, emoji: input.emoji, color: input.color, sort_order: input.sortOrder })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id as string
+}
+
+export async function updateCalendarCategory(id: string, input: { name: string; emoji: string; color: string | null; sortOrder: number }): Promise<void> {
+  const { error } = await supabase
+    .from('calendar_categories')
+    .update({ name: input.name, emoji: input.emoji, color: input.color, sort_order: input.sortOrder })
+    .eq('id', id)
+  if (error) throw error
+}
+
+// calendar_events.category_id es "on delete set null" (migración 0184) — borrar una categoría nunca
+// borra los Eventos/Tareas que la llevaban, el propio servidor se encarga de dejarlos sin categoría.
+export async function deleteCalendarCategory(id: string): Promise<void> {
+  const { error } = await supabase.from('calendar_categories').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ── Preferencias de visualización del Calendario — POR USUARIO (profiles), mismo patrón exacto que
+// getDateFilterPreferences/updateDateFilterFavorite (data/family.ts, migración 0170): nunca
+// families/localStorage, cada persona de la familia puede ver el calendario a su manera. ──
+
+export type CalendarColorMode = 'miembros' | 'categorias'
+export type CalendarTaskOrder = 'eventos_primero' | 'tareas_primero'
+
+export interface CalendarPreferences {
+  colorMode: CalendarColorMode
+  taskOrder: CalendarTaskOrder
+}
+
+export async function getCalendarPreferences(): Promise<CalendarPreferences> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('calendar_color_mode, calendar_task_order')
+    .eq('id', userResult.user.id)
+    .single()
+  if (error) throw error
+  return {
+    colorMode: data.calendar_color_mode === 'categorias' ? 'categorias' : 'miembros',
+    taskOrder: data.calendar_task_order === 'tareas_primero' ? 'tareas_primero' : 'eventos_primero',
+  }
+}
+
+export async function updateCalendarColorMode(mode: CalendarColorMode): Promise<void> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { error } = await supabase.from('profiles').update({ calendar_color_mode: mode }).eq('id', userResult.user.id)
+  if (error) throw error
+}
+
+export async function updateCalendarTaskOrder(order: CalendarTaskOrder): Promise<void> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { error } = await supabase.from('profiles').update({ calendar_task_order: order }).eq('id', userResult.user.id)
+  if (error) throw error
 }
 
 export interface ReminderEvent {

@@ -129,12 +129,13 @@ describe('lo que esta fase NO toca', () => {
     // store_chains.logo_asset y shopping_stores.chain_key — tampoco devoluciones. 0183
     // (store_chains_catalog_expansion) añade más cadenas al mismo catálogo — tampoco devoluciones. 0184
     // (calendar_tasks_categories, FASE CALENDARIO) añade kind/categorías/preferencias al Calendario —
-    // tampoco devoluciones. Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo
-    // de una devolución.
+    // tampoco devoluciones. 0185 (calendar_color_mode_three_modes) solo cambia el CHECK y el default de
+    // profiles.calendar_color_mode — tampoco devoluciones. Ninguna migración de datos posterior a 0152
+    // toca la identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(184)
+    expect(Math.max(...numbers)).toBe(185)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

@@ -973,8 +973,33 @@ function MenuOrderSection() {
 
 // FASE CALENDARIO — Parte 8/28: modo de color y orden Eventos/Tareas, POR USUARIO real (profiles, mismo
 // patrón exacto que DateFilterSettingsSection arriba — nunca families/localStorage).
+// RETOQUE — tres modos de color mutuamente excluyentes (antes dos: "miembros" y "categorías", y este
+// último en realidad ya era el híbrido categoría→persona→neutro de ahora — mismo literal 'categorias',
+// ver CalendarColorMode en data/calendar.ts). role="radio" agrupado en role="radiogroup": una tarjeta
+// entera es el control, nunca checkboxes sueltos que pudieran combinarse de forma imposible.
+const CALENDAR_COLOR_MODE_OPTIONS: { id: CalendarColorMode; icon: string; title: string; description: string }[] = [
+  {
+    id: 'miembros',
+    icon: '👤',
+    title: 'Colores de personas',
+    description: 'Los Eventos y Tareas usan siempre el color de la persona asignada.',
+  },
+  {
+    id: 'solo_categorias',
+    icon: '📁',
+    title: 'Colores de categorías',
+    description: 'Los Eventos y Tareas usan el color de su categoría. Si no tienen una categoría con color, se muestran en color neutro.',
+  },
+  {
+    id: 'categorias',
+    icon: '📁👤',
+    title: 'Categorías + personas',
+    description: 'Usa el color de la categoría cuando existe. Si no hay una categoría con color, usa el color de la persona.',
+  },
+]
+
 function CalendarPreferencesSection() {
-  const [colorMode, setColorMode] = useState<CalendarColorMode>('miembros')
+  const [colorMode, setColorMode] = useState<CalendarColorMode>('categorias')
   const [taskOrder, setTaskOrder] = useState<CalendarTaskOrder>('eventos_primero')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -1024,13 +1049,22 @@ function CalendarPreferencesSection() {
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         Es solo tuyo — cada persona de la familia puede ver el calendario a su manera.
       </p>
-      <div className="filter-row" style={{ marginTop: 8 }}>
-        <button type="button" className={'chip' + (colorMode === 'miembros' ? ' chip-active' : '')} onClick={() => handleColorMode('miembros')}>
-          Ver colores de miembros
-        </button>
-        <button type="button" className={'chip' + (colorMode === 'categorias' ? ' chip-active' : '')} onClick={() => handleColorMode('categorias')}>
-          Ver colores de categorías
-        </button>
+      <div className="calendar-color-mode-list" role="radiogroup" aria-label="Cómo colorear Eventos y Tareas" style={{ marginTop: 8 }}>
+        {CALENDAR_COLOR_MODE_OPTIONS.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            className={'calendar-color-mode-option' + (colorMode === opt.id ? ' calendar-color-mode-option-active' : '')}
+            role="radio"
+            aria-checked={colorMode === opt.id}
+            onClick={() => handleColorMode(opt.id)}
+          >
+            <span className="calendar-color-mode-option-title">
+              {opt.icon} {opt.title}
+            </span>
+            <span className="calendar-color-mode-option-desc muted">{opt.description}</span>
+          </button>
+        ))}
       </div>
       <strong style={{ display: 'block', marginTop: 16 }}>📋 Orden en el calendario</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
@@ -1318,7 +1352,11 @@ function CalendarCategoryRow({ category, onSaved, onDeleted }: { category: Calen
   )
 }
 
-function CalendarCategoriesSection() {
+// Exportado — RETOQUE: reutilizado tal cual (mismo componente, nunca una segunda implementación) desde
+// el engranaje ⚙️ de CalendarScreen.tsx (junto a "Categoría (opcional)" en Evento/Tarea), montado en un
+// modal propio ahí en vez de navegar a esta pantalla — así el formulario de Evento/Tarea que el usuario
+// tenía a medias nunca se desmonta ni pierde lo escrito (ver ManageCategoriesModal en CalendarScreen).
+export function CalendarCategoriesSection() {
   const [categories, setCategories] = useState<CalendarCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')

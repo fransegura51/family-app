@@ -1,4 +1,5 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { findMemberInText } from '@/domain/voiceQuery'
 import {
   CALENDARIO_MENU_ITEM_META,
@@ -15,6 +16,7 @@ import {
 } from '@/state/calendarioMenu'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
+import { CalendarCategoriesSection } from '@/ui/MenuSettingsScreen'
 import {
   completeEventOccurrence,
   createEvent,
@@ -158,10 +160,25 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   // FASE CALENDARIO — categorías propias del Calendario y preferencias de visualización POR USUARIO
   // (profiles: calendar_color_mode/calendar_task_order, nunca families/localStorage — ver data/calendar.ts).
   const [categories, setCategories] = useState<CalendarCategory[]>([])
+  // Valor inicial = el nuevo default ('categorias', el modo híbrido) — solo se ve en el instante antes
+  // de que reload() resuelva getCalendarPreferences(), y en ese instante tampoco hay categories/events
+  // todavía, así que no llega a notarse ningún color "equivocado".
   const [calendarPrefs, setCalendarPrefs] = useState<{ colorMode: CalendarColorMode; taskOrder: CalendarTaskOrder }>({
-    colorMode: 'miembros',
+    colorMode: 'categorias',
     taskOrder: 'eventos_primero',
   })
+  // RETOQUE — engranaje ⚙️ junto a "Categoría (opcional)" (Evento/Tarea, alta y edición): gestionar
+  // calendar_categories SIN salir del formulario que se tenga a medias. Nunca se navega a Configuración
+  // (eso desmontaría CalendarScreen y con él cualquier formulario abierto, perdiendo lo escrito) — se
+  // reutiliza CalendarCategoriesSection tal cual, montada aparte en un modal propio de esta pantalla.
+  const [managingCategories, setManagingCategories] = useState(false)
+  // Solo recarga las categorías (nunca events/members/... como el reload() grande, que además pondría
+  // loading=true y desmontaría toda la pantalla con "Cargando calendario…" — se perdería el formulario
+  // abierto detrás del modal de categorías). Así, al crear una categoría nueva ahí, el desplegable
+  // "Categoría (opcional)" del formulario la ve de inmediato en cuanto se cierra el modal.
+  function reloadCategories() {
+    listCalendarCategories().then(setCategories).catch(() => {})
+  }
   // Quién soy yo dentro de la familia (si tengo un miembro propio enlazado) — lo necesita Personal para
   // enseñar MIS Eventos/Tareas, además de mis notas. Mismo patrón que myMemberId en FinanceScreen.tsx.
   const myMemberId = useMemo(() => members.find((m) => m.linkedProfileId === profile.id)?.id ?? null, [members, profile.id])
@@ -668,7 +685,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           id: ev.id,
           title: ev.visibility === 'private' ? `🔒 ${titleWithCategory}` : titleWithCategory,
           subtitle,
-          color: eventColor(ev, memberById, calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined),
+          color: eventColor(ev, memberById, calendarPrefs.colorMode, categoryColorById),
           allDay: ev.allDay,
           startTime: ev.allDay ? null : hhmm(ev.startAt),
           endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
@@ -912,6 +929,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
+            onManageCategories={() => setManagingCategories(true)}
           />
         </>
       ) : view === 'Vista general' ? (
@@ -948,7 +966,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               const birthdayDots = dayBirthdays.map((b) => b.color)
               const dots = [
                 ...new Set([
-                  ...dayEvents.flatMap((e) => eventDotColors(e, memberColorById, calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined)),
+                  ...dayEvents.flatMap((e) => eventDotColors(e, memberColorById, calendarPrefs.colorMode, categoryColorById)),
                   ...externalDots,
                   ...birthdayDots,
                 ]),
@@ -991,6 +1009,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
+            onManageCategories={() => setManagingCategories(true)}
           />
         </>
       ) : view === 'Agenda' ? (
@@ -1006,6 +1025,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             setEditingId(null)
             reload()
           }}
+          onManageCategories={() => setManagingCategories(true)}
         />
       ) : view === 'Familiar' ? (
         <FamilyDayView
@@ -1014,6 +1034,8 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           memberById={memberById}
           categoryById={categoryById}
           categories={categories}
+          categoryColorById={categoryColorById}
+          colorMode={calendarPrefs.colorMode}
           dayEvents={eventsByDate.get(selectedDate) ?? []}
           eventCompletions={eventCompletions}
           editingId={editingId}
@@ -1033,6 +1055,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           onShareEvent={handleShareEvent}
           onComplete={handleCompleteEvent}
           onUncomplete={handleUncompleteEvent}
+          onManageCategories={() => setManagingCategories(true)}
         />
       ) : view === 'Personal' ? (
         <PersonalView
@@ -1061,6 +1084,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           }}
           onShare={handleShareNote}
           sharingNoteId={sharingNoteId}
+          onManageCategories={() => setManagingCategories(true)}
         />
       ) : (
         <>
@@ -1072,7 +1096,8 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             memberById={memberById}
             feedById={feedById}
             categoryById={categoryById}
-            categoryColorById={calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined}
+            categoryColorById={categoryColorById}
+            colorMode={calendarPrefs.colorMode}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             swipeHandlers={view === 'Semana' ? weekSwipe : view === '3 días' ? threeDaySwipe : daySwipe}
@@ -1091,6 +1116,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             }}
             onNavigateDay={changeSelectedDate}
             swipeHandlers={daySwipe}
+            onManageCategories={() => setManagingCategories(true)}
           />
         </>
       )}
@@ -1154,6 +1180,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
                 setAddingEvent(false)
                 setAddingEventMemberId(null)
               }}
+              onManageCategories={() => setManagingCategories(true)}
             />
           </div>
         </div>
@@ -1178,6 +1205,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
                 reload()
                 setAddingTask(false)
               }}
+              onManageCategories={() => setManagingCategories(true)}
             />
           </div>
         </div>
@@ -1186,20 +1214,62 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
       {manualShare && (
         <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />
       )}
+
+      {managingCategories &&
+        createPortal(
+          <ManageCategoriesModal
+            onClose={() => {
+              setManagingCategories(false)
+              reloadCategories()
+            }}
+          />,
+          document.body,
+        )}
     </div>
   )
 }
 
-// FASE CALENDARIO — categoryColorById solo se pasa en modo "categorías" (Configuración → Calendario);
-// en modo "miembros" (default) el comportamiento es EXACTAMENTE el de siempre. Fallback seguro: sin
-// color de categoría, cae en el color de miembro de siempre; sin eso tampoco, en el gris de siempre —
-// nunca invisible.
-function eventColor(ev: CalendarEvent, memberById: Map<string, FamilyMember>, categoryColorById?: Map<string, string>): string {
+// RETOQUE — engranaje ⚙️ (ver CategoryDropdown): la misma gestión de categorías de Configuración →
+// Calendario → Categorías del calendario (CalendarCategoriesSection, reutilizada tal cual, nunca una
+// segunda implementación), en un modal propio — nunca una navegación de verdad a /menu-organizar, que
+// desmontaría esta pantalla (y con ella cualquier formulario de Evento/Tarea abierto detrás) para
+// recargarla desde cero. Mismo patrón modal-overlay/modal-sheet que el resto de la app, en un portal a
+// document.body (igual que CalendarCategoryEmojiPicker) para que quede siempre por encima, aunque el
+// propio formulario de Evento/Tarea ya esté dentro de otro modal-overlay.
+function ManageCategoriesModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            ⚙️ Categorías del calendario
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <CalendarCategoriesSection />
+      </div>
+    </div>
+  )
+}
+
+// RETOQUE — tres modos mutuamente excluyentes (Configuración → Calendario → Colores del calendario),
+// resueltos en un único sitio para que NINGUNA vista pueda usar una regla distinta de otra:
+//   'miembros'        — ignora la categoría por completo, siempre el color de la persona de siempre.
+//   'categorias'      — híbrido ("Categorías + personas"): categoría si la tiene con color; si no, cae
+//                        en el color de la persona de siempre. Es el comportamiento que YA tenía el
+//                        único modo "categorías" de antes — mismo literal, sin cambios.
+//   'solo_categorias' — solo categoría: si la categoría no tiene color, neutro directo — NUNCA cae en
+//                        el color de la persona en este modo (a diferencia del híbrido).
+// Fallback seguro en los tres modos: sin nada aplicable, el gris de siempre, nunca invisible.
+function eventColor(ev: CalendarEvent, memberById: Map<string, FamilyMember>, colorMode: CalendarColorMode, categoryColorById: Map<string, string>): string {
   if (ev.color) return ev.color
-  if (categoryColorById && ev.categoryId) {
+  if (colorMode !== 'miembros' && ev.categoryId) {
     const categoryColor = categoryColorById.get(ev.categoryId)
     if (categoryColor) return categoryColor
   }
+  if (colorMode === 'solo_categorias') return '#9ca3af'
   const first = ev.memberIds[0] ? memberById.get(ev.memberIds[0]) : null
   return first?.color ?? '#9ca3af'
 }
@@ -1266,6 +1336,7 @@ function DayModal({
   onEventChanged,
   onNavigateDay,
   swipeHandlers,
+  onManageCategories,
 }: {
   selectedDate: string
   entries: AgendaEntry[]
@@ -1277,6 +1348,7 @@ function DayModal({
   onEventChanged: () => void
   onNavigateDay: (deltaDays: number) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
+  onManageCategories: () => void
 }) {
   return (
     <div className="day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
@@ -1314,6 +1386,7 @@ function DayModal({
         categories={categories}
         onEventChanged={onEventChanged}
         onCancelEdit={onCancelEdit}
+        onManageCategories={onManageCategories}
       />
     </div>
   )
@@ -1332,6 +1405,7 @@ function DayEntriesBody({
   onEventChanged,
   onCancelEdit,
   emptyLabel = 'Nada este día.',
+  onManageCategories,
 }: {
   entries: AgendaEntry[]
   editingId: string | null
@@ -1341,6 +1415,7 @@ function DayEntriesBody({
   onEventChanged: () => void
   onCancelEdit: () => void
   emptyLabel?: string
+  onManageCategories: () => void
 }) {
   const allDayEntries = entries.filter((e) => e.allDay)
   const timedEntries = entries.filter((e) => !e.allDay)
@@ -1348,7 +1423,17 @@ function DayEntriesBody({
   function renderCard(entry: AgendaEntry) {
     if (editingId === entry.id) {
       const ev = events.find((e) => e.id === entry.id)!
-      return <EditEventForm key={entry.key} event={ev} members={members} categories={categories} onDone={onEventChanged} onCancel={onCancelEdit} />
+      return (
+        <EditEventForm
+          key={entry.key}
+          event={ev}
+          members={members}
+          categories={categories}
+          onDone={onEventChanged}
+          onCancel={onCancelEdit}
+          onManageCategories={onManageCategories}
+        />
+      )
     }
     return <AgendaRow key={entry.key} entry={entry} />
   }
@@ -1390,6 +1475,8 @@ function FamilyDayView({
   memberById,
   categoryById,
   categories,
+  categoryColorById,
+  colorMode,
   dayEvents,
   eventCompletions,
   editingId,
@@ -1403,12 +1490,15 @@ function FamilyDayView({
   onShareEvent,
   onComplete,
   onUncomplete,
+  onManageCategories,
 }: {
   selectedDate: string
   members: FamilyMember[]
   memberById: Map<string, FamilyMember>
   categoryById: Map<string, CalendarCategory>
   categories: CalendarCategory[]
+  categoryColorById: Map<string, string>
+  colorMode: CalendarColorMode
   dayEvents: CalendarEvent[]
   eventCompletions: EventCompletion[]
   editingId: string | null
@@ -1425,6 +1515,7 @@ function FamilyDayView({
   // mecanismo propio de esta vista.
   onComplete: (id: string, dateStr: string) => void
   onUncomplete: (id: string, dateStr: string) => void
+  onManageCategories: () => void
 }) {
   const unassigned = dayEvents.filter((e) => e.memberIds.length === 0)
   const columns: { key: string; label: string; member: FamilyMember | null; events: CalendarEvent[] }[] = [
@@ -1434,13 +1525,24 @@ function FamilyDayView({
 
   function renderEvent(ev: CalendarEvent) {
     if (editingId === ev.id) {
-      return <EditEventForm key={ev.id} event={ev} members={members} categories={categories} onDone={onEventChanged} onCancel={onCancelEdit} />
+      return (
+        <EditEventForm
+          key={ev.id}
+          event={ev}
+          members={members}
+          categories={categories}
+          onDone={onEventChanged}
+          onCancel={onCancelEdit}
+          onManageCategories={onManageCategories}
+        />
+      )
     }
     const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === selectedDate)
     return (
       <EventCard
         key={ev.id}
         event={ev}
+        color={eventColor(ev, memberById, colorMode, categoryColorById)}
         memberById={memberById}
         categoryById={categoryById}
         done={done}
@@ -1519,6 +1621,7 @@ function PersonalView({
   onDelete,
   onShare,
   sharingNoteId,
+  onManageCategories,
 }: {
   selectedDate: string
   myMemberId: string | null
@@ -1536,6 +1639,7 @@ function PersonalView({
   onDelete: (id: string) => Promise<void>
   onShare: (note: PersonalNote) => void
   sharingNoteId: string | null
+  onManageCategories: () => void
 }) {
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -1585,6 +1689,7 @@ function PersonalView({
           onEventChanged={onEventChanged}
           onCancelEdit={onCancelEdit}
           emptyLabel="Nada tuyo este día."
+          onManageCategories={onManageCategories}
         />
       ) : (
         <p className="muted" style={{ fontSize: 12 }}>
@@ -1672,6 +1777,7 @@ function TimeGridView({
   feedById,
   categoryById,
   categoryColorById,
+  colorMode,
   selectedDate,
   onSelectDate,
   swipeHandlers,
@@ -1683,7 +1789,8 @@ function TimeGridView({
   memberById: Map<string, FamilyMember>
   feedById: Map<string, ExternalCalendarFeed>
   categoryById: Map<string, CalendarCategory>
-  categoryColorById?: Map<string, string>
+  categoryColorById: Map<string, string>
+  colorMode: CalendarColorMode
   selectedDate: string
   onSelectDate: (dateStr: string) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
@@ -1709,7 +1816,7 @@ function TimeGridView({
       blocks.push({
         key: `ev-${ev.id}`,
         title: ev.visibility === 'private' ? `🔒 ${title}` : title,
-        color: eventColor(ev, memberById, categoryColorById),
+        color: eventColor(ev, memberById, colorMode, categoryColorById),
         startMin,
         endMin,
         dateStr,
@@ -1736,7 +1843,7 @@ function TimeGridView({
       const hasLocation = !!ev.locationLabel || (ev.locationLatitude != null && ev.locationLongitude != null)
       const prefix = (ev.visibility === 'private' ? '🔒' : '') + (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
       const title = titleWithCategoryEmoji(ev)
-      chips.push({ key: `ev-${ev.id}`, title: prefix ? `${prefix} ${title}` : title, color: eventColor(ev, memberById, categoryColorById) })
+      chips.push({ key: `ev-${ev.id}`, title: prefix ? `${prefix} ${title}` : title, color: eventColor(ev, memberById, colorMode, categoryColorById) })
     }
     for (const ev of externalEventsByDate.get(dateStr) ?? []) {
       if (ev.allDay) chips.push({ key: `ext-${ev.id}`, title: ev.title, color: '#6b7280' })
@@ -1856,6 +1963,7 @@ function AgendaListView({
   editingId,
   onCancelEdit,
   onEventChanged,
+  onManageCategories,
 }: {
   today: Date
   buildEntriesForDate: (dateStr: string) => AgendaEntry[]
@@ -1865,6 +1973,7 @@ function AgendaListView({
   editingId: string | null
   onCancelEdit: () => void
   onEventChanged: () => void
+  onManageCategories: () => void
 }) {
   const AGENDA_DAYS = 30
   const days = useMemo(() => {
@@ -1902,6 +2011,7 @@ function AgendaListView({
             onEventChanged={onEventChanged}
             onCancelEdit={onCancelEdit}
             emptyLabel="Nada hoy."
+            onManageCategories={onManageCategories}
           />
         </div>
       ))}
@@ -2229,6 +2339,7 @@ function EventAttachmentFileLink({ storagePath, name }: { storagePath: string; n
 // borrar siempre la serie entera de un solo toque.
 function EventCard({
   event: ev,
+  color,
   memberById,
   categoryById,
   done = false,
@@ -2240,6 +2351,12 @@ function EventCard({
   onShare,
 }: {
   event: CalendarEvent
+  // RETOQUE — antes el borde solo usaba ev.color (el color propio y explícito del evento, raro) y se
+  // quedaba sin colorear en el resto de casos: la vista Familiar era la única que NO reflejaba el modo
+  // de color activo (miembro/categoría/híbrido) mientras TODAS las demás vistas sí — ahora el llamador
+  // (FamilyDayView) resuelve el color con la misma eventColor() de siempre y lo pasa ya hecho aquí, para
+  // que ninguna vista tenga su propia regla aparte.
+  color: string
   memberById: Map<string, FamilyMember>
   categoryById?: Map<string, CalendarCategory>
   // BUG CALENDARIO-15 (auditoría): esta tarjeta (Vista Familiar) no ofrecía "Hecho" aunque
@@ -2270,7 +2387,7 @@ function EventCard({
       ? `https://www.google.com/maps?q=${ev.locationLatitude},${ev.locationLongitude}`
       : null
   return (
-    <div className="card event-card" style={{ borderColor: ev.color ?? undefined }}>
+    <div className="card event-card" style={{ borderColor: color }}>
       {ev.attachmentKind === 'foto' && ev.attachmentStoragePath && (
         <EventAttachmentPhoto storagePath={ev.attachmentStoragePath} onClick={() => setShowingPhoto(true)} />
       )}
@@ -2594,24 +2711,43 @@ function CategoryDropdown({
   categories,
   selected,
   onChange,
+  onManageCategories,
 }: {
   categories: CalendarCategory[]
   selected: string | null
   onChange: (id: string | null) => void
+  // RETOQUE — engranaje junto a "Categoría (opcional)" para gestionar calendar_categories sin salir del
+  // formulario (nunca Economía/Compras/Eventos — ver ManageCategoriesModal en CalendarScreen). Antes,
+  // con 0 categorías, este componente devolvía null entero (ni la etiqueta se veía) — ahora la etiqueta
+  // + el engranaje se ven SIEMPRE, para poder crear la primera categoría desde aquí mismo; el selector
+  // en sí (el botón "▼" y su modal) sigue apareciendo solo si ya hay alguna, exactamente como antes.
+  onManageCategories: () => void
 }) {
   const [open, setOpen] = useState(false)
-  if (categories.length === 0) return null
   const selectedCategory = selected ? categories.find((c) => c.id === selected) : null
   const summary = selectedCategory ? `${selectedCategory.emoji} ${selectedCategory.name}` : 'Sin categoría'
 
   return (
     <div>
-      <p className="muted">Categoría (opcional)</p>
-      <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
-        <span className="muted">▼</span>
-      </button>
-      {open && (
+      <p className="muted calendar-category-field-label">
+        Categoría (opcional)
+        <button
+          type="button"
+          className="calendar-category-manage-btn"
+          onClick={onManageCategories}
+          aria-label="Gestionar categorías del calendario"
+          title="Gestionar categorías del calendario"
+        >
+          ⚙️
+        </button>
+      </p>
+      {categories.length > 0 && (
+        <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
+          <span className="muted">▼</span>
+        </button>
+      )}
+      {open && categories.length > 0 && (
         <div className="modal-overlay" onClick={() => setOpen(false)}>
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -3064,12 +3200,14 @@ function EditEventForm({
   categories,
   onDone,
   onCancel,
+  onManageCategories,
 }: {
   event: CalendarEvent
   members: FamilyMember[]
   categories: CalendarCategory[]
   onDone: () => void
   onCancel: () => void
+  onManageCategories: () => void
 }) {
   // FASE CALENDARIO — una Tarea se edita con el mismo formulario reducido con el que se crea (Parte 2/3:
   // sin hora, sin repetición, sin recordatorios) — nunca se le ofrecen campos que nunca tuvo. El `kind`
@@ -3229,7 +3367,7 @@ function EditEventForm({
         </>
       )}
       <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
-      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />
+      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {/* Puntos: solo tiene sentido cuando el evento es de una sola
           persona — para un niño, o también para un adulto si se quiere
           (petición real: "cuando le asignemos un evento a un niño...
@@ -3279,6 +3417,7 @@ function AddEventForm({
   defaultDate,
   defaultMemberIds,
   hideHeading,
+  onManageCategories,
 }: {
   members: FamilyMember[]
   events: CalendarEvent[]
@@ -3287,6 +3426,7 @@ function AddEventForm({
   defaultDate?: string
   defaultMemberIds?: string[]
   hideHeading?: boolean
+  onManageCategories: () => void
 }) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(defaultDate ?? '')
@@ -3472,7 +3612,7 @@ function AddEventForm({
         <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       </FieldDropdown>
       <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
-      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />
+      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {selectedMembers.length === 1 && (
         <label>
           Puntos al marcarlo "Hecho" (opcional)
@@ -3510,11 +3650,13 @@ function AddTaskForm({
   categories,
   onAdded,
   defaultDate,
+  onManageCategories,
 }: {
   members: FamilyMember[]
   categories: CalendarCategory[]
   onAdded: () => void
   defaultDate?: string
+  onManageCategories: () => void
 }) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(defaultDate ?? '')
@@ -3587,7 +3729,7 @@ function AddTaskForm({
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
       <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
-      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />
+      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {selectedMembers.length === 1 && (
         <label>
           Puntos al marcarla "Hecha" (opcional)

@@ -142,11 +142,9 @@ describe('No regresión — editar/borrar, y las preferencias de arriba (modo de
     expect(section).toContain('await deleteCalendarCategory(id)')
   })
 
-  it('CalendarPreferencesSection (modo de color, orden Eventos/Tareas) no se ha tocado en esta corrección quirúrgica', () => {
+  it('CalendarPreferencesSection (orden Eventos/Tareas) no se ha tocado en esta corrección quirúrgica (los 3 modos de color tienen su propio test en calendarColorModesUi.test.ts)', () => {
     const prefs = slice(MENU_SETTINGS_SRC, 'function CalendarPreferencesSection() {', 'function CalendarCategoryEmojiPicker(')
-    expect(prefs).toContain("useState<CalendarColorMode>('miembros')")
     expect(prefs).toContain("useState<CalendarTaskOrder>('eventos_primero')")
-    expect(prefs).toContain('Ver colores de miembros')
     expect(prefs).toContain('Tareas primero')
   })
 

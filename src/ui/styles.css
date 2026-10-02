@@ -1293,6 +1293,64 @@ select {
   cursor: pointer;
 }
 
+/* RETOQUE — tres modos de color del Calendario, mutuamente excluyentes: una tarjeta entera es el
+   control (role="radio" agrupado en role="radiogroup", ver JSX en CalendarPreferencesSection), nunca
+   checkboxes sueltos. Apiladas en columna para que el texto explicativo de cada una quepa cómodo en
+   móvil — antes eran dos .chip en fila, sin sitio para explicar qué hace cada una. */
+.calendar-color-mode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calendar-color-mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 2px solid #d1d5db;
+  background: #fff;
+  text-align: left;
+}
+
+.calendar-color-mode-option-active {
+  border-color: var(--primary);
+}
+
+.calendar-color-mode-option-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.calendar-color-mode-option-desc {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* RETOQUE — engranaje ⚙️ junto a "Categoría (opcional)" (Evento/Tarea): gestionar calendar_categories
+   sin salir del formulario. La etiqueta pasa a fila (texto + botón) en vez de solo texto — por eso deja
+   de ser el <p className="muted"> suelto de antes y gana esta clase, sin cambiar su aspecto base. */
+.calendar-category-field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calendar-category-manage-btn {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .checkbox-label {
   flex-direction: row;
   align-items: center;

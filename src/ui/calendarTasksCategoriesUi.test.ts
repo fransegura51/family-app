@@ -85,7 +85,7 @@ describe('AddTaskForm — formulario reducido (Parte 2/3): nunca hora/fin/recurr
   })
 
   it('reutiliza CategoryDropdown, EventExtrasFields (ubicación/adjunto/nota) y el campo de puntos — todo opcional, nunca sistemas paralelos', () => {
-    expect(FORM).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />')
+    expect(FORM).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
     expect(FORM).toContain('<EventExtrasFields')
     expect(FORM).toMatch(/Puntos al marcarla "Hecha"/)
     expect(FORM).not.toContain('function EventExtrasFields(')
@@ -98,14 +98,14 @@ describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comp
     expect(form).toContain('RecurrenceControl')
     expect(form).toContain('ReminderPicker')
     expect(form).toContain('🔒 Solo yo (privado')
-    expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />')
+    expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
   })
 
   it('EditEventForm: la Tarea se edita con el formulario reducido (isTask oculta hora/repetición/recordatorios/privado), el Evento conserva el completo', () => {
     const form = slice(CALENDAR_SRC, 'function EditEventForm({', 'function AddEventForm({')
     expect(form).toContain("const isTask = event.kind === 'task'")
     expect(form).toContain('{!isTask && (')
-    expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} />')
+    expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
   })
 
   it('EditEventForm nunca cambia `kind` al guardar (sin conversión Evento↔Tarea esta fase)', () => {
@@ -118,8 +118,14 @@ describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comp
 describe('Categoría — opcional para Evento y Tarea, "Sin categoría" explícito, nunca taxonomía obligatoria', () => {
   const DROPDOWN = slice(CALENDAR_SRC, 'function CategoryDropdown({', 'function ReminderPicker(')
 
-  it('sin categorías creadas, no renderiza nada — nunca fuerza a crear una', () => {
-    expect(DROPDOWN).toContain('if (categories.length === 0) return null')
+  // RETOQUE (fase posterior) — antes, sin categorías, el componente devolvía null entero (ni la
+  // etiqueta se veía); ahora la etiqueta + el engranaje ⚙️ se ven SIEMPRE (para poder crear la primera
+  // categoría desde ahí), y solo el selector en sí (botón "▼" + su modal) sigue oculto sin categorías.
+  it('sin categorías creadas, la etiqueta y el engranaje ⚙️ se ven igualmente; el selector en sí (botón "▼") se oculta, nunca fuerza a crear una', () => {
+    expect(DROPDOWN).not.toContain('if (categories.length === 0) return null')
+    expect(DROPDOWN).toContain('Categoría (opcional)')
+    expect(DROPDOWN).toContain('calendar-category-manage-btn')
+    expect(DROPDOWN).toContain('{categories.length > 0 && (')
   })
 
   it('"Sin categoría" es una opción explícita, siempre disponible, además de cada categoría real', () => {
@@ -152,16 +158,14 @@ describe('Emoji de categoría — nunca depende del modo de color (Parte 6), vis
   })
 })
 
-describe('Colores — modo miembros (default) exactamente igual que siempre; modo categorías con fallback seguro', () => {
-  it('eventColor acepta categoryColorById opcional — en modo miembros (sin pasarlo) el resultado es idéntico al de antes de esta fase', () => {
+// RETOQUE (fase posterior) — de "miembros"/"categorías" (2 opciones) a tres modos mutuamente
+// excluyentes; el detalle completo vive en calendarColorModesUi.test.ts, no se repite aquí.
+describe('Colores — eventColor conserva su fallback base (detalle de los 3 modos en calendarColorModesUi.test.ts)', () => {
+  it('eventColor sigue devolviendo primero el color propio del evento, consultando la categoría y cayendo en el gris de siempre', () => {
     const fn = slice(CALENDAR_SRC, 'function eventColor(ev: CalendarEvent', 'function hhmm(')
     expect(fn).toContain('if (ev.color) return ev.color')
-    expect(fn).toContain('categoryColorById && ev.categoryId')
+    expect(fn).toContain('ev.categoryId')
     expect(fn).toContain("return first?.color ?? '#9ca3af'")
-  })
-
-  it('CalendarScreen solo pasa categoryColorById cuando calendarPrefs.colorMode === \'categorias\' — nunca en modo miembros', () => {
-    expect(CALENDAR_SRC).toContain("categoryColorById={calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined}")
   })
 })
 
@@ -172,13 +176,10 @@ describe('Orden Eventos/Tareas — Configuración → Calendario, por usuario (P
     expect(fn).toContain("if (a.kind === b.kind) return 0")
   })
 
-  it('Configuración → Calendario expone las dos preferencias con sus dos opciones cada una, con default correcto', () => {
+  it('Configuración → Calendario expone el orden Eventos/Tareas con sus dos opciones, con default correcto (los 3 modos de color tienen su propio test en calendarColorModesUi.test.ts)', () => {
     const section = slice(MENU_SETTINGS_SRC, 'function CalendarPreferencesSection() {', 'function CalendarCategoryRow(')
-    expect(section).toContain('Ver colores de miembros')
-    expect(section).toContain('Ver colores de categorías')
     expect(section).toContain('Eventos primero')
     expect(section).toContain('Tareas primero')
-    expect(section).toContain("useState<CalendarColorMode>('miembros')")
     expect(section).toContain("useState<CalendarTaskOrder>('eventos_primero')")
   })
 })

@@ -160,21 +160,30 @@ export function expandOccurrences(
 // color de Jennifer). Si el evento tiene un color propio explícito, ese
 // manda; si no tiene miembros ni color, cae en gris.
 //
-// FASE CALENDARIO — `categoryColorById` solo se pasa cuando la preferencia de la persona es "ver
-// colores de categorías" (nunca en modo miembros, donde el comportamiento es EXACTAMENTE el de
-// siempre); en ese modo, un solo punto con el color de la categoría sustituye a los puntos por
-// miembro — fallback seguro (nunca invisible): sin color de categoría, cae en el color de cada
-// miembro de siempre; sin eso tampoco, en el gris de siempre.
+// RETOQUE — tres modos mutuamente excluyentes (CalendarColorMode en data/calendar.ts; el tipo se
+// repite aquí en línea, literal por literal, para que este archivo siga sin ninguna dependencia — ver
+// cabecera del fichero):
+//   'miembros'        — ignora la categoría por completo, siempre el/los color(es) de miembro de
+//                        siempre (comportamiento IDÉNTICO al de antes de este retoque).
+//   'categorias'      — modo híbrido ("Categorías + personas"): categoría si la tiene con color: un
+//                        solo punto con ESE color sustituye a los puntos por miembro; si no, cae en el
+//                        color de cada miembro de siempre — este es el comportamiento que YA tenía el
+//                        único modo "categorías" de antes, sin cambios.
+//   'solo_categorias' — modo nuevo: categoría si la tiene con color; si NO, directamente el gris
+//                        neutro — nunca cae en el color de miembro en este modo.
+// Fallback seguro en los tres modos: sin nada aplicable, el gris de siempre, nunca invisible.
 export function eventDotColors(
   event: { color: string | null; memberIds: string[]; categoryId?: string | null },
   memberColorById: Map<string, string>,
-  categoryColorById?: Map<string, string>,
+  colorMode: 'miembros' | 'categorias' | 'solo_categorias',
+  categoryColorById: Map<string, string>,
 ): string[] {
   if (event.color) return [event.color]
-  if (categoryColorById && event.categoryId) {
+  if (colorMode !== 'miembros' && event.categoryId) {
     const categoryColor = categoryColorById.get(event.categoryId)
     if (categoryColor) return [categoryColor]
   }
+  if (colorMode === 'solo_categorias') return ['#9ca3af']
   if (event.memberIds.length > 0) {
     return event.memberIds.map((id) => memberColorById.get(id)).filter((c): c is string => !!c)
   }

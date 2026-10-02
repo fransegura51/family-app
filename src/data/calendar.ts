@@ -430,7 +430,17 @@ export async function deleteCalendarCategory(id: string): Promise<void> {
 // getDateFilterPreferences/updateDateFilterFavorite (data/family.ts, migración 0170): nunca
 // families/localStorage, cada persona de la familia puede ver el calendario a su manera. ──
 
-export type CalendarColorMode = 'miembros' | 'categorias'
+// RETOQUE — tres modos mutuamente excluyentes en vez de dos (migración 0185):
+//   'miembros'        — siempre el color de la persona asignada, ignora la categoría por completo.
+//   'categorias'      — MISMO LITERAL que antes, a propósito: ya representaba categoría → persona →
+//                        neutro (ver eventColor/eventDotColors), y es justo el modo "Categorías +
+//                        personas" de ahora — reutilizarlo en vez de migrar filas existentes es lo que
+//                        garantiza que nadie con 'categorias' ya puesto cambia de aspecto con este
+//                        retoque. Es también el nuevo valor por defecto (migración 0185) para perfiles
+//                        nuevos, por ser el que más se parece a "cómo se veía esto hasta ahora".
+//   'solo_categorias' — el único modo realmente nuevo: solo categoría, nunca cae en la persona si la
+//                        categoría no tiene color (neutro directo).
+export type CalendarColorMode = 'miembros' | 'categorias' | 'solo_categorias'
 export type CalendarTaskOrder = 'eventos_primero' | 'tareas_primero'
 
 export interface CalendarPreferences {
@@ -447,8 +457,10 @@ export async function getCalendarPreferences(): Promise<CalendarPreferences> {
     .eq('id', userResult.user.id)
     .single()
   if (error) throw error
+  const colorMode: CalendarColorMode =
+    data.calendar_color_mode === 'categorias' ? 'categorias' : data.calendar_color_mode === 'solo_categorias' ? 'solo_categorias' : 'miembros'
   return {
-    colorMode: data.calendar_color_mode === 'categorias' ? 'categorias' : 'miembros',
+    colorMode,
     taskOrder: data.calendar_task_order === 'tareas_primero' ? 'tareas_primero' : 'eventos_primero',
   }
 }

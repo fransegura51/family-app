@@ -216,10 +216,12 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // (store_chains_catalog_expansion) añade Carrefour/Eroski/Dia/Alcampo/El Corte Inglés/Hipercor al
   // mismo catálogo — tampoco toca Eventos. 0184 (calendar_tasks_categories, FASE CALENDARIO) añade
   // calendar_events.kind/category_id, calendar_categories y preferencias en profiles — tampoco Eventos.
-  it('0184 (calendar_tasks_categories) es la última migración del repositorio', () => {
+  // 0185 (calendar_color_mode_three_modes) solo cambia el CHECK y el default de
+  // profiles.calendar_color_mode — tampoco toca Eventos.
+  it('0185 (calendar_color_mode_three_modes) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(184)
+    expect(Math.max(...numbers)).toBe(185)
   })
 })

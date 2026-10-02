@@ -178,22 +178,15 @@ describe('"Otro color" — acción explícita, separada de las 8 muestras, sin c
   })
 })
 
-describe('No regresión — el modo "Ver colores de categorías"/"Ver colores de miembros" y su fallback no se han tocado', () => {
-  it('eventColor sigue con el mismo fallback: color propio del evento → color de categoría (solo en modo categorías) → color de miembro → gris', () => {
+// RETOQUE (fase posterior) — el modo de color pasó de dos opciones a tres mutuamente excluyentes
+// ('miembros' | 'categorias' | 'solo_categorias'); el detalle de esa lógica y su UI tiene su propio
+// archivo de tests, calendarColorModesUi.test.ts — aquí solo se comprueba que eventColor sigue
+// existiendo con el mismo fallback de siempre como base, sin repetir esos tests.
+describe('No regresión — eventColor conserva su fallback base (detalle de los 3 modos en calendarColorModesUi.test.ts)', () => {
+  it('eventColor sigue devolviendo primero el color propio del evento, y gris como último recurso', () => {
     const fn = slice(CALENDAR_SCREEN_SRC, 'function eventColor(ev: CalendarEvent', 'function hhmm(')
     expect(fn).toContain('if (ev.color) return ev.color')
     expect(fn).toContain('const categoryColor = categoryColorById.get(ev.categoryId)')
     expect(fn).toContain("return first?.color ?? '#9ca3af'")
-  })
-
-  it('categoryColorById solo se construye/pasa cuando colorMode === "categorias" — en modo "miembros" el comportamiento es exactamente el de siempre', () => {
-    expect(CALENDAR_SCREEN_SRC).toContain("calendarPrefs.colorMode === 'categorias' ? categoryColorById : undefined")
-  })
-
-  it('el ajuste "Ver colores de miembros"/"Ver colores de categorías" (CalendarPreferencesSection) no se ha tocado en esta corrección', () => {
-    const prefs = slice(MENU_SETTINGS_SRC, 'function CalendarPreferencesSection() {', 'function CalendarCategoryEmojiPicker(')
-    expect(prefs).toContain("useState<CalendarColorMode>('miembros')")
-    expect(prefs).toContain('Ver colores de miembros')
-    expect(prefs).toContain('Ver colores de categorías')
   })
 })

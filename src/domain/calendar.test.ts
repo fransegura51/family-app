@@ -352,37 +352,64 @@ describe('isWeekend', () => {
   })
 })
 
-// FASE CALENDARIO — Parte 7: modo de color por categorías, con fallback seguro. categoryColorById solo
-// se pasa cuando la persona tiene activado ese modo (ver CalendarScreen.tsx) — aquí se prueba la función
-// pura en sí, con y sin ese segundo argumento.
-describe('eventDotColors — modo categorías (Parte 7), nunca invisible', () => {
+// RETOQUE — tres modos mutuamente excluyentes de verdad (antes solo había "miembros" y un "categorías"
+// que en realidad ya era el híbrido categoría→persona→neutro de ahora). Jennifer=rosa, categoría
+// Casa=amarillo, como en el ejemplo real del usuario.
+describe('eventDotColors — tres modos de color mutuamente excluyentes, nunca invisible', () => {
   const memberColorById = new Map([
-    ['m1', '#111111'],
+    ['jennifer', '#ff69b4'], // rosa
     ['m2', '#222222'],
   ])
-  const categoryColorById = new Map([['cat-con-color', '#ff0000']])
+  const categoryColorById = new Map([['casa', '#ffd700']]) // amarillo — "sin color" simplemente no está en este mapa
 
-  it('color propio del evento manda siempre, con o sin categoryColorById', () => {
-    expect(eventDotColors({ color: '#abcdef', memberIds: ['m1'], categoryId: 'cat-con-color' }, memberColorById, categoryColorById)).toEqual(['#abcdef'])
+  it('color propio del evento manda siempre, en cualquier modo', () => {
+    for (const mode of ['miembros', 'categorias', 'solo_categorias'] as const) {
+      expect(eventDotColors({ color: '#abcdef', memberIds: ['jennifer'], categoryId: 'casa' }, memberColorById, mode, categoryColorById)).toEqual(['#abcdef'])
+    }
   })
 
-  it('sin categoryColorById (modo miembros): el comportamiento es EXACTAMENTE el de siempre, aunque el evento tenga categoría', () => {
-    expect(eventDotColors({ color: null, memberIds: ['m1', 'm2'], categoryId: 'cat-con-color' }, memberColorById)).toEqual(['#111111', '#222222'])
+  // A — Modo Personas: categoría amarilla + Jennifer rosa → rosa (la categoría se ignora del todo).
+  it('modo "miembros": siempre el color de la persona, aunque el evento tenga categoría con color', () => {
+    expect(eventDotColors({ color: null, memberIds: ['jennifer'], categoryId: 'casa' }, memberColorById, 'miembros', categoryColorById)).toEqual(['#ff69b4'])
   })
 
-  it('con categoryColorById (modo categorías) y categoría CON color: un solo punto, el de la categoría', () => {
-    expect(eventDotColors({ color: null, memberIds: ['m1', 'm2'], categoryId: 'cat-con-color' }, memberColorById, categoryColorById)).toEqual(['#ff0000'])
+  it('modo "miembros": varios miembros siguen dando un punto por cada uno, como siempre', () => {
+    expect(eventDotColors({ color: null, memberIds: ['jennifer', 'm2'], categoryId: 'casa' }, memberColorById, 'miembros', categoryColorById)).toEqual(['#ff69b4', '#222222'])
   })
 
-  it('modo categorías, categoría SIN color (no está en categoryColorById): fallback seguro al color de miembro de siempre', () => {
-    expect(eventDotColors({ color: null, memberIds: ['m1'], categoryId: 'cat-sin-color' }, memberColorById, categoryColorById)).toEqual(['#111111'])
+  // B — Modo Categorías (solo_categorias): categoría amarilla + Jennifer rosa → amarillo.
+  it('modo "solo_categorias": con categoría con color, usa el color de la categoría (nunca el de la persona)', () => {
+    expect(eventDotColors({ color: null, memberIds: ['jennifer'], categoryId: 'casa' }, memberColorById, 'solo_categorias', categoryColorById)).toEqual(['#ffd700'])
   })
 
-  it('modo categorías, sin categoría en absoluto: fallback al color de miembro de siempre', () => {
-    expect(eventDotColors({ color: null, memberIds: ['m1'], categoryId: null }, memberColorById, categoryColorById)).toEqual(['#111111'])
+  // C — Modo Categorías SIN categoría: Jennifer rosa + sin categoría → neutro (nunca el color de Jennifer).
+  it('modo "solo_categorias": sin categoría, neutro directo — NUNCA cae en el color de la persona', () => {
+    expect(eventDotColors({ color: null, memberIds: ['jennifer'], categoryId: null }, memberColorById, 'solo_categorias', categoryColorById)).toEqual(['#9ca3af'])
   })
 
-  it('sin categoría, sin miembros, en cualquier modo: gris de siempre — nunca invisible', () => {
-    expect(eventDotColors({ color: null, memberIds: [], categoryId: null }, memberColorById, categoryColorById)).toEqual(['#9ca3af'])
+  // D — Modo Categorías con categoría "Sin color": Jennifer rosa → neutro.
+  it('modo "solo_categorias": categoría SIN color asignado (no está en categoryColorById), neutro directo — NUNCA cae en el color de la persona', () => {
+    expect(eventDotColors({ color: null, memberIds: ['jennifer'], categoryId: 'sin-color' }, memberColorById, 'solo_categorias', categoryColorById)).toEqual(['#9ca3af'])
+  })
+
+  // E — Modo Categorías + personas: categoría amarilla + Jennifer rosa → amarillo.
+  it('modo "categorias" (híbrido): con categoría con color, usa el color de la categoría', () => {
+    expect(eventDotColors({ color: null, memberIds: ['jennifer'], categoryId: 'casa' }, memberColorById, 'categorias', categoryColorById)).toEqual(['#ffd700'])
+  })
+
+  // F — Modo Categorías + personas sin categoría: Jennifer rosa → rosa.
+  it('modo "categorias" (híbrido): sin categoría, cae en el color de la persona', () => {
+    expect(eventDotColors({ color: null, memberIds: ['jennifer'], categoryId: null }, memberColorById, 'categorias', categoryColorById)).toEqual(['#ff69b4'])
+  })
+
+  it('modo "categorias" (híbrido): categoría SIN color asignado, también cae en el color de la persona', () => {
+    expect(eventDotColors({ color: null, memberIds: ['jennifer'], categoryId: 'sin-color' }, memberColorById, 'categorias', categoryColorById)).toEqual(['#ff69b4'])
+  })
+
+  // G — Modo híbrido sin categoría ni miembro/color aplicable → neutro.
+  it('sin categoría, sin miembros, en cualquiera de los tres modos: gris de siempre — nunca invisible', () => {
+    for (const mode of ['miembros', 'categorias', 'solo_categorias'] as const) {
+      expect(eventDotColors({ color: null, memberIds: [], categoryId: null }, memberColorById, mode, categoryColorById)).toEqual(['#9ca3af'])
+    }
   })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { loadGoogleMaps } from '@/services/googleMapsLoader'
 import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
-import { decodePolyline } from '@/domain/geo'
+import { buildTrackSegments, decodePolyline } from '@/domain/geo'
 import type { FamilyMember, MemberLocation, MemberLocationPoint } from '@/domain/types'
 
 function markerIconHtml(member: FamilyMember, photoUrl: string | undefined): string {
@@ -113,7 +113,9 @@ export function LocationMap({
   const mapRef = useRef<google.maps.Map | null>(null)
   const googleRef = useRef<typeof google | null>(null)
   const markersRef = useRef<Map<string, PhotoMarkerOverlay>>(new Map())
-  const polylinesRef = useRef<Map<string, google.maps.Polyline>>(new Map())
+  // Varias líneas por persona: trozos continuos + tramos discontinuos sin datos.
+  const polylinesRef = useRef<Map<string, google.maps.Polyline[]>>(new Map())
+  const lineSignaturesRef = useRef<Map<string, string>>(new Map())
   const routeLineRef = useRef<google.maps.Polyline | null>(null)
   // Solo se vuelve a encuadrar el mapa cuando la ruta CAMBIA (no en cada
   // render con la misma ruta) — mismo motivo que fittedIdsRef más abajo.
@@ -190,6 +192,12 @@ export function LocationMap({
     if (!map || !g) return
     const Overlay = getPhotoMarkerOverlayClass(g)
 
+    function clearMemberLines(memberId: string) {
+      for (const line of polylinesRef.current.get(memberId) ?? []) line.setMap(null)
+      polylinesRef.current.delete(memberId)
+      lineSignaturesRef.current.delete(memberId)
+    }
+
     const seenIds = new Set<string>()
     const bounds = new g.maps.LatLngBounds()
     let hasBounds = false
@@ -217,21 +225,36 @@ export function LocationMap({
       bounds.extend(position)
       hasBounds = true
 
+      // Petición real: "el mapa no marca el recorrido bien". Un rastro con huecos de horas ya no se une con
+      // una recta: lo que se sabe va en línea continua y lo que no (el móvil no mandó nada por el medio)
+      // en discontinua — ver buildTrackSegments.
       const history = histories[member.id] ?? []
-      if (history.length >= 2) {
-        const path = history.map((p) => ({ lat: p.latitude, lng: p.longitude }))
-        const existingLine = polylinesRef.current.get(member.id)
-        if (existingLine) {
-          existingLine.setPath(path)
-        } else {
-          const line = new g.maps.Polyline({ path, strokeColor: member.color, strokeWeight: 3, strokeOpacity: 0.7, map })
-          polylinesRef.current.set(member.id, line)
-        }
-        for (const p of path) bounds.extend(p)
-      } else {
-        polylinesRef.current.get(member.id)?.setMap(null)
-        polylinesRef.current.delete(member.id)
+      const { solid, gaps } = history.length >= 2 ? buildTrackSegments(history.map((p) => ({ lat: p.latitude, lng: p.longitude, at: new Date(p.recordedAt).getTime() }))) : { solid: [], gaps: [] }
+      for (const path of solid) for (const p of path) bounds.extend(p)
+      for (const pair of gaps) for (const p of pair) bounds.extend(p)
+
+      // Las líneas solo se recrean si el rastro ha cambiado de verdad — con cada refresco de posición
+      // (cada 30 s) borrar y volver a pintarlas todas haría parpadear el mapa, como ya pasó con los marcadores.
+      const signature = JSON.stringify([member.color, solid.map((s) => [s.length, s[0], s[s.length - 1]]), gaps])
+      if (lineSignaturesRef.current.get(member.id) === signature && polylinesRef.current.has(member.id)) continue
+      clearMemberLines(member.id)
+      lineSignaturesRef.current.set(member.id, signature)
+      const lines: google.maps.Polyline[] = []
+      for (const path of solid) {
+        lines.push(new g.maps.Polyline({ path, strokeColor: member.color, strokeWeight: 3, strokeOpacity: 0.7, map }))
       }
+      for (const pair of gaps) {
+        // strokeOpacity 0 + un icono repetido = línea de rayas (la forma que trae Google Maps).
+        lines.push(
+          new g.maps.Polyline({
+            path: pair,
+            strokeOpacity: 0,
+            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.55, strokeColor: member.color, scale: 2.5 }, offset: '0', repeat: '14px' }],
+            map,
+          }),
+        )
+      }
+      if (lines.length > 0) polylinesRef.current.set(member.id, lines)
     }
 
     // Quita marcadores/rutas de quien haya dejado de compartir.
@@ -239,8 +262,7 @@ export function LocationMap({
       if (!seenIds.has(id)) {
         marker.setMap(null)
         markersRef.current.delete(id)
-        polylinesRef.current.get(id)?.setMap(null)
-        polylinesRef.current.delete(id)
+        clearMemberLines(id)
       }
     }
 

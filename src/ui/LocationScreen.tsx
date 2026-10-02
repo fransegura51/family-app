@@ -123,7 +123,8 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
       <SectionBreadcrumb subsection={UBICACION_MENU_ITEM_META[tab].label} />
       <p className="muted">
         Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El
-        mapa muestra la ruta de las últimas 24h — pasado ese tiempo se borra sola.
+        mapa muestra la ruta de las últimas 24h — pasado ese tiempo se borra sola. Línea continua: recorrido
+        registrado. Línea de rayas: tramo sin datos (el móvil solo manda su posición con la app abierta).
       </p>
       {menuOpen && (
         <UbicacionMenuDropdown

@@ -11,6 +11,75 @@ export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: n
   return R * c
 }
 
+export interface TrackPoint {
+  lat: number
+  lng: number
+  // Instante de la lectura, en milisegundos.
+  at: number
+}
+
+export interface TrackSegments {
+  // Trozos de recorrido con datos seguidos: se dibujan con línea continua.
+  solid: { lat: number; lng: number }[][]
+  // Tramos entre dos lecturas con un hueco sin datos en medio: se dibujan discontinuos.
+  gaps: [{ lat: number; lng: number }, { lat: number; lng: number }][]
+}
+
+// Más de este tiempo entre dos lecturas (y a distancia apreciable) = el móvil no mandó nada por el medio.
+const MAX_CONNECTED_GAP_MS = 10 * 60 * 1000
+// A esta distancia o menos, dos lecturas se consideran "en el mismo sitio" aunque pase mucho rato (quieto en
+// casa sube un punto cada 5 min): se unen igualmente, no es un salto.
+const SAME_PLACE_M = 150
+// Más rápido que esto entre dos lecturas cercanas en el tiempo es un salto falso del GPS, no un trayecto.
+const MAX_PLAUSIBLE_SPEED_MS = 250 / 3.6
+
+// Petición real: "el mapa no marca el recorrido bien". El móvil solo manda su posición con la app abierta,
+// así que el rastro de 24 h trae HUECOS de horas (un caso real: dos huecos de unas 4 h con 4,5 km entre los
+// dos lados) — y unirlos con una recta dibujaba un "trayecto" que cruzaba campos y edificios y que nadie
+// había hecho. Aquí se separa lo que se sabe (línea continua) de lo que no (tramos discontinuos), y se
+// descartan los saltos imposibles del GPS (decenas de km/h de más en segundos), que dibujaban picos.
+export function buildTrackSegments(points: TrackPoint[]): TrackSegments {
+  const sorted = [...points].sort((a, b) => a.at - b.at)
+  const kept: TrackPoint[] = []
+  // Si el GPS "salta" de verdad (el primer punto era el malo, o se reinició en otro sitio), varias lecturas
+  // seguidas coinciden entre sí: tras 3 descartes seguidos se da por buena la nueva posición.
+  let droppedInRow = 0
+  for (const point of sorted) {
+    const last = kept[kept.length - 1]
+    if (last) {
+      const dt = point.at - last.at
+      const dist = distanceMeters(last.lat, last.lng, point.lat, point.lng)
+      const implausible = dt <= MAX_CONNECTED_GAP_MS && dist > SAME_PLACE_M && dist / Math.max(dt / 1000, 1) > MAX_PLAUSIBLE_SPEED_MS
+      if (implausible && droppedInRow < 3) {
+        droppedInRow++
+        continue
+      }
+    }
+    droppedInRow = 0
+    kept.push(point)
+  }
+
+  const solid: TrackSegments['solid'] = []
+  const gaps: TrackSegments['gaps'] = []
+  let current: { lat: number; lng: number }[] = []
+  for (let i = 0; i < kept.length; i++) {
+    const point = { lat: kept[i].lat, lng: kept[i].lng }
+    const prev = kept[i - 1]
+    if (prev) {
+      const dt = kept[i].at - prev.at
+      const dist = distanceMeters(prev.lat, prev.lng, point.lat, point.lng)
+      if (dt > MAX_CONNECTED_GAP_MS && dist > SAME_PLACE_M) {
+        if (current.length >= 2) solid.push(current)
+        gaps.push([{ lat: prev.lat, lng: prev.lng }, point])
+        current = []
+      }
+    }
+    current.push(point)
+  }
+  if (current.length >= 2) solid.push(current)
+  return { solid, gaps }
+}
+
 export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`
   return `${(meters / 1000).toFixed(1)} km`

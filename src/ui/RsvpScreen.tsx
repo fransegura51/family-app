@@ -38,6 +38,22 @@ interface PublicEvent {
   status: string
 }
 
+// Parte B (migración 0189) — desglose OPCIONAL de personas con nombre dentro de esta invitación: cuando
+// existe, el RSVP se amplía para que cada persona registre su propia asistencia y, si procede, su menú
+// (ver RsvpForm). Sin desglose (members: []), el formulario sigue funcionando exactamente igual que antes.
+interface PublicGuestMember {
+  id: string
+  name: string
+  personType: string
+  rsvpAttending: boolean | null
+  menuOptionId: string | null
+}
+
+interface PublicMenuOption {
+  id: string
+  name: string
+}
+
 interface PublicGuest {
   displayName: string
   adultsCount: number
@@ -46,6 +62,8 @@ interface PublicGuest {
   rsvpAdultsCount: number | null
   rsvpChildrenCount: number | null
   rsvpNote: string | null
+  members: PublicGuestMember[]
+  menuOptions: PublicMenuOption[]
 }
 
 type LoadState =
@@ -235,18 +253,33 @@ function RsvpForm({
   const [adults, setAdults] = useState(String(guest.rsvpAdultsCount ?? guest.adultsCount))
   const [children, setChildren] = useState(String(guest.rsvpChildrenCount ?? guest.childrenCount))
   const [note, setNote] = useState(guest.rsvpNote ?? '')
+  const [members, setMembers] = useState(() => guest.members.map((m) => ({ id: m.id, name: m.name, personType: m.personType, attending: m.rsvpAttending, menuOptionId: m.menuOptionId })))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const hasMembers = guest.members.length > 0
+
+  function updateMember(id: string, patch: Partial<{ attending: boolean | null; menuOptionId: string | null }>) {
+    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)))
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
     setError(null)
     try {
+      const body: Record<string, unknown> = { status, note }
+      if (hasMembers) {
+        body.members = members.map((m) => ({ id: m.id, attending: m.attending, menuOptionId: m.menuOptionId }))
+        body.adults = members.filter((m) => m.attending === true && m.personType === 'adulto').length
+        body.children = members.filter((m) => m.attending === true && m.personType === 'nino').length
+      } else {
+        body.adults = adults
+        body.children = children
+      }
       const res = await fetch(`${functionsUrl()}?token=${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, adults, children, note }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error()
       onSubmitted()
@@ -274,18 +307,52 @@ function RsvpForm({
           ))}
         </div>
       </fieldset>
-      {status === 'confirmado' && (
-        <div className="inline-fields" style={{ marginTop: 12 }}>
-          <label>
-            Adultos
-            <input type="number" min={0} max={50} value={adults} onChange={(e) => setAdults(e.target.value)} />
-          </label>
-          <label>
-            Niños
-            <input type="number" min={0} max={50} value={children} onChange={(e) => setChildren(e.target.value)} />
-          </label>
-        </div>
-      )}
+      {status === 'confirmado' &&
+        (hasMembers ? (
+          <div style={{ marginTop: 12 }}>
+            {members.map((m) => (
+              <div key={m.id} className="card" style={{ padding: 10, marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>{m.name}</div>
+                <div className="filter-row">
+                  <button type="button" className={'chip' + (m.attending === true ? ' chip-active' : '')} onClick={() => updateMember(m.id, { attending: true })}>
+                    ✅ Viene
+                  </button>
+                  <button
+                    type="button"
+                    className={'chip' + (m.attending === false ? ' chip-active' : '')}
+                    onClick={() => updateMember(m.id, { attending: false, menuOptionId: null })}
+                  >
+                    ❌ No viene
+                  </button>
+                </div>
+                {m.attending === true && guest.menuOptions.length > 0 && (
+                  <label style={{ display: 'block', marginTop: 8 }}>
+                    Menú
+                    <select value={m.menuOptionId ?? ''} onChange={(e) => updateMember(m.id, { menuOptionId: e.target.value || null })}>
+                      <option value="">Sin elegir todavía</option>
+                      {guest.menuOptions.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="inline-fields" style={{ marginTop: 12 }}>
+            <label>
+              Adultos
+              <input type="number" min={0} max={50} value={adults} onChange={(e) => setAdults(e.target.value)} />
+            </label>
+            <label>
+              Niños
+              <input type="number" min={0} max={50} value={children} onChange={(e) => setChildren(e.target.value)} />
+            </label>
+          </div>
+        ))}
       <label style={{ display: 'block', marginTop: 14 }}>
         Nota (alergia, algún comentario...) — opcional
         <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} rows={3} />

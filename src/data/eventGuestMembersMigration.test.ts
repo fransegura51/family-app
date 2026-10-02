@@ -118,8 +118,10 @@ describe('capa de datos: event_guest_members (TEST: crear persona válida, adult
     expect(body).toContain('person_type: input.personType')
   })
 
-  it('listEventGuestMembers/listEventGuestMembersForEvent seleccionan exactamente las columnas de la migración', () => {
-    expect(SRC).toContain("const GUEST_MEMBER_SELECT = 'id, guest_id, event_id, family_id, name, person_type, table_id, sort_order, created_at'")
+  it('listEventGuestMembers/listEventGuestMembersForEvent seleccionan exactamente las columnas de la migración (0164 + 0189)', () => {
+    expect(SRC).toContain(
+      "const GUEST_MEMBER_SELECT = 'id, guest_id, event_id, family_id, name, person_type, table_id, sort_order, created_at, rsvp_attending, menu_option_id'",
+    )
   })
 
   it('updateEventGuestMember permite cambiar tableId a null explícitamente (quitar de mesa) sin borrar la persona', () => {
@@ -140,10 +142,10 @@ describe('regresión: Invitados/RSVP existentes no se han tocado (TEST: eventos/
     expect(SRC).toContain('export async function updateEventGuest(')
   })
 
-  it('el flujo público de RSVP (event-rsvp Edge Function) no se ha modificado en esta fase', () => {
+  it('el flujo público de RSVP (event-rsvp Edge Function) no se modificó en la Fase 14A — la extensión posterior (Parte B, migración 0189, elección de menú por persona) sí lo toca a propósito, ver eventRsvpMenuChoiceFunction.test.ts', () => {
     const RSVP_FN = (
       import.meta.glob('/supabase/functions/event-rsvp/index.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     )['/supabase/functions/event-rsvp/index.ts']
-    expect(RSVP_FN).not.toContain('event_guest_members')
+    expect(RSVP_FN).toContain('event_guest_members')
   })
 })

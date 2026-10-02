@@ -719,6 +719,8 @@ export interface EventGuestMember {
   tableId: string | null
   sortOrder: number
   createdAt: string
+  rsvpAttending: boolean | null
+  menuOptionId: string | null
 }
 
 export interface EventTask {
@@ -772,6 +774,20 @@ export interface EventMenuItem {
   category: string | null
   quantityNote: string | null
   transferred: boolean
+  sortOrder: number
+  createdAt: string
+}
+
+// Opción de menú SELECCIONABLE por invitado (p.ej. "Carne" / "Pescado" / "Vegetariano") — distinta de
+// EventMenuItem (lista de platos/ingredientes a preparar o comprar, transferible a Compras): esto son
+// opciones discretas y excluyentes que define "Comida y celebración" y que cada invitado elige en el RSVP
+// (ver event_guest_members.menuOptionId). Sin coste ni proveedor propios — no genera nada en Preparativos/
+// Presupuesto por sí sola.
+export interface EventMenuOption {
+  id: string
+  eventId: string
+  familyId: string
+  name: string
   sortOrder: number
   createdAt: string
 }

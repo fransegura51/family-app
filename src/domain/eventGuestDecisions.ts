@@ -22,6 +22,7 @@ function fromCustom(custom: CustomResolution | undefined, taskTitle: (label: str
 }
 
 export const GUESTS_LISTA_QUESTION_KEY = 'invitados.lista'
+export const GUESTS_MENU_QUESTION_KEY = 'invitados.menu_invitacion'
 export const GUESTS_MOMENTOS_QUESTION_KEY = 'invitados.momentos'
 export const GUESTS_NINOS_QUESTION_KEY = 'invitados.ninos'
 export const GUESTS_NINOS_NECESIDADES_QUESTION_KEY = 'invitados.ninos.necesidades'
@@ -49,6 +50,27 @@ export function desiredForListaInvitados(answer: ListaInvitadosAnswer): DesiredP
   if (answer.choice === 'ya_la_tenemos') return RESOLVED
   if (answer.choice === 'tenemos_que_prepararla') return { taskTitle: 'Preparar lista de invitados', budgetCategory: null, providerCategory: null, resolved: false }
   return fromCustom(answer.custom, (label) => `Lista de invitados: ${label}`, (label) => `Lista de invitados: ${label}`)
+}
+
+// ---------------------------------------------------------------------
+// 1b. Menú en la invitación — nunca genera Preparativo/Presupuesto por sí sola (ninguna rama lo hace,
+// "otro" incluido se trata igual que el resto de "otro" de este bloque: solo sigue las reglas normales de
+// CustomResolution, sin inferir nada del texto libre). Esta pregunta solo guarda SI se va a recoger la
+// elección de menú en la invitación — responder "Sí" no obliga a definir las opciones de menú ahora mismo:
+// esa definición real vive en la futura fase "Comida y celebración" (event_menu_options, migración 0189).
+// El RSVP público (event-rsvp) es quien de verdad conecta las dos cosas: cuando esta decisión está en
+// "sí" Y ya existen opciones de menú para el evento, cada invitado puede elegir la suya; si no hay
+// opciones todavía, el RSVP no bloquea ni inventa nada (mismo criterio que el resto del módulo).
+// ---------------------------------------------------------------------
+export type MenuInvitacionChoice = 'si' | 'no' | 'otro' | 'todavia_no_lo_sabemos'
+export interface MenuInvitacionAnswer {
+  choice: MenuInvitacionChoice
+  custom?: CustomResolution
+}
+
+export function desiredForMenuInvitacion(answer: MenuInvitacionAnswer): DesiredPairGeneration {
+  if (answer.choice === 'si' || answer.choice === 'no' || answer.choice === 'todavia_no_lo_sabemos') return NONE
+  return fromCustom(answer.custom, (label) => `Menú en la invitación: ${label}`, (label) => `Menú en la invitación: ${label}`)
 }
 
 // ---------------------------------------------------------------------
@@ -144,6 +166,7 @@ function findDecision(decisions: EventDecision[], questionKey: string): EventDec
 export function listGuestsBlockQuestions(decisions: EventDecision[], momentsCount: number): GuestsQuestionInfo[] {
   const result: GuestsQuestionInfo[] = []
   result.push({ questionKey: GUESTS_LISTA_QUESTION_KEY, blockKey: 'invitados', label: 'Lista de invitados', status: decisionStatus(findDecision(decisions, GUESTS_LISTA_QUESTION_KEY)) })
+  result.push({ questionKey: GUESTS_MENU_QUESTION_KEY, blockKey: 'invitados', label: '¿Elegirán menú en la invitación?', status: decisionStatus(findDecision(decisions, GUESTS_MENU_QUESTION_KEY)) })
 
   if (momentsCount >= 2) {
     result.push({

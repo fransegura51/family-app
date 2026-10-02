@@ -223,11 +223,14 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // (calendar_task_completion_prefs_and_privacy_fixes, RETOQUE Calendario) añade preferencias de Tareas
   // completadas a profiles y corrige privacidad de recordatorios/adjuntos — tampoco toca Eventos. 0188
   // (send_test_push, botón "Mandarme un aviso de prueba" de Familia) añade push_test_log y una función
-  // para mandarse un aviso de prueba a uno mismo — tampoco toca Eventos.
-  it('0188 (send_test_push) es la última migración del repositorio', () => {
+  // para mandarse un aviso de prueba a uno mismo — tampoco toca Eventos. 0189 (event_guest_menu_choice,
+  // Parte B de Eventos) SÍ toca Eventos a propósito: añade event_menu_options y columnas de elección de
+  // menú a event_guest_members — cubierto a fondo en eventRsvpMenuChoiceFunction.test.ts y
+  // eventGuestMembersMigration.test.ts, no aquí.
+  it('0189 (event_guest_menu_choice) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(188)
+    expect(Math.max(...numbers)).toBe(189)
   })
 })

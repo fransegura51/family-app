@@ -69,6 +69,27 @@ interface GuestRow {
   rsvp_note: string | null
 }
 
+// Parte B (migración 0189) — desglose OPCIONAL de personas con nombre dentro de esta unidad invitada
+// (event_guest_members, ya existente desde 0164). Solo se usa aquí cuando la unidad lo tiene: el flujo de
+// enlace abierto (openToken, crea la unidad sobre la marcha) nunca tiene personas desglosadas todavía, así
+// que no participa de nada de esto.
+interface GuestMemberRow {
+  id: string
+  name: string
+  person_type: string
+  rsvp_attending: boolean | null
+  menu_option_id: string | null
+}
+
+// Opciones de menú seleccionables (event_menu_options) — solo se exponen cuando la decisión "¿elegirán
+// menú en la invitación?" (event_decisions, invitados.menu_invitacion) está en "sí" Y la unidad tiene
+// personas desglosadas; si no hay opciones todavía (fase "Comida y celebración" sin construir) o la
+// decisión no es "sí", el RSVP no bloquea ni inventa nada.
+interface MenuOptionRow {
+  id: string
+  name: string
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } })
 }
@@ -268,11 +289,59 @@ Deno.serve(async (req) => {
         })
         .eq("id", g.id)
       if (error) return json({ error: "save_failed" }, 500)
+
+      // Elección por persona (Parte B, migración 0189) — solo si la unidad tiene personas desglosadas y el
+      // cuerpo trae de verdad un array "members"; sin RLS aquí (rol de servicio), así que la pertenencia de
+      // cada member_id a ESTE invitado, y de cada menu_option_id a ESTE evento, se comprueba a mano.
+      if (Array.isArray(body.members) && body.members.length > 0) {
+        const { data: ownMembersData } = await admin.from("event_guest_members").select("id").eq("guest_id", g.id)
+        const ownMemberIds = new Set((ownMembersData ?? []).map((m) => m.id as string))
+        let validOptionIds: Set<string> | null = null
+
+        for (const entry of body.members) {
+          const memberId = typeof entry?.id === "string" ? entry.id : null
+          if (!memberId || !ownMemberIds.has(memberId)) continue
+          const attending = typeof entry.attending === "boolean" ? entry.attending : null
+          let menuOptionId: string | null = typeof entry.menuOptionId === "string" ? entry.menuOptionId : null
+          if (menuOptionId) {
+            if (!validOptionIds) {
+              const { data: optionsData } = await admin.from("event_menu_options").select("id").eq("event_id", ev.id)
+              validOptionIds = new Set((optionsData ?? []).map((o) => o.id as string))
+            }
+            if (!validOptionIds.has(menuOptionId)) menuOptionId = null
+          }
+          await admin.from("event_guest_members").update({ rsvp_attending: attending, menu_option_id: menuOptionId }).eq("id", memberId)
+        }
+      }
+
       return json({ ok: true })
     }
 
     if (ev.status === "archivado") return json({ state: "archived", event: publicEvent(ev) })
     const guestLines = await resolveLocationLines(admin, ev, g, g.id)
+
+    const { data: membersData } = await admin
+      .from("event_guest_members")
+      .select("id, name, person_type, rsvp_attending, menu_option_id")
+      .eq("guest_id", g.id)
+      .order("sort_order", { ascending: true })
+    const members = (membersData ?? []) as GuestMemberRow[]
+
+    const { data: menuDecision } = await admin
+      .from("event_decisions")
+      .select("answer")
+      .eq("event_id", ev.id)
+      .eq("block_key", "invitados")
+      .eq("question_key", "invitados.menu_invitacion")
+      .maybeSingle()
+    const menuChoiceActive = (menuDecision?.answer as { choice?: string } | null)?.choice === "si"
+
+    let menuOptions: MenuOptionRow[] = []
+    if (menuChoiceActive && members.length > 0) {
+      const { data: optionsData } = await admin.from("event_menu_options").select("id, name").eq("event_id", ev.id).order("sort_order", { ascending: true })
+      menuOptions = (optionsData ?? []) as MenuOptionRow[]
+    }
+
     return json({
       state: "form",
       event: { ...publicEvent(ev), infoLines: [...publicEvent(ev).infoLines, ...guestLines] },
@@ -284,6 +353,8 @@ Deno.serve(async (req) => {
         rsvpAdultsCount: g.rsvp_adults_count,
         rsvpChildrenCount: g.rsvp_children_count,
         rsvpNote: g.rsvp_note,
+        members: members.map((m) => ({ id: m.id, name: m.name, personType: m.person_type, rsvpAttending: m.rsvp_attending, menuOptionId: m.menu_option_id })),
+        menuOptions: menuOptions.map((o) => ({ id: o.id, name: o.name })),
       },
     })
   } catch (err) {

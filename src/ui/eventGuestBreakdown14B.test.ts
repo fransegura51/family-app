@@ -188,11 +188,11 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     expect(body).not.toContain('listEventGuestMembers')
   })
 
-  it('el flujo público de RSVP (event-rsvp Edge Function) sigue sin mencionar event_guest_members', () => {
+  it('el flujo público de RSVP (event-rsvp Edge Function) ahora SÍ lee/escribe event_guest_members — extensión deliberada de la Parte B (elección de menú por persona, migración 0189), cubierta a fondo en src/data/eventRsvpMenuChoiceFunction.test.ts', () => {
     const rsvpFn = (import.meta.glob('/supabase/functions/event-rsvp/index.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
       '/supabase/functions/event-rsvp/index.ts'
     ]
-    expect(rsvpFn).not.toContain('event_guest_members')
+    expect(rsvpFn).toContain('event_guest_members')
   })
 
   it('el corrector visual sigue sin ofrecer asignar mesa a una persona desde aquí (eso sigue siendo de la Fase 14C, en TablesSection)', () => {
@@ -244,10 +244,13 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // event_guests/event_guest_members/event_tables ni su RLS. 0188 (send_test_push) añade push_test_log
     // y una función de aviso de prueba — tampoco toca invitados.
     // Ninguna de las veintidós tiene nada que ver con invitados/regalos de eventos.
+    // 0189 (event_guest_menu_choice, Parte B) es la EXCEPCIÓN deliberada: sí añade columnas a
+    // event_guest_members (rsvp_attending, menu_option_id) y endurece su RLS — cubierto a fondo en
+    // src/data/eventRsvpMenuChoiceFunction.test.ts y en eventGuestMembersMigration.test.ts, no aquí.
     const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(188)
+    expect(Math.max(...numbers)).toBe(189)
   })
 })

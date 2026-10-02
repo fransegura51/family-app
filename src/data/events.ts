@@ -857,7 +857,7 @@ export async function deleteEventGuest(id: string): Promise<void> {
 // quedar desalineados con guest_id/table_id.
 // ---------------------------------------------------------------------
 
-const GUEST_MEMBER_SELECT = 'id, guest_id, event_id, family_id, name, person_type, table_id, sort_order, created_at'
+const GUEST_MEMBER_SELECT = 'id, guest_id, event_id, family_id, name, person_type, table_id, sort_order, created_at, rsvp_attending, menu_option_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapGuestMember(r: any): EventGuestMember {
@@ -871,6 +871,8 @@ function mapGuestMember(r: any): EventGuestMember {
     tableId: r.table_id,
     sortOrder: r.sort_order,
     createdAt: r.created_at,
+    rsvpAttending: r.rsvp_attending,
+    menuOptionId: r.menu_option_id,
   }
 }
 

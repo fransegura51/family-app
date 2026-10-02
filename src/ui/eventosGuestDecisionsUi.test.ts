@@ -32,9 +32,34 @@ describe('GuestsDecisionsBlock — montaje y reutilización del motor de "La par
     expect(block).toContain('<BudgetAmountPromptModal')
   })
 
-  it('reutiliza CustomAwareQuestion para las 4 preguntas de primer nivel — nunca un componente de pregunta nuevo', () => {
+  it('reutiliza CustomAwareQuestion para las 5 preguntas de primer nivel (incluida Menú en la invitación) — nunca un componente de pregunta nuevo', () => {
     const block = slice(SRC, 'function GuestsDecisionsBlock(', '\nfunction NinosNecesidadesQuestion(')
-    expect([...block.matchAll(/<CustomAwareQuestion/g)]).toHaveLength(4)
+    expect([...block.matchAll(/<CustomAwareQuestion/g)]).toHaveLength(5)
+  })
+
+  it('"¿Queréis que los invitados elijan su menú en la invitación?" es una pregunta temprana (su <CustomAwareQuestion> va justo después del de Lista de invitados, antes que el de Niños), sin preselección y reutilizando saveQuestion/desiredForMenuInvitacion', () => {
+    const block = slice(SRC, 'function GuestsDecisionsBlock(', '\nfunction NinosNecesidadesQuestion(')
+    expect(block).toContain('¿Queréis que los invitados elijan su menú en la invitación?')
+    expect(block).toContain('questionKey={GUESTS_MENU_QUESTION_KEY}')
+    expect(block).toContain('desiredForMenuInvitacion(answer as MenuInvitacionAnswer)')
+    // Los <CustomAwareQuestion> de JSX son el orden real de pantalla — a diferencia del simple nombre de la
+    // constante, que también aparece antes en declaraciones de variables (p.ej. "const ninosDecision =
+    // findDecision(GUESTS_NINOS_QUESTION_KEY)", antes del propio return) y daría un falso orden.
+    const listaIndex = block.indexOf('questionKey={GUESTS_LISTA_QUESTION_KEY}')
+    const menuIndex = block.indexOf('questionKey={GUESTS_MENU_QUESTION_KEY}')
+    const ninosIndex = block.indexOf('questionKey={GUESTS_NINOS_QUESTION_KEY}')
+    expect(listaIndex).toBeLessThan(menuIndex)
+    expect(menuIndex).toBeLessThan(ninosIndex)
+  })
+
+  it('MENU_INVITACION_OPTIONS no preselecciona ningún valor (Sí/No/Todavía no lo sabemos/Otro)', () => {
+    const start = SRC.indexOf('const MENU_INVITACION_OPTIONS')
+    const arrayStart = SRC.indexOf('= [', start)
+    const optionsBlock = SRC.slice(arrayStart, SRC.indexOf(']', arrayStart + 3))
+    expect(optionsBlock).toContain("value: 'si'")
+    expect(optionsBlock).toContain("value: 'no'")
+    expect(optionsBlock).toContain("value: 'todavia_no_lo_sabemos'")
+    expect(optionsBlock).toContain("value: 'otro'")
   })
 
   it('la pregunta de Momentos solo se pinta con 2+ momentos reales (momentsCount >= 2) — nunca cuenta los sintéticos de ceremonia/celebración heredada', () => {
@@ -106,14 +131,30 @@ describe('"La pareja" no se ha tocado — mismo motor reutilizado, cero regresi�
   })
 })
 
-describe('RSVP público — sin tocar en esta fase (ninguna de las 4 preguntas lo exige), sigue funcionando igual', () => {
-  it('RsvpScreen.tsx no importa nada del nuevo módulo de decisiones de invitados', () => {
+describe('RSVP público — Parte B (elección de menú por persona) conecta por el edge function, nunca importando el módulo de decisiones directamente', () => {
+  it('RsvpScreen.tsx sigue sin importar el módulo de decisiones de invitados — la conexión con "¿elegirán menú?" la resuelve event-rsvp (service role), no el cliente público', () => {
     expect(RSVP_SRC).not.toContain('eventGuestDecisions')
     expect(RSVP_SRC).not.toContain('GUESTS_LISTA_QUESTION_KEY')
+    expect(RSVP_SRC).not.toContain('GUESTS_MENU_QUESTION_KEY')
   })
 
-  it('el flujo de envío del RSVP (status/adultos/niños/nota) sigue intacto', () => {
+  it('el flujo de envío del RSVP (status/adultos/niños/nota) sigue intacto para invitados sin desglose de personas', () => {
     expect(RSVP_SRC).toContain('status')
     expect(RSVP_SRC).toMatch(/adults/i)
+  })
+
+  it('con personas desglosadas (guest.members), cada una registra su propia asistencia y, si hay opciones, su propio menú — nunca un segundo RSVP paralelo', () => {
+    const form = slice(RSVP_SRC, 'function RsvpForm(', '\nfunction OpenRsvpForm(')
+    expect(form).toContain('const hasMembers = guest.members.length > 0')
+    expect(form).toContain('✅ Viene')
+    expect(form).toContain('❌ No viene')
+    expect(form).toContain('guest.menuOptions.length > 0')
+    expect(form).toContain('body.members = members.map(')
+  })
+
+  it('sin personas desglosadas, el formulario sigue mostrando los campos agregados de Adultos/Niños de siempre', () => {
+    const form = slice(RSVP_SRC, 'function RsvpForm(', '\nfunction OpenRsvpForm(')
+    expect(form).toContain('<input type="number" min={0} max={50} value={adults} onChange={(e) => setAdults(e.target.value)} />')
+    expect(form).toContain('<input type="number" min={0} max={50} value={children} onChange={(e) => setChildren(e.target.value)} />')
   })
 })

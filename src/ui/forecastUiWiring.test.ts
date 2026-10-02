@@ -893,100 +893,65 @@ describe('Fase 1D-g.3 — regresión: 1D-g/1D-g.1/1D-g.2 siguen intactos', () =>
   })
 })
 
-describe('Fase 1E.2 — clasificar una Previsión como préstamo/hipoteca desde el ForecastPaymentForm existente', () => {
-  it('"Tipo de pago" es "Pago normal" por defecto — nunca preseleccionado "Préstamo/hipoteca" solo, ni siquiera con una sugerencia bancaria fuerte', () => {
-    expect(FS).toContain("const [paymentType, setPaymentType] = useState<'normal' | 'prestamo'>('normal')")
+// RETOQUE — "Préstamo / hipoteca" dejó de ser un tipo de pago especial en Nuevo/Editar pago previsto
+// (ver COFIDIS: la especialización complicaba la creación sin aportar nada que el sistema general —
+// "En varios pagos", Número de pagos, Frecuencia, Categoría — no resolviera ya). Por eso el describe
+// "Fase 1E.2 — clasificar una Previsión como préstamo/hipoteca..." que vivía aquí (paymentType,
+// handlePaymentTypeChange, el bloque "🏦 Datos del préstamo", la sugerencia 💡, declassify) se ha
+// retirado entero: todo lo que probaba ya no existe en el formulario. Los dos describe siguientes NO
+// se tocan — siguen siendo ciertos tal cual: la lectura de forecast_loan_details ya creados (sección
+// "🏦 Préstamos e hipotecas") se conserva, solo se retiró la forma de CREAR/EDITAR esos datos.
+describe('RETOQUE — "Préstamo / hipoteca" ya no es un tipo de pago especial en Nuevo/Editar pago previsto', () => {
+  const FORM = FS.slice(FS.indexOf('function ForecastPaymentForm('), FS.indexOf('function KidsFinanceTab('))
+
+  it('no queda ningún rastro de paymentType/"Tipo de pago" en el formulario de crear/editar', () => {
+    expect(FORM).not.toContain('paymentType')
+    expect(FORM).not.toContain('Tipo de pago')
+    expect(FORM).not.toContain('Préstamo / hipoteca')
   })
 
-  it('editando un pago ya guardado, el tipo se carga de verdad desde forecast_loan_details (getLoanDetails) — nunca se adivina por el título/categoría', () => {
-    const idx = FS.indexOf('getLoanDetails(payment.id)')
-    expect(idx).toBeGreaterThan(-1)
-    const block = FS.slice(idx, idx + 700)
-    expect(block).toContain("setPaymentType('prestamo')")
+  it('el bloque "🏦 Datos del préstamo" (tipo, referencias, capital, interés, cuotas) ya no existe en el formulario', () => {
+    expect(FORM).not.toContain('🏦 Datos del préstamo')
+    expect(FORM).not.toContain('loanType')
+    expect(FORM).not.toContain('loanBankReference')
+    expect(FORM).not.toContain('loanContractReference')
+    expect(FORM).not.toContain('loanOriginalPrincipal')
+    expect(FORM).not.toContain('loanOutstandingPrincipal')
+    expect(FORM).not.toContain('loanInterestRatePercent')
+    expect(FORM).not.toContain('loanMaturityDate')
+    expect(FORM).not.toContain('loanRemainingInstallments')
   })
 
-  it('pago normal nunca llama a createLoanDetails — solo ocurre dentro de la rama paymentType === "prestamo"', () => {
-    const submitIdx = FS.indexOf('async function handleSubmit', FS.indexOf('function ForecastPaymentForm'))
-    const submitEnd = FS.indexOf('\n  }\n', submitIdx)
-    const submitBody = FS.slice(submitIdx, submitEnd)
-    const loanInputIdx = submitBody.indexOf('const loanInput: ForecastLoanDetailsInput')
-    expect(loanInputIdx).toBeGreaterThan(-1)
-    const guardIdx = submitBody.lastIndexOf("if (paymentType === 'prestamo')", loanInputIdx)
-    expect(guardIdx).toBeGreaterThan(-1)
-    expect(submitBody.slice(guardIdx, loanInputIdx + 1400)).toContain('createLoanDetails(id, loanInput)')
+  it('la sugerencia 💡 "Parece una cuota de préstamo" y el desclasificado ya no existen', () => {
+    expect(FORM).not.toContain('Parece una cuota de préstamo')
+    expect(FORM).not.toContain('showDeclassifyConfirm')
+    expect(FORM).not.toContain('handlePaymentTypeChange')
+    expect(FS).not.toContain('extractLoanBankReference')
+    expect(FS).not.toContain('suggestedLoanBankReference')
   })
 
-  it('préstamo Nivel 1 es válido: createLoanDetails/updateLoanDetails se llaman con TODOS los campos financieros aceptando null — nunca se exige rellenar nada', () => {
-    const idx = FS.indexOf('const loanInput: ForecastLoanDetailsInput')
-    const body = FS.slice(idx, idx + 900)
-    expect(body).toContain('loanType: loanType || null')
-    expect(body).toContain('outstandingPrincipalCents: loanOutstandingPrincipal.trim() ? eurosStringToCents(loanOutstandingPrincipal) : null')
-    expect(body).toContain('interestRateBps: loanInterestRatePercent.trim() ? parseInterestPercentToBps(loanInterestRatePercent) : null')
+  it('guardar un pago (nuevo o editado) ya NUNCA llama a createLoanDetails/updateLoanDetails/deleteLoanDetails/getLoanDetails — compatibilidad: no toca forecast_loan_details desde el formulario', () => {
+    expect(FORM).not.toContain('createLoanDetails')
+    expect(FORM).not.toContain('updateLoanDetails')
+    expect(FORM).not.toContain('deleteLoanDetails')
+    expect(FORM).not.toContain('getLoanDetails')
   })
 
-  it('porcentaje humano -> básicos puntos al guardar, y básicos puntos -> porcentaje humano al cargar (round-trip real)', () => {
-    expect(FS).toContain('parseInterestPercentToBps(loanInterestRatePercent)')
-    expect(FS).toContain('formatInterestBpsToPercent(details.interestRateBps)')
+  it('editar un pago antiguo que SÍ tiene forecast_loan_details (p. ej. COFIDIS) no intenta cargarlo — el formulario solo lee forecast_payments, nunca se bloquea ni se rompe por datos de préstamo heredados', () => {
+    // payment={editingPayment} sigue siendo la única fuente para precargar el formulario (título,
+    // importe, fecha, recurrencia, categoría, cuenta...) — nunca un efecto aparte que dependa de si
+    // ese pago tiene o no loan_details.
+    expect(FORM).not.toMatch(/useEffect\(\s*\(\)\s*=>\s*\{\s*if \(!payment\) return\s*\n\s*let cancelled/)
   })
 
-  it('Referencia bancaria y Referencia contractual son estados independientes — ninguno se copia del otro', () => {
-    expect(FS).toContain("const [loanBankReference, setLoanBankReference] = useState(prefill?.suggestedLoanBankReference ?? '')")
-    expect(FS).toContain("const [loanContractReference, setLoanContractReference] = useState('')")
-    // La sugerencia estructural (extractLoanBankReference) nunca alimenta contractReference.
-    expect(FS).not.toMatch(/setLoanContractReference\([^)]*suggestedLoanBankReference/)
+  it('el sistema GENERAL (Categoría, "¿Cómo se paga?", Número de pagos, Frecuencia, Plan de pagos) sigue intacto y es la única forma de apuntar un préstamo', () => {
+    expect(FORM).toContain('¿Cómo se paga?')
+    expect(FORM).toContain('Número de pagos')
+    expect(FORM).toContain('<CategorySelect value={categoryName} onChange={setCategoryName} categories={categories} />')
   })
 
-  it('capital pendiente sin fecha (o fecha sin capital) bloquea el guardado — igual que exige la constraint de la BD (0160)', () => {
-    const submitIdx = FS.indexOf('async function handleSubmit', FS.indexOf('function ForecastPaymentForm'))
-    const submitEnd = FS.indexOf('\n  }\n', submitIdx)
-    const submitBody = FS.slice(submitIdx, submitEnd)
-    expect(submitBody).toContain("if (loanOutstandingPrincipal.trim() && !loanPrincipalAsOfDate)")
-    expect(submitBody).toContain("if (!loanOutstandingPrincipal.trim() && loanPrincipalAsOfDate)")
-  })
-
-  it('NULL nunca se muestra como 0/0%/0 cuotas — la tarjeta de préstamo comprueba "!= null" antes de pintar cada línea, y usa "Datos del préstamo incompletos" cuando no hay nada', () => {
-    const idx = FS.indexOf('loanCards.map(({ loan, payment: p }) => {')
-    const block = FS.slice(idx, idx + 3000)
-    expect(block).toContain('loan.outstandingPrincipalCents != null && loan.principalAsOfDate')
-    expect(block).toContain('loan.remainingInstallments != null')
-    expect(block).toContain('loan.interestRateBps != null')
-    expect(block).toContain('Datos del préstamo incompletos')
-    expect(block).not.toMatch(/>\{loan\.\w+\} €/) // nunca imprime un campo potencialmente null crudo sin guardia
-  })
-
-  it('desclasificar (Préstamo -> Pago normal) con datos ya guardados exige confirmación explícita — nunca borra en silencio', () => {
-    const idx = FS.indexOf('function handlePaymentTypeChange')
-    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
-    expect(body).toContain("if (next === 'normal' && paymentType === 'prestamo' && existingLoanDetails)")
-    expect(body).toContain('setShowDeclassifyConfirm(true)')
-    expect(body).toContain('return') // no cambia paymentType todavía — espera confirmación
-    expect(FS).toContain('Cambiar a pago normal')
-    expect(FS).toContain('La previsión y')
-  })
-
-  it('la eliminación real del detalle de préstamo solo ocurre AL GUARDAR (handleSubmit), nunca al tocar el selector — deleteLoanDetails nunca se llama desde handlePaymentTypeChange', () => {
-    const idx = FS.indexOf('function handlePaymentTypeChange')
-    const body = FS.slice(idx, FS.indexOf('\n  }', idx))
-    expect(body).not.toContain('deleteLoanDetails')
-  })
-
-  it('borrar el detalle de préstamo (desclasificar) nunca borra el forecast_payment — son llamadas completamente separadas', () => {
-    const idx = FS.indexOf('await deleteLoanDetails(existingLoanDetails.id)')
-    expect(idx).toBeGreaterThan(-1)
-    const around = FS.slice(idx - 200, idx + 200)
-    expect(around).not.toContain('deleteForecastPayment')
-  })
-
-  it('reintentar tras un fallo guardando SOLO el préstamo nunca duplica el forecast_payment — createdPaymentIdRef recuerda el id ya creado en este formulario', () => {
-    expect(FS).toContain("const createdPaymentIdRef = useRef<string | null>(null)")
-    expect(FS).toContain('} else if (createdPaymentIdRef.current) {')
-  })
-
-  it('💡 la sugerencia visual nunca marca "Préstamo/hipoteca" ella sola — solo aparece mientras paymentType sigue en "normal"', () => {
-    const idx = FS.indexOf('💡 Parece una cuota de préstamo (referencia')
-    expect(idx).toBeGreaterThan(-1)
-    const before = FS.slice(Math.max(0, idx - 300), idx)
-    expect(before).toContain("paymentType === 'normal'")
+  it('"Datos del préstamo incompletos"/"Ver / editar datos del préstamo" de la sección de solo lectura reutilizan el MISMO ForecastPaymentForm (setEditingPayment), nunca un segundo formulario especializado', () => {
+    expect(FS.match(/function ForecastPaymentForm\(/g)?.length).toBe(1)
   })
 })
 

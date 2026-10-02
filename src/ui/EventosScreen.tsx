@@ -199,10 +199,12 @@ import {
 import {
   desiredForInvitacion,
   desiredForListaInvitados,
+  desiredForMenuInvitacion,
   desiredForNinosNecesidadItem,
   guestsNinosNecesidadItemKey,
   GUESTS_INVITACION_QUESTION_KEY,
   GUESTS_LISTA_QUESTION_KEY,
+  GUESTS_MENU_QUESTION_KEY,
   GUESTS_MOMENTOS_QUESTION_KEY,
   GUESTS_NINOS_NECESIDADES_QUESTION_KEY,
   GUESTS_NINOS_QUESTION_KEY,
@@ -213,6 +215,8 @@ import {
   type InvitacionChoice,
   type ListaInvitadosAnswer,
   type ListaInvitadosChoice,
+  type MenuInvitacionAnswer,
+  type MenuInvitacionChoice,
   type MomentosAnswer,
   type MomentosChoice,
   type NinosAnswer,
@@ -3609,6 +3613,12 @@ const LISTA_OPTIONS: { value: ListaInvitadosChoice; label: string }[] = [
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
   { value: 'otro', label: 'Otro' },
 ]
+const MENU_INVITACION_OPTIONS: { value: MenuInvitacionChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
 const MOMENTOS_OPTIONS: { value: MomentosChoice; label: string }[] = [
   { value: 'todos_a_todos', label: 'Sí, todos a todos' },
   { value: 'depende', label: 'Depende del invitado o familia' },
@@ -3827,6 +3837,15 @@ function GuestsDecisionsBlock({
         decision={findDecision(GUESTS_LISTA_QUESTION_KEY)}
         savingKey={savingKey}
         onSave={(answer) => saveQuestion(GUESTS_LISTA_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForListaInvitados(answer as ListaInvitadosAnswer))}
+      />
+      <CustomAwareQuestion
+        event={event}
+        questionLabel="¿Queréis que los invitados elijan su menú en la invitación?"
+        options={MENU_INVITACION_OPTIONS}
+        questionKey={GUESTS_MENU_QUESTION_KEY}
+        decision={findDecision(GUESTS_MENU_QUESTION_KEY)}
+        savingKey={savingKey}
+        onSave={(answer) => saveQuestion(GUESTS_MENU_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForMenuInvitacion(answer as MenuInvitacionAnswer))}
       />
       {momentsCount >= 2 && (
         <CustomAwareQuestion

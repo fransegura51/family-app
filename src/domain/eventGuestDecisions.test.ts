@@ -3,9 +3,11 @@ import { isTaskUntouched, reconcilePairGeneration } from '@/domain/eventPairDeci
 import {
   desiredForInvitacion,
   desiredForListaInvitados,
+  desiredForMenuInvitacion,
   desiredForNinosNecesidadItem,
   GUESTS_INVITACION_QUESTION_KEY,
   GUESTS_LISTA_QUESTION_KEY,
+  GUESTS_MENU_QUESTION_KEY,
   GUESTS_MOMENTOS_QUESTION_KEY,
   GUESTS_NINOS_NECESIDADES_QUESTION_KEY,
   GUESTS_NINOS_QUESTION_KEY,
@@ -106,6 +108,28 @@ describe('Lista de invitados', () => {
   })
 })
 
+describe('Menú en la invitación — nunca genera Preparativo/Presupuesto (la definición real vive en Comida y celebración, fase futura)', () => {
+  it('"sí" no genera ninguna acción', () => {
+    expect(desiredForMenuInvitacion({ choice: 'si' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+  })
+
+  it('"no" no genera ninguna acción', () => {
+    expect(desiredForMenuInvitacion({ choice: 'no' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+  })
+
+  it('"todavía no lo sabemos" no genera ninguna acción (sigue siendo una respuesta válida, no la ausencia de fila)', () => {
+    expect(desiredForMenuInvitacion({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+  })
+
+  it('"otro" sigue las reglas normales de CustomResolution (reutiliza fromCustom, no se reimplementa)', () => {
+    const withCost = desiredForMenuInvitacion({ choice: 'otro', custom: { label: 'Preguntar al catering', action: 'otro', hasCost: 'si' } })
+    expect(withCost.taskTitle).toBe('Menú en la invitación: Preguntar al catering')
+    expect(withCost.budgetCategory).toBe('Menú en la invitación: Preguntar al catering')
+    const withoutCost = desiredForMenuInvitacion({ choice: 'otro', custom: { label: 'Preguntar al catering', action: 'otro', hasCost: 'no' } })
+    expect(withoutCost.budgetCategory).toBeNull()
+  })
+})
+
 describe('Niños — necesidades accionables (Animación/Monitor)', () => {
   it('seleccionado: genera tarea + presupuesto + categoría de proveedor; no seleccionado: NONE', () => {
     const selected = desiredForNinosNecesidadItem(true, 'animacion')
@@ -179,9 +203,14 @@ describe('listGuestsBlockQuestions / summarizeGuestsBlock — revelado progresiv
     expect(conSi.some((q) => q.questionKey === GUESTS_NINOS_NECESIDADES_QUESTION_KEY)).toBe(true)
   })
 
-  it('siempre incluye Lista e Invitación, independientemente de momentos/niños', () => {
+  it('siempre incluye Lista, Menú en la invitación e Invitación, independientemente de momentos/niños', () => {
     const questions = listGuestsBlockQuestions([], 0)
-    expect(questions.map((q) => q.questionKey)).toEqual([GUESTS_LISTA_QUESTION_KEY, GUESTS_NINOS_QUESTION_KEY, GUESTS_INVITACION_QUESTION_KEY])
+    expect(questions.map((q) => q.questionKey)).toEqual([
+      GUESTS_LISTA_QUESTION_KEY,
+      GUESTS_MENU_QUESTION_KEY,
+      GUESTS_NINOS_QUESTION_KEY,
+      GUESTS_INVITACION_QUESTION_KEY,
+    ])
   })
 
   it('"todavía no lo sabemos" cuenta como ⏳ Por decidir, nunca como "sin empezar" ni como decidida', () => {
@@ -194,11 +223,12 @@ describe('listGuestsBlockQuestions / summarizeGuestsBlock — revelado progresiv
   it('los contadores en cero se omiten del resumen', () => {
     const decisions = [
       makeDecision({ questionKey: GUESTS_LISTA_QUESTION_KEY, answer: { choice: 'ya_la_tenemos' } }),
+      makeDecision({ questionKey: GUESTS_MENU_QUESTION_KEY, answer: { choice: 'no' } }),
       makeDecision({ questionKey: GUESTS_NINOS_QUESTION_KEY, answer: { choice: 'no' } }),
       makeDecision({ questionKey: GUESTS_INVITACION_QUESTION_KEY, answer: { choice: 'con_pepa' } }),
     ]
     const summary = summarizeGuestsBlock(decisions, 0)
-    expect(summary).toBe('✓ 3 decididas')
+    expect(summary).toBe('✓ 4 decididas')
   })
 })
 

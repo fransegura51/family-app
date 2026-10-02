@@ -39,7 +39,7 @@ function guest(id: string, displayName: string, overrides: Partial<EventGuest> =
 }
 
 function member(id: string, guestId: string, name: string, personType: EventGuestMemberType, overrides: Partial<EventGuestMember> = {}): EventGuestMember {
-  return { id, guestId, eventId: 'ev1', familyId: 'f1', name, personType, tableId: null, sortOrder: 0, createdAt: '2026-01-01', ...overrides }
+  return { id, guestId, eventId: 'ev1', familyId: 'f1', name, personType, tableId: null, sortOrder: 0, createdAt: '2026-01-01', rsvpAttending: null, menuOptionId: null, ...overrides }
 }
 
 function table(id: string, name: string, capacity: number | null = null): EventTableSeat {

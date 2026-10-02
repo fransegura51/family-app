@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from
 import { Link } from 'react-router-dom'
 import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
-import { getPermissionState, requestPermission, subscribeToPush } from '@/services/notifications'
-import { savePushSubscription } from '@/data/push'
+import { getPermissionState } from '@/services/notifications'
+import { enablePushNotifications } from '@/data/push'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 import { listFamilyMembers } from '@/data/family'
 import { listUpcomingEvents } from '@/data/calendar'
@@ -20,8 +20,6 @@ import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
 import agendaBg from '@/assets/home/agenda-background.jpg'
 import { errorMessage } from '@/domain/errorMessage'
-
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
 interface HomeCardDef {
   id: string
@@ -434,12 +432,7 @@ function NotificationsBanner() {
     setLoading(true)
     setError(null)
     try {
-      const permission = await requestPermission()
-      setState(permission)
-      if (permission === 'granted' && VAPID_PUBLIC_KEY) {
-        const subscription = await subscribeToPush(VAPID_PUBLIC_KEY)
-        if (subscription) await savePushSubscription(subscription)
-      }
+      setState(await enablePushNotifications())
     } catch (err) {
       setError(errorMessage(err, 'No se pudieron activar los recordatorios'))
     } finally {

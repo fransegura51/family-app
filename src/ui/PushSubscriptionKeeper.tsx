@@ -1,8 +1,6 @@
 import { useEffect } from 'react'
 import { savePushSubscription } from '@/data/push'
-import { getPermissionState, subscribeToPush } from '@/services/notifications'
-
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
+import { getPermissionState, isNotificationsDisabledByUser, subscribeToPush, VAPID_PUBLIC_KEY } from '@/services/notifications'
 
 // Componente sin UI. Petición real: "los avisos... están llegando mucho después... en todos los
 // componentes" — un aviso del servidor (Web Push) solo llega a los dispositivos que están dados de
@@ -12,10 +10,11 @@ const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undef
 // hace), los avisos del servidor no le llegaban nunca y solo veía los locales, con la app abierta.
 // Aquí, cada vez que se abre la app con el permiso ya concedido, se (re)registra este dispositivo —
 // una sola petición por apertura, y no hace nada si el permiso no está concedido (pedirlo sigue
-// siendo un gesto explícito de la persona, desde el banner de Inicio).
+// siendo un gesto explícito de la persona, desde el botón de Familia) ni si esa persona desactivó los
+// avisos en este móvil (también desde el botón de Familia).
 export function PushSubscriptionKeeper() {
   useEffect(() => {
-    if (!VAPID_PUBLIC_KEY || getPermissionState() !== 'granted') return
+    if (!VAPID_PUBLIC_KEY || getPermissionState() !== 'granted' || isNotificationsDisabledByUser()) return
     subscribeToPush(VAPID_PUBLIC_KEY)
       .then((subscription) => (subscription ? savePushSubscription(subscription) : undefined))
       .catch(() => {

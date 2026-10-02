@@ -21,6 +21,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 interface Body {
   family_id?: unknown
   exclude_member_id?: unknown
+  only_profile_id?: unknown
   title?: unknown
   body?: unknown
   url?: unknown
@@ -57,7 +58,12 @@ Deno.serve(async (req) => {
 
     const { data: profiles, error: profilesError } = await supabaseAdmin.from("profiles").select("id").eq("family_id", familyId)
     if (profilesError) throw profilesError
-    const profileIds = (profiles ?? []).map((p) => p.id as string).filter((id) => id !== excludeProfileId)
+    // only_profile_id (aviso de prueba): solo a una persona — y solo si de verdad es de esta familia.
+    const onlyProfileId = typeof input.only_profile_id === "string" && UUID_RE.test(input.only_profile_id) ? input.only_profile_id : null
+    const profileIds = (profiles ?? [])
+      .map((p) => p.id as string)
+      .filter((id) => id !== excludeProfileId)
+      .filter((id) => onlyProfileId === null || id === onlyProfileId)
     if (profileIds.length === 0) return Response.json({ targets: 0, sent: 0, expired: 0 })
 
     const { data: subs, error: subsError } = await supabaseAdmin

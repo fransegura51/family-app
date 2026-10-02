@@ -135,12 +135,13 @@ describe('lo que esta fase NO toca', () => {
     // member_locations — tampoco devoluciones. 0187
     // (calendar_task_completion_prefs_and_privacy_fixes, RETOQUE Calendario) añade preferencias de
     // Tareas completadas a profiles y corrige privacidad de recordatorios/adjuntos — tampoco
+    // devoluciones. 0188 (send_test_push, aviso de prueba a uno mismo) añade push_test_log — tampoco
     // devoluciones. Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una
     // devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(187)
+    expect(Math.max(...numbers)).toBe(188)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

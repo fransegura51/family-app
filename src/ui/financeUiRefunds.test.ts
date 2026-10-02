@@ -219,10 +219,11 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // tablas de estado de automatizaciones y un trigger en member_locations — tampoco devoluciones.
     // 0187 (calendar_task_completion_prefs_and_privacy_fixes, RETOQUE Calendario) añade preferencias de
     // Tareas completadas a profiles y corrige privacidad de recordatorios/adjuntos — tampoco devoluciones.
+    // 0188 (send_test_push) añade push_test_log y una función de aviso de prueba — tampoco devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(187)
+    expect(Math.max(...numbers)).toBe(188)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

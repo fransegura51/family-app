@@ -109,7 +109,7 @@ describe('"+ Añadir momento" — título libre, sin enum rígido, con sugerenci
   })
 
   it('no hay límite de cuántos momentos se pueden añadir (ningún momentos.length < N antes de permitir añadir)', () => {
-    const fn = slice(SRC, 'function MomentsEditor(', '\n}\n\nfunction ')
+    const fn = slice(SRC, 'function MomentsEditor(', 'function InvitationSection(')
     expect(fn).not.toMatch(/moments\.length\s*[<>]=?\s*\d/)
   })
 })
@@ -126,7 +126,7 @@ describe('Editar un momento — materializa un momento "legacy" en vez de pisarl
 describe('Reordenar — flechas ↑ ↓, nunca drag & drop (petición explícita: no es fiable en móvil)', () => {
   it('no hay ningún rastro de drag&drop en los componentes de Momentos', () => {
     const momentsBlock = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentsEditor(')
-    const editorBlock = slice(SRC, 'function MomentsEditor(', '\n}\n\nfunction ')
+    const editorBlock = slice(SRC, 'function MomentsEditor(', 'function InvitationSection(')
     for (const block of [momentsBlock, editorBlock]) {
       expect(block).not.toMatch(/draggable|onDragStart|onDrop|dnd-kit|react-beautiful-dnd|sortable/i)
     }
@@ -138,7 +138,7 @@ describe('Reordenar — flechas ↑ ↓, nunca drag & drop (petición explícita
   })
 
   it('las flechas de un momento legacy (sintetizado, sin fila real) quedan deshabilitadas — no hay nada persistente que reordenar todavía', () => {
-    const fn = slice(SRC, 'function MomentsEditor(', '\n}\n\nfunction ')
+    const fn = slice(SRC, 'function MomentsEditor(', 'function InvitationSection(')
     expect(fn).toContain('const realMomentIds = moments.filter((m) => !m.isLegacy).map((m) => m.id)')
     expect(fn).toContain('const realIndex = realMomentIds.indexOf(moment.id)')
     expect(fn).toContain('canMoveUp={realIndex > 0}')
@@ -147,7 +147,7 @@ describe('Reordenar — flechas ↑ ↓, nunca drag & drop (petición explícita
 
 describe('Borrar un momento — comprobación de relaciones antes de confirmar (nunca un borrado silencioso)', () => {
   it('se cuentan los invitados vinculados (event_guest_moments) antes de poder borrar', () => {
-    const fn = slice(SRC, 'function MomentsEditor(', '\n}\n\nfunction ')
+    const fn = slice(SRC, 'function MomentsEditor(', 'function InvitationSection(')
     expect(fn).toContain('listEventGuestMoments(event.id)')
     expect(fn).toContain('counts.set(link.momentId, (counts.get(link.momentId) ?? 0) + 1)')
   })
@@ -191,7 +191,7 @@ describe('No se copian datos al volver a abrir la pantalla (nunca una escritura 
   })
 
   it('el useEffect de carga solo depende de event.id — no se dispara de más ni duplica llamadas por cada render', () => {
-    const fn = slice(SRC, 'function MomentsEditor(', '\n}\n\nfunction ')
+    const fn = slice(SRC, 'function MomentsEditor(', 'function InvitationSection(')
     expect(fn).toContain('}, [event.id])')
   })
 })

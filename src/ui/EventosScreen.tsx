@@ -65,6 +65,7 @@ import {
   listEventGuests,
   listEventMenuItems,
   listEventMoments,
+  setGuestMoments,
   listEventPayments,
   listEventDecisions,
   upsertEventDecision,
@@ -195,6 +196,30 @@ import {
   type VestuarioTipoAnswer,
   type VestuarioTipoChoice,
 } from '@/domain/eventPairDecisions'
+import {
+  desiredForInvitacion,
+  desiredForListaInvitados,
+  desiredForNinosNecesidadItem,
+  guestsNinosNecesidadItemKey,
+  GUESTS_INVITACION_QUESTION_KEY,
+  GUESTS_LISTA_QUESTION_KEY,
+  GUESTS_MOMENTOS_QUESTION_KEY,
+  GUESTS_NINOS_NECESIDADES_QUESTION_KEY,
+  GUESTS_NINOS_QUESTION_KEY,
+  NINOS_NECESIDAD_ACCIONABLE,
+  NINOS_NECESIDADES_OPTIONS,
+  summarizeGuestsBlock,
+  type InvitacionAnswer,
+  type InvitacionChoice,
+  type ListaInvitadosAnswer,
+  type ListaInvitadosChoice,
+  type MomentosAnswer,
+  type MomentosChoice,
+  type NinosAnswer,
+  type NinosChoice,
+  type NinosNecesidadesAnswer,
+  type NinosNecesidadItemKey,
+} from '@/domain/eventGuestDecisions'
 import { notifyEventMomentsChanged, useEventMomentsChangeSignal } from '@/state/eventMomentsSync'
 import { showToast } from '@/state/toast'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
@@ -2241,6 +2266,10 @@ function EventPlanningConfigurator({
   // "👰🤵 La pareja" — segundo bloque, solo para boda (DUAL_LOCATION_EVENT_TYPES también incluye
   // comunión/bautizo, que no tienen "pareja"). Mismo patrón exacto de acordeón por bloque que Ceremonia.
   const [pairOpen, setPairOpen] = useState(() => loadConfiguratorOpen(event.id, 'pareja'))
+  // "👥 Invitados e invitaciones" — Fase 4, mismo patrón exacto de acordeón por bloque. A diferencia de
+  // "La pareja" (exclusiva de boda), invitados/invitaciones aplica a cualquier evento que llegue a este
+  // configurador (boda, comunión, bautizo...) — todos tienen invitados reales (event_guests).
+  const [guestsBlockOpen, setGuestsBlockOpen] = useState(() => loadConfiguratorOpen(event.id, 'invitados'))
   // Los hooks van siempre antes de cualquier return condicional (Reglas de los Hooks): si la familia
   // desactiva el módulo "ceremonia" con el acordeón ya montado, este componente debe poder dejar de
   // pintar nada sin romper el orden de hooks entre renders.
@@ -2260,6 +2289,11 @@ function EventPlanningConfigurator({
     const next = !pairOpen
     setPairOpen(next)
     saveConfiguratorOpen(event.id, 'pareja', next)
+  }
+  function toggleGuestsBlock() {
+    const next = !guestsBlockOpen
+    setGuestsBlockOpen(next)
+    saveConfiguratorOpen(event.id, 'invitados', next)
   }
 
   return (
@@ -2310,6 +2344,23 @@ function EventPlanningConfigurator({
               )}
             </div>
           )}
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="link-button"
+              onClick={toggleGuestsBlock}
+              style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+              aria-expanded={guestsBlockOpen}
+            >
+              👥 Invitados e invitaciones
+              <span aria-hidden="true">{guestsBlockOpen ? '▾' : '▸'}</span>
+            </button>
+            {guestsBlockOpen && (
+              <div style={{ marginTop: 4 }}>
+                <GuestsDecisionsBlock event={event} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -3514,6 +3565,364 @@ function BudgetAmountPromptModal({
 }
 
 // ---------------------------------------------------------------------
+// Fase 4 — "👥 Invitados e invitaciones", segundo uso real de event_decisions (el primero fue "La pareja",
+// src/domain/eventPairDecisions.ts). Reutiliza el motor entero tal cual — DesiredPairGeneration,
+// reconcilePairGeneration (vía applyPairDecisionGeneration), CustomAwareQuestion, CustomResolutionFields,
+// ProviderLinker, BudgetAmountPromptModal, el mismo patrón de toast agrupado — sin tocar ni una línea de
+// "La pareja", que queda exactamente como estaba (Fase 3, cerrada y validada).
+// ---------------------------------------------------------------------
+
+const LISTA_OPTIONS: { value: ListaInvitadosChoice; label: string }[] = [
+  { value: 'ya_la_tenemos', label: 'Sí, ya la tenemos' },
+  { value: 'tenemos_que_prepararla', label: 'Tenemos que prepararla' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
+const MOMENTOS_OPTIONS: { value: MomentosChoice; label: string }[] = [
+  { value: 'todos_a_todos', label: 'Sí, todos a todos' },
+  { value: 'depende', label: 'Depende del invitado o familia' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
+const NINOS_OPTIONS: { value: NinosChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
+const INVITACION_OPTIONS: { value: InvitacionChoice; label: string }[] = [
+  { value: 'con_pepa', label: 'Con PEPA' },
+  { value: 'externa', label: 'Con una invitación externa' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
+const NINOS_NECESIDADES_CHOICE_OPTIONS: { value: NinosNecesidadesAnswer['choice']; label: string }[] = [
+  { value: 'preparar', label: 'Sí, hay que preverlo' },
+  { value: 'no_necesitamos', label: 'No necesitamos nada especial' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+function GuestsDecisionsBlock({
+  event,
+  onChanged,
+  onDerivedDataChanged,
+}: {
+  event: FamilyEvent
+  onChanged: () => void
+  onDerivedDataChanged: () => void
+}) {
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [guests, setGuests] = useState<EventGuest[]>([])
+  const [moments, setMoments] = useState<EventMoment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [costPrompt, setCostPrompt] = useState<{ item: { id: string; category: string }; taskCompleted: boolean } | null>(null)
+
+  function reload(): Promise<void> {
+    return Promise.all([listEventDecisions(event.id), listEventGuests(event.id), listEventMoments(event.id)])
+      .then(([d, g, m]) => {
+        setDecisions(d.filter((x) => x.blockKey === 'invitados'))
+        setGuests(g)
+        setMoments(m)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+  // MomentsEditor (bloque hermano "🕊️ Ceremonia y celebración") puede crear/editar/borrar momentos reales
+  // mientras este bloque ya está montado — sin esto, "¿Todos los invitados...?" se quedaría con el
+  // recuento de momentos que había al abrir la pantalla, sin enterarse de los nuevos (mismo mecanismo que
+  // ya usa el propio MomentsEditor para mantener sincronizadas sus dos instancias a la vez).
+  useEventMomentsChangeSignal(event.id, reload)
+
+  function findDecision(questionKey: string): EventDecision | undefined {
+    return decisions.find((d) => d.questionKey === questionKey)
+  }
+
+  function handleEffects(actions: ReconcileAction[], pendingBudgetItem: { id: string; category: string } | null) {
+    if (pendingBudgetItem) {
+      setCostPrompt({ item: pendingBudgetItem, taskCompleted: actions.some((a) => a.op === 'complete_task') })
+      return
+    }
+    const message = describeEffects(actions)
+    if (message) showToast(message)
+  }
+
+  async function saveQuestion(questionKey: string, answer: Record<string, unknown>, isCustomOption: boolean, desired: DesiredPairGeneration) {
+    setSavingKey(questionKey)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: 'invitados', questionKey, answer, isCustomOption })
+      const { actions, pendingBudgetItem } = await applyPairDecisionGeneration(event.id, decision.id, desired)
+      await reload()
+      onDerivedDataChanged()
+      handleEffects(actions, pendingBudgetItem)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  // Momentos nunca genera Preparativo/Presupuesto (desired siempre NONE) — solo guarda el enfoque y, si es
+  // "todos a todos", asigna de verdad vía setGuestMoments (event_guest_moments es la fuente de la
+  // asignación real, la decisión solo guarda la configuración elegida).
+  async function saveMomentos(answer: MomentosAnswer) {
+    setSavingKey(GUESTS_MOMENTOS_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, {
+        blockKey: 'invitados',
+        questionKey: GUESTS_MOMENTOS_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: answer.choice === 'otro',
+      })
+      if (answer.choice === 'todos_a_todos') {
+        const momentIds = moments.map((m) => m.id)
+        await Promise.all(guests.map((g) => setGuestMoments(g, momentIds)))
+        notifyEventMomentsChanged(event.id)
+      }
+      await reload()
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  // Si la respuesta deja de ser "sí" (p.ej. pasa a "no" o "todavía no lo sabemos"), la necesidad de cada
+  // ítem accionable (Animación/Monitor) realmente desaparece — hay que reconciliar sus Preparativos/
+  // Presupuestos prístinos (nunca dejarlos huérfanos) y borrar también la propia respuesta de necesidades,
+  // igual que hace saveNinosNecesidades al desmarcar un ítem.
+  async function saveNinos(answer: NinosAnswer) {
+    setSavingKey(GUESTS_NINOS_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, {
+        blockKey: 'invitados',
+        questionKey: GUESTS_NINOS_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: answer.choice === 'otro',
+      })
+      let allActions: ReconcileAction[] = []
+      if (answer.choice !== 'si') {
+        for (const itemKey of Object.keys(NINOS_NECESIDAD_ACCIONABLE) as NinosNecesidadItemKey[]) {
+          const existing = findDecision(guestsNinosNecesidadItemKey(itemKey))
+          if (!existing) continue
+          const result = await applyPairDecisionGeneration(event.id, existing.id, desiredForNinosNecesidadItem(false, itemKey))
+          allActions = [...allActions, ...result.actions]
+          await deleteEventDecision(existing.id)
+        }
+        const necesidades = findDecision(GUESTS_NINOS_NECESIDADES_QUESTION_KEY)
+        if (necesidades) await deleteEventDecision(necesidades.id)
+      }
+      await reload()
+      if (allActions.length > 0) onDerivedDataChanged()
+      handleEffects(allActions, null)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  // Cada necesidad accionable (Animación/Monitor) se reconcilia como su propia sub-decisión — el simple
+  // hecho de marcarla YA es "hay que buscarlo/contratarlo" (nunca existe un "ya lo tenemos" con sentido
+  // para un animador o un monitor), así que un único nivel por ítem es fiel a la petición. Menú
+  // infantil/Zona o mesa se guardan en la propia respuesta pero no generan nada todavía (alimentarán
+  // fases futuras de Menú/Distribución).
+  async function saveNinosNecesidades(answer: NinosNecesidadesAnswer) {
+    setSavingKey(GUESTS_NINOS_NECESIDADES_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, { blockKey: 'invitados', questionKey: GUESTS_NINOS_NECESIDADES_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      let allActions: ReconcileAction[] = []
+      let pendingBudgetItem: { id: string; category: string } | null = null
+      for (const itemKey of Object.keys(NINOS_NECESIDAD_ACCIONABLE) as NinosNecesidadItemKey[]) {
+        const meta = NINOS_NECESIDAD_ACCIONABLE[itemKey]
+        const selected = answer.choice === 'preparar' && answer.selected.includes(meta.label)
+        const subKey = guestsNinosNecesidadItemKey(itemKey)
+        if (!selected) {
+          const existing = findDecision(subKey)
+          if (existing) {
+            const result = await applyPairDecisionGeneration(event.id, existing.id, desiredForNinosNecesidadItem(false, itemKey))
+            allActions = [...allActions, ...result.actions]
+            await deleteEventDecision(existing.id)
+          }
+          continue
+        }
+        const subDecision = await upsertEventDecision(event.id, { blockKey: 'invitados', questionKey: subKey, answer: { selected: true }, isCustomOption: false })
+        const result = await applyPairDecisionGeneration(event.id, subDecision.id, desiredForNinosNecesidadItem(true, itemKey))
+        allActions = [...allActions, ...result.actions]
+        pendingBudgetItem = result.pendingBudgetItem ?? pendingBudgetItem
+      }
+      await reload()
+      onDerivedDataChanged()
+      handleEffects(allActions, pendingBudgetItem)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  if (loading) return null
+  const realMoments = moments.filter((m) => !m.isLegacy)
+  const momentsCount = hasRealMoments(resolveEventMoments(event, realMoments)) ? realMoments.length : 0
+  const summary = summarizeGuestsBlock(decisions, momentsCount)
+  const ninosDecision = findDecision(GUESTS_NINOS_QUESTION_KEY)
+  const ninos = ninosDecision?.answer as unknown as NinosAnswer | undefined
+  const necesidadesDecision = findDecision(GUESTS_NINOS_NECESIDADES_QUESTION_KEY)
+  const necesidadesExisting = necesidadesDecision?.answer as unknown as NinosNecesidadesAnswer | undefined
+
+  return (
+    <div className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
+      <CustomAwareQuestion
+        event={event}
+        questionLabel="¿Tenéis clara la lista de invitados?"
+        options={LISTA_OPTIONS}
+        questionKey={GUESTS_LISTA_QUESTION_KEY}
+        decision={findDecision(GUESTS_LISTA_QUESTION_KEY)}
+        savingKey={savingKey}
+        onSave={(answer) => saveQuestion(GUESTS_LISTA_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForListaInvitados(answer as ListaInvitadosAnswer))}
+      />
+      {momentsCount >= 2 && (
+        <CustomAwareQuestion
+          event={event}
+          questionLabel="¿Todos los invitados irán a todos los momentos?"
+          options={MOMENTOS_OPTIONS}
+          questionKey={GUESTS_MOMENTOS_QUESTION_KEY}
+          decision={findDecision(GUESTS_MOMENTOS_QUESTION_KEY)}
+          savingKey={savingKey}
+          onSave={(answer) => saveMomentos(answer as MomentosAnswer)}
+        />
+      )}
+      <CustomAwareQuestion
+        event={event}
+        questionLabel="¿Vendrán niños?"
+        options={NINOS_OPTIONS}
+        questionKey={GUESTS_NINOS_QUESTION_KEY}
+        decision={ninosDecision}
+        savingKey={savingKey}
+        onSave={(answer) => saveNinos(answer as NinosAnswer)}
+      />
+      {ninos?.choice === 'si' && (
+        <NinosNecesidadesQuestion existing={necesidadesExisting} saving={savingKey === GUESTS_NINOS_NECESIDADES_QUESTION_KEY} onSave={saveNinosNecesidades} />
+      )}
+      <CustomAwareQuestion
+        event={event}
+        questionLabel="¿Cómo vais a gestionar la invitación?"
+        options={INVITACION_OPTIONS}
+        questionKey={GUESTS_INVITACION_QUESTION_KEY}
+        decision={findDecision(GUESTS_INVITACION_QUESTION_KEY)}
+        savingKey={savingKey}
+        onSave={(answer) => saveQuestion(GUESTS_INVITACION_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForInvitacion(answer as InvitacionAnswer))}
+      />
+      {costPrompt && (
+        <BudgetAmountPromptModal
+          item={costPrompt.item}
+          onClose={() => {
+            if (costPrompt.taskCompleted) showToast(TASK_COMPLETED_MESSAGE)
+            setCostPrompt(null)
+          }}
+          onSaved={() => {
+            showToast(costPrompt.taskCompleted ? TASK_COMPLETED_AND_BUDGET_UPDATED_MESSAGE : BUDGET_UPDATED_MESSAGE)
+            onDerivedDataChanged()
+            setCostPrompt(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Mismo patrón exacto que ComplementosQuestion (revelado único, multi-selección + "Otro" en texto libre) —
+// solo dos de las cuatro opciones (Animación/Monitor) implican buscar/contratar algo; Menú infantil y
+// Zona o mesa se guardan igual pero no generan ningún Preparativo todavía.
+function NinosNecesidadesQuestion({
+  existing,
+  saving,
+  onSave,
+}: {
+  existing: NinosNecesidadesAnswer | undefined
+  saving: boolean
+  onSave: (answer: NinosNecesidadesAnswer) => void
+}) {
+  const [draft, setDraft] = useState<NinosNecesidadesAnswer | null>(null)
+  const current = draft ?? existing
+  const [customInput, setCustomInput] = useState('')
+
+  function selectChoice(choice: NinosNecesidadesAnswer['choice']) {
+    if (choice === 'preparar') {
+      setDraft({ choice, selected: current?.selected ?? [], customItems: current?.customItems ?? [] })
+      return
+    }
+    setDraft(null)
+    onSave({ choice, selected: [], customItems: [] })
+  }
+  function toggleSelected(item: string) {
+    const selected = current?.selected ?? []
+    const next = { choice: 'preparar' as const, selected: selected.includes(item) ? selected.filter((x) => x !== item) : [...selected, item], customItems: current?.customItems ?? [] }
+    setDraft(next)
+    onSave(next)
+  }
+  function addCustom() {
+    if (!customInput.trim()) return
+    const next = { choice: 'preparar' as const, selected: current?.selected ?? [], customItems: [...(current?.customItems ?? []), customInput.trim()] }
+    setDraft(next)
+    onSave(next)
+    setCustomInput('')
+  }
+  function removeCustom(item: string) {
+    const next = { choice: 'preparar' as const, selected: current?.selected ?? [], customItems: (current?.customItems ?? []).filter((x) => x !== item) }
+    setDraft(next)
+    onSave(next)
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Necesitáis prever algo especial para los niños?
+      </div>
+      <ChoiceRow options={NINOS_NECESIDADES_CHOICE_OPTIONS} value={current?.choice} disabled={saving} onSelect={selectChoice} />
+      {current?.choice === 'preparar' && (
+        <>
+          <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+            {NINOS_NECESIDADES_OPTIONS.map((o) => (
+              <button key={o} type="button" className={'chip' + ((current.selected ?? []).includes(o) ? ' chip-active' : '')} disabled={saving} onClick={() => toggleSelected(o)}>
+                {o}
+              </button>
+            ))}
+            {(current.customItems ?? []).map((o) => (
+              <button key={o} type="button" className="chip chip-active" disabled={saving} onClick={() => removeCustom(o)}>
+                {o} ✕
+              </button>
+            ))}
+          </div>
+          <div className="inline-fields" style={{ marginTop: 4 }}>
+            <input type="text" value={customInput} placeholder="Otra necesidad" disabled={saving} onChange={(e) => setCustomInput(e.target.value)} />
+            <button type="button" className="link-button" disabled={saving || !customInput.trim()} onClick={addCustom}>
+              + Añadir
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
 // Fase 2 — Momentos genéricos (event_moments, modelo creado en la Fase 1). Sustituye a la antigua
 // CeremoniaSection (2 ubicaciones fijas, Ceremonia/Celebración): un evento puede tener cualquier número
 // de momentos libres, cada uno con su propio nombre/fecha/hora/lugar. ÚNICA fuente de verdad: este mismo
@@ -3996,13 +4405,40 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
   const [notice, setNotice] = useState<string | null>(null)
   const [manualShare, setManualShare] = useState<{ title: string; text: string } | null>(null)
   const hasScope = DUAL_LOCATION_EVENT_TYPES.includes(event.type)
+  // Fase 4 — asignación real por invitado cuando "Invitados e invitaciones" → Momentos → "Depende del
+  // invitado o familia". event_guest_moments es la única fuente de la asignación real (nunca se duplica
+  // dentro de la propia decisión); aquí solo se lee para pintar las casillas y se escribe con setGuestMoments.
+  const [moments, setMomentsState] = useState<EventMoment[]>([])
+  const [guestMomentLinksState, setGuestMomentLinksState] = useState<EventGuestMoment[]>([])
+  const [momentosDecision, setMomentosDecision] = useState<EventDecision | undefined>(undefined)
 
   function reload() {
     listEventGuests(event.id)
       .then(setGuests)
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los invitados')))
+    Promise.all([listEventMoments(event.id), listEventGuestMoments(event.id), listEventDecisions(event.id)])
+      .then(([m, links, decisions]) => {
+        setMomentsState(m.filter((x) => !x.isLegacy))
+        setGuestMomentLinksState(links)
+        setMomentosDecision(decisions.find((d) => d.blockKey === 'invitados' && d.questionKey === GUESTS_MOMENTOS_QUESTION_KEY))
+      })
+      .catch(() => {})
   }
   useEffect(reload, [event.id])
+  const momentosChoice = (momentosDecision?.answer as unknown as MomentosAnswer | undefined)?.choice
+  const showPerGuestMoments = momentosChoice === 'depende' && moments.length >= 2
+
+  async function handleGuestMomentsChange(guest: EventGuest, momentId: string, checked: boolean) {
+    const current = guestMomentLinksState.filter((l) => l.guestId === guest.id).map((l) => l.momentId)
+    const next = checked ? Array.from(new Set([...current, momentId])) : current.filter((id) => id !== momentId)
+    try {
+      await setGuestMoments(guest, next)
+      notifyEventMomentsChanged(event.id)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    }
+  }
 
   const totalPeople = guests.reduce((sum, g) => sum + g.adultsCount + g.childrenCount, 0)
   const confirmed = guests.filter((g) => g.rsvpStatus === 'confirmado')
@@ -4100,7 +4536,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
                     </option>
                   ))}
                 </select>
-                {hasScope && (
+                {hasScope && !showPerGuestMoments && (
                   <select
                     value={g.inviteScope ?? 'ambas'}
                     onChange={(e) => updateEventGuest(g.id, { inviteScope: e.target.value as EventGuestInviteScope }).then(reload)}
@@ -4113,6 +4549,27 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
                   </select>
                 )}
               </div>
+              {/* Fase 4 — "Invitados e invitaciones" → Momentos → "Depende del invitado o familia": con 2+
+                  momentos reales, esta casilla por momento sustituye al desplegable heredado de
+                  ceremonia/celebración (que solo distinguía dos ubicaciones fijas) — event_guest_moments es
+                  ahora la fuente real, resolveGuestInvitedMoments ya la prioriza sobre inviteScope. */}
+              {showPerGuestMoments && (
+                <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+                  {moments.map((m) => {
+                    const checked = guestMomentLinksState.some((l) => l.guestId === g.id && l.momentId === m.id)
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className={'chip' + (checked ? ' chip-active' : '')}
+                        onClick={() => handleGuestMomentsChange(g, m.id, !checked)}
+                      >
+                        {m.title}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
               {g.rsvpStatus === 'confirmado' && (
                 <div className="inline-fields" style={{ marginTop: 4 }}>
                   <label style={{ flex: 1 }}>

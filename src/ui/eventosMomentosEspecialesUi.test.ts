@@ -23,7 +23,7 @@ describe('EventPlanningConfigurator — motor común: ya no depende de isEventSt
     const ternary = slice(configurator, '{isEventStructuredByMoments(event) ? (', '\n          )}')
     expect(ternary).toContain('🕊️ Ceremonia y celebración')
     expect(ternary).toContain('📍 Dónde lo vais a celebrar')
-    expect(ternary).toContain('<LugarContextoBlock event={event} />')
+    expect(ternary).toContain('<LugarContextoBlock event={event} onChanged={onChanged} />')
   })
 
   it('"👥 Invitados e invitaciones" y "🎉 Momentos especiales" son incondicionales — aplican a cualquier tipo de evento', () => {
@@ -127,21 +127,27 @@ describe('ClasesBaileQuestion — Sí/No/Todavía no lo sabemos, sin preselecci�
 
 describe('LugarContextoBlock — contexto del lugar para eventos sin ceremonia, nunca la dirección exacta', () => {
   it('se guarda directamente con upsertEventDecision, sin applyPairDecisionGeneration — nunca genera nada', () => {
-    const block = slice(SRC, 'function LugarContextoBlock(', '\n// ---------------------------------------------------------------------\n// "👰🤵 La pareja"')
+    const block = slice(SRC, 'function LugarContextoBlock(', '\nfunction CasaLocationBlock(')
     expect(block).toContain('upsertEventDecision(event.id, {')
     expect(block).not.toContain('applyPairDecisionGeneration')
   })
 
   it('reutiliza CustomAwareQuestion, nunca un componente de pregunta nuevo', () => {
-    const block = slice(SRC, 'function LugarContextoBlock(', '\n// ---------------------------------------------------------------------\n// "👰🤵 La pareja"')
+    const block = slice(SRC, 'function LugarContextoBlock(', '\nfunction CasaLocationBlock(')
     expect(block).toContain('<CustomAwareQuestion')
     expect(block).toContain('questionKey={LUGAR_CONTEXTO_QUESTION_KEY}')
   })
 
-  it('nunca toca venueLabel/coordenadas — la dirección exacta sigue viviendo en "Gestionar evento"', () => {
-    const block = slice(SRC, 'function LugarContextoBlock(', '\n// ---------------------------------------------------------------------\n// "👰🤵 La pareja"')
-    expect(block).not.toContain('venueLabel')
-    expect(block).not.toContain('EventLocationCoordsPicker')
+  // RETOQUE (siguiente mejora validada: "En casa" → proponer Casa) — LugarContextoBlock en sí (la
+  // pregunta de CONTEXTO, guardada en event_decisions) sigue sin tocar venueLabel/coordenadas
+  // directamente; delega esa parte por completo a CasaLocationBlock, y solo cuando la respuesta ya
+  // guardada es 'en_casa' — nunca al elegir cualquier otra opción (restaurante/exterior/otro/todavía).
+  it('delega venueLabel/EventLocationCoordsPicker a CasaLocationBlock, nunca los toca directamente, y solo cuando la decisión es "en_casa"', () => {
+    const upsertPart = slice(SRC, 'async function save(answer: { choice: LugarContextoChoice', '\n  if (loading)')
+    expect(upsertPart).not.toContain('venueLabel')
+    expect(upsertPart).not.toContain('EventLocationCoordsPicker')
+    const render = slice(SRC, 'function LugarContextoBlock(', '\nfunction CasaLocationBlock(')
+    expect(render).toContain("lugarAnswer?.choice === 'en_casa' && <CasaLocationBlock")
   })
 
   it('LUGAR_CONTEXTO_OPTIONS tiene las 5 opciones pedidas, sin preselección', () => {
@@ -153,5 +159,98 @@ describe('LugarContextoBlock — contexto del lugar para eventos sin ceremonia, 
     expect(optionsBlock).toContain("value: 'exterior'")
     expect(optionsBlock).toContain("value: 'otro'")
     expect(optionsBlock).toContain("value: 'todavia_no_lo_sabemos'")
+  })
+})
+
+// "En casa" → proponer la Casa familiar (siguiente mejora, validada por separado tras cerrar la
+// persistencia de events.venue_*). Casa se identifica por name === 'Casa' (auditado antes de
+// implementar: location_places no tiene ningún tipo/slug/categoría dedicado).
+describe('CasaLocationBlock — "En casa" propone la Casa familiar guardada en Ubicación, nunca la asigna en silencio', () => {
+  const block = slice(SRC, 'function CasaLocationBlock(', '\nfunction CasaLocationManualPicker(')
+
+  it('identifica Casa por name === \'casa\' (sin distinguir mayúsculas) — location_places no tiene ningún tipo/slug dedicado (auditado)', () => {
+    expect(block).toContain("places.find((p) => p.name.trim().toLowerCase() === 'casa')")
+  })
+
+  it('listPlaces() ya aplica la RLS de family_id de siempre — nunca un segundo filtro ni una consulta sin acotar', () => {
+    expect(block).toContain('listPlaces()')
+    expect(SRC).not.toContain("from('location_places')")
+  })
+
+  it('al confirmar, COPIA una instantánea a events.venue_* — nunca guarda una referencia viva (location_place_id) ni un id de location_places en el evento', () => {
+    const confirmFn = slice(block, 'async function handleConfirmCasa()', '\n  }')
+    expect(confirmFn).toContain('venueLatitude: casa.latitude')
+    expect(confirmFn).toContain('venueLongitude: casa.longitude')
+    expect(confirmFn).not.toContain('casa.id')
+    expect(SRC).not.toMatch(/location_place_id|casaId|casa_id/)
+  })
+
+  it('venuePlaceId siempre queda null al copiar desde Casa — Casa nunca tiene uno (nunca se inventa)', () => {
+    const confirmFn = slice(block, 'async function handleConfirmCasa()', '\n  }')
+    expect(confirmFn).toContain('venuePlaceId: null')
+  })
+
+  it('intenta reverseGeocode() reutilizando la función existente (mismo flujo que LocationPickerModal, nunca uno nuevo) — un fallo se traga sin más, cae al fallback por coordenadas ya validado', () => {
+    const confirmFn = slice(block, 'async function handleConfirmCasa()', '\n  }')
+    expect(confirmFn).toContain('reverseGeocode(casa.latitude, casa.longitude)')
+    expect(confirmFn).toMatch(/try \{\s*address = await reverseGeocode/)
+    expect(confirmFn).toContain('catch {')
+  })
+
+  it('nunca convierte venueLabel en "Casa" a la fuerza — conserva el label que ya tenga el evento, y solo usa el nombre de Casa cuando el evento no tiene ninguno', () => {
+    const confirmFn = slice(block, 'async function handleConfirmCasa()', '\n  }')
+    expect(confirmFn).toContain("venueLabel: event.venueLabel?.trim() ? event.venueLabel : casa.name")
+  })
+
+  it('"Sí, usar esta ubicación" nunca escribe en location_places — Casa nunca se modifica desde Eventos', () => {
+    expect(block).not.toContain('updatePlace(')
+    expect(block).not.toContain('addPlace(')
+    expect(block).not.toContain('deletePlace(')
+  })
+
+  it('no crea Preparativos/Presupuesto/Proveedores — ni applyPairDecisionGeneration, ni event_tasks/event_budget_items/event_providers', () => {
+    expect(block).not.toContain('applyPairDecisionGeneration')
+    expect(block).not.toContain('event_tasks')
+    expect(block).not.toContain('event_budget_items')
+    expect(block).not.toContain('event_providers')
+  })
+
+  it('si el evento ya tiene ubicación (coords), muestra un resumen en vez de la propuesta — solo entra en el flujo de Casa si el usuario pulsa "Cambiar ubicación"', () => {
+    expect(block).toContain('const hasVenue = event.venueLatitude != null && event.venueLongitude != null')
+    expect(block).toContain('const showSummary = hasVenue && !editing')
+    expect(block).toContain('📍 Ubicación del evento')
+    expect(block).toContain('Cambiar ubicación')
+  })
+
+  it('"No, elegir otra" revela el picker manual sin tocar Casa ni el evento', () => {
+    expect(block).toContain('onClick={() => setSkipProposal(true)}')
+    expect(block).toContain('No, elegir otra')
+  })
+
+  it('sin Casa configurada, no muestra tarjeta vacía ni error — pasa directo al picker manual con una nota', () => {
+    expect(block).toContain('const showProposal = casa && !skipProposal')
+    expect(block).toContain('noCasaConfigured={!casa}')
+  })
+})
+
+describe('CasaLocationManualPicker — "No, elegir otra"/"Cambiar ubicación" reutilizan EventLocationCoordsPicker, nunca un segundo buscador', () => {
+  const fn = slice(SRC, 'function CasaLocationManualPicker(', '\n// ---------------------------------------------------------------------\n// "👰🤵 La pareja"')
+
+  it('reutiliza EventLocationCoordsPicker con sus props completas (label+address+coords+placeId+fallback legacy), nunca un componente nuevo', () => {
+    expect(fn).toContain('<EventLocationCoordsPicker')
+    expect(fn).toContain('onPlaceDetails={(details) => {')
+    expect(fn).toContain('initialAddress={venueAddress}')
+    expect(fn).toContain('initialPlaceId={venuePlaceId}')
+  })
+
+  it('al guardar, escribe directamente en events.venue_* (updateEvent), nunca en event_decisions ni en location_places', () => {
+    const saveFn = slice(fn, 'async function handleSave()', '\n  }')
+    expect(saveFn).toContain('await updateEvent(event.id, {')
+    expect(saveFn).not.toContain('upsertEventDecision')
+    expect(saveFn).not.toContain("from('location_places')")
+  })
+
+  it('nunca fuerza el label a "Casa" — arranca con el venueLabel que ya tuviera el evento', () => {
+    expect(fn).toContain("useState(event.venueLabel ?? '')")
   })
 })

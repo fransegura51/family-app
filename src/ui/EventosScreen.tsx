@@ -110,6 +110,13 @@ import {
 } from '@/data/events'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
+// "En casa" (lugar.contexto) → proponer la Casa familiar ya guardada en Ubicación — reutiliza tal cual
+// listPlaces() (RLS ya limita a la familia actual, mismo patrón que el resto de esta pantalla) y
+// reverseGeocode() (misma función ya usada por LocationPickerModal al tocar/arrastrar el mapa, nunca un
+// segundo flujo de geocodificación). Nunca se escribe en location_places desde Eventos.
+import { listPlaces } from '@/data/location'
+import { reverseGeocode } from '@/services/geocoding'
+import type { LocationPlace } from '@/domain/types'
 // Fase 10 — reutiliza el mismo almacén de recordatorios que ya usa
 // Calendario (calendar_event_reminders) en vez de crear uno propio de
 // Eventos; no toca push/cron/service worker, solo configura qué debe
@@ -2458,7 +2465,7 @@ function EventPlanningConfigurator({
               </button>
               {lugarOpen && (
                 <div style={{ marginTop: 4 }}>
-                  <LugarContextoBlock event={event} />
+                  <LugarContextoBlock event={event} onChanged={onChanged} />
                 </div>
               )}
             </div>
@@ -2534,7 +2541,7 @@ const LUGAR_CONTEXTO_OPTIONS: { value: LugarContextoChoice; label: string }[] = 
 // venueLabel/"Gestionar evento"), nunca genera Preparativo/Presupuesto/Proveedor por sí sola (igual que
 // Momentos en Invitados): se guarda directamente con upsertEventDecision, sin pasar por
 // applyPairDecisionGeneration, porque no hay nada que reconciliar.
-function LugarContextoBlock({ event }: { event: FamilyEvent }) {
+function LugarContextoBlock({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -2572,6 +2579,7 @@ function LugarContextoBlock({ event }: { event: FamilyEvent }) {
   if (loading) return null
   const decision = decisions.find((d) => d.questionKey === LUGAR_CONTEXTO_QUESTION_KEY)
   const status = lugarContextoStatus(decisions)
+  const lugarAnswer = decision?.answer as unknown as LugarContextoAnswer | undefined
 
   return (
     <div className="card" style={{ padding: 8 }}>
@@ -2590,6 +2598,186 @@ function LugarContextoBlock({ event }: { event: FamilyEvent }) {
         savingKey={saving ? LUGAR_CONTEXTO_QUESTION_KEY : null}
         onSave={(answer) => save(answer as LugarContextoAnswer)}
       />
+      {/* "En casa" → proponer la Casa familiar (siguiente mejora, validada por separado) — la DECISIÓN
+          de contexto ("lo celebramos en casa") y la UBICACIÓN física (events.venue_*) son dos cosas
+          distintas a propósito: esto solo entra en juego cuando la decisión ya es 'en_casa', nunca
+          guarda nada propio en event_decisions. */}
+      {lugarAnswer?.choice === 'en_casa' && <CasaLocationBlock event={event} onChanged={onChanged} />}
+    </div>
+  )
+}
+
+// Corrección real (siguiente mejora tras validar la persistencia de ubicación) — al elegir "En casa" en
+// "Dónde lo vais a celebrar", PEPA comprueba si la familia ya tiene una "Casa" guardada en 📍 Ubicación
+// (location_places) y la PROPONE, nunca la asigna en silencio. Casa se identifica por name === 'Casa'
+// (auditado: location_places no tiene ningún tipo/slug/categoría dedicado — category es texto libre sin
+// lista cerrada, igual que name — así que no hay nada mejor que comparar) y solo entre los lugares de
+// esta familia (listPlaces() ya aplica la RLS de siempre, igual que el resto de esta pantalla).
+//
+// Al confirmar, se COPIA una instantánea (venueLabel/venueLatitude/venueLongitude/venueAddress/
+// venuePlaceId) a events.venue_* — nunca una referencia viva a location_places.id. Si la familia cambia
+// su Casa real seis meses después, los eventos que ya la copiaron no se mueven solos. venuePlaceId queda
+// siempre null (Casa nunca tiene uno); venueAddress se intenta rellenar con reverseGeocode() de las
+// coordenadas de Casa (misma función ya usada por LocationPickerModal, nunca un segundo flujo) — si falla
+// (cupo diario, red) se deja en null sin más, exactamente el mismo fallback por coordenadas ya validado.
+function CasaLocationBlock({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
+  const [casa, setCasa] = useState<LocationPlace | null | undefined>(undefined) // undefined = cargando
+  const [editing, setEditing] = useState(false)
+  const [skipProposal, setSkipProposal] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    listPlaces()
+      .then((places) => setCasa(places.find((p) => p.name.trim().toLowerCase() === 'casa') ?? null))
+      .catch(() => setCasa(null))
+  }, [])
+
+  const hasVenue = event.venueLatitude != null && event.venueLongitude != null
+  const showSummary = hasVenue && !editing
+
+  async function handleConfirmCasa() {
+    if (!casa) return
+    setConfirming(true)
+    setError(null)
+    let address: string | null = null
+    try {
+      address = await reverseGeocode(casa.latitude, casa.longitude)
+    } catch {
+      // Dirección solo informativa/opcional — si falla (cupo diario, red), se guarda sin ella y el
+      // enlace de mapa sigue funcionando por coordenadas (fallback ya validado).
+    }
+    try {
+      await updateEvent(event.id, {
+        venueLabel: event.venueLabel?.trim() ? event.venueLabel : casa.name,
+        venueLatitude: casa.latitude,
+        venueLongitude: casa.longitude,
+        venueAddress: address,
+        venuePlaceId: null,
+      })
+      setEditing(false)
+      setSkipProposal(false)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  if (casa === undefined) return null
+
+  if (showSummary) {
+    return (
+      <div className="card" style={{ padding: 8, marginTop: 6 }}>
+        <strong style={{ fontSize: 13 }}>📍 Ubicación del evento</strong>
+        <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+          {event.venueLabel || 'Sin nombre'}
+          {event.venueAddress && <br />}
+          {event.venueAddress}
+        </p>
+        <button type="button" className="link-button" onClick={() => setEditing(true)}>
+          Cambiar ubicación
+        </button>
+      </div>
+    )
+  }
+
+  const showProposal = casa && !skipProposal
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 6 }}>
+      {error && <p className="error">{error}</p>}
+      {showProposal ? (
+        <>
+          <p style={{ margin: '0 0 4px', fontSize: 13 }}>Tenéis una ubicación «{casa.name}» guardada en PEPA.</p>
+          <p className="muted" style={{ margin: '0 0 6px', fontSize: 12 }}>
+            {casa.category ? `${casa.category} · ` : ''}
+            {casa.latitude.toFixed(5)}, {casa.longitude.toFixed(5)}
+          </p>
+          <p style={{ margin: '0 0 6px', fontSize: 13 }}>¿Es aquí donde lo vais a celebrar?</p>
+          <div className="filter-row">
+            <button type="button" onClick={handleConfirmCasa} disabled={confirming}>
+              {confirming ? 'Guardando…' : 'Sí, usar esta ubicación'}
+            </button>
+            <button type="button" className="link-button" disabled={confirming} onClick={() => setSkipProposal(true)}>
+              No, elegir otra
+            </button>
+          </div>
+        </>
+      ) : (
+        <CasaLocationManualPicker
+          event={event}
+          onSaved={() => {
+            setEditing(false)
+            setSkipProposal(false)
+            onChanged()
+          }}
+          noCasaConfigured={!casa}
+        />
+      )}
+    </div>
+  )
+}
+
+// Formulario mínimo de "elegir otra ubicación" dentro del flujo de Casa — reutiliza EventLocationCoordsPicker
+// tal cual (la única infraestructura de selección de ubicación principal del evento, ya corregida),
+// nunca un segundo buscador. Mismo par Lugar+picker que ya usa "Gestionar evento", autocontenido aquí
+// para no obligar a salir de este bloque.
+function CasaLocationManualPicker({ event, onSaved, noCasaConfigured }: { event: FamilyEvent; onSaved: () => void; noCasaConfigured: boolean }) {
+  const [venueLabel, setVenueLabel] = useState(event.venueLabel ?? '')
+  const [venueCoords, setVenueCoords] = useState(
+    event.venueLatitude != null && event.venueLongitude != null ? { latitude: event.venueLatitude, longitude: event.venueLongitude } : null,
+  )
+  const [venueAddress, setVenueAddress] = useState(event.venueAddress ?? null)
+  const [venuePlaceId, setVenuePlaceId] = useState(event.venuePlaceId ?? null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      await updateEvent(event.id, {
+        venueLabel: venueLabel || null,
+        venueLatitude: venueCoords?.latitude ?? null,
+        venueLongitude: venueCoords?.longitude ?? null,
+        venueAddress,
+        venuePlaceId,
+      })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      {noCasaConfigured && (
+        <p className="muted" style={{ margin: '0 0 6px', fontSize: 13 }}>
+          No tenéis una ubicación «Casa» guardada en PEPA.
+        </p>
+      )}
+      <label>
+        Lugar (como se ve en la invitación)
+        <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} placeholder="Ej. en mi casa, Restaurante La Terraza…" />
+      </label>
+      <EventLocationCoordsPicker
+        coords={venueCoords}
+        onCoordsChange={setVenueCoords}
+        initialAddress={venueAddress}
+        initialPlaceId={venuePlaceId}
+        onPlaceDetails={(details) => {
+          setVenueAddress(details.address)
+          setVenuePlaceId(details.placeId)
+        }}
+      />
+      {error && <p className="error">{error}</p>}
+      <button type="button" onClick={handleSave} disabled={saving} style={{ marginTop: 6 }}>
+        {saving ? 'Guardando…' : 'Guardar ubicación'}
+      </button>
     </div>
   )
 }

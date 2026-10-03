@@ -90,8 +90,14 @@ describe('capa de datos: src/data/events.ts — solo CRUD de preguntas/opciones,
     expect(body).toContain('.single()')
   })
 
-  it('ninguna función de este archivo escribe en event_guest_question_answers — las respuestas solo las escribe el RSVP público (rol de servicio)', () => {
-    expect(SRC).not.toContain('event_guest_question_answers')
+  it('ninguna función de este archivo ESCRIBE en event_guest_question_answers — las respuestas solo las escribe el RSVP público (rol de servicio); sí se permite una lectura agregada (getEventGuestQuestionAnswerStats, para decidir si editar una pregunta es seguro)', () => {
+    expect(SRC).not.toContain("from('event_guest_question_answers').insert")
+    expect(SRC).not.toContain("from('event_guest_question_answers').update")
+    expect(SRC).not.toContain("from('event_guest_question_answers').delete")
+    const start = SRC.indexOf('export async function getEventGuestQuestionAnswerStats(')
+    expect(start).toBeGreaterThan(-1)
+    const body = SRC.slice(start, SRC.indexOf('\n}', start))
+    expect(body).toContain("from('event_guest_question_answers').select('option_id')")
   })
 
   it('deleteEventGuestQuestion borra la pregunta entera (cascada se lleva opciones y respuestas, por la propia migración)', () => {

@@ -177,7 +177,7 @@ describe('InvitadosPreguntasQuestion — descubrimiento del sistema genérico, n
     const fn = slice(SRC, 'function InvitadosPreguntasQuestion(', '\nfunction GuestsDecisionsBlock(')
     expect(fn).toContain('<GuestQuestionForm')
     expect(fn).toContain("initialPrompt={openForm === 'transporte' ? '¿Necesitáis transporte?' : undefined}")
-    expect(fn).toContain("initialOptions={openForm === 'transporte' ? ['Sí', 'No'] : undefined}")
+    expect(fn).toContain("initialOptions={openForm === 'transporte' ? [{ id: null, label: 'Sí' }, { id: null, label: 'No' }] : undefined}")
   })
 
   it('al guardar una pregunta desde aquí, se avisa con un toast y se cierra el formulario — pero no se pinta ninguna lista propia (una sola fuente de verdad: 📋 Preguntas a los invitados)', () => {

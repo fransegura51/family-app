@@ -484,6 +484,14 @@ export function reconcilePairGeneration(desired: DesiredPairGeneration, existing
 // Feedback — el mensaje se construye SIEMPRE a partir de las acciones realmente ejecutadas
 // (ReconcileAction[], la verdad de lo que pasó), nunca a partir de qué respuesta se eligió. Una lista
 // vacía (o solo updates silenciosos de título/categoría) no produce ningún mensaje.
+//
+// RETOQUE (petición real, validación de "Momentos especiales" → Primer baile → clases de baile) — borrar
+// de verdad un derivado PRÍSTINO (delete_task/delete_budget, al cancelar una respuesta que lo había
+// generado) SÍ avisa ahora, con el mismo patrón "✅ Añadido a..." en espejo. `detach_task`/`detach_budget`
+// (desvincular un derivado ya tocado a mano, que se CONSERVA tal cual en Preparativos/Presupuesto) sigue
+// sin avisar a propósito — nada visible cambia ahí, avisar sería confuso. `update_task`/`update_budget`
+// (renombrado silencioso de un derivado pristino cuyo título/categoría cambia) tampoco avisa, igual que
+// siempre: no son un alta ni una baja, solo texto.
 // ---------------------------------------------------------------------
 
 export const TASK_COMPLETED_MESSAGE = '✓ Preparativo completado'
@@ -502,5 +510,9 @@ export function describeEffects(actions: ReconcileAction[]): string | null {
   if (actions.some((a) => a.op === 'create_budget')) created.push('Presupuesto')
   if (created.length > 0) return `✅ Añadido a ${joinSpanishList(created)}`
   if (actions.some((a) => a.op === 'complete_task')) return TASK_COMPLETED_MESSAGE
+  const removed: string[] = []
+  if (actions.some((a) => a.op === 'delete_task')) removed.push('Preparativos')
+  if (actions.some((a) => a.op === 'delete_budget')) removed.push('Presupuesto')
+  if (removed.length > 0) return `🗑️ Retirado de ${joinSpanishList(removed)}`
   return null
 }

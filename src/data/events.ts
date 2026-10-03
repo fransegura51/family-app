@@ -2131,7 +2131,27 @@ export async function addEventGuestQuestionOption(questionId: string, eventId: s
   if (error) throw error
 }
 
+// Renombrar una opción YA EXISTENTE conservando su id — una respuesta ya guardada apunta a option_id,
+// nunca al texto, así que corregir la etiqueta (p. ej. una errata) nunca invalida ni desvincula ninguna
+// respuesta real. Distinto de borrar+crear, que sí perdería esa identidad.
+export async function updateEventGuestQuestionOption(id: string, label: string): Promise<void> {
+  const { error } = await supabase.from('event_guest_question_options').update({ label: label.trim() }).eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteEventGuestQuestionOption(id: string): Promise<void> {
   const { error } = await supabase.from('event_guest_question_options').delete().eq('id', id)
   if (error) throw error
+}
+
+// Edición de una pregunta ya creada (petición real, validación manual) — antes de permitir quitar una
+// opción o cambiar quién responde (scope), hay que saber si YA existen respuestas reales y, si las hay,
+// a qué opción concreta apuntan. Solo option_id (nunca guest_id/member_id ni fechas): esto sigue sin ser
+// un visor de respuestas, solo el recuento agregado que hace falta para decidir si un cambio es seguro.
+export async function getEventGuestQuestionAnswerStats(questionId: string): Promise<{ total: number; answeredOptionIds: string[] }> {
+  const { data, error } = await supabase.from('event_guest_question_answers').select('option_id').eq('question_id', questionId)
+  if (error) throw error
+  const rows = data ?? []
+  const answeredOptionIds = Array.from(new Set(rows.map((r) => r.option_id as string | null).filter((x): x is string => !!x)))
+  return { total: rows.length, answeredOptionIds }
 }

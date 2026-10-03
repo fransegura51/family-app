@@ -78,6 +78,15 @@ describe('MomentosEspecialesBlock — selección múltiple sobre el catálogo, n
     expect(block).toContain("seleccion?.selected.includes('primer_baile') && (")
     expect(block).toContain('<ClasesBaileQuestion')
   })
+
+  it('RETOQUE (feedback visual) — tanto crear/completar "Sí" como retirar "No" pasan por describeEffects/showToast, el mismo patrón global que PairBlock/GuestsDecisionsBlock — nunca un sistema de toast propio', () => {
+    const saveClasesBaile = slice(SRC, 'async function saveClasesBaile(', '\n\n  if (loading)')
+    expect(saveClasesBaile).toContain('const message = describeEffects(actions)')
+    expect(saveClasesBaile).toContain('if (message) showToast(message)')
+    const saveSeleccion = slice(SRC, 'async function saveSeleccion(', '\n  async function saveClasesBaile(')
+    expect(saveSeleccion).toContain('const message = describeEffects(allActions)')
+    expect(saveSeleccion).toContain('if (message) showToast(message)')
+  })
 })
 
 describe('MomentosEspecialesQuestion — checklist + "+ Otro" + terminales mutuamente excluyentes', () => {

@@ -593,8 +593,16 @@ describe('describeEffects — el toast se construye SIEMPRE de las acciones real
   it('solo updates (renombrados silenciosos): ningún mensaje', () => {
     expect(describeEffects([{ op: 'update_task', id: 't1', title: 'x' }, { op: 'update_budget', id: 'b1', category: 'y' }])).toBeNull()
   })
-  it('solo retirada (detach/delete): ningún mensaje — no se pide feedback para esto', () => {
-    expect(describeEffects([{ op: 'delete_task', id: 't1' }, { op: 'detach_budget', id: 'b1' }])).toBeNull()
+  it('solo detach (derivado ya tocado a mano, se conserva tal cual): ningún mensaje — nada visible cambió en Preparativos/Presupuesto', () => {
+    expect(describeEffects([{ op: 'detach_task', id: 't1' }, { op: 'detach_budget', id: 'b1' }])).toBeNull()
+  })
+  it('RETOQUE — borrar de verdad un derivado prístino (delete_task/delete_budget) SÍ avisa: "🗑️ Retirado de..."', () => {
+    expect(describeEffects([{ op: 'delete_task', id: 't1' }])).toBe('🗑️ Retirado de Preparativos')
+    expect(describeEffects([{ op: 'delete_budget', id: 'b1' }])).toBe('🗑️ Retirado de Presupuesto')
+    expect(describeEffects([{ op: 'delete_task', id: 't1' }, { op: 'delete_budget', id: 'b1' }])).toBe('🗑️ Retirado de Preparativos y Presupuesto')
+  })
+  it('crear/completar sigue teniendo prioridad sobre cualquier retirada en la misma lista (nunca deberían coexistir en la práctica, pero el orden de prioridad queda definido)', () => {
+    expect(describeEffects([{ op: 'create_task', title: 'x' }, { op: 'delete_budget', id: 'b1' }])).toBe('✅ Añadido a Preparativos')
   })
   it('crea solo tarea: "Añadido a Preparativos"', () => {
     expect(describeEffects([{ op: 'create_task', title: 'x' }])).toBe('✅ Añadido a Preparativos')

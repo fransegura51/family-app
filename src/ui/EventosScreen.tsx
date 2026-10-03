@@ -40,6 +40,7 @@ import {
   deleteEventGuest,
   deleteEventGuestMember,
   deleteEventGuestQuestion,
+  deleteEventGuestQuestionOption,
   deleteEventMenuItem,
   deleteEventMoment,
   deleteEventPayment,
@@ -49,6 +50,7 @@ import {
   deleteEventTask,
   disableEventOpenLink,
   duplicateEvent,
+  getEventGuestQuestionAnswerStats,
   getEventInvitation,
   getEventOpenRsvpUrl,
   getGuestRsvpUrl,
@@ -99,6 +101,7 @@ import {
   updateEventGuest,
   updateEventGuestMember,
   updateEventGuestQuestion,
+  updateEventGuestQuestionOption,
   updateEventBudgetItem,
   updateEventMoment,
   updateEventPayment,
@@ -3867,7 +3870,7 @@ function InvitadosPreguntasQuestion({
             <GuestQuestionForm
               event={event}
               initialPrompt={openForm === 'transporte' ? '¿Necesitáis transporte?' : undefined}
-              initialOptions={openForm === 'transporte' ? ['Sí', 'No'] : undefined}
+              initialOptions={openForm === 'transporte' ? [{ id: null, label: 'Sí' }, { id: null, label: 'No' }] : undefined}
               onCancel={() => setOpenForm(null)}
               onSaved={() => {
                 setOpenForm(null)
@@ -5248,43 +5251,96 @@ const GUEST_QUESTION_SCOPE_OPTIONS: { value: GuestQuestionScope; label: string }
   { value: 'invitacion', label: 'Una respuesta por familia/invitación' },
 ]
 
+// Una opción dentro del formulario — id null = texto nuevo, todavía sin fila en
+// event_guest_question_options; id real = opción ya existente (editar solo cambia su label, conservando
+// su identidad, nunca borra+crea) — así una respuesta ya guardada (que apunta a option_id, nunca al
+// texto) nunca se desvincula por corregir una errata.
+interface GuestQuestionOptionDraft {
+  id: string | null
+  label: string
+}
+
 // "📋 Preguntas a los invitados" — capacidad genérica, deliberadamente aparte de la elección de menú
 // (event_menu_options, ya implementada): la familia define sus propias preguntas de opción múltiple
 // ("¿Qué preferís de postre?"), cada una respondida por persona o por invitación entera. Solo CRUD de
 // preguntas/opciones desde aquí — las respuestas las escribe únicamente el RSVP público.
+//
+// Edición (petición real, tras validación manual) — el mismo formulario sirve para crear Y para editar:
+// con `questionId` presente, "Guardar pregunta" actualiza la MISMA pregunta (mismo id) en vez de crear una
+// nueva. Antes de permitir cambios estructurales, se audita si YA existen respuestas reales
+// (getEventGuestQuestionAnswerStats, solo option_id agregado — nunca un visor de quién respondió qué):
+// - Texto de la pregunta / obligatoria↔opcional: nunca tocan una respuesta ya guardada (apuntan a
+//   question_id, nunca al texto ni a este flag) — siempre libres, con o sin respuestas.
+// - Renombrar una opción ya existente: mismo criterio, conserva su option_id — libre siempre.
+// - Quitar una opción que YA tiene respuestas: esas respuestas pasarían a apuntar a un option_id
+//   borrado (on delete set null) — la elección registrada se perdería de vista, aunque la fila de
+//   respuesta sobreviva. Nunca se hace en silencio: pide confirmación explícita primero (ConfirmButton,
+//   mismo patrón ya usado en toda la app para "esto afecta a otra cosa").
+// - Cambiar quién responde (scope) con respuestas ya existentes: SE BLOQUEA del todo, no se pide
+//   confirmación — no existe una forma segura de "migrar" respuestas por persona a una única respuesta
+//   por invitación (o al revés) sin inventar a cuál de varias personas pertenecería la respuesta
+//   conjunta, o viceversa; mezclar las dos formas en la misma pregunta sería un dato estructuralmente
+//   incoherente, no solo una pérdida de información puntual como al quitar una opción.
 function GuestQuestionForm({
   event,
+  questionId,
   initialPrompt,
   initialOptions,
+  initialScope,
+  initialRequired,
   onCancel,
   onSaved,
 }: {
   event: FamilyEvent
+  // Presente = editar esta pregunta ya existente (conserva su id); ausente = crear una nueva.
+  questionId?: string
   // Petición real (ajuste UX de Invitados e invitaciones): "🚗 Transporte" abre este mismo formulario con
   // una propuesta ya escrita (pregunta + opciones) — editable del todo antes de guardar, nunca impuesta.
   // "✏️ Otra pregunta" (y el "+ Añadir pregunta a los invitados" de siempre) lo abre en blanco, omitiendo
-  // ambas props.
+  // estas props.
   initialPrompt?: string
-  initialOptions?: string[]
+  initialOptions?: GuestQuestionOptionDraft[]
+  initialScope?: GuestQuestionScope
+  initialRequired?: boolean
   onCancel: () => void
   onSaved: () => void
 }) {
   const [prompt, setPrompt] = useState(initialPrompt ?? '')
-  const [scope, setScope] = useState<GuestQuestionScope>('persona')
-  const [required, setRequired] = useState(false)
+  const [scope, setScope] = useState<GuestQuestionScope>(initialScope ?? 'persona')
+  const [required, setRequired] = useState(initialRequired ?? false)
   const [optionInput, setOptionInput] = useState('')
-  const [optionList, setOptionList] = useState<string[]>(initialOptions ?? [])
+  const [optionList, setOptionList] = useState<GuestQuestionOptionDraft[]>(initialOptions ?? [])
+  const [removeConfirmIndex, setRemoveConfirmIndex] = useState<number | null>(null)
+  const [answerStats, setAnswerStats] = useState<{ total: number; answeredOptionIds: string[] } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (!questionId) return
+    getEventGuestQuestionAnswerStats(questionId)
+      .then(setAnswerStats)
+      .catch(() => {})
+  }, [questionId])
+
   function addOption() {
     if (!optionInput.trim()) return
-    setOptionList((prev) => [...prev, optionInput.trim()])
+    setOptionList((prev) => [...prev, { id: null, label: optionInput.trim() }])
     setOptionInput('')
   }
-  function removeOption(label: string) {
-    setOptionList((prev) => prev.filter((o) => o !== label))
+  function removeOption(index: number) {
+    const opt = optionList[index]
+    if (opt.id && answerStats?.answeredOptionIds.includes(opt.id)) {
+      setRemoveConfirmIndex(index)
+      return
+    }
+    setOptionList((prev) => prev.filter((_, i) => i !== index))
   }
+  function confirmRemoveOption(index: number) {
+    setOptionList((prev) => prev.filter((_, i) => i !== index))
+    setRemoveConfirmIndex(null)
+  }
+
+  const scopeLocked = Boolean(questionId) && (answerStats?.total ?? 0) > 0
 
   async function handleSave(e: FormEvent) {
     e.preventDefault()
@@ -5292,9 +5348,25 @@ function GuestQuestionForm({
     setSaving(true)
     setError(null)
     try {
-      const question = await addEventGuestQuestion(event.id, { prompt: prompt.trim(), scope, required })
-      for (const label of optionList) {
-        await addEventGuestQuestionOption(question.id, event.id, label)
+      if (questionId) {
+        await updateEventGuestQuestion(questionId, { prompt: prompt.trim(), scope, required })
+        for (const opt of optionList) {
+          if (opt.id) {
+            const original = (initialOptions ?? []).find((o) => o.id === opt.id)
+            if (original && original.label !== opt.label) await updateEventGuestQuestionOption(opt.id, opt.label)
+          } else {
+            await addEventGuestQuestionOption(questionId, event.id, opt.label)
+          }
+        }
+        const keptIds = new Set(optionList.filter((o) => o.id).map((o) => o.id))
+        for (const original of initialOptions ?? []) {
+          if (original.id && !keptIds.has(original.id)) await deleteEventGuestQuestionOption(original.id)
+        }
+      } else {
+        const question = await addEventGuestQuestion(event.id, { prompt: prompt.trim(), scope, required })
+        for (const opt of optionList) {
+          await addEventGuestQuestionOption(question.id, event.id, opt.label)
+        }
       }
       onSaved()
     } catch (err) {
@@ -5315,11 +5387,22 @@ function GuestQuestionForm({
       </div>
       {optionList.length > 0 && (
         <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 2 }}>
-          {optionList.map((o) => (
-            <button key={o} type="button" className="chip chip-active" disabled={saving} onClick={() => removeOption(o)}>
-              {o} ✕
-            </button>
-          ))}
+          {optionList.map((o, i) =>
+            removeConfirmIndex === i ? (
+              <ConfirmButton
+                key={o.id ?? `new-${i}`}
+                label={`${o.label} ✕`}
+                confirmLabel="Quitar de todos modos"
+                confirmMessage="Esta pregunta ya tiene respuestas con esta opción — quitarla hará que esas respuestas dejen de mostrar qué habían elegido."
+                className="link-button"
+                onConfirm={() => confirmRemoveOption(i)}
+              />
+            ) : (
+              <button key={o.id ?? `new-${i}`} type="button" className="chip chip-active" disabled={saving} onClick={() => removeOption(i)}>
+                {o.label} ✕
+              </button>
+            ),
+          )}
         </div>
       )}
       <div className="inline-fields" style={{ marginTop: 4 }}>
@@ -5331,7 +5414,12 @@ function GuestQuestionForm({
       <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
         ¿Quién responde?
       </div>
-      <ChoiceRow options={GUEST_QUESTION_SCOPE_OPTIONS} value={scope} disabled={saving} onSelect={setScope} />
+      <ChoiceRow options={GUEST_QUESTION_SCOPE_OPTIONS} value={scope} disabled={saving || scopeLocked} onSelect={setScope} />
+      {scopeLocked && (
+        <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+          Esta pregunta ya tiene respuestas — no se puede cambiar quién responde.
+        </p>
+      )}
       <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
         <input type="checkbox" checked={required} disabled={saving} onChange={(e) => setRequired(e.target.checked)} />
         Respuesta obligatoria
@@ -5339,7 +5427,7 @@ function GuestQuestionForm({
       {error && <p className="error">{error}</p>}
       <div className="filter-row" style={{ marginTop: 8 }}>
         <button type="submit" disabled={saving || !prompt.trim() || optionList.length === 0}>
-          Guardar pregunta
+          {questionId ? 'Guardar cambios' : 'Guardar pregunta'}
         </button>
         <button type="button" className="link-button" disabled={saving} onClick={onCancel}>
           Cancelar
@@ -5353,6 +5441,7 @@ function GuestQuestionsBlock({ event }: { event: FamilyEvent }) {
   const [questions, setQuestions] = useState<EventGuestQuestion[]>([])
   const [options, setOptions] = useState<EventGuestQuestionOption[]>([])
   const [showAdd, setShowAdd] = useState(false)
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
@@ -5381,32 +5470,52 @@ function GuestQuestionsBlock({ event }: { event: FamilyEvent }) {
         Además de confirmar asistencia (y, si procede, su menú), podéis añadir vuestras propias preguntas — cada invitado activo las verá al confirmar.
       </p>
       {error && <p className="error">{error}</p>}
-      {questions.map((q) => (
-        <div key={q.id} className="card task-card" style={{ marginTop: 6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>{q.prompt}</strong>
-            <div>
-              <button type="button" className="link-button" onClick={() => handleToggleActive(q)}>
-                {q.active ? 'Desactivar' : 'Activar'}
-              </button>
-              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pregunta" onConfirm={() => deleteEventGuestQuestion(q.id).then(reload)} />
+      {questions.map((q) =>
+        editingQuestionId === q.id ? (
+          <GuestQuestionForm
+            key={q.id}
+            event={event}
+            questionId={q.id}
+            initialPrompt={q.prompt}
+            initialScope={q.scope}
+            initialRequired={q.required}
+            initialOptions={options.filter((o) => o.questionId === q.id).map((o) => ({ id: o.id, label: o.label }))}
+            onCancel={() => setEditingQuestionId(null)}
+            onSaved={() => {
+              setEditingQuestionId(null)
+              reload()
+            }}
+          />
+        ) : (
+          <div key={q.id} className="card task-card" style={{ marginTop: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>{q.prompt}</strong>
+              <div>
+                <button type="button" className="link-button" onClick={() => setEditingQuestionId(q.id)}>
+                  ✏️ Editar
+                </button>
+                <button type="button" className="link-button" onClick={() => handleToggleActive(q)}>
+                  {q.active ? 'Desactivar' : 'Activar'}
+                </button>
+                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pregunta" onConfirm={() => deleteEventGuestQuestion(q.id).then(reload)} />
+              </div>
+            </div>
+            <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
+              {q.scope === 'persona' ? 'Cada persona responde' : 'Una respuesta por familia/invitación'} · {q.required ? 'Obligatoria' : 'Opcional'} ·{' '}
+              {q.active ? 'Activa' : 'Inactiva'}
+            </p>
+            <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+              {options
+                .filter((o) => o.questionId === q.id)
+                .map((o) => (
+                  <span key={o.id} className="chip">
+                    {o.label}
+                  </span>
+                ))}
             </div>
           </div>
-          <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
-            {q.scope === 'persona' ? 'Cada persona responde' : 'Una respuesta por familia/invitación'} · {q.required ? 'Obligatoria' : 'Opcional'} ·{' '}
-            {q.active ? 'Activa' : 'Inactiva'}
-          </p>
-          <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-            {options
-              .filter((o) => o.questionId === q.id)
-              .map((o) => (
-                <span key={o.id} className="chip">
-                  {o.label}
-                </span>
-              ))}
-          </div>
-        </div>
-      ))}
+        ),
+      )}
       {showAdd ? (
         <GuestQuestionForm
           event={event}

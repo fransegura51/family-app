@@ -22,7 +22,11 @@ function fromCustom(custom: CustomResolution | undefined, taskTitle: (label: str
 }
 
 export const GUESTS_LISTA_QUESTION_KEY = 'invitados.lista'
-export const GUESTS_MENU_QUESTION_KEY = 'invitados.menu_invitacion'
+// Ajuste de UX (tras validación manual) — la clave sigue siendo literalmente 'invitados.menu_invitacion'
+// a propósito: ya hay datos reales guardados bajo esta clave (p. ej. "Boda de plata", Familia Hepburn) y
+// cambiarla rompería esa compatibilidad sin necesidad. Lo que cambia es el SIGNIFICADO que envuelve esa
+// misma fila — ver InvitadosPreguntasAnswer más abajo.
+export const GUESTS_PREGUNTAS_QUESTION_KEY = 'invitados.menu_invitacion'
 export const GUESTS_MOMENTOS_QUESTION_KEY = 'invitados.momentos'
 export const GUESTS_NINOS_QUESTION_KEY = 'invitados.ninos'
 export const GUESTS_NINOS_NECESIDADES_QUESTION_KEY = 'invitados.ninos.necesidades'
@@ -53,24 +57,38 @@ export function desiredForListaInvitados(answer: ListaInvitadosAnswer): DesiredP
 }
 
 // ---------------------------------------------------------------------
-// 1b. Menú en la invitación — nunca genera Preparativo/Presupuesto por sí sola (ninguna rama lo hace,
-// "otro" incluido se trata igual que el resto de "otro" de este bloque: solo sigue las reglas normales de
-// CustomResolution, sin inferir nada del texto libre). Esta pregunta solo guarda SI se va a recoger la
-// elección de menú en la invitación — responder "Sí" no obliga a definir las opciones de menú ahora mismo:
-// esa definición real vive en la futura fase "Comida y celebración" (event_menu_options, migración 0189).
-// El RSVP público (event-rsvp) es quien de verdad conecta las dos cosas: cuando esta decisión está en
-// "sí" Y ya existen opciones de menú para el evento, cada invitado puede elegir la suya; si no hay
-// opciones todavía, el RSVP no bloquea ni inventa nada (mismo criterio que el resto del módulo).
+// 1b. "¿Queréis incluir alguna pregunta para los invitados en la invitación?" — reajuste de UX sobre la
+// MISMA decisión que antes solo preguntaba por el menú (GUESTS_PREGUNTAS_QUESTION_KEY, clave sin cambiar
+// a propósito). Ahora es la puerta de DESCUBRIMIENTO del sistema genérico de "📋 Preguntas a los
+// invitados" (event_guest_questions, migración 0190): "Sí" revela tres accesos — 🍽️ Elección de menú
+// (un simple interruptor conceptual, wantsMenu, sin crear fila en event_guest_questions: las opciones
+// reales de menú seguirán viviendo en la futura fase "Comida y celebración"), 🚗 Transporte y
+// ✏️ Otra pregunta (los dos abren el mismo GuestQuestionForm ya existente — nunca un segundo sistema).
+// Nunca genera Preparativo/Presupuesto/Proveedor por sí sola, sea cual sea la rama.
+//
+// Compatibilidad — datos reales ya guardados (antes de este ajuste) con esta misma clave solo tenían
+// {choice: 'si'|'no'|'otro'|'todavia_no_lo_sabemos', custom?}, nunca wantsMenu: un wantsMenu AUSENTE en
+// una fila que YA EXISTÍA se trata como true (así era "Sí" antes: significaba exactamente "queremos que
+// elijan menú"). Una fila que no existe todavía (el evento nunca respondió esto) arranca en false — "Sí"
+// nuevo nunca preselecciona nada. Ver mismo criterio en supabase/functions/event-rsvp/index.ts.
 // ---------------------------------------------------------------------
-export type MenuInvitacionChoice = 'si' | 'no' | 'otro' | 'todavia_no_lo_sabemos'
-export interface MenuInvitacionAnswer {
-  choice: MenuInvitacionChoice
-  custom?: CustomResolution
+export type InvitadosPreguntasChoice = 'si' | 'no' | 'todavia_no_lo_sabemos'
+export interface InvitadosPreguntasAnswer {
+  choice: InvitadosPreguntasChoice
+  wantsMenu?: boolean
 }
 
-export function desiredForMenuInvitacion(answer: MenuInvitacionAnswer): DesiredPairGeneration {
-  if (answer.choice === 'si' || answer.choice === 'no' || answer.choice === 'todavia_no_lo_sabemos') return NONE
-  return fromCustom(answer.custom, (label) => `Menú en la invitación: ${label}`, (label) => `Menú en la invitación: ${label}`)
+// Para UI/escritura: el valor EFECTIVO de wantsMenu, resolviendo la compatibilidad descrita arriba.
+// `existing` es la fila tal cual venga de event_decisions (o undefined si el evento nunca respondió esto).
+// Solo una fila YA GUARDADA con choice === 'si' puede implicar wantsMenu=true por ausencia — un "No"/
+// "Todavía no lo sabemos" previo, o la ausencia total de fila, nunca preselecciona el menú.
+export function effectiveWantsMenu(existing: InvitadosPreguntasAnswer | undefined): boolean {
+  if (!existing || existing.choice !== 'si') return false
+  return existing.wantsMenu ?? true
+}
+
+export function desiredForInvitadosPreguntas(_answer: InvitadosPreguntasAnswer): DesiredPairGeneration {
+  return NONE
 }
 
 // ---------------------------------------------------------------------
@@ -166,7 +184,12 @@ function findDecision(decisions: EventDecision[], questionKey: string): EventDec
 export function listGuestsBlockQuestions(decisions: EventDecision[], momentsCount: number): GuestsQuestionInfo[] {
   const result: GuestsQuestionInfo[] = []
   result.push({ questionKey: GUESTS_LISTA_QUESTION_KEY, blockKey: 'invitados', label: 'Lista de invitados', status: decisionStatus(findDecision(decisions, GUESTS_LISTA_QUESTION_KEY)) })
-  result.push({ questionKey: GUESTS_MENU_QUESTION_KEY, blockKey: 'invitados', label: '¿Elegirán menú en la invitación?', status: decisionStatus(findDecision(decisions, GUESTS_MENU_QUESTION_KEY)) })
+  result.push({
+    questionKey: GUESTS_PREGUNTAS_QUESTION_KEY,
+    blockKey: 'invitados',
+    label: '¿Preguntas para los invitados en la invitación?',
+    status: decisionStatus(findDecision(decisions, GUESTS_PREGUNTAS_QUESTION_KEY)),
+  })
 
   if (momentsCount >= 2) {
     result.push({

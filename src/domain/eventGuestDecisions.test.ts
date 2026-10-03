@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { isTaskUntouched, reconcilePairGeneration } from '@/domain/eventPairDecisions'
 import {
   desiredForInvitacion,
+  desiredForInvitadosPreguntas,
   desiredForListaInvitados,
-  desiredForMenuInvitacion,
   desiredForNinosNecesidadItem,
+  effectiveWantsMenu,
   GUESTS_INVITACION_QUESTION_KEY,
   GUESTS_LISTA_QUESTION_KEY,
-  GUESTS_MENU_QUESTION_KEY,
+  GUESTS_PREGUNTAS_QUESTION_KEY,
   GUESTS_MOMENTOS_QUESTION_KEY,
   GUESTS_NINOS_NECESIDADES_QUESTION_KEY,
   GUESTS_NINOS_QUESTION_KEY,
@@ -108,25 +109,36 @@ describe('Lista de invitados', () => {
   })
 })
 
-describe('Menú en la invitación — nunca genera Preparativo/Presupuesto (la definición real vive en Comida y celebración, fase futura)', () => {
+describe('"¿Preguntas para los invitados en la invitación?" — nunca genera Preparativo/Presupuesto/Proveedor, sea cual sea la respuesta', () => {
   it('"sí" no genera ninguna acción', () => {
-    expect(desiredForMenuInvitacion({ choice: 'si' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForInvitadosPreguntas({ choice: 'si', wantsMenu: true })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
   })
 
   it('"no" no genera ninguna acción', () => {
-    expect(desiredForMenuInvitacion({ choice: 'no' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForInvitadosPreguntas({ choice: 'no' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
   })
 
   it('"todavía no lo sabemos" no genera ninguna acción (sigue siendo una respuesta válida, no la ausencia de fila)', () => {
-    expect(desiredForMenuInvitacion({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForInvitadosPreguntas({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+  })
+})
+
+describe('effectiveWantsMenu — compatibilidad con la decisión antigua de menú (misma clave, antes de este ajuste)', () => {
+  it('sin ninguna fila guardada: false (un "Sí" nuevo nunca preselecciona el menú)', () => {
+    expect(effectiveWantsMenu(undefined)).toBe(false)
   })
 
-  it('"otro" sigue las reglas normales de CustomResolution (reutiliza fromCustom, no se reimplementa)', () => {
-    const withCost = desiredForMenuInvitacion({ choice: 'otro', custom: { label: 'Preguntar al catering', action: 'otro', hasCost: 'si' } })
-    expect(withCost.taskTitle).toBe('Menú en la invitación: Preguntar al catering')
-    expect(withCost.budgetCategory).toBe('Menú en la invitación: Preguntar al catering')
-    const withoutCost = desiredForMenuInvitacion({ choice: 'otro', custom: { label: 'Preguntar al catering', action: 'otro', hasCost: 'no' } })
-    expect(withoutCost.budgetCategory).toBeNull()
+  it('fila antigua real {choice: "si"} SIN wantsMenu (así se guardaba antes): true — "Sí" significaba exactamente "queremos que elijan menú"', () => {
+    expect(effectiveWantsMenu({ choice: 'si' })).toBe(true)
+  })
+
+  it('fila nueva {choice: "si", wantsMenu: false} (el usuario quiso preguntar otra cosa, no el menú): false, el campo explícito manda', () => {
+    expect(effectiveWantsMenu({ choice: 'si', wantsMenu: false })).toBe(false)
+  })
+
+  it('fila con choice "no"/"todavia_no_lo_sabemos" nunca implica wantsMenu, aunque exista la fila', () => {
+    expect(effectiveWantsMenu({ choice: 'no' })).toBe(false)
+    expect(effectiveWantsMenu({ choice: 'todavia_no_lo_sabemos' })).toBe(false)
   })
 })
 
@@ -203,11 +215,11 @@ describe('listGuestsBlockQuestions / summarizeGuestsBlock — revelado progresiv
     expect(conSi.some((q) => q.questionKey === GUESTS_NINOS_NECESIDADES_QUESTION_KEY)).toBe(true)
   })
 
-  it('siempre incluye Lista, Menú en la invitación e Invitación, independientemente de momentos/niños', () => {
+  it('siempre incluye Lista, Preguntas para los invitados e Invitación, independientemente de momentos/niños', () => {
     const questions = listGuestsBlockQuestions([], 0)
     expect(questions.map((q) => q.questionKey)).toEqual([
       GUESTS_LISTA_QUESTION_KEY,
-      GUESTS_MENU_QUESTION_KEY,
+      GUESTS_PREGUNTAS_QUESTION_KEY,
       GUESTS_NINOS_QUESTION_KEY,
       GUESTS_INVITACION_QUESTION_KEY,
     ])
@@ -223,7 +235,7 @@ describe('listGuestsBlockQuestions / summarizeGuestsBlock — revelado progresiv
   it('los contadores en cero se omiten del resumen', () => {
     const decisions = [
       makeDecision({ questionKey: GUESTS_LISTA_QUESTION_KEY, answer: { choice: 'ya_la_tenemos' } }),
-      makeDecision({ questionKey: GUESTS_MENU_QUESTION_KEY, answer: { choice: 'no' } }),
+      makeDecision({ questionKey: GUESTS_PREGUNTAS_QUESTION_KEY, answer: { choice: 'no' } }),
       makeDecision({ questionKey: GUESTS_NINOS_QUESTION_KEY, answer: { choice: 'no' } }),
       makeDecision({ questionKey: GUESTS_INVITACION_QUESTION_KEY, answer: { choice: 'con_pepa' } }),
     ]

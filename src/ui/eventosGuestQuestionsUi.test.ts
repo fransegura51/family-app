@@ -77,4 +77,12 @@ describe('GuestQuestionForm — pregunta libre + opciones editables + scope + ob
     expect(form).toContain('const question = await addEventGuestQuestion(event.id, { prompt: prompt.trim(), scope, required })')
     expect(form).toContain('await addEventGuestQuestionOption(question.id, event.id, label)')
   })
+
+  it('acepta initialPrompt/initialOptions opcionales (petición real: "🚗 Transporte" propone una pregunta ya escrita, editable del todo antes de guardar) — "+ Añadir pregunta a los invitados"/"✏️ Otra pregunta" lo abren en blanco omitiéndolos', () => {
+    const form = slice(SRC, 'function GuestQuestionForm(', '\nfunction GuestQuestionsBlock(')
+    expect(form).toContain('initialPrompt?: string')
+    expect(form).toContain('initialOptions?: string[]')
+    expect(form).toContain("const [prompt, setPrompt] = useState(initialPrompt ?? '')")
+    expect(form).toContain('const [optionList, setOptionList] = useState<string[]>(initialOptions ?? [])')
+  })
 })

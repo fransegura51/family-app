@@ -402,6 +402,10 @@ Deno.serve(async (req) => {
       .order("sort_order", { ascending: true })
     const members = (membersData ?? []) as GuestMemberRow[]
 
+    // Ajuste de UX (tras validación manual) — esta misma clave ("invitados.menu_invitacion") ahora envuelve
+    // la pregunta genérica "¿Preguntas para los invitados?"; "sí" por sí solo ya no implica menú, salvo en
+    // filas GUARDADAS ANTES de este ajuste (wantsMenu ausente) — exactamente lo que significaba entonces
+    // "sí" sin ambigüedad. Mismo criterio que effectiveWantsMenu en src/domain/eventGuestDecisions.ts.
     const { data: menuDecision } = await admin
       .from("event_decisions")
       .select("answer")
@@ -409,7 +413,8 @@ Deno.serve(async (req) => {
       .eq("block_key", "invitados")
       .eq("question_key", "invitados.menu_invitacion")
       .maybeSingle()
-    const menuChoiceActive = (menuDecision?.answer as { choice?: string } | null)?.choice === "si"
+    const menuAnswer = menuDecision?.answer as { choice?: string; wantsMenu?: boolean } | null
+    const menuChoiceActive = menuAnswer?.choice === "si" && menuAnswer?.wantsMenu !== false
 
     let menuOptions: MenuOptionRow[] = []
     if (menuChoiceActive && members.length > 0) {

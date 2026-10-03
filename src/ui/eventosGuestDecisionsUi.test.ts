@@ -32,34 +32,33 @@ describe('GuestsDecisionsBlock — montaje y reutilización del motor de "La par
     expect(block).toContain('<BudgetAmountPromptModal')
   })
 
-  it('reutiliza CustomAwareQuestion para las 5 preguntas de primer nivel (incluida Menú en la invitación) — nunca un componente de pregunta nuevo', () => {
+  it('reutiliza CustomAwareQuestion para las 4 preguntas de primer nivel que siguen usándolo (Lista/Momentos/Niños/Invitación) — "¿Preguntas para los invitados?" usa su propio componente, nunca CustomAwareQuestion', () => {
     const block = slice(SRC, 'function GuestsDecisionsBlock(', '\nfunction NinosNecesidadesQuestion(')
-    expect([...block.matchAll(/<CustomAwareQuestion/g)]).toHaveLength(5)
+    expect([...block.matchAll(/<CustomAwareQuestion/g)]).toHaveLength(4)
+    expect(block).toContain('<InvitadosPreguntasQuestion')
   })
 
-  it('"¿Queréis que los invitados elijan su menú en la invitación?" es una pregunta temprana (su <CustomAwareQuestion> va justo después del de Lista de invitados, antes que el de Niños), sin preselección y reutilizando saveQuestion/desiredForMenuInvitacion', () => {
+  it('"¿Queréis incluir alguna pregunta para los invitados en la invitación?" es una pregunta temprana (justo después de Lista de invitados, antes que Niños) — ajuste de UX sobre la misma clave que antes solo preguntaba por el menú', () => {
     const block = slice(SRC, 'function GuestsDecisionsBlock(', '\nfunction NinosNecesidadesQuestion(')
-    expect(block).toContain('¿Queréis que los invitados elijan su menú en la invitación?')
-    expect(block).toContain('questionKey={GUESTS_MENU_QUESTION_KEY}')
-    expect(block).toContain('desiredForMenuInvitacion(answer as MenuInvitacionAnswer)')
-    // Los <CustomAwareQuestion> de JSX son el orden real de pantalla — a diferencia del simple nombre de la
-    // constante, que también aparece antes en declaraciones de variables (p.ej. "const ninosDecision =
-    // findDecision(GUESTS_NINOS_QUESTION_KEY)", antes del propio return) y daría un falso orden.
+    expect(block).toContain('<InvitadosPreguntasQuestion')
+    expect(block).toContain('existing={findDecision(GUESTS_PREGUNTAS_QUESTION_KEY)?.answer as unknown as InvitadosPreguntasAnswer | undefined}')
+    expect(block).toContain('desiredForInvitadosPreguntas(answer)')
+    expect(block).not.toContain('¿Queréis que los invitados elijan su menú en la invitación?')
     const listaIndex = block.indexOf('questionKey={GUESTS_LISTA_QUESTION_KEY}')
-    const menuIndex = block.indexOf('questionKey={GUESTS_MENU_QUESTION_KEY}')
+    const preguntasIndex = block.indexOf('<InvitadosPreguntasQuestion')
     const ninosIndex = block.indexOf('questionKey={GUESTS_NINOS_QUESTION_KEY}')
-    expect(listaIndex).toBeLessThan(menuIndex)
-    expect(menuIndex).toBeLessThan(ninosIndex)
+    expect(listaIndex).toBeLessThan(preguntasIndex)
+    expect(preguntasIndex).toBeLessThan(ninosIndex)
   })
 
-  it('MENU_INVITACION_OPTIONS no preselecciona ningún valor (Sí/No/Todavía no lo sabemos/Otro)', () => {
-    const start = SRC.indexOf('const MENU_INVITACION_OPTIONS')
+  it('INVITADOS_PREGUNTAS_OPTIONS tiene exactamente Sí/No/Todavía no lo sabemos, sin preselección y sin "Otro" (si responde Sí, ya puede crear cualquier pregunta personalizada)', () => {
+    const start = SRC.indexOf('const INVITADOS_PREGUNTAS_OPTIONS')
     const arrayStart = SRC.indexOf('= [', start)
     const optionsBlock = SRC.slice(arrayStart, SRC.indexOf(']', arrayStart + 3))
     expect(optionsBlock).toContain("value: 'si'")
     expect(optionsBlock).toContain("value: 'no'")
     expect(optionsBlock).toContain("value: 'todavia_no_lo_sabemos'")
-    expect(optionsBlock).toContain("value: 'otro'")
+    expect(optionsBlock).not.toContain("value: 'otro'")
   })
 
   it('la pregunta de Momentos solo se pinta con 2+ momentos reales (momentsCount >= 2) — nunca cuenta los sintéticos de ceremonia/celebración heredada', () => {
@@ -135,7 +134,7 @@ describe('RSVP público — Parte B (elección de menú por persona) conecta por
   it('RsvpScreen.tsx sigue sin importar el módulo de decisiones de invitados — la conexión con "¿elegirán menú?" la resuelve event-rsvp (service role), no el cliente público', () => {
     expect(RSVP_SRC).not.toContain('eventGuestDecisions')
     expect(RSVP_SRC).not.toContain('GUESTS_LISTA_QUESTION_KEY')
-    expect(RSVP_SRC).not.toContain('GUESTS_MENU_QUESTION_KEY')
+    expect(RSVP_SRC).not.toContain('GUESTS_PREGUNTAS_QUESTION_KEY')
   })
 
   it('el flujo de envío del RSVP (status/adultos/niños/nota) sigue intacto para invitados sin desglose de personas', () => {
@@ -156,5 +155,39 @@ describe('RSVP público — Parte B (elección de menú por persona) conecta por
     const form = slice(RSVP_SRC, 'function RsvpForm(', '\nfunction OpenRsvpForm(')
     expect(form).toContain('<input type="number" min={0} max={50} value={adults} onChange={(e) => setAdults(e.target.value)} />')
     expect(form).toContain('<input type="number" min={0} max={50} value={children} onChange={(e) => setChildren(e.target.value)} />')
+  })
+})
+
+describe('InvitadosPreguntasQuestion — descubrimiento del sistema genérico, nunca un segundo motor de preguntas', () => {
+  it('"Sí" revela exactamente tres accesos: Elección de menú, Transporte, Otra pregunta — ni mutuamente excluyentes ni preseleccionados', () => {
+    const fn = slice(SRC, 'function InvitadosPreguntasQuestion(', '\nfunction GuestsDecisionsBlock(')
+    expect(fn).toContain("existing?.choice === 'si' && (")
+    expect(fn).toContain('🍽️ Elección de menú')
+    expect(fn).toContain('🚗 Transporte')
+    expect(fn).toContain('✏️ Otra pregunta')
+  })
+
+  it('"🍽️ Elección de menú" es un simple interruptor (wantsMenu) — nunca crea una fila en event_guest_questions', () => {
+    const fn = slice(SRC, 'function InvitadosPreguntasQuestion(', '\nfunction GuestsDecisionsBlock(')
+    expect(fn).toContain("onSave({ choice: 'si', wantsMenu: !wantsMenu })")
+    expect(fn).not.toContain('addEventGuestQuestion')
+  })
+
+  it('"🚗 Transporte" y "✏️ Otra pregunta" abren el MISMO <GuestQuestionForm> ya existente — nunca un formulario nuevo', () => {
+    const fn = slice(SRC, 'function InvitadosPreguntasQuestion(', '\nfunction GuestsDecisionsBlock(')
+    expect(fn).toContain('<GuestQuestionForm')
+    expect(fn).toContain("initialPrompt={openForm === 'transporte' ? '¿Necesitáis transporte?' : undefined}")
+    expect(fn).toContain("initialOptions={openForm === 'transporte' ? ['Sí', 'No'] : undefined}")
+  })
+
+  it('al guardar una pregunta desde aquí, se avisa con un toast y se cierra el formulario — pero no se pinta ninguna lista propia (una sola fuente de verdad: 📋 Preguntas a los invitados)', () => {
+    const fn = slice(SRC, 'function InvitadosPreguntasQuestion(', '\nfunction GuestsDecisionsBlock(')
+    expect(fn).toContain('onQuestionCreated()')
+    expect(fn).not.toContain('listEventGuestQuestions')
+  })
+
+  it('effectiveWantsMenu decide el estado del interruptor — nunca una preselección local inventada', () => {
+    const fn = slice(SRC, 'function InvitadosPreguntasQuestion(', '\nfunction GuestsDecisionsBlock(')
+    expect(fn).toContain('const wantsMenu = effectiveWantsMenu(existing)')
   })
 })

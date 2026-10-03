@@ -21,7 +21,11 @@ describe('event-rsvp — GET (flujo con token): members + menuOptions en la resp
     expect(SRC).toContain('.eq("event_id", ev.id)')
     expect(SRC).toContain('.eq("block_key", "invitados")')
     expect(SRC).toContain('.eq("question_key", "invitados.menu_invitacion")')
-    expect(SRC).toContain('menuDecision?.answer as { choice?: string } | null)?.choice === "si"')
+  })
+
+  it('ajuste de UX — "sí" sin más ya no implica menú: solo cuando wantsMenu no es explícitamente false (compatibilidad con filas guardadas ANTES de este ajuste, que nunca tenían wantsMenu y significaban "sí" = menú sin ambigüedad)', () => {
+    expect(SRC).toContain('const menuAnswer = menuDecision?.answer as { choice?: string; wantsMenu?: boolean } | null')
+    expect(SRC).toContain('const menuChoiceActive = menuAnswer?.choice === "si" && menuAnswer?.wantsMenu !== false')
   })
 
   it('solo pide event_menu_options cuando la decisión está en "sí" Y hay personas desglosadas — nunca inventa opciones ni bloquea sin ellas', () => {

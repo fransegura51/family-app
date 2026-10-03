@@ -204,13 +204,14 @@ import {
 } from '@/domain/eventPairDecisions'
 import {
   desiredForInvitacion,
+  desiredForInvitadosPreguntas,
   desiredForListaInvitados,
-  desiredForMenuInvitacion,
   desiredForNinosNecesidadItem,
+  effectiveWantsMenu,
   guestsNinosNecesidadItemKey,
   GUESTS_INVITACION_QUESTION_KEY,
   GUESTS_LISTA_QUESTION_KEY,
-  GUESTS_MENU_QUESTION_KEY,
+  GUESTS_PREGUNTAS_QUESTION_KEY,
   GUESTS_MOMENTOS_QUESTION_KEY,
   GUESTS_NINOS_NECESIDADES_QUESTION_KEY,
   GUESTS_NINOS_QUESTION_KEY,
@@ -219,10 +220,10 @@ import {
   summarizeGuestsBlock,
   type InvitacionAnswer,
   type InvitacionChoice,
+  type InvitadosPreguntasAnswer,
+  type InvitadosPreguntasChoice,
   type ListaInvitadosAnswer,
   type ListaInvitadosChoice,
-  type MenuInvitacionAnswer,
-  type MenuInvitacionChoice,
   type MomentosAnswer,
   type MomentosChoice,
   type NinosAnswer,
@@ -3773,11 +3774,10 @@ const LISTA_OPTIONS: { value: ListaInvitadosChoice; label: string }[] = [
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
   { value: 'otro', label: 'Otro' },
 ]
-const MENU_INVITACION_OPTIONS: { value: MenuInvitacionChoice; label: string }[] = [
+const INVITADOS_PREGUNTAS_OPTIONS: { value: InvitadosPreguntasChoice; label: string }[] = [
   { value: 'si', label: 'Sí' },
   { value: 'no', label: 'No' },
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
-  { value: 'otro', label: 'Otro' },
 ]
 const MOMENTOS_OPTIONS: { value: MomentosChoice; label: string }[] = [
   { value: 'todos_a_todos', label: 'Sí, todos a todos' },
@@ -3802,6 +3802,84 @@ const NINOS_NECESIDADES_CHOICE_OPTIONS: { value: NinosNecesidadesAnswer['choice'
   { value: 'no_necesitamos', label: 'No necesitamos nada especial' },
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
 ]
+
+// Ajuste de UX (tras validación manual) — puerta de DESCUBRIMIENTO del sistema genérico "📋 Preguntas a
+// los invitados" (GuestQuestionForm/event_guest_questions, ya implementado): "Sí" revela tres accesos, ni
+// mutuamente excluyentes ni un wizard. "🍽️ Elección de menú" es un simple interruptor conceptual
+// (wantsMenu) — nunca crea fila en event_guest_questions, las opciones reales siguen siendo de una fase
+// futura todavía sin construir. "🚗 Transporte"/"✏️ Otra pregunta" abren el MISMO GuestQuestionForm que ya
+// usa "+ Añadir pregunta a los invitados" — nunca un segundo formulario — así que lo que se crea aquí
+// aparece en la misma lista de siempre, editable igual.
+function InvitadosPreguntasQuestion({
+  event,
+  existing,
+  saving,
+  onSave,
+  onQuestionCreated,
+}: {
+  event: FamilyEvent
+  existing: InvitadosPreguntasAnswer | undefined
+  saving: boolean
+  onSave: (answer: InvitadosPreguntasAnswer) => void
+  onQuestionCreated: () => void
+}) {
+  const [openForm, setOpenForm] = useState<'transporte' | 'otra' | null>(null)
+  const wantsMenu = effectiveWantsMenu(existing)
+
+  function selectChoice(choice: InvitadosPreguntasChoice) {
+    setOpenForm(null)
+    onSave(choice === 'si' ? { choice, wantsMenu } : { choice })
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Queréis incluir alguna pregunta para los invitados en la invitación?
+      </div>
+      <ChoiceRow options={INVITADOS_PREGUNTAS_OPTIONS} value={existing?.choice} disabled={saving} onSelect={selectChoice} />
+      {existing?.choice === 'si' && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Qué queréis preguntar?
+          </div>
+          <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+            <button
+              type="button"
+              className={'chip' + (wantsMenu ? ' chip-active' : '')}
+              disabled={saving}
+              onClick={() => onSave({ choice: 'si', wantsMenu: !wantsMenu })}
+            >
+              🍽️ Elección de menú
+            </button>
+            <button type="button" className="chip" disabled={saving} onClick={() => setOpenForm('transporte')}>
+              🚗 Transporte
+            </button>
+            <button type="button" className="chip" disabled={saving} onClick={() => setOpenForm('otra')}>
+              ✏️ Otra pregunta
+            </button>
+          </div>
+          {wantsMenu && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Las opciones reales de menú (Carne/Pescado/Vegetariano...) se definirán más adelante, en la futura sección de comida del evento.
+            </p>
+          )}
+          {openForm && (
+            <GuestQuestionForm
+              event={event}
+              initialPrompt={openForm === 'transporte' ? '¿Necesitáis transporte?' : undefined}
+              initialOptions={openForm === 'transporte' ? ['Sí', 'No'] : undefined}
+              onCancel={() => setOpenForm(null)}
+              onSaved={() => {
+                setOpenForm(null)
+                onQuestionCreated()
+              }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function GuestsDecisionsBlock({
   event,
@@ -3998,14 +4076,14 @@ function GuestsDecisionsBlock({
         savingKey={savingKey}
         onSave={(answer) => saveQuestion(GUESTS_LISTA_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForListaInvitados(answer as ListaInvitadosAnswer))}
       />
-      <CustomAwareQuestion
+      <InvitadosPreguntasQuestion
         event={event}
-        questionLabel="¿Queréis que los invitados elijan su menú en la invitación?"
-        options={MENU_INVITACION_OPTIONS}
-        questionKey={GUESTS_MENU_QUESTION_KEY}
-        decision={findDecision(GUESTS_MENU_QUESTION_KEY)}
-        savingKey={savingKey}
-        onSave={(answer) => saveQuestion(GUESTS_MENU_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForMenuInvitacion(answer as MenuInvitacionAnswer))}
+        existing={findDecision(GUESTS_PREGUNTAS_QUESTION_KEY)?.answer as unknown as InvitadosPreguntasAnswer | undefined}
+        saving={savingKey === GUESTS_PREGUNTAS_QUESTION_KEY}
+        onSave={(answer) =>
+          saveQuestion(GUESTS_PREGUNTAS_QUESTION_KEY, answer as unknown as Record<string, unknown>, false, desiredForInvitadosPreguntas(answer))
+        }
+        onQuestionCreated={() => showToast('✓ Pregunta guardada')}
       />
       {momentsCount >= 2 && (
         <CustomAwareQuestion
@@ -5174,12 +5252,28 @@ const GUEST_QUESTION_SCOPE_OPTIONS: { value: GuestQuestionScope; label: string }
 // (event_menu_options, ya implementada): la familia define sus propias preguntas de opción múltiple
 // ("¿Qué preferís de postre?"), cada una respondida por persona o por invitación entera. Solo CRUD de
 // preguntas/opciones desde aquí — las respuestas las escribe únicamente el RSVP público.
-function GuestQuestionForm({ event, onCancel, onSaved }: { event: FamilyEvent; onCancel: () => void; onSaved: () => void }) {
-  const [prompt, setPrompt] = useState('')
+function GuestQuestionForm({
+  event,
+  initialPrompt,
+  initialOptions,
+  onCancel,
+  onSaved,
+}: {
+  event: FamilyEvent
+  // Petición real (ajuste UX de Invitados e invitaciones): "🚗 Transporte" abre este mismo formulario con
+  // una propuesta ya escrita (pregunta + opciones) — editable del todo antes de guardar, nunca impuesta.
+  // "✏️ Otra pregunta" (y el "+ Añadir pregunta a los invitados" de siempre) lo abre en blanco, omitiendo
+  // ambas props.
+  initialPrompt?: string
+  initialOptions?: string[]
+  onCancel: () => void
+  onSaved: () => void
+}) {
+  const [prompt, setPrompt] = useState(initialPrompt ?? '')
   const [scope, setScope] = useState<GuestQuestionScope>('persona')
   const [required, setRequired] = useState(false)
   const [optionInput, setOptionInput] = useState('')
-  const [optionList, setOptionList] = useState<string[]>([])
+  const [optionList, setOptionList] = useState<string[]>(initialOptions ?? [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

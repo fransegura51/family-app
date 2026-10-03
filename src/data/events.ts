@@ -65,7 +65,7 @@ async function currentFamilyId(): Promise<string> {
 }
 
 const EVENT_SELECT =
-  'id, family_id, type, subtype, title, date_status, event_date, event_time, venue_label, venue_type, included_services, venue_latitude, venue_longitude, ceremony_location_label, ceremony_location_latitude, ceremony_location_longitude, ceremony_time, celebration_location_label, celebration_location_latitude, celebration_location_longitude, theme, details, enabled_modules, status, tag_id, calendar_event_id, rsvp_deadline, rsvp_deadline_calendar_event_id, open_rsvp_token, created_by, created_at, updated_at'
+  'id, family_id, type, subtype, title, date_status, event_date, event_time, venue_label, venue_type, included_services, venue_latitude, venue_longitude, venue_address, venue_place_id, ceremony_location_label, ceremony_location_latitude, ceremony_location_longitude, ceremony_time, celebration_location_label, celebration_location_latitude, celebration_location_longitude, theme, details, enabled_modules, status, tag_id, calendar_event_id, rsvp_deadline, rsvp_deadline_calendar_event_id, open_rsvp_token, created_by, created_at, updated_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapEvent(r: any): FamilyEvent {
@@ -83,6 +83,8 @@ function mapEvent(r: any): FamilyEvent {
     includedServices: r.included_services,
     venueLatitude: r.venue_latitude,
     venueLongitude: r.venue_longitude,
+    venueAddress: r.venue_address,
+    venuePlaceId: r.venue_place_id,
     ceremonyLocationLabel: r.ceremony_location_label,
     ceremonyLocationLatitude: r.ceremony_location_latitude,
     ceremonyLocationLongitude: r.ceremony_location_longitude,
@@ -266,6 +268,8 @@ export async function updateEvent(
     includedServices: EventServiceId[] | null
     venueLatitude: number | null
     venueLongitude: number | null
+    venueAddress: string | null
+    venuePlaceId: string | null
     theme: string | null
     details: Record<string, unknown>
     enabledModules: EventModuleKey[]
@@ -289,6 +293,8 @@ export async function updateEvent(
   if (patch.includedServices !== undefined) update.included_services = patch.includedServices
   if (patch.venueLatitude !== undefined) update.venue_latitude = patch.venueLatitude
   if (patch.venueLongitude !== undefined) update.venue_longitude = patch.venueLongitude
+  if (patch.venueAddress !== undefined) update.venue_address = patch.venueAddress
+  if (patch.venuePlaceId !== undefined) update.venue_place_id = patch.venuePlaceId
   if (patch.theme !== undefined) update.theme = patch.theme
   if (patch.details !== undefined) update.details = patch.details
   if (patch.enabledModules !== undefined) update.enabled_modules = patch.enabledModules

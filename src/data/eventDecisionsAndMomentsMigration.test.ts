@@ -228,11 +228,13 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // menú a event_guest_members — cubierto a fondo en eventRsvpMenuChoiceFunction.test.ts y
   // eventGuestMembersMigration.test.ts, no aquí. 0190 (event_guest_questions, "Preguntas a los
   // invitados") también toca Eventos a propósito: añade event_guest_questions/_options/_answers —
-  // cubierto en eventGuestQuestionsMigration.test.ts, no aquí.
-  it('0190 (event_guest_questions) es la última migración del repositorio', () => {
+  // cubierto en eventGuestQuestionsMigration.test.ts, no aquí. 0191 (venue_address/venue_place_id,
+  // corrección real: la dirección postal desaparecía al reabrir "Gestionar evento") toca `events` a
+  // propósito también — cubierto en eventVenueAddressMigration.test.ts, no aquí.
+  it('0191 (events.venue_address/venue_place_id) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(190)
+    expect(Math.max(...numbers)).toBe(191)
   })
 })

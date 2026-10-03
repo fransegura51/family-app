@@ -648,11 +648,17 @@ export interface FamilyEvent {
   includedServices: EventServiceId[] | null
   // "Lugar" (venueLabel) es lo que se ve en la invitación — puede ser
   // algo informal como "en mi casa". Estas coordenadas son la
-  // ubicación real elegida con el buscador (Nominatim), para el
+  // ubicación real elegida con el buscador (Google Maps), para el
   // enlace de mapa que reciben los invitados — independiente del
   // texto de Lugar, que se queda tal cual lo escribas.
   venueLatitude: number | null
   venueLongitude: number | null
+  // Corrección real (bug observado: la dirección postal legible desaparecía al volver a abrir "Gestionar
+  // evento", y el enlace compartido caía a coordenadas en bruto) — dirección formateada y place_id del
+  // sitio elegido con el buscador, por separado de venueLabel (igual que ya hace event_moments desde la
+  // migración 0177). Null en eventos antiguos, que siguen funcionando solo con venueLatitude/venueLongitude.
+  venueAddress: string | null
+  venuePlaceId: string | null
   ceremonyLocationLabel: string | null
   ceremonyLocationLatitude: number | null
   ceremonyLocationLongitude: number | null

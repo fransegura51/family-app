@@ -249,11 +249,13 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // src/data/eventRsvpMenuChoiceFunction.test.ts y en eventGuestMembersMigration.test.ts, no aquí. 0190
     // (event_guest_questions, "Preguntas a los invitados") solo añade tablas NUEVAS que REFERENCIAN
     // event_guests/event_guest_members (igual que event_guest_moments en 0176) — nunca altera esas dos
-    // tablas ni su RLS; cubierto en eventGuestQuestionsMigration.test.ts, no aquí.
+    // tablas ni su RLS; cubierto en eventGuestQuestionsMigration.test.ts, no aquí. 0191
+    // (venue_address/venue_place_id) añade dos columnas a `events` — ni toca event_guests/
+    // event_guest_members/event_tables ni su RLS; cubierto en eventVenueAddressMigration.test.ts, no aquí.
     const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(190)
+    expect(Math.max(...numbers)).toBe(191)
   })
 })

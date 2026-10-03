@@ -494,9 +494,18 @@ export function eventLocationLines(
 // Cierre de Fase 2 (Google Maps) — placeId opcional, tercer parámetro aditivo: cuando existe es el
 // identificador más preciso que puede dar Google (mejor que unas coordenadas, que pueden quedarse
 // imprecisas tras arrastrar el marcador), así que manda sobre coords/texto cuando está disponible.
-// Ninguna llamada existente pasa este parámetro, así que su comportamiento no cambia.
-export function buildMapsUrl(label: string, coords?: { latitude: number; longitude: number } | null, placeId?: string | null): string {
+//
+// Corrección real (bug observado: una vivienda particular sin place_id caía siempre a
+// `?q=LAT,LNG`, que Google suele presentar como coordenadas en bruto/Plus Code en vez de una dirección
+// legible) — `address` es un 4º parámetro opcional y aditivo: una dirección postal formateada real
+// (típicamente obtenida geocodificando en el sentido inverso esas mismas coordenadas, nunca inventada),
+// que ahora se usa como query ANTES que las coordenadas en bruto cuando no hay place_id. Esto no pierde
+// precisión real: la dirección ya salió de geocodificar esas coordenadas, así que Google la vuelve a
+// resolver al mismo punto, solo que mostrando un destino legible en vez de un pin sin nombre. Ninguna
+// llamada existente pasaba este parámetro, así que su comportamiento no cambia salvo que se añada.
+export function buildMapsUrl(label: string, coords?: { latitude: number; longitude: number } | null, placeId?: string | null, address?: string | null): string {
   if (placeId) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}&query_place_id=${encodeURIComponent(placeId)}`
+  if (address) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
   if (coords) return `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`
 }
@@ -508,6 +517,8 @@ export function eventLocationMapLines(
     | 'venueLabel'
     | 'venueLatitude'
     | 'venueLongitude'
+    | 'venueAddress'
+    | 'venuePlaceId'
     | 'ceremonyLocationLabel'
     | 'ceremonyLocationLatitude'
     | 'ceremonyLocationLongitude'
@@ -531,7 +542,7 @@ export function eventLocationMapLines(
     }
   } else if (event.venueLabel) {
     const coords = event.venueLatitude != null && event.venueLongitude != null ? { latitude: event.venueLatitude, longitude: event.venueLongitude } : null
-    lines.push(`📍 Cómo llegar: ${buildMapsUrl(event.venueLabel, coords)}`)
+    lines.push(`📍 Cómo llegar: ${buildMapsUrl(event.venueLabel, coords, event.venuePlaceId, event.venueAddress)}`)
   }
   return lines
 }

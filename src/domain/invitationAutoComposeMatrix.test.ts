@@ -12,7 +12,7 @@ import type { FamilyEvent } from '@/domain/types'
 function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
   return {
     id: 'e1', familyId: 'f1', type: 'cumpleanos', subtype: null, title: 'Evento', dateStatus: 'confirmada',
-    eventDate: null, eventTime: null, venueLabel: null, venueType: null, includedServices: null, venueLatitude: null, venueLongitude: null,
+    eventDate: null, eventTime: null, venueLabel: null, venueType: null, includedServices: null, venueLatitude: null, venueLongitude: null, venueAddress: null, venuePlaceId: null,
     ceremonyLocationLabel: null, ceremonyLocationLatitude: null, ceremonyLocationLongitude: null, ceremonyTime: null,
     celebrationLocationLabel: null, celebrationLocationLatitude: null, celebrationLocationLongitude: null,
     theme: null, details: {}, enabledModules: [], status: 'planificacion', tagId: null, calendarEventId: null,

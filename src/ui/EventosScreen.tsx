@@ -1645,6 +1645,10 @@ function ManageEventModal({
   const [venueCoords, setVenueCoords] = useState(
     event.venueLatitude != null && event.venueLongitude != null ? { latitude: event.venueLatitude, longitude: event.venueLongitude } : null,
   )
+  // Corrección real (bug observado: la dirección postal legible desaparecía al volver a abrir "Gestionar
+  // evento") — dirección/place_id del sitio elegido, por separado de venueLabel/venueCoords.
+  const [venueAddress, setVenueAddress] = useState(event.venueAddress ?? null)
+  const [venuePlaceId, setVenuePlaceId] = useState(event.venuePlaceId ?? null)
   const [theme, setTheme] = useState(event.theme ?? '')
   const [rsvpDeadline, setRsvpDeadline] = useState(event.rsvpDeadline ?? '')
   const [savingInfo, setSavingInfo] = useState(false)
@@ -1706,6 +1710,8 @@ function ManageEventModal({
         venueLabel: venueLabel || null,
         venueLatitude: venueCoords?.latitude ?? null,
         venueLongitude: venueCoords?.longitude ?? null,
+        venueAddress: venueAddress,
+        venuePlaceId: venuePlaceId,
         theme: theme || null,
         rsvpDeadline: rsvpDeadline || null,
       })
@@ -1781,7 +1787,16 @@ function ManageEventModal({
                 Lugar (como se ve en la invitación)
                 <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} placeholder="Ej. en mi casa, Restaurante La Terraza…" />
               </label>
-              <EventLocationCoordsPicker coords={venueCoords} onCoordsChange={setVenueCoords} />
+              <EventLocationCoordsPicker
+                coords={venueCoords}
+                onCoordsChange={setVenueCoords}
+                initialAddress={venueAddress}
+                initialPlaceId={venuePlaceId}
+                onPlaceDetails={(details) => {
+                  setVenueAddress(details.address)
+                  setVenuePlaceId(details.placeId)
+                }}
+              />
             </>
           )}
           <label>
@@ -2205,13 +2220,22 @@ function EventLocationCoordsPicker({
   coords,
   onCoordsChange,
   onPlaceDetails,
+  initialAddress,
+  initialPlaceId,
 }: {
   coords: { latitude: number; longitude: number } | null
   onCoordsChange: (c: { latitude: number; longitude: number } | null) => void
   // Cierre de Fase 2 (Momentos/Google Maps) — opcional: nombre/dirección/place_id del sitio elegido, por
-  // separado. Nadie más lo pasa (Calendario, "Lugar" simple de Eventos), así que su comportamiento no
-  // cambia; solo Momentos lo usa para no perder el nombre real que Google ya daba y antes se descartaba.
+  // separado. Nadie más lo pasa (Calendario), así que su comportamiento no cambia; Momentos y el "Lugar"
+  // simple de Eventos (events.venue_address/venue_place_id) lo usan para no perder lo que Google ya daba.
   onPlaceDetails?: (details: { name: string | null; address: string | null; placeId: string | null }) => void
+  // Corrección real (bug observado: la dirección postal legible desaparecía al volver a abrir "Gestionar
+  // evento") — quien ya tenga una dirección/place_id guardados (events.venue_address/venue_place_id) los
+  // pasa aquí para reconstruir el resumen tal cual se guardó, en vez de arrancar siempre en null. Un
+  // evento antiguo sin estos campos (solo coords) sigue cayendo al fallback "Ubicación real guardada" de
+  // siempre — comportamiento idéntico al actual cuando se omiten estas props.
+  initialAddress?: string | null
+  initialPlaceId?: string | null
 }) {
   const [showMap, setShowMap] = useState(false)
   const [pickedLabel, setPickedLabel] = useState<string | null>(null)
@@ -2222,8 +2246,8 @@ function EventLocationCoordsPicker({
   // para que ESTE enlace y este resumen puedan usarlos — MomentForm sigue teniendo su propia copia
   // (locationAddress/locationPlaceId) para lo que de verdad se guarda, sin relación con esto.
   const [pickedName, setPickedName] = useState<string | null>(null)
-  const [pickedAddress, setPickedAddress] = useState<string | null>(null)
-  const [pickedPlaceId, setPickedPlaceId] = useState<string | null>(null)
+  const [pickedAddress, setPickedAddress] = useState<string | null>(initialAddress ?? null)
+  const [pickedPlaceId, setPickedPlaceId] = useState<string | null>(initialPlaceId ?? null)
 
   function handleConfirmMapLocation(result: { latitude: number; longitude: number; label: string | null; name: string | null; address: string | null; placeId: string | null }) {
     onCoordsChange({ latitude: result.latitude, longitude: result.longitude })
@@ -2241,6 +2265,9 @@ function EventLocationCoordsPicker({
     setPickedName(null)
     setPickedAddress(null)
     setPickedPlaceId(null)
+    // Quitar la ubicación también debe olvidar la dirección/place_id que quien use esta copia (p. ej.
+    // ManageEventModal) tenga guardados — si no, "Guardar" volvería a escribirlos aunque coords sea null.
+    onPlaceDetails?.({ name: null, address: null, placeId: null })
   }
 
   return (
@@ -2278,9 +2305,10 @@ function EventLocationCoordsPicker({
             {/* Petición real: "esa ubicación se puede abrir también en Google Maps?" — para comprobar que
                 el punto elegido es el correcto antes de guardar, no solo cuando lo reciben los invitados.
                 Prioridad real (buildMapsUrl): place_id (abre la ficha exacta del establecimiento) >
-                coordenadas (un punto marcado a mano, sin negocio asociado) > texto, nunca al revés. */}
+                dirección legible (misma precisión, mejor que coordenadas en bruto) > coordenadas (un
+                punto marcado a mano, sin dirección resuelta) > texto, nunca al revés. */}
             <a
-              href={buildMapsUrl(pickedAddress ?? pickedLabel ?? '', coords, pickedPlaceId)}
+              href={buildMapsUrl(pickedName ?? pickedLabel ?? '', coords, pickedPlaceId, pickedAddress)}
               target="_blank"
               rel="noopener noreferrer"
               className="link-button"

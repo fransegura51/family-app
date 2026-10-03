@@ -70,10 +70,26 @@ describe('EventLocationCoordsPicker — onPlaceDetails opcional, no rompe al "Lu
     expect(fn).toContain('onPlaceDetails?.({ name: result.name, address: result.address, placeId: result.placeId })')
   })
 
-  it('ManageEventModal (Lugar simple de un evento sencillo) no pasa onPlaceDetails — su comportamiento no cambia', () => {
+  // RETOQUE (corrección real: la dirección postal legible desaparecía al volver a abrir "Gestionar
+  // evento") — ManageEventModal (Lugar simple) SÍ pasa ahora onPlaceDetails, para guardar
+  // venueAddress/venuePlaceId junto a venue_label/coords — antes se descartaba por completo.
+  it('ManageEventModal (Lugar simple de un evento sencillo) pasa onPlaceDetails, guardando address/placeId en su propio estado', () => {
     const manageEventModal = slice(SCREEN_SRC, 'function ManageEventModal(', '\n// Petición real: "Compras" en la rejilla del dashboard')
-    const venuePickerCall = slice(manageEventModal, '<EventLocationCoordsPicker coords={venueCoords}', '/>')
-    expect(venuePickerCall).not.toContain('onPlaceDetails')
+    const venuePickerCall = slice(manageEventModal, '<EventLocationCoordsPicker', '/>')
+    expect(venuePickerCall).toContain('onPlaceDetails={(details) => {')
+    expect(venuePickerCall).toContain('setVenueAddress(details.address)')
+    expect(venuePickerCall).toContain('setVenuePlaceId(details.placeId)')
+    expect(venuePickerCall).toContain('initialAddress={venueAddress}')
+    expect(venuePickerCall).toContain('initialPlaceId={venuePlaceId}')
+  })
+
+  it('ManageEventModal inicializa venueAddress/venuePlaceId desde el evento guardado, y los incluye al guardar', () => {
+    const manageEventModal = slice(SCREEN_SRC, 'function ManageEventModal(', '\n// Petición real: "Compras" en la rejilla del dashboard')
+    expect(manageEventModal).toContain('const [venueAddress, setVenueAddress] = useState(event.venueAddress ?? null)')
+    expect(manageEventModal).toContain('const [venuePlaceId, setVenuePlaceId] = useState(event.venuePlaceId ?? null)')
+    const handleSaveInfo = slice(manageEventModal, 'async function handleSaveInfo(', '\n  async function handleSaveModules')
+    expect(handleSaveInfo).toContain('venueAddress: venueAddress,')
+    expect(handleSaveInfo).toContain('venuePlaceId: venuePlaceId,')
   })
 })
 
@@ -93,8 +109,11 @@ describe('EventLocationCoordsPicker — "Ver en Google Maps" (dentro del formula
     expect(confirmFn).toContain('onPlaceDetails?.({ name: result.name, address: result.address, placeId: result.placeId })')
   })
 
-  it('el enlace pasa pickedPlaceId como 3er argumento de buildMapsUrl (place_id manda sobre coordenadas, ver buildMapsUrl)', () => {
-    expect(fn).toContain('buildMapsUrl(pickedAddress ?? pickedLabel ?? \'\', coords, pickedPlaceId)')
+  // RETOQUE (corrección real: sin place_id, el enlace caía siempre a coordenadas en bruto aunque hubiera
+  // una dirección legible) — buildMapsUrl ahora recibe pickedAddress como 4º argumento explícito, con
+  // prioridad entre coordenadas y place_id (ver buildMapsUrl en domain/events.ts).
+  it('el enlace pasa pickedPlaceId como 3er argumento y pickedAddress como 4º de buildMapsUrl', () => {
+    expect(fn).toContain('buildMapsUrl(pickedName ?? pickedLabel ?? \'\', coords, pickedPlaceId, pickedAddress)')
   })
 
   it('Caso B (punto manual, sin place_id): pickedPlaceId se queda null — nunca se infiere por proximidad, nada en este componente llama a una búsqueda "nearby" para adivinarlo', () => {
@@ -108,6 +127,24 @@ describe('EventLocationCoordsPicker — "Ver en Google Maps" (dentro del formula
     expect(clearFn).toContain('setPickedName(null)')
     expect(clearFn).toContain('setPickedAddress(null)')
     expect(clearFn).toContain('setPickedPlaceId(null)')
+  })
+
+  // RETOQUE (bug detectado al implementar la persistencia): Quitar ya limpiaba su PROPIA copia, pero
+  // nunca avisaba a quien la usa desde fuera (ManageEventModal/MomentForm) — "Guardar" después de Quitar
+  // habría vuelto a escribir la address/placeId antigua aunque coords ya fuera null.
+  it('Quitar también avisa a onPlaceDetails con los 3 campos a null, para que la copia externa (ManageEventModal/MomentForm) no se quede con datos obsoletos', () => {
+    const clearFn = slice(fn, 'function handleClear()', '\n  }')
+    expect(clearFn).toContain('onPlaceDetails?.({ name: null, address: null, placeId: null })')
+  })
+
+  // RETOQUE (requisito real: "Gestión del evento" debe reconstruir la dirección guardada al volver a
+  // entrar, no solo mostrar "Ubicación real guardada") — initialAddress/initialPlaceId son opcionales y
+  // aditivos: quien no los pase (Calendario, MomentForm en alta) sigue arrancando en null como siempre.
+  it('acepta initialAddress/initialPlaceId opcionales para reconstruir el resumen guardado al reabrir', () => {
+    expect(fn).toContain('initialAddress?: string | null')
+    expect(fn).toContain('initialPlaceId?: string | null')
+    expect(fn).toContain('useState<string | null>(initialAddress ?? null)')
+    expect(fn).toContain('useState<string | null>(initialPlaceId ?? null)')
   })
 
   it('nombre y dirección se muestran en líneas separadas, no fusionados en un único texto ambiguo', () => {

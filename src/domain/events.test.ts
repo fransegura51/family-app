@@ -46,6 +46,8 @@ function makeEvent(overrides: Partial<FamilyEvent>): FamilyEvent {
     venueType: null, includedServices: null,
     venueLatitude: null,
     venueLongitude: null,
+    venueAddress: null,
+    venuePlaceId: null,
     ceremonyLocationLabel: null,
     ceremonyLocationLatitude: null,
     ceremonyLocationLongitude: null,
@@ -834,6 +836,43 @@ describe('eventLocationMapLines', () => {
     const lines = eventLocationMapLines(event, { inviteScope: null })
     expect(lines[0]).toContain('https://www.google.com/maps/search/?api=1&query=')
   })
+
+  // Corrección real (bug observado, CASO B — vivienda particular sin place_id): con dirección guardada,
+  // el enlace usa esa dirección legible en vez de caer a coordenadas en bruto.
+  it('usa venueAddress (dirección legible) en vez de las coordenadas en bruto cuando no hay place_id', () => {
+    const event = makeEvent({
+      type: 'cumpleanos',
+      venueLabel: 'Nuestra casa',
+      venueLatitude: 38.1052839,
+      venueLongitude: -0.8500746,
+      venueAddress: 'C. Hermanos Rodríguez, 52, 03369 Rafal, Alicante, España',
+    })
+    const lines = eventLocationMapLines(event, { inviteScope: null })
+    expect(lines[0]).toContain(encodeURIComponent('C. Hermanos Rodríguez, 52, 03369 Rafal, Alicante, España'))
+    expect(lines[0]).not.toContain('?q=38.1052839,-0.8500746')
+  })
+
+  // CASO A — lugar reconocido con place_id: sigue siendo lo más preciso, gana incluso con address presente.
+  it('usa venuePlaceId cuando existe, por encima de venueAddress', () => {
+    const event = makeEvent({
+      type: 'cumpleanos',
+      venueLabel: 'Restaurante Pepe',
+      venueLatitude: 38.1,
+      venueLongitude: -0.79,
+      venueAddress: 'Av. del Mar 10, Rafal',
+      venuePlaceId: 'ChIJ123',
+    })
+    const lines = eventLocationMapLines(event, { inviteScope: null })
+    expect(lines[0]).toContain('query_place_id=ChIJ123')
+  })
+
+  // CASO C — evento antiguo, solo coordenadas (venueAddress/venuePlaceId ausentes): sigue funcionando
+  // exactamente como antes, sin regresión.
+  it('evento legacy (solo coords, sin venueAddress/venuePlaceId) sigue cayendo a coordenadas en bruto', () => {
+    const event = makeEvent({ type: 'cumpleanos', venueLabel: 'en mi casa', venueLatitude: 40.4168, venueLongitude: -3.7038, venueAddress: null, venuePlaceId: null })
+    const lines = eventLocationMapLines(event, { inviteScope: null })
+    expect(lines[0]).toContain('https://www.google.com/maps?q=40.4168,-3.7038')
+  })
 })
 
 describe('resolveEventMoments — Fase 1 del modelo genérico de momentos, compatibilidad de lectura', () => {
@@ -1059,6 +1098,36 @@ describe('buildMapsUrl', () => {
 
   it('without place_id, behaves exactly as before (no 3rd argument passed)', () => {
     expect(buildMapsUrl('en mi casa', { latitude: 40.4168, longitude: -3.7038 })).toBe('https://www.google.com/maps?q=40.4168,-3.7038')
+  })
+
+  // Corrección real (bug observado: una vivienda particular sin place_id caía siempre a coordenadas en
+  // bruto, que Google suele mostrar como Plus Code en vez de una dirección legible) — 4º parámetro
+  // aditivo: `address`.
+  describe('4º parámetro: address (CASO B — vivienda particular con dirección pero sin place_id)', () => {
+    it('sin place_id, una dirección real gana a las coordenadas en bruto (misma precisión, destino legible)', () => {
+      const url = buildMapsUrl('Nuestra casa', { latitude: 38.1052839, longitude: -0.8500746 }, null, 'C. Hermanos Rodríguez, 52, 03369 Rafal, Alicante, España')
+      expect(url).toBe('https://www.google.com/maps/search/?api=1&query=C.%20Hermanos%20Rodr%C3%ADguez%2C%2052%2C%2003369%20Rafal%2C%20Alicante%2C%20Espa%C3%B1a')
+    })
+
+    it('place_id sigue ganando a address cuando ambos existen (CASO A — lugar reconocido completo)', () => {
+      const url = buildMapsUrl('Restaurante Pepe', { latitude: 38.1, longitude: -0.79 }, 'ChIJ123', 'Av. del Mar 10, Rafal')
+      expect(url).toBe('https://www.google.com/maps/search/?api=1&query=Restaurante%20Pepe&query_place_id=ChIJ123')
+    })
+
+    it('sin place_id ni address (CASO C — evento antiguo, solo coordenadas), cae a coordenadas en bruto como siempre', () => {
+      const url = buildMapsUrl('en mi casa', { latitude: 40.4168, longitude: -3.7038 }, null, null)
+      expect(url).toBe('https://www.google.com/maps?q=40.4168,-3.7038')
+    })
+
+    it('una address vacía no cuenta como presente (cae a coordenadas, igual que null)', () => {
+      const url = buildMapsUrl('en mi casa', { latitude: 40.4168, longitude: -3.7038 }, null, '')
+      expect(url).toBe('https://www.google.com/maps?q=40.4168,-3.7038')
+    })
+
+    it('sin coords ni place_id, una address real se usa igual que antes se usaba el texto', () => {
+      const url = buildMapsUrl('fallback', null, null, 'Calle Falsa 123')
+      expect(url).toBe('https://www.google.com/maps/search/?api=1&query=Calle%20Falsa%20123')
+    })
   })
 })
 

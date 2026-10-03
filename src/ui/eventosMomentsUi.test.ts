@@ -62,7 +62,9 @@ describe('Regla de lugar genérico — nunca redundante con Momentos', () => {
     expect(manageEventModal).toContain('{!isEventStructuredByMoments(event) && (')
     const hiddenBlock = slice(manageEventModal, '{!isEventStructuredByMoments(event) && (', '<label>\n            Tema')
     expect(hiddenBlock).toContain('Lugar (como se ve en la invitación)')
-    expect(hiddenBlock).toContain('<EventLocationCoordsPicker coords={venueCoords} onCoordsChange={setVenueCoords} />')
+    expect(hiddenBlock).toContain('<EventLocationCoordsPicker')
+    expect(hiddenBlock).toContain('coords={venueCoords}')
+    expect(hiddenBlock).toContain('onCoordsChange={setVenueCoords}')
   })
 
   it('un evento SIMPLE (no estructurado por momentos) sigue mostrando "Lugar" exactamente igual que siempre — no se complica cumpleaños/comidas', () => {

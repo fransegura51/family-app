@@ -226,11 +226,13 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // para mandarse un aviso de prueba a uno mismo — tampoco toca Eventos. 0189 (event_guest_menu_choice,
   // Parte B de Eventos) SÍ toca Eventos a propósito: añade event_menu_options y columnas de elección de
   // menú a event_guest_members — cubierto a fondo en eventRsvpMenuChoiceFunction.test.ts y
-  // eventGuestMembersMigration.test.ts, no aquí.
-  it('0189 (event_guest_menu_choice) es la última migración del repositorio', () => {
+  // eventGuestMembersMigration.test.ts, no aquí. 0190 (event_guest_questions, "Preguntas a los
+  // invitados") también toca Eventos a propósito: añade event_guest_questions/_options/_answers —
+  // cubierto en eventGuestQuestionsMigration.test.ts, no aquí.
+  it('0190 (event_guest_questions) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(189)
+    expect(Math.max(...numbers)).toBe(190)
   })
 })

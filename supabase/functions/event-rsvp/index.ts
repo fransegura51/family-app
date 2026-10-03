@@ -90,6 +90,26 @@ interface MenuOptionRow {
   name: string
 }
 
+// "📋 Preguntas a los invitados" (migración 0190) — capacidad genérica, deliberadamente aparte de la
+// elección de menú. Solo se exponen las preguntas ACTIVAS; scope "persona" responde cada
+// event_guest_members, scope "invitacion" responde la propia unidad (member_id siempre null).
+interface GuestQuestionRow {
+  id: string
+  prompt: string
+  scope: string
+  required: boolean
+}
+interface GuestQuestionOptionRow {
+  id: string
+  question_id: string
+  label: string
+}
+interface GuestQuestionAnswerRow {
+  question_id: string
+  member_id: string | null
+  option_id: string | null
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } })
 }
@@ -290,17 +310,27 @@ Deno.serve(async (req) => {
         .eq("id", g.id)
       if (error) return json({ error: "save_failed" }, 500)
 
+      // member_id de ESTE invitado — calculado una sola vez, lo reutilizan tanto la elección de menú por
+      // persona (Parte B) como las respuestas a preguntas personalizadas (scope "persona") de más abajo.
+      let ownMemberIds: Set<string> | null = null
+      async function resolveOwnMemberIds(): Promise<Set<string>> {
+        if (!ownMemberIds) {
+          const { data: ownMembersData } = await admin.from("event_guest_members").select("id").eq("guest_id", g.id)
+          ownMemberIds = new Set((ownMembersData ?? []).map((m) => m.id as string))
+        }
+        return ownMemberIds
+      }
+
       // Elección por persona (Parte B, migración 0189) — solo si la unidad tiene personas desglosadas y el
       // cuerpo trae de verdad un array "members"; sin RLS aquí (rol de servicio), así que la pertenencia de
       // cada member_id a ESTE invitado, y de cada menu_option_id a ESTE evento, se comprueba a mano.
       if (Array.isArray(body.members) && body.members.length > 0) {
-        const { data: ownMembersData } = await admin.from("event_guest_members").select("id").eq("guest_id", g.id)
-        const ownMemberIds = new Set((ownMembersData ?? []).map((m) => m.id as string))
+        const own = await resolveOwnMemberIds()
         let validOptionIds: Set<string> | null = null
 
         for (const entry of body.members) {
           const memberId = typeof entry?.id === "string" ? entry.id : null
-          if (!memberId || !ownMemberIds.has(memberId)) continue
+          if (!memberId || !own.has(memberId)) continue
           const attending = typeof entry.attending === "boolean" ? entry.attending : null
           let menuOptionId: string | null = typeof entry.menuOptionId === "string" ? entry.menuOptionId : null
           if (menuOptionId) {
@@ -311,6 +341,51 @@ Deno.serve(async (req) => {
             if (!validOptionIds.has(menuOptionId)) menuOptionId = null
           }
           await admin.from("event_guest_members").update({ rsvp_attending: attending, menu_option_id: menuOptionId }).eq("id", memberId)
+        }
+      }
+
+      // "📋 Preguntas a los invitados" (migración 0190) — capacidad genérica, totalmente aparte de la
+      // elección de menú. Cada entrada se valida a mano, sin confiar nunca en lo que manda el cliente:
+      // la pregunta debe ser de ESTE evento y estar activa; si es scope "persona", member_id debe ser de
+      // ESTE invitado (mismo resolveOwnMemberIds de arriba); si es "invitacion", nunca lleva member_id; la
+      // opción elegida debe pertenecer a ESA pregunta. Nunca genera Preparativo/Presupuesto/Proveedor —
+      // solo recoge información.
+      if (Array.isArray(body.questionAnswers) && body.questionAnswers.length > 0) {
+        const { data: activeQuestionsData } = await admin.from("event_guest_questions").select("id, scope, required").eq("event_id", ev.id).eq("active", true)
+        const questionsById = new Map((activeQuestionsData ?? []).map((q) => [q.id as string, q as { id: string; scope: string; required: boolean }]))
+
+        for (const entry of body.questionAnswers) {
+          const questionId = typeof entry?.questionId === "string" ? entry.questionId : null
+          const question = questionId ? questionsById.get(questionId) : undefined
+          if (!question) continue
+          const optionId = typeof entry.optionId === "string" ? entry.optionId : null
+          if (!optionId) continue
+          const { data: validOption } = await admin.from("event_guest_question_options").select("id").eq("id", optionId).eq("question_id", question.id).maybeSingle()
+          if (!validOption) continue
+
+          let memberId: string | null = null
+          if (question.scope === "persona") {
+            const candidate = typeof entry.memberId === "string" ? entry.memberId : null
+            const own = await resolveOwnMemberIds()
+            if (!candidate || !own.has(candidate)) continue
+            memberId = candidate
+          }
+
+          let existingQuery = admin.from("event_guest_question_answers").select("id").eq("question_id", question.id)
+          existingQuery = memberId ? existingQuery.eq("member_id", memberId) : existingQuery.is("member_id", null).eq("guest_id", g.id)
+          const { data: existing } = await existingQuery.maybeSingle()
+          if (existing) {
+            await admin.from("event_guest_question_answers").update({ option_id: optionId, updated_at: new Date().toISOString() }).eq("id", existing.id)
+          } else {
+            await admin.from("event_guest_question_answers").insert({
+              question_id: question.id,
+              event_id: ev.id,
+              family_id: ev.family_id,
+              guest_id: g.id,
+              member_id: memberId,
+              option_id: optionId,
+            })
+          }
         }
       }
 
@@ -342,6 +417,28 @@ Deno.serve(async (req) => {
       menuOptions = (optionsData ?? []) as MenuOptionRow[]
     }
 
+    // "📋 Preguntas a los invitados" — solo las ACTIVAS, con sus opciones y la respuesta que esta unidad
+    // (o sus personas, si scope "persona") ya hubiera guardado antes.
+    const { data: guestQuestionsData } = await admin
+      .from("event_guest_questions")
+      .select("id, prompt, scope, required")
+      .eq("event_id", ev.id)
+      .eq("active", true)
+      .order("sort_order", { ascending: true })
+    const guestQuestions = (guestQuestionsData ?? []) as GuestQuestionRow[]
+
+    let guestQuestionOptions: GuestQuestionOptionRow[] = []
+    let guestQuestionAnswers: GuestQuestionAnswerRow[] = []
+    if (guestQuestions.length > 0) {
+      const questionIds = guestQuestions.map((q) => q.id)
+      const [{ data: optionsData }, { data: answersData }] = await Promise.all([
+        admin.from("event_guest_question_options").select("id, question_id, label").in("question_id", questionIds).order("sort_order", { ascending: true }),
+        admin.from("event_guest_question_answers").select("question_id, member_id, option_id").eq("guest_id", g.id).in("question_id", questionIds),
+      ])
+      guestQuestionOptions = (optionsData ?? []) as GuestQuestionOptionRow[]
+      guestQuestionAnswers = (answersData ?? []) as GuestQuestionAnswerRow[]
+    }
+
     return json({
       state: "form",
       event: { ...publicEvent(ev), infoLines: [...publicEvent(ev).infoLines, ...guestLines] },
@@ -355,6 +452,14 @@ Deno.serve(async (req) => {
         rsvpNote: g.rsvp_note,
         members: members.map((m) => ({ id: m.id, name: m.name, personType: m.person_type, rsvpAttending: m.rsvp_attending, menuOptionId: m.menu_option_id })),
         menuOptions: menuOptions.map((o) => ({ id: o.id, name: o.name })),
+        questions: guestQuestions.map((q) => ({
+          id: q.id,
+          prompt: q.prompt,
+          scope: q.scope,
+          required: q.required,
+          options: guestQuestionOptions.filter((o) => o.question_id === q.id).map((o) => ({ id: o.id, label: o.label })),
+          answers: guestQuestionAnswers.filter((a) => a.question_id === q.id).map((a) => ({ memberId: a.member_id, optionId: a.option_id })),
+        })),
       },
     })
   } catch (err) {

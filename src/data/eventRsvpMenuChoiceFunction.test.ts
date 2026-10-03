@@ -53,16 +53,19 @@ describe('event-rsvp — POST (flujo con token): elección por persona validada 
     expect(SRC).toContain('if (Array.isArray(body.members) && body.members.length > 0) {')
   })
 
-  it('cada member_id se comprueba contra las personas de ESTE invitado antes de escribir nada (nunca confía en el id que manda el cliente)', () => {
-    const idx = SRC.indexOf('if (Array.isArray(body.members)')
-    const body = SRC.slice(idx, SRC.indexOf('\n      }\n\n      return json({ ok: true })', idx))
-    expect(body).toContain('.from("event_guest_members").select("id").eq("guest_id", g.id)')
-    expect(body).toContain('if (!memberId || !ownMemberIds.has(memberId)) continue')
+  it('cada member_id se comprueba contra las personas de ESTE invitado antes de escribir nada (nunca confía en el id que manda el cliente) — resolveOwnMemberIds se calcula una sola vez y la reutilizan tanto el menú por persona como las preguntas personalizadas', () => {
+    const fnIdx = SRC.indexOf('async function resolveOwnMemberIds(')
+    const fnBody = SRC.slice(fnIdx, SRC.indexOf('\n      }\n\n      // Elección por persona', fnIdx))
+    expect(fnBody).toContain('.from("event_guest_members").select("id").eq("guest_id", g.id)')
+    const membersIdx = SRC.indexOf('if (Array.isArray(body.members)')
+    const membersBody = SRC.slice(membersIdx, SRC.indexOf('\n      }\n\n      // "📋 Preguntas a los invitados"', membersIdx))
+    expect(membersBody).toContain('const own = await resolveOwnMemberIds()')
+    expect(membersBody).toContain('if (!memberId || !own.has(memberId)) continue')
   })
 
   it('un menu_option_id que no pertenece a ESTE evento se descarta (se guarda null), nunca se escribe tal cual', () => {
     const idx = SRC.indexOf('if (Array.isArray(body.members)')
-    const body = SRC.slice(idx, SRC.indexOf('\n      }\n\n      return json({ ok: true })', idx))
+    const body = SRC.slice(idx, SRC.indexOf('\n      }\n\n      // "📋 Preguntas a los invitados"', idx))
     expect(body).toContain('.from("event_menu_options").select("id").eq("event_id", ev.id)')
     expect(body).toContain('if (!validOptionIds.has(menuOptionId)) menuOptionId = null')
   })

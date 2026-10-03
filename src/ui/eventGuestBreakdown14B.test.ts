@@ -246,11 +246,14 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // Ninguna de las veintidós tiene nada que ver con invitados/regalos de eventos.
     // 0189 (event_guest_menu_choice, Parte B) es la EXCEPCIÓN deliberada: sí añade columnas a
     // event_guest_members (rsvp_attending, menu_option_id) y endurece su RLS — cubierto a fondo en
-    // src/data/eventRsvpMenuChoiceFunction.test.ts y en eventGuestMembersMigration.test.ts, no aquí.
+    // src/data/eventRsvpMenuChoiceFunction.test.ts y en eventGuestMembersMigration.test.ts, no aquí. 0190
+    // (event_guest_questions, "Preguntas a los invitados") solo añade tablas NUEVAS que REFERENCIAN
+    // event_guests/event_guest_members (igual que event_guest_moments en 0176) — nunca altera esas dos
+    // tablas ni su RLS; cubierto en eventGuestQuestionsMigration.test.ts, no aquí.
     const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(189)
+    expect(Math.max(...numbers)).toBe(190)
   })
 })

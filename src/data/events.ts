@@ -32,6 +32,8 @@ import type {
   EventGuestMember,
   EventGuestMemberType,
   EventGuestMoment,
+  EventGuestQuestion,
+  EventGuestQuestionOption,
   EventGuestRsvpStatus,
   EventInvitation,
   EventMenuItem,
@@ -49,6 +51,7 @@ import type {
   EventServiceId,
   EventVenueType,
   FamilyEvent,
+  GuestQuestionScope,
   InvitationCanvas,
 } from '@/domain/types'
 import { compressImageFile } from '@/domain/imageCompression'
@@ -2041,5 +2044,94 @@ export async function saveEventTemplate(name: string, event: FamilyEvent): Promi
 
 export async function deleteEventTemplate(id: string): Promise<void> {
   const { error } = await supabase.from('event_templates').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// "📋 Preguntas a los invitados" (migración 0190) — capacidad genérica, deliberadamente separada de la
+// elección de menú (event_menu_options, migración 0189). Solo CRUD de preguntas/opciones desde la app —
+// las respuestas a esas preguntas las escribe únicamente el RSVP público (rol de servicio,
+// supabase/functions/event-rsvp), nunca desde aquí: no existe ninguna función de escritura de esas
+// respuestas en este archivo a propósito.
+// ---------------------------------------------------------------------
+
+const GUEST_QUESTION_SELECT = 'id, event_id, family_id, prompt, scope, required, active, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapGuestQuestion(r: any): EventGuestQuestion {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    prompt: r.prompt,
+    scope: r.scope,
+    required: r.required,
+    active: r.active,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventGuestQuestions(eventId: string): Promise<EventGuestQuestion[]> {
+  const { data, error } = await supabase.from('event_guest_questions').select(GUEST_QUESTION_SELECT).eq('event_id', eventId).order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapGuestQuestion)
+}
+
+export async function addEventGuestQuestion(eventId: string, input: { prompt: string; scope: GuestQuestionScope; required: boolean }): Promise<EventGuestQuestion> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase
+    .from('event_guest_questions')
+    .insert({ event_id: eventId, family_id: familyId, prompt: input.prompt.trim(), scope: input.scope, required: input.required, sort_order: Date.now() })
+    .select(GUEST_QUESTION_SELECT)
+    .single()
+  if (error) throw error
+  return mapGuestQuestion(data)
+}
+
+export async function updateEventGuestQuestion(id: string, patch: Partial<{ prompt: string; scope: GuestQuestionScope; required: boolean; active: boolean }>): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.prompt !== undefined) update.prompt = patch.prompt.trim()
+  if (patch.scope !== undefined) update.scope = patch.scope
+  if (patch.required !== undefined) update.required = patch.required
+  if (patch.active !== undefined) update.active = patch.active
+  const { error } = await supabase.from('event_guest_questions').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventGuestQuestion(id: string): Promise<void> {
+  const { error } = await supabase.from('event_guest_questions').delete().eq('id', id)
+  if (error) throw error
+}
+
+const GUEST_QUESTION_OPTION_SELECT = 'id, question_id, event_id, family_id, label, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapGuestQuestionOption(r: any): EventGuestQuestionOption {
+  return { id: r.id, questionId: r.question_id, eventId: r.event_id, familyId: r.family_id, label: r.label, sortOrder: r.sort_order, createdAt: r.created_at }
+}
+
+// Carga todas las opciones del evento de una vez (como listEventGuestMembersForEvent) — la UI de
+// organización siempre pinta todas las preguntas juntas, nunca pregunta por pregunta.
+export async function listEventGuestQuestionOptionsForEvent(eventId: string): Promise<EventGuestQuestionOption[]> {
+  const { data, error } = await supabase
+    .from('event_guest_question_options')
+    .select(GUEST_QUESTION_OPTION_SELECT)
+    .eq('event_id', eventId)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapGuestQuestionOption)
+}
+
+export async function addEventGuestQuestionOption(questionId: string, eventId: string, label: string): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('event_guest_question_options')
+    .insert({ question_id: questionId, event_id: eventId, family_id: familyId, label: label.trim(), sort_order: Date.now() })
+  if (error) throw error
+}
+
+export async function deleteEventGuestQuestionOption(id: string): Promise<void> {
+  const { error } = await supabase.from('event_guest_question_options').delete().eq('id', id)
   if (error) throw error
 }

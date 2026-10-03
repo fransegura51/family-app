@@ -137,12 +137,14 @@ describe('lo que esta fase NO toca', () => {
     // Tareas completadas a profiles y corrige privacidad de recordatorios/adjuntos — tampoco
     // devoluciones. 0188 (send_test_push, aviso de prueba a uno mismo) añade push_test_log — tampoco
     // devoluciones. 0189 (event_guest_menu_choice, Parte B de Eventos) añade event_menu_options y columnas
-    // de elección de menú a event_guest_members — tabla de Eventos, tampoco devoluciones. Ninguna
-    // migración de datos posterior a 0152 toca la identidad ni el cálculo de una devolución.
+    // de elección de menú a event_guest_members — tabla de Eventos, tampoco devoluciones. 0190
+    // (event_guest_questions, "Preguntas a los invitados") añade event_guest_questions/_options/_answers
+    // — tablas de Eventos, tampoco devoluciones. Ninguna migración de datos posterior a 0152 toca la
+    // identidad ni el cálculo de una devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(189)
+    expect(Math.max(...numbers)).toBe(190)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

@@ -46,8 +46,9 @@ describe('Regla de lugar genérico — nunca redundante con Momentos', () => {
       "function isEventStructuredByMoments(event: Pick<FamilyEvent, 'type' | 'enabledModules'>): boolean {\n  return DUAL_LOCATION_EVENT_TYPES.includes(event.type) && event.enabledModules.includes('ceremonia')\n}",
     )
     const usages = SRC.match(/isEventStructuredByMoments\(event\)/g) ?? []
-    // 1 definición (dentro del cuerpo de la función) + 3 usos reales (cabecera, formulario de "Gestionar
-    // evento", EventPlanningConfigurator) = 4 apariciones del patrón de llamada.
+    // 4 usos reales (cabecera; "Lugar" en "Gestionar evento"; "Momentos" en "Gestionar evento";
+    // EventPlanningConfigurator, que ahora decide solo entre el bloque "Ceremonia y celebración" o el
+    // bloque "Lugar de contexto", nunca si se pinta el configurador entero — ver RETOQUE más abajo).
     expect(usages.length).toBe(4)
   })
 
@@ -70,12 +71,11 @@ describe('Regla de lugar genérico — nunca redundante con Momentos', () => {
     expect(SRC).toContain("DUAL_LOCATION_EVENT_TYPES.includes(event.type) && event.enabledModules.includes('ceremonia')")
   })
 
-  it('EventPlanningConfigurator no se pinta para eventos simples (early return, hooks siempre antes)', () => {
+  it('RETOQUE — EventPlanningConfigurator ya NO hace early-return para eventos simples: se pinta siempre, y es el bloque "Ceremonia y celebración" el que se auto-filtra por dentro (ternario sobre isEventStructuredByMoments), igual que "La pareja" ya se autofiltraba por event.type', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
-    const openIdx = configurator.indexOf('useState(() => loadConfiguratorOpen(event.id))')
-    const returnNullIdx = configurator.indexOf('if (!isEventStructuredByMoments(event)) return null')
-    expect(openIdx).toBeGreaterThan(-1)
-    expect(returnNullIdx).toBeGreaterThan(openIdx) // el return condicional va DESPUÉS de los hooks, nunca antes
+    const earlyReturnBody = slice(configurator, 'function EventPlanningConfigurator({', '\n  return (')
+    expect(earlyReturnBody).not.toContain('return null')
+    expect(configurator).toContain('{isEventStructuredByMoments(event) ? (')
   })
 })
 
@@ -233,16 +233,18 @@ describe('Acordeón — plegable globalmente y por bloque, estado simple en loca
   })
 })
 
-describe('Solo "Ceremonia y celebración" y "La pareja" existen en esta fase (Fase 3)', () => {
-  it('Ceremonia y celebración (Fase 2) y La pareja (Fase 3) están implementados', () => {
+describe('Bloques implementados hasta la fase 5 (reajustada): Ceremonia, La pareja, Invitados e invitaciones, Momentos especiales', () => {
+  it('los 4 bloques están presentes', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
     expect(configurator).toContain('🕊️ Ceremonia y celebración')
     expect(configurator).toContain('👰🤵 La pareja')
+    expect(configurator).toContain('👥 Invitados e invitaciones')
+    expect(configurator).toContain('🎉 Momentos especiales')
   })
 
-  it('ningún otro bloque del documento maestro (Invitados, Momentos especiales...) está implementado todavía', () => {
+  it('ningún bloque posterior del documento maestro (Comida y celebración, Música/fiesta, Fotos y recuerdos, Detalles y regalos, Decoración) está implementado todavía', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
-    for (const forbidden of ['Momentos especiales', 'Comida y celebración', 'Música, fiesta', 'Fotos y recuerdos', 'Detalles y regalos', 'Decoración']) {
+    for (const forbidden of ['Comida y celebración', 'Música, fiesta', 'Fotos y recuerdos', 'Detalles y regalos', 'Decoración']) {
       expect(configurator).not.toContain(forbidden)
     }
   })

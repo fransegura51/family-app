@@ -792,6 +792,49 @@ export interface EventMenuOption {
   createdAt: string
 }
 
+// "📋 Preguntas a los invitados" — capacidad genérica para que la familia añada sus propias preguntas de
+// opción múltiple al RSVP (p. ej. "¿Qué preferís de postre?"), deliberadamente DISTINTA de la elección de
+// menú (EventMenuOption/event_guest_members.menuOptionId, que sigue siendo su propio sistema ligado a la
+// futura fase "Comida y celebración"). `scope` decide quién responde: 'persona' (cada EventGuestMember
+// por separado) o 'invitacion' (una sola respuesta por EventGuest/unidad invitada).
+export type GuestQuestionScope = 'persona' | 'invitacion'
+
+export interface EventGuestQuestion {
+  id: string
+  eventId: string
+  familyId: string
+  prompt: string
+  scope: GuestQuestionScope
+  required: boolean
+  active: boolean
+  sortOrder: number
+  createdAt: string
+}
+
+export interface EventGuestQuestionOption {
+  id: string
+  questionId: string
+  eventId: string
+  familyId: string
+  label: string
+  sortOrder: number
+  createdAt: string
+}
+
+// guestId siempre identifica la unidad invitada; memberId solo se rellena cuando la pregunta es de
+// scope 'persona' — para 'invitacion' queda null (una sola respuesta por unidad, nunca por persona).
+export interface EventGuestQuestionAnswer {
+  id: string
+  questionId: string
+  eventId: string
+  familyId: string
+  guestId: string
+  memberId: string | null
+  optionId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface EventProvider {
   id: string
   eventId: string

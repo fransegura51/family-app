@@ -13,6 +13,8 @@ import {
   addEventGift,
   addEventGuest,
   addEventGuestMember,
+  addEventGuestQuestion,
+  addEventGuestQuestionOption,
   addEventMenuItem,
   addEventMoment,
   addEventPayment,
@@ -37,6 +39,7 @@ import {
   deleteEventGift,
   deleteEventGuest,
   deleteEventGuestMember,
+  deleteEventGuestQuestion,
   deleteEventMenuItem,
   deleteEventMoment,
   deleteEventPayment,
@@ -62,6 +65,8 @@ import {
   listEventGuestMembers,
   listEventGuestMembersForEvent,
   listEventGuestMoments,
+  listEventGuestQuestionOptionsForEvent,
+  listEventGuestQuestions,
   listEventGuests,
   listEventMenuItems,
   listEventMoments,
@@ -93,6 +98,7 @@ import {
   updateEventFavorItem,
   updateEventGuest,
   updateEventGuestMember,
+  updateEventGuestQuestion,
   updateEventBudgetItem,
   updateEventMoment,
   updateEventPayment,
@@ -224,6 +230,19 @@ import {
   type NinosNecesidadesAnswer,
   type NinosNecesidadItemKey,
 } from '@/domain/eventGuestDecisions'
+import { LUGAR_CONTEXTO_QUESTION_KEY, lugarContextoStatus, type LugarContextoAnswer, type LugarContextoChoice } from '@/domain/eventLocationContext'
+import {
+  CLASES_BAILE_QUESTION_KEY,
+  desiredForClasesBaile,
+  MOMENTOS_ESPECIALES_CATALOG,
+  MOMENTOS_ESPECIALES_QUESTION_KEY,
+  summarizeMomentosEspecialesBlock,
+  type ClasesBaileAnswer,
+  type ClasesBaileChoice,
+  type MomentoEspecialCatalogItem,
+  type MomentoEspecialKey,
+  type MomentosEspecialesAnswer,
+} from '@/domain/eventSpecialMoments'
 import { notifyEventMomentsChanged, useEventMomentsChangeSignal } from '@/state/eventMomentsSync'
 import { showToast } from '@/state/toast'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
@@ -246,6 +265,8 @@ import type {
   EventGuestMember,
   EventGuestMemberType,
   EventGuestMoment,
+  EventGuestQuestion,
+  EventGuestQuestionOption,
   EventGuestRsvpStatus,
   EventInvitation,
   EventMenuItem,
@@ -262,6 +283,7 @@ import type {
   EventVenueType,
   FamilyEvent,
   FamilyMember,
+  GuestQuestionScope,
   ShoppingItem,
   InvitationCanvas,
 } from '@/domain/types'
@@ -2278,9 +2300,22 @@ function EventLocationCoordsPicker({
 // ---------------------------------------------------------------------
 // Configurador — "✨ Cómo queréis que sea vuestra boda", acordeón plegable globalmente y por bloque
 // (persistencia simple en localStorage, ver src/state/eventPlanningConfiguratorState.ts). Ceremonia y
-// celebración (Fase 2) y, solo en boda, La pareja (Fase 3) están implementados; el resto del documento
-// maestro (Invitados, Momentos especiales...) llega en fases posteriores. El orden de los bloques NO
-// determina ninguna prioridad de tareas — es puro orden de lectura.
+// celebración (Fase 2), solo en boda La pareja (Fase 3), Invitados e invitaciones (Fase 4) y Momentos
+// especiales (Fase 5, reajustada) están implementados; el resto del documento maestro (Comida y
+// celebración, Música/fiesta/entretenimiento, Fotos y recuerdos...) llega en fases posteriores. El orden
+// de los bloques NO determina ninguna prioridad de tareas — es puro orden de lectura.
+//
+// RETOQUE — motor común para cualquier tipo de evento: este componente YA NO devuelve null para eventos
+// "simples" (cumpleaños, celebración, personalizado) — antes dependía por completo de la misma condición
+// de siempre (ver su definición más abajo), así que un cumpleaños nunca veía NADA de este configurador, ni
+// siquiera Invitados e invitaciones o Momentos especiales, que no tienen nada que ver con Ceremonia. Esa
+// condición sigue existiendo (sigue siendo la ÚNICA, reutilizada en cabecera/"Gestionar evento"/aquí, para
+// que los 3 sitios nunca diverjan — ver su propio comentario), pero ahora decide SOLO si se muestra el
+// bloque "🕊️ Ceremonia y celebración" en concreto, nunca si se muestra el configurador entero. En su
+// lugar, un evento sin ceremonia ve el bloque "📍 Dónde lo vais a celebrar" (más ligero: una sola pregunta
+// de contexto, nunca la dirección exacta — esa sigue viviendo en venueLabel, Gestionar evento, igual que
+// siempre) — exactamente la separación "cada bloque decide si tiene algo que mostrar" que ya anunciaba el
+// comentario original de este componente.
 // ---------------------------------------------------------------------
 
 function EventPlanningConfigurator({
@@ -2298,6 +2333,10 @@ function EventPlanningConfigurator({
 }) {
   const [open, setOpen] = useState(() => loadConfiguratorOpen(event.id))
   const [blockOpen, setBlockOpen] = useState(() => loadConfiguratorOpen(event.id, 'ceremonia_celebracion'))
+  // "📍 Dónde lo vais a celebrar" — alternativa ligera a Ceremonia y celebración para eventos SIN ceremonia
+  // (cumpleaños, celebración, personalizado, o boda/comunión/bautizo con el módulo "ceremonia" apagado):
+  // mutuamente excluyente con el bloque de arriba, nunca los dos a la vez.
+  const [lugarOpen, setLugarOpen] = useState(() => loadConfiguratorOpen(event.id, 'lugar_contexto'))
   // "👰🤵 La pareja" — segundo bloque, solo para boda (DUAL_LOCATION_EVENT_TYPES también incluye
   // comunión/bautizo, que no tienen "pareja"). Mismo patrón exacto de acordeón por bloque que Ceremonia.
   const [pairOpen, setPairOpen] = useState(() => loadConfiguratorOpen(event.id, 'pareja'))
@@ -2305,10 +2344,10 @@ function EventPlanningConfigurator({
   // "La pareja" (exclusiva de boda), invitados/invitaciones aplica a cualquier evento que llegue a este
   // configurador (boda, comunión, bautizo...) — todos tienen invitados reales (event_guests).
   const [guestsBlockOpen, setGuestsBlockOpen] = useState(() => loadConfiguratorOpen(event.id, 'invitados'))
-  // Los hooks van siempre antes de cualquier return condicional (Reglas de los Hooks): si la familia
-  // desactiva el módulo "ceremonia" con el acordeón ya montado, este componente debe poder dejar de
-  // pintar nada sin romper el orden de hooks entre renders.
-  if (!isEventStructuredByMoments(event)) return null
+  // "🎉 Momentos especiales" — Fase 5 (reajustada): igual que Invitados, aplica a CUALQUIER tipo de
+  // evento (su catálogo de momentos candidatos varía por tipo, pero el bloque en sí nunca depende de
+  // event.type ni de isEventStructuredByMoments).
+  const [momentosEspecialesOpen, setMomentosEspecialesOpen] = useState(() => loadConfiguratorOpen(event.id, 'momentos_especiales'))
 
   function toggleOpen() {
     const next = !open
@@ -2320,6 +2359,11 @@ function EventPlanningConfigurator({
     setBlockOpen(next)
     saveConfiguratorOpen(event.id, 'ceremonia_celebracion', next)
   }
+  function toggleLugarBlock() {
+    const next = !lugarOpen
+    setLugarOpen(next)
+    saveConfiguratorOpen(event.id, 'lugar_contexto', next)
+  }
   function togglePairBlock() {
     const next = !pairOpen
     setPairOpen(next)
@@ -2329,6 +2373,11 @@ function EventPlanningConfigurator({
     const next = !guestsBlockOpen
     setGuestsBlockOpen(next)
     saveConfiguratorOpen(event.id, 'invitados', next)
+  }
+  function toggleMomentosEspecialesBlock() {
+    const next = !momentosEspecialesOpen
+    setMomentosEspecialesOpen(next)
+    saveConfiguratorOpen(event.id, 'momentos_especiales', next)
   }
 
   return (
@@ -2345,19 +2394,41 @@ function EventPlanningConfigurator({
       </button>
       {open && (
         <div style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            className="link-button"
-            onClick={toggleBlock}
-            style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
-            aria-expanded={blockOpen}
-          >
-            🕊️ Ceremonia y celebración
-            <span aria-hidden="true">{blockOpen ? '▾' : '▸'}</span>
-          </button>
-          {blockOpen && (
-            <div style={{ marginTop: 4 }}>
-              <MomentsEditor event={event} onChanged={onChanged} />
+          {isEventStructuredByMoments(event) ? (
+            <>
+              <button
+                type="button"
+                className="link-button"
+                onClick={toggleBlock}
+                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+                aria-expanded={blockOpen}
+              >
+                🕊️ Ceremonia y celebración
+                <span aria-hidden="true">{blockOpen ? '▾' : '▸'}</span>
+              </button>
+              {blockOpen && (
+                <div style={{ marginTop: 4 }}>
+                  <MomentsEditor event={event} onChanged={onChanged} />
+                </div>
+              )}
+            </>
+          ) : (
+            <div>
+              <button
+                type="button"
+                className="link-button"
+                onClick={toggleLugarBlock}
+                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+                aria-expanded={lugarOpen}
+              >
+                📍 Dónde lo vais a celebrar
+                <span aria-hidden="true">{lugarOpen ? '▾' : '▸'}</span>
+              </button>
+              {lugarOpen && (
+                <div style={{ marginTop: 4 }}>
+                  <LugarContextoBlock event={event} />
+                </div>
+              )}
             </div>
           )}
           {event.type === 'boda' && (
@@ -2396,8 +2467,97 @@ function EventPlanningConfigurator({
               </div>
             )}
           </div>
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="link-button"
+              onClick={toggleMomentosEspecialesBlock}
+              style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+              aria-expanded={momentosEspecialesOpen}
+            >
+              🎉 Momentos especiales
+              <span aria-hidden="true">{momentosEspecialesOpen ? '▾' : '▸'}</span>
+            </button>
+            {momentosEspecialesOpen && (
+              <div style={{ marginTop: 4 }}>
+                <MomentosEspecialesBlock event={event} onDerivedDataChanged={onDerivedDataChanged} />
+              </div>
+            )}
+          </div>
         </div>
       )}
+    </div>
+  )
+}
+
+const LUGAR_CONTEXTO_OPTIONS: { value: LugarContextoChoice; label: string }[] = [
+  { value: 'en_casa', label: 'En casa' },
+  { value: 'restaurante_local', label: 'Restaurante / local' },
+  { value: 'exterior', label: 'Exterior' },
+  { value: 'otro', label: 'Otro lugar' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+// "📍 Dónde lo vais a celebrar" — una sola pregunta de CONTEXTO (nunca la dirección, que sigue viviendo en
+// venueLabel/"Gestionar evento"), nunca genera Preparativo/Presupuesto/Proveedor por sí sola (igual que
+// Momentos en Invitados): se guarda directamente con upsertEventDecision, sin pasar por
+// applyPairDecisionGeneration, porque no hay nada que reconciliar.
+function LugarContextoBlock({ event }: { event: FamilyEvent }) {
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  function reload(): Promise<void> {
+    return listEventDecisions(event.id)
+      .then((d) => setDecisions(d.filter((x) => x.questionKey === LUGAR_CONTEXTO_QUESTION_KEY)))
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  async function save(answer: { choice: LugarContextoChoice; custom?: CustomResolution }) {
+    setSaving(true)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, {
+        blockKey: 'lugar_contexto',
+        questionKey: LUGAR_CONTEXTO_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: answer.choice === 'otro',
+      })
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+  const decision = decisions.find((d) => d.questionKey === LUGAR_CONTEXTO_QUESTION_KEY)
+  const status = lugarContextoStatus(decisions)
+
+  return (
+    <div className="card" style={{ padding: 8 }}>
+      {status === 'por_decidir' && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          ⏳ por decidir
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
+      <CustomAwareQuestion
+        event={event}
+        questionLabel="¿Dónde lo vais a celebrar?"
+        options={LUGAR_CONTEXTO_OPTIONS}
+        questionKey={LUGAR_CONTEXTO_QUESTION_KEY}
+        decision={decision}
+        savingKey={saving ? LUGAR_CONTEXTO_QUESTION_KEY : null}
+        onSave={(answer) => save(answer as LugarContextoAnswer)}
+      />
     </div>
   )
 }
@@ -3973,6 +4133,223 @@ function NinosNecesidadesQuestion({
 }
 
 // ---------------------------------------------------------------------
+// "🎉 Momentos especiales" (fase 5, reajustada) — selección múltiple sobre un catálogo fijo por tipo de
+// evento (domain/eventSpecialMoments.ts), nunca genera nada por sí sola; solo "Primer baile" (boda) revela
+// la única pregunta contextual de esta fase ("¿Necesitáis clases de baile?"), que sí puede generar un
+// Preparativo (nunca presupuesto ni proveedor). No crea ni toca event_moments.
+// ---------------------------------------------------------------------
+
+const CLASES_BAILE_OPTIONS: { value: ClasesBaileChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+function MomentosEspecialesQuestion({
+  catalog,
+  existing,
+  saving,
+  onSave,
+}: {
+  catalog: MomentoEspecialCatalogItem[]
+  existing: MomentosEspecialesAnswer | undefined
+  saving: boolean
+  onSave: (answer: MomentosEspecialesAnswer) => void
+}) {
+  const [draft, setDraft] = useState<MomentosEspecialesAnswer | null>(null)
+  const current = draft ?? existing
+  const [customInput, setCustomInput] = useState('')
+  const isTerminal = current?.choice === 'ninguno' || current?.choice === 'todavia_no_lo_sabemos'
+
+  function toggleSelected(key: MomentoEspecialKey) {
+    const selected = current?.selected ?? []
+    const next: MomentosEspecialesAnswer = {
+      choice: 'seleccionar',
+      selected: selected.includes(key) ? selected.filter((x) => x !== key) : [...selected, key],
+      customItems: isTerminal ? [] : current?.customItems ?? [],
+    }
+    setDraft(next)
+    onSave(next)
+  }
+  function addCustom() {
+    if (!customInput.trim()) return
+    const next: MomentosEspecialesAnswer = { choice: 'seleccionar', selected: current?.selected ?? [], customItems: [...(current?.customItems ?? []), customInput.trim()] }
+    setDraft(next)
+    onSave(next)
+    setCustomInput('')
+  }
+  function removeCustom(item: string) {
+    const next: MomentosEspecialesAnswer = { choice: 'seleccionar', selected: current?.selected ?? [], customItems: (current?.customItems ?? []).filter((x) => x !== item) }
+    setDraft(next)
+    onSave(next)
+  }
+  function selectTerminal(choice: 'ninguno' | 'todavia_no_lo_sabemos') {
+    const next: MomentosEspecialesAnswer = { choice, selected: [], customItems: [] }
+    setDraft(next)
+    onSave(next)
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Qué momentos especiales queréis incluir?
+      </div>
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        {catalog.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={'chip' + (!isTerminal && (current?.selected ?? []).includes(item.key) ? ' chip-active' : '')}
+            disabled={saving}
+            onClick={() => toggleSelected(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+        {!isTerminal &&
+          (current?.customItems ?? []).map((item) => (
+            <button key={item} type="button" className="chip chip-active" disabled={saving} onClick={() => removeCustom(item)}>
+              {item} ✕
+            </button>
+          ))}
+      </div>
+      {!isTerminal && (
+        <div className="inline-fields" style={{ marginTop: 4 }}>
+          <input type="text" value={customInput} placeholder="Otro momento especial" disabled={saving} onChange={(e) => setCustomInput(e.target.value)} />
+          <button type="button" className="link-button" disabled={saving || !customInput.trim()} onClick={addCustom}>
+            + Añadir
+          </button>
+        </div>
+      )}
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        <button
+          type="button"
+          className={'chip' + (current?.choice === 'todavia_no_lo_sabemos' ? ' chip-active' : '')}
+          disabled={saving}
+          onClick={() => selectTerminal('todavia_no_lo_sabemos')}
+        >
+          Todavía no lo sabemos
+        </button>
+        <button type="button" className={'chip' + (current?.choice === 'ninguno' ? ' chip-active' : '')} disabled={saving} onClick={() => selectTerminal('ninguno')}>
+          Ninguno en especial
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ClasesBaileQuestion({ existing, saving, onSave }: { existing: ClasesBaileAnswer | undefined; saving: boolean; onSave: (answer: ClasesBaileAnswer) => void }) {
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Necesitáis clases de baile?
+      </div>
+      <ChoiceRow options={CLASES_BAILE_OPTIONS} value={existing?.choice} disabled={saving} onSelect={(choice) => onSave({ choice })} />
+    </div>
+  )
+}
+
+function MomentosEspecialesBlock({ event, onDerivedDataChanged }: { event: FamilyEvent; onDerivedDataChanged: () => void }) {
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  function reload(): Promise<void> {
+    return listEventDecisions(event.id)
+      .then((d) => setDecisions(d.filter((x) => x.blockKey === 'momentos_especiales')))
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  function findDecision(questionKey: string): EventDecision | undefined {
+    return decisions.find((d) => d.questionKey === questionKey)
+  }
+
+  // Si "Primer baile" deja de estar seleccionado, la necesidad de clases de baile realmente desaparece —
+  // reconciliar su Preparativo prístino (nunca dejarlo huérfano) y borrar la propia sub-decisión, mismo
+  // criterio que saveNinos con las necesidades accionables cuando "¿Vendrán niños?" deja de ser "sí".
+  async function saveSeleccion(answer: MomentosEspecialesAnswer) {
+    setSavingKey(MOMENTOS_ESPECIALES_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, {
+        blockKey: 'momentos_especiales',
+        questionKey: MOMENTOS_ESPECIALES_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: false,
+      })
+      let allActions: ReconcileAction[] = []
+      if (!answer.selected.includes('primer_baile')) {
+        const existing = findDecision(CLASES_BAILE_QUESTION_KEY)
+        if (existing) {
+          const result = await applyPairDecisionGeneration(event.id, existing.id, desiredForClasesBaile(undefined))
+          allActions = [...allActions, ...result.actions]
+          await deleteEventDecision(existing.id)
+        }
+      }
+      await reload()
+      if (allActions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(allActions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveClasesBaile(answer: ClasesBaileAnswer) {
+    setSavingKey(CLASES_BAILE_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, {
+        blockKey: 'momentos_especiales',
+        questionKey: CLASES_BAILE_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: false,
+      })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForClasesBaile(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  if (loading) return null
+  const seleccionDecision = findDecision(MOMENTOS_ESPECIALES_QUESTION_KEY)
+  const seleccion = seleccionDecision?.answer as unknown as MomentosEspecialesAnswer | undefined
+  const catalog = MOMENTOS_ESPECIALES_CATALOG[event.type]
+  const clasesBaileDecision = findDecision(CLASES_BAILE_QUESTION_KEY)
+  const clasesBaile = clasesBaileDecision?.answer as unknown as ClasesBaileAnswer | undefined
+  const summary = summarizeMomentosEspecialesBlock(decisions)
+
+  return (
+    <div className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
+      <MomentosEspecialesQuestion catalog={catalog} existing={seleccion} saving={savingKey === MOMENTOS_ESPECIALES_QUESTION_KEY} onSave={saveSeleccion} />
+      {seleccion?.selected.includes('primer_baile') && (
+        <ClasesBaileQuestion existing={clasesBaile} saving={savingKey === CLASES_BAILE_QUESTION_KEY} onSave={saveClasesBaile} />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
 // Fase 2 — Momentos genéricos (event_moments, modelo creado en la Fase 1). Sustituye a la antigua
 // CeremoniaSection (2 ubicaciones fijas, Ceremonia/Celebración): un evento puede tener cualquier número
 // de momentos libres, cada uno con su propio nombre/fecha/hora/lugar. ÚNICA fuente de verdad: este mismo
@@ -4544,6 +4921,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
       {notice && <p className="points-badge">{notice}</p>}
       {error && <p className="error">{error}</p>}
       <EventOpenLinkBlock event={event} />
+      <GuestQuestionsBlock event={event} />
       {pending.length > 0 && (
         <button type="button" className="link-button" onClick={handleRemindPending}>
           🔔 Recordar a pendientes ({pending.length})
@@ -4783,6 +5161,172 @@ function EventOpenLinkBlock({ event }: { event: FamilyEvent }) {
         </div>
       )}
       {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
+    </div>
+  )
+}
+
+const GUEST_QUESTION_SCOPE_OPTIONS: { value: GuestQuestionScope; label: string }[] = [
+  { value: 'persona', label: 'Cada persona' },
+  { value: 'invitacion', label: 'Una respuesta por familia/invitación' },
+]
+
+// "📋 Preguntas a los invitados" — capacidad genérica, deliberadamente aparte de la elección de menú
+// (event_menu_options, ya implementada): la familia define sus propias preguntas de opción múltiple
+// ("¿Qué preferís de postre?"), cada una respondida por persona o por invitación entera. Solo CRUD de
+// preguntas/opciones desde aquí — las respuestas las escribe únicamente el RSVP público.
+function GuestQuestionForm({ event, onCancel, onSaved }: { event: FamilyEvent; onCancel: () => void; onSaved: () => void }) {
+  const [prompt, setPrompt] = useState('')
+  const [scope, setScope] = useState<GuestQuestionScope>('persona')
+  const [required, setRequired] = useState(false)
+  const [optionInput, setOptionInput] = useState('')
+  const [optionList, setOptionList] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function addOption() {
+    if (!optionInput.trim()) return
+    setOptionList((prev) => [...prev, optionInput.trim()])
+    setOptionInput('')
+  }
+  function removeOption(label: string) {
+    setOptionList((prev) => prev.filter((o) => o !== label))
+  }
+
+  async function handleSave(e: FormEvent) {
+    e.preventDefault()
+    if (!prompt.trim() || optionList.length === 0) return
+    setSaving(true)
+    setError(null)
+    try {
+      const question = await addEventGuestQuestion(event.id, { prompt: prompt.trim(), scope, required })
+      for (const label of optionList) {
+        await addEventGuestQuestionOption(question.id, event.id, label)
+      }
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSave} className="card" style={{ padding: 8, marginTop: 6 }}>
+      <label>
+        Pregunta
+        <input type="text" value={prompt} placeholder='Ej. "¿Qué preferís de postre?"' disabled={saving} onChange={(e) => setPrompt(e.target.value)} />
+      </label>
+      <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+        Respuestas
+      </div>
+      {optionList.length > 0 && (
+        <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 2 }}>
+          {optionList.map((o) => (
+            <button key={o} type="button" className="chip chip-active" disabled={saving} onClick={() => removeOption(o)}>
+              {o} ✕
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="inline-fields" style={{ marginTop: 4 }}>
+        <input type="text" value={optionInput} placeholder="Nueva respuesta" disabled={saving} onChange={(e) => setOptionInput(e.target.value)} />
+        <button type="button" className="link-button" disabled={saving || !optionInput.trim()} onClick={addOption}>
+          + Añadir opción
+        </button>
+      </div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+        ¿Quién responde?
+      </div>
+      <ChoiceRow options={GUEST_QUESTION_SCOPE_OPTIONS} value={scope} disabled={saving} onSelect={setScope} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+        <input type="checkbox" checked={required} disabled={saving} onChange={(e) => setRequired(e.target.checked)} />
+        Respuesta obligatoria
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="submit" disabled={saving || !prompt.trim() || optionList.length === 0}>
+          Guardar pregunta
+        </button>
+        <button type="button" className="link-button" disabled={saving} onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function GuestQuestionsBlock({ event }: { event: FamilyEvent }) {
+  const [questions, setQuestions] = useState<EventGuestQuestion[]>([])
+  const [options, setOptions] = useState<EventGuestQuestionOption[]>([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    Promise.all([listEventGuestQuestions(event.id), listEventGuestQuestionOptionsForEvent(event.id)])
+      .then(([q, o]) => {
+        setQuestions(q)
+        setOptions(o)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las preguntas')))
+  }
+  useEffect(reload, [event.id])
+
+  async function handleToggleActive(question: EventGuestQuestion) {
+    try {
+      await updateEventGuestQuestion(question.id, { active: !question.active })
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
+      <strong style={{ fontSize: 13 }}>📋 Preguntas a los invitados (opcional)</strong>
+      <p className="muted" style={{ fontSize: 12, margin: '2px 0 4px' }}>
+        Además de confirmar asistencia (y, si procede, su menú), podéis añadir vuestras propias preguntas — cada invitado activo las verá al confirmar.
+      </p>
+      {error && <p className="error">{error}</p>}
+      {questions.map((q) => (
+        <div key={q.id} className="card task-card" style={{ marginTop: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>{q.prompt}</strong>
+            <div>
+              <button type="button" className="link-button" onClick={() => handleToggleActive(q)}>
+                {q.active ? 'Desactivar' : 'Activar'}
+              </button>
+              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pregunta" onConfirm={() => deleteEventGuestQuestion(q.id).then(reload)} />
+            </div>
+          </div>
+          <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
+            {q.scope === 'persona' ? 'Cada persona responde' : 'Una respuesta por familia/invitación'} · {q.required ? 'Obligatoria' : 'Opcional'} ·{' '}
+            {q.active ? 'Activa' : 'Inactiva'}
+          </p>
+          <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+            {options
+              .filter((o) => o.questionId === q.id)
+              .map((o) => (
+                <span key={o.id} className="chip">
+                  {o.label}
+                </span>
+              ))}
+          </div>
+        </div>
+      ))}
+      {showAdd ? (
+        <GuestQuestionForm
+          event={event}
+          onCancel={() => setShowAdd(false)}
+          onSaved={() => {
+            setShowAdd(false)
+            reload()
+          }}
+        />
+      ) : (
+        <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 6 }}>
+          + Añadir pregunta a los invitados
+        </button>
+      )}
     </div>
   )
 }

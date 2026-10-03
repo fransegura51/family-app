@@ -54,6 +54,27 @@ interface PublicMenuOption {
   name: string
 }
 
+// "📋 Preguntas a los invitados" — capacidad genérica, aparte de la elección de menú: solo preguntas
+// ACTIVAS. scope "persona" se responde una vez por cada PublicGuestMember (solo con asistencia marcada);
+// scope "invitacion" se responde una sola vez para toda la unidad. `answers` trae lo ya guardado antes
+// (memberId null = la respuesta de "invitacion").
+interface PublicGuestQuestionAnswer {
+  memberId: string | null
+  optionId: string
+}
+interface PublicGuestQuestionOption {
+  id: string
+  label: string
+}
+interface PublicGuestQuestion {
+  id: string
+  prompt: string
+  scope: 'persona' | 'invitacion'
+  required: boolean
+  options: PublicGuestQuestionOption[]
+  answers: PublicGuestQuestionAnswer[]
+}
+
 interface PublicGuest {
   displayName: string
   adultsCount: number
@@ -64,7 +85,12 @@ interface PublicGuest {
   rsvpNote: string | null
   members: PublicGuestMember[]
   menuOptions: PublicMenuOption[]
+  questions: PublicGuestQuestion[]
 }
+
+// Clave interna para "la respuesta de la invitación entera" (scope "invitacion") dentro del estado local
+// de respuestas — nunca un memberId real, así que no puede colisionar con un uuid.
+const INVITACION_ANSWER_KEY = 'invitacion'
 
 type LoadState =
   | { state: 'loading' }
@@ -254,6 +280,16 @@ function RsvpForm({
   const [children, setChildren] = useState(String(guest.rsvpChildrenCount ?? guest.childrenCount))
   const [note, setNote] = useState(guest.rsvpNote ?? '')
   const [members, setMembers] = useState(() => guest.members.map((m) => ({ id: m.id, name: m.name, personType: m.personType, attending: m.rsvpAttending, menuOptionId: m.menuOptionId })))
+  // "📋 Preguntas a los invitados" — por pregunta, un mapa memberId→optionId (INVITACION_ANSWER_KEY para
+  // scope "invitacion", que no tiene memberId real). Precargado con lo que el RSVP ya trajera guardado.
+  const [questionAnswers, setQuestionAnswers] = useState<Record<string, Record<string, string>>>(() => {
+    const init: Record<string, Record<string, string>> = {}
+    for (const q of guest.questions) {
+      init[q.id] = {}
+      for (const a of q.answers) init[q.id][a.memberId ?? INVITACION_ANSWER_KEY] = a.optionId
+    }
+    return init
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const hasMembers = guest.members.length > 0
@@ -261,9 +297,33 @@ function RsvpForm({
   function updateMember(id: string, patch: Partial<{ attending: boolean | null; menuOptionId: string | null }>) {
     setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)))
   }
+  function setQuestionAnswer(questionId: string, memberKey: string, optionId: string) {
+    setQuestionAnswers((prev) => ({ ...prev, [questionId]: { ...(prev[questionId] ?? {}), [memberKey]: optionId } }))
+  }
+
+  // Obligatoriedad (validación en el propio formulario, antes de enviar — nunca bloquea nada que no se
+  // esté mostrando: una pregunta "persona" solo es obligatoria para quien de verdad va a venir).
+  function missingRequiredQuestion(): boolean {
+    if (status !== 'confirmado') return false
+    for (const q of guest.questions) {
+      if (!q.required) continue
+      if (q.scope === 'invitacion') {
+        if (!questionAnswers[q.id]?.[INVITACION_ANSWER_KEY]) return true
+      } else if (hasMembers) {
+        for (const m of members) {
+          if (m.attending === true && !questionAnswers[q.id]?.[m.id]) return true
+        }
+      }
+    }
+    return false
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (missingRequiredQuestion()) {
+      setError('Falta responder alguna pregunta obligatoria.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -275,6 +335,15 @@ function RsvpForm({
       } else {
         body.adults = adults
         body.children = children
+      }
+      if (status === 'confirmado') {
+        const questionAnswersBody: { questionId: string; memberId: string | null; optionId: string }[] = []
+        for (const q of guest.questions) {
+          for (const [memberKey, optionId] of Object.entries(questionAnswers[q.id] ?? {})) {
+            questionAnswersBody.push({ questionId: q.id, memberId: memberKey === INVITACION_ANSWER_KEY ? null : memberKey, optionId })
+          }
+        }
+        if (questionAnswersBody.length > 0) body.questionAnswers = questionAnswersBody
       }
       const res = await fetch(`${functionsUrl()}?token=${encodeURIComponent(token)}`, {
         method: 'POST',
@@ -338,6 +407,23 @@ function RsvpForm({
                     </select>
                   </label>
                 )}
+                {m.attending === true &&
+                  guest.questions
+                    .filter((q) => q.scope === 'persona')
+                    .map((q) => (
+                      <label key={q.id} style={{ display: 'block', marginTop: 8 }}>
+                        {q.prompt}
+                        {q.required ? ' *' : ''}
+                        <select value={questionAnswers[q.id]?.[m.id] ?? ''} onChange={(e) => setQuestionAnswer(q.id, m.id, e.target.value)}>
+                          <option value="">Sin elegir todavía</option>
+                          {q.options.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
               </div>
             ))}
           </div>
@@ -353,6 +439,23 @@ function RsvpForm({
             </label>
           </div>
         ))}
+      {status === 'confirmado' &&
+        guest.questions
+          .filter((q) => q.scope === 'invitacion')
+          .map((q) => (
+            <label key={q.id} style={{ display: 'block', marginTop: 12 }}>
+              {q.prompt}
+              {q.required ? ' *' : ''}
+              <select value={questionAnswers[q.id]?.[INVITACION_ANSWER_KEY] ?? ''} onChange={(e) => setQuestionAnswer(q.id, INVITACION_ANSWER_KEY, e.target.value)}>
+                <option value="">Sin elegir todavía</option>
+                {q.options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
       <label style={{ display: 'block', marginTop: 14 }}>
         Nota (alergia, algún comentario...) — opcional
         <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} rows={3} />

@@ -9,6 +9,8 @@ import {
   desiredForPeluqueriaResolucion,
   desiredForVestuarioResolucion,
   floralItemSelected,
+  floralItemsForSlot,
+  hasFloralActivity,
   isBudgetItemUntouched,
   isTaskUntouched,
   listPairBlockQuestions,
@@ -457,6 +459,68 @@ describe('floralItemSelected / withFloralSelected — marca de selección SEPARA
     const event = makeEvent({ details: { partner1FloralSelected: ['ramo'] } })
     expect(floralItemSelected(event, 'partner1', 'ramo')).toBe(true)
     expect(floralItemSelected(event, 'partner2', 'ramo')).toBe(false)
+  })
+})
+
+// Petición real: "esto no debe depender del género" — el catálogo sugerido difiere solo por POSICIÓN del
+// slot (nunca por partnerRole), y nunca oculta un dato real ya existente.
+describe('floralItemsForSlot — catálogo sugerido por POSICIÓN, nunca por rol/género, nunca oculta un dato real', () => {
+  it('partner1 (primera persona): Ramo y Flor de solapa, igual que siempre', () => {
+    const keys = floralItemsForSlot(makeEvent(), 'partner1', []).map((i) => i.key)
+    expect(keys).toEqual(['ramo', 'prendido'])
+  })
+
+  it('partner2 (segunda persona) sin datos reales: Ramo no se sugiere por defecto, Flor de solapa sí', () => {
+    const keys = floralItemsForSlot(makeEvent(), 'partner2', []).map((i) => i.key)
+    expect(keys).toEqual(['prendido'])
+  })
+
+  it('CASO F — si partner2 YA tiene "ramo" seleccionado (dato real), nunca se oculta aunque no se sugiera por defecto', () => {
+    const event = makeEvent({ details: { partner2FloralSelected: ['ramo'] } })
+    const keys = floralItemsForSlot(event, 'partner2', []).map((i) => i.key)
+    expect(keys).toContain('ramo')
+  })
+
+  it('si partner2 YA tiene una decisión de resolución para "ramo" (sin estar marcado en details), tampoco se oculta', () => {
+    const decisions = [makeDecision({ questionKey: 'pareja.partner2.floral.ramo', answer: { choice: 'floristeria' } })]
+    const keys = floralItemsForSlot(makeEvent(), 'partner2', decisions).map((i) => i.key)
+    expect(keys).toContain('ramo')
+  })
+
+  it('nunca decide por partnerRole (novia/novio) — depende solo de PartnerSlot', () => {
+    const eventNovio1 = makeEvent({ details: { partner1Role: 'novio' } })
+    const eventNovia1 = makeEvent({ details: { partner1Role: 'novia' } })
+    expect(floralItemsForSlot(eventNovio1, 'partner1', [])).toEqual(floralItemsForSlot(eventNovia1, 'partner1', []))
+  })
+})
+
+// RETOQUE (petición real: "Paco no tiene esa posibilidad") — causa raíz: el render ocultaba el bloque
+// floral entero detrás de la pregunta general de Complementos (sin relación con flores), aunque ya
+// existiera una selección o decisión floral real. hasFloralActivity es el mismo criterio que
+// listPairBlockQuestions ya usaba para el contador "✓ N decididas" (nunca mira Complementos).
+describe('hasFloralActivity — una persona con cualquier dato floral real nunca queda oculta, sea cual sea su respuesta de Complementos', () => {
+  it('false sin ninguna actividad floral', () => {
+    expect(hasFloralActivity(makeEvent(), 'partner2', [])).toBe(false)
+  })
+
+  it('true si el ítem está marcado en details (aunque no tenga decisión de resolución todavía)', () => {
+    const event = makeEvent({ details: { partner2FloralSelected: ['prendido'] } })
+    expect(hasFloralActivity(event, 'partner2', [])).toBe(true)
+  })
+
+  it('true si ya existe una decisión floral.* para esa persona (caso real: pareja.partner2.floral.prendido con respuesta)', () => {
+    const decisions = [makeDecision({ questionKey: 'pareja.partner2.floral.prendido', answer: { choice: 'floristeria' } })]
+    expect(hasFloralActivity(makeEvent(), 'partner2', decisions)).toBe(true)
+  })
+
+  it('true si existe un complemento floral libre ("+Otro") para esa persona (floral.custom:*)', () => {
+    const decisions = [makeDecision({ questionKey: 'pareja.partner2.floral.custom:abc123', answer: { choice: 'otro', custom: { label: 'Corona floral', action: 'buscar_contratar', hasCost: null } } })]
+    expect(hasFloralActivity(makeEvent(), 'partner2', decisions)).toBe(true)
+  })
+
+  it('ignora la actividad floral de OTRO slot — partner1 con ramo no hace true a partner2', () => {
+    const event = makeEvent({ details: { partner1FloralSelected: ['ramo'] } })
+    expect(hasFloralActivity(event, 'partner2', [])).toBe(false)
   })
 })
 

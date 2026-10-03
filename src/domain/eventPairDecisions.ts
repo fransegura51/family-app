@@ -156,6 +156,34 @@ export function withFloralSelected(event: Pick<FamilyEvent, 'details'>, slot: Pa
   return { ...details, [field]: next }
 }
 
+// Petición real: "esto no debe depender del género" — el catálogo SUGERIDO (las casillas fijas; nunca lo
+// que se puede escribir libremente vía "+Otro complemento floral", eso siempre admite cualquier texto
+// para cualquier persona) difiere solo por POSICIÓN del slot, igual que el resto de este motor nunca mira
+// partnerRole. A la primera persona se le sigue sugiriendo Ramo y Flor de solapa (donde ya funcionaba); a
+// la segunda, solo Flor de solapa — Ramo no se sugiere por defecto, pero sigue siendo libre de añadirse
+// vía "+Otro" si se quiere. Si YA existe un dato real (selección o decisión) para un ítem que ya no se
+// sugeriría, nunca se oculta — comprobado contra los datos reales existentes antes de implementar: ningún
+// evento real tiene hoy "ramo" seleccionado para la segunda persona, así que esto no oculta nada ya dado.
+export function floralItemsForSlot(event: Pick<FamilyEvent, 'details'>, slot: PartnerSlot, decisions: EventDecision[]): typeof FLORAL_ITEMS {
+  if (slot === 'partner1') return FLORAL_ITEMS
+  return FLORAL_ITEMS.filter((item) => item.key !== 'ramo' || floralItemSelected(event, slot, item.key) || decisions.some((d) => d.questionKey === pairQuestionKey(slot, `floral.${item.key}`)))
+}
+
+// Petición real ("Paco no tiene esa posibilidad"): un elemento floral ya marcado o ya resuelto nunca debe
+// depender de la pregunta general de Complementos (zapatos/joyas/corbata/gemelos — un concepto totalmente
+// distinto) para seguir siendo visible. Causa raíz auditada: listPairBlockQuestions (el contador
+// "✓ N decididas" de arriba) YA trataba un ítem floral como relevante con esta misma condición
+// (marcado o con decisión, sin mirar Complementos); solo el RENDER en EventosScreen.tsx exigía además
+// Complementos === 'preparar', ocultando visualmente datos reales ya guardados (confirmado en producción:
+// pareja.partner2.floral.prendido con respuesta real, invisible porque partner2.complementos nunca se
+// había respondido). Esta función unifica el criterio: el bloque floral se revela si Complementos ya dice
+// 'preparar' (descubrimiento normal) O si esa persona ya tiene cualquier actividad floral real.
+export function hasFloralActivity(event: Pick<FamilyEvent, 'details'>, slot: PartnerSlot, decisions: EventDecision[]): boolean {
+  if (FLORAL_ITEMS.some((item) => floralItemSelected(event, slot, item.key))) return true
+  const prefix = pairQuestionKey(slot, 'floral.')
+  return decisions.some((d) => d.questionKey.startsWith(prefix))
+}
+
 function findDecision(decisions: EventDecision[], questionKey: string): EventDecision | undefined {
   return decisions.find((d) => d.questionKey === questionKey)
 }

@@ -190,16 +190,47 @@ describe('CasaLocationBlock — "En casa" propone la Casa familiar guardada en U
     expect(confirmFn).toContain('venuePlaceId: null')
   })
 
-  it('intenta reverseGeocode() reutilizando la función existente (mismo flujo que LocationPickerModal, nunca uno nuevo) — un fallo se traga sin más, cae al fallback por coordenadas ya validado', () => {
-    const confirmFn = slice(block, 'async function handleConfirmCasa()', '\n  }')
-    expect(confirmFn).toContain('reverseGeocode(casa.latitude, casa.longitude)')
-    expect(confirmFn).toMatch(/try \{\s*address = await reverseGeocode/)
-    expect(confirmFn).toContain('catch {')
-  })
-
   it('nunca convierte venueLabel en "Casa" a la fuerza — conserva el label que ya tenga el evento, y solo usa el nombre de Casa cuando el evento no tiene ninguno', () => {
     const confirmFn = slice(block, 'async function handleConfirmCasa()', '\n  }')
     expect(confirmFn).toContain("venueLabel: event.venueLabel?.trim() ? event.venueLabel : casa.name")
+  })
+
+  // RETOQUE (petición real: "las coordenadas son poco útiles para una persona") — reverseGeocode() ya no
+  // se llama dentro de handleConfirmCasa: se resuelve UNA sola vez en un efecto propio, en cuanto Casa se
+  // carga, y handleConfirmCasa solo reutiliza ese resultado (casaAddress) — nunca una segunda llamada al
+  // confirmar, ni una llamada repetida en cada render.
+  describe('reverseGeocode() se resuelve UNA sola vez (efecto propio), nunca dentro de handleConfirmCasa ni repetido por render', () => {
+    it('handleConfirmCasa reutiliza casaAddress ya resuelto — no llama a reverseGeocode él mismo', () => {
+      const confirmFn = slice(block, 'async function handleConfirmCasa()', '\n  }')
+      expect(confirmFn).not.toContain('reverseGeocode(')
+      expect(confirmFn).toContain('venueAddress: casaAddress,')
+    })
+
+    it('un efecto dedicado, dependiente solo de `casa` (no de cada render), llama a reverseGeocode con las coordenadas de Casa', () => {
+      const effect = slice(block, 'useEffect(() => {\n    if (!casa) return', '\n  }, [casa])')
+      expect(effect).toContain('reverseGeocode(casa.latitude, casa.longitude)')
+      expect(block).toContain('}, [casa])')
+    })
+
+    it('controla desmontaje con un flag `cancelled` — nunca escribe estado tras desmontar', () => {
+      const effect = slice(block, 'useEffect(() => {\n    if (!casa) return', '\n  }, [casa])')
+      expect(effect).toContain('let cancelled = false')
+      expect(effect).toContain('if (!cancelled) setCasaAddress(address)')
+      expect(effect).toContain('return () => {\n      cancelled = true\n    }')
+    })
+
+    it('un fallo de reverseGeocode se traga sin más (setCasaAddress(null)) — nunca bloquea Sí/No, cae al mismo fallback humano', () => {
+      const effect = slice(block, 'useEffect(() => {\n    if (!casa) return', '\n  }, [casa])')
+      expect(effect).toContain('.catch(() => {')
+      expect(effect).toContain('if (!cancelled) setCasaAddress(null)')
+    })
+  })
+
+  // RETOQUE — antes de confirmar, nunca se muestran coordenadas en bruto como texto principal: se usa la
+  // dirección ya resuelta, o un fallback humano ("Ubicación Casa guardada") mientras se resuelve o si falla.
+  it('muestra la dirección resuelta (casaAddress) antes de confirmar, con fallback humano "Ubicación Casa guardada" — nunca coordenadas en bruto', () => {
+    expect(block).toContain('{casaAddress ?? (casa.category ? `${casa.category} · Ubicación Casa guardada` : \'Ubicación Casa guardada\')}')
+    expect(block).not.toMatch(/casa\.latitude\.toFixed|casa\.longitude\.toFixed/)
   })
 
   it('"Sí, usar esta ubicación" nunca escribe en location_places — Casa nunca se modifica desde Eventos', () => {

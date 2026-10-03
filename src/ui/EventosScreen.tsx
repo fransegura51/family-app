@@ -177,7 +177,8 @@ import {
   desiredForVestuarioResolucion,
   type DesiredPairGeneration,
   floralItemSelected,
-  FLORAL_ITEMS,
+  floralItemsForSlot,
+  hasFloralActivity,
   pairQuestionKey,
   partnerName,
   PARTNER_ROLE_OPTIONS,
@@ -2622,6 +2623,10 @@ function LugarContextoBlock({ event, onChanged }: { event: FamilyEvent; onChange
 // (cupo diario, red) se deja en null sin más, exactamente el mismo fallback por coordenadas ya validado.
 function CasaLocationBlock({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
   const [casa, setCasa] = useState<LocationPlace | null | undefined>(undefined) // undefined = cargando
+  // Dirección legible de Casa, resuelta UNA sola vez para mostrarla ANTES de confirmar (en vez de
+  // coordenadas en bruto) — null mientras se resuelve o si reverseGeocode falla/no da nada; en ambos
+  // casos el fallback es el mismo texto humano, nunca un número de latitud/longitud.
+  const [casaAddress, setCasaAddress] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [skipProposal, setSkipProposal] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -2633,6 +2638,26 @@ function CasaLocationBlock({ event, onChanged }: { event: FamilyEvent; onChanged
       .catch(() => setCasa(null))
   }, [])
 
+  // RETOQUE (petición real: "las coordenadas son poco útiles") — reutiliza reverseGeocode(), la MISMA
+  // infraestructura que ya usa el resto del flujo de ubicación, nunca una llamada nueva. Depende solo de
+  // `casa` (estado, no se recalcula en cada render) — se dispara una única vez, al resolverse Casa; un
+  // reintento posterior del usuario (Sí/No/Cambiar ubicación) reutiliza este mismo resultado, nunca pide
+  // otra vez a Google. `cancelled` evita escribir estado si el componente se desmonta antes de responder.
+  useEffect(() => {
+    if (!casa) return
+    let cancelled = false
+    reverseGeocode(casa.latitude, casa.longitude)
+      .then((address) => {
+        if (!cancelled) setCasaAddress(address)
+      })
+      .catch(() => {
+        if (!cancelled) setCasaAddress(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [casa])
+
   const hasVenue = event.venueLatitude != null && event.venueLongitude != null
   const showSummary = hasVenue && !editing
 
@@ -2640,19 +2665,14 @@ function CasaLocationBlock({ event, onChanged }: { event: FamilyEvent; onChanged
     if (!casa) return
     setConfirming(true)
     setError(null)
-    let address: string | null = null
     try {
-      address = await reverseGeocode(casa.latitude, casa.longitude)
-    } catch {
-      // Dirección solo informativa/opcional — si falla (cupo diario, red), se guarda sin ella y el
-      // enlace de mapa sigue funcionando por coordenadas (fallback ya validado).
-    }
-    try {
+      // Reutiliza la dirección ya resuelta por el efecto de arriba — null si todavía no ha llegado o si
+      // falló, exactamente el mismo fallback por coordenadas ya validado; nunca una segunda llamada.
       await updateEvent(event.id, {
         venueLabel: event.venueLabel?.trim() ? event.venueLabel : casa.name,
         venueLatitude: casa.latitude,
         venueLongitude: casa.longitude,
-        venueAddress: address,
+        venueAddress: casaAddress,
         venuePlaceId: null,
       })
       setEditing(false)
@@ -2692,8 +2712,7 @@ function CasaLocationBlock({ event, onChanged }: { event: FamilyEvent; onChanged
         <>
           <p style={{ margin: '0 0 4px', fontSize: 13 }}>Tenéis una ubicación «{casa.name}» guardada en PEPA.</p>
           <p className="muted" style={{ margin: '0 0 6px', fontSize: 12 }}>
-            {casa.category ? `${casa.category} · ` : ''}
-            {casa.latitude.toFixed(5)}, {casa.longitude.toFixed(5)}
+            {casaAddress ?? (casa.category ? `${casa.category} · Ubicación Casa guardada` : 'Ubicación Casa guardada')}
           </p>
           <p style={{ margin: '0 0 6px', fontSize: 13 }}>¿Es aquí donde lo vais a celebrar?</p>
           <div className="filter-row">
@@ -3836,13 +3855,19 @@ function PairBlock({
             />
             {/* Corrección real (iPhone): los florales aparecían SIEMPRE, antes incluso de responder
                 Complementos generales. Revelado único: solo "Queremos preparar complementos" los muestra —
-                Sin empezar/No necesitaremos/Todavía no lo sabemos los ocultan, sin excepción permanente. */}
-            {complementosAnswer?.choice === 'preparar' && (
+                Sin empezar/No necesitaremos/Todavía no lo sabemos los ocultan, sin excepción permanente.
+                RETOQUE (petición real: "Paco no tiene esa posibilidad") — ese revelado único ocultaba
+                datos florales REALES ya guardados en cuanto Complementos generales (zapatos/joyas/corbata,
+                un concepto sin relación) dejaba de ser 'preparar' o nunca llegaba a responderse. Ahora
+                también se revela si esta persona ya tiene cualquier actividad floral real
+                (hasFloralActivity, mismo criterio que ya usaba el contador "✓ N decididas" de arriba) —
+                nunca se vuelve a esconder un dato ya dado. */}
+            {(complementosAnswer?.choice === 'preparar' || hasFloralActivity(event, slot, decisions)) && (
               <>
                 <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
                   💐 Complementos florales
                 </div>
-                {FLORAL_ITEMS.map((item) => {
+                {floralItemsForSlot(event, slot, decisions).map((item) => {
                   const key = pairQuestionKey(slot, `floral.${item.key}`)
                   const decision = findDecision(key)
                   const selected = decision !== undefined || floralItemSelected(event, slot, item.key)

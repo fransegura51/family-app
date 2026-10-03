@@ -234,17 +234,31 @@ describe('PairBlock — Vestuario/Detalle especial de 2 niveles: el tipo nunca g
   })
 })
 
-describe('Complementos — los florales son contenido revelado de "Queremos preparar complementos", nunca visibles antes', () => {
+describe('Complementos — los florales se revelan al responder "Queremos preparar complementos" O si ya hay actividad floral real (RETOQUE: "Paco no tiene esa posibilidad")', () => {
   const pairBlock = slice(SRC, 'function PairBlock({', '\n\n// ---------------------------------------------------------------------\n// Fase 2 — Momentos genéricos')
 
-  it('el bloque floral completo está condicionado a complementosAnswer?.choice === "preparar"', () => {
-    expect(pairBlock).toContain("complementosAnswer?.choice === 'preparar' && (")
+  // Causa raíz auditada: antes, cambiar o no responder la pregunta general de Complementos
+  // (zapatos/joyas/corbata/gemelos, sin relación con flores) ocultaba datos florales YA guardados —
+  // confirmado en producción con pareja.partner2.floral.prendido (respuesta real, invisible). El contador
+  // "✓ N decididas" (listPairBlockQuestions) ya trataba un ítem floral como relevante sin mirar
+  // Complementos; ahora el render usa el mismo criterio vía hasFloralActivity, nunca solo complementosAnswer.
+  it('el bloque floral se revela con complementosAnswer?.choice === "preparar" O hasFloralActivity(event, slot, decisions)', () => {
+    expect(pairBlock).toContain("(complementosAnswer?.choice === 'preparar' || hasFloralActivity(event, slot, decisions)) && (")
   })
 
   it('"💐 Complementos florales", los checkboxes y "+ Otro complemento floral" están DENTRO de esa condición, no antes', () => {
-    const gated = slice(pairBlock, "complementosAnswer?.choice === 'preparar' && (", '+ Otro complemento floral')
+    const gated = slice(pairBlock, "(complementosAnswer?.choice === 'preparar' || hasFloralActivity(event, slot, decisions)) && (", '+ Otro complemento floral')
     expect(gated).toContain('💐 Complementos florales')
     expect(gated).toContain('<FloralItemQuestion')
+  })
+
+  // Petición real: "esto no debe depender del género" — el catálogo sugerido (floralItemsForSlot) sustituye
+  // a FLORAL_ITEMS directo en el render; la diferencia por persona vive en domain/eventPairDecisions.ts,
+  // nunca aquí como un if/else por rol.
+  it('usa floralItemsForSlot(event, slot, decisions) para el catálogo sugerido, nunca FLORAL_ITEMS directo ni una rama por partnerRole', () => {
+    expect(pairBlock).toContain('floralItemsForSlot(event, slot, decisions).map((item) => {')
+    expect(pairBlock).not.toMatch(/slot === 'partner1'|slot === 'partner2'/)
+    expect(pairBlock).not.toMatch(/role === 'novia'|role === 'novio'/)
   })
 })
 

@@ -109,12 +109,11 @@ describe('GuestQuestionForm — edición de una pregunta ya existente (mismo com
     expect(form).toContain('<input type="checkbox" checked={required} disabled={saving} onChange={(e) => setRequired(e.target.checked)} />')
   })
 
-  it('CASO D — quitar una opción que YA tiene respuestas (answeredOptionIds) exige confirmación explícita antes de poder perderla; sin respuestas se quita sin pedir nada', () => {
+  it('CASO D — quitar una opción que YA tiene respuestas (answeredOptionIds) exige confirmación explícita (ConfirmButton de doble toque) antes de poder perderla; sin respuestas se quita con un solo toque, sin pedir nada', () => {
     const form = slice(SRC, 'function GuestQuestionForm(', '\nfunction GuestQuestionsBlock(')
-    const removeOption = slice(form, 'function removeOption(index: number) {', '\n  function confirmRemoveOption')
-    expect(removeOption).toContain('if (opt.id && answerStats?.answeredOptionIds.includes(opt.id)) {')
-    expect(removeOption).toContain('setRemoveConfirmIndex(index)')
+    expect(form).toContain('o.id && answerStats?.answeredOptionIds.includes(o.id) ? (')
     expect(form).toContain('<ConfirmButton')
+    expect(form).toContain('onConfirm={() => removeOption(i)}')
     expect(form).toContain('confirmMessage="Esta pregunta ya tiene respuestas con esta opción')
   })
 

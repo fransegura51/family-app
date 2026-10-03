@@ -5310,7 +5310,6 @@ function GuestQuestionForm({
   const [required, setRequired] = useState(initialRequired ?? false)
   const [optionInput, setOptionInput] = useState('')
   const [optionList, setOptionList] = useState<GuestQuestionOptionDraft[]>(initialOptions ?? [])
-  const [removeConfirmIndex, setRemoveConfirmIndex] = useState<number | null>(null)
   const [answerStats, setAnswerStats] = useState<{ total: number; answeredOptionIds: string[] } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -5332,17 +5331,10 @@ function GuestQuestionForm({
   function updateOptionLabel(index: number, label: string) {
     setOptionList((prev) => prev.map((o, i) => (i === index ? { ...o, label } : o)))
   }
+  // Una opción sin respuestas se quita directamente; una con respuestas usa el ConfirmButton de doble
+  // toque de la fila (ver render) en vez de pasar por aquí.
   function removeOption(index: number) {
-    const opt = optionList[index]
-    if (opt.id && answerStats?.answeredOptionIds.includes(opt.id)) {
-      setRemoveConfirmIndex(index)
-      return
-    }
     setOptionList((prev) => prev.filter((_, i) => i !== index))
-  }
-  function confirmRemoveOption(index: number) {
-    setOptionList((prev) => prev.filter((_, i) => i !== index))
-    setRemoveConfirmIndex(null)
   }
 
   const scopeLocked = Boolean(questionId) && (answerStats?.total ?? 0) > 0
@@ -5392,29 +5384,25 @@ function GuestQuestionForm({
       </div>
       {optionList.length > 0 && (
         <div style={{ marginTop: 2 }}>
-          {optionList.map((o, i) =>
-            removeConfirmIndex === i ? (
-              <div key={o.id ?? `new-${i}`} className="filter-row" style={{ marginTop: 4, alignItems: 'center' }}>
+          {optionList.map((o, i) => (
+            <div key={o.id ?? `new-${i}`} className="inline-fields" style={{ marginTop: 4 }}>
+              <input type="text" value={o.label} disabled={saving} onChange={(e) => updateOptionLabel(i, e.target.value)} />
+              {o.id && answerStats?.answeredOptionIds.includes(o.id) ? (
                 <ConfirmButton
-                  label={`Quitar "${o.label}"`}
+                  label="✕"
                   confirmLabel="Quitar de todos modos"
                   confirmMessage="Esta pregunta ya tiene respuestas con esta opción — quitarla hará que esas respuestas dejen de mostrar qué habían elegido."
-                  className="link-button"
-                  onConfirm={() => confirmRemoveOption(i)}
+                  className="icon-button"
+                  ariaLabel={`Quitar opción "${o.label}"`}
+                  onConfirm={() => removeOption(i)}
                 />
-                <button type="button" className="link-button" disabled={saving} onClick={() => setRemoveConfirmIndex(null)}>
-                  Cancelar
-                </button>
-              </div>
-            ) : (
-              <div key={o.id ?? `new-${i}`} className="inline-fields" style={{ marginTop: 4 }}>
-                <input type="text" value={o.label} disabled={saving} onChange={(e) => updateOptionLabel(i, e.target.value)} />
+              ) : (
                 <button type="button" className="icon-button" aria-label={`Quitar opción "${o.label}"`} disabled={saving} onClick={() => removeOption(i)}>
                   ✕
                 </button>
-              </div>
-            ),
-          )}
+              )}
+            </div>
+          ))}
         </div>
       )}
       <div className="inline-fields" style={{ marginTop: 4 }}>

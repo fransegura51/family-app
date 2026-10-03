@@ -5327,6 +5327,11 @@ function GuestQuestionForm({
     setOptionList((prev) => [...prev, { id: null, label: optionInput.trim() }])
     setOptionInput('')
   }
+  // Corrige una opción ya en la lista (sea nueva o ya existente) — el texto se edita en el sitio, nunca
+  // quitando y volviendo a añadir, que para una opción ya existente perdería su id (ver handleSave).
+  function updateOptionLabel(index: number, label: string) {
+    setOptionList((prev) => prev.map((o, i) => (i === index ? { ...o, label } : o)))
+  }
   function removeOption(index: number) {
     const opt = optionList[index]
     if (opt.id && answerStats?.answeredOptionIds.includes(opt.id)) {
@@ -5386,21 +5391,28 @@ function GuestQuestionForm({
         Respuestas
       </div>
       {optionList.length > 0 && (
-        <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 2 }}>
+        <div style={{ marginTop: 2 }}>
           {optionList.map((o, i) =>
             removeConfirmIndex === i ? (
-              <ConfirmButton
-                key={o.id ?? `new-${i}`}
-                label={`${o.label} ✕`}
-                confirmLabel="Quitar de todos modos"
-                confirmMessage="Esta pregunta ya tiene respuestas con esta opción — quitarla hará que esas respuestas dejen de mostrar qué habían elegido."
-                className="link-button"
-                onConfirm={() => confirmRemoveOption(i)}
-              />
+              <div key={o.id ?? `new-${i}`} className="filter-row" style={{ marginTop: 4, alignItems: 'center' }}>
+                <ConfirmButton
+                  label={`Quitar "${o.label}"`}
+                  confirmLabel="Quitar de todos modos"
+                  confirmMessage="Esta pregunta ya tiene respuestas con esta opción — quitarla hará que esas respuestas dejen de mostrar qué habían elegido."
+                  className="link-button"
+                  onConfirm={() => confirmRemoveOption(i)}
+                />
+                <button type="button" className="link-button" disabled={saving} onClick={() => setRemoveConfirmIndex(null)}>
+                  Cancelar
+                </button>
+              </div>
             ) : (
-              <button key={o.id ?? `new-${i}`} type="button" className="chip chip-active" disabled={saving} onClick={() => removeOption(i)}>
-                {o.label} ✕
-              </button>
+              <div key={o.id ?? `new-${i}`} className="inline-fields" style={{ marginTop: 4 }}>
+                <input type="text" value={o.label} disabled={saving} onChange={(e) => updateOptionLabel(i, e.target.value)} />
+                <button type="button" className="icon-button" aria-label={`Quitar opción "${o.label}"`} disabled={saving} onClick={() => removeOption(i)}>
+                  ✕
+                </button>
+              </div>
             ),
           )}
         </div>

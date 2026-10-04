@@ -97,18 +97,22 @@ describe('Primer bloque del configurador (K…P, AH)', () => {
 
 describe('Fecha con estado (Q…V)', () => {
   const field = slice(SCREEN, 'function EventDateField(', '// Lugar registrado (nombre + dirección)')
-  it('Q/R. ofrece «Todavía no lo sabemos», «◷ Provisional» y «✓ Confirmada»', () => {
-    expect(SCREEN).toContain('options={DATE_STATUS_CHOICES}')
+  it('Q/R. ofrece «Todavía no lo sabemos» como alternativa, y «◷ Provisional» / «✓ Confirmada» DESPUÉS de la fecha', () => {
+    expect(field).toContain('Todavía no lo sabemos')
+    expect(SCREEN).toContain('options={DATE_CHOICES}')
   })
-  it('S. con una fecha ya guardada, cambiar su estado solo actualiza el estado (la misma fecha, sin pedirla otra vez)', () => {
-    expect(field).toContain('if (event.eventDate && next !== event.dateStatus) void run(() => updateEvent(event.id, { dateStatus: next }))')
+  it('S. editar una fecha guardada actualiza ESA fecha: un único updateEvent con fecha + hora + estado (sin tres escrituras sueltas)', () => {
+    expect((field.match(/await updateEvent\(event\.id, dateDraftToPatch\(draft\)\)/g) ?? []).length).toBe(1)
+    // pulsar Provisional/Confirmada ya NO guarda nada por sí solo
+    expect(field).not.toContain('updateEvent(event.id, { dateStatus: next })')
   })
   it('volver a «Todavía no lo sabemos» pide confirmación antes de quitar una fecha puesta', () => {
     expect(field).toContain('window.confirm(')
   })
-  it('un momento: estado propio, nueva fecha arranca Provisional, y tras cada cambio se sincroniza la fecha operativa', () => {
+  it('un momento: estado propio (sin preselección para una fecha nueva), y tras cada cambio se sincroniza la fecha operativa', () => {
     const form = slice(SCREEN, 'function MomentForm(', '\nfunction MomentCard(')
-    expect(form).toContain("useState<'provisional' | 'confirmada'>(initial ? (momentDateStatus(initial, eventDateStatus) ?? 'provisional') : 'provisional')")
+    expect(form).toContain('useState<DateChoice | null>(initial ? momentDateStatus(initial, eventDateStatus) : null)')
+    expect(form).toContain('if (momentDate && !dateStatus) {')
     expect(form).toContain('dateStatus: momentDate ? dateStatus : null')
     const editor = slice(SCREEN, 'function MomentsEditor(', '// Fase 3 (reestructuración del diseñador)')
     expect((editor.match(/await syncOperationalDateFromMoments\(event\.id\)/g) ?? []).length).toBe(3)

@@ -201,8 +201,8 @@ describe('No se copian datos al volver a abrir la pantalla (nunca una escritura 
 describe('event_date no se toca — sigue siendo la fecha principal del evento, independiente de cada momento', () => {
   it('events.event_date / date_status siguen siendo la ÚNICA fecha operativa: se editan en el primer bloque (EventDateField) y se derivan de los momentos (syncOperationalDateFromMoments)', () => {
     const dateField = slice(SRC, 'function EventDateField(', '// Lugar registrado (nombre + dirección)')
-    expect(dateField).toContain('dateStatus: status, eventDate: date')
-    expect(dateField).toContain('recalculateAutoTasks(event.id, event.type, date)')
+    expect(dateField).toContain('await updateEvent(event.id, dateDraftToPatch(draft))')
+    expect(dateField).toContain('recalculateAutoTasks(event.id, event.type, draft.date)')
     expect(SRC).toContain('await syncOperationalDateFromMoments(event.id)')
   })
 

@@ -259,11 +259,23 @@ import {
 } from '@/domain/eventGuestDecisions'
 import { LUGAR_CONTEXTO_QUESTION_KEY, type LugarContextoAnswer, type LugarContextoChoice } from '@/domain/eventLocationContext'
 import {
+  DATE_CHOICES,
+  DATE_FIELD_LABEL,
+  DATE_STATUS_QUESTION,
+  dateDraftFromSaved,
+  dateDraftToPatch,
+  isDateDraftDirty,
+  MISSING_STATUS_MESSAGE,
+  TIME_FIELD_LABEL,
+  validateDateDraft,
+  type DateChoice,
+  type DateDraft,
+} from '@/domain/eventDateForm'
+import {
   ageTurning,
   CELEBRATION_BLOCK_KEY,
   CELEBRATION_DATE_QUESTION_KEY,
   celebrationBlockTitle,
-  DATE_STATUS_CHOICES,
   dateStatusLabel,
   dateWithStatusLabel,
   momentDateStatus,
@@ -2567,30 +2579,68 @@ function EventAgeField({ event, onChanged }: { event: FamilyEvent; onChanged: ()
   )
 }
 
-// Fecha del evento con su estado. Cambiar de Provisional a Confirmada actualiza el estado de LA MISMA fecha —
-// nunca crea otra. Es la única fecha operativa (events.event_date / date_status): calendario, cuenta atrás y
-// tareas relativas siguen leyendo ahí, y updateEvent ya las mantiene al día.
+// Campos de fecha COMPARTIDOS (Celebración, Ceremonia y celebración y cada momento): primero la fecha, luego la
+// hora (opcional) y, con la fecha puesta, si es provisional o confirmada. Cada campo lleva SIEMPRE su etiqueta
+// visible (en iPhone un campo de fecha/hora vacío no explica nada por sí solo). El estado de una fecha nueva
+// nunca llega preseleccionado. Reglas puras en src/domain/eventDateForm.ts.
+function DateTimeStatusFields({
+  draft,
+  onChange,
+  disabled,
+  dateHint,
+}: {
+  draft: DateDraft
+  onChange: (next: DateDraft) => void
+  disabled?: boolean
+  dateHint?: string
+}) {
+  return (
+    <>
+      <label>
+        {DATE_FIELD_LABEL}
+        {dateHint && <span className="muted"> {dateHint}</span>}
+        <input type="date" value={draft.date} disabled={disabled} onChange={(e) => onChange({ ...draft, date: e.target.value })} />
+      </label>
+      <label>
+        {TIME_FIELD_LABEL}
+        <input type="time" value={draft.time} disabled={disabled} onChange={(e) => onChange({ ...draft, time: e.target.value })} />
+      </label>
+      <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+        {DATE_STATUS_QUESTION}
+      </div>
+      <ChoiceRow options={DATE_CHOICES} value={draft.status ?? undefined} disabled={Boolean(disabled)} onSelect={(status) => onChange({ ...draft, status })} />
+    </>
+  )
+}
+
+// Fecha del evento (Celebración simple, o el evento por momentos que aún no tiene ningún momento fechado).
+// «Todavía no lo sabemos» es la ALTERNATIVA a poner una fecha (no tenemos fecha), no un tercer estado.
+// Guardar fecha escribe fecha + hora + estado JUNTOS en una sola operación (events.event_date / event_time /
+// date_status, la única fecha operativa: calendario, cuenta atrás y tareas siguen leyendo ahí). Editar una
+// fecha ya guardada actualiza ESA fecha; una hora vacía borra la hora anterior (null, nunca 00:00).
 function EventDateField({
   event,
   onChanged,
+  todavia,
   onTodavia,
+  onDateSaved,
   hint,
 }: {
   event: FamilyEvent
   onChanged: () => void
+  // true = el usuario respondió «Todavía no lo sabemos» y no hay fecha guardada.
+  todavia: boolean
   onTodavia: () => Promise<void>
+  // Tras guardar una fecha, la respuesta «Todavía no lo sabemos» anterior ya no es la activa.
+  onDateSaved: () => Promise<void>
   hint?: string
 }) {
-  const [status, setStatus] = useState<FamilyEvent['dateStatus']>(event.dateStatus)
-  const [date, setDate] = useState(event.eventDate ?? '')
-  const [time, setTime] = useState(event.eventTime?.slice(0, 5) ?? '')
+  const [draft, setDraft] = useState<DateDraft>(() => dateDraftFromSaved(event))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setStatus(event.dateStatus)
-    setDate(event.eventDate ?? '')
-    setTime(event.eventTime?.slice(0, 5) ?? '')
+    setDraft(dateDraftFromSaved({ eventDate: event.eventDate, eventTime: event.eventTime, dateStatus: event.dateStatus }))
   }, [event.dateStatus, event.eventDate, event.eventTime])
 
   async function run(action: () => Promise<void>) {
@@ -2606,54 +2656,61 @@ function EventDateField({
     }
   }
 
-  function choose(next: FamilyEvent['dateStatus']) {
-    if (next === 'pendiente') {
-      if (event.eventDate && !window.confirm('Se quitará la fecha que tenéis puesta y el evento volverá a «Todavía no lo sabemos». ¿Seguro?')) return
-      void run(async () => {
-        await updateEvent(event.id, { dateStatus: 'pendiente', eventDate: null, eventTime: null })
-        if (event.eventDate) await recalculateAutoTasks(event.id, event.type, null)
-        await onTodavia()
-      })
-      return
-    }
-    setStatus(next)
-    // Ya hay una fecha guardada: solo cambia su estado (la misma fecha), sin pedirla otra vez.
-    if (event.eventDate && next !== event.dateStatus) void run(() => updateEvent(event.id, { dateStatus: next }))
+  function chooseTodavia() {
+    if (event.eventDate && !window.confirm('Se quitará la fecha (y su hora) del evento, de los Preparativos automáticos y del Calendario. ¿Seguro?')) return
+    void run(async () => {
+      await updateEvent(event.id, { dateStatus: 'pendiente', eventDate: null, eventTime: null })
+      if (event.eventDate) await recalculateAutoTasks(event.id, event.type, null)
+      await onTodavia()
+    })
   }
 
   function saveDate() {
-    if (!date || status === 'pendiente') return
+    const problem = validateDateDraft(draft)
+    if (problem) {
+      setError(problem)
+      return
+    }
     void run(async () => {
-      await updateEvent(event.id, { dateStatus: status, eventDate: date, eventTime: time || null })
-      if (date !== event.eventDate) await recalculateAutoTasks(event.id, event.type, date)
+      await updateEvent(event.id, dateDraftToPatch(draft))
+      if (draft.date !== event.eventDate) await recalculateAutoTasks(event.id, event.type, draft.date)
+      await onDateSaved()
     })
   }
 
   const label = dateWithStatusLabel(event.eventDate, event.dateStatus)
-  const dirty = status !== 'pendiente' && (date !== (event.eventDate ?? '') || time !== (event.eventTime?.slice(0, 5) ?? '') || !event.eventDate)
+  const timeLabel = event.eventDate && event.dateStatus !== 'pendiente' && event.eventTime ? ` · 🕐 ${event.eventTime.slice(0, 5)}` : ''
+  const dirty = isDateDraftDirty({ eventDate: event.eventDate, eventTime: event.eventTime, dateStatus: event.dateStatus }, draft)
 
   return (
     <div style={{ marginTop: 6 }}>
       <div className="muted" style={{ fontSize: 13 }}>
         ¿Cuándo es?
       </div>
-      {label && <p style={{ margin: '2px 0', fontWeight: 600 }}>📅 {label}</p>}
+      {label && (
+        <p style={{ margin: '2px 0', fontWeight: 600 }}>
+          📅 {label}
+          {timeLabel}
+        </p>
+      )}
       {hint && (
         <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
           {hint}
         </p>
       )}
       {error && <p className="error">{error}</p>}
-      <ChoiceRow options={DATE_STATUS_CHOICES} value={status} disabled={saving} onSelect={choose} />
-      {status !== 'pendiente' && (
-        <div className="inline-fields" style={{ marginTop: 4, flexWrap: 'wrap' }}>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Fecha" />
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Hora (opcional)" />
-          <button type="button" className="link-button" disabled={saving || !date || !dirty} onClick={saveDate}>
-            {saving ? 'Guardando…' : 'Guardar fecha'}
-          </button>
-        </div>
-      )}
+      <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+        <button type="button" className={'chip' + (todavia ? ' chip-active' : '')} disabled={saving} onClick={chooseTodavia}>
+          Todavía no lo sabemos
+        </button>
+      </div>
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+        {todavia ? 'Cuando sepáis el día, ponedlo aquí:' : 'o pon el día:'}
+      </p>
+      <DateTimeStatusFields draft={draft} onChange={(next) => setDraft(next)} disabled={saving} />
+      <button type="button" className="link-button" disabled={saving || (!dirty && Boolean(event.eventDate))} onClick={saveDate} style={{ marginTop: 4 }}>
+        {saving ? 'Guardando…' : 'Guardar fecha'}
+      </button>
     </div>
   )
 }
@@ -2793,7 +2850,14 @@ function CelebracionBlock({
         <EventDateField
           event={event}
           onChanged={onChanged}
+          todavia={!event.eventDate && decisions.some((d) => d.questionKey === CELEBRATION_DATE_QUESTION_KEY)}
           onTodavia={() => upsertEventDecision(event.id, { blockKey: CELEBRATION_BLOCK_KEY, questionKey: CELEBRATION_DATE_QUESTION_KEY, answer: { choice: 'todavia_no_lo_sabemos' } }).then(() => reload())}
+          onDateSaved={async () => {
+            // Con una fecha guardada, «Todavía no lo sabemos» deja de ser la respuesta activa.
+            const previous = decisions.find((d) => d.questionKey === CELEBRATION_DATE_QUESTION_KEY)
+            if (previous) await deleteEventDecision(previous.id)
+            await reload()
+          }}
           hint={structured ? 'Cuando pongas fecha a un momento, la del evento pasará a calcularse de ellos.' : undefined}
         />
       ) : (
@@ -6349,9 +6413,9 @@ function MomentForm({
 }) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [momentDate, setMomentDate] = useState(initial?.momentDate ?? '')
-  // Una fecha nueva arranca ◷ Provisional (nunca se da por confirmada sola); un momento antiguo conserva el
-  // estado que tuviera (o el del evento, si heredaba).
-  const [dateStatus, setDateStatus] = useState<'provisional' | 'confirmada'>(initial ? (momentDateStatus(initial, eventDateStatus) ?? 'provisional') : 'provisional')
+  // Una fecha NUEVA no llega con estado preseleccionado (hay que elegirlo); un momento que ya tenía fecha
+  // conserva el estado que tuviera (o el del evento, si heredaba).
+  const [dateStatus, setDateStatus] = useState<DateChoice | null>(initial ? momentDateStatus(initial, eventDateStatus) : null)
   const [momentTime, setMomentTime] = useState(initial?.momentTime?.slice(0, 5) ?? '')
   const [locationLabel, setLocationLabel] = useState(initial?.locationLabel ?? '')
   // Cierre de Fase 2 (Google Maps) — dirección/place_id por separado del nombre visible. locationLabel
@@ -6378,12 +6442,18 @@ function MomentForm({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
+    // La fecha de un momento es opcional; pero si hay fecha, hay que decir si es provisional o confirmada.
+    if (momentDate && !dateStatus) {
+      setError(MISSING_STATUS_MESSAGE)
+      return
+    }
     setSaving(true)
     setError(null)
     try {
       await onSave({
         title: title.trim(),
         momentDate: momentDate || null,
+        // Hora vacía = null: se borra la anterior (nunca 00:00).
         momentTime: momentTime || null,
         locationLabel: locationLabel.trim() || null,
         locationAddress,
@@ -6413,25 +6483,16 @@ function MomentForm({
           ))}
         </div>
       )}
-      <label>
-        Fecha <span className="muted">(opcional — puede decidirse más adelante)</span>
-        <input type="date" value={momentDate} onChange={(e) => setMomentDate(e.target.value)} />
-      </label>
-      {momentDate && (
-        <ChoiceRow
-          options={[
-            { value: 'provisional' as const, label: '◷ Provisional' },
-            { value: 'confirmada' as const, label: '✓ Confirmada' },
-          ]}
-          value={dateStatus}
-          disabled={saving}
-          onSelect={setDateStatus}
-        />
-      )}
-      <label>
-        Hora <span className="muted">(opcional)</span>
-        <input type="time" value={momentTime} onChange={(e) => setMomentTime(e.target.value)} />
-      </label>
+      <DateTimeStatusFields
+        draft={{ date: momentDate, time: momentTime, status: dateStatus }}
+        onChange={(next) => {
+          setMomentDate(next.date)
+          setMomentTime(next.time)
+          setDateStatus(next.status)
+        }}
+        disabled={saving}
+        dateHint="(opcional — puede decidirse más adelante)"
+      />
       <label>
         Lugar <span className="muted">(como se ve en la invitación, opcional — puedes dejar tu propio nombre, p. ej. "Casa de los abuelos")</span>
         <input type="text" value={locationLabel} onChange={(e) => setLocationLabel(e.target.value)} />

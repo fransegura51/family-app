@@ -81,10 +81,10 @@ describe('Capa de datos — protección de lo real', () => {
     expect(DATA).toContain('planned_amount: null, sort_order: Date.now(), decision_id: decisionId')
     expect(DATA).not.toMatch(/planned_amount:\s*0\b/)
   })
-  it('el Plan del día de comida va sin hora y solo vía el reconciliador puro', () => {
+  it('el Plan del día de comida va sin hora y solo vía el reconciliador puro, por identidad estable', () => {
     const plan = slice(DATA, 'export async function applyFoodDayPlan', '// Opciones de menú para invitados')
-    expect(plan).toContain('reconcileDayPlan(desiredTitles, linked, unlinked)')
-    expect(plan).toContain('addEventDayPlanItem(eventId, action.title, null, null, decisionId)')
+    expect(plan).toContain('reconcileDayPlan(eventType, desired, all, decisionId)')
+    expect(plan).toContain('addEventDayPlanItem(eventId, action.title, null, null, { decisionId, sourceKey: foodMomentSourceKey(action.key) })')
   })
   it('borrar una opción de menú es seguro: solo borra la opción (menu_option_id es ON DELETE SET NULL)', () => {
     const del = slice(DATA, 'export async function deleteEventMenuOption', 'export async function swapEventMenuOptionOrder')

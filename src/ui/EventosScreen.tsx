@@ -7,7 +7,6 @@ import { useSectionHome, useLocationFlag } from '@/ui/useSectionHome'
 import {
   addEventActivity,
   addEventBudgetItem,
-  addEventDayPlanItem,
   addEventDecorationItem,
   addEventFavorItem,
   addEventGift,
@@ -32,7 +31,6 @@ import {
   deleteEventActivity,
   deleteEventTemplate,
   deleteEventBudgetItem,
-  deleteEventDayPlanItem,
   deleteEventDecision,
   deleteEventDecorationItem,
   deleteEventFavorItem,
@@ -305,7 +303,7 @@ import {
   contratacionApplies,
   cooksThemselves,
   dependentFoodKeys,
-  desiredDayPlanTitles,
+  desiredDayPlanMoments,
   desiredForFoodKey,
   FOOD_BEBIDAS_KEY,
   FOOD_BLOCK_KEY,
@@ -438,6 +436,7 @@ import type {
 import { canShareFiles, shareFiles, shareText } from '@/services/share'
 import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { DayPlanSection } from '@/ui/EventDayPlan'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { LocationPickerModal } from '@/ui/LocationPickerModal'
 import { GuestExportModal } from '@/ui/GuestExportModal'
@@ -6175,7 +6174,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
       let planCreated = 0
       const momentosRow = nextDecisions.find((d) => d.questionKey === FOOD_MOMENTOS_KEY)
       if (momentosRow && [FOOD_MOMENTOS_KEY, FOOD_QUIEN_KEY, VENUE_SERVICES_QUESTION_KEY].includes(questionKey) && event.enabledModules.includes('plan_dia')) {
-        const plan = await applyFoodDayPlan(event.id, momentosRow.id, desiredDayPlanTitles(event.type, nextCtx))
+        const plan = await applyFoodDayPlan(event.id, event.type, momentosRow.id, desiredDayPlanMoments(event.type, nextCtx))
         planCreated = plan.created
         if (plan.created > 0 || plan.removed > 0) onDerivedDataChanged()
       }
@@ -9416,54 +9415,7 @@ function AddGiftModal({
 // Fase 3 — Plan del día. Cronológico; protagonista el día del evento.
 // ---------------------------------------------------------------------
 
-function DayPlanSection({ eventId }: { eventId: string }) {
-  const [items, setItems] = useState<EventDayPlanItem[]>([])
-  const [newTitle, setNewTitle] = useState('')
-  const [newTime, setNewTime] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  function reload() {
-    listEventDayPlan(eventId)
-      .then(setItems)
-      .catch((err) => setError(errorMessage(err, 'No se pudo cargar el plan del día')))
-  }
-  useEffect(reload, [eventId])
-
-  async function handleAdd(ev: FormEvent) {
-    ev.preventDefault()
-    if (!newTitle.trim()) return
-    try {
-      await addEventDayPlanItem(eventId, newTitle, newTime || null)
-      setNewTitle('')
-      setNewTime('')
-      reload()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir'))
-    }
-  }
-
-  return (
-    <div className="card event-card" style={{ marginTop: 8 }}>
-      <strong>🗓️ Plan del día</strong>
-      {error && <p className="error">{error}</p>}
-      <div className="event-list" style={{ marginTop: 8 }}>
-        {items.map((i) => (
-          <div key={i.id} className="inline-fields" style={{ alignItems: 'center' }}>
-            <span style={{ fontWeight: 600, minWidth: 48 }}>{i.itemTime ? i.itemTime.slice(0, 5) : '—'}</span>
-            <span style={{ flex: 1 }}>{i.title}</span>
-            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventDayPlanItem(i.id).then(reload)} />
-          </div>
-        ))}
-        {items.length === 0 && <p className="muted">Todavía no hay plan del día.</p>}
-      </div>
-      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
-        <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} style={{ width: 90 }} />
-        <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="+ Añadir al plan" style={{ flex: 1 }} />
-        <button type="submit">Añadir</button>
-      </form>
-    </div>
-  )
-}
+// (La sección vive en src/ui/EventDayPlan.tsx: Plan del día editable, Fase 1.)
 
 // ---------------------------------------------------------------------
 // Fase 3 — modo "día del evento". Petición de la Skill: el día del

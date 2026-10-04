@@ -3,7 +3,7 @@ import {
   buildFoodContext,
   contratacionApplies,
   dependentFoodKeys,
-  desiredDayPlanTitles,
+  desiredDayPlanMoments,
   desiredForBebidas,
   desiredForContratacion,
   desiredForFoodKey,
@@ -154,40 +154,88 @@ describe('Comida L. «Todavía no lo sabemos» — sin trabajo prematuro', () =>
   })
 })
 
-describe('Momentos de comida M–O — Plan del día sin hora', () => {
+describe('Momentos de comida M–O — Plan del día sin hora, por identidad estable (source_key)', () => {
   const momentos = (selected: string[], choice = 'seleccionar', customItems: string[] = []) => makeDecision(FOOD_MOMENTOS_KEY, { choice, selected, customItems })
+  const key = (k: string) => `comida.momentos:${k}`
+  const linkedItem = (k: string, over: Parameters<typeof makeDayPlanItem>[0] = {}) =>
+    makeDayPlanItem({ id: `p-${k}`, title: MOMENTOS_COMIDA_CATALOG.cumpleanos.find((m) => m.key === k)?.label ?? k, decisionId: 'dm', sourceKey: key(k), ...over })
+  const wanted = (...keys: string[]) => MOMENTOS_COMIDA_CATALOG.cumpleanos.filter((m) => keys.includes(m.key))
 
   it('M. solo se añaden los momentos explícitamente marcados, con el nombre del catálogo del tipo', () => {
     const ctx = ctxOf([casa, quien('nosotros'), momentos(['aperitivo', 'comida'])])
-    expect(desiredDayPlanTitles('cumpleanos', ctx)).toEqual(['Aperitivo / picoteo', 'Comida'])
-    expect(desiredDayPlanTitles('boda', ctx)).toEqual(['Aperitivo / cóctel', 'Comida / banquete'])
-    expect(desiredDayPlanTitles('comunion', ctx)).toEqual(['Aperitivo', 'Comida'])
+    expect(desiredDayPlanMoments('cumpleanos', ctx).map((m) => m.label)).toEqual(['Aperitivo / picoteo', 'Comida'])
+    expect(desiredDayPlanMoments('boda', ctx).map((m) => m.label)).toEqual(['Aperitivo / cóctel', 'Comida / banquete'])
+    expect(desiredDayPlanMoments('comunion', ctx).map((m) => m.label)).toEqual(['Aperitivo', 'Comida'])
+    expect(desiredDayPlanMoments('cumpleanos', ctx).map((m) => m.key)).toEqual(['aperitivo', 'comida'])
   })
-  it('N. quitar un momento retira solo lo pristino; lo que tiene hora o nota se conserva (se desvincula)', () => {
-    const pristine = makeDayPlanItem({ id: 'p-aper', title: 'Aperitivo / picoteo', decisionId: 'dm' })
-    const withTime = makeDayPlanItem({ id: 'p-comida', title: 'Comida', itemTime: '14:00:00', decisionId: 'dm' })
-    const withNote = makeDayPlanItem({ id: 'p-cena', title: 'Cena', note: 'en la terraza', decisionId: 'dm' })
-    const actions = reconcileDayPlan([], [pristine, withTime, withNote], [])
+  it('N. quitar un momento retira solo lo prístino; lo que tiene hora, nota, otro nombre u oculto se conserva (se desvincula CON su clave)', () => {
+    const pristine = linkedItem('aperitivo')
+    const withTime = linkedItem('comida', { itemTime: '14:00:00' })
+    const withNote = linkedItem('cena', { note: 'en la terraza' })
+    const hidden = linkedItem('merienda', { showOnShare: false })
+    const actions = reconcileDayPlan('cumpleanos', [], [pristine, withTime, withNote, hidden], 'dm')
     expect(actions).toEqual([
-      { op: 'delete', id: 'p-aper' },
-      { op: 'detach', id: 'p-comida' },
-      { op: 'detach', id: 'p-cena' },
+      { op: 'delete', id: 'p-aperitivo' },
+      { op: 'detach', id: 'p-comida', sourceKey: key('comida') },
+      { op: 'detach', id: 'p-cena', sourceKey: key('cena') },
+      { op: 'detach', id: 'p-merienda', sourceKey: key('merienda') },
     ])
   })
-  it('un elemento renombrado por la familia deja de ser pristino', () => {
-    expect(isDayPlanItemUntouched({ itemTime: null, note: null, title: 'Comida' })).toBe(true)
-    expect(isDayPlanItemUntouched({ itemTime: null, note: null, title: 'Comida en casa de la abuela' })).toBe(false)
+  it('27. renombrar un elemento generado NO rompe su relación: con el momento aún marcado no hace nada (ni crea otro «Comida»)', () => {
+    const renamed = linkedItem('comida', { title: 'Almuerzo familiar' })
+    expect(reconcileDayPlan('cumpleanos', wanted('comida'), [renamed], 'dm')).toEqual([])
+  })
+  it('un elemento renombrado, con hora o con nota deja de ser prístino', () => {
+    expect(isDayPlanItemUntouched({ itemTime: null, note: null, title: 'Comida', showOnShare: true, coincideOkTime: null }, 'cumpleanos', 'comida')).toBe(true)
+    expect(isDayPlanItemUntouched({ itemTime: null, note: null, title: 'Almuerzo familiar', showOnShare: true, coincideOkTime: null }, 'cumpleanos', 'comida')).toBe(false)
+    expect(isDayPlanItemUntouched({ itemTime: '14:30:00', note: null, title: 'Comida', showOnShare: true, coincideOkTime: null }, 'cumpleanos', 'comida')).toBe(false)
+    expect(isDayPlanItemUntouched({ itemTime: null, note: ' ', title: 'Comida', showOnShare: true, coincideOkTime: null }, 'cumpleanos', 'comida')).toBe(true)
+    expect(isDayPlanItemUntouched({ itemTime: null, note: null, title: 'Comida', showOnShare: true, coincideOkTime: null }, 'cumpleanos', null)).toBe(false)
   })
   it('O. no se inventa ningún momento: lo no marcado, «Otro» y «Todavía no lo sabemos» no llegan al Plan del día', () => {
-    expect(desiredDayPlanTitles('cumpleanos', ctxOf([casa, quien('nosotros'), momentos(['comida'], 'seleccionar', ['Chocolatada'])]))).toEqual(['Comida'])
-    expect(desiredDayPlanTitles('cumpleanos', ctxOf([casa, quien('nosotros'), momentos([], 'todavia_no_lo_sabemos')]))).toEqual([])
-    expect(desiredDayPlanTitles('cumpleanos', ctxOf([casa, quien('no_habra'), momentos(['comida'])]))).toEqual([])
+    expect(desiredDayPlanMoments('cumpleanos', ctxOf([casa, quien('nosotros'), momentos(['comida'], 'seleccionar', ['Chocolatada'])])).map((m) => m.label)).toEqual(['Comida'])
+    expect(desiredDayPlanMoments('cumpleanos', ctxOf([casa, quien('nosotros'), momentos([], 'todavia_no_lo_sabemos')]))).toEqual([])
+    expect(desiredDayPlanMoments('cumpleanos', ctxOf([casa, quien('no_habra'), momentos(['comida'])]))).toEqual([])
   })
-  it('crea solo lo que falta y no duplica uno que ya existe a mano en el Plan del día', () => {
-    const manual = makeDayPlanItem({ id: 'man', title: 'comida', decisionId: null })
-    expect(reconcileDayPlan(['Comida', 'Merienda'], [], [manual])).toEqual([{ op: 'create', title: 'Merienda' }])
-    const already = makeDayPlanItem({ id: 'lnk', title: 'Merienda', decisionId: 'dm' })
-    expect(reconcileDayPlan(['Merienda'], [already], [])).toEqual([])
+  it('crea solo lo que falta (con su clave) y NO se confunde por el título: uno puesto a mano con el mismo nombre es independiente', () => {
+    const manual = makeDayPlanItem({ id: 'man', title: 'comida', decisionId: null, sourceKey: null })
+    expect(reconcileDayPlan('cumpleanos', wanted('comida', 'merienda'), [manual], 'dm')).toEqual([
+      { op: 'create', key: 'comida', title: 'Comida' },
+      { op: 'create', key: 'merienda', title: 'Merienda' },
+    ])
+    expect(reconcileDayPlan('cumpleanos', wanted('merienda'), [linkedItem('merienda')], 'dm')).toEqual([])
+  })
+  it('30. dos momentos MANUALES con el mismo nombre conviven (la unicidad es solo de la identidad automática)', () => {
+    const a = makeDayPlanItem({ id: 'f1', title: 'Fotos', itemTime: '10:00:00' })
+    const b = makeDayPlanItem({ id: 'f2', title: 'Fotos', itemTime: '18:00:00' })
+    expect(reconcileDayPlan('cumpleanos', [], [a, b], 'dm')).toEqual([])
+  })
+  it('28/29. renombrar + hora + nota, desmarcar (se conserva desvinculado con su clave) y volver a marcar READOPTA la misma fila: sin duplicado', () => {
+    const enriched = linkedItem('comida', { title: 'Almuerzo familiar', itemTime: '14:30:00', note: 'En la terraza' })
+    const afterUnmark = reconcileDayPlan('cumpleanos', [], [enriched], 'dm')
+    expect(afterUnmark).toEqual([{ op: 'detach', id: 'p-comida', sourceKey: key('comida') }])
+    // estado resultante tras ejecutar el detach: sin decisión, con clave
+    const detached = { ...enriched, decisionId: null }
+    expect(reconcileDayPlan('cumpleanos', wanted('comida'), [detached], 'dm')).toEqual([{ op: 'adopt', id: 'p-comida' }])
+    // y una vez readoptada ya no hace nada más
+    expect(reconcileDayPlan('cumpleanos', wanted('comida'), [enriched], 'dm')).toEqual([])
+  })
+  it('un elemento que "Mantener como independiente" dejó sin clave NO se readopta: un nuevo marcado crea otro, deliberadamente', () => {
+    const independent = makeDayPlanItem({ id: 'ind', title: 'Almuerzo familiar', decisionId: null, sourceKey: null })
+    expect(reconcileDayPlan('cumpleanos', wanted('comida'), [independent], 'dm')).toEqual([{ op: 'create', key: 'comida', title: 'Comida' }])
+  })
+  it('limpieza de un duplicado antiguo: se conserva uno; el sobrante prístino se retira y el enriquecido se desvincula', () => {
+    const first = linkedItem('comida', { id: 'c1', sortOrder: 1000 })
+    const dupPristine = linkedItem('comida', { id: 'c2', sortOrder: 2000, sourceKey: null })
+    const dupWithNote = linkedItem('comida', { id: 'c3', sortOrder: 3000, sourceKey: null, note: 'x' })
+    expect(reconcileDayPlan('cumpleanos', wanted('comida'), [first, dupPristine, dupWithNote], 'dm')).toEqual([
+      { op: 'delete', id: 'c2' },
+      { op: 'detach', id: 'c3', sourceKey: key('comida') },
+    ])
+  })
+  it('un elemento generado antiguo SIN clave (migración no pudo etiquetarlo) se reconoce por el título del catálogo, una sola vez', () => {
+    const legacy = linkedItem('comida', { sourceKey: null })
+    expect(reconcileDayPlan('cumpleanos', wanted('comida'), [legacy], 'dm')).toEqual([])
   })
   it('catálogo por tipo según la especificación', () => {
     expect(MOMENTOS_COMIDA_CATALOG.boda.map((m) => m.key)).toEqual(['aperitivo', 'comida', 'cena', 'recena'])

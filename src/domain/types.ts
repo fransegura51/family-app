@@ -1042,6 +1042,14 @@ export interface EventDayPlanItem {
   createdAt: string
   // Fase 1 del motor de decisiones — ver EventTask.decisionId.
   decisionId: string | null
+  // Plan del día editable (0194). Identidad ESTABLE de un elemento generado por el configurador
+  // («comida.momentos:aperitivo»); null = elemento manual. Se conserva aunque se desvincule (decisionId null)
+  // para poder readoptarlo al volver a marcar el momento.
+  sourceKey: string | null
+  // «Mostrar al compartir». Por defecto true (nuevo y existente); solo se guarda y se edita en la Fase 1.
+  showOnShare: boolean
+  // Hora para la que el usuario confirmó que varios momentos coinciden a propósito ('HH:MM:SS'), o null.
+  coincideOkTime: string | null
 }
 
 // Fase 1 del modelo genérico de momentos — sustituirá en la UI a

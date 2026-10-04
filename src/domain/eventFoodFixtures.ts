@@ -91,7 +91,7 @@ export function makeBudget(overrides: Partial<EventBudgetItem> = {}): EventBudge
 }
 
 export function makeDayPlanItem(overrides: Partial<EventDayPlanItem> = {}): EventDayPlanItem {
-  return { id: 'p1', eventId: 'e1', familyId: 'f1', itemTime: null, title: 'Comida', note: null, sortOrder: 0, createdAt: '2026-01-01T00:00:00Z', decisionId: null, ...overrides }
+  return { id: 'p1', eventId: 'e1', familyId: 'f1', itemTime: null, title: 'Comida', note: null, sortOrder: 0, createdAt: '2026-01-01T00:00:00Z', decisionId: null, sourceKey: null, showOnShare: true, coincideOkTime: null, ...overrides }
 }
 
 export function makeGuest(overrides: Partial<EventGuest> = {}): EventGuest {

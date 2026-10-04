@@ -16,8 +16,9 @@ import { reconcilePairGeneration, type DesiredPairGeneration, type ReconcileActi
 import {
   buildFoodContext,
   dependentFoodKeys,
-  desiredDayPlanTitles,
+  desiredDayPlanMoments,
   desiredForFoodKey,
+  FOOD_BLOCK_KEY,
   FOOD_MOMENTOS_KEY,
   FOOD_NECESIDADES_KEY,
   foodNeedsAlertInput,
@@ -26,7 +27,10 @@ import {
   LEGACY_BUDGET_CATEGORIES,
   LEGACY_TASK_TITLES,
   reconcileDayPlan,
+  type MomentoComidaDef,
+  type MomentosComidaAnswer,
 } from '@/domain/eventFood'
+import { foodMomentKeyFromSource, foodMomentSourceKey, timeKey, type DayPlanPatch } from '@/domain/eventDayPlan'
 import { computeFoodNeedsState } from '@/domain/eventDietaryNeeds'
 import { deriveOperationalDate } from '@/domain/eventCelebration'
 import { calendarEntryFor, calendarRowMatches, planCalendarSync, type CalendarRowState } from '@/domain/eventCalendarSync'
@@ -1713,7 +1717,7 @@ export async function deleteEventGift(id: string): Promise<void> {
 // evento (ver modo "día del evento" en EventosScreen.tsx).
 // ---------------------------------------------------------------------
 
-const DAY_PLAN_SELECT = 'id, event_id, family_id, item_time, title, note, sort_order, created_at, decision_id'
+const DAY_PLAN_SELECT = 'id, event_id, family_id, item_time, title, note, sort_order, created_at, decision_id, source_key, show_on_share, coincide_ok_time'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapDayPlanItem(r: any): EventDayPlanItem {
@@ -1727,6 +1731,9 @@ function mapDayPlanItem(r: any): EventDayPlanItem {
     sortOrder: r.sort_order,
     createdAt: r.created_at,
     decisionId: r.decision_id,
+    sourceKey: r.source_key ?? null,
+    showOnShare: r.show_on_share ?? true,
+    coincideOkTime: r.coincide_ok_time ?? null,
   }
 }
 
@@ -1737,20 +1744,99 @@ export async function listEventDayPlan(eventId: string): Promise<EventDayPlanIte
     .eq('event_id', eventId)
     .order('item_time', { ascending: true, nullsFirst: false })
     .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
   if (error) throw error
   return data.map(mapDayPlanItem)
 }
 
-export async function addEventDayPlanItem(eventId: string, title: string, itemTime: string | null, note: string | null = null, decisionId: string | null = null): Promise<void> {
+// Crea un momento. Sin hora = null (nunca 00:00). sort_order NO se manda: un trigger de la base de datos lo
+// coloca al final (0194). «Mostrar al compartir» nace en SÍ para todos, manuales y generados.
+export async function addEventDayPlanItem(
+  eventId: string,
+  title: string,
+  itemTime: string | null,
+  note: string | null = null,
+  origin: { decisionId: string; sourceKey: string } | null = null,
+  showOnShare = true,
+): Promise<string> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('event_day_plan_items')
-    .insert({ event_id: eventId, family_id: familyId, title: title.trim(), item_time: itemTime, note, sort_order: Date.now(), decision_id: decisionId })
+    .insert({
+      event_id: eventId,
+      family_id: familyId,
+      title: title.trim(),
+      item_time: timeKey(itemTime),
+      note: note?.trim() || null,
+      decision_id: origin?.decisionId ?? null,
+      source_key: origin?.sourceKey ?? null,
+      show_on_share: showOnShare,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+// Edita ESA misma fila en una sola escritura (nombre, hora, nota, visibilidad). decision_id y source_key no se
+// tocan jamás aquí: un elemento generado conserva su relación aunque se renombre. Cambiar la hora invalida la
+// confirmación de coincidencia (coincide_ok_time = null); editar solo la nota o el nombre no.
+export async function updateEventDayPlanItem(id: string, patch: DayPlanPatch): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.title !== undefined) {
+    const title = patch.title.trim()
+    if (!title) throw new Error('El momento necesita un nombre')
+    update.title = title
+  }
+  if (patch.itemTime !== undefined) {
+    update.item_time = timeKey(patch.itemTime)
+    update.coincide_ok_time = null
+  }
+  if (patch.note !== undefined) update.note = patch.note?.trim() || null
+  if (patch.showOnShare !== undefined) update.show_on_share = patch.showOnShare
+  if (Object.keys(update).length === 0) return
+  const { error } = await supabase.from('event_day_plan_items').update(update).eq('id', id)
   if (error) throw error
 }
 
 export async function deleteEventDayPlanItem(id: string): Promise<void> {
   const { error } = await supabase.from('event_day_plan_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Reordena de forma atómica (RPC reorder_event_day_plan, 0194): reparte entre estos ids las mismas posiciones, en
+// este orden. Sirve para el orden manual de «Sin hora» y para el desempate de varios momentos a la misma hora
+// (con confirmCoincidence marca además «sí, coinciden» para la hora de cada uno).
+export async function reorderEventDayPlan(ids: string[], confirmCoincidence = false): Promise<void> {
+  if (ids.length === 0) return
+  const { error } = await supabase.rpc('reorder_event_day_plan', { p_ids: ids, p_confirm_coincidence: confirmCoincidence })
+  if (error) throw error
+}
+
+// × sobre un momento que viene de «Comida y bebida». La decisión de origen se actualiza SIEMPRE (el momento deja
+// de estar marcado: así no se regenera y el configurador no cree que sigue controlándolo):
+//  · 'both'        → además se retira del Plan del día.
+//  · 'independent' → se queda en el Plan del día como momento propio (nombre, hora, nota, visibilidad y orden
+//                    intactos), ya sin ninguna relación con la decisión.
+export async function resolveGeneratedDayPlanItem(item: EventDayPlanItem, mode: 'both' | 'independent'): Promise<void> {
+  const momentKey = foodMomentKeyFromSource(item.sourceKey)
+  if (!item.decisionId || !momentKey) throw new Error('Este momento no viene de Comida y bebida')
+  const { data: row, error: rowError } = await supabase.from('event_decisions').select(DECISION_SELECT).eq('id', item.decisionId).maybeSingle()
+  if (rowError) throw rowError
+  const decision = row ? mapDecision(row) : null
+  const answer = decision?.questionKey === FOOD_MOMENTOS_KEY ? (decision.answer as unknown as MomentosComidaAnswer) : undefined
+  if (decision && answer?.choice === 'seleccionar' && (answer.selected as string[]).includes(momentKey)) {
+    await upsertEventDecision(item.eventId, {
+      blockKey: FOOD_BLOCK_KEY,
+      questionKey: FOOD_MOMENTOS_KEY,
+      answer: { ...answer, selected: answer.selected.filter((k) => k !== momentKey) } as unknown as Record<string, unknown>,
+    })
+  }
+  if (mode === 'both') {
+    await deleteEventDayPlanItem(item.id)
+    return
+  }
+  const { error } = await supabase.from('event_day_plan_items').update({ decision_id: null, source_key: null }).eq('id', item.id)
   if (error) throw error
 }
 
@@ -2161,29 +2247,40 @@ export async function reconcileFoodForVenueChange(
   }
   // Los momentos de comida del Plan del día dependen de si habrá comida (p. ej. el lugar la incluye o no).
   const momentosRow = decisions.find((d) => d.questionKey === FOOD_MOMENTOS_KEY)
-  if (momentosRow && event.enabledModules.includes('plan_dia')) await applyFoodDayPlan(event.id, momentosRow.id, desiredDayPlanTitles(event.type, ctx))
+  if (momentosRow && event.enabledModules.includes('plan_dia')) await applyFoodDayPlan(event.id, event.type, momentosRow.id, desiredDayPlanMoments(event.type, ctx))
   return actions
 }
 
-// Momentos de comida → Plan del día, SIN hora. Reconcilia contra lo que ya hay: crea los marcados que
-// faltan, retira solo los generados que siguen prístinos, y desvincula (conserva) los que la familia ya
-// completó con hora o nota. Un elemento del Plan del día con el mismo nombre puesto a mano no se duplica.
-export async function applyFoodDayPlan(eventId: string, decisionId: string, desiredTitles: string[]): Promise<{ created: number; removed: number }> {
+// Postgres: violación de unicidad (otro guardado simultáneo ya creó/readoptó ese mismo momento automático).
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
+}
+
+// Momentos de comida → Plan del día, SIN hora, por IDENTIDAD ESTABLE (source_key), nunca por el título. Crea los
+// marcados que faltan, READOPTA el que se desvinculó antes, retira solo los generados que siguen prístinos y
+// desvincula (conserva) los que la familia ya enriqueció. Un momento puesto a mano es independiente. El índice
+// único (decisión + clave) impide el duplicado aunque dos guardados coincidan en el tiempo.
+export async function applyFoodDayPlan(eventId: string, eventType: EventType, decisionId: string, desired: MomentoComidaDef[]): Promise<{ created: number; removed: number }> {
   const all = await listEventDayPlan(eventId)
-  const linked = all.filter((i) => i.decisionId === decisionId)
-  const unlinked = all.filter((i) => i.decisionId === null)
-  const actions = reconcileDayPlan(desiredTitles, linked, unlinked)
+  const actions = reconcileDayPlan(eventType, desired, all, decisionId)
   let created = 0
   let removed = 0
   for (const action of actions) {
     if (action.op === 'create') {
-      await addEventDayPlanItem(eventId, action.title, null, null, decisionId)
-      created += 1
+      try {
+        await addEventDayPlanItem(eventId, action.title, null, null, { decisionId, sourceKey: foodMomentSourceKey(action.key) })
+        created += 1
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err
+      }
+    } else if (action.op === 'adopt') {
+      const { error } = await supabase.from('event_day_plan_items').update({ decision_id: decisionId }).eq('id', action.id)
+      if (error && !isUniqueViolation(error)) throw error
     } else if (action.op === 'delete') {
       await deleteEventDayPlanItem(action.id)
       removed += 1
     } else {
-      const { error } = await supabase.from('event_day_plan_items').update({ decision_id: null }).eq('id', action.id)
+      const { error } = await supabase.from('event_day_plan_items').update({ decision_id: null, source_key: action.sourceKey }).eq('id', action.id)
       if (error) throw error
     }
   }

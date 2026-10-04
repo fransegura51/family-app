@@ -20,6 +20,7 @@ import { needsReviewApplies, type FoodNeedsState } from '@/domain/eventDietaryNe
 import type { CustomResolution } from '@/domain/eventPairDecisions'
 import type { EventDayPlanItem, EventDecision, EventMenuItem, EventServiceId, EventTask, EventBudgetItem, EventType, FamilyEvent } from '@/domain/types'
 import { generateAutoTasks, type FoodNeedsAlertInput } from '@/domain/events'
+import { foodMomentKeyFromSource, foodMomentSourceKey } from '@/domain/eventDayPlan'
 
 export const FOOD_BLOCK_KEY = 'comida'
 
@@ -472,47 +473,85 @@ export const MOMENTOS_COMIDA_CATALOG: Record<EventType, MomentoComidaDef[]> = {
   personalizado: MOMENTOS_GENERICO,
 }
 
-const ALL_MOMENTO_TITLES = new Set(Object.values(MOMENTOS_COMIDA_CATALOG).flatMap((defs) => defs.map((d) => d.label)))
-
 export function momentosComidaAnswer(decisions: EventDecision[]): MomentosComidaAnswer | undefined {
   return answerOf<MomentosComidaAnswer>(decisions, FOOD_MOMENTOS_KEY)
 }
 
-// Títulos del Plan del día que debe tener esta decisión: solo momentos del catálogo marcados expresamente,
-// y solo si va a haber comida. Sin hora. «Otro» y «Todavía no lo sabemos» no derivan nada.
-export function desiredDayPlanTitles(eventType: EventType, ctx: FoodContext): string[] {
+// Momentos que debe tener el Plan del día por esta decisión: solo los del catálogo marcados expresamente, y solo
+// si va a haber comida. Se identifican por su CLAVE ESTABLE (aperitivo, comida…), nunca por el texto visible.
+// «Otro» y «Todavía no lo sabemos» no derivan nada.
+export function desiredDayPlanMoments(eventType: EventType, ctx: FoodContext): MomentoComidaDef[] {
   if (!foodWillExist(ctx)) return []
   const answer = momentosComidaAnswer(ctx.decisions)
   if (!answer || answer.choice !== 'seleccionar') return []
-  const catalog = MOMENTOS_COMIDA_CATALOG[eventType]
-  return catalog.filter((d) => answer.selected.includes(d.key)).map((d) => d.label)
+  return MOMENTOS_COMIDA_CATALOG[eventType].filter((d) => answer.selected.includes(d.key))
 }
 
 export type DayPlanAction =
-  | { op: 'create'; title: string }
+  | { op: 'create'; key: MomentoComidaKey; title: string }
+  | { op: 'adopt'; id: string }
   | { op: 'delete'; id: string }
-  | { op: 'detach'; id: string }
+  // Se desvincula de la decisión pero CONSERVA su source_key (para poder readoptarlo al volver a marcar el momento).
+  | { op: 'detach'; id: string; sourceKey: string | null }
 
-// Un elemento del Plan del día generado por la decisión es «prístino» si sigue siendo exactamente lo que
-// generó el motor: sin hora, sin nota y con uno de los títulos del catálogo. Añadir hora o nota, o
-// renombrarlo, lo convierte en información de la familia → se conserva (solo se desvincula).
-export function isDayPlanItemUntouched(item: Pick<EventDayPlanItem, 'itemTime' | 'note' | 'title'>): boolean {
-  return item.itemTime === null && !(item.note && item.note.trim()) && ALL_MOMENTO_TITLES.has(item.title)
+const MOMENT_KEY_BY_LABEL = new Map<string, MomentoComidaKey>(
+  Object.values(MOMENTOS_COMIDA_CATALOG)
+    .flat()
+    .map((d) => [d.label, d.key]),
+)
+
+// Solo para filas generadas ANTES de existir source_key y que la migración no pudo etiquetar (p. ej. un duplicado).
+function legacyMomentKey(title: string): MomentoComidaKey | null {
+  return MOMENT_KEY_BY_LABEL.get(title) ?? null
 }
 
-export function reconcileDayPlan(desiredTitles: string[], linked: EventDayPlanItem[], unlinked: EventDayPlanItem[]): DayPlanAction[] {
+// Un elemento generado es «prístino» si sigue siendo exactamente lo que generó el motor: sin hora, sin nota,
+// visible al compartir, sin coincidencia confirmada y con el nombre original de SU momento. Cualquier retoque
+// (nombre, hora, nota, visibilidad) es información de la familia → se conserva (solo se desvincula).
+export function isDayPlanItemUntouched(
+  item: Pick<EventDayPlanItem, 'itemTime' | 'note' | 'title' | 'showOnShare' | 'coincideOkTime'>,
+  eventType: EventType,
+  key: MomentoComidaKey | null,
+): boolean {
+  if (key === null) return false
+  const original = MOMENTOS_COMIDA_CATALOG[eventType].find((d) => d.key === key)?.label
+  return item.itemTime === null && !(item.note && item.note.trim()) && item.showOnShare && item.coincideOkTime === null && original !== undefined && item.title === original
+}
+
+// Reconciliación por IDENTIDAD ESTABLE (source_key), nunca por el título:
+//  · marcado y ya enlazado            → nada (aunque se haya renombrado, puesto hora o nota);
+//  · marcado y desvinculado antes     → se READOPTA (vuelve a enlazar la misma fila);
+//  · marcado y no existe              → se crea;
+//  · desmarcado, enlazado y prístino  → se retira; si la familia lo enriqueció → se desvincula y se conserva;
+//  · duplicado (fallo antiguo)        → se limpia el sobrante prístino, o se desvincula si tiene información.
+// Un elemento puesto a mano con el mismo nombre es INDEPENDIENTE: no cuenta ni se toca.
+export function reconcileDayPlan(eventType: EventType, desired: MomentoComidaDef[], items: EventDayPlanItem[], decisionId: string): DayPlanAction[] {
   const actions: DayPlanAction[] = []
-  const linkedTitles = new Set(linked.map((i) => i.title))
-  const unlinkedTitles = new Set(unlinked.map((i) => i.title.trim().toLowerCase()))
-  for (const title of desiredTitles) {
-    if (linkedTitles.has(title)) continue
-    // Ya existe a mano en el Plan del día con ese nombre: no se duplica.
-    if (unlinkedTitles.has(title.trim().toLowerCase())) continue
-    actions.push({ op: 'create', title })
-  }
+  const wanted = new Set<MomentoComidaKey>(desired.map((d) => d.key))
+  const keyOf = (item: EventDayPlanItem): MomentoComidaKey | null => (foodMomentKeyFromSource(item.sourceKey) as MomentoComidaKey | null) ?? (item.decisionId === decisionId ? legacyMomentKey(item.title) : null)
+
+  const linked = items.filter((i) => i.decisionId === decisionId).sort((a, b) => a.sortOrder - b.sortOrder || (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0))
+  const orphans = items.filter((i) => i.decisionId === null && foodMomentKeyFromSource(i.sourceKey) !== null)
+  const kept = new Set<MomentoComidaKey>()
+
   for (const item of linked) {
-    if (desiredTitles.includes(item.title)) continue
-    actions.push(isDayPlanItemUntouched(item) ? { op: 'delete', id: item.id } : { op: 'detach', id: item.id })
+    const key = keyOf(item)
+    if (key !== null && wanted.has(key) && !kept.has(key)) {
+      kept.add(key)
+      continue
+    }
+    // Ya no se desea (o es un duplicado de uno que se conserva, o no se puede identificar).
+    actions.push(isDayPlanItemUntouched(item, eventType, key) ? { op: 'delete', id: item.id } : { op: 'detach', id: item.id, sourceKey: item.sourceKey ?? (key ? foodMomentSourceKey(key) : null) })
+  }
+
+  for (const moment of desired) {
+    if (kept.has(moment.key)) continue
+    const orphan = orphans.find((o) => foodMomentKeyFromSource(o.sourceKey) === moment.key)
+    if (orphan) {
+      actions.push({ op: 'adopt', id: orphan.id })
+      continue
+    }
+    actions.push({ op: 'create', key: moment.key, title: moment.label })
   }
   return actions
 }

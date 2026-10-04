@@ -83,7 +83,7 @@ describe('Capa de datos — protección de lo real', () => {
   })
   it('el Plan del día de comida va sin hora y solo vía el reconciliador puro, por identidad estable', () => {
     const plan = slice(DATA, 'export async function applyFoodDayPlan', '// Opciones de menú para invitados')
-    expect(plan).toContain('reconcileDayPlan(eventType, desired, all, decisionId)')
+    expect(plan).toContain('reconcileDayPlan(eventType, desired, all, decisionId, resolution)')
     expect(plan).toContain('addEventDayPlanItem(eventId, action.title, null, null, { decisionId, sourceKey: foodMomentSourceKey(action.key) })')
   })
   it('borrar una opción de menú es seguro: solo borra la opción (menu_option_id es ON DELETE SET NULL)', () => {

@@ -184,3 +184,44 @@ describe('Alcance de la Fase 1: nada de Fase 2 ni de Invitaciones (40)', () => {
     for (const text of ['Plan del día', 'Sin hora', 'Mostrar al compartir', 'Quitar de ambos']) expect(HELP, text).toContain(text)
   })
 })
+
+// ---------------------------------------------------------------------
+// Volver a marcar un momento con un independiente recuperable: se pregunta ANTES de guardar
+// ---------------------------------------------------------------------
+const SCREEN_SRC = SCREEN
+const RECOVER = (import.meta.glob('/src/ui/RecoverMomentDialog.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/RecoverMomentDialog.tsx']
+
+describe('Recuperar un independiente: pregunta antes de persistir (Comida y bebida)', () => {
+  const saveFood = slice(SCREEN_SRC, 'async function saveFood(', 'function reloadMenu()')
+  it('la pregunta se calcula ANTES de guardar la selección: cancelar no deja la decisión marcada', () => {
+    expect(saveFood.indexOf('momentRecoveryPrompt(')).toBeGreaterThan(-1)
+    expect(saveFood.indexOf('momentRecoveryPrompt(')).toBeLessThan(saveFood.indexOf('upsertEventDecision('))
+    expect(saveFood.indexOf('setRecovery({ prompt')).toBeLessThan(saveFood.indexOf('upsertEventDecision('))
+    // y al abrir el diálogo se sale sin guardar
+    expect(saveFood).toMatch(/setRecovery\(\{ prompt, answer[^\n]*\n\s*return/)
+  })
+  it('solo se pregunta al marcar momentos, si el Plan del día está activo y no si ya hay una elección', () => {
+    expect(saveFood).toContain('questionKey === FOOD_MOMENTOS_KEY && !resolution && event.enabledModules.includes(\'plan_dia\')')
+  })
+  it('las tres salidas: recuperar (con el id elegido), crear nuevo (forzado) y cancelar (no guarda nada)', () => {
+    expect(SCREEN_SRC).toContain('{ adopt: { [pending.prompt.key]: itemId } }')
+    expect(SCREEN_SRC).toContain('{ forceCreate: [pending.prompt.key] }')
+    expect(SCREEN_SRC).toContain('onCancel={() => setRecovery(null)}')
+    // cancelar no llama a saveFood
+    expect(slice(SCREEN_SRC, 'onCancel={() => setRecovery(null)}', 'onRecover=')).not.toContain('saveFood')
+  })
+  it('la elección llega hasta la reconciliación del Plan del día', () => {
+    expect(saveFood).toContain('desiredDayPlanMoments(event.type, nextCtx), resolution)')
+  })
+  it('textos pedidos: un candidato → recuperar / crear / cancelar; varios → elegir cuál', () => {
+    for (const text of ['Ya hay un momento que anteriormente estaba vinculado a', '¿Qué quieres hacer?', 'Recuperar el vínculo con', 'Crear un nuevo momento', 'Cancelar', 'Hay varios momentos que anteriormente estuvieron vinculados a', '¿Cuál quieres recuperar?']) expect(RECOVER, text).toContain(text)
+    expect(RECOVER).toContain("timeKey(item.itemTime) ?? 'Sin hora'")
+  })
+  it('doble toque: mientras se resuelve, los botones se bloquean', () => {
+    expect(RECOVER).toContain('if (busy) return')
+    expect((RECOVER.match(/disabled=\{busy\}/g) ?? []).length).toBeGreaterThanOrEqual(4)
+  })
+  it('«Mantener como independiente» explica que PEPA recordará de dónde venía y preguntará', () => {
+    expect(PLAN).toContain('te preguntará si quieres recuperar el vínculo')
+  })
+})

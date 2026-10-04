@@ -322,6 +322,9 @@ import {
   menuEstadoAnswer,
   MOMENTOS_COMIDA_CATALOG,
   momentosComidaAnswer,
+  momentRecoveryPrompt,
+  type DayPlanResolution,
+  type MomentRecoveryPrompt,
   ninosNeedMenuInfantil,
   quienAnswer,
   quienApplies,
@@ -437,6 +440,7 @@ import { canShareFiles, shareFiles, shareText } from '@/services/share'
 import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { DayPlanSection } from '@/ui/EventDayPlan'
+import { RecoverMomentDialog } from '@/ui/RecoverMomentDialog'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { LocationPickerModal } from '@/ui/LocationPickerModal'
 import { GuestExportModal } from '@/ui/GuestExportModal'
@@ -6117,6 +6121,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
   const [error, setError] = useState<string | null>(null)
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [costPrompt, setCostPrompt] = useState<{ item: { id: string; category: string }; taskCompleted: boolean } | null>(null)
+  const [recovery, setRecovery] = useState<{ prompt: MomentRecoveryPrompt; answer: MomentosComidaAnswer } | null>(null)
 
   function reloadAll(): Promise<void> {
     return Promise.all([listEventDecisions(event.id), listEventMenuItems(event.id), listEventGuests(event.id), listEventGuestMembersForEvent(event.id), listEventDietaryNeeds(event.id), listRecipes(), listEventMoments(event.id)])
@@ -6154,10 +6159,19 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
   }
 
   // Guarda una respuesta y reconcilia SOLO lo que depende de ella (dependentFoodKeys): nunca todo el bloque.
-  async function saveFood(questionKey: string, answer: Record<string, unknown>, isCustomOption = false) {
+  async function saveFood(questionKey: string, answer: Record<string, unknown>, isCustomOption = false, resolution?: DayPlanResolution) {
     setSavingKey(questionKey)
     setError(null)
     try {
+      // ANTES de guardar nada: si se marca un momento y ya hay un independiente que procedía de él, se PREGUNTA.
+      // Cancelar el diálogo no ha persistido nada, así que el momento sigue desmarcado (la pantalla no miente).
+      if (questionKey === FOOD_MOMENTOS_KEY && !resolution && event.enabledModules.includes('plan_dia')) {
+        const prompt = momentRecoveryPrompt(event.type, momentosComidaAnswer(decisions), answer as unknown as MomentosComidaAnswer, ctx, await listEventDayPlan(event.id))
+        if (prompt) {
+          setRecovery({ prompt, answer: answer as unknown as MomentosComidaAnswer })
+          return
+        }
+      }
       const blockKey = questionKey === VENUE_SERVICES_QUESTION_KEY ? VENUE_SERVICES_BLOCK_KEY : FOOD_BLOCK_KEY
       const saved = await upsertEventDecision(event.id, { blockKey, questionKey, answer, isCustomOption })
       const nextDecisions = [...decisions.filter((d) => d.questionKey !== questionKey), saved]
@@ -6174,9 +6188,10 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
       let planCreated = 0
       const momentosRow = nextDecisions.find((d) => d.questionKey === FOOD_MOMENTOS_KEY)
       if (momentosRow && [FOOD_MOMENTOS_KEY, FOOD_QUIEN_KEY, VENUE_SERVICES_QUESTION_KEY].includes(questionKey) && event.enabledModules.includes('plan_dia')) {
-        const plan = await applyFoodDayPlan(event.id, event.type, momentosRow.id, desiredDayPlanMoments(event.type, nextCtx))
+        const plan = await applyFoodDayPlan(event.id, event.type, momentosRow.id, desiredDayPlanMoments(event.type, nextCtx), resolution)
         planCreated = plan.created
-        if (plan.created > 0 || plan.removed > 0) onDerivedDataChanged()
+        if (plan.created > 0 || plan.removed > 0 || plan.adopted > 0) onDerivedDataChanged()
+        if (plan.adopted > 0 && plan.created === 0) showToast('✅ Recuperado en el Plan del día')
       }
       setDecisions(nextDecisions)
       if (allActions.length > 0) onDerivedDataChanged()
@@ -6256,6 +6271,22 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
       )}
 
       {/* D) Momentos de comida */}
+      {recovery && (
+        <RecoverMomentDialog
+          prompt={recovery.prompt}
+          onCancel={() => setRecovery(null)}
+          onRecover={async (itemId) => {
+            const pending = recovery
+            setRecovery(null)
+            await saveFood(FOOD_MOMENTOS_KEY, pending.answer as unknown as Record<string, unknown>, false, { adopt: { [pending.prompt.key]: itemId } })
+          }}
+          onCreate={async () => {
+            const pending = recovery
+            setRecovery(null)
+            await saveFood(FOOD_MOMENTOS_KEY, pending.answer as unknown as Record<string, unknown>, false, { forceCreate: [pending.prompt.key] })
+          }}
+        />
+      )}
       {foodExists && (
         <>
           <FoodMomentosQuestion catalog={MOMENTOS_COMIDA_CATALOG[event.type]} existing={momentosComidaAnswer(decisions)} saving={savingKey === FOOD_MOMENTOS_KEY} onSave={(a) => saveFood(FOOD_MOMENTOS_KEY, a as unknown as Record<string, unknown>)} />

@@ -358,7 +358,7 @@ function RemoveGeneratedDialog({ item, onClose, onChoose }: { item: EventDayPlan
             Mantener como independiente
           </button>
           <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-            Se queda en el Plan del día con su nombre, hora y nota, pero deja de estar ligado a «Comida y bebida».
+            Se queda en el Plan del día con su nombre, hora y nota, pero deja de estar ligado a «Comida y bebida». Si más adelante vuelves a marcar ese momento allí, PEPA te preguntará si quieres recuperar el vínculo.
           </p>
           <button type="button" className="link-button" onClick={onClose}>
             Cancelar

@@ -27,6 +27,7 @@ import {
   LEGACY_BUDGET_CATEGORIES,
   LEGACY_TASK_TITLES,
   reconcileDayPlan,
+  type DayPlanResolution,
   type MomentoComidaDef,
   type MomentosComidaAnswer,
 } from '@/domain/eventFood'
@@ -1817,7 +1818,7 @@ export async function reorderEventDayPlan(ids: string[], confirmCoincidence = fa
 // de estar marcado: así no se regenera y el configurador no cree que sigue controlándolo):
 //  · 'both'        → además se retira del Plan del día.
 //  · 'independent' → se queda en el Plan del día como momento propio (nombre, hora, nota, visibilidad y orden
-//                    intactos), ya sin ninguna relación con la decisión.
+//                    intactos), ya sin estar controlado por la decisión; conserva su procedencia (source_key).
 export async function resolveGeneratedDayPlanItem(item: EventDayPlanItem, mode: 'both' | 'independent'): Promise<void> {
   const momentKey = foodMomentKeyFromSource(item.sourceKey)
   if (!item.decisionId || !momentKey) throw new Error('Este momento no viene de Comida y bebida')
@@ -1836,7 +1837,9 @@ export async function resolveGeneratedDayPlanItem(item: EventDayPlanItem, mode: 
     await deleteEventDayPlanItem(item.id)
     return
   }
-  const { error } = await supabase.from('event_day_plan_items').update({ decision_id: null, source_key: null }).eq('id', item.id)
+  // Se desvincula pero CONSERVA su procedencia (source_key): así, si más adelante se vuelve a marcar el momento,
+  // PEPA sabe que existe un independiente recuperable y PREGUNTA en vez de crear otro o recuperarlo en silencio.
+  const { error } = await supabase.from('event_day_plan_items').update({ decision_id: null }).eq('id', item.id)
   if (error) throw error
 }
 
@@ -2260,11 +2263,18 @@ function isUniqueViolation(error: unknown): boolean {
 // marcados que faltan, READOPTA el que se desvinculó antes, retira solo los generados que siguen prístinos y
 // desvincula (conserva) los que la familia ya enriqueció. Un momento puesto a mano es independiente. El índice
 // único (decisión + clave) impide el duplicado aunque dos guardados coincidan en el tiempo.
-export async function applyFoodDayPlan(eventId: string, eventType: EventType, decisionId: string, desired: MomentoComidaDef[]): Promise<{ created: number; removed: number }> {
+export async function applyFoodDayPlan(
+  eventId: string,
+  eventType: EventType,
+  decisionId: string,
+  desired: MomentoComidaDef[],
+  resolution: DayPlanResolution = {},
+): Promise<{ created: number; removed: number; adopted: number }> {
   const all = await listEventDayPlan(eventId)
-  const actions = reconcileDayPlan(eventType, desired, all, decisionId)
+  const actions = reconcileDayPlan(eventType, desired, all, decisionId, resolution)
   let created = 0
   let removed = 0
+  let adopted = 0
   for (const action of actions) {
     if (action.op === 'create') {
       try {
@@ -2276,6 +2286,7 @@ export async function applyFoodDayPlan(eventId: string, eventType: EventType, de
     } else if (action.op === 'adopt') {
       const { error } = await supabase.from('event_day_plan_items').update({ decision_id: decisionId }).eq('id', action.id)
       if (error && !isUniqueViolation(error)) throw error
+      if (!error) adopted += 1
     } else if (action.op === 'delete') {
       await deleteEventDayPlanItem(action.id)
       removed += 1
@@ -2284,7 +2295,7 @@ export async function applyFoodDayPlan(eventId: string, eventType: EventType, de
       if (error) throw error
     }
   }
-  return { created, removed }
+  return { created, removed, adopted }
 }
 
 // ---------------------------------------------------------------------

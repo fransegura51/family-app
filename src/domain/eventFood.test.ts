@@ -27,6 +27,8 @@ import {
   isAdoptableLegacyBudget,
   isAdoptableLegacyTask,
   isDayPlanItemUntouched,
+  momentRecoveryPrompt,
+  recoverableDayPlanItems,
   listFoodBlockQuestions,
   MOMENTOS_COMIDA_CATALOG,
   ninosNeedMenuInfantil,
@@ -236,6 +238,50 @@ describe('Momentos de comida M–O — Plan del día sin hora, por identidad est
   it('un elemento generado antiguo SIN clave (migración no pudo etiquetarlo) se reconoce por el título del catálogo, una sola vez', () => {
     const legacy = linkedItem('comida', { sourceKey: null })
     expect(reconcileDayPlan('cumpleanos', wanted('comida'), [legacy], 'dm')).toEqual([])
+  })
+  describe('recuperar un independiente al volver a marcar (elección explícita)', () => {
+    const independent = (id: string, k = 'comida', over: Parameters<typeof makeDayPlanItem>[0] = {}) => makeDayPlanItem({ id, title: 'Almuerzo familiar', decisionId: null, sourceKey: key(k), itemTime: '14:30:00', ...over })
+
+    it('con la elección «recuperar» se readopta ESA fila (y no se crea nada)', () => {
+      expect(reconcileDayPlan('cumpleanos', wanted('comida'), [independent('a')], 'dm', { adopt: { comida: 'a' } })).toEqual([{ op: 'adopt', id: 'a' }])
+    })
+    it('con la elección «crear nuevo» se crea aunque haya candidato (y el candidato no se toca)', () => {
+      expect(reconcileDayPlan('cumpleanos', wanted('comida'), [independent('a')], 'dm', { forceCreate: ['comida'] })).toEqual([{ op: 'create', key: 'comida', title: 'Comida' }])
+    })
+    it('con VARIOS candidatos y elección, se recupera exactamente el elegido', () => {
+      const items = [independent('a'), independent('b', 'comida', { title: 'Comida con amigos', itemTime: null })]
+      expect(reconcileDayPlan('cumpleanos', wanted('comida'), items, 'dm', { adopt: { comida: 'b' } })).toEqual([{ op: 'adopt', id: 'b' }])
+    })
+    it('con VARIOS candidatos y SIN elección no se escoge ninguno ni se crea (nunca se decide en silencio)', () => {
+      const items = [independent('a'), independent('b')]
+      expect(reconcileDayPlan('cumpleanos', wanted('comida'), items, 'dm')).toEqual([])
+    })
+    it('un candidato de OTRO momento, o uno manual sin clave llamado «Comida», no cuentan', () => {
+      const other = independent('o', 'cena')
+      const manual = makeDayPlanItem({ id: 'm', title: 'Comida', decisionId: null, sourceKey: null })
+      expect(reconcileDayPlan('cumpleanos', wanted('comida'), [other, manual], 'dm')).toEqual([{ op: 'create', key: 'comida', title: 'Comida' }])
+    })
+    it('una elección que apunta a algo que ya no es candidato se ignora y se aplica la regla general', () => {
+      expect(reconcileDayPlan('cumpleanos', wanted('comida'), [], 'dm', { adopt: { comida: 'fantasma' } })).toEqual([{ op: 'create', key: 'comida', title: 'Comida' }])
+    })
+    it('recoverableDayPlanItems: solo decision_id null + clave del momento, por orden', () => {
+      const items = [independent('b', 'comida', { sortOrder: 2000 }), independent('a', 'comida', { sortOrder: 1000 }), linkedItem('comida'), independent('c', 'cena')]
+      expect(recoverableDayPlanItems(items, 'comida').map((i) => i.id)).toEqual(['a', 'b'])
+    })
+    it('momentRecoveryPrompt: pregunta solo al MARCAR (no al desmarcar ni repetir) y solo si va a haber comida', () => {
+      const ctx = ctxOf([casa, quien('nosotros'), momentos(['comida'])])
+      const items = [independent('a')]
+      const sel = (selected: string[]) => ({ choice: 'seleccionar' as const, selected: selected as never, customItems: [] })
+      expect(momentRecoveryPrompt('cumpleanos', sel([]), sel(['comida']), ctx, items)?.candidates.map((c) => c.id)).toEqual(['a'])
+      expect(momentRecoveryPrompt('cumpleanos', undefined, sel(['comida']), ctx, items)?.label).toBe('Comida')
+      expect(momentRecoveryPrompt('cumpleanos', sel(['comida']), sel(['comida']), ctx, items)).toBeNull()
+      expect(momentRecoveryPrompt('cumpleanos', sel(['comida']), sel([]), ctx, items)).toBeNull()
+      expect(momentRecoveryPrompt('cumpleanos', sel([]), sel(['aperitivo']), ctx, items)).toBeNull()
+      expect(momentRecoveryPrompt('cumpleanos', sel([]), { choice: 'todavia_no_lo_sabemos', selected: [], customItems: [] }, ctx, items)).toBeNull()
+      // si no va a haber comida (el lugar se encarga de todo, nadie cocina…), marcar no genera nada y no hay nada que preguntar
+      const noFood = ctxOf([casa, quien('no_habra'), momentos(['comida'])])
+      expect(momentRecoveryPrompt('cumpleanos', sel([]), sel(['comida']), noFood, items)).toBeNull()
+    })
   })
   it('catálogo por tipo según la especificación', () => {
     expect(MOMENTOS_COMIDA_CATALOG.boda.map((m) => m.key)).toEqual(['aperitivo', 'comida', 'cena', 'recena'])

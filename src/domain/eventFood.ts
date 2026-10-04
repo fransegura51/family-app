@@ -518,20 +518,36 @@ export function isDayPlanItemUntouched(
   return item.itemTime === null && !(item.note && item.note.trim()) && item.showOnShare && item.coincideOkTime === null && original !== undefined && item.title === original
 }
 
+// Un momento INDEPENDIENTE recuperable: ya no está bajo el control de ninguna decisión (decision_id null) pero
+// conserva su source_key, es decir, su procedencia. Se reconoce SOLO por esa clave, nunca por el título (puede
+// haberse renombrado) ni por llamarse igual (uno puesto a mano no tiene clave).
+export function recoverableDayPlanItems(items: EventDayPlanItem[], key: MomentoComidaKey): EventDayPlanItem[] {
+  return items.filter((i) => i.decisionId === null && foodMomentKeyFromSource(i.sourceKey) === key).sort((x, y) => x.sortOrder - y.sortOrder || (x.createdAt < y.createdAt ? -1 : x.createdAt > y.createdAt ? 1 : 0))
+}
+
+// Decisiones EXPLÍCITAS de la familia ante un momento recuperable (cuando vuelve a marcar el momento):
+//  · adopt[clave] = id  → recuperar el vínculo con ESA fila (con su nombre, hora, nota y orden tal cual);
+//  · forceCreate        → crear uno nuevo aunque haya candidatos (y los candidatos siguen independientes).
+export interface DayPlanResolution {
+  adopt?: Partial<Record<MomentoComidaKey, string>>
+  forceCreate?: MomentoComidaKey[]
+}
+
 // Reconciliación por IDENTIDAD ESTABLE (source_key), nunca por el título:
 //  · marcado y ya enlazado            → nada (aunque se haya renombrado, puesto hora o nota);
-//  · marcado y desvinculado antes     → se READOPTA (vuelve a enlazar la misma fila);
+//  · marcado y hay un independiente recuperable → la familia ya eligió (resolution): recuperar ESA fila o crear;
+//    sin elección (reconciliaciones que no nacen de marcar el momento, p. ej. cambia el lugar): con UN único
+//    candidato se continúa con él; con VARIOS no se escoge ninguno ni se crea (nunca se decide en silencio);
 //  · marcado y no existe              → se crea;
 //  · desmarcado, enlazado y prístino  → se retira; si la familia lo enriqueció → se desvincula y se conserva;
 //  · duplicado (fallo antiguo)        → se limpia el sobrante prístino, o se desvincula si tiene información.
 // Un elemento puesto a mano con el mismo nombre es INDEPENDIENTE: no cuenta ni se toca.
-export function reconcileDayPlan(eventType: EventType, desired: MomentoComidaDef[], items: EventDayPlanItem[], decisionId: string): DayPlanAction[] {
+export function reconcileDayPlan(eventType: EventType, desired: MomentoComidaDef[], items: EventDayPlanItem[], decisionId: string, resolution: DayPlanResolution = {}): DayPlanAction[] {
   const actions: DayPlanAction[] = []
   const wanted = new Set<MomentoComidaKey>(desired.map((d) => d.key))
   const keyOf = (item: EventDayPlanItem): MomentoComidaKey | null => (foodMomentKeyFromSource(item.sourceKey) as MomentoComidaKey | null) ?? (item.decisionId === decisionId ? legacyMomentKey(item.title) : null)
 
   const linked = items.filter((i) => i.decisionId === decisionId).sort((a, b) => a.sortOrder - b.sortOrder || (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0))
-  const orphans = items.filter((i) => i.decisionId === null && foodMomentKeyFromSource(i.sourceKey) !== null)
   const kept = new Set<MomentoComidaKey>()
 
   for (const item of linked) {
@@ -546,14 +562,38 @@ export function reconcileDayPlan(eventType: EventType, desired: MomentoComidaDef
 
   for (const moment of desired) {
     if (kept.has(moment.key)) continue
-    const orphan = orphans.find((o) => foodMomentKeyFromSource(o.sourceKey) === moment.key)
-    if (orphan) {
-      actions.push({ op: 'adopt', id: orphan.id })
-      continue
+    const candidates = recoverableDayPlanItems(items, moment.key)
+    const chosen = resolution.adopt?.[moment.key]
+    if (chosen && candidates.some((c) => c.id === chosen)) {
+      actions.push({ op: 'adopt', id: chosen })
+    } else if (resolution.forceCreate?.includes(moment.key) || candidates.length === 0) {
+      actions.push({ op: 'create', key: moment.key, title: moment.label })
+    } else if (candidates.length === 1) {
+      actions.push({ op: 'adopt', id: candidates[0].id })
     }
-    actions.push({ op: 'create', key: moment.key, title: moment.label })
+    // Varios candidatos y sin elección: no se decide por la familia.
   }
   return actions
+}
+
+// ¿Hay que PREGUNTAR antes de guardar la nueva selección de momentos? Sí cuando se marca un momento (que va a
+// generar algo en el Plan del día) y ya existe algún independiente recuperable de esa misma procedencia. Se llama
+// ANTES de persistir nada, para poder cancelar sin dejar la decisión marcada.
+export interface MomentRecoveryPrompt {
+  key: MomentoComidaKey
+  label: string
+  candidates: EventDayPlanItem[]
+}
+
+export function momentRecoveryPrompt(eventType: EventType, previous: MomentosComidaAnswer | undefined, next: MomentosComidaAnswer, ctx: FoodContext, items: EventDayPlanItem[]): MomentRecoveryPrompt | null {
+  if (next.choice !== 'seleccionar' || !foodWillExist(ctx)) return null
+  const before = previous?.choice === 'seleccionar' ? previous.selected : []
+  for (const def of MOMENTOS_COMIDA_CATALOG[eventType]) {
+    if (!next.selected.includes(def.key) || before.includes(def.key)) continue
+    const candidates = recoverableDayPlanItems(items, def.key)
+    if (candidates.length > 0) return { key: def.key, label: def.label, candidates }
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------

@@ -133,6 +133,7 @@ const events = await import('@/data/events')
 const { addEventDayPlanItem, applyFoodDayPlan, deleteEventDayPlanItem, listEventDayPlan, reorderEventDayPlan, resolveGeneratedDayPlanItem, updateEventDayPlanItem } = events
 const { MOMENTOS_COMIDA_CATALOG, FOOD_MOMENTOS_KEY } = await import('@/domain/eventFood')
 const { splitDayPlan, pendingCoincidenceFor, foodMomentSourceKey } = await import('@/domain/eventDayPlan')
+const fx = { ...(await import('@/domain/eventFood')), ...(await import('@/domain/eventFoodFixtures')) }
 
 const rows = () => db.event_day_plan_items ?? []
 const row = (id: string) => rows().find((r) => r.id === id) as Row
@@ -140,6 +141,7 @@ const byTitle = (title: string) => rows().find((r) => r.title === title) as Row
 const DECISION_ID = 'decision-momentos'
 const wanted = (...keys: string[]) => MOMENTOS_COMIDA_CATALOG.cumpleanos.filter((m) => keys.includes(m.key))
 const apply = (...keys: string[]) => applyFoodDayPlan('e1', 'cumpleanos', DECISION_ID, wanted(...keys))
+const apply2 = (key: string, resolution: Parameters<typeof applyFoodDayPlan>[4]) => applyFoodDayPlan('e1', 'cumpleanos', DECISION_ID, wanted(key), resolution)
 
 function seedDecision(selected: string[], choice = 'seleccionar') {
   db.event_decisions = [
@@ -341,7 +343,7 @@ describe('Elementos generados por «Comida y bebida» — identidad estable (27�
     await apply('comida')
     await updateEventDayPlanItem(byTitle('Comida').id as string, { title: 'Almuerzo familiar' })
     const result = await apply('comida')
-    expect(result).toEqual({ created: 0, removed: 0 })
+    expect(result).toEqual({ created: 0, removed: 0, adopted: 0 })
     expect(rows().map((r) => r.title)).toEqual(['Almuerzo familiar'])
   })
   it('28/29. caso obligatorio: Comida → «Almuerzo familiar» + 14:30 + nota → se desmarca → se vuelve a marcar: UNA sola fila, la misma', async () => {
@@ -413,7 +415,7 @@ describe('× sobre un momento generado (24, 25, 26)', () => {
     expect(decisionSelected()).toEqual([])
     expect(rows()).toHaveLength(0)
     // la siguiente reconciliación, con la decisión ya actualizada, no lo vuelve a crear
-    expect(await apply(...decisionSelected())).toEqual({ created: 0, removed: 0 })
+    expect(await apply(...decisionSelected())).toEqual({ created: 0, removed: 0, adopted: 0 })
     expect(rows()).toHaveLength(0)
   })
   it('24b. solo se quita el momento pulsado: los demás marcados siguen intactos', async () => {
@@ -430,18 +432,11 @@ describe('× sobre un momento generado (24, 25, 26)', () => {
     const sortBefore = row(item.id).sort_order
     const fresh = (await listEventDayPlan('e1'))[0]
     await resolveGeneratedDayPlanItem(fresh, 'independent')
-    expect(row(item.id)).toMatchObject({ title: 'Almuerzo familiar', item_time: '14:30:00', note: 'terraza', show_on_share: false, sort_order: sortBefore, decision_id: null, source_key: null })
+    expect(row(item.id)).toMatchObject({ title: 'Almuerzo familiar', item_time: '14:30:00', note: 'terraza', show_on_share: false, sort_order: sortBefore, decision_id: null, source_key: 'comida.momentos:comida' })
     expect(decisionSelected()).toEqual([])
-    // el configurador ya no lo controla: reconciliar no lo toca ni crea nada
-    expect(await apply()).toEqual({ created: 0, removed: 0 })
+    // el configurador ya no lo controla (y conserva su procedencia): reconciliar sin marcar nada no lo toca ni crea nada
+    expect(await apply()).toEqual({ created: 0, removed: 0, adopted: 0 })
     expect(rows()).toHaveLength(1)
-  })
-  it('independiente + volver a marcar el momento crea uno nuevo, deliberadamente (el independiente no se readopta)', async () => {
-    const item = await generatedComida()
-    await resolveGeneratedDayPlanItem(item, 'independent')
-    seedDecision(['comida'])
-    expect((await apply('comida')).created).toBe(1)
-    expect(rows()).toHaveLength(2)
   })
   it('26. cancelar = no llamar a nada: la fila y la decisión quedan igual', async () => {
     await generatedComida()
@@ -461,6 +456,179 @@ describe('× sobre un momento generado (24, 25, 26)', () => {
     await resolveGeneratedDayPlanItem(item, 'both')
     expect(decisionSelected()).toEqual([])
     expect(rows()).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------
+// Volver a marcar un momento que ya tiene un independiente con su procedencia: PEPA pregunta, no decide
+// ---------------------------------------------------------------------
+describe('Recuperar un momento independiente al volver a marcarlo (1–12)', () => {
+  const { momentRecoveryPrompt, recoverableDayPlanItems, buildFoodContext } = fx
+  const makeFoodCtx = () => buildFoodContext(fx.makeEvent(), [fx.makeDecision('lugar.contexto', { choice: 'en_casa' }), fx.makeDecision('comida.quien', { choice: 'nosotros' })], [], null)
+  const promptFor = async (selected: string[], previous: string[] = []) =>
+    momentRecoveryPrompt('cumpleanos', { choice: 'seleccionar', selected: previous as never, customItems: [] }, { choice: 'seleccionar', selected: selected as never, customItems: [] }, makeFoodCtx(), await listEventDayPlan('e1'))
+
+  async function independentComida(over: Parameters<typeof updateEventDayPlanItem>[1] = {}) {
+    await apply('comida')
+    const id = byTitle('Comida').id as string
+    if (Object.keys(over).length > 0) await updateEventDayPlanItem(id, over)
+    const fresh = (await listEventDayPlan('e1')).find((i) => i.id === id)!
+    await resolveGeneratedDayPlanItem(fresh, 'independent')
+    return id
+  }
+
+  it('1. «Mantener como independiente» SIN editar, y volver a marcar → PREGUNTA (no crea ni recupera nada solo)', async () => {
+    const id = await independentComida()
+    expect(row(id)).toMatchObject({ decision_id: null, source_key: 'comida.momentos:comida', title: 'Comida' })
+    const prompt = await promptFor(['comida'])
+    expect(prompt?.key).toBe('comida')
+    expect(prompt?.candidates.map((c) => c.id)).toEqual([id])
+    // y nada se ha escrito por preguntar
+    expect(rows()).toHaveLength(1)
+    expect(row(id).decision_id).toBeNull()
+  })
+  it('2. tras renombrar, poner hora, nota y ocultar → sigue preguntando, reconocido por la clave y NO por el título', async () => {
+    const id = await independentComida({ title: 'Almuerzo familiar', itemTime: '14:30', note: 'David trae la tarta', showOnShare: false })
+    const prompt = await promptFor(['comida'])
+    expect(prompt?.candidates.map((c) => c.title)).toEqual(['Almuerzo familiar'])
+    expect(prompt?.candidates[0].id).toBe(id)
+  })
+  it('3. RECUPERAR: misma fila, mismo nombre editado, hora, nota, visibilidad y orden; decision_id restaurado; clave intacta; cero duplicados', async () => {
+    const id = await independentComida({ title: 'Almuerzo familiar', itemTime: '14:30', note: 'David trae la tarta', showOnShare: false })
+    const before = { ...row(id) }
+    const result = await apply2('comida', { adopt: { comida: id } })
+    expect(result).toEqual({ created: 0, removed: 0, adopted: 1 })
+    expect(rows()).toHaveLength(1)
+    expect(row(id)).toMatchObject({
+      id,
+      title: 'Almuerzo familiar', // recuperar el vínculo NO restaura el nombre original
+      item_time: '14:30:00',
+      note: 'David trae la tarta',
+      show_on_share: false,
+      sort_order: before.sort_order,
+      source_key: 'comida.momentos:comida',
+      decision_id: DECISION_ID,
+    })
+    expect(rows().filter((r) => r.title === 'Comida')).toHaveLength(0)
+  })
+  it('4. CREAR NUEVO: el antiguo sigue independiente exactamente igual y el nuevo queda vinculado; ambos existen por decisión expresa', async () => {
+    const id = await independentComida({ title: 'Almuerzo familiar', itemTime: '14:30', note: 'terraza' })
+    const before = { ...row(id) }
+    const result = await apply2('comida', { forceCreate: ['comida'] })
+    expect(result).toEqual({ created: 1, removed: 0, adopted: 0 })
+    expect(rows()).toHaveLength(2)
+    expect(row(id)).toEqual(before)
+    const created = rows().find((r) => r.id !== id)!
+    expect(created).toMatchObject({ title: 'Comida', decision_id: DECISION_ID, source_key: 'comida.momentos:comida', item_time: null })
+  })
+  it('5. CANCELAR: no se escribe nada (ni el plan ni la decisión); el momento sigue desmarcado', async () => {
+    const id = await independentComida({ title: 'Almuerzo familiar', itemTime: '14:30' })
+    const snapshotRows = JSON.stringify(rows())
+    const snapshotDecision = JSON.stringify(db.event_decisions)
+    // el diálogo se calcula ANTES de persistir; cancelar = no llamar a nada más
+    expect((await promptFor(['comida']))?.candidates).toHaveLength(1)
+    expect(JSON.stringify(rows())).toBe(snapshotRows)
+    expect(JSON.stringify(db.event_decisions)).toBe(snapshotDecision)
+    expect(decisionSelected()).toEqual([])
+    expect(row(id).decision_id).toBeNull()
+  })
+  it('6. «Quitar de ambos» y volver a marcar: no queda nada que recuperar → creación normal, SIN pregunta', async () => {
+    await apply('comida')
+    const item = (await listEventDayPlan('e1'))[0]
+    await resolveGeneratedDayPlanItem(item, 'both')
+    expect(rows()).toHaveLength(0)
+    expect(await promptFor(['comida'])).toBeNull()
+    expect((await apply('comida')).created).toBe(1)
+  })
+  it('7. un momento MANUAL llamado «Comida» no es candidato (no tiene procedencia)', async () => {
+    await addEventDayPlanItem('e1', 'Comida', '14:00')
+    expect(await promptFor(['comida'])).toBeNull()
+    expect(recoverableDayPlanItems(await listEventDayPlan('e1'), 'comida')).toEqual([])
+    expect((await apply('comida')).created).toBe(1)
+  })
+  it('8. un momento renombrado «Almuerzo familiar» con la clave correcta SÍ se reconoce; uno con la clave de OTRO momento, no', async () => {
+    const id = await independentComida({ title: 'Almuerzo familiar' })
+    expect((await promptFor(['comida']))?.candidates.map((c) => c.id)).toEqual([id])
+    expect(await promptFor(['aperitivo'])).toBeNull()
+  })
+  it('sin candidato (nada independiente): comportamiento de siempre, sin pregunta y sin fricción', async () => {
+    expect(await promptFor(['comida'])).toBeNull()
+    expect((await apply('comida')).created).toBe(1)
+  })
+  it('solo se pregunta al MARCAR un momento nuevo: volver a pulsar otros chips, o desmarcar, no pregunta', async () => {
+    await independentComida()
+    expect(await promptFor(['comida'], ['comida'])).toBeNull() // ya estaba marcado
+    expect(await promptFor(['aperitivo'], ['comida'])).toBeNull() // aperitivo no tiene candidatos
+    expect(await promptFor([])).toBeNull() // desmarcar
+  })
+  it('9. doble toque / carrera: dos recuperaciones simultáneas o dos «crear» simultáneos no duplican', async () => {
+    const id = await independentComida({ title: 'Almuerzo familiar' })
+    await Promise.all([apply2('comida', { adopt: { comida: id } }), apply2('comida', { adopt: { comida: id } })])
+    expect(rows()).toHaveLength(1)
+    expect(row(id).decision_id).toBe(DECISION_ID)
+
+    // crear nuevo dos veces a la vez: el índice único deja UNO
+    await resolveGeneratedDayPlanItem((await listEventDayPlan('e1'))[0], 'independent')
+    await Promise.all([apply2('comida', { forceCreate: ['comida'] }), apply2('comida', { forceCreate: ['comida'] })])
+    expect(rows().filter((r) => r.decision_id === DECISION_ID && r.source_key === 'comida.momentos:comida')).toHaveLength(1)
+    expect(rows()).toHaveLength(2)
+  })
+  it('10. recuperar un momento con hora coincidente NO toca horas ni confirmaciones (cero avisos de coincidencia nuevos)', async () => {
+    const other = await addEventDayPlanItem('e1', 'Aperitivo', '14:30')
+    const id = await independentComida({ title: 'Almuerzo familiar', itemTime: '14:30' })
+    // el usuario ya había confirmado que coinciden
+    await reorderEventDayPlan([other, id], true)
+    const before = JSON.stringify(rows().map((r) => [r.id, r.item_time, r.coincide_ok_time, r.sort_order]))
+    await apply2('comida', { adopt: { comida: id } })
+    expect(JSON.stringify(rows().map((r) => [r.id, r.item_time, r.coincide_ok_time, r.sort_order]))).toBe(before)
+    expect(pendingCoincidenceFor(await listEventDayPlan('e1'), id)).toBeNull()
+  })
+  it('11. VARIOS candidatos son posibles bajo el esquema: se ofrecen todos y se recupera EXACTAMENTE el elegido', async () => {
+    const first = await independentComida({ title: 'Almuerzo familiar', itemTime: '14:30' })
+    // crear uno nuevo y volver a independizarlo → dos independientes con la MISMA procedencia
+    await apply2('comida', { forceCreate: ['comida'] })
+    const second = rows().find((r) => r.id !== first)!.id as string
+    await resolveGeneratedDayPlanItem((await listEventDayPlan('e1')).find((i) => i.id === second)!, 'independent')
+    seedDecision([])
+    const prompt = await promptFor(['comida'])
+    expect(prompt?.candidates.map((c) => c.id).sort()).toEqual([first, second].sort())
+
+    await apply2('comida', { adopt: { comida: second } })
+    expect(row(second).decision_id).toBe(DECISION_ID)
+    expect(row(first).decision_id).toBeNull()
+    expect(rows()).toHaveLength(2)
+  })
+  it('11b. con VARIOS candidatos y sin elección, una reconciliación automática NO escoge ni crea (nunca decide en silencio)', async () => {
+    const first = await independentComida({ title: 'Almuerzo familiar' })
+    await apply2('comida', { forceCreate: ['comida'] })
+    const second = rows().find((r) => r.id !== first)!.id as string
+    await resolveGeneratedDayPlanItem((await listEventDayPlan('e1')).find((i) => i.id === second)!, 'independent')
+    const before = JSON.stringify(rows())
+    expect(await apply('comida')).toEqual({ created: 0, removed: 0, adopted: 0 })
+    expect(JSON.stringify(rows())).toBe(before)
+  })
+  it('12. GARANTÍA de unicidad: con la decisión marcada hay como mucho UNA fila vinculada por clave (índice único parcial); lo que sí puede repetirse son los independientes', async () => {
+    const first = await independentComida()
+    await apply2('comida', { forceCreate: ['comida'] })
+    // intentar vincular también el antiguo a la misma decisión choca con el índice y se absorbe
+    const result = await apply2('comida', { adopt: { comida: first } })
+    expect(result.adopted).toBe(0)
+    expect(rows().filter((r) => r.decision_id === DECISION_ID && r.source_key === 'comida.momentos:comida')).toHaveLength(1)
+  })
+  it('una elección que ya no es válida (el candidato desapareció) cae a la regla general: se crea si no queda ninguno', async () => {
+    const id = await independentComida()
+    await deleteEventDayPlanItem(id)
+    expect(await apply2('comida', { adopt: { comida: id } })).toEqual({ created: 1, removed: 0, adopted: 0 })
+  })
+  it('desmarcar con información (se conserva desvinculado con su clave) y volver a marcar TAMBIÉN pregunta, igual que «independiente»', async () => {
+    await apply('comida')
+    const id = byTitle('Comida').id as string
+    await updateEventDayPlanItem(id, { title: 'Almuerzo familiar', itemTime: '14:30' })
+    await apply()
+    expect(row(id).decision_id).toBeNull()
+    seedDecision([])
+    const prompt = await promptFor(['comida'])
+    expect(prompt?.candidates.map((c) => c.id)).toEqual([id])
   })
 })
 

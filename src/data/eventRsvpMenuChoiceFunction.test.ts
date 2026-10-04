@@ -33,7 +33,7 @@ describe('event-rsvp — GET (flujo con token): members + menuOptions en la resp
     expect(idx).toBeGreaterThan(-1)
     const body = SRC.slice(idx, SRC.indexOf('\n    }', idx))
     expect(body).toContain('.from("event_menu_options")')
-    expect(body).toContain('.select("id, name")')
+    expect(body).toContain('.select("id, name, audience")')
     expect(body).toContain('.eq("event_id", ev.id)')
   })
 
@@ -41,7 +41,7 @@ describe('event-rsvp — GET (flujo con token): members + menuOptions en la resp
     const idx = SRC.lastIndexOf('guest: {')
     const body = SRC.slice(idx, SRC.indexOf('\n      },', idx))
     expect(body).toContain('members: members.map((m) => ({ id: m.id, name: m.name, personType: m.person_type, rsvpAttending: m.rsvp_attending, menuOptionId: m.menu_option_id }))')
-    expect(body).toContain('menuOptions: menuOptions.map((o) => ({ id: o.id, name: o.name }))')
+    expect(body).toContain('menuOptions: menuOptions.map((o) => ({ id: o.id, name: o.name, audience: o.audience }))')
   })
 
   it('el flujo de enlace abierto (open_rsvp_token) no toca members/menuOptions — ahí nunca hay personas desglosadas todavía', () => {
@@ -58,20 +58,23 @@ describe('event-rsvp — POST (flujo con token): elección por persona validada 
   })
 
   it('cada member_id se comprueba contra las personas de ESTE invitado antes de escribir nada (nunca confía en el id que manda el cliente) — resolveOwnMemberIds se calcula una sola vez y la reutilizan tanto el menú por persona como las preguntas personalizadas', () => {
-    const fnIdx = SRC.indexOf('async function resolveOwnMemberIds(')
-    const fnBody = SRC.slice(fnIdx, SRC.indexOf('\n      }\n\n      // Elección por persona', fnIdx))
-    expect(fnBody).toContain('.from("event_guest_members").select("id").eq("guest_id", g.id)')
+    // Fase "Comida y bebida": la consulta de personas ahora trae también person_type (para filtrar las
+    // opciones de menú por adulto/niño); resolveOwnMemberIds sigue siendo el conjunto de ids de ESTE invitado.
+    const fnIdx = SRC.indexOf('async function resolveOwnMemberTypes(')
+    const fnBody = SRC.slice(fnIdx, SRC.indexOf('\n      }\n      async function resolveOwnMemberIds', fnIdx))
+    expect(fnBody).toContain('.from("event_guest_members").select("id, person_type").eq("guest_id", g.id)')
     const membersIdx = SRC.indexOf('if (Array.isArray(body.members)')
     const membersBody = SRC.slice(membersIdx, SRC.indexOf('\n      }\n\n      // "📋 Preguntas a los invitados"', membersIdx))
-    expect(membersBody).toContain('const own = await resolveOwnMemberIds()')
+    expect(membersBody).toContain('const own = new Set(ownTypes.keys())')
     expect(membersBody).toContain('if (!memberId || !own.has(memberId)) continue')
   })
 
   it('un menu_option_id que no pertenece a ESTE evento se descarta (se guarda null), nunca se escribe tal cual', () => {
     const idx = SRC.indexOf('if (Array.isArray(body.members)')
     const body = SRC.slice(idx, SRC.indexOf('\n      }\n\n      // "📋 Preguntas a los invitados"', idx))
-    expect(body).toContain('.from("event_menu_options").select("id").eq("event_id", ev.id)')
-    expect(body).toContain('if (!validOptionIds.has(menuOptionId)) menuOptionId = null')
+    expect(body).toContain('.from("event_menu_options").select("id, audience").eq("event_id", ev.id)')
+    // …y además debe estar dirigida a esta clase de persona (adulto/niño, migración 0192).
+    expect(body).toContain('if (!validOptions.has(menuOptionId) || !optionAppliesToPerson(validOptions.get(menuOptionId), ownTypes.get(memberId))) menuOptionId = null')
   })
 
   it('escribe rsvp_attending/menu_option_id en event_guest_members por id, nunca en lote sin condición', () => {

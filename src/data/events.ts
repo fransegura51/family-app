@@ -11,8 +11,18 @@ import { listExpenses, listBudgetCategories } from '@/data/finance'
 // propio de Eventos.
 import { replaceEventMembers } from '@/data/calendar'
 import { distinctTagColor } from '@/domain/colors'
-import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary } from '@/domain/events'
+import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary, type FoodNeedsAlertInput } from '@/domain/events'
 import { reconcilePairGeneration, type DesiredPairGeneration, type ReconcileResult } from '@/domain/eventPairDecisions'
+import {
+  FOOD_NECESIDADES_KEY,
+  foodNeedsAlertInput,
+  isAdoptableLegacyBudget,
+  isAdoptableLegacyTask,
+  LEGACY_BUDGET_CATEGORIES,
+  LEGACY_TASK_TITLES,
+  reconcileDayPlan,
+} from '@/domain/eventFood'
+import { computeFoodNeedsState } from '@/domain/eventDietaryNeeds'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { showToast } from '@/state/toast'
 import type { EventReminder } from '@/domain/reminders'
@@ -24,6 +34,10 @@ import type {
   EventDecisionProvider,
   EventDecorationItem,
   EventDecorationStatus,
+  EventDietaryCategory,
+  EventDietaryKind,
+  EventDietaryNeed,
+  EventDietarySource,
   EventFavorItem,
   EventFavorStatus,
   EventGiftReceived,
@@ -35,8 +49,12 @@ import type {
   EventGuestQuestion,
   EventGuestQuestionOption,
   EventGuestRsvpStatus,
+  EventFoodDocument,
+  EventFoodDocumentKind,
   EventInvitation,
   EventMenuItem,
+  EventMenuOption,
+  EventMenuOptionAudience,
   EventModuleKey,
   EventMoment,
   EventPayment,
@@ -134,6 +152,27 @@ export async function loadAllEventAlerts(): Promise<EventAlertSummary[]> {
   const needsBudget = events.some((e) => e.enabledModules.includes('presupuesto') && e.tagId)
   const [expenses, categories] = needsBudget ? await Promise.all([listExpenses(), listBudgetCategories()]) : [null, null]
 
+  // "Comida y bebida" — aviso persistente «ya han confirmado todos y hay necesidades alimentarias». Dos
+  // consultas para TODOS los eventos a la vez (necesidades + la decisión de revisión), nunca una por evento.
+  const foodEventIds = events.filter((e) => e.enabledModules.includes('invitados')).map((e) => e.id)
+  const [foodNeedsRows, foodReviewRows] =
+    foodEventIds.length > 0
+      ? await Promise.all([
+          supabase.from('event_guest_dietary_needs').select(DIETARY_NEED_SELECT).in('event_id', foodEventIds),
+          supabase.from('event_decisions').select(DECISION_SELECT).in('event_id', foodEventIds).eq('question_key', FOOD_NECESIDADES_KEY),
+        ])
+      : [null, null]
+  const dietaryNeedsByEvent = new Map<string, EventDietaryNeed[]>()
+  for (const row of foodNeedsRows?.data ?? []) {
+    const need = mapDietaryNeed(row)
+    dietaryNeedsByEvent.set(need.eventId, [...(dietaryNeedsByEvent.get(need.eventId) ?? []), need])
+  }
+  const reviewByEvent = new Map<string, EventDecision>()
+  for (const row of foodReviewRows?.data ?? []) {
+    const decision = mapDecision(row)
+    reviewByEvent.set(decision.eventId, decision)
+  }
+
   const inputs: EventAlertInput[] = await Promise.all(
     events.map(async (event) => {
       const has = (k: EventModuleKey) => event.enabledModules.includes(k)
@@ -148,6 +187,14 @@ export async function loadAllEventAlerts(): Promise<EventAlertSummary[]> {
         event.tagId && has('presupuesto') && expenses && categories
           ? expenses.filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories)).reduce((sum, e) => sum + e.amount, 0)
           : null
+      // Solo si hay necesidades registradas se piden además las personas (para excluir a quien dijo «no viene»).
+      const eventNeeds = dietaryNeedsByEvent.get(event.id) ?? []
+      let foodNeeds: EventAlertInput['foodNeeds']
+      if (has('invitados') && guests.length > 0 && eventNeeds.length > 0) {
+        const members = await listEventGuestMembersForEvent(event.id)
+        const reviewDecision = reviewByEvent.get(event.id)
+        foodNeeds = foodNeedsAlertInput(computeFoodNeedsState(guests, members, eventNeeds), reviewDecision ? [reviewDecision] : [])
+      }
       return {
         eventId: event.id,
         eventTitle: event.title,
@@ -158,6 +205,7 @@ export async function loadAllEventAlerts(): Promise<EventAlertSummary[]> {
         payments,
         plannedBudget,
         spentBudget,
+        foodNeeds,
       }
     }),
   )
@@ -990,7 +1038,7 @@ export async function deleteEventBudgetItem(id: string): Promise<void> {
 // confirma explícitamente (transferMenuToShopping).
 // ---------------------------------------------------------------------
 
-const MENU_ITEM_SELECT = 'id, event_id, family_id, name, category, quantity_note, transferred, sort_order, created_at'
+const MENU_ITEM_SELECT = 'id, event_id, family_id, name, category, quantity_note, transferred, sort_order, created_at, recipe_id, notes, source, document_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapMenuItem(r: any): EventMenuItem {
@@ -1004,6 +1052,10 @@ function mapMenuItem(r: any): EventMenuItem {
     transferred: r.transferred,
     sortOrder: r.sort_order,
     createdAt: r.created_at,
+    recipeId: r.recipe_id ?? null,
+    notes: r.notes ?? null,
+    source: r.source === 'importado' ? 'importado' : 'manual',
+    documentId: r.document_id ?? null,
   }
 }
 
@@ -1017,7 +1069,14 @@ export async function listEventMenuItems(eventId: string): Promise<EventMenuItem
   return data.map(mapMenuItem)
 }
 
-export async function addEventMenuItem(eventId: string, name: string, category?: string | null, quantityNote?: string | null): Promise<void> {
+export interface MenuItemExtras {
+  recipeId?: string | null
+  notes?: string | null
+  source?: 'manual' | 'importado'
+  documentId?: string | null
+}
+
+export async function addEventMenuItem(eventId: string, name: string, category?: string | null, quantityNote?: string | null, extras: MenuItemExtras = {}): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('event_menu_items').insert({
     event_id: eventId,
@@ -1026,7 +1085,51 @@ export async function addEventMenuItem(eventId: string, name: string, category?:
     category: category ?? null,
     quantity_note: quantityNote ?? null,
     sort_order: Date.now(),
+    recipe_id: extras.recipeId ?? null,
+    notes: extras.notes ?? null,
+    source: extras.source ?? 'manual',
+    document_id: extras.documentId ?? null,
   })
+  if (error) throw error
+}
+
+// Inserción en bloque de platos ya REVISADOS por la familia (importación de foto/PDF). Un solo viaje a la base
+// de datos; el orden de entrada se conserva con un sort_order creciente.
+export async function addEventMenuItemsBulk(
+  eventId: string,
+  items: { name: string; category: string; notes?: string | null }[],
+  source: { documentId: string | null; imported: boolean },
+): Promise<number> {
+  if (items.length === 0) return 0
+  const familyId = await currentFamilyId()
+  const base = Date.now()
+  const { error } = await supabase.from('event_menu_items').insert(
+    items.map((item, index) => ({
+      event_id: eventId,
+      family_id: familyId,
+      name: item.name.trim(),
+      category: item.category,
+      notes: item.notes ?? null,
+      sort_order: base + index,
+      source: source.imported ? 'importado' : 'manual',
+      document_id: source.documentId,
+    })),
+  )
+  if (error) throw error
+  return items.length
+}
+
+export async function updateEventMenuItem(
+  id: string,
+  patch: Partial<{ name: string; category: string | null; notes: string | null; quantityNote: string | null; recipeId: string | null }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.category !== undefined) update.category = patch.category
+  if (patch.notes !== undefined) update.notes = patch.notes
+  if (patch.quantityNote !== undefined) update.quantity_note = patch.quantityNote
+  if (patch.recipeId !== undefined) update.recipe_id = patch.recipeId
+  const { error } = await supabase.from('event_menu_items').update(update).eq('id', id)
   if (error) throw error
 }
 
@@ -1853,6 +1956,14 @@ export async function applyPairDecisionGeneration(eventId: string, decisionId: s
   const existingBudget = budgetItems.map(mapBudgetItem)[0]
 
   const result = reconcilePairGeneration(desired, existingTask, existingBudget)
+  await executeReconcileActions(eventId, familyId, decisionId, result)
+  return result
+}
+
+// Ejecuta tal cual la lista de acciones que decidió reconcilePairGeneration (puro). Extraído para que la
+// adopción de automatismos antiguos de "Comida y bebida" reutilice EXACTAMENTE el mismo ejecutor, sin un
+// segundo camino de escritura.
+async function executeReconcileActions(eventId: string, familyId: string, decisionId: string, result: ReconcileResult): Promise<void> {
   for (const action of result.actions) {
     switch (action.op) {
       case 'create_task': {
@@ -1908,7 +2019,290 @@ export async function applyPairDecisionGeneration(eventId: string, decisionId: s
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------
+// "🍽️ Comida y bebida" — adopción de automatismos antiguos + Plan del día (migración 0192 y anteriores).
+// ---------------------------------------------------------------------
+
+// Igual que applyPairDecisionGeneration, pero antes de crear nada intenta ADOPTAR un elemento automático
+// PRÍSTINO de antes del configurador que signifique lo mismo (p. ej. «Confirmar la tarta» → «Encargar la
+// tarta»), para no duplicarlo. Un elemento que la familia ya enriqueció (fecha puesta a mano, responsable,
+// importe, hecho...) se protege y no se adopta nunca. Solo se consultan candidatos cuando hay algo que
+// adoptar y la decisión todavía no tiene su propio elemento.
+export async function applyFoodDecisionGeneration(
+  event: Pick<FamilyEvent, 'id' | 'type' | 'eventDate'>,
+  questionKey: string,
+  decisionId: string,
+  desired: DesiredPairGeneration,
+): Promise<ReconcileResult> {
+  const familyId = await currentFamilyId()
+  const [{ data: tasks, error: tasksError }, { data: budgetItems, error: budgetError }] = await Promise.all([
+    supabase.from('event_tasks').select(TASK_SELECT).eq('decision_id', decisionId),
+    supabase.from('event_budget_items').select(BUDGET_ITEM_SELECT).eq('decision_id', decisionId),
+  ])
+  if (tasksError) throw tasksError
+  if (budgetError) throw budgetError
+  let existingTask = tasks.map(mapTask)[0]
+  let existingBudget = budgetItems.map(mapBudgetItem)[0]
+  let effective = desired
+
+  const wantsWork = Boolean(desired.taskTitle || desired.budgetCategory || desired.resolved)
+  if (wantsWork && !existingTask && LEGACY_TASK_TITLES[questionKey]) {
+    const { data: candidates, error } = await supabase
+      .from('event_tasks')
+      .select(TASK_SELECT)
+      .eq('event_id', event.id)
+      .is('decision_id', null)
+      .eq('source', 'auto')
+      .eq('done', false)
+    if (error) throw error
+    const legacy = candidates.map(mapTask).find((t) => isAdoptableLegacyTask(t, questionKey, event))
+    if (legacy) {
+      const title = desired.taskTitle ?? legacy.title
+      const { error: adoptError } = await supabase.from('event_tasks').update({ decision_id: decisionId, title }).eq('id', legacy.id)
+      if (adoptError) throw adoptError
+      existingTask = { ...legacy, decisionId, title }
+    }
+  }
+  if (desired.budgetCategory && !existingBudget && LEGACY_BUDGET_CATEGORIES[questionKey]) {
+    const { data: candidates, error } = await supabase.from('event_budget_items').select(BUDGET_ITEM_SELECT).eq('event_id', event.id).is('decision_id', null).is('planned_amount', null)
+    if (error) throw error
+    const legacy = candidates.map(mapBudgetItem).find((b) => isAdoptableLegacyBudget(b, questionKey))
+    if (legacy) {
+      const { error: adoptError } = await supabase.from('event_budget_items').update({ decision_id: decisionId }).eq('id', legacy.id)
+      if (adoptError) throw adoptError
+      existingBudget = { ...legacy, decisionId }
+      // Se conserva el nombre que ya tenía (la familia lo ve igual que siempre), nunca se renombra.
+      effective = { ...desired, budgetCategory: legacy.category }
+    }
+  }
+
+  const result = reconcilePairGeneration(effective, existingTask, existingBudget)
+  await executeReconcileActions(event.id, familyId, decisionId, result)
   return result
+}
+
+// Momentos de comida → Plan del día, SIN hora. Reconcilia contra lo que ya hay: crea los marcados que
+// faltan, retira solo los generados que siguen prístinos, y desvincula (conserva) los que la familia ya
+// completó con hora o nota. Un elemento del Plan del día con el mismo nombre puesto a mano no se duplica.
+export async function applyFoodDayPlan(eventId: string, decisionId: string, desiredTitles: string[]): Promise<{ created: number; removed: number }> {
+  const all = await listEventDayPlan(eventId)
+  const linked = all.filter((i) => i.decisionId === decisionId)
+  const unlinked = all.filter((i) => i.decisionId === null)
+  const actions = reconcileDayPlan(desiredTitles, linked, unlinked)
+  let created = 0
+  let removed = 0
+  for (const action of actions) {
+    if (action.op === 'create') {
+      await addEventDayPlanItem(eventId, action.title, null, null, decisionId)
+      created += 1
+    } else if (action.op === 'delete') {
+      await deleteEventDayPlanItem(action.id)
+      removed += 1
+    } else {
+      const { error } = await supabase.from('event_day_plan_items').update({ decision_id: null }).eq('id', action.id)
+      if (error) throw error
+    }
+  }
+  return { created, removed }
+}
+
+// ---------------------------------------------------------------------
+// Opciones de menú para invitados (event_menu_options, 0189 + audience 0192). Borrar una opción NUNCA borra
+// la elección de nadie: event_guest_members.menu_option_id es ON DELETE SET NULL.
+// ---------------------------------------------------------------------
+
+const MENU_OPTION_SELECT = 'id, event_id, family_id, name, sort_order, created_at, audience'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapMenuOption(r: any): EventMenuOption {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    name: r.name,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+    audience: r.audience === 'adultos' || r.audience === 'ninos' ? r.audience : 'todos',
+  }
+}
+
+export async function listEventMenuOptions(eventId: string): Promise<EventMenuOption[]> {
+  const { data, error } = await supabase.from('event_menu_options').select(MENU_OPTION_SELECT).eq('event_id', eventId).order('sort_order', { ascending: true })
+  if (error) throw error
+  return data.map(mapMenuOption)
+}
+
+export async function addEventMenuOption(eventId: string, name: string, audience: EventMenuOptionAudience = 'todos'): Promise<void> {
+  const trimmed = name.trim()
+  if (!trimmed) return
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_menu_options').insert({ event_id: eventId, family_id: familyId, name: trimmed, audience, sort_order: Date.now() })
+  if (error) throw error
+}
+
+export async function updateEventMenuOption(id: string, patch: Partial<{ name: string; audience: EventMenuOptionAudience }>): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.audience !== undefined) update.audience = patch.audience
+  if (Object.keys(update).length === 0) return
+  const { error } = await supabase.from('event_menu_options').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventMenuOption(id: string): Promise<void> {
+  const { error } = await supabase.from('event_menu_options').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Cambia el orden intercambiando el sort_order de dos opciones vecinas.
+export async function swapEventMenuOptionOrder(a: Pick<EventMenuOption, 'id' | 'sortOrder'>, b: Pick<EventMenuOption, 'id' | 'sortOrder'>): Promise<void> {
+  const [first, second] = await Promise.all([
+    supabase.from('event_menu_options').update({ sort_order: b.sortOrder }).eq('id', a.id),
+    supabase.from('event_menu_options').update({ sort_order: a.sortOrder }).eq('id', b.id),
+  ])
+  if (first.error) throw first.error
+  if (second.error) throw second.error
+}
+
+// ---------------------------------------------------------------------
+// Documentos de comida (foto/PDF de un menú). El original se conserva siempre.
+// ---------------------------------------------------------------------
+
+const FOOD_DOCUMENT_SELECT = 'id, event_id, family_id, kind, storage_path, original_name, mime_type, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapFoodDocument(r: any): EventFoodDocument {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    kind: r.kind,
+    storagePath: r.storage_path,
+    originalName: r.original_name,
+    mimeType: r.mime_type,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventFoodDocuments(eventId: string): Promise<EventFoodDocument[]> {
+  const { data, error } = await supabase.from('event_food_documents').select(FOOD_DOCUMENT_SELECT).eq('event_id', eventId).order('created_at', { ascending: true })
+  if (error) throw error
+  return data.map(mapFoodDocument)
+}
+
+// Se llama solo al CONFIRMAR el guardado de los platos revisados (nunca durante la revisión, para no subir
+// archivos que la familia acaba descartando). Ruta bajo la carpeta de la propia familia (política del bucket).
+export async function saveEventFoodDocument(eventId: string, file: File, kind: EventFoodDocumentKind): Promise<EventFoodDocument> {
+  const familyId = await currentFamilyId()
+  const { data: userResult } = await supabase.auth.getUser()
+  const prepared = file.type.startsWith('image/') ? await compressImageFile(file) : file
+  const ext = prepared.name.split('.').pop() || (prepared.type === 'application/pdf' ? 'pdf' : 'jpg')
+  const path = `${familyId}/${eventId}/${crypto.randomUUID()}.${ext}`
+  const { error: uploadError } = await supabase.storage.from('event_food_documents').upload(path, prepared)
+  if (uploadError) throw uploadError
+  const { data, error } = await supabase
+    .from('event_food_documents')
+    .insert({
+      event_id: eventId,
+      family_id: familyId,
+      kind,
+      storage_path: path,
+      original_name: file.name.slice(0, 160),
+      mime_type: prepared.type || file.type || null,
+      created_by: userResult.user?.id ?? null,
+    })
+    .select(FOOD_DOCUMENT_SELECT)
+    .single()
+  if (error) {
+    // No dejar un archivo huérfano si la fila no se pudo guardar.
+    await supabase.storage.from('event_food_documents').remove([path])
+    throw error
+  }
+  return mapFoodDocument(data)
+}
+
+export async function getEventFoodDocumentUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('event_food_documents').createSignedUrl(storagePath, 3600)
+  if (error) throw error
+  return data.signedUrl
+}
+
+// ---------------------------------------------------------------------
+// Necesidades alimentarias estructuradas (event_guest_dietary_needs, 0192).
+// ---------------------------------------------------------------------
+
+const DIETARY_NEED_SELECT = 'id, event_id, family_id, guest_id, member_id, original_text, category, kind, source, created_at, updated_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapDietaryNeed(r: any): EventDietaryNeed {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    guestId: r.guest_id,
+    memberId: r.member_id,
+    originalText: r.original_text,
+    category: r.category,
+    kind: r.kind,
+    source: r.source,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }
+}
+
+export async function listEventDietaryNeeds(eventId: string): Promise<EventDietaryNeed[]> {
+  const { data, error } = await supabase.from('event_guest_dietary_needs').select(DIETARY_NEED_SELECT).eq('event_id', eventId).order('created_at', { ascending: true })
+  if (error) throw error
+  return data.map(mapDietaryNeed)
+}
+
+export async function addEventDietaryNeed(
+  eventId: string,
+  input: { guestId: string; memberId: string | null; originalText: string; category: EventDietaryCategory; kind: EventDietaryKind | null; source: EventDietarySource },
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { data: userResult } = await supabase.auth.getUser()
+  const { error } = await supabase.from('event_guest_dietary_needs').insert({
+    event_id: eventId,
+    family_id: familyId,
+    guest_id: input.guestId,
+    member_id: input.memberId,
+    original_text: input.originalText.trim().slice(0, 300),
+    category: input.category,
+    kind: input.kind,
+    source: input.source,
+    created_by: userResult.user?.id ?? null,
+  })
+  if (error) throw error
+}
+
+// El texto original declarado NUNCA se modifica aquí: solo se puede corregir la clasificación operativa.
+export async function updateEventDietaryNeed(id: string, patch: { category?: EventDietaryCategory; kind?: EventDietaryKind | null }): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (patch.category !== undefined) update.category = patch.category
+  if (patch.kind !== undefined) update.kind = patch.kind
+  const { error } = await supabase.from('event_guest_dietary_needs').update(update).eq('id', id)
+  if (error) throw error
+}
+
+// Aviso persistente de UN evento (PepaConclusions): undefined si no hay invitados ni necesidades registradas.
+export async function loadEventFoodNeedsAlert(eventId: string, guests: EventGuest[]): Promise<FoodNeedsAlertInput | undefined> {
+  if (guests.length === 0) return undefined
+  const needs = await listEventDietaryNeeds(eventId)
+  if (needs.length === 0) return undefined
+  const [members, { data: reviewRows }] = await Promise.all([
+    listEventGuestMembersForEvent(eventId),
+    supabase.from('event_decisions').select(DECISION_SELECT).eq('event_id', eventId).eq('question_key', FOOD_NECESIDADES_KEY),
+  ])
+  const review = (reviewRows ?? []).map(mapDecision)
+  return foodNeedsAlertInput(computeFoodNeedsState(guests, members, needs), review)
+}
+
+export async function deleteEventDietaryNeed(id: string): Promise<void> {
+  const { error } = await supabase.from('event_guest_dietary_needs').delete().eq('id', id)
+  if (error) throw error
 }
 
 // ---------------------------------------------------------------------

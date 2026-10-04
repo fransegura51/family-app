@@ -88,6 +88,18 @@ interface GuestMemberRow {
 interface MenuOptionRow {
   id: string
   name: string
+  // Fase "Comida y bebida" (migración 0192): a quién va dirigida la opción. 'todos' por defecto, así que
+  // cualquier opción anterior sigue viéndola todo el mundo.
+  audience: string
+}
+
+// Una opción dirigida a 'adultos' o 'ninos' solo se ofrece a esa clase de persona. Una persona de tipo
+// desconocido solo ve (y solo puede elegir) opciones para 'todos' — nunca se adivina.
+function optionAppliesToPerson(audience: string | null | undefined, personType: string | null | undefined): boolean {
+  const a = audience ?? "todos"
+  if (a === "adultos") return personType === "adulto"
+  if (a === "ninos") return personType === "nino"
+  return true
 }
 
 // "📋 Preguntas a los invitados" (migración 0190) — capacidad genérica, deliberadamente aparte de la
@@ -312,21 +324,25 @@ Deno.serve(async (req) => {
 
       // member_id de ESTE invitado — calculado una sola vez, lo reutilizan tanto la elección de menú por
       // persona (Parte B) como las respuestas a preguntas personalizadas (scope "persona") de más abajo.
-      let ownMemberIds: Set<string> | null = null
-      async function resolveOwnMemberIds(): Promise<Set<string>> {
-        if (!ownMemberIds) {
-          const { data: ownMembersData } = await admin.from("event_guest_members").select("id").eq("guest_id", g.id)
-          ownMemberIds = new Set((ownMembersData ?? []).map((m) => m.id as string))
+      let ownMemberTypes: Map<string, string> | null = null
+      async function resolveOwnMemberTypes(): Promise<Map<string, string>> {
+        if (!ownMemberTypes) {
+          const { data: ownMembersData } = await admin.from("event_guest_members").select("id, person_type").eq("guest_id", g.id)
+          ownMemberTypes = new Map((ownMembersData ?? []).map((m) => [m.id as string, m.person_type as string]))
         }
-        return ownMemberIds
+        return ownMemberTypes
+      }
+      async function resolveOwnMemberIds(): Promise<Set<string>> {
+        return new Set((await resolveOwnMemberTypes()).keys())
       }
 
       // Elección por persona (Parte B, migración 0189) — solo si la unidad tiene personas desglosadas y el
       // cuerpo trae de verdad un array "members"; sin RLS aquí (rol de servicio), así que la pertenencia de
       // cada member_id a ESTE invitado, y de cada menu_option_id a ESTE evento, se comprueba a mano.
       if (Array.isArray(body.members) && body.members.length > 0) {
-        const own = await resolveOwnMemberIds()
-        let validOptionIds: Set<string> | null = null
+        const ownTypes = await resolveOwnMemberTypes()
+        const own = new Set(ownTypes.keys())
+        let validOptions: Map<string, string> | null = null
 
         for (const entry of body.members) {
           const memberId = typeof entry?.id === "string" ? entry.id : null
@@ -334,11 +350,12 @@ Deno.serve(async (req) => {
           const attending = typeof entry.attending === "boolean" ? entry.attending : null
           let menuOptionId: string | null = typeof entry.menuOptionId === "string" ? entry.menuOptionId : null
           if (menuOptionId) {
-            if (!validOptionIds) {
-              const { data: optionsData } = await admin.from("event_menu_options").select("id").eq("event_id", ev.id)
-              validOptionIds = new Set((optionsData ?? []).map((o) => o.id as string))
+            if (!validOptions) {
+              const { data: optionsData } = await admin.from("event_menu_options").select("id, audience").eq("event_id", ev.id)
+              validOptions = new Map((optionsData ?? []).map((o) => [o.id as string, o.audience as string]))
             }
-            if (!validOptionIds.has(menuOptionId)) menuOptionId = null
+            // La opción debe existir en ESTE evento y estar dirigida a esta clase de persona (adulto/niño).
+            if (!validOptions.has(menuOptionId) || !optionAppliesToPerson(validOptions.get(menuOptionId), ownTypes.get(memberId))) menuOptionId = null
           }
           await admin.from("event_guest_members").update({ rsvp_attending: attending, menu_option_id: menuOptionId }).eq("id", memberId)
         }
@@ -418,7 +435,7 @@ Deno.serve(async (req) => {
 
     let menuOptions: MenuOptionRow[] = []
     if (menuChoiceActive && members.length > 0) {
-      const { data: optionsData } = await admin.from("event_menu_options").select("id, name").eq("event_id", ev.id).order("sort_order", { ascending: true })
+      const { data: optionsData } = await admin.from("event_menu_options").select("id, name, audience").eq("event_id", ev.id).order("sort_order", { ascending: true })
       menuOptions = (optionsData ?? []) as MenuOptionRow[]
     }
 
@@ -456,7 +473,7 @@ Deno.serve(async (req) => {
         rsvpChildrenCount: g.rsvp_children_count,
         rsvpNote: g.rsvp_note,
         members: members.map((m) => ({ id: m.id, name: m.name, personType: m.person_type, rsvpAttending: m.rsvp_attending, menuOptionId: m.menu_option_id })),
-        menuOptions: menuOptions.map((o) => ({ id: o.id, name: o.name })),
+        menuOptions: menuOptions.map((o) => ({ id: o.id, name: o.name, audience: o.audience })),
         questions: guestQuestions.map((q) => ({
           id: q.id,
           prompt: q.prompt,

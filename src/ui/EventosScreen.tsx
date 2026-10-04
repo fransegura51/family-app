@@ -107,6 +107,20 @@ import {
   updateEventPayment,
   updateEventSpecialDetail,
   updateEventTask,
+  addEventDietaryNeed,
+  addEventMenuItemsBulk,
+  addEventMenuOption,
+  applyFoodDayPlan,
+  applyFoodDecisionGeneration,
+  deleteEventDietaryNeed,
+  deleteEventMenuOption,
+  listEventDietaryNeeds,
+  listEventMenuOptions,
+  loadEventFoodNeedsAlert,
+  saveEventFoodDocument,
+  swapEventMenuOptionOrder,
+  updateEventMenuItem,
+  updateEventMenuOption,
 } from '@/data/events'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
@@ -257,6 +271,102 @@ import {
 } from '@/domain/eventSpecialMoments'
 import { notifyEventMomentsChanged, useEventMomentsChangeSignal } from '@/state/eventMomentsSync'
 import { showToast } from '@/state/toast'
+import { addRecipeIngredientsToShoppingList, listRecipes } from '@/data/food'
+import { analyzeEventFoodDocument } from '@/services/eventFoodDocument'
+import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
+import {
+  buildFoodContext,
+  contratacionApplies,
+  cooksThemselves,
+  dependentFoodKeys,
+  desiredDayPlanTitles,
+  desiredForFoodKey,
+  FOOD_BEBIDAS_KEY,
+  FOOD_BLOCK_KEY,
+  FOOD_CONTRATACION_KEY,
+  FOOD_MENU_ESTADO_KEY,
+  FOOD_MENU_GUARDAR_KEY,
+  FOOD_MENU_INFANTIL_GUARDAR_KEY,
+  FOOD_MENU_INFANTIL_KEY,
+  FOOD_MOMENTOS_KEY,
+  FOOD_NECESIDADES_KEY,
+  FOOD_QUIEN_KEY,
+  FOOD_TARTA_KEY,
+  foodWillExist,
+  guestsChooseMenu,
+  includedByVenueLines,
+  menuEstadoAnswer,
+  MOMENTOS_COMIDA_CATALOG,
+  momentosComidaAnswer,
+  ninosNeedMenuInfantil,
+  quienAnswer,
+  quienApplies,
+  summarizeFoodBlock,
+  tartaContradiction,
+  venueIncludes,
+  type BebidasAnswer,
+  type BebidasChoice,
+  type ContratacionAnswer,
+  type ContratacionChoice,
+  type GuardarMenuAnswer,
+  type GuardarMenuChoice,
+  type MenuEstadoChoice,
+  type MenuInfantilAnswer,
+  type MenuInfantilChoice,
+  type MomentoComidaDef,
+  type MomentosComidaAnswer,
+  type NecesidadesAnswer,
+  type NecesidadesChoice,
+  type QuienAnswer,
+  type QuienChoice,
+  type QuienWay,
+  type TartaAnswer,
+  type TartaChoice,
+} from '@/domain/eventFood'
+import {
+  legacyIncludedServicesToVenue,
+  toggleVenueService,
+  VENUE_SERVICES,
+  VENUE_SERVICES_BLOCK_KEY,
+  VENUE_SERVICES_QUESTION_KEY,
+  venueServiceLabel,
+  venueServicesAnswer,
+  venueServicesQuestionLabel,
+  venueServicesStatus,
+  withVenueServiceCustomItems,
+  withVenueServicesNinguno,
+  withVenueServicesUnknown,
+  type VenueServiceKey,
+  type VenueServicesAnswer,
+} from '@/domain/eventVenueServices'
+import {
+  computeFoodNeedsState,
+  conflictInputsSignature,
+  DIETARY_CATEGORIES,
+  DIETARY_CATEGORY_KEYS,
+  DIETARY_KIND_LABELS,
+  findMenuConflicts,
+  FOOD_SAFETY_DISCLAIMER,
+  foodNeedsBanner,
+  needsReviewApplies,
+  suggestDietaryNeeds,
+  suggestFromGuestNotes,
+  type FoodNeedsState,
+} from '@/domain/eventDietaryNeeds'
+import {
+  alreadyRespondedMessage,
+  canonicalSectionLabel,
+  countMenuChoices,
+  groupMenuBySection,
+  guestsRespondedWithoutMenuChoice,
+  guestsWithoutMembers,
+  MENU_IMPORT_EXPLANATION,
+  MENU_INFANTIL_SECTION_LABEL,
+  MENU_OPTION_AUDIENCES,
+  MENU_SECTIONS,
+  sectionKeyForCategory,
+} from '@/domain/eventFoodMenu'
+import type { EventDietaryCategory, EventDietaryKind, EventDietaryNeed, EventDietarySource, EventFoodDocumentKind, EventMenuOption, EventMenuOptionAudience, Recipe } from '@/domain/types'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
 // Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
 // una función pura sin ninguna dependencia de Previsión/Economía.
@@ -2388,6 +2498,9 @@ function EventPlanningConfigurator({
   // evento (su catálogo de momentos candidatos varía por tipo, pero el bloque en sí nunca depende de
   // event.type ni de isEventStructuredByMoments).
   const [momentosEspecialesOpen, setMomentosEspecialesOpen] = useState(() => loadConfiguratorOpen(event.id, 'momentos_especiales'))
+  // "🍽️ Comida y bebida" — sexto bloque; aplica a cualquier tipo de evento (qué preguntas ve depende de lo que
+  // ya se sabe del lugar, los invitados y los momentos, no del tipo).
+  const [comidaOpen, setComidaOpen] = useState(() => loadConfiguratorOpen(event.id, 'comida'))
 
   function toggleOpen() {
     const next = !open
@@ -2418,6 +2531,11 @@ function EventPlanningConfigurator({
     const next = !momentosEspecialesOpen
     setMomentosEspecialesOpen(next)
     saveConfiguratorOpen(event.id, 'momentos_especiales', next)
+  }
+  function toggleComidaBlock() {
+    const next = !comidaOpen
+    setComidaOpen(next)
+    saveConfiguratorOpen(event.id, 'comida', next)
   }
 
   return (
@@ -2521,6 +2639,23 @@ function EventPlanningConfigurator({
             {momentosEspecialesOpen && (
               <div style={{ marginTop: 4 }}>
                 <MomentosEspecialesBlock event={event} onDerivedDataChanged={onDerivedDataChanged} />
+              </div>
+            )}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="link-button"
+              onClick={toggleComidaBlock}
+              style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+              aria-expanded={comidaOpen}
+            >
+              🍽️ Comida y bebida
+              <span aria-hidden="true">{comidaOpen ? '▾' : '▸'}</span>
+            </button>
+            {comidaOpen && (
+              <div style={{ marginTop: 4 }}>
+                <ComidaBebidaBlock event={event} onDerivedDataChanged={onDerivedDataChanged} />
               </div>
             )}
           </div>
@@ -4666,6 +4801,1409 @@ function MomentosEspecialesBlock({ event, onDerivedDataChanged }: { event: Famil
       <MomentosEspecialesQuestion catalog={catalog} existing={seleccion} saving={savingKey === MOMENTOS_ESPECIALES_QUESTION_KEY} onSave={saveSeleccion} />
       {seleccion?.selected.includes('primer_baile') && (
         <ClasesBaileQuestion existing={clasesBaile} saving={savingKey === CLASES_BAILE_QUESTION_KEY} onSave={saveClasesBaile} />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// "🍽️ Comida y bebida" — sexto bloque del configurador. Mismo motor de decisiones que el resto
+// (event_decisions + DesiredPairGeneration + reconcilePairGeneration), ver src/domain/eventFood.ts. PEPA da
+// estructura, conexiones y recordatorios, pero NO decide por la familia: nunca inventa recetas, cantidades,
+// raciones, proveedores, precios ni necesidades. Lo que ya sabe (lugar y sus servicios, niños, elección de
+// menú, Momentos especiales) lo hereda y lo muestra como contexto, sin volver a preguntarlo.
+// ---------------------------------------------------------------------
+
+const FOOD_QUIEN_OPTIONS: { value: QuienChoice; label: string }[] = [
+  { value: 'catering', label: '🚚 Catering' },
+  { value: 'restaurante', label: '🍴 Restaurante / empresa externa' },
+  { value: 'nosotros', label: '👩‍🍳 La preparamos nosotros' },
+  { value: 'combinar', label: '🔀 Combinaremos varias opciones' },
+  { value: 'no_habra', label: '🚫 No habrá comida' },
+  { value: 'todavia_no_lo_sabemos', label: '⏳ Todavía no lo sabemos' },
+  { value: 'otro', label: '✏️ Otro' },
+]
+
+const FOOD_QUIEN_WAY_OPTIONS: { value: QuienWay; label: string }[] = [
+  { value: 'catering', label: '🚚 Catering' },
+  { value: 'restaurante', label: '🍴 Restaurante / empresa externa' },
+  { value: 'nosotros', label: '👩‍🍳 Prepararemos parte nosotros' },
+]
+
+const FOOD_CONTRATACION_OPTIONS: { value: ContratacionChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'buscando', label: 'Lo estamos buscando' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
+
+const FOOD_MENU_ESTADO_OPTIONS: { value: MenuEstadoChoice; label: string }[] = [
+  { value: 'decidido', label: 'Sí, ya está decidido' },
+  { value: 'por_decidir', label: 'Tenemos que decidirlo' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+const FOOD_GUARDAR_OPTIONS: { value: GuardarMenuChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'ahora_no', label: 'Ahora no' },
+]
+
+const FOOD_MENU_INFANTIL_OPTIONS: { value: MenuInfantilChoice; label: string }[] = [
+  { value: 'incluido', label: 'Está incluido / ya resuelto' },
+  { value: 'pedir', label: 'Tenemos que pedirlo' },
+  { value: 'nosotros', label: 'Lo prepararemos nosotros' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
+
+const FOOD_TARTA_OPTIONS: { value: TartaChoice; label: string }[] = [
+  { value: 'encargar', label: 'Sí, la encargaremos' },
+  { value: 'nosotros', label: 'Sí, la prepararemos nosotros' },
+  { value: 'resuelta', label: 'Sí, ya la tenemos resuelta' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
+
+const FOOD_BEBIDAS_OPTIONS: { value: BebidasChoice; label: string }[] = [
+  { value: 'servicio_comida', label: 'Las incluye el servicio de comida' },
+  { value: 'nosotros', label: 'Las compramos/preparamos nosotros' },
+  { value: 'aparte', label: 'Las encargaremos aparte' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'otro', label: 'Otro' },
+]
+
+const FOOD_NECESIDADES_OPTIONS: { value: NecesidadesChoice; label: string }[] = [
+  { value: 'si', label: 'Sí, están contempladas' },
+  { value: 'revisar', label: 'Tenemos que revisarlo' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+function FoodInheritedLine({ children }: { children: ReactNode }) {
+  return <p style={{ fontSize: 13, margin: '6px 0 0' }}>{children}</p>
+}
+
+// «¿Qué incluye el lugar contratado?» — información TRANSVERSAL del lugar (no exclusiva de comida).
+// «Ninguno» es incompatible con cualquier servicio; «Otro» es texto libre que nunca se interpreta.
+function VenueServicesQuestion({
+  label,
+  existing,
+  legacy,
+  saving,
+  onSave,
+}: {
+  label: string
+  existing: VenueServicesAnswer | undefined
+  legacy: VenueServiceKey[]
+  saving: boolean
+  onSave: (answer: VenueServicesAnswer) => void
+}) {
+  const [customInput, setCustomInput] = useState('')
+  const isTerminal = existing?.choice === 'ninguno' || existing?.choice === 'todavia_no_lo_sabemos'
+  const selected = existing?.choice === 'seleccionar' ? existing.selected : []
+  const customItems = existing?.choice === 'seleccionar' ? existing.customItems : []
+
+  function addCustom() {
+    const text = customInput.trim()
+    if (!text) return
+    onSave(withVenueServiceCustomItems(existing, [...customItems, text]))
+    setCustomInput('')
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        {label}
+      </div>
+      {!existing && legacy.length > 0 && (
+        <button type="button" className="link-button" disabled={saving} onClick={() => onSave({ choice: 'seleccionar', selected: legacy, customItems: [] })}>
+          Usar lo que indicasteis al crear el evento: {legacy.map((k) => venueServiceLabel(k).toLowerCase()).join(', ')}
+        </button>
+      )}
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        {VENUE_SERVICES.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className={'chip' + (selected.includes(s.key) ? ' chip-active' : '')}
+            disabled={saving}
+            onClick={() => onSave(toggleVenueService(existing, s.key))}
+          >
+            {s.icon} {s.label}
+          </button>
+        ))}
+        {customItems.map((item) => (
+          <button key={item} type="button" className="chip chip-active" disabled={saving} onClick={() => onSave(withVenueServiceCustomItems(existing, customItems.filter((x) => x !== item)))}>
+            ✏️ {item} ✕
+          </button>
+        ))}
+      </div>
+      <div className="inline-fields" style={{ marginTop: 4 }}>
+        <input type="text" value={customInput} placeholder="✏️ Otro servicio" disabled={saving} onChange={(e) => setCustomInput(e.target.value)} />
+        <button type="button" className="link-button" disabled={saving || !customInput.trim()} onClick={addCustom}>
+          + Añadir
+        </button>
+      </div>
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        <button type="button" className={'chip' + (existing?.choice === 'ninguno' ? ' chip-active' : '')} disabled={saving} onClick={() => onSave(withVenueServicesNinguno())}>
+          🚫 Ninguno
+        </button>
+        <button
+          type="button"
+          className={'chip' + (existing?.choice === 'todavia_no_lo_sabemos' ? ' chip-active' : '')}
+          disabled={saving}
+          onClick={() => onSave(withVenueServicesUnknown())}
+        >
+          ⏳ Todavía no lo sabemos
+        </button>
+      </div>
+      {isTerminal && existing?.choice === 'ninguno' && <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>Anotado: el lugar no incluye ningún servicio.</p>}
+    </div>
+  )
+}
+
+function FoodQuienQuestion({ existing, saving, onSave }: { existing: QuienAnswer | undefined; saving: boolean; onSave: (answer: QuienAnswer) => void }) {
+  const [labelDraft, setLabelDraft] = useState<string | null>(null)
+
+  function select(choice: QuienChoice) {
+    if (choice === 'otro') {
+      setLabelDraft(existing?.customLabel ?? '')
+      return
+    }
+    setLabelDraft(null)
+    onSave(choice === 'combinar' ? { choice, combinar: existing?.combinar ?? [] } : { choice })
+  }
+  function toggleWay(way: QuienWay) {
+    const current = existing?.combinar ?? []
+    onSave({ choice: 'combinar', combinar: current.includes(way) ? current.filter((w) => w !== way) : [...current, way] })
+  }
+
+  const showOtro = labelDraft !== null || existing?.choice === 'otro'
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Quién se encargará de la comida?
+      </div>
+      <ChoiceRow options={FOOD_QUIEN_OPTIONS} value={labelDraft !== null ? 'otro' : existing?.choice} disabled={saving} onSelect={select} />
+      {existing?.choice === 'combinar' && labelDraft === null && (
+        <>
+          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            ¿Qué vías combinaréis? (marcarlas no crea ningún trabajo por sí solo)
+          </div>
+          <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+            {FOOD_QUIEN_WAY_OPTIONS.map((o) => (
+              <button key={o.value} type="button" className={'chip' + ((existing.combinar ?? []).includes(o.value) ? ' chip-active' : '')} disabled={saving} onClick={() => toggleWay(o.value)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {showOtro && (
+        <div className="inline-fields" style={{ marginTop: 4 }}>
+          <input type="text" value={labelDraft ?? existing?.customLabel ?? ''} placeholder="¿Quién o cómo?" disabled={saving} onChange={(e) => setLabelDraft(e.target.value)} />
+          <button
+            type="button"
+            className="link-button"
+            disabled={saving || !(labelDraft ?? existing?.customLabel ?? '').trim()}
+            onClick={() => {
+              onSave({ choice: 'otro', customLabel: (labelDraft ?? existing?.customLabel ?? '').trim() })
+              setLabelDraft(null)
+            }}
+          >
+            Guardar
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FoodMomentosQuestion({
+  catalog,
+  existing,
+  saving,
+  onSave,
+}: {
+  catalog: MomentoComidaDef[]
+  existing: MomentosComidaAnswer | undefined
+  saving: boolean
+  onSave: (answer: MomentosComidaAnswer) => void
+}) {
+  const [customInput, setCustomInput] = useState('')
+  const isTerminal = existing?.choice === 'todavia_no_lo_sabemos'
+  const selected = existing?.choice === 'seleccionar' ? existing.selected : []
+  const customItems = existing?.choice === 'seleccionar' ? existing.customItems : []
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Qué momentos de comida habrá?
+      </div>
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        {catalog.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            className={'chip' + (selected.includes(m.key) ? ' chip-active' : '')}
+            disabled={saving}
+            onClick={() => onSave({ choice: 'seleccionar', selected: selected.includes(m.key) ? selected.filter((k) => k !== m.key) : [...selected, m.key], customItems })}
+          >
+            {m.label}
+          </button>
+        ))}
+        {customItems.map((item) => (
+          <button key={item} type="button" className="chip chip-active" disabled={saving} onClick={() => onSave({ choice: 'seleccionar', selected, customItems: customItems.filter((x) => x !== item) })}>
+            {item} ✕
+          </button>
+        ))}
+        <button type="button" className={'chip' + (isTerminal ? ' chip-active' : '')} disabled={saving} onClick={() => onSave({ choice: 'todavia_no_lo_sabemos', selected: [], customItems: [] })}>
+          Todavía no lo sabemos
+        </button>
+      </div>
+      {!isTerminal && (
+        <div className="inline-fields" style={{ marginTop: 4 }}>
+          <input type="text" value={customInput} placeholder="Otro momento" disabled={saving} onChange={(e) => setCustomInput(e.target.value)} />
+          <button
+            type="button"
+            className="link-button"
+            disabled={saving || !customInput.trim()}
+            onClick={() => {
+              onSave({ choice: 'seleccionar', selected, customItems: [...customItems, customInput.trim()] })
+              setCustomInput('')
+            }}
+          >
+            + Añadir
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Ingredientes de la receta de un plato → Compras. Flujo existente (addRecipeIngredientsToShoppingList):
+// quien organiza marca qué comprar y confirma; PEPA nunca añade productos por su cuenta ni inventa
+// ingredientes: solo los de la receta que la familia escribió.
+function RecipeIngredientsToShoppingModal({ eventId, dish, recipe, onClose }: { eventId: string; dish: EventMenuItem; recipe: Recipe; onClose: () => void }) {
+  const [checked, setChecked] = useState<Set<string>>(() => new Set(recipe.ingredients.map((i) => i.id)))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function confirm() {
+    setSaving(true)
+    setError(null)
+    try {
+      await addRecipeIngredientsToShoppingList(
+        recipe,
+        [...checked].map((ingredientId) => ({ ingredientId, store: null })),
+        eventId,
+      )
+      showToast(`✓ ${checked.size} ingrediente${checked.size === 1 ? '' : 's'} añadido${checked.size === 1 ? '' : 's'} a Compras`)
+      onClose()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudieron añadir los ingredientes'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" role="dialog" aria-label="Ingredientes a Compras" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 4px' }}>🛒 Ingredientes de «{recipe.title}»</h3>
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+          Para «{dish.name}». Marca solo lo que de verdad tengáis que comprar: PEPA no añade nada por su cuenta.
+        </p>
+        {error && <p className="error">{error}</p>}
+        {recipe.ingredients.length === 0 ? (
+          <p className="muted">Esta receta todavía no tiene ingredientes escritos.</p>
+        ) : (
+          <div className="event-list">
+            {recipe.ingredients.map((i) => (
+              <label key={i.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={checked.has(i.id)}
+                  onChange={() => {
+                    const next = new Set(checked)
+                    if (next.has(i.id)) next.delete(i.id)
+                    else next.add(i.id)
+                    setChecked(next)
+                  }}
+                />
+                <span>
+                  {i.name}
+                  {i.quantity ? ` · ${i.quantity}${i.unit ? ` ${i.unit}` : ''}` : ''}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <button type="button" className="link-button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" disabled={saving || checked.size === 0} onClick={confirm}>
+            {saving ? 'Añadiendo…' : `Añadir a Compras (${checked.size})`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Menú ESTRUCTURADO del evento: secciones → platos → receta opcional. Un plato puede ser solo «Paella».
+// scope 'principal' muestra todas las secciones salvo «Menú infantil»; 'infantil' solo esa. Reutiliza
+// event_menu_items (extendida, migración 0192) y el traspaso a Compras de siempre.
+function FoodMenuEditor({
+  event,
+  scope,
+  items,
+  recipes,
+  onChanged,
+}: {
+  event: FamilyEvent
+  scope: 'principal' | 'infantil'
+  items: EventMenuItem[]
+  recipes: Recipe[]
+  onChanged: () => void
+}) {
+  const infantil = scope === 'infantil'
+  const visible = items.filter((i) => (sectionKeyForCategory(i.category) === 'menu_infantil') === infantil)
+  const groups = groupMenuBySection(visible)
+  const sectionOptions = infantil ? [] : MENU_SECTIONS.filter((s) => s.key !== 'menu_infantil')
+  const [name, setName] = useState('')
+  const [section, setSection] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [transferring, setTransferring] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<{ name: string; section: string; notes: string; recipeId: string }>({ name: '', section: '', notes: '', recipeId: '' })
+  const [ingredientsFor, setIngredientsFor] = useState<EventMenuItem | null>(null)
+  const pending = items.filter((i) => !i.transferred)
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    try {
+      await addEventMenuItem(event.id, name, infantil ? MENU_INFANTIL_SECTION_LABEL : section || null)
+      setName('')
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    }
+  }
+
+  function startEdit(dish: EventMenuItem) {
+    setEditingId(dish.id)
+    setEditDraft({ name: dish.name, section: dish.category ?? '', notes: dish.notes ?? '', recipeId: dish.recipeId ?? '' })
+  }
+
+  async function saveEdit(dish: EventMenuItem) {
+    if (!editDraft.name.trim()) return
+    try {
+      await updateEventMenuItem(dish.id, {
+        name: editDraft.name,
+        category: infantil ? MENU_INFANTIL_SECTION_LABEL : editDraft.section || null,
+        notes: editDraft.notes.trim() || null,
+        recipeId: editDraft.recipeId || null,
+      })
+      setEditingId(null)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar el plato'))
+    }
+  }
+
+  async function handleTransfer() {
+    if (pending.length === 0) return
+    // «User confirms transfer to PEPA Purchases» — resumen antes de escribir nada en otro módulo.
+    if (!window.confirm(`Se van a crear ${pending.length} producto${pending.length === 1 ? '' : 's'} en Compras. ¿Confirmas?`)) return
+    setTransferring(true)
+    setError(null)
+    try {
+      const count = await transferMenuToShopping(event.id)
+      setNotice(`✓ ${count} producto${count === 1 ? '' : 's'} añadido${count === 1 ? '' : 's'} a Compras.`)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo traspasar'))
+    } finally {
+      setTransferring(false)
+    }
+  }
+
+  const recipeById = new Map(recipes.map((r) => [r.id, r]))
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 6 }}>
+      <strong style={{ fontSize: 14 }}>{infantil ? '👧🧒 Menú infantil' : '🍽️ Menú del evento'}</strong>
+      {notice && <p className="points-badge">{notice}</p>}
+      {error && <p className="error">{error}</p>}
+      {groups.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Todavía no hay platos. No hace falta rellenar todas las secciones.</p>}
+      {groups.map((g) => (
+        <div key={g.key} style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+            {g.label}
+          </div>
+          {g.items.map((dish) => {
+            const recipe = dish.recipeId ? recipeById.get(dish.recipeId) : undefined
+            if (editingId === dish.id) {
+              return (
+                <div key={dish.id} className="card" style={{ padding: 6, marginTop: 4 }}>
+                  <input type="text" value={editDraft.name} onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })} aria-label="Nombre del plato" />
+                  {!infantil && (
+                    <select value={editDraft.section} onChange={(e) => setEditDraft({ ...editDraft, section: e.target.value })} aria-label="Sección">
+                      <option value="">Sin sección</option>
+                      {sectionOptions.map((s) => (
+                        <option key={s.key} value={s.label}>
+                          {s.label}
+                        </option>
+                      ))}
+                      {editDraft.section && !sectionOptions.some((s) => s.label === editDraft.section) && <option value={editDraft.section}>{editDraft.section}</option>}
+                    </select>
+                  )}
+                  <input type="text" value={editDraft.notes} placeholder="Nota del plato (opcional)" onChange={(e) => setEditDraft({ ...editDraft, notes: e.target.value })} />
+                  <select value={editDraft.recipeId} onChange={(e) => setEditDraft({ ...editDraft, recipeId: e.target.value })} aria-label="Receta">
+                    <option value="">Sin receta enlazada</option>
+                    {recipes.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        📖 {r.title}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="inline-fields">
+                    <button type="button" onClick={() => saveEdit(dish)} disabled={!editDraft.name.trim()}>
+                      Guardar
+                    </button>
+                    <button type="button" className="link-button" onClick={() => setEditingId(null)}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+            return (
+              <div key={dish.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                <span style={{ flex: 1 }}>
+                  {dish.name}
+                  {dish.notes ? <span className="muted"> — {dish.notes}</span> : null}
+                  {recipe ? <span className="muted"> · 📖 {recipe.title}</span> : null}
+                  {dish.source === 'importado' ? <span className="muted"> · importado</span> : null}
+                  {dish.transferred ? ' · ✓ en Compras' : ''}
+                </span>
+                {recipe && recipe.ingredients.length > 0 && (
+                  <button type="button" className="link-button" onClick={() => setIngredientsFor(dish)}>
+                    🛒 Ingredientes
+                  </button>
+                )}
+                <button type="button" className="link-button" onClick={() => startEdit(dish)}>
+                  Editar
+                </button>
+                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar plato" onConfirm={() => deleteEventMenuItem(dish.id).then(onChanged)} />
+              </div>
+            )
+          })}
+        </div>
+      ))}
+      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={infantil ? '+ Plato del menú infantil' : '+ Añadir un plato'} style={{ flex: 1 }} />
+        {!infantil && (
+          <select value={section} onChange={(e) => setSection(e.target.value)} aria-label="Sección del plato">
+            <option value="">Sección (opcional)</option>
+            {sectionOptions.map((s) => (
+              <option key={s.key} value={s.label}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="submit">Añadir</button>
+      </form>
+      <div className="inline-fields" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+        <Link className="link-button" to="/alimentacion?tab=recetas">
+          📖 Recetas
+        </Link>
+        <Link className="link-button" to="/compras">
+          🛒 Lista de la compra
+        </Link>
+        {!infantil && pending.length > 0 && (
+          <button type="button" className="link-button" onClick={handleTransfer} disabled={transferring}>
+            {transferring ? 'Traspasando…' : `→ Confirmar traspaso a Compras (${pending.length})`}
+          </button>
+        )}
+      </div>
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+        Un plato puede ser solo su nombre; enlazar una receta es opcional. PEPA no calcula cantidades ni raciones.
+      </p>
+      {ingredientsFor && ingredientsFor.recipeId && recipeById.get(ingredientsFor.recipeId) && (
+        <RecipeIngredientsToShoppingModal eventId={event.id} dish={ingredientsFor} recipe={recipeById.get(ingredientsFor.recipeId) as Recipe} onClose={() => setIngredientsFor(null)} />
+      )}
+    </div>
+  )
+}
+
+interface ImportRow {
+  id: string
+  section: string
+  name: string
+  note: string | null
+  include: boolean
+}
+
+// Importador GENÉRICO de menús (foto/cámara/PDF → propuesta → revisión → guardar). Es el mismo para el menú
+// principal, el infantil, un cóctel, una carta de bebidas, una recena o una propuesta de catering: no hay un
+// lector por tipo. La IA solo PROPONE; nada se guarda hasta que quien organiza revisa y confirma, y el
+// documento original se conserva. No promete seguridad alimentaria.
+function FoodMenuImporter({
+  event,
+  kind,
+  forcedSection,
+  onDone,
+  onCancel,
+}: {
+  event: FamilyEvent
+  kind: EventFoodDocumentKind
+  forcedSection: string | null
+  onDone: (saved: number) => void
+  onCancel: () => void
+}) {
+  const [file, setFile] = useState<File | null>(null)
+  const [phase, setPhase] = useState<'pick' | 'reading' | 'review' | 'saving'>('pick')
+  const [rows, setRows] = useState<ImportRow[]>([])
+  const [extraNotes, setExtraNotes] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const sectionLabels = MENU_SECTIONS.filter((s) => (forcedSection ? s.label === forcedSection : s.key !== 'menu_infantil')).map((s) => s.label)
+
+  async function handleFile(next: File | null) {
+    setFile(next)
+    if (!next) return
+    setPhase('reading')
+    setError(null)
+    try {
+      const proposal = await analyzeEventFoodDocument(next, kind)
+      const flat: ImportRow[] = []
+      for (const s of proposal.sections) {
+        for (const d of s.dishes) {
+          flat.push({ id: crypto.randomUUID(), section: forcedSection ?? canonicalSectionLabel(s.section), name: d.name, note: d.note, include: true })
+        }
+      }
+      setRows(flat)
+      setExtraNotes(proposal.extraNotes)
+      if (flat.length === 0) {
+        setError('No he podido leer platos en este documento. Prueba con otra foto o añádelo a mano.')
+        setPhase('pick')
+        return
+      }
+      setPhase('review')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo leer el documento. Puedes añadirlo a mano.'))
+      setPhase('pick')
+    }
+  }
+
+  async function confirm() {
+    if (!file) return
+    const chosen = rows.filter((r) => r.include && r.name.trim())
+    if (chosen.length === 0) return
+    setPhase('saving')
+    setError(null)
+    try {
+      const doc = await saveEventFoodDocument(event.id, file, kind)
+      const count = await addEventMenuItemsBulk(
+        event.id,
+        chosen.map((r) => ({ name: r.name, category: r.section, notes: r.note })),
+        { documentId: doc.id, imported: true },
+      )
+      showToast(`✓ ${count} plato${count === 1 ? '' : 's'} guardado${count === 1 ? '' : 's'} en el menú`)
+      onDone(count)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar el menú'))
+      setPhase('review')
+    }
+  }
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 6 }}>
+      {phase === 'pick' && (
+        <>
+          <p style={{ fontSize: 13, margin: '0 0 6px' }}>{MENU_IMPORT_EXPLANATION}</p>
+          {error && <p className="error">{error}</p>}
+          <FileOrPdfPicker file={file} onChange={handleFile} sheetTitle="Añadir el menú" />
+          <button type="button" className="link-button" onClick={onCancel} style={{ marginTop: 6 }}>
+            Cancelar
+          </button>
+        </>
+      )}
+      {phase === 'reading' && <p className="muted">Leyendo el documento… PEPA solo propone: tú lo revisas antes de guardar.</p>}
+      {(phase === 'review' || phase === 'saving') && (
+        <>
+          <strong style={{ fontSize: 14 }}>Revisa lo que PEPA ha entendido</strong>
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+            Corrige nombres, cambia la sección o quita lo que no sea un plato. No se guardará nada hasta que confirmes.
+          </p>
+          {error && <p className="error">{error}</p>}
+          {rows.map((r) => (
+            <div key={r.id} className="inline-fields" style={{ alignItems: 'center' }}>
+              <input type="checkbox" checked={r.include} aria-label={`Incluir ${r.name}`} onChange={() => setRows(rows.map((x) => (x.id === r.id ? { ...x, include: !x.include } : x)))} />
+              <input type="text" value={r.name} style={{ flex: 1 }} onChange={(e) => setRows(rows.map((x) => (x.id === r.id ? { ...x, name: e.target.value } : x)))} />
+              {!forcedSection && (
+                <select value={r.section} onChange={(e) => setRows(rows.map((x) => (x.id === r.id ? { ...x, section: e.target.value } : x)))} aria-label="Sección">
+                  {sectionLabels.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                  {!sectionLabels.includes(r.section) && <option value={r.section}>{r.section}</option>}
+                </select>
+              )}
+            </div>
+          ))}
+          {extraNotes.length > 0 && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Otras notas del documento (no se guardan como platos): {extraNotes.join(' · ')}
+            </p>
+          )}
+          <div className="inline-fields" style={{ marginTop: 6 }}>
+            <button type="button" disabled={phase === 'saving' || rows.filter((r) => r.include && r.name.trim()).length === 0} onClick={confirm}>
+              {phase === 'saving' ? 'Guardando…' : `Guardar ${rows.filter((r) => r.include && r.name.trim()).length} platos`}
+            </button>
+            <button type="button" className="link-button" disabled={phase === 'saving'} onClick={onCancel}>
+              Descartar
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// «¿Quieres guardar el menú en PEPA?» → Sí → foto/PDF (importador) o manual.
+function FoodMenuSavePrompt({
+  event,
+  items,
+  recipes,
+  scope,
+  answer,
+  saving,
+  onAnswer,
+  onChanged,
+}: {
+  event: FamilyEvent
+  items: EventMenuItem[]
+  recipes: Recipe[]
+  scope: 'principal' | 'infantil'
+  answer: GuardarMenuAnswer | undefined
+  saving: boolean
+  onAnswer: (answer: GuardarMenuAnswer) => void
+  onChanged: () => void
+}) {
+  const infantil = scope === 'infantil'
+  const [mode, setMode] = useState<'idle' | 'import' | 'manual'>('idle')
+  const hasItems = items.some((i) => (sectionKeyForCategory(i.category) === 'menu_infantil') === infantil)
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        {infantil ? '¿Quieres guardar el menú infantil en PEPA?' : '¿Quieres guardar el menú en PEPA?'}
+      </div>
+      <ChoiceRow options={FOOD_GUARDAR_OPTIONS} value={answer?.choice} disabled={saving} onSelect={(choice) => onAnswer({ choice })} />
+      {answer?.choice === 'si' && !hasItems && mode === 'idle' && (
+        <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+          <button type="button" className="chip" onClick={() => setMode('import')}>
+            📷 Hacer una foto · 🖼️ Elegir una foto · 📄 Subir PDF
+          </button>
+          <button type="button" className="chip" onClick={() => setMode('manual')}>
+            ✏️ Añadirlo manualmente
+          </button>
+        </div>
+      )}
+      {mode === 'import' && (
+        <FoodMenuImporter
+          event={event}
+          kind={infantil ? 'menu_infantil' : 'menu_principal'}
+          forcedSection={infantil ? MENU_INFANTIL_SECTION_LABEL : null}
+          onCancel={() => setMode('idle')}
+          onDone={() => {
+            setMode('idle')
+            onChanged()
+          }}
+        />
+      )}
+      {(answer?.choice === 'si' || hasItems) && mode !== 'import' && <FoodMenuEditor event={event} scope={scope} items={items} recipes={recipes} onChanged={onChanged} />}
+    </div>
+  )
+}
+
+// Opciones que podrán escoger los invitados en su invitación (event_menu_options) — la decisión de si
+// eligen menú se hereda de Invitados (nunca se vuelve a preguntar aquí). CRUD completo, destinatario
+// (adultos/niños/todos), orden, y conteo de lo que ha elegido cada persona. Crear opciones nunca invalida
+// respuestas ya recibidas ni reenvía nada: quien ya respondió queda «sin elegir» hasta que elija.
+function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent; guests: EventGuest[]; members: EventGuestMember[] }) {
+  const [options, setOptions] = useState<EventMenuOption[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [newName, setNewName] = useState('')
+  const [newAudience, setNewAudience] = useState<EventMenuOptionAudience>('todos')
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
+  const [openDetail, setOpenDetail] = useState<string | null>(null)
+
+  function reload() {
+    return listEventMenuOptions(event.id)
+      .then(setOptions)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las opciones')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  async function run(action: () => Promise<void>, failure: string) {
+    setError(null)
+    try {
+      await action()
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, failure))
+    }
+  }
+
+  function handleAdd(e: FormEvent) {
+    e.preventDefault()
+    if (!newName.trim()) return
+    void run(async () => {
+      await addEventMenuOption(event.id, newName, newAudience)
+      setNewName('')
+    }, 'No se pudo añadir la opción')
+  }
+
+  function handleDelete(option: EventMenuOption) {
+    const chosen = members.filter((m) => m.menuOptionId === option.id).length
+    const warning = chosen > 0 ? `${chosen} persona${chosen === 1 ? '' : 's'} había${chosen === 1 ? '' : 'n'} elegido «${option.name}»: quedará${chosen === 1 ? '' : 'n'} «sin elegir» (no se borra nada más). ¿Quitar la opción?` : `¿Quitar «${option.name}»?`
+    if (!window.confirm(warning)) return
+    void run(() => deleteEventMenuOption(option.id), 'No se pudo quitar la opción')
+  }
+
+  function move(index: number, delta: -1 | 1) {
+    const a = options[index]
+    const b = options[index + delta]
+    if (!a || !b) return
+    void run(() => swapEventMenuOptionOrder(a, b), 'No se pudo reordenar')
+  }
+
+  if (loading) return null
+  const { counts, unchosen } = countMenuChoices(options, members, guests)
+  const respondedBefore = options.length > 0 ? guestsRespondedWithoutMenuChoice(guests, members) : 0
+  const withoutMembers = options.length > 0 ? guestsWithoutMembers(guests, members) : 0
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 8 }}>
+      <strong style={{ fontSize: 14 }}>Elección de menú para los invitados</strong>
+      <p style={{ fontSize: 13, margin: '2px 0 6px' }}>Habéis indicado que los invitados podrán elegir. Añade las opciones que podrán escoger.</p>
+      {error && <p className="error">{error}</p>}
+      {options.map((o, index) => (
+        <div key={o.id} className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          {editing?.id === o.id ? (
+            <>
+              <input type="text" value={editing.name} style={{ flex: 1 }} onChange={(e) => setEditing({ id: o.id, name: e.target.value })} aria-label="Nombre de la opción" />
+              <button
+                type="button"
+                className="link-button"
+                disabled={!editing.name.trim()}
+                onClick={() => {
+                  const value = editing.name
+                  setEditing(null)
+                  void run(() => updateEventMenuOption(o.id, { name: value }), 'No se pudo renombrar')
+                }}
+              >
+                Guardar
+              </button>
+              <button type="button" className="link-button" onClick={() => setEditing(null)}>
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <>
+              <span style={{ flex: 1 }}>{o.name}</span>
+              <select value={o.audience} aria-label={`Para quién es ${o.name}`} onChange={(e) => void run(() => updateEventMenuOption(o.id, { audience: e.target.value as EventMenuOptionAudience }), 'No se pudo cambiar')}>
+                {MENU_OPTION_AUDIENCES.map((a) => (
+                  <option key={a.value} value={a.value}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="link-button" disabled={index === 0} onClick={() => move(index, -1)} aria-label="Subir">
+                ↑
+              </button>
+              <button type="button" className="link-button" disabled={index === options.length - 1} onClick={() => move(index, 1)} aria-label="Bajar">
+                ↓
+              </button>
+              <button type="button" className="link-button" onClick={() => setEditing({ id: o.id, name: o.name })}>
+                Renombrar
+              </button>
+              <button type="button" className="icon-button" aria-label={`Quitar ${o.name}`} onClick={() => handleDelete(o)}>
+                ✕
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+      {options.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Todavía no hay opciones. Ejemplos: Carne, Pescado, Vegetariano, Infantil.</p>}
+      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 6 }}>
+        <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="+ Nueva opción" style={{ flex: 1 }} />
+        <select value={newAudience} onChange={(e) => setNewAudience(e.target.value as EventMenuOptionAudience)} aria-label="Para quién">
+          {MENU_OPTION_AUDIENCES.map((a) => (
+            <option key={a.value} value={a.value}>
+              {a.label}
+            </option>
+          ))}
+        </select>
+        <button type="submit">Añadir</button>
+      </form>
+      {respondedBefore > 0 && <p style={{ fontSize: 13, margin: '6px 0 0' }}>ℹ️ {alreadyRespondedMessage(respondedBefore)} Siguen siendo válidas y quedan «sin elegir».</p>}
+      {withoutMembers > 0 && (
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+          {withoutMembers} invitaci{withoutMembers === 1 ? 'ón no tiene' : 'ones no tienen'} personas con nombre: para que puedan elegir menú, desglósalas en Invitados.
+        </p>
+      )}
+      {options.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+            Lo que han elegido
+          </div>
+          {[...counts, unchosen].map((c) => (
+            <div key={c.optionId ?? 'sin-elegir'}>
+              <button type="button" className="link-button" onClick={() => setOpenDetail(openDetail === (c.optionId ?? 'sin-elegir') ? null : (c.optionId ?? 'sin-elegir'))}>
+                {c.name} · {c.count}
+              </button>
+              {openDetail === (c.optionId ?? 'sin-elegir') && (
+                <p className="muted" style={{ fontSize: 12, margin: '0 0 4px 8px' }}>
+                  {c.people.length === 0 ? 'Nadie todavía.' : c.people.map((p) => `${p.name}${p.guestName && p.guestName !== p.name ? ` (${p.guestName})` : ''}`).join(', ')}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+        PEPA no envía nada por su cuenta: si quieres que alguien que ya respondió elija menú, reenvíale el enlace de su invitación desde Invitados.
+      </p>
+    </div>
+  )
+}
+
+// Necesidades alimentarias — RESUMEN, no un nuevo sistema de alergias: las notas de los invitados siguen
+// siendo notas. Aquí quien organiza confirma qué necesidades cuentan (lo declarado se conserva tal cual y
+// PEPA solo añade una clasificación operativa para organizar el evento, sin diagnosticar). Con TODOS
+// confirmados avisa; antes, solo informa de forma provisional. PEPA nunca certifica que un plato sea seguro.
+function DietaryNeedsPanel({
+  event,
+  guests,
+  members,
+  needs,
+  state,
+  menuItems,
+  reviewAnswer,
+  reviewApplies,
+  saving,
+  onNeedsChanged,
+  onReview,
+}: {
+  event: FamilyEvent
+  guests: EventGuest[]
+  members: EventGuestMember[]
+  needs: EventDietaryNeed[]
+  state: FoodNeedsState
+  menuItems: EventMenuItem[]
+  reviewAnswer: NecesidadesAnswer | undefined
+  reviewApplies: boolean
+  saving: boolean
+  onNeedsChanged: () => void
+  onReview: (answer: NecesidadesAnswer) => void
+}) {
+  const [guestId, setGuestId] = useState('')
+  const [memberId, setMemberId] = useState('')
+  const [text, setText] = useState('')
+  const [category, setCategory] = useState<EventDietaryCategory | ''>('')
+  const [kind, setKind] = useState<EventDietaryKind | ''>('')
+  const [error, setError] = useState<string | null>(null)
+  const banner = foodNeedsBanner(state)
+  const suggestions = useMemo(() => suggestFromGuestNotes(guests, needs), [guests, needs])
+  const conflictSignature = conflictInputsSignature(menuItems, state.activeNeeds)
+  // Recalcula solo cuando cambia el menú, las necesidades o quién asiste — nunca en cada render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const conflicts = useMemo(() => findMenuConflicts(menuItems, state.activeNeeds), [conflictSignature])
+  const guestMembers = members.filter((m) => m.guestId === guestId)
+  const nameOf = (need: EventDietaryNeed): string => {
+    const guest = guests.find((g) => g.id === need.guestId)
+    const member = need.memberId ? members.find((m) => m.id === need.memberId) : undefined
+    return member ? `${member.name}${guest ? ` (${guest.displayName})` : ''}` : guest?.displayName ?? 'Invitado'
+  }
+
+  function onTextChange(value: string) {
+    setText(value)
+    const first = suggestDietaryNeeds(value)[0]
+    // Solo una SUGERENCIA para rellenar la clasificación; quien organiza puede cambiarla siempre.
+    if (first && !category) {
+      setCategory(first.category)
+      setKind(first.kind ?? '')
+    }
+  }
+
+  async function add(input: { guestId: string; memberId: string | null; originalText: string; category: EventDietaryCategory; kind: EventDietaryKind | null; source: EventDietarySource }) {
+    setError(null)
+    try {
+      await addEventDietaryNeed(event.id, input)
+      onNeedsChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar la necesidad'))
+    }
+  }
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault()
+    if (!guestId || !text.trim() || !category) return
+    await add({ guestId, memberId: memberId || null, originalText: text, category, kind: kind || null, source: 'organizador' })
+    setText('')
+    setCategory('')
+    setKind('')
+    setMemberId('')
+  }
+
+  if (guests.length === 0 && needs.length === 0) return null
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 8 }}>
+      <strong style={{ fontSize: 14 }}>🥗 Necesidades alimentarias de los asistentes</strong>
+      {error && <p className="error">{error}</p>}
+      {banner.kind === 'provisional' && (
+        <div style={{ marginTop: 4 }}>
+          <p style={{ fontSize: 13, margin: 0 }}>{banner.title}</p>
+          {banner.lines.map((l) => (
+            <p key={l} style={{ fontSize: 13, margin: '2px 0 0' }}>
+              • {l}
+            </p>
+          ))}
+        </div>
+      )}
+      {banner.kind === 'alerta' && (
+        <div style={{ marginTop: 4 }}>
+          <p style={{ fontSize: 13, margin: 0, fontWeight: 600 }}>{banner.title}</p>
+          {banner.lines.map((l) => (
+            <p key={l} style={{ fontSize: 13, margin: '2px 0 0' }}>
+              • {l}
+            </p>
+          ))}
+        </div>
+      )}
+      {banner.kind === 'positivo' && <p style={{ fontSize: 13, margin: '4px 0 0' }}>{banner.title}</p>}
+      {banner.kind === 'sin_invitados' && needs.length > 0 && state.lines.map((l) => (
+        <p key={l} style={{ fontSize: 13, margin: '2px 0 0' }}>
+          • {l}
+        </p>
+      ))}
+
+      {needs.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          {needs.map((n) => (
+            <div key={n.id} className="inline-fields" style={{ alignItems: 'center' }}>
+              <span style={{ flex: 1, fontSize: 13 }}>
+                {nameOf(n)}: «{n.originalText}» → <strong>{DIETARY_CATEGORIES[n.category].label}</strong>
+                {n.kind ? ` · ${DIETARY_KIND_LABELS[n.kind]}` : ''}
+              </span>
+              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Quitar necesidad" onConfirm={() => deleteEventDietaryNeed(n.id).then(onNeedsChanged)} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {suggestions.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+            PEPA ha visto esto en las notas de los invitados (confírmalo para que cuente)
+          </div>
+          {suggestions.map((s) => (
+            <div key={`${s.guestId}:${s.category}`} className="inline-fields" style={{ alignItems: 'center' }}>
+              <span style={{ flex: 1, fontSize: 13 }}>
+                {s.guestName}: «{s.text}» → {DIETARY_CATEGORIES[s.category].label}
+              </span>
+              <button type="button" className="link-button" onClick={() => add({ guestId: s.guestId, memberId: null, originalText: s.text, category: s.category, kind: s.kind, source: 'invitado_nota' })}>
+                Confirmar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleAdd} style={{ marginTop: 6 }}>
+        <div className="muted" style={{ fontSize: 12 }}>
+          Añadir una necesidad
+        </div>
+        <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
+          <select
+            value={guestId}
+            onChange={(e) => {
+              setGuestId(e.target.value)
+              setMemberId('')
+            }}
+            aria-label="Invitado"
+          >
+            <option value="">¿De quién?</option>
+            {guests
+              .filter((g) => g.rsvpStatus !== 'no_asiste')
+              .map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.displayName}
+                </option>
+              ))}
+          </select>
+          {guestMembers.length > 0 && (
+            <select value={memberId} onChange={(e) => setMemberId(e.target.value)} aria-label="Persona">
+              <option value="">Toda la invitación</option>
+              {guestMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <input type="text" value={text} placeholder="Lo que han indicado (p. ej. alergia a las nueces)" style={{ flex: 1 }} onChange={(e) => onTextChange(e.target.value)} />
+        </div>
+        <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
+          <select value={category} onChange={(e) => setCategory(e.target.value as EventDietaryCategory | '')} aria-label="Clasificación">
+            <option value="">Clasificación para organizar</option>
+            {DIETARY_CATEGORY_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {DIETARY_CATEGORIES[k].label}
+              </option>
+            ))}
+          </select>
+          <select value={kind} onChange={(e) => setKind(e.target.value as EventDietaryKind | '')} aria-label="Tipo">
+            <option value="">Tipo (si se sabe)</option>
+            {(Object.keys(DIETARY_KIND_LABELS) as EventDietaryKind[]).map((k) => (
+              <option key={k} value={k}>
+                {DIETARY_KIND_LABELS[k]}
+              </option>
+            ))}
+          </select>
+          <button type="submit" disabled={!guestId || !text.trim() || !category}>
+            Añadir
+          </button>
+        </div>
+        <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
+          Se conserva lo que escribieron tal cual. La clasificación solo sirve para organizar el menú; no es un diagnóstico.
+        </p>
+      </form>
+
+      {reviewApplies && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Habéis tenido en cuenta estas necesidades en el menú?
+          </div>
+          <ChoiceRow options={FOOD_NECESIDADES_OPTIONS} value={reviewAnswer?.choice} disabled={saving} onSelect={(choice) => onReview({ choice })} />
+        </div>
+      )}
+
+      {conflicts.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          {conflicts.map((c) => (
+            <p key={`${c.dishId}:${c.category}`} style={{ fontSize: 13, margin: '2px 0' }}>
+              {c.message}
+            </p>
+          ))}
+          <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+            Confírmalo con el restaurante o el proveedor.
+          </p>
+        </div>
+      )}
+      {state.activeNeeds.length > 0 && menuItems.length > 0 && (
+        <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+          {FOOD_SAFETY_DISCLAIMER}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent; onDerivedDataChanged: () => void }) {
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [menuItems, setMenuItems] = useState<EventMenuItem[]>([])
+  const [guests, setGuests] = useState<EventGuest[]>([])
+  const [members, setMembers] = useState<EventGuestMember[]>([])
+  const [needs, setNeeds] = useState<EventDietaryNeed[]>([])
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [costPrompt, setCostPrompt] = useState<{ item: { id: string; category: string }; taskCompleted: boolean } | null>(null)
+
+  function reloadAll(): Promise<void> {
+    return Promise.all([listEventDecisions(event.id), listEventMenuItems(event.id), listEventGuests(event.id), listEventGuestMembersForEvent(event.id), listEventDietaryNeeds(event.id), listRecipes()])
+      .then(([d, m, g, gm, n, r]) => {
+        setDecisions(d)
+        setMenuItems(m)
+        setGuests(g)
+        setMembers(gm)
+        setNeeds(n)
+        setRecipes(r)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar Comida y bebida')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reloadAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  const needsState = useMemo(() => computeFoodNeedsState(guests, members, needs), [guests, members, needs])
+  const ctx = useMemo(() => buildFoodContext(event, decisions, menuItems, needsState), [event, decisions, menuItems, needsState])
+
+  function handleEffects(actions: ReconcileAction[], pendingBudgetItem: { id: string; category: string } | null, planCreated: number) {
+    if (pendingBudgetItem) {
+      setCostPrompt({ item: pendingBudgetItem, taskCompleted: actions.some((a) => a.op === 'complete_task') })
+      return
+    }
+    const message = describeEffects(actions)
+    if (message) showToast(message)
+    else if (planCreated > 0) showToast('✅ Añadido al Plan del día')
+  }
+
+  // Guarda una respuesta y reconcilia SOLO lo que depende de ella (dependentFoodKeys): nunca todo el bloque.
+  async function saveFood(questionKey: string, answer: Record<string, unknown>, isCustomOption = false) {
+    setSavingKey(questionKey)
+    setError(null)
+    try {
+      const blockKey = questionKey === VENUE_SERVICES_QUESTION_KEY ? VENUE_SERVICES_BLOCK_KEY : FOOD_BLOCK_KEY
+      const saved = await upsertEventDecision(event.id, { blockKey, questionKey, answer, isCustomOption })
+      const nextDecisions = [...decisions.filter((d) => d.questionKey !== questionKey), saved]
+      const nextCtx = buildFoodContext(event, nextDecisions, menuItems, needsState)
+      let allActions: ReconcileAction[] = []
+      let pendingBudgetItem: { id: string; category: string } | null = null
+      for (const key of dependentFoodKeys(questionKey)) {
+        const row = nextDecisions.find((d) => d.questionKey === key)
+        if (!row) continue
+        const result = await applyFoodDecisionGeneration(event, key, row.id, desiredForFoodKey(key, nextCtx))
+        allActions = [...allActions, ...result.actions]
+        pendingBudgetItem = result.pendingBudgetItem ?? pendingBudgetItem
+      }
+      let planCreated = 0
+      const momentosRow = nextDecisions.find((d) => d.questionKey === FOOD_MOMENTOS_KEY)
+      if (momentosRow && [FOOD_MOMENTOS_KEY, FOOD_QUIEN_KEY, VENUE_SERVICES_QUESTION_KEY].includes(questionKey) && event.enabledModules.includes('plan_dia')) {
+        const plan = await applyFoodDayPlan(event.id, momentosRow.id, desiredDayPlanTitles(event.type, nextCtx))
+        planCreated = plan.created
+        if (plan.created > 0 || plan.removed > 0) onDerivedDataChanged()
+      }
+      setDecisions(nextDecisions)
+      if (allActions.length > 0) onDerivedDataChanged()
+      handleEffects(allActions, pendingBudgetItem, planCreated)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  function reloadMenu() {
+    listEventMenuItems(event.id)
+      .then(setMenuItems)
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar el menú')))
+  }
+  function reloadNeeds() {
+    listEventDietaryNeeds(event.id)
+      .then(setNeeds)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las necesidades')))
+    onDerivedDataChanged()
+  }
+
+  if (loading) return null
+
+  const find = (key: string) => decisions.find((d) => d.questionKey === key)
+  const answerOf = <T,>(key: string): T | undefined => find(key)?.answer as unknown as T | undefined
+  const venueCase = ctx.venueCase
+  const venueLabel = venueServicesQuestionLabel(venueCase)
+  const venueAnswer = venueServicesAnswer(decisions)
+  const legacyVenue = legacyIncludedServicesToVenue(event.includedServices)
+  const included = includedByVenueLines(ctx)
+  const quien = quienAnswer(ctx)
+  const estado = menuEstadoAnswer(ctx)
+  const infantilNeeded = ninosNeedMenuInfantil(decisions)
+  const infantil = answerOf<MenuInfantilAnswer>(FOOD_MENU_INFANTIL_KEY)
+  const tartaWarning = tartaContradiction(decisions)
+  const extraStatuses = venueLabel ? [venueServicesStatus(decisions)] : []
+  const summary = summarizeFoodBlock(ctx, extraStatuses)
+  const foodExists = foodWillExist(ctx)
+  const showMainMenu = foodExists && (cooksThemselves(quien) || menuItems.some((i) => sectionKeyForCategory(i.category) !== 'menu_infantil'))
+  const tartaDecision = find(FOOD_TARTA_KEY)
+  const bebidasDecision = find(FOOD_BEBIDAS_KEY)
+  const contratacionDecision = find(FOOD_CONTRATACION_KEY)
+
+  return (
+    <div className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
+
+      {/* A) Qué incluye el lugar (información transversal; solo si hay un lugar que lo pueda incluir) */}
+      {venueLabel && (
+        <VenueServicesQuestion label={venueLabel} existing={venueAnswer} legacy={legacyVenue} saving={savingKey === VENUE_SERVICES_QUESTION_KEY} onSave={(a) => saveFood(VENUE_SERVICES_QUESTION_KEY, a as unknown as Record<string, unknown>)} />
+      )}
+      {venueCase === 'casa' && <FoodInheritedLine>🏠 Se celebra en casa: no hace falta preguntar qué incluye el lugar.</FoodInheritedLine>}
+      {included.map((line) => (
+        <FoodInheritedLine key={line}>{line}</FoodInheritedLine>
+      ))}
+
+      {/* B) Quién se encarga de la comida (solo si el lugar no la incluye) */}
+      {quienApplies(ctx) && <FoodQuienQuestion existing={quien} saving={savingKey === FOOD_QUIEN_KEY} onSave={(a) => saveFood(FOOD_QUIEN_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')} />}
+
+      {/* C) Contratación (solo si es una vía externa) */}
+      {contratacionApplies(ctx) && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Lo tenéis ya contratado?
+          </div>
+          <ChoiceRow
+            options={FOOD_CONTRATACION_OPTIONS}
+            value={answerOf<ContratacionAnswer>(FOOD_CONTRATACION_KEY)?.choice}
+            disabled={savingKey === FOOD_CONTRATACION_KEY}
+            onSelect={(choice) => saveFood(FOOD_CONTRATACION_KEY, { choice }, false)}
+          />
+          {(answerOf<ContratacionAnswer>(FOOD_CONTRATACION_KEY)?.choice === 'si' || answerOf<ContratacionAnswer>(FOOD_CONTRATACION_KEY)?.choice === 'buscando') && contratacionDecision && (
+            <ProviderLinker event={event} decision={contratacionDecision} />
+          )}
+        </div>
+      )}
+
+      {/* D) Momentos de comida */}
+      {foodExists && (
+        <>
+          <FoodMomentosQuestion catalog={MOMENTOS_COMIDA_CATALOG[event.type]} existing={momentosComidaAnswer(decisions)} saving={savingKey === FOOD_MOMENTOS_KEY} onSave={(a) => saveFood(FOOD_MOMENTOS_KEY, a as unknown as Record<string, unknown>)} />
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
+            {event.enabledModules.includes('plan_dia')
+              ? 'Los momentos que marques se añaden al Plan del día, sin hora.'
+              : 'Se guardan aquí. Para verlos en el Plan del día, activa ese apartado del evento.'}
+          </p>
+        </>
+      )}
+
+      {/* E) Estado del menú + F) guardar/importar/organizar */}
+      {foodExists && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Tenéis decidido el menú?
+          </div>
+          <ChoiceRow options={FOOD_MENU_ESTADO_OPTIONS} value={estado?.choice} disabled={savingKey === FOOD_MENU_ESTADO_KEY} onSelect={(choice) => saveFood(FOOD_MENU_ESTADO_KEY, { choice }, false)} />
+          {estado?.choice === 'decidido' && (
+            <FoodMenuSavePrompt
+              event={event}
+              items={menuItems}
+              recipes={recipes}
+              scope="principal"
+              answer={answerOf<GuardarMenuAnswer>(FOOD_MENU_GUARDAR_KEY)}
+              saving={savingKey === FOOD_MENU_GUARDAR_KEY}
+              onAnswer={(a) => saveFood(FOOD_MENU_GUARDAR_KEY, a as unknown as Record<string, unknown>)}
+              onChanged={reloadMenu}
+            />
+          )}
+          {estado?.choice !== 'decidido' && showMainMenu && <FoodMenuEditor event={event} scope="principal" items={menuItems} recipes={recipes} onChanged={reloadMenu} />}
+        </div>
+      )}
+
+      {/* G) Elección de menú por los invitados (se hereda de Invitados) */}
+      {guestsChooseMenu(decisions) && <GuestMenuOptionsPanel event={event} guests={guests} members={members} />}
+
+      {/* H) Menú infantil (solo si Invitados ya marcó que lo necesitáis) */}
+      {infantilNeeded && (
+        <div style={{ marginTop: 8 }}>
+          <FoodInheritedLine>👧🧒 Necesitáis menú infantil</FoodInheritedLine>
+          <CustomAwareQuestion
+            event={event}
+            questionLabel="¿Cómo vais a resolver el menú infantil?"
+            options={FOOD_MENU_INFANTIL_OPTIONS}
+            questionKey={FOOD_MENU_INFANTIL_KEY}
+            decision={find(FOOD_MENU_INFANTIL_KEY)}
+            savingKey={savingKey}
+            onSave={(a) => saveFood(FOOD_MENU_INFANTIL_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')}
+          />
+          {infantil?.choice === 'incluido' && (
+            <FoodMenuSavePrompt
+              event={event}
+              items={menuItems}
+              recipes={recipes}
+              scope="infantil"
+              answer={answerOf<GuardarMenuAnswer>(FOOD_MENU_INFANTIL_GUARDAR_KEY)}
+              saving={savingKey === FOOD_MENU_INFANTIL_GUARDAR_KEY}
+              onAnswer={(a) => saveFood(FOOD_MENU_INFANTIL_GUARDAR_KEY, a as unknown as Record<string, unknown>)}
+              onChanged={reloadMenu}
+            />
+          )}
+          {infantil?.choice === 'nosotros' && <FoodMenuEditor event={event} scope="infantil" items={menuItems} recipes={recipes} onChanged={reloadMenu} />}
+        </div>
+      )}
+
+      {/* I) Tarta (Comida y bebida decide si habrá y cómo se consigue; Momentos especiales, el ritual) */}
+      {!venueIncludes(ctx, 'tarta') && (
+        <div style={{ marginTop: 8 }}>
+          <CustomAwareQuestion
+            event={event}
+            questionLabel="¿Habrá tarta?"
+            options={FOOD_TARTA_OPTIONS}
+            questionKey={FOOD_TARTA_KEY}
+            decision={tartaDecision}
+            savingKey={savingKey}
+            onSave={(a) => saveFood(FOOD_TARTA_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')}
+          />
+          {answerOf<TartaAnswer>(FOOD_TARTA_KEY)?.choice === 'encargar' && tartaDecision && <ProviderLinker event={event} decision={tartaDecision} />}
+          {tartaWarning && <p style={{ fontSize: 13, margin: '4px 0 0' }}>⚠️ {tartaWarning}</p>}
+        </div>
+      )}
+
+      {/* J) Bebidas (solo si el lugar no las incluye y habrá comida) */}
+      {!venueIncludes(ctx, 'bebidas') && foodExists && (
+        <div style={{ marginTop: 8 }}>
+          <CustomAwareQuestion
+            event={event}
+            questionLabel="¿Y las bebidas?"
+            options={FOOD_BEBIDAS_OPTIONS}
+            questionKey={FOOD_BEBIDAS_KEY}
+            decision={bebidasDecision}
+            savingKey={savingKey}
+            onSave={(a) => saveFood(FOOD_BEBIDAS_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')}
+          />
+          {answerOf<BebidasAnswer>(FOOD_BEBIDAS_KEY)?.choice === 'aparte' && bebidasDecision && <ProviderLinker event={event} decision={bebidasDecision} />}
+        </div>
+      )}
+
+      {/* K) Necesidades alimentarias: información y aviso, no un interrogatorio */}
+      <DietaryNeedsPanel
+        event={event}
+        guests={guests}
+        members={members}
+        needs={needs}
+        state={needsState}
+        menuItems={menuItems}
+        reviewAnswer={answerOf<NecesidadesAnswer>(FOOD_NECESIDADES_KEY)}
+        reviewApplies={needsReviewApplies(needsState)}
+        saving={savingKey === FOOD_NECESIDADES_KEY}
+        onNeedsChanged={reloadNeeds}
+        onReview={(a) => saveFood(FOOD_NECESIDADES_KEY, a as unknown as Record<string, unknown>)}
+      />
+
+      {costPrompt && (
+        <BudgetAmountPromptModal
+          item={costPrompt.item}
+          onClose={() => {
+            if (costPrompt.taskCompleted) showToast(TASK_COMPLETED_MESSAGE)
+            setCostPrompt(null)
+          }}
+          onSaved={() => {
+            showToast(costPrompt.taskCompleted ? TASK_COMPLETED_AND_BUDGET_UPDATED_MESSAGE : BUDGET_UPDATED_MESSAGE)
+            onDerivedDataChanged()
+            setCostPrompt(null)
+          }}
+        />
       )}
     </div>
   )
@@ -7780,13 +9318,15 @@ function PepaConclusions({ event }: { event: FamilyEvent }) {
       event.enabledModules.includes('presupuesto') ? listEventBudgetItems(event.id) : Promise.resolve([]),
       event.tagId && event.enabledModules.includes('presupuesto') ? listExpenses() : Promise.resolve(null),
       event.tagId && event.enabledModules.includes('presupuesto') ? listBudgetCategories() : Promise.resolve([]),
-    ]).then(([guests, tasks, payments, budgetItems, expenses, categories]) => {
+    ]).then(async ([guests, tasks, payments, budgetItems, expenses, categories]) => {
       const plannedBudget = budgetItems.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
       const spentBudget = expenses
         ? expenses
             .filter((e) => e.tagId === event.tagId && !e.isIncome && !isInternalTransferCategory(e.category, categories))
             .reduce((sum, e) => sum + e.amount, 0)
         : null
+      // Comida y bebida — aviso persistente «ya han confirmado todos y hay necesidades alimentarias».
+      const foodNeeds = await loadEventFoodNeedsAlert(event.id, guests).catch(() => undefined)
       setConclusions(
         computeEventConclusions({
           rsvpDeadline: event.rsvpDeadline,
@@ -7795,6 +9335,7 @@ function PepaConclusions({ event }: { event: FamilyEvent }) {
           payments,
           plannedBudget,
           spentBudget,
+          foodNeeds,
         }),
       )
     })

@@ -147,7 +147,8 @@ describe('RSVP público — Parte B (elección de menú por persona) conecta por
     expect(form).toContain('const hasMembers = guest.members.length > 0')
     expect(form).toContain('✅ Viene')
     expect(form).toContain('❌ No viene')
-    expect(form).toContain('guest.menuOptions.length > 0')
+    // Fase "Comida y bebida": las opciones se filtran por persona (adulto/niño/todos) antes de ofrecerlas.
+    expect(form).toContain('optionsForPerson(guest.menuOptions, m.personType).length > 0')
     expect(form).toContain('body.members = members.map(')
   })
 

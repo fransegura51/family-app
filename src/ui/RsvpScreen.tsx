@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
 import { PEPA_PUBLIC_WEBSITE_URL } from '@/domain/brand'
+import { optionsForPerson } from '@/domain/eventFoodMenu'
 
 // Página pública de RSVP (Módulo Eventos, Fase 2) — el invitado no
 // necesita cuenta ni la app instalada. Ruta pública de la propia SPA
@@ -52,6 +53,9 @@ interface PublicGuestMember {
 interface PublicMenuOption {
   id: string
   name: string
+  // Migración 0192: a quién va dirigida ('todos' | 'adultos' | 'ninos'). Una respuesta antigua sin este
+  // campo se trata como 'todos'.
+  audience?: string
 }
 
 // "📋 Preguntas a los invitados" — capacidad genérica, aparte de la elección de menú: solo preguntas
@@ -394,12 +398,12 @@ function RsvpForm({
                     ❌ No viene
                   </button>
                 </div>
-                {m.attending === true && guest.menuOptions.length > 0 && (
+                {m.attending === true && optionsForPerson(guest.menuOptions, m.personType).length > 0 && (
                   <label style={{ display: 'block', marginTop: 8 }}>
                     Menú
                     <select value={m.menuOptionId ?? ''} onChange={(e) => updateMember(m.id, { menuOptionId: e.target.value || null })}>
                       <option value="">Sin elegir todavía</option>
-                      {guest.menuOptions.map((o) => (
+                      {optionsForPerson(guest.menuOptions, m.personType).map((o) => (
                         <option key={o.id} value={o.id}>
                           {o.name}
                         </option>

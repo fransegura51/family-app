@@ -782,6 +782,12 @@ export interface EventMenuItem {
   transferred: boolean
   sortOrder: number
   createdAt: string
+  // Fase "Comida y bebida" (migración 0192) — extensión compatible: `category` sigue siendo la SECCIÓN del
+  // plato (Aperitivo, Primer plato, Postre, Bebidas...) y `name` el plato. Todo lo demás es opcional.
+  recipeId: string | null
+  notes: string | null
+  source: 'manual' | 'importado'
+  documentId: string | null
 }
 
 // Opción de menú SELECCIONABLE por invitado (p.ej. "Carne" / "Pescado" / "Vegetariano") — distinta de
@@ -789,6 +795,10 @@ export interface EventMenuItem {
 // opciones discretas y excluyentes que define "Comida y celebración" y que cada invitado elige en el RSVP
 // (ver event_guest_members.menuOptionId). Sin coste ni proveedor propios — no genera nada en Preparativos/
 // Presupuesto por sí sola.
+// Destinatario de una opción (migración 0192): 'todos' por defecto — nunca cambia el comportamiento de una
+// opción creada antes de esa migración.
+export type EventMenuOptionAudience = 'todos' | 'adultos' | 'ninos'
+
 export interface EventMenuOption {
   id: string
   eventId: string
@@ -796,6 +806,55 @@ export interface EventMenuOption {
   name: string
   sortOrder: number
   createdAt: string
+  audience: EventMenuOptionAudience
+}
+
+// Documento de comida subido (foto/PDF de un menú, carta, propuesta...). El original se conserva; los
+// platos importados guardan su referencia (EventMenuItem.documentId).
+export type EventFoodDocumentKind = 'menu_principal' | 'menu_infantil' | 'coctel' | 'bebidas' | 'recena' | 'propuesta_catering' | 'otro'
+export interface EventFoodDocument {
+  id: string
+  eventId: string
+  familyId: string
+  kind: EventFoodDocumentKind
+  storagePath: string
+  originalName: string | null
+  mimeType: string | null
+  createdAt: string
+}
+
+// Necesidad alimentaria estructurada de UNA persona (migración 0192): lo declarado (originalText, jamás se
+// sobrescribe) + la clasificación operativa de PEPA (category) + el tipo, solo cuando se puede determinar.
+// Sirve para ORGANIZAR el evento, no es un diagnóstico.
+export type EventDietaryCategory =
+  | 'gluten'
+  | 'lactosa'
+  | 'lacteos'
+  | 'huevo'
+  | 'frutos_secos'
+  | 'cacahuete'
+  | 'marisco'
+  | 'pescado'
+  | 'soja'
+  | 'vegetariano'
+  | 'vegano'
+  | 'sin_cerdo'
+  | 'sin_alcohol'
+  | 'otra'
+export type EventDietaryKind = 'alergia' | 'intolerancia' | 'celiaquia' | 'preferencia' | 'dieta' | 'otro'
+export type EventDietarySource = 'organizador' | 'invitado_nota' | 'rsvp'
+export interface EventDietaryNeed {
+  id: string
+  eventId: string
+  familyId: string
+  guestId: string
+  memberId: string | null
+  originalText: string
+  category: EventDietaryCategory
+  kind: EventDietaryKind | null
+  source: EventDietarySource
+  createdAt: string
+  updatedAt: string
 }
 
 // "📋 Preguntas a los invitados" — capacidad genérica para que la familia añada sus propias preguntas de

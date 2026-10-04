@@ -230,11 +230,11 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // invitados") también toca Eventos a propósito: añade event_guest_questions/_options/_answers —
   // cubierto en eventGuestQuestionsMigration.test.ts, no aquí. 0191 (venue_address/venue_place_id,
   // corrección real: la dirección postal desaparecía al reabrir "Gestionar evento") toca `events` a
-  // propósito también — cubierto en eventVenueAddressMigration.test.ts, no aquí.
-  it('0191 (events.venue_address/venue_place_id) es la última migración del repositorio', () => {
+  // propósito también — cubierto en eventVenueAddressMigration.test.ts, no aquí. 0192 (event_food_and_drink, fase "Comida y bebida" de Eventos) añade event_food_documents, event_guest_dietary_needs y columnas a event_menu_items/event_menu_options — todo de Eventos, cubierto en eventFoodAndDrinkMigration.test.ts.
+  it('0192 (event_food_and_drink) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(191)
+    expect(Math.max(...numbers)).toBe(192)
   })
 })

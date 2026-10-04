@@ -1954,6 +1954,15 @@ export function isOverdueTask(task: Pick<EventTask, 'done' | 'dueDate'>): boolea
   return !task.done && !!task.dueDate && daysUntil(task.dueDate) < 0
 }
 
+// Fase "Comida y bebida" — estado de las necesidades alimentarias para el aviso persistente «ya han
+// confirmado todos y hay necesidades que revisar». Opcional: sin él (llamadas antiguas) no hay aviso.
+// `reviewed` es true cuando la familia ya contestó que las necesidades están contempladas en el menú.
+export interface FoodNeedsAlertInput {
+  allConfirmed: boolean
+  hasNeeds: boolean
+  reviewed: boolean
+}
+
 export function computeEventConclusions(input: {
   rsvpDeadline: string | null
   guests: Pick<EventGuest, 'rsvpStatus'>[]
@@ -1961,6 +1970,7 @@ export function computeEventConclusions(input: {
   payments: Pick<EventPayment, 'concept' | 'totalAmount' | 'depositPaid' | 'dueDate' | 'status'>[]
   plannedBudget: number
   spentBudget: number | null
+  foodNeeds?: FoodNeedsAlertInput
 }): EventConclusion[] {
   const conclusions: EventConclusion[] = []
 
@@ -2012,6 +2022,16 @@ export function computeEventConclusions(input: {
       id: 'budget-over',
       icon: '💰',
       text: `El gasto ya supera lo planeado: ${input.spentBudget.toFixed(2)} € gastados de ${input.plannedBudget.toFixed(2)} € presupuestados.`,
+    })
+  }
+
+  // Aviso persistente (sin push): se recalcula sobre el estado real de confirmaciones, así que aparece solo
+  // cuando confirma el último invitado y desaparece solo cuando la familia lo da por revisado.
+  if (input.foodNeeds && input.foodNeeds.allConfirmed && input.foodNeeds.hasNeeds && !input.foodNeeds.reviewed) {
+    conclusions.push({
+      id: 'food-needs-review',
+      icon: '🍽️',
+      text: 'Ya han confirmado todos los invitados y entre los asistentes hay necesidades alimentarias que conviene revisar antes de cerrar el menú.',
     })
   }
 
@@ -2289,6 +2309,7 @@ export interface EventAlertInput {
   payments: Pick<EventPayment, 'concept' | 'totalAmount' | 'depositPaid' | 'dueDate' | 'status'>[]
   plannedBudget: number
   spentBudget: number | null
+  foodNeeds?: FoodNeedsAlertInput
 }
 
 export interface EventAlertSummary {
@@ -2307,6 +2328,7 @@ const ALERT_PRIMARY_MODULE_BY_CONCLUSION_PREFIX: { prefix: string; module: Event
   { prefix: 'payment-', module: 'pagos' },
   { prefix: 'rsvp-deadline', module: 'invitados' },
   { prefix: 'budget-over', module: 'presupuesto' },
+  { prefix: 'food-needs', module: 'menu_compra' },
 ]
 
 function primaryModuleForConclusions(conclusions: EventConclusion[]): EventModuleKey | null {
@@ -2326,6 +2348,7 @@ export function computeAllEventAlerts(events: EventAlertInput[]): EventAlertSumm
       payments: ev.payments,
       plannedBudget: ev.plannedBudget,
       spentBudget: ev.spentBudget,
+      foodNeeds: ev.foodNeeds,
     })
     if (conclusions.length === 0) continue
     summaries.push({

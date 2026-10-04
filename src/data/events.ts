@@ -29,6 +29,7 @@ import {
 } from '@/domain/eventFood'
 import { computeFoodNeedsState } from '@/domain/eventDietaryNeeds'
 import { deriveOperationalDate } from '@/domain/eventCelebration'
+import { calendarEntryFor, calendarRowMatches, planCalendarSync, type CalendarRowState } from '@/domain/eventCalendarSync'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { showToast } from '@/state/toast'
 import type { EventReminder } from '@/domain/reminders'
@@ -616,8 +617,8 @@ export async function linkEventToCalendar(event: FamilyEvent): Promise<void> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
 
-  const allDay = !event.eventTime
-  const startAt = allDay ? `${event.eventDate}T00:00:00` : `${event.eventDate}T${event.eventTime}:00`
+  // La hora llega de la base de datos como «HH:MM:SS»: calendarEntryFor la normaliza (ver eventCalendarSync).
+  const { startAt, allDay } = calendarEntryFor(event.eventDate, event.eventTime)
   const { data: calendarEvent, error } = await supabase
     .from('calendar_events')
     .insert({
@@ -634,7 +635,11 @@ export async function linkEventToCalendar(event: FamilyEvent): Promise<void> {
   if (error) throw error
 
   const { error: linkError } = await supabase.from('events').update({ calendar_event_id: calendarEvent.id }).eq('id', event.id)
-  if (linkError) throw linkError
+  if (linkError) {
+    // Sin enlace el compromiso quedaría huérfano (y el siguiente guardado crearía otro): se deshace.
+    await supabase.from('calendar_events').delete().eq('id', calendarEvent.id)
+    throw linkError
+  }
 }
 
 // Cuando la fecha/hora cambia y el evento ya tenía un enlace de
@@ -642,8 +647,7 @@ export async function linkEventToCalendar(event: FamilyEvent): Promise<void> {
 export async function updateLinkedCalendarEvent(event: FamilyEvent): Promise<void> {
   if (!event.calendarEventId) return
   if (!event.eventDate) throw new Error('Este evento ya no tiene fecha')
-  const allDay = !event.eventTime
-  const startAt = allDay ? `${event.eventDate}T00:00:00` : `${event.eventDate}T${event.eventTime}:00`
+  const { startAt, allDay } = calendarEntryFor(event.eventDate, event.eventTime)
   const { error } = await supabase
     .from('calendar_events')
     .update({ title: event.title, start_at: startAt, all_day: allDay, location_label: event.venueLabel })
@@ -651,13 +655,27 @@ export async function updateLinkedCalendarEvent(event: FamilyEvent): Promise<voi
   if (error) throw error
 }
 
+// Quitar la fecha (o «Todavía no lo sabemos»): el compromiso del Calendario se elimina y se limpia el enlace
+// (events.calendar_event_id no tiene clave foránea: hay que limpiarlo a mano). Nunca queda una entrada antigua.
+async function unlinkEventFromCalendar(event: FamilyEvent, deleteRow: boolean): Promise<void> {
+  if (!event.calendarEventId) return
+  if (deleteRow) {
+    const { error } = await supabase.from('calendar_events').delete().eq('id', event.calendarEventId)
+    if (error) throw error
+  }
+  const { error: linkError } = await supabase.from('events').update({ calendar_event_id: null }).eq('id', event.id)
+  if (linkError) throw linkError
+}
+
 // Petición real: "definimos por defecto que si se confirma la fecha se apunta
 // en el calendario y si se modifica la fecha una vez confirmado se actualiza" —
 // ya no hay botones manuales. Con la fecha confirmada: si el evento no está en el
 // Calendario se apunta (nota "Fecha anotada en el calendario"), y si ya estaba y
 // algo ha cambiado (fecha, hora, título o lugar) se actualiza (nota "Fecha
-// actualizada en el calendario"). Devuelve qué ha pasado, o null si nada.
-export type CalendarSyncResult = 'created' | 'updated' | null
+// actualizada en el calendario"). Sin fecha se retira (nota "Fecha quitada del
+// calendario"). Cambiar solo Provisional ↔ Confirmada no escribe nada. Es idempotente:
+// guardar dos veces lo mismo no duplica ni falla. Devuelve qué ha pasado, o null si nada.
+export type CalendarSyncResult = 'created' | 'updated' | 'removed' | null
 
 const syncing = new Set<string>()
 
@@ -666,30 +684,46 @@ export async function syncEventToCalendar(id: string): Promise<CalendarSyncResul
   syncing.add(id)
   try {
     const event = await getEvent(id)
-    if (event.status === 'archivado' || event.dateStatus !== 'confirmada' || !event.eventDate) return null
 
+    let rowState: CalendarRowState | null = null
     if (event.calendarEventId) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('calendar_events')
-        .select('start_at, title, location_label')
+        .select('start_at, all_day, title, location_label')
         .eq('id', event.calendarEventId)
         .maybeSingle()
-      if (data) {
-        const desiredStart = event.eventTime ? `${event.eventDate}T${event.eventTime}:00` : `${event.eventDate}T00:00:00`
-        const unchanged =
-          String(data.start_at).slice(0, 19) === desiredStart &&
-          data.title === event.title &&
-          (data.location_label ?? null) === (event.venueLabel ?? null)
-        if (unchanged) return null
+      if (error) throw error
+      if (!data) rowState = 'missing'
+      else rowState = event.eventDate && calendarRowMatches(data, { ...event, eventDate: event.eventDate }) ? 'matches' : 'differs'
+    }
+
+    const action = planCalendarSync({
+      archived: event.status === 'archivado',
+      eventDate: event.eventDate,
+      dateStatus: event.dateStatus,
+      linkedId: event.calendarEventId ?? null,
+      rowState,
+    })
+    switch (action) {
+      case 'none':
+        return null
+      case 'update':
         await updateLinkedCalendarEvent(event)
         showToast('📅 Fecha actualizada en el calendario')
         return 'updated'
-      }
-      // El compromiso enlazado ya no existe (se borró en Calendario): se vuelve a apuntar.
+      case 'create':
+        // Un enlace colgando (el compromiso se borró en Calendario) se vuelve a apuntar con uno nuevo.
+        await linkEventToCalendar(event)
+        showToast('📅 Fecha anotada en el calendario')
+        return 'created'
+      case 'remove':
+        await unlinkEventFromCalendar(event, true)
+        showToast('📅 Fecha quitada del calendario')
+        return 'removed'
+      case 'clear_link':
+        await unlinkEventFromCalendar(event, false)
+        return null
     }
-    await linkEventToCalendar(event)
-    showToast('📅 Fecha anotada en el calendario')
-    return 'created'
   } finally {
     syncing.delete(id)
   }

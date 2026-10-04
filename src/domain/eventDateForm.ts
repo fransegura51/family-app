@@ -14,6 +14,9 @@ export const DATE_CHOICES: { value: DateChoice; label: string }[] = [
 export const DATE_FIELD_LABEL = '📅 Fecha'
 export const TIME_FIELD_LABEL = '🕐 Hora (opcional)'
 export const DATE_STATUS_QUESTION = '¿Esta fecha es provisional o confirmada?'
+// Con una fecha guardada, «Todavía no lo sabemos» se sustituye por «Quitar fecha» (nunca las dos a la vez).
+export const REMOVE_DATE_LABEL = '🗑️ Quitar fecha'
+export const REMOVE_DATE_CONFIRM = '¿Quitar la fecha de este evento?'
 export const MISSING_DATE_MESSAGE = 'Elige primero una fecha.'
 export const MISSING_STATUS_MESSAGE = 'Indica si la fecha es provisional o confirmada.'
 

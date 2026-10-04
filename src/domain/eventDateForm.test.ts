@@ -112,6 +112,24 @@ describe('Contador del configurador (M/N)', () => {
   })
 })
 
+describe('Quitar fecha — el contador del configurador queda coherente (15)', () => {
+  it('con fecha confirmada cuenta como decidida; al quitarla vuelve a «Todavía no lo sabemos» = respondida pero pendiente (no «sin empezar», no «decidida»)', () => {
+    const conFecha = { dateStatus: 'confirmada' as const, eventDate: '2027-02-20' }
+    expect(celebrationDateStatus(conFecha, [])).toBe('decidida')
+    // Tras quitarla: el evento queda pendiente/sin fecha y se anota la respuesta «Todavía no lo sabemos»
+    const quitada = { dateStatus: 'pendiente' as const, eventDate: null }
+    const todavia = [makeDecision('celebracion.fecha', { choice: 'todavia_no_lo_sabemos' })]
+    expect(celebrationDateStatus(quitada, todavia)).toBe('por_decidir')
+  })
+  it('con fecha provisional cuenta como por decidir; fecha + hora + estado siguen siendo UNA sola pregunta', () => {
+    expect(celebrationDateStatus({ dateStatus: 'provisional', eventDate: '2027-02-20' }, [])).toBe('por_decidir')
+  })
+  it('una fecha puesta de nuevo después de quitarla vuelve a contar como decidida (la respuesta «Todavía no» anterior no manda)', () => {
+    const todavia = [makeDecision('celebracion.fecha', { choice: 'todavia_no_lo_sabemos' })]
+    expect(celebrationDateStatus({ dateStatus: 'confirmada', eventDate: '2027-03-05' }, todavia)).toBe('decidida')
+  })
+})
+
 describe('Varios momentos (Q/S)', () => {
   const m = (id: string, momentDate: string | null, dateStatus: 'provisional' | 'confirmada' | null, sortOrder: number) => ({ id, momentDate, dateStatus, sortOrder, isLegacy: false })
   it('Q. cada momento conserva su fecha y estado independientes', () => {

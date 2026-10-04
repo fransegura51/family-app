@@ -2,6 +2,8 @@
 // y cada momento — fecha, hora opcional, estado, y un único «Guardar fecha». Lee el código real como texto.
 import { describe, expect, it } from 'vitest'
 
+import { REMOVE_DATE_CONFIRM, REMOVE_DATE_LABEL } from '@/domain/eventDateForm'
+
 const SRC = (import.meta.glob('/src/ui/EventosScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/EventosScreen.tsx']
 const RSVP = (import.meta.glob('/supabase/functions/event-rsvp/index.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/supabase/functions/event-rsvp/index.ts']
 
@@ -50,15 +52,46 @@ describe('Patrón común: Fecha → Hora (opcional) → estado', () => {
   })
 })
 
-describe('«Todavía no lo sabemos» es una ALTERNATIVA a poner una fecha', () => {
-  it('va antes y aparte de los campos, no dentro del grupo Provisional/Confirmada', () => {
+describe('«Todavía no lo sabemos» (sin fecha) y «🗑️ Quitar fecha» (con fecha) — nunca los dos a la vez', () => {
+  const REMOVE_BLOCK = slice('{event.eventDate ? (', 'Para cambiarla')
+  const EVENT_BODY = EVENT_FIELD
+  it('«Todavía no lo sabemos» va antes y aparte de los campos, no dentro del grupo Provisional/Confirmada', () => {
     expect(EVENT_FIELD.indexOf('Todavía no lo sabemos')).toBeLessThan(EVENT_FIELD.indexOf('<DateTimeStatusFields'))
     expect(FIELDS).not.toContain('Todavía no lo sabemos')
     expect(EVENT_FIELD).not.toContain('DATE_STATUS_CHOICES')
   })
-  it('quitar una fecha ya puesta pide confirmación y deja el evento en «pendiente» (misma semántica de siempre)', () => {
-    expect(EVENT_FIELD).toContain('window.confirm(')
-    expect(EVENT_FIELD).toContain("dateStatus: 'pendiente', eventDate: null, eventTime: null")
+  it('16/17. con fecha guardada se ve «Quitar fecha»; sin fecha, «Todavía no lo sabemos»; es una condición excluyente (ternario)', () => {
+    expect(REMOVE_BLOCK).toContain('{REMOVE_DATE_LABEL}')
+    expect(REMOVE_BLOCK).toContain('onClick={removeDate}')
+    expect(REMOVE_BLOCK).toContain('onClick={chooseTodavia}')
+    expect(REMOVE_BLOCK.indexOf('{REMOVE_DATE_LABEL}')).toBeLessThan(REMOVE_BLOCK.indexOf('Todavía no lo sabemos'))
+    expect(REMOVE_BLOCK.indexOf('<button')).toBe(REMOVE_BLOCK.indexOf('<button type="button" className="chip" disabled={saving} onClick={removeDate}>'))
+    expect((EVENT_BODY.match(/Todavía no lo sabemos\s*<\/button>/g) ?? []).length).toBe(1)
+    expect((EVENT_BODY.match(/\{REMOVE_DATE_LABEL\}\s*<\/button>/g) ?? []).length).toBe(1)
+  })
+  it('las etiquetas son las pedidas', () => {
+    expect(REMOVE_DATE_LABEL).toBe('🗑️ Quitar fecha')
+    expect(REMOVE_DATE_CONFIRM).toBe('¿Quitar la fecha de este evento?')
+  })
+  it('8. «Quitar fecha» NO borra al instante: pide confirmación y, si se cancela, no escribe nada', () => {
+    const remove = slice('function removeDate() {', '  function saveDate()')
+    expect(remove.indexOf('window.confirm(REMOVE_DATE_CONFIRM)')).toBeGreaterThan(-1)
+    expect(remove.indexOf('window.confirm(REMOVE_DATE_CONFIRM)')).toBeLessThan(remove.indexOf('updateEvent('))
+    expect(remove).toContain('if (!window.confirm(REMOVE_DATE_CONFIRM)) return')
+  })
+  it('8/9. al confirmar quita fecha + hora + estado en UNA operación (el Calendario se retira desde updateEvent), recalcula tareas relativas y deja «Todavía no lo sabemos»', () => {
+    const remove = slice('function removeDate() {', '  function saveDate()')
+    expect((remove.match(/updateEvent\(/g) ?? []).length).toBe(1)
+    expect(remove).toContain("await updateEvent(event.id, { dateStatus: 'pendiente', eventDate: null, eventTime: null })")
+    expect(remove).toContain('await recalculateAutoTasks(event.id, event.type, null)')
+    expect(remove).toContain('await onTodavia()')
+    // No es borrar el evento
+    expect(remove).not.toMatch(/deleteEvent|archive/)
+  })
+  it('«Todavía no lo sabemos» (sin fecha) solo anota la respuesta: no escribe en el evento ni en el Calendario', () => {
+    const choose = slice('function chooseTodavia() {', '  // Con fecha:')
+    expect(choose).not.toMatch(/updateEvent|recalculateAutoTasks|window\.confirm/)
+    expect(choose).toContain('await onTodavia()')
   })
   it('tras guardar una fecha, la respuesta «Todavía no lo sabemos» anterior deja de ser la activa (estado coherente)', () => {
     expect(EVENT_FIELD).toContain('await onDateSaved()')

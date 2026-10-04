@@ -266,6 +266,8 @@ import {
   dateDraftToPatch,
   isDateDraftDirty,
   MISSING_STATUS_MESSAGE,
+  REMOVE_DATE_CONFIRM,
+  REMOVE_DATE_LABEL,
   TIME_FIELD_LABEL,
   validateDateDraft,
   type DateChoice,
@@ -2656,11 +2658,21 @@ function EventDateField({
     }
   }
 
+  // Sin fecha: «Todavía no lo sabemos» (no hay nada que quitar, solo se anota la respuesta).
   function chooseTodavia() {
-    if (event.eventDate && !window.confirm('Se quitará la fecha (y su hora) del evento, de los Preparativos automáticos y del Calendario. ¿Seguro?')) return
+    void run(async () => {
+      await onTodavia()
+    })
+  }
+
+  // Con fecha: «Quitar fecha» (pide confirmación; no borra el evento). Fecha + hora + estado salen juntos en una
+  // sola operación, el Calendario retira su compromiso (updateEvent → syncEventToCalendar) y las tareas relativas
+  // a la fecha se recalculan sin fecha. Después el evento queda como «Todavía no lo sabemos».
+  function removeDate() {
+    if (!window.confirm(REMOVE_DATE_CONFIRM)) return
     void run(async () => {
       await updateEvent(event.id, { dateStatus: 'pendiente', eventDate: null, eventTime: null })
-      if (event.eventDate) await recalculateAutoTasks(event.id, event.type, null)
+      await recalculateAutoTasks(event.id, event.type, null)
       await onTodavia()
     })
   }
@@ -2700,12 +2712,18 @@ function EventDateField({
       )}
       {error && <p className="error">{error}</p>}
       <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-        <button type="button" className={'chip' + (todavia ? ' chip-active' : '')} disabled={saving} onClick={chooseTodavia}>
-          Todavía no lo sabemos
-        </button>
+        {event.eventDate ? (
+          <button type="button" className="chip" disabled={saving} onClick={removeDate}>
+            {REMOVE_DATE_LABEL}
+          </button>
+        ) : (
+          <button type="button" className={'chip' + (todavia ? ' chip-active' : '')} disabled={saving} onClick={chooseTodavia}>
+            Todavía no lo sabemos
+          </button>
+        )}
       </div>
       <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-        {todavia ? 'Cuando sepáis el día, ponedlo aquí:' : 'o pon el día:'}
+        {event.eventDate ? 'Para cambiarla, modifica los datos y guarda:' : todavia ? 'Cuando sepáis el día, ponedlo aquí:' : 'o pon el día:'}
       </p>
       <DateTimeStatusFields draft={draft} onChange={(next) => setDraft(next)} disabled={saving} />
       <button type="button" className="link-button" disabled={saving || (!dirty && Boolean(event.eventDate))} onClick={saveDate} style={{ marginTop: 4 }}>

@@ -224,11 +224,11 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // menú a event_guest_members — tabla de Eventos, tampoco toca devoluciones. 0190
     // (event_guest_questions, "Preguntas a los invitados") añade event_guest_questions/_options/_answers
     // — tablas de Eventos, tampoco toca devoluciones. 0191 (venue_address/venue_place_id) añade dos
-    // columnas a `events` — tabla de Eventos, tampoco toca devoluciones. 0192 (event_food_and_drink, Comida y bebida) añade tablas y columnas de Eventos — tampoco toca devoluciones.
+    // columnas a `events` — tabla de Eventos, tampoco toca devoluciones. 0192 (event_food_and_drink, Comida y bebida) añade tablas y columnas de Eventos — tampoco toca devoluciones. 0193 (event_moment_date_status) añade una columna a event_moments — tampoco devoluciones.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(192)
+    expect(Math.max(...numbers)).toBe(193)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

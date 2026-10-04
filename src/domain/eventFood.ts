@@ -18,7 +18,7 @@ import { MOMENTOS_ESPECIALES_QUESTION_KEY, type MomentosEspecialesAnswer } from 
 import { resolveVenueCase, venueIncludesService, type VenueCase } from '@/domain/eventVenueServices'
 import { needsReviewApplies, type FoodNeedsState } from '@/domain/eventDietaryNeeds'
 import type { CustomResolution } from '@/domain/eventPairDecisions'
-import type { EventDayPlanItem, EventDecision, EventMenuItem, EventTask, EventBudgetItem, EventType, FamilyEvent } from '@/domain/types'
+import type { EventDayPlanItem, EventDecision, EventMenuItem, EventServiceId, EventTask, EventBudgetItem, EventType, FamilyEvent } from '@/domain/types'
 import { generateAutoTasks, type FoodNeedsAlertInput } from '@/domain/events'
 
 export const FOOD_BLOCK_KEY = 'comida'
@@ -116,21 +116,31 @@ function answerOf<T>(decisions: EventDecision[], key: string): T | undefined {
 // ---------------------------------------------------------------------
 // Contexto compartido por todas las funciones del bloque
 // ---------------------------------------------------------------------
-type VenueFacts = Pick<FamilyEvent, 'venueType' | 'venueLabel' | 'venueAddress' | 'venueLatitude' | 'venueLongitude' | 'celebrationLocationLabel'>
+type VenueFacts = Pick<FamilyEvent, 'venueType' | 'venueLabel' | 'venueAddress' | 'venueLatitude' | 'venueLongitude' | 'celebrationLocationLabel'> & Partial<Pick<FamilyEvent, 'includedServices'>>
 
+// Comida y bebida CONSUME la información del primer bloque («Ceremonia y celebración» / «Celebración»): el
+// caso de lugar y los servicios incluidos. Nunca los pregunta ni los guarda.
 export interface FoodContext {
   venueCase: VenueCase
   decisions: EventDecision[]
   menuItems: Pick<EventMenuItem, 'category'>[]
   needs: FoodNeedsState | null
+  // Respuesta histórica del alta antigua (events.included_services), adoptada como información existente.
+  legacyIncluded: EventServiceId[] | null
 }
 
-export function buildFoodContext(event: VenueFacts, decisions: EventDecision[], menuItems: Pick<EventMenuItem, 'category'>[], needs: FoodNeedsState | null): FoodContext {
-  return { venueCase: resolveVenueCase(event, decisions), decisions, menuItems, needs }
+export function buildFoodContext(
+  event: VenueFacts,
+  decisions: EventDecision[],
+  menuItems: Pick<EventMenuItem, 'category'>[],
+  needs: FoodNeedsState | null,
+  hasMomentLocation = false,
+): FoodContext {
+  return { venueCase: resolveVenueCase(event, decisions, hasMomentLocation), decisions, menuItems, needs, legacyIncluded: event.includedServices ?? null }
 }
 
 export function venueIncludes(ctx: FoodContext, key: 'comida' | 'bebidas' | 'tarta'): boolean {
-  return venueIncludesService(ctx.venueCase, ctx.decisions, key)
+  return venueIncludesService(ctx.venueCase, ctx.decisions, key, ctx.legacyIncluded)
 }
 
 export function quienAnswer(ctx: FoodContext): QuienAnswer | undefined {

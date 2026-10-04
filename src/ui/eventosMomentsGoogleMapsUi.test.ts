@@ -73,8 +73,8 @@ describe('EventLocationCoordsPicker — onPlaceDetails opcional, no rompe al "Lu
   // RETOQUE (corrección real: la dirección postal legible desaparecía al volver a abrir "Gestionar
   // evento") — ManageEventModal (Lugar simple) SÍ pasa ahora onPlaceDetails, para guardar
   // venueAddress/venuePlaceId junto a venue_label/coords — antes se descartaba por completo.
-  it('ManageEventModal (Lugar simple de un evento sencillo) pasa onPlaceDetails, guardando address/placeId en su propio estado', () => {
-    const manageEventModal = slice(SCREEN_SRC, 'function ManageEventModal(', '\n// Petición real: "Compras" en la rejilla del dashboard')
+  it('el editor de lugar simple (CasaLocationManualPicker, usado por el primer bloque «Celebración») pasa onPlaceDetails, guardando address/placeId en su propio estado', () => {
+    const manageEventModal = slice(SCREEN_SRC, 'function CasaLocationManualPicker(', '\n// -----------------------------------')
     const venuePickerCall = slice(manageEventModal, '<EventLocationCoordsPicker', '/>')
     expect(venuePickerCall).toContain('onPlaceDetails={(details) => {')
     expect(venuePickerCall).toContain('setVenueAddress(details.address)')
@@ -83,13 +83,13 @@ describe('EventLocationCoordsPicker — onPlaceDetails opcional, no rompe al "Lu
     expect(venuePickerCall).toContain('initialPlaceId={venuePlaceId}')
   })
 
-  it('ManageEventModal inicializa venueAddress/venuePlaceId desde el evento guardado, y los incluye al guardar', () => {
-    const manageEventModal = slice(SCREEN_SRC, 'function ManageEventModal(', '\n// Petición real: "Compras" en la rejilla del dashboard')
-    expect(manageEventModal).toContain('const [venueAddress, setVenueAddress] = useState(event.venueAddress ?? null)')
-    expect(manageEventModal).toContain('const [venuePlaceId, setVenuePlaceId] = useState(event.venuePlaceId ?? null)')
-    const handleSaveInfo = slice(manageEventModal, 'async function handleSaveInfo(', '\n  async function handleSaveModules')
-    expect(handleSaveInfo).toContain('venueAddress: venueAddress,')
-    expect(handleSaveInfo).toContain('venuePlaceId: venuePlaceId,')
+  it('el editor de lugar inicializa venueAddress/venuePlaceId desde el evento guardado, y los incluye al guardar', () => {
+    const picker = slice(SCREEN_SRC, 'function CasaLocationManualPicker(', '\n// -----------------------------------')
+    expect(picker).toContain('const [venueAddress, setVenueAddress] = useState(event.venueAddress ?? null)')
+    expect(picker).toContain('const [venuePlaceId, setVenuePlaceId] = useState(event.venuePlaceId ?? null)')
+    const handleSave = slice(picker, 'async function handleSave(', '\n  return (')
+    expect(handleSave).toContain('venueAddress,')
+    expect(handleSave).toContain('venuePlaceId,')
   })
 })
 

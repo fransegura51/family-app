@@ -21,35 +21,36 @@ describe('CeremoniaSection ha desaparecido — sustituida por MomentsEditor sobr
   })
 })
 
-describe('Fuente única: Configurador y "Gestionar evento" montan exactamente el mismo componente', () => {
-  it('MomentsEditor se monta en 2 sitios, con las mismas props (event, onChanged) — nunca una copia del estado', () => {
+describe('Fuente única: los momentos se editan SOLO en el primer bloque del configurador', () => {
+  it('MomentsEditor se monta en un único sitio (alta mínima: ya no hay una segunda copia en "Gestionar evento")', () => {
     const matches = SRC.match(/<MomentsEditor event=\{event\} onChanged=\{onChanged\} \/>/g) ?? []
-    expect(matches.length).toBe(2)
+    expect(matches.length).toBe(1)
   })
 
-  it('un sitio es "Gestionar evento" → Momentos', () => {
+  it('"Gestionar evento" ya no contiene Momentos, fecha ni lugar: solo apunta al primer bloque', () => {
     const manageEventModal = slice(SRC, 'function ManageEventModal(', '\n// Petición real: "Compras" en la rejilla del dashboard')
-    expect(manageEventModal).toContain('<strong>Momentos</strong>')
-    expect(manageEventModal).toContain('<MomentsEditor event={event} onChanged={onChanged} />')
+    expect(manageEventModal).not.toContain('<MomentsEditor')
+    expect(manageEventModal).not.toContain('<strong>Momentos</strong>')
+    expect(manageEventModal).toContain('La fecha, el lugar y lo que incluye se deciden en')
   })
 
-  it('el otro sitio es el configurador del dashboard ("✨ Cómo queréis...")', () => {
+  it('el único sitio es el primer bloque del configurador ("Ceremonia y celebración" / "Celebración")', () => {
+    const block = slice(SRC, 'function CelebracionBlock(', '\n// Corrección real (siguiente mejora tras validar la persistencia')
+    expect(block).toContain('<MomentsEditor event={event} onChanged={onChanged} />')
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
-    expect(configurator).toContain('🕊️ Ceremonia y celebración')
-    expect(configurator).toContain('<MomentsEditor event={event} onChanged={onChanged} />')
+    expect(configurator).toContain('celebrationBlockTitle(event.type, structuredByMoments)')
   })
 })
 
 describe('Regla de lugar genérico — nunca redundante con Momentos', () => {
-  it('isEventStructuredByMoments es la ÚNICA condición, reutilizada en los 3 sitios (cabecera, formulario, configurador)', () => {
+  it('isEventStructuredByMoments es la ÚNICA condición, reutilizada (cabecera, nota de «Gestionar evento», configurador)', () => {
     expect(SRC).toContain(
       "function isEventStructuredByMoments(event: Pick<FamilyEvent, 'type' | 'enabledModules'>): boolean {\n  return DUAL_LOCATION_EVENT_TYPES.includes(event.type) && event.enabledModules.includes('ceremonia')\n}",
     )
     const usages = SRC.match(/isEventStructuredByMoments\(event\)/g) ?? []
-    // 4 usos reales (cabecera; "Lugar" en "Gestionar evento"; "Momentos" en "Gestionar evento";
-    // EventPlanningConfigurator, que ahora decide solo entre el bloque "Ceremonia y celebración" o el
-    // bloque "Lugar de contexto", nunca si se pinta el configurador entero — ver RETOQUE más abajo).
-    expect(usages.length).toBe(4)
+    // 3 usos reales: cabecera, nota de "Gestionar evento" y el primer bloque del EventPlanningConfigurator
+    // (que decide entre "Ceremonia y celebración" y "Celebración", nunca si se pinta el configurador entero).
+    expect(usages.length).toBe(3)
   })
 
   it('la cabecera del evento oculta el "🏠 Lugar" genérico cuando el evento está estructurado por momentos', () => {
@@ -57,14 +58,12 @@ describe('Regla de lugar genérico — nunca redundante con Momentos', () => {
     expect(heroLine).toContain('🏠 {event.venueLabel}')
   })
 
-  it('"Gestionar evento" oculta el campo "Lugar" + selector de mapa cuando está estructurado por momentos — nunca lo borra, solo deja de mostrarlo', () => {
+  it('"Gestionar evento" ya no tiene el campo "Lugar" ni el selector de mapa: el lugar vive en el primer bloque (no se borra nada, solo cambia dónde se edita)', () => {
     const manageEventModal = slice(SRC, 'function ManageEventModal(', '\n// Petición real: "Compras" en la rejilla del dashboard')
-    expect(manageEventModal).toContain('{!isEventStructuredByMoments(event) && (')
-    const hiddenBlock = slice(manageEventModal, '{!isEventStructuredByMoments(event) && (', '<label>\n            Tema')
-    expect(hiddenBlock).toContain('Lugar (como se ve en la invitación)')
-    expect(hiddenBlock).toContain('<EventLocationCoordsPicker')
-    expect(hiddenBlock).toContain('coords={venueCoords}')
-    expect(hiddenBlock).toContain('onCoordsChange={setVenueCoords}')
+    expect(manageEventModal).not.toContain('Lugar (como se ve en la invitación)')
+    expect(manageEventModal).not.toContain('<EventLocationCoordsPicker')
+    const block = slice(SRC, 'function CelebracionBlock(', '\n// Corrección real (siguiente mejora tras validar la persistencia')
+    expect(block).toContain('<VenuePlaceBlock event={event} onChanged={onChanged} />')
   })
 
   it('un evento SIMPLE (no estructurado por momentos) sigue mostrando "Lugar" exactamente igual que siempre — no se complica cumpleaños/comidas', () => {
@@ -73,11 +72,12 @@ describe('Regla de lugar genérico — nunca redundante con Momentos', () => {
     expect(SRC).toContain("DUAL_LOCATION_EVENT_TYPES.includes(event.type) && event.enabledModules.includes('ceremonia')")
   })
 
-  it('RETOQUE — EventPlanningConfigurator ya NO hace early-return para eventos simples: se pinta siempre, y es el bloque "Ceremonia y celebración" el que se auto-filtra por dentro (ternario sobre isEventStructuredByMoments), igual que "La pareja" ya se autofiltraba por event.type', () => {
+  it('RETOQUE — EventPlanningConfigurator ya NO hace early-return para eventos simples: se pinta siempre, y es el primer bloque el que se adapta (Ceremonia y celebración / Celebración) por isEventStructuredByMoments', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
     const earlyReturnBody = slice(configurator, 'function EventPlanningConfigurator({', '\n  return (')
     expect(earlyReturnBody).not.toContain('return null')
-    expect(configurator).toContain('{isEventStructuredByMoments(event) ? (')
+    expect(configurator).toContain('const structuredByMoments = isEventStructuredByMoments(event)')
+    expect(configurator).toContain('<CelebracionBlock event={event} structured={structuredByMoments}')
   })
 })
 
@@ -199,10 +199,11 @@ describe('No se copian datos al volver a abrir la pantalla (nunca una escritura 
 })
 
 describe('event_date no se toca — sigue siendo la fecha principal del evento, independiente de cada momento', () => {
-  it('ManageEventModal sigue leyendo/guardando event.eventDate exactamente igual que antes de la Fase 2', () => {
-    const manageEventModal = slice(SRC, 'function ManageEventModal(', '\n// Petición real: "Compras" en la rejilla del dashboard')
-    expect(manageEventModal).toContain("const [eventDate, setEventDate] = useState(event.eventDate ?? '')")
-    expect(manageEventModal).toContain('eventDate: nextDate,')
+  it('events.event_date / date_status siguen siendo la ÚNICA fecha operativa: se editan en el primer bloque (EventDateField) y se derivan de los momentos (syncOperationalDateFromMoments)', () => {
+    const dateField = slice(SRC, 'function EventDateField(', '// Lugar registrado (nombre + dirección)')
+    expect(dateField).toContain('dateStatus: status, eventDate: date')
+    expect(dateField).toContain('recalculateAutoTasks(event.id, event.type, date)')
+    expect(SRC).toContain('await syncOperationalDateFromMoments(event.id)')
   })
 
   it('cada momento guarda su PROPIA fecha (momentDate), nunca forzada a event.eventDate', () => {
@@ -216,9 +217,11 @@ describe('Acordeón — plegable globalmente y por bloque, estado simple en loca
   it('EventPlanningConfigurator usa loadConfiguratorOpen/saveConfiguratorOpen (Fase 2, src/state) para el nivel global Y el del bloque', () => {
     const fn = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
     expect(fn).toContain("loadConfiguratorOpen(event.id)")
-    expect(fn).toContain("loadConfiguratorOpen(event.id, 'ceremonia_celebracion')")
+    // El primer bloque unifica los dos acordeones antiguos: recuerda el estado que tuvieran.
+    expect(fn).toContain("loadConfiguratorOpen(event.id, 'celebracion')")
+    expect(fn).toContain("structuredByMoments ? 'ceremonia_celebracion' : 'lugar_contexto'")
     expect(fn).toContain("saveConfiguratorOpen(event.id, null, next)")
-    expect(fn).toContain("saveConfiguratorOpen(event.id, 'ceremonia_celebracion', next)")
+    expect(fn).toContain("saveConfiguratorOpen(event.id, 'celebracion', next)")
   })
 
   it('no hay ningún porcentaje/barra de progreso agregado en el configurador (CSS width:100% no cuenta, eso es maquetación)', () => {

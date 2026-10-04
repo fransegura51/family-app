@@ -17,13 +17,12 @@ describe('EventPlanningConfigurator — motor común: ya no depende de isEventSt
     expect(body).not.toContain('return null')
   })
 
-  it('"🕊️ Ceremonia y celebración" y "📍 Dónde lo vais a celebrar" son mutuamente excluyentes (mismo ternario sobre isEventStructuredByMoments)', () => {
+  it('«Ceremonia y celebración» y «Celebración» son UN SOLO primer bloque (nunca dos bloques paralelos): CelebracionBlock se adapta con `structured`, y el título lo da celebrationBlockTitle', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nconst LUGAR_CONTEXTO_OPTIONS')
-    expect(configurator).toContain('{isEventStructuredByMoments(event) ? (')
-    const ternary = slice(configurator, '{isEventStructuredByMoments(event) ? (', '\n          )}')
-    expect(ternary).toContain('🕊️ Ceremonia y celebración')
-    expect(ternary).toContain('📍 Dónde lo vais a celebrar')
-    expect(ternary).toContain('<LugarContextoBlock event={event} onChanged={onChanged} />')
+    expect(configurator).toContain('const structuredByMoments = isEventStructuredByMoments(event)')
+    expect(configurator).toContain('{celebrationBlockTitle(event.type, structuredByMoments)}')
+    expect(configurator).toContain('<CelebracionBlock event={event} structured={structuredByMoments} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />')
+    expect(configurator).not.toContain('<LugarContextoBlock')
   })
 
   it('"👥 Invitados e invitaciones" y "🎉 Momentos especiales" son incondicionales — aplican a cualquier tipo de evento', () => {
@@ -125,29 +124,29 @@ describe('ClasesBaileQuestion — Sí/No/Todavía no lo sabemos, sin preselecci�
   })
 })
 
-describe('LugarContextoBlock — contexto del lugar para eventos sin ceremonia, nunca la dirección exacta', () => {
-  it('se guarda directamente con upsertEventDecision, sin applyPairDecisionGeneration — nunca genera nada', () => {
-    const block = slice(SRC, 'function LugarContextoBlock(', '\nfunction CasaLocationBlock(')
-    expect(block).toContain('upsertEventDecision(event.id, {')
+describe('CelebracionBlock — el contexto del lugar vive en el primer bloque; la pregunta nunca guarda la dirección', () => {
+  it('la pregunta de contexto se guarda con upsertEventDecision, sin applyPairDecisionGeneration — nunca genera nada por sí sola', () => {
+    const block = slice(SRC, 'function CelebracionBlock(', '\n// Corrección real (siguiente mejora tras validar la persistencia')
+    expect(block).toContain('upsertEventDecision(event.id, { blockKey, questionKey, answer, isCustomOption })')
     expect(block).not.toContain('applyPairDecisionGeneration')
   })
 
   it('reutiliza CustomAwareQuestion, nunca un componente de pregunta nuevo', () => {
-    const block = slice(SRC, 'function LugarContextoBlock(', '\nfunction CasaLocationBlock(')
+    const block = slice(SRC, 'function CelebracionBlock(', '\n// Corrección real (siguiente mejora tras validar la persistencia')
     expect(block).toContain('<CustomAwareQuestion')
     expect(block).toContain('questionKey={LUGAR_CONTEXTO_QUESTION_KEY}')
   })
 
-  // RETOQUE (siguiente mejora validada: "En casa" → proponer Casa) — LugarContextoBlock en sí (la
-  // pregunta de CONTEXTO, guardada en event_decisions) sigue sin tocar venueLabel/coordenadas
-  // directamente; delega esa parte por completo a CasaLocationBlock, y solo cuando la respuesta ya
-  // guardada es 'en_casa' — nunca al elegir cualquier otra opción (restaurante/exterior/otro/todavía).
-  it('delega venueLabel/EventLocationCoordsPicker a CasaLocationBlock, nunca los toca directamente, y solo cuando la decisión es "en_casa"', () => {
-    const upsertPart = slice(SRC, 'async function save(answer: { choice: LugarContextoChoice', '\n  if (loading)')
+  // La pregunta de CONTEXTO (guardada en event_decisions) no toca venueLabel/coordenadas directamente;
+  // delega esa parte a CasaLocationBlock (solo con «En casa») o a VenuePlaceBlock (el resto), y en eventos
+  // por momentos el lugar vive en cada momento (nunca se duplica en venue_*).
+  it('delega venueLabel/EventLocationCoordsPicker a CasaLocationBlock/VenuePlaceBlock, nunca los toca directamente, y «En casa» solo con la decisión guardada', () => {
+    const upsertPart = slice(SRC, 'async function saveDecision(', '\n  if (loading)')
     expect(upsertPart).not.toContain('venueLabel')
     expect(upsertPart).not.toContain('EventLocationCoordsPicker')
-    const render = slice(SRC, 'function LugarContextoBlock(', '\nfunction CasaLocationBlock(')
-    expect(render).toContain("lugarAnswer?.choice === 'en_casa' && <CasaLocationBlock")
+    const render = slice(SRC, 'function CelebracionBlock(', '\n// Corrección real (siguiente mejora tras validar la persistencia')
+    expect(render).toContain("!structured && contexto?.choice === 'en_casa' && <CasaLocationBlock")
+    expect(render).toContain('{showPlace && <VenuePlaceBlock')
   })
 
   it('LUGAR_CONTEXTO_OPTIONS tiene las 5 opciones pedidas, sin preselección', () => {

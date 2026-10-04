@@ -27,7 +27,7 @@ describe('InvitationModal — texto compartido moments-first con fallback hereda
   })
 
   it('infoLines y el texto a compartir usan momentsLocationLines/momentsLocationMapLines SOLO cuando hay momentos reales', () => {
-    expect(fn).toContain('usingRealMoments ? momentsLocationLines(guestMoments) : eventLocationLines(event, guest)')
+    expect(fn).toContain('usingRealMoments ? momentsLocationLines(guestMoments, event.dateStatus) : eventLocationLines(event, guest)')
     expect(fn).toContain('usingRealMoments ? momentsLocationMapLines(guestMoments) : eventLocationMapLines(event, guest)')
   })
 })

@@ -23,6 +23,7 @@ import type {
   InvitationTextStyle,
 } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
+import { momentDateStatus } from '@/domain/eventCelebration'
 
 // Arte real, traído fuera por el usuario ("quiero obras de arte", no SVG
 // dibujado a mano) — ver InvitationTemplateMeta.image más abajo.
@@ -645,13 +646,16 @@ function shortSpanishDate(isoDate: string): string {
 // título literal — el título solo se usa como texto a mostrar, el orden y la fecha ya los dan los propios
 // datos. Sustituye a eventLocationLines SOLO en esa situación; eventLocationLines sigue intacta como
 // fallback cuando no hay momentos reales.
-export function momentsLocationLines(moments: EventMoment[]): string[] {
+// `eventDateStatus`: los momentos sin estado propio heredan el del evento. Una fecha provisional se marca como
+// tal («(fecha provisional)») para que nunca parezca cerrada a quien recibe la invitación.
+export function momentsLocationLines(moments: EventMoment[], eventDateStatus: FamilyEvent['dateStatus'] = 'confirmada'): string[] {
   const lines: string[] = []
   let lastDate: string | null = null
   for (const m of moments) {
     if (m.momentDate && m.momentDate !== lastDate) {
       const weekday = new Date(`${m.momentDate}T00:00`).toLocaleDateString('es-ES', { weekday: 'long' })
-      lines.push(`📅 ${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${shortSpanishDate(m.momentDate)}`)
+      const provisional = momentDateStatus(m, eventDateStatus) === 'provisional' ? ' (fecha provisional)' : ''
+      lines.push(`📅 ${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${shortSpanishDate(m.momentDate)}${provisional}`)
       lastDate = m.momentDate
     }
     const time = m.momentTime ? ` · ${m.momentTime.slice(0, 5)}` : ''

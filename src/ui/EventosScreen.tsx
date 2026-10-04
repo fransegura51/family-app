@@ -108,6 +108,8 @@ import {
   updateEventSpecialDetail,
   updateEventTask,
   addEventDietaryNeed,
+  reconcileFoodForVenueChange,
+  syncOperationalDateFromMoments,
   addEventMenuItemsBulk,
   addEventMenuOption,
   applyFoodDayPlan,
@@ -163,7 +165,6 @@ import {
   type EventHealthLevel,
   generateEventPlan,
   hasRealMoments,
-  INCLUDABLE_SERVICES_BY_TYPE,
   INVITATION_TEMPLATES,
   isOverdueTask,
   isToday,
@@ -256,7 +257,18 @@ import {
   type NinosNecesidadesAnswer,
   type NinosNecesidadItemKey,
 } from '@/domain/eventGuestDecisions'
-import { LUGAR_CONTEXTO_QUESTION_KEY, lugarContextoStatus, type LugarContextoAnswer, type LugarContextoChoice } from '@/domain/eventLocationContext'
+import { LUGAR_CONTEXTO_QUESTION_KEY, type LugarContextoAnswer, type LugarContextoChoice } from '@/domain/eventLocationContext'
+import {
+  ageTurning,
+  CELEBRATION_BLOCK_KEY,
+  CELEBRATION_DATE_QUESTION_KEY,
+  celebrationBlockTitle,
+  DATE_STATUS_CHOICES,
+  dateStatusLabel,
+  dateWithStatusLabel,
+  momentDateStatus,
+  summarizeCelebrationBlock,
+} from '@/domain/eventCelebration'
 import {
   CLASES_BAILE_QUESTION_KEY,
   desiredForClasesBaile,
@@ -324,19 +336,20 @@ import {
   type TartaChoice,
 } from '@/domain/eventFood'
 import {
-  legacyIncludedServicesToVenue,
+  effectiveVenueServicesAnswer,
+  legacyOnlyServiceLabels,
+  resolveVenueCase,
   toggleVenueService,
   VENUE_SERVICES,
   VENUE_SERVICES_BLOCK_KEY,
   VENUE_SERVICES_QUESTION_KEY,
+  venueServiceIdsForPlan,
   venueServiceLabel,
-  venueServicesAnswer,
+  venueServicesFromLegacy,
   venueServicesQuestionLabel,
-  venueServicesStatus,
   withVenueServiceCustomItems,
   withVenueServicesNinguno,
   withVenueServicesUnknown,
-  type VenueServiceKey,
   type VenueServicesAnswer,
 } from '@/domain/eventVenueServices'
 import {
@@ -402,7 +415,6 @@ import type {
   EventTask,
   EventTemplate,
   EventType,
-  EventVenueType,
   FamilyEvent,
   FamilyMember,
   GuestQuestionScope,
@@ -426,11 +438,6 @@ import { getInvitationEventDataChanges, invitationHasTrackedEventData } from '@/
 // fianzas y enlace con Calendario. Fase 2: invitaciones + RSVP público.
 // Fase 3: decoración, actividades, mesas, detalles/recuerdos, regalos
 // recibidos, plan del día, modo "día del evento" y conclusiones PEPA.
-const DATE_STATUS_OPTIONS: { value: FamilyEvent['dateStatus']; label: string }[] = [
-  { value: 'pendiente', label: 'Todavía sin fecha' },
-  { value: 'provisional', label: 'Fecha provisional' },
-  { value: 'confirmada', label: 'Fecha confirmada' },
-]
 
 // Fase 7 — el emoji es presentación pura (vive aquí, no en domain/events.ts).
 const EVENT_HEALTH_EMOJI: Record<EventHealthLevel, string> = {
@@ -731,17 +738,15 @@ export function EventosScreen() {
   )
 }
 
+// Alta mínima — «Nuevo evento» solo identifica QUÉ evento vamos a organizar: nombre, tipo (con su variante si
+// la tiene) y qué partes quiere gestionar el usuario en PEPA. Fecha, lugar, edad, servicios incluidos y demás
+// datos estructurales se configuran después, dentro de ✨ «Cómo queréis que sea vuestro evento» (primer
+// bloque: «Ceremonia y celebración» / «Celebración»). Un evento puede crearse incompleto: ese bloque aparecerá
+// como «sin empezar» hasta que se rellene.
 function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [type, setType] = useState<EventType>('cumpleanos')
   const [title, setTitle] = useState('')
   const [subtype, setSubtype] = useState(CELEBRATION_SUBTYPES[0])
-  const [ageTurning, setAgeTurning] = useState('')
-  const [dateStatus, setDateStatus] = useState<FamilyEvent['dateStatus']>('pendiente')
-  const [eventDate, setEventDate] = useState('')
-  // Fase 1 del "inicio inteligente" (2026-09-30) — paso 1/2 del alta: dónde se celebra y, solo si hay
-  // servicios, qué incluye ya. '' = no respondido todavía (nunca se envía como '', ver handleSubmit).
-  const [venueType, setVenueType] = useState<EventVenueType | ''>('')
-  const [includedServices, setIncludedServices] = useState<EventServiceId[]>([])
   const [modules, setModules] = useState<EventModuleKey[]>(RECOMMENDED_MODULES.cumpleanos)
   const [theme, setTheme] = useState<string | null>(null)
   const [templates, setTemplates] = useState<EventTemplate[]>([])
@@ -756,24 +761,14 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
   }, [])
 
   const recommendedModules = RECOMMENDED_MODULES[type]
-  const includableServices = INCLUDABLE_SERVICES_BY_TYPE[type]
-  // Solo cuando el paso 1 dice explícitamente "hay servicios incluidos" — 'casa_propia' y 'otro' no
-  // presuponen nada, nunca se muestra el checklist para esos dos casos (petición explícita: "otro" no
-  // implica que exista ningún proveedor).
-  const showIncludedServicesStep = venueType === 'restaurante_local' && includableServices.length > 0
 
   function handleTypeChange(next: EventType) {
     setType(next)
     setModules(RECOMMENDED_MODULES[next])
-    // El checklist de servicios depende del tipo (INCLUDABLE_SERVICES_BY_TYPE) — una selección de un
-    // tipo anterior podría ya no significar nada en el nuevo tipo, así que se limpia.
-    setIncludedServices([])
   }
 
-  function toggleIncludedService(id: EventServiceId) {
-    setIncludedServices((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
-  }
-
+  // Una plantilla solo preconfigura la IDENTIDAD del evento (tipo, variante, tema y módulos): nunca fechas,
+  // lugares ni servicios, que se deciden en el configurador.
   function handleUseTemplate(id: string) {
     setTemplateId(id)
     const t = templates.find((tpl) => tpl.id === id)
@@ -790,26 +785,18 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
       setError('Ponle un nombre al evento.')
       return
     }
-    if (type === 'cumpleanos' && !ageTurning.trim()) {
-      setError('¿Cuántos años cumple?')
-      return
-    }
     setSaving(true)
     setError(null)
     try {
-      const details: Record<string, unknown> = {}
-      if (type === 'cumpleanos') details.ageTurning = Number(ageTurning)
       const id = await createEvent({
         type,
         subtype: type === 'celebracion' ? subtype : null,
         title,
-        dateStatus,
-        eventDate: dateStatus === 'pendiente' ? null : eventDate || null,
-        details,
+        dateStatus: 'pendiente',
+        eventDate: null,
+        details: {},
         enabledModules: modules,
         theme,
-        venueType: venueType || null,
-        includedServices: showIncludedServicesStep && includedServices.length > 0 ? includedServices : null,
       })
       onCreated(id)
     } catch (err) {
@@ -886,72 +873,16 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
               </select>
             </label>
           )}
-          {type === 'cumpleanos' && (
-            <label>
-              ¿Cuántos años cumple?
-              <input type="number" min={0} value={ageTurning} onChange={(e) => setAgeTurning(e.target.value)} />
-            </label>
-          )}
-          <label>
-            Fecha
-            <select value={dateStatus} onChange={(e) => setDateStatus(e.target.value as FamilyEvent['dateStatus'])}>
-              {DATE_STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {dateStatus !== 'pendiente' && (
-            <label>
-              {dateStatus === 'provisional' ? 'Fecha provisional' : 'Fecha'}
-              <input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-            </label>
-          )}
 
-          {/* Fase 1 del "inicio inteligente" (2026-09-30) — paso 1: dónde se celebra. En los tipos con
-              doble ubicación (boda/comunión/bautizo) se pregunta por la celebración/banquete, nunca por
-              la ceremonia — esa ya tiene su propio campo (CeremoniaSection, tras crear el evento) y una
-              iglesia/parroquia nunca "incluye" catering/música/decoración, así que no aporta nada aquí. */}
-          <label>
-            {DUAL_LOCATION_EVENT_TYPES.includes(type) ? '¿Dónde es la celebración (después de la ceremonia)?' : '¿Dónde se celebra?'}
-            <select value={venueType} onChange={(e) => setVenueType(e.target.value as EventVenueType | '')}>
-              <option value="">Prefiero no decirlo ahora</option>
-              <option value="restaurante_local">Restaurante/local con servicios incluidos</option>
-              <option value="casa_propia">Casa o espacio propio, lo organizamos nosotros</option>
-              <option value="otro">Otro</option>
-            </select>
-          </label>
-          {showIncludedServicesStep && (
-            <label>
-              ¿Qué incluye ya el lugar/proveedor?
-              <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-                {includableServices.map((s) => {
-                  const checked = includedServices.includes(s)
-                  return (
-                    <button key={s} type="button" className={'chip' + (checked ? ' chip-active' : '')} onClick={() => toggleIncludedService(s)}>
-                      {EVENT_SERVICE_META[s].label}
-                    </button>
-                  )
-                })}
-              </div>
-              <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                Lo que marques aquí no hace falta volver a presupuestarlo aparte — pero seguirás pudiendo
-                decidir sabor, colores, contacto del proveedor y todo lo demás desde el propio evento.
-              </p>
-            </label>
-          )}
-
-          {/* Paso 3 — sustituye el antiguo "Recomendado"/"Elegir yo": los 14 módulos están siempre
-              visibles, los recomendados llegan premarcados, y el usuario decide libremente (marcar,
-              desmarcar, combinar) — nunca ocultos, nunca bloqueados. */}
+          {/* Los 14 módulos están siempre visibles, los recomendados llegan premarcados y el usuario decide
+              libremente (marcar, desmarcar, combinar) — nunca ocultos, nunca bloqueados. */}
           <strong style={{ marginTop: 8 }}>¿Qué quieres organizar en PEPA?</strong>
           <p className="muted" style={{ fontSize: 12, margin: '-4px 0 0' }}>
             ✨ Pepa te recomienda {recommendedModules.length} de {EVENT_MODULES.length} módulos para este evento.
           </p>
           <ModulePickerChips modules={modules} onChange={setModules} recommended={new Set(recommendedModules)} />
           <p className="muted" style={{ fontSize: 12 }}>
-            Podrás activar o desactivar módulos más adelante desde el propio evento.
+            La fecha, el lugar y el resto de detalles los iréis decidiendo después, en «Cómo queréis que sea vuestro evento». Podrás activar o desactivar módulos más adelante desde el propio evento.
           </p>
 
           <button type="submit" disabled={saving}>
@@ -1467,15 +1398,13 @@ function EventDetail({
             <FitText as="p" maxSize={14} className="muted event-hero-line" style={{ margin: '6px 0 0' }}>
               📅 {eventShortDateLabel(event)}
               {event.eventDate && (
-                <button
-                  type="button"
+                <span
                   className="event-status-badge"
-                  onClick={() => setShowManage(true)}
-                  title={event.dateStatus === 'confirmada' ? 'Fecha confirmada — tocar para editar' : 'Fecha provisional — tocar para editar'}
+                  title={event.dateStatus === 'confirmada' ? 'Fecha confirmada' : 'Fecha provisional'}
                   aria-label={event.dateStatus === 'confirmada' ? 'Fecha confirmada' : 'Fecha provisional'}
                 >
-                  {event.dateStatus === 'confirmada' ? '✔️' : '❓'}
-                </button>
+                  {event.dateStatus === 'confirmada' ? '✓' : '◷'}
+                </span>
               )}
             </FitText>
             {/* Fase 2 — un evento estructurado por momentos (boda/comunión/bautizo con Ceremonia y
@@ -1757,16 +1686,6 @@ function ManageEventModal({
   onDelete: () => void
 }) {
   const [title, setTitle] = useState(event.title)
-  const [dateStatus, setDateStatus] = useState(event.dateStatus)
-  const [eventDate, setEventDate] = useState(event.eventDate ?? '')
-  const [venueLabel, setVenueLabel] = useState(event.venueLabel ?? '')
-  const [venueCoords, setVenueCoords] = useState(
-    event.venueLatitude != null && event.venueLongitude != null ? { latitude: event.venueLatitude, longitude: event.venueLongitude } : null,
-  )
-  // Corrección real (bug observado: la dirección postal legible desaparecía al volver a abrir "Gestionar
-  // evento") — dirección/place_id del sitio elegido, por separado de venueLabel/venueCoords.
-  const [venueAddress, setVenueAddress] = useState(event.venueAddress ?? null)
-  const [venuePlaceId, setVenuePlaceId] = useState(event.venuePlaceId ?? null)
   const [theme, setTheme] = useState(event.theme ?? '')
   const [rsvpDeadline, setRsvpDeadline] = useState(event.rsvpDeadline ?? '')
   const [savingInfo, setSavingInfo] = useState(false)
@@ -1820,22 +1739,13 @@ function ManageEventModal({
     setInfoError(null)
     setInfoSaved(false)
     try {
-      const nextDate = dateStatus === 'pendiente' ? null : eventDate || null
+      // La fecha y el lugar ya NO se editan aquí: viven en el primer bloque del configurador («Ceremonia y
+      // celebración» / «Celebración»), única fuente para el resto de la app.
       await updateEvent(event.id, {
         title,
-        dateStatus,
-        eventDate: nextDate,
-        venueLabel: venueLabel || null,
-        venueLatitude: venueCoords?.latitude ?? null,
-        venueLongitude: venueCoords?.longitude ?? null,
-        venueAddress: venueAddress,
-        venuePlaceId: venuePlaceId,
         theme: theme || null,
         rsvpDeadline: rsvpDeadline || null,
       })
-      // Petición de la Skill: "relative tasks update when event date
-      // changes" — solo se recalcula si la fecha de verdad ha cambiado.
-      if (nextDate !== event.eventDate) await recalculateAutoTasks(event.id, event.type, nextDate)
       onChanged()
       setInfoSaved(true)
     } catch (err) {
@@ -1879,44 +1789,10 @@ function ManageEventModal({
             Nombre
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
-          <label>
-            Fecha
-            <select value={dateStatus} onChange={(e) => setDateStatus(e.target.value as FamilyEvent['dateStatus'])}>
-              {DATE_STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {dateStatus !== 'pendiente' && (
-            <label>
-              {dateStatus === 'provisional' ? 'Fecha provisional' : 'Fecha'}
-              <input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-            </label>
-          )}
-          {/* Fase 2 — un evento estructurado por momentos (más abajo, sección "Momentos") no tiene un
-              único "Lugar": mostrarlo aquí sería el mismo dato duplicado que ya detectó la auditoría real
-              (venue_label = celebration_location_label en "Boda de plata"). Eventos simples (cumpleaños,
-              comidas...) siguen exactamente igual que siempre. */}
-          {!isEventStructuredByMoments(event) && (
-            <>
-              <label>
-                Lugar (como se ve en la invitación)
-                <input type="text" value={venueLabel} onChange={(e) => setVenueLabel(e.target.value)} placeholder="Ej. en mi casa, Restaurante La Terraza…" />
-              </label>
-              <EventLocationCoordsPicker
-                coords={venueCoords}
-                onCoordsChange={setVenueCoords}
-                initialAddress={venueAddress}
-                initialPlaceId={venuePlaceId}
-                onPlaceDetails={(details) => {
-                  setVenueAddress(details.address)
-                  setVenuePlaceId(details.placeId)
-                }}
-              />
-            </>
-          )}
+          <p className="muted" style={{ fontSize: 12, margin: '0 0 4px' }}>
+            📅 La fecha, el lugar y lo que incluye se deciden en ✨ «Cómo queréis que sea vuestro evento» →{' '}
+            {isEventStructuredByMoments(event) ? 'Ceremonia y celebración' : 'Celebración'}.
+          </p>
           <label>
             Tema
             <input type="text" value={theme} onChange={(e) => setTheme(e.target.value)} />
@@ -1929,16 +1805,6 @@ function ManageEventModal({
             {savingInfo ? 'Guardando…' : infoSaved ? '✓ Guardado' : 'Guardar información'}
           </button>
         </form>
-
-        {isEventStructuredByMoments(event) && (
-          <div className="card event-card" style={{ marginTop: 8 }}>
-            <strong>Momentos</strong>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Ceremonia, celebración o cualquier otro momento con su propio lugar y hora — al invitar a cada familia, eliges a cuáles va.
-            </p>
-            <MomentsEditor event={event} onChanged={onChanged} />
-          </div>
-        )}
 
         {event.type === 'boda' && (
           <form className="card event-card" style={{ marginTop: 8 }} onSubmit={handleSavePair}>
@@ -2482,11 +2348,15 @@ function EventPlanningConfigurator({
   onDerivedDataChanged: () => void
 }) {
   const [open, setOpen] = useState(() => loadConfiguratorOpen(event.id))
-  const [blockOpen, setBlockOpen] = useState(() => loadConfiguratorOpen(event.id, 'ceremonia_celebracion'))
+  // Primer bloque: «Ceremonia y celebración» o «Celebración» (mismo acordeón, recuerda el estado que tuvieran
+  // los dos antiguos). Nunca dos bloques paralelos.
+  const structuredByMoments = isEventStructuredByMoments(event)
+  const [celebracionOpen, setCelebracionOpen] = useState(
+    () => loadConfiguratorOpen(event.id, 'celebracion') || loadConfiguratorOpen(event.id, structuredByMoments ? 'ceremonia_celebracion' : 'lugar_contexto'),
+  )
   // "📍 Dónde lo vais a celebrar" — alternativa ligera a Ceremonia y celebración para eventos SIN ceremonia
   // (cumpleaños, celebración, personalizado, o boda/comunión/bautizo con el módulo "ceremonia" apagado):
   // mutuamente excluyente con el bloque de arriba, nunca los dos a la vez.
-  const [lugarOpen, setLugarOpen] = useState(() => loadConfiguratorOpen(event.id, 'lugar_contexto'))
   // "👰🤵 La pareja" — segundo bloque, solo para boda (DUAL_LOCATION_EVENT_TYPES también incluye
   // comunión/bautizo, que no tienen "pareja"). Mismo patrón exacto de acordeón por bloque que Ceremonia.
   const [pairOpen, setPairOpen] = useState(() => loadConfiguratorOpen(event.id, 'pareja'))
@@ -2507,15 +2377,10 @@ function EventPlanningConfigurator({
     setOpen(next)
     saveConfiguratorOpen(event.id, null, next)
   }
-  function toggleBlock() {
-    const next = !blockOpen
-    setBlockOpen(next)
-    saveConfiguratorOpen(event.id, 'ceremonia_celebracion', next)
-  }
-  function toggleLugarBlock() {
-    const next = !lugarOpen
-    setLugarOpen(next)
-    saveConfiguratorOpen(event.id, 'lugar_contexto', next)
+  function toggleCelebracion() {
+    const next = !celebracionOpen
+    setCelebracionOpen(next)
+    saveConfiguratorOpen(event.id, 'celebracion', next)
   }
   function togglePairBlock() {
     const next = !pairOpen
@@ -2552,43 +2417,23 @@ function EventPlanningConfigurator({
       </button>
       {open && (
         <div style={{ marginTop: 8 }}>
-          {isEventStructuredByMoments(event) ? (
-            <>
-              <button
-                type="button"
-                className="link-button"
-                onClick={toggleBlock}
-                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
-                aria-expanded={blockOpen}
-              >
-                🕊️ Ceremonia y celebración
-                <span aria-hidden="true">{blockOpen ? '▾' : '▸'}</span>
-              </button>
-              {blockOpen && (
-                <div style={{ marginTop: 4 }}>
-                  <MomentsEditor event={event} onChanged={onChanged} />
-                </div>
-              )}
-            </>
-          ) : (
-            <div>
-              <button
-                type="button"
-                className="link-button"
-                onClick={toggleLugarBlock}
-                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
-                aria-expanded={lugarOpen}
-              >
-                📍 Dónde lo vais a celebrar
-                <span aria-hidden="true">{lugarOpen ? '▾' : '▸'}</span>
-              </button>
-              {lugarOpen && (
-                <div style={{ marginTop: 4 }}>
-                  <LugarContextoBlock event={event} onChanged={onChanged} />
-                </div>
-              )}
-            </div>
-          )}
+          <div>
+            <button
+              type="button"
+              className="link-button"
+              onClick={toggleCelebracion}
+              style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+              aria-expanded={celebracionOpen}
+            >
+              {celebrationBlockTitle(event.type, structuredByMoments)}
+              <span aria-hidden="true">{celebracionOpen ? '▾' : '▸'}</span>
+            </button>
+            {celebracionOpen && (
+              <div style={{ marginTop: 4 }}>
+                <CelebracionBlock event={event} structured={structuredByMoments} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />
+              </div>
+            )}
+          </div>
           {event.type === 'boda' && (
             <div style={{ marginTop: 8 }}>
               <button
@@ -2665,6 +2510,14 @@ function EventPlanningConfigurator({
   )
 }
 
+// ---------------------------------------------------------------------
+// Primer bloque del configurador: «Ceremonia y celebración» (eventos con ceremonia, organizados por momentos)
+// o «Celebración» (el resto). Desde la alta mínima ("Nuevo evento" solo pide nombre, tipo y módulos) aquí viven
+// la edad (cumpleaños), la fecha con su estado (◷ Provisional / ✓ Confirmada), el lugar y qué servicios
+// incluye ese lugar. Los demás bloques (Comida y bebida, y los que vengan) CONSUMEN esta información; nunca la
+// vuelven a preguntar. Ver src/domain/eventCelebration.ts para la regla de la fecha operativa.
+// ---------------------------------------------------------------------
+
 const LUGAR_CONTEXTO_OPTIONS: { value: LugarContextoChoice; label: string }[] = [
   { value: 'en_casa', label: 'En casa' },
   { value: 'restaurante_local', label: 'Restaurante / local' },
@@ -2673,38 +2526,24 @@ const LUGAR_CONTEXTO_OPTIONS: { value: LugarContextoChoice; label: string }[] = 
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
 ]
 
-// "📍 Dónde lo vais a celebrar" — una sola pregunta de CONTEXTO (nunca la dirección, que sigue viviendo en
-// venueLabel/"Gestionar evento"), nunca genera Preparativo/Presupuesto/Proveedor por sí sola (igual que
-// Momentos en Invitados): se guarda directamente con upsertEventDecision, sin pasar por
-// applyPairDecisionGeneration, porque no hay nada que reconciliar.
-function LugarContextoBlock({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
-  const [decisions, setDecisions] = useState<EventDecision[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+// Edad que cumple (solo cumpleaños): vive dentro de «Celebración», nunca en un bloque aparte. Sigue siendo
+// details.ageTurning (invitaciones, sugerencias de regalo y demás lo leen de ahí, sin cambios).
+function EventAgeField({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
+  const current = ageTurning(event)
+  const [value, setValue] = useState(current !== null ? String(current) : '')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function reload(): Promise<void> {
-    return listEventDecisions(event.id)
-      .then((d) => setDecisions(d.filter((x) => x.questionKey === LUGAR_CONTEXTO_QUESTION_KEY)))
-      .catch((err) => setError(errorMessage(err, 'No se pudo cargar')))
-      .finally(() => setLoading(false))
-  }
-  useEffect(() => {
-    void reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event.id])
-
-  async function save(answer: { choice: LugarContextoChoice; custom?: CustomResolution }) {
+  async function save() {
     setSaving(true)
     setError(null)
     try {
-      await upsertEventDecision(event.id, {
-        blockKey: 'lugar_contexto',
-        questionKey: LUGAR_CONTEXTO_QUESTION_KEY,
-        answer: answer as unknown as Record<string, unknown>,
-        isCustomOption: answer.choice === 'otro',
-      })
-      await reload()
+      const details = { ...event.details }
+      const n = Number(value)
+      if (value.trim() && Number.isFinite(n) && n >= 0) details.ageTurning = n
+      else delete details.ageTurning
+      await updateEvent(event.id, { details })
+      onChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -2712,33 +2551,288 @@ function LugarContextoBlock({ event, onChanged }: { event: FamilyEvent; onChange
     }
   }
 
-  if (loading) return null
-  const decision = decisions.find((d) => d.questionKey === LUGAR_CONTEXTO_QUESTION_KEY)
-  const status = lugarContextoStatus(decisions)
-  const lugarAnswer = decision?.answer as unknown as LugarContextoAnswer | undefined
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Cuántos años cumple?
+      </div>
+      {error && <p className="error">{error}</p>}
+      <div className="inline-fields">
+        <input type="number" min={0} value={value} onChange={(e) => setValue(e.target.value)} aria-label="Años que cumple" style={{ maxWidth: 100 }} />
+        <button type="button" className="link-button" disabled={saving || String(current ?? '') === value.trim()} onClick={save}>
+          {saving ? 'Guardando…' : current !== null && String(current) === value.trim() ? '✓ Guardado' : 'Guardar'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Fecha del evento con su estado. Cambiar de Provisional a Confirmada actualiza el estado de LA MISMA fecha —
+// nunca crea otra. Es la única fecha operativa (events.event_date / date_status): calendario, cuenta atrás y
+// tareas relativas siguen leyendo ahí, y updateEvent ya las mantiene al día.
+function EventDateField({
+  event,
+  onChanged,
+  onTodavia,
+  hint,
+}: {
+  event: FamilyEvent
+  onChanged: () => void
+  onTodavia: () => Promise<void>
+  hint?: string
+}) {
+  const [status, setStatus] = useState<FamilyEvent['dateStatus']>(event.dateStatus)
+  const [date, setDate] = useState(event.eventDate ?? '')
+  const [time, setTime] = useState(event.eventTime?.slice(0, 5) ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setStatus(event.dateStatus)
+    setDate(event.eventDate ?? '')
+    setTime(event.eventTime?.slice(0, 5) ?? '')
+  }, [event.dateStatus, event.eventDate, event.eventTime])
+
+  async function run(action: () => Promise<void>) {
+    setSaving(true)
+    setError(null)
+    try {
+      await action()
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function choose(next: FamilyEvent['dateStatus']) {
+    if (next === 'pendiente') {
+      if (event.eventDate && !window.confirm('Se quitará la fecha que tenéis puesta y el evento volverá a «Todavía no lo sabemos». ¿Seguro?')) return
+      void run(async () => {
+        await updateEvent(event.id, { dateStatus: 'pendiente', eventDate: null, eventTime: null })
+        if (event.eventDate) await recalculateAutoTasks(event.id, event.type, null)
+        await onTodavia()
+      })
+      return
+    }
+    setStatus(next)
+    // Ya hay una fecha guardada: solo cambia su estado (la misma fecha), sin pedirla otra vez.
+    if (event.eventDate && next !== event.dateStatus) void run(() => updateEvent(event.id, { dateStatus: next }))
+  }
+
+  function saveDate() {
+    if (!date || status === 'pendiente') return
+    void run(async () => {
+      await updateEvent(event.id, { dateStatus: status, eventDate: date, eventTime: time || null })
+      if (date !== event.eventDate) await recalculateAutoTasks(event.id, event.type, date)
+    })
+  }
+
+  const label = dateWithStatusLabel(event.eventDate, event.dateStatus)
+  const dirty = status !== 'pendiente' && (date !== (event.eventDate ?? '') || time !== (event.eventTime?.slice(0, 5) ?? '') || !event.eventDate)
 
   return (
-    <div className="card" style={{ padding: 8 }}>
-      {status === 'por_decidir' && (
-        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
-          ⏳ por decidir
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Cuándo es?
+      </div>
+      {label && <p style={{ margin: '2px 0', fontWeight: 600 }}>📅 {label}</p>}
+      {hint && (
+        <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+          {hint}
         </p>
       )}
       {error && <p className="error">{error}</p>}
+      <ChoiceRow options={DATE_STATUS_CHOICES} value={status} disabled={saving} onSelect={choose} />
+      {status !== 'pendiente' && (
+        <div className="inline-fields" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Fecha" />
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Hora (opcional)" />
+          <button type="button" className="link-button" disabled={saving || !date || !dirty} onClick={saveDate}>
+            {saving ? 'Guardando…' : 'Guardar fecha'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Lugar registrado (nombre + dirección) con «Cambiar ubicación»; si todavía no hay, el mismo editor de siempre
+// (nombre + buscador de Google Maps). Reutiliza CasaLocationManualPicker: la única infraestructura de selección
+// de ubicación del evento, ya validada (venue_label / address / place_id / coordenadas).
+function VenuePlaceBlock({ event, onChanged }: { event: FamilyEvent; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const hasPlace = Boolean(event.venueLabel?.trim()) || (event.venueLatitude != null && event.venueLongitude != null)
+  if (hasPlace && !editing) {
+    return (
+      <div className="card" style={{ padding: 8, marginTop: 6 }}>
+        <strong style={{ fontSize: 13 }}>📍 Ubicación del evento</strong>
+        <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+          {event.venueLabel || 'Sin nombre'}
+          {event.venueAddress && <br />}
+          {event.venueAddress}
+        </p>
+        <button type="button" className="link-button" onClick={() => setEditing(true)}>
+          Cambiar ubicación
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 6 }}>
+      <CasaLocationManualPicker
+        event={event}
+        noCasaConfigured={false}
+        onSaved={() => {
+          setEditing(false)
+          onChanged()
+        }}
+      />
+    </div>
+  )
+}
+
+function CelebracionBlock({
+  event,
+  structured,
+  onChanged,
+  onDerivedDataChanged,
+}: {
+  event: FamilyEvent
+  structured: boolean
+  onChanged: () => void
+  onDerivedDataChanged: () => void
+}) {
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [moments, setMoments] = useState<EventMoment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  function reload(): Promise<void> {
+    return Promise.all([listEventDecisions(event.id), structured ? listEventMoments(event.id) : Promise.resolve([] as EventMoment[])])
+      .then(([d, m]) => {
+        setDecisions(d)
+        setMoments(m)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id, structured])
+  // MomentsEditor puede crear/editar/borrar momentos mientras este bloque está montado.
+  useEventMomentsChangeSignal(event.id, reload)
+
+  const hasMomentLocation = moments.some((m) => Boolean(m.locationLabel?.trim()))
+  const hasDatedMoment = moments.some((m) => m.momentDate)
+
+  // Lo que dependía de «qué incluye el lugar» / «es en casa» en Comida y bebida se reconcilia con las reglas
+  // de siempre (se retira solo lo no tocado). Sin decisiones de comida todavía, no escribe nada.
+  async function afterVenueDecision() {
+    await reload()
+    const actions = await reconcileFoodForVenueChange(event, hasMomentLocation)
+    // Comida y bebida (si está abierto) vuelve a leer lo que ha cambiado aquí.
+    notifyEventMomentsChanged(event.id)
+    if (actions.length > 0) {
+      onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    }
+  }
+
+  async function saveDecision(blockKey: string, questionKey: string, answer: Record<string, unknown>, isCustomOption = false, reconcileFood = false) {
+    setSavingKey(questionKey)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, { blockKey, questionKey, answer, isCustomOption })
+      if (reconcileFood) await afterVenueDecision()
+      else await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  if (loading) return null
+
+  const facts = { event, decisions, hasMomentLocation, structuredByMoments: structured }
+  const summary = summarizeCelebrationBlock(facts)
+  const contextoDecision = decisions.find((d) => d.questionKey === LUGAR_CONTEXTO_QUESTION_KEY)
+  const contexto = contextoDecision?.answer as unknown as LugarContextoAnswer | undefined
+  const venueCase = resolveVenueCase(event, decisions, hasMomentLocation)
+  const servicesLabel = venueServicesQuestionLabel(venueCase)
+  const servicesAnswer = effectiveVenueServicesAnswer(decisions, event.includedServices)
+  const showPlace =
+    !structured && contexto?.choice !== 'en_casa' && (contexto?.choice === 'restaurante_local' || contexto?.choice === 'exterior' || contexto?.choice === 'otro' || Boolean(event.venueLabel?.trim()))
+
+  return (
+    <div className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
+
+      {!structured && event.type === 'cumpleanos' && <EventAgeField event={event} onChanged={onChanged} />}
+
+      {structured && (
+        <>
+          <p className="muted" style={{ fontSize: 13, margin: '0 0 4px' }}>
+            Ceremonia, celebración o cualquier otro momento con su propia fecha, hora y lugar — al invitar a cada familia, eliges a cuáles va.
+          </p>
+          <MomentsEditor event={event} onChanged={onChanged} />
+        </>
+      )}
+
+      {!structured || !hasDatedMoment ? (
+        <EventDateField
+          event={event}
+          onChanged={onChanged}
+          onTodavia={() => upsertEventDecision(event.id, { blockKey: CELEBRATION_BLOCK_KEY, questionKey: CELEBRATION_DATE_QUESTION_KEY, answer: { choice: 'todavia_no_lo_sabemos' } }).then(() => reload())}
+          hint={structured ? 'Cuando pongas fecha a un momento, la del evento pasará a calcularse de ellos.' : undefined}
+        />
+      ) : (
+        <p style={{ margin: '8px 0 0', fontSize: 13 }}>
+          📅 Fecha del evento: <strong>{dateWithStatusLabel(event.eventDate, event.dateStatus) ?? 'por decidir'}</strong>
+          <span className="muted"> — la del primer momento con fecha.</span>
+        </p>
+      )}
+
       <CustomAwareQuestion
         event={event}
-        questionLabel="¿Dónde lo vais a celebrar?"
+        questionLabel={structured ? '¿Dónde será la celebración?' : '¿Dónde lo vais a celebrar?'}
         options={LUGAR_CONTEXTO_OPTIONS}
         questionKey={LUGAR_CONTEXTO_QUESTION_KEY}
-        decision={decision}
-        savingKey={saving ? LUGAR_CONTEXTO_QUESTION_KEY : null}
-        onSave={(answer) => save(answer as LugarContextoAnswer)}
+        decision={contextoDecision}
+        savingKey={savingKey}
+        onSave={(answer) => saveDecision('lugar_contexto', LUGAR_CONTEXTO_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', true)}
       />
-      {/* "En casa" → proponer la Casa familiar (siguiente mejora, validada por separado) — la DECISIÓN
-          de contexto ("lo celebramos en casa") y la UBICACIÓN física (events.venue_*) son dos cosas
-          distintas a propósito: esto solo entra en juego cuando la decisión ya es 'en_casa', nunca
-          guarda nada propio en event_decisions. */}
-      {lugarAnswer?.choice === 'en_casa' && <CasaLocationBlock event={event} onChanged={onChanged} />}
+      {!contexto && event.venueType && (
+        <p style={{ fontSize: 13, margin: '2px 0' }}>
+          ✓ Información que ya teníamos del evento:{' '}
+          {event.venueType === 'restaurante_local' ? 'restaurante / local con servicios' : event.venueType === 'casa_propia' ? 'casa o espacio propio' : 'otro lugar'}
+        </p>
+      )}
+      {/* «En casa» → proponer la Casa familiar (validado por separado): la DECISIÓN de contexto y la UBICACIÓN
+          física (events.venue_*) son dos cosas distintas; el evento guarda su propia copia, sin vínculo vivo. */}
+      {!structured && contexto?.choice === 'en_casa' && <CasaLocationBlock event={event} onChanged={onChanged} />}
+      {showPlace && <VenuePlaceBlock event={event} onChanged={onChanged} />}
+
+      {servicesLabel && (
+        <VenueServicesQuestion
+          label={servicesLabel}
+          existing={servicesAnswer}
+          fromLegacy={venueServicesFromLegacy(decisions, event.includedServices)}
+          legacyOnly={legacyOnlyServiceLabels(event.includedServices)}
+          saving={savingKey === VENUE_SERVICES_QUESTION_KEY}
+          onSave={(a) => saveDecision(VENUE_SERVICES_BLOCK_KEY, VENUE_SERVICES_QUESTION_KEY, a as unknown as Record<string, unknown>, false, true)}
+        />
+      )}
     </div>
   )
 }
@@ -4888,13 +4982,17 @@ function FoodInheritedLine({ children }: { children: ReactNode }) {
 function VenueServicesQuestion({
   label,
   existing,
-  legacy,
+  fromLegacy,
+  legacyOnly,
   saving,
   onSave,
 }: {
   label: string
   existing: VenueServicesAnswer | undefined
-  legacy: VenueServiceKey[]
+  // true = la respuesta efectiva viene del alta antigua (events.included_services): es información que ya
+  // teníamos, no una sugerencia — se muestra como seleccionada, sin pedir ningún clic.
+  fromLegacy: boolean
+  legacyOnly: string[]
   saving: boolean
   onSave: (answer: VenueServicesAnswer) => void
 }) {
@@ -4915,10 +5013,11 @@ function VenueServicesQuestion({
       <div className="muted" style={{ fontSize: 13 }}>
         {label}
       </div>
-      {!existing && legacy.length > 0 && (
-        <button type="button" className="link-button" disabled={saving} onClick={() => onSave({ choice: 'seleccionar', selected: legacy, customItems: [] })}>
-          Usar lo que indicasteis al crear el evento: {legacy.map((k) => venueServiceLabel(k).toLowerCase()).join(', ')}
-        </button>
+      {fromLegacy && existing && (
+        <p style={{ fontSize: 13, margin: '2px 0' }}>
+          ✓ Información que ya teníamos del evento: {existing.selected.map((k) => `${VENUE_SERVICES.find((x) => x.key === k)?.icon ?? ''} ${venueServiceLabel(k)}`).join(' · ')}
+          {legacyOnly.length > 0 ? ` (y también ${legacyOnly.join(', ')})` : ''}
+        </p>
       )}
       <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
         {VENUE_SERVICES.map((s) => (
@@ -5931,6 +6030,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
   const [guests, setGuests] = useState<EventGuest[]>([])
   const [members, setMembers] = useState<EventGuestMember[]>([])
   const [needs, setNeeds] = useState<EventDietaryNeed[]>([])
+  const [moments, setMoments] = useState<EventMoment[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -5938,8 +6038,9 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
   const [costPrompt, setCostPrompt] = useState<{ item: { id: string; category: string }; taskCompleted: boolean } | null>(null)
 
   function reloadAll(): Promise<void> {
-    return Promise.all([listEventDecisions(event.id), listEventMenuItems(event.id), listEventGuests(event.id), listEventGuestMembersForEvent(event.id), listEventDietaryNeeds(event.id), listRecipes()])
-      .then(([d, m, g, gm, n, r]) => {
+    return Promise.all([listEventDecisions(event.id), listEventMenuItems(event.id), listEventGuests(event.id), listEventGuestMembersForEvent(event.id), listEventDietaryNeeds(event.id), listRecipes(), listEventMoments(event.id)])
+      .then(([d, m, g, gm, n, r, mo]) => {
+        setMoments(mo)
         setDecisions(d)
         setMenuItems(m)
         setGuests(g)
@@ -5954,9 +6055,12 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
     void reloadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event.id])
+  // El primer bloque (Celebración) avisa cuando cambia el lugar o lo que incluye: aquí solo se vuelve a leer.
+  useEventMomentsChangeSignal(event.id, () => void reloadAll())
 
   const needsState = useMemo(() => computeFoodNeedsState(guests, members, needs), [guests, members, needs])
-  const ctx = useMemo(() => buildFoodContext(event, decisions, menuItems, needsState), [event, decisions, menuItems, needsState])
+  const hasMomentLocation = moments.some((m) => Boolean(m.locationLabel?.trim()))
+  const ctx = useMemo(() => buildFoodContext(event, decisions, menuItems, needsState, hasMomentLocation), [event, decisions, menuItems, needsState, hasMomentLocation])
 
   function handleEffects(actions: ReconcileAction[], pendingBudgetItem: { id: string; category: string } | null, planCreated: number) {
     if (pendingBudgetItem) {
@@ -5976,7 +6080,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
       const blockKey = questionKey === VENUE_SERVICES_QUESTION_KEY ? VENUE_SERVICES_BLOCK_KEY : FOOD_BLOCK_KEY
       const saved = await upsertEventDecision(event.id, { blockKey, questionKey, answer, isCustomOption })
       const nextDecisions = [...decisions.filter((d) => d.questionKey !== questionKey), saved]
-      const nextCtx = buildFoodContext(event, nextDecisions, menuItems, needsState)
+      const nextCtx = buildFoodContext(event, nextDecisions, menuItems, needsState, hasMomentLocation)
       let allActions: ReconcileAction[] = []
       let pendingBudgetItem: { id: string; category: string } | null = null
       for (const key of dependentFoodKeys(questionKey)) {
@@ -6020,17 +6124,13 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
   const find = (key: string) => decisions.find((d) => d.questionKey === key)
   const answerOf = <T,>(key: string): T | undefined => find(key)?.answer as unknown as T | undefined
   const venueCase = ctx.venueCase
-  const venueLabel = venueServicesQuestionLabel(venueCase)
-  const venueAnswer = venueServicesAnswer(decisions)
-  const legacyVenue = legacyIncludedServicesToVenue(event.includedServices)
   const included = includedByVenueLines(ctx)
   const quien = quienAnswer(ctx)
   const estado = menuEstadoAnswer(ctx)
   const infantilNeeded = ninosNeedMenuInfantil(decisions)
   const infantil = answerOf<MenuInfantilAnswer>(FOOD_MENU_INFANTIL_KEY)
   const tartaWarning = tartaContradiction(decisions)
-  const extraStatuses = venueLabel ? [venueServicesStatus(decisions)] : []
-  const summary = summarizeFoodBlock(ctx, extraStatuses)
+  const summary = summarizeFoodBlock(ctx)
   const foodExists = foodWillExist(ctx)
   const showMainMenu = foodExists && (cooksThemselves(quien) || menuItems.some((i) => sectionKeyForCategory(i.category) !== 'menu_infantil'))
   const tartaDecision = find(FOOD_TARTA_KEY)
@@ -6046,11 +6146,9 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
       )}
       {error && <p className="error">{error}</p>}
 
-      {/* A) Qué incluye el lugar (información transversal; solo si hay un lugar que lo pueda incluir) */}
-      {venueLabel && (
-        <VenueServicesQuestion label={venueLabel} existing={venueAnswer} legacy={legacyVenue} saving={savingKey === VENUE_SERVICES_QUESTION_KEY} onSave={(a) => saveFood(VENUE_SERVICES_QUESTION_KEY, a as unknown as Record<string, unknown>)} />
-      )}
-      {venueCase === 'casa' && <FoodInheritedLine>🏠 Se celebra en casa: no hace falta preguntar qué incluye el lugar.</FoodInheritedLine>}
+      {/* A) Lo que ya sabemos del lugar — se decide en el primer bloque («Ceremonia y celebración» / «Celebración»);
+          aquí solo se CONSUME, nunca se vuelve a preguntar qué incluye el lugar. */}
+      {venueCase === 'casa' && <FoodInheritedLine>🏠 La celebración será en casa.</FoodInheritedLine>}
       {included.map((line) => (
         <FoodInheritedLine key={line}>{line}</FoodInheritedLine>
       ))}
@@ -6220,8 +6318,9 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
 
 const MOMENT_TITLE_SUGGESTIONS = ['Matrimonio civil', 'Ceremonia religiosa', 'Ceremonia simbólica', 'Celebración', 'Comida', 'Fiesta', 'Brunch']
 
-function momentSummaryLine(m: EventMoment): string {
-  const date = m.momentDate ? formatSpanishDate(m.momentDate) : 'Fecha por decidir'
+function momentSummaryLine(m: EventMoment, eventDateStatus: FamilyEvent['dateStatus'] = 'confirmada'): string {
+  const status = momentDateStatus(m, eventDateStatus)
+  const date = m.momentDate ? `${formatSpanishDate(m.momentDate)}${status ? ` · ${dateStatusLabel(status)}` : ''}` : 'Fecha por decidir'
   const time = m.momentTime ? m.momentTime.slice(0, 5) : 'Hora por decidir'
   return `${date} · ${time}`
 }
@@ -6234,11 +6333,25 @@ interface MomentFormValues {
   locationAddress: string | null
   locationPlaceId: string | null
   coords: { latitude: number; longitude: number } | null
+  dateStatus: 'provisional' | 'confirmada' | null
 }
 
-function MomentForm({ initial, onCancel, onSave }: { initial?: EventMoment; onCancel: () => void; onSave: (patch: MomentFormValues) => Promise<void> }) {
+function MomentForm({
+  initial,
+  eventDateStatus,
+  onCancel,
+  onSave,
+}: {
+  initial?: EventMoment
+  eventDateStatus: FamilyEvent['dateStatus']
+  onCancel: () => void
+  onSave: (patch: MomentFormValues) => Promise<void>
+}) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [momentDate, setMomentDate] = useState(initial?.momentDate ?? '')
+  // Una fecha nueva arranca ◷ Provisional (nunca se da por confirmada sola); un momento antiguo conserva el
+  // estado que tuviera (o el del evento, si heredaba).
+  const [dateStatus, setDateStatus] = useState<'provisional' | 'confirmada'>(initial ? (momentDateStatus(initial, eventDateStatus) ?? 'provisional') : 'provisional')
   const [momentTime, setMomentTime] = useState(initial?.momentTime?.slice(0, 5) ?? '')
   const [locationLabel, setLocationLabel] = useState(initial?.locationLabel ?? '')
   // Cierre de Fase 2 (Google Maps) — dirección/place_id por separado del nombre visible. locationLabel
@@ -6276,6 +6389,7 @@ function MomentForm({ initial, onCancel, onSave }: { initial?: EventMoment; onCa
         locationAddress,
         locationPlaceId,
         coords,
+        dateStatus: momentDate ? dateStatus : null,
       })
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -6303,6 +6417,17 @@ function MomentForm({ initial, onCancel, onSave }: { initial?: EventMoment; onCa
         Fecha <span className="muted">(opcional — puede decidirse más adelante)</span>
         <input type="date" value={momentDate} onChange={(e) => setMomentDate(e.target.value)} />
       </label>
+      {momentDate && (
+        <ChoiceRow
+          options={[
+            { value: 'provisional' as const, label: '◷ Provisional' },
+            { value: 'confirmada' as const, label: '✓ Confirmada' },
+          ]}
+          value={dateStatus}
+          disabled={saving}
+          onSelect={setDateStatus}
+        />
+      )}
       <label>
         Hora <span className="muted">(opcional)</span>
         <input type="time" value={momentTime} onChange={(e) => setMomentTime(e.target.value)} />
@@ -6331,6 +6456,7 @@ function MomentForm({ initial, onCancel, onSave }: { initial?: EventMoment; onCa
 
 function MomentCard({
   moment,
+  eventDateStatus,
   guestCount,
   canMoveUp,
   canMoveDown,
@@ -6340,6 +6466,7 @@ function MomentCard({
   onMoveDown,
 }: {
   moment: EventMoment
+  eventDateStatus: FamilyEvent['dateStatus']
   guestCount: number
   canMoveUp: boolean
   canMoveDown: boolean
@@ -6366,7 +6493,7 @@ function MomentCard({
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 600 }}>{moment.title}</div>
           <div className="muted" style={{ fontSize: 13 }}>
-            {momentSummaryLine(moment)}
+            {momentSummaryLine(moment, eventDateStatus)}
           </div>
           <div className="muted" style={{ fontSize: 13 }}>
             {moment.locationLabel || 'Lugar por decidir'}
@@ -6455,8 +6582,11 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
       locationLongitude: input.coords?.longitude ?? null,
       locationAddress: input.locationAddress,
       locationPlaceId: input.locationPlaceId,
+      dateStatus: input.dateStatus,
     })
     setAddingOpen(false)
+    // La fecha del evento (única fuente operativa) se mantiene coherente con los momentos.
+    await syncOperationalDateFromMoments(event.id)
     await load()
     onChanged()
     notifyEventMomentsChanged(event.id)
@@ -6475,6 +6605,7 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
         locationLongitude: patch.coords?.longitude ?? null,
         locationAddress: patch.locationAddress,
         locationPlaceId: patch.locationPlaceId,
+        dateStatus: patch.dateStatus,
       })
     } else {
       await updateEventMoment(moment.id, {
@@ -6486,9 +6617,11 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
         locationLongitude: patch.coords?.longitude ?? null,
         locationAddress: patch.locationAddress,
         locationPlaceId: patch.locationPlaceId,
+        dateStatus: patch.dateStatus,
       })
     }
     setEditingId(null)
+    await syncOperationalDateFromMoments(event.id)
     await load()
     onChanged()
     notifyEventMomentsChanged(event.id)
@@ -6506,6 +6639,7 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
     } else {
       await deleteEventMoment(moment.id)
     }
+    await syncOperationalDateFromMoments(event.id)
     await load()
     onChanged()
     notifyEventMomentsChanged(event.id)
@@ -6535,13 +6669,14 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
       <div className="event-list">
         {moments.map((moment) => {
           if (editingId === moment.id) {
-            return <MomentForm key={moment.id} initial={moment} onCancel={() => setEditingId(null)} onSave={(patch) => handleEditSave(moment, patch)} />
+            return <MomentForm key={moment.id} initial={moment} eventDateStatus={event.dateStatus} onCancel={() => setEditingId(null)} onSave={(patch) => handleEditSave(moment, patch)} />
           }
           const realIndex = realMomentIds.indexOf(moment.id)
           return (
             <MomentCard
               key={moment.id}
               moment={moment}
+              eventDateStatus={event.dateStatus}
               guestCount={guestCounts.get(moment.id) ?? 0}
               canMoveUp={realIndex > 0}
               canMoveDown={realIndex !== -1 && realIndex < realMomentIds.length - 1}
@@ -6554,7 +6689,7 @@ function MomentsEditor({ event, onChanged }: { event: FamilyEvent; onChanged: ()
         })}
       </div>
       {addingOpen ? (
-        <MomentForm onCancel={() => setAddingOpen(false)} onSave={handleAdd} />
+        <MomentForm eventDateStatus={event.dateStatus} onCancel={() => setAddingOpen(false)} onSave={handleAdd} />
       ) : (
         <button type="button" className="link-button" onClick={() => setAddingOpen(true)} style={{ marginTop: 8 }}>
           + Añadir momento
@@ -8232,7 +8367,7 @@ function InvitationModal({
   const resolvedMoments = resolveEventMoments(event, moments)
   const usingRealMoments = hasRealMoments(resolvedMoments)
   const guestMoments = resolveGuestInvitedMoments(guest, resolvedMoments, guestMomentLinks)
-  const infoLines = [eventDateLine(event), ...(usingRealMoments ? momentsLocationLines(guestMoments) : eventLocationLines(event, guest))]
+  const infoLines = [eventDateLine(event), ...(usingRealMoments ? momentsLocationLines(guestMoments, event.dateStatus) : eventLocationLines(event, guest))]
 
   // Petición real: "prepara que cuando se mande la invitación se mande
   // automáticamente también la ubicación" — la invitación es una
@@ -9372,11 +9507,31 @@ function joinSpanishList(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`
 }
 
-function OrganizamePepaModal({ event, onClose, onApplied }: { event: FamilyEvent; onClose: () => void; onApplied: () => void }) {
-  // Fase 1 del "inicio inteligente" — el contexto respondido en el alta (o null en un evento creado
-  // antes de esta fase, que se comporta exactamente igual que sin contexto) se lee del propio evento
-  // guardado, no se vuelve a preguntar aquí.
-  const includedServices = event.includedServices ?? []
+// La propuesta razona con lo que el lugar incluye, que ahora se decide en el primer bloque del configurador
+// (o, en eventos antiguos, viene del alta antigua). Se lee ANTES de montar el modal para que los conceptos
+// propuestos ya lo tengan en cuenta desde el primer render.
+function OrganizamePepaModal(props: { event: FamilyEvent; onClose: () => void; onApplied: () => void }) {
+  const [includedServices, setIncludedServices] = useState<EventServiceId[] | null>(null)
+  useEffect(() => {
+    listEventDecisions(props.event.id)
+      .then((d) => setIncludedServices(venueServiceIdsForPlan(d, props.event.includedServices)))
+      .catch(() => setIncludedServices(props.event.includedServices ?? []))
+  }, [props.event.id, props.event.includedServices])
+  if (includedServices === null) return null
+  return <OrganizamePepaModalContent {...props} includedServices={includedServices} />
+}
+
+function OrganizamePepaModalContent({
+  event,
+  includedServices,
+  onClose,
+  onApplied,
+}: {
+  event: FamilyEvent
+  includedServices: EventServiceId[]
+  onClose: () => void
+  onApplied: () => void
+}) {
   const plan = generateEventPlan(event, { venueType: event.venueType, includedServices })
   // Retoque UX — informativo únicamente (no cambia `plan`): si el evento no respondió el paso 2, o
   // respondió que no hay servicios incluidos, includedServices queda vacío y esta frase no se muestra.

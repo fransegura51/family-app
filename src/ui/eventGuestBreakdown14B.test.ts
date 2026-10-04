@@ -251,11 +251,11 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // event_guests/event_guest_members (igual que event_guest_moments en 0176) — nunca altera esas dos
     // tablas ni su RLS; cubierto en eventGuestQuestionsMigration.test.ts, no aquí. 0191
     // (venue_address/venue_place_id) añade dos columnas a `events` — ni toca event_guests/
-    // event_guest_members/event_tables ni su RLS; cubierto en eventVenueAddressMigration.test.ts, no aquí. 0192 (event_food_and_drink) añade event_guest_dietary_needs, que REFERENCIA event_guests/event_guest_members (igual que 0190) sin alterar esas tablas ni su RLS; cubierto en eventFoodAndDrinkMigration.test.ts, no aquí.
+    // event_guest_members/event_tables ni su RLS; cubierto en eventVenueAddressMigration.test.ts, no aquí. 0192 (event_food_and_drink) añade event_guest_dietary_needs, que REFERENCIA event_guests/event_guest_members (igual que 0190) sin alterar esas tablas ni su RLS; cubierto en eventFoodAndDrinkMigration.test.ts, no aquí. 0193 (event_moment_date_status) añade una columna nulable a event_moments: ni toca event_guests/event_guest_members/event_tables ni su RLS.
     const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(192)
+    expect(Math.max(...numbers)).toBe(193)
   })
 })

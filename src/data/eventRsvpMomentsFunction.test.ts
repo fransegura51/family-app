@@ -56,7 +56,8 @@ describe('event-rsvp — superficie pública sin ampliar', () => {
   })
 
   it('la consulta a event_moments/event_guest_moments pide solo esas columnas, nunca "*"', () => {
-    expect(SRC).toContain('.select("id, title, moment_date, moment_time, location_label, location_address")')
+    // + date_status (migración 0193): una fecha provisional no debe parecer cerrada en la invitación.
+    expect(SRC).toContain('.select("id, title, moment_date, moment_time, location_label, location_address, date_status")')
     expect(SRC).toContain('.select("moment_id")')
     expect(SRC).not.toMatch(/\.from\("event_moments"\)\s*\n?\s*\.select\("\*"\)/)
     expect(SRC).not.toMatch(/location_place_id|location_latitude|location_longitude/)

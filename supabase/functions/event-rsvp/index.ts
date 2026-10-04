@@ -184,16 +184,21 @@ interface MomentRow {
   moment_time: string | null
   location_label: string | null
   location_address: string | null
+  // Migración 0193: estado de la fecha de este momento; null = hereda el del evento.
+  date_status: string | null
 }
 
-function momentsLocationLines(moments: MomentRow[]): { icon: string; label: string }[] {
+function momentsLocationLines(moments: MomentRow[], eventDateStatus: string): { icon: string; label: string }[] {
   const lines: { icon: string; label: string }[] = []
   let lastDate: string | null = null
   for (const m of moments) {
     if (m.moment_date && m.moment_date !== lastDate) {
       const weekday = new Date(`${m.moment_date}T00:00`).toLocaleDateString("es-ES", { weekday: "long" })
       const [y, mo, d] = m.moment_date.split("-")
-      lines.push({ icon: "📅", label: `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${d}/${mo}/${y}` })
+      // Una fecha provisional nunca debe parecer cerrada: sin estado propio hereda el del evento.
+      const status = m.date_status === "provisional" || m.date_status === "confirmada" ? m.date_status : eventDateStatus === "confirmada" ? "confirmada" : "provisional"
+      const provisional = status === "provisional" ? " (fecha provisional)" : ""
+      lines.push({ icon: "📅", label: `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${d}/${mo}/${y}${provisional}` })
       lastDate = m.moment_date
     }
     const time = m.moment_time ? ` · ${m.moment_time.slice(0, 5)}` : ""
@@ -223,7 +228,7 @@ async function resolveLocationLines(
 ): Promise<{ icon: string; label: string }[]> {
   const { data: momentsData } = await admin
     .from("event_moments")
-    .select("id, title, moment_date, moment_time, location_label, location_address")
+    .select("id, title, moment_date, moment_time, location_label, location_address, date_status")
     .eq("event_id", event.id)
     .order("sort_order", { ascending: true })
   const moments = (momentsData ?? []) as MomentRow[]
@@ -234,7 +239,7 @@ async function resolveLocationLines(
     const { data: links } = await admin.from("event_guest_moments").select("moment_id").eq("guest_id", guestId)
     guestMomentIds = new Set((links ?? []).map((l) => l.moment_id as string))
   }
-  return momentsLocationLines(visibleMomentsForGuest(moments, guestMomentIds, guest?.invite_scope ?? null))
+  return momentsLocationLines(visibleMomentsForGuest(moments, guestMomentIds, guest?.invite_scope ?? null), event.date_status)
 }
 
 const EVENT_SELECT =

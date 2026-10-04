@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-// Eventos — Fase 1 del "inicio inteligente" (2026-09-30): el alta de CreateEventModal gana un paso 1
-// ("¿Dónde se celebra?"), un paso 2 condicional ("¿Qué incluye ya?") y sustituye el antiguo toggle
-// "Recomendado"/"Elegir yo" por un único paso 3 con los 14 módulos siempre visibles, los recomendados
-// premarcados. No hay jsdom en este proyecto — se comprueba estructuralmente sobre el código fuente real,
+// Eventos — alta MÍNIMA (corrección estructural posterior a "Comida y bebida"): CreateEventModal solo pide nombre,
+// tipo y módulos; fecha, lugar, edad y servicios incluidos (antiguos pasos 1/2 del "inicio inteligente") viven
+// ahora en el primer bloque del configurador. Se mantiene el selector de 14 módulos siempre visibles con los
+// recomendados premarcados. No hay jsdom en este proyecto — se comprueba estructuralmente sobre el código fuente real,
 // mismo patrón que el resto de tests de EventosScreen.tsx.
 const SRC = (import.meta.glob('/src/ui/EventosScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/EventosScreen.tsx']
 
@@ -15,49 +15,55 @@ function slice(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
-describe('CreateEventModal — paso 1 "¿Dónde se celebra?"', () => {
+describe('CreateEventModal — alta MÍNIMA para todos los eventos (nombre, tipo, módulos)', () => {
   const fn = slice(SRC, 'function CreateEventModal(', '\n// Petición real: "reorganizar Eventos')
 
-  it('la pregunta cambia de texto en los tipos con doble ubicación (boda/comunión/bautizo) — nunca pregunta por la ceremonia', () => {
-    expect(fn).toContain("DUAL_LOCATION_EVENT_TYPES.includes(type) ? '¿Dónde es la celebración (después de la ceremonia)?' : '¿Dónde se celebra?'")
+  it('A. pide el nombre del evento', () => {
+    expect(fn).toContain('Nombre del evento')
+    expect(fn).toContain("setError('Ponle un nombre al evento.')")
   })
-
-  it('las 3 opciones no presuponen nada por defecto — arranca sin responder', () => {
-    expect(fn).toContain("const [venueType, setVenueType] = useState<EventVenueType | ''>('')")
-    expect(fn).toContain('<option value="">Prefiero no decirlo ahora</option>')
-    expect(fn).toContain('<option value="restaurante_local">Restaurante/local con servicios incluidos</option>')
-    expect(fn).toContain('<option value="casa_propia">Casa o espacio propio, lo organizamos nosotros</option>')
-    expect(fn).toContain('<option value="otro">Otro</option>')
+  it('B. pide el tipo de evento (y la variante solo en «celebración», que identifica el tipo)', () => {
+    expect(fn).toContain('<select value={type} onChange={(e) => handleTypeChange(e.target.value as EventType)}>')
+    expect(fn).toContain("type === 'celebracion' && (")
   })
-})
-
-describe('CreateEventModal — paso 2 "¿Qué incluye ya?" (solo cuando el paso 1 dice explícitamente que hay servicios)', () => {
-  const fn = slice(SRC, 'function CreateEventModal(', '\n// Petición real: "reorganizar Eventos')
-
-  it('el checklist SOLO se muestra si venueType === "restaurante_local" — nunca para "casa_propia" ni "otro"', () => {
-    expect(fn).toContain("const showIncludedServicesStep = venueType === 'restaurante_local' && includableServices.length > 0")
-    expect(fn).toContain('{showIncludedServicesStep && (')
+  it('C. permite elegir los módulos a organizar, con los recomendados premarcados', () => {
+    expect(fn).toContain('¿Qué quieres organizar en PEPA?')
+    expect(fn).toContain('<ModulePickerChips modules={modules} onChange={setModules} recommended={new Set(recommendedModules)} />')
   })
-
-  it('las opciones del checklist salen de INCLUDABLE_SERVICES_BY_TYPE (nunca una lista hardcodeada aparte)', () => {
-    expect(fn).toContain('const includableServices = INCLUDABLE_SERVICES_BY_TYPE[type]')
-    expect(fn).toContain('{includableServices.map((s) => {')
-    expect(fn).toContain('{EVENT_SERVICE_META[s].label}')
+  it('D/E. NO pide fecha ni fecha fin', () => {
+    expect(fn).not.toMatch(/type="date"/)
+    expect(fn).not.toMatch(/DATE_STATUS|setDateStatus|setEventDate|Fecha provisional|Fecha fin/)
+    // La fecha nace «Todavía no lo sabemos»: se decide después, en el configurador.
+    expect(fn).toContain("dateStatus: 'pendiente'")
+    expect(fn).toContain('eventDate: null')
   })
-
-  it('cambiar de tipo limpia los servicios marcados — el checklist de un tipo anterior podría ya no significar nada', () => {
+  it('F/G. NO pide lugar ni pregunta restaurante / casa', () => {
+    expect(fn).not.toMatch(/¿Dónde se celebra|¿Dónde es la celebración|Prefiero no decirlo|casa_propia|restaurante_local|setVenueType|venueType/)
+  })
+  it('H. NO pregunta qué incluye el lugar ni ofrece el catálogo antiguo (fotógrafo, flores, música/DJ)', () => {
+    expect(fn).not.toMatch(/¿Qué incluye ya|INCLUDABLE_SERVICES_BY_TYPE|EVENT_SERVICE_META|includedServices|setIncludedServices/)
+  })
+  it('I. un cumpleaños NO pide la edad en el alta', () => {
+    expect(fn).not.toMatch(/ageTurning|¿Cuántos años cumple|setAgeTurning/)
+    expect(fn).toContain('details: {}')
+  })
+  it('J. el evento puede crearse incompleto: el único dato obligatorio es el nombre', () => {
+    const submit = slice(fn, 'async function handleSubmit', 'return (')
+    expect(submit.match(/setError\(/g)?.length).toBe(3) // nombre vacío, limpiar antes de guardar y error al guardar
+    expect(submit).not.toMatch(/eventDate\.trim|!eventDate|!ageTurning/)
+  })
+  it('una plantilla solo preconfigura la identidad (tipo, variante, tema, módulos): nunca fechas, lugares ni servicios', () => {
+    const useTemplate = slice(fn, 'function handleUseTemplate', '\n  async function handleSubmit')
+    for (const field of ['setType(t.type)', 'setTheme(t.theme)', 'setModules(t.enabledModules)']) expect(useTemplate).toContain(field)
+    expect(useTemplate).not.toMatch(/venue|date|included|age/i)
+  })
+  it('cambiar de tipo recalcula los módulos recomendados', () => {
     const handleTypeChange = slice(fn, 'function handleTypeChange(next: EventType) {', '\n  }')
     expect(handleTypeChange).toContain('setModules(RECOMMENDED_MODULES[next])')
-    expect(handleTypeChange).toContain('setIncludedServices([])')
-  })
-
-  it('al guardar, includedServices solo se envía si el paso 2 estaba activo y algo quedó marcado — nunca un array vacío o de un paso que no se llegó a ver', () => {
-    expect(fn).toContain('includedServices: showIncludedServicesStep && includedServices.length > 0 ? includedServices : null')
-    expect(fn).toContain('venueType: venueType || null')
   })
 })
 
-describe('CreateEventModal — paso 3 "¿Qué quieres organizar en PEPA?" (sustituye "Recomendado"/"Elegir yo")', () => {
+describe('CreateEventModal — «¿Qué quieres organizar en PEPA?» (sustituye "Recomendado"/"Elegir yo")', () => {
   const fn = slice(SRC, 'function CreateEventModal(', '\n// Petición real: "reorganizar Eventos')
 
   it('ya no existe el toggle "Recomendado"/"Elegir yo" ni el estado moduleMode', () => {
@@ -117,15 +123,19 @@ describe('ModulePickerChips — marca visualmente los recomendados sin ocultar n
 describe('OrganizamePepaModal — frase de contexto "Pepa ha tenido en cuenta..."', () => {
   const fn = slice(SRC, 'function OrganizamePepaModal(', "\n// ---------------------------------------------------------------------\n// Fase 4 — plantillas personales.")
 
-  it('joinSpanishList reutiliza EVENT_SERVICE_META (el mismo vocabulario del paso 2 del alta) — nunca uno nuevo', () => {
+  it('joinSpanishList reutiliza EVENT_SERVICE_META (el vocabulario de servicios) — nunca uno nuevo', () => {
     expect(SRC).toContain('function joinSpanishList(items: string[]): string {')
     expect(fn).toContain('includedServices.map((s) => EVENT_SERVICE_META[s].label.toLowerCase())')
   })
 
-  it('la frase solo existe si includedServices tiene algo — un evento sin servicios incluidos (o creado antes de esta fase) no la muestra', () => {
+  it('la frase solo existe si includedServices tiene algo — un evento sin servicios incluidos no la muestra', () => {
     expect(fn).toContain('includedServices.length > 0 ? `Pepa ha tenido en cuenta que el lugar incluye')
-    expect(fn).toContain('const includedServices = event.includedServices ?? []')
     expect(fn).toContain('{includedServicesSentence && (')
+  })
+
+  it('los servicios salen de la ÚNICA fuente (decisión del primer bloque, con el alta antigua adoptada) y se leen antes de montar el modal', () => {
+    expect(fn).toContain('venueServiceIdsForPlan(d, props.event.includedServices)')
+    expect(fn).toContain('if (includedServices === null) return null')
   })
 
   it('es puramente informativa: se calcula DESPUÉS de generateEventPlan, a partir de includedServices — nunca como argumento que generateEventPlan pueda usar para decidir nada distinto', () => {
@@ -133,8 +143,6 @@ describe('OrganizamePepaModal — frase de contexto "Pepa ha tenido en cuenta...
     const sentenceIndex = fn.indexOf('const includedServicesSentence')
     expect(planCallIndex).toBeGreaterThan(-1)
     expect(sentenceIndex).toBeGreaterThan(planCallIndex)
-    // La llamada real a generateEventPlan sigue pasando exactamente los mismos 2 campos que en la Fase 1
-    // aprobada — el retoque de UX no le añade ni le quita nada.
     expect(fn).toContain('generateEventPlan(event, { venueType: event.venueType, includedServices })')
   })
 })

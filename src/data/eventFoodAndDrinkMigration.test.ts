@@ -110,13 +110,19 @@ describe('Pantalla — bloque «Comida y bebida»', () => {
     expect(SCREEN).toContain('<ComidaBebidaBlock event={event}')
   })
   it('las preguntas siguen el orden de la especificación (lugar → quién → contratación → momentos → menú → invitados → infantil → tarta → bebidas → necesidades)', () => {
-    const order = ['A) Qué incluye el lugar', 'B) Quién se encarga', 'C) Contratación', 'D) Momentos de comida', 'E) Estado del menú', 'G) Elección de menú', 'H) Menú infantil', 'I) Tarta', 'J) Bebidas', 'K) Necesidades alimentarias']
+    const order = ['A) Lo que ya sabemos del lugar', 'B) Quién se encarga', 'C) Contratación', 'D) Momentos de comida', 'E) Estado del menú', 'G) Elección de menú', 'H) Menú infantil', 'I) Tarta', 'J) Bebidas', 'K) Necesidades alimentarias']
     let last = -1
     for (const marker of order) {
       const idx = BLOCK.indexOf(marker)
       expect(idx, marker).toBeGreaterThan(last)
       last = idx
     }
+  })
+  it('Comida CONSUME los servicios del lugar (primer bloque): ya no los pregunta ni los guarda, y en casa solo dice «La celebración será en casa.»', () => {
+    expect(BLOCK).not.toContain('<VenueServicesQuestion')
+    expect(BLOCK).not.toContain('VENUE_SERVICES_QUESTION_KEY, a as unknown')
+    expect(BLOCK).toContain('🏠 La celebración será en casa.')
+    expect(BLOCK).not.toContain('no hace falta preguntar')
   })
   it('reconcilia solo lo que depende de la respuesta guardada, nunca todo el bloque', () => {
     expect(BLOCK).toContain('for (const key of dependentFoodKeys(questionKey))')

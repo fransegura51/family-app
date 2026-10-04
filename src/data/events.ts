@@ -12,8 +12,13 @@ import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { replaceEventMembers } from '@/data/calendar'
 import { distinctTagColor } from '@/domain/colors'
 import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary, type FoodNeedsAlertInput } from '@/domain/events'
-import { reconcilePairGeneration, type DesiredPairGeneration, type ReconcileResult } from '@/domain/eventPairDecisions'
+import { reconcilePairGeneration, type DesiredPairGeneration, type ReconcileAction, type ReconcileResult } from '@/domain/eventPairDecisions'
 import {
+  buildFoodContext,
+  dependentFoodKeys,
+  desiredDayPlanTitles,
+  desiredForFoodKey,
+  FOOD_MOMENTOS_KEY,
   FOOD_NECESIDADES_KEY,
   foodNeedsAlertInput,
   isAdoptableLegacyBudget,
@@ -23,6 +28,7 @@ import {
   reconcileDayPlan,
 } from '@/domain/eventFood'
 import { computeFoodNeedsState } from '@/domain/eventDietaryNeeds'
+import { deriveOperationalDate } from '@/domain/eventCelebration'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { showToast } from '@/state/toast'
 import type { EventReminder } from '@/domain/reminders'
@@ -1720,7 +1726,7 @@ export async function deleteEventDayPlanItem(id: string): Promise<void> {
 // ---------------------------------------------------------------------
 
 const MOMENT_SELECT =
-  'id, event_id, family_id, title, moment_date, moment_time, location_label, location_latitude, location_longitude, location_address, location_place_id, sort_order, created_at'
+  'id, event_id, family_id, title, moment_date, moment_time, location_label, location_latitude, location_longitude, location_address, location_place_id, sort_order, created_at, date_status'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapMoment(r: any): EventMoment {
@@ -1738,6 +1744,7 @@ function mapMoment(r: any): EventMoment {
     locationPlaceId: r.location_place_id,
     sortOrder: r.sort_order,
     createdAt: r.created_at,
+    dateStatus: r.date_status === 'provisional' || r.date_status === 'confirmada' ? r.date_status : null,
   }
 }
 
@@ -1758,10 +1765,12 @@ export async function addEventMoment(
     locationLongitude?: number | null
     locationAddress?: string | null
     locationPlaceId?: string | null
+    dateStatus?: 'provisional' | 'confirmada' | null
   },
 ): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('event_moments').insert({
+    date_status: input.momentDate ? (input.dateStatus ?? null) : null,
     event_id: eventId,
     family_id: familyId,
     title: input.title.trim(),
@@ -1788,9 +1797,11 @@ export async function updateEventMoment(
     locationLongitude: number | null
     locationAddress: string | null
     locationPlaceId: string | null
+    dateStatus: 'provisional' | 'confirmada' | null
   }>,
 ): Promise<void> {
   const update: Record<string, unknown> = {}
+  if (patch.dateStatus !== undefined) update.date_status = patch.dateStatus
   if (patch.title !== undefined) update.title = patch.title.trim()
   if (patch.momentDate !== undefined) update.moment_date = patch.momentDate
   if (patch.momentTime !== undefined) update.moment_time = patch.momentTime
@@ -1801,6 +1812,20 @@ export async function updateEventMoment(
   if (patch.locationPlaceId !== undefined) update.location_place_id = patch.locationPlaceId
   const { error } = await supabase.from('event_moments').update(update).eq('id', id)
   if (error) throw error
+}
+
+// Mantiene events.event_date / date_status (la ÚNICA fecha operativa: calendario, cuenta atrás, tareas...)
+// coherente con los momentos — ver deriveOperationalDate en domain/eventCelebration.ts. Sin ningún momento
+// fechado no toca nada (conserva la fecha general que ya tuviera el evento). Devuelve true si cambió algo.
+export async function syncOperationalDateFromMoments(eventId: string): Promise<boolean> {
+  const [event, moments] = await Promise.all([getEvent(eventId), listEventMoments(eventId)])
+  const derived = deriveOperationalDate(moments, event.dateStatus)
+  if (!derived) return false
+  if (derived.eventDate === event.eventDate && derived.dateStatus === event.dateStatus) return false
+  await updateEvent(eventId, { eventDate: derived.eventDate, dateStatus: derived.dateStatus })
+  // Igual que al cambiar la fecha a mano: las tareas automáticas relativas a la fecha se recalculan.
+  if (derived.eventDate !== event.eventDate) await recalculateAutoTasks(eventId, event.type, derived.eventDate)
+  return true
 }
 
 // Borrado seguro: event_guest_moments.moment_id tiene ON DELETE CASCADE (migración 0176), así que borrar
@@ -2081,6 +2106,29 @@ export async function applyFoodDecisionGeneration(
   const result = reconcilePairGeneration(effective, existingTask, existingBudget)
   await executeReconcileActions(event.id, familyId, decisionId, result)
   return result
+}
+
+// «Comida y bebida» consume lo que se decide en el primer bloque (qué incluye el lugar, y si es en casa). Cuando
+// esas decisiones cambian, lo que dependía de ellas (contratación, menú, tarta, bebidas) se vuelve a
+// reconciliar con las MISMAS reglas de siempre (se retira solo lo no tocado; lo enriquecido se conserva).
+// Solo toca las decisiones de comida que ya existen; si todavía no hay ninguna, no hace ni una escritura.
+export async function reconcileFoodForVenueChange(
+  event: Pick<FamilyEvent, 'id' | 'type' | 'eventDate' | 'venueType' | 'venueLabel' | 'venueAddress' | 'venueLatitude' | 'venueLongitude' | 'celebrationLocationLabel' | 'includedServices' | 'enabledModules'>,
+  hasMomentLocation: boolean,
+): Promise<ReconcileAction[]> {
+  const decisions = await listEventDecisions(event.id)
+  const ctx = buildFoodContext(event, decisions, [], null, hasMomentLocation)
+  const actions: ReconcileAction[] = []
+  for (const key of dependentFoodKeys('lugar.servicios_incluidos')) {
+    const row = decisions.find((d) => d.questionKey === key)
+    if (!row) continue
+    const result = await applyFoodDecisionGeneration(event, key, row.id, desiredForFoodKey(key, ctx))
+    actions.push(...result.actions)
+  }
+  // Los momentos de comida del Plan del día dependen de si habrá comida (p. ej. el lugar la incluye o no).
+  const momentosRow = decisions.find((d) => d.questionKey === FOOD_MOMENTOS_KEY)
+  if (momentosRow && event.enabledModules.includes('plan_dia')) await applyFoodDayPlan(event.id, momentosRow.id, desiredDayPlanTitles(event.type, ctx))
+  return actions
 }
 
 // Momentos de comida → Plan del día, SIN hora. Reconcilia contra lo que ya hay: crea los marcados que

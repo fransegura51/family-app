@@ -1069,6 +1069,9 @@ export interface EventMoment {
   // momentos antiguos (solo coordenadas) hasta que se vuelva a elegir la ubicación con el buscador.
   locationAddress: string | null
   locationPlaceId: string | null
+  // Migración 0193 — estado de la fecha de ESTE momento. Ausente/null = hereda el estado de fecha del evento
+  // (así valían todos los momentos anteriores). Ver momentDateStatus en domain/eventCelebration.ts.
+  dateStatus?: 'provisional' | 'confirmada' | null
 }
 
 // Invitado <-> momento, muchos a muchos (sustituirá a EventGuest.inviteScope,

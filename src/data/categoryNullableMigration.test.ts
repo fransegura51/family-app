@@ -128,8 +128,11 @@ describe('formulario y datos de tickets: un NULL no se convierte en Alimentació
   })
 
   it('editar un gasto sin categoría no le inventa una: el estado conserva null hasta que se elija una', () => {
-    expect(form).toContain('useState<string | null>(expense.category)')
-    expect(form).toContain("<CategorySelect value={category ?? ''} onChange={setCategory} categories={categories} emptyLabel=")
+    // Formulario compartido de movimiento (Nuevo/Editar): el borrador conserva null para un gasto pendiente.
+    expect(form).toContain('expenseCategory: expense.isIncome ? defaultExpenseCategory(categories) : expense.category,')
+    expect(form).toContain("value={draft.expenseCategory ?? ''}")
+    expect(form).toContain('emptyLabel={pendingCategoryLabel}')
+    expect(form).toContain('pendingCategoryLabel={!expense.isIncome && expense.category == null ?')
   })
 })
 

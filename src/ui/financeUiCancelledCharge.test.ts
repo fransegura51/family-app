@@ -24,9 +24,9 @@ describe('FinanceScreen importa la fuente única de dominio, no reimplementa el 
     expect(FS).not.toMatch(/const incomeCategories = categories\.filter\(/)
   })
 
-  it('los 3 sitios de incomeCategories usan incomeSelectableCategories(categories)', () => {
+  it('los sitios de incomeCategories usan incomeSelectableCategories(categories) (el formulario de movimiento, compartido por Nuevo y Editar, es ahora UN solo sitio)', () => {
     const occurrences = [...FS.matchAll(/const incomeCategories = incomeSelectableCategories\(categories\)/g)]
-    expect(occurrences).toHaveLength(3)
+    expect(occurrences).toHaveLength(2)
   })
 })
 

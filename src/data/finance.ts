@@ -179,6 +179,11 @@ export async function addExpense(input: {
   budgetGroup?: string
   tagId?: string | null
   source?: ExpenseSource
+  // «Nuevo movimiento» completo en UNA sola inserción (mismos campos que «Editar movimiento»): concepto,
+  // Fijo/Variable propio de este movimiento (null = según la categoría) y clasificación del producto.
+  notes?: string | null
+  isFixedOverride?: boolean | null
+  productClassification?: string | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('expenses').insert({
@@ -192,6 +197,9 @@ export async function addExpense(input: {
     budget_group: input.budgetGroup ?? 'alimentacion',
     tag_id: input.tagId ?? null,
     source: input.source ?? 'manual',
+    notes: input.notes ?? null,
+    is_fixed_override: input.isFixedOverride ?? null,
+    product_classification: input.productClassification ?? null,
   })
   if (error) throw error
 }

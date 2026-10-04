@@ -157,6 +157,20 @@ import { groupSpending, type FinanceData } from '@/domain/financeCompute'
 import { comparablePrevious, daysBetween, type PeriodSpec, type ResolvedPeriod } from '@/domain/financePeriod'
 import { isRefund } from '@/domain/refunds'
 import { incomeSelectableCategories } from '@/domain/cancelledCharge'
+import {
+  buildNewExpenseInput,
+  changeExpenseCategory,
+  changeIncomeCategory,
+  classificationKindFor,
+  defaultExpenseCategory,
+  defaultIncomeCategory,
+  draftCategory,
+  emptyMovementDraft,
+  movementFieldValues,
+  switchMovementType,
+  type ClassificationKind,
+  type MovementDraft,
+} from '@/domain/movementForm'
 import { buildFoodReceiptIds, buildProductKindSets, purchaseNature } from '@/domain/products'
 import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
 import { classifyFoodType } from '@/domain/foodTypes'
@@ -178,7 +192,6 @@ import {
   computeSavingsDestinedByMember,
   stableCategoryColors,
   isComprasExpense,
-  isComprasFamiliaCategory,
   isFoodCategory,
   isInternalTransferCategory,
   resolveCategoryClassification,
@@ -4164,12 +4177,165 @@ function TagSelect({ value, onChange, tags }: { value: string; onChange: (v: str
   )
 }
 
-// Editar cualquier movimiento de la lista de Gastos — categoría
-// (desplegable real, ya no texto libre): la del árbol de gasto para uno
-// normal, o la de INCOME_CATEGORY_SEED (Sueldo, Regalo, Ingreso...) si
-// es un ingreso. Sin establecimiento en un ingreso (no aplica). Etiqueta,
-// Debo/Necesito/Quiero y Fijo/variable se pueden asignar en los dos
-// casos (Skill de Pepa, puntos 11/15/16).
+// FORMULARIO DE MOVIMIENTO COMPARTIDO — «Nuevo movimiento» y «Editar movimiento» pintan exactamente estos
+// campos y siguen exactamente las mismas reglas (src/domain/movementForm.ts). Si mañana se añade o cambia un
+// campo, se hace aquí una sola vez. Lo único que cambia entre los dos modos es el selector Gasto/Ingreso (solo
+// al crear: al editar el tipo ya está fijado), la etiqueta «Pendiente de clasificar» (solo en un gasto sin
+// categoría) y los botones de guardar, que son de quien lo usa.
+function MovementFormFields({
+  mode,
+  draft,
+  onChange,
+  categories,
+  tags,
+  pendingCategoryLabel,
+}: {
+  mode: 'create' | 'edit'
+  draft: MovementDraft
+  onChange: (next: MovementDraft) => void
+  categories: BudgetCategory[]
+  tags: Tag[]
+  // Solo al editar un gasto con category NULL (pendiente de clasificar): se conserva tal cual mientras no se elija una.
+  pendingCategoryLabel?: string
+}) {
+  // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
+  // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
+  // cancelledCharge.ts) para poder corregir a mano la pata de abono de un cargo+abono que se cancela.
+  const incomeCategories = incomeSelectableCategories(categories)
+  const required = mode === 'create'
+  // Skill de Pepa, puntos 15/16 — Necesito se hereda de la categoría (editable en «🗂️ Categorías»); Fijo/Variable
+  // se puede pisar para este movimiento en concreto. Dinámico: nunca se escribe «Variable» a mano.
+  const classification = resolveCategoryClassification(draft.isIncome ? null : draft.expenseCategory, categories)
+
+  // Petición real: «¿qué tal si a los movimientos que se categorizan como compra se les abre otro campo para
+  // clasificar el producto?» — un cobro sin ticket detrás no tiene filas en product_prices, así que «Reparto por
+  // clasificación» (Estadística compras) no podía desglosarlo. Solo tiene sentido para gastos de Alimentación o
+  // de «Compras y familia»; la lista depende de la categoría y se actualiza al cambiarla.
+  const classificationKind: ClassificationKind | null = draft.isIncome ? null : classificationKindFor(draft.expenseCategory, categories)
+  const [classificationOptions, setClassificationOptions] = useState<FamilyFoodType[]>([])
+  const [classesVersion, setClassesVersion] = useState(0)
+  useEffect(() => onManagersChanged(() => setClassesVersion((v) => v + 1)), [])
+  useEffect(() => {
+    if (!classificationKind) {
+      setClassificationOptions([])
+      return
+    }
+    let cancelled = false
+    listFamilyFoodTypes(classificationKind)
+      .then((list) => {
+        if (!cancelled) setClassificationOptions(list)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [classificationKind, classesVersion])
+
+  return (
+    <>
+      {mode === 'create' && (
+        <div className="filter-row">
+          <button type="button" className={'chip' + (!draft.isIncome ? ' chip-active' : '')} onClick={() => onChange(switchMovementType(draft, false))}>
+            Gasto
+          </button>
+          <button type="button" className={'chip' + (draft.isIncome ? ' chip-active' : '')} onClick={() => onChange(switchMovementType(draft, true))}>
+            Ingreso
+          </button>
+        </div>
+      )}
+      {draft.isIncome ? (
+        <label>
+          Categoría
+          <select value={draft.incomeCategory ?? ''} onChange={(e) => onChange(changeIncomeCategory(draft, e.target.value))}>
+            {incomeCategories.length === 0 && <option value="Ingreso">Ingreso</option>}
+            {incomeCategories.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.icon} {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label>
+          Categoría
+          <CategorySelect
+            value={draft.expenseCategory ?? ''}
+            onChange={(v) => onChange(changeExpenseCategory(draft, v, categories))}
+            categories={categories}
+            emptyLabel={pendingCategoryLabel}
+          />
+        </label>
+      )}
+      <div className="inline-fields">
+        <label>
+          Fecha
+          <input type="date" value={draft.date} onChange={(e) => onChange({ ...draft, date: e.target.value })} required={required} />
+        </label>
+        <label>
+          Importe (€)
+          <input type="number" step="0.01" value={draft.amount} onChange={(e) => onChange({ ...draft, amount: e.target.value })} required={required} />
+        </label>
+      </div>
+      {!draft.isIncome && (
+        <label>
+          Establecimiento (opcional)
+          <input type="text" value={draft.store} onChange={(e) => onChange({ ...draft, store: e.target.value })} placeholder="Mercadona" />
+        </label>
+      )}
+      {classificationKind && (
+        <label>
+          Clasificación (opcional)
+          <select value={draft.productClassification} onChange={(e) => onChange({ ...draft, productClassification: e.target.value })}>
+            <option value="">Sin clasificar</option>
+            {classificationOptions.map((t) => (
+              <option key={t.id} value={t.name}>
+                {t.icon} {t.name}
+              </option>
+            ))}
+          </select>
+          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por
+            clasificación" de Estadística compras.
+          </p>
+        </label>
+      )}
+      <label>
+        Etiqueta (opcional)
+        <TagSelect value={draft.tagId} onChange={(v) => onChange({ ...draft, tagId: v })} tags={tags} />
+      </label>
+      <label>
+        Concepto (opcional)
+        <input type="text" value={draft.notes} onChange={(e) => onChange({ ...draft, notes: e.target.value })} placeholder="Anotación tuya sobre este movimiento" />
+      </label>
+      {!draft.isIncome && (
+        <>
+          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+            {classification.necessity ? NECESSITY_LABELS[classification.necessity] : 'Sin clasificar'}
+            {' — según la categoría, editable en el botón flotante "🗂️ Categorías".'}
+          </p>
+          {/* Petición real: «quiero que yo pueda seleccionar cada gasto, si es fijo o es variable» — a diferencia
+              de Debo/Necesito/Quiero (solo por categoría), esto se puede pisar para este movimiento en concreto.
+              «Según categoría» es la opción normal y NO convierte el movimiento en Fijo ni Variable. */}
+          <div className="filter-row" style={{ margin: '4px 0 0' }}>
+            <button type="button" className={'chip' + (draft.isFixedOverride === null ? ' chip-active' : '')} onClick={() => onChange({ ...draft, isFixedOverride: null })}>
+              Según categoría{classification.isFixed != null ? ` (${classification.isFixed ? 'Fijo' : 'Variable'})` : ''}
+            </button>
+            <button type="button" className={'chip' + (draft.isFixedOverride === true ? ' chip-active' : '')} onClick={() => onChange({ ...draft, isFixedOverride: true })}>
+              Fijo
+            </button>
+            <button type="button" className={'chip' + (draft.isFixedOverride === false ? ' chip-active' : '')} onClick={() => onChange({ ...draft, isFixedOverride: false })}>
+              Variable
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+// Editar cualquier movimiento de la lista de Gastos — mismos campos y reglas que «Nuevo movimiento»
+// (MovementFormFields). La categoría de un GASTO (y la de su ticket vinculado) se cambia SOLO con
+// classify_purchase; un ingreso no tiene ticket ni «pendiente».
 function EditExpenseInline({
   expense,
   categories,
@@ -4190,67 +4356,28 @@ function EditExpenseInline({
   onAddToForecast?: () => void
   addToForecastBusy?: boolean
 }) {
-  const [date, setDate] = useState(expense.expenseDate)
-  const [amount, setAmount] = useState(String(expense.amount))
-  // NULL (pendiente de clasificar) se conserva tal cual mientras no se elija una categoría: abrir y guardar no inventa ninguna.
-  const [category, setCategory] = useState<string | null>(expense.category)
-  // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
-  // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
-  // cancelledCharge.ts) para poder corregir a mano la pata de abono de un cargo+abono que se cancela.
-  const incomeCategories = incomeSelectableCategories(categories)
-  const [store, setStore] = useState(expense.store ?? '')
-  const [tagId, setTagId] = useState(expense.tagId ?? '')
-  const [notes, setNotes] = useState(expense.notes ?? '')
-  // Petición real: "quiero que yo pueda seleccionar cada gasto, si es
-  // fijo o es variable" — por defecto sigue a la categoría (null),
-  // pero este movimiento en concreto puede llevar su propia marca.
-  const [isFixedOverride, setIsFixedOverride] = useState<boolean | null>(expense.isFixedOverride)
+  const [draft, setDraft] = useState<MovementDraft>(() => ({
+    isIncome: expense.isIncome,
+    // NULL (pendiente de clasificar) se conserva tal cual mientras no se elija una categoría: abrir y guardar no inventa ninguna.
+    expenseCategory: expense.isIncome ? defaultExpenseCategory(categories) : expense.category,
+    incomeCategory: expense.isIncome ? expense.category : defaultIncomeCategory(categories),
+    date: expense.expenseDate,
+    amount: String(expense.amount),
+    store: expense.store ?? '',
+    productClassification: expense.productClassification ?? '',
+    tagId: expense.tagId ?? '',
+    notes: expense.notes ?? '',
+    // Por defecto sigue a la categoría (null), pero este movimiento puede llevar su propia marca.
+    isFixedOverride: expense.isFixedOverride,
+  }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Skill de Pepa, puntos 15/16 — por defecto se hereda de la
-  // categoría (automática, editable en "🗂️ Categorías" si la familia
-  // no está de acuerdo con la de fábrica); Debo/Necesito/Quiero sigue
-  // siendo solo por categoría, Fijo/Variable ya se puede pisar aquí.
-  const classification = resolveCategoryClassification(category, categories)
-
-  // Petición real: "¿qué tal si a los movimientos que se categorizan
-  // como compra se les abre otro campo para clasificar el producto?"
-  // — un cobro de banco sin ticket detrás (C&A, H&M...) no tiene
-  // ninguna fila en product_prices, así que "Reparto por
-  // clasificación" (Estadística compras) no podía desglosarlo aunque
-  // sí contara en "Reparto por tienda". Solo tiene sentido para gastos
-  // de Alimentación o de "Compras y familia" — el resto de categorías
-  // no entra en esas estadísticas.
-  const classificationKind: FoodTypeKind | null = isFoodCategory(category, categories)
-    ? 'alimentacion'
-    : isComprasFamiliaCategory(category, categories)
-      ? 'no_alimentos'
-      : null
-  const [productClassification, setProductClassification] = useState(expense.productClassification ?? '')
-  const [classificationOptions, setClassificationOptions] = useState<FamilyFoodType[]>([])
-  useEffect(() => {
-    if (!classificationKind) {
-      setClassificationOptions([])
-      return
-    }
-    let cancelled = false
-    listFamilyFoodTypes(classificationKind)
-      .then((list) => {
-        if (!cancelled) setClassificationOptions(list)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [classificationKind])
 
   async function handleSave() {
     setSaving(true)
     setError(null)
     try {
-      // La categoría de un GASTO (y la de su ticket vinculado) se cambia SOLO con classify_purchase: una sola transacción, sin dejar un
-      // lado clasificado y el otro no, y sin pisar en silencio si gasto y ticket ya tienen categorías distintas (Fase 6C.2C).
-      // Un ingreso no tiene ticket ni «pendiente»: sigue por updateExpense.
+      const category = draftCategory(draft)
       const categoryChanged = !expense.isIncome && category != null && category !== expense.category
       if (categoryChanged && category != null) {
         let result
@@ -4266,15 +4393,16 @@ function EditExpenseInline({
           return
         }
       }
+      const values = movementFieldValues(draft)
       await updateExpense(expense.id, {
-        date,
-        amount: Number(amount),
+        date: values.date,
+        amount: values.amount,
         ...(expense.isIncome && category != null ? { category } : {}),
-        tagId: tagId || null,
-        isFixedOverride,
-        notes,
-        productClassification: classificationKind ? productClassification || null : expense.productClassification,
-        ...(expense.isIncome ? {} : { store }),
+        tagId: values.tagId,
+        isFixedOverride: values.isFixedOverride,
+        notes: values.notes,
+        productClassification: values.productClassification,
+        ...(expense.isIncome ? {} : { store: values.store }),
       })
       onDone()
     } catch (err) {
@@ -4286,87 +4414,14 @@ function EditExpenseInline({
 
   return (
     <div className="card member-form" onClick={(e) => e.stopPropagation()}>
-      {expense.isIncome ? (
-        <label>
-          Categoría
-          <select value={category ?? ''} onChange={(e) => setCategory(e.target.value)}>
-            {incomeCategories.length === 0 && <option value="Ingreso">Ingreso</option>}
-            {incomeCategories.map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.icon} {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <label>
-          Categoría
-          <CategorySelect value={category ?? ''} onChange={setCategory} categories={categories} emptyLabel={expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined} />
-        </label>
-      )}
-      <div className="inline-fields">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-      </div>
-      {!expense.isIncome && (
-        <label>
-          Establecimiento (opcional)
-          <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
-        </label>
-      )}
-      {classificationKind && (
-        <label>
-          Clasificación (opcional)
-          <select value={productClassification} onChange={(e) => setProductClassification(e.target.value)}>
-            <option value="">Sin clasificar</option>
-            {classificationOptions.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.icon} {t.name}
-              </option>
-            ))}
-          </select>
-          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
-            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por
-            clasificación" de Estadística compras.
-          </p>
-        </label>
-      )}
-      <label>
-        Etiqueta (opcional)
-        <TagSelect value={tagId} onChange={setTagId} tags={tags} />
-      </label>
-      <label>
-        Concepto (opcional)
-        <input
-          type="text"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Anotación tuya sobre este movimiento"
-        />
-      </label>
-      {!expense.isIncome && (
-        <>
-          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-            {classification.necessity ? NECESSITY_LABELS[classification.necessity] : 'Sin clasificar'}
-            {' — según la categoría, editable en el botón flotante "🗂️ Categorías".'}
-          </p>
-          {/* Petición real: "quiero que yo pueda seleccionar cada
-              gasto, si es fijo o es variable" — a diferencia de
-              Debo/Necesito/Quiero (solo por categoría), esto se puede
-              pisar para este movimiento en concreto. */}
-          <div className="filter-row" style={{ margin: '4px 0 0' }}>
-            <button type="button" className={'chip' + (isFixedOverride === null ? ' chip-active' : '')} onClick={() => setIsFixedOverride(null)}>
-              Según categoría{classification.isFixed != null ? ` (${classification.isFixed ? 'Fijo' : 'Variable'})` : ''}
-            </button>
-            <button type="button" className={'chip' + (isFixedOverride === true ? ' chip-active' : '')} onClick={() => setIsFixedOverride(true)}>
-              Fijo
-            </button>
-            <button type="button" className={'chip' + (isFixedOverride === false ? ' chip-active' : '')} onClick={() => setIsFixedOverride(false)}>
-              Variable
-            </button>
-          </div>
-        </>
-      )}
+      <MovementFormFields
+        mode="edit"
+        draft={draft}
+        onChange={setDraft}
+        categories={categories}
+        tags={tags}
+        pendingCategoryLabel={!expense.isIncome && expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined}
+      />
       {onAddToForecast && (
         <button type="button" className="link-button" style={{ margin: '4px 0 0' }} onClick={onAddToForecast} disabled={!!addToForecastBusy}>
           {addToForecastBusy ? 'Analizando…' : '🔮 Añadir a Previsión'}
@@ -4700,6 +4755,15 @@ function NewMovementModal({
   onClose: () => void
   onAdded: () => void
 }) {
+  // Las etiquetas se cargan aquí y se recargan cuando «⚙️ Gestionar etiquetas» (ventana global, ver
+  // state/managers.ts) avisa de un cambio: la lista del desplegable se actualiza sin cerrar «Nuevo movimiento».
+  const [tags, setTags] = useState<Tag[]>([])
+  useEffect(() => {
+    const load = () => void listTags().then(setTags).catch(() => {})
+    load()
+    return onManagersChanged(load)
+  }, [])
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
@@ -4711,36 +4775,26 @@ function NewMovementModal({
             ✕
           </button>
         </div>
-        <AddExpenseToAnyCategoryInline categories={categories} onAdded={onAdded} />
+        <AddExpenseToAnyCategoryInline categories={categories} tags={tags} onAdded={onAdded} />
       </div>
     </div>
   )
 }
 
-// Apuntar un gasto eligiendo la categoría de una lista (cualquiera de
-// los dos grupos), sin tener que abrir antes su tarjeta.
+// Apuntar un movimiento (gasto o ingreso) completo desde el principio: mismos campos y reglas que «Editar
+// movimiento» (MovementFormFields), y todo se guarda en UNA sola inserción.
+// Petición real: «¿los ingresos dónde se apuntan? ... en el mismo formulario que se creen también ingresos con
+// un desplegable más» — un chip Gasto/Ingreso; un ingreso no lleva establecimiento, clasificación ni Fijo/Variable.
 function AddExpenseToAnyCategoryInline({
   categories,
+  tags,
   onAdded,
 }: {
   categories: BudgetCategory[]
+  tags: Tag[]
   onAdded: () => void
 }) {
-  // Petición real: "¿los ingresos dónde se apuntan? Debería ser en
-  // gastos también... en el mismo formulario que se creen también
-  // ingresos con un desplegable más" — mismo formulario, un chip
-  // Gasto/Ingreso; un ingreso no lleva categoría de presupuesto ni
-  // establecimiento, solo fecha e importe.
-  const [isIncome, setIsIncome] = useState(false)
-  // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
-  // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
-  // cancelledCharge.ts) para poder corregir a mano la pata de abono de un cargo+abono que se cancela.
-  const incomeCategories = incomeSelectableCategories(categories)
-  const [category, setCategory] = useState(categories[0]?.name ?? 'Alimentación')
-  const [incomeCategory, setIncomeCategory] = useState(incomeCategories[0]?.name ?? 'Ingreso')
-  const [store, setStore] = useState('')
-  const [date, setDate] = useState(toDateStr(new Date()))
-  const [amount, setAmount] = useState('')
+  const [draft, setDraft] = useState<MovementDraft>(() => emptyMovementDraft(categories, toDateStr(new Date())))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -4749,30 +4803,7 @@ function AddExpenseToAnyCategoryInline({
     setSaving(true)
     setError(null)
     try {
-      if (isIncome) {
-        await addExpense({
-          date,
-          amount: Number(amount),
-          category: incomeCategory,
-          store: '',
-          kind: 'real',
-          isIncome: true,
-          budgetGroup: 'generales',
-        })
-      } else {
-        const matched = categories.find((c) => c.name === category)
-        await addExpense({
-          date,
-          amount: Number(amount),
-          category,
-          store,
-          kind: 'real',
-          isIncome: false,
-          budgetGroup: matched?.budgetGroup,
-        })
-      }
-      setAmount('')
-      setStore('')
+      await addExpense(buildNewExpenseInput(draft, categories))
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -4783,49 +4814,10 @@ function AddExpenseToAnyCategoryInline({
 
   return (
     <form onSubmit={handleSubmit} className="member-form">
-      <div className="filter-row">
-        <button type="button" className={'chip' + (!isIncome ? ' chip-active' : '')} onClick={() => setIsIncome(false)}>
-          Gasto
-        </button>
-        <button type="button" className={'chip' + (isIncome ? ' chip-active' : '')} onClick={() => setIsIncome(true)}>
-          Ingreso
-        </button>
-      </div>
-      {isIncome ? (
-        <label>
-          Categoría
-          <select value={incomeCategory} onChange={(e) => setIncomeCategory(e.target.value)}>
-            {incomeCategories.length === 0 && <option value="Ingreso">Ingreso</option>}
-            {incomeCategories.map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.icon} {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <label>
-          Categoría
-          <CategorySelect value={category} onChange={setCategory} categories={categories} />
-        </label>
-      )}
-      <label>
-        Fecha
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-      </label>
-      <label>
-        Importe (€)
-        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-      </label>
-      {!isIncome && (
-        <label>
-          Establecimiento (opcional)
-          <input type="text" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
-        </label>
-      )}
+      <MovementFormFields mode="create" draft={draft} onChange={setDraft} categories={categories} tags={tags} />
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : isIncome ? 'Apuntar ingreso' : 'Apuntar gasto'}
+        {saving ? 'Guardando…' : draft.isIncome ? 'Apuntar ingreso' : 'Apuntar gasto'}
       </button>
     </form>
   )

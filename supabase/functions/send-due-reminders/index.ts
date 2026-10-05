@@ -310,6 +310,30 @@ async function sendDueForecastReminders(): Promise<{ checked: number; sent: numb
   return { checked: claimed?.length ?? 0, sent, expired }
 }
 
+// <reminder-body> — copia TAL CUAL del bloque de src/domain/reminderIdentity.ts
+// (el empaquetado de Edge Functions no resuelve imports hacia ../src). Un test compara ambos textos.
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+function dayPhrase(localDate: string, dayOffset: number): string {
+  if (dayOffset <= 0) return ''
+  if (dayOffset === 1) return 'mañana'
+  const d = new Date(Date.UTC(Number(localDate.slice(0, 4)), Number(localDate.slice(5, 7)) - 1, Number(localDate.slice(8, 10))))
+  return `el ${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} de ${MONTHS[d.getUTCMonth()]}`
+}
+
+export function reminderBody(args: { anchor: 'start' | 'end'; allDay: boolean; localDate: string; localTime: string; dayOffset: number }): string {
+  const day = dayPhrase(args.localDate, args.dayOffset)
+  // Un evento «de todo el día» no tiene hora propia (la interna es solo técnica): nunca se dice una hora.
+  if (args.allDay) {
+    if (args.dayOffset <= 0) return 'Hoy, todo el día'
+    return `${day.charAt(0).toUpperCase()}${day.slice(1)}, todo el día`
+  }
+  const verb = args.anchor === 'end' ? 'Termina' : 'Empieza'
+  return day ? `${verb} ${day} a las ${args.localTime}` : `${verb} a las ${args.localTime}`
+}
+// </reminder-body>
+
 async function sendDueCalendarReminders(): Promise<{ checked: number; sent: number; expired: number }> {
   const { data: reminders, error } = await supabaseAdmin.rpc("claim_due_reminders")
   if (error) throw error
@@ -318,21 +342,27 @@ async function sendDueCalendarReminders(): Promise<{ checked: number; sent: numb
   let expired = 0
 
   for (const r of reminders ?? []) {
-    const time = new Date(r.out_anchor_at).toLocaleTimeString("es-ES", {
-      hour: "2-digit",
-      minute: "2-digit",
+    // La hora y la fecha vienen ya calculadas en Europe/Madrid por la base (claim_due_reminders, migración 0197).
+    // Deno corre en UTC: formatear aquí con toLocaleTimeString sin zona daba la hora UTC (16:30 de verano → «14:30»).
+    // Un recordatorio "de fin" (p. ej. "recógelo") dice "Termina", no "Empieza"; uno de un evento de todo el día
+    // no dice ninguna hora (reminderBody).
+    const body = reminderBody({
+      anchor: r.out_anchor === "end" ? "end" : "start",
+      allDay: r.out_all_day === true,
+      localDate: r.out_local_date,
+      localTime: r.out_local_time,
+      dayOffset: r.out_day_offset ?? 0,
     })
-    // Un recordatorio "de fin" (p. ej. "recógelo") tiene que decir
-    // "Termina", no "Empieza" — si no, el aviso de ir a recoger a
-    // alguien diría la hora de inicio y confundiría más que ayudar.
-    const body = r.out_anchor === "end" ? `Termina a las ${time}` : `Empieza a las ${time}`
+    // Etiqueta estable del recordatorio (la misma que calcula la app en src/domain/reminderIdentity.ts): evento +
+    // ocurrencia + ancla + minutos. La app abierta la usa para no duplicar este aviso.
+    const tag = `reminder:${r.out_event_id}:${r.out_occurrence_date}:${r.out_anchor}:${r.out_minutes_before}`
     try {
       await webpush.sendNotification(
         {
           endpoint: r.out_endpoint,
           keys: { p256dh: r.out_p256dh, auth: r.out_auth },
         },
-        JSON.stringify({ title: r.out_event_title, body }),
+        JSON.stringify({ title: r.out_event_title, body, tag }),
         PUSH_OPTIONS_SOON,
       )
       sent++

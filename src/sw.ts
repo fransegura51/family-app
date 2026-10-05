@@ -2,6 +2,7 @@
 import { precacheAndRoute } from 'workbox-precaching'
 import { registerRoute } from 'workbox-routing'
 import { NetworkFirst } from 'workbox-strategies'
+import { recordReminderReceipt } from './services/reminderReceipts'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -75,23 +76,41 @@ function scopeUrl(path: string): string {
 // cubría.
 self.addEventListener('push', (event) => {
   if (!event.data) return
-  let payload: { title?: string; body?: string; url?: string }
+  let payload: { title?: string; body?: string; url?: string; tag?: string }
   try {
     payload = event.data.json()
   } catch {
     payload = { title: 'Family App', body: event.data.text() }
   }
 
+  const tag = payload.tag
   event.waitUntil(
-    self.registration.showNotification(payload.title ?? 'Family App', {
-      body: payload.body ?? '',
-      icon: scopeUrl('pwa-192.png'),
-      badge: scopeUrl('pwa-192.png'),
-      // Deep-link opcional del payload (p. ej. "/dinero" para Previsión de pagos) — se guarda en
-      // notification.data para leerlo en notificationclick. Si no viene, el aviso sigue yendo a
-      // Calendario (comportamiento de siempre, sin romper los avisos ya existentes).
-      data: payload.url ?? null,
-    }),
+    (async () => {
+      if (tag) {
+        // Mismo recordatorio ya mostrado (p. ej. reintento del servidor): iOS/Safari no lo reemplaza por sí solo
+        // aunque comparta `tag` (error abierto de WebKit 258922), así que se cierra a mano el anterior de ESA
+        // etiqueta — nunca las demás notificaciones.
+        try {
+          for (const old of await self.registration.getNotifications({ tag })) old.close()
+        } catch {
+          // getNotifications no disponible: se muestra igualmente.
+        }
+      }
+      await self.registration.showNotification(payload.title ?? 'Family App', {
+        body: payload.body ?? '',
+        icon: scopeUrl('pwa-192.png'),
+        badge: scopeUrl('pwa-192.png'),
+        // Recordatorios de Calendario: etiqueta estable (ver domain/reminderIdentity.ts). Los demás avisos
+        // (pagos, lugares…) no la mandan y se muestran como siempre.
+        ...(tag ? { tag } : {}),
+        // Deep-link opcional del payload (p. ej. "/dinero" para Previsión de pagos) — se guarda en
+        // notification.data para leerlo en notificationclick. Si no viene, el aviso sigue yendo a
+        // Calendario (comportamiento de siempre, sin romper los avisos ya existentes).
+        data: payload.url ?? null,
+      })
+      // Recibo para que la app abierta sepa que el servidor ya ha avisado aquí (ver services/reminderReceipts.ts).
+      if (tag) await recordReminderReceipt(tag)
+    })(),
   )
 })
 

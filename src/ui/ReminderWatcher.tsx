@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { listActiveReminders, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
 import { expandOccurrences } from '@/domain/calendar'
-import { showNotification } from '@/services/notifications'
+import { daysBetweenDates, localReminderAction, madridParts, reminderBody, reminderTag } from '@/domain/reminderIdentity'
+import { hasPushSubscription, showNotification } from '@/services/notifications'
+import { hasReminderReceipt } from '@/services/reminderReceipts'
 
 const SHOWN_KEY = 'family-app:shown-reminders'
 const NAG_KEY = 'family-app:nag-reminders'
@@ -65,6 +67,12 @@ function todayStr(): string {
 //    el calendario.
 // Solo activo mientras la app está abierta — ver services/notifications.ts
 // para el porqué.
+//
+// Coordinación con el aviso del servidor (Web Push, send-due-reminders): el servidor es el productor del
+// recordatorio en todo dispositivo dado de alta para Web Push; este componente solo avisa por su cuenta si el
+// dispositivo NO tiene alta, o si en un margen de 2 minutos no ha llegado el aviso del servidor (recibo del
+// service worker). Ver localReminderAction en domain/reminderIdentity.ts para el porqué (iOS no reemplaza por
+// etiqueta de forma fiable).
 export function ReminderWatcher() {
   const shownRef = useRef<Set<string>>(loadShown())
   const nagTimesRef = useRef<Record<string, number>>(loadNagTimes())
@@ -76,21 +84,37 @@ export function ReminderWatcher() {
       const reminders = await listActiveReminders()
       if (cancelled) return
       const now = Date.now()
+      const subscribed = await hasPushSubscription()
+      if (cancelled) return
 
       for (const r of reminders) {
         const anchorMs = new Date(r.anchorAt).getTime()
         const dueAt = anchorMs - r.reminderMinutes * 60_000
-        const key = `${r.id}:${r.anchorAt}:${r.anchor}:${r.reminderMinutes}`
-        if (now >= dueAt && now < anchorMs && !shownRef.current.has(key)) {
-          const time = new Date(r.anchorAt).toLocaleTimeString('es-ES', {
-            hour: '2-digit',
-            minute: '2-digit',
+        // Identidad del aviso = la misma etiqueta que manda el servidor (evento + fecha de la ocurrencia en Madrid +
+        // ancla + minutos). `legacyKey` es el formato anterior: evita repetir un aviso ya mostrado antes de esta versión.
+        const tag = reminderTag(r.id, madridParts(r.startAt).date, r.anchor, r.reminderMinutes)
+        const legacyKey = `${r.id}:${r.anchorAt}:${r.anchor}:${r.reminderMinutes}`
+        const alreadyHandled = shownRef.current.has(tag) || shownRef.current.has(legacyKey)
+        const inWindow = now >= dueAt && now < anchorMs
+        // Solo se consulta el recibo si hace falta (aviso debido, no atendido y dispositivo con Web Push).
+        const pushReceived = inWindow && !alreadyHandled && subscribed ? await hasReminderReceipt(tag) : false
+        if (cancelled) return
+        const action = localReminderAction({ nowMs: now, dueAtMs: dueAt, anchorMs, alreadyHandled, hasPushSubscription: subscribed, pushReceived })
+        if (action === 'skip' || action === 'wait') continue
+        if (action === 'show') {
+          const local = madridParts(r.anchorAt)
+          const body = reminderBody({
+            anchor: r.anchor,
+            allDay: r.allDay,
+            localDate: local.date,
+            localTime: local.time,
+            dayOffset: daysBetweenDates(madridParts(now).date, local.date),
           })
-          const body = r.anchor === 'end' ? `Termina a las ${time}` : `Empieza a las ${time}`
-          showNotification(r.title, body)
-          shownRef.current.add(key)
-          saveShown(shownRef.current)
+          showNotification(r.title, body, tag)
         }
+        // 'mark': el servidor ya avisó en este dispositivo; solo se anota para no volver a evaluarlo.
+        shownRef.current.add(tag)
+        saveShown(shownRef.current)
       }
     }
 

@@ -47,6 +47,34 @@ export function reminderMinutesFrom(amount: number, unit: ReminderUnit): number 
   return Math.max(1, Math.round(amount * info.perMinutes))
 }
 
+// Un recordatorio lógico es (ancla, minutos). Compara los que ya tiene un evento con los que se quieren
+// guardar y devuelve solo lo que cambia de verdad: lo que ya existe conserva su id (no se borra ni se vuelve a
+// crear), lo repetido en la base se limpia y lo que se pide y no existe se añade.
+export interface StoredReminder extends EventReminder {
+  id: string
+}
+
+export function planReminderChanges(existing: StoredReminder[], wanted: EventReminder[]): { toInsert: EventReminder[]; deleteIds: string[] } {
+  const keyOf = (r: EventReminder) => `${r.anchor}:${r.minutesBefore}`
+  const wantedKeys = new Set(wanted.map(keyOf))
+  const keptKeys = new Set<string>()
+  const deleteIds: string[] = []
+  for (const r of existing) {
+    const key = keyOf(r)
+    if (wantedKeys.has(key) && !keptKeys.has(key)) keptKeys.add(key)
+    else deleteIds.push(r.id)
+  }
+  const inserted = new Set<string>()
+  const toInsert: EventReminder[] = []
+  for (const r of wanted) {
+    const key = keyOf(r)
+    if (keptKeys.has(key) || inserted.has(key)) continue
+    inserted.add(key)
+    toInsert.push({ minutesBefore: r.minutesBefore, anchor: r.anchor })
+  }
+  return { toInsert, deleteIds }
+}
+
 // Etiqueta legible eligiendo la unidad más grande que divide exacto
 // (600 -> "10 horas", no "600 minutos"); si no encaja en ninguna, cae a
 // minutos sin más. Siempre dice explícitamente si cuenta desde el

@@ -2,7 +2,7 @@ import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
 import type { CalendarCategory, CalendarEvent } from '@/domain/types'
-import type { EventReminder, ReminderAnchor } from '@/domain/reminders'
+import { planReminderChanges, type EventReminder, type ReminderAnchor } from '@/domain/reminders'
 
 interface EventRow {
   id: string
@@ -118,15 +118,30 @@ export async function getEventAttachmentUrl(storagePath: string): Promise<string
 // venga de Calendario o de una tarea de Eventos enlazada, así que
 // Eventos la reutiliza tal cual en vez de reimplementar el mismo
 // delete+insert.
+//
+// Identidad estable: ya NO se borra todo y se vuelve a crear. Un recordatorio lógico es (ancla, minutos); si el
+// evento ya lo tiene se conserva la misma fila (mismo id), de modo que guardar un evento sin tocar sus avisos no
+// los convierte en «nuevos» ni da pie a reenviar uno ya entregado. Solo se añade lo que falta y se quita lo que
+// sobra. Se inserta ANTES de borrar: si falla el alta, no se pierde ningún recordatorio existente.
 export async function replaceReminders(eventId: string, reminders: EventReminder[]): Promise<void> {
-  const { error: deleteError } = await supabase.from('calendar_event_reminders').delete().eq('event_id', eventId)
-  if (deleteError) throw deleteError
+  const { data: existing, error: readError } = await supabase.from('calendar_event_reminders').select('id, minutes_before, anchor').eq('event_id', eventId)
+  if (readError) throw readError
 
-  if (reminders.length > 0) {
+  const plan = planReminderChanges(
+    (existing ?? []).map((r) => ({ id: r.id as string, minutesBefore: r.minutes_before as number, anchor: r.anchor as ReminderAnchor })),
+    reminders,
+  )
+
+  if (plan.toInsert.length > 0) {
     const { error: insertError } = await supabase.from('calendar_event_reminders').insert(
-      reminders.map((r) => ({ event_id: eventId, minutes_before: r.minutesBefore, anchor: r.anchor })),
+      plan.toInsert.map((r) => ({ event_id: eventId, minutes_before: r.minutesBefore, anchor: r.anchor })),
     )
     if (insertError) throw insertError
+  }
+
+  if (plan.deleteIds.length > 0) {
+    const { error: deleteError } = await supabase.from('calendar_event_reminders').delete().in('id', plan.deleteIds)
+    if (deleteError) throw deleteError
   }
 }
 
@@ -521,6 +536,8 @@ export interface ReminderEvent {
   id: string
   title: string
   anchorAt: string // start_at o end_at del evento, según a qué cuente este recordatorio
+  startAt: string // start_at del evento: de ahí sale la fecha de la ocurrencia (identidad del aviso)
+  allDay: boolean // evento de todo el día: su hora interna no es una hora real, el aviso no la dice
   anchor: ReminderAnchor
   reminderMinutes: number
 }
@@ -533,7 +550,7 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('calendar_event_reminders')
-    .select('minutes_before, anchor, calendar_events!inner(id, title, start_at, end_at)')
+    .select('minutes_before, anchor, calendar_events!inner(id, title, start_at, end_at, all_day)')
     .gte('calendar_events.start_at', weekAgo)
 
   if (error) throw error
@@ -541,7 +558,7 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
     data as unknown as {
       minutes_before: number
       anchor: string
-      calendar_events: { id: string; title: string; start_at: string; end_at: string | null }
+      calendar_events: { id: string; title: string; start_at: string; end_at: string | null; all_day: boolean | null }
     }[]
   )
     .map((row) => {
@@ -552,6 +569,8 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
             id: row.calendar_events.id,
             title: row.calendar_events.title,
             anchorAt,
+            startAt: row.calendar_events.start_at,
+            allDay: row.calendar_events.all_day === true,
             anchor,
             reminderMinutes: row.minutes_before,
           }

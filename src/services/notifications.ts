@@ -74,11 +74,15 @@ export async function unsubscribeFromPush(): Promise<string | null> {
 // silencio, así que ahí ni siquiera salía el aviso local. Se usa primero el service worker (vale en
 // todas partes) y el constructor solo como reserva. El icono va con la ruta real de la app, no
 // "/pwa-192.png": en producción vive bajo "/family-app/".
-export function showNotification(title: string, body: string): void {
+//
+// `tag` (opcional): etiqueta estable del recordatorio (domain/reminderIdentity.ts). Con etiqueta, si ya hay
+// mostrada una notificación con ESA etiqueta no se muestra otra. Esto NO sustituye a la coordinación entre el
+// aviso del servidor y el local (ReminderWatcher): iOS/Safari no reemplaza por etiqueta de forma fiable.
+export function showNotification(title: string, body: string, tag?: string): void {
   if (!('Notification' in window) || Notification.permission !== 'granted') return
   if (isNotificationsDisabledByUser()) return
 
-  const options = { body, icon: `${import.meta.env.BASE_URL}pwa-192.png` }
+  const options = { body, icon: `${import.meta.env.BASE_URL}pwa-192.png`, ...(tag ? { tag } : {}) }
   const fallback = () => {
     try {
       new Notification(title, options)
@@ -88,7 +92,18 @@ export function showNotification(title: string, body: string): void {
   }
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready.then((registration) => registration.showNotification(title, options)).catch(fallback)
+    navigator.serviceWorker.ready
+      .then(async (registration) => {
+        if (tag) {
+          try {
+            if ((await registration.getNotifications({ tag })).length > 0) return
+          } catch {
+            // getNotifications no disponible: se muestra igualmente.
+          }
+        }
+        await registration.showNotification(title, options)
+      })
+      .catch(fallback)
     return
   }
   fallback()

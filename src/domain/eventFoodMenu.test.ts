@@ -74,24 +74,18 @@ describe('Importación de menú — la propuesta nunca se guarda sola', () => {
     expect(MENU_IMPORT_EXPLANATION.toLowerCase()).not.toContain('seguro')
     expect(MENU_IMPORT_EXPLANATION.toLowerCase()).not.toContain('garantiz')
   })
-  it('limpia lo que devuelve la IA: recorta, descarta vacíos y duplicados', () => {
+  it('limpia lo que devuelve la IA: recorta y descarta solo lo vacío; CONSERVA el orden y los repetidos', () => {
     const proposal = sanitizeImportProposal({
-      sections: [
-        { section: ' Entrantes ', dishes: [{ name: ' Croquetas ', note: null }, { name: 'croquetas' }, { name: '   ' }, 'Ensaladilla'] },
-        { section: 'Vacía', dishes: [] },
-        'basura',
-      ],
-      extraNotes: ['35 € por persona', 5],
+      items: [{ text: ' Croquetas ', kind: 'dish', section: ' entrantes ' }, { text: 'croquetas', kind: 'dish' }, { text: '   ' }, 'Ensaladilla', 'basura:', 7, null],
     })
-    expect(proposal.sections).toHaveLength(1)
-    expect(proposal.sections[0].section).toBe('Entrantes')
-    expect(proposal.sections[0].dishes.map((d) => d.name)).toEqual(['Croquetas', 'Ensaladilla'])
-    expect(proposal.extraNotes).toEqual(['35 € por persona'])
+    expect(proposal.items.map((i) => i.text)).toEqual(['Croquetas', 'croquetas', 'Ensaladilla', 'basura:'])
+    expect(proposal.items[0].section).toBe('Entrantes')
   })
   it('una respuesta rara del modelo se convierte en «nada leído», nunca en un error ni en platos inventados', () => {
-    expect(sanitizeImportProposal(null)).toEqual({ sections: [], extraNotes: [] })
-    expect(sanitizeImportProposal('texto')).toEqual({ sections: [], extraNotes: [] })
-    expect(sanitizeImportProposal({ sections: 'no' })).toEqual({ sections: [], extraNotes: [] })
+    expect(sanitizeImportProposal(null)).toEqual({ items: [] })
+    expect(sanitizeImportProposal('texto')).toEqual({ items: [] })
+    expect(sanitizeImportProposal({ items: 'no' })).toEqual({ items: [] })
+    expect(sanitizeImportProposal({ sections: 'no' })).toEqual({ items: [] })
   })
 })
 

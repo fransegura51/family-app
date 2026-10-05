@@ -131,49 +131,65 @@ export function dishesWithRecipe(items: EventMenuItem[]): EventMenuItem[] {
 // ---------------------------------------------------------------------
 // Importación: propuesta estructurada → platos. La propuesta NUNCA se guarda sola.
 // ---------------------------------------------------------------------
-export interface ImportedDishProposal {
-  name: string
+// Un elemento de la propuesta, en el ORDEN en que aparece en el documento. La IA solo PROPONE el tipo y la sección:
+// ninguna de las dos decide la posición. Todo texto significativo se conserva; lo que parece prescindible
+// (título decorativo, precio, condiciones) llega DESMARCADO (include:false) para que decida quien revisa, nunca
+// descartado en silencio.
+export type ImportItemKind = 'dish' | 'heading' | 'note'
+export interface ImportedItemProposal {
+  text: string
+  kind: ImportItemKind
+  // Sección SUGERIDA (solo platos): metadato de clasificación, nunca criterio de orden.
+  section: string | null
   note: string | null
-}
-export interface ImportedSectionProposal {
-  section: string
-  dishes: ImportedDishProposal[]
+  include: boolean
 }
 export interface MenuImportProposal {
-  sections: ImportedSectionProposal[]
-  // Texto que el documento traía y no encaja como plato (precio por persona, condiciones...). Solo para
-  // mostrar a quien revisa; no se guarda como plato.
-  extraNotes: string[]
+  items: ImportedItemProposal[]
 }
 
 export const MENU_IMPORT_EXPLANATION =
   'Guarda tu menú en PEPA. Haz una foto o sube el PDF y PEPA intentará organizarlo por ti. Cuando tus invitados hayan confirmado, podremos ayudarte a detectar platos que conviene revisar por sus alergias o necesidades alimentarias.'
 
-// Limpia lo que devuelve la IA antes de enseñarlo: recorta, descarta vacíos y duplicados exactos.
+// Limpia lo que devuelve la IA antes de enseñarlo. CONSERVA EL ORDEN del documento y NO deduplica (el mismo texto en
+// dos posiciones puede ser intencionado). Acepta también la respuesta antigua agrupada por secciones (se aplana en el
+// orden recibido) por si la función de servidor aún no se ha actualizado.
 export function sanitizeImportProposal(raw: unknown): MenuImportProposal {
-  const proposal: MenuImportProposal = { sections: [], extraNotes: [] }
+  const proposal: MenuImportProposal = { items: [] }
   if (!raw || typeof raw !== 'object') return proposal
-  const r = raw as { sections?: unknown; extraNotes?: unknown }
-  if (Array.isArray(r.sections)) {
+  const r = raw as { items?: unknown; sections?: unknown; extraNotes?: unknown }
+  const clean = (value: unknown, max: number): string => (typeof value === 'string' ? value.trim().slice(0, max) : '')
+
+  if (Array.isArray(r.items)) {
+    for (const entry of r.items.slice(0, 300)) {
+      const rec = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : null
+      const text = clean(typeof entry === 'string' ? entry : (rec?.text ?? rec?.name), 200)
+      if (!text) continue
+      const rawKind = typeof rec?.kind === 'string' ? rec.kind : 'dish'
+      // «skip» = la IA cree que es prescindible: se muestra, desmarcado. Nada se descarta en silencio.
+      const kind: ImportItemKind = rawKind === 'heading' ? 'heading' : rawKind === 'note' || rawKind === 'skip' ? 'note' : 'dish'
+      const section = kind === 'dish' ? clean(rec?.section, 80) || null : null
+      proposal.items.push({ text, kind, section: section ? canonicalSectionLabel(section) : null, note: clean(rec?.note, 300) || null, include: rawKind !== 'skip' })
+    }
+  } else if (Array.isArray(r.sections)) {
     for (const s of r.sections) {
       if (!s || typeof s !== 'object') continue
-      const section = typeof (s as { section?: unknown }).section === 'string' ? (s as { section: string }).section.trim().slice(0, 80) : ''
+      const section = clean((s as { section?: unknown }).section, 80)
       const dishesRaw = (s as { dishes?: unknown }).dishes
-      const dishes: ImportedDishProposal[] = []
-      if (Array.isArray(dishesRaw)) {
-        for (const d of dishesRaw) {
-          const name = typeof d === 'string' ? d : typeof (d as { name?: unknown })?.name === 'string' ? (d as { name: string }).name : ''
-          const trimmed = name.trim().slice(0, 160)
-          if (!trimmed || dishes.some((x) => norm(x.name) === norm(trimmed))) continue
-          const note = typeof (d as { note?: unknown })?.note === 'string' ? (d as { note: string }).note.trim().slice(0, 300) || null : null
-          dishes.push({ name: trimmed, note })
-        }
+      if (!Array.isArray(dishesRaw)) continue
+      for (const d of dishesRaw) {
+        const text = clean(typeof d === 'string' ? d : (d as { name?: unknown })?.name, 200)
+        if (!text) continue
+        proposal.items.push({ text, kind: 'dish', section: section ? canonicalSectionLabel(section) : null, note: clean((d as { note?: unknown })?.note, 300) || null, include: true })
       }
-      if (dishes.length > 0) proposal.sections.push({ section: section || 'Otro', dishes })
     }
   }
+  // Textos sueltos que el documento traía (precio, condiciones…): llegan como notas DESMARCADAS al final.
   if (Array.isArray(r.extraNotes)) {
-    proposal.extraNotes = r.extraNotes.filter((n): n is string => typeof n === 'string').map((n) => n.trim().slice(0, 300)).filter(Boolean).slice(0, 10)
+    for (const n of r.extraNotes.slice(0, 10)) {
+      const text = clean(n, 300)
+      if (text) proposal.items.push({ text, kind: 'note', section: null, note: null, include: false })
+    }
   }
   return proposal
 }

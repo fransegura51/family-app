@@ -33,6 +33,7 @@ import {
 } from '@/domain/eventFood'
 import { foodMomentKeyFromSource, foodMomentSourceKey, timeKey, type DayPlanPatch } from '@/domain/eventDayPlan'
 import { normalizeStoredSections, type StoredSection } from '@/domain/eventMenuHub'
+import { menuSequence, placeNewIds, type MenuPlacement } from '@/domain/eventMenuSequence'
 import { computeFoodNeedsState } from '@/domain/eventDietaryNeeds'
 import { deriveOperationalDate } from '@/domain/eventCelebration'
 import { calendarEntryFor, calendarRowMatches, planCalendarSync, type CalendarRowState } from '@/domain/eventCalendarSync'
@@ -61,6 +62,7 @@ import type {
   EventGuestMoment,
   EventGuestQuestion,
   EventGuestQuestionAnswer,
+  EventMenuItemKind,
   EventGuestQuestionOption,
   EventGuestRsvpStatus,
   EventFoodDocument,
@@ -1085,7 +1087,7 @@ export async function deleteEventBudgetItem(id: string): Promise<void> {
 // (selector de Recetas); el plato en sí no se traspasa.
 // ---------------------------------------------------------------------
 
-const MENU_ITEM_SELECT = 'id, event_id, family_id, name, category, quantity_note, transferred, sort_order, created_at, recipe_id, notes, source, document_id, prepared_by'
+const MENU_ITEM_SELECT = 'id, event_id, family_id, name, category, quantity_note, transferred, sort_order, created_at, recipe_id, notes, source, document_id, prepared_by, kind'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapMenuItem(r: any): EventMenuItem {
@@ -1104,6 +1106,7 @@ function mapMenuItem(r: any): EventMenuItem {
     source: r.source === 'importado' ? 'importado' : 'manual',
     documentId: r.document_id ?? null,
     preparedBy: r.prepared_by === 'familia' || r.prepared_by === 'proveedor' ? r.prepared_by : null,
+    kind: r.kind === 'heading' || r.kind === 'note' ? r.kind : 'dish',
   }
 }
 
@@ -1123,55 +1126,93 @@ export interface MenuItemExtras {
   source?: 'manual' | 'importado'
   documentId?: string | null
   preparedBy?: 'familia' | 'proveedor' | null
+  kind?: EventMenuItemKind
 }
 
-export async function addEventMenuItem(eventId: string, name: string, category?: string | null, quantityNote?: string | null, extras: MenuItemExtras = {}): Promise<void> {
+// Crea un elemento del menú y devuelve su id. La POSICIÓN no se manda: un disparador de la base de datos lo coloca al
+// final (0196); quien quiera otro sitio usa reorderEventMenuItems después. Solo un plato lleva sección, receta y origen.
+export async function addEventMenuItem(eventId: string, name: string, category?: string | null, quantityNote?: string | null, extras: MenuItemExtras = {}): Promise<string> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase.from('event_menu_items').insert({
-    event_id: eventId,
-    family_id: familyId,
-    name: name.trim(),
-    category: category ?? null,
-    quantity_note: quantityNote ?? null,
-    sort_order: Date.now(),
-    recipe_id: extras.recipeId ?? null,
-    notes: extras.notes ?? null,
-    source: extras.source ?? 'manual',
-    document_id: extras.documentId ?? null,
-    prepared_by: extras.preparedBy ?? null,
-  })
-  if (error) throw error
-}
-
-// Inserción en bloque de platos ya REVISADOS por la familia (importación de foto/PDF). Un solo viaje a la base
-// de datos; el orden de entrada se conserva con un sort_order creciente.
-export async function addEventMenuItemsBulk(
-  eventId: string,
-  items: { name: string; category: string; notes?: string | null }[],
-  source: { documentId: string | null; imported: boolean },
-): Promise<number> {
-  if (items.length === 0) return 0
-  const familyId = await currentFamilyId()
-  const base = Date.now()
-  const { error } = await supabase.from('event_menu_items').insert(
-    items.map((item, index) => ({
+  const kind = extras.kind ?? 'dish'
+  const { data, error } = await supabase
+    .from('event_menu_items')
+    .insert({
       event_id: eventId,
       family_id: familyId,
-      name: item.name.trim(),
-      category: item.category,
-      notes: item.notes ?? null,
-      sort_order: base + index,
-      source: source.imported ? 'importado' : 'manual',
-      document_id: source.documentId,
-    })),
-  )
+      name: name.trim(),
+      category: kind === 'dish' ? (category ?? null) : null,
+      quantity_note: quantityNote ?? null,
+      recipe_id: kind === 'dish' ? (extras.recipeId ?? null) : null,
+      notes: extras.notes ?? null,
+      source: extras.source ?? 'manual',
+      document_id: extras.documentId ?? null,
+      prepared_by: kind === 'dish' ? (extras.preparedBy ?? null) : null,
+      kind,
+    })
+    .select('id')
+    .single()
   if (error) throw error
-  return items.length
+  return data.id
+}
+
+// Reordena el menú ENTERO (todos los elementos del evento, en el orden deseado) de forma atómica (RPC 0196).
+export async function reorderEventMenuItems(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return
+  const { error } = await supabase.rpc('reorder_event_menu_items', { p_ids: orderedIds })
+  if (error) throw error
+}
+
+export interface ImportMenuRow {
+  text: string
+  kind: EventMenuItemKind
+  // Sección (clasificación) solo para platos.
+  category: string | null
+  notes: string | null
+}
+
+// Importación de un menú YA REVISADO por la familia (foto/PDF). Las filas llegan en el orden que la familia dejó
+// (el del documento, o el que corrigió) y se guardan con posiciones explícitas y consecutivas. Nada existente se
+// reordena: lo nuevo va al final, al principio o tras un elemento concreto (placement), y los existentes conservan su
+// orden relativo. Un mismo texto en dos posiciones se guarda dos veces (no se deduplica).
+export async function importEventMenuItems(
+  eventId: string,
+  rows: ImportMenuRow[],
+  source: { documentId: string | null; placement?: MenuPlacement },
+): Promise<{ count: number; ids: string[] }> {
+  if (rows.length === 0) return { count: 0, ids: [] }
+  const familyId = await currentFamilyId()
+  const { data: last, error: lastError } = await supabase.from('event_menu_items').select('sort_order').eq('event_id', eventId).order('sort_order', { ascending: false }).limit(1)
+  if (lastError) throw lastError
+  const base = last && last.length > 0 ? Number(last[0].sort_order) : 0
+  const { data, error } = await supabase
+    .from('event_menu_items')
+    .insert(
+      rows.map((row, index) => ({
+        event_id: eventId,
+        family_id: familyId,
+        name: row.text.trim(),
+        category: row.kind === 'dish' ? row.category : null,
+        notes: row.notes,
+        sort_order: base + (index + 1) * 1000,
+        source: 'importado',
+        document_id: source.documentId,
+        kind: row.kind,
+      })),
+    )
+    .select('id, sort_order')
+  if (error) throw error
+  const ids = [...data].sort((x, y) => Number(x.sort_order) - Number(y.sort_order)).map((r) => r.id as string)
+  const placement = source.placement ?? { type: 'end' }
+  if (placement.type !== 'end') {
+    const existing = (await listEventMenuItems(eventId)).filter((i) => !ids.includes(i.id))
+    await reorderEventMenuItems(placeNewIds(menuSequence(existing).map((i) => i.id), ids, placement))
+  }
+  return { count: ids.length, ids }
 }
 
 export async function updateEventMenuItem(
   id: string,
-  patch: Partial<{ name: string; category: string | null; notes: string | null; quantityNote: string | null; recipeId: string | null; preparedBy: 'familia' | 'proveedor' | null }>,
+  patch: Partial<{ name: string; category: string | null; notes: string | null; quantityNote: string | null; recipeId: string | null; preparedBy: 'familia' | 'proveedor' | null; kind: EventMenuItemKind }>,
 ): Promise<void> {
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (patch.name !== undefined) update.name = patch.name.trim()
@@ -1180,6 +1221,7 @@ export async function updateEventMenuItem(
   if (patch.quantityNote !== undefined) update.quantity_note = patch.quantityNote
   if (patch.recipeId !== undefined) update.recipe_id = patch.recipeId
   if (patch.preparedBy !== undefined) update.prepared_by = patch.preparedBy
+  if (patch.kind !== undefined) update.kind = patch.kind
   const { error } = await supabase.from('event_menu_items').update(update).eq('id', id)
   if (error) throw error
 }

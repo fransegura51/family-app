@@ -302,10 +302,12 @@ function conflictMessage(dishName: string, category: EventDietaryCategory, peopl
   return `⚠️ Conviene revisar ‘${dishName}’: entre los asistentes hay ${who} ${what}.`
 }
 
-export function findMenuConflicts(dishes: Pick<EventMenuItem, 'id' | 'name' | 'notes'>[], activeNeeds: EventDietaryNeed[]): MenuConflict[] {
+// Solo los PLATOS se cruzan con las necesidades: un encabezado o una nota («Cambio de Tercio») no es un alimento.
+export function findMenuConflicts(dishes: (Pick<EventMenuItem, 'id' | 'name' | 'notes'> & { kind?: EventMenuItem['kind'] })[], activeNeeds: EventDietaryNeed[]): MenuConflict[] {
   const categories = [...new Set(activeNeeds.map((n) => n.category))]
   const out: MenuConflict[] = []
   for (const dish of dishes) {
+    if (dish.kind !== undefined && dish.kind !== 'dish') continue
     const text = normalize(`${dish.name} ${dish.notes ?? ''}`)
     for (const category of categories) {
       const pattern = DISH_PATTERNS[category]

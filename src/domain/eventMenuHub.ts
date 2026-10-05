@@ -67,8 +67,9 @@ export function dishOrigin(mode: MenuToolsMode, preparedBy: DishOrigin | null): 
 }
 
 // ¿Se ofrecen Recetas y Lista de la compra para este plato? Solo si lo prepara la familia.
-export function dishHasKitchenTools(mode: MenuToolsMode, preparedBy: DishOrigin | null): boolean {
-  return dishOrigin(mode, preparedBy) === 'familia'
+export function dishHasKitchenTools(mode: MenuToolsMode, preparedBy: DishOrigin | null, kind: EventMenuItem['kind'] = 'dish'): boolean {
+  // Un encabezado o una nota no son comida: nunca ofrecen receta ni Compras.
+  return kind === 'dish' && dishOrigin(mode, preparedBy) === 'familia'
 }
 
 // ¿Se muestran los accesos generales a Recetas / Lista de la compra?
@@ -136,7 +137,9 @@ function itemMatchesSection(item: EventMenuItem, section: StoredSection): boolea
 
 // Lo que se muestra: las secciones configuradas (o las de partida), con sus platos. Una sección oculta que aún
 // tiene platos se ve igualmente (forced). Los platos sin sección conocida se agrupan aparte: NADA se descarta.
-export function resolveMenuSections(stored: StoredSection[] | null, items: EventMenuItem[], infantilNeeded: boolean): { visible: SectionView[]; hidden: SectionView[]; config: StoredSection[] } {
+export function resolveMenuSections(stored: StoredSection[] | null, allItems: EventMenuItem[], infantilNeeded: boolean): { visible: SectionView[]; hidden: SectionView[]; config: StoredSection[] } {
+  // La sección clasifica PLATOS; los encabezados y notas del menú no pertenecen a ninguna.
+  const items = allItems.filter((i) => i.kind === 'dish')
   const config = completeSections(stored ?? defaultSections(infantilNeeded))
   const claimed = new Set<string>()
   const views: SectionView[] = config.map((s) => {

@@ -3,7 +3,7 @@
 // data/eventMenuHub.behavior.test.ts; aquí, la ESTRUCTURA: qué vive dónde y qué nunca debe volver a pasar.
 import { describe, expect, it } from 'vitest'
 
-const FILES = import.meta.glob(['/src/ui/*.tsx', '/src/domain/*.ts', '/src/data/*.ts', '/supabase/functions/**/index.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const FILES = import.meta.glob(['/src/ui/*.tsx', '/src/domain/*.ts', '/src/data/*.ts', '/supabase/functions/**/index.ts', '/supabase/functions/_shared/ai/purposes/eventFoodDocument.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const SCREEN = FILES['/src/ui/EventosScreen.tsx']
 const MENU = FILES['/src/ui/EventMenu.tsx']
 const DINERS = FILES['/src/ui/EventMenuDiners.tsx']
@@ -95,8 +95,8 @@ describe('Menú: platos y secciones (5–14)', () => {
     expect(MENU).toContain('📷 Hacer una foto · 🖼️ Elegir una foto · 📄 Subir PDF')
   })
   it('6/7/8. un plato se crea, edita y borra; la receta es OPCIONAL y el borrado pide confirmación', () => {
-    expect(MENU).toContain('addEventMenuItem(event.id, values.name, values.category, null,')
-    expect(MENU).toContain('updateEventMenuItem(target.item.id,')
+    expect(MENU).toContain('addEventMenuItem(event.id, values.name, isDishKind ? values.category : null, null,')
+    expect(MENU).toContain('updateEventMenuItem(target.item.id, {')
     expect(MENU).toContain('<ConfirmIconButton')
     expect(MENU).toContain('Sin receta enlazada')
     expect(MENU).not.toMatch(/recipeId[^\n]*required|required[^\n]*recipe/i)
@@ -107,7 +107,8 @@ describe('Menú: platos y secciones (5–14)', () => {
     const sheet = slice(MENU, 'function SectionsSheet(', '\n}\n')
     for (const text of ['Gestionar secciones', 'EN EL MENÚ', 'OCULTAS (toca para volver a mostrar)', '+ Añadir otra sección', 'Ocultar', 'Mostrar']) expect(sheet, text).toContain(text)
     expect(sheet).toContain('disabled={!canHide}')
-    expect(sheet).toContain('para ocultarla, muévelos o bórralos antes')
+    expect(sheet).toContain("muévelo o bórralo")
+    expect(sheet).toContain("muévelos o bórralos")
     expect(sheet).toContain('addCustomSection(config, label)')
     expect(sheet).not.toMatch(/deleteEventMenuItem/) // ocultar jamás borra platos
   })
@@ -140,15 +141,15 @@ describe('Importar (15–18, 14 del encargo)', () => {
   })
   it('17. cancelar o descartar no guarda nada: la propuesta nunca se guarda sola', () => {
     const handleFile = slice(IMPORTER, 'async function handleFile', 'async function confirm')
-    expect(handleFile).not.toMatch(/addEventMenuItemsBulk|saveEventFoodDocument/)
+    expect(handleFile).not.toMatch(/importEventMenuItems|saveEventFoodDocument/)
     expect(IMPORTER).toContain('onClick={onCancel}')
     expect(IMPORTER).toContain('Descartar')
     expect(IMPORTER).toContain('No se guardará nada hasta que confirmes')
   })
   it('18. al confirmar se conserva el documento original y los platos quedan enlazados a él', () => {
     const confirm = slice(IMPORTER, 'async function confirm', 'const chosenCount')
-    expect(confirm.indexOf('saveEventFoodDocument')).toBeLessThan(confirm.indexOf('addEventMenuItemsBulk'))
-    expect(confirm).toContain('documentId: doc.id, imported: true')
+    expect(confirm.indexOf('saveEventFoodDocument')).toBeLessThan(confirm.indexOf('importEventMenuItems'))
+    expect(confirm).toContain('documentId: doc.id')
   })
   it('aviso breve antes de importar si hay necesidades: ayuda a revisar, sin prometer detección perfecta ni seguridad', () => {
     expect(IMPORTER).toContain('PEPA podrá ayudarte a detectar posibles platos que convenga revisar según las necesidades alimentarias de tus invitados.')
@@ -197,7 +198,7 @@ describe('Herramientas contextuales: Recetas y Compras (27–36)', () => {
   it('las herramientas salen SOLO del modo que calcula menuToolsMode (una fuente: la decisión de Comida y bebida)', () => {
     expect(MENU).toContain('menuToolsMode(ctx)')
     expect(MENU).toContain('showKitchenLinks(mode)')
-    expect(MENU).toContain('dishHasKitchenTools(mode, dish.preparedBy)')
+    expect(MENU).toContain('dishHasKitchenTools(mode, dish.preparedBy, dish.kind)')
     expect(MENU).toContain("if (mode === 'sin_comida') return null")
   })
   it('31/32. «todavía no sabemos» y «no habrá comida» muestran su mensaje en vez de las herramientas', () => {
@@ -254,5 +255,102 @@ describe('Alcance: nada de lo aplazado (45, 46)', () => {
   it('46. no hay impresión, PDF, compartir ni plantillas en el Menú del evento', () => {
     const text = [MENU, DINERS, IMPORTER].join('\n')
     expect(text).not.toMatch(/window\.print|openPrintReport|shareFiles|shareText|html2canvas|navigator\.share|jspdf|DOCUMENT_TEMPLATES|event_document_settings/)
+  })
+})
+
+// ---------------------------------------------------------------------
+// Orden del documento, tipos de elemento y revisión de la importación
+// ---------------------------------------------------------------------
+describe('Importador: fidelidad al documento antes que interpretación', () => {
+  const PURPOSE = FILES['/supabase/functions/_shared/ai/purposes/eventFoodDocument.ts']
+  it('el prompt exige el ORDEN original, prohíbe reordenar/agrupar y devuelve una lista plana (no agrupada por sección)', () => {
+    expect(PURPOSE).toContain('devuelve los elementos EXACTAMENTE en el orden en que aparecen en el documento')
+    expect(PURPOSE).toContain('NUNCA reordenes, agrupes por tipo ni muevas un elemento')
+    expect(PURPOSE).toContain('No ordenes alfabéticamente ni por sección')
+    expect(PURPOSE).toContain('La sección NO influye en el orden')
+    expect(PURPOSE).toContain('{"items": [{"text"')
+    expect(PURPOSE).not.toContain('Agrupa los platos en las secciones')
+    expect(PURPOSE).not.toContain('"sections": [{')
+  })
+  it('el prompt conserva el texto con significado (encabezados, notas) y solo marca como prescindible lo claramente decorativo, devolviéndolo igualmente', () => {
+    for (const text of ['kind "heading"', 'kind "note"', 'kind "skip"', 'Cambio de Tercio', 'nunca descartes texto con significado', 'Aun así devuélvelo, en su posición', 'NO elimines elementos repetidos']) expect(PURPOSE, text).toContain(text)
+    expect(PURPOSE).toContain('NUNCA inventes platos, ingredientes, alérgenos, cantidades, raciones ni precios')
+  })
+  it('el servidor no deduplica ni reordena al interpretar la respuesta', () => {
+    const parse = slice(PURPOSE, 'parseOutput(rawText)', '\n}\n')
+    expect(parse).not.toMatch(/\.sort\(|\.reverse\(|\.some\(|new Set\(/)
+  })
+  it('la revisión muestra el orden original: la lista sale de proposal.items tal cual, sin agrupar por sección', () => {
+    const handleFile = slice(IMPORTER, 'async function handleFile', 'function update(')
+    expect(handleFile).toContain('proposal.items.map(')
+    expect(handleFile).not.toMatch(/\.sort\(|groupBy|MENU_SECTIONS/)
+  })
+  it('14. cada fila ofrece incluir, texto, tipo, sección (solo platos) y orden (☰ y ▲▼)', () => {
+    for (const text of ['aria-label={`Incluir', 'ariaLabel="Texto del elemento"', 'aria-label="Tipo"', 'aria-label="Sección"', 'className="drag-handle"', 'aria-label={`Subir', 'aria-label={`Bajar']) expect(IMPORTER, text).toContain(text)
+    expect(IMPORTER).toContain("r.kind === 'dish' && !forcedSection")
+  })
+  it('28. los textos largos se LEEN completos en móvil: campo multilínea que crece, sin scroll horizontal ni input de una línea', () => {
+    expect(IMPORTER).toContain('<AutoGrowTextarea value={r.text}')
+    expect(IMPORTER).not.toMatch(/<input[^>]*type="text"[^>]*value=\{r\.text/)
+    const grow = FILES['/src/ui/AutoGrowTextarea.tsx']
+    expect(grow).toContain('el.style.height = `${el.scrollHeight}px`')
+    expect(grow).toContain('rows={1}')
+    expect(MENU).toContain('<AutoGrowTextarea value={name}')
+  })
+  it('19. con un menú ya existente se pregunta DÓNDE añadir lo nuevo y se avisa de que lo existente no se mueve', () => {
+    expect(IMPORTER).toContain('Dónde añadirlo (lo que ya tienes no se mueve)')
+    for (const text of ['Al final del menú', 'Al principio del menú', 'Después de «']) expect(IMPORTER, text).toContain(text)
+    expect(IMPORTER).toContain("useState('end')")
+    expect(MENU).toContain('existing={sequence.map((i) => ({ id: i.id, label: i.name }))}')
+  })
+  it('lo que se guarda sale del orden de la revisión: importRowsToSave filtra y no reordena', () => {
+    const fn = slice(IMPORTER, 'export function importRowsToSave', '// «end» | «start»')
+    expect(fn).toContain('.filter((r) => r.include && r.text.trim())')
+    expect(fn).not.toMatch(/\.sort\(/)
+  })
+})
+
+describe('Menú del evento: la secuencia es la vista principal; las secciones, clasificación', () => {
+  it('«Orden del menú» es la vista por defecto y se puede cambiar a «Por secciones» (y se recuerda en el dispositivo)', () => {
+    expect(MENU).toContain("localStorage.getItem(MENU_VIEW_KEY) === 'secciones' ? 'secciones' : 'secuencia'")
+    expect(MENU).toContain('Orden del menú')
+    expect(MENU).toContain('Por secciones')
+  })
+  it('la secuencia se ordena SOLO por la posición explícita y se reordena con ☰ / ▲▼ guardando el menú completo (RPC)', () => {
+    expect(MENU).toContain('const sequence = useMemo(() => menuSequence(data.items), [data.items])')
+    const commit = slice(MENU, 'async function commitOrder(', 'function moveItem(')
+    expect(commit).toContain('reorderEventMenuItems(ids)')
+  })
+  it('5–8. guardar un plato editado NO toca la posición: un UPDATE de esa fila, sin sort_order', () => {
+    const save = slice(MENU, 'async function saveDish(', 'async function commitOrder(')
+    const update = slice(save, 'await updateEventMenuItem(', '} else {')
+    expect(update).not.toContain('sortOrder')
+    expect(update).not.toContain('sort_order')
+    expect(save).not.toMatch(/\.sort\(/)
+  })
+  it('un elemento nuevo se coloca con una regla explícita (junto a su sección)', () => {
+    const save = slice(MENU, 'async function saveDish(', 'async function commitOrder(')
+    expect(save).toContain('placementForNewDish(')
+    expect(save).toContain('placeNewIds(')
+  })
+  it('las secciones siguen siendo clasificación: la vista por secciones, la gestión de secciones y el menú infantil siguen ahí', () => {
+    for (const text of ['Gestionar secciones', "view === 'secciones'", 'MENU_INFANTIL_SECTION_LABEL', 'Encabezados y notas']) expect(MENU, text).toContain(text)
+  })
+  it('un encabezado o nota no ofrece receta ni Compras: las herramientas exigen kind = dish', () => {
+    expect(MENU).toContain('dishHasKitchenTools(mode, dish.preparedBy, dish.kind)')
+    expect(FILES['/src/domain/eventMenuHub.ts']).toContain("return kind === 'dish' && dishOrigin(mode, preparedBy) === 'familia'")
+  })
+  it('31. event_menu_options sigue siendo otra cosa que event_menu_items (no se mezclan)', () => {
+    expect(MENU).not.toMatch(/event_menu_options|listEventMenuOptions/)
+    expect(DINERS).toContain('countMenuChoices(data.options, members, guests)')
+  })
+})
+
+describe('Sección protegida: «Ocultar» se ve desactivado (22, 27)', () => {
+  const sheet = slice(MENU, 'export function SectionsSheet(', '\n}\n')
+  it('el botón va disabled + aria-disabled y con su explicación; la regla de protección no cambia', () => {
+    expect(sheet).toContain('disabled={!canHide} aria-disabled={!canHide}')
+    expect(sheet).toContain('muévelo o bórralo')
+    expect(sheet).toContain('const canHide = canHideSection(view)')
   })
 })

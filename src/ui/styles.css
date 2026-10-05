@@ -5917,17 +5917,82 @@ textarea {
 }
 .menu-import-row {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  min-width: 0;
+  background: var(--card-bg);
+}
+.menu-import-off {
+  opacity: 0.6;
+}
+.menu-import-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.menu-import-meta {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
-}
-.menu-import-row input[type='text'] {
-  flex: 1 1 140px;
+  padding-left: 34px;
   min-width: 0;
 }
-.menu-import-row select {
-  flex: 1 1 100%;
+.menu-import-meta select {
+  flex: 1 1 130px;
   min-width: 0;
   max-width: 100%;
+}
+.menu-import-placement {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  margin: 4px 0;
+}
+.menu-import-placement select {
+  min-width: 0;
+  max-width: 100%;
+}
+/* Texto largo: el campo crece y se lee completo; nunca scroll horizontal. */
+.autogrow {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  resize: none;
+  overflow: hidden;
+  box-sizing: border-box;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Botones de texto desactivados: se ven grises y no parecen pulsables. */
+.link-button:disabled {
+  color: var(--muted);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Menú: encabezados/separadores y notas dentro de la secuencia */
+.menu-dish-heading .menu-dish-name {
+  font-weight: 700;
+  text-align: center;
+  width: 100%;
+}
+.menu-dish-heading .menu-dish-main {
+  align-items: center;
+}
+.menu-dish-note-row .menu-dish-name {
+  font-style: italic;
+  color: var(--muted);
+}
+.autogrow-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }

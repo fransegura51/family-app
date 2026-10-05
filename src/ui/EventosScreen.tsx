@@ -1191,7 +1191,9 @@ function EventDetail({
         stat = budgetSpent !== null ? `${budgetSpent.toFixed(2)} € de ${budgetPlanned.toFixed(2)} €` : `Planeado: ${budgetPlanned.toFixed(2)} €`
         break
       case 'menu_compra': {
-        stat = menuItems.length === 0 ? 'Sin menú todavía' : `${menuItems.length} plato${menuItems.length === 1 ? '' : 's'}`
+        // Solo los platos cuentan como platos (los encabezados y notas del menú no).
+        const dishes = menuItems.filter((i) => i.kind === 'dish').length
+        stat = menuItems.length === 0 ? 'Sin menú todavía' : `${dishes} plato${dishes === 1 ? '' : 's'}`
         break
       }
       case 'decoracion': {

@@ -7,7 +7,7 @@
 //   · Móvil primero: sin formularios en línea que se salgan del ancho; los formularios son hojas apiladas.
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { addEventMenuItem, deleteEventMenuItem, listEventMenuItems, saveEventMenuSections, updateEventMenuItem } from '@/data/events'
+import { addEventMenuItem, deleteEventMenuItem, listEventMenuItems, reorderEventMenuItems, saveEventMenuSections, updateEventMenuItem } from '@/data/events'
 import { loadMenuHubData, type MenuHubData } from '@/data/eventMenuHub'
 import { errorMessage } from '@/domain/errorMessage'
 import { computeFoodNeedsState, conflictInputsSignature, findMenuConflicts } from '@/domain/eventDietaryNeeds'
@@ -31,8 +31,9 @@ import {
   type SectionView,
   type StoredSection,
 } from '@/domain/eventMenuHub'
-import { moveId } from '@/domain/eventDayPlan'
-import type { EventMenuItem, FamilyEvent, Recipe } from '@/domain/types'
+import { KIND_LABELS, dishCount, menuSequence, moveId, placeNewIds, placementForNewDish } from '@/domain/eventMenuSequence'
+import type { EventMenuItem, EventMenuItemKind, FamilyEvent, Recipe } from '@/domain/types'
+import { AutoGrowTextarea } from '@/ui/AutoGrowTextarea'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { DinersPanel } from '@/ui/EventMenuDiners'
 import { EventMenuImporter } from '@/ui/EventMenuImporter'
@@ -101,7 +102,17 @@ export function EventMenuSection({ event, onDerivedDataChanged }: { event: Famil
 // ---------------------------------------------------------------------
 // MENÚ: secciones → platos
 // ---------------------------------------------------------------------
-type DishTarget = { mode: 'new'; sectionLabel: string } | { mode: 'edit'; item: EventMenuItem }
+type DishTarget = { mode: 'new'; sectionLabel: string; kind: EventMenuItemKind } | { mode: 'edit'; item: EventMenuItem }
+
+type MenuView = 'secuencia' | 'secciones'
+const MENU_VIEW_KEY = 'pepa.eventMenuView'
+function loadMenuView(): MenuView {
+  try {
+    return localStorage.getItem(MENU_VIEW_KEY) === 'secciones' ? 'secciones' : 'secuencia'
+  } catch {
+    return 'secuencia'
+  }
+}
 
 export function MenuManager({
   event,
@@ -128,6 +139,27 @@ export function MenuManager({
   const [sectionsOpen, setSectionsOpen] = useState(false)
   const [importing, setImporting] = useState<{ forcedSection: string | null } | null>(null)
   const [ingredientsFor, setIngredientsFor] = useState<EventMenuItem | null>(null)
+  // LA SECUENCIA es la vista principal (el orden real del menú); «Por secciones» es la clasificación (ayuda de organización).
+  const [view, setViewState] = useState<MenuView>(loadMenuView)
+  const sequence = useMemo(() => menuSequence(data.items), [data.items])
+  const drag = useDragReorder(
+    sequence.map((i) => i.id),
+    (ids) => void commitOrder(ids),
+  )
+  const sectionKeyById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const v of [...resolved.visible, ...resolved.hidden]) for (const item of v.items) map.set(item.id, v.key)
+    return map
+  }, [resolved])
+
+  function setView(next: MenuView) {
+    setViewState(next)
+    try {
+      localStorage.setItem(MENU_VIEW_KEY, next)
+    } catch {
+      // sin almacenamiento: solo se recuerda mientras la pantalla está abierta
+    }
+  }
 
   // Cruce menú ↔ necesidades: solo un AVISO para revisar, recalculado cuando cambia algo de verdad.
   const signature = conflictInputsSignature(data.items, needsState.activeNeeds)
@@ -136,6 +168,7 @@ export function MenuManager({
   const conflictsByDish = useMemo(() => conflictInfo(conflicts, needsState.activeNeeds, data.guests, data.members), [conflicts, needsState.activeNeeds, data.guests, data.members])
 
   const hasItems = data.items.length > 0
+  const nonDish = sequence.filter((i) => i.kind !== 'dish')
   const sectionLabels = resolved.config.map((s) => s.label)
   const firstSectionLabel = resolved.visible.find((v) => !v.virtual)?.label ?? ''
 
@@ -148,14 +181,45 @@ export function MenuManager({
     }
   }
 
+  // Editar jamás cambia la POSICIÓN: ni el nombre, ni la nota, ni la sección, ni la receta (solo se actualiza esa fila).
+  // Un elemento NUEVO nace en su sitio: junto a los de su sección si ya hay (después del último), y se puede mover luego.
   async function saveDish(target: DishTarget, values: DishValues) {
+    const isDishKind = values.kind === 'dish'
     if (target.mode === 'edit') {
-      await updateEventMenuItem(target.item.id, { name: values.name, category: values.category, notes: values.notes, recipeId: values.recipeId, preparedBy: values.preparedBy })
+      await updateEventMenuItem(target.item.id, {
+        name: values.name,
+        kind: values.kind,
+        category: isDishKind ? values.category : null,
+        notes: values.notes,
+        recipeId: isDishKind ? values.recipeId : null,
+        preparedBy: isDishKind ? values.preparedBy : null,
+      })
     } else {
-      await addEventMenuItem(event.id, values.name, values.category, null, { notes: values.notes, recipeId: values.recipeId, preparedBy: values.preparedBy })
+      const id = await addEventMenuItem(event.id, values.name, isDishKind ? values.category : null, null, { notes: values.notes, recipeId: values.recipeId, preparedBy: values.preparedBy, kind: values.kind })
+      const sectionKey = isDishKind && values.category ? ([...resolved.visible, ...resolved.hidden].find((v) => v.label === values.category)?.key ?? null) : null
+      const placement = isDishKind
+        ? placementForNewDish(sequence, (item) => sectionKeyById.get(item.id) ?? null, sectionKey, resolved.config.map((c) => c.key))
+        : ({ type: 'end' } as const)
+      if (placement.type !== 'end') await reorderEventMenuItems(placeNewIds(sequence.map((i) => i.id), [id], placement))
     }
     setDishSheet(null)
     await onReload()
+  }
+
+  async function commitOrder(ids: string[]) {
+    try {
+      await reorderEventMenuItems(ids)
+    } catch (err) {
+      onError(errorMessage(err, 'No se pudo cambiar el orden'))
+    }
+    await onReload()
+  }
+
+  function moveItem(id: string, delta: -1 | 1) {
+    const next = moveId(drag.order, id, delta)
+    if (next === drag.order) return
+    drag.setOrder(next)
+    void commitOrder(next)
   }
 
   async function deleteDish(id: string) {
@@ -167,18 +231,30 @@ export function MenuManager({
     }
   }
 
-  function dishRow(dish: EventMenuItem) {
+  // Fila de un elemento. En la SECUENCIA lleva asa ☰ y ▲▼ (y la sección como etiqueta); en «Por secciones», solo editar y borrar.
+  function itemRow(dish: EventMenuItem, sequenceIndex: number | null) {
+    const inSequence = sequenceIndex !== null
     const recipe = dish.recipeId ? recipeById.get(dish.recipeId) : undefined
-    const tools = dishHasKitchenTools(mode, dish.preparedBy)
-    const infos = conflictsByDish.get(dish.id) ?? []
+    const isDishItem = dish.kind === 'dish'
+    const tools = dishHasKitchenTools(mode, dish.preparedBy, dish.kind)
+    const infos = isDishItem ? (conflictsByDish.get(dish.id) ?? []) : []
+    const sectionLabel = isDishItem ? (resolved.visible.concat(resolved.hidden).find((v) => v.key === sectionKeyById.get(dish.id))?.label ?? null) : null
+    const dragging = inSequence && drag.draggingId === dish.id
     return (
-      <div key={dish.id}>
-        <div className="menu-dish">
+      <div key={dish.id} data-reorder-row={inSequence ? '' : undefined} className={dragging ? 'dayplan-row-dragging' : undefined} style={dragging ? { transform: `translateY(${drag.dragOffset}px)`, background: 'var(--card-bg)' } : undefined}>
+        <div className={'menu-dish' + (dish.kind === 'heading' ? ' menu-dish-heading' : dish.kind === 'note' ? ' menu-dish-note-row' : '')}>
+          {inSequence && (
+            <span className="drag-handle" style={{ touchAction: 'none' }} role="button" aria-label={`Arrastrar ${dish.name} para reordenar`} {...drag.handleProps(dish.id)}>
+              ☰
+            </span>
+          )}
           <button type="button" className="menu-dish-main" onClick={() => setDishSheet({ mode: 'edit', item: dish })}>
-            <span className="menu-dish-name">{dish.name}</span>
+            <span className="menu-dish-name">{dish.kind === 'heading' ? `— ${dish.name} —` : dish.name}</span>
             {dish.notes && <span className="menu-dish-note">{dish.notes}</span>}
             <span className="menu-dish-badges">
-              {mode === 'mixto' && <span>{dish.preparedBy === 'familia' ? '🏠 Nosotros' : dish.preparedBy === 'proveedor' ? '🍴 Proveedor' : '❔ Sin indicar quién lo prepara'}</span>}
+              {inSequence && sectionLabel && <span>{sectionLabel}</span>}
+              {!isDishItem && <span>{KIND_LABELS[dish.kind]}</span>}
+              {isDishItem && mode === 'mixto' && <span>{dish.preparedBy === 'familia' ? '🏠 Nosotros' : dish.preparedBy === 'proveedor' ? '🍴 Proveedor' : '❔ Sin indicar quién lo prepara'}</span>}
               {tools && recipe && <span>📖 {recipe.title}</span>}
               {dish.source === 'importado' && <span>importado</span>}
             </span>
@@ -187,6 +263,16 @@ export function MenuManager({
             <button type="button" className="link-button" aria-label={`Elegir ingredientes de ${dish.name} para Compras`} onClick={() => setIngredientsFor(dish)}>
               🛒
             </button>
+          )}
+          {inSequence && (
+            <>
+              <button type="button" className="icon-button" aria-label={`Subir ${dish.name}`} disabled={sequenceIndex === 0} onClick={() => moveItem(dish.id, -1)}>
+                ▲
+              </button>
+              <button type="button" className="icon-button" aria-label={`Bajar ${dish.name}`} disabled={sequenceIndex === drag.order.length - 1} onClick={() => moveItem(dish.id, 1)}>
+                ▼
+              </button>
+            </>
           )}
           <ConfirmIconButton icon="✕" className="icon-button" ariaLabel={`Borrar ${dish.name}`} onConfirm={() => void deleteDish(dish.id)} />
         </div>
@@ -213,6 +299,7 @@ export function MenuManager({
           kind={importing.forcedSection ? 'menu_infantil' : 'menu_principal'}
           forcedSection={importing.forcedSection}
           sectionLabels={sectionLabels}
+          existing={sequence.map((i) => ({ id: i.id, label: i.name }))}
           needsHint={needsState.activeNeeds.length > 0 || data.needs.length > 0}
           onCancel={() => setImporting(null)}
           onDone={() => {
@@ -229,15 +316,18 @@ export function MenuManager({
             <button type="button" className="chip" onClick={() => setImporting({ forcedSection: null })}>
               📷 Hacer una foto · 🖼️ Elegir una foto · 📄 Subir PDF
             </button>
-            <button type="button" className="chip" onClick={() => setDishSheet({ mode: 'new', sectionLabel: firstSectionLabel })}>
+            <button type="button" className="chip" onClick={() => setDishSheet({ mode: 'new', sectionLabel: firstSectionLabel, kind: 'dish' })}>
               ✏️ Añadirlo manualmente
             </button>
           </div>
         </div>
       ) : (
         <div className="menu-toolbar">
-          <button type="button" onClick={() => setDishSheet({ mode: 'new', sectionLabel: firstSectionLabel })}>
+          <button type="button" onClick={() => setDishSheet({ mode: 'new', sectionLabel: firstSectionLabel, kind: 'dish' })}>
             + Añadir plato
+          </button>
+          <button type="button" className="link-button" onClick={() => setDishSheet({ mode: 'new', sectionLabel: '', kind: 'heading' })}>
+            + Encabezado o nota
           </button>
           <button type="button" className="link-button" onClick={() => setImporting({ forcedSection: null })}>
             📷 Importar menú
@@ -248,26 +338,60 @@ export function MenuManager({
         </div>
       )}
 
+      {!importing && hasItems && (
+        <div className="filter-row" role="group" aria-label="Cómo ver el menú" style={{ marginTop: 6 }}>
+          <button type="button" className={'chip' + (view === 'secuencia' ? ' chip-active' : '')} aria-pressed={view === 'secuencia'} onClick={() => setView('secuencia')}>
+            Orden del menú
+          </button>
+          <button type="button" className={'chip' + (view === 'secciones' ? ' chip-active' : '')} aria-pressed={view === 'secciones'} onClick={() => setView('secciones')}>
+            Por secciones
+          </button>
+        </div>
+      )}
+
+      {!importing && hasItems && view === 'secuencia' && (
+        <div className="menu-section">
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0 4px' }}>
+            Este es el orden real del menú ({dishCount(sequence)} plato{dishCount(sequence) === 1 ? '' : 's'}). La sección es solo una etiqueta: cambiarla no mueve nada. Ordénalo con ☰ o ▲▼.
+          </p>
+          {drag.order.map((id, index) => {
+            const item = sequence.find((i) => i.id === id)
+            return item ? itemRow(item, index) : null
+          })}
+        </div>
+      )}
+
       {!importing &&
         hasItems &&
-        resolved.visible.map((view) => (
-          <div key={view.key} className="menu-section">
+        view === 'secciones' &&
+        resolved.visible.map((sectionView) => (
+          <div key={sectionView.key} className="menu-section">
             <div className="menu-section-head">
-              <strong>{view.label}</strong>
-              <span className="muted"> · {view.items.length}</span>
+              <strong>{sectionView.label}</strong>
+              <span className="muted"> · {sectionView.items.length}</span>
               <span style={{ flex: 1 }} />
-              {view.key === 'menu_infantil' && (
+              {sectionView.key === 'menu_infantil' && (
                 <button type="button" className="link-button" onClick={() => setImporting({ forcedSection: MENU_INFANTIL_SECTION_LABEL })}>
                   📷 Importar
                 </button>
               )}
-              <button type="button" className="link-button" onClick={() => setDishSheet({ mode: 'new', sectionLabel: categoryForSection(view) ?? '' })}>
+              <button type="button" className="link-button" onClick={() => setDishSheet({ mode: 'new', sectionLabel: categoryForSection(sectionView) ?? '', kind: 'dish' })}>
                 + plato
               </button>
             </div>
-            {view.items.length === 0 ? <p className="muted menu-empty">Sin platos todavía.</p> : view.items.map(dishRow)}
+            {sectionView.items.length === 0 ? <p className="muted menu-empty">Sin platos todavía.</p> : sectionView.items.map((item) => itemRow(item, null))}
           </div>
         ))}
+
+      {!importing && hasItems && view === 'secciones' && nonDish.length > 0 && (
+        <div className="menu-section">
+          <div className="menu-section-head">
+            <strong>Encabezados y notas</strong>
+            <span className="muted"> · {nonDish.length}</span>
+          </div>
+          {nonDish.map((item) => itemRow(item, null))}
+        </div>
+      )}
 
       {!importing && !hasItems && (
         <button type="button" className="link-button" style={{ marginTop: 6 }} onClick={() => setSectionsOpen(true)}>
@@ -346,6 +470,7 @@ function ToolsFooter({ mode }: { mode: MenuToolsMode }) {
 // ---------------------------------------------------------------------
 interface DishValues {
   name: string
+  kind: EventMenuItemKind
   category: string | null
   notes: string | null
   recipeId: string | null
@@ -369,6 +494,7 @@ export function DishSheet({
 }) {
   const initial = target.mode === 'edit' ? target.item : null
   const [name, setName] = useState(initial?.name ?? '')
+  const [kind, setKind] = useState<EventMenuItemKind>(initial?.kind ?? (target.mode === 'new' ? target.kind : 'dish'))
   const [category, setCategory] = useState(initial ? (initial.category ?? '') : target.mode === 'new' ? target.sectionLabel : '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
   const [preparedBy, setPreparedBy] = useState<'familia' | 'proveedor' | ''>(initial?.preparedBy ?? '')
@@ -379,12 +505,13 @@ export function DishSheet({
   const options = sections.map((s) => s.label)
   if (category && !options.includes(category)) options.push(category)
   // Receta: solo si lo prepara la familia (decisión del evento o, en un evento mixto, la de este plato).
-  const showRecipe = mode === 'familia' || (mode === 'mixto' && preparedBy === 'familia')
+  const isDishKind = kind === 'dish'
+  const showRecipe = isDishKind && (mode === 'familia' || (mode === 'mixto' && preparedBy === 'familia'))
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!name.trim()) {
-      setError('Ponle un nombre al plato.')
+      setError(isDishKind ? 'Ponle un nombre al plato.' : 'Escribe el texto.')
       return
     }
     setSaving(true)
@@ -392,6 +519,7 @@ export function DishSheet({
     try {
       await onSave({
         name,
+        kind,
         category: category || null,
         notes: notes.trim() || null,
         recipeId: recipeId || null,
@@ -408,7 +536,7 @@ export function DishSheet({
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
-            {initial ? 'Editar plato' : 'Añadir plato'}
+            {initial ? (isDishKind ? 'Editar plato' : 'Editar texto del menú') : isDishKind ? 'Añadir plato' : 'Añadir encabezado o nota'}
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
@@ -417,25 +545,37 @@ export function DishSheet({
         <form className="card member-form" onSubmit={submit}>
           {error && <p className="error">{error}</p>}
           <label>
-            Plato
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} disabled={saving} autoFocus />
-          </label>
-          <label>
-            Sección
-            <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
-              <option value="">Sin sección</option>
-              {options.map((l) => (
-                <option key={l} value={l}>
-                  {l}
+            Tipo
+            <select value={kind} onChange={(e) => setKind(e.target.value as EventMenuItemKind)} disabled={saving}>
+              {(Object.keys(KIND_LABELS) as EventMenuItemKind[]).map((k) => (
+                <option key={k} value={k}>
+                  {KIND_LABELS[k]}
                 </option>
               ))}
             </select>
           </label>
+          <div className="autogrow-field">
+            <span>{isDishKind ? 'Plato' : 'Texto'}</span>
+            <AutoGrowTextarea value={name} onChange={setName} ariaLabel={isDishKind ? 'Nombre del plato' : 'Texto del elemento'} disabled={saving} />
+          </div>
+          {isDishKind && (
+            <label>
+              Sección
+              <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
+                <option value="">Sin sección</option>
+                {options.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             Nota (opcional)
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} />
           </label>
-          {mode === 'mixto' && (
+          {isDishKind && mode === 'mixto' && (
             <label>
               ¿Quién lo prepara?
               <select value={preparedBy} onChange={(e) => setPreparedBy(e.target.value as 'familia' | 'proveedor' | '')} disabled={saving}>
@@ -527,7 +667,11 @@ export function SectionsSheet({ resolved, onChange, onClose }: { resolved: Retur
               <span className="dayplan-main" style={{ cursor: 'default' }}>
                 <span className="dayplan-body">
                   <span className="dayplan-title">{view.label}</span>
-                  {view.items.length > 0 && <span className="dayplan-note">{view.items.length} plato{view.items.length === 1 ? '' : 's'} · para ocultarla, muévelos o bórralos antes</span>}
+                  {view.items.length > 0 && (
+                    <span className="dayplan-note">
+                      {view.items.length} plato{view.items.length === 1 ? '' : 's'} · para ocultarla, {view.items.length === 1 ? 'muévelo o bórralo' : 'muévelos o bórralos'} antes
+                    </span>
+                  )}
                 </span>
               </span>
               <button type="button" className="icon-button" aria-label={`Subir ${view.label}`} disabled={index === 0} onClick={() => move(key, -1)}>
@@ -536,7 +680,7 @@ export function SectionsSheet({ resolved, onChange, onClose }: { resolved: Retur
               <button type="button" className="icon-button" aria-label={`Bajar ${view.label}`} disabled={index === order.length - 1} onClick={() => move(key, 1)}>
                 ▼
               </button>
-              <button type="button" className="link-button" disabled={!canHide} onClick={() => onChange(setSectionHidden(config, key, true))}>
+              <button type="button" className="link-button" disabled={!canHide} aria-disabled={!canHide} title={canHide ? undefined : 'Tiene platos: muévelos o bórralos antes'} onClick={() => onChange(setSectionHidden(config, key, true))}>
                 Ocultar
               </button>
             </div>

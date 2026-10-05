@@ -141,12 +141,12 @@ describe('lo que esta fase NO toca', () => {
     // (event_guest_questions, "Preguntas a los invitados") añade event_guest_questions/_options/_answers
     // — tablas de Eventos, tampoco devoluciones. 0191 (venue_address/venue_place_id, corrección real de
     // la dirección postal de un evento) añade dos columnas a `events` — tabla de Eventos, tampoco
-    // devoluciones. 0192 (event_food_and_drink, fase "Comida y bebida" de Eventos) añade event_food_documents, event_guest_dietary_needs y columnas a event_menu_items/event_menu_options — todo de Eventos, tampoco toca devoluciones; cubierto en eventFoodAndDrinkMigration.test.ts. 0193 (event_moment_date_status) añade una columna a event_moments — tabla de Eventos, tampoco devoluciones. 0194 (event_day_plan_editable, Plan del día editable de Eventos) añade columnas y una función de reordenación a event_day_plan_items — tabla de Eventos, cubierto en eventDayPlanMigration.test.ts; no toca ninguna otra tabla. 0195 (event_menu_hub, «Menú del evento») añade una columna a event_menu_items, otra a event_guest_questions y la tabla event_menu_settings — todo de Eventos, cubierto en eventMenuHubMigration.test.ts; no toca ninguna otra tabla. Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una
+    // devoluciones. 0192 (event_food_and_drink, fase "Comida y bebida" de Eventos) añade event_food_documents, event_guest_dietary_needs y columnas a event_menu_items/event_menu_options — todo de Eventos, tampoco toca devoluciones; cubierto en eventFoodAndDrinkMigration.test.ts. 0193 (event_moment_date_status) añade una columna a event_moments — tabla de Eventos, tampoco devoluciones. 0194 (event_day_plan_editable, Plan del día editable de Eventos) añade columnas y una función de reordenación a event_day_plan_items — tabla de Eventos, cubierto en eventDayPlanMigration.test.ts; no toca ninguna otra tabla. 0195 (event_menu_hub, «Menú del evento») añade una columna a event_menu_items, otra a event_guest_questions y la tabla event_menu_settings — todo de Eventos, cubierto en eventMenuHubMigration.test.ts; no toca ninguna otra tabla. 0196 (event_menu_sequence, orden del menú) añade una columna y una función de reordenación a event_menu_items — tabla de Eventos, cubierto en eventMenuSequenceMigration.test.ts; no toca ninguna otra tabla. Ninguna migración de datos posterior a 0152 toca la identidad ni el cálculo de una
     // devolución.
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
-    expect(Math.max(...numbers)).toBe(195)
+    expect(Math.max(...numbers)).toBe(196)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

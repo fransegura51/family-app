@@ -119,7 +119,7 @@ describe('Hoja de secciones y de platos (render)', () => {
   it('12. una sección con platos NO se puede ocultar (explicación y botón desactivado); las ocultas se pueden recuperar', () => {
     const resolved = resolveMenuSections(defaultSections(false), dishes, false)
     const html = renderToStaticMarkup(createElement(SectionsSheet, { resolved, onChange: noop, onClose: noop }))
-    expect(html).toContain('para ocultarla, muévelos o bórralos antes')
+    expect(html).toContain('para ocultarla, muévelo o bórralo antes')
     expect(html).toContain('EN EL MENÚ')
     expect(html).toContain('OCULTAS (toca para volver a mostrar)')
     expect(html).toContain('+ Añadir otra sección')
@@ -129,7 +129,7 @@ describe('Hoja de secciones y de platos (render)', () => {
   })
   it('hoja de plato: la receta solo se ofrece si lo prepara la familia; en mixto aparece el selector de origen', () => {
     const resolved = resolveMenuSections(defaultSections(false), [], false)
-    const render = (mode: MenuToolsMode) => renderToStaticMarkup(createElement(DishSheet, { target: { mode: 'new', sectionLabel: 'Entrantes' }, mode, sections: resolved.visible, recipes, onClose: noop, onSave: async () => undefined }))
+    const render = (mode: MenuToolsMode) => renderToStaticMarkup(createElement(DishSheet, { target: { mode: 'new', sectionLabel: 'Entrantes', kind: 'dish' }, mode, sections: resolved.visible, recipes, onClose: noop, onSave: async () => undefined }))
     expect(render('familia')).toContain('Receta (opcional)')
     expect(render('proveedor')).not.toContain('Receta (opcional)')
     expect(render('esperando')).not.toContain('Receta (opcional)')
@@ -193,5 +193,85 @@ describe('Render de Comensales', () => {
     expect(html).toContain('Otras preguntas a los invitados (1)')
     expect(html).toContain('¿Venís en autobús?')
     expect(html).toContain('PEPA no lo adivina por el texto')
+  })
+})
+
+// ---------------------------------------------------------------------
+// Secuencia real del menú (el orden del documento manda, no la sección)
+// ---------------------------------------------------------------------
+const { REAL_MENU_IN_DOCUMENT_ORDER, REAL_MENU_SUGGESTIONS } = await import('@/domain/eventMenuRealFixture')
+
+function realItems() {
+  return REAL_MENU_IN_DOCUMENT_ORDER.map((name, i) =>
+    fx.makeMenuItem({
+      id: `m${i}`,
+      name,
+      sortOrder: (i + 1) * 1000,
+      kind: REAL_MENU_SUGGESTIONS[name]?.kind ?? 'dish',
+      category: REAL_MENU_SUGGESTIONS[name] ? REAL_MENU_SUGGESTIONS[name].section : 'Aperitivo / picoteo',
+    }),
+  )
+}
+
+describe('Render: la pantalla respeta el orden del documento (13, 14, 24)', () => {
+  it('la vista principal muestra la secuencia EXACTA, con «Cambio de Tercio» como encabezado, aunque las secciones sugeridas sean Postres/Bebidas/Otro/Aperitivo', () => {
+    const html = renderManager('proveedor', hubData({ items: realItems() }))
+    const positions = REAL_MENU_IN_DOCUMENT_ORDER.map((name) => html.indexOf(name === 'Cambio de Tercio' ? '— Cambio de Tercio —' : name))
+    expect(positions.every((p) => p > -1)).toBe(true)
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions) // aparecen en ese orden, de arriba abajo
+    expect(html).toContain('Orden del menú')
+    expect(html).toContain('Por secciones')
+    expect(html).toContain('Este es el orden real del menú (15 platos)')
+    expect(html).toContain('La sección es solo una etiqueta: cambiarla no mueve nada')
+  })
+  it('un encabezado se pinta como tal (no como plato): sin receta, sin 🛒 y sin «quién lo prepara», aunque la familia cocine', () => {
+    const items = [
+      fx.makeMenuItem({ id: 'd', name: 'Paella', sortOrder: 1000, kind: 'dish', category: 'Entrantes', recipeId: 'r1', preparedBy: 'familia' }),
+      fx.makeMenuItem({ id: 'h', name: 'Cambio de Tercio', sortOrder: 2000, kind: 'heading', category: null, recipeId: 'r1', preparedBy: 'familia' }),
+    ]
+    const html = renderManager('mixto', hubData({ items }))
+    expect(html).toContain('menu-dish-heading')
+    expect(html).toContain('Encabezado / separador')
+    expect((html.match(/Elegir ingredientes de/g) ?? []).length).toBe(1)
+    expect(html).toContain('Elegir ingredientes de Paella')
+    expect(html).not.toContain('Elegir ingredientes de Cambio de Tercio')
+    expect((html.match(/🏠 Nosotros/g) ?? []).length).toBe(1)
+  })
+  it('12/20. un encabezado no genera avisos de necesidades aunque contenga palabras de comida', () => {
+    const guests = [fx.makeGuest({ id: 'g1', displayName: 'Familia García', rsvpStatus: 'confirmado' })]
+    const needs = [fx.makeNeed({ id: 'n1', guestId: 'g1', category: 'marisco', kind: 'alergia' })]
+    const items = [
+      fx.makeMenuItem({ id: 'h', name: 'Cóctel de gambas', sortOrder: 1000, kind: 'heading', category: null }),
+      fx.makeMenuItem({ id: 'd', name: 'Gamba blanca cocida', sortOrder: 2000, kind: 'dish', category: 'Entrantes' }),
+    ]
+    const html = renderManager('proveedor', hubData({ items, guests, needs }))
+    expect((html.match(/Posible conflicto/g) ?? []).length).toBe(1)
+  })
+  it('las flechas ▲▼ y el asa ☰ existen en cada elemento de la secuencia (alternativa accesible al arrastre)', () => {
+    const html = renderManager('proveedor', hubData({ items: realItems() }))
+    expect((html.match(/aria-label="Subir /g) ?? []).length).toBe(16)
+    expect((html.match(/aria-label="Bajar /g) ?? []).length).toBe(16)
+    expect((html.match(/class="drag-handle"/g) ?? []).length).toBe(16)
+  })
+  it('hoja de plato: el tipo se elige y un encabezado oculta sección, receta y origen', () => {
+    const resolved = resolveMenuSections(defaultSections(false), [], false)
+    const render = (kind: 'dish' | 'heading') =>
+      renderToStaticMarkup(createElement(DishSheet, { target: { mode: 'new', sectionLabel: 'Entrantes', kind }, mode: 'familia' as MenuToolsMode, sections: resolved.visible, recipes, onClose: noop, onSave: async () => undefined }))
+    const dish = render('dish')
+    expect(dish).toContain('Encabezado / separador')
+    expect(dish).toContain('Sección')
+    expect(dish).toContain('Receta (opcional)')
+    const heading = render('heading')
+    expect(heading).toContain('Añadir encabezado o nota')
+    expect(heading).not.toContain('Sección')
+    expect(heading).not.toContain('Receta (opcional)')
+    expect(heading).not.toContain('¿Quién lo prepara?')
+  })
+  it('27. «Ocultar» de una sección protegida se ve desactivado (disabled + aria-disabled) y con su explicación', () => {
+    const resolved = resolveMenuSections(defaultSections(false), [fx.makeMenuItem({ id: 'x', name: 'Gamba', category: 'Entrantes' })], false)
+    const html = renderToStaticMarkup(createElement(SectionsSheet, { resolved, onChange: noop, onClose: noop }))
+    expect(html).toMatch(/<button[^>]*class="link-button"[^>]*disabled=""[^>]*aria-disabled="true"[^>]*>Ocultar<\/button>/)
+    expect(html).toContain('1 plato · para ocultarla, muévelo o bórralo antes')
+    expect(html).toMatch(/<button[^>]*class="link-button"[^>]*aria-disabled="false"[^>]*>Ocultar<\/button>/)
   })
 })

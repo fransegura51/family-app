@@ -143,6 +143,7 @@ export function makeMenuItem(overrides: Partial<EventMenuItem> = {}): EventMenuI
     category: null,
     quantityNote: null,
     transferred: false,
+    preparedBy: null,
     sortOrder: 0,
     createdAt: '2026-01-01T00:00:00Z',
     recipeId: null,

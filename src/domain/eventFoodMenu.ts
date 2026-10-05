@@ -51,6 +51,8 @@ const SECTION_ALIASES: Record<string, string> = {
   snacks: 'aperitivo',
   entrantes: 'entrantes',
   entrante: 'entrantes',
+  principal: 'plato_principal',
+  principales: 'plato_principal',
   'primer plato': 'primer_plato',
   'segundo plato': 'plato_principal',
   'plato principal': 'plato_principal',

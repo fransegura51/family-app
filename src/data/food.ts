@@ -170,7 +170,7 @@ export async function listRecipeSearchHistory(): Promise<string[]> {
 export async function addRecipeIngredientsToShoppingList(
   recipe: Recipe,
   selections: { ingredientId: string; store: string | null }[],
-  // Eventos → Comida y bebida: de qué evento viene el producto (mismo vínculo que transferMenuToShopping).
+  // Eventos → Comida y bebida: de qué evento viene el producto (Menú del evento → 🛒 de un plato con receta).
   eventId: string | null = null,
 ): Promise<void> {
   const byId = new Map(recipe.ingredients.map((i) => [i.id, i]))

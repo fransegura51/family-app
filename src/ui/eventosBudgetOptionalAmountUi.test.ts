@@ -65,7 +65,7 @@ describe('BudgetSection — una partida sin importe se distingue claramente de u
 })
 
 describe('EditBudgetItemInline — permite poner importe real a un concepto que llegó sin él, sin borrar la partida', () => {
-  const fn = slice(SRC, 'function EditBudgetItemInline(', '\n// ---------------------------------------------------------------------\n// Menú y compra.')
+  const fn = slice(SRC, 'function EditBudgetItemInline(', '\n// ---------------------------------------------------------------------\n// Proveedores.')
 
   it('reutiliza updateEventBudgetItem, no crea una partida nueva', () => {
     expect(fn).toContain('updateEventBudgetItem(item.id, { category, plannedAmount: amount.trim() === \'\' ? null : Number(amount) })')

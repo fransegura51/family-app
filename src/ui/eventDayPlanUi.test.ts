@@ -192,7 +192,7 @@ const SCREEN_SRC = SCREEN
 const RECOVER = (import.meta.glob('/src/ui/RecoverMomentDialog.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/RecoverMomentDialog.tsx']
 
 describe('Recuperar un independiente: pregunta antes de persistir (Comida y bebida)', () => {
-  const saveFood = slice(SCREEN_SRC, 'async function saveFood(', 'function reloadMenu()')
+  const saveFood = slice(SCREEN_SRC, 'async function saveFood(', 'if (loading) return null')
   it('la pregunta se calcula ANTES de guardar la selección: cancelar no deja la decisión marcada', () => {
     expect(saveFood.indexOf('momentRecoveryPrompt(')).toBeGreaterThan(-1)
     expect(saveFood.indexOf('momentRecoveryPrompt(')).toBeLessThan(saveFood.indexOf('upsertEventDecision('))

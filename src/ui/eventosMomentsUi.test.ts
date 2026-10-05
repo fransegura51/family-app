@@ -229,7 +229,7 @@ describe('Acordeón — plegable globalmente y por bloque, estado simple en loca
     // llegaba hasta MomentForm e incluía de paso todos los componentes de "La pareja" (Fase 3), cuyo
     // propio toast "✓ Preparativo completado" usa legítimamente la palabra "completado" sin ser una barra
     // de progreso ni un porcentaje — nada que ver con lo que esta prueba vigila.
-    const fn = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction ChoiceRow<')
+    const fn = slice(SRC, 'function EventPlanningConfigurator(', '\nconst LUGAR_CONTEXTO_OPTIONS')
     expect(fn).not.toMatch(/progress|completado|\d+\s*%(?!'\s*,)/i)
   })
 

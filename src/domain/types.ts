@@ -769,9 +769,9 @@ export interface EventBudgetItem {
   decisionId: string | null
 }
 
-// Menú — petición de la Skill: "Menu comes BEFORE shopping". Una vez
-// confirmado el traspaso, cada línea crea un shopping_items con este
-// event_id (ver src/data/events.ts, transferMenuToShopping).
+// Menú del evento: platos por sección. A Compras solo llegan los ingredientes de una receta que la familia
+// elige (selector de Recetas, con este event_id); el plato en sí no se traspasa. `transferred` es un dato
+// antiguo que se conserva pero ya no se usa.
 export interface EventMenuItem {
   id: string
   eventId: string
@@ -788,6 +788,8 @@ export interface EventMenuItem {
   notes: string | null
   source: 'manual' | 'importado'
   documentId: string | null
+  // «Menú del evento» (migración 0195): quién se encarga de ESTE plato en un evento mixto. null = sin indicar.
+  preparedBy: 'familia' | 'proveedor' | null
 }
 
 // Opción de menú SELECCIONABLE por invitado (p.ej. "Carne" / "Pescado" / "Vegetariano") — distinta de
@@ -874,6 +876,9 @@ export interface EventGuestQuestion {
   active: boolean
   sortOrder: number
   createdAt: string
+  // Clasificación ESTRUCTURADA (migración 0195): 'comida' si la familia la marcó como pregunta de comida; null =
+  // sin clasificar. Nunca se deduce del texto de la pregunta.
+  topic: 'comida' | null
 }
 
 export interface EventGuestQuestionOption {

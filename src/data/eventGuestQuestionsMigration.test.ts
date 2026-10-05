@@ -79,7 +79,7 @@ describe('capa de datos: src/data/events.ts — solo CRUD de preguntas/opciones,
   const SRC = APP['/src/data/events.ts']
 
   it('GUEST_QUESTION_SELECT/GUEST_QUESTION_OPTION_SELECT piden exactamente las columnas de la migración', () => {
-    expect(SRC).toContain("const GUEST_QUESTION_SELECT = 'id, event_id, family_id, prompt, scope, required, active, sort_order, created_at'")
+    expect(SRC).toContain("const GUEST_QUESTION_SELECT = 'id, event_id, family_id, prompt, scope, required, active, sort_order, created_at, topic'")
     expect(SRC).toContain("const GUEST_QUESTION_OPTION_SELECT = 'id, question_id, event_id, family_id, label, sort_order, created_at'")
   })
 

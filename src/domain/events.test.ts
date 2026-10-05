@@ -1223,9 +1223,6 @@ function makeHealthInput(overrides: Partial<Parameters<typeof computeEventHealth
     paymentsDueSoonCount: 0,
     locationApplicable: false,
     hasExactLocation: false,
-    hasMenuModule: false,
-    menuItemsTotal: 0,
-    menuItemsTransferred: 0,
     nextMilestone: null,
     ...overrides,
   }
@@ -1269,12 +1266,10 @@ describe('computeEventHealth', () => {
     expect(health.message).toContain('1 tarea atrasada')
   })
 
-  it('módulos desactivados no penalizan: sin mesas/menú no cuentan aunque no tengan datos', () => {
-    // Ningún dato de menú (hasMenuModule=false) — no debe arrastrar el progreso hacia 0.
-    const conMenu = computeEventHealth(makeHealthInput({ hasTasksModule: true, tasksTotal: 2, tasksDone: 2, hasMenuModule: true, menuItemsTotal: 2, menuItemsTransferred: 0 }))
-    const sinMenu = computeEventHealth(makeHealthInput({ hasTasksModule: true, tasksTotal: 2, tasksDone: 2, hasMenuModule: false }))
-    expect(sinMenu.progress).toBe(100)
-    expect(conMenu.progress).toBeLessThan(sinMenu.progress)
+  it('el menú NO se mide por «traspasado a Compras»: un restaurante con menú y nada que comprar no resta progreso', () => {
+    // «Menú del evento» ya no traspasa platos enteros a Compras: no puede haber un 0 % de menú que arrastre el progreso.
+    const health = computeEventHealth(makeHealthInput({ hasTasksModule: true, tasksTotal: 2, tasksDone: 2 }))
+    expect(health.progress).toBe(100)
   })
 
   it('RSVP inactivo: invitados pendientes no degradan el color', () => {

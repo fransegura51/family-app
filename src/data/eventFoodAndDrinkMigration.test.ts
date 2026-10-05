@@ -6,13 +6,18 @@ import { describe, expect, it } from 'vitest'
 
 const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const SOURCES = import.meta.glob(
-  ['/src/ui/EventosScreen.tsx', '/src/ui/RsvpScreen.tsx', '/src/ui/AyudaScreen.tsx', '/src/data/events.ts', '/src/data/food.ts', '/src/services/eventFoodDocument.ts', '/supabase/functions/event-rsvp/index.ts', '/supabase/functions/analyze-event-food-document/index.ts', '/supabase/functions/_shared/ai/purposes/eventFoodDocument.ts'],
+  ['/src/ui/EventosScreen.tsx', '/src/ui/EventMenu.tsx', '/src/ui/EventMenuDiners.tsx', '/src/ui/EventMenuImporter.tsx', '/src/ui/PickIngredientsModal.tsx', '/src/ui/RsvpScreen.tsx', '/src/ui/AyudaScreen.tsx', '/src/data/events.ts', '/src/data/food.ts', '/src/services/eventFoodDocument.ts', '/supabase/functions/event-rsvp/index.ts', '/supabase/functions/analyze-event-food-document/index.ts', '/supabase/functions/_shared/ai/purposes/eventFoodDocument.ts'],
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
 
 const MIGRATION = Object.entries(MIGRATIONS).find(([f]) => f.includes('0192_event_food_and_drink'))?.[1] ?? ''
 const SCREEN = SOURCES['/src/ui/EventosScreen.tsx']
 const DATA = SOURCES['/src/data/events.ts']
+const MENU_UI = SOURCES['/src/ui/EventMenu.tsx']
+const DINERS_UI = SOURCES['/src/ui/EventMenuDiners.tsx']
+const IMPORTER_UI = SOURCES['/src/ui/EventMenuImporter.tsx']
+const PICKER_UI = SOURCES['/src/ui/PickIngredientsModal.tsx']
+const ALL_UI = [SCREEN, MENU_UI, DINERS_UI, IMPORTER_UI].join('\n')
 
 function slice(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker)
@@ -136,13 +141,13 @@ describe('Pantalla — bloque «Comida y bebida»', () => {
     expect(BLOCK).toContain('👧🧒 Necesitáis menú infantil')
     expect(BLOCK).toContain('guestsChooseMenu(decisions)')
   })
-  it('textos literales pedidos', () => {
+  it('textos literales pedidos (el cuestionario conserva las preguntas; el gestor vive ahora en «Menú del evento»)', () => {
     for (const text of ['¿Quién se encargará de la comida?', '¿Lo tenéis ya contratado?', '¿Qué momentos de comida habrá?', '¿Tenéis decidido el menú?', '¿Quieres guardar el menú en PEPA?', '¿Cómo vais a resolver el menú infantil?', '¿Habrá tarta?', '¿Y las bebidas?', '¿Habéis tenido en cuenta estas necesidades en el menú?', 'Habéis indicado que los invitados podrán elegir. Añade las opciones que podrán escoger.', 'Elección de menú para los invitados']) {
-      expect(SCREEN, text).toContain(text)
+      expect(ALL_UI, text).toContain(text)
     }
     expect(SCREEN).toContain('¿Quieres guardar el menú infantil en PEPA?')
-    expect(SCREEN).toContain('📷 Hacer una foto · 🖼️ Elegir una foto · 📄 Subir PDF')
-    expect(SCREEN).toContain('✏️ Añadirlo manualmente')
+    expect(MENU_UI).toContain('📷 Hacer una foto · 🖼️ Elegir una foto · 📄 Subir PDF')
+    expect(MENU_UI).toContain('✏️ Añadirlo manualmente')
   })
   it('opciones de quién se encarga: las pedidas, sin «El lugar la incluye»', () => {
     const options = slice(SCREEN, 'const FOOD_QUIEN_OPTIONS', 'const FOOD_QUIEN_WAY_OPTIONS')
@@ -150,57 +155,57 @@ describe('Pantalla — bloque «Comida y bebida»', () => {
     expect(options).not.toContain('El lugar la incluye')
   })
   it('el importador: la IA solo propone, se revisa y solo al confirmar se guarda; y no promete seguridad', () => {
-    const importer = slice(SCREEN, 'function FoodMenuImporter(', 'function FoodMenuSavePrompt(')
-    expect(importer).toContain("setPhase('review')")
-    expect(importer).toContain('Revisa lo que PEPA ha entendido')
-    expect(importer).toContain('No se guardará nada hasta que confirmes')
-    const handleFile = slice(importer, 'async function handleFile', 'async function confirm')
+    expect(IMPORTER_UI).toContain("setPhase('review')")
+    expect(IMPORTER_UI).toContain('Revisa lo que PEPA ha entendido')
+    expect(IMPORTER_UI).toContain('No se guardará nada hasta que confirmes')
+    const handleFile = slice(IMPORTER_UI, 'async function handleFile', 'async function confirm')
     expect(handleFile).not.toContain('addEventMenuItemsBulk')
     expect(handleFile).not.toContain('saveEventFoodDocument')
-    const confirm = slice(importer, 'async function confirm', 'return (')
+    const confirm = slice(IMPORTER_UI, 'async function confirm', 'const chosenCount')
     expect(confirm.indexOf('saveEventFoodDocument')).toBeLessThan(confirm.indexOf('addEventMenuItemsBulk'))
-    expect(importer.toLowerCase()).not.toContain('seguro')
+    expect(IMPORTER_UI.toLowerCase()).not.toContain('seguro')
+    expect(IMPORTER_UI).toContain('PEPA podrá ayudarte a detectar posibles platos que convenga revisar')
   })
   it('un único importador genérico sirve para el menú principal y para el infantil', () => {
-    expect((SCREEN.match(/function FoodMenuImporter\(/g) ?? []).length).toBe(1)
-    expect(SCREEN).toContain("kind={infantil ? 'menu_infantil' : 'menu_principal'}")
+    expect((IMPORTER_UI.match(/export function EventMenuImporter\(/g) ?? []).length).toBe(1)
+    expect(SCREEN).not.toContain('function FoodMenuImporter(')
+    expect(MENU_UI).toContain("kind={importing.forcedSection ? 'menu_infantil' : 'menu_principal'}")
   })
-  it('enlaces directos: Recetas dentro de La cocina de PEPA y Lista de la compra', () => {
-    expect(SCREEN).toContain('to="/alimentacion?tab=recetas"')
-    expect(SCREEN).toContain('to="/compras"')
-    expect(SCREEN).toContain('→ Confirmar traspaso a Compras')
+  it('enlaces directos: Recetas dentro de La cocina de PEPA y Lista de la compra, YA NO hay traspaso masivo de platos', () => {
+    expect(MENU_UI).toContain('to="/alimentacion?tab=recetas"')
+    expect(MENU_UI).toContain('to="/compras"')
+    expect(ALL_UI).not.toContain('→ Confirmar traspaso a Compras')
+    expect(DATA).not.toContain('transferMenuToShopping')
   })
-  it('los ingredientes de una receta solo pasan a Compras marcados y confirmados', () => {
-    const modal = slice(SCREEN, 'function RecipeIngredientsToShoppingModal(', 'function FoodMenuEditor(')
-    expect(modal).toContain('addRecipeIngredientsToShoppingList(')
-    expect(modal).toContain('PEPA no añade nada por su cuenta')
-    expect(modal).toContain('disabled={saving || checked.size === 0}')
+  it('los ingredientes de una receta solo pasan a Compras marcados y confirmados (selector ÚNICO de Recetas)', () => {
+    expect(PICKER_UI).toContain('addRecipeIngredientsToShoppingList(')
+    expect(PICKER_UI).toContain('disabled={saving || selected.size === 0}')
+    expect(MENU_UI).toContain('<PickIngredientsModal')
+    expect(SCREEN).not.toContain('RecipeIngredientsToShoppingModal')
   })
   it('opciones de menú: alta, renombrar, destinatario, orden y baja segura con aviso de cuántos la habían elegido', () => {
-    const panel = slice(SCREEN, 'function GuestMenuOptionsPanel(', 'function DietaryNeedsPanel(')
-    for (const fn of ['addEventMenuOption', 'updateEventMenuOption', 'deleteEventMenuOption', 'swapEventMenuOptionOrder', 'countMenuChoices']) expect(panel).toContain(fn)
+    const panel = slice(SCREEN, 'function GuestMenuOptionsPanel(', 'function ComidaBebidaBlock(')
+    for (const fn of ['addEventMenuOption', 'updateEventMenuOption', 'deleteEventMenuOption', 'swapEventMenuOptionOrder']) expect(panel).toContain(fn)
     expect(panel).toContain('quedará')
     expect(panel).toContain('alreadyRespondedMessage')
   })
   it('el panel de opciones NO envía nada a nadie por su cuenta', () => {
-    const panel = slice(SCREEN, 'function GuestMenuOptionsPanel(', 'function DietaryNeedsPanel(')
+    const panel = slice(SCREEN, 'function GuestMenuOptionsPanel(', 'function ComidaBebidaBlock(')
     expect(panel).not.toMatch(/sendRsvp|regenerateGuestRsvpUrl|navigator\.share|wa\.me|mailto:/)
     expect(panel).toContain('PEPA no envía nada por su cuenta')
   })
-  it('necesidades: sugerencias que cuentan solo al confirmar; texto original conservado; aviso de seguridad', () => {
-    const panel = slice(SCREEN, 'function DietaryNeedsPanel(', 'function ComidaBebidaBlock(')
-    expect(panel).toContain("source: 'invitado_nota'")
-    expect(panel).toContain('Confirmar')
-    expect(panel).toContain('Se conserva lo que escribieron tal cual')
-    expect(panel).toContain('no es un diagnóstico')
-    expect(panel).toContain('FOOD_SAFETY_DISCLAIMER')
-    expect(panel).toContain('Confírmalo con el restaurante o el proveedor.')
-    expect(panel).not.toContain('menú es seguro')
+  it('necesidades (ahora en Comensales): sugerencias que cuentan solo al confirmar; texto original conservado; aviso de seguridad', () => {
+    expect(DINERS_UI).toContain("source: 'invitado_nota'")
+    expect(DINERS_UI).toContain('Confirmar')
+    expect(DINERS_UI).toContain('Se conserva lo que escribieron tal cual')
+    expect(DINERS_UI).toContain('no es un diagnóstico')
+    expect(DINERS_UI).toContain('FOOD_SAFETY_DISCLAIMER')
+    expect(DINERS_UI).not.toContain('menú es seguro')
+    expect(MENU_UI).toContain('confírmalo con quien prepara el plato o con el restaurante')
   })
   it('el cruce menú↔necesidades se recalcula por huella, no en cada render', () => {
-    const panel = slice(SCREEN, 'function DietaryNeedsPanel(', 'function ComidaBebidaBlock(')
-    expect(panel).toContain('conflictInputsSignature(menuItems, state.activeNeeds)')
-    expect(panel).toContain('useMemo(() => findMenuConflicts(menuItems, state.activeNeeds), [conflictSignature])')
+    expect(MENU_UI).toContain('conflictInputsSignature(data.items, needsState.activeNeeds)')
+    expect(MENU_UI).toContain('useMemo(() => findMenuConflicts(data.items, needsState.activeNeeds), [signature])')
   })
   it('el aviso persistente de necesidades se carga también en PepaConclusions', () => {
     expect(SCREEN).toContain('loadEventFoodNeedsAlert(event.id, guests)')

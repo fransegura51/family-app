@@ -32,6 +32,7 @@ import {
   type MomentosComidaAnswer,
 } from '@/domain/eventFood'
 import { foodMomentKeyFromSource, foodMomentSourceKey, timeKey, type DayPlanPatch } from '@/domain/eventDayPlan'
+import { normalizeStoredSections, type StoredSection } from '@/domain/eventMenuHub'
 import { computeFoodNeedsState } from '@/domain/eventDietaryNeeds'
 import { deriveOperationalDate } from '@/domain/eventCelebration'
 import { calendarEntryFor, calendarRowMatches, planCalendarSync, type CalendarRowState } from '@/domain/eventCalendarSync'
@@ -59,6 +60,7 @@ import type {
   EventGuestMemberType,
   EventGuestMoment,
   EventGuestQuestion,
+  EventGuestQuestionAnswer,
   EventGuestQuestionOption,
   EventGuestRsvpStatus,
   EventFoodDocument,
@@ -1079,11 +1081,11 @@ export async function deleteEventBudgetItem(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------
-// Menú — se planea aquí, y solo pasa a Compras cuando el usuario lo
-// confirma explícitamente (transferMenuToShopping).
+// Menú del evento — platos por sección. A Compras solo llegan los ingredientes de una RECETA que la familia elige
+// (selector de Recetas); el plato en sí no se traspasa.
 // ---------------------------------------------------------------------
 
-const MENU_ITEM_SELECT = 'id, event_id, family_id, name, category, quantity_note, transferred, sort_order, created_at, recipe_id, notes, source, document_id'
+const MENU_ITEM_SELECT = 'id, event_id, family_id, name, category, quantity_note, transferred, sort_order, created_at, recipe_id, notes, source, document_id, prepared_by'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapMenuItem(r: any): EventMenuItem {
@@ -1101,6 +1103,7 @@ function mapMenuItem(r: any): EventMenuItem {
     notes: r.notes ?? null,
     source: r.source === 'importado' ? 'importado' : 'manual',
     documentId: r.document_id ?? null,
+    preparedBy: r.prepared_by === 'familia' || r.prepared_by === 'proveedor' ? r.prepared_by : null,
   }
 }
 
@@ -1119,6 +1122,7 @@ export interface MenuItemExtras {
   notes?: string | null
   source?: 'manual' | 'importado'
   documentId?: string | null
+  preparedBy?: 'familia' | 'proveedor' | null
 }
 
 export async function addEventMenuItem(eventId: string, name: string, category?: string | null, quantityNote?: string | null, extras: MenuItemExtras = {}): Promise<void> {
@@ -1134,6 +1138,7 @@ export async function addEventMenuItem(eventId: string, name: string, category?:
     notes: extras.notes ?? null,
     source: extras.source ?? 'manual',
     document_id: extras.documentId ?? null,
+    prepared_by: extras.preparedBy ?? null,
   })
   if (error) throw error
 }
@@ -1166,7 +1171,7 @@ export async function addEventMenuItemsBulk(
 
 export async function updateEventMenuItem(
   id: string,
-  patch: Partial<{ name: string; category: string | null; notes: string | null; quantityNote: string | null; recipeId: string | null }>,
+  patch: Partial<{ name: string; category: string | null; notes: string | null; quantityNote: string | null; recipeId: string | null; preparedBy: 'familia' | 'proveedor' | null }>,
 ): Promise<void> {
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (patch.name !== undefined) update.name = patch.name.trim()
@@ -1174,6 +1179,7 @@ export async function updateEventMenuItem(
   if (patch.notes !== undefined) update.notes = patch.notes
   if (patch.quantityNote !== undefined) update.quantity_note = patch.quantityNote
   if (patch.recipeId !== undefined) update.recipe_id = patch.recipeId
+  if (patch.preparedBy !== undefined) update.prepared_by = patch.preparedBy
   const { error } = await supabase.from('event_menu_items').update(update).eq('id', id)
   if (error) throw error
 }
@@ -1183,24 +1189,20 @@ export async function deleteEventMenuItem(id: string): Promise<void> {
   if (error) throw error
 }
 
-// Petición de la Skill: "User confirms transfer to PEPA Purchases" —
-// solo las líneas todavía no traspasadas, una por producto, con el
-// event_id puesto para que el evento pueda ver luego qué falta comprar
-// filtrando shopping_items sin tener que duplicar nada.
-export async function transferMenuToShopping(eventId: string): Promise<number> {
-  const items = await listEventMenuItems(eventId)
-  const pending = items.filter((i) => !i.transferred)
-  for (const item of pending) {
-    await addShoppingItem({ name: item.name, quantity: '', unit: '', priority: 'normal', tripId: null, eventId })
-  }
-  if (pending.length > 0) {
-    const { error } = await supabase
-      .from('event_menu_items')
-      .update({ transferred: true })
-      .in('id', pending.map((i) => i.id))
-    if (error) throw error
-  }
-  return pending.length
+// Secciones del menú que ve este evento (event_menu_settings, 0195): preferencias de pantalla, nunca platos.
+// null = nunca se configuró (se usan las de partida).
+export async function getEventMenuSections(eventId: string): Promise<StoredSection[] | null> {
+  const { data, error } = await supabase.from('event_menu_settings').select('sections').eq('event_id', eventId).maybeSingle()
+  if (error) throw error
+  return data ? normalizeStoredSections(data.sections) : null
+}
+
+export async function saveEventMenuSections(eventId: string, sections: StoredSection[]): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('event_menu_settings')
+    .upsert({ event_id: eventId, family_id: familyId, sections, updated_at: new Date().toISOString() }, { onConflict: 'event_id' })
+  if (error) throw error
 }
 
 // ---------------------------------------------------------------------
@@ -2645,7 +2647,7 @@ export async function deleteEventTemplate(id: string): Promise<void> {
 // respuestas en este archivo a propósito.
 // ---------------------------------------------------------------------
 
-const GUEST_QUESTION_SELECT = 'id, event_id, family_id, prompt, scope, required, active, sort_order, created_at'
+const GUEST_QUESTION_SELECT = 'id, event_id, family_id, prompt, scope, required, active, sort_order, created_at, topic'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapGuestQuestion(r: any): EventGuestQuestion {
@@ -2659,6 +2661,7 @@ function mapGuestQuestion(r: any): EventGuestQuestion {
     active: r.active,
     sortOrder: r.sort_order,
     createdAt: r.created_at,
+    topic: r.topic === 'comida' ? 'comida' : null,
   }
 }
 
@@ -2679,8 +2682,9 @@ export async function addEventGuestQuestion(eventId: string, input: { prompt: st
   return mapGuestQuestion(data)
 }
 
-export async function updateEventGuestQuestion(id: string, patch: Partial<{ prompt: string; scope: GuestQuestionScope; required: boolean; active: boolean }>): Promise<void> {
+export async function updateEventGuestQuestion(id: string, patch: Partial<{ prompt: string; scope: GuestQuestionScope; required: boolean; active: boolean; topic: 'comida' | null }>): Promise<void> {
   const update: Record<string, unknown> = {}
+  if (patch.topic !== undefined) update.topic = patch.topic
   if (patch.prompt !== undefined) update.prompt = patch.prompt.trim()
   if (patch.scope !== undefined) update.scope = patch.scope
   if (patch.required !== undefined) update.required = patch.required
@@ -2738,6 +2742,26 @@ export async function deleteEventGuestQuestionOption(id: string): Promise<void> 
 // opción o cambiar quién responde (scope), hay que saber si YA existen respuestas reales y, si las hay,
 // a qué opción concreta apuntan. Solo option_id (nunca guest_id/member_id ni fechas): esto sigue sin ser
 // un visor de respuestas, solo el recuento agregado que hace falta para decidir si un cambio es seguro.
+// Quién respondió qué a las preguntas personalizadas (las respuestas ya las guarda el RSVP; esto solo las LEE).
+export async function listEventGuestQuestionAnswers(eventId: string): Promise<EventGuestQuestionAnswer[]> {
+  const { data, error } = await supabase
+    .from('event_guest_question_answers')
+    .select('id, question_id, event_id, family_id, guest_id, member_id, option_id, created_at, updated_at')
+    .eq('event_id', eventId)
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    questionId: r.question_id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    guestId: r.guest_id,
+    memberId: r.member_id,
+    optionId: r.option_id,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }))
+}
+
 export async function getEventGuestQuestionAnswerStats(questionId: string): Promise<{ total: number; answeredOptionIds: string[] }> {
   const { data, error } = await supabase.from('event_guest_question_answers').select('option_id').eq('question_id', questionId)
   if (error) throw error

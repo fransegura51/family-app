@@ -83,7 +83,7 @@ export async function addShoppingItem(input: {
   store?: string | null
   price?: number | null
   // Módulo Eventos: de qué evento viene este producto (menú → compra,
-  // ver transferMenuToShopping en src/data/events.ts) — independiente
+  // ver «Menú del evento» → selector de ingredientes de una receta) — independiente
   // de tripId, que es "ir físicamente a una tienda", no "para qué es".
   eventId?: string | null
 }): Promise<void> {

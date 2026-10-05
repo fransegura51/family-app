@@ -189,7 +189,7 @@ export function needAttends(need: EventDietaryNeed, guests: EventGuest[], member
   return true
 }
 
-function needLine(category: EventDietaryCategory, alergia: boolean, n: number): string {
+export function needLine(category: EventDietaryCategory, alergia: boolean, n: number): string {
   const meta = DIETARY_CATEGORIES[category]
   if (alergia) return `${n} ${n === 1 ? 'ha indicado' : 'han indicado'} alergia ${meta.allergen}`
   return `${n} ${n === 1 ? 'necesita' : 'necesitan'} comida ${meta.phrase}`

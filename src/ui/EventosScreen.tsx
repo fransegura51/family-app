@@ -39,7 +39,6 @@ import {
   deleteEventGuestMember,
   deleteEventGuestQuestion,
   deleteEventGuestQuestionOption,
-  deleteEventMenuItem,
   deleteEventMoment,
   deleteEventPayment,
   deleteEventProvider,
@@ -91,7 +90,6 @@ import {
   saveEventTemplate,
   transferActivityMaterialsToShopping,
   transferDecorationItemToShopping,
-  transferMenuToShopping,
   unarchiveEvent,
   updateEvent,
   updateEventDecorationItem,
@@ -105,21 +103,16 @@ import {
   updateEventPayment,
   updateEventSpecialDetail,
   updateEventTask,
-  addEventDietaryNeed,
   reconcileFoodForVenueChange,
   syncOperationalDateFromMoments,
-  addEventMenuItemsBulk,
   addEventMenuOption,
   applyFoodDayPlan,
   applyFoodDecisionGeneration,
-  deleteEventDietaryNeed,
   deleteEventMenuOption,
   listEventDietaryNeeds,
   listEventMenuOptions,
   loadEventFoodNeedsAlert,
-  saveEventFoodDocument,
   swapEventMenuOptionOrder,
-  updateEventMenuItem,
   updateEventMenuOption,
 } from '@/data/events'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
@@ -295,9 +288,6 @@ import {
 } from '@/domain/eventSpecialMoments'
 import { notifyEventMomentsChanged, useEventMomentsChangeSignal } from '@/state/eventMomentsSync'
 import { showToast } from '@/state/toast'
-import { addRecipeIngredientsToShoppingList, listRecipes } from '@/data/food'
-import { analyzeEventFoodDocument } from '@/services/eventFoodDocument'
-import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import {
   buildFoodContext,
   contratacionApplies,
@@ -343,7 +333,6 @@ import {
   type MomentoComidaDef,
   type MomentosComidaAnswer,
   type NecesidadesAnswer,
-  type NecesidadesChoice,
   type QuienAnswer,
   type QuienChoice,
   type QuienWay,
@@ -369,32 +358,16 @@ import {
 } from '@/domain/eventVenueServices'
 import {
   computeFoodNeedsState,
-  conflictInputsSignature,
-  DIETARY_CATEGORIES,
-  DIETARY_CATEGORY_KEYS,
-  DIETARY_KIND_LABELS,
-  findMenuConflicts,
-  FOOD_SAFETY_DISCLAIMER,
-  foodNeedsBanner,
   needsReviewApplies,
-  suggestDietaryNeeds,
-  suggestFromGuestNotes,
-  type FoodNeedsState,
 } from '@/domain/eventDietaryNeeds'
 import {
   alreadyRespondedMessage,
-  canonicalSectionLabel,
-  countMenuChoices,
-  groupMenuBySection,
   guestsRespondedWithoutMenuChoice,
   guestsWithoutMembers,
-  MENU_IMPORT_EXPLANATION,
-  MENU_INFANTIL_SECTION_LABEL,
   MENU_OPTION_AUDIENCES,
-  MENU_SECTIONS,
   sectionKeyForCategory,
 } from '@/domain/eventFoodMenu'
-import type { EventDietaryCategory, EventDietaryKind, EventDietaryNeed, EventDietarySource, EventFoodDocumentKind, EventMenuOption, EventMenuOptionAudience, Recipe } from '@/domain/types'
+import type { EventDietaryNeed, EventMenuOption, EventMenuOptionAudience } from '@/domain/types'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
 // Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
 // una función pura sin ninguna dependencia de Previsión/Economía.
@@ -439,7 +412,9 @@ import type {
 import { canShareFiles, shareFiles, shareText } from '@/services/share'
 import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ChoiceRow } from '@/ui/ChoiceRow'
 import { DayPlanSection } from '@/ui/EventDayPlan'
+import { EventMenuSection } from '@/ui/EventMenu'
 import { RecoverMomentDialog } from '@/ui/RecoverMomentDialog'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { LocationPickerModal } from '@/ui/LocationPickerModal'
@@ -1108,7 +1083,6 @@ function EventDetail({
   const hasGuestsModule = event.enabledModules.includes('invitados')
   const hasBudgetModule = event.enabledModules.includes('presupuesto')
   const hasPaymentsModule = event.enabledModules.includes('pagos')
-  const hasMenuModule = event.enabledModules.includes('menu_compra')
   const taskDoneCount = tasks.filter((t) => t.done).length
   const budgetPlanned = budgetItems.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
   const statusSummary = computeEventStatusSummary({ tasks, guests, payments, plannedBudget: budgetPlanned, spentBudget: budgetSpent })
@@ -1150,9 +1124,6 @@ function EventDetail({
     paymentsDueSoonCount: paymentAlerts.dueSoon,
     locationApplicable: setLocations.length > 0,
     hasExactLocation: setLocations.length > 0 && setLocations.every((l) => l.hasCoords),
-    hasMenuModule,
-    menuItemsTotal: menuItems.length,
-    menuItemsTransferred: menuItems.filter((i) => i.transferred).length,
     nextMilestone: statusSummary.nextMilestone,
   })
 
@@ -1194,7 +1165,7 @@ function EventDetail({
   // dentro de "Gestionar evento", para no duplicar una tercera superficie
   // de edición estructural (auditoría, hallazgo E). "Compras" es una
   // clave propia (no un EventModuleKey real) ligada al mismo módulo que
-  // "Menú y compra": las dos aparecen o desaparecen juntas.
+  // "Menú del evento": las dos aparecen o desaparecen juntas.
   interface ModuleCardDef {
     key: EventModuleKey | 'compras'
     icon: string
@@ -1220,8 +1191,7 @@ function EventDetail({
         stat = budgetSpent !== null ? `${budgetSpent.toFixed(2)} € de ${budgetPlanned.toFixed(2)} €` : `Planeado: ${budgetPlanned.toFixed(2)} €`
         break
       case 'menu_compra': {
-        const pending = menuItems.filter((i) => !i.transferred).length
-        stat = menuItems.length === 0 ? 'Sin elementos' : pending > 0 ? `${pending} sin traspasar` : 'Todo traspasado'
+        stat = menuItems.length === 0 ? 'Sin menú todavía' : `${menuItems.length} plato${menuItems.length === 1 ? '' : 's'}`
         break
       }
       case 'decoracion': {
@@ -1341,7 +1311,16 @@ function EventDetail({
       case 'presupuesto':
         return <BudgetSection key={`presupuesto-${refreshKey}`} event={event} />
       case 'menu_compra':
-        return <MenuSection key={`menu-${refreshKey}`} eventId={event.id} />
+        return (
+          <EventMenuSection
+            key={`menu-${refreshKey}`}
+            event={event}
+            onDerivedDataChanged={() => {
+              reloadTasks()
+              reloadDashboardStats()
+            }}
+          />
+        )
       case 'compras':
         return <EventShoppingSection items={shoppingItems} />
       case 'decoracion':
@@ -1472,6 +1451,7 @@ function EventDetail({
       <EventPlanningConfigurator
         event={event}
         onChanged={onChanged}
+        onOpenMenu={() => setOpenModule('menu_compra')}
         onDerivedDataChanged={() => {
           reloadTasks()
           reloadDashboardStats()
@@ -2355,9 +2335,12 @@ function EventPlanningConfigurator({
   event,
   onChanged,
   onDerivedDataChanged,
+  onOpenMenu,
 }: {
   event: FamilyEvent
   onChanged: () => void
+  // «Ir a Menú del evento»: abre la tarjeta del menú (el gestor ya no vive dentro del cuestionario).
+  onOpenMenu: () => void
   // Fallo 1 (Fase 3) — PairBlock escribe event_tasks/event_budget_items directamente en Supabase; sin
   // esto, Preparativos y la tarjeta-resumen de Presupuesto en EventDetail se quedan con el estado cargado
   // al montar, invisibles hasta recargar la página entera. Mismo hueco que nunca existió con Momentos
@@ -2517,7 +2500,7 @@ function EventPlanningConfigurator({
             </button>
             {comidaOpen && (
               <div style={{ marginTop: 4 }}>
-                <ComidaBebidaBlock event={event} onDerivedDataChanged={onDerivedDataChanged} />
+                <ComidaBebidaBlock event={event} onDerivedDataChanged={onDerivedDataChanged} onOpenMenu={onOpenMenu} />
               </div>
             )}
           </div>
@@ -3204,28 +3187,6 @@ const CUSTOM_COST_OPTIONS: { value: CustomHasCost; label: string }[] = [
   { value: 'no', label: 'No' },
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
 ]
-
-function ChoiceRow<T extends string>({
-  options,
-  value,
-  disabled,
-  onSelect,
-}: {
-  options: { value: T; label: string }[]
-  value: T | undefined
-  disabled: boolean
-  onSelect: (value: T) => void
-}) {
-  return (
-    <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-      {options.map((o) => (
-        <button key={o.value} type="button" className={'chip' + (value === o.value ? ' chip-active' : '')} disabled={disabled} onClick={() => onSelect(o.value)}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 // Motor explícito para cualquier opción personalizada ("otro") de todo el bloque — nunca se interpreta el
 // texto libre de `label` para decidir si genera tarea/coste: lo deciden exclusivamente `action`/`hasCost`.
@@ -5052,12 +5013,6 @@ const FOOD_BEBIDAS_OPTIONS: { value: BebidasChoice; label: string }[] = [
   { value: 'otro', label: 'Otro' },
 ]
 
-const FOOD_NECESIDADES_OPTIONS: { value: NecesidadesChoice; label: string }[] = [
-  { value: 'si', label: 'Sí, están contempladas' },
-  { value: 'revisar', label: 'Tenemos que revisarlo' },
-  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
-]
-
 function FoodInheritedLine({ children }: { children: ReactNode }) {
   return <p style={{ fontSize: 13, margin: '6px 0 0' }}>{children}</p>
 }
@@ -5265,424 +5220,27 @@ function FoodMomentosQuestion({
   )
 }
 
-// Ingredientes de la receta de un plato → Compras. Flujo existente (addRecipeIngredientsToShoppingList):
-// quien organiza marca qué comprar y confirma; PEPA nunca añade productos por su cuenta ni inventa
-// ingredientes: solo los de la receta que la familia escribió.
-function RecipeIngredientsToShoppingModal({ eventId, dish, recipe, onClose }: { eventId: string; dish: EventMenuItem; recipe: Recipe; onClose: () => void }) {
-  const [checked, setChecked] = useState<Set<string>>(() => new Set(recipe.ingredients.map((i) => i.id)))
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function confirm() {
-    setSaving(true)
-    setError(null)
-    try {
-      await addRecipeIngredientsToShoppingList(
-        recipe,
-        [...checked].map((ingredientId) => ({ ingredientId, store: null })),
-        eventId,
-      )
-      showToast(`✓ ${checked.size} ingrediente${checked.size === 1 ? '' : 's'} añadido${checked.size === 1 ? '' : 's'} a Compras`)
-      onClose()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudieron añadir los ingredientes'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" role="dialog" aria-label="Ingredientes a Compras" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 4px' }}>🛒 Ingredientes de «{recipe.title}»</h3>
-        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
-          Para «{dish.name}». Marca solo lo que de verdad tengáis que comprar: PEPA no añade nada por su cuenta.
-        </p>
-        {error && <p className="error">{error}</p>}
-        {recipe.ingredients.length === 0 ? (
-          <p className="muted">Esta receta todavía no tiene ingredientes escritos.</p>
-        ) : (
-          <div className="event-list">
-            {recipe.ingredients.map((i) => (
-              <label key={i.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={checked.has(i.id)}
-                  onChange={() => {
-                    const next = new Set(checked)
-                    if (next.has(i.id)) next.delete(i.id)
-                    else next.add(i.id)
-                    setChecked(next)
-                  }}
-                />
-                <span>
-                  {i.name}
-                  {i.quantity ? ` · ${i.quantity}${i.unit ? ` ${i.unit}` : ''}` : ''}
-                </span>
-              </label>
-            ))}
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-          <button type="button" className="link-button" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="button" disabled={saving || checked.size === 0} onClick={confirm}>
-            {saving ? 'Añadiendo…' : `Añadir a Compras (${checked.size})`}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Menú ESTRUCTURADO del evento: secciones → platos → receta opcional. Un plato puede ser solo «Paella».
-// scope 'principal' muestra todas las secciones salvo «Menú infantil»; 'infantil' solo esa. Reutiliza
-// event_menu_items (extendida, migración 0192) y el traspaso a Compras de siempre.
-function FoodMenuEditor({
-  event,
-  scope,
-  items,
-  recipes,
-  onChanged,
-}: {
-  event: FamilyEvent
-  scope: 'principal' | 'infantil'
-  items: EventMenuItem[]
-  recipes: Recipe[]
-  onChanged: () => void
-}) {
-  const infantil = scope === 'infantil'
-  const visible = items.filter((i) => (sectionKeyForCategory(i.category) === 'menu_infantil') === infantil)
-  const groups = groupMenuBySection(visible)
-  const sectionOptions = infantil ? [] : MENU_SECTIONS.filter((s) => s.key !== 'menu_infantil')
-  const [name, setName] = useState('')
-  const [section, setSection] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [transferring, setTransferring] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editDraft, setEditDraft] = useState<{ name: string; section: string; notes: string; recipeId: string }>({ name: '', section: '', notes: '', recipeId: '' })
-  const [ingredientsFor, setIngredientsFor] = useState<EventMenuItem | null>(null)
-  const pending = items.filter((i) => !i.transferred)
-
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault()
-    if (!name.trim()) return
-    try {
-      await addEventMenuItem(event.id, name, infantil ? MENU_INFANTIL_SECTION_LABEL : section || null)
-      setName('')
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir'))
-    }
-  }
-
-  function startEdit(dish: EventMenuItem) {
-    setEditingId(dish.id)
-    setEditDraft({ name: dish.name, section: dish.category ?? '', notes: dish.notes ?? '', recipeId: dish.recipeId ?? '' })
-  }
-
-  async function saveEdit(dish: EventMenuItem) {
-    if (!editDraft.name.trim()) return
-    try {
-      await updateEventMenuItem(dish.id, {
-        name: editDraft.name,
-        category: infantil ? MENU_INFANTIL_SECTION_LABEL : editDraft.section || null,
-        notes: editDraft.notes.trim() || null,
-        recipeId: editDraft.recipeId || null,
-      })
-      setEditingId(null)
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar el plato'))
-    }
-  }
-
-  async function handleTransfer() {
-    if (pending.length === 0) return
-    // «User confirms transfer to PEPA Purchases» — resumen antes de escribir nada en otro módulo.
-    if (!window.confirm(`Se van a crear ${pending.length} producto${pending.length === 1 ? '' : 's'} en Compras. ¿Confirmas?`)) return
-    setTransferring(true)
-    setError(null)
-    try {
-      const count = await transferMenuToShopping(event.id)
-      setNotice(`✓ ${count} producto${count === 1 ? '' : 's'} añadido${count === 1 ? '' : 's'} a Compras.`)
-      onChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo traspasar'))
-    } finally {
-      setTransferring(false)
-    }
-  }
-
-  const recipeById = new Map(recipes.map((r) => [r.id, r]))
-
-  return (
-    <div className="card" style={{ padding: 8, marginTop: 6 }}>
-      <strong style={{ fontSize: 14 }}>{infantil ? '👧🧒 Menú infantil' : '🍽️ Menú del evento'}</strong>
-      {notice && <p className="points-badge">{notice}</p>}
-      {error && <p className="error">{error}</p>}
-      {groups.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Todavía no hay platos. No hace falta rellenar todas las secciones.</p>}
-      {groups.map((g) => (
-        <div key={g.key} style={{ marginTop: 6 }}>
-          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-            {g.label}
-          </div>
-          {g.items.map((dish) => {
-            const recipe = dish.recipeId ? recipeById.get(dish.recipeId) : undefined
-            if (editingId === dish.id) {
-              return (
-                <div key={dish.id} className="card" style={{ padding: 6, marginTop: 4 }}>
-                  <input type="text" value={editDraft.name} onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })} aria-label="Nombre del plato" />
-                  {!infantil && (
-                    <select value={editDraft.section} onChange={(e) => setEditDraft({ ...editDraft, section: e.target.value })} aria-label="Sección">
-                      <option value="">Sin sección</option>
-                      {sectionOptions.map((s) => (
-                        <option key={s.key} value={s.label}>
-                          {s.label}
-                        </option>
-                      ))}
-                      {editDraft.section && !sectionOptions.some((s) => s.label === editDraft.section) && <option value={editDraft.section}>{editDraft.section}</option>}
-                    </select>
-                  )}
-                  <input type="text" value={editDraft.notes} placeholder="Nota del plato (opcional)" onChange={(e) => setEditDraft({ ...editDraft, notes: e.target.value })} />
-                  <select value={editDraft.recipeId} onChange={(e) => setEditDraft({ ...editDraft, recipeId: e.target.value })} aria-label="Receta">
-                    <option value="">Sin receta enlazada</option>
-                    {recipes.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        📖 {r.title}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="inline-fields">
-                    <button type="button" onClick={() => saveEdit(dish)} disabled={!editDraft.name.trim()}>
-                      Guardar
-                    </button>
-                    <button type="button" className="link-button" onClick={() => setEditingId(null)}>
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )
-            }
-            return (
-              <div key={dish.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                <span style={{ flex: 1 }}>
-                  {dish.name}
-                  {dish.notes ? <span className="muted"> — {dish.notes}</span> : null}
-                  {recipe ? <span className="muted"> · 📖 {recipe.title}</span> : null}
-                  {dish.source === 'importado' ? <span className="muted"> · importado</span> : null}
-                  {dish.transferred ? ' · ✓ en Compras' : ''}
-                </span>
-                {recipe && recipe.ingredients.length > 0 && (
-                  <button type="button" className="link-button" onClick={() => setIngredientsFor(dish)}>
-                    🛒 Ingredientes
-                  </button>
-                )}
-                <button type="button" className="link-button" onClick={() => startEdit(dish)}>
-                  Editar
-                </button>
-                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar plato" onConfirm={() => deleteEventMenuItem(dish.id).then(onChanged)} />
-              </div>
-            )
-          })}
-        </div>
-      ))}
-      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={infantil ? '+ Plato del menú infantil' : '+ Añadir un plato'} style={{ flex: 1 }} />
-        {!infantil && (
-          <select value={section} onChange={(e) => setSection(e.target.value)} aria-label="Sección del plato">
-            <option value="">Sección (opcional)</option>
-            {sectionOptions.map((s) => (
-              <option key={s.key} value={s.label}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        )}
-        <button type="submit">Añadir</button>
-      </form>
-      <div className="inline-fields" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-        <Link className="link-button" to="/alimentacion?tab=recetas">
-          📖 Recetas
-        </Link>
-        <Link className="link-button" to="/compras">
-          🛒 Lista de la compra
-        </Link>
-        {!infantil && pending.length > 0 && (
-          <button type="button" className="link-button" onClick={handleTransfer} disabled={transferring}>
-            {transferring ? 'Traspasando…' : `→ Confirmar traspaso a Compras (${pending.length})`}
-          </button>
-        )}
-      </div>
-      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-        Un plato puede ser solo su nombre; enlazar una receta es opcional. PEPA no calcula cantidades ni raciones.
-      </p>
-      {ingredientsFor && ingredientsFor.recipeId && recipeById.get(ingredientsFor.recipeId) && (
-        <RecipeIngredientsToShoppingModal eventId={event.id} dish={ingredientsFor} recipe={recipeById.get(ingredientsFor.recipeId) as Recipe} onClose={() => setIngredientsFor(null)} />
-      )}
-    </div>
-  )
-}
-
-interface ImportRow {
-  id: string
-  section: string
-  name: string
-  note: string | null
-  include: boolean
-}
-
-// Importador GENÉRICO de menús (foto/cámara/PDF → propuesta → revisión → guardar). Es el mismo para el menú
-// principal, el infantil, un cóctel, una carta de bebidas, una recena o una propuesta de catering: no hay un
-// lector por tipo. La IA solo PROPONE; nada se guarda hasta que quien organiza revisa y confirma, y el
-// documento original se conserva. No promete seguridad alimentaria.
-function FoodMenuImporter({
-  event,
-  kind,
-  forcedSection,
-  onDone,
-  onCancel,
-}: {
-  event: FamilyEvent
-  kind: EventFoodDocumentKind
-  forcedSection: string | null
-  onDone: (saved: number) => void
-  onCancel: () => void
-}) {
-  const [file, setFile] = useState<File | null>(null)
-  const [phase, setPhase] = useState<'pick' | 'reading' | 'review' | 'saving'>('pick')
-  const [rows, setRows] = useState<ImportRow[]>([])
-  const [extraNotes, setExtraNotes] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const sectionLabels = MENU_SECTIONS.filter((s) => (forcedSection ? s.label === forcedSection : s.key !== 'menu_infantil')).map((s) => s.label)
-
-  async function handleFile(next: File | null) {
-    setFile(next)
-    if (!next) return
-    setPhase('reading')
-    setError(null)
-    try {
-      const proposal = await analyzeEventFoodDocument(next, kind)
-      const flat: ImportRow[] = []
-      for (const s of proposal.sections) {
-        for (const d of s.dishes) {
-          flat.push({ id: crypto.randomUUID(), section: forcedSection ?? canonicalSectionLabel(s.section), name: d.name, note: d.note, include: true })
-        }
-      }
-      setRows(flat)
-      setExtraNotes(proposal.extraNotes)
-      if (flat.length === 0) {
-        setError('No he podido leer platos en este documento. Prueba con otra foto o añádelo a mano.')
-        setPhase('pick')
-        return
-      }
-      setPhase('review')
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo leer el documento. Puedes añadirlo a mano.'))
-      setPhase('pick')
-    }
-  }
-
-  async function confirm() {
-    if (!file) return
-    const chosen = rows.filter((r) => r.include && r.name.trim())
-    if (chosen.length === 0) return
-    setPhase('saving')
-    setError(null)
-    try {
-      const doc = await saveEventFoodDocument(event.id, file, kind)
-      const count = await addEventMenuItemsBulk(
-        event.id,
-        chosen.map((r) => ({ name: r.name, category: r.section, notes: r.note })),
-        { documentId: doc.id, imported: true },
-      )
-      showToast(`✓ ${count} plato${count === 1 ? '' : 's'} guardado${count === 1 ? '' : 's'} en el menú`)
-      onDone(count)
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar el menú'))
-      setPhase('review')
-    }
-  }
-
-  return (
-    <div className="card" style={{ padding: 8, marginTop: 6 }}>
-      {phase === 'pick' && (
-        <>
-          <p style={{ fontSize: 13, margin: '0 0 6px' }}>{MENU_IMPORT_EXPLANATION}</p>
-          {error && <p className="error">{error}</p>}
-          <FileOrPdfPicker file={file} onChange={handleFile} sheetTitle="Añadir el menú" />
-          <button type="button" className="link-button" onClick={onCancel} style={{ marginTop: 6 }}>
-            Cancelar
-          </button>
-        </>
-      )}
-      {phase === 'reading' && <p className="muted">Leyendo el documento… PEPA solo propone: tú lo revisas antes de guardar.</p>}
-      {(phase === 'review' || phase === 'saving') && (
-        <>
-          <strong style={{ fontSize: 14 }}>Revisa lo que PEPA ha entendido</strong>
-          <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-            Corrige nombres, cambia la sección o quita lo que no sea un plato. No se guardará nada hasta que confirmes.
-          </p>
-          {error && <p className="error">{error}</p>}
-          {rows.map((r) => (
-            <div key={r.id} className="inline-fields" style={{ alignItems: 'center' }}>
-              <input type="checkbox" checked={r.include} aria-label={`Incluir ${r.name}`} onChange={() => setRows(rows.map((x) => (x.id === r.id ? { ...x, include: !x.include } : x)))} />
-              <input type="text" value={r.name} style={{ flex: 1 }} onChange={(e) => setRows(rows.map((x) => (x.id === r.id ? { ...x, name: e.target.value } : x)))} />
-              {!forcedSection && (
-                <select value={r.section} onChange={(e) => setRows(rows.map((x) => (x.id === r.id ? { ...x, section: e.target.value } : x)))} aria-label="Sección">
-                  {sectionLabels.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                  {!sectionLabels.includes(r.section) && <option value={r.section}>{r.section}</option>}
-                </select>
-              )}
-            </div>
-          ))}
-          {extraNotes.length > 0 && (
-            <p className="muted" style={{ fontSize: 12 }}>
-              Otras notas del documento (no se guardan como platos): {extraNotes.join(' · ')}
-            </p>
-          )}
-          <div className="inline-fields" style={{ marginTop: 6 }}>
-            <button type="button" disabled={phase === 'saving' || rows.filter((r) => r.include && r.name.trim()).length === 0} onClick={confirm}>
-              {phase === 'saving' ? 'Guardando…' : `Guardar ${rows.filter((r) => r.include && r.name.trim()).length} platos`}
-            </button>
-            <button type="button" className="link-button" disabled={phase === 'saving'} onClick={onCancel}>
-              Descartar
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-// «¿Quieres guardar el menú en PEPA?» → Sí → foto/PDF (importador) o manual.
+// «¿Quieres guardar el menú en PEPA?» → Sí → el menú se trabaja en la tarjeta «Menú del evento». Aquí solo está la
+// PREGUNTA (decisión) y un acceso sencillo; el gestor completo (platos, secciones, importación, recetas, compras)
+// ya NO vive dentro del cuestionario.
 function FoodMenuSavePrompt({
-  event,
   items,
-  recipes,
   scope,
   answer,
   saving,
   onAnswer,
-  onChanged,
+  onOpenMenu,
+  menuModuleEnabled,
 }: {
-  event: FamilyEvent
   items: EventMenuItem[]
-  recipes: Recipe[]
   scope: 'principal' | 'infantil'
   answer: GuardarMenuAnswer | undefined
   saving: boolean
   onAnswer: (answer: GuardarMenuAnswer) => void
-  onChanged: () => void
+  onOpenMenu: () => void
+  menuModuleEnabled: boolean
 }) {
   const infantil = scope === 'infantil'
-  const [mode, setMode] = useState<'idle' | 'import' | 'manual'>('idle')
   const hasItems = items.some((i) => (sectionKeyForCategory(i.category) === 'menu_infantil') === infantil)
 
   return (
@@ -5691,29 +5249,24 @@ function FoodMenuSavePrompt({
         {infantil ? '¿Quieres guardar el menú infantil en PEPA?' : '¿Quieres guardar el menú en PEPA?'}
       </div>
       <ChoiceRow options={FOOD_GUARDAR_OPTIONS} value={answer?.choice} disabled={saving} onSelect={(choice) => onAnswer({ choice })} />
-      {answer?.choice === 'si' && !hasItems && mode === 'idle' && (
-        <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
-          <button type="button" className="chip" onClick={() => setMode('import')}>
-            📷 Hacer una foto · 🖼️ Elegir una foto · 📄 Subir PDF
-          </button>
-          <button type="button" className="chip" onClick={() => setMode('manual')}>
-            ✏️ Añadirlo manualmente
-          </button>
-        </div>
-      )}
-      {mode === 'import' && (
-        <FoodMenuImporter
-          event={event}
-          kind={infantil ? 'menu_infantil' : 'menu_principal'}
-          forcedSection={infantil ? MENU_INFANTIL_SECTION_LABEL : null}
-          onCancel={() => setMode('idle')}
-          onDone={() => {
-            setMode('idle')
-            onChanged()
-          }}
-        />
-      )}
-      {(answer?.choice === 'si' || hasItems) && mode !== 'import' && <FoodMenuEditor event={event} scope={scope} items={items} recipes={recipes} onChanged={onChanged} />}
+      {(answer?.choice === 'si' || hasItems) && <FoodMenuLink hasItems={hasItems} onOpenMenu={onOpenMenu} menuModuleEnabled={menuModuleEnabled} />}
+    </div>
+  )
+}
+
+function FoodMenuLink({ hasItems, onOpenMenu, menuModuleEnabled }: { hasItems: boolean; onOpenMenu: () => void; menuModuleEnabled: boolean }) {
+  if (!menuModuleEnabled) {
+    return (
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+        Para guardar y trabajar el menú, activa «Menú del evento» en las secciones del evento.
+      </p>
+    )
+  }
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button type="button" className="chip" onClick={onOpenMenu}>
+        {hasItems ? '🍽️ Ir a Menú del evento' : '🍽️ Crear / gestionar menú'}
+      </button>
     </div>
   )
 }
@@ -5729,7 +5282,6 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
   const [newName, setNewName] = useState('')
   const [newAudience, setNewAudience] = useState<EventMenuOptionAudience>('todos')
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
-  const [openDetail, setOpenDetail] = useState<string | null>(null)
 
   function reload() {
     return listEventMenuOptions(event.id)
@@ -5776,7 +5328,6 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
   }
 
   if (loading) return null
-  const { counts, unchosen } = countMenuChoices(options, members, guests)
   const respondedBefore = options.length > 0 ? guestsRespondedWithoutMenuChoice(guests, members) : 0
   const withoutMembers = options.length > 0 ? guestsWithoutMembers(guests, members) : 0
 
@@ -5851,23 +5402,9 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
         </p>
       )}
       {options.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-            Lo que han elegido
-          </div>
-          {[...counts, unchosen].map((c) => (
-            <div key={c.optionId ?? 'sin-elegir'}>
-              <button type="button" className="link-button" onClick={() => setOpenDetail(openDetail === (c.optionId ?? 'sin-elegir') ? null : (c.optionId ?? 'sin-elegir'))}>
-                {c.name} · {c.count}
-              </button>
-              {openDetail === (c.optionId ?? 'sin-elegir') && (
-                <p className="muted" style={{ fontSize: 12, margin: '0 0 4px 8px' }}>
-                  {c.people.length === 0 ? 'Nadie todavía.' : c.people.map((p) => `${p.name}${p.guestName && p.guestName !== p.name ? ` (${p.guestName})` : ''}`).join(', ')}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
+        <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+          Lo que ha elegido cada persona se ve en «Menú del evento» → Comensales.
+        </p>
       )}
       <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
         PEPA no envía nada por su cuenta: si quieres que alguien que ya respondió elija menú, reenvíale el enlace de su invitación desde Invitados.
@@ -5876,247 +5413,30 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
   )
 }
 
-// Necesidades alimentarias — RESUMEN, no un nuevo sistema de alergias: las notas de los invitados siguen
-// siendo notas. Aquí quien organiza confirma qué necesidades cuentan (lo declarado se conserva tal cual y
-// PEPA solo añade una clasificación operativa para organizar el evento, sin diagnosticar). Con TODOS
-// confirmados avisa; antes, solo informa de forma provisional. PEPA nunca certifica que un plato sea seguro.
-function DietaryNeedsPanel({
-  event,
-  guests,
-  members,
-  needs,
-  state,
-  menuItems,
-  reviewAnswer,
-  reviewApplies,
-  saving,
-  onNeedsChanged,
-  onReview,
-}: {
-  event: FamilyEvent
-  guests: EventGuest[]
-  members: EventGuestMember[]
-  needs: EventDietaryNeed[]
-  state: FoodNeedsState
-  menuItems: EventMenuItem[]
-  reviewAnswer: NecesidadesAnswer | undefined
-  reviewApplies: boolean
-  saving: boolean
-  onNeedsChanged: () => void
-  onReview: (answer: NecesidadesAnswer) => void
-}) {
-  const [guestId, setGuestId] = useState('')
-  const [memberId, setMemberId] = useState('')
-  const [text, setText] = useState('')
-  const [category, setCategory] = useState<EventDietaryCategory | ''>('')
-  const [kind, setKind] = useState<EventDietaryKind | ''>('')
-  const [error, setError] = useState<string | null>(null)
-  const banner = foodNeedsBanner(state)
-  const suggestions = useMemo(() => suggestFromGuestNotes(guests, needs), [guests, needs])
-  const conflictSignature = conflictInputsSignature(menuItems, state.activeNeeds)
-  // Recalcula solo cuando cambia el menú, las necesidades o quién asiste — nunca en cada render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const conflicts = useMemo(() => findMenuConflicts(menuItems, state.activeNeeds), [conflictSignature])
-  const guestMembers = members.filter((m) => m.guestId === guestId)
-  const nameOf = (need: EventDietaryNeed): string => {
-    const guest = guests.find((g) => g.id === need.guestId)
-    const member = need.memberId ? members.find((m) => m.id === need.memberId) : undefined
-    return member ? `${member.name}${guest ? ` (${guest.displayName})` : ''}` : guest?.displayName ?? 'Invitado'
-  }
-
-  function onTextChange(value: string) {
-    setText(value)
-    const first = suggestDietaryNeeds(value)[0]
-    // Solo una SUGERENCIA para rellenar la clasificación; quien organiza puede cambiarla siempre.
-    if (first && !category) {
-      setCategory(first.category)
-      setKind(first.kind ?? '')
-    }
-  }
-
-  async function add(input: { guestId: string; memberId: string | null; originalText: string; category: EventDietaryCategory; kind: EventDietaryKind | null; source: EventDietarySource }) {
-    setError(null)
-    try {
-      await addEventDietaryNeed(event.id, input)
-      onNeedsChanged()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar la necesidad'))
-    }
-  }
-
-  async function handleAdd(e: FormEvent) {
-    e.preventDefault()
-    if (!guestId || !text.trim() || !category) return
-    await add({ guestId, memberId: memberId || null, originalText: text, category, kind: kind || null, source: 'organizador' })
-    setText('')
-    setCategory('')
-    setKind('')
-    setMemberId('')
-  }
-
-  if (guests.length === 0 && needs.length === 0) return null
-
+// Las necesidades alimentarias (resumen, quiénes son, alta de necesidades y «¿Las habéis tenido en cuenta en el
+// menú?») se trabajan en «Menú del evento» → Comensales. Aquí solo un recordatorio con acceso.
+function FoodNeedsPointer({ needsCount, reviewPending, onOpenMenu, menuModuleEnabled }: { needsCount: number; reviewPending: boolean; onOpenMenu: () => void; menuModuleEnabled: boolean }) {
+  if (!menuModuleEnabled || (needsCount === 0 && !reviewPending)) return null
   return (
-    <div className="card" style={{ padding: 8, marginTop: 8 }}>
-      <strong style={{ fontSize: 14 }}>🥗 Necesidades alimentarias de los asistentes</strong>
-      {error && <p className="error">{error}</p>}
-      {banner.kind === 'provisional' && (
-        <div style={{ marginTop: 4 }}>
-          <p style={{ fontSize: 13, margin: 0 }}>{banner.title}</p>
-          {banner.lines.map((l) => (
-            <p key={l} style={{ fontSize: 13, margin: '2px 0 0' }}>
-              • {l}
-            </p>
-          ))}
-        </div>
-      )}
-      {banner.kind === 'alerta' && (
-        <div style={{ marginTop: 4 }}>
-          <p style={{ fontSize: 13, margin: 0, fontWeight: 600 }}>{banner.title}</p>
-          {banner.lines.map((l) => (
-            <p key={l} style={{ fontSize: 13, margin: '2px 0 0' }}>
-              • {l}
-            </p>
-          ))}
-        </div>
-      )}
-      {banner.kind === 'positivo' && <p style={{ fontSize: 13, margin: '4px 0 0' }}>{banner.title}</p>}
-      {banner.kind === 'sin_invitados' && needs.length > 0 && state.lines.map((l) => (
-        <p key={l} style={{ fontSize: 13, margin: '2px 0 0' }}>
-          • {l}
-        </p>
-      ))}
-
-      {needs.length > 0 && (
-        <div style={{ marginTop: 6 }}>
-          {needs.map((n) => (
-            <div key={n.id} className="inline-fields" style={{ alignItems: 'center' }}>
-              <span style={{ flex: 1, fontSize: 13 }}>
-                {nameOf(n)}: «{n.originalText}» → <strong>{DIETARY_CATEGORIES[n.category].label}</strong>
-                {n.kind ? ` · ${DIETARY_KIND_LABELS[n.kind]}` : ''}
-              </span>
-              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Quitar necesidad" onConfirm={() => deleteEventDietaryNeed(n.id).then(onNeedsChanged)} />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {suggestions.length > 0 && (
-        <div style={{ marginTop: 6 }}>
-          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-            PEPA ha visto esto en las notas de los invitados (confírmalo para que cuente)
-          </div>
-          {suggestions.map((s) => (
-            <div key={`${s.guestId}:${s.category}`} className="inline-fields" style={{ alignItems: 'center' }}>
-              <span style={{ flex: 1, fontSize: 13 }}>
-                {s.guestName}: «{s.text}» → {DIETARY_CATEGORIES[s.category].label}
-              </span>
-              <button type="button" className="link-button" onClick={() => add({ guestId: s.guestId, memberId: null, originalText: s.text, category: s.category, kind: s.kind, source: 'invitado_nota' })}>
-                Confirmar
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <form onSubmit={handleAdd} style={{ marginTop: 6 }}>
-        <div className="muted" style={{ fontSize: 12 }}>
-          Añadir una necesidad
-        </div>
-        <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
-          <select
-            value={guestId}
-            onChange={(e) => {
-              setGuestId(e.target.value)
-              setMemberId('')
-            }}
-            aria-label="Invitado"
-          >
-            <option value="">¿De quién?</option>
-            {guests
-              .filter((g) => g.rsvpStatus !== 'no_asiste')
-              .map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.displayName}
-                </option>
-              ))}
-          </select>
-          {guestMembers.length > 0 && (
-            <select value={memberId} onChange={(e) => setMemberId(e.target.value)} aria-label="Persona">
-              <option value="">Toda la invitación</option>
-              {guestMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <input type="text" value={text} placeholder="Lo que han indicado (p. ej. alergia a las nueces)" style={{ flex: 1 }} onChange={(e) => onTextChange(e.target.value)} />
-        </div>
-        <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
-          <select value={category} onChange={(e) => setCategory(e.target.value as EventDietaryCategory | '')} aria-label="Clasificación">
-            <option value="">Clasificación para organizar</option>
-            {DIETARY_CATEGORY_KEYS.map((k) => (
-              <option key={k} value={k}>
-                {DIETARY_CATEGORIES[k].label}
-              </option>
-            ))}
-          </select>
-          <select value={kind} onChange={(e) => setKind(e.target.value as EventDietaryKind | '')} aria-label="Tipo">
-            <option value="">Tipo (si se sabe)</option>
-            {(Object.keys(DIETARY_KIND_LABELS) as EventDietaryKind[]).map((k) => (
-              <option key={k} value={k}>
-                {DIETARY_KIND_LABELS[k]}
-              </option>
-            ))}
-          </select>
-          <button type="submit" disabled={!guestId || !text.trim() || !category}>
-            Añadir
-          </button>
-        </div>
-        <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
-          Se conserva lo que escribieron tal cual. La clasificación solo sirve para organizar el menú; no es un diagnóstico.
-        </p>
-      </form>
-
-      {reviewApplies && (
-        <div style={{ marginTop: 6 }}>
-          <div className="muted" style={{ fontSize: 13 }}>
-            ¿Habéis tenido en cuenta estas necesidades en el menú?
-          </div>
-          <ChoiceRow options={FOOD_NECESIDADES_OPTIONS} value={reviewAnswer?.choice} disabled={saving} onSelect={(choice) => onReview({ choice })} />
-        </div>
-      )}
-
-      {conflicts.length > 0 && (
-        <div style={{ marginTop: 6 }}>
-          {conflicts.map((c) => (
-            <p key={`${c.dishId}:${c.category}`} style={{ fontSize: 13, margin: '2px 0' }}>
-              {c.message}
-            </p>
-          ))}
-          <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-            Confírmalo con el restaurante o el proveedor.
-          </p>
-        </div>
-      )}
-      {state.activeNeeds.length > 0 && menuItems.length > 0 && (
-        <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
-          {FOOD_SAFETY_DISCLAIMER}
-        </p>
-      )}
+    <div style={{ marginTop: 8 }}>
+      <p style={{ fontSize: 13, margin: 0 }}>
+        🥗 {needsCount} necesidad{needsCount === 1 ? '' : 'es'} alimentaria{needsCount === 1 ? '' : 's'} registrada{needsCount === 1 ? '' : 's'}
+        {reviewPending ? ' · falta indicar si las habéis tenido en cuenta en el menú' : ''}.
+      </p>
+      <button type="button" className="chip" onClick={onOpenMenu}>
+        Ver en Menú del evento
+      </button>
     </div>
   )
 }
 
-function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent; onDerivedDataChanged: () => void }) {
+function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event: FamilyEvent; onDerivedDataChanged: () => void; onOpenMenu: () => void }) {
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [menuItems, setMenuItems] = useState<EventMenuItem[]>([])
   const [guests, setGuests] = useState<EventGuest[]>([])
   const [members, setMembers] = useState<EventGuestMember[]>([])
   const [needs, setNeeds] = useState<EventDietaryNeed[]>([])
   const [moments, setMoments] = useState<EventMoment[]>([])
-  const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingKey, setSavingKey] = useState<string | null>(null)
@@ -6124,15 +5444,14 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
   const [recovery, setRecovery] = useState<{ prompt: MomentRecoveryPrompt; answer: MomentosComidaAnswer } | null>(null)
 
   function reloadAll(): Promise<void> {
-    return Promise.all([listEventDecisions(event.id), listEventMenuItems(event.id), listEventGuests(event.id), listEventGuestMembersForEvent(event.id), listEventDietaryNeeds(event.id), listRecipes(), listEventMoments(event.id)])
-      .then(([d, m, g, gm, n, r, mo]) => {
+    return Promise.all([listEventDecisions(event.id), listEventMenuItems(event.id), listEventGuests(event.id), listEventGuestMembersForEvent(event.id), listEventDietaryNeeds(event.id), listEventMoments(event.id)])
+      .then(([d, m, g, gm, n, mo]) => {
         setMoments(mo)
         setDecisions(d)
         setMenuItems(m)
         setGuests(g)
         setMembers(gm)
         setNeeds(n)
-        setRecipes(r)
       })
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar Comida y bebida')))
       .finally(() => setLoading(false))
@@ -6203,17 +5522,6 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
     }
   }
 
-  function reloadMenu() {
-    listEventMenuItems(event.id)
-      .then(setMenuItems)
-      .catch((err) => setError(errorMessage(err, 'No se pudo cargar el menú')))
-  }
-  function reloadNeeds() {
-    listEventDietaryNeeds(event.id)
-      .then(setNeeds)
-      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las necesidades')))
-    onDerivedDataChanged()
-  }
 
   if (loading) return null
 
@@ -6228,6 +5536,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
   const tartaWarning = tartaContradiction(decisions)
   const summary = summarizeFoodBlock(ctx)
   const foodExists = foodWillExist(ctx)
+  const menuModuleEnabled = event.enabledModules.includes('menu_compra')
   const showMainMenu = foodExists && (cooksThemselves(quien) || menuItems.some((i) => sectionKeyForCategory(i.category) !== 'menu_infantil'))
   const tartaDecision = find(FOOD_TARTA_KEY)
   const bebidasDecision = find(FOOD_BEBIDAS_KEY)
@@ -6307,17 +5616,16 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
           <ChoiceRow options={FOOD_MENU_ESTADO_OPTIONS} value={estado?.choice} disabled={savingKey === FOOD_MENU_ESTADO_KEY} onSelect={(choice) => saveFood(FOOD_MENU_ESTADO_KEY, { choice }, false)} />
           {estado?.choice === 'decidido' && (
             <FoodMenuSavePrompt
-              event={event}
               items={menuItems}
-              recipes={recipes}
               scope="principal"
               answer={answerOf<GuardarMenuAnswer>(FOOD_MENU_GUARDAR_KEY)}
               saving={savingKey === FOOD_MENU_GUARDAR_KEY}
               onAnswer={(a) => saveFood(FOOD_MENU_GUARDAR_KEY, a as unknown as Record<string, unknown>)}
-              onChanged={reloadMenu}
+              onOpenMenu={onOpenMenu}
+              menuModuleEnabled={menuModuleEnabled}
             />
           )}
-          {estado?.choice !== 'decidido' && showMainMenu && <FoodMenuEditor event={event} scope="principal" items={menuItems} recipes={recipes} onChanged={reloadMenu} />}
+          {estado?.choice !== 'decidido' && showMainMenu && <FoodMenuLink hasItems={menuItems.length > 0} onOpenMenu={onOpenMenu} menuModuleEnabled={menuModuleEnabled} />}
         </div>
       )}
 
@@ -6339,17 +5647,16 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
           />
           {infantil?.choice === 'incluido' && (
             <FoodMenuSavePrompt
-              event={event}
               items={menuItems}
-              recipes={recipes}
               scope="infantil"
               answer={answerOf<GuardarMenuAnswer>(FOOD_MENU_INFANTIL_GUARDAR_KEY)}
               saving={savingKey === FOOD_MENU_INFANTIL_GUARDAR_KEY}
               onAnswer={(a) => saveFood(FOOD_MENU_INFANTIL_GUARDAR_KEY, a as unknown as Record<string, unknown>)}
-              onChanged={reloadMenu}
+              onOpenMenu={onOpenMenu}
+              menuModuleEnabled={menuModuleEnabled}
             />
           )}
-          {infantil?.choice === 'nosotros' && <FoodMenuEditor event={event} scope="infantil" items={menuItems} recipes={recipes} onChanged={reloadMenu} />}
+          {infantil?.choice === 'nosotros' && <FoodMenuLink hasItems={menuItems.some((i) => sectionKeyForCategory(i.category) === 'menu_infantil')} onOpenMenu={onOpenMenu} menuModuleEnabled={menuModuleEnabled} />}
         </div>
       )}
 
@@ -6387,18 +5694,11 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged }: { event: FamilyEvent
       )}
 
       {/* K) Necesidades alimentarias: información y aviso, no un interrogatorio */}
-      <DietaryNeedsPanel
-        event={event}
-        guests={guests}
-        members={members}
-        needs={needs}
-        state={needsState}
-        menuItems={menuItems}
-        reviewAnswer={answerOf<NecesidadesAnswer>(FOOD_NECESIDADES_KEY)}
-        reviewApplies={needsReviewApplies(needsState)}
-        saving={savingKey === FOOD_NECESIDADES_KEY}
-        onNeedsChanged={reloadNeeds}
-        onReview={(a) => saveFood(FOOD_NECESIDADES_KEY, a as unknown as Record<string, unknown>)}
+      <FoodNeedsPointer
+        needsCount={needsState.activeNeeds.length}
+        reviewPending={needsReviewApplies(needsState) && !answerOf<NecesidadesAnswer>(FOOD_NECESIDADES_KEY)}
+        onOpenMenu={onOpenMenu}
+        menuModuleEnabled={menuModuleEnabled}
       />
 
       {costPrompt && (
@@ -8056,87 +7356,6 @@ function EditBudgetItemInline({ item, onDone, onSaved }: { item: EventBudgetItem
 }
 
 // ---------------------------------------------------------------------
-// Menú y compra.
-// ---------------------------------------------------------------------
-
-function MenuSection({ eventId }: { eventId: string }) {
-  const [items, setItems] = useState<EventMenuItem[]>([])
-  const [newName, setNewName] = useState('')
-  const [notice, setNotice] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [transferring, setTransferring] = useState(false)
-
-  function reload() {
-    listEventMenuItems(eventId)
-      .then(setItems)
-      .catch((err) => setError(errorMessage(err, 'No se pudo cargar el menú')))
-  }
-  useEffect(reload, [eventId])
-
-  async function handleAdd(ev: FormEvent) {
-    ev.preventDefault()
-    if (!newName.trim()) return
-    try {
-      await addEventMenuItem(eventId, newName)
-      setNewName('')
-      reload()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir'))
-    }
-  }
-
-  const pending = items.filter((i) => !i.transferred)
-
-  async function handleTransfer() {
-    if (pending.length === 0) return
-    // Petición de la Skill: "User confirms transfer to PEPA Purchases" —
-    // resumen antes de escribir nada, como con cualquier escritura
-    // cruzada entre módulos.
-    if (!window.confirm(`Se van a crear ${pending.length} producto${pending.length === 1 ? '' : 's'} en Compras. ¿Confirmas?`)) return
-    setTransferring(true)
-    setError(null)
-    try {
-      const count = await transferMenuToShopping(eventId)
-      setNotice(`✓ ${count} producto${count === 1 ? '' : 's'} añadido${count === 1 ? '' : 's'} a Compras.`)
-      reload()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo traspasar'))
-    } finally {
-      setTransferring(false)
-    }
-  }
-
-  return (
-    <div className="card event-card" style={{ marginTop: 8 }}>
-      <strong>🍽️ Menú y compra</strong>
-      {notice && <p className="points-badge">{notice}</p>}
-      {error && <p className="error">{error}</p>}
-      <div className="event-list" style={{ marginTop: 8 }}>
-        {items.map((i) => (
-          <div key={i.id} className="inline-fields" style={{ alignItems: 'center' }}>
-            <span style={{ flex: 1 }}>
-              {i.name}
-              {i.transferred ? ' · ✓ en Compras' : ''}
-            </span>
-            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar producto" onConfirm={() => deleteEventMenuItem(i.id).then(reload)} />
-          </div>
-        ))}
-        {items.length === 0 && <p className="muted">Todavía no hay nada en el menú.</p>}
-      </div>
-      <form onSubmit={handleAdd} className="inline-fields" style={{ marginTop: 8 }}>
-        <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="+ Añadir al menú" style={{ flex: 1 }} />
-        <button type="submit">Añadir</button>
-      </form>
-      {pending.length > 0 && (
-        <button type="button" className="link-button" onClick={handleTransfer} disabled={transferring} style={{ marginTop: 8 }}>
-          {transferring ? 'Traspasando…' : `→ Confirmar traspaso a Compras (${pending.length})`}
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------
 // Proveedores.
 // ---------------------------------------------------------------------
 
@@ -9467,11 +8686,10 @@ function EventDayBanner({ event }: { event: FamilyEvent }) {
         setConfirmedPeople(confirmed.reduce((sum, g) => sum + (g.rsvpAdultsCount ?? g.adultsCount) + (g.rsvpChildrenCount ?? g.childrenCount), 0))
       })
     }
-    Promise.all([
-      event.enabledModules.includes('menu_compra') ? listEventMenuItems(event.id) : Promise.resolve([]),
-      event.enabledModules.includes('decoracion') ? listEventDecorationItems(event.id) : Promise.resolve([]),
-    ]).then(([menu, decoration]) => {
-      setPendingPurchases(menu.filter((i) => !i.transferred).length + decoration.filter((i) => !i.transferredToShopping).length)
+    // El menú ya no se «traspasa» a Compras entero (solo ingredientes de recetas que la familia elige), así que ya
+    // no cuenta aquí como pendiente.
+    Promise.all([event.enabledModules.includes('decoracion') ? listEventDecorationItems(event.id) : Promise.resolve([])]).then(([decoration]) => {
+      setPendingPurchases(decoration.filter((i) => !i.transferredToShopping).length)
     })
     if (event.enabledModules.includes('plan_dia')) {
       listEventDayPlan(event.id).then((items) => {

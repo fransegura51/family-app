@@ -176,7 +176,7 @@ export const EVENT_MODULES: { key: EventModuleKey; label: string; icon: string }
   { key: 'tareas', label: 'Preparativos', icon: '✅' },
   { key: 'presupuesto', label: 'Presupuesto', icon: '💰' },
   { key: 'pagos', label: 'Pagos y fianzas', icon: '🧾' },
-  { key: 'menu_compra', label: 'Menú y compra', icon: '🍽️' },
+  { key: 'menu_compra', label: 'Menú del evento', icon: '🍽️' },
   { key: 'decoracion', label: 'Decoración', icon: '🎈' },
   { key: 'actividades', label: 'Actividades y juegos', icon: '🎲' },
   { key: 'mesas', label: 'Mesas', icon: '🪑' },
@@ -2229,9 +2229,6 @@ export function computeEventHealth(input: {
   // no tener coordenadas de algo que ni siquiera existe todavía.
   locationApplicable: boolean
   hasExactLocation: boolean
-  hasMenuModule: boolean
-  menuItemsTotal: number
-  menuItemsTransferred: number
   nextMilestone: EventMilestone | null
 }): EventHealth {
   // 1) Progreso interno: media de las dimensiones aplicables (solo las
@@ -2242,7 +2239,6 @@ export function computeEventHealth(input: {
   const ratios: number[] = []
   if (input.hasTasksModule && input.tasksTotal > 0) ratios.push(input.tasksDone / input.tasksTotal)
   if (input.hasGuestsModule && input.guestsTotalPeople > 0) ratios.push(input.guestsConfirmedPeople / input.guestsTotalPeople)
-  if (input.hasMenuModule && input.menuItemsTotal > 0) ratios.push(input.menuItemsTransferred / input.menuItemsTotal)
   if (input.locationApplicable) ratios.push(input.hasExactLocation ? 1 : 0)
   const progress = ratios.length > 0 ? Math.round((ratios.reduce((sum, r) => sum + r, 0) / ratios.length) * 100) : 0
 

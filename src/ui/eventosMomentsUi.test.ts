@@ -218,10 +218,17 @@ describe('Acordeón — plegable globalmente y por bloque, estado simple en loca
     const fn = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
     expect(fn).toContain("loadConfiguratorOpen(event.id)")
     // El primer bloque unifica los dos acordeones antiguos: recuerda el estado que tuvieran.
-    expect(fn).toContain("loadConfiguratorOpen(event.id, 'celebracion')")
+    expect(fn).toContain("loadStoredConfiguratorOpen(event.id, 'celebracion')")
     expect(fn).toContain("structuredByMoments ? 'ceremonia_celebracion' : 'lugar_contexto'")
     expect(fn).toContain("saveConfiguratorOpen(event.id, null, next)")
     expect(fn).toContain("saveConfiguratorOpen(event.id, 'celebracion', next)")
+  })
+
+  it('el primer bloque NO se fuerza abierto: sin estado guardado empieza plegado (?? false), no con el true por defecto', () => {
+    const fn = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
+    const init = fn.slice(fn.indexOf('const [celebracionOpen, setCelebracionOpen]'), fn.indexOf('const [pairOpen'))
+    expect(init).toContain('?? false')
+    expect(init).not.toMatch(/loadConfiguratorOpen\(event\.id, 'celebracion'\)/)
   })
 
   it('no hay ningún porcentaje/barra de progreso agregado en el configurador (CSS width:100% no cuenta, eso es maquetación)', () => {
@@ -234,7 +241,7 @@ describe('Acordeón — plegable globalmente y por bloque, estado simple en loca
   })
 
   it('el import del estado del acordeón viene del módulo nuevo dedicado, no de un useState suelto sin persistencia', () => {
-    expect(SRC).toContain("import { loadConfiguratorOpen, saveConfiguratorOpen } from '@/state/eventPlanningConfiguratorState'")
+    expect(SRC).toContain("import { loadConfiguratorOpen, loadStoredConfiguratorOpen, saveConfiguratorOpen } from '@/state/eventPlanningConfiguratorState'")
   })
 })
 

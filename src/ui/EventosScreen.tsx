@@ -167,7 +167,7 @@ import {
   resolveGuestInvitedMoments,
   sortInvitationTemplatesForEvent,
 } from '@/domain/events'
-import { loadConfiguratorOpen, saveConfiguratorOpen } from '@/state/eventPlanningConfiguratorState'
+import { loadConfiguratorOpen, loadStoredConfiguratorOpen, saveConfiguratorOpen } from '@/state/eventPlanningConfiguratorState'
 import {
   ALIANZAS_QUESTION_KEY,
   BUDGET_UPDATED_MESSAGE,
@@ -2351,10 +2351,11 @@ function EventPlanningConfigurator({
 }) {
   const [open, setOpen] = useState(() => loadConfiguratorOpen(event.id))
   // Primer bloque: «Ceremonia y celebración» o «Celebración» (mismo acordeón, recuerda el estado que tuvieran
-  // los dos antiguos). Nunca dos bloques paralelos.
+  // los dos antiguos). Nunca dos bloques paralelos. Empieza PLEGADO: solo se abre si la familia lo abrió antes
+  // (clave nueva, o la antigua si la nueva nunca se guardó). Así no se fuerza abierto al entrar.
   const structuredByMoments = isEventStructuredByMoments(event)
   const [celebracionOpen, setCelebracionOpen] = useState(
-    () => loadConfiguratorOpen(event.id, 'celebracion') || loadConfiguratorOpen(event.id, structuredByMoments ? 'ceremonia_celebracion' : 'lugar_contexto'),
+    () => loadStoredConfiguratorOpen(event.id, 'celebracion') ?? loadStoredConfiguratorOpen(event.id, structuredByMoments ? 'ceremonia_celebracion' : 'lugar_contexto') ?? false,
   )
   // "📍 Dónde lo vais a celebrar" — alternativa ligera a Ceremonia y celebración para eventos SIN ceremonia
   // (cumpleaños, celebración, personalizado, o boda/comunión/bautizo con el módulo "ceremonia" apagado):

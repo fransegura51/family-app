@@ -18,6 +18,17 @@ export function loadConfiguratorOpen(eventId: string, blockKey: string | null = 
   }
 }
 
+// Lectura solo de lo guardado: null si nadie ha tocado ese bloque todavía. Sirve para bloques que deben
+// empezar plegados (Celebración) y para leer claves antiguas solo cuando existen.
+export function loadStoredConfiguratorOpen(eventId: string, blockKey: string | null = null): boolean | null {
+  try {
+    const raw = localStorage.getItem(storageKey(eventId, blockKey))
+    return raw === null ? null : raw === 'true'
+  } catch {
+    return null
+  }
+}
+
 export function saveConfiguratorOpen(eventId: string, blockKey: string | null, open: boolean): void {
   try {
     localStorage.setItem(storageKey(eventId, blockKey), String(open))

@@ -330,8 +330,8 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
           {suggestions.map((s) => (
             <div key={`${s.guestId}:${s.category}`} style={{ marginBottom: 4 }}>
               <span style={{ fontSize: 13 }}>
-                {s.guestName}: «{s.text}» → {DIETARY_CATEGORIES[s.category].label}
-                <span className="muted"> · detectado en la nota, sin confirmar</span>
+                {s.guestName} · {s.kind ? DIETARY_KIND_LABELS[s.kind] : 'Sin tipo'} · {DIETARY_CATEGORIES[s.category].label}
+                <span className="muted"> · «{s.text}» · detectado en la nota, sin confirmar</span>
               </span>
               <div className="filter-row" style={{ marginTop: 2 }}>
                 <button type="button" className="link-button" onClick={() => add({ guestId: s.guestId, memberId: null, originalText: s.text, category: s.category, kind: s.kind, source: 'invitado_nota' })}>

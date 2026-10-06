@@ -244,12 +244,6 @@ export function MenuManager({
     return (
       <div key={dish.id} data-reorder-row={inSequence ? '' : undefined} className={dragging ? 'dayplan-row-dragging' : undefined} style={dragging ? { transform: `translateY(${drag.dragOffset}px)`, background: 'var(--card-bg)' } : undefined}>
         <div className={'menu-dish' + (dish.kind === 'heading' ? ' menu-dish-heading' : dish.kind === 'note' ? ' menu-dish-note-row' : '')}>
-          {inSequence && (
-            <span className="drag-handle" style={{ touchAction: 'none' }} role="button" aria-label={`Arrastrar ${dish.name} para reordenar`} {...drag.handleProps(dish.id)}>
-              ☰
-            </span>
-          )}
-          <div className="menu-dish-body">
           <button type="button" className="menu-dish-main" onClick={() => setDishSheet({ mode: 'edit', item: dish })}>
             <span className="menu-dish-name">{dish.kind === 'heading' ? `— ${dish.name} —` : dish.name}</span>
             {dish.notes && <span className="menu-dish-note">{dish.notes}</span>}
@@ -260,12 +254,17 @@ export function MenuManager({
               {dish.source === 'importado' && <span>importado</span>}
             </span>
           </button>
+          <div className="menu-dish-actionbar">
+          {inSequence && (
+            <span className="drag-handle" style={{ touchAction: 'none' }} role="button" aria-label={`Arrastrar ${dish.name} para reordenar`} {...drag.handleProps(dish.id)}>
+              ☰
+            </span>
+          )}
           {tools && recipe && (
             <Link to={recipeLinkPath(recipe.id, event.id)} className="menu-dish-recipe-link">
               📖 {recipe.title}
             </Link>
           )}
-          </div>
           <div className="menu-dish-actions">
           {tools && recipe && recipe.ingredients.length > 0 && (
             <button type="button" className="link-button" aria-label={`Elegir ingredientes de ${dish.name} para Compras`} onClick={() => setIngredientsFor(dish)}>
@@ -283,6 +282,7 @@ export function MenuManager({
             </>
           )}
           <ConfirmIconButton icon="✕" className="icon-button" ariaLabel={`Borrar ${dish.name}`} onConfirm={() => void deleteDish(dish.id)} />
+          </div>
           </div>
         </div>
         {infos.map((info) => (

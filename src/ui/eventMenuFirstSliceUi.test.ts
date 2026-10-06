@@ -127,25 +127,36 @@ describe('Alimentación — ?receta abre esa receta una sola vez y recuerda el e
 // Problema 1 (móvil estrecho): el nombre no queda aplastado en una fila horizontal rígida. El reparto visual de
 // anchos vive en styles.css y se comprueba a ancho de iPhone (no se puede leer CSS desde estos tests); aquí se
 // fija la ESTRUCTURA que hace posible ese reparto: nombre+receta en un bloque propio, acciones en otro.
-describe('Menú — la fila del plato separa el nombre de las acciones (no depende de una fila horizontal rígida)', () => {
-  it('el nombre y la receta van en su propio bloque, y las acciones en otro grupo aparte', () => {
-    expect(MENU_SRC).toContain('<div className="menu-dish-body">')
-    expect(MENU_SRC).toContain('<div className="menu-dish-actions">')
-    const body = MENU_SRC.slice(MENU_SRC.indexOf('<div className="menu-dish-body">'), MENU_SRC.indexOf('<div className="menu-dish-actions">'))
-    expect(body).toContain('className="menu-dish-main"')
-    expect(body).toContain('recipeLinkPath(recipe.id, event.id)')
+describe('Menú — la fila del plato: nombre arriba, UNA barra de acciones debajo (≡ · 📖 receta · 🛒 ▲ ▼ ×)', () => {
+  const actionbarStart = () => MENU_SRC.indexOf('<div className="menu-dish-actionbar">')
+
+  it('el nombre (botón principal) va ANTES de la barra de acciones: nunca dentro de ella', () => {
+    expect(MENU_SRC).toContain('<div className="menu-dish-actionbar">')
+    const beforeBar = MENU_SRC.slice(0, actionbarStart())
+    expect(beforeBar).toContain('className="menu-dish-main"')
+    const bar = MENU_SRC.slice(actionbarStart(), MENU_SRC.indexOf('ConfirmIconButton', actionbarStart()) + 200)
+    expect(bar).not.toContain('menu-dish-name')
   })
 
-  it('las acciones (carrito, ▲, ▼, ×) siguen todas, en el grupo de acciones', () => {
-    const actions = MENU_SRC.slice(MENU_SRC.indexOf('<div className="menu-dish-actions">'))
-    expect(actions).toContain('setIngredientsFor(dish)')
-    expect(actions).toContain('moveItem(dish.id, -1)')
-    expect(actions).toContain('moveItem(dish.id, 1)')
-    expect(actions).toContain('onConfirm={() => void deleteDish(dish.id)}')
+  it('la barra de acciones contiene ≡ (arrastrar), la receta y el grupo de controles, en ese orden', () => {
+    const bar = MENU_SRC.slice(actionbarStart())
+    const handle = bar.indexOf('className="drag-handle"')
+    const link = bar.indexOf('className="menu-dish-recipe-link"')
+    const group = bar.indexOf('<div className="menu-dish-actions">')
+    expect(handle).toBeGreaterThan(-1)
+    expect(handle).toBeLessThan(link)
+    expect(link).toBeLessThan(group)
   })
 
-  it('la receta vinculada es un enlace fuera del botón del plato (no anidado) y no se fuerza a una sola línea', () => {
-    expect(MENU_SRC).toContain('className="menu-dish-recipe-link"')
-    expect(MENU_SRC).not.toContain("whiteSpace: 'nowrap'")
+  it('los controles de la derecha (🛒 ▲ ▼ ×) están en el grupo de acciones, sin cambiar su lógica', () => {
+    const group = MENU_SRC.slice(MENU_SRC.indexOf('<div className="menu-dish-actions">'))
+    expect(group).toContain('setIngredientsFor(dish)')
+    expect(group).toContain('moveItem(dish.id, -1)')
+    expect(group).toContain('moveItem(dish.id, 1)')
+    expect(group).toContain('onConfirm={() => void deleteDish(dish.id)}')
+  })
+
+  it('la receta sigue siendo un enlace a recipeLinkPath (navegación validada, sin cambios)', () => {
+    expect(MENU_SRC).toContain('<Link to={recipeLinkPath(recipe.id, event.id)} className="menu-dish-recipe-link">')
   })
 })

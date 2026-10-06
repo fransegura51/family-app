@@ -1,5 +1,6 @@
 import { createRecipe } from '@/data/food'
 import { composeNotes, type RecipeCreateParams } from '@/domain/recipeDraft'
+import { isValidServings } from '@/domain/recipeServings'
 import { normalize } from '@/domain/voiceQuery'
 import { defineAction } from '@/pepa/actions/types'
 import { asRecord, unknownKeys } from '@/pepa/actions/validators'
@@ -35,7 +36,8 @@ export const recipeCreateAction = defineAction<RecipeCreateParams>({
     if (extra.length > 0) errors.push(`Campos no permitidos: ${extra.join(', ')}`)
 
     if (!isShortText(rec.title, 1, 80)) errors.push('El nombre de la receta no es válido')
-    if (typeof rec.servings !== 'number' || !Number.isInteger(rec.servings) || rec.servings < 1 || rec.servings > 20) errors.push('Las raciones no son válidas')
+    // Raciones: entero o medio punto (la misma regla que la base de datos); la IA propone enteros, pero no se rechaza 6,5.
+    if (typeof rec.servings !== 'number' || !isValidServings(rec.servings) || rec.servings > 20) errors.push('Las raciones no son válidas')
     if (rec.timeMinutes !== null && (typeof rec.timeMinutes !== 'number' || !Number.isInteger(rec.timeMinutes) || rec.timeMinutes < 1 || rec.timeMinutes > 1440)) {
       errors.push('El tiempo no es válido')
     }

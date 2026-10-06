@@ -21,8 +21,8 @@ describe('Wikibooks — raciones desde la plantilla', () => {
   it('sin parámetro de raciones → null (nunca 0, nunca deducido)', () => {
     expect(parseWikibooksRecipe('Artes culinarias/Recetas/Pulpo', wikitext('ingredientes = x')).servings).toBeNull()
   })
-  it('valor ambiguo («4-6») → null', () => {
-    expect(parseWikibooksRecipe('Artes culinarias/Recetas/Pulpo', wikitext('raciones = 4-6')).servings).toBeNull()
+  it('rango «4-6» → punto medio 5 (el nombre del parámetro da el contexto)', () => {
+    expect(parseWikibooksRecipe('Artes culinarias/Recetas/Pulpo', wikitext('raciones = 4-6')).servings).toBe(5)
   })
   it('sin plantilla (secciones normales) → null', () => {
     expect(parseWikibooksRecipe('Artes culinarias/Recetas/Pulpo', '== Ingredientes ==\n* 1 kg de pulpo\n== Preparación ==\n# Cocer.').servings).toBeNull()
@@ -37,7 +37,9 @@ describe('Wikibooks — raciones desde la plantilla', () => {
 describe('revisión antes de guardar — las raciones se rellenan y son editables', () => {
   it('al usar un resultado importado, las raciones de la fuente pasan al campo solo si existen', () => {
     const fn = ALIM.slice(ALIM.indexOf('function useFoundRecipe()'), ALIM.indexOf('setFound(null)', ALIM.indexOf('function useFoundRecipe()')))
-    expect(fn).toContain('if (found.servings !== null) setServingsText(String(found.servings))')
+    expect(fn).toContain('if (found.servings !== null) {')
+    expect(fn).toContain('setServingsText(String(found.servings))')
+    expect(fn).toContain('setServingsSource(found.servingsSource ?? null)')
   })
 
   it('el campo Raciones es editable (onChange) y se muestra antes de guardar', () => {
@@ -48,7 +50,7 @@ describe('revisión antes de guardar — las raciones se rellenan y son editable
 
   it('cada importador pasa servings al resultado: URL, candidato de búsqueda, Wikibooks y FatSecret/Cookpad', () => {
     expect(ALIM).toContain('servings: result.servings,')
-    expect(ALIM).toContain('setFound({ title: detail.name, ingredients: detail.ingredients, steps: detail.directions, servings: null })')
+    expect(ALIM).toContain('setFound({ title: detail.name, ingredients: detail.ingredients, steps: detail.directions, servings: null, servingsSource: null })')
     expect(ALIM).toContain('setFound(parsed)')
   })
 })
@@ -62,8 +64,8 @@ describe('guardar — solo al confirmar, y con servings estructurado', () => {
   })
 
   it('vacío → null, y fuera de 1–50 se rechaza (nunca 0)', () => {
-    expect(ALIM).toContain("servingsTrimmed === '' ? null : Number(servingsTrimmed)")
-    expect(ALIM).toContain('servingsValue < 1 || servingsValue > 50')
+    expect(ALIM).toContain("servingsText.trim() === '' ? null : Number(servingsText.trim().replace(',', '.'))")
+    expect(ALIM).toContain('if (servingsValue !== null && !isValidServings(servingsValue)) {')
   })
 
   it('listar recetas mapea servings nulo a null, no a 0 (las recetas antiguas no cambian)', () => {
@@ -82,6 +84,6 @@ describe('importación por URL — la ficha schema.org se lee sin adivinar', () 
   })
 
   it('el cliente interpreta recipeYield con el parser estricto', () => {
-    expect(URL_CLIENT).toContain("servings: servingsFromText(typeof json.recipeYield === 'string' ? json.recipeYield : null)")
+    expect(URL_CLIENT).toContain("servingsFromSource(typeof json.recipeYield === 'string' ? json.recipeYield : null)")
   })
 })

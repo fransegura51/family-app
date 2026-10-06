@@ -22,7 +22,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listRecipes(): Promise<Recipe[]> {
   const { data, error } = await supabase
     .from('recipes')
-    .select('id, family_id, title, notes, image_path, tags, servings, recipe_ingredients(id, name, quantity, unit)')
+    .select('id, family_id, title, notes, image_path, tags, servings, servings_source, recipe_ingredients(id, name, quantity, unit)')
     .order('created_at', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -33,6 +33,7 @@ export async function listRecipes(): Promise<Recipe[]> {
     imagePath: r.image_path,
     tags: r.tags ?? [],
     servings: r.servings ?? null,
+    servingsSource: r.servings_source ?? null,
     ingredients: (r.recipe_ingredients as { id: string; name: string; quantity: string | null; unit: string | null }[]).map(
       (i) => ({ id: i.id, name: i.name, quantity: i.quantity, unit: i.unit }),
     ),
@@ -58,11 +59,21 @@ export async function createRecipe(input: {
   tags: string[]
   imagePath: string | null
   servings?: number | null
+  // Texto original de la fuente («6-7 personas»). Solo se guarda junto a unas raciones.
+  servingsSource?: string | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { data: recipe, error } = await supabase
     .from('recipes')
-    .insert({ family_id: familyId, title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath, servings: input.servings ?? null })
+    .insert({
+      family_id: familyId,
+      title: input.title,
+      notes: input.notes || null,
+      tags: input.tags,
+      image_path: input.imagePath,
+      servings: input.servings ?? null,
+      servings_source: input.servings == null ? null : (input.servingsSource ?? null),
+    })
     .select('id')
     .single()
   if (error) throw error
@@ -82,7 +93,7 @@ export async function createRecipe(input: {
 // texto por ingrediente", no filas editables una a una.
 export async function updateRecipe(
   id: string,
-  input: { title: string; notes: string; ingredientLines: string[]; tags: string[]; imagePath: string | null; servings?: number | null },
+  input: { title: string; notes: string; ingredientLines: string[]; tags: string[]; imagePath: string | null; servings?: number | null; servingsSource?: string | null },
 ): Promise<void> {
   // Si se cambia o se quita la foto, la anterior se queda huérfana en
   // el storage si no se borra aquí — bug real, encontrado probando en
@@ -94,7 +105,14 @@ export async function updateRecipe(
 
   const { error } = await supabase
     .from('recipes')
-    .update({ title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath, ...(input.servings !== undefined ? { servings: input.servings } : {}) })
+    .update({
+      title: input.title,
+      notes: input.notes || null,
+      tags: input.tags,
+      image_path: input.imagePath,
+      // Las raciones y su texto original se escriben juntos. Sin raciones no puede quedar un texto de fuente colgando.
+      ...(input.servings !== undefined ? { servings: input.servings, servings_source: input.servings == null ? null : (input.servingsSource ?? null) } : {}),
+    })
     .eq('id', id)
   if (error) throw error
 

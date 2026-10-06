@@ -156,8 +156,11 @@ export interface Recipe {
   imagePath: string | null
   tags: string[]
   ingredients: RecipeIngredient[]
-  // Raciones para las que está escrita la receta. null = desconocidas (nunca 0). Opcional para no romper llamadas antiguas.
+  // Raciones para las que está escrita la receta. null = desconocidas (nunca 0). Entero o medio punto (6,5 para «6-7»).
+  // Opcional para no romper llamadas antiguas.
   servings?: number | null
+  // Texto ORIGINAL de la fuente cuando era un rango («6-7 personas»). Solo informativo: el cálculo usa `servings`.
+  servingsSource?: string | null
 }
 
 export interface MenuEntry {

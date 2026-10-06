@@ -94,7 +94,7 @@ describe('recipe.create', () => {
       { ...VALID, title: 'a\nb' },
       { ...VALID, title: 'a,b' },
       { ...VALID, servings: 0 },
-      { ...VALID, servings: 2.5 },
+      { ...VALID, servings: 2.25 },
       { ...VALID, timeMinutes: 0 },
       { ...VALID, ingredients: [] },
       { ...VALID, ingredients: [{ name: 'sal, fina', quantity: '', unit: '' }] },

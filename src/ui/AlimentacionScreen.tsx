@@ -36,6 +36,7 @@ import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResul
 import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult } from '@/services/fatsecretRecipes'
 import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
+import { isValidServings, servingsFromSource } from '@/domain/recipeServings'
 import { fetchImageFromUrl, importRecipeFromUrl } from '@/services/recipeUrlImport'
 import { listShoppingStores } from '@/data/shoppingStores'
 import type { ShoppingStoreEntry } from '@/domain/types'
@@ -1180,6 +1181,10 @@ function RecipeForm({
   const [notes, setNotes] = useState(recipe?.notes ?? '')
   // Raciones para las que está escrita la receta. Vacío = desconocidas (se guarda null, nunca 0).
   const [servingsText, setServingsText] = useState(recipe?.servings ? String(recipe.servings) : '')
+  // Texto ORIGINAL de la fuente («6-7 personas»). Solo informa: nunca recalcula Raciones ni se modifica al corregir a mano.
+  const [servingsSource, setServingsSource] = useState<string | null>(recipe?.servingsSource ?? null)
+  const sourceValue = servingsSource ? (servingsFromSource(servingsSource)?.servings ?? null) : null
+  const servingsNow = servingsText.trim() === '' ? null : Number(servingsText.trim().replace(',', '.'))
   const [steps, setSteps] = useState<StepRow[]>(() =>
     recipe?.notes && !legacyNotes
       ? recipe.notes
@@ -1277,6 +1282,7 @@ function RecipeForm({
         ingredients: result.ingredients,
         steps: result.instructions ? result.instructions.split('\n').filter(Boolean) : [],
         servings: result.servings,
+        servingsSource: result.servingsSource,
       })
       setFoundSource('url')
       setFoundImagePath(result.imagePath)
@@ -1344,6 +1350,7 @@ function RecipeForm({
           ingredients: result.ingredients,
           steps: result.instructions ? result.instructions.split('\n').filter(Boolean) : [],
           servings: result.servings,
+          servingsSource: result.servingsSource,
         })
         setFoundSource('cookpad')
         setFoundImagePath(result.imagePath)
@@ -1371,7 +1378,7 @@ function RecipeForm({
             downloadedImagePath = null
           }
         }
-        setFound({ title: detail.name, ingredients: detail.ingredients, steps: detail.directions, servings: null })
+        setFound({ title: detail.name, ingredients: detail.ingredients, steps: detail.directions, servings: null, servingsSource: null })
         setFoundSource('fatsecret')
         setFoundImagePath(downloadedImagePath)
         setSearchResults([])
@@ -1402,7 +1409,10 @@ function RecipeForm({
     setSteps(found.steps.length > 0 ? found.steps.map((st) => newStepRow(dedupeStepNumbers(st).replace(/^\d+\.\s*/, ''))) : [newStepRow()])
     // Raciones de la fuente: solo se rellenan si la fuente las indica sin ambigüedad; se pueden corregir en el
     // formulario antes de guardar. Si la fuente no las trae, se conserva lo que ya hubiera escrito.
-    if (found.servings !== null) setServingsText(String(found.servings))
+    if (found.servings !== null) {
+      setServingsText(String(found.servings))
+      setServingsSource(found.servingsSource ?? null)
+    }
     setStartMode('manual')
     if (foundImagePath) setImagePath(foundImagePath)
     setFound(null)
@@ -1424,14 +1434,14 @@ function RecipeForm({
             .filter(Boolean)
             .map((t, i) => `${i + 1}. ${t}`)
             .join('\n')
-      const servingsTrimmed = servingsText.trim()
-      const servingsValue = servingsTrimmed === '' ? null : Number(servingsTrimmed)
-      if (servingsValue !== null && (!Number.isInteger(servingsValue) || servingsValue < 1 || servingsValue > 50)) {
-        setError('Las raciones deben ser un número entero entre 1 y 50 (o déjalo vacío).')
+      const servingsValue = servingsNow
+      if (servingsValue !== null && !isValidServings(servingsValue)) {
+        setError('Las raciones deben ser un número entre 1 y 50, entero o con medio punto (6,5), o déjalo vacío.')
         setSaving(false)
         return
       }
-      const input = { title, notes: notesOut, ingredientLines, tags, imagePath, servings: servingsValue }
+      // El texto de la fuente solo acompaña a unas raciones y se guarda tal cual lo dijo la fuente.
+      const input = { title, notes: notesOut, ingredientLines, tags, imagePath, servings: servingsValue, servingsSource: servingsValue === null ? null : servingsSource }
       if (mode === 'edit' && recipe) {
         await updateRecipe(recipe.id, input)
       } else {
@@ -1599,7 +1609,13 @@ function RecipeForm({
 
       <div className="recipe-field">
         <span className="recipe-field-label">Raciones (opcional)</span>
-        <input type="number" inputMode="numeric" min={1} max={50} step={1} value={servingsText} onChange={(e) => setServingsText(e.target.value)} placeholder="¿Para cuántas personas es?" aria-label="Raciones" />
+        <input type="number" inputMode="decimal" min={1} max={50} step={0.5} value={servingsText} onChange={(e) => setServingsText(e.target.value)} placeholder="¿Para cuántas personas es?" aria-label="Raciones" />
+        {servingsSource && sourceValue !== null && (
+          <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+            Fuente: «{servingsSource}». PEPA calculará con {String(sourceValue).replace('.', ',')}{' '}
+            {servingsNow !== null && servingsNow !== sourceValue ? '(valor que has corregido tú)' : '(punto medio del rango)'}. Puedes cambiarlo antes de guardar.
+          </p>
+        )}
       </div>
 
       <div className="recipe-field">

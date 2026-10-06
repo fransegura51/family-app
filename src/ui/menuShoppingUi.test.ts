@@ -44,18 +44,18 @@ describe('Preparar compra del menú — revisión antes de guardar', () => {
 
 describe('raciones — estructura opcional, null cuando no se sabe', () => {
   it('la lectura y la escritura de recetas incluyen servings', () => {
-    expect(FOOD).toContain('tags, servings, recipe_ingredients')
+    expect(FOOD).toContain('tags, servings, servings_source, recipe_ingredients')
     expect(FOOD).toContain('servings: r.servings ?? null')
     expect(FOOD).toContain('servings: input.servings ?? null')
   })
 
   it('actualizar sin tocar raciones no las borra (solo se escribe si viene en la entrada)', () => {
-    expect(FOOD).toContain('...(input.servings !== undefined ? { servings: input.servings } : {})')
+    expect(FOOD).toContain('...(input.servings !== undefined ? { servings: input.servings, servings_source: input.servings == null ? null : (input.servingsSource ?? null) } : {})')
   })
 
   it('el formulario guarda null si el campo está vacío y rechaza valores fuera de 1..50', () => {
-    expect(ALIM).toContain("servingsTrimmed === '' ? null : Number(servingsTrimmed)")
-    expect(ALIM).toContain('servingsValue < 1 || servingsValue > 50')
+    expect(ALIM).toContain("servingsText.trim() === '' ? null : Number(servingsText.trim().replace(',', '.'))")
+    expect(ALIM).toContain('if (servingsValue !== null && !isValidServings(servingsValue)) {')
   })
 })
 

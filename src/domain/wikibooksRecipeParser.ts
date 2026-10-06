@@ -1,4 +1,4 @@
-import { servingsFromText } from '@/domain/recipeServings'
+import { servingsFromSource, type ServingsFromSource } from '@/domain/recipeServings'
 
 // Saca ingredientes y pasos del wikitexto de una página de recetas de
 // es.wikibooks.org — sin frameworks, solo manipulación de texto. Las
@@ -11,18 +11,21 @@ export interface ParsedRecipe {
   title: string
   ingredients: string[]
   steps: string[]
-  // Raciones SOLO si la plantilla las indica sin ambigüedad (null en otro caso).
+  // Raciones SOLO si la plantilla las indica sin ambigüedad (null en otro caso). Un rango usa su punto medio.
   servings: number | null
+  // Texto original de la fuente cuando era un rango («6-7 raciones»); informativo.
+  servingsSource: string | null
 }
 
 // Parámetros de la plantilla que pueden llevar el número de raciones. El nombre del parámetro ya dice qué es,
-// así que un número suelto ("4") en "raciones = 4" sí es raciones; cualquier otra cosa lo decide servingsFromText.
+// así que «4» o «6-7» en «raciones = …» sí son raciones; cualquier otra cosa lo decide servingsFromSource.
 const SERVINGS_PARAMS = ['raciones', 'porciones', 'comensales', 'personas']
-function servingsFromParams(params: Record<string, string>): number | null {
+function servingsFromParams(params: Record<string, string>): ServingsFromSource | null {
   for (const key of SERVINGS_PARAMS) {
     const value = params[key]?.trim()
     if (!value) continue
-    return servingsFromText(/^\d{1,2}$/.test(value) ? `${value} ${key}` : value)
+    const bareNumberOrRange = /^\d{1,2}(?:\s*[-–—]\s*\d{1,2})?$/.test(value)
+    return servingsFromSource(bareNumberOrRange ? `${value} ${key}` : value)
   }
   return null
 }
@@ -114,7 +117,7 @@ function parseTemplateParams(body: string): Record<string, string> {
   return params
 }
 
-function fromTemplate(wikitext: string): { ingredients: string[]; steps: string[]; servings: number | null } {
+function fromTemplate(wikitext: string): { ingredients: string[]; steps: string[]; servings: ServingsFromSource | null } {
   const body = findTemplateBody(wikitext, 'Artes culinarias/Datos de receta')
   if (!body) return { ingredients: [], steps: [], servings: null }
   const params = parseTemplateParams(body)
@@ -151,6 +154,7 @@ export function parseWikibooksRecipe(rawTitle: string, wikitext: string): Parsed
     title,
     ingredients: template.ingredients.length > 0 ? template.ingredients : sections.ingredients,
     steps: template.steps.length > 0 ? template.steps : sections.steps,
-    servings: template.servings,
+    servings: template.servings?.servings ?? null,
+    servingsSource: template.servings?.servingsSource ?? null,
   }
 }

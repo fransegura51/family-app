@@ -38,6 +38,7 @@ import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookp
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
 import { isValidServings, servingsFromSource } from '@/domain/recipeServings'
 import { servingsSourceNote } from '@/domain/servingsSourceNote'
+import { recipeServingsView } from '@/domain/recipeServingsView'
 import { fetchImageFromUrl, importRecipeFromUrl } from '@/services/recipeUrlImport'
 import { listShoppingStores } from '@/data/shoppingStores'
 import type { ShoppingStoreEntry } from '@/domain/types'
@@ -1058,6 +1059,20 @@ function RecipesTab() {
                 />
               </div>
             </div>
+            {/* Raciones de la receta (dato estructurado). Si no hay, no se pinta nada: ni fila vacía ni «desconocidas». */}
+            {(() => {
+              const view = recipeServingsView(viewing.servings, viewing.servingsSource)
+              return view ? (
+                <p style={{ margin: '8px 0 0', fontSize: 14 }}>
+                  👥 Raciones: {view.value}
+                  {view.source && (
+                    <span className="muted" style={{ display: 'block', fontSize: 13 }}>
+                      Fuente original: {view.source}
+                    </span>
+                  )}
+                </p>
+              ) : null
+            })()}
             {viewing.ingredients.length > 0 && (
               <div className="day-modal-group">
                 <h3>Ingredientes</h3>

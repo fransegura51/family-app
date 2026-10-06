@@ -865,6 +865,14 @@ export interface EventDietaryNeed {
   updatedAt: string
 }
 
+// Sugerencia detectada en una nota que la familia ha descartado (event_dietary_suggestion_dismissals).
+export interface EventDietarySuggestionDismissal {
+  id: string
+  eventId: string
+  guestId: string
+  category: EventDietaryCategory
+}
+
 // "📋 Preguntas a los invitados" — capacidad genérica para que la familia añada sus propias preguntas de
 // opción múltiple al RSVP (p. ej. "¿Qué preferís de postre?"), deliberadamente DISTINTA de la elección de
 // menú (EventMenuOption/event_guest_members.menuOptionId, que sigue siendo su propio sistema ligado a la

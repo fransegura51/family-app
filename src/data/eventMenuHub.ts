@@ -6,6 +6,7 @@ import {
   getEventMenuSections,
   listEventDecisions,
   listEventDietaryNeeds,
+  listEventDietarySuggestionDismissals,
   listEventGuestMembersForEvent,
   listEventGuestQuestionAnswers,
   listEventGuestQuestionOptionsForEvent,
@@ -24,6 +25,7 @@ import type { StoredSection } from '@/domain/eventMenuHub'
 import type {
   EventDecision,
   EventDietaryNeed,
+  EventDietarySuggestionDismissal,
   EventGuest,
   EventGuestMember,
   EventGuestQuestion,
@@ -43,6 +45,7 @@ export interface MenuHubData {
   guests: EventGuest[]
   members: EventGuestMember[]
   needs: EventDietaryNeed[]
+  dismissals: EventDietarySuggestionDismissal[]
   options: EventMenuOption[]
   questions: EventGuestQuestion[]
   questionOptions: EventGuestQuestionOption[]
@@ -54,12 +57,13 @@ export interface MenuHubData {
 }
 
 export async function loadMenuHubData(eventId: string): Promise<MenuHubData> {
-  const [decisions, items, guests, members, needs, options, questions, questionOptions, answers, moments, sections, recipes, stores] = await Promise.all([
+  const [decisions, items, guests, members, needs, dismissals, options, questions, questionOptions, answers, moments, sections, recipes, stores] = await Promise.all([
     listEventDecisions(eventId),
     listEventMenuItems(eventId),
     listEventGuests(eventId),
     listEventGuestMembersForEvent(eventId),
     listEventDietaryNeeds(eventId),
+    listEventDietarySuggestionDismissals(eventId),
     listEventMenuOptions(eventId),
     listEventGuestQuestions(eventId),
     listEventGuestQuestionOptionsForEvent(eventId),
@@ -69,7 +73,7 @@ export async function loadMenuHubData(eventId: string): Promise<MenuHubData> {
     listRecipes(),
     listShoppingStores(),
   ])
-  return { decisions, items, guests, members, needs, options, questions, questionOptions, answers, moments, sections, recipes, stores }
+  return { decisions, items, guests, members, needs, dismissals, options, questions, questionOptions, answers, moments, sections, recipes, stores }
 }
 
 // «¿Habéis tenido en cuenta estas necesidades en el menú?» es una decisión del bloque Comida y bebida

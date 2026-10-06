@@ -32,6 +32,11 @@ export type MenuToolsMode =
 
 // La decisión «¿Quién se encargará de la comida?» (y lo que incluya el lugar) gobierna TODO. Se lee de
 // FoodContext, la misma fuente que usa «Comida y bebida»; esta pantalla no guarda ninguna copia.
+// Abre ESA receta (no el listado) y deja el evento de origen para volver al Menú del evento.
+export function recipeLinkPath(recipeId: string, eventId: string): string {
+  return `/alimentacion?tab=Recetas&receta=${encodeURIComponent(recipeId)}&volver=${encodeURIComponent(eventId)}`
+}
+
 export function menuToolsMode(ctx: FoodContext): MenuToolsMode {
   if (venueIncludes(ctx, 'comida')) return 'proveedor'
   const quien = quienAnswer(ctx)

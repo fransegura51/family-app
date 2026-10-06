@@ -51,6 +51,7 @@ import type {
   EventDietaryCategory,
   EventDietaryKind,
   EventDietaryNeed,
+  EventDietarySuggestionDismissal,
   EventDietarySource,
   EventFavorItem,
   EventFavorStatus,
@@ -2490,6 +2491,19 @@ export async function listEventDietaryNeeds(eventId: string): Promise<EventDieta
   const { data, error } = await supabase.from('event_guest_dietary_needs').select(DIETARY_NEED_SELECT).eq('event_id', eventId).order('created_at', { ascending: true })
   if (error) throw error
   return data.map(mapDietaryNeed)
+}
+
+export async function listEventDietarySuggestionDismissals(eventId: string): Promise<EventDietarySuggestionDismissal[]> {
+  const { data, error } = await supabase.from('event_dietary_suggestion_dismissals').select('id, event_id, guest_id, category').eq('event_id', eventId)
+  if (error) throw error
+  return data.map((r) => ({ id: r.id, eventId: r.event_id, guestId: r.guest_id, category: r.category as EventDietaryCategory }))
+}
+
+// Descartar una sugerencia de nota: la clave es (evento, invitado, categoría), igual que la de suggestFromGuestNotes.
+export async function addEventDietarySuggestionDismissal(eventId: string, guestId: string, category: EventDietaryCategory): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('event_dietary_suggestion_dismissals').insert({ event_id: eventId, family_id: familyId, guest_id: guestId, category })
+  if (error && error.code !== '23505') throw error
 }
 
 export async function addEventDietaryNeed(

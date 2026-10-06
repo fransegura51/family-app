@@ -28,6 +28,7 @@ function hubData(over: Partial<MenuHubData> = {}): MenuHubData {
     guests: [],
     members: [],
     needs: [],
+    dismissals: [],
     options: [],
     questions: [],
     questionOptions: [],
@@ -163,7 +164,7 @@ describe('Render de Comensales', () => {
     const needs = [fx.makeNeed({ id: 'n1', guestId: 'a', category: 'gluten', kind: 'celiaquia', originalText: 'Soy celíaca' })]
     const html = render(hubData({ guests: [guests[0]], needs }))
     expect(html).toContain('1 necesita comida sin gluten')
-    expect(html).toContain('Añadir o revisar necesidades (1)')
+    expect(html).toContain('Necesidades alimentarias · 1 confirmada · 0 pendientes de revisar')
   })
   it('24. menú infantil heredado de Invitados, con los niños confirmados y su estado', () => {
     const decisions = [fx.makeDecision('invitados.ninos.necesidades', { choice: 'preparar', selected: ['Menú infantil'], customItems: [] }), fx.makeDecision('comida.menu_infantil', { choice: 'pedir' })]

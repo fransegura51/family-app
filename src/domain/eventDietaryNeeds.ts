@@ -140,7 +140,12 @@ export interface NoteSuggestion {
   kind: EventDietaryKind | null
 }
 
-export function suggestFromGuestNotes(guests: EventGuest[], needs: EventDietaryNeed[]): NoteSuggestion[] {
+// `dismissed`: sugerencias que la familia ya ha descartado (event_dietary_suggestion_dismissals) — no vuelven a salir.
+export function suggestFromGuestNotes(
+  guests: EventGuest[],
+  needs: EventDietaryNeed[],
+  dismissed: { guestId: string; category: EventDietaryCategory }[] = [],
+): NoteSuggestion[] {
   const out: NoteSuggestion[] = []
   for (const g of guests) {
     if (g.rsvpStatus === 'no_asiste') continue
@@ -152,7 +157,8 @@ export function suggestFromGuestNotes(guests: EventGuest[], needs: EventDietaryN
       for (const s of suggestDietaryNeeds(text)) {
         const already = needs.some((n) => n.guestId === g.id && n.category === s.category)
         const duplicated = out.some((o) => o.guestId === g.id && o.category === s.category)
-        if (!already && !duplicated) out.push({ guestId: g.id, guestName: g.displayName, noteSource: source, text: (text ?? '').trim(), category: s.category, kind: s.kind })
+        const wasDismissed = dismissed.some((d) => d.guestId === g.id && d.category === s.category)
+        if (!already && !duplicated && !wasDismissed) out.push({ guestId: g.id, guestName: g.displayName, noteSource: source, text: (text ?? '').trim(), category: s.category, kind: s.kind })
       }
     }
   }

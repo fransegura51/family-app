@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { paletteByName, pastelPalette } from '@/domain/colors'
 import { dedupeStepNumbers } from '@/domain/recipeSteps'
 import {
@@ -773,6 +773,10 @@ function RecipesTab() {
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Recipe | null>(null)
   const [adding, setAdding] = useState(false)
+  // Llegada desde «Menú del evento» (recipeLinkPath): abre ESA receta una sola vez y recuerda de qué evento viene.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedRecipeId = searchParams.get('receta')
+  const returnEventId = searchParams.get('volver')
 
   // Petición real: "Recetas: compartir una receta" — título, ingredientes
   // y preparación en texto, más la foto si la receta tiene una (falla en
@@ -815,6 +819,17 @@ function RecipesTab() {
 
   useEffect(reload, [])
 
+  // Se abre una sola vez: al abrirla se quita ?receta de la URL, así recargar la lista no la vuelve a abrir.
+  useEffect(() => {
+    if (!requestedRecipeId || loading) return
+    if (recipes.some((r) => r.id === requestedRecipeId)) setViewingId(requestedRecipeId)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('receta')
+      return next
+    }, { replace: true })
+  }, [requestedRecipeId, loading, recipes, setSearchParams])
+
   // Pepa (VoiceCapture) puede guardar una receta desde cualquier pantalla.
   useEffect(() => {
     window.addEventListener('family-app:recipes-changed', reload)
@@ -851,6 +866,11 @@ function RecipesTab() {
     <div>
       {error && <p className="error">{error}</p>}
       {info && <p className="muted">{info}</p>}
+      {returnEventId && (
+        <p style={{ margin: '0 0 8px' }}>
+          <Link to={`/eventos?event=${encodeURIComponent(returnEventId)}&modulo=menu_compra`}>← Volver al menú del evento</Link>
+        </p>
+      )}
 
       <label>
         🔍 Buscar receta guardada

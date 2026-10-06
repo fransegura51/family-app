@@ -22,6 +22,7 @@ import {
   conflictInfo,
   dishHasKitchenTools,
   menuToolsMode,
+  recipeLinkPath,
   removeCustomSection,
   reorderVisibleSections,
   resolveMenuSections,
@@ -255,10 +256,14 @@ export function MenuManager({
               {inSequence && sectionLabel && <span>{sectionLabel}</span>}
               {!isDishItem && <span>{KIND_LABELS[dish.kind]}</span>}
               {isDishItem && mode === 'mixto' && <span>{dish.preparedBy === 'familia' ? '🏠 Nosotros' : dish.preparedBy === 'proveedor' ? '🍴 Proveedor' : '❔ Sin indicar quién lo prepara'}</span>}
-              {tools && recipe && <span>📖 {recipe.title}</span>}
               {dish.source === 'importado' && <span>importado</span>}
             </span>
           </button>
+          {tools && recipe && (
+            <Link to={recipeLinkPath(recipe.id, event.id)} className="menu-dish-recipe-link" style={{ fontSize: 12, alignSelf: 'center', whiteSpace: 'nowrap' }}>
+              📖 {recipe.title}
+            </Link>
+          )}
           {tools && recipe && recipe.ingredients.length > 0 && (
             <button type="button" className="link-button" aria-label={`Elegir ingredientes de ${dish.name} para Compras`} onClick={() => setIngredientsFor(dish)}>
               🛒

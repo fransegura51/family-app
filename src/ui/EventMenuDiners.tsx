@@ -3,7 +3,7 @@
 // Las necesidades alimentarias siguen la filosofía de siempre: el texto original se conserva SIEMPRE tal cual, la
 // clasificación («Sin gluten») es solo operativa, no un diagnóstico, y PEPA nunca afirma que un menú sea seguro.
 import { useMemo, useState, type FormEvent } from 'react'
-import { addEventDietaryNeed, deleteEventDietaryNeed, updateEventGuestQuestion } from '@/data/events'
+import { addEventDietaryNeed, addEventDietarySuggestionDismissal, deleteEventDietaryNeed, updateEventGuestQuestion } from '@/data/events'
 import { saveNecesidadesReview, type MenuHubData } from '@/data/eventMenuHub'
 import { errorMessage } from '@/domain/errorMessage'
 import {
@@ -57,9 +57,10 @@ function ExpandableLine({ title, details }: { title: string; details: string[] }
 }
 
 export function DinersPanel({ event, data, state, onChanged, onDerivedDataChanged }: { event: FamilyEvent; data: MenuHubData; state: FoodNeedsState; onChanged: () => void; onDerivedDataChanged: () => void }) {
-  const { guests, members, needs, items, decisions } = data
+  const { guests, members, needs, items, decisions, dismissals } = data
   const diners = useMemo(() => computeDiners(guests), [guests])
   const groups = useMemo(() => groupNeeds(needs, guests, members), [needs, guests, members])
+  const pendingSuggestions = useMemo(() => suggestFromGuestNotes(guests, needs, dismissals).length, [guests, needs, dismissals])
   const choices = useMemo(() => countMenuChoices(data.options, members, guests), [data.options, members, guests])
   const questionResults = useMemo(() => foodQuestionResults(data.questions, data.questionOptions, data.answers, guests, members), [data.questions, data.questionOptions, data.answers, guests, members])
   const unclassified = useMemo(() => unclassifiedQuestions(data.questions), [data.questions])
@@ -141,7 +142,11 @@ export function DinersPanel({ event, data, state, onChanged, onDerivedDataChange
           NECESIDADES ALIMENTARIAS
         </div>
         {groups.length === 0 ? (
-          <p style={{ fontSize: 13, margin: '2px 0 0' }}>No se han indicado alergias ni necesidades alimentarias.</p>
+          <p style={{ fontSize: 13, margin: '2px 0 0' }}>
+            {pendingSuggestions > 0
+              ? `Ninguna confirmada todavía · ${pendingSuggestions} pendiente${pendingSuggestions === 1 ? '' : 's'} de revisar (en «Añadir o revisar necesidades»).`
+              : 'No se han indicado alergias ni necesidades alimentarias.'}
+          </p>
         ) : (
           groups.map((g) => <ExpandableLine key={g.key} title={g.line} details={g.people.map((p) => `${p.name}: «${p.originalText}»`)} />)
         )}
@@ -221,7 +226,10 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
   const [category, setCategory] = useState<EventDietaryCategory | ''>('')
   const [kind, setKind] = useState<EventDietaryKind | ''>('')
   const [error, setError] = useState<string | null>(null)
-  const suggestions = useMemo(() => suggestFromGuestNotes(guests, needs), [guests, needs])
+  // Corregir una sugerencia: el formulario se rellena con ella; al guardar cuenta como confirmada (origen nota)
+  // y, si la categoría cambia, la sugerencia original se descarta para que no vuelva a aparecer.
+  const [correcting, setCorrecting] = useState<{ guestId: string; originalCategory: EventDietaryCategory; text: string } | null>(null)
+  const suggestions = useMemo(() => suggestFromGuestNotes(guests, needs, data.dismissals), [guests, needs, data.dismissals])
   const guestMembers = members.filter((m) => m.guestId === guestId)
   const nameOf = (need: (typeof needs)[number]): string => {
     const guest = guests.find((g) => g.id === need.guestId)
@@ -249,10 +257,42 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
     }
   }
 
+  async function dismiss(guestIdToDismiss: string, cat: EventDietaryCategory) {
+    setError(null)
+    try {
+      await addEventDietarySuggestionDismissal(event.id, guestIdToDismiss, cat)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo descartar la sugerencia'))
+    }
+  }
+
+  function startCorrecting(s: { guestId: string; category: EventDietaryCategory; kind: EventDietaryKind | null; text: string }) {
+    setCorrecting({ guestId: s.guestId, originalCategory: s.category, text: s.text })
+    setGuestId(s.guestId)
+    setMemberId('')
+    setText(s.text)
+    setCategory(s.category)
+    setKind(s.kind ?? '')
+  }
+
+  function cancelCorrecting() {
+    setCorrecting(null)
+    setText('')
+    setCategory('')
+    setKind('')
+  }
+
   async function handleAdd(e: FormEvent) {
     e.preventDefault()
     if (!guestId || !text.trim() || !category) return
-    await add({ guestId, memberId: memberId || null, originalText: text, category, kind: kind || null, source: 'organizador' })
+    if (correcting && correcting.guestId === guestId) {
+      await add({ guestId, memberId: memberId || null, originalText: correcting.text, category, kind: kind || null, source: 'invitado_nota' })
+      if (category !== correcting.originalCategory) await dismiss(correcting.guestId, correcting.originalCategory)
+      setCorrecting(null)
+    } else {
+      await add({ guestId, memberId: memberId || null, originalText: text, category, kind: kind || null, source: 'organizador' })
+    }
     setText('')
     setCategory('')
     setKind('')
@@ -261,10 +301,15 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
 
   if (guests.length === 0 && needs.length === 0) return null
 
+  const summaryText =
+    needs.length === 0 && suggestions.length === 0
+      ? 'No se han indicado alergias ni necesidades alimentarias.'
+      : `Necesidades alimentarias · ${needs.length} confirmada${needs.length === 1 ? '' : 's'} · ${suggestions.length} pendiente${suggestions.length === 1 ? '' : 's'} de revisar`
+
   return (
     <details style={{ marginTop: 8 }}>
       <summary className="muted" style={{ fontSize: 12 }}>
-        Añadir o revisar necesidades ({needs.length})
+        {summaryText}
       </summary>
       {error && <p className="error">{error}</p>}
       {needs.map((n) => (
@@ -283,13 +328,22 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
             PEPA ha visto esto en las notas de los invitados (confírmalo para que cuente)
           </div>
           {suggestions.map((s) => (
-            <div key={`${s.guestId}:${s.category}`} className="inline-fields" style={{ alignItems: 'center' }}>
-              <span style={{ flex: 1, fontSize: 13 }}>
+            <div key={`${s.guestId}:${s.category}`} style={{ marginBottom: 4 }}>
+              <span style={{ fontSize: 13 }}>
                 {s.guestName}: «{s.text}» → {DIETARY_CATEGORIES[s.category].label}
+                <span className="muted"> · detectado en la nota, sin confirmar</span>
               </span>
-              <button type="button" className="link-button" onClick={() => add({ guestId: s.guestId, memberId: null, originalText: s.text, category: s.category, kind: s.kind, source: 'invitado_nota' })}>
-                Confirmar
-              </button>
+              <div className="filter-row" style={{ marginTop: 2 }}>
+                <button type="button" className="link-button" onClick={() => add({ guestId: s.guestId, memberId: null, originalText: s.text, category: s.category, kind: s.kind, source: 'invitado_nota' })}>
+                  Confirmar
+                </button>
+                <button type="button" className="link-button" onClick={() => startCorrecting(s)}>
+                  Corregir
+                </button>
+                <button type="button" className="link-button" onClick={() => void dismiss(s.guestId, s.category)}>
+                  Descartar
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -343,9 +397,16 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
             </option>
           ))}
         </select>
-        <button type="submit" disabled={!guestId || !text.trim() || !category}>
-          Añadir
-        </button>
+        <div className="filter-row">
+          <button type="submit" disabled={!guestId || !text.trim() || !category}>
+            {correcting ? 'Confirmar corrección' : 'Añadir'}
+          </button>
+          {correcting && (
+            <button type="button" className="link-button" onClick={cancelCorrecting}>
+              Cancelar corrección
+            </button>
+          )}
+        </div>
         <p className="muted" style={{ fontSize: 12, margin: 0 }}>
           Se conserva lo que escribieron tal cual. La clasificación solo sirve para organizar el menú; no es un diagnóstico.
         </p>

@@ -57,51 +57,59 @@ export function MenuShoppingModal({
   }
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Preparar compra del menú">
-      <div className="modal">
-        <h3>🛒 Preparar compra del menú</h3>
-        <p className="muted" style={{ fontSize: 12 }}>
-          Ingredientes de las recetas de los platos que prepara la familia. Escalado orientativo a {targetDiners} comensal{targetDiners === 1 ? '' : 'es'} confirmados (solo donde la receta tiene raciones). Revísalo: nada se añade hasta que confirmes.
-        </p>
-        {lines.length === 0 && <p className="muted">No hay ingredientes de recetas vinculadas a platos de la familia.</p>}
-        {lines.map((line, i) => (
-          <div key={line.key} style={{ borderTop: '1px solid rgba(0,0,0,0.08)', padding: '6px 0' }}>
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input type="checkbox" checked={rows[i].include} onChange={(e) => update(i, { include: e.target.checked })} aria-label={`Comprar ${line.name}`} />
-              <strong>{line.name}</strong>
-            </label>
-            <div className="inline-fields" style={{ marginTop: 4 }}>
-              <input
-                type="text"
-                value={rows[i].quantity}
-                placeholder="Cantidad (desconocida)"
-                onChange={(e) => update(i, { quantity: e.target.value })}
-                aria-label={`Cantidad de ${line.name}`}
-              />
-              <select value={rows[i].store} onChange={(e) => update(i, { store: e.target.value })} aria-label={`Tienda de ${line.name}`}>
-                <option value="">Sin tienda</option>
-                {stores.map((s) => (
-                  <option key={s.id} value={s.name}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
-              Para: {[...new Set(line.sources.map((s) => s.dishName))].join(', ')}
-              {line.notes.map((n) => ` · ${NOTE_LABEL[n]}`).join('')}
-            </p>
-          </div>
-        ))}
-        {error && <p className="error">{error}</p>}
-        <div className="filter-row">
-          <button type="button" onClick={() => void confirm()} disabled={saving || selected === 0}>
-            {saving ? 'Añadiendo…' : `Añadir ${selected} a Compras`}
-          </button>
-          <button type="button" className="link-button" onClick={onClose} disabled={saving}>
-            Cancelar
-          </button>
+    // Maquetación móvil: overlay + hoja OPACA (.modal-sheet, la misma clase que el resto de modales de la app),
+    // cabecera fija, cuerpo con scroll propio y pie separado con safe-area. Solo cambia la presentación.
+    <div className="modal-overlay menu-shopping-overlay" role="dialog" aria-modal="true" aria-label="Preparar compra del menú">
+      <div className="modal-sheet menu-shopping-sheet">
+        <header className="menu-shopping-header">
+          <h3>🛒 Preparar compra del menú</h3>
+          <p className="muted menu-shopping-intro">Revisa qué quieres añadir a Compras. Nada se guarda hasta que confirmes.</p>
+          <p className="muted menu-shopping-scale">
+            Escalado orientativo a {targetDiners} comensal{targetDiners === 1 ? '' : 'es'} confirmados (solo donde la receta tiene raciones).
+          </p>
+        </header>
+        <div className="menu-shopping-body">
+          {lines.length === 0 && <p className="muted">No hay ingredientes de recetas vinculadas a platos de la familia.</p>}
+          {lines.map((line, i) => (
+            <article key={line.key} className="menu-shopping-item">
+              <label className="menu-shopping-check">
+                <input type="checkbox" checked={rows[i].include} onChange={(e) => update(i, { include: e.target.checked })} aria-label={`Comprar ${line.name}`} />
+                <span className="menu-shopping-name">{line.name}</span>
+              </label>
+              <div className="menu-shopping-controls">
+                <input
+                  className="menu-shopping-quantity"
+                  type="text"
+                  value={rows[i].quantity}
+                  placeholder="Cantidad (desconocida)"
+                  onChange={(e) => update(i, { quantity: e.target.value })}
+                  aria-label={`Cantidad de ${line.name}`}
+                />
+                <select className="menu-shopping-store" value={rows[i].store} onChange={(e) => update(i, { store: e.target.value })} aria-label={`Tienda de ${line.name}`}>
+                  <option value="">Sin tienda</option>
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.name}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="menu-shopping-sources">Para: {[...new Set(line.sources.map((s) => s.dishName))].join(', ')}</p>
+              {line.notes.length > 0 && <p className="menu-shopping-notes">{line.notes.map((n) => NOTE_LABEL[n]).join(' ')}</p>}
+            </article>
+          ))}
         </div>
+        <footer className="menu-shopping-footer">
+          {error && <p className="error">{error}</p>}
+          <div className="menu-shopping-actions">
+            <button type="button" className="menu-shopping-confirm" onClick={() => void confirm()} disabled={saving || selected === 0}>
+              {saving ? 'Añadiendo…' : `Añadir ${selected} a Compras`}
+            </button>
+            <button type="button" className="menu-shopping-cancel link-button" onClick={onClose} disabled={saving}>
+              Cancelar
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
   )

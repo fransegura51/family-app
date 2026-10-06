@@ -67,3 +67,81 @@ describe('migración 0200 — aditiva, nullable, sin default', () => {
     expect(code).not.toMatch(/\bdelete\b|\bdrop\b/i)
   })
 })
+
+// Maquetación móvil del modal de revisión (solo estructura JSX: el proyecto no puede leer CSS en vitest).
+describe('modal de revisión — contenedor, tarjetas y pie separados (maquetación móvil)', () => {
+  it('usa la hoja opaca de la app (.modal-sheet) dentro del overlay, nunca la clase huérfana .modal', () => {
+    expect(MODAL).toContain('className="modal-overlay menu-shopping-overlay"')
+    expect(MODAL).toContain('className="modal-sheet menu-shopping-sheet"')
+    expect(MODAL).not.toContain('className="modal"')
+  })
+
+  it('cada ingrediente es una tarjeta independiente (article) con su propio check, controles y procedencia', () => {
+    const item = MODAL.slice(MODAL.indexOf('<article'), MODAL.indexOf('</article>') + '</article>'.length)
+    expect(MODAL).toContain('<article key={line.key} className="menu-shopping-item">')
+    expect(item).toContain('type="checkbox"')
+    expect(item).toContain('menu-shopping-quantity')
+    expect(item).toContain('menu-shopping-store')
+    expect(item).toContain('menu-shopping-sources')
+  })
+
+  it('cantidad y tienda están en el mismo bloque de controles, dentro de la misma tarjeta', () => {
+    const controls = MODAL.slice(MODAL.indexOf('className="menu-shopping-controls"'), MODAL.indexOf('</div>', MODAL.indexOf('className="menu-shopping-controls"')))
+    expect(controls).toContain('menu-shopping-quantity')
+    expect(controls).toContain('menu-shopping-store')
+  })
+
+  it('el cuerpo con scroll termina antes del pie: el pie no está dentro del área desplazable', () => {
+    const bodyStart = MODAL.indexOf('className="menu-shopping-body"')
+    const footerStart = MODAL.indexOf('<footer className="menu-shopping-footer">')
+    expect(bodyStart).toBeGreaterThan(-1)
+    expect(footerStart).toBeGreaterThan(bodyStart)
+    const between = MODAL.slice(bodyStart, footerStart)
+    expect(between).toContain('</div>')
+    expect(MODAL.slice(footerStart)).not.toContain('menu-shopping-item')
+  })
+
+  it('la cabecera va antes del cuerpo y dice qué se revisa', () => {
+    expect(MODAL.indexOf('<header className="menu-shopping-header">')).toBeLessThan(MODAL.indexOf('className="menu-shopping-body"'))
+    expect(MODAL).toContain('Revisa qué quieres añadir a Compras')
+  })
+})
+
+describe('modal de revisión — ninguna acción guarda salvo la confirmación explícita', () => {
+  it('Cancelar solo cierra (onClose) y no llama a ningún guardado', () => {
+    const cancel = MODAL.slice(MODAL.indexOf('className="menu-shopping-cancel'), MODAL.indexOf('</button>', MODAL.indexOf('className="menu-shopping-cancel')))
+    expect(cancel).toContain('onClick={onClose}')
+    expect(cancel).not.toContain('confirm')
+    expect(cancel).not.toContain('addMenuShoppingLines')
+  })
+
+  it('el botón de confirmar es el único que llama a confirm(), y confirm es el único que guarda', () => {
+    const confirmBtn = MODAL.slice(MODAL.indexOf('className="menu-shopping-confirm"'), MODAL.indexOf('</button>', MODAL.indexOf('className="menu-shopping-confirm"')))
+    expect(confirmBtn).toContain('onClick={() => void confirm()}')
+    expect(MODAL.match(/addMenuShoppingLines\(/g)?.length).toBe(1)
+  })
+
+  it('abrir el modal no guarda: el estado inicial solo prepara filas, sin escrituras', () => {
+    const init = MODAL.slice(MODAL.indexOf('useState(() => lines.map'), MODAL.indexOf('\n', MODAL.indexOf('useState(() => lines.map')))
+    expect(init).toContain('include: true')
+    expect(init).not.toMatch(/addMenuShoppingLines|addShoppingItem/)
+  })
+})
+
+describe('modal de revisión — contador, cantidades desconocidas y lógica intacta', () => {
+  it('el número del botón sale de las filas marcadas (include)', () => {
+    expect(MODAL).toContain('const selected = rows.filter((r) => r.include).length')
+    expect(MODAL).toContain('`Añadir ${selected} a Compras`')
+  })
+
+  it('la cantidad desconocida se muestra vacía con placeholder, nunca como 0', () => {
+    expect(MODAL).toContain("quantity: l.quantity ?? ''")
+    expect(MODAL).toContain('placeholder="Cantidad (desconocida)"')
+    expect(MODAL).not.toMatch(/quantity: ['"]0['"]/)
+  })
+
+  it('la lógica de confirmación no cambió: solo guarda las filas marcadas con su cantidad y tienda', () => {
+    expect(MODAL).toContain('.filter(({ row }) => row.include)')
+    expect(MODAL).toContain('store: row.store || null')
+  })
+})

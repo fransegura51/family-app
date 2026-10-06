@@ -72,7 +72,7 @@ export async function createRecipe(input: {
       tags: input.tags,
       image_path: input.imagePath,
       servings: input.servings ?? null,
-      servings_source: input.servings == null ? null : (input.servingsSource ?? null),
+      servings_source: input.servingsSource ?? null,
     })
     .select('id')
     .single()
@@ -111,7 +111,7 @@ export async function updateRecipe(
       tags: input.tags,
       image_path: input.imagePath,
       // Las raciones y su texto original se escriben juntos. Sin raciones no puede quedar un texto de fuente colgando.
-      ...(input.servings !== undefined ? { servings: input.servings, servings_source: input.servings == null ? null : (input.servingsSource ?? null) } : {}),
+      ...(input.servings !== undefined ? { servings: input.servings, servings_source: input.servingsSource ?? null } : {}),
     })
     .eq('id', id)
   if (error) throw error

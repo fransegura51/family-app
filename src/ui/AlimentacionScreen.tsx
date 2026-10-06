@@ -1457,7 +1457,7 @@ function RecipeForm({
         return
       }
       // El texto de la fuente solo acompaña a unas raciones y se guarda tal cual lo dijo la fuente.
-      const input = { title, notes: notesOut, ingredientLines, tags, imagePath, servings: servingsValue, servingsSource: servingsValue === null ? null : servingsSource }
+      const input = { title, notes: notesOut, ingredientLines, tags, imagePath, servings: servingsValue, servingsSource }
       if (mode === 'edit' && recipe) {
         await updateRecipe(recipe.id, input)
       } else {

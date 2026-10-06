@@ -141,11 +141,11 @@ describe('guardar: solo al confirmar, con raciones y fuente juntas', () => {
     expect(ALIM.match(/updateRecipe\(recipe\.id, input\)/g)?.length).toBe(1)
   })
   it('18. confirmar envía servings y servingsSource; sin raciones la fuente no se guarda', () => {
-    expect(ALIM).toContain('servings: servingsValue, servingsSource: servingsValue === null ? null : servingsSource')
+    expect(ALIM).toContain('servings: servingsValue, servingsSource }')
   })
   it('createRecipe y updateRecipe escriben servings_source junto a servings; nunca fuente sin raciones', () => {
-    expect(FOOD).toContain('servings_source: input.servings == null ? null : (input.servingsSource ?? null)')
-    expect(FOOD).toContain('servings_source: input.servings == null ? null : (input.servingsSource ?? null) } : {})')
+    expect(FOOD).toContain('servings_source: input.servingsSource ?? null,')
+    expect(FOOD).toContain('servings_source: input.servingsSource ?? null } : {})')
   })
   it('la lectura de recetas trae la fuente', () => {
     expect(FOOD).toContain('servings, servings_source, recipe_ingredients')

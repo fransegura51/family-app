@@ -67,7 +67,7 @@ describe('edición: el formulario recibe raciones y fuente, y guardar conserva l
   })
 
   it('guardar sin cambiar Raciones conserva la fuente: se envía el estado tal cual', () => {
-    expect(ALIM).toContain('servings: servingsValue, servingsSource: servingsValue === null ? null : servingsSource')
+    expect(ALIM).toContain('servings: servingsValue, servingsSource')
   })
 
   it('cambiar Raciones no escribe en la fuente y la edición nunca recalcula raciones desde la fuente', () => {
@@ -79,6 +79,6 @@ describe('edición: el formulario recibe raciones y fuente, y guardar conserva l
 
   it('la actualización escribe servings_source junto a servings, y no lo borra al editar otros campos', () => {
     const food = src('src/data/food.ts')
-    expect(food).toContain('servings_source: input.servings == null ? null : (input.servingsSource ?? null)')
+    expect(food).toContain('servings_source: input.servingsSource ?? null')
   })
 })

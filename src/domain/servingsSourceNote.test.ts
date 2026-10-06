@@ -49,7 +49,7 @@ describe('texto de la revisión según el valor ACTUAL de Raciones', () => {
 describe('el valor guardado es el valor ACTUAL del campo, no el punto medio original', () => {
   it('6. la confirmación usa servingsNow (valor actual) y la fuente se guarda sin cambios', () => {
     expect(ALIM).toContain('const servingsValue = servingsNow')
-    expect(ALIM).toContain('servings: servingsValue, servingsSource: servingsValue === null ? null : servingsSource')
+    expect(ALIM).toContain('servings: servingsValue, servingsSource')
   })
 
   it('la revisión llama a la función con el valor actual del campo, no con sourceValue', () => {

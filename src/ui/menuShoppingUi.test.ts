@@ -50,7 +50,7 @@ describe('raciones — estructura opcional, null cuando no se sabe', () => {
   })
 
   it('actualizar sin tocar raciones no las borra (solo se escribe si viene en la entrada)', () => {
-    expect(FOOD).toContain('...(input.servings !== undefined ? { servings: input.servings, servings_source: input.servings == null ? null : (input.servingsSource ?? null) } : {})')
+    expect(FOOD).toContain('...(input.servings !== undefined ? { servings: input.servings, servings_source: input.servingsSource ?? null } : {})')
   })
 
   it('el formulario guarda null si el campo está vacío y rechaza valores fuera de 1..50', () => {

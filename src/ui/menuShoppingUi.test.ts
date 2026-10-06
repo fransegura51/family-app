@@ -145,3 +145,15 @@ describe('modal de revisión — contador, cantidades desconocidas y lógica int
     expect(MODAL).toContain('store: row.store || null')
   })
 })
+
+describe('propuesta editable — nunca modifica la receta ni escribe antes de confirmar', () => {
+  it('el modal no importa ni llama a ningún escritor de recetas', () => {
+    expect(MODAL).not.toMatch(/updateRecipe|createRecipe|deleteRecipe/)
+  })
+
+  it('editar cantidad o tienda solo cambia el estado local de la fila (update), sin guardar', () => {
+    const edit = MODAL.slice(MODAL.indexOf('function update('), MODAL.indexOf('async function confirm()'))
+    expect(edit).toContain('setRows(')
+    expect(edit).not.toMatch(/addShoppingItem|addMenuShoppingLines|supabase/)
+  })
+})

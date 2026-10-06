@@ -58,6 +58,7 @@ describe('recipe.create', () => {
       ingredientLines: ['lentejas, 400, g', 'chorizo, 2, unidades', 'sal, , '],
       tags: ['Fáciles de preparar'],
       imagePath: null,
+      servings: 4,
     })
   })
 

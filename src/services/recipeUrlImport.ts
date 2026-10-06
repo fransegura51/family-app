@@ -4,6 +4,7 @@
 // porque la mayoría de esas webs no permiten CORS desde el navegador.
 import { dedupeStepNumbers } from '@/domain/recipeSteps'
 import { supabase } from '@/data/supabaseClient'
+import { servingsFromText } from '@/domain/recipeServings'
 
 export interface RecipeUrlImportResult {
   title: string
@@ -15,6 +16,8 @@ export interface RecipeUrlImportResult {
   // propio storage (recipe-photos) por la función de servidor, null si
   // la página no traía imagen o no se pudo descargar.
   imagePath: string | null
+  // Raciones SOLO si la ficha las indica sin ambigüedad («4 raciones», «Para 6 personas»); si no, null.
+  servings: number | null
 }
 
 async function authHeader(): Promise<string> {
@@ -45,6 +48,7 @@ export async function importRecipeFromUrl(url: string): Promise<RecipeUrlImportR
     instructions: typeof json.instructions === 'string' ? dedupeStepNumbers(json.instructions) : '',
     sourceUrl: typeof json.sourceUrl === 'string' ? json.sourceUrl : url,
     imagePath: typeof json.imagePath === 'string' ? json.imagePath : null,
+    servings: servingsFromText(typeof json.recipeYield === 'string' ? json.recipeYield : null),
   }
 }
 

@@ -1,3 +1,5 @@
+import { servingsFromText } from '@/domain/recipeServings'
+
 // Saca ingredientes y pasos del wikitexto de una página de recetas de
 // es.wikibooks.org — sin frameworks, solo manipulación de texto. Las
 // recetas de "Artes culinarias/Recetas/*" van dentro de una plantilla
@@ -9,6 +11,20 @@ export interface ParsedRecipe {
   title: string
   ingredients: string[]
   steps: string[]
+  // Raciones SOLO si la plantilla las indica sin ambigüedad (null en otro caso).
+  servings: number | null
+}
+
+// Parámetros de la plantilla que pueden llevar el número de raciones. El nombre del parámetro ya dice qué es,
+// así que un número suelto ("4") en "raciones = 4" sí es raciones; cualquier otra cosa lo decide servingsFromText.
+const SERVINGS_PARAMS = ['raciones', 'porciones', 'comensales', 'personas']
+function servingsFromParams(params: Record<string, string>): number | null {
+  for (const key of SERVINGS_PARAMS) {
+    const value = params[key]?.trim()
+    if (!value) continue
+    return servingsFromText(/^\d{1,2}$/.test(value) ? `${value} ${key}` : value)
+  }
+  return null
 }
 
 function cleanWikitext(s: string): string {
@@ -98,13 +114,14 @@ function parseTemplateParams(body: string): Record<string, string> {
   return params
 }
 
-function fromTemplate(wikitext: string): { ingredients: string[]; steps: string[] } {
+function fromTemplate(wikitext: string): { ingredients: string[]; steps: string[]; servings: number | null } {
   const body = findTemplateBody(wikitext, 'Artes culinarias/Datos de receta')
-  if (!body) return { ingredients: [], steps: [] }
+  if (!body) return { ingredients: [], steps: [], servings: null }
   const params = parseTemplateParams(body)
   return {
     ingredients: linesFromBlock(params.ingredientes ?? ''),
     steps: linesFromBlock(params.procedimiento ?? params.preparacion ?? ''),
+    servings: servingsFromParams(params),
   }
 }
 
@@ -134,5 +151,6 @@ export function parseWikibooksRecipe(rawTitle: string, wikitext: string): Parsed
     title,
     ingredients: template.ingredients.length > 0 ? template.ingredients : sections.ingredients,
     steps: template.steps.length > 0 ? template.steps : sections.steps,
+    servings: template.servings,
   }
 }

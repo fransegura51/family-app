@@ -61,3 +61,33 @@ describe('Preparar compra del menú — solo ingredientes reales de recetas de l
     expect(buildMenuShoppingPlan([dish('d1', 'Pollo', null)], [recipe('r1', 4, [ing('i1', 'Pollo', '1', 'kg')])], 8, 'mixto')).toEqual([])
   })
 })
+
+// Caso real validado: pulpo a la gallega, receta de 4 raciones → 10 comensales (factor 2,5).
+describe('propuesta de compra — caso real pulpo a la gallega (4 → 10 comensales)', () => {
+  const pulpo = [
+    ing('i1', 'Pulpo', '1,5', 'kg'),
+    ing('i2', 'Patatas', '4', 'unidades'),
+    ing('i3', 'Pimentón dulce', '1', 'cucharada'),
+    ing('i4', 'Pimentón picante', '1', 'cucharadita'),
+    ing('i5', 'Aceite de oliva', '4', 'cucharadas'),
+    ing('i6', 'Sal gorda', null, null),
+  ]
+  const lines = () => buildMenuShoppingPlan([dish('d1', 'Pulpo a la gallega', 'r1')], [recipe('r1', 4, pulpo)], 10, 'mixto')
+  const byName = (name: string) => lines().find((l) => l.name === name)!
+
+  it('pulpo 1,5 kg → 3,75 kg (no 3,8)', () => expect(byName('Pulpo').quantity).toBe('3,75 kg'))
+  it('patatas 4 unidades → 10 unidades', () => expect(byName('Patatas').quantity).toBe('10 unidades'))
+  it('pimentón dulce 1 cucharada → 2,5 cucharadas, marcada para revisar', () => {
+    expect(byName('Pimentón dulce').quantity).toBe('2,5 cucharadas')
+    expect(byName('Pimentón dulce').notes).toContain('fraccionario')
+  })
+  it('pimentón picante 1 cucharadita → 2,5 cucharaditas', () => expect(byName('Pimentón picante').quantity).toBe('2,5 cucharaditas'))
+  it('aceite 4 cucharadas → 10 cucharadas', () => expect(byName('Aceite de oliva').quantity).toBe('10 cucharadas'))
+  it('sal gorda, cantidad desconocida → quantity null (nunca 0)', () => expect(byName('Sal gorda').quantity).toBeNull())
+  it('la receta original no cambia tras calcular la propuesta', () => {
+    const r = recipe('r1', 4, pulpo)
+    buildMenuShoppingPlan([dish('d1', 'Pulpo', 'r1')], [r], 10, 'mixto')
+    expect(r.ingredients[0].quantity).toBe('1,5')
+    expect(r.ingredients[1].quantity).toBe('4')
+  })
+})

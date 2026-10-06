@@ -123,6 +123,8 @@ export const recipeCreateAction = defineAction<RecipeCreateParams>({
         ingredientLines: params.ingredients.map((i) => [i.name, i.quantity, i.unit].join(', ')),
         tags: params.tags,
         imagePath: null,
+        // Raciones estructuradas (recipes.servings); el texto de las notas las sigue llevando como antes.
+        servings: params.servings,
       })
     } catch (err) {
       // Si no se ha guardado, se puede volver a intentar sin esperar.

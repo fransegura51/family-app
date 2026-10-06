@@ -145,6 +145,18 @@ interface ParsedRecipe {
   instructions: string
   sourceUrl: string
   imageUrl: string | null
+  // schema.org recipeYield tal cual viene (p. ej. "4 raciones"). El cliente decide si es inequívoco; aquí no se interpreta.
+  recipeYield: string | null
+}
+
+function yieldText(raw: unknown): string | null {
+  if (typeof raw === "string") return raw.trim() || null
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw)
+  if (Array.isArray(raw)) {
+    const first = raw.find((v): v is string => typeof v === "string")
+    return first ? first.trim() || null : null
+  }
+  return null
 }
 
 function textFromInstructionStep(step: unknown): string {
@@ -189,7 +201,7 @@ function extractRecipe(jsonLd: unknown, sourceUrl: string): ParsedRecipe | null 
     }
 
     if (title || ingredients.length > 0) {
-      return { title, ingredients, instructions, sourceUrl, imageUrl: extractImageUrl(obj.image) }
+      return { title, ingredients, instructions, sourceUrl, imageUrl: extractImageUrl(obj.image), recipeYield: yieldText(obj.recipeYield) }
     }
   }
   return null

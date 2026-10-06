@@ -2,14 +2,15 @@ import { useState } from 'react'
 import { addMenuShoppingLines } from '@/data/food'
 import { errorMessage } from '@/domain/errorMessage'
 import type { ShoppingPlanLine } from '@/domain/menuShoppingPlan'
-import type { ScaleSkipReason } from '@/domain/recipeScaling'
+import type { ScaleNote } from '@/domain/recipeScaling'
 import type { ShoppingStoreEntry } from '@/domain/types'
 import { showToast } from '@/state/toast'
 
-const NOTE_LABEL: Record<ScaleSkipReason, string> = {
+const NOTE_LABEL: Record<ScaleNote, string> = {
   sin_raciones: 'La receta no tiene raciones: cantidad original, sin escalar.',
   cantidad_no_numerica: 'Cantidad no numérica en la receta: revísala.',
   unidad_no_escalable: 'Unidad que no se escala: cantidad original.',
+  fraccionario: 'Resultado no entero de unidades: revísalo antes de comprar.',
 }
 
 // Revisión ANTES de guardar: nada se añade a Compras hasta pulsar el botón de confirmar.

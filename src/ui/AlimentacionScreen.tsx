@@ -1276,6 +1276,7 @@ function RecipeForm({
         title: result.title || title,
         ingredients: result.ingredients,
         steps: result.instructions ? result.instructions.split('\n').filter(Boolean) : [],
+        servings: result.servings,
       })
       setFoundSource('url')
       setFoundImagePath(result.imagePath)
@@ -1342,6 +1343,7 @@ function RecipeForm({
           title: result.title || candidate.title,
           ingredients: result.ingredients,
           steps: result.instructions ? result.instructions.split('\n').filter(Boolean) : [],
+          servings: result.servings,
         })
         setFoundSource('cookpad')
         setFoundImagePath(result.imagePath)
@@ -1369,7 +1371,7 @@ function RecipeForm({
             downloadedImagePath = null
           }
         }
-        setFound({ title: detail.name, ingredients: detail.ingredients, steps: detail.directions })
+        setFound({ title: detail.name, ingredients: detail.ingredients, steps: detail.directions, servings: null })
         setFoundSource('fatsecret')
         setFoundImagePath(downloadedImagePath)
         setSearchResults([])
@@ -1398,6 +1400,9 @@ function RecipeForm({
     if (found.title && !title.trim()) setTitle(found.title)
     setIngRows(found.ingredients.length > 0 ? found.ingredients.map((i) => newIngredientRow({ name: i })) : [newIngredientRow()])
     setSteps(found.steps.length > 0 ? found.steps.map((st) => newStepRow(dedupeStepNumbers(st).replace(/^\d+\.\s*/, ''))) : [newStepRow()])
+    // Raciones de la fuente: solo se rellenan si la fuente las indica sin ambigüedad; se pueden corregir en el
+    // formulario antes de guardar. Si la fuente no las trae, se conserva lo que ya hubiera escrito.
+    if (found.servings !== null) setServingsText(String(found.servings))
     setStartMode('manual')
     if (foundImagePath) setImagePath(foundImagePath)
     setFound(null)

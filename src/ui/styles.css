@@ -6220,3 +6220,20 @@ textarea {
     flex: 1 1 100%;
   }
 }
+
+/* Revisión de compra: nombre editable de una propuesta de plato sin receta y botón de producto a mano.
+   Mismo sitio y medidas que el nombre de sólo lectura: no cambia la maquetación validada. */
+.menu-shopping-name-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  box-sizing: border-box;
+  font-size: 16px; /* 16px: iOS no hace zoom al enfocar */
+  font-weight: 600;
+}
+
+.menu-shopping-add {
+  align-self: flex-start;
+  min-height: 44px;
+  margin: 4px 0 8px;
+}

@@ -27,12 +27,12 @@ describe('Preparar compra del menú — revisión antes de guardar', () => {
 
   it('en la revisión se puede desmarcar cada línea, editar la cantidad y elegir tienda', () => {
     expect(MODAL).toContain('type="checkbox"')
-    expect(MODAL).toContain('aria-label={`Cantidad de ${line.name}`}')
-    expect(MODAL).toContain('aria-label={`Tienda de ${line.name}`}')
+    expect(MODAL).toContain('aria-label={`Cantidad de ${row.name || "producto nuevo"}`}')
+    expect(MODAL).toContain('aria-label={`Tienda de ${row.name || "producto nuevo"}`}')
   })
 
   it('cada línea muestra de qué platos viene', () => {
-    expect(MODAL).toContain('Para: {[...new Set(line.sources.map((s) => s.dishName))].join')
+    expect(MODAL).toContain('Para: {row.line ? [...new Set(row.line.sources.map((s) => s.dishName))].join')
   })
 
   it('la compra guarda con addShoppingItem (mismo camino que el 🛒 de un plato), sin automatizar nada', () => {
@@ -78,7 +78,7 @@ describe('modal de revisión — contenedor, tarjetas y pie separados (maquetaci
 
   it('cada ingrediente es una tarjeta independiente (article) con su propio check, controles y procedencia', () => {
     const item = MODAL.slice(MODAL.indexOf('<article'), MODAL.indexOf('</article>') + '</article>'.length)
-    expect(MODAL).toContain('<article key={line.key} className="menu-shopping-item">')
+    expect(MODAL).toContain('<article key={row.id} className="menu-shopping-item">')
     expect(item).toContain('type="checkbox"')
     expect(item).toContain('menu-shopping-quantity')
     expect(item).toContain('menu-shopping-store')
@@ -122,7 +122,7 @@ describe('modal de revisión — ninguna acción guarda salvo la confirmación e
   })
 
   it('abrir el modal no guarda: el estado inicial solo prepara filas, sin escrituras', () => {
-    const init = MODAL.slice(MODAL.indexOf('useState(() => lines.map'), MODAL.indexOf('\n', MODAL.indexOf('useState(() => lines.map')))
+    const init = MODAL.slice(MODAL.indexOf('useState<ReviewRow[]>'), MODAL.indexOf('const [saving'))
     expect(init).toContain('include: true')
     expect(init).not.toMatch(/addMenuShoppingLines|addShoppingItem/)
   })
@@ -130,7 +130,7 @@ describe('modal de revisión — ninguna acción guarda salvo la confirmación e
 
 describe('modal de revisión — contador, cantidades desconocidas y lógica intacta', () => {
   it('el número del botón sale de las filas marcadas (include)', () => {
-    expect(MODAL).toContain('const selected = rows.filter((r) => r.include).length')
+    expect(MODAL).toContain('const selected = rows.filter((r) => r.include && r.name.trim()).length')
     expect(MODAL).toContain('`Añadir ${selected} a Compras`')
   })
 
@@ -141,8 +141,8 @@ describe('modal de revisión — contador, cantidades desconocidas y lógica int
   })
 
   it('la lógica de confirmación no cambió: solo guarda las filas marcadas con su cantidad y tienda', () => {
-    expect(MODAL).toContain('.filter(({ row }) => row.include)')
-    expect(MODAL).toContain('store: row.store || null')
+    expect(MODAL).toContain('.filter((r) => r.include && r.name.trim())')
+    expect(MODAL).toContain('store: r.store || null')
   })
 })
 

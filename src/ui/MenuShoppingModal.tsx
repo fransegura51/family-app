@@ -13,6 +13,16 @@ const NOTE_LABEL: Record<ScaleNote, string> = {
   fraccionario: 'Resultado no entero de unidades: revísalo antes de comprar.',
 }
 
+// Una fila de la revisión. `line` es null para un producto añadido a mano.
+interface ReviewRow {
+  id: string
+  line: ShoppingPlanLine | null
+  name: string
+  include: boolean
+  quantity: string
+  store: string
+}
+
 // Revisión ANTES de guardar: nada se añade a Compras hasta pulsar el botón de confirmar.
 export function MenuShoppingModal({
   lines,
@@ -29,20 +39,26 @@ export function MenuShoppingModal({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [rows, setRows] = useState(() => lines.map((l) => ({ include: true, quantity: l.quantity ?? '', store: '' })))
+  const [rows, setRows] = useState<ReviewRow[]>(() =>
+    lines.map((l) => ({ id: l.key, line: l, name: l.name, include: true, quantity: l.quantity ?? '', store: '' })),
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const selected = rows.filter((r) => r.include).length
+  const selected = rows.filter((r) => r.include && r.name.trim()).length
 
-  function update(index: number, patch: Partial<{ include: boolean; quantity: string; store: string }>) {
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)))
+  function update(id: string, patch: Partial<{ name: string; include: boolean; quantity: string; store: string }>) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  }
+
+  // Producto añadido a mano: entra en la revisión como cualquier otra fila (sin cantidad ni tienda por defecto).
+  function addManual() {
+    setRows((prev) => [...prev, { id: `manual:${prev.length}:${Date.now()}`, line: null, name: '', include: true, quantity: '', store: '' }])
   }
 
   async function confirm() {
-    const chosen = lines
-      .map((line, i) => ({ line, row: rows[i] }))
-      .filter(({ row }) => row.include)
-      .map(({ line, row }) => ({ name: line.name, quantity: row.quantity.trim(), store: row.store || null }))
+    const chosen = rows
+      .filter((r) => r.include && r.name.trim())
+      .map((r) => ({ name: r.name.trim(), quantity: r.quantity.trim(), store: r.store || null }))
     if (chosen.length === 0) return
     setSaving(true)
     setError(null)
@@ -70,23 +86,43 @@ export function MenuShoppingModal({
           </p>
         </header>
         <div className="menu-shopping-body">
-          {lines.length === 0 && <p className="muted">No hay ingredientes de recetas vinculadas a platos de la familia.</p>}
-          {lines.map((line, i) => (
-            <article key={line.key} className="menu-shopping-item">
+          {rows.length === 0 && <p className="muted">No hay nada que proponer de este menú. Puedes añadir un producto a mano.</p>}
+          {rows.map((row) => (
+            <article key={row.id} className="menu-shopping-item">
               <label className="menu-shopping-check">
-                <input type="checkbox" checked={rows[i].include} onChange={(e) => update(i, { include: e.target.checked })} aria-label={`Comprar ${line.name}`} />
-                <span className="menu-shopping-name">{line.name}</span>
+                <input type="checkbox" checked={row.include} onChange={(e) => update(row.id, { include: e.target.checked })} aria-label={`Comprar ${row.name || "producto nuevo"}`} />
+                {row.line && row.line.direct ? (
+                  <input
+                    className="menu-shopping-name menu-shopping-name-input"
+                    type="text"
+                    value={row.name}
+                    placeholder="Nombre del producto"
+                    onChange={(e) => update(row.id, { name: e.target.value })}
+                    aria-label={`Nombre de ${row.line.name}`}
+                  />
+                ) : row.line ? (
+                  <span className="menu-shopping-name">{row.name}</span>
+                ) : (
+                  <input
+                    className="menu-shopping-name menu-shopping-name-input"
+                    type="text"
+                    value={row.name}
+                    placeholder="Nombre del producto"
+                    onChange={(e) => update(row.id, { name: e.target.value })}
+                    aria-label="Nombre del producto añadido"
+                  />
+                )}
               </label>
               <div className="menu-shopping-controls">
                 <input
                   className="menu-shopping-quantity"
                   type="text"
-                  value={rows[i].quantity}
+                  value={row.quantity}
                   placeholder="Cantidad (desconocida)"
-                  onChange={(e) => update(i, { quantity: e.target.value })}
-                  aria-label={`Cantidad de ${line.name}`}
+                  onChange={(e) => update(row.id, { quantity: e.target.value })}
+                  aria-label={`Cantidad de ${row.name || "producto nuevo"}`}
                 />
-                <select className="menu-shopping-store" value={rows[i].store} onChange={(e) => update(i, { store: e.target.value })} aria-label={`Tienda de ${line.name}`}>
+                <select className="menu-shopping-store" value={row.store} onChange={(e) => update(row.id, { store: e.target.value })} aria-label={`Tienda de ${row.name || "producto nuevo"}`}>
                   <option value="">Sin tienda</option>
                   {stores.map((s) => (
                     <option key={s.id} value={s.name}>
@@ -95,10 +131,13 @@ export function MenuShoppingModal({
                   ))}
                 </select>
               </div>
-              <p className="menu-shopping-sources">Para: {[...new Set(line.sources.map((s) => s.dishName))].join(', ')}</p>
-              {line.notes.length > 0 && <p className="menu-shopping-notes">{line.notes.map((n) => NOTE_LABEL[n]).join(' ')}</p>}
+              <p className="menu-shopping-sources">Para: {row.line ? [...new Set(row.line.sources.map((s) => s.dishName))].join(', ') : 'Añadido a mano'}</p>
+              {row.line && row.line.notes.length > 0 && <p className="menu-shopping-notes">{row.line.notes.map((n) => NOTE_LABEL[n]).join(' ')}</p>}
             </article>
           ))}
+          <button type="button" className="link-button menu-shopping-add" onClick={addManual} disabled={saving}>
+            + Añadir producto a mano
+          </button>
         </div>
         <footer className="menu-shopping-footer">
           {error && <p className="error">{error}</p>}

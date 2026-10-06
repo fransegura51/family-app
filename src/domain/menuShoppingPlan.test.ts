@@ -9,9 +9,10 @@ const dish = (id: string, name: string, recipeId: string | null, extra: Record<s
   makeMenuItem({ id, name, recipeId, preparedBy: 'familia', kind: 'dish', ...extra } as never)
 
 describe('Preparar compra del menú — solo ingredientes reales de recetas de la familia', () => {
-  it('un plato sin receta NO genera ingredientes', () => {
+  it('un plato sin receta NO genera ingredientes inventados: solo la propuesta de su nombre, sin cantidad', () => {
     const lines = buildMenuShoppingPlan([dish('d1', 'Ensalada', null)], [], 8, 'mixto')
-    expect(lines).toEqual([])
+    expect(lines.map((l) => l.name)).toEqual(['Ensalada'])
+    expect(lines[0]).toMatchObject({ quantity: null, direct: true })
   })
 
   it('un plato de restaurante/proveedor NO genera compra aunque tenga receta vinculada', () => {
@@ -57,8 +58,10 @@ describe('Preparar compra del menú — solo ingredientes reales de recetas de l
     expect(r.ingredients[0].quantity).toBe('500')
   })
 
-  it('sin receta vinculada (recipeId null) no aporta nada aunque la receta exista', () => {
-    expect(buildMenuShoppingPlan([dish('d1', 'Pollo', null)], [recipe('r1', 4, [ing('i1', 'Pollo', '1', 'kg')])], 8, 'mixto')).toEqual([])
+  it('sin receta vinculada (recipeId null) no usa ingredientes de ninguna receta, aunque exista una con ese nombre', () => {
+    const lines = buildMenuShoppingPlan([dish('d1', 'Pollo', null)], [recipe('r1', 4, [ing('i1', 'Pollo', '1', 'kg')])], 8, 'mixto')
+    expect(lines.every((l) => l.direct)).toBe(true)
+    expect(lines.find((l) => l.quantity !== null)).toBeUndefined()
   })
 })
 

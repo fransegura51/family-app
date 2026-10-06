@@ -158,6 +158,8 @@ export function MenuManager({
   const [importing, setImporting] = useState<{ forcedSection: string | null } | null>(null)
   const [ingredientsFor, setIngredientsFor] = useState<EventMenuItem | null>(null)
   const [shoppingOpen, setShoppingOpen] = useState(false)
+  // 🛒 de un plato sin receta: revisión de SU propuesta (misma pantalla que la compra global).
+  const [directDish, setDirectDish] = useState<EventMenuItem | null>(null)
   // Compra global del menú: solo LEE recetas de platos de la familia; nada se guarda hasta confirmar en la revisión.
   const targetDiners = useMemo(() => computeDiners(data.guests).confirmedPeople, [data.guests])
   const shoppingLines = useMemo(() => buildMenuShoppingPlan(data.items, data.recipes, targetDiners, mode), [data.items, data.recipes, targetDiners, mode])
@@ -301,6 +303,12 @@ export function MenuManager({
               <div className="menu-dish-actions">
           {tools && recipe && recipe.ingredients.length > 0 && (
             <button type="button" className="link-button" aria-label={`Elegir ingredientes de ${dish.name} para Compras`} onClick={() => setIngredientsFor(dish)}>
+              🛒
+            </button>
+          )}
+          {tools && !dish.recipeId && (
+            // Plato sin receta: propuesta basada solo en su nombre (o sus productos explícitos), siempre revisada.
+            <button type="button" className="link-button" aria-label={`Preparar compra de ${dish.name}`} onClick={() => setDirectDish(dish)}>
               🛒
             </button>
           )}
@@ -484,6 +492,16 @@ export function MenuManager({
           targetDiners={targetDiners}
           onClose={() => setShoppingOpen(false)}
           onSaved={() => setShoppingOpen(false)}
+        />
+      )}
+      {directDish && (
+        <MenuShoppingModal
+          lines={buildMenuShoppingPlan([directDish], data.recipes, targetDiners, mode)}
+          stores={data.stores}
+          eventId={event.id}
+          targetDiners={targetDiners}
+          onClose={() => setDirectDish(null)}
+          onSaved={() => setDirectDish(null)}
         />
       )}
       {ingredientsFor && ingredientsFor.recipeId && recipeById.get(ingredientsFor.recipeId) && (

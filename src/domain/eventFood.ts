@@ -83,7 +83,10 @@ export interface GuardarMenuAnswer {
   choice: GuardarMenuChoice
 }
 
-export type MenuInfantilChoice = 'incluido' | 'pedir' | 'nosotros' | 'otro' | 'todavia_no_lo_sabemos'
+// 'mismo_menu': los niños comen lo mismo que los adultos. 'menu_infantil': hay un menú infantil concreto (sus platos
+// viven en la sección «Menú infantil» de Menú del evento). 'alternativa': una alternativa concreta para los niños.
+// 'pedir' y 'nosotros' son respuestas anteriores: se siguen leyendo y mostrando.
+export type MenuInfantilChoice = 'incluido' | 'pedir' | 'nosotros' | 'otro' | 'todavia_no_lo_sabemos' | 'mismo_menu' | 'menu_infantil' | 'alternativa'
 export interface MenuInfantilAnswer {
   choice: MenuInfantilChoice
   custom?: CustomResolution

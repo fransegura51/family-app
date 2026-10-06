@@ -2872,3 +2872,11 @@ export async function saveEventMenuPersonAlternative(
   )
   if (error) throw error
 }
+
+// Deshace SOLO el documento de un intento de importación que falló (fila + archivo). Nunca toca documentos
+// anteriores. Lo llama el importador cuando los platos no llegan a guardarse, para no dejar un original huérfano.
+export async function discardEventFoodDocument(doc: EventFoodDocument): Promise<void> {
+  const { error } = await supabase.from('event_food_documents').delete().eq('id', doc.id)
+  if (error) throw error
+  await supabase.storage.from('event_food_documents').remove([doc.storagePath])
+}

@@ -10,7 +10,7 @@
 // La IA solo PROPONE: nada se guarda hasta confirmar, y el documento original se conserva. Cancelar no guarda nada.
 // No promete seguridad alimentaria.
 import { useState } from 'react'
-import { importEventMenuItems, saveEventFoodDocument, type ImportMenuRow } from '@/data/events'
+import { importEventMenuItems, discardEventFoodDocument, saveEventFoodDocument, type ImportMenuRow } from '@/data/events'
 import { errorMessage } from '@/domain/errorMessage'
 import { MENU_IMPORT_EXPLANATION, type ImportItemKind } from '@/domain/eventFoodMenu'
 import { KIND_LABELS, moveId, type MenuPlacement } from '@/domain/eventMenuSequence'
@@ -124,7 +124,15 @@ export function EventMenuImporter({
     setError(null)
     try {
       const doc = await saveEventFoodDocument(eventId, file, kind)
-      const { count } = await importEventMenuItems(eventId, chosen, { documentId: doc.id, placement: placementFromValue(placement) })
+      let imported: { count: number }
+      try {
+        imported = await importEventMenuItems(eventId, chosen, { documentId: doc.id, placement: placementFromValue(placement) })
+      } catch (importErr) {
+        // Los platos no se guardaron: el original que acabamos de subir no debe quedar huérfano.
+        await discardEventFoodDocument(doc).catch(() => undefined)
+        throw importErr
+      }
+      const count = imported.count
       showToast(`✓ ${count} elemento${count === 1 ? '' : 's'} guardado${count === 1 ? '' : 's'} en el menú`)
       onDone(count)
     } catch (err) {

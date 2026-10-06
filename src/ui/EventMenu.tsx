@@ -14,6 +14,7 @@ import { computeFoodNeedsState, conflictInputsSignature, findMenuConflicts } fro
 import { computeDiners, personConflictRows } from '@/domain/eventMenuHub'
 import { buildMenuShoppingPlan } from '@/domain/menuShoppingPlan'
 import { MenuShoppingModal } from '@/ui/MenuShoppingModal'
+import { EventMenuOriginals } from '@/ui/EventMenuOriginals'
 import { buildFoodContext, ninosNeedMenuInfantil } from '@/domain/eventFood'
 import { PersonAlternativesPanel } from '@/ui/EventMenuPersonAlternatives'
 import { MENU_INFANTIL_SECTION_LABEL } from '@/domain/eventFoodMenu'
@@ -389,6 +390,7 @@ export function MenuManager({
           <button type="button" className="link-button" onClick={() => setImporting({ forcedSection: null })}>
             📷 Importar menú
           </button>
+          <EventMenuOriginals eventId={event.id} />
           {(mode === 'familia' || mode === 'mixto') && (
             <button type="button" className="link-button" onClick={() => setShoppingOpen(true)}>
               🛒 Preparar compra del menú

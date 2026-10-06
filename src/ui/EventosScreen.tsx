@@ -4992,11 +4992,15 @@ const FOOD_GUARDAR_OPTIONS: { value: GuardarMenuChoice; label: string }[] = [
 ]
 
 const FOOD_MENU_INFANTIL_OPTIONS: { value: MenuInfantilChoice; label: string }[] = [
-  { value: 'incluido', label: 'Está incluido / ya resuelto' },
-  { value: 'pedir', label: 'Tenemos que pedirlo' },
-  { value: 'nosotros', label: 'Lo prepararemos nosotros' },
-  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'mismo_menu', label: 'Mismo menú' },
+  { value: 'menu_infantil', label: 'Menú infantil (sus platos van en Menú del evento)' },
+  { value: 'alternativa', label: 'Alternativa concreta' },
+  { value: 'incluido', label: 'Incluido por restaurante/catering' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no decidido' },
   { value: 'otro', label: 'Otro' },
+  // Respuestas anteriores: se siguen mostrando para no perder lo que ya habíais elegido.
+  { value: 'pedir', label: 'Tenemos que pedirlo (anterior)' },
+  { value: 'nosotros', label: 'Lo prepararemos nosotros (anterior)' },
 ]
 
 const FOOD_TARTA_OPTIONS: { value: TartaChoice; label: string }[] = [

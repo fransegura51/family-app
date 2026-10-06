@@ -37,6 +37,11 @@ export function recipeLinkPath(recipeId: string, eventId: string): string {
   return `/alimentacion?tab=Recetas&receta=${encodeURIComponent(recipeId)}&volver=${encodeURIComponent(eventId)}`
 }
 
+// Vuelta al Menú del evento (mismo destino que usa la navegación real de Eventos: ?event= y ?modulo=).
+export function eventMenuPath(eventId: string): string {
+  return `/eventos?event=${encodeURIComponent(eventId)}&modulo=menu_compra`
+}
+
 export function menuToolsMode(ctx: FoodContext): MenuToolsMode {
   if (venueIncludes(ctx, 'comida')) return 'proveedor'
   const quien = quienAnswer(ctx)

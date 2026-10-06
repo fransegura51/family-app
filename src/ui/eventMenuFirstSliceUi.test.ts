@@ -72,19 +72,80 @@ describe('Menú — la receta vinculada es un enlace real, fuera del botón del 
   })
 })
 
-describe('Alimentación — ?receta abre esa receta una sola vez; ?volver enlaza al menú del evento', () => {
+describe('Alimentación — ?receta abre esa receta una sola vez y recuerda el evento de origen', () => {
   it('lee receta y volver de la URL y abre la receta pedida solo si existe', () => {
     expect(ALIM_SRC).toContain("const requestedRecipeId = searchParams.get('receta')")
     expect(ALIM_SRC).toContain("const returnEventId = searchParams.get('volver')")
-    expect(ALIM_SRC).toContain('if (recipes.some((r) => r.id === requestedRecipeId)) setViewingId(requestedRecipeId)')
+    expect(ALIM_SRC).toContain('if (recipes.some((r) => r.id === requestedRecipeId)) {\n      setViewingId(requestedRecipeId)')
   })
 
   it('quita ?receta tras abrirla para que recargar la lista no la reabra', () => {
     expect(ALIM_SRC).toContain("next.delete('receta')")
   })
 
-  it('con ?volver muestra «Volver al menú del evento» hacia el módulo de Menú', () => {
+  it('una receta abierta desde el evento recibe contexto de retorno (setViewerReturnEventId(returnEventId))', () => {
+    expect(ALIM_SRC).toContain('setViewerReturnEventId(returnEventId)')
+  })
+
+  it('el contexto de retorno se limpia al cerrar el visor: la X y el fondo llaman a closeViewer, nunca solo a setViewingId', () => {
+    const fn = ALIM_SRC.slice(ALIM_SRC.indexOf('function closeViewer()'), ALIM_SRC.indexOf('}', ALIM_SRC.indexOf('function closeViewer()')) + 1)
+    expect(fn).toContain('setViewingId(null)')
+    expect(fn).toContain('setViewerReturnEventId(null)')
+    expect(ALIM_SRC).toContain('onClick={() => closeViewer()} aria-label="Cerrar"')
+    expect(ALIM_SRC).toContain('<div className="modal-overlay" onClick={() => closeViewer()}>')
+  })
+
+  it('el contexto solo se ENCIENDE al abrir desde ?receta y se apaga al cerrar: una receta abierta normal nunca lo recibe', () => {
+    const sets = ALIM_SRC.split('setViewerReturnEventId(').length - 1
+    // Exactamente dos usos: encender en la apertura desde el evento y apagar en closeViewer.
+    expect(sets).toBe(2)
+    expect(ALIM_SRC).toContain('setViewerReturnEventId(null)')
+  })
+
+  it('la X sigue siendo solo cerrar: su handler no navega', () => {
+    const close = ALIM_SRC.slice(ALIM_SRC.indexOf('aria-label="Cerrar"') - 80, ALIM_SRC.indexOf('aria-label="Cerrar"'))
+    expect(close).not.toContain('navigate(')
+  })
+
+  it('dentro del visor, «← Volver al menú del evento» solo aparece si hay contexto de retorno', () => {
+    expect(ALIM_SRC).toContain('{viewerReturnEventId && (')
     expect(ALIM_SRC).toContain('← Volver al menú del evento')
-    expect(ALIM_SRC).toContain('/eventos?event=${encodeURIComponent(returnEventId)}&modulo=menu_compra')
+  })
+
+  it('«Volver» cierra el visor y navega con el router real (useNavigate) a eventMenuPath, sin ruta escrita a mano', () => {
+    const btn = ALIM_SRC.slice(ALIM_SRC.indexOf('{viewerReturnEventId && ('), ALIM_SRC.indexOf('← Volver al menú del evento', ALIM_SRC.indexOf('{viewerReturnEventId && (')))
+    expect(btn).toContain('closeViewer()')
+    expect(btn).toContain('navigate(eventMenuPath(viewerReturnEventId))')
+    expect(ALIM_SRC).toContain("import { eventMenuPath } from '@/domain/eventMenuHub'")
+  })
+
+  it('el enlace de la cabecera de Recetas también usa eventMenuPath (una sola fuente para el destino)', () => {
+    expect(ALIM_SRC).toContain('<Link to={eventMenuPath(returnEventId)}>← Volver al menú del evento</Link>')
+  })
+})
+
+// Problema 1 (móvil estrecho): el nombre no queda aplastado en una fila horizontal rígida. El reparto visual de
+// anchos vive en styles.css y se comprueba a ancho de iPhone (no se puede leer CSS desde estos tests); aquí se
+// fija la ESTRUCTURA que hace posible ese reparto: nombre+receta en un bloque propio, acciones en otro.
+describe('Menú — la fila del plato separa el nombre de las acciones (no depende de una fila horizontal rígida)', () => {
+  it('el nombre y la receta van en su propio bloque, y las acciones en otro grupo aparte', () => {
+    expect(MENU_SRC).toContain('<div className="menu-dish-body">')
+    expect(MENU_SRC).toContain('<div className="menu-dish-actions">')
+    const body = MENU_SRC.slice(MENU_SRC.indexOf('<div className="menu-dish-body">'), MENU_SRC.indexOf('<div className="menu-dish-actions">'))
+    expect(body).toContain('className="menu-dish-main"')
+    expect(body).toContain('recipeLinkPath(recipe.id, event.id)')
+  })
+
+  it('las acciones (carrito, ▲, ▼, ×) siguen todas, en el grupo de acciones', () => {
+    const actions = MENU_SRC.slice(MENU_SRC.indexOf('<div className="menu-dish-actions">'))
+    expect(actions).toContain('setIngredientsFor(dish)')
+    expect(actions).toContain('moveItem(dish.id, -1)')
+    expect(actions).toContain('moveItem(dish.id, 1)')
+    expect(actions).toContain('onConfirm={() => void deleteDish(dish.id)}')
+  })
+
+  it('la receta vinculada es un enlace fuera del botón del plato (no anidado) y no se fuerza a una sola línea', () => {
+    expect(MENU_SRC).toContain('className="menu-dish-recipe-link"')
+    expect(MENU_SRC).not.toContain("whiteSpace: 'nowrap'")
   })
 })

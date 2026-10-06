@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { eventMenuPath } from '@/domain/eventMenuHub'
 import { paletteByName, pastelPalette } from '@/domain/colors'
 import { dedupeStepNumbers } from '@/domain/recipeSteps'
 import {
@@ -777,6 +778,13 @@ function RecipesTab() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedRecipeId = searchParams.get('receta')
   const returnEventId = searchParams.get('volver')
+  const navigate = useNavigate()
+  // Solo mientras el visor abierto viene de «Menú del evento»: así «Volver» aparece dentro de ESA receta y no en una abierta normal.
+  const [viewerReturnEventId, setViewerReturnEventId] = useState<string | null>(null)
+  function closeViewer() {
+    setViewingId(null)
+    setViewerReturnEventId(null)
+  }
 
   // Petición real: "Recetas: compartir una receta" — título, ingredientes
   // y preparación en texto, más la foto si la receta tiene una (falla en
@@ -822,13 +830,16 @@ function RecipesTab() {
   // Se abre una sola vez: al abrirla se quita ?receta de la URL, así recargar la lista no la vuelve a abrir.
   useEffect(() => {
     if (!requestedRecipeId || loading) return
-    if (recipes.some((r) => r.id === requestedRecipeId)) setViewingId(requestedRecipeId)
+    if (recipes.some((r) => r.id === requestedRecipeId)) {
+      setViewingId(requestedRecipeId)
+      setViewerReturnEventId(returnEventId)
+    }
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.delete('receta')
       return next
     }, { replace: true })
-  }, [requestedRecipeId, loading, recipes, setSearchParams])
+  }, [requestedRecipeId, loading, recipes, setSearchParams, returnEventId])
 
   // Pepa (VoiceCapture) puede guardar una receta desde cualquier pantalla.
   useEffect(() => {
@@ -868,7 +879,7 @@ function RecipesTab() {
       {info && <p className="muted">{info}</p>}
       {returnEventId && (
         <p style={{ margin: '0 0 8px' }}>
-          <Link to={`/eventos?event=${encodeURIComponent(returnEventId)}&modulo=menu_compra`}>← Volver al menú del evento</Link>
+          <Link to={eventMenuPath(returnEventId)}>← Volver al menú del evento</Link>
         </p>
       )}
 
@@ -966,16 +977,29 @@ function RecipesTab() {
       )}
 
       {viewing && !editing && (
-        <div className="modal-overlay" onClick={() => setViewingId(null)}>
+        <div className="modal-overlay" onClick={() => closeViewer()}>
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
                 {viewing.title}
               </h2>
-              <button type="button" className="modal-close" onClick={() => setViewingId(null)} aria-label="Cerrar">
+              <button type="button" className="modal-close" onClick={() => closeViewer()} aria-label="Cerrar">
                 ✕
               </button>
             </div>
+            {viewerReturnEventId && (
+              <button
+                type="button"
+                className="link-button"
+                style={{ alignSelf: 'flex-start', margin: '6px 0' }}
+                onClick={() => {
+                  closeViewer()
+                  navigate(eventMenuPath(viewerReturnEventId))
+                }}
+              >
+                ← Volver al menú del evento
+              </button>
+            )}
             <RecipeImage imagePath={viewing.imagePath} alt={viewing.title} />
             {/* Petición real: las acciones de la receta, arriba a la altura de
                 las etiquetas y solo con símbolos (compra, compartir, editar,
@@ -1025,7 +1049,7 @@ function RecipesTab() {
                   ariaLabel="Borrar receta"
                   onConfirm={() =>
                     deleteRecipe(viewing.id).then(() => {
-                      setViewingId(null)
+                      closeViewer()
                       reload()
                     })
                   }
@@ -1072,7 +1096,7 @@ function RecipesTab() {
               availableTags={availableTags}
               onDone={() => {
                 setEditing(null)
-                setViewingId(null)
+                closeViewer()
                 reload()
               }}
               onCancel={() => setEditing(null)}

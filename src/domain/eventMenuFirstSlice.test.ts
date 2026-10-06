@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { suggestFromGuestNotes } from '@/domain/eventDietaryNeeds'
-import { recipeLinkPath } from '@/domain/eventMenuHub'
+import { eventMenuPath, recipeLinkPath } from '@/domain/eventMenuHub'
 import { makeGuest, makeNeed } from '@/domain/eventFoodFixtures'
 
 // «Menú del evento», primera tanda: sugerencias de notas que se pueden DESCARTAR (persistido) y la navegación
@@ -42,5 +42,15 @@ describe('recipeLinkPath — abre ESA receta y conserva el evento de origen', ()
 
   it('escapa los ids para que no rompan la URL', () => {
     expect(recipeLinkPath('a b', 'c&d')).toBe('/alimentacion?tab=Recetas&receta=a%20b&volver=c%26d')
+  })
+})
+
+describe('eventMenuPath — vuelta al Menú del evento con la navegación real de Eventos', () => {
+  it('usa ?event= y ?modulo=menu_compra, los parámetros que lee EventosScreen', () => {
+    expect(eventMenuPath('ev-9')).toBe('/eventos?event=ev-9&modulo=menu_compra')
+  })
+
+  it('escapa el id del evento', () => {
+    expect(eventMenuPath('c&d')).toBe('/eventos?event=c%26d&modulo=menu_compra')
   })
 })

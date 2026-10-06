@@ -249,6 +249,7 @@ export function MenuManager({
               ☰
             </span>
           )}
+          <div className="menu-dish-body">
           <button type="button" className="menu-dish-main" onClick={() => setDishSheet({ mode: 'edit', item: dish })}>
             <span className="menu-dish-name">{dish.kind === 'heading' ? `— ${dish.name} —` : dish.name}</span>
             {dish.notes && <span className="menu-dish-note">{dish.notes}</span>}
@@ -260,10 +261,12 @@ export function MenuManager({
             </span>
           </button>
           {tools && recipe && (
-            <Link to={recipeLinkPath(recipe.id, event.id)} className="menu-dish-recipe-link" style={{ fontSize: 12, alignSelf: 'center', whiteSpace: 'nowrap' }}>
+            <Link to={recipeLinkPath(recipe.id, event.id)} className="menu-dish-recipe-link">
               📖 {recipe.title}
             </Link>
           )}
+          </div>
+          <div className="menu-dish-actions">
           {tools && recipe && recipe.ingredients.length > 0 && (
             <button type="button" className="link-button" aria-label={`Elegir ingredientes de ${dish.name} para Compras`} onClick={() => setIngredientsFor(dish)}>
               🛒
@@ -280,6 +283,7 @@ export function MenuManager({
             </>
           )}
           <ConfirmIconButton icon="✕" className="icon-button" ariaLabel={`Borrar ${dish.name}`} onConfirm={() => void deleteDish(dish.id)} />
+          </div>
         </div>
         {infos.map((info) => (
           <details key={`${dish.id}-${info.category}`} className="menu-conflict">

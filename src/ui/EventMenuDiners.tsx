@@ -21,6 +21,7 @@ import { countMenuChoices } from '@/domain/eventFoodMenu'
 import { computeDiners, foodQuestionResults, groupNeeds, unclassifiedQuestions } from '@/domain/eventMenuHub'
 import { describeEffects } from '@/domain/eventPairDecisions'
 import type { EventDietaryCategory, EventDietaryKind, EventDietarySource, FamilyEvent } from '@/domain/types'
+import type { NoteSuggestion } from '@/domain/eventDietaryNeeds'
 import { ChoiceRow } from '@/ui/ChoiceRow'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { showToast } from '@/state/toast'
@@ -60,7 +61,7 @@ export function DinersPanel({ event, data, state, onChanged, onDerivedDataChange
   const { guests, members, needs, items, decisions, dismissals } = data
   const diners = useMemo(() => computeDiners(guests), [guests])
   const groups = useMemo(() => groupNeeds(needs, guests, members), [needs, guests, members])
-  const pendingSuggestions = useMemo(() => suggestFromGuestNotes(guests, needs, dismissals).length, [guests, needs, dismissals])
+  const pendingSuggestions = useMemo(() => suggestFromGuestNotes(guests, needs, dismissals, members).length, [guests, needs, dismissals, members])
   const choices = useMemo(() => countMenuChoices(data.options, members, guests), [data.options, members, guests])
   const questionResults = useMemo(() => foodQuestionResults(data.questions, data.questionOptions, data.answers, guests, members), [data.questions, data.questionOptions, data.answers, guests, members])
   const unclassified = useMemo(() => unclassifiedQuestions(data.questions), [data.questions])
@@ -217,11 +218,16 @@ export function DinersPanel({ event, data, state, onChanged, onDerivedDataChange
   )
 }
 
+// Valor del selector de persona que significa «toda la invitación» (memberId null). '' = todavía sin elegir.
+const WHOLE_INVITATION = '__toda_la_invitacion__'
+
 // Alta/baja de necesidades y sugerencias a partir de las notas de los invitados (flujo de siempre, movido aquí).
 function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: MenuHubData; onChanged: () => void }) {
   const { guests, members, needs } = data
   const [guestId, setGuestId] = useState('')
   const [memberId, setMemberId] = useState('')
+  // Persona elegida en cada sugerencia (clave guest:categoría). Sin elegir, se usa la preseleccionada si es inequívoca.
+  const [picks, setPicks] = useState<Record<string, string>>({})
   const [text, setText] = useState('')
   const [category, setCategory] = useState<EventDietaryCategory | ''>('')
   const [kind, setKind] = useState<EventDietaryKind | ''>('')
@@ -229,7 +235,7 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
   // Corregir una sugerencia: el formulario se rellena con ella; al guardar cuenta como confirmada (origen nota)
   // y, si la categoría cambia, la sugerencia original se descarta para que no vuelva a aparecer.
   const [correcting, setCorrecting] = useState<{ guestId: string; originalCategory: EventDietaryCategory; text: string } | null>(null)
-  const suggestions = useMemo(() => suggestFromGuestNotes(guests, needs, data.dismissals), [guests, needs, data.dismissals])
+  const suggestions = useMemo(() => suggestFromGuestNotes(guests, needs, data.dismissals, members), [guests, needs, data.dismissals, members])
   const guestMembers = members.filter((m) => m.guestId === guestId)
   const nameOf = (need: (typeof needs)[number]): string => {
     const guest = guests.find((g) => g.id === need.guestId)
@@ -267,10 +273,21 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
     }
   }
 
-  function startCorrecting(s: { guestId: string; category: EventDietaryCategory; kind: EventDietaryKind | null; text: string }) {
+  // Confirmar una sugerencia: si hay varias personas en la invitación, hay que elegir una (o «Toda la invitación»).
+  async function confirmSuggestion(s: NoteSuggestion, chosen: string) {
+    if (s.memberCandidates.length > 0 && chosen === '') {
+      setError('Elige a qué persona corresponde, o «Toda la invitación».')
+      return
+    }
+    setError(null)
+    await add({ guestId: s.guestId, memberId: chosen === '' || chosen === WHOLE_INVITATION ? null : chosen, originalText: s.text, category: s.category, kind: s.kind, source: 'invitado_nota' })
+  }
+
+  function startCorrecting(s: NoteSuggestion) {
     setCorrecting({ guestId: s.guestId, originalCategory: s.category, text: s.text })
     setGuestId(s.guestId)
-    setMemberId('')
+    // Corregir también permite cambiar la persona: se parte de la elegida (o de la preseleccionada).
+    setMemberId(picks[suggestionKey(s)] ?? s.memberId ?? '')
     setText(s.text)
     setCategory(s.category)
     setKind(s.kind ?? '')
@@ -286,12 +303,18 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
   async function handleAdd(e: FormEvent) {
     e.preventDefault()
     if (!guestId || !text.trim() || !category) return
+    // Si la invitación tiene personas, la necesidad se asigna a una o a toda la invitación de forma explícita.
+    if (guestMembers.length > 0 && memberId === '') {
+      setError('Elige a qué persona corresponde, o «Toda la invitación».')
+      return
+    }
+    const person = memberId === '' || memberId === WHOLE_INVITATION ? null : memberId
     if (correcting && correcting.guestId === guestId) {
-      await add({ guestId, memberId: memberId || null, originalText: correcting.text, category, kind: kind || null, source: 'invitado_nota' })
+      await add({ guestId, memberId: person, originalText: correcting.text, category, kind: kind || null, source: 'invitado_nota' })
       if (category !== correcting.originalCategory) await dismiss(correcting.guestId, correcting.originalCategory)
       setCorrecting(null)
     } else {
-      await add({ guestId, memberId: memberId || null, originalText: text, category, kind: kind || null, source: 'organizador' })
+      await add({ guestId, memberId: person, originalText: text, category, kind: kind || null, source: 'organizador' })
     }
     setText('')
     setCategory('')
@@ -328,13 +351,24 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
             PEPA ha visto esto en las notas de los invitados (confírmalo para que cuente)
           </div>
           {suggestions.map((s) => (
-            <div key={`${s.guestId}:${s.category}`} style={{ marginBottom: 4 }}>
+            <div key={suggestionKey(s)} style={{ marginBottom: 4 }}>
               <span style={{ fontSize: 13 }}>
                 {s.guestName} · {s.kind ? DIETARY_KIND_LABELS[s.kind] : 'Sin tipo'} · {DIETARY_CATEGORIES[s.category].label}
                 <span className="muted"> · «{s.text}» · detectado en la nota, sin confirmar</span>
               </span>
+              {s.memberCandidates.length > 0 && (
+                <select value={picks[suggestionKey(s)] ?? s.memberId ?? ''} onChange={(e) => setPicks({ ...picks, [suggestionKey(s)]: e.target.value })} aria-label={`Persona de la sugerencia de ${s.guestName}`} style={{ marginTop: 2 }}>
+                  <option value="">¿A quién corresponde?</option>
+                  {s.memberCandidates.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                  <option value={WHOLE_INVITATION}>Toda la invitación</option>
+                </select>
+              )}
               <div className="filter-row" style={{ marginTop: 2 }}>
-                <button type="button" className="link-button" onClick={() => add({ guestId: s.guestId, memberId: null, originalText: s.text, category: s.category, kind: s.kind, source: 'invitado_nota' })}>
+                <button type="button" className="link-button" onClick={() => void confirmSuggestion(s, picks[suggestionKey(s)] ?? s.memberId ?? '')}>
                   Confirmar
                 </button>
                 <button type="button" className="link-button" onClick={() => startCorrecting(s)}>
@@ -372,7 +406,8 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
         </select>
         {guestMembers.length > 0 && (
           <select value={memberId} onChange={(e) => setMemberId(e.target.value)} aria-label="Persona">
-            <option value="">Toda la invitación</option>
+            <option value="">¿A quién corresponde?</option>
+            <option value={WHOLE_INVITATION}>Toda la invitación</option>
             {guestMembers.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
@@ -415,3 +450,8 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
   )
 }
 
+
+// Clave estable de una sugerencia (invitado + categoría): la misma identidad que usa el descarte persistido.
+function suggestionKey(s: { guestId: string; category: EventDietaryCategory }): string {
+  return `${s.guestId}:${s.category}`
+}

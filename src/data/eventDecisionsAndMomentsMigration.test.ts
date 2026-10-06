@@ -231,11 +231,11 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
   // cubierto en eventGuestQuestionsMigration.test.ts, no aquí. 0191 (venue_address/venue_place_id,
   // corrección real: la dirección postal desaparecía al reabrir "Gestionar evento") toca `events` a
   // propósito también — cubierto en eventVenueAddressMigration.test.ts, no aquí. 0192 (event_food_and_drink, fase "Comida y bebida" de Eventos) añade event_food_documents, event_guest_dietary_needs y columnas a event_menu_items/event_menu_options — todo de Eventos, cubierto en eventFoodAndDrinkMigration.test.ts. 0193 (event_moment_date_status, alta mínima de Eventos) añade una columna nulable a event_moments (estado de la fecha de cada momento) — tabla de Eventos, cubierto en eventMinimalCreationMigration.test.ts. 0194 (event_day_plan_editable, Plan del día editable de Eventos) añade columnas y una función de reordenación a event_day_plan_items — tabla de Eventos, cubierto en eventDayPlanMigration.test.ts; no toca ninguna otra tabla. 0195 (event_menu_hub, «Menú del evento») añade una columna a event_menu_items, otra a event_guest_questions y la tabla event_menu_settings — todo de Eventos, cubierto en eventMenuHubMigration.test.ts; no toca ninguna otra tabla. 0196 (event_menu_sequence, orden del menú) añade una columna y una función de reordenación a event_menu_items — tabla de Eventos, cubierto en eventMenuSequenceMigration.test.ts; no toca ninguna otra tabla.
-  it('0198 (event_dietary_suggestion_dismissals) es la última migración del repositorio', () => {
+  it('0199 (event_menu_person_alternatives) es la última migración del repositorio', () => {
     const numbers = Object.keys(MIGRATIONS)
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
     // 0197 (recordatorios de Calendario: claim_due_reminders y reminder_deliveries) no toca esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(198)
+    expect(Math.max(...numbers)).toBe(199)
   })
 })

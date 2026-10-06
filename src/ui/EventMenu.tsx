@@ -7,11 +7,13 @@
 //   · Móvil primero: sin formularios en línea que se salgan del ancho; los formularios son hojas apiladas.
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { addEventMenuItem, deleteEventMenuItem, listEventMenuItems, reorderEventMenuItems, saveEventMenuSections, updateEventMenuItem } from '@/data/events'
+import { addEventMenuItem, deleteEventMenuItem, listEventMenuItems, listEventMenuPersonAlternatives, reorderEventMenuItems, saveEventMenuSections, updateEventMenuItem } from '@/data/events'
 import { loadMenuHubData, type MenuHubData } from '@/data/eventMenuHub'
 import { errorMessage } from '@/domain/errorMessage'
 import { computeFoodNeedsState, conflictInputsSignature, findMenuConflicts } from '@/domain/eventDietaryNeeds'
+import { personConflictRows } from '@/domain/eventMenuHub'
 import { buildFoodContext, ninosNeedMenuInfantil } from '@/domain/eventFood'
+import { PersonAlternativesPanel } from '@/ui/EventMenuPersonAlternatives'
 import { MENU_INFANTIL_SECTION_LABEL } from '@/domain/eventFoodMenu'
 import {
   NO_FOOD_MESSAGE,
@@ -66,6 +68,15 @@ export function EventMenuSection({ event, onDerivedDataChanged }: { event: Famil
       setError(errorMessage(err, 'No se pudo actualizar el menú'))
     }
   }, [event.id])
+  // Alternativas por comensal: solo vuelve a leer esa tabla.
+  const reloadAlternatives = useCallback(async () => {
+    try {
+      const alternatives = await listEventMenuPersonAlternatives(event.id)
+      setData((d) => (d ? { ...d, alternatives } : d))
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudieron actualizar las alternativas'))
+    }
+  }, [event.id])
   // Las secciones se actualizan en pantalla al instante y se guardan aparte (una sola escritura).
   const setSections = useCallback((sections: StoredSection[]) => setData((d) => (d ? { ...d, sections } : d)), [])
 
@@ -95,7 +106,7 @@ export function EventMenuSection({ event, onDerivedDataChanged }: { event: Famil
         </p>
       )}
       <DinersPanel event={event} data={data} state={needsState} onChanged={() => void reload()} onDerivedDataChanged={onDerivedDataChanged} />
-      {(mode !== 'sin_comida' || data.items.length > 0) && <MenuManager event={event} data={data} mode={mode} needsState={needsState} onReload={reloadItems} onSectionsChange={setSections} onError={setError} />}
+      {(mode !== 'sin_comida' || data.items.length > 0) && <MenuManager event={event} data={data} mode={mode} needsState={needsState} onReload={reloadItems} onAlternativesReload={reloadAlternatives} onSectionsChange={setSections} onError={setError} />}
     </div>
   )
 }
@@ -121,6 +132,7 @@ export function MenuManager({
   mode,
   needsState,
   onReload,
+  onAlternativesReload,
   onSectionsChange,
   onError,
 }: {
@@ -130,6 +142,8 @@ export function MenuManager({
   needsState: ReturnType<typeof computeFoodNeedsState>
   // Vuelve a leer SOLO los platos.
   onReload: () => Promise<void>
+  // Vuelve a leer SOLO las alternativas por comensal.
+  onAlternativesReload: () => Promise<void>
   onSectionsChange?: (sections: StoredSection[]) => void
   onError: (message: string | null) => void
 }) {
@@ -167,6 +181,14 @@ export function MenuManager({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const conflicts = useMemo(() => findMenuConflicts(data.items, needsState.activeNeeds), [signature])
   const conflictsByDish = useMemo(() => conflictInfo(conflicts, needsState.activeNeeds, data.guests, data.members), [conflicts, needsState.activeNeeds, data.guests, data.members])
+  // Mismo cruce, desglosado por COMENSAL (para alternativas y estado de revisión de cada persona).
+  const personRowsByDish = useMemo(() => {
+    const byDish = new Map<string, ReturnType<typeof personConflictRows>>()
+    for (const row of personConflictRows(conflicts, needsState.activeNeeds, data.guests, data.members)) {
+      byDish.set(row.dishId, [...(byDish.get(row.dishId) ?? []), row])
+    }
+    return byDish
+  }, [conflicts, needsState.activeNeeds, data.guests, data.members])
 
   const hasItems = data.items.length > 0
   const nonDish = sequence.filter((i) => i.kind !== 'dish')
@@ -304,6 +326,12 @@ export function MenuManager({
                 <p className="muted">Es un aviso para revisar, no una certeza: confírmalo con quien prepara el plato o con el restaurante.</p>
               </details>
             ))}
+            <PersonAlternativesPanel
+              eventId={event.id}
+              rows={personRowsByDish.get(dish.id) ?? []}
+              alternatives={data.alternatives.filter((a) => a.dishId === dish.id)}
+              onChanged={() => void onAlternativesReload()}
+            />
           </div>
         )}
       </div>

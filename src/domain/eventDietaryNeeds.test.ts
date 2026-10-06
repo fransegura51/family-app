@@ -29,7 +29,7 @@ describe('Necesidades alimentarias AM–AN — notas, necesidades y texto origin
   it('las notas siguen siendo notas: PEPA solo SUGIERE; no cuenta nada hasta que se confirma', () => {
     const guests = [makeGuest({ id: 'g1', displayName: 'Ana', notes: 'Alergia a las nueces', rsvpStatus: 'confirmado' })]
     const suggestions = suggestFromGuestNotes(guests, [])
-    expect(suggestions).toEqual([{ guestId: 'g1', guestName: 'Ana', noteSource: 'nota', text: 'Alergia a las nueces', category: 'frutos_secos', kind: 'alergia' }])
+    expect(suggestions).toEqual([{ guestId: 'g1', guestName: 'Ana', noteSource: 'nota', text: 'Alergia a las nueces', category: 'frutos_secos', kind: 'alergia', memberCandidates: [], memberId: null }])
     expect(computeFoodNeedsState(guests, [], []).activeNeeds).toEqual([])
   })
   it('no se sugiere lo que ya está registrado como necesidad', () => {
@@ -179,8 +179,9 @@ describe('Cruce menú ↔ necesidades AS–AV — posible conflicto, nunca garan
   })
   it('que no haya conflicto NO se presenta como garantía: el aviso de seguridad lo dice explícitamente', () => {
     expect(findMenuConflicts([dish('Ensalada verde')], [makeNeed({ category: 'marisco' })])).toEqual([])
-    expect(FOOD_SAFETY_DISCLAIMER).toContain('no significa que el menú sea seguro')
-    expect(FOOD_SAFETY_DISCLAIMER).toContain('restaurante o el proveedor')
+    expect(FOOD_SAFETY_DISCLAIMER).toContain('herramienta de organización')
+    expect(FOOD_SAFETY_DISCLAIMER).toContain('restaurantes, catering o terceros')
+    expect(FOOD_SAFETY_DISCLAIMER).toContain('con la persona afectada y con quien prepare la comida')
     for (const c of findMenuConflicts([dish('Cóctel de gambas')], [makeNeed({ category: 'marisco' })])) {
       expect(c.message.toLowerCase()).not.toContain('es seguro')
       expect(c.message.toLowerCase()).not.toContain('sin riesgo')

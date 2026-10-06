@@ -1289,3 +1289,18 @@ export interface EventTemplate {
   createdAt: string
 }
 
+
+// «Menú del evento» (2.ª tanda): alternativa de UN comensal para un plato que choca con su necesidad.
+// Estados de revisión: sin fila = «pendiente». Ninguno de ellos significa «seguro».
+export type EventMenuReviewStatus = 'pendiente' | 'alternativa_prevista' | 'confirmado_preparador' | 'confirmado_restaurante'
+
+export interface EventMenuPersonAlternative {
+  id: string
+  eventId: string
+  familyId: string
+  dishId: string
+  needId: string
+  alternativeText: string | null
+  reviewStatus: EventMenuReviewStatus
+  updatedAt: string
+}

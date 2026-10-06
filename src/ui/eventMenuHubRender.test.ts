@@ -29,6 +29,7 @@ function hubData(over: Partial<MenuHubData> = {}): MenuHubData {
     members: [],
     needs: [],
     dismissals: [],
+  alternatives: [],
     options: [],
     questions: [],
     questionOptions: [],
@@ -43,7 +44,7 @@ function hubData(over: Partial<MenuHubData> = {}): MenuHubData {
 
 function renderManager(mode: MenuToolsMode, data: MenuHubData) {
   const state = computeFoodNeedsState(data.guests, data.members, data.needs)
-  return renderToStaticMarkup(createElement(MemoryRouter, null, createElement(MenuManager, { event: fx.makeEvent(), data, mode, needsState: state, onReload: async () => undefined, onError: noop })))
+  return renderToStaticMarkup(createElement(MemoryRouter, null, createElement(MenuManager, { event: fx.makeEvent(), data, mode, needsState: state, onReload: async () => undefined, onAlternativesReload: async () => undefined, onError: noop })))
 }
 
 const dishes = [

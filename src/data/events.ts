@@ -52,6 +52,8 @@ import type {
   EventDietaryKind,
   EventDietaryNeed,
   EventDietarySuggestionDismissal,
+  EventMenuPersonAlternative,
+  EventMenuReviewStatus,
   EventDietarySource,
   EventFavorItem,
   EventFavorStatus,
@@ -2824,4 +2826,49 @@ export async function getEventGuestQuestionAnswerStats(questionId: string): Prom
   const rows = data ?? []
   const answeredOptionIds = Array.from(new Set(rows.map((r) => r.option_id as string | null).filter((x): x is string => !!x)))
   return { total: rows.length, answeredOptionIds }
+}
+
+// «Menú del evento» (2.ª tanda): alternativa y estado de revisión por comensal (tabla event_menu_person_alternatives).
+// El plato general no se toca. Lectura y escritura solo de esa tabla.
+export async function listEventMenuPersonAlternatives(eventId: string): Promise<EventMenuPersonAlternative[]> {
+  const { data, error } = await supabase
+    .from('event_menu_person_alternatives')
+    .select('id, event_id, family_id, dish_id, need_id, alternative_text, review_status, updated_at')
+    .eq('event_id', eventId)
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    dishId: r.dish_id,
+    needId: r.need_id,
+    alternativeText: r.alternative_text,
+    reviewStatus: r.review_status as EventMenuReviewStatus,
+    updatedAt: r.updated_at,
+  }))
+}
+
+// Guarda la alternativa y el estado de UN comensal para UN plato (upsert por (plato, necesidad)).
+// Quien llama pasa el estado completo: alternativeText null = sin alternativa escrita.
+export async function saveEventMenuPersonAlternative(
+  eventId: string,
+  dishId: string,
+  needId: string,
+  state: { alternativeText: string | null; reviewStatus: EventMenuReviewStatus },
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const text = state.alternativeText?.trim() ? state.alternativeText.trim() : null
+  const { error } = await supabase.from('event_menu_person_alternatives').upsert(
+    {
+      event_id: eventId,
+      family_id: familyId,
+      dish_id: dishId,
+      need_id: needId,
+      alternative_text: text,
+      review_status: state.reviewStatus,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'dish_id,need_id' },
+  )
+  if (error) throw error
 }

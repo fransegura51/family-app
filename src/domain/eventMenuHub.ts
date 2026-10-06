@@ -8,9 +8,9 @@
 // Nada aquí inventa recetas, ingredientes, cantidades ni raciones, ni deduce una alergia de un nombre de plato
 // más allá del aviso ya existente de «posible conflicto» (que siempre pide confirmar con quien cocina).
 import { cooksThemselves, quienAnswer, venueIncludes, type FoodContext } from '@/domain/eventFood'
-import { DIETARY_CATEGORIES, needAttends, needLine, type MenuConflict } from '@/domain/eventDietaryNeeds'
+import { DIETARY_CATEGORIES, DIETARY_KIND_LABELS, findMenuConflicts, needAttends, needLine, type MenuConflict } from '@/domain/eventDietaryNeeds'
 import { MENU_SECTIONS, sectionKeyForCategory } from '@/domain/eventFoodMenu'
-import type { EventDietaryNeed, EventGuest, EventGuestMember, EventGuestQuestion, EventGuestQuestionAnswer, EventGuestQuestionOption, EventMenuItem } from '@/domain/types'
+import type { EventDietaryCategory, EventDietaryNeed, EventGuest, EventGuestMember, EventGuestQuestion, EventMenuReviewStatus, EventGuestQuestionAnswer, EventGuestQuestionOption, EventMenuItem } from '@/domain/types'
 
 function norm(text: string): string {
   return text
@@ -383,4 +383,52 @@ export function foodQuestionResults(
 // Preguntas todavía SIN clasificar (la familia decide si son de comida; PEPA no lo adivina).
 export function unclassifiedQuestions(questions: EventGuestQuestion[]): EventGuestQuestion[] {
   return questions.filter((q) => q.topic === null && q.active)
+}
+
+// ---------------------------------------------------------------------
+// Alternativas por comensal (2.ª tanda): cada conflicto de un plato se desglosa POR PERSONA. El plato general
+// no cambia; la alternativa es de esa persona y se vuelve a comprobar contra SUS necesidades (nunca es «segura»).
+// ---------------------------------------------------------------------
+export interface PersonConflictRow {
+  dishId: string
+  needId: string
+  category: EventDietaryCategory
+  personLabel: string // «Jorge (Familia Ramón)»
+  detail: string // «Sin marisco · Alergia»
+  personNeeds: EventDietaryNeed[] // todas las necesidades activas de ESA persona
+}
+
+export function personConflictRows(conflicts: MenuConflict[], activeNeeds: EventDietaryNeed[], guests: EventGuest[], members: EventGuestMember[]): PersonConflictRow[] {
+  const rows: PersonConflictRow[] = []
+  for (const c of conflicts) {
+    for (const n of activeNeeds) {
+      if (n.category !== c.category) continue
+      rows.push({
+        dishId: c.dishId,
+        needId: n.id,
+        category: c.category,
+        personLabel: personName(n, guests, members),
+        detail: `${DIETARY_CATEGORIES[c.category].label}${n.kind ? ` · ${DIETARY_KIND_LABELS[n.kind]}` : ''}`,
+        personNeeds: activeNeeds.filter((o) => o.guestId === n.guestId && (o.memberId ?? null) === (n.memberId ?? null)),
+      })
+    }
+  }
+  return rows
+}
+
+// Comprueba el TEXTO de una alternativa contra las necesidades de su persona. Un resultado vacío NO significa segura.
+export function alternativeConflicts(altText: string, personNeeds: EventDietaryNeed[]): MenuConflict[] {
+  return findMenuConflicts([{ id: 'alternativa', name: altText, notes: null }], personNeeds)
+}
+
+export function alternativeKey(dishId: string, needId: string): string {
+  return `${dishId}:${needId}`
+}
+
+// Etiquetas de los estados de revisión de una alternativa (en el dominio: la UI las importa, los tests no cargan Supabase).
+export const REVIEW_STATUS_LABELS: Record<EventMenuReviewStatus, string> = {
+  pendiente: 'Pendiente de revisar',
+  alternativa_prevista: 'Alternativa prevista',
+  confirmado_preparador: 'Confirmado con quien prepara la comida',
+  confirmado_restaurante: 'Confirmado con restaurante/catering',
 }

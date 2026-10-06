@@ -26,7 +26,7 @@ import type {
 } from '@/domain/types'
 
 export const FOOD_SAFETY_DISCLAIMER =
-  'PEPA solo señala posibles conflictos con la información que tiene. Que no aparezca ningún aviso no significa que el menú sea seguro: confirma siempre los ingredientes con el restaurante o el proveedor.'
+  'PEPA es una herramienta de organización y puede equivocarse o no disponer de toda la información. En platos preparados por restaurantes, catering o terceros puede desconocer ingredientes, trazas o contaminación cruzada. Confirma siempre las necesidades alimentarias directamente con la persona afectada y con quien prepare la comida.'
 
 interface CategoryMeta {
   label: string
@@ -138,17 +138,45 @@ export interface NoteSuggestion {
   text: string
   category: EventDietaryCategory
   kind: EventDietaryKind | null
+  // Personas de esa invitación a las que PUEDE corresponder la nota (vacío si la invitación no tiene personas).
+  memberCandidates: { id: string; name: string }[]
+  // Persona preseleccionada SOLO si es inequívoca (una sola persona en la invitación, o un único nombre citado en la nota).
+  // Si no lo es, es null y quien organiza debe elegir al confirmar: nunca se adivina.
+  memberId: string | null
+}
+
+// Nombre citado en la nota (con límites de palabra y sin tildes). Un único nombre coincidente basta; si coinciden
+// varios, no se elige ninguno.
+function inferMemberFromText(text: string, candidates: { id: string; name: string }[]): string | null {
+  if (candidates.length === 1) return candidates[0].id
+  const haystack = normalizeForMatch(text)
+  const named = candidates.filter((c) => {
+    const needle = normalizeForMatch(c.name)
+    return needle.length >= 2 && new RegExp(`(^|[^a-z])${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`).test(haystack)
+  })
+  return named.length === 1 ? named[0].id : null
+}
+
+function normalizeForMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
 }
 
 // `dismissed`: sugerencias que la familia ya ha descartado (event_dietary_suggestion_dismissals) — no vuelven a salir.
+// `members`: personas de las invitaciones (event_guest_members); opcional para no romper llamadas antiguas.
 export function suggestFromGuestNotes(
   guests: EventGuest[],
   needs: EventDietaryNeed[],
   dismissed: { guestId: string; category: EventDietaryCategory }[] = [],
+  members: { id: string; guestId: string; name: string }[] = [],
 ): NoteSuggestion[] {
   const out: NoteSuggestion[] = []
   for (const g of guests) {
     if (g.rsvpStatus === 'no_asiste') continue
+    const candidates = members.filter((m) => m.guestId === g.id).map((m) => ({ id: m.id, name: m.name }))
     const sources: { source: 'nota' | 'rsvp'; text: string | null }[] = [
       { source: 'nota', text: g.notes },
       { source: 'rsvp', text: g.rsvpNote },
@@ -158,7 +186,19 @@ export function suggestFromGuestNotes(
         const already = needs.some((n) => n.guestId === g.id && n.category === s.category)
         const duplicated = out.some((o) => o.guestId === g.id && o.category === s.category)
         const wasDismissed = dismissed.some((d) => d.guestId === g.id && d.category === s.category)
-        if (!already && !duplicated && !wasDismissed) out.push({ guestId: g.id, guestName: g.displayName, noteSource: source, text: (text ?? '').trim(), category: s.category, kind: s.kind })
+        if (!already && !duplicated && !wasDismissed) {
+          const original = (text ?? '').trim()
+          out.push({
+            guestId: g.id,
+            guestName: g.displayName,
+            noteSource: source,
+            text: original,
+            category: s.category,
+            kind: s.kind,
+            memberCandidates: candidates,
+            memberId: inferMemberFromText(original, candidates),
+          })
+        }
       }
     }
   }

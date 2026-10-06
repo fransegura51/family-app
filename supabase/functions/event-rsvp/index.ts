@@ -245,6 +245,78 @@ async function resolveLocationLines(
 const EVENT_SELECT =
   "id, family_id, type, title, date_status, event_date, event_time, venue_label, ceremony_location_label, ceremony_time, celebration_location_label, rsvp_deadline, status"
 
+// --- Declaraciones de necesidades alimentarias del invitado (migración 0205) ----------------------------------
+// Solo se validan y se guardan como PENDIENTES. Nunca se convierten en necesidades confirmadas desde aquí.
+const DECLARED_CATEGORIES = ["gluten", "lactosa", "lacteos", "huevo", "frutos_secos", "cacahuete", "marisco", "pescado", "soja", "vegetariano", "vegano", "sin_cerdo", "sin_alcohol", "otra"]
+const DECLARED_KINDS = ["alergia", "intolerancia", "celiaquia", "preferencia", "dieta", "otro"]
+const MAX_DECLARED_PER_SUBMIT = 5
+const MAX_PENDING_PER_GUEST = 10
+
+type DeclaredRow = { member_id: string | null; declared_text: string; category: string; kind: string | null }
+
+// Valida TODO antes de escribir nada. La persona debe pertenecer a ESTE invitado (nunca se acepta un id ajeno).
+async function prepareDeclaredNeeds(admin: ReturnType<typeof createClient>, guestId: string, raw: unknown): Promise<{ ok: true; rows: DeclaredRow[] } | { ok: false; error: string }> {
+  if (!Array.isArray(raw)) return { ok: false, error: "bad_declared_needs" }
+  if (raw.length === 0) return { ok: true, rows: [] }
+  if (raw.length > MAX_DECLARED_PER_SUBMIT) return { ok: false, error: "too_many_declared_needs" }
+  const { data: membersData } = await admin.from("event_guest_members").select("id").eq("guest_id", guestId)
+  const ownMembers = new Set((membersData ?? []).map((m) => m.id as string))
+  const rows: DeclaredRow[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") return { ok: false, error: "bad_declared_needs" }
+    const e = entry as Record<string, unknown>
+    const text = typeof e.text === "string" ? e.text.trim() : ""
+    if (!text) return { ok: false, error: "missing_text" }
+    if (text.length > 300) return { ok: false, error: "text_too_long" }
+    if (typeof e.category !== "string" || !DECLARED_CATEGORIES.includes(e.category)) return { ok: false, error: "bad_category" }
+    let kind: string | null = null
+    if (e.kind !== undefined && e.kind !== null && e.kind !== "") {
+      if (typeof e.kind !== "string" || !DECLARED_KINDS.includes(e.kind)) return { ok: false, error: "bad_kind" }
+      kind = e.kind
+    }
+    let memberId: string | null = null
+    if (e.memberId !== undefined && e.memberId !== null && e.memberId !== "") {
+      if (typeof e.memberId !== "string" || !ownMembers.has(e.memberId)) return { ok: false, error: "member_not_found" }
+      memberId = e.memberId
+    }
+    rows.push({ member_id: memberId, declared_text: text, category: e.category, kind })
+  }
+  const { count } = await admin.from("event_guest_declared_needs").select("id", { count: "exact", head: true }).eq("guest_id", guestId).eq("status", "pendiente")
+  if ((count ?? 0) + rows.length > MAX_PENDING_PER_GUEST) return { ok: false, error: "too_many_pending" }
+  return { ok: true, rows }
+}
+
+// Inserta como pendientes. Un duplicado pendiente (mismo texto, persona y categoría) ya existe: no es un error.
+async function insertDeclaredNeeds(admin: ReturnType<typeof createClient>, ev: EventRow, guestId: string, rows: DeclaredRow[]): Promise<boolean> {
+  for (const row of rows) {
+    const { error } = await admin.from("event_guest_declared_needs").insert({
+      event_id: ev.id,
+      family_id: ev.family_id,
+      guest_id: guestId,
+      status: "pendiente",
+      ...row,
+    })
+    if (error && (error as { code?: string }).code !== "23505") return false
+  }
+  return true
+}
+
+// --- Límite de peticiones (B-1) -------------------------------------------------------------------------------
+// Contador atómico en base de datos (rsvp_rate_limit_hit, migración 0205). Falla CERRADO: si el contador no
+// responde, no se guarda nada. Clave por IP (60 cada 10 min) y por enlace (límite propio cada 10 min).
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+async function underRateLimit(admin: ReturnType<typeof createClient>, req: Request, scopeKey: string, limit: number): Promise<boolean> {
+  const ip = (req.headers.get("x-forwarded-for") ?? req.headers.get("cf-connecting-ip") ?? "").split(",")[0].trim() || "unknown"
+  const byIp = await admin.rpc("rsvp_rate_limit_hit", { p_key: "ip:" + (await sha256Hex(ip)), p_limit: 60, p_window_seconds: 600 })
+  if (byIp.error || byIp.data !== true) return false
+  const byScope = await admin.rpc("rsvp_rate_limit_hit", { p_key: await sha256Hex(scopeKey), p_limit: limit, p_window_seconds: 600 })
+  return !byScope.error && byScope.data === true
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS })
 
@@ -262,6 +334,7 @@ Deno.serve(async (req) => {
       if (!event) return json({ error: "not_found" }, 404)
 
       if (req.method === "POST") {
+        if (!(await underRateLimit(admin, req, "open:" + openToken, 30))) return json({ error: "rate_limited" }, 429)
         const body = await req.json().catch(() => null)
         const name = typeof body?.name === "string" ? body.name.trim().slice(0, 120) : ""
         if (!name) return json({ error: "missing_name" }, 400)
@@ -307,10 +380,19 @@ Deno.serve(async (req) => {
     const g = guest as GuestRow
 
     if (req.method === "POST") {
+      if (!(await underRateLimit(admin, req, "tok:" + token, 30))) return json({ error: "rate_limited" }, 429)
       const body = await req.json().catch(() => null)
       const validStatuses = ["pendiente", "confirmado", "no_asiste", "no_seguro"]
       const status = body && validStatuses.includes(body.status) ? body.status : null
       if (!status) return json({ error: "bad_status" }, 400)
+
+      // Necesidades declaradas por el invitado: se validan antes de guardar el resto (todo o nada).
+      let declaredRows: DeclaredRow[] = []
+      if (body.declaredNeeds !== undefined) {
+        const prepared = await prepareDeclaredNeeds(admin, g.id, body.declaredNeeds)
+        if (!prepared.ok) return json({ error: prepared.error }, 400)
+        declaredRows = prepared.rows
+      }
 
       const clamp = (n: unknown) => Math.max(0, Math.min(50, Math.round(Number(n)) || 0))
       const note = typeof body.note === "string" ? body.note.slice(0, 300) || null : null
@@ -409,6 +491,10 @@ Deno.serve(async (req) => {
             })
           }
         }
+      }
+
+      if (declaredRows.length > 0 && !(await insertDeclaredNeeds(admin, ev, g.id, declaredRows))) {
+        return json({ error: "save_failed" }, 500)
       }
 
       return json({ ok: true })

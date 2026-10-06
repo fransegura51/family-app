@@ -1311,3 +1311,21 @@ export interface EventMenuPersonAlternative {
   reviewStatus: EventMenuReviewStatus
   updatedAt: string
 }
+
+// RSVP → necesidades alimentarias (migración 0205): lo que DECLARA un invitado. Capa separada de la necesidad
+// confirmada por la familia (EventDietaryNeed). Se conserva el texto original siempre.
+export type EventDeclaredNeedStatus = 'pendiente' | 'aceptada' | 'rechazada'
+
+export interface EventDeclaredNeed {
+  id: string
+  eventId: string
+  familyId: string
+  guestId: string
+  memberId: string | null
+  declaredText: string
+  category: EventDietaryCategory
+  kind: EventDietaryKind | null
+  status: EventDeclaredNeedStatus
+  acceptedNeedId: string | null
+  createdAt: string
+}

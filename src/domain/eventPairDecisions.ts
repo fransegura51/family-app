@@ -193,7 +193,8 @@ function findDecision(decisions: EventDecision[], questionKey: string): EventDec
 export function decisionStatus(decision: EventDecision | undefined): DecisionStatus {
   if (!decision) return 'sin_empezar'
   const answer = decision.answer as { choice?: string; custom?: { action?: string } }
-  if (answer.choice === 'todavia_no_lo_sabemos') return 'por_decidir'
+  // «Por decidir» (p. ej. comida.menu_estado) NO es una decisión tomada: el contador y el resumen lo cuentan como pendiente.
+  if (answer.choice === 'todavia_no_lo_sabemos' || answer.choice === 'por_decidir') return 'por_decidir'
   if (answer.choice === 'otro' && answer.custom?.action === 'todavia_no_lo_sabemos') return 'por_decidir'
   return 'decidida'
 }

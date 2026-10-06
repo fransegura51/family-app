@@ -23,6 +23,7 @@ import { describeEffects } from '@/domain/eventPairDecisions'
 import type { EventDietaryCategory, EventDietaryKind, EventDietarySource, FamilyEvent } from '@/domain/types'
 import type { NoteSuggestion } from '@/domain/eventDietaryNeeds'
 import { ChoiceRow } from '@/ui/ChoiceRow'
+import { DeclaredNeedsReview } from '@/ui/EventMenuDeclaredNeeds'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { showToast } from '@/state/toast'
 
@@ -345,6 +346,7 @@ function NeedsEditor({ event, data, onChanged }: { event: FamilyEvent; data: Men
         </div>
       ))}
 
+      <DeclaredNeedsReview eventId={event.id} guests={guests} members={members} refreshKey={data} onChanged={onChanged} />
       {suggestions.length > 0 && (
         <div style={{ marginTop: 6 }}>
           <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>

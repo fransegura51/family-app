@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getEventFoodDocumentUrl, listEventFoodDocuments } from '@/data/events'
 import { errorMessage } from '@/domain/errorMessage'
+import { documentAlias } from '@/domain/eventFoodDocumentAlias'
 import type { EventFoodDocument } from '@/domain/types'
 
 // Acceso al documento ORIGINAL (foto/PDF) del que salió el menú importado. Solo lee; abre una URL firmada temporal.
@@ -40,9 +41,9 @@ export function EventMenuOriginals({ eventId }: { eventId: string }) {
       <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
         📎 Documentos originales ({docs.length})
       </div>
-      {docs.map((doc) => (
+      {docs.map((doc, index) => (
         <button key={doc.id} type="button" className="link-button" onClick={() => void open(doc)} style={{ display: 'block', textAlign: 'left' }}>
-          {doc.originalName ?? (doc.mimeType === 'application/pdf' ? 'Documento PDF' : 'Foto del menú')}
+          {documentAlias(index)}
         </button>
       ))}
     </div>

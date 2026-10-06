@@ -339,6 +339,7 @@ import {
   type TartaAnswer,
   type TartaChoice,
 } from '@/domain/eventFood'
+import { buildFoodDecisionSummary } from '@/domain/eventDecisionsSummary'
 import {
   effectiveVenueServicesAnswer,
   legacyOnlyServiceLabels,
@@ -5320,6 +5321,13 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
     }, 'No se pudo añadir la opción')
   }
 
+  // Cambiar el nombre o la audiencia de una opción YA elegida: nunca se reasignan elecciones; solo se avisa.
+  function confirmChangeWithChoices(option: EventMenuOption, change: string): boolean {
+    const chosen = members.filter((m) => m.menuOptionId === option.id).length
+    if (chosen === 0) return true
+    return window.confirm(`Esta opción ya ha sido elegida por ${chosen} persona${chosen === 1 ? '' : 's'} (${change}). Sus elecciones se mantienen tal cual: no se reasignan a otra opción. ¿Continuar?`)
+  }
+
   function handleDelete(option: EventMenuOption) {
     const chosen = members.filter((m) => m.menuOptionId === option.id).length
     const warning = chosen > 0 ? `${chosen} persona${chosen === 1 ? '' : 's'} había${chosen === 1 ? '' : 'n'} elegido «${option.name}»: quedará${chosen === 1 ? '' : 'n'} «sin elegir» (no se borra nada más). ¿Quitar la opción?` : `¿Quitar «${option.name}»?`
@@ -5354,6 +5362,7 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
                 disabled={!editing.name.trim()}
                 onClick={() => {
                   const value = editing.name
+                  if (!confirmChangeWithChoices(o, 'se verá el nuevo nombre')) return
                   setEditing(null)
                   void run(() => updateEventMenuOption(o.id, { name: value }), 'No se pudo renombrar')
                 }}
@@ -5367,7 +5376,11 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
           ) : (
             <>
               <span style={{ flex: 1 }}>{o.name}</span>
-              <select value={o.audience} aria-label={`Para quién es ${o.name}`} onChange={(e) => void run(() => updateEventMenuOption(o.id, { audience: e.target.value as EventMenuOptionAudience }), 'No se pudo cambiar')}>
+              <select value={o.audience} aria-label={`Para quién es ${o.name}`} onChange={(e) => {
+                const audience = e.target.value as EventMenuOptionAudience
+                if (!confirmChangeWithChoices(o, 'cambia a quién va dirigida')) return
+                void run(() => updateEventMenuOption(o.id, { audience }), 'No se pudo cambiar')
+              }}>
                 {MENU_OPTION_AUDIENCES.map((a) => (
                   <option key={a.value} value={a.value}>
                     {a.label}
@@ -5542,6 +5555,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
   const infantil = answerOf<MenuInfantilAnswer>(FOOD_MENU_INFANTIL_KEY)
   const tartaWarning = tartaContradiction(decisions)
   const summary = summarizeFoodBlock(ctx)
+  const decisionSummary = buildFoodDecisionSummary(ctx)
   const foodExists = foodWillExist(ctx)
   const menuModuleEnabled = event.enabledModules.includes('menu_compra')
   const showMainMenu = foodExists && (cooksThemselves(quien) || menuItems.some((i) => sectionKeyForCategory(i.category) !== 'menu_infantil'))
@@ -5555,6 +5569,27 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
         <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
           {summary}
         </p>
+      )}
+      {(decisionSummary.taken.length > 0 || decisionSummary.pending.length > 0) && (
+        <details style={{ fontSize: 13, margin: '0 0 6px' }}>
+          <summary className="muted">Resumen de decisiones</summary>
+          {decisionSummary.taken.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>DECISIONES TOMADAS</div>
+              {decisionSummary.taken.map((item) => (
+                <div key={item.key}>✓ {item.text}</div>
+              ))}
+            </div>
+          )}
+          {decisionSummary.pending.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>POR DECIDIR</div>
+              {decisionSummary.pending.map((item) => (
+                <div key={item.key}>○ {item.text}</div>
+              ))}
+            </div>
+          )}
+        </details>
       )}
       {error && <p className="error">{error}</p>}
 

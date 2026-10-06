@@ -1178,6 +1178,8 @@ function RecipeForm({
   const legacyNotes =
     !!recipe?.notes && !recipe.notes.split('\n').filter((l) => l.trim()).every((l) => /^\d+\.\s/.test(l.trim()))
   const [notes, setNotes] = useState(recipe?.notes ?? '')
+  // Raciones para las que está escrita la receta. Vacío = desconocidas (se guarda null, nunca 0).
+  const [servingsText, setServingsText] = useState(recipe?.servings ? String(recipe.servings) : '')
   const [steps, setSteps] = useState<StepRow[]>(() =>
     recipe?.notes && !legacyNotes
       ? recipe.notes
@@ -1417,7 +1419,14 @@ function RecipeForm({
             .filter(Boolean)
             .map((t, i) => `${i + 1}. ${t}`)
             .join('\n')
-      const input = { title, notes: notesOut, ingredientLines, tags, imagePath }
+      const servingsTrimmed = servingsText.trim()
+      const servingsValue = servingsTrimmed === '' ? null : Number(servingsTrimmed)
+      if (servingsValue !== null && (!Number.isInteger(servingsValue) || servingsValue < 1 || servingsValue > 50)) {
+        setError('Las raciones deben ser un número entero entre 1 y 50 (o déjalo vacío).')
+        setSaving(false)
+        return
+      }
+      const input = { title, notes: notesOut, ingredientLines, tags, imagePath, servings: servingsValue }
       if (mode === 'edit' && recipe) {
         await updateRecipe(recipe.id, input)
       } else {
@@ -1581,6 +1590,11 @@ function RecipeForm({
           </div>
         )}
         {imageError && <p className="error">{imageError}</p>}
+      </div>
+
+      <div className="recipe-field">
+        <span className="recipe-field-label">Raciones (opcional)</span>
+        <input type="number" inputMode="numeric" min={1} max={50} step={1} value={servingsText} onChange={(e) => setServingsText(e.target.value)} placeholder="¿Para cuántas personas es?" aria-label="Raciones" />
       </div>
 
       <div className="recipe-field">

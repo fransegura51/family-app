@@ -22,7 +22,7 @@ async function currentFamilyId(): Promise<string> {
 export async function listRecipes(): Promise<Recipe[]> {
   const { data, error } = await supabase
     .from('recipes')
-    .select('id, family_id, title, notes, image_path, tags, recipe_ingredients(id, name, quantity, unit)')
+    .select('id, family_id, title, notes, image_path, tags, servings, recipe_ingredients(id, name, quantity, unit)')
     .order('created_at', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
@@ -32,6 +32,7 @@ export async function listRecipes(): Promise<Recipe[]> {
     notes: r.notes,
     imagePath: r.image_path,
     tags: r.tags ?? [],
+    servings: r.servings ?? null,
     ingredients: (r.recipe_ingredients as { id: string; name: string; quantity: string | null; unit: string | null }[]).map(
       (i) => ({ id: i.id, name: i.name, quantity: i.quantity, unit: i.unit }),
     ),
@@ -56,11 +57,12 @@ export async function createRecipe(input: {
   ingredientLines: string[]
   tags: string[]
   imagePath: string | null
+  servings?: number | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const { data: recipe, error } = await supabase
     .from('recipes')
-    .insert({ family_id: familyId, title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath })
+    .insert({ family_id: familyId, title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath, servings: input.servings ?? null })
     .select('id')
     .single()
   if (error) throw error
@@ -80,7 +82,7 @@ export async function createRecipe(input: {
 // texto por ingrediente", no filas editables una a una.
 export async function updateRecipe(
   id: string,
-  input: { title: string; notes: string; ingredientLines: string[]; tags: string[]; imagePath: string | null },
+  input: { title: string; notes: string; ingredientLines: string[]; tags: string[]; imagePath: string | null; servings?: number | null },
 ): Promise<void> {
   // Si se cambia o se quita la foto, la anterior se queda huérfana en
   // el storage si no se borra aquí — bug real, encontrado probando en
@@ -92,7 +94,7 @@ export async function updateRecipe(
 
   const { error } = await supabase
     .from('recipes')
-    .update({ title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath })
+    .update({ title: input.title, notes: input.notes || null, tags: input.tags, image_path: input.imagePath, ...(input.servings !== undefined ? { servings: input.servings } : {}) })
     .eq('id', id)
   if (error) throw error
 
@@ -246,3 +248,11 @@ export async function deleteMenuEntry(id: string): Promise<void> {
 // ---------------------------------------------------------------------
 // Registro de alimentación (Skill 14/16)
 // ---------------------------------------------------------------------
+
+// «Preparar compra del menú»: guarda SOLO las líneas que la familia confirmó en la revisión. Usa el mismo
+// addShoppingItem que el 🛒 de cada plato; nunca se llama sin confirmación explícita.
+export async function addMenuShoppingLines(lines: { name: string; quantity: string; store: string | null }[], eventId: string): Promise<void> {
+  for (const line of lines) {
+    await addShoppingItem({ name: line.name, quantity: line.quantity, unit: '', priority: 'normal', tripId: null, store: line.store, eventId })
+  }
+}

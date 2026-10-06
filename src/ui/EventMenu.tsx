@@ -11,7 +11,9 @@ import { addEventMenuItem, deleteEventMenuItem, listEventMenuItems, listEventMen
 import { loadMenuHubData, type MenuHubData } from '@/data/eventMenuHub'
 import { errorMessage } from '@/domain/errorMessage'
 import { computeFoodNeedsState, conflictInputsSignature, findMenuConflicts } from '@/domain/eventDietaryNeeds'
-import { personConflictRows } from '@/domain/eventMenuHub'
+import { computeDiners, personConflictRows } from '@/domain/eventMenuHub'
+import { buildMenuShoppingPlan } from '@/domain/menuShoppingPlan'
+import { MenuShoppingModal } from '@/ui/MenuShoppingModal'
 import { buildFoodContext, ninosNeedMenuInfantil } from '@/domain/eventFood'
 import { PersonAlternativesPanel } from '@/ui/EventMenuPersonAlternatives'
 import { MENU_INFANTIL_SECTION_LABEL } from '@/domain/eventFoodMenu'
@@ -154,6 +156,10 @@ export function MenuManager({
   const [sectionsOpen, setSectionsOpen] = useState(false)
   const [importing, setImporting] = useState<{ forcedSection: string | null } | null>(null)
   const [ingredientsFor, setIngredientsFor] = useState<EventMenuItem | null>(null)
+  const [shoppingOpen, setShoppingOpen] = useState(false)
+  // Compra global del menú: solo LEE recetas de platos de la familia; nada se guarda hasta confirmar en la revisión.
+  const targetDiners = useMemo(() => computeDiners(data.guests).confirmedPeople, [data.guests])
+  const shoppingLines = useMemo(() => buildMenuShoppingPlan(data.items, data.recipes, targetDiners, mode), [data.items, data.recipes, targetDiners, mode])
   // LA SECUENCIA es la vista principal (el orden real del menú); «Por secciones» es la clasificación (ayuda de organización).
   const [view, setViewState] = useState<MenuView>(loadMenuView)
   const sequence = useMemo(() => menuSequence(data.items), [data.items])
@@ -383,6 +389,11 @@ export function MenuManager({
           <button type="button" className="link-button" onClick={() => setImporting({ forcedSection: null })}>
             📷 Importar menú
           </button>
+          {(mode === 'familia' || mode === 'mixto') && (
+            <button type="button" className="link-button" onClick={() => setShoppingOpen(true)}>
+              🛒 Preparar compra del menú
+            </button>
+          )}
           <button type="button" className="link-button" onClick={() => setSectionsOpen(true)}>
             ⚙️ Gestionar secciones
           </button>
@@ -463,6 +474,16 @@ export function MenuManager({
         />
       )}
       {sectionsOpen && <SectionsSheet resolved={resolved} onChange={(next) => void persistSections(next)} onClose={() => setSectionsOpen(false)} />}
+      {shoppingOpen && (
+        <MenuShoppingModal
+          lines={shoppingLines}
+          stores={data.stores}
+          eventId={event.id}
+          targetDiners={targetDiners}
+          onClose={() => setShoppingOpen(false)}
+          onSaved={() => setShoppingOpen(false)}
+        />
+      )}
       {ingredientsFor && ingredientsFor.recipeId && recipeById.get(ingredientsFor.recipeId) && (
         <PickIngredientsModal
           recipe={recipeById.get(ingredientsFor.recipeId) as Recipe}

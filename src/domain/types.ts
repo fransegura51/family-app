@@ -156,6 +156,8 @@ export interface Recipe {
   imagePath: string | null
   tags: string[]
   ingredients: RecipeIngredient[]
+  // Raciones para las que está escrita la receta. null = desconocidas (nunca 0). Opcional para no romper llamadas antiguas.
+  servings?: number | null
 }
 
 export interface MenuEntry {

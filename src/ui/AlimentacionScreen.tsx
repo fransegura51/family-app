@@ -37,6 +37,7 @@ import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult 
 import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
 import { isValidServings, servingsFromSource } from '@/domain/recipeServings'
+import { servingsSourceNote } from '@/domain/servingsSourceNote'
 import { fetchImageFromUrl, importRecipeFromUrl } from '@/services/recipeUrlImport'
 import { listShoppingStores } from '@/data/shoppingStores'
 import type { ShoppingStoreEntry } from '@/domain/types'
@@ -1611,9 +1612,9 @@ function RecipeForm({
         <span className="recipe-field-label">Raciones (opcional)</span>
         <input type="number" inputMode="decimal" min={1} max={50} step={0.5} value={servingsText} onChange={(e) => setServingsText(e.target.value)} placeholder="¿Para cuántas personas es?" aria-label="Raciones" />
         {servingsSource && sourceValue !== null && (
+          // Usa siempre el valor ACTUAL del campo (servingsNow), no el punto medio original.
           <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-            Fuente: «{servingsSource}». PEPA calculará con {String(sourceValue).replace('.', ',')}{' '}
-            {servingsNow !== null && servingsNow !== sourceValue ? '(valor que has corregido tú)' : '(punto medio del rango)'}. Puedes cambiarlo antes de guardar.
+            {servingsSourceNote(servingsSource, sourceValue, Number.isFinite(servingsNow) ? servingsNow : null)}
           </p>
         )}
       </div>

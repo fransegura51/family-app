@@ -118,12 +118,11 @@ describe('revisión: corregible, con la fuente visible y sin presentar 6,5 como 
     expect(ALIM).toContain('onChange={(e) => setServingsText(e.target.value)}')
   })
   it('la revisión muestra «Fuente» con el texto original y explica que PEPA usa el punto medio', () => {
-    expect(ALIM).toContain('Fuente: «{servingsSource}». PEPA calculará con')
-    expect(ALIM).toContain('(punto medio del rango)')
+    expect(ALIM).toContain('servingsSourceNote(servingsSource, sourceValue')
     expect(ALIM).not.toMatch(/6,5 personas/)
   })
   it('si el usuario corrige el valor, la revisión lo indica y el texto de la fuente no cambia', () => {
-    expect(ALIM).toContain('(valor que has corregido tú)')
+    expect(ALIM).toContain('servingsNow')
     const onChange = ALIM.slice(ALIM.indexOf('onChange={(e) => setServingsText'), ALIM.indexOf('onChange={(e) => setServingsText') + 60)
     expect(onChange).not.toContain('setServingsSource')
   })

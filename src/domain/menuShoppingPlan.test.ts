@@ -77,9 +77,9 @@ describe('propuesta de compra — caso real pulpo a la gallega (4 → 10 comensa
 
   it('pulpo 1,5 kg → 3,75 kg (no 3,8)', () => expect(byName('Pulpo').quantity).toBe('3,75 kg'))
   it('patatas 4 unidades → 10 unidades', () => expect(byName('Patatas').quantity).toBe('10 unidades'))
-  it('pimentón dulce 1 cucharada → 2,5 cucharadas, marcada para revisar', () => {
+  it('pimentón dulce 1 cucharada → 2,5 cucharadas, sin aviso fraccionario', () => {
     expect(byName('Pimentón dulce').quantity).toBe('2,5 cucharadas')
-    expect(byName('Pimentón dulce').notes).toContain('fraccionario')
+    expect(byName('Pimentón dulce').notes).not.toContain('fraccionario')
   })
   it('pimentón picante 1 cucharadita → 2,5 cucharaditas', () => expect(byName('Pimentón picante').quantity).toBe('2,5 cucharaditas'))
   it('aceite 4 cucharadas → 10 cucharadas', () => expect(byName('Aceite de oliva').quantity).toBe('10 cucharadas'))
@@ -89,5 +89,29 @@ describe('propuesta de compra — caso real pulpo a la gallega (4 → 10 comensa
     buildMenuShoppingPlan([dish('d1', 'Pulpo', 'r1')], [r], 10, 'mixto')
     expect(r.ingredients[0].quantity).toBe('1,5')
     expect(r.ingredients[1].quantity).toBe('4')
+  })
+})
+
+describe('avisos — fraccionario solo para conteo indivisible; la cantidad desconocida conserva su aviso', () => {
+  const plan = (ingredients: RecipeIngredient[]) => buildMenuShoppingPlan([dish('d1', 'Plato', 'r1')], [recipe('r1', 4, ingredients)], 10, 'mixto')
+
+  it('3 huevos × 2,5 = 7,5 unidades → aviso fraccionario', () => {
+    const [line] = plan([ing('h', 'Huevo', '3', 'unidades')])
+    expect(line.quantity).toBe('7,5 unidades')
+    expect(line.notes).toEqual(['fraccionario'])
+  })
+
+  it('sal sin cantidad → aviso de cantidad no numérica, NUNCA el fraccionario', () => {
+    const [line] = plan([ing('s', 'Sal gorda', null, null)])
+    expect(line.quantity).toBeNull()
+    expect(line.notes).toContain('cantidad_no_numerica')
+    expect(line.notes).not.toContain('fraccionario')
+  })
+
+  it('cucharadas y cucharaditas con decimales → sin ningún aviso', () => {
+    const [spoon] = plan([ing('c', 'Aceite', '1', 'cucharada')])
+    const [tea] = plan([ing('t', 'Pimentón', '1', 'cucharadita')])
+    expect(spoon.notes).toEqual([])
+    expect(tea.notes).toEqual([])
   })
 })

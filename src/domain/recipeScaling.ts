@@ -88,6 +88,8 @@ export function scaleIngredientQuantity(
   const info = unitInfo(unit)
   if (!info) return { value, unit: originalUnit, scaled: false, reason: 'unidad_no_escalable', fractional: false }
   const scaled = (value * targetDiners) / originalServings
-  const fractional = (info.family === 'conteo' || info.family === 'cucharada' || info.family === 'cucharadita') && Math.abs(scaled - Math.round(scaled)) > 1e-9
+  // Solo el CONTEO es indivisible (huevos, patatas): ahí un decimal no es una cantidad comprable.
+  // Masa, volumen, cucharadas y cucharaditas son medidas continuas: 2,5 cucharadas es válido, sin aviso.
+  const fractional = info.family === 'conteo' && Math.abs(scaled - Math.round(scaled)) > 1e-9
   return { value: scaled, unit: displayUnit(info, scaled), scaled: true, reason: null, fractional }
 }

@@ -15,17 +15,26 @@ describe('escalado — factor 10 / 4 = 2,5 con valores exactos (sin redondear)',
   it('11. 4 unidades → 10 unidades', () => {
     expect(scale('4', 'unidades')).toMatchObject({ value: 10, unit: 'unidades', scaled: true, fractional: false })
   })
-  it('12. 1 cucharada → 2,5 cucharadas (no entero: fraccionario para revisar)', () => {
-    expect(scale('1', 'cucharada')).toMatchObject({ value: 2.5, unit: 'cucharadas', scaled: true, fractional: true })
+  it('3. 1 cucharada × 2,5 = 2,5 cucharadas → sin aviso (medida continua)', () => {
+    expect(scale('1', 'cucharada')).toMatchObject({ value: 2.5, unit: 'cucharadas', scaled: true, fractional: false })
   })
-  it('13. 1 cucharadita → 2,5 cucharaditas', () => {
-    expect(scale('1', 'cucharadita')).toMatchObject({ value: 2.5, unit: 'cucharaditas', scaled: true, fractional: true })
+  it('4. 1 cucharadita × 2,5 = 2,5 cucharaditas → sin aviso', () => {
+    expect(scale('1', 'cucharadita')).toMatchObject({ value: 2.5, unit: 'cucharaditas', scaled: true, fractional: false })
   })
   it('14. 4 cucharadas → 10 cucharadas', () => {
     expect(scale('4', 'cucharadas')).toMatchObject({ value: 10, unit: 'cucharadas', scaled: true, fractional: false })
   })
-  it('3 huevos × 2,5 = 7,5: se propone 7,5 marcado como fraccionario, nunca redondeado en silencio', () => {
+  it('1. 3 unidades × 2,5 = 7,5 unidades → aviso fraccionario (conteo indivisible), sin redondear', () => {
     expect(scale('3', 'unidades')).toMatchObject({ value: 7.5, scaled: true, fractional: true })
+  })
+  it('2. 4 unidades × 2,5 = 10 unidades → sin aviso', () => {
+    expect(scale('4', 'unidades')).toMatchObject({ value: 10, scaled: true, fractional: false })
+  })
+  it('5. 1,5 kg × 2,5 = 3,75 kg → sin aviso', () => {
+    expect(scale('1,5', 'kg')).toMatchObject({ value: 3.75, scaled: true, fractional: false })
+  })
+  it('6. cantidad desconocida → reason cantidad_no_numerica, nunca fractional', () => {
+    expect(scale(null, 'unidades')).toMatchObject({ value: null, scaled: false, reason: 'cantidad_no_numerica', fractional: false })
   })
   it('15. cantidad desconocida (null) sigue desconocida, sin inventar', () => {
     expect(scale(null, 'g')).toMatchObject({ value: null, scaled: false, reason: 'cantidad_no_numerica' })

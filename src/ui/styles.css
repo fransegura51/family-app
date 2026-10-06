@@ -5866,12 +5866,24 @@ textarea {
   font-size: 13px;
   margin: 4px 0;
 }
-/* Fila del plato en dos bloques apilados: arriba el nombre completo (sección debajo), abajo UNA barra de
-   acciones: ≡ · 📖 receta (truncada con …) · 🛒 ▲ ▼ ×. Los controles nunca se encogen ni saltan de línea. */
+/* Un plato es UN paquete: ≡ a la izquierda, centrada respecto a las líneas de la derecha (nombre, receta +
+   mandos, sección). La advertencia va fuera de esta fila, así que no altera el centrado de ≡. */
 .menu-dish {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+}
+.menu-dish > .drag-handle {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.menu-dish-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 .menu-dish-actionbar {
   display: flex;
@@ -5879,10 +5891,6 @@ textarea {
   align-items: center;
   gap: 2px;
   min-width: 0;
-  padding-bottom: 4px;
-}
-.menu-dish-actionbar > .drag-handle {
-  flex: 0 0 auto;
 }
 .menu-dish-main {
   width: 100%;
@@ -5890,13 +5898,34 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding: 8px 2px;
+  padding: 6px 2px 0;
   border: 0;
   background: none;
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+.menu-dish-meta {
+  width: 100%;
+  min-width: 0;
+  padding: 0 2px 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* Advertencia alimentaria: alineada con el nombre, debajo del paquete (no con el asa). */
+.menu-dish-warnings {
+  padding-left: 30px;
+}
+/* Separador fino entre un plato y el siguiente (no tras el último). */
+.menu-row-dish + .menu-row-dish {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin-top: 6px;
+  padding-top: 6px;
 }
 .menu-dish-actions {
   flex: 0 0 auto;
@@ -5912,7 +5941,7 @@ textarea {
 .menu-dish-recipe-link {
   flex: 1 1 0;
   min-width: 0;
-  padding: 4px 2px;
+  padding: 2px 2px;
   font-size: 12px;
   color: var(--primary, #4f46e5);
   text-decoration: underline;

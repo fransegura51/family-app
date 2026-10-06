@@ -241,31 +241,35 @@ export function MenuManager({
     const infos = isDishItem ? (conflictsByDish.get(dish.id) ?? []) : []
     const sectionLabel = isDishItem ? (resolved.visible.concat(resolved.hidden).find((v) => v.key === sectionKeyById.get(dish.id))?.label ?? null) : null
     const dragging = inSequence && drag.draggingId === dish.id
+    // Sección/tipo/origen: línea secundaria del plato. Solo presentación; mismas fuentes que antes.
+    const metaParts = [
+      inSequence && sectionLabel ? <span key="seccion">{sectionLabel}</span> : null,
+      !isDishItem ? <span key="tipo">{KIND_LABELS[dish.kind]}</span> : null,
+      isDishItem && mode === 'mixto' ? (
+        <span key="quien">{dish.preparedBy === 'familia' ? '🏠 Nosotros' : dish.preparedBy === 'proveedor' ? '🍴 Proveedor' : '❔ Sin indicar quién lo prepara'}</span>
+      ) : null,
+      dish.source === 'importado' ? <span key="importado">importado</span> : null,
+    ].filter((p) => p !== null)
     return (
-      <div key={dish.id} data-reorder-row={inSequence ? '' : undefined} className={dragging ? 'dayplan-row-dragging' : undefined} style={dragging ? { transform: `translateY(${drag.dragOffset}px)`, background: 'var(--card-bg)' } : undefined}>
+      <div key={dish.id} data-reorder-row={inSequence ? '' : undefined} className={[isDishItem ? 'menu-row-dish' : '', dragging ? 'dayplan-row-dragging' : ''].filter(Boolean).join(' ') || undefined} style={dragging ? { transform: `translateY(${drag.dragOffset}px)`, background: 'var(--card-bg)' } : undefined}>
         <div className={'menu-dish' + (dish.kind === 'heading' ? ' menu-dish-heading' : dish.kind === 'note' ? ' menu-dish-note-row' : '')}>
-          <button type="button" className="menu-dish-main" onClick={() => setDishSheet({ mode: 'edit', item: dish })}>
-            <span className="menu-dish-name">{dish.kind === 'heading' ? `— ${dish.name} —` : dish.name}</span>
-            {dish.notes && <span className="menu-dish-note">{dish.notes}</span>}
-            <span className="menu-dish-badges">
-              {inSequence && sectionLabel && <span>{sectionLabel}</span>}
-              {!isDishItem && <span>{KIND_LABELS[dish.kind]}</span>}
-              {isDishItem && mode === 'mixto' && <span>{dish.preparedBy === 'familia' ? '🏠 Nosotros' : dish.preparedBy === 'proveedor' ? '🍴 Proveedor' : '❔ Sin indicar quién lo prepara'}</span>}
-              {dish.source === 'importado' && <span>importado</span>}
-            </span>
-          </button>
-          <div className="menu-dish-actionbar">
           {inSequence && (
             <span className="drag-handle" style={{ touchAction: 'none' }} role="button" aria-label={`Arrastrar ${dish.name} para reordenar`} {...drag.handleProps(dish.id)}>
               ☰
             </span>
           )}
-          {tools && recipe && (
-            <Link to={recipeLinkPath(recipe.id, event.id)} className="menu-dish-recipe-link">
-              📖 {recipe.title}
-            </Link>
-          )}
-          <div className="menu-dish-actions">
+          <div className="menu-dish-content">
+            <button type="button" className="menu-dish-main" onClick={() => setDishSheet({ mode: 'edit', item: dish })}>
+              <span className="menu-dish-name">{dish.kind === 'heading' ? `— ${dish.name} —` : dish.name}</span>
+              {dish.notes && <span className="menu-dish-note">{dish.notes}</span>}
+            </button>
+            <div className="menu-dish-actionbar">
+              {tools && recipe && (
+                <Link to={recipeLinkPath(recipe.id, event.id)} className="menu-dish-recipe-link">
+                  📖 {recipe.title}
+                </Link>
+              )}
+              <div className="menu-dish-actions">
           {tools && recipe && recipe.ingredients.length > 0 && (
             <button type="button" className="link-button" aria-label={`Elegir ingredientes de ${dish.name} para Compras`} onClick={() => setIngredientsFor(dish)}>
               🛒
@@ -281,17 +285,27 @@ export function MenuManager({
               </button>
             </>
           )}
-          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel={`Borrar ${dish.name}`} onConfirm={() => void deleteDish(dish.id)} />
-          </div>
+              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel={`Borrar ${dish.name}`} onConfirm={() => void deleteDish(dish.id)} />
+              </div>
+            </div>
+            {metaParts.length > 0 && (
+              <button type="button" className="menu-dish-meta" onClick={() => setDishSheet({ mode: 'edit', item: dish })}>
+                <span className="menu-dish-badges">{metaParts}</span>
+              </button>
+            )}
           </div>
         </div>
-        {infos.map((info) => (
-          <details key={`${dish.id}-${info.category}`} className="menu-conflict">
-            <summary>⚠️ {info.headline}</summary>
-            <p>{info.detail}</p>
-            <p className="muted">Es un aviso para revisar, no una certeza: confírmalo con quien prepara el plato o con el restaurante.</p>
-          </details>
-        ))}
+        {infos.length > 0 && (
+          <div className="menu-dish-warnings">
+            {infos.map((info) => (
+              <details key={`${dish.id}-${info.category}`} className="menu-conflict">
+                <summary>⚠️ {info.headline}</summary>
+                <p>{info.detail}</p>
+                <p className="muted">Es un aviso para revisar, no una certeza: confírmalo con quien prepara el plato o con el restaurante.</p>
+              </details>
+            ))}
+          </div>
+        )}
       </div>
     )
   }

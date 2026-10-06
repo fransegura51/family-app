@@ -127,36 +127,57 @@ describe('Alimentación — ?receta abre esa receta una sola vez y recuerda el e
 // Problema 1 (móvil estrecho): el nombre no queda aplastado en una fila horizontal rígida. El reparto visual de
 // anchos vive en styles.css y se comprueba a ancho de iPhone (no se puede leer CSS desde estos tests); aquí se
 // fija la ESTRUCTURA que hace posible ese reparto: nombre+receta en un bloque propio, acciones en otro.
-describe('Menú — la fila del plato: nombre arriba, UNA barra de acciones debajo (≡ · 📖 receta · 🛒 ▲ ▼ ×)', () => {
-  const actionbarStart = () => MENU_SRC.indexOf('<div className="menu-dish-actionbar">')
+describe('Menú — un plato es un paquete: ≡ junto al bloque; nombre, receta+mandos y sección; advertencia fuera', () => {
+  const at = (needle: string) => MENU_SRC.indexOf(needle)
 
-  it('el nombre (botón principal) va ANTES de la barra de acciones: nunca dentro de ella', () => {
-    expect(MENU_SRC).toContain('<div className="menu-dish-actionbar">')
-    const beforeBar = MENU_SRC.slice(0, actionbarStart())
-    expect(beforeBar).toContain('className="menu-dish-main"')
-    const bar = MENU_SRC.slice(actionbarStart(), MENU_SRC.indexOf('ConfirmIconButton', actionbarStart()) + 200)
+  it('el asa ≡ está junto al bloque de contenido (no dentro de la barra de acciones)', () => {
+    const handle = at('className="drag-handle"')
+    const content = at('<div className="menu-dish-content">')
+    const bar = at('<div className="menu-dish-actionbar">')
+    expect(handle).toBeGreaterThan(-1)
+    expect(handle).toBeLessThan(content)
+    expect(content).toBeLessThan(bar)
+  })
+
+  it('dentro del contenido, el orden es nombre → barra de receta/mandos → sección (meta)', () => {
+    const name = at('className="menu-dish-main"')
+    const bar = at('<div className="menu-dish-actionbar">')
+    const meta = at('className="menu-dish-meta"')
+    expect(name).toBeLessThan(bar)
+    expect(bar).toBeLessThan(meta)
+  })
+
+  it('la barra de receta+mandos no contiene el nombre del plato', () => {
+    const bar = MENU_SRC.slice(at('<div className="menu-dish-actionbar">'), at('className="menu-dish-meta"'))
     expect(bar).not.toContain('menu-dish-name')
   })
 
-  it('la barra de acciones contiene ≡ (arrastrar), la receta y el grupo de controles, en ese orden', () => {
-    const bar = MENU_SRC.slice(actionbarStart())
-    const handle = bar.indexOf('className="drag-handle"')
-    const link = bar.indexOf('className="menu-dish-recipe-link"')
-    const group = bar.indexOf('<div className="menu-dish-actions">')
-    expect(handle).toBeGreaterThan(-1)
-    expect(handle).toBeLessThan(link)
-    expect(link).toBeLessThan(group)
-  })
-
-  it('los controles de la derecha (🛒 ▲ ▼ ×) están en el grupo de acciones, sin cambiar su lógica', () => {
-    const group = MENU_SRC.slice(MENU_SRC.indexOf('<div className="menu-dish-actions">'))
+  it('la receta va a la izquierda de la barra y los mandos (🛒 ▲ ▼ ×) en su grupo de la derecha', () => {
+    const bar = MENU_SRC.slice(at('<div className="menu-dish-actionbar">'))
+    expect(bar.indexOf('className="menu-dish-recipe-link"')).toBeLessThan(bar.indexOf('<div className="menu-dish-actions">'))
+    const group = MENU_SRC.slice(at('<div className="menu-dish-actions">'))
     expect(group).toContain('setIngredientsFor(dish)')
     expect(group).toContain('moveItem(dish.id, -1)')
     expect(group).toContain('moveItem(dish.id, 1)')
     expect(group).toContain('onConfirm={() => void deleteDish(dish.id)}')
   })
 
-  it('la receta sigue siendo un enlace a recipeLinkPath (navegación validada, sin cambios)', () => {
+  it('la sección/tipo (meta) es una línea propia debajo, y sigue abriendo la edición como antes', () => {
+    const meta = MENU_SRC.slice(at('className="menu-dish-meta"'), at('className="menu-dish-meta"') + 200)
+    expect(meta).toContain('setDishSheet({ mode: \'edit\', item: dish })')
+  })
+
+  it('la advertencia alimentaria va DESPUÉS del paquete, en su propio bloque (no altera el centrado de ≡)', () => {
+    const warnings = at('<div className="menu-dish-warnings">')
+    expect(warnings).toBeGreaterThan(at('className="menu-dish-meta"'))
+    expect(MENU_SRC.slice(at('<div className="menu-dish-content">'), warnings)).not.toContain('menu-conflict')
+  })
+
+  it('las filas de platos llevan la clase de separación entre platos', () => {
+    expect(MENU_SRC).toContain("isDishItem ? 'menu-row-dish' : ''")
+  })
+
+  it('la receta vinculada sigue siendo el enlace de siempre (navegación validada, sin cambios)', () => {
     expect(MENU_SRC).toContain('<Link to={recipeLinkPath(recipe.id, event.id)} className="menu-dish-recipe-link">')
   })
 })

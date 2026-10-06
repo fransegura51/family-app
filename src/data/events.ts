@@ -33,7 +33,7 @@ import {
 } from '@/domain/eventFood'
 import { foodMomentKeyFromSource, foodMomentSourceKey, timeKey, type DayPlanPatch } from '@/domain/eventDayPlan'
 import { normalizeStoredSections, type StoredSection } from '@/domain/eventMenuHub'
-import { menuSequence, placeNewIds, type MenuPlacement } from '@/domain/eventMenuSequence'
+import { type MenuPlacement } from '@/domain/eventMenuSequence'
 import { computeFoodNeedsState } from '@/domain/eventDietaryNeeds'
 import { deriveOperationalDate } from '@/domain/eventCelebration'
 import { calendarEntryFor, calendarRowMatches, planCalendarSync, type CalendarRowState } from '@/domain/eventCalendarSync'
@@ -1090,7 +1090,7 @@ export async function deleteEventBudgetItem(id: string): Promise<void> {
 // (selector de Recetas); el plato en sí no se traspasa.
 // ---------------------------------------------------------------------
 
-const MENU_ITEM_SELECT = 'id, event_id, family_id, name, category, quantity_note, transferred, sort_order, created_at, recipe_id, notes, source, document_id, prepared_by, kind'
+const MENU_ITEM_SELECT = 'id, event_id, family_id, name, category, quantity_note, transferred, sort_order, created_at, recipe_id, notes, source, document_id, prepared_by, kind, requires_purchase'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapMenuItem(r: any): EventMenuItem {
@@ -1110,6 +1110,8 @@ function mapMenuItem(r: any): EventMenuItem {
     documentId: r.document_id ?? null,
     preparedBy: r.prepared_by === 'familia' || r.prepared_by === 'proveedor' ? r.prepared_by : null,
     kind: r.kind === 'heading' || r.kind === 'note' ? r.kind : 'dish',
+    // «No hay que comprarlo» (migración 0202). Por defecto true: el comportamiento de siempre.
+    requiresPurchase: r.requires_purchase !== false,
   }
 }
 
@@ -1183,39 +1185,27 @@ export async function importEventMenuItems(
   source: { documentId: string | null; placement?: MenuPlacement },
 ): Promise<{ count: number; ids: string[] }> {
   if (rows.length === 0) return { count: 0, ids: [] }
-  const familyId = await currentFamilyId()
-  const { data: last, error: lastError } = await supabase.from('event_menu_items').select('sort_order').eq('event_id', eventId).order('sort_order', { ascending: false }).limit(1)
-  if (lastError) throw lastError
-  const base = last && last.length > 0 ? Number(last[0].sort_order) : 0
-  const { data, error } = await supabase
-    .from('event_menu_items')
-    .insert(
-      rows.map((row, index) => ({
-        event_id: eventId,
-        family_id: familyId,
-        name: row.text.trim(),
-        category: row.kind === 'dish' ? row.category : null,
-        notes: row.notes,
-        sort_order: base + (index + 1) * 1000,
-        source: 'importado',
-        document_id: source.documentId,
-        kind: row.kind,
-      })),
-    )
-    .select('id, sort_order')
-  if (error) throw error
-  const ids = [...data].sort((x, y) => Number(x.sort_order) - Number(y.sort_order)).map((r) => r.id as string)
+  // UNA sola operación en servidor (RPC import_event_menu, migración 0204): inserta y coloca los platos en la misma
+  // transacción. Si algo falla, no queda ningún plato de esta importación (todo o nada).
   const placement = source.placement ?? { type: 'end' }
-  if (placement.type !== 'end') {
-    const existing = (await listEventMenuItems(eventId)).filter((i) => !ids.includes(i.id))
-    await reorderEventMenuItems(placeNewIds(menuSequence(existing).map((i) => i.id), ids, placement))
+  const { data, error } = await supabase.rpc('import_event_menu', {
+    p_event_id: eventId,
+    p_document_id: source.documentId,
+    p_rows: rows.map((row) => ({ text: row.text.trim(), kind: row.kind, category: row.kind === 'dish' ? row.category : null, notes: row.notes })),
+    p_placement: placement,
+  })
+  if (error) {
+    const message = typeof error.message === 'string' ? error.message : ''
+    if (message.includes('document_not_found')) throw new Error('El documento original ya no está disponible. No se ha guardado nada.')
+    throw new Error('No se ha podido guardar el menú. No se ha guardado ningún plato; puedes volver a intentarlo.')
   }
+  const ids = (data as string[]) ?? []
   return { count: ids.length, ids }
 }
 
 export async function updateEventMenuItem(
   id: string,
-  patch: Partial<{ name: string; category: string | null; notes: string | null; quantityNote: string | null; recipeId: string | null; preparedBy: 'familia' | 'proveedor' | null; kind: EventMenuItemKind }>,
+  patch: Partial<{ name: string; category: string | null; notes: string | null; quantityNote: string | null; recipeId: string | null; preparedBy: 'familia' | 'proveedor' | null; kind: EventMenuItemKind; requiresPurchase: boolean }>,
 ): Promise<void> {
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (patch.name !== undefined) update.name = patch.name.trim()
@@ -1225,6 +1215,7 @@ export async function updateEventMenuItem(
   if (patch.recipeId !== undefined) update.recipe_id = patch.recipeId
   if (patch.preparedBy !== undefined) update.prepared_by = patch.preparedBy
   if (patch.kind !== undefined) update.kind = patch.kind
+  if (patch.requiresPurchase !== undefined) update.requires_purchase = patch.requiresPurchase
   const { error } = await supabase.from('event_menu_items').update(update).eq('id', id)
   if (error) throw error
 }

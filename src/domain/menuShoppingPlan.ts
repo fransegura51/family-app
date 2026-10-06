@@ -67,7 +67,7 @@ export function explicitProductList(name: string): string[] | null {
 // Un plato es «de compra directa» cuando NO tiene receta enlazada y la familia lo prepara según el modo de comida
 // (la misma regla que el 🛒 de cada plato). Con receta enlazada, la receta manda: nunca es directo.
 export function isDirectShoppingDish(dish: EventMenuItem, mode: MenuToolsMode): boolean {
-  return !dish.recipeId && dishHasKitchenTools(mode, dish.preparedBy, dish.kind)
+  return dish.requiresPurchase !== false && !dish.recipeId && dishHasKitchenTools(mode, dish.preparedBy, dish.kind)
 }
 
 // Propuestas de un plato sin receta: sus productos explícitos, o el propio nombre del plato. Sin cantidad.
@@ -114,7 +114,7 @@ export function buildMenuShoppingPlan(items: EventMenuItem[], recipes: Recipe[],
       direct.push(...directShoppingLines(dish))
       continue
     }
-    if (!dish.recipeId || !dishHasKitchenTools(mode, dish.preparedBy, dish.kind)) continue
+    if (dish.requiresPurchase === false || !dish.recipeId || !dishHasKitchenTools(mode, dish.preparedBy, dish.kind)) continue
     const recipe = recipeById.get(dish.recipeId)
     if (!recipe) continue
     for (const ing of recipe.ingredients) {

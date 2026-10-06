@@ -212,7 +212,7 @@ describe('Herramientas contextuales: Recetas y Compras (27–36)', () => {
     expect(MENU).toContain('Sin indicar')
   })
   it('33/36. un plato sin receta no genera ingredientes; el botón 🛒 solo existe con receta con ingredientes; nada se envía solo', () => {
-    expect(MENU).toContain('tools && recipe && recipe.ingredients.length > 0')
+    expect(MENU).toContain('tools && dish.requiresPurchase !== false && recipe && recipe.ingredients.length > 0')
     expect(MENU).toContain('Elegir ingredientes de')
     // el único camino a Compras es el selector (confirmación explícita)
     expect(MENU).not.toContain('addRecipeIngredientsToShoppingList')

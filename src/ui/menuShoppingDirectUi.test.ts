@@ -8,12 +8,12 @@ const FOOD = read('src/data/food.ts')
 
 describe('carrito de un plato sin receta', () => {
   it('el 🛒 directo aparece solo para platos sin receta enlazada y de compra de la familia', () => {
-    expect(MENU).toContain('{tools && !dish.recipeId && (')
+    expect(MENU).toContain('{tools && dish.requiresPurchase !== false && !dish.recipeId && (')
     expect(MENU).toContain('aria-label={`Preparar compra de ${dish.name}`}')
   })
 
   it('el 🛒 con receta sigue exactamente igual (ingredientes de la receta)', () => {
-    expect(MENU).toContain('{tools && recipe && recipe.ingredients.length > 0 && (')
+    expect(MENU).toContain('{tools && dish.requiresPurchase !== false && recipe && recipe.ingredients.length > 0 && (')
     expect(MENU).toContain('onClick={() => setIngredientsFor(dish)}')
   })
 
@@ -61,10 +61,11 @@ describe('revisión: nombre editable, producto a mano, confirmación explícita'
 })
 
 describe('datos: el guardado de compra directa usa la misma función de Compras', () => {
-  it('addMenuShoppingLines guarda sin cantidad inventada (unidad vacía, prioridad normal)', () => {
+  it('addMenuShoppingLines guarda en UNA operación atómica (RPC) con cantidad null cuando es desconocida', () => {
     const start = FOOD.indexOf('export async function addMenuShoppingLines')
     const fn = FOOD.slice(start, FOOD.indexOf('\n}', start))
-    expect(fn).toContain("unit: ''")
-    expect(fn).toContain("priority: 'normal'")
+    expect(fn).toContain("supabase.rpc('add_menu_shopping_lines'")
+    expect(fn).toContain("quantity === '' ? null : line.quantity")
+    expect(fn).not.toContain('addShoppingItem')
   })
 })

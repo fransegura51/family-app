@@ -93,7 +93,46 @@ function from(table: string) {
 }
 
 // reorder_event_menu_items (0196), fiel al SQL: TODOS los elementos del evento, en el orden recibido, de 1000 en 1000.
+// import_event_menu (0204), fiel al SQL: inserta todo con orden base+i*1000 y, si no es al final, reconstruye el
+// orden completo dentro de la MISMA operación (todo o nada). Platos existentes solo cambian de posición.
+function importRpc(args: Record<string, unknown>) {
+  const eventId = args.p_event_id as string
+  const rows = args.p_rows as { text: string; kind: string; category: string | null; notes: string | null }[]
+  const placement = (args.p_placement ?? { type: 'end' }) as { type: string; itemId?: string }
+  const table = (db.event_menu_items ??= [])
+  const base = Math.max(0, ...table.filter((r) => r.event_id === eventId).map((r) => Number(r.sort_order)))
+  const newIds: string[] = rows.map((row, i) => {
+    const id = `event_menu_items-${++idSeq}`
+    table.push({
+      id,
+      event_id: eventId,
+      family_id: 'f1',
+      name: row.text.trim(),
+      category: row.kind === 'dish' ? row.category : null,
+      notes: row.notes,
+      sort_order: base + (i + 1) * 1000,
+      source: 'importado',
+      document_id: args.p_document_id ?? null,
+      kind: row.kind,
+    })
+    return id
+  })
+  if (placement.type !== 'end') {
+    const old = table
+      .filter((r) => r.event_id === eventId && !newIds.includes(r.id as string))
+      .sort((a, b) => Number(a.sort_order) - Number(b.sort_order))
+      .map((r) => r.id as string)
+    const pos = placement.type === 'start' ? 0 : old.indexOf(placement.itemId as string) + 1
+    const final = [...old.slice(0, pos), ...newIds, ...old.slice(pos)]
+    final.forEach((id, i) => {
+      ;(table.find((r) => r.id === id) as Row).sort_order = (i + 1) * 1000
+    })
+  }
+  return Promise.resolve({ data: newIds, error: null })
+}
+
 function rpc(name: string, args: Record<string, unknown>) {
+  if (name === 'import_event_menu') return importRpc(args)
   if (name !== 'reorder_event_menu_items') return Promise.resolve({ error: { message: 'función desconocida' } })
   const ids = args.p_ids as string[]
   const table = db.event_menu_items ?? []

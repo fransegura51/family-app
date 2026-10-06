@@ -21,7 +21,7 @@ describe('Preparar compra del menú — revisión antes de guardar', () => {
 
   it('la revisión solo llama a addMenuShoppingLines dentro de confirm (tras pulsar el botón)', () => {
     const confirmBody = MODAL.slice(MODAL.indexOf('async function confirm()'), MODAL.indexOf('return (', MODAL.indexOf('async function confirm()')))
-    expect(confirmBody).toContain('await addMenuShoppingLines(chosen, eventId)')
+    expect(confirmBody).toContain('await addMenuShoppingLines(chosen, eventId, requestId)')
     expect(MODAL.match(/addMenuShoppingLines\(/g)?.length).toBe(1)
   })
 
@@ -35,10 +35,11 @@ describe('Preparar compra del menú — revisión antes de guardar', () => {
     expect(MODAL).toContain('Para: {row.line ? [...new Set(row.line.sources.map((s) => s.dishName))].join')
   })
 
-  it('la compra guarda con addShoppingItem (mismo camino que el 🛒 de un plato), sin automatizar nada', () => {
+  it('la compra se guarda con una sola llamada atómica al servidor, con identificador de petición', () => {
     const fn = FOOD.slice(FOOD.indexOf('export async function addMenuShoppingLines'))
-    expect(fn).toContain('await addShoppingItem(')
-    expect(fn).toContain("priority: 'normal'")
+    expect(fn).toContain("supabase.rpc('add_menu_shopping_lines'")
+    expect(fn).toContain('p_request_id: requestId')
+    expect(MODAL).toContain('const [requestId] = useState(() => crypto.randomUUID())')
   })
 })
 

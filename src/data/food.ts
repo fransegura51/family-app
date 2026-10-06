@@ -267,10 +267,19 @@ export async function deleteMenuEntry(id: string): Promise<void> {
 // Registro de alimentación (Skill 14/16)
 // ---------------------------------------------------------------------
 
-// «Preparar compra del menú»: guarda SOLO las líneas que la familia confirmó en la revisión. Usa el mismo
-// addShoppingItem que el 🛒 de cada plato; nunca se llama sin confirmación explícita.
-export async function addMenuShoppingLines(lines: { name: string; quantity: string; store: string | null }[], eventId: string): Promise<void> {
-  for (const line of lines) {
-    await addShoppingItem({ name: line.name, quantity: line.quantity, unit: '', priority: 'normal', tripId: null, store: line.store, eventId })
+// «Preparar compra del menú»: guarda SOLO las líneas que la familia confirmó, en UNA sola operación (RPC
+// add_menu_shopping_lines, migración 0203): todo o nada. `requestId` identifica la confirmación: si se reintenta
+// con el mismo identificador, el servidor devuelve lo ya guardado y no duplica nada. Cantidad desconocida = null.
+export async function addMenuShoppingLines(lines: { name: string; quantity: string; store: string | null }[], eventId: string, requestId: string): Promise<void> {
+  const { error } = await supabase.rpc('add_menu_shopping_lines', {
+    p_event_id: eventId,
+    p_request_id: requestId,
+    p_lines: lines.map((line) => ({ name: line.name, quantity: line.quantity === '' ? null : line.quantity, store: line.store })),
+  })
+  if (error) {
+    const message = typeof error.message === 'string' ? error.message : ''
+    if (message.includes('unknown_store')) throw new Error('Una de las tiendas ya no existe. No se ha añadido nada a Compras.')
+    if (message.includes('event_not_found') || message.includes('forbidden')) throw new Error('No tienes acceso a este evento. No se ha añadido nada a Compras.')
+    throw new Error('No se ha podido guardar la compra. No se ha añadido nada a Compras; puedes volver a intentarlo.')
   }
 }

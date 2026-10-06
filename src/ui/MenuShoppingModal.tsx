@@ -42,6 +42,8 @@ export function MenuShoppingModal({
   const [rows, setRows] = useState<ReviewRow[]>(() =>
     lines.map((l) => ({ id: l.key, line: l, name: l.name, include: true, quantity: l.quantity ?? '', store: '' })),
   )
+  // Identificador de ESTA confirmación: un reintento con el mismo valor no duplica nada en Compras.
+  const [requestId] = useState(() => crypto.randomUUID())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const selected = rows.filter((r) => r.include && r.name.trim()).length
@@ -63,11 +65,12 @@ export function MenuShoppingModal({
     setSaving(true)
     setError(null)
     try {
-      await addMenuShoppingLines(chosen, eventId)
+      await addMenuShoppingLines(chosen, eventId, requestId)
       showToast(`Añadidos ${chosen.length} a Compras`)
       onSaved()
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir a Compras; no se ha guardado nada más'))
+      // Atómico en servidor: si falla, no queda nada guardado de esta confirmación.
+      setError(errorMessage(err, 'No se ha podido guardar la compra. No se ha añadido nada a Compras.'))
     } finally {
       setSaving(false)
     }

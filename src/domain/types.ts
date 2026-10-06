@@ -795,6 +795,8 @@ export interface EventMenuItem {
   documentId: string | null
   // «Menú del evento» (migración 0195): quién se encarga de ESTE plato en un evento mixto. null = sin indicar.
   preparedBy: 'familia' | 'proveedor' | null
+  // «No hay que comprarlo» (migración 0202): excepción explícita. undefined/true = comportamiento de siempre.
+  requiresPurchase?: boolean
   // Migración 0196: qué es el elemento. 'dish' = plato; 'heading' = encabezado/separador con significado
   // («Cambio de Tercio», «Cena»…); 'note' = texto informativo. Solo un plato tiene sección, receta, origen y cuenta
   // como alimento. sortOrder es su POSICIÓN explícita en el menú (la sección es solo clasificación).

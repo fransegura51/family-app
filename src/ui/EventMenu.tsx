@@ -225,6 +225,7 @@ export function MenuManager({
         notes: values.notes,
         recipeId: isDishKind ? values.recipeId : null,
         preparedBy: isDishKind ? values.preparedBy : null,
+        requiresPurchase: isDishKind ? values.requiresPurchase : true,
       })
     } else {
       const id = await addEventMenuItem(event.id, values.name, isDishKind ? values.category : null, null, { notes: values.notes, recipeId: values.recipeId, preparedBy: values.preparedBy, kind: values.kind })
@@ -233,6 +234,7 @@ export function MenuManager({
         ? placementForNewDish(sequence, (item) => sectionKeyById.get(item.id) ?? null, sectionKey, resolved.config.map((c) => c.key))
         : ({ type: 'end' } as const)
       if (placement.type !== 'end') await reorderEventMenuItems(placeNewIds(sequence.map((i) => i.id), [id], placement))
+      if (isDishKind && !values.requiresPurchase) await updateEventMenuItem(id, { requiresPurchase: false })
     }
     setDishSheet(null)
     await onReload()
@@ -301,12 +303,12 @@ export function MenuManager({
                 </Link>
               )}
               <div className="menu-dish-actions">
-          {tools && recipe && recipe.ingredients.length > 0 && (
+          {tools && dish.requiresPurchase !== false && recipe && recipe.ingredients.length > 0 && (
             <button type="button" className="link-button" aria-label={`Elegir ingredientes de ${dish.name} para Compras`} onClick={() => setIngredientsFor(dish)}>
               🛒
             </button>
           )}
-          {tools && !dish.recipeId && (
+          {tools && dish.requiresPurchase !== false && !dish.recipeId && (
             // Plato sin receta: propuesta basada solo en su nombre (o sus productos explícitos), siempre revisada.
             <button type="button" className="link-button" aria-label={`Preparar compra de ${dish.name}`} onClick={() => setDirectDish(dish)}>
               🛒
@@ -567,6 +569,8 @@ interface DishValues {
   notes: string | null
   recipeId: string | null
   preparedBy: 'familia' | 'proveedor' | null
+  // «No hay que comprarlo» (excepción explícita; por defecto se compra como siempre).
+  requiresPurchase: boolean
 }
 
 export function DishSheet({
@@ -590,6 +594,7 @@ export function DishSheet({
   const [category, setCategory] = useState(initial ? (initial.category ?? '') : target.mode === 'new' ? target.sectionLabel : '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
   const [preparedBy, setPreparedBy] = useState<'familia' | 'proveedor' | ''>(initial?.preparedBy ?? '')
+  const [requiresPurchase, setRequiresPurchase] = useState(initial?.requiresPurchase !== false)
   const [recipeId, setRecipeId] = useState(initial?.recipeId ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -616,6 +621,7 @@ export function DishSheet({
         notes: notes.trim() || null,
         recipeId: recipeId || null,
         preparedBy: mode === 'mixto' ? (preparedBy || null) : (initial?.preparedBy ?? null),
+        requiresPurchase: kind === 'dish' ? requiresPurchase : true,
       })
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar el plato'))
@@ -667,6 +673,12 @@ export function DishSheet({
             Nota (opcional)
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} />
           </label>
+          {isDishKind && (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="checkbox" checked={!requiresPurchase} onChange={(e) => setRequiresPurchase(!e.target.checked)} disabled={saving} />
+              No hay que comprarlo (sigue en el menú, sin carrito ni compra)
+            </label>
+          )}
           {isDishKind && mode === 'mixto' && (
             <label>
               ¿Quién lo prepara?

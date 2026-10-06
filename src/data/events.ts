@@ -11,6 +11,7 @@ import { listExpenses, listBudgetCategories } from '@/data/finance'
 // propio de Eventos.
 import { replaceEventMembers } from '@/data/calendar'
 import { distinctTagColor } from '@/domain/colors'
+import { proposeTaskPriority, type PriorityReason, type TaskPriority } from '@/domain/eventTaskPriority'
 import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary, type FoodNeedsAlertInput } from '@/domain/events'
 import { reconcilePairGeneration, type DesiredPairGeneration, type ReconcileAction, type ReconcileResult } from '@/domain/eventPairDecisions'
 import {
@@ -306,14 +307,21 @@ export async function createEvent(input: {
   const tasks = generateAutoTasks(input.type, input.eventDate ?? null)
   if (tasks.length > 0) {
     const { error: tasksError } = await supabase.from('event_tasks').insert(
-      tasks.map((t, i) => ({
-        event_id: event.id,
-        family_id: familyId,
-        title: t.title,
-        due_date: t.dueDate,
-        source: 'auto',
-        sort_order: i,
-      })),
+      tasks.map((t, i) => {
+        // Prioridad inicial propuesta por PEPA, con su motivo guardado (no recalculado después).
+        const proposal = proposeTaskPriority({ title: t.title, dependsOnDecision: false })
+        return {
+          event_id: event.id,
+          family_id: familyId,
+          title: t.title,
+          due_date: t.dueDate,
+          source: 'auto',
+          sort_order: i,
+          priority: proposal.priority,
+          priority_source: 'pepa',
+          priority_reason: proposal.reason,
+        }
+      }),
     )
     if (tasksError) throw tasksError
   }
@@ -470,7 +478,7 @@ export async function duplicateEvent(id: string): Promise<string> {
 // Preparativos / tareas
 // ---------------------------------------------------------------------
 
-const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id, decision_id'
+const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id, decision_id, priority, priority_source, priority_reason, notes, due_time, completed_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapTask(r: any): EventTask {
@@ -487,6 +495,14 @@ function mapTask(r: any): EventTask {
     assignedMemberId: r.assigned_member_id,
     calendarEventId: r.calendar_event_id,
     decisionId: r.decision_id,
+    priority: (r.priority ?? null) as TaskPriority | null,
+    prioritySource: r.priority_source ?? null,
+    priorityReason: (r.priority_reason ?? null) as PriorityReason | null,
+    notes: r.notes ?? null,
+    dueTime: r.due_time ? String(r.due_time).slice(0, 5) : null,
+    completedAt: r.completed_at ?? null,
+    responsibleMemberIds: [],
+    helpers: [],
   }
 }
 
@@ -498,24 +514,71 @@ export async function listEventTasks(eventId: string): Promise<EventTask[]> {
     .order('due_date', { ascending: true, nullsFirst: false })
     .order('sort_order', { ascending: true })
   if (error) throw error
-  return data.map(mapTask)
+  const tasks = data.map(mapTask)
+  if (tasks.length === 0) return tasks
+  const [{ data: memberRows, error: memberError }, { data: helperRows, error: helperError }] = await Promise.all([
+    supabase.from('event_task_members').select('task_id, member_id').eq('event_id', eventId),
+    supabase.from('event_task_helpers').select('id, task_id, helper_id, helper_name, helper_label').eq('event_id', eventId),
+  ])
+  if (memberError) throw memberError
+  if (helperError) throw helperError
+  const byId = new Map(tasks.map((t) => [t.id, t]))
+  for (const r of memberRows ?? []) byId.get(r.task_id as string)?.responsibleMemberIds?.push(r.member_id as string)
+  for (const r of helperRows ?? []) {
+    byId.get(r.task_id as string)?.helpers?.push({ id: r.id as string, helperId: (r.helper_id ?? null) as string | null, name: r.helper_name as string, label: (r.helper_label ?? null) as string | null })
+  }
+  return tasks
 }
 
-export async function addEventTask(eventId: string, title: string, dueDate: string | null = null, decisionId: string | null = null): Promise<void> {
+export async function addEventTask(
+  eventId: string,
+  title: string,
+  dueDate: string | null = null,
+  decisionId: string | null = null,
+  extras: { priority?: TaskPriority | null; notes?: string | null; dueTime?: string | null } = {},
+): Promise<void> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase
-    .from('event_tasks')
-    .insert({ event_id: eventId, family_id: familyId, title: title.trim(), due_date: dueDate, source: decisionId ? 'auto' : 'manual', sort_order: Date.now(), decision_id: decisionId })
+  // Prioridad inicial: la que indique el usuario, o la propuesta de PEPA con su motivo (guardado, no recalculado).
+  const proposal = proposeTaskPriority({ title, dependsOnDecision: decisionId !== null })
+  const priorityFromUser = extras.priority !== undefined
+  const { error } = await supabase.from('event_tasks').insert({
+    event_id: eventId,
+    family_id: familyId,
+    title: title.trim(),
+    due_date: dueDate,
+    source: decisionId ? 'auto' : 'manual',
+    sort_order: Date.now(),
+    decision_id: decisionId,
+    priority: priorityFromUser ? extras.priority : proposal.priority,
+    priority_source: priorityFromUser ? 'usuario' : 'pepa',
+    priority_reason: priorityFromUser ? null : proposal.reason,
+    notes: extras.notes?.trim() ? extras.notes.trim() : null,
+    // Hora solo con fecha: nunca se inventa 00:00.
+    due_time: dueDate && extras.dueTime ? extras.dueTime : null,
+  })
   if (error) throw error
 }
 
 export async function updateEventTask(
   id: string,
-  patch: { title?: string; done?: boolean; dueDate?: string | null; assignedMemberId?: string | null },
+  patch: { title?: string; done?: boolean; dueDate?: string | null; assignedMemberId?: string | null; priority?: TaskPriority | null; notes?: string | null; dueTime?: string | null },
 ): Promise<void> {
   const update: Record<string, unknown> = {}
   if (patch.title !== undefined) update.title = patch.title.trim()
-  if (patch.done !== undefined) update.done = patch.done
+  if (patch.done !== undefined) {
+    update.done = patch.done
+    update.completed_at = patch.done ? new Date().toISOString() : null
+  }
+  // Una prioridad elegida por el usuario (incluido «Sin prioridad») manda: se marca como 'usuario' y PEPA no la recalcula.
+  if (patch.priority !== undefined) {
+    update.priority = patch.priority
+    update.priority_source = 'usuario'
+    update.priority_reason = null
+  }
+  if (patch.notes !== undefined) update.notes = patch.notes?.trim() ? patch.notes.trim() : null
+  if (patch.dueTime !== undefined) update.due_time = patch.dueTime
+  // La hora nunca queda sin fecha: si se quita la fecha, se quita la hora.
+  if (patch.dueDate === null) update.due_time = null
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate
   // Fase 6 — responsable de la tarea: nullable, nunca inferido (ver
   // migración 0162_event_task_assignee.sql) — "sin asignar" es un
@@ -2153,9 +2216,18 @@ async function executeReconcileActions(eventId: string, familyId: string, decisi
   for (const action of result.actions) {
     switch (action.op) {
       case 'create_task': {
-        const { error } = await supabase
-          .from('event_tasks')
-          .insert({ event_id: eventId, family_id: familyId, title: action.title, source: 'auto', sort_order: Date.now(), decision_id: decisionId })
+        const proposal = proposeTaskPriority({ title: action.title, dependsOnDecision: true })
+        const { error } = await supabase.from('event_tasks').insert({
+          event_id: eventId,
+          family_id: familyId,
+          title: action.title,
+          source: 'auto',
+          sort_order: Date.now(),
+          decision_id: decisionId,
+          priority: proposal.priority,
+          priority_source: 'pepa',
+          priority_reason: proposal.reason,
+        })
         if (error) throw error
         break
       }

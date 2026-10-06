@@ -40,7 +40,10 @@ describe('BUG TAREA-CALENDARIO-01 — causa raíz: no se usaba calendar_event_me
   })
 
   it('no se ha creado ninguna migración ni columna nueva para este bug — el esquema ya soportaba la asignación', () => {
-    expect(EVENTS_SRC).not.toMatch(/assigned_member_id_v2|calendar_member|task_member/i)
+    // Preparativos (0206) añade varios responsables en event_task_members: la SINCRONIZACIÓN con Calendario sigue usando
+    // solo el principal (assigned_member_id). Se vigila el cuerpo de la sincronización, no toda la lectura de tareas.
+    const syncBody = window(EVENTS_SRC, 'async function applyTaskToLinkedCalendarEvent', 'export async function linkEventTaskToCalendar')
+    expect(syncBody).not.toMatch(/assigned_member_id_v2|calendar_member|event_task_members|task_member/i)
   })
 })
 

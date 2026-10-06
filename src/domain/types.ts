@@ -734,6 +734,21 @@ export interface EventGuestMember {
   menuOptionId: string | null
 }
 
+// Persona externa de un evento (sin cuenta, sin acceso). El snapshot conserva nombre y etiqueta aunque la persona se borre.
+export interface EventTaskHelper {
+  id: string
+  helperId: string | null // null = persona borrada conservando la asignación (solo queda el snapshot)
+  name: string
+  label: string | null
+}
+
+export interface EventHelper {
+  id: string
+  eventId: string
+  name: string
+  label: string | null
+}
+
 export interface EventTask {
   id: string
   eventId: string
@@ -744,6 +759,16 @@ export interface EventTask {
   source: 'auto' | 'manual'
   sortOrder: number
   createdAt: string
+  // Preparativos (migración 0206): prioridad propuesta por PEPA o elegida por el usuario (manda), motivo corto,
+  // nota, hora opcional (solo con fecha), fecha de completado y varios responsables + personas externas.
+  priority?: 'alta' | 'media' | 'baja' | null
+  prioritySource?: 'pepa' | 'usuario' | null
+  priorityReason?: 'practica' | 'reserva' | 'fecha_proxima' | 'dependencia' | 'general' | null
+  notes?: string | null
+  dueTime?: string | null
+  completedAt?: string | null
+  responsibleMemberIds?: string[]
+  helpers?: EventTaskHelper[]
   // Fase 6 — quién de la familia la hace. Nullable ("sin asignar"),
   // nunca inferido — ver migración 0162_event_task_assignee.sql.
   assignedMemberId: string | null

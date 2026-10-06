@@ -237,3 +237,19 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 205. [ ] La tarjeta sigue compacta y no se rompe en iPhone.
 
 ## Nuevas pruebas (a partir de la 206)
+206. [ ] Tarea nueva sin prioridad elegida: aparece con prioridad propuesta por PEPA.
+207. [ ] Crear «Buscar clases de baile» sin fecha: PEPA la propone como Alta por práctica.
+208. [ ] Cambiar esa prioridad a Baja: sigue Baja tras salir y volver (no se recalcula).
+209. [ ] «Sin prioridad» se guarda y se mantiene.
+210. [ ] Hora solo se puede poner con fecha; quitar la fecha quita la hora.
+211. [ ] Marcar una tarea como hecha: se guarda la fecha de completado; desmarcar la limpia.
+212. [ ] Persona externa: añadirla desde el editor, editarla, asignarla a dos tareas.
+213. [ ] Borrar una persona externa con asignaciones: aparece la pregunta con el número y tres opciones.
+214. [ ] Conservar asignaciones: la tarea muestra «Nombre · Relación» como referencia histórica.
+215. [ ] Quitarla de las tareas: desaparece de todas las tareas.
+216. [ ] «Pepa te recomienda» muestra una explicación por cada tarea recomendada.
+217. [ ] Completar una recomendada: sale del bloque y entra la siguiente relevante.
+218. [ ] La nota se ve en una línea y se corta con puntos suspensivos; el editor muestra el texto completo.
+219. [ ] Filtro por responsable: NO existe todavía (pendiente de la siguiente tanda).
+220. [ ] Campana de recordatorio en la tarjeta: NO existe todavía (pendiente).
+221. [ ] Calendario: la tarea enlazada tiene una sola entrada; el responsable sincronizado es el principal.

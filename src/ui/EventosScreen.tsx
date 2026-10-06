@@ -129,6 +129,9 @@ import type { LocationPlace } from '@/domain/types'
 // Eventos; no toca push/cron/service worker, solo configura qué debe
 // avisar el pipeline ya existente.
 import { listEventReminders, replaceReminders } from '@/data/calendar'
+import { addEventHelper, countHelperAssignments, deleteEventHelper, listEventHelpers, setEventTaskHelpers, setEventTaskResponsibles, updateEventHelper } from '@/data/eventTaskResponsibles'
+import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskResponsibles'
+import { recommendTasks } from '@/domain/eventTaskPriority'
 import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
@@ -161,7 +164,6 @@ import {
   isToday,
   momentsLocationLines,
   momentsLocationMapLines,
-  rankUpcomingTasks,
   RECOMMENDED_MODULES,
   resolveEventMoments,
   resolveGuestInvitedMoments,
@@ -368,7 +370,7 @@ import {
   MENU_OPTION_AUDIENCES,
   sectionKeyForCategory,
 } from '@/domain/eventFoodMenu'
-import type { EventDietaryNeed, EventMenuOption, EventMenuOptionAudience } from '@/domain/types'
+import type { EventDietaryNeed, EventHelper, EventMenuOption, EventMenuOptionAudience } from '@/domain/types'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
 // Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
 // una función pura sin ninguna dependencia de Previsión/Economía.
@@ -1095,7 +1097,7 @@ function EventDetail({
   // a Preparativos desde un aviso se destaca sola la más urgente de
   // verdad (mismo orden que "Pepa te recomienda", rankUpcomingTasks) —
   // sencillo, robusto, y se recalcula solo si se resuelve.
-  const deepLinkHighlightTaskId = initialModule === 'tareas' ? (rankUpcomingTasks(tasks)[0]?.task.id ?? null) : null
+  const deepLinkHighlightTaskId = initialModule === 'tareas' ? (recommendTasks(tasks, new Date(), 1)[0]?.task.id ?? null) : null
 
   // Fase 7 — barra dinámica: "corresponde" evaluar ubicación exacta
   // solo si el evento ya tiene algún lugar en texto — uno que todavía
@@ -1130,7 +1132,7 @@ function EventDetail({
 
   // "Pepa te recomienda" — hasta 3 tareas pendientes, vencidas primero
   // y luego las más próximas (rankUpcomingTasks, domain/events.ts).
-  const upcomingTasks = rankUpcomingTasks(tasks).slice(0, 3)
+  const upcomingTasks = recommendTasks(tasks, new Date(), 3)
 
   // Fase 11 — "recordatorio cuando aporte valor": solo se pide para las
   // hasta 3 tareas que ya se muestran aquí, nunca para todas las
@@ -1139,8 +1141,7 @@ function EventDetail({
   // estar entre las recomendadas (p. ej. al resolverse).
   const [upcomingReminders, setUpcomingReminders] = useState<Record<string, EventReminder>>({})
   useEffect(() => {
-    const linked = rankUpcomingTasks(tasks)
-      .slice(0, 3)
+    const linked = recommendTasks(tasks, new Date(), 3)
       .map((r) => r.task)
       .filter((t): t is EventTask & { calendarEventId: string } => t.calendarEventId != null)
     if (linked.length === 0) {
@@ -1255,6 +1256,7 @@ function EventDetail({
                   key={t.id}
                   task={t}
                   responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
+                  responsibleNames={taskResponsibleNames(t, familyMembers)}
                   highlighted={t.id === deepLinkHighlightTaskId}
                   onToggleDone={() => updateEventTask(t.id, { done: true }).then(reloadTasks)}
                   onEdit={() => setEditingTaskId(t.id)}
@@ -1283,6 +1285,7 @@ function EventDetail({
                         key={t.id}
                         task={t}
                         responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
+                        responsibleNames={taskResponsibleNames(t, familyMembers)}
                         onToggleDone={() => updateEventTask(t.id, { done: false }).then(reloadTasks)}
                         onEdit={() => setEditingTaskId(t.id)}
                       />
@@ -1535,15 +1538,19 @@ function EventDetail({
             Estas son las próximas tareas importantes:
           </p>
           <div className="event-list">
-            {upcomingTasks.map(({ task, priority, daysUntil: d }) => {
+            {upcomingTasks.map(({ task, daysUntil: d, explanation }) => {
               const responsible = familyMembers.find((m) => m.id === task.assignedMemberId)
               const reminder = upcomingReminders[task.id]
               return (
                 <div key={task.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                  <span className={`event-priority-dot event-priority-${priority}`} aria-hidden="true" />
+                  {task.priority && <span className={`event-priority-dot event-priority-${task.priority}`} aria-hidden="true" />}
                   <input type="checkbox" checked={task.done} onChange={() => updateEventTask(task.id, { done: true }).then(reloadTasks)} />
                   <span style={{ flex: 1 }}>
                     {task.title}
+                    {/* Motivo breve y estructurado (práctica, reserva, fecha real…): sin texto inventado. */}
+                    <span className="muted" style={{ display: 'block', fontSize: 12 }}>
+                      {explanation}
+                    </span>
                     {responsible && (
                       <span className="muted" style={{ fontSize: 12 }}>
                         {' '}
@@ -1912,6 +1919,7 @@ function ManageEventModal({
 function TaskCard({
   task,
   responsible,
+  responsibleNames,
   highlighted = false,
   onToggleDone,
   onEdit,
@@ -1919,6 +1927,8 @@ function TaskCard({
 }: {
   task: EventTask
   responsible: FamilyMember | null
+  // Preparativos: todos los responsables (familiares y externos), ya en texto. Sin él, se muestra el principal.
+  responsibleNames?: string[]
   // Fase 12 — deep-link a la tarea concreta: destaca la ficha cuando se
   // llegó aquí desde un aviso sobre esta tarea en particular.
   highlighted?: boolean
@@ -1935,15 +1945,27 @@ function TaskCard({
       <input type="checkbox" checked={task.done} onChange={onToggleDone} aria-label={`Marcar "${task.title}" como hecha`} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600 }}>{task.title}</div>
-        {(task.dueDate || responsible) && (
+        {(task.dueDate || responsible || (responsibleNames && responsibleNames.length > 0) || task.priority) && (
           <div className="muted event-task-card-meta">
             {task.dueDate && (
               <span style={overdue ? { color: '#dc2626', fontWeight: 600 } : undefined}>
                 📅 {formatSpanishDate(task.dueDate)}
+                {task.dueTime ? ` · ${task.dueTime}` : ''}
                 {overdue ? ' · 🔴 Atrasada' : ''}
               </span>
             )}
-            {responsible && <span>👤 {responsible.name}</span>}
+            {task.priority && <span className={`event-priority-${task.priority}`}>{PRIORITY_LABELS[task.priority]}</span>}
+            {responsibleNames && responsibleNames.length > 0 ? (
+              <span>👤 {responsibleNames.join(', ')}</span>
+            ) : (
+              responsible && <span>👤 {responsible.name}</span>
+            )}
+          </div>
+        )}
+        {task.notes && (
+          // Una sola línea; si no cabe se trunca solo en pantalla (la nota guardada no cambia).
+          <div className="muted" title={task.notes} style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {task.notes}
           </div>
         )}
       </div>
@@ -1989,7 +2011,20 @@ function TaskEditModal({
 }) {
   const [title, setTitle] = useState(task.title)
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
-  const [assignedMemberId, setAssignedMemberId] = useState(task.assignedMemberId ?? '')
+  // Preparativos (migración 0206): hora (solo con fecha), prioridad (lo que elija el usuario manda), nota, varios
+  // responsables y personas externas del evento.
+  const [dueTime, setDueTime] = useState(task.dueTime ?? '')
+  const [priority, setPriority] = useState<'' | 'alta' | 'media' | 'baja'>(task.priority ?? '')
+  const [notes, setNotes] = useState(task.notes ?? '')
+  const originalResponsibleIds = task.responsibleMemberIds && task.responsibleMemberIds.length > 0 ? task.responsibleMemberIds : task.assignedMemberId ? [task.assignedMemberId] : []
+  const [responsibleIds, setResponsibleIds] = useState<string[]>(originalResponsibleIds)
+  const originalHelperIds = (task.helpers ?? []).flatMap((h) => (h.helperId ? [h.helperId] : []))
+  const [helperIds, setHelperIds] = useState<string[]>(originalHelperIds)
+  const [helpers, setHelpers] = useState<EventHelper[]>([])
+  const [newHelperName, setNewHelperName] = useState('')
+  const [newHelperLabel, setNewHelperLabel] = useState('')
+  const [editingHelper, setEditingHelper] = useState<{ id: string; name: string; label: string } | null>(null)
+  const [helperDeleteFor, setHelperDeleteFor] = useState<{ helper: EventHelper; assignments: number } | null>(null)
   // Fase 9 — la propia presencia de calendarEventId es el estado
   // inicial del interruptor; no hay una columna booleana aparte.
   const [showInCalendar, setShowInCalendar] = useState(task.calendarEventId != null)
@@ -2017,6 +2052,74 @@ function TaskEditModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    listEventHelpers(task.eventId)
+      .then(setHelpers)
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.eventId])
+
+  async function reloadHelpers() {
+    setHelpers(await listEventHelpers(task.eventId))
+  }
+
+  async function addHelper() {
+    if (!newHelperName.trim()) return
+    setError(null)
+    try {
+      const id = await addEventHelper(task.eventId, newHelperName, newHelperLabel || null)
+      setNewHelperName('')
+      setNewHelperLabel('')
+      setHelperIds((prev) => [...prev, id])
+      await reloadHelpers()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir la persona externa'))
+    }
+  }
+
+  async function saveEditingHelper() {
+    if (!editingHelper || !editingHelper.name.trim()) return
+    setError(null)
+    try {
+      await updateEventHelper(editingHelper.id, { name: editingHelper.name, label: editingHelper.label || null })
+      setEditingHelper(null)
+      await reloadHelpers()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar la persona externa'))
+    }
+  }
+
+  // Borrar sin asignaciones: confirmación sencilla. Con asignaciones: NUNCA en silencio; elige conservar o quitar.
+  async function askDeleteHelper(h: EventHelper) {
+    setError(null)
+    try {
+      const assignments = await countHelperAssignments(h.id)
+      if (assignments === 0) {
+        if (!window.confirm(`¿Borrar a ${h.name} de este evento?`)) return
+        await deleteEventHelper(h.id, 'keep')
+        setHelperIds((prev) => prev.filter((id) => id !== h.id))
+        await reloadHelpers()
+      } else {
+        setHelperDeleteFor({ helper: h, assignments })
+      }
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar la persona externa'))
+    }
+  }
+
+  async function confirmDeleteHelper(mode: 'keep' | 'remove') {
+    if (!helperDeleteFor) return
+    setError(null)
+    try {
+      await deleteEventHelper(helperDeleteFor.helper.id, mode)
+      setHelperIds((prev) => prev.filter((id) => id !== helperDeleteFor.helper.id))
+      setHelperDeleteFor(null)
+      await reloadHelpers()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar la persona externa'))
+    }
+  }
+
   function remindersForChoice(): EventReminder[] {
     switch (reminderChoice) {
       case 'none':
@@ -2041,7 +2144,20 @@ function TaskEditModal({
     setSaving(true)
     setError(null)
     try {
-      await updateEventTask(task.id, { title, dueDate: dueDate || null, assignedMemberId: assignedMemberId || null })
+      const priorityChanged = (priority || null) !== (task.priority ?? null)
+      await updateEventTask(task.id, {
+        title,
+        dueDate: dueDate || null,
+        // La hora solo existe con fecha (nunca 00:00 inventado).
+        dueTime: dueDate && dueTime ? dueTime : null,
+        notes: notes.trim() ? notes : null,
+        // Solo si la cambias tú: una prioridad elegida manda y PEPA no la sobrescribe.
+        ...(priorityChanged ? { priority: (priority || null) as 'alta' | 'media' | 'baja' | null } : {}),
+      })
+      const sameResponsibles = [...responsibleIds].sort().join('|') === [...originalResponsibleIds].sort().join('|')
+      if (!sameResponsibles) await setEventTaskResponsibles(task.id, responsibleIds)
+      const sameHelpers = [...helperIds].sort().join('|') === [...originalHelperIds].sort().join('|')
+      if (!sameHelpers) await setEventTaskHelpers(task.id, helperIds)
       const wasLinked = task.calendarEventId != null
       let linkedId: string | null = task.calendarEventId
       if (showInCalendar && !wasLinked && dueDate) linkedId = await linkEventTaskToCalendar(task.id)
@@ -2082,21 +2198,118 @@ function TaskEditModal({
               value={dueDate}
               onChange={(e) => {
                 setDueDate(e.target.value)
-                if (!e.target.value) setShowInCalendar(false)
+                if (!e.target.value) {
+                  setShowInCalendar(false)
+                  setDueTime('')
+                }
               }}
             />
           </label>
           <label>
-            Responsable
-            {/* Fase 6 — nunca inferido: "Sin asignar" sigue siéndolo salvo que alguien elija a mano. */}
-            <select value={assignedMemberId} onChange={(e) => setAssignedMemberId(e.target.value)}>
-              <option value="">Sin asignar</option>
-              {familyMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
+            Hora (opcional, solo con fecha)
+            <input type="time" value={dueTime} disabled={!dueDate} onChange={(e) => setDueTime(e.target.value)} />
+          </label>
+          <label>
+            Prioridad
+            <select value={priority} onChange={(e) => setPriority(e.target.value as '' | 'alta' | 'media' | 'baja')}>
+              <option value="">Sin prioridad</option>
+              <option value="alta">Alta</option>
+              <option value="media">Media</option>
+              <option value="baja">Baja</option>
             </select>
+          </label>
+          <div>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+              Responsables (puede ser más de uno; «Sin asignar» si nadie)
+            </div>
+            {/* Nunca inferido: sin nadie marcado la tarea queda sin responsable. */}
+            {familyMembers.map((m) => (
+              <label key={m.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={responsibleIds.includes(m.id)}
+                  onChange={(e) => setResponsibleIds((prev) => (e.target.checked ? [...prev, m.id] : prev.filter((id) => id !== m.id)))}
+                />
+                <span>{m.name}</span>
+              </label>
+            ))}
+            {helpers.map((h) => (
+              <label key={h.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                <input type="checkbox" checked={helperIds.includes(h.id)} onChange={(e) => setHelperIds((prev) => (e.target.checked ? [...prev, h.id] : prev.filter((id) => id !== h.id)))} />
+                <span>
+                  {h.name}
+                  {h.label ? ` · ${h.label}` : ''} <span className="muted">(persona externa)</span>
+                </span>
+              </label>
+            ))}
+            {(task.helpers ?? []).filter((h) => h.helperId === null).map((h) => (
+              <p key={h.id} className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                {h.name}
+                {h.label ? ` · ${h.label}` : ''} · ya no está en el evento (referencia histórica)
+              </p>
+            ))}
+          </div>
+          <div className="member-form" style={{ borderTop: '1px solid #eee', paddingTop: 6 }}>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Personas externas de este evento</div>
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+              Ayudan en el evento. No necesitan cuenta, email ni teléfono, y solo existen en este evento.
+            </p>
+            {helpers.map((h) =>
+              editingHelper && editingHelper.id === h.id ? (
+                <div key={h.id} className="inline-fields">
+                  <input type="text" value={editingHelper.name} onChange={(e) => setEditingHelper({ ...editingHelper, name: e.target.value })} aria-label="Nombre de la persona externa" />
+                  <input type="text" value={editingHelper.label} placeholder="Relación (opcional)" onChange={(e) => setEditingHelper({ ...editingHelper, label: e.target.value })} aria-label="Relación de la persona externa" />
+                  <button type="button" className="link-button" onClick={() => void saveEditingHelper()}>
+                    Guardar
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setEditingHelper(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <div key={h.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                  <span style={{ flex: 1 }}>
+                    {h.name}
+                    {h.label ? ` · ${h.label}` : ''}
+                  </span>
+                  <button type="button" className="link-button" onClick={() => setEditingHelper({ id: h.id, name: h.name, label: h.label ?? '' })}>
+                    Editar
+                  </button>
+                  <button type="button" className="link-button" onClick={() => void askDeleteHelper(h)}>
+                    Borrar
+                  </button>
+                </div>
+              ),
+            )}
+            {helperDeleteFor && (
+              <div className="card" style={{ padding: 8 }}>
+                <p style={{ margin: '0 0 6px' }}>
+                  {helperDeleteFor.helper.name} tiene {helperDeleteFor.assignments} asignación{helperDeleteFor.assignments === 1 ? '' : 'es'} en este evento. ¿Qué quieres hacer con ellas?
+                </p>
+                <div className="filter-row">
+                  <button type="button" className="link-button" onClick={() => void confirmDeleteHelper('keep')}>
+                    Conservar las asignaciones (quedan como referencia)
+                  </button>
+                  <button type="button" className="link-button" onClick={() => void confirmDeleteHelper('remove')}>
+                    Quitarla también de las tareas
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setHelperDeleteFor(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="inline-fields">
+              <input type="text" value={newHelperName} placeholder="Nombre" onChange={(e) => setNewHelperName(e.target.value)} aria-label="Nombre de la nueva persona externa" />
+              <input type="text" value={newHelperLabel} placeholder="Relación (opcional)" onChange={(e) => setNewHelperLabel(e.target.value)} aria-label="Relación de la nueva persona externa" />
+              <button type="button" className="link-button" onClick={() => void addHelper()} disabled={!newHelperName.trim()}>
+                + Añadir persona externa
+              </button>
+            </div>
+          </div>
+          <label>
+            Nota
+            <textarea value={notes} maxLength={1000} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </label>
           <label className="inline-fields" style={{ alignItems: 'center' }}>
             <input type="checkbox" checked={showInCalendar} disabled={!dueDate} onChange={(e) => setShowInCalendar(e.target.checked)} />

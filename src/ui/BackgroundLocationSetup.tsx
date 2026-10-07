@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
+import { reportClientError } from '@/data/errorReports'
 import { createMemberLocationToken, listMemberLocationTokenStatus, ownTracksEndpointUrl, revokeMemberLocationToken, type LocationTokenStatus } from '@/data/locationToken'
 import { errorMessage } from '@/domain/errorMessage'
 import { ownTracksConfigLink, OWNTRACKS_ANDROID_STORE_URL, OWNTRACKS_IOS_STORE_URL } from '@/domain/owntracksConfig'
@@ -46,6 +47,14 @@ export function BackgroundLocationSetup({ members, consents }: { members: Family
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const errorRef = useRef<HTMLParagraphElement>(null)
+
+  // El recuadro de pasos y los errores salen arriba de la lista: la pantalla va sola hasta ellos (si no, quedaban fuera de la vista
+  // y parecía que «no pasaba nada»).
+  function scrollSoon(ref: RefObject<HTMLElement>) {
+    setTimeout(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
 
   function reloadStatuses() {
     listMemberLocationTokenStatus()
@@ -62,8 +71,13 @@ export function BackgroundLocationSetup({ members, consents }: { members: Family
       const token = await createMemberLocationToken(member.id)
       setSetup({ memberId: member.id, memberName: member.name, token })
       reloadStatuses()
+      scrollSoon(panelRef)
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo generar el código'))
+      const message = errorMessage(err, 'No se pudo generar el código')
+      setError(message)
+      scrollSoon(errorRef)
+      // Queda registrado para poder ver desde fuera por qué falló en un móvil concreto.
+      void reportClientError(new Error('[owntracks] conectar falló: ' + message))
     } finally {
       setBusy(null)
     }
@@ -98,41 +112,14 @@ export function BackgroundLocationSetup({ members, consents }: { members: Family
         salida) con el móvil bloqueado, instala <strong>OwnTracks</strong> (gratuita, iPhone y Android) y conéctala aquí.
       </p>
       <InstallOwnTracksButtons />
-      {error && <p className="error">{error}</p>}
-
-      <div className="event-list">
-        {members.map((m) => {
-          const enabled = consents.find((c) => c.memberId === m.id)?.enabled ?? false
-          const status = statuses.find((s) => s.memberId === m.id)
-          const last = status?.lastUsedAt ? describePositionAge(status.lastUsedAt, Date.now()) : null
-          return (
-            <div key={m.id} className="card task-card">
-              <MemberAvatar member={m} size={32} />
-              <div className="task-card-main">
-                <strong>{m.name}</strong>
-                <p className="muted">
-                  {!enabled
-                    ? 'Activa antes su ubicación arriba.'
-                    : !status
-                      ? 'No conectada.'
-                      : last
-                        ? `Conectada · último dato ${last.ageLabel}`
-                        : 'Código creado, todavía sin ningún dato. Abre OwnTracks en su móvil.'}
-                </p>
-              </div>
-              {enabled && (
-                <button type="button" className="task-toggle" disabled={busy === m.id} onClick={() => handleConnect(m)}>
-                  {status ? 'Volver a conectar' : 'Conectar'}
-                </button>
-              )}
-              {status && <ConfirmButton onConfirm={() => handleDisconnect(m)} label="Desconectar" confirmMessage="¿Dejar de recibir su posición con la app cerrada?" />}
-            </div>
-          )
-        })}
-      </div>
+      {error && (
+        <p className="error" role="alert" ref={errorRef}>
+          {error}
+        </p>
+      )}
 
       {setup && (
-        <div className="card member-form">
+        <div className="card member-form" ref={panelRef}>
           <strong>Conectar a {setup.memberName}: hazlo desde SU móvil</strong>
           <ol className="muted" style={{ paddingLeft: 20 }}>
             <li>
@@ -168,6 +155,37 @@ export function BackgroundLocationSetup({ members, consents }: { members: Family
           </button>
         </div>
       )}
+
+      <div className="event-list">
+        {members.map((m) => {
+          const enabled = consents.find((c) => c.memberId === m.id)?.enabled ?? false
+          const status = statuses.find((s) => s.memberId === m.id)
+          const last = status?.lastUsedAt ? describePositionAge(status.lastUsedAt, Date.now()) : null
+          return (
+            <div key={m.id} className="card task-card">
+              <MemberAvatar member={m} size={32} />
+              <div className="task-card-main">
+                <strong>{m.name}</strong>
+                <p className="muted">
+                  {!enabled
+                    ? 'Activa antes su ubicación arriba.'
+                    : !status
+                      ? 'No conectada.'
+                      : last
+                        ? `Conectada · último dato ${last.ageLabel}`
+                        : 'Código creado, todavía sin ningún dato. Abre OwnTracks en su móvil.'}
+                </p>
+              </div>
+              {enabled && (
+                <button type="button" className="task-toggle" disabled={busy === m.id} onClick={() => handleConnect(m)}>
+                  {busy === m.id ? 'Generando…' : status ? 'Volver a conectar' : 'Conectar'}
+                </button>
+              )}
+              {status && <ConfirmButton onConfirm={() => handleDisconnect(m)} label="Desconectar" confirmMessage="¿Dejar de recibir su posición con la app cerrada?" />}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

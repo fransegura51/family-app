@@ -154,6 +154,14 @@ describe('pantalla', () => {
     expect(compartir.indexOf('<BackgroundLocationSetup')).toBeGreaterThan(-1)
     expect(compartir.indexOf('<BackgroundLocationSetup')).toBeLessThan(compartir.indexOf('Este dispositivo'))
   })
+  it('al pulsar «Conectar» los pasos salen ARRIBA de la lista y la pantalla va sola hasta ellos; los errores también se ven', () => {
+    expect(UI.indexOf('ref={panelRef}')).toBeGreaterThan(-1)
+    expect(UI.indexOf('ref={panelRef}')).toBeLessThan(UI.indexOf('className="event-list"'))
+    expect(UI).toContain('scrollSoon(panelRef)')
+    expect(UI).toContain('scrollSoon(errorRef)')
+    expect(UI).toContain('role="alert"')
+    expect(UI).toContain("busy === m.id ? 'Generando…'")
+  })
   it('desconectar pide confirmación', () => {
     expect(UI).toContain('<ConfirmButton onConfirm={() => handleDisconnect(m)}')
   })

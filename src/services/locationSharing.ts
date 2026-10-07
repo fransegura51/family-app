@@ -129,6 +129,7 @@ interface VisitCandidate {
   awayStartedAt: number | null
 }
 let visitCandidate: VisitCandidate | null = null
+let recordingVisit = false
 
 function newCandidate(memberId: string, latitude: number, longitude: number, now: number): VisitCandidate {
   return { memberId, centerLat: latitude, centerLon: longitude, startedAt: now, lastSeenAt: now, loggedVisitId: null, awayStartedAt: null }
@@ -192,25 +193,33 @@ async function trackVisit(memberId: string, latitude: number, longitude: number)
     candidate.lastSeenAt = now
     candidate.awayStartedAt = null
     persistCandidate(candidate)
-    if (!candidate.loggedVisitId && now - candidate.startedAt >= STAY_MIN_MS) {
-      const placeName = await resolvePlaceName(candidate.centerLat, candidate.centerLon)
-      // Puede haber cambiado mientras se esperaba la respuesta (otra
-      // parada ya en marcha, o se dejó de compartir) — no guardar algo
-      // que ya no aplica.
-      if (placeName && visitCandidate === candidate && !candidate.loggedVisitId) {
-        try {
-          candidate.loggedVisitId = await recordPlaceVisit({
-            memberId,
-            placeName,
-            latitude: candidate.centerLat,
-            longitude: candidate.centerLon,
-            arrivedAt: new Date(candidate.startedAt).toISOString(),
-          })
-          persistCandidate(candidate)
-        } catch {
-          // Si falla el guardado, se reintenta solo en la siguiente
-          // posición (loggedVisitId sigue sin fijar).
+    // `recordingVisit`: el GPS manda lecturas cada pocos segundos y reconocer el sitio / guardar la visita espera
+    // red. Sin este freno, varias lecturas seguidas pasaban a la vez la comprobación «aún no guardada» y cada una
+    // insertaba SU fila: hasta 4 visitas «Casa» idénticas a la misma hora (datos reales de producción).
+    if (!candidate.loggedVisitId && !recordingVisit && now - candidate.startedAt >= STAY_MIN_MS) {
+      recordingVisit = true
+      try {
+        const placeName = await resolvePlaceName(candidate.centerLat, candidate.centerLon)
+        // Puede haber cambiado mientras se esperaba la respuesta (otra
+        // parada ya en marcha, o se dejó de compartir) — no guardar algo
+        // que ya no aplica.
+        if (placeName && visitCandidate === candidate && !candidate.loggedVisitId) {
+          try {
+            candidate.loggedVisitId = await recordPlaceVisit({
+              memberId,
+              placeName,
+              latitude: candidate.centerLat,
+              longitude: candidate.centerLon,
+              arrivedAt: new Date(candidate.startedAt).toISOString(),
+            })
+            persistCandidate(candidate)
+          } catch {
+            // Si falla el guardado, se reintenta solo en la siguiente
+            // posición (loggedVisitId sigue sin fijar).
+          }
         }
+      } finally {
+        recordingVisit = false
       }
     }
   } else if (!candidate.awayStartedAt) {

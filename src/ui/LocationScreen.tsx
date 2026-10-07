@@ -61,6 +61,7 @@ import type {
 } from '@/domain/types'
 import ubicacionHeaderImg from '@/assets/ubicacion/ubicacion-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { describePositionAge } from '@/domain/positionFreshness'
 import { pastelPalette } from '@/domain/colors'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
@@ -715,6 +716,11 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   const selectedMember = members.find((m) => m.id === selectedMemberId) ?? null
   const selectedEnabled = selectedMember ? (consents.find((c) => c.memberId === selectedMember.id)?.enabled ?? false) : false
   const selectedCanToggle = selectedMember ? isAdmin || selectedMember.linkedProfileId === profileId : false
+  const freshnessOf = (memberId: string) => {
+    const loc = sharedNow.find((l) => l.memberId === memberId)
+    return loc ? describePositionAge(loc.recordedAt, Date.now()) : null
+  }
+  const selectedFreshness = selectedMember ? freshnessOf(selectedMember.id) : null
 
   return (
     <div>
@@ -751,6 +757,11 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
                     ⏸
                   </span>
                 )}
+                {enabled && freshnessOf(m.id)?.stale && (
+                  <span className="location-map-chip-paused" aria-label={`Sin posición reciente (${freshnessOf(m.id)?.ageLabel})`}>
+                    🕒
+                  </span>
+                )}
               </button>
             )
           })}
@@ -768,8 +779,10 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
             <p className="muted">
               {!selectedEnabled
                 ? 'Ubicación no compartida'
-                : sharedNow.some((l) => l.memberId === selectedMember.id)
-                  ? 'Compartiendo ubicación'
+                : selectedFreshness
+                  ? selectedFreshness.stale
+                    ? `Última posición conocida ${selectedFreshness.ageLabel}. Su móvil no la envía con la app cerrada o en segundo plano.`
+                    : `Compartiendo ubicación · actualizada ${selectedFreshness.ageLabel}`
                   : 'Compartir activado, esperando posición…'}
             </p>
           </div>

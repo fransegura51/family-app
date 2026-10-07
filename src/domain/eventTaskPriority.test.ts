@@ -89,8 +89,13 @@ describe('compatibilidad con tareas antiguas sin prioridad guardada (sin backfil
   it('la prioridad efectiva de una tarea antigua la propone el motor y NO se marca como guardada', () => {
     expect(effectivePriority({ title: 'Buscar fotógrafo', priority: null })).toMatchObject({ priority: 'alta', stored: false })
   })
-  it('una prioridad guardada siempre gana sobre la propuesta', () => {
-    expect(effectivePriority({ title: 'Buscar fotógrafo', priority: 'baja', priorityReason: null })).toMatchObject({ priority: 'baja', stored: true })
+  it('una prioridad elegida por el usuario (origen usuario) siempre gana sobre la propuesta', () => {
+    expect(effectivePriority({ title: 'Buscar fotógrafo', priority: 'baja', priorityReason: null, prioritySource: 'usuario' })).toMatchObject({ priority: 'baja', stored: true })
+  })
+  it('una prioridad guardada SIN origen usuario (de PEPA) NO congela nada: se recalcula en vivo, nunca queda fija para siempre', () => {
+    // Corrección real tras revisión manual en iPhone: antes, una tarea creada con priority='alta' y
+    // priority_source='pepa' se quedaba en 'alta' para siempre aunque el contexto cambiara.
+    expect(effectivePriority({ title: 'Buscar fotógrafo', priority: 'alta', priorityReason: 'reserva', prioritySource: 'pepa' })).toMatchObject({ stored: false, managedByUser: false })
   })
   it('las tareas antiguas participan en «Pepa te recomienda» con su prioridad efectiva', () => {
     const r = recommendTasks([{ id: 'old', title: 'Clases de baile', done: false, dueDate: null, sortOrder: 1 }, { id: 'new', title: 'Revisar lista', done: false, dueDate: null, priority: 'media', sortOrder: 0 }], TODAY)

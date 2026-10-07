@@ -1435,6 +1435,28 @@ select {
   border-color: var(--primary);
 }
 
+/* Persona externa (Preparativos): mismo chip, borde discontinuo — nunca solo un color, el texto "· Relación"
+   ya la distingue igualmente. Revisión manual en iPhone: evita la lista vertical de checkboxes que
+   desperdiciaba espacio y el formulario de alta siempre visible que desbordaba en pantallas estrechas. */
+.chip-external {
+  border-style: dashed;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chip-row .chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Corrección UX (2026-09-29, probado en iPhone real) — el <input type="color"> real y VISIBLE sigue
    siendo el mecanismo (nunca un input oculto + click() programático, poco fiable en Safari), pero antes
    se veía como un aro multicolor grande, distinto del resto de botones (B, I, Aa, A±...). Ahora es una
@@ -1866,23 +1888,28 @@ select {
   border-color: #fde68a;
 }
 
+/* Revisión manual en iPhone: en la tarjeta compacta ya no se escribe "Alta"/"Media"/"Baja" (ocupaba
+   espacio y llamaba demasiado la atención) — solo un punto de color. El nombre completo sigue existiendo
+   siempre en el editor y en "Pepa te recomienda" (PRIORITY_LABELS), así que nunca depende solo del color;
+   el punto lleva además title/aria-label con el nombre para quien no distinga el color. */
 .event-priority-dot {
   flex: none;
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
+  display: inline-block;
 }
 
 .event-priority-alta {
-  background: #e64980;
+  background: #dc2626; /* rojo */
 }
 
 .event-priority-media {
-  background: #f08c00;
+  background: #eab308; /* amarillo — antes naranja */
 }
 
 .event-priority-baja {
-  background: #adb5bd;
+  background: #16a34a; /* verde */
 }
 
 /* Una tarjeta por módulo — mismo .card-grid de 2 columnas y mismo

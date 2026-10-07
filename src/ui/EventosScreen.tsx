@@ -114,6 +114,9 @@ import {
   loadEventFoodNeedsAlert,
   swapEventMenuOptionOrder,
   updateEventMenuOption,
+  ensureTaskPrioritySuggestions,
+  listOpenEventTaskPrioritySuggestions,
+  respondToEventTaskPrioritySuggestion,
 } from '@/data/events'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
@@ -131,7 +134,9 @@ import type { LocationPlace } from '@/domain/types'
 import { listEventReminders, replaceReminders } from '@/data/calendar'
 import { addEventHelper, countHelperAssignments, deleteEventHelper, listEventHelpers, setEventTaskHelpers, setEventTaskResponsibles, updateEventHelper } from '@/data/eventTaskResponsibles'
 import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskResponsibles'
-import { effectivePriority, recommendTasks } from '@/domain/eventTaskPriority'
+import { effectivePriority, recommendTasks, type DecisionLookup } from '@/domain/eventTaskPriority'
+import { explainPrioritySuggestion, PRIORITY_ORDER } from '@/domain/eventTaskPrioritySuggestion'
+import type { EventTaskPrioritySuggestion } from '@/domain/types'
 import { NO_RESPONSIBLE_KEY, presetRemindersFor, reminderChoiceFrom, taskMatchesResponsibleFilter, type ReminderChoice } from '@/domain/eventTaskFilters'
 import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
@@ -342,7 +347,14 @@ import {
   type TartaAnswer,
   type TartaChoice,
 } from '@/domain/eventFood'
-import { buildFoodDecisionSummary } from '@/domain/eventDecisionsSummary'
+import {
+  buildFoodDecisionSummary,
+  buildCelebrationDecisionSummary,
+  buildPairDecisionSummary,
+  buildGuestsDecisionSummary,
+  buildMomentosEspecialesDecisionSummary,
+  type DecisionSummary,
+} from '@/domain/eventDecisionsSummary'
 import {
   effectiveVenueServicesAnswer,
   legacyOnlyServiceLabels,
@@ -990,6 +1002,34 @@ function EventDetail({
   }
   useEffect(reloadTasks, [event.id])
 
+  // Decisiones del evento, solo para que PEPA pueda seguir recalculando la prioridad de las tareas que
+  // gestiona (ver effectivePriority) — nunca para escribir nada aquí; cada bloque del configurador sigue
+  // cargando y guardando sus propias decisiones por su cuenta.
+  const [taskDecisions, setTaskDecisions] = useState<EventDecision[]>([])
+  useEffect(() => {
+    listEventDecisions(event.id)
+      .then(setTaskDecisions)
+      .catch(() => {})
+  }, [event.id])
+  // Tras cada recarga de tareas, PEPA revisa (barato y determinista, sin cron) si alguna prioridad fijada
+  // por el usuario merece una sugerencia de cambio — nunca sobre las que PEPA ya gestiona.
+  useEffect(() => {
+    if (tasks.length === 0) return
+    ensureTaskPrioritySuggestions(tasks, taskDecisions, new Date())
+      .then((changed) => {
+        if (changed) reloadPrioritySuggestions()
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, taskDecisions])
+  const [prioritySuggestions, setPrioritySuggestions] = useState<EventTaskPrioritySuggestion[]>([])
+  function reloadPrioritySuggestions() {
+    listOpenEventTaskPrioritySuggestions(event.id)
+      .then(setPrioritySuggestions)
+      .catch(() => {})
+  }
+  useEffect(reloadPrioritySuggestions, [event.id])
+
   const pendingTasks = tasks.filter((t) => !t.done)
   const filteredTasks = pendingTasks.filter((t) => taskMatchesResponsibleFilter(t, responsibleFilter))
   const visibleTasks = showAllTasks ? filteredTasks : filteredTasks.slice(0, 5)
@@ -1147,7 +1187,7 @@ function EventDetail({
   // a Preparativos desde un aviso se destaca sola la más urgente de
   // verdad (mismo orden que "Pepa te recomienda", rankUpcomingTasks) —
   // sencillo, robusto, y se recalcula solo si se resuelve.
-  const deepLinkHighlightTaskId = initialModule === 'tareas' ? (recommendTasks(tasks, new Date(), 1)[0]?.task.id ?? null) : null
+  const deepLinkHighlightTaskId = initialModule === 'tareas' ? (recommendTasks(tasks, new Date(), 1, taskDecisions)[0]?.task.id ?? null) : null
 
   // Fase 7 — barra dinámica: "corresponde" evaluar ubicación exacta
   // solo si el evento ya tiene algún lugar en texto — uno que todavía
@@ -1182,7 +1222,7 @@ function EventDetail({
 
   // "Pepa te recomienda" — hasta 3 tareas pendientes, vencidas primero
   // y luego las más próximas (rankUpcomingTasks, domain/events.ts).
-  const upcomingTasks = recommendTasks(tasks, new Date(), 3)
+  const upcomingTasks = recommendTasks(tasks, new Date(), 3, taskDecisions)
 
   // Fase 11 — "recordatorio cuando aporte valor": solo se pide para las
   // hasta 3 tareas que ya se muestran aquí, nunca para todas las
@@ -1191,7 +1231,7 @@ function EventDetail({
   // estar entre las recomendadas (p. ej. al resolverse).
   const [upcomingReminders, setUpcomingReminders] = useState<Record<string, EventReminder>>({})
   useEffect(() => {
-    const linked = recommendTasks(tasks, new Date(), 3)
+    const linked = recommendTasks(tasks, new Date(), 3, taskDecisions)
       .map((r) => r.task)
       .filter((t): t is EventTask & { calendarEventId: string } => t.calendarEventId != null)
     if (linked.length === 0) {
@@ -1201,7 +1241,7 @@ function EventDetail({
     Promise.all(linked.map((t) => listEventReminders(t.calendarEventId).then((rs) => [t.id, rs[0]] as const)))
       .then((pairs) => setUpcomingReminders(Object.fromEntries(pairs.filter((p): p is [string, EventReminder] => !!p[1]))))
       .catch(() => {})
-  }, [tasks])
+  }, [tasks, taskDecisions])
 
   // Cuenta atrás — solo si hay fecha puesta (un evento "pendiente" sin
   // fecha no tiene nada que contar).
@@ -1331,6 +1371,7 @@ function EventDetail({
                 <TaskCard
                   key={t.id}
                   task={t}
+                  decisions={taskDecisions}
                   responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
                   responsibleNames={taskResponsibleNames(t, familyMembers)}
                   reminder={{
@@ -1365,6 +1406,7 @@ function EventDetail({
                       <TaskCard
                         key={t.id}
                         task={t}
+                        decisions={taskDecisions}
                         responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
                         responsibleNames={taskResponsibleNames(t, familyMembers)}
                         onToggleDone={() => updateEventTask(t.id, { done: false }).then(reloadTasks)}
@@ -1622,14 +1664,18 @@ function EventDetail({
             {upcomingTasks.map(({ task, daysUntil: d, explanation }) => {
               const responsible = familyMembers.find((m) => m.id === task.assignedMemberId)
               const reminder = upcomingReminders[task.id]
+              // Aquí, a diferencia de la tarjeta compacta, sí hay sitio para el nombre completo — y debe
+              // ser la prioridad EFECTIVA (recalculada en vivo), nunca la guardada a secas.
+              const recommendedPriority = effectivePriority(task, taskDecisions).priority
               return (
                 <div key={task.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                  {task.priority && <span className={`event-priority-dot event-priority-${task.priority}`} aria-hidden="true" />}
+                  {recommendedPriority && <span className={`event-priority-dot event-priority-${recommendedPriority}`} aria-hidden="true" />}
                   <input type="checkbox" checked={task.done} onChange={() => updateEventTask(task.id, { done: true }).then(reloadTasks)} />
                   <span style={{ flex: 1 }}>
                     {task.title}
                     {/* Motivo breve y estructurado (práctica, reserva, fecha real…): sin texto inventado. */}
                     <span className="muted" style={{ display: 'block', fontSize: 12 }}>
+                      {recommendedPriority && `Prioridad ${PRIORITY_LABELS[recommendedPriority]} · `}
                       {explanation}
                     </span>
                     {responsible && (
@@ -1658,6 +1704,36 @@ function EventDetail({
           <button type="button" className="link-button" onClick={() => setOpenModule('tareas')}>
             Ver todas →
           </button>
+        </div>
+      )}
+
+      {/* Sugerencias de PEPA sobre una prioridad que YA fijó el usuario — nunca la cambia sola, solo
+          propone con motivo. Una rechazada no vuelve a aparecer para el mismo contexto. */}
+      {hasTasksModule && prioritySuggestions.length > 0 && (
+        <div className="card event-card event-recommend-card" style={{ marginTop: 8 }}>
+          <strong>💡 PEPA propone un cambio de prioridad</strong>
+          <div className="event-list" style={{ marginTop: 6 }}>
+            {prioritySuggestions.map((s) => {
+              const task = tasks.find((t) => t.id === s.taskId)
+              if (!task) return null
+              return (
+                <div key={s.id} style={{ fontSize: 13 }}>
+                  <p style={{ margin: '0 0 4px' }}>{explainPrioritySuggestion(task.title, s.currentPriority, s.proposedPriority, s.reason)}</p>
+                  <div className="inline-fields">
+                    <button
+                      type="button"
+                      onClick={() => respondToEventTaskPrioritySuggestion(s.id, true).then(() => Promise.all([reloadTasks(), reloadPrioritySuggestions()]))}
+                    >
+                      {s.currentPriority ? (PRIORITY_ORDER[s.proposedPriority] > PRIORITY_ORDER[s.currentPriority] ? 'Subir prioridad' : 'Bajar prioridad') : 'Asignar prioridad'}
+                    </button>
+                    <button type="button" className="secondary" onClick={() => respondToEventTaskPrioritySuggestion(s.id, false).then(reloadPrioritySuggestions)}>
+                      Mantenerla como está
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -2051,6 +2127,7 @@ function ReminderBell({ taskTitle, choice, hint, onChoose }: { taskTitle: string
 
 function TaskCard({
   task,
+  decisions = [],
   responsible,
   responsibleNames,
   reminder,
@@ -2060,6 +2137,9 @@ function TaskCard({
   onDelete,
 }: {
   task: EventTask
+  // Para que PEPA pueda recalcular en vivo la prioridad de las tareas que gestiona (effectivePriority) —
+  // ausente = se trata como si la tarea no dependiera de ninguna decisión (nunca rompe, solo es menos preciso).
+  decisions?: DecisionLookup[]
   responsible: FamilyMember | null
   // Preparativos: todos los responsables (familiares y externos), ya en texto. Sin él, se muestra el principal.
   responsibleNames?: string[]
@@ -2076,7 +2156,7 @@ function TaskCard({
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const overdue = isOverdueTask(task)
-  const shownPriority = effectivePriority(task).priority
+  const shownPriority = effectivePriority(task, decisions).priority
   return (
     <div className={'card event-task-card' + (highlighted ? ' event-task-card-highlighted' : '')}>
       <input type="checkbox" checked={task.done} onChange={onToggleDone} aria-label={`Marcar "${task.title}" como hecha`} />
@@ -2091,7 +2171,11 @@ function TaskCard({
                 {overdue ? ' · 🔴 Atrasada' : ''}
               </span>
             )}
-            {shownPriority && <span className={`event-priority-${shownPriority}`}>{PRIORITY_LABELS[shownPriority]}</span>}
+            {/* Revisión manual en iPhone: solo el punto de color en la tarjeta compacta, nunca la palabra
+                — el nombre completo sigue existiendo en el editor y en "Pepa te recomienda". */}
+            {shownPriority && (
+              <span className={`event-priority-dot event-priority-${shownPriority}`} title={`Prioridad ${PRIORITY_LABELS[shownPriority]}`} aria-label={`Prioridad ${PRIORITY_LABELS[shownPriority]}`} />
+            )}
             {responsibleNames && responsibleNames.length > 0 ? (
               <span>👤 {responsibleNames.join(', ')}</span>
             ) : (
@@ -2165,6 +2249,11 @@ function TaskEditModal({
   const [newHelperLabel, setNewHelperLabel] = useState('')
   const [editingHelper, setEditingHelper] = useState<{ id: string; name: string; label: string } | null>(null)
   const [helperDeleteFor, setHelperDeleteFor] = useState<{ helper: EventHelper; assignments: number } | null>(null)
+  // Ficha compacta (revisión manual en iPhone): el alta de persona externa ya no se muestra siempre —
+  // solo al tocar «+ Añadir persona externa». Mismo criterio para el menú ⋯ de editar/borrar una externa
+  // ya existente: oculto hasta que se toca, nunca una segunda pantalla grande aparte.
+  const [addingHelper, setAddingHelper] = useState(false)
+  const [helperMenuFor, setHelperMenuFor] = useState<string | null>(null)
   // Fase 9 — la propia presencia de calendarEventId es el estado
   // inicial del interruptor; no hay una columna booleana aparte.
   const [showInCalendar, setShowInCalendar] = useState(task.calendarEventId != null)
@@ -2196,7 +2285,6 @@ function TaskEditModal({
     listEventHelpers(task.eventId)
       .then(setHelpers)
       .catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.eventId])
 
   async function reloadHelpers() {
@@ -2331,24 +2419,29 @@ function TaskEditModal({
             Título
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
           </label>
-          <label>
-            Fecha
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => {
-                setDueDate(e.target.value)
-                if (!e.target.value) {
-                  setShowInCalendar(false)
-                  setDueTime('')
-                }
-              }}
-            />
-          </label>
-          <label>
-            Hora (opcional, solo con fecha)
-            <input type="time" value={dueTime} disabled={!dueDate} onChange={(e) => setDueTime(e.target.value)} />
-          </label>
+          {/* Comparten fila si el ancho lo permite; en móvil estrecho se apilan solas (flexWrap), nunca
+              desbordan — revisión manual en iPhone encontró scroll horizontal aquí. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <label style={{ flex: '1 1 140px', minWidth: 0 }}>
+              Fecha
+              <input
+                type="date"
+                value={dueDate}
+                style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
+                onChange={(e) => {
+                  setDueDate(e.target.value)
+                  if (!e.target.value) {
+                    setShowInCalendar(false)
+                    setDueTime('')
+                  }
+                }}
+              />
+            </label>
+            <label style={{ flex: '1 1 110px', minWidth: 0 }}>
+              Hora (opcional)
+              <input type="time" value={dueTime} disabled={!dueDate} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} onChange={(e) => setDueTime(e.target.value)} />
+            </label>
+          </div>
           <label>
             Prioridad
             <select value={priority} onChange={(e) => setPriority(e.target.value as '' | 'alta' | 'media' | 'baja')}>
@@ -2358,75 +2451,110 @@ function TaskEditModal({
               <option value="baja">Baja</option>
             </select>
           </label>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-              Responsables (puede ser más de uno; «Sin asignar» si nadie)
+              Responsables (puede ser más de uno; ninguno marcado = sin asignar)
             </div>
-            {/* Nunca inferido: sin nadie marcado la tarea queda sin responsable. */}
-            {familyMembers.map((m) => (
-              <label key={m.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={responsibleIds.includes(m.id)}
-                  onChange={(e) => setResponsibleIds((prev) => (e.target.checked ? [...prev, m.id] : prev.filter((id) => id !== m.id)))}
-                />
-                <span>{m.name}</span>
-              </label>
-            ))}
-            {helpers.map((h) => (
-              <label key={h.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                <input type="checkbox" checked={helperIds.includes(h.id)} onChange={(e) => setHelperIds((prev) => (e.target.checked ? [...prev, h.id] : prev.filter((id) => id !== h.id)))} />
-                <span>
-                  {h.name}
-                  {h.label ? ` · ${h.label}` : ''} <span className="muted">(persona externa)</span>
-                </span>
-              </label>
-            ))}
-            {(task.helpers ?? []).filter((h) => h.helperId === null).map((h) => (
-              <p key={h.id} className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
-                {h.name}
-                {h.label ? ` · ${h.label}` : ''} · ya no está en el evento (referencia histórica)
-              </p>
-            ))}
-          </div>
-          <div className="member-form" style={{ borderTop: '1px solid #eee', paddingTop: 6 }}>
-            <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Personas externas de este evento</div>
-            <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
-              Ayudan en el evento. No necesitan cuenta, email ni teléfono, y solo existen en este evento.
-            </p>
-            {helpers.map((h) =>
-              editingHelper && editingHelper.id === h.id ? (
-                <div key={h.id} className="inline-fields">
-                  <input type="text" value={editingHelper.name} onChange={(e) => setEditingHelper({ ...editingHelper, name: e.target.value })} aria-label="Nombre de la persona externa" />
-                  <input type="text" value={editingHelper.label} placeholder="Relación (opcional)" onChange={(e) => setEditingHelper({ ...editingHelper, label: e.target.value })} aria-label="Relación de la persona externa" />
-                  <button type="button" className="link-button" onClick={() => void saveEditingHelper()}>
-                    Guardar
-                  </button>
-                  <button type="button" className="link-button" onClick={() => setEditingHelper(null)}>
-                    Cancelar
-                  </button>
-                </div>
-              ) : (
-                <div key={h.id} className="inline-fields" style={{ alignItems: 'center' }}>
-                  <span style={{ flex: 1 }}>
+            {/* Chips compactos (revisión manual en iPhone: la lista vertical de checkboxes desperdiciaba
+                espacio) — mismo patrón que el filtro de Preparativos. Nunca inferido: sin nadie marcado
+                la tarea queda sin responsable. Las externas llevan borde discontinuo, nunca solo color. */}
+            <div className="chip-row" style={{ marginTop: 4 }}>
+              {familyMembers.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={'chip' + (responsibleIds.includes(m.id) ? ' chip-active' : '')}
+                  onClick={() => setResponsibleIds((prev) => (prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]))}
+                >
+                  {m.name}
+                </button>
+              ))}
+              {helpers.map((h) => (
+                <span key={h.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, maxWidth: '100%' }}>
+                  <button
+                    type="button"
+                    className={'chip chip-external' + (helperIds.includes(h.id) ? ' chip-active' : '')}
+                    onClick={() => setHelperIds((prev) => (prev.includes(h.id) ? prev.filter((id) => id !== h.id) : [...prev, h.id]))}
+                  >
                     {h.name}
                     {h.label ? ` · ${h.label}` : ''}
-                  </span>
-                  <button type="button" className="link-button" onClick={() => setEditingHelper({ id: h.id, name: h.name, label: h.label ?? '' })}>
-                    Editar
                   </button>
-                  <button type="button" className="link-button" onClick={() => void askDeleteHelper(h)}>
-                    Borrar
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Más opciones de ${h.name}`}
+                    onClick={() => setHelperMenuFor(helperMenuFor === h.id ? null : h.id)}
+                  >
+                    ⋯
                   </button>
-                </div>
-              ),
+                </span>
+              ))}
+              <button type="button" className="chip" onClick={() => setAddingHelper((v) => !v)}>
+                + Añadir persona externa
+              </button>
+            </div>
+            {(task.helpers ?? []).filter((h) => h.helperId === null).length > 0 && (
+              <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+                {(task.helpers ?? [])
+                  .filter((h) => h.helperId === null)
+                  .map((h) => h.name + (h.label ? ` · ${h.label}` : ''))
+                  .join(', ')}{' '}
+                · ya no está en el evento (referencia histórica)
+              </p>
             )}
+            {helperMenuFor &&
+              helpers
+                .filter((h) => h.id === helperMenuFor)
+                .map((h) =>
+                  editingHelper && editingHelper.id === h.id ? (
+                    <div key={h.id} className="card" style={{ padding: 8, marginTop: 4 }}>
+                      <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          value={editingHelper.name}
+                          onChange={(e) => setEditingHelper({ ...editingHelper, name: e.target.value })}
+                          aria-label="Nombre de la persona externa"
+                          style={{ minWidth: 0, flex: 1 }}
+                        />
+                        <input
+                          type="text"
+                          value={editingHelper.label}
+                          placeholder="Relación (opcional)"
+                          onChange={(e) => setEditingHelper({ ...editingHelper, label: e.target.value })}
+                          aria-label="Relación de la persona externa"
+                          style={{ minWidth: 0, flex: 1 }}
+                        />
+                      </div>
+                      <div className="filter-row" style={{ marginTop: 4 }}>
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => void saveEditingHelper().then(() => setHelperMenuFor(null))}
+                        >
+                          Guardar
+                        </button>
+                        <button type="button" className="link-button" onClick={() => setEditingHelper(null)}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={h.id} className="filter-row" style={{ marginTop: 4 }}>
+                      <button type="button" className="link-button" onClick={() => setEditingHelper({ id: h.id, name: h.name, label: h.label ?? '' })}>
+                        Editar
+                      </button>
+                      <button type="button" className="link-button" onClick={() => void askDeleteHelper(h).then(() => setHelperMenuFor(null))}>
+                        Borrar
+                      </button>
+                    </div>
+                  ),
+                )}
             {helperDeleteFor && (
-              <div className="card" style={{ padding: 8 }}>
+              <div className="card" style={{ padding: 8, marginTop: 4 }}>
                 <p style={{ margin: '0 0 6px' }}>
                   {helperDeleteFor.helper.name} tiene {helperDeleteFor.assignments} asignación{helperDeleteFor.assignments === 1 ? '' : 'es'} en este evento. ¿Qué quieres hacer con ellas?
                 </p>
-                <div className="filter-row">
+                <div className="filter-row" style={{ flexWrap: 'wrap' }}>
                   <button type="button" className="link-button" onClick={() => void confirmDeleteHelper('keep')}>
                     Conservar las asignaciones (quedan como referencia)
                   </button>
@@ -2439,13 +2567,32 @@ function TaskEditModal({
                 </div>
               </div>
             )}
-            <div className="inline-fields">
-              <input type="text" value={newHelperName} placeholder="Nombre" onChange={(e) => setNewHelperName(e.target.value)} aria-label="Nombre de la nueva persona externa" />
-              <input type="text" value={newHelperLabel} placeholder="Relación (opcional)" onChange={(e) => setNewHelperLabel(e.target.value)} aria-label="Relación de la nueva persona externa" />
-              <button type="button" className="link-button" onClick={() => void addHelper()} disabled={!newHelperName.trim()}>
-                + Añadir persona externa
-              </button>
-            </div>
+            {addingHelper && (
+              <div className="card" style={{ padding: 8, marginTop: 4 }}>
+                <p className="muted" style={{ fontSize: 12, margin: '0 0 4px' }}>
+                  Ayuda en el evento. No necesita cuenta, email ni teléfono, y solo existe en este evento.
+                </p>
+                <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
+                  <input type="text" value={newHelperName} placeholder="Nombre" onChange={(e) => setNewHelperName(e.target.value)} aria-label="Nombre de la nueva persona externa" style={{ minWidth: 0, flex: 1 }} />
+                  <input
+                    type="text"
+                    value={newHelperLabel}
+                    placeholder="Relación (opcional)"
+                    onChange={(e) => setNewHelperLabel(e.target.value)}
+                    aria-label="Relación de la nueva persona externa"
+                    style={{ minWidth: 0, flex: 1 }}
+                  />
+                </div>
+                <div className="filter-row" style={{ marginTop: 4 }}>
+                  <button type="button" className="link-button" onClick={() => void addHelper().then(() => setAddingHelper(false))} disabled={!newHelperName.trim()}>
+                    Guardar
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setAddingHelper(false)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <label>
             Nota
@@ -3179,6 +3326,7 @@ function CelebracionBlock({
 
   const facts = { event, decisions, hasMomentLocation, structuredByMoments: structured }
   const summary = summarizeCelebrationBlock(facts)
+  const decisionSummary = buildCelebrationDecisionSummary(facts)
   const contextoDecision = decisions.find((d) => d.questionKey === LUGAR_CONTEXTO_QUESTION_KEY)
   const contexto = contextoDecision?.answer as unknown as LugarContextoAnswer | undefined
   const venueCase = resolveVenueCase(event, decisions, hasMomentLocation)
@@ -3194,6 +3342,7 @@ function CelebracionBlock({
           {summary}
         </p>
       )}
+      <DecisionSummaryDetails summary={decisionSummary} />
       {error && <p className="error">{error}</p>}
 
       {!structured && event.type === 'cumpleanos' && <EventAgeField event={event} onChanged={onChanged} />}
@@ -4459,6 +4608,7 @@ function PairBlock({
 
   if (loading) return null
   const summary = summarizePairBlock(event, decisions)
+  const decisionSummary = buildPairDecisionSummary(event, decisions)
 
   return (
     <div className="card" style={{ padding: 8 }}>
@@ -4467,6 +4617,7 @@ function PairBlock({
           {summary}
         </p>
       )}
+      <DecisionSummaryDetails summary={decisionSummary} />
       {error && <p className="error">{error}</p>}
       {PARTNER_SLOTS.map((slot) => {
         const name = partnerName(event, slot)
@@ -4930,6 +5081,7 @@ function GuestsDecisionsBlock({
   const realMoments = moments.filter((m) => !m.isLegacy)
   const momentsCount = hasRealMoments(resolveEventMoments(event, realMoments)) ? realMoments.length : 0
   const summary = summarizeGuestsBlock(decisions, momentsCount)
+  const decisionSummary = buildGuestsDecisionSummary(decisions, momentsCount)
   const ninosDecision = findDecision(GUESTS_NINOS_QUESTION_KEY)
   const ninos = ninosDecision?.answer as unknown as NinosAnswer | undefined
   const necesidadesDecision = findDecision(GUESTS_NINOS_NECESIDADES_QUESTION_KEY)
@@ -4942,6 +5094,7 @@ function GuestsDecisionsBlock({
           {summary}
         </p>
       )}
+      <DecisionSummaryDetails summary={decisionSummary} />
       {error && <p className="error">{error}</p>}
       <CustomAwareQuestion
         event={event}
@@ -5286,6 +5439,7 @@ function MomentosEspecialesBlock({ event, onDerivedDataChanged }: { event: Famil
   const clasesBaileDecision = findDecision(CLASES_BAILE_QUESTION_KEY)
   const clasesBaile = clasesBaileDecision?.answer as unknown as ClasesBaileAnswer | undefined
   const summary = summarizeMomentosEspecialesBlock(decisions)
+  const decisionSummary = buildMomentosEspecialesDecisionSummary(decisions)
 
   return (
     <div className="card" style={{ padding: 8 }}>
@@ -5294,6 +5448,7 @@ function MomentosEspecialesBlock({ event, onDerivedDataChanged }: { event: Famil
           {summary}
         </p>
       )}
+      <DecisionSummaryDetails summary={decisionSummary} />
       {error && <p className="error">{error}</p>}
       <MomentosEspecialesQuestion catalog={catalog} existing={seleccion} saving={savingKey === MOMENTOS_ESPECIALES_QUESTION_KEY} onSave={saveSeleccion} />
       {seleccion?.selected.includes('primer_baile') && (
@@ -5376,6 +5531,34 @@ const FOOD_BEBIDAS_OPTIONS: { value: BebidasChoice; label: string }[] = [
 
 function FoodInheritedLine({ children }: { children: ReactNode }) {
   return <p style={{ fontSize: 13, margin: '6px 0 0' }}>{children}</p>
+}
+
+// «Resumen de decisiones» — misma forma plegable en los cinco bloques del configurador (Comida y bebida,
+// Celebración, La pareja, Invitados, Momentos especiales). Nunca es una fuente de verdad: solo muestra lo
+// que ya calculó buildXDecisionSummary a partir de las decisiones reales.
+function DecisionSummaryDetails({ summary }: { summary: DecisionSummary }) {
+  if (summary.taken.length === 0 && summary.pending.length === 0) return null
+  return (
+    <details style={{ fontSize: 13, margin: '0 0 6px' }}>
+      <summary className="muted">Resumen de decisiones</summary>
+      {summary.taken.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>DECISIONES TOMADAS</div>
+          {summary.taken.map((item) => (
+            <div key={item.key}>✓ {item.text}</div>
+          ))}
+        </div>
+      )}
+      {summary.pending.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>POR DECIDIR</div>
+          {summary.pending.map((item) => (
+            <div key={item.key}>○ {item.text}</div>
+          ))}
+        </div>
+      )}
+    </details>
+  )
 }
 
 // «¿Qué incluye el lugar contratado?» — información TRANSVERSAL del lugar (no exclusiva de comida).
@@ -5915,6 +6098,9 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
   const tartaDecision = find(FOOD_TARTA_KEY)
   const bebidasDecision = find(FOOD_BEBIDAS_KEY)
   const contratacionDecision = find(FOOD_CONTRATACION_KEY)
+  // Indicador compacto: si el menú infantil sigue pendiente, se ve sin tener que abrir «Resumen de
+  // decisiones» (que está plegado por defecto). Misma fuente que el resumen, nunca un segundo cálculo.
+  const infantilPending = decisionSummary.pending.some((p) => p.key === FOOD_MENU_INFANTIL_KEY)
 
   return (
     <div className="card" style={{ padding: 8 }}>
@@ -5923,27 +6109,8 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
           {summary}
         </p>
       )}
-      {(decisionSummary.taken.length > 0 || decisionSummary.pending.length > 0) && (
-        <details style={{ fontSize: 13, margin: '0 0 6px' }}>
-          <summary className="muted">Resumen de decisiones</summary>
-          {decisionSummary.taken.length > 0 && (
-            <div style={{ marginTop: 4 }}>
-              <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>DECISIONES TOMADAS</div>
-              {decisionSummary.taken.map((item) => (
-                <div key={item.key}>✓ {item.text}</div>
-              ))}
-            </div>
-          )}
-          {decisionSummary.pending.length > 0 && (
-            <div style={{ marginTop: 4 }}>
-              <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>POR DECIDIR</div>
-              {decisionSummary.pending.map((item) => (
-                <div key={item.key}>○ {item.text}</div>
-              ))}
-            </div>
-          )}
-        </details>
-      )}
+      {infantilPending && <p style={{ fontSize: 13, margin: '0 0 6px' }}>⏳ Falta decidir el menú infantil</p>}
+      <DecisionSummaryDetails summary={decisionSummary} />
       {error && <p className="error">{error}</p>}
 
       {/* A) Lo que ya sabemos del lugar — se decide en el primer bloque («Ceremonia y celebración» / «Celebración»);

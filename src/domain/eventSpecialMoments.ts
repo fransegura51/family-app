@@ -94,6 +94,32 @@ export function summarizeMomentosEspecialesBlock(decisions: EventDecision[]): st
   return ''
 }
 
+export interface MomentosEspecialesQuestionInfo {
+  questionKey: string
+  blockKey: 'momentos_especiales'
+  label: string
+  status: DecisionStatus
+}
+
+// Mismo revelado progresivo que "La pareja"/"Invitados": la pregunta de clases de baile solo es
+// relevante (y por tanto solo aparece) cuando "primer_baile" está entre los momentos seleccionados —
+// antes de eso no existe como pregunta, no es "sin empezar".
+export function listMomentosEspecialesBlockQuestions(decisions: EventDecision[]): MomentosEspecialesQuestionInfo[] {
+  const result: MomentosEspecialesQuestionInfo[] = []
+  const seleccionDecision = decisions.find((d) => d.questionKey === MOMENTOS_ESPECIALES_QUESTION_KEY)
+  result.push({ questionKey: MOMENTOS_ESPECIALES_QUESTION_KEY, blockKey: 'momentos_especiales', label: '¿Qué momentos especiales queréis?', status: decisionStatus(seleccionDecision) })
+  const answer = seleccionDecision?.answer as unknown as MomentosEspecialesAnswer | undefined
+  if (answer?.selected?.includes('primer_baile')) {
+    result.push({
+      questionKey: CLASES_BAILE_QUESTION_KEY,
+      blockKey: 'momentos_especiales',
+      label: '¿Necesitáis clases de baile?',
+      status: decisionStatus(decisions.find((d) => d.questionKey === CLASES_BAILE_QUESTION_KEY)),
+    })
+  }
+  return result
+}
+
 // ---------------------------------------------------------------------
 // "Primer baile" → "¿Necesitáis clases de baile?" — ÚNICA pregunta contextual de esta fase (petición
 // explícita: no inventar una pregunta de resolución para cada momento, solo para este caso concreto y

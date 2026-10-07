@@ -291,3 +291,44 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 257. [ ] Menú infantil: con la necesidad activa y la respuesta «Todavía no decidido», aparece en POR DECIDIR del resumen.
 258. [ ] Quitar «Menú infantil» de Invitados: la respuesta antigua no genera tareas ni presupuesto; los datos no se borran.
 259. [ ] Volver a marcar «Menú infantil» en Invitados: la respuesta antigua vuelve a aplicar.
+
+## Nuevas pruebas (a partir de la 260) — recordatorio/calendario, resúmenes, prioridad PEPA, ficha compacta
+260. [ ] Recordatorio con fecha pero «Mostrar en Calendario» desactivado: la campana explica la limitación real (no hay soporte para un aviso sin entrada de calendario) — nunca sugiere que basta con activar el interruptor como si fuera solo una decisión de UX.
+261. [ ] «Mostrar en Calendario» activado con «Sin aviso»: se muestra en Calendario sin ningún recordatorio.
+262. [ ] «Mostrar en Calendario» activado con un aviso (el mismo día/1 día/1 semana/personalizado): ambos coexisten.
+263. [ ] Quitar el aviso (pasar a «Sin aviso») conserva «Mostrar en Calendario» activado.
+264. [ ] Quitar «Mostrar en Calendario» borra también el recordatorio (consecuencia real de la arquitectura, nunca en silencio: el editor dice que al desactivarlo se pierde el aviso).
+265. [ ] Tarea nueva enlazada a Calendario se crea con kind=task (confirmar en Calendario que no aparece como "evento").
+266. [ ] Las 2 tareas enlazadas antes de este cambio ("Enviar las invitaciones", "Encargar la tarta") ya aparecen como tarea en Calendario tras el backfill (0207) — revisar que no cambiaron de responsable ni de fecha.
+267. [ ] Ningún evento real cambió de tipo en Calendario tras el backfill.
+268. [ ] Resumen de decisiones de Celebración/Ceremonia y celebración: TOMADAS/POR DECIDIR correctos (edad si es cumpleaños, fecha, lugar, servicios solo si aplica).
+269. [ ] Resumen de decisiones de La pareja: vestuario/peluquería/complementos/floral/alianzas/detalle especial, con revelado progresivo (la resolución no aparece hasta elegir el tipo).
+270. [ ] Resumen de decisiones de Invitados: lista, preguntas en la invitación, momentos, niños y sus necesidades, invitación.
+271. [ ] Resumen de decisiones de Momentos especiales: la pregunta de clases de baile solo aparece si "primer_baile" está entre los seleccionados.
+272. [ ] Una pregunta no aplicable (p. ej. la edad en una boda, o "qué incluye el lugar" sin lugar contratado) no aparece ni en tomadas ni en pendientes.
+273. [ ] Cambiar una decisión (p. ej. de "todavía no lo sabemos" a una respuesta concreta) actualiza el resumen correspondiente sin recargar la pantalla a mano.
+274. [ ] Menú infantil pendiente: aparece el aviso compacto "⏳ Falta decidir el menú infantil" en Comida y bebida sin tener que abrir el Resumen.
+275. [ ] PEPA recalcula sola la prioridad de una tarea que gestiona (origen PEPA) cuando se acerca su fecha, sin que nadie la edite.
+276. [ ] La prioridad gestionada por PEPA también puede bajar si la fecha se aleja o se quita.
+277. [ ] Una prioridad elegida por el usuario (incluida «Sin prioridad») nunca cambia sola, por muy cerca que esté la fecha.
+278. [ ] PEPA propone subir una prioridad fijada por el usuario cuando se acerca su fecha, con el motivo explicado.
+279. [ ] Aceptar la propuesta cambia la prioridad de la tarea; la tarjeta lo refleja al momento.
+280. [ ] Rechazar la propuesta mantiene la prioridad del usuario y la propuesta no vuelve a aparecer mientras el motivo sea el mismo.
+281. [ ] Si después cambia el motivo de forma relevante (p. ej. pasa de "30 días" a "7 días" o cambia la decisión de origen), puede aparecer una propuesta nueva aunque la anterior se rechazara.
+282. [ ] «Sin prioridad» elegida por el usuario también puede recibir una propuesta de PEPA (asignarle prioridad), nunca se le asigna sola.
+283. [ ] La tarjeta compacta de Preparativos muestra solo un punto de color (rojo/amarillo/verde) para Alta/Media/Baja, sin la palabra; «Sin prioridad» no muestra ningún punto.
+284. [ ] El editor de la tarea sigue mostrando los nombres completos (Alta/Media/Baja/Sin prioridad) en el selector.
+
+## Nuevas pruebas (a partir de la 285) — ficha compacta, chips, personas externas, overflow
+285. [ ] Responsables familiares se muestran como chips en fila, no como lista vertical de checkboxes.
+286. [ ] Selección múltiple de responsables funciona igual que antes (marcar/desmarcar varios).
+287. [ ] Los chips de responsables hacen wrap (pasan a la siguiente línea) en una pantalla estrecha, sin scroll horizontal.
+288. [ ] Las personas externas no muestran permanentemente los campos Nombre/Relación: aparecen solo al tocar «+ Añadir persona externa».
+289. [ ] Cancelar el alta de una persona externa no crea nada.
+290. [ ] Guardar el alta crea la persona, la selecciona como chip y pliega el formulario otra vez.
+291. [ ] Una persona externa ya creada aparece como chip seleccionable junto a los familiares, con borde discontinuo y su relación (si tiene).
+292. [ ] Editar una persona externa desde el menú ⋯ de su chip actualiza su nombre/relación en todas sus asignaciones activas.
+293. [ ] Borrar una persona externa desde el menú ⋯ sigue ofreciendo conservar/quitar cuando tiene asignaciones.
+294. [ ] La ficha de edición completa no tiene scroll horizontal en iPhone (ancho estrecho), en ningún estado (alta de externa abierta, menú ⋯ abierto, recordatorio personalizado abierto).
+295. [ ] Fecha y Hora comparten fila en pantallas anchas y se apilan sin desbordar en pantallas estrechas.
+296. [ ] Todas las funciones de la ficha anterior siguen accesibles (prioridad, nota, Mostrar en Calendario, Recordatorio, Guardar) tras la compactación.

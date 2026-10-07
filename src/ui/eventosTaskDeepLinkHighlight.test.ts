@@ -9,7 +9,7 @@ const SRC = (import.meta.glob('/src/ui/EventosScreen.tsx', { query: '?raw', impo
 
 describe('Fase 12 — deep-link a la tarea concreta', () => {
   it('deriva la tarea a destacar con el ranking único de recomendaciones (recommendTasks), no con un criterio nuevo', () => {
-    expect(SRC).toContain("const deepLinkHighlightTaskId = initialModule === 'tareas' ? (recommendTasks(tasks, new Date(), 1)[0]?.task.id ?? null) : null")
+    expect(SRC).toContain("const deepLinkHighlightTaskId = initialModule === 'tareas' ? (recommendTasks(tasks, new Date(), 1, taskDecisions)[0]?.task.id ?? null) : null")
   })
 
   it('no añade parámetros nuevos a la URL — sigue siendo ?event=&modulo= (Fase 4)', () => {

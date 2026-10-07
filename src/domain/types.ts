@@ -784,6 +784,19 @@ export interface EventTask {
   decisionId: string | null
 }
 
+// Preparativos (migración 0208) — propuesta de PEPA de cambiar una prioridad que fijó el usuario, con
+// motivo. Solo existe mientras 'pendiente'; aceptarla o rechazarla la resuelve (nunca se borra).
+export interface EventTaskPrioritySuggestion {
+  id: string
+  taskId: string
+  eventId: string
+  currentPriority: 'alta' | 'media' | 'baja' | null
+  proposedPriority: 'alta' | 'media' | 'baja'
+  reason: 'practica' | 'reserva' | 'fecha_proxima' | 'dependencia' | 'general'
+  contextFingerprint: string
+  status: 'pendiente' | 'aceptada' | 'rechazada' | 'resuelta'
+}
+
 export interface EventBudgetItem {
   id: string
   eventId: string

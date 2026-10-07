@@ -137,15 +137,18 @@ describe('tarjeta: compacta, nota truncada solo en pantalla', () => {
     expect(UI).toContain('title={task.notes}')
   })
 
-  it('la hora se muestra junto a la fecha; la prioridad como etiqueta', () => {
+  it('la hora se muestra junto a la fecha; la prioridad es solo un punto de color, nunca la palabra', () => {
     expect(UI).toContain("{task.dueTime ? ` · ${task.dueTime}` : ''}")
-    expect(UI).toContain('{shownPriority && <span className={`event-priority-${shownPriority}`}>{PRIORITY_LABELS[shownPriority]}</span>}')
+    // Revisión manual en iPhone: "Alta"/"Media"/"Baja" ocupaban demasiado espacio en la tarjeta — ahora
+    // solo un punto de color (title/aria-label siguen llevando el nombre, nunca depende solo del color).
+    expect(UI).toContain('event-priority-dot event-priority-${shownPriority}')
+    expect(UI).not.toMatch(/<span className=\{`event-priority-\$\{shownPriority\}`\}>\{PRIORITY_LABELS\[shownPriority\]\}<\/span>/)
   })
 })
 
 describe('«Pepa te recomienda» — una sola fuente de verdad, con explicación', () => {
-  it('usa el ranking nuevo en la tarjeta, el resaltado y los recordatorios', () => {
-    expect(UI).toContain('const upcomingTasks = recommendTasks(tasks, new Date(), 3)')
+  it('usa el ranking nuevo en la tarjeta, el resaltado y los recordatorios (ahora también con las decisiones del evento, para recalcular en vivo)', () => {
+    expect(UI).toContain('const upcomingTasks = recommendTasks(tasks, new Date(), 3, taskDecisions)')
     expect(UI).not.toContain('rankUpcomingTasks(tasks)')
   })
 

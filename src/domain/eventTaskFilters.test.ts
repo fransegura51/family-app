@@ -79,8 +79,8 @@ describe('estructura de la interfaz y de datos', () => {
     expect(UI).toContain("'m:' + m.id")
     expect(UI).toContain("'h:' + h.id")
   })
-  it('la prioridad efectiva usa el motor también para tareas antiguas sin guardar', () => {
-    expect(UI).toContain('const shownPriority = effectivePriority(task).priority')
+  it('la prioridad efectiva usa el motor también para tareas antiguas sin guardar, y se recalcula en vivo con las decisiones del evento', () => {
+    expect(UI).toContain('const shownPriority = effectivePriority(task, decisions).priority')
   })
 })
 

@@ -11,7 +11,8 @@ import { listExpenses, listBudgetCategories } from '@/data/finance'
 // propio de Eventos.
 import { replaceEventMembers } from '@/data/calendar'
 import { distinctTagColor } from '@/domain/colors'
-import { proposeTaskPriority, type PriorityReason, type TaskPriority } from '@/domain/eventTaskPriority'
+import { proposeTaskPriority, type DecisionLookup, type PriorityReason, type TaskPriority } from '@/domain/eventTaskPriority'
+import { computePrioritySuggestion } from '@/domain/eventTaskPrioritySuggestion'
 import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary, type FoodNeedsAlertInput } from '@/domain/events'
 import { reconcilePairGeneration, type DesiredPairGeneration, type ReconcileAction, type ReconcileResult } from '@/domain/eventPairDecisions'
 import {
@@ -84,6 +85,7 @@ import type {
   EventSpecialDetailStatus,
   EventTableSeat,
   EventTask,
+  EventTaskPrioritySuggestion,
   EventTemplate,
   EventType,
   EventServiceId,
@@ -695,6 +697,105 @@ export async function deleteEventTask(id: string): Promise<void> {
   const { data: linked } = await supabase.from('event_tasks').select('calendar_event_id').eq('id', id).maybeSingle()
   if (linked?.calendar_event_id) await supabase.from('calendar_events').delete().eq('id', linked.calendar_event_id)
   const { error } = await supabase.from('event_tasks').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Sugerencias de PEPA sobre una prioridad fijada por el usuario (migración 0208). Barato y
+// determinista: se revisa al recargar las tareas del evento, nunca con un cron. Nunca escribe la
+// prioridad de la tarea por su cuenta — solo crea/actualiza la propuesta pendiente.
+// ---------------------------------------------------------------------
+const PRIORITY_SUGGESTION_SELECT = 'id, task_id, event_id, current_priority, proposed_priority, reason, context_fingerprint, status'
+
+function mapPrioritySuggestion(r: Record<string, unknown>): EventTaskPrioritySuggestion {
+  return {
+    id: r.id as string,
+    taskId: r.task_id as string,
+    eventId: r.event_id as string,
+    currentPriority: r.current_priority as EventTaskPrioritySuggestion['currentPriority'],
+    proposedPriority: r.proposed_priority as EventTaskPrioritySuggestion['proposedPriority'],
+    reason: r.reason as EventTaskPrioritySuggestion['reason'],
+    contextFingerprint: r.context_fingerprint as string,
+    status: r.status as EventTaskPrioritySuggestion['status'],
+  }
+}
+
+export async function listOpenEventTaskPrioritySuggestions(eventId: string): Promise<EventTaskPrioritySuggestion[]> {
+  const { data, error } = await supabase.from('event_task_priority_suggestions').select(PRIORITY_SUGGESTION_SELECT).eq('event_id', eventId).eq('status', 'pendiente')
+  if (error) throw error
+  return (data ?? []).map(mapPrioritySuggestion)
+}
+
+// Revisa las tareas con prioridad fijada por el usuario y, si el contexto actual justifica una
+// propuesta distinta de la que ya hay pendiente (o no hay ninguna todavía), la crea/actualiza. Nunca
+// repite una propuesta ya rechazada con el MISMO fingerprint. Devuelve si cambió algo (para recargar).
+export async function ensureTaskPrioritySuggestions(tasks: EventTask[], decisions: DecisionLookup[], today: Date): Promise<boolean> {
+  const candidates = tasks.filter((t) => !t.done && t.prioritySource === 'usuario')
+  if (candidates.length === 0) return false
+  const { data: existingRows, error } = await supabase
+    .from('event_task_priority_suggestions')
+    .select(PRIORITY_SUGGESTION_SELECT)
+    .in('task_id', candidates.map((t) => t.id))
+  if (error) throw error
+  const existing = (existingRows ?? []).map(mapPrioritySuggestion)
+  let changed = false
+  for (const task of candidates) {
+    const suggestion = computePrioritySuggestion(task, decisions, today)
+    const forTask = existing.filter((s) => s.taskId === task.id)
+    const openSuggestion = forTask.find((s) => s.status === 'pendiente')
+    if (!suggestion) {
+      // Ya no hace falta ninguna propuesta (el usuario igualó la prioridad, o PEPA ya no discreparía):
+      // si había una pendiente, se resuelve en silencio — nunca se deja una propuesta obsoleta.
+      if (openSuggestion) {
+        await supabase.from('event_task_priority_suggestions').update({ status: 'resuelta', resolved_at: new Date().toISOString() }).eq('id', openSuggestion.id)
+        changed = true
+      }
+      continue
+    }
+    if (openSuggestion) {
+      if (openSuggestion.contextFingerprint === suggestion.fingerprint) continue // misma propuesta ya mostrada, no se repite
+      await supabase
+        .from('event_task_priority_suggestions')
+        .update({ proposed_priority: suggestion.proposedPriority, reason: suggestion.reason, context_fingerprint: suggestion.fingerprint, current_priority: task.priority ?? null })
+        .eq('id', openSuggestion.id)
+      changed = true
+      continue
+    }
+    // Sin propuesta pendiente: si ya se rechazó exactamente este mismo contexto, no se repite.
+    if (forTask.some((s) => s.status === 'rechazada' && s.contextFingerprint === suggestion.fingerprint)) continue
+    const familyId = await currentFamilyId()
+    await supabase.from('event_task_priority_suggestions').insert({
+      task_id: task.id,
+      event_id: task.eventId,
+      family_id: familyId,
+      current_priority: task.priority ?? null,
+      proposed_priority: suggestion.proposedPriority,
+      reason: suggestion.reason,
+      context_fingerprint: suggestion.fingerprint,
+    })
+    changed = true
+  }
+  return changed
+}
+
+// Si se acepta: aplica la prioridad propuesta (sigue siendo origen 'usuario' — PEPA no vuelve a
+// gestionarla sola, el usuario sigue al mando, solo que ahora con el valor que aceptó). Si se rechaza:
+// la tarea no cambia. En ambos casos la propuesta queda resuelta, nunca se borra.
+export async function respondToEventTaskPrioritySuggestion(suggestionId: string, accept: boolean): Promise<void> {
+  const { data: suggestion, error: readError } = await supabase.from('event_task_priority_suggestions').select('task_id, proposed_priority').eq('id', suggestionId).maybeSingle()
+  if (readError) throw readError
+  if (!suggestion) return
+  if (accept) {
+    const { error } = await supabase
+      .from('event_tasks')
+      .update({ priority: suggestion.proposed_priority, priority_source: 'usuario', priority_reason: null })
+      .eq('id', suggestion.task_id)
+    if (error) throw error
+  }
+  const { error } = await supabase
+    .from('event_task_priority_suggestions')
+    .update({ status: accept ? 'aceptada' : 'rechazada', resolved_at: new Date().toISOString() })
+    .eq('id', suggestionId)
   if (error) throw error
 }
 

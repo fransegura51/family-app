@@ -400,12 +400,12 @@ export function MenuManager({
           <button type="button" className="link-button" onClick={() => setImporting({ forcedSection: null })}>
             📷 Importar menú
           </button>
-          <EventMenuOriginals eventId={event.id} />
           {(mode === 'familia' || mode === 'mixto') && (
             <button type="button" className="link-button" onClick={() => setShoppingOpen(true)}>
               🛒 Preparar compra del menú
             </button>
           )}
+          <EventMenuOriginals eventId={event.id} />
           <button type="button" className="link-button" onClick={() => setSectionsOpen(true)}>
             ⚙️ Gestionar secciones
           </button>

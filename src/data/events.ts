@@ -530,6 +530,13 @@ export async function listEventTasks(eventId: string): Promise<EventTask[]> {
   return tasks
 }
 
+// Pregunta de event_decisions que originó una tarea (señal estructurada para la prioridad de PEPA). Null si no hay decisión.
+async function decisionQuestionKeyOf(decisionId: string | null): Promise<string | null> {
+  if (!decisionId) return null
+  const { data } = await supabase.from('event_decisions').select('question_key').eq('id', decisionId).maybeSingle()
+  return (data?.question_key as string | undefined) ?? null
+}
+
 export async function addEventTask(
   eventId: string,
   title: string,
@@ -539,7 +546,7 @@ export async function addEventTask(
 ): Promise<void> {
   const familyId = await currentFamilyId()
   // Prioridad inicial: la que indique el usuario, o la propuesta de PEPA con su motivo (guardado, no recalculado).
-  const proposal = proposeTaskPriority({ title, dependsOnDecision: decisionId !== null })
+  const proposal = proposeTaskPriority({ title, dependsOnDecision: decisionId !== null, decisionQuestionKey: await decisionQuestionKeyOf(decisionId) })
   const priorityFromUser = extras.priority !== undefined
   const { error } = await supabase.from('event_tasks').insert({
     event_id: eventId,
@@ -602,13 +609,23 @@ export async function updateEventTask(
 // exactamente la semántica ya existente de Calendario
 // (calendar_event_members vacío = "Toda la familia", ver CalendarScreen.tsx) —
 // nunca una segunda interpretación propia de Eventos.
+// Responsables de Calendario de una tarea: TODOS sus responsables FAMILIARES (principal incluido). Las personas externas
+// no tienen calendario ni color: nunca entran aquí. Una sola entrada lógica del calendario, nunca una copia por persona.
+async function calendarMemberIdsForTask(taskId: string, primaryMemberId: string | null): Promise<string[]> {
+  const { data, error } = await supabase.from('event_task_members').select('member_id').eq('task_id', taskId)
+  if (error) throw error
+  const ids = new Set<string>((data ?? []).map((r) => r.member_id as string))
+  if (primaryMemberId) ids.add(primaryMemberId)
+  return [...ids]
+}
+
 async function applyTaskToLinkedCalendarEvent(
   calendarEventId: string,
-  task: { title: string; due_date: string; assigned_member_id: string | null },
+  task: { id: string; title: string; due_date: string; assigned_member_id: string | null },
 ): Promise<void> {
   const { error } = await supabase.from('calendar_events').update({ title: task.title, start_at: `${task.due_date}T00:00:00` }).eq('id', calendarEventId)
   if (error) throw error
-  await replaceEventMembers(calendarEventId, task.assigned_member_id ? [task.assigned_member_id] : [])
+  await replaceEventMembers(calendarEventId, await calendarMemberIdsForTask(task.id, task.assigned_member_id))
 }
 
 // Fase 9 — Tarea → Calendario. Mismo patrón ya certificado que
@@ -628,7 +645,7 @@ export async function linkEventTaskToCalendar(taskId: string): Promise<string> {
   if (!userResult.user) throw new Error('No autenticado')
   const { data: calendarEvent, error: insertError } = await supabase
     .from('calendar_events')
-    .insert({ family_id: familyId, title: task.title, start_at: `${task.due_date}T00:00:00`, all_day: true, created_by: userResult.user.id, visibility: 'shared' })
+    .insert({ family_id: familyId, title: task.title, start_at: `${task.due_date}T00:00:00`, all_day: true, created_by: userResult.user.id, visibility: 'shared', kind: 'task' })
     .select('id')
     .single()
   if (insertError) throw insertError
@@ -637,7 +654,8 @@ export async function linkEventTaskToCalendar(taskId: string): Promise<string> {
   // BUG TAREA-CALENDARIO-01 — el responsable ya elegido en Eventos debe
   // propagarse desde la primera creación del calendar_event, no solo
   // en ediciones posteriores.
-  if (task.assigned_member_id) await replaceEventMembers(calendarEvent.id, [task.assigned_member_id])
+  const memberIds = await calendarMemberIdsForTask(taskId, task.assigned_member_id)
+  if (memberIds.length > 0) await replaceEventMembers(calendarEvent.id, memberIds)
   return calendarEvent.id
 }
 
@@ -657,7 +675,7 @@ export async function unlinkEventTaskFromCalendar(taskId: string): Promise<void>
 
 async function syncLinkedTaskCalendarEventSafely(taskId: string): Promise<void> {
   try {
-    const { data, error } = await supabase.from('event_tasks').select('calendar_event_id, title, due_date, assigned_member_id').eq('id', taskId).single()
+    const { data, error } = await supabase.from('event_tasks').select('id, calendar_event_id, title, due_date, assigned_member_id').eq('id', taskId).single()
     if (error) throw error
     if (!data.calendar_event_id) return
     if (!data.due_date) {
@@ -665,7 +683,7 @@ async function syncLinkedTaskCalendarEventSafely(taskId: string): Promise<void> 
       await unlinkEventTaskCalendarById(taskId, data.calendar_event_id)
       return
     }
-    await applyTaskToLinkedCalendarEvent(data.calendar_event_id, { title: data.title, due_date: data.due_date, assigned_member_id: data.assigned_member_id })
+    await applyTaskToLinkedCalendarEvent(data.calendar_event_id, { id: data.id, title: data.title, due_date: data.due_date, assigned_member_id: data.assigned_member_id })
   } catch {
     showToast('⚠️ No se pudo actualizar el calendario de esta tarea')
   }
@@ -2216,7 +2234,7 @@ async function executeReconcileActions(eventId: string, familyId: string, decisi
   for (const action of result.actions) {
     switch (action.op) {
       case 'create_task': {
-        const proposal = proposeTaskPriority({ title: action.title, dependsOnDecision: true })
+        const proposal = proposeTaskPriority({ title: action.title, dependsOnDecision: true, decisionQuestionKey: await decisionQuestionKeyOf(decisionId) })
         const { error } = await supabase.from('event_tasks').insert({
           event_id: eventId,
           family_id: familyId,

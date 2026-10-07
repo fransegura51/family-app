@@ -49,12 +49,12 @@ describe('BUG TAREA-CALENDARIO-01 — causa raíz: no se usaba calendar_event_me
 
 describe('BUG TAREA-CALENDARIO-01 — TEST 1/2/3: responsable propagado con la semántica ya existente', () => {
   it('TEST 1/2: con assigned_member_id, se enlaza exactamente ese miembro (Jennifer o Paco: mismo código genérico para cualquiera, sin nombres)', () => {
-    expect(EVENTS_SRC).toContain('task.assigned_member_id ? [task.assigned_member_id] : []')
+    expect(EVENTS_SRC).toContain('calendarMemberIdsForTask(task.id, task.assigned_member_id)')
     expect(EVENTS_SRC).not.toMatch(/['"]Jennifer['"]|['"]Paco['"]/)
   })
 
   it('TEST 3: con assigned_member_id null, usa [] — la misma semántica de "Toda la familia" que ya interpreta CalendarScreen (memberIds.length === 0), no una segunda interpretación', () => {
-    expect(EVENTS_SRC).toContain('replaceEventMembers(calendarEventId, task.assigned_member_id ? [task.assigned_member_id] : [])')
+    expect(EVENTS_SRC).toContain('replaceEventMembers(calendarEventId, await calendarMemberIdsForTask(task.id, task.assigned_member_id))')
   })
 })
 
@@ -63,7 +63,7 @@ describe('BUG TAREA-CALENDARIO-01 — TEST 4: creación propaga el responsable e
     const body = window(EVENTS_SRC, 'export async function linkEventTaskToCalendar', 'async function unlinkEventTaskCalendarById')
     expect(body).toContain("select('title, due_date, calendar_event_id, assigned_member_id')")
     expect((body.match(/\.insert\(/g) ?? []).length).toBe(1)
-    expect(body).toContain('if (task.assigned_member_id) await replaceEventMembers(calendarEvent.id, [task.assigned_member_id])')
+    expect(body).toContain('if (memberIds.length > 0) await replaceEventMembers(calendarEvent.id, memberIds)')
   })
 
   it('idempotente: si ya está enlazada, no vuelve a crear ni a tocar miembros dos veces (ver también eventTaskCalendarLinkMigration.test.ts)', () => {
@@ -96,8 +96,8 @@ describe('BUG TAREA-CALENDARIO-01 — TEST 5/6/7: cambiar responsable nunca crea
 describe('BUG TAREA-CALENDARIO-01 — TEST 8/9: fecha y título cambian, responsable se conserva', () => {
   it('syncLinkedTaskCalendarEventSafely relee assigned_member_id fresco de la tarea en cada sincronización (nunca un valor "congelado")', () => {
     const body = window(EVENTS_SRC, 'async function syncLinkedTaskCalendarEventSafely', 'export async function deleteEventTask')
-    expect(body).toContain("select('calendar_event_id, title, due_date, assigned_member_id')")
-    expect(body).toContain('applyTaskToLinkedCalendarEvent(data.calendar_event_id, { title: data.title, due_date: data.due_date, assigned_member_id: data.assigned_member_id })')
+    expect(body).toContain("select('id, calendar_event_id, title, due_date, assigned_member_id')")
+    expect(body).toContain('applyTaskToLinkedCalendarEvent(data.calendar_event_id, { id: data.id, title: data.title, due_date: data.due_date, assigned_member_id: data.assigned_member_id })')
   })
 })
 

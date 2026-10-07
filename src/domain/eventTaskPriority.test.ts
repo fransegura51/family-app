@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { daysUntilDate, proposeTaskPriority, recommendTasks, type TaskForRanking } from '@/domain/eventTaskPriority'
+import { daysUntilDate, effectivePriority, proposeTaskPriority, recommendTasks, type TaskForRanking } from '@/domain/eventTaskPriority'
 
 const TODAY = new Date(2026, 9, 7) // 7 oct 2026 (local)
 const task = (over: Partial<TaskForRanking> & { id: string; title: string }): TaskForRanking => ({
@@ -13,16 +13,16 @@ const task = (over: Partial<TaskForRanking> & { id: string; title: string }): Ta
 
 describe('propuesta de prioridad inicial (PEPA)', () => {
   it('clases de baile para el primer baile → Alta por práctica, aunque no haya fecha', () => {
-    expect(proposeTaskPriority({ title: 'Buscar clases de baile', dependsOnDecision: false })).toEqual({ priority: 'alta', reason: 'practica' })
+    expect(proposeTaskPriority({ title: 'Buscar clases de baile', dependsOnDecision: false })).toMatchObject({ priority: 'alta', reason: 'practica' })
   })
   it('fotógrafo → Alta por reserva (se cierra con antelación)', () => {
-    expect(proposeTaskPriority({ title: 'Buscar fotógrafo', dependsOnDecision: false })).toEqual({ priority: 'alta', reason: 'reserva' })
+    expect(proposeTaskPriority({ title: 'Buscar fotógrafo', dependsOnDecision: false })).toMatchObject({ priority: 'alta', reason: 'reserva' })
   })
   it('tarea que depende de una decisión → Media por dependencia', () => {
-    expect(proposeTaskPriority({ title: 'Revisar la lista de invitados', dependsOnDecision: true })).toEqual({ priority: 'media', reason: 'dependencia' })
+    expect(proposeTaskPriority({ title: 'Revisar la lista de invitados', dependsOnDecision: true })).toMatchObject({ priority: 'media', reason: 'dependencia' })
   })
   it('caso general → Media, motivo general (no inventa Alta)', () => {
-    expect(proposeTaskPriority({ title: 'Decorar la mesa', dependsOnDecision: false })).toEqual({ priority: 'media', reason: 'general' })
+    expect(proposeTaskPriority({ title: 'Decorar la mesa', dependsOnDecision: false })).toMatchObject({ priority: 'media', reason: 'general' })
   })
 })
 
@@ -70,5 +70,42 @@ describe('recomendaciones — no son las tres primeras; respetan prioridad y fec
   it('sin información suficiente usa reglas estables (mismo resultado en dos llamadas)', () => {
     const tasks = [task({ id: 'p', title: 'p', sortOrder: 2 }), task({ id: 'q', title: 'q', sortOrder: 1 })]
     expect(recommendTasks(tasks, TODAY).map((r) => r.task.id)).toEqual(recommendTasks(tasks, TODAY).map((r) => r.task.id))
+  })
+})
+
+describe('motor: señal estructurada de la decisión > dependencia > título (respaldo)', () => {
+  it('«¿Necesitáis clases de baile?» = sí → práctica, aunque el título no diga «clases»', () => {
+    expect(proposeTaskPriority({ title: 'Primer baile: preparar', dependsOnDecision: true, decisionQuestionKey: 'momentos_especiales.primer_baile.clases_baile' })).toMatchObject({ priority: 'alta', reason: 'practica', basis: 'estructurada' })
+  })
+  it('una tarea de decisión sin señal especial es dependencia, no respaldo por título', () => {
+    expect(proposeTaskPriority({ title: 'Buscar clases de baile', dependsOnDecision: true })).toMatchObject({ basis: 'dependencia' })
+  })
+  it('tarea manual sin metadata: el título sirve de respaldo y se marca como tal', () => {
+    expect(proposeTaskPriority({ title: 'Buscar clases de baile', dependsOnDecision: false })).toMatchObject({ priority: 'alta', basis: 'titulo' })
+  })
+})
+
+describe('compatibilidad con tareas antiguas sin prioridad guardada (sin backfill)', () => {
+  it('la prioridad efectiva de una tarea antigua la propone el motor y NO se marca como guardada', () => {
+    expect(effectivePriority({ title: 'Buscar fotógrafo', priority: null })).toMatchObject({ priority: 'alta', stored: false })
+  })
+  it('una prioridad guardada siempre gana sobre la propuesta', () => {
+    expect(effectivePriority({ title: 'Buscar fotógrafo', priority: 'baja', priorityReason: null })).toMatchObject({ priority: 'baja', stored: true })
+  })
+  it('las tareas antiguas participan en «Pepa te recomienda» con su prioridad efectiva', () => {
+    const r = recommendTasks([{ id: 'old', title: 'Clases de baile', done: false, dueDate: null, sortOrder: 1 }, { id: 'new', title: 'Revisar lista', done: false, dueDate: null, priority: 'media', sortOrder: 0 }], TODAY)
+    expect(r[0].task.id).toBe('old')
+  })
+  it('sin fechas inventadas: una tarea antigua sin fecha no obtiene urgencia', () => {
+    expect(recommendTasks([{ id: 'x', title: 'x', done: false, dueDate: null, sortOrder: 0 }], TODAY)[0].daysUntil).toBeNull()
+  })
+})
+
+describe('«Sin prioridad» elegida por el usuario se respeta (no vuelve a proponerse)', () => {
+  it('origen usuario con prioridad vacía → sin prioridad, stored', () => {
+    expect(effectivePriority({ title: 'Buscar fotógrafo', priority: null, prioritySource: 'usuario' })).toMatchObject({ priority: null, stored: true })
+  })
+  it('sin origen (tarea antigua) → se propone', () => {
+    expect(effectivePriority({ title: 'Buscar fotógrafo', priority: null, prioritySource: null })).toMatchObject({ priority: 'alta', stored: false })
   })
 })

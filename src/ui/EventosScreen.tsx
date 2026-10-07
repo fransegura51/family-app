@@ -131,7 +131,8 @@ import type { LocationPlace } from '@/domain/types'
 import { listEventReminders, replaceReminders } from '@/data/calendar'
 import { addEventHelper, countHelperAssignments, deleteEventHelper, listEventHelpers, setEventTaskHelpers, setEventTaskResponsibles, updateEventHelper } from '@/data/eventTaskResponsibles'
 import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskResponsibles'
-import { recommendTasks } from '@/domain/eventTaskPriority'
+import { effectivePriority, recommendTasks } from '@/domain/eventTaskPriority'
+import { NO_RESPONSIBLE_KEY, presetRemindersFor, reminderChoiceFrom, taskMatchesResponsibleFilter, type ReminderChoice } from '@/domain/eventTaskFilters'
 import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
@@ -930,6 +931,10 @@ function EventDetail({
   // mismo (ficha compacta + modal de edición, en vez de una fila de
   // tabla con checkbox+texto+fecha+responsable+✕ compitiendo por sitio).
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  // Preparativos: filtro de la LISTA por responsable (solo presentación) y avisos rápidos por tarea.
+  const [responsibleFilter, setResponsibleFilter] = useState<string[]>([])
+  const [taskReminderChoice, setTaskReminderChoice] = useState<Record<string, ReminderChoice>>({})
+  const [eventHelpers, setEventHelpers] = useState<EventHelper[]>([])
   const [newTaskTitle, setNewTaskTitle] = useState('')
   // Fase 1 — reforma de Editar/•••: un único punto de entrada
   // ("Gestionar evento") en vez de dos controles compitiendo por la
@@ -986,10 +991,55 @@ function EventDetail({
   useEffect(reloadTasks, [event.id])
 
   const pendingTasks = tasks.filter((t) => !t.done)
-  const visibleTasks = showAllTasks ? pendingTasks : pendingTasks.slice(0, 5)
+  const filteredTasks = pendingTasks.filter((t) => taskMatchesResponsibleFilter(t, responsibleFilter))
+  const visibleTasks = showAllTasks ? filteredTasks : filteredTasks.slice(0, 5)
   // Bloque 9 — nunca se borran solas: mismo array `tasks` de siempre, solo el lado done:true.
   const completedTasks = tasks.filter((t) => t.done)
+  useEffect(() => {
+    listEventHelpers(event.id)
+      .then(setEventHelpers)
+      .catch(() => {})
+  }, [event.id, tasks])
+  useEffect(() => {
+    const linked = tasks.filter((t): t is EventTask & { calendarEventId: string } => t.calendarEventId != null)
+    if (linked.length === 0) return
+    let cancelled = false
+    Promise.all(linked.map(async (t) => [t.id, reminderChoiceFrom(await listEventReminders(t.calendarEventId))] as const))
+      .then((pairs) => {
+        if (!cancelled) setTaskReminderChoice(Object.fromEntries(pairs))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [tasks])
   const hasTasksModule = event.enabledModules.includes('tareas')
+
+  function toggleResponsibleFilter(key: string) {
+    setResponsibleFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+  }
+
+  // Sin fecha no hay aviso temporal; sin «Mostrar en Calendario» no hay dónde guardarlo: se explica, no se inventa.
+  function reminderHintFor(t: EventTask): string | null {
+    if (!t.dueDate) return 'Pon una fecha para activar un aviso'
+    if (!t.calendarEventId) return 'Activa primero «Mostrar en Calendario» en el editor'
+    return null
+  }
+
+  async function chooseTaskReminder(t: EventTask, choice: ReminderChoice) {
+    // «Personalizado» tiene su propia cantidad y unidad: se edita en el editor completo.
+    if (choice === 'custom') {
+      setEditingTaskId(t.id)
+      return
+    }
+    if (!t.calendarEventId) return
+    try {
+      await replaceReminders(t.calendarEventId, presetRemindersFor(choice))
+      setTaskReminderChoice((prev) => ({ ...prev, [t.id]: choice }))
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo cambiar el aviso'))
+    }
+  }
 
   async function handleAddTask(ev: FormEvent) {
     ev.preventDefault()
@@ -1250,6 +1300,32 @@ function EventDetail({
           <div className="card event-card">
             <strong>{EVENT_MODULES.find((m) => m.key === 'tareas')?.icon} Preparativos</strong>
             {pendingTasks.length === 0 && <p className="muted">No hay nada pendiente.</p>}
+            {pendingTasks.length > 0 && (
+              <div className="filter-row" role="group" aria-label="Filtrar por responsable" style={{ flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                <button type="button" className={'chip' + (responsibleFilter.length === 0 ? ' chip-active' : '')} onClick={() => setResponsibleFilter([])}>
+                  Todos
+                </button>
+                <button type="button" className={'chip' + (responsibleFilter.includes(NO_RESPONSIBLE_KEY) ? ' chip-active' : '')} onClick={() => toggleResponsibleFilter(NO_RESPONSIBLE_KEY)}>
+                  Sin asignar
+                </button>
+                {familyMembers.map((m) => (
+                  <button key={m.id} type="button" className={'chip' + (responsibleFilter.includes('m:' + m.id) ? ' chip-active' : '')} onClick={() => toggleResponsibleFilter('m:' + m.id)}>
+                    👤 {m.name}
+                  </button>
+                ))}
+                {eventHelpers.map((h) => (
+                  <button key={h.id} type="button" className={'chip' + (responsibleFilter.includes('h:' + h.id) ? ' chip-active' : '')} onClick={() => toggleResponsibleFilter('h:' + h.id)}>
+                    🤝 {h.name}
+                  </button>
+                ))}
+                {responsibleFilter.length > 0 && (
+                  <button type="button" className="link-button" onClick={() => setResponsibleFilter([])}>
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+            )}
+            {responsibleFilter.length > 0 && filteredTasks.length === 0 && <p className="muted">Ninguna tarea pendiente coincide con este filtro.</p>}
             <div className="event-list" style={{ marginTop: 8 }}>
               {visibleTasks.map((t) => (
                 <TaskCard
@@ -1257,6 +1333,11 @@ function EventDetail({
                   task={t}
                   responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
                   responsibleNames={taskResponsibleNames(t, familyMembers)}
+                  reminder={{
+                    choice: taskReminderChoice[t.id] ?? 'none',
+                    hint: reminderHintFor(t),
+                    onChoose: (c) => void chooseTaskReminder(t, c),
+                  }}
                   highlighted={t.id === deepLinkHighlightTaskId}
                   onToggleDone={() => updateEventTask(t.id, { done: true }).then(reloadTasks)}
                   onEdit={() => setEditingTaskId(t.id)}
@@ -1916,10 +1997,63 @@ function ManageEventModal({
 // protagonista, fecha/responsable como línea secundaria, acciones
 // (editar/borrar) detrás de "⋯" — nunca un select permanente ni la ✕
 // siempre visible.
+// Campana rápida: muestra si la tarea tiene aviso y permite cambiarlo sin abrir el editor. No sustituye a
+// «Mostrar en Calendario» ni inventa avisos cuando la tarea no tiene fecha.
+const REMINDER_CHOICE_LABEL: Record<ReminderChoice, string> = {
+  none: '🔕 Sin aviso',
+  same_day: '🔔 El mismo día',
+  '1_day': '🔔 1 día antes',
+  '1_week': '🔔 1 semana antes',
+  custom: '🔔 Personalizado',
+}
+
+function ReminderBell({ taskTitle, choice, hint, onChoose }: { taskTitle: string; choice: ReminderChoice; hint: string | null; onChoose: (c: ReminderChoice) => void }) {
+  const [open, setOpen] = useState(false)
+  const active = choice !== 'none'
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="icon-button"
+        aria-label={`Aviso de "${taskTitle}"`}
+        title={hint ?? (active ? REMINDER_CHOICE_LABEL[choice] : 'Sin aviso')}
+        disabled={hint !== null}
+        onClick={() => setOpen((v) => !v)}
+        style={{ color: active ? 'var(--primary, #4f46e5)' : undefined, opacity: hint ? 0.4 : 1 }}
+      >
+        {active ? '🔔' : '🔕'}
+      </button>
+      {open && hint === null && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1 }} onClick={() => setOpen(false)} />
+          <div className="event-task-menu" style={{ zIndex: 2 }}>
+            {(['none', 'same_day', '1_day', '1_week', 'custom'] as ReminderChoice[]).map((c) => (
+              <button
+                key={c}
+                type="button"
+                className="link-button"
+                style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                onClick={() => {
+                  setOpen(false)
+                  onChoose(c)
+                }}
+              >
+                {c === choice ? '✓ ' : ''}
+                {REMINDER_CHOICE_LABEL[c]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function TaskCard({
   task,
   responsible,
   responsibleNames,
+  reminder,
   highlighted = false,
   onToggleDone,
   onEdit,
@@ -1929,6 +2063,8 @@ function TaskCard({
   responsible: FamilyMember | null
   // Preparativos: todos los responsables (familiares y externos), ya en texto. Sin él, se muestra el principal.
   responsibleNames?: string[]
+  // Campana: aviso actual y cómo cambiarlo; ausente = la tarjeta no ofrece campana (p. ej. completadas).
+  reminder?: { choice: ReminderChoice; hint: string | null; onChoose: (c: ReminderChoice) => void }
   // Fase 12 — deep-link a la tarea concreta: destaca la ficha cuando se
   // llegó aquí desde un aviso sobre esta tarea en particular.
   highlighted?: boolean
@@ -1940,12 +2076,13 @@ function TaskCard({
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const overdue = isOverdueTask(task)
+  const shownPriority = effectivePriority(task).priority
   return (
     <div className={'card event-task-card' + (highlighted ? ' event-task-card-highlighted' : '')}>
       <input type="checkbox" checked={task.done} onChange={onToggleDone} aria-label={`Marcar "${task.title}" como hecha`} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600 }}>{task.title}</div>
-        {(task.dueDate || responsible || (responsibleNames && responsibleNames.length > 0) || task.priority) && (
+        {(task.dueDate || responsible || (responsibleNames && responsibleNames.length > 0) || shownPriority) && (
           <div className="muted event-task-card-meta">
             {task.dueDate && (
               <span style={overdue ? { color: '#dc2626', fontWeight: 600 } : undefined}>
@@ -1954,7 +2091,7 @@ function TaskCard({
                 {overdue ? ' · 🔴 Atrasada' : ''}
               </span>
             )}
-            {task.priority && <span className={`event-priority-${task.priority}`}>{PRIORITY_LABELS[task.priority]}</span>}
+            {shownPriority && <span className={`event-priority-${shownPriority}`}>{PRIORITY_LABELS[shownPriority]}</span>}
             {responsibleNames && responsibleNames.length > 0 ? (
               <span>👤 {responsibleNames.join(', ')}</span>
             ) : (
@@ -1969,6 +2106,9 @@ function TaskCard({
           </div>
         )}
       </div>
+      {reminder && (
+        <ReminderBell taskTitle={task.title} choice={reminder.choice} hint={reminder.hint} onChoose={reminder.onChoose} />
+      )}
       <div style={{ position: 'relative' }}>
         <button type="button" className="icon-button" aria-label={`Más opciones de "${task.title}"`} onClick={() => setShowMenu((v) => !v)}>
           ⋯

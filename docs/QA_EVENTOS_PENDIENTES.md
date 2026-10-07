@@ -253,3 +253,38 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 219. [ ] Filtro por responsable: NO existe todavía (pendiente de la siguiente tanda).
 220. [ ] Campana de recordatorio en la tarjeta: NO existe todavía (pendiente).
 221. [ ] Calendario: la tarea enlazada tiene una sola entrada; el responsable sincronizado es el principal.
+222. [ ] Tarea antigua sin prioridad guardada: muestra la prioridad propuesta por PEPA sin haberla editado (sin backfill).
+223. [ ] Al cambiar la prioridad de una tarea antigua, queda guardada con origen usuario.
+224. [ ] «Sin prioridad» elegida por el usuario se mantiene y no vuelve a proponerse.
+225. [ ] Prioridad estructurada > palabra del título: «¿Necesitáis clases de baile?» = sí en Momentos especiales hace Alta por práctica aunque el título no diga «clases».
+226. [ ] Keyword fallback en tarea manual: «Buscar clases de baile» creada a mano se propone como Alta y se indica como sugerencia.
+227. [ ] Prioridad elegida manualmente no se sobrescribe al volver a abrir o reconciliar.
+228. [ ] Filtro por responsable: un familiar muestra solo sus tareas.
+229. [ ] Filtro múltiple: Paco + Jennifer muestra tareas de cualquiera de los dos.
+230. [ ] Filtro «Sin asignar» muestra solo tareas sin ningún responsable activo.
+231. [ ] Limpiar filtros vuelve a mostrar todas las pendientes.
+232. [ ] El filtro no cambia prioridades ni datos (comprobar tras salir y volver).
+233. [ ] El filtro no altera «Pepa te recomienda» del evento.
+234. [ ] Campana sin aviso: icono neutro y estado «Sin aviso».
+235. [ ] Campana con «El mismo día»: estado activo; se refleja al reabrir la pantalla.
+236. [ ] Campana con «1 día antes».
+237. [ ] Campana con «1 semana antes».
+238. [ ] Campana «Personalizado» abre el editor completo para elegir cantidad y unidad.
+239. [ ] Tarea sin fecha: la campana está desactivada y explica que hace falta fecha; no se crea ningún aviso.
+240. [ ] Tarea con fecha pero sin «Mostrar en Calendario»: la campana explica que hay que activarlo primero.
+241. [ ] Una sola entrada lógica de calendario por tarea; no aparecen copias por responsable.
+242. [ ] Calendario muestra la tarea como tarea (kind task) en las tarjetas nuevas que se enlacen desde ahora.
+243. [ ] Tarea con varios responsables familiares: visible desde las vistas de cada uno, sin duplicarse.
+244. [ ] Tarea con familiar + persona externa: la externa aparece en la tarjeta y no aporta color ni entrada propia.
+245. [ ] Persona externa no tiene color en el calendario.
+246. [ ] Reconciliación (cambio de fecha o título) no pierde responsables múltiples.
+247. [ ] Documentos originales plegados por defecto al entrar en la pantalla de Menú.
+248. [ ] Documentos originales desplegados muestran Menú importado, Menú importado 2…
+249. [ ] Volver a plegar funciona.
+250. [ ] Cada alias abre exactamente su documento original.
+251. [ ] El bloque está entre «Importar menú» y «Gestionar secciones», en su propia línea, bien alineado en iPhone.
+252. [ ] Importar menú y Gestionar secciones siguen funcionando igual.
+253. [ ] Persona externa: borrar con asignaciones muestra el número y tres opciones (conservar, quitar, cancelar).
+254. [ ] Conservar: la tarea muestra «Nombre · Relación» como referencia y la persona no aparece como seleccionable.
+255. [ ] Quitar: la persona desaparece de todas las tareas.
+256. [ ] Editar nombre o relación de una persona externa actualiza sus asignaciones activas.

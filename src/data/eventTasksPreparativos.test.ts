@@ -48,14 +48,14 @@ describe('migración 0206 — aditiva, sin backfill, RLS familiar', () => {
 describe('prioridad: PEPA propone al crear; lo que elige el usuario manda', () => {
   it('addEventTask guarda la prioridad propuesta con su motivo, o la que indique el usuario', () => {
     const add = fn(EVENTS, 'export async function addEventTask(')
-    expect(add).toContain('const proposal = proposeTaskPriority({ title, dependsOnDecision: decisionId !== null })')
+    expect(add).toContain('const proposal = proposeTaskPriority({ title, dependsOnDecision: decisionId !== null, decisionQuestionKey: await decisionQuestionKeyOf(decisionId) })')
     expect(add).toContain("priority_source: priorityFromUser ? 'usuario' : 'pepa'")
     expect(add).toContain('priority_reason: priorityFromUser ? null : proposal.reason')
   })
 
   it('las tareas generadas al crear el evento y las de decisiones reciben prioridad propuesta', () => {
     expect(EVENTS).toContain("const proposal = proposeTaskPriority({ title: t.title, dependsOnDecision: false })")
-    expect(EVENTS).toContain("const proposal = proposeTaskPriority({ title: action.title, dependsOnDecision: true })")
+    expect(EVENTS).toContain("const proposal = proposeTaskPriority({ title: action.title, dependsOnDecision: true, decisionQuestionKey: await decisionQuestionKeyOf(decisionId) })")
   })
 
   it('cambiar la prioridad marca el origen como usuario y no vuelve a recalcularse', () => {
@@ -139,7 +139,7 @@ describe('tarjeta: compacta, nota truncada solo en pantalla', () => {
 
   it('la hora se muestra junto a la fecha; la prioridad como etiqueta', () => {
     expect(UI).toContain("{task.dueTime ? ` · ${task.dueTime}` : ''}")
-    expect(UI).toContain('{task.priority && <span className={`event-priority-${task.priority}`}>{PRIORITY_LABELS[task.priority]}</span>}')
+    expect(UI).toContain('{shownPriority && <span className={`event-priority-${shownPriority}`}>{PRIORITY_LABELS[shownPriority]}</span>}')
   })
 })
 

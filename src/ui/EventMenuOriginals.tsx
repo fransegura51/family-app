@@ -36,16 +36,20 @@ export function EventMenuOriginals({ eventId }: { eventId: string }) {
     }
   }
 
+  // Plegado por defecto: una sola línea en la barra. Al desplegar aparecen los alias y se abre el original exacto.
   return (
-    <div style={{ marginTop: 6 }}>
-      <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+    <details style={{ width: '100%', margin: '6px 0' }}>
+      <summary className="muted" style={{ fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
         📎 Documentos originales ({docs.length})
+      </summary>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginTop: 4 }}>
+        {docs.map((doc, index) => (
+          <button key={doc.id} type="button" className="link-button" onClick={() => void open(doc)} style={{ textAlign: 'left' }}>
+            {documentAlias(index)}
+          </button>
+        ))}
+        {error && <p className="error">{error}</p>}
       </div>
-      {docs.map((doc, index) => (
-        <button key={doc.id} type="button" className="link-button" onClick={() => void open(doc)} style={{ display: 'block', textAlign: 'left' }}>
-          {documentAlias(index)}
-        </button>
-      ))}
-    </div>
+    </details>
   )
 }

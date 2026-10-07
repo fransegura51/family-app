@@ -62,6 +62,7 @@ import type {
 import ubicacionHeaderImg from '@/assets/ubicacion/ubicacion-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { describePositionAge } from '@/domain/positionFreshness'
+import { BackgroundLocationSetup } from '@/ui/BackgroundLocationSetup'
 import { pastelPalette } from '@/domain/colors'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
@@ -901,6 +902,11 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
                 )
               })}
           </div>
+
+          <BackgroundLocationSetup
+            members={members.filter((m) => isAdmin || m.linkedProfileId === profileId)}
+            consents={consents}
+          />
         </div>
       )}
     </div>

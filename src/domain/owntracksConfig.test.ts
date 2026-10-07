@@ -118,6 +118,22 @@ describe('Edge Function owntracks-ingest', () => {
   })
 })
 
+describe('página de ayuda conectar-owntracks.html', () => {
+  const PAGE = (import.meta.glob('/public/conectar-owntracks.html', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/public/conectar-owntracks.html']
+  it('no lleva ningún código dentro: los datos solo viajan en el fragmento del enlace y se validan', () => {
+    expect(PAGE).toContain('location.hash')
+    expect(PAGE).not.toMatch(/[0-9a-f]{64}/i)
+    expect(PAGE).toContain('^[0-9a-f]{32,128}$')
+    expect(PAGE).toContain('noindex')
+    expect(PAGE).toContain('no-referrer')
+  })
+  it('construye la misma configuración que la pantalla de PEPA', () => {
+    const c = buildOwnTracksConfig(INPUT)
+    for (const key of ['mode: 3', 'monitoring: 2', 'locatorDisplacement: 50', 'locatorInterval: 120', `ignoreInaccurateLocations: ${MAX_ACCURACY_M}`, "deviceId: 'pepa'"]) expect(PAGE).toContain(key)
+    expect(PAGE).toContain(c.url as string)
+  })
+})
+
 describe('pantalla', () => {
   it('«Compartir ubicación» ofrece la conexión solo a quien puede gestionar ese miembro (él mismo o admin)', () => {
     const screen = FILES['/src/ui/LocationScreen.tsx']

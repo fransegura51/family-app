@@ -288,3 +288,6 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 254. [ ] Conservar: la tarea muestra «Nombre · Relación» como referencia y la persona no aparece como seleccionable.
 255. [ ] Quitar: la persona desaparece de todas las tareas.
 256. [ ] Editar nombre o relación de una persona externa actualiza sus asignaciones activas.
+257. [ ] Menú infantil: con la necesidad activa y la respuesta «Todavía no decidido», aparece en POR DECIDIR del resumen.
+258. [ ] Quitar «Menú infantil» de Invitados: la respuesta antigua no genera tareas ni presupuesto; los datos no se borran.
+259. [ ] Volver a marcar «Menú infantil» en Invitados: la respuesta antigua vuelve a aplicar.

@@ -17,7 +17,9 @@ const UI = (import.meta.glob('/src/ui/EventosScreen.tsx', { query: '?raw', impor
 
 describe('interfaz: un único componente de resumen reutilizado, nunca una segunda fuente de verdad', () => {
   it('los cinco bloques (Comida, Celebración, Pareja, Invitados, Momentos especiales) usan el mismo <DecisionSummaryDetails>', () => {
-    expect((UI.match(/<DecisionSummaryDetails summary=\{decisionSummary\} \/>/g) ?? []).length).toBe(5)
+    // Fase 1.2: cada bloque le pasa además onSelect={setLocalFocus} — cada entrada del resumen ya es un
+    // enlace a su propia pregunta (ver useConfiguratorQuestionFocus.ts) — mismo componente, nunca uno nuevo.
+    expect((UI.match(/<DecisionSummaryDetails summary=\{decisionSummary\} onSelect=\{setLocalFocus\} \/>/g) ?? []).length).toBe(5)
   })
   it('cada bloque calcula su propio decisionSummary con su propio builder (no se comparte estado entre bloques)', () => {
     expect(UI).toContain('const decisionSummary = buildFoodDecisionSummary(ctx)')
@@ -96,12 +98,18 @@ describe('La pareja — resumen de decisiones', () => {
     expect(s.taken.some((t) => t.key === key)).toBe(false)
   })
 
-  it('vestuario resuelto: tomada, y la resolución pasa a ser pregunta relevante (revelado progresivo)', () => {
+  // Tanda "configurador compacto" (Fase 1.2) — "agrupar entradas relacionadas para reducir longitud, por
+  // ejemplo «Vestuario» y «Cómo está resuelto», sin perder información": antes esto eran DOS filas (tipo
+  // tomada + resolución pendiente); mergeTipoResolucionPairs las funde en UNA sola, con el estado de la
+  // resolución (la única de las dos que de verdad cierra la pregunta) — sigue siendo "pendiente", solo que
+  // en una única fila en vez de dos.
+  it('vestuario con tipo elegido y resolución todavía sin empezar: UNA sola fila, pendiente (nunca dos filas ni "tomada" todavía)', () => {
     const key = pairQuestionKey('partner1', 'vestuario')
     const resolucionKey = pairQuestionKey('partner1', 'vestuario.resolucion')
     const s = buildPairDecisionSummary(boda, [makeDecision(key, { choice: 'comprar' })])
-    expect(s.taken.some((t) => t.key === key)).toBe(true)
+    expect(s.taken.some((t) => t.key === key)).toBe(false)
     expect(s.pending.some((p) => p.key === resolucionKey)).toBe(true)
+    expect([...s.taken, ...s.pending].filter((i) => i.key === key || i.key === resolucionKey)).toHaveLength(1)
   })
 
   it('revertir una decisión (quitar la resolución) actualiza el resumen: la resolución deja de estar tomada', () => {

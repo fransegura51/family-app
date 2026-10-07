@@ -27,8 +27,8 @@ describe('EventPlanningConfigurator — "La pareja" es el segundo bloque, reutil
     expect(fn).toContain("saveConfiguratorOpen(event.id, 'pareja', next)")
   })
 
-  it('monta PairBlock pasando onChanged y onDerivedDataChanged, no un componente nuevo de acordeón', () => {
-    expect(fn).toContain('<PairBlock event={event} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />')
+  it('monta PairBlock pasando onChanged y onDerivedDataChanged (envueltos para refrescar el resumen general, Fase 1.1) y su focusRequest, no un componente nuevo de acordeón', () => {
+    expect(fn).toContain("<PairBlock event={event} onChanged={handleChanged} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('pareja')} />")
   })
 })
 
@@ -256,7 +256,12 @@ describe('Complementos — los florales se revelan al responder "Queremos prepar
   // a FLORAL_ITEMS directo en el render; la diferencia por persona vive en domain/eventPairDecisions.ts,
   // nunca aquí como un if/else por rol.
   it('usa floralItemsForSlot(event, slot, decisions) para el catálogo sugerido, nunca FLORAL_ITEMS directo ni una rama por partnerRole', () => {
-    expect(pairBlock).toContain('floralItemsForSlot(event, slot, decisions).map((item) => {')
+    // Tanda "configurador compacto" (Fase 1.2): se intercala un .filter(...) de aislamiento de pregunta
+    // (matches/questionIsVisible) entre floralItemsForSlot(...) y el .map(...) de siempre — el catálogo
+    // sigue siendo exactamente el mismo, solo se filtra cuál de sus ítems se pinta.
+    expect(pairBlock).toContain('floralItemsForSlot(event, slot, decisions)')
+    const floralBlock = slice(pairBlock, 'floralItemsForSlot(event, slot, decisions)', '.map((item) => {')
+    expect(floralBlock).toContain('.filter((item) => matches(')
     expect(pairBlock).not.toMatch(/slot === 'partner1'|slot === 'partner2'/)
     expect(pairBlock).not.toMatch(/role === 'novia'|role === 'novio'/)
   })

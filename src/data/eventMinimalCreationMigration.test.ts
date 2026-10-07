@@ -61,7 +61,7 @@ describe('Primer bloque del configurador (K…P, AH)', () => {
     for (const forbidden of ['Datos del evento', 'Información general', 'Datos generales', 'Datos del cumpleaños', 'Fecha y lugar']) expect(SCREEN, forbidden).not.toContain(forbidden)
   })
   it('N/AH. la edad vive DENTRO de Celebración (solo cumpleaños, solo eventos sin ceremonia) y no hay ningún bloque de edad independiente', () => {
-    expect(block).toContain("!structured && event.type === 'cumpleanos' && <EventAgeField event={event} onChanged={onChanged} />")
+    expect(block).toContain("!structured && event.type === 'cumpleanos' && questionIsVisible(localFocus, 'edad') && <EventAgeField event={event} onChanged={onChanged} />")
     expect((SCREEN.match(/¿Cuántos años cumple\?/g) ?? []).length).toBe(1)
     const configurator = slice(SCREEN, 'function EventPlanningConfigurator(', '\nconst LUGAR_CONTEXTO_OPTIONS')
     expect(configurator).not.toMatch(/ageTurning|EventAgeField|Cuántos años/)
@@ -77,7 +77,7 @@ describe('Primer bloque del configurador (K…P, AH)', () => {
   })
   it('un evento por momentos reutiliza MomentsEditor (varios días y lugares) y solo ofrece la fecha general si ningún momento tiene fecha', () => {
     expect(block).toContain('<MomentsEditor event={event} onChanged={onChanged} />')
-    expect(block).toContain('{!structured || !hasDatedMoment ? (')
+    expect(block).toContain("(!structured || !hasDatedMoment ? (")
     expect(block).toContain('Cuando pongas fecha a un momento, la del evento pasará a calcularse de ellos.')
   })
   it('Casa conserva su comportamiento validado: propone la Casa guardada y el evento se queda con su propia copia', () => {

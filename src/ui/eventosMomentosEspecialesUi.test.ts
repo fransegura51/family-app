@@ -14,14 +14,20 @@ describe('EventPlanningConfigurator — motor común: ya no depende de isEventSt
   it('ya no hace early-return para eventos "simples" (cumpleaños/celebración/personalizado)', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nconst LUGAR_CONTEXTO_OPTIONS')
     const body = slice(configurator, 'function EventPlanningConfigurator({', '\n  return (')
-    expect(body).not.toContain('return null')
+    // focusRequestFor (Fase 1.1, resumen general) es una BÚSQUEDA local: "return null" ahí significa "no
+    // hay ningún foco pendiente para esta sección", no un early-return del propio componente — se excluye
+    // antes de comprobar que EventPlanningConfigurator en sí nunca deja de pintarse para ningún tipo de evento.
+    const withoutFocusLookup = body.replace(/function focusRequestFor\([^]*?\n  }\n/, '')
+    expect(withoutFocusLookup).not.toContain('return null')
   })
 
   it('«Ceremonia y celebración» y «Celebración» son UN SOLO primer bloque (nunca dos bloques paralelos): CelebracionBlock se adapta con `structured`, y el título lo da celebrationBlockTitle', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nconst LUGAR_CONTEXTO_OPTIONS')
     expect(configurator).toContain('const structuredByMoments = isEventStructuredByMoments(event)')
     expect(configurator).toContain('{celebrationBlockTitle(event.type, structuredByMoments)}')
-    expect(configurator).toContain('<CelebracionBlock event={event} structured={structuredByMoments} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />')
+    expect(configurator).toContain(
+      "<CelebracionBlock event={event} structured={structuredByMoments} onChanged={handleChanged} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('celebracion')} />",
+    )
     expect(configurator).not.toContain('<LugarContextoBlock')
   })
 
@@ -29,7 +35,7 @@ describe('EventPlanningConfigurator — motor común: ya no depende de isEventSt
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nconst LUGAR_CONTEXTO_OPTIONS')
     expect(configurator).toContain('👥 Invitados e invitaciones')
     expect(configurator).toContain('🎉 Momentos especiales')
-    expect(configurator).toContain('<MomentosEspecialesBlock event={event} onDerivedDataChanged={onDerivedDataChanged} />')
+    expect(configurator).toContain("<MomentosEspecialesBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('momentos_especiales')} />")
     // A diferencia de "La pareja", nunca envueltos en `event.type === 'boda'`.
     const momentosEspecialesIdx = configurator.indexOf('🎉 Momentos especiales')
     const nearestTypeCheckBefore = configurator.lastIndexOf("event.type === 'boda'", momentosEspecialesIdx)

@@ -16,11 +16,13 @@ describe('GuestsDecisionsBlock — montaje y reutilización del motor de "La par
   it('se monta como tercer acordeón del configurador, junto a Ceremonia/celebración y La pareja — disponible para cualquier evento de este configurador, no solo boda', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction PairBlock(')
     expect(configurator).toContain('👥 Invitados e invitaciones')
-    expect(configurator).toContain('<GuestsDecisionsBlock event={event} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />')
+    expect(configurator).toContain("<GuestsDecisionsBlock event={event} onChanged={handleChanged} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('invitados')} />")
     // A diferencia de "La pareja" (pairOpen envuelto en `{event.type === 'boda' && (...)}`), el bloque de
-    // invitados no debe quedar dentro de esa misma condición.
-    const afterPair = configurator.slice(configurator.indexOf("event.type === 'boda'"))
-    expect(afterPair.indexOf('GuestsDecisionsBlock')).toBeLessThan(afterPair.indexOf("event.type === 'boda'", 1) === -1 ? Infinity : afterPair.indexOf("event.type === 'boda'", 1))
+    // invitados no debe quedar dentro de esa misma condición. Busca específicamente el GUARD de JSX (con
+    // llave y &&), nunca una coincidencia de texto genérica — el resumen general (Fase 1.1) también
+    // comprueba event.type === 'boda' en su propio useEffect, en un ternario sin relación con este guard.
+    const afterPair = configurator.slice(configurator.indexOf("{event.type === 'boda' && ("))
+    expect(afterPair.indexOf('GuestsDecisionsBlock')).toBeLessThan(afterPair.indexOf("{event.type === 'boda' && (", 1) === -1 ? Infinity : afterPair.indexOf("{event.type === 'boda' && (", 1))
   })
 
   it('reutiliza upsertEventDecision/applyPairDecisionGeneration/describeEffects/showToast — mismas funciones que PairBlock, nunca una copia', () => {
@@ -64,7 +66,7 @@ describe('GuestsDecisionsBlock — montaje y reutilización del motor de "La par
   it('la pregunta de Momentos solo se pinta con 2+ momentos reales (momentsCount >= 2) — nunca cuenta los sintéticos de ceremonia/celebración heredada', () => {
     const block = slice(SRC, 'function GuestsDecisionsBlock(', '\nfunction NinosNecesidadesQuestion(')
     expect(block).toContain('moments.filter((m) => !m.isLegacy)')
-    expect(block).toContain('momentsCount >= 2 && (')
+    expect(block).toContain('momentsCount >= 2 && questionIsVisible(localFocus, GUESTS_MOMENTOS_QUESTION_KEY) && (')
   })
 
   it('"todos a todos" asigna de verdad vía setGuestMoments a TODOS los invitados — la decisión en sí nunca genera Preparativo/Presupuesto', () => {
@@ -76,7 +78,7 @@ describe('GuestsDecisionsBlock — montaje y reutilización del motor de "La par
 
   it('Necesidades infantiles solo se revela cuando Niños === "si"', () => {
     const block = slice(SRC, 'function GuestsDecisionsBlock(', '\nfunction NinosNecesidadesQuestion(')
-    expect(block).toContain("ninos?.choice === 'si' && (")
+    expect(block).toContain("ninos?.choice === 'si' && questionIsVisible(localFocus, GUESTS_NINOS_NECESIDADES_QUESTION_KEY) && (")
   })
 
   it('cada necesidad accionable (Animación/Monitor) se reconcilia como su propia sub-decisión, con su propio decisionId — nunca comparten la de "necesidades"', () => {

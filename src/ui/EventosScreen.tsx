@@ -4,6 +4,8 @@ import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
 import { SectionBreadcrumb, type BreadcrumbLevel } from '@/ui/SectionBreadcrumb'
 import { useSectionHome, useLocationFlag } from '@/ui/useSectionHome'
+import { questionIsVisible, useConfiguratorQuestionFocus, type ConfiguratorFocusRequest } from '@/ui/useConfiguratorQuestionFocus'
+import { computeConfiguratorSummary, type ConfiguratorQuestionRef, type ConfiguratorSummary } from '@/domain/eventConfiguratorSummary'
 import {
   addEventActivity,
   addEventBudgetItem,
@@ -215,6 +217,7 @@ import {
   floralItemSelected,
   floralItemsForSlot,
   hasFloralActivity,
+  listPairBlockQuestions,
   pairQuestionKey,
   partnerName,
   PARTNER_ROLE_OPTIONS,
@@ -262,6 +265,7 @@ import {
   GUESTS_MOMENTOS_QUESTION_KEY,
   GUESTS_NINOS_NECESIDADES_QUESTION_KEY,
   GUESTS_NINOS_QUESTION_KEY,
+  listGuestsBlockQuestions,
   NINOS_NECESIDAD_ACCIONABLE,
   NINOS_NECESIDADES_OPTIONS,
   summarizeGuestsBlock,
@@ -301,12 +305,14 @@ import {
   celebrationBlockTitle,
   dateStatusLabel,
   dateWithStatusLabel,
+  listCelebrationQuestions,
   momentDateStatus,
   summarizeCelebrationBlock,
 } from '@/domain/eventCelebration'
 import {
   CLASES_BAILE_QUESTION_KEY,
   desiredForClasesBaile,
+  listMomentosEspecialesBlockQuestions,
   MOMENTOS_ESPECIALES_CATALOG,
   MOMENTOS_ESPECIALES_QUESTION_KEY,
   summarizeMomentosEspecialesBlock,
@@ -339,6 +345,7 @@ import {
   foodWillExist,
   guestsChooseMenu,
   includedByVenueLines,
+  listFoodBlockQuestions,
   menuEstadoAnswer,
   MOMENTOS_COMIDA_CATALOG,
   momentosComidaAnswer,
@@ -375,7 +382,9 @@ import {
   buildPairDecisionSummary,
   buildGuestsDecisionSummary,
   buildMomentosEspecialesDecisionSummary,
+  mergeTipoResolucionPairs,
   type DecisionSummary,
+  type DecisionSummaryItem,
 } from '@/domain/eventDecisionsSummary'
 import {
   effectiveVenueServicesAnswer,
@@ -3864,6 +3873,92 @@ function EventPlanningConfigurator({
     saveConfiguratorOpen(event.id, 'comida', next)
   }
 
+  // Fase 1.1 (plan de pendientes) — resumen general: suma de TODOS los bloques, visible aunque el
+  // configurador esté plegado. Carga su PROPIA copia de decisiones/momentos (nunca comparte estado con
+  // cada bloque, que sigue gestionando el suyo exactamente igual que antes — cero riesgo de romper nada ya
+  // validado) y se refresca cada vez que CUALQUIER bloque guarda algo (bumpRefresh, ver más abajo).
+  const [summaryQuestions, setSummaryQuestions] = useState<ConfiguratorQuestionRef[] | null>(null)
+  const [refreshTick, setRefreshTick] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([listEventDecisions(event.id), structuredByMoments ? listEventMoments(event.id) : Promise.resolve([] as EventMoment[])])
+      .then(([decisions, momentsRaw]) => {
+        if (cancelled) return
+        const realMoments = momentsRaw.filter((m) => !m.isLegacy)
+        const hasMomentLocation = momentsRaw.some((m) => Boolean(m.locationLabel?.trim()))
+        const momentsCount = hasRealMoments(resolveEventMoments(event, realMoments)) ? realMoments.length : 0
+        const foodCtx = buildFoodContext(event, decisions, [], null, hasMomentLocation)
+        const refs: ConfiguratorQuestionRef[] = [
+          ...listCelebrationQuestions({ event, decisions, hasMomentLocation, structuredByMoments }).map((q) => ({
+            sectionKey: 'celebracion',
+            sectionLabel: celebrationBlockTitle(event.type, structuredByMoments),
+            key: q.key,
+            label: q.label,
+            status: q.status,
+          })),
+          ...(event.type === 'boda'
+            ? mergeTipoResolucionPairs(listPairBlockQuestions(event, decisions)).map((q) => ({ sectionKey: 'pareja', sectionLabel: 'La pareja', key: q.questionKey, label: q.label, status: q.status }))
+            : []),
+          ...listGuestsBlockQuestions(decisions, momentsCount).map((q) => ({ sectionKey: 'invitados', sectionLabel: 'Invitados e invitaciones', key: q.questionKey, label: q.label, status: q.status })),
+          ...listMomentosEspecialesBlockQuestions(decisions).map((q) => ({ sectionKey: 'momentos_especiales', sectionLabel: 'Momentos especiales', key: q.questionKey, label: q.label, status: q.status })),
+          ...listFoodBlockQuestions(foodCtx).map((q) => ({ sectionKey: 'comida', sectionLabel: 'Comida y bebida', key: q.questionKey, label: q.label, status: q.status })),
+        ]
+        setSummaryQuestions(refs)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id, structuredByMoments, refreshTick])
+  const configuratorSummary = summaryQuestions ? computeConfiguratorSummary(summaryQuestions) : null
+
+  function bumpRefresh() {
+    setRefreshTick((t) => t + 1)
+  }
+  const handleChanged = () => {
+    bumpRefresh()
+    onChanged()
+  }
+  const handleDerivedDataChanged = () => {
+    bumpRefresh()
+    onDerivedDataChanged()
+  }
+
+  const SECTION_OPEN: Record<string, { open: boolean; setOpen: (v: boolean) => void; storageKey: string }> = {
+    celebracion: { open: celebracionOpen, setOpen: setCelebracionOpen, storageKey: 'celebracion' },
+    pareja: { open: pairOpen, setOpen: setPairOpen, storageKey: 'pareja' },
+    invitados: { open: guestsBlockOpen, setOpen: setGuestsBlockOpen, storageKey: 'invitados' },
+    momentos_especiales: { open: momentosEspecialesOpen, setOpen: setMomentosEspecialesOpen, storageKey: 'momentos_especiales' },
+    comida: { open: comidaOpen, setOpen: setComidaOpen, storageKey: 'comida' },
+  }
+  const [focusToken, setFocusToken] = useState(0)
+  const [pendingFocus, setPendingFocus] = useState<{ sectionKey: string; questionKey: string; token: number } | null>(null)
+
+  // Abre el acordeón global y el de esa sección si estaban plegados — sin aislar ninguna pregunta
+  // concreta (usado por "Secciones sin empezar: N · Ver →", donde no hay ninguna pregunta ya empezada que
+  // aislar: se abre la sección entera, tal cual).
+  function openSection(sectionKey: string) {
+    if (!open) toggleOpen()
+    const section = SECTION_OPEN[sectionKey]
+    if (section && !section.open) {
+      section.setOpen(true)
+      saveConfiguratorOpen(event.id, section.storageKey, true)
+    }
+  }
+  // "Cada flecha lleva directamente a la primera pregunta pendiente de esa sección": igual que
+  // openSection, pero además pide a ese bloque (vía focusRequest) que aísle esa pregunta concreta.
+  function navigateToQuestion(sectionKey: string, questionKey: string) {
+    openSection(sectionKey)
+    const token = focusToken + 1
+    setFocusToken(token)
+    setPendingFocus({ sectionKey, questionKey, token })
+  }
+  function focusRequestFor(sectionKey: string): ConfiguratorFocusRequest | null {
+    if (!pendingFocus || pendingFocus.sectionKey !== sectionKey) return null
+    return { questionKey: pendingFocus.questionKey, token: pendingFocus.token }
+  }
+
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <button
@@ -3876,6 +3971,7 @@ function EventPlanningConfigurator({
         <strong>✨ {eventPlanningConfiguratorTitle(event.type)}</strong>
         <span aria-hidden="true">{open ? '▾' : '▸'}</span>
       </button>
+      {configuratorSummary && <ConfiguratorSummaryPanel summary={configuratorSummary} onNavigate={navigateToQuestion} onOpenSection={openSection} />}
       {open && (
         <div style={{ marginTop: 8 }}>
           <div>
@@ -3891,7 +3987,7 @@ function EventPlanningConfigurator({
             </button>
             {celebracionOpen && (
               <div style={{ marginTop: 4 }}>
-                <CelebracionBlock event={event} structured={structuredByMoments} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />
+                <CelebracionBlock event={event} structured={structuredByMoments} onChanged={handleChanged} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('celebracion')} />
               </div>
             )}
           </div>
@@ -3909,7 +4005,7 @@ function EventPlanningConfigurator({
               </button>
               {pairOpen && (
                 <div style={{ marginTop: 4 }}>
-                  <PairBlock event={event} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />
+                  <PairBlock event={event} onChanged={handleChanged} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('pareja')} />
                 </div>
               )}
             </div>
@@ -3927,7 +4023,7 @@ function EventPlanningConfigurator({
             </button>
             {guestsBlockOpen && (
               <div style={{ marginTop: 4 }}>
-                <GuestsDecisionsBlock event={event} onChanged={onChanged} onDerivedDataChanged={onDerivedDataChanged} />
+                <GuestsDecisionsBlock event={event} onChanged={handleChanged} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('invitados')} />
               </div>
             )}
           </div>
@@ -3944,7 +4040,7 @@ function EventPlanningConfigurator({
             </button>
             {momentosEspecialesOpen && (
               <div style={{ marginTop: 4 }}>
-                <MomentosEspecialesBlock event={event} onDerivedDataChanged={onDerivedDataChanged} />
+                <MomentosEspecialesBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('momentos_especiales')} />
               </div>
             )}
           </div>
@@ -3961,11 +4057,58 @@ function EventPlanningConfigurator({
             </button>
             {comidaOpen && (
               <div style={{ marginTop: 4 }}>
-                <ComidaBebidaBlock event={event} onDerivedDataChanged={onDerivedDataChanged} onOpenMenu={onOpenMenu} />
+                <ComidaBebidaBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} onOpenMenu={onOpenMenu} focusRequest={focusRequestFor('comida')} />
               </div>
             )}
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// Fase 1.1 (plan de pendientes) — "✓ 38 decisiones tomadas · 7 pendientes", una línea por sección con
+// pendientes ("La pareja · 2 pendientes →") y "Secciones sin empezar: N · Ver →" agrupadas. Visible aunque
+// el resto del configurador esté plegado (vive FUERA del `{open && (...)}` del padre).
+function ConfiguratorSummaryPanel({
+  summary,
+  onNavigate,
+  onOpenSection,
+}: {
+  summary: ConfiguratorSummary
+  onNavigate: (sectionKey: string, questionKey: string) => void
+  onOpenSection: (sectionKey: string) => void
+}) {
+  const total = summary.decidedCount + summary.pendingCount
+  if (total === 0 && summary.notStartedSections.length === 0) return null
+  return (
+    <div style={{ marginTop: 6, fontSize: 13 }}>
+      {total > 0 && (
+        <p className="muted" style={{ margin: '0 0 4px' }}>
+          ✓ {summary.decidedCount} decisión{summary.decidedCount === 1 ? '' : 'es'} tomada{summary.decidedCount === 1 ? '' : 's'}
+          {summary.pendingCount > 0 ? ` · ${summary.pendingCount} pendiente${summary.pendingCount === 1 ? '' : 's'}` : ''}
+        </p>
+      )}
+      {summary.sectionsWithPending.map((s) => (
+        <button
+          key={s.sectionKey}
+          type="button"
+          className="link-button"
+          style={{ display: 'block', textAlign: 'left', padding: 0, margin: '2px 0' }}
+          onClick={() => onNavigate(s.sectionKey, s.firstPendingKey)}
+        >
+          {s.sectionLabel} · {s.pendingCount} pendiente{s.pendingCount === 1 ? '' : 's'} →
+        </button>
+      ))}
+      {summary.notStartedSections.length > 0 && (
+        <button
+          type="button"
+          className="link-button"
+          style={{ display: 'block', textAlign: 'left', padding: 0, margin: '2px 0' }}
+          onClick={() => onOpenSection(summary.notStartedSections[0].sectionKey)}
+        >
+          Secciones sin empezar: {summary.notStartedSections.length} · Ver →
+        </button>
       )}
     </div>
   )
@@ -4220,12 +4363,15 @@ function CelebracionBlock({
   structured,
   onChanged,
   onDerivedDataChanged,
+  focusRequest,
 }: {
   event: FamilyEvent
   structured: boolean
   onChanged: () => void
   onDerivedDataChanged: () => void
+  focusRequest?: ConfiguratorFocusRequest | null
 }) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [moments, setMoments] = useState<EventMoment[]>([])
   const [loading, setLoading] = useState(true)
@@ -4293,16 +4439,16 @@ function CelebracionBlock({
     !structured && contexto?.choice !== 'en_casa' && (contexto?.choice === 'restaurante_local' || contexto?.choice === 'exterior' || contexto?.choice === 'otro' || Boolean(event.venueLabel?.trim()))
 
   return (
-    <div className="card" style={{ padding: 8 }}>
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
       {summary && (
         <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
       {error && <p className="error">{error}</p>}
 
-      {!structured && event.type === 'cumpleanos' && <EventAgeField event={event} onChanged={onChanged} />}
+      {!structured && event.type === 'cumpleanos' && questionIsVisible(localFocus, 'edad') && <EventAgeField event={event} onChanged={onChanged} />}
 
       {structured && (
         <>
@@ -4313,48 +4459,53 @@ function CelebracionBlock({
         </>
       )}
 
-      {!structured || !hasDatedMoment ? (
-        <EventDateField
-          event={event}
-          onChanged={onChanged}
-          todavia={!event.eventDate && decisions.some((d) => d.questionKey === CELEBRATION_DATE_QUESTION_KEY)}
-          onTodavia={() => upsertEventDecision(event.id, { blockKey: CELEBRATION_BLOCK_KEY, questionKey: CELEBRATION_DATE_QUESTION_KEY, answer: { choice: 'todavia_no_lo_sabemos' } }).then(() => reload())}
-          onDateSaved={async () => {
-            // Con una fecha guardada, «Todavía no lo sabemos» deja de ser la respuesta activa.
-            const previous = decisions.find((d) => d.questionKey === CELEBRATION_DATE_QUESTION_KEY)
-            if (previous) await deleteEventDecision(previous.id)
-            await reload()
-          }}
-          hint={structured ? 'Cuando pongas fecha a un momento, la del evento pasará a calcularse de ellos.' : undefined}
-        />
-      ) : (
-        <p style={{ margin: '8px 0 0', fontSize: 13 }}>
-          📅 Fecha del evento: <strong>{dateWithStatusLabel(event.eventDate, event.dateStatus) ?? 'por decidir'}</strong>
-          <span className="muted"> — la del primer momento con fecha.</span>
-        </p>
+      {questionIsVisible(localFocus, 'fecha') &&
+        (!structured || !hasDatedMoment ? (
+          <EventDateField
+            event={event}
+            onChanged={onChanged}
+            todavia={!event.eventDate && decisions.some((d) => d.questionKey === CELEBRATION_DATE_QUESTION_KEY)}
+            onTodavia={() => upsertEventDecision(event.id, { blockKey: CELEBRATION_BLOCK_KEY, questionKey: CELEBRATION_DATE_QUESTION_KEY, answer: { choice: 'todavia_no_lo_sabemos' } }).then(() => reload())}
+            onDateSaved={async () => {
+              // Con una fecha guardada, «Todavía no lo sabemos» deja de ser la respuesta activa.
+              const previous = decisions.find((d) => d.questionKey === CELEBRATION_DATE_QUESTION_KEY)
+              if (previous) await deleteEventDecision(previous.id)
+              await reload()
+            }}
+            hint={structured ? 'Cuando pongas fecha a un momento, la del evento pasará a calcularse de ellos.' : undefined}
+          />
+        ) : (
+          <p style={{ margin: '8px 0 0', fontSize: 13 }}>
+            📅 Fecha del evento: <strong>{dateWithStatusLabel(event.eventDate, event.dateStatus) ?? 'por decidir'}</strong>
+            <span className="muted"> — la del primer momento con fecha.</span>
+          </p>
+        ))}
+
+      {questionIsVisible(localFocus, 'lugar') && (
+        <>
+          <CustomAwareQuestion
+            event={event}
+            questionLabel={structured ? '¿Dónde será la celebración?' : '¿Dónde lo vais a celebrar?'}
+            options={LUGAR_CONTEXTO_OPTIONS}
+            questionKey={LUGAR_CONTEXTO_QUESTION_KEY}
+            decision={contextoDecision}
+            savingKey={savingKey}
+            onSave={(answer) => saveDecision('lugar_contexto', LUGAR_CONTEXTO_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', true)}
+          />
+          {!contexto && event.venueType && (
+            <p style={{ fontSize: 13, margin: '2px 0' }}>
+              ✓ Información que ya teníamos del evento:{' '}
+              {event.venueType === 'restaurante_local' ? 'restaurante / local con servicios' : event.venueType === 'casa_propia' ? 'casa o espacio propio' : 'otro lugar'}
+            </p>
+          )}
+          {/* «En casa» → proponer la Casa familiar (validado por separado): la DECISIÓN de contexto y la UBICACIÓN
+              física (events.venue_*) son dos cosas distintas; el evento guarda su propia copia, sin vínculo vivo. */}
+          {!structured && contexto?.choice === 'en_casa' && <CasaLocationBlock event={event} onChanged={onChanged} />}
+          {showPlace && <VenuePlaceBlock event={event} onChanged={onChanged} />}
+        </>
       )}
 
-      <CustomAwareQuestion
-        event={event}
-        questionLabel={structured ? '¿Dónde será la celebración?' : '¿Dónde lo vais a celebrar?'}
-        options={LUGAR_CONTEXTO_OPTIONS}
-        questionKey={LUGAR_CONTEXTO_QUESTION_KEY}
-        decision={contextoDecision}
-        savingKey={savingKey}
-        onSave={(answer) => saveDecision('lugar_contexto', LUGAR_CONTEXTO_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', true)}
-      />
-      {!contexto && event.venueType && (
-        <p style={{ fontSize: 13, margin: '2px 0' }}>
-          ✓ Información que ya teníamos del evento:{' '}
-          {event.venueType === 'restaurante_local' ? 'restaurante / local con servicios' : event.venueType === 'casa_propia' ? 'casa o espacio propio' : 'otro lugar'}
-        </p>
-      )}
-      {/* «En casa» → proponer la Casa familiar (validado por separado): la DECISIÓN de contexto y la UBICACIÓN
-          física (events.venue_*) son dos cosas distintas; el evento guarda su propia copia, sin vínculo vivo. */}
-      {!structured && contexto?.choice === 'en_casa' && <CasaLocationBlock event={event} onChanged={onChanged} />}
-      {showPlace && <VenuePlaceBlock event={event} onChanged={onChanged} />}
-
-      {servicesLabel && (
+      {servicesLabel && questionIsVisible(localFocus, 'servicios') && (
         <VenueServicesQuestion
           label={servicesLabel}
           existing={servicesAnswer}
@@ -4363,6 +4514,11 @@ function CelebracionBlock({
           saving={savingKey === VENUE_SERVICES_QUESTION_KEY}
           onSave={(a) => saveDecision(VENUE_SERVICES_BLOCK_KEY, VENUE_SERVICES_QUESTION_KEY, a as unknown as Record<string, unknown>, false, true)}
         />
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
       )}
     </div>
   )
@@ -5285,11 +5441,14 @@ function PairBlock({
   event,
   onChanged,
   onDerivedDataChanged,
+  focusRequest,
 }: {
   event: FamilyEvent
   onChanged: () => void
   onDerivedDataChanged: () => void
+  focusRequest?: ConfiguratorFocusRequest | null
 }) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -5567,32 +5726,46 @@ function PairBlock({
   const summary = summarizePairBlock(event, decisions)
   const decisionSummary = buildPairDecisionSummary(event, decisions)
 
+  // Vestuario/Peluquería/Detalle especial ya renderizan tipo+resolución juntos en un único componente —
+  // una u otra clave enfocada debe mostrar el componente entero (sus "dependencias necesarias").
+  function matches(...keys: string[]): boolean {
+    return !localFocus || keys.includes(localFocus)
+  }
+
   return (
-    <div className="card" style={{ padding: 8 }}>
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
       {summary && (
         <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
       {error && <p className="error">{error}</p>}
       {PARTNER_SLOTS.map((slot) => {
         const name = partnerName(event, slot)
         const complementosKey = pairQuestionKey(slot, 'complementos')
         const complementosDecision = findDecision(complementosKey)
         const complementosAnswer = complementosDecision?.answer as unknown as ComplementosAnswer | undefined
+        const vestuarioKey = pairQuestionKey(slot, 'vestuario')
+        const peluqueriaKey = pairQuestionKey(slot, 'peluqueria_maquillaje')
         return (
           <div key={slot} className="card" style={{ padding: 8, marginTop: 8 }}>
             <strong>{name}</strong>
-            <VestuarioQuestion event={event} slot={slot} decisions={decisions} savingKey={savingKey} onSaveTipo={saveVestuarioTipo} onSaveResolucion={saveVestuarioResolucion} />
-            <PeluqueriaQuestion event={event} slot={slot} decisions={decisions} savingKey={savingKey} onSaveNecesidad={saveNecesidad} onSaveResolucion={saveResolucion} />
-            <ComplementosQuestion
-              event={event}
-              slot={slot}
-              decision={complementosDecision}
-              savingKey={savingKey}
-              onSave={(answer) => saveQuestion(complementosKey, answer as unknown as Record<string, unknown>, false, desiredForComplementos(answer, name))}
-            />
+            {matches(vestuarioKey, `${vestuarioKey}.resolucion`) && (
+              <VestuarioQuestion event={event} slot={slot} decisions={decisions} savingKey={savingKey} onSaveTipo={saveVestuarioTipo} onSaveResolucion={saveVestuarioResolucion} />
+            )}
+            {matches(peluqueriaKey, `${peluqueriaKey}.resolucion`) && (
+              <PeluqueriaQuestion event={event} slot={slot} decisions={decisions} savingKey={savingKey} onSaveNecesidad={saveNecesidad} onSaveResolucion={saveResolucion} />
+            )}
+            {matches(complementosKey) && (
+              <ComplementosQuestion
+                event={event}
+                slot={slot}
+                decision={complementosDecision}
+                savingKey={savingKey}
+                onSave={(answer) => saveQuestion(complementosKey, answer as unknown as Record<string, unknown>, false, desiredForComplementos(answer, name))}
+              />
+            )}
             {/* Corrección real (iPhone): los florales aparecían SIEMPRE, antes incluso de responder
                 Complementos generales. Revelado único: solo "Queremos preparar complementos" los muestra —
                 Sin empezar/No necesitaremos/Todavía no lo sabemos los ocultan, sin excepción permanente.
@@ -5604,29 +5777,33 @@ function PairBlock({
                 nunca se vuelve a esconder un dato ya dado. */}
             {(complementosAnswer?.choice === 'preparar' || hasFloralActivity(event, slot, decisions)) && (
               <>
-                <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-                  💐 Complementos florales
-                </div>
-                {floralItemsForSlot(event, slot, decisions).map((item) => {
-                  const key = pairQuestionKey(slot, `floral.${item.key}`)
-                  const decision = findDecision(key)
-                  const selected = decision !== undefined || floralItemSelected(event, slot, item.key)
-                  return (
-                    <FloralItemQuestion
-                      key={item.key}
-                      event={event}
-                      slot={slot}
-                      item={item}
-                      selected={selected}
-                      decision={decision}
-                      savingKey={savingKey}
-                      onToggleSelected={(checked) => setFloralSelected(slot, item.key, checked)}
-                      onSave={(answer) => saveQuestion(key, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForFloral(answer, item.label, name))}
-                    />
-                  )
-                })}
+                {!localFocus && (
+                  <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+                    💐 Complementos florales
+                  </div>
+                )}
+                {floralItemsForSlot(event, slot, decisions)
+                  .filter((item) => matches(pairQuestionKey(slot, `floral.${item.key}`)))
+                  .map((item) => {
+                    const key = pairQuestionKey(slot, `floral.${item.key}`)
+                    const decision = findDecision(key)
+                    const selected = decision !== undefined || floralItemSelected(event, slot, item.key)
+                    return (
+                      <FloralItemQuestion
+                        key={item.key}
+                        event={event}
+                        slot={slot}
+                        item={item}
+                        selected={selected}
+                        decision={decision}
+                        savingKey={savingKey}
+                        onToggleSelected={(checked) => setFloralSelected(slot, item.key, checked)}
+                        onSave={(answer) => saveQuestion(key, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForFloral(answer, item.label, name))}
+                      />
+                    )
+                  })}
                 {decisions
-                  .filter((d) => d.questionKey.startsWith(pairQuestionKey(slot, 'floral.custom:')))
+                  .filter((d) => d.questionKey.startsWith(pairQuestionKey(slot, 'floral.custom:')) && matches(d.questionKey))
                   .map((d) => (
                     <CustomFloralItem
                       key={d.id}
@@ -5639,29 +5816,42 @@ function PairBlock({
                       onRemove={() => removeFloral(d.questionKey, d)}
                     />
                   ))}
-                <button type="button" className="link-button" onClick={() => addCustomFloral(slot)} style={{ marginTop: 4 }}>
-                  + Otro complemento floral
-                </button>
+                {!localFocus && (
+                  <button type="button" className="link-button" onClick={() => addCustomFloral(slot)} style={{ marginTop: 4 }}>
+                    + Otro complemento floral
+                  </button>
+                )}
               </>
             )}
           </div>
         )
       })}
-      <div className="card" style={{ padding: 8, marginTop: 8 }}>
-        <strong>Los dos</strong>
-        <CustomAwareQuestion
-          event={event}
-          questionLabel="¿Cómo vais con las alianzas?"
-          options={ALIANZAS_OPTIONS}
-          questionKey={ALIANZAS_QUESTION_KEY}
-          decision={findDecision(ALIANZAS_QUESTION_KEY)}
-          savingKey={savingKey}
-          onSave={(answer) =>
-            saveQuestion(ALIANZAS_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForAlianzas(answer as AlianzasAnswer))
-          }
-        />
-        <DetalleEspecialQuestion decisions={decisions} savingKey={savingKey} onSaveTipo={saveDetalleTipo} onSaveResolucion={saveDetalleResolucion} />
-      </div>
+      {matches(ALIANZAS_QUESTION_KEY, DETALLE_ESPECIAL_QUESTION_KEY, DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY) && (
+        <div className="card" style={{ padding: 8, marginTop: 8 }}>
+          <strong>Los dos</strong>
+          {matches(ALIANZAS_QUESTION_KEY) && (
+            <CustomAwareQuestion
+              event={event}
+              questionLabel="¿Cómo vais con las alianzas?"
+              options={ALIANZAS_OPTIONS}
+              questionKey={ALIANZAS_QUESTION_KEY}
+              decision={findDecision(ALIANZAS_QUESTION_KEY)}
+              savingKey={savingKey}
+              onSave={(answer) =>
+                saveQuestion(ALIANZAS_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForAlianzas(answer as AlianzasAnswer))
+              }
+            />
+          )}
+          {matches(DETALLE_ESPECIAL_QUESTION_KEY, DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY) && (
+            <DetalleEspecialQuestion decisions={decisions} savingKey={savingKey} onSaveTipo={saveDetalleTipo} onSaveResolucion={saveDetalleResolucion} />
+          )}
+        </div>
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
+      )}
       {costPrompt && (
         <BudgetAmountPromptModal
           item={costPrompt.item}
@@ -5869,11 +6059,14 @@ function GuestsDecisionsBlock({
   event,
   onChanged,
   onDerivedDataChanged,
+  focusRequest,
 }: {
   event: FamilyEvent
   onChanged: () => void
   onDerivedDataChanged: () => void
+  focusRequest?: ConfiguratorFocusRequest | null
 }) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [guests, setGuests] = useState<EventGuest[]>([])
   const [moments, setMoments] = useState<EventMoment[]>([])
@@ -6045,33 +6238,37 @@ function GuestsDecisionsBlock({
   const necesidadesExisting = necesidadesDecision?.answer as unknown as NinosNecesidadesAnswer | undefined
 
   return (
-    <div className="card" style={{ padding: 8 }}>
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
       {summary && (
         <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
       {error && <p className="error">{error}</p>}
-      <CustomAwareQuestion
-        event={event}
-        questionLabel="¿Tenéis clara la lista de invitados?"
-        options={LISTA_OPTIONS}
-        questionKey={GUESTS_LISTA_QUESTION_KEY}
-        decision={findDecision(GUESTS_LISTA_QUESTION_KEY)}
-        savingKey={savingKey}
-        onSave={(answer) => saveQuestion(GUESTS_LISTA_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForListaInvitados(answer as ListaInvitadosAnswer))}
-      />
-      <InvitadosPreguntasQuestion
-        event={event}
-        existing={findDecision(GUESTS_PREGUNTAS_QUESTION_KEY)?.answer as unknown as InvitadosPreguntasAnswer | undefined}
-        saving={savingKey === GUESTS_PREGUNTAS_QUESTION_KEY}
-        onSave={(answer) =>
-          saveQuestion(GUESTS_PREGUNTAS_QUESTION_KEY, answer as unknown as Record<string, unknown>, false, desiredForInvitadosPreguntas(answer))
-        }
-        onQuestionCreated={() => showToast('✓ Pregunta guardada')}
-      />
-      {momentsCount >= 2 && (
+      {questionIsVisible(localFocus, GUESTS_LISTA_QUESTION_KEY) && (
+        <CustomAwareQuestion
+          event={event}
+          questionLabel="¿Tenéis clara la lista de invitados?"
+          options={LISTA_OPTIONS}
+          questionKey={GUESTS_LISTA_QUESTION_KEY}
+          decision={findDecision(GUESTS_LISTA_QUESTION_KEY)}
+          savingKey={savingKey}
+          onSave={(answer) => saveQuestion(GUESTS_LISTA_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForListaInvitados(answer as ListaInvitadosAnswer))}
+        />
+      )}
+      {questionIsVisible(localFocus, GUESTS_PREGUNTAS_QUESTION_KEY) && (
+        <InvitadosPreguntasQuestion
+          event={event}
+          existing={findDecision(GUESTS_PREGUNTAS_QUESTION_KEY)?.answer as unknown as InvitadosPreguntasAnswer | undefined}
+          saving={savingKey === GUESTS_PREGUNTAS_QUESTION_KEY}
+          onSave={(answer) =>
+            saveQuestion(GUESTS_PREGUNTAS_QUESTION_KEY, answer as unknown as Record<string, unknown>, false, desiredForInvitadosPreguntas(answer))
+          }
+          onQuestionCreated={() => showToast('✓ Pregunta guardada')}
+        />
+      )}
+      {momentsCount >= 2 && questionIsVisible(localFocus, GUESTS_MOMENTOS_QUESTION_KEY) && (
         <CustomAwareQuestion
           event={event}
           questionLabel="¿Todos los invitados irán a todos los momentos?"
@@ -6082,27 +6279,36 @@ function GuestsDecisionsBlock({
           onSave={(answer) => saveMomentos(answer as MomentosAnswer)}
         />
       )}
-      <CustomAwareQuestion
-        event={event}
-        questionLabel="¿Vendrán niños?"
-        options={NINOS_OPTIONS}
-        questionKey={GUESTS_NINOS_QUESTION_KEY}
-        decision={ninosDecision}
-        savingKey={savingKey}
-        onSave={(answer) => saveNinos(answer as NinosAnswer)}
-      />
-      {ninos?.choice === 'si' && (
+      {questionIsVisible(localFocus, GUESTS_NINOS_QUESTION_KEY) && (
+        <CustomAwareQuestion
+          event={event}
+          questionLabel="¿Vendrán niños?"
+          options={NINOS_OPTIONS}
+          questionKey={GUESTS_NINOS_QUESTION_KEY}
+          decision={ninosDecision}
+          savingKey={savingKey}
+          onSave={(answer) => saveNinos(answer as NinosAnswer)}
+        />
+      )}
+      {ninos?.choice === 'si' && questionIsVisible(localFocus, GUESTS_NINOS_NECESIDADES_QUESTION_KEY) && (
         <NinosNecesidadesQuestion existing={necesidadesExisting} saving={savingKey === GUESTS_NINOS_NECESIDADES_QUESTION_KEY} onSave={saveNinosNecesidades} />
       )}
-      <CustomAwareQuestion
-        event={event}
-        questionLabel="¿Cómo vais a gestionar la invitación?"
-        options={INVITACION_OPTIONS}
-        questionKey={GUESTS_INVITACION_QUESTION_KEY}
-        decision={findDecision(GUESTS_INVITACION_QUESTION_KEY)}
-        savingKey={savingKey}
-        onSave={(answer) => saveQuestion(GUESTS_INVITACION_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForInvitacion(answer as InvitacionAnswer))}
-      />
+      {questionIsVisible(localFocus, GUESTS_INVITACION_QUESTION_KEY) && (
+        <CustomAwareQuestion
+          event={event}
+          questionLabel="¿Cómo vais a gestionar la invitación?"
+          options={INVITACION_OPTIONS}
+          questionKey={GUESTS_INVITACION_QUESTION_KEY}
+          decision={findDecision(GUESTS_INVITACION_QUESTION_KEY)}
+          savingKey={savingKey}
+          onSave={(answer) => saveQuestion(GUESTS_INVITACION_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForInvitacion(answer as InvitacionAnswer))}
+        />
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
+      )}
       {costPrompt && (
         <BudgetAmountPromptModal
           item={costPrompt.item}
@@ -6313,7 +6519,17 @@ function ClasesBaileQuestion({ existing, saving, onSave }: { existing: ClasesBai
   )
 }
 
-function MomentosEspecialesBlock({ event, onDerivedDataChanged }: { event: FamilyEvent; onDerivedDataChanged: () => void }) {
+function MomentosEspecialesBlock({
+  event,
+  onDerivedDataChanged,
+  focusRequest,
+}: {
+  event: FamilyEvent
+  onDerivedDataChanged: () => void
+  // Fase 1.1/1.2 (plan de pendientes) — ver useConfiguratorQuestionFocus.ts.
+  focusRequest?: ConfiguratorFocusRequest | null
+}) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -6399,17 +6615,24 @@ function MomentosEspecialesBlock({ event, onDerivedDataChanged }: { event: Famil
   const decisionSummary = buildMomentosEspecialesDecisionSummary(decisions)
 
   return (
-    <div className="card" style={{ padding: 8 }}>
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
       {summary && (
         <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
       {error && <p className="error">{error}</p>}
-      <MomentosEspecialesQuestion catalog={catalog} existing={seleccion} saving={savingKey === MOMENTOS_ESPECIALES_QUESTION_KEY} onSave={saveSeleccion} />
-      {seleccion?.selected.includes('primer_baile') && (
+      {questionIsVisible(localFocus, MOMENTOS_ESPECIALES_QUESTION_KEY) && (
+        <MomentosEspecialesQuestion catalog={catalog} existing={seleccion} saving={savingKey === MOMENTOS_ESPECIALES_QUESTION_KEY} onSave={saveSeleccion} />
+      )}
+      {questionIsVisible(localFocus, CLASES_BAILE_QUESTION_KEY) && seleccion?.selected.includes('primer_baile') && (
         <ClasesBaileQuestion existing={clasesBaile} saving={savingKey === CLASES_BAILE_QUESTION_KEY} onSave={saveClasesBaile} />
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
       )}
     </div>
   )
@@ -6493,8 +6716,26 @@ function FoodInheritedLine({ children }: { children: ReactNode }) {
 // «Resumen de decisiones» — misma forma plegable en los cinco bloques del configurador (Comida y bebida,
 // Celebración, La pareja, Invitados, Momentos especiales). Nunca es una fuente de verdad: solo muestra lo
 // que ya calculó buildXDecisionSummary a partir de las decisiones reales.
-function DecisionSummaryDetails({ summary }: { summary: DecisionSummary }) {
+// Fase 1.2 (plan de pendientes) — cada entrada del resumen es ahora un enlace a su propia pregunta: pulsarla
+// aísla esa pregunta (ver focusedKey en cada bloque XxxBlock) y hace scroll hasta ella, sin perder las demás
+// respuestas ya guardadas. onSelect es opcional para no romper ningún otro sitio que todavía renderice este
+// resumen de solo lectura (no hay ninguno hoy, pero mantiene el componente utilizable sin forzar el callback).
+function DecisionSummaryDetails({ summary, onSelect }: { summary: DecisionSummary; onSelect?: (key: string) => void }) {
   if (summary.taken.length === 0 && summary.pending.length === 0) return null
+  function Row({ item, icon, statusLabel }: { item: DecisionSummaryItem; icon: string; statusLabel: string }) {
+    const content = (
+      <>
+        {icon} {item.text} · {statusLabel} {onSelect && '→'}
+      </>
+    )
+    return onSelect ? (
+      <button type="button" className="link-button" style={{ display: 'block', textAlign: 'left', padding: 0 }} onClick={() => onSelect(item.key)}>
+        {content}
+      </button>
+    ) : (
+      <div>{content}</div>
+    )
+  }
   return (
     <details style={{ fontSize: 13, margin: '0 0 6px' }}>
       <summary className="muted">Resumen de decisiones</summary>
@@ -6502,7 +6743,7 @@ function DecisionSummaryDetails({ summary }: { summary: DecisionSummary }) {
         <div style={{ marginTop: 4 }}>
           <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>DECISIONES TOMADAS</div>
           {summary.taken.map((item) => (
-            <div key={item.key}>✓ {item.text}</div>
+            <Row key={item.key} item={item} icon="✓" statusLabel="Resuelto" />
           ))}
         </div>
       )}
@@ -6510,7 +6751,7 @@ function DecisionSummaryDetails({ summary }: { summary: DecisionSummary }) {
         <div style={{ marginTop: 4 }}>
           <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>POR DECIDIR</div>
           {summary.pending.map((item) => (
-            <div key={item.key}>○ {item.text}</div>
+            <Row key={item.key} item={item} icon="○" statusLabel="Pendiente" />
           ))}
         </div>
       )}
@@ -6949,7 +7190,18 @@ function FoodNeedsPointer({ needsCount, reviewPending, onOpenMenu, menuModuleEna
   )
 }
 
-function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event: FamilyEvent; onDerivedDataChanged: () => void; onOpenMenu: () => void }) {
+function ComidaBebidaBlock({
+  event,
+  onDerivedDataChanged,
+  onOpenMenu,
+  focusRequest,
+}: {
+  event: FamilyEvent
+  onDerivedDataChanged: () => void
+  onOpenMenu: () => void
+  focusRequest?: ConfiguratorFocusRequest | null
+}) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [menuItems, setMenuItems] = useState<EventMenuItem[]>([])
   const [guests, setGuests] = useState<EventGuest[]>([])
@@ -7066,14 +7318,14 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
   const infantilPending = decisionSummary.pending.some((p) => p.key === FOOD_MENU_INFANTIL_KEY)
 
   return (
-    <div className="card" style={{ padding: 8 }}>
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
       {summary && (
         <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
           {summary}
         </p>
       )}
       {infantilPending && <p style={{ fontSize: 13, margin: '0 0 6px' }}>⏳ Falta decidir el menú infantil</p>}
-      <DecisionSummaryDetails summary={decisionSummary} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
       {error && <p className="error">{error}</p>}
 
       {/* A) Lo que ya sabemos del lugar — se decide en el primer bloque («Ceremonia y celebración» / «Celebración»);
@@ -7084,10 +7336,12 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
       ))}
 
       {/* B) Quién se encarga de la comida (solo si el lugar no la incluye) */}
-      {quienApplies(ctx) && <FoodQuienQuestion existing={quien} saving={savingKey === FOOD_QUIEN_KEY} onSave={(a) => saveFood(FOOD_QUIEN_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')} />}
+      {quienApplies(ctx) && questionIsVisible(localFocus, FOOD_QUIEN_KEY) && (
+        <FoodQuienQuestion existing={quien} saving={savingKey === FOOD_QUIEN_KEY} onSave={(a) => saveFood(FOOD_QUIEN_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')} />
+      )}
 
       {/* C) Contratación (solo si es una vía externa) */}
-      {contratacionApplies(ctx) && (
+      {contratacionApplies(ctx) && questionIsVisible(localFocus, FOOD_CONTRATACION_KEY) && (
         <div style={{ marginTop: 6 }}>
           <div className="muted" style={{ fontSize: 13 }}>
             ¿Lo tenéis ya contratado?
@@ -7121,7 +7375,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
           }}
         />
       )}
-      {foodExists && (
+      {foodExists && questionIsVisible(localFocus, FOOD_MOMENTOS_KEY) && (
         <>
           <FoodMomentosQuestion catalog={MOMENTOS_COMIDA_CATALOG[event.type]} existing={momentosComidaAnswer(decisions)} saving={savingKey === FOOD_MOMENTOS_KEY} onSave={(a) => saveFood(FOOD_MOMENTOS_KEY, a as unknown as Record<string, unknown>)} />
           <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
@@ -7133,7 +7387,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
       )}
 
       {/* E) Estado del menú + F) guardar/importar/organizar */}
-      {foodExists && (
+      {foodExists && questionIsVisible(localFocus, FOOD_MENU_ESTADO_KEY) && (
         <div style={{ marginTop: 6 }}>
           <div className="muted" style={{ fontSize: 13 }}>
             ¿Tenéis decidido el menú?
@@ -7158,7 +7412,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
       {guestsChooseMenu(decisions) && <GuestMenuOptionsPanel event={event} guests={guests} members={members} />}
 
       {/* H) Menú infantil (solo si Invitados ya marcó que lo necesitáis) */}
-      {infantilNeeded && (
+      {infantilNeeded && questionIsVisible(localFocus, FOOD_MENU_INFANTIL_KEY) && (
         <div style={{ marginTop: 8 }}>
           <FoodInheritedLine>👧🧒 Necesitáis menú infantil</FoodInheritedLine>
           <CustomAwareQuestion
@@ -7186,7 +7440,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
       )}
 
       {/* I) Tarta (Comida y bebida decide si habrá y cómo se consigue; Momentos especiales, el ritual) */}
-      {!venueIncludes(ctx, 'tarta') && (
+      {!venueIncludes(ctx, 'tarta') && questionIsVisible(localFocus, FOOD_TARTA_KEY) && (
         <div style={{ marginTop: 8 }}>
           <CustomAwareQuestion
             event={event}
@@ -7203,7 +7457,7 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
       )}
 
       {/* J) Bebidas (solo si el lugar no las incluye y habrá comida) */}
-      {!venueIncludes(ctx, 'bebidas') && foodExists && (
+      {!venueIncludes(ctx, 'bebidas') && foodExists && questionIsVisible(localFocus, FOOD_BEBIDAS_KEY) && (
         <div style={{ marginTop: 8 }}>
           <CustomAwareQuestion
             event={event}
@@ -7219,12 +7473,19 @@ function ComidaBebidaBlock({ event, onDerivedDataChanged, onOpenMenu }: { event:
       )}
 
       {/* K) Necesidades alimentarias: información y aviso, no un interrogatorio */}
-      <FoodNeedsPointer
-        needsCount={needsState.activeNeeds.length}
-        reviewPending={needsReviewApplies(needsState) && !answerOf<NecesidadesAnswer>(FOOD_NECESIDADES_KEY)}
-        onOpenMenu={onOpenMenu}
-        menuModuleEnabled={menuModuleEnabled}
-      />
+      {questionIsVisible(localFocus, FOOD_NECESIDADES_KEY) && (
+        <FoodNeedsPointer
+          needsCount={needsState.activeNeeds.length}
+          reviewPending={needsReviewApplies(needsState) && !answerOf<NecesidadesAnswer>(FOOD_NECESIDADES_KEY)}
+          onOpenMenu={onOpenMenu}
+          menuModuleEnabled={menuModuleEnabled}
+        />
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
+      )}
 
       {costPrompt && (
         <BudgetAmountPromptModal

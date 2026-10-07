@@ -75,7 +75,10 @@ describe('Regla de lugar genérico — nunca redundante con Momentos', () => {
   it('RETOQUE — EventPlanningConfigurator ya NO hace early-return para eventos simples: se pinta siempre, y es el primer bloque el que se adapta (Ceremonia y celebración / Celebración) por isEventStructuredByMoments', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
     const earlyReturnBody = slice(configurator, 'function EventPlanningConfigurator({', '\n  return (')
-    expect(earlyReturnBody).not.toContain('return null')
+    // focusRequestFor (Fase 1.1, resumen general) es una BÚSQUEDA local: "return null" ahí significa "no
+    // hay ningún foco pendiente para esta sección", no un early-return del propio componente.
+    const withoutFocusLookup = earlyReturnBody.replace(/function focusRequestFor\([^]*?\n  }\n/, '')
+    expect(withoutFocusLookup).not.toContain('return null')
     expect(configurator).toContain('const structuredByMoments = isEventStructuredByMoments(event)')
     expect(configurator).toContain('<CelebracionBlock event={event} structured={structuredByMoments}')
   })

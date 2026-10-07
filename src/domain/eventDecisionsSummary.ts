@@ -8,7 +8,7 @@
 // aquí tampoco — eso ya lo decide cada módulo de dominio, no se reimplementa.
 import { listFoodBlockQuestions, type FoodContext } from '@/domain/eventFood'
 import { listCelebrationQuestions, ageTurning, longSpanishDate, type CelebrationFacts } from '@/domain/eventCelebration'
-import { listPairBlockQuestions } from '@/domain/eventPairDecisions'
+import { listPairBlockQuestions, type PairQuestionInfo } from '@/domain/eventPairDecisions'
 import { listGuestsBlockQuestions } from '@/domain/eventGuestDecisions'
 import { listMomentosEspecialesBlockQuestions, CLASES_BAILE_QUESTION_KEY, MOMENTOS_ESPECIALES_QUESTION_KEY } from '@/domain/eventSpecialMoments'
 import type { EventDecision, FamilyEvent } from '@/domain/types'
@@ -124,10 +124,33 @@ export function buildCelebrationDecisionSummary(facts: CelebrationFacts): Decisi
 // buildFoodDecisionSummary con cualquier respuesta no mapeada.
 const PAIR_TAKEN_TEXT: Record<string, Record<string, string>> = {}
 
+// Fase 1.2 (plan de pendientes) — "agrupar entradas relacionadas para reducir longitud, por ejemplo
+// «Vestuario» y «Cómo está resuelto», sin perder información": vestuario, peluquería/maquillaje y detalle
+// especial son preguntas de DOS niveles (tipo + resolución, listPairBlockQuestions siempre las devuelve
+// adyacentes — la resolución solo aparece justo después de su tipo, nunca antes ni suelta). El tipo por sí
+// solo nunca "decide" nada (ver eventPairDecisions.ts) — la fila combinada usa la etiqueta del tipo (más
+// natural, "Vestuario de Jennifer") pero el ESTADO de la resolución, la única de las dos que de verdad
+// cierra la pregunta. Un tipo todavía sin resolución reconocible (resolución no revelada todavía) se queda
+// tal cual, con su propio estado — no hay nada que fusionar.
+export function mergeTipoResolucionPairs(questions: PairQuestionInfo[]): PairQuestionInfo[] {
+  const merged: PairQuestionInfo[] = []
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i]
+    const next = questions[i + 1]
+    if (next && next.questionKey === `${q.questionKey}.resolucion`) {
+      merged.push({ questionKey: next.questionKey, blockKey: q.blockKey, label: q.label, status: next.status })
+      i++
+    } else {
+      merged.push(q)
+    }
+  }
+  return merged
+}
+
 export function buildPairDecisionSummary(event: FamilyEvent, decisions: EventDecision[]): DecisionSummary {
   const taken: DecisionSummaryItem[] = []
   const pending: DecisionSummaryItem[] = []
-  for (const q of listPairBlockQuestions(event, decisions)) {
+  for (const q of mergeTipoResolucionPairs(listPairBlockQuestions(event, decisions))) {
     const choice = choiceOf(decisions, q.questionKey)
     if (q.status !== 'decidida' || (choice !== null && PENDING_CHOICES.has(choice))) {
       pending.push({ key: q.questionKey, text: pendingText(q.label) })

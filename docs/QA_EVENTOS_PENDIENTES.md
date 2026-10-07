@@ -460,3 +460,21 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 411. [ ] Completar una tarea SUELTA (sin encargo) con el checkbox normal sigue funcionando igual que siempre — hoy no aparece ninguna sugerencia de "siguiente preparativo" porque no hay ninguna relación real conocida a nivel de una sola tarea.
 412. [ ] Los filtros de responsables (incluido el AND) y "Sin asignar" siguen funcionando igual con tareas dentro de un encargo agrupado.
 413. [ ] "Ver todas"/"Ver menos" y "Completadas" siguen funcionando igual con la nueva vista agrupada.
+
+### Plan general de pendientes — Fase 1: Configurador compacto y responsive
+
+414. [ ] Debajo del título "✨ Cómo queréis que sea vuestra boda" (o el que corresponda al tipo de evento) aparece un resumen general, visible aunque el desplegable esté plegado.
+415. [ ] El resumen muestra el total real de decisiones tomadas y pendientes de TODOS los bloques juntos ("✓ N decisiones tomadas · M pendientes").
+416. [ ] "Todavía no lo sabemos" en cualquier pregunta nunca cuenta como tomada en ese total.
+417. [ ] Una pregunta nunca abierta (sin fila) cuenta como "sin empezar", nunca como pendiente.
+418. [ ] Cada bloque con alguna pregunta pendiente aparece en su propia línea ("La pareja · 2 pendientes →").
+419. [ ] Los bloques completamente sin empezar se agrupan en una sola línea ("Secciones sin empezar: N · Ver →").
+420. [ ] Tocar la línea de un bloque con pendientes abre ese bloque y aísla directamente su primera pregunta pendiente (las demás quedan plegadas).
+421. [ ] Tocar "Secciones sin empezar: N · Ver →" abre el primer bloque sin empezar, sin aislar ninguna pregunta (no hay ninguna "ya empezada" que aislar).
+422. [ ] Dentro de cada bloque, cada entrada de su propio "Resumen de decisiones" es ahora un enlace: tocarla aísla esa pregunta y hace scroll hasta ella.
+423. [ ] Con una pregunta aislada, aparece "Ver todas las preguntas" para volver a ver el bloque completo.
+424. [ ] En "La pareja", Vestuario/Peluquería y maquillaje/Detalle especial muestran UNA sola entrada en el resumen (tipo + resolución fusionados), nunca dos filas sueltas.
+425. [ ] Guardar una respuesta en cualquier bloque refresca el resumen general al momento (sin recargar la página).
+426. [ ] En "La pareja" → "Estamos buscando" (o "floristería"/"buscando catering"), el selector "Relacionar proveedor ya existente…" no desborda la tarjeta en iPhone — cabe entero, sin scroll horizontal.
+427. [ ] Lo mismo en "Comida y bebida" (contratación externa, tarta por encargar) con su propio ProviderLinker.
+428. [ ] Ningún dato ni relación de proveedores existente cambió al corregir el desbordamiento (es un cambio puramente visual).

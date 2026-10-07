@@ -2556,11 +2556,19 @@ select {
 .inline-fields {
   display: flex;
   gap: 12px;
+  /* Fase 1.3 (plan de pendientes): si ni siquiera encogiendo cabe (botón + select largos en una pantalla
+     muy estrecha), pasa a la línea siguiente en vez de forzar scroll horizontal. */
+  flex-wrap: wrap;
 }
 
-.inline-fields label {
+.inline-fields label,
+.inline-fields select {
+  /* select como hijo DIRECTO de .inline-fields (p. ej. "Relacionar proveedor ya existente…" en La pareja/
+     Comida y bebida) no tenía min-width:0 — un <select> con opciones largas nunca encogía por debajo de su
+     ancho de contenido dentro de esta fila flex, provocando desbordamiento horizontal en iPhone. */
   flex: 1;
   min-width: 0;
+  max-width: 100%;
 }
 
 textarea {

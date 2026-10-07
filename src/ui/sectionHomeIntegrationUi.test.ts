@@ -213,9 +213,10 @@ describe('Preparativos — desplegado por defecto al entrar, con control para pl
     expect(EVENTOS).toContain('onClick={() => setShowAllTasks((v) => !v)}')
   })
 
-  it('"+ Añadir tarea" permanece funcionalmente intacto — no se toca en esta fase', () => {
-    expect(EVENTOS).toContain('placeholder="+ Añadir tarea"')
-    expect(EVENTOS).toContain('onSubmit={handleAddTask}')
+  it('el alta rápida inferior "+ Añadir tarea" se eliminó: ahora es "+ Nueva tarea", el mismo formulario completo que Editar', () => {
+    expect(EVENTOS).not.toContain('placeholder="+ Añadir tarea"')
+    expect(EVENTOS).not.toContain('handleAddTask')
+    expect(EVENTOS).toContain('+ Nueva tarea')
   })
 
   it('Completadas/Historial sigue colapsado por defecto — esta fase solo cambia Preparativos, no esto', () => {

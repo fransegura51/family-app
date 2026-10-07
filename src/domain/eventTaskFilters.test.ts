@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NO_RESPONSIBLE_KEY, taskMatchesResponsibleFilter } from '@/domain/eventTaskFilters'
+import { NO_RESPONSIBLE_KEY, taskMatchesResponsibleFilter, toggleResponsibleFilterKey } from '@/domain/eventTaskFilters'
 
 const src = (path: string) => (import.meta.glob('/src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[`/${path}`]
 const UI = src('src/ui/EventosScreen.tsx')
@@ -12,18 +12,23 @@ const mixta = { assignedMemberId: 'paco', responsibleMemberIds: ['paco'], helper
 const sinNadie = { assignedMemberId: null, responsibleMemberIds: [], helpers: [] as { helperId: string | null }[] }
 const historica = { assignedMemberId: null, responsibleMemberIds: [], helpers: [{ helperId: null }] }
 
+// Bloque 4 de la tanda: el filtro múltiple es INTERSECCIÓN (AND), no unión — "Jennifer + Paco" solo
+// muestra tareas con LOS DOS, nunca con cualquiera de los dos. Ejemplo literal de la petición:
+// Tarea A → Jennifer; Tarea B → Paco; Tarea C → Jennifer+Paco; Tarea D → Jennifer+Paco+David(externo).
+const taskA = { assignedMemberId: 'jennifer', responsibleMemberIds: ['jennifer'], helpers: [] as { helperId: string | null }[] }
+const taskB = { assignedMemberId: 'paco', responsibleMemberIds: ['paco'], helpers: [] as { helperId: string | null }[] }
+const taskC = { assignedMemberId: 'jennifer', responsibleMemberIds: ['jennifer', 'paco'], helpers: [] as { helperId: string | null }[] }
+const taskD = { assignedMemberId: 'jennifer', responsibleMemberIds: ['jennifer', 'paco'], helpers: [{ helperId: 'david' }] }
+
 describe('filtro por responsable — la lista, nunca los datos', () => {
   it('sin selección no filtra nada', () => {
     expect(taskMatchesResponsibleFilter(paco, [])).toBe(true)
   })
-  it('una tarea aparece si coincide con cualquiera de los responsables elegidos', () => {
+  it('un solo responsable: coincide si lo tiene asignado', () => {
     expect(taskMatchesResponsibleFilter(paco, ['m:jennifer'])).toBe(true)
-    expect(taskMatchesResponsibleFilter(paco, ['m:paco', 'm:otro'])).toBe(true)
+    expect(taskMatchesResponsibleFilter(paco, ['m:otro'])).toBe(false)
   })
-  it('selección múltiple: Paco + Jennifer muestra tareas de cualquiera de los dos', () => {
-    expect(taskMatchesResponsibleFilter({ assignedMemberId: 'jennifer', responsibleMemberIds: ['jennifer'], helpers: [] }, ['m:paco', 'm:jennifer'])).toBe(true)
-  })
-  it('una tarea con Paco y María aparece al filtrar Paco y también al filtrar María (externa)', () => {
+  it('una tarea con Paco y María (externa): coincide con cada uno por separado', () => {
     expect(taskMatchesResponsibleFilter(mixta, ['m:paco'])).toBe(true)
     expect(taskMatchesResponsibleFilter(mixta, ['h:maria'])).toBe(true)
   })
@@ -37,6 +42,66 @@ describe('filtro por responsable — la lista, nunca los datos', () => {
   })
   it('una tarea sin el filtro coincidente no aparece', () => {
     expect(taskMatchesResponsibleFilter(paco, ['h:maria'])).toBe(false)
+  })
+})
+
+describe('filtro múltiple = intersección (AND), nunca unión (OR)', () => {
+  it('Jennifer + Paco: solo las tareas con los DOS (C, D) — nunca las que solo tienen uno (A, B)', () => {
+    const selected = ['m:jennifer', 'm:paco']
+    expect(taskMatchesResponsibleFilter(taskA, selected)).toBe(false)
+    expect(taskMatchesResponsibleFilter(taskB, selected)).toBe(false)
+    expect(taskMatchesResponsibleFilter(taskC, selected)).toBe(true)
+    expect(taskMatchesResponsibleFilter(taskD, selected)).toBe(true)
+  })
+  it('Jennifer sola: A, C y D coinciden (todas la tienen); B no', () => {
+    expect(taskMatchesResponsibleFilter(taskA, ['m:jennifer'])).toBe(true)
+    expect(taskMatchesResponsibleFilter(taskB, ['m:jennifer'])).toBe(false)
+    expect(taskMatchesResponsibleFilter(taskC, ['m:jennifer'])).toBe(true)
+    expect(taskMatchesResponsibleFilter(taskD, ['m:jennifer'])).toBe(true)
+  })
+  it('Paco solo: B, C y D coinciden; A no', () => {
+    expect(taskMatchesResponsibleFilter(taskA, ['m:paco'])).toBe(false)
+    expect(taskMatchesResponsibleFilter(taskB, ['m:paco'])).toBe(true)
+    expect(taskMatchesResponsibleFilter(taskC, ['m:paco'])).toBe(true)
+    expect(taskMatchesResponsibleFilter(taskD, ['m:paco'])).toBe(true)
+  })
+  it('Jennifer + David (externo): solo D tiene a los dos — C no, porque no tiene a David', () => {
+    const selected = ['m:jennifer', 'h:david']
+    expect(taskMatchesResponsibleFilter(taskC, selected)).toBe(false)
+    expect(taskMatchesResponsibleFilter(taskD, selected)).toBe(true)
+  })
+  it('Paco + David (externo): mismo criterio, mezclando familiar y externo', () => {
+    const selected = ['m:paco', 'h:david']
+    expect(taskMatchesResponsibleFilter(taskB, selected)).toBe(false)
+    expect(taskMatchesResponsibleFilter(taskC, selected)).toBe(false)
+    expect(taskMatchesResponsibleFilter(taskD, selected)).toBe(true)
+  })
+  it('Jennifer + Paco + David: solo D (tiene a los tres) — C no, le falta David', () => {
+    const selected = ['m:jennifer', 'm:paco', 'h:david']
+    expect(taskMatchesResponsibleFilter(taskC, selected)).toBe(false)
+    expect(taskMatchesResponsibleFilter(taskD, selected)).toBe(true)
+  })
+  it('una tarea que solo tiene PARTE de los responsables seleccionados nunca aparece', () => {
+    expect(taskMatchesResponsibleFilter(taskC, ['m:jennifer', 'm:paco', 'h:david'])).toBe(false)
+  })
+})
+
+describe('«Sin asignar» y una persona son mutuamente excluyentes en la UI del filtro', () => {
+  it('elegir «Sin asignar» limpia cualquier persona ya elegida', () => {
+    expect(toggleResponsibleFilterKey(['m:jennifer', 'm:paco'], NO_RESPONSIBLE_KEY)).toEqual([NO_RESPONSIBLE_KEY])
+  })
+  it('elegir una persona quita «Sin asignar» si estaba activo', () => {
+    expect(toggleResponsibleFilterKey([NO_RESPONSIBLE_KEY], 'm:jennifer')).toEqual(['m:jennifer'])
+  })
+  it('seguir añadiendo personas con «Sin asignar» ya quitado funciona de forma acumulativa (AND)', () => {
+    expect(toggleResponsibleFilterKey(['m:jennifer'], 'm:paco')).toEqual(['m:jennifer', 'm:paco'])
+  })
+  it('quitar una clave ya seleccionada la desmarca sin tocar las demás', () => {
+    expect(toggleResponsibleFilterKey(['m:jennifer', 'm:paco'], 'm:jennifer')).toEqual(['m:paco'])
+  })
+  it('«Todos» (vaciar la selección) es el estado limpio — sin filtro de responsables', () => {
+    expect(taskMatchesResponsibleFilter(taskA, [])).toBe(true)
+    expect(taskMatchesResponsibleFilter(sinNadie, [])).toBe(true)
   })
 })
 

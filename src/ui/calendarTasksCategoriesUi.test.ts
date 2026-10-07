@@ -363,9 +363,10 @@ describe('No regresión de Eventos ni de "+ Añadir tarea" de Preparativos (Part
     expect(EVENTOS_SRC).not.toContain("kind: 'task'")
   })
 
-  it('"+ Añadir tarea" de Preparativos (Eventos) sigue intacto — es un concepto distinto de las Tareas de Calendario, nunca se ha confundido con él', () => {
-    expect(EVENTOS_SRC).toContain('placeholder="+ Añadir tarea"')
-    expect(EVENTOS_SRC).toContain('onSubmit={handleAddTask}')
+  it('el alta rápida inferior de Preparativos ("+ Añadir tarea") se eliminó a propósito (tanda de "+ Nueva tarea"): sigue siendo un concepto de Eventos distinto de las Tareas de Calendario, pero ya no es un formulario reducido aparte', () => {
+    expect(EVENTOS_SRC).not.toContain('placeholder="+ Añadir tarea"')
+    expect(EVENTOS_SRC).not.toContain('handleAddTask')
+    expect(EVENTOS_SRC).toContain('+ Nueva tarea')
   })
 })
 

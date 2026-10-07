@@ -539,33 +539,41 @@ async function decisionQuestionKeyOf(decisionId: string | null): Promise<string 
   return (data?.question_key as string | undefined) ?? null
 }
 
+// Devuelve el id de la tarea creada (antes Promise<void> — el único llamador ignoraba el valor, así que
+// ampliar el tipo es compatible; lo necesita el formulario completo de "+ Nueva tarea" para encadenar
+// responsables/personas externas/Calendario/recordatorios sobre la tarea recién creada).
 export async function addEventTask(
   eventId: string,
   title: string,
   dueDate: string | null = null,
   decisionId: string | null = null,
   extras: { priority?: TaskPriority | null; notes?: string | null; dueTime?: string | null } = {},
-): Promise<void> {
+): Promise<string> {
   const familyId = await currentFamilyId()
   // Prioridad inicial: la que indique el usuario, o la propuesta de PEPA con su motivo (guardado, no recalculado).
   const proposal = proposeTaskPriority({ title, dependsOnDecision: decisionId !== null, decisionQuestionKey: await decisionQuestionKeyOf(decisionId) })
   const priorityFromUser = extras.priority !== undefined
-  const { error } = await supabase.from('event_tasks').insert({
-    event_id: eventId,
-    family_id: familyId,
-    title: title.trim(),
-    due_date: dueDate,
-    source: decisionId ? 'auto' : 'manual',
-    sort_order: Date.now(),
-    decision_id: decisionId,
-    priority: priorityFromUser ? extras.priority : proposal.priority,
-    priority_source: priorityFromUser ? 'usuario' : 'pepa',
-    priority_reason: priorityFromUser ? null : proposal.reason,
-    notes: extras.notes?.trim() ? extras.notes.trim() : null,
-    // Hora solo con fecha: nunca se inventa 00:00.
-    due_time: dueDate && extras.dueTime ? extras.dueTime : null,
-  })
+  const { data, error } = await supabase
+    .from('event_tasks')
+    .insert({
+      event_id: eventId,
+      family_id: familyId,
+      title: title.trim(),
+      due_date: dueDate,
+      source: decisionId ? 'auto' : 'manual',
+      sort_order: Date.now(),
+      decision_id: decisionId,
+      priority: priorityFromUser ? extras.priority : proposal.priority,
+      priority_source: priorityFromUser ? 'usuario' : 'pepa',
+      priority_reason: priorityFromUser ? null : proposal.reason,
+      notes: extras.notes?.trim() ? extras.notes.trim() : null,
+      // Hora solo con fecha: nunca se inventa 00:00.
+      due_time: dueDate && extras.dueTime ? extras.dueTime : null,
+    })
+    .select('id')
+    .single()
   if (error) throw error
+  return data.id as string
 }
 
 export async function updateEventTask(

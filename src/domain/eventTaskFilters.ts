@@ -11,19 +11,31 @@ export interface ResponsibleTaskLike {
   helpers?: { helperId: string | null }[]
 }
 
-// Una tarea aparece si coincide con CUALQUIERA de las claves elegidas. Sin claves = sin filtro.
-// Las referencias históricas (helperId null) no cuentan como responsables activos.
+// Una tarea aparece SOLO si tiene asignados A TODOS los responsables elegidos (intersección, no unión) —
+// petición real: "Jennifer + Paco" debe mostrar solo tareas con los dos, nunca con cualquiera de los dos.
+// Sin claves = sin filtro. Las referencias históricas (helperId null) no cuentan como responsables activos.
+// Mismo criterio para familiares y externos: cada clave, sea 'm:' o 'h:', es una condición más que TODAS
+// las claves elegidas deben cumplir a la vez.
 export function taskMatchesResponsibleFilter(task: ResponsibleTaskLike, selected: string[]): boolean {
   if (selected.length === 0) return true
   const memberIds = task.responsibleMemberIds && task.responsibleMemberIds.length > 0 ? task.responsibleMemberIds : task.assignedMemberId ? [task.assignedMemberId] : []
   const helperIds = (task.helpers ?? []).flatMap((h) => (h.helperId ? [h.helperId] : []))
   const hasNone = memberIds.length === 0 && helperIds.length === 0
-  return selected.some((key) => {
+  return selected.every((key) => {
     if (key === NO_RESPONSIBLE_KEY) return hasNone
     if (key.startsWith('m:')) return memberIds.includes(key.slice(2))
     if (key.startsWith('h:')) return helperIds.includes(key.slice(2))
     return false
   })
+}
+
+// "Sin asignar" y una persona concreta son mutuamente excluyentes (una tarea no puede estar a la vez sin
+// responsable y asignada a alguien) — al elegir uno se descarta el otro, en vez de permitir una
+// combinación que nunca podría coincidir con ninguna tarea real.
+export function toggleResponsibleFilterKey(selected: string[], key: string): string[] {
+  if (selected.includes(key)) return selected.filter((k) => k !== key)
+  if (key === NO_RESPONSIBLE_KEY) return [NO_RESPONSIBLE_KEY]
+  return [...selected.filter((k) => k !== NO_RESPONSIBLE_KEY), key]
 }
 
 // Varios avisos por tarea (antes "como mucho uno" en Preparativos; el esquema real — calendar_event_reminders,

@@ -16,7 +16,7 @@ function window_(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
-const MODAL = window_(UI, 'function TaskEditModal({', '\nfunction EventShoppingSection(')
+const MODAL = window_(UI, 'function TaskEditModal({', '\nfunction EventHelpersModal(')
 
 describe('responsables: chips compactos, no checkboxes verticales', () => {
   it('familiares y externas se muestran como chip, no como <label><input type="checkbox">', () => {
@@ -44,13 +44,16 @@ describe('personas externas: nunca un formulario permanente', () => {
   it('guardar el alta limpia el formulario y lo vuelve a plegar', () => {
     expect(MODAL).toContain('onClick={() => void addHelper().then(() => setAddingHelper(false))}')
   })
-  it('editar/borrar una externa existente vive detrás de un menú ⋯, no en una lista siempre visible', () => {
-    expect(MODAL).toContain("aria-label={`Más opciones de ${h.name}`}")
-    expect(MODAL).toContain('onClick={() => setHelperMenuFor(helperMenuFor === h.id ? null : h.id)}')
+  it('editar/borrar una externa ya NO vive dentro de la tarea (tanda "👥 Colaboradores"): sin menú ⋯, sin Editar, sin Borrar aquí — solo seleccionar/deseleccionar y el alta rápida', () => {
+    expect(MODAL).not.toContain('Más opciones de')
+    expect(MODAL).not.toMatch(/>\s*Editar\s*</)
+    expect(MODAL).not.toMatch(/>\s*Borrar\s*</)
+    expect(MODAL).not.toContain('helperMenuFor')
   })
-  it('mantiene conservar/quitar asignaciones al borrar una externa con tareas asignadas', () => {
-    expect(MODAL).toContain("Conservar las asignaciones (quedan como referencia)")
-    expect(MODAL).toContain('Quitarla también de las tareas')
+  it('conservar/quitar asignaciones al borrar una externa con tareas vive en "👥 Colaboradores" (EventHelpersModal), reutilizando la misma función de datos', () => {
+    const HELPERS_MODAL = window_(UI, 'function EventHelpersModal(', '\nfunction EventShoppingSection(')
+    expect(HELPERS_MODAL).toContain('Conservar las asignaciones (quedan como referencia)')
+    expect(HELPERS_MODAL).toContain('Quitarla también de las tareas')
   })
 })
 

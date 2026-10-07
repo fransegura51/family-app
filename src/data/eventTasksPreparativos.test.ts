@@ -94,10 +94,10 @@ describe('responsables múltiples y personas externas', () => {
     expect(fn(RESP, 'export async function setEventTaskResponsibles(')).toContain('memberIds[0] ?? null')
   })
 
-  it('borrar una persona externa exige elegir: conservar o quitar; nunca en silencio si tiene asignaciones', () => {
-    expect(UI).toContain('tiene {helperDeleteFor.assignments} asignación')
-    expect(UI).toContain("Conservar las asignaciones (quedan como referencia)")
-    expect(UI).toContain("Quitarla también de las tareas")
+  it('borrar una persona externa exige elegir: conservar o quitar; nunca en silencio si tiene asignaciones (ahora en "👥 Colaboradores", ver eventHelpersManagement.test.ts)', () => {
+    expect(UI).toContain('tiene {deleteFor.assignments} asignación')
+    expect(UI).toContain('Conservar las asignaciones (quedan como referencia)')
+    expect(UI).toContain('Quitarla también de las tareas')
     expect(RESP).toContain("if (mode === 'remove')")
   })
 

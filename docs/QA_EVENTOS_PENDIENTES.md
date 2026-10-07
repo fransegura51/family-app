@@ -369,3 +369,39 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 327. [ ] Si el guardado de un toque falla (p. ej. sin conexión), la campana vuelve a mostrar el estado real tras el error, nunca un aviso fingido.
 328. [ ] Una tarea con tres avisos sigue teniendo una sola entrada en Calendario (no se duplica, no cambia de kind, responsable, fecha, hora ni prioridad).
 329. [ ] «Mostrar en Calendario» sigue siendo el mismo interruptor de siempre; desactivarlo sigue quitando todos los avisos de esa tarea (consecuencia ya documentada, no en silencio).
+
+## Nuevas pruebas (a partir de la 330) — "+ Nueva tarea", filtro AND y "👥 Colaboradores"
+330. [ ] El alta rápida inferior ("+ Añadir tarea") ya no existe, ni con filtros activos ni sin ellos.
+331. [ ] "+ Nueva tarea" aparece justo debajo de los filtros de responsables y antes de la lista, con y sin filtros activos.
+332. [ ] "+ Nueva tarea" abre el mismo formulario completo que "Editar tarea" (título, fecha, hora, prioridad, responsables, externos, nota, Mostrar en Calendario, recordatorios).
+333. [ ] Crear una tarea sin fecha funciona (no se inventa fecha ni hora; Mostrar en Calendario queda desactivado).
+334. [ ] Crear una tarea con fecha, Mostrar en Calendario y un recordatorio: se guarda y aparece correctamente en la lista y en Calendario.
+335. [ ] Crear una tarea con varios recordatorios a la vez (p. ej. 1 semana + 1 día) funciona igual que al editar.
+336. [ ] Crear una tarea sin tocar la prioridad: PEPA la propone (igual que el alta rápida de antes).
+337. [ ] Crear una tarea eligiendo expresamente "Sin prioridad": se guarda así, sin que PEPA la sobrescriba.
+338. [ ] Al guardar la nueva tarea, el modal se cierra y la lista se refresca mostrándola, respetando el filtro activo si corresponde.
+339. [ ] Crear varias tareas seguidas no duplica ninguna ni altera las demás tareas existentes.
+340. [ ] Filtro "Jennifer + Paco": solo aparecen tareas con los dos asignados a la vez.
+341. [ ] Filtro de una sola persona sigue funcionando como antes (muestra solo sus tareas).
+342. [ ] Filtro "Jennifer + un colaborador externo": solo tareas con los dos.
+343. [ ] Filtro con tres responsables (dos familiares + un externo): solo tareas con los tres.
+344. [ ] Una tarea con solo parte de los responsables seleccionados no aparece con el filtro AND.
+345. [ ] "Sin asignar" sigue mostrando solo tareas sin ningún responsable.
+346. [ ] Seleccionar "Sin asignar" y luego una persona: se limpia "Sin asignar" y queda solo la persona.
+347. [ ] Seleccionar una persona y luego "Sin asignar": se limpian las personas y queda solo "Sin asignar".
+348. [ ] "Todos"/"Limpiar filtros" vuelve a mostrar todas las tareas pendientes.
+349. [ ] "👥 Colaboradores" es accesible desde Preparativos sin entrar en ninguna tarea.
+350. [ ] Añadir un colaborador desde "👥 Colaboradores" (nombre + relación opcional).
+351. [ ] Editar el nombre/relación de un colaborador desde "👥 Colaboradores" actualiza sus asignaciones activas.
+352. [ ] Borrar un colaborador sin tareas asignadas: confirmación sencilla.
+353. [ ] Borrar un colaborador con tareas asignadas: aparece el aviso con el número y las opciones conservar/quitar/cancelar.
+354. [ ] "Conservar" deja la referencia histórica (nombre · relación) en las tareas que lo tenían.
+355. [ ] "Quitar" elimina al colaborador de todas las tareas donde estaba asignado.
+356. [ ] Dentro de Nueva/Editar tarea ya NO hay manera de editar o borrar un colaborador existente (sin menú ⋯).
+357. [ ] "+ Añadir persona externa" dentro de una tarea sigue funcionando como alta rápida.
+358. [ ] Un colaborador creado desde "+ Añadir persona externa" aparece inmediatamente seleccionable y seleccionado en esa tarea, sin salir del formulario.
+359. [ ] Ese mismo colaborador aparece después en "👥 Colaboradores".
+360. [ ] Ese mismo colaborador aparece como filtro de responsable en Preparativos en cuanto tiene alguna tarea asignada.
+361. [ ] La tarjeta de tarea sigue mostrando el mismo contenido de siempre (checkbox, título, fecha/hora, Atrasada, prioridad, responsables, nota, campana, menú ⋯ de la tarea) sin cambios.
+362. [ ] El menú ⋯ de la tarjeta (Editar/Borrar la tarea) sigue funcionando igual; no se ha mezclado con nada de colaboradores.
+363. [ ] "Pepa te recomienda" sigue funcionando con tareas nuevas, con varios responsables y con colaboradores externos, sin errores.

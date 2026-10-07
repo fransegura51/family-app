@@ -141,6 +141,7 @@ import type { EventTaskPrioritySuggestion } from '@/domain/types'
 import {
   NO_RESPONSIBLE_KEY,
   taskMatchesResponsibleFilter,
+  toggleResponsibleFilterKey,
   taskReminderSelectionFrom,
   toggledPresetReminders,
   remindersFromSelection,
@@ -958,7 +959,10 @@ function EventDetail({
   // verdad para la campana rápida y para «Editar tarea».
   const [taskReminders, setTaskReminders] = useState<Record<string, EventReminder[]>>({})
   const [eventHelpers, setEventHelpers] = useState<EventHelper[]>([])
-  const [newTaskTitle, setNewTaskTitle] = useState('')
+  // "+ Nueva tarea" (reemplaza el alta rápida inferior): abre el mismo formulario completo que "Editar
+  // tarea", en modo creación — nunca un segundo sistema de alta simplificado.
+  const [creatingTask, setCreatingTask] = useState(false)
+  const [managingHelpers, setManagingHelpers] = useState(false)
   // Fase 1 — reforma de Editar/•••: un único punto de entrada
   // ("Gestionar evento") en vez de dos controles compitiendo por la
   // misma clase de acción, ver ManageEventModal más abajo.
@@ -1046,10 +1050,12 @@ function EventDetail({
   const visibleTasks = showAllTasks ? filteredTasks : filteredTasks.slice(0, 5)
   // Bloque 9 — nunca se borran solas: mismo array `tasks` de siempre, solo el lado done:true.
   const completedTasks = tasks.filter((t) => t.done)
+  function reloadEventHelpers() {
+    return listEventHelpers(event.id).then(setEventHelpers)
+  }
   useEffect(() => {
-    listEventHelpers(event.id)
-      .then(setEventHelpers)
-      .catch(() => {})
+    reloadEventHelpers().catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event.id, tasks])
   useEffect(() => {
     const linked = tasks.filter((t): t is EventTask & { calendarEventId: string } => t.calendarEventId != null)
@@ -1067,7 +1073,7 @@ function EventDetail({
   const hasTasksModule = event.enabledModules.includes('tareas')
 
   function toggleResponsibleFilter(key: string) {
-    setResponsibleFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+    setResponsibleFilter((prev) => toggleResponsibleFilterKey(prev, key))
   }
 
   // Sin fecha no hay aviso temporal; sin «Mostrar en Calendario» no hay dónde guardarlo: se explica, no se inventa.
@@ -1123,17 +1129,6 @@ function EventDetail({
     }
   }
 
-  async function handleAddTask(ev: FormEvent) {
-    ev.preventDefault()
-    if (!newTaskTitle.trim()) return
-    try {
-      await addEventTask(event.id, newTaskTitle)
-      setNewTaskTitle('')
-      reloadTasks()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir la tarea'))
-    }
-  }
 
   // ---------------------------------------------------------------
   // Datos "de un vistazo" para el dashboard — una carga ligera propia,
@@ -1407,6 +1402,17 @@ function EventDetail({
                 )}
               </div>
             )}
+            {/* "+ Nueva tarea" sustituye el alta rápida inferior (bloque 1 de la tanda): mismo formulario
+                completo que "Editar tarea", en modo creación. Se queda siempre aquí, debajo de los
+                filtros y antes de la lista, haya o no filtros activos. */}
+            <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setCreatingTask(true)}>
+                + Nueva tarea
+              </button>
+              <button type="button" className="link-button" onClick={() => setManagingHelpers(true)}>
+                👥 Colaboradores
+              </button>
+            </div>
             {responsibleFilter.length > 0 && filteredTasks.length === 0 && <p className="muted">Ninguna tarea pendiente coincide con este filtro.</p>}
             <div className="event-list" style={{ marginTop: 8 }}>
               {visibleTasks.map((t) => (
@@ -1436,10 +1442,6 @@ function EventDetail({
                 {showAllTasks ? 'Ver menos' : `Ver todas (${pendingTasks.length})`}
               </button>
             )}
-            <form onSubmit={handleAddTask} className="inline-fields" style={{ marginTop: 8 }}>
-              <input type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="+ Añadir tarea" style={{ flex: 1 }} />
-              <button type="submit">Añadir</button>
-            </form>
             {completedTasks.length > 0 && (
               <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid #eee' }}>
                 <button type="button" className="link-button" onClick={() => setShowCompletedTasks((v) => !v)}>
@@ -1465,13 +1467,32 @@ function EventDetail({
             {editingTask && (
               <TaskEditModal
                 task={editingTask}
+                eventId={event.id}
                 familyMembers={familyMembers}
+                helpers={eventHelpers}
+                onHelpersChanged={reloadEventHelpers}
                 onClose={() => setEditingTaskId(null)}
                 onSaved={() => {
                   setEditingTaskId(null)
                   reloadTasks()
                 }}
               />
+            )}
+            {creatingTask && (
+              <TaskEditModal
+                eventId={event.id}
+                familyMembers={familyMembers}
+                helpers={eventHelpers}
+                onHelpersChanged={reloadEventHelpers}
+                onClose={() => setCreatingTask(false)}
+                onSaved={() => {
+                  setCreatingTask(false)
+                  reloadTasks()
+                }}
+              />
+            )}
+            {managingHelpers && (
+              <EventHelpersModal eventId={event.id} helpers={eventHelpers} onHelpersChanged={reloadEventHelpers} onClose={() => setManagingHelpers(false)} />
             )}
           </div>
         )
@@ -2331,41 +2352,53 @@ function TaskCard({
   )
 }
 
+// Mismo formulario completo para "Editar tarea" y "+ Nueva tarea" (bloque 2/3 de la tanda): `task`
+// ausente = modo creación. Nunca un segundo formulario reducido que pueda divergir del completo.
+// `helpers`/`onHelpersChanged` vienen del padre (EventosScreen) — es la misma lista que alimenta el
+// filtro por responsable y "👥 Colaboradores"; el alta rápida de aquí solo CREA y refresca esa lista
+// compartida, nunca mantiene una copia propia que pueda desincronizarse. Editar/borrar un colaborador ya
+// existente vive exclusivamente en "👥 Colaboradores" (EventHelpersModal) — aquí solo se selecciona.
 function TaskEditModal({
   task,
+  eventId,
   familyMembers,
+  helpers,
+  onHelpersChanged,
   onClose,
   onSaved,
 }: {
-  task: EventTask
+  task?: EventTask
+  eventId: string
   familyMembers: FamilyMember[]
+  helpers: EventHelper[]
+  onHelpersChanged: () => Promise<void>
   onClose: () => void
   onSaved: () => void
 }) {
-  const [title, setTitle] = useState(task.title)
-  const [dueDate, setDueDate] = useState(task.dueDate ?? '')
+  const isCreating = task === undefined
+  const [title, setTitle] = useState(task?.title ?? '')
+  const [dueDate, setDueDate] = useState(task?.dueDate ?? '')
   // Preparativos (migración 0206): hora (solo con fecha), prioridad (lo que elija el usuario manda), nota, varios
   // responsables y personas externas del evento.
-  const [dueTime, setDueTime] = useState(task.dueTime ?? '')
-  const [priority, setPriority] = useState<'' | 'alta' | 'media' | 'baja'>(task.priority ?? '')
-  const [notes, setNotes] = useState(task.notes ?? '')
-  const originalResponsibleIds = task.responsibleMemberIds && task.responsibleMemberIds.length > 0 ? task.responsibleMemberIds : task.assignedMemberId ? [task.assignedMemberId] : []
+  const [dueTime, setDueTime] = useState(task?.dueTime ?? '')
+  const [priority, setPriority] = useState<'' | 'alta' | 'media' | 'baja'>(task?.priority ?? '')
+  // Solo importa en modo creación: si el usuario nunca toca el selector, se deja que PEPA proponga
+  // prioridad (igual que el alta rápida de siempre) en vez de forzar "Sin prioridad" por defecto.
+  const [priorityTouched, setPriorityTouched] = useState(false)
+  const [notes, setNotes] = useState(task?.notes ?? '')
+  const originalResponsibleIds = task?.responsibleMemberIds && task.responsibleMemberIds.length > 0 ? task.responsibleMemberIds : task?.assignedMemberId ? [task.assignedMemberId] : []
   const [responsibleIds, setResponsibleIds] = useState<string[]>(originalResponsibleIds)
-  const originalHelperIds = (task.helpers ?? []).flatMap((h) => (h.helperId ? [h.helperId] : []))
+  const originalHelperIds = (task?.helpers ?? []).flatMap((h) => (h.helperId ? [h.helperId] : []))
   const [helperIds, setHelperIds] = useState<string[]>(originalHelperIds)
-  const [helpers, setHelpers] = useState<EventHelper[]>([])
   const [newHelperName, setNewHelperName] = useState('')
   const [newHelperLabel, setNewHelperLabel] = useState('')
-  const [editingHelper, setEditingHelper] = useState<{ id: string; name: string; label: string } | null>(null)
-  const [helperDeleteFor, setHelperDeleteFor] = useState<{ helper: EventHelper; assignments: number } | null>(null)
   // Ficha compacta (revisión manual en iPhone): el alta de persona externa ya no se muestra siempre —
-  // solo al tocar «+ Añadir persona externa». Mismo criterio para el menú ⋯ de editar/borrar una externa
-  // ya existente: oculto hasta que se toca, nunca una segunda pantalla grande aparte.
+  // solo al tocar «+ Añadir persona externa». Esto es ALTA RÁPIDA únicamente: editar/borrar una externa
+  // ya existente vive en "👥 Colaboradores", nunca aquí.
   const [addingHelper, setAddingHelper] = useState(false)
-  const [helperMenuFor, setHelperMenuFor] = useState<string | null>(null)
   // Fase 9 — la propia presencia de calendarEventId es el estado
   // inicial del interruptor; no hay una columna booleana aparte.
-  const [showInCalendar, setShowInCalendar] = useState(task.calendarEventId != null)
+  const [showInCalendar, setShowInCalendar] = useState(task?.calendarEventId != null)
   // Varios avisos a la vez (antes como mucho uno): el modelo real es el conjunto de presets activos +
   // como mucho un personalizado editable aquí (más cualquier otro personalizado ya existente que no se
   // toca ni se pierde — extraCustomReminders). Solo tiene sentido si la tarea está enlazada al Calendario.
@@ -2378,7 +2411,7 @@ function TaskEditModal({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!task.calendarEventId) return
+    if (!task?.calendarEventId) return
     listEventReminders(task.calendarEventId)
       .then((reminders) => {
         const sel = taskReminderSelectionFrom(reminders)
@@ -2395,70 +2428,20 @@ function TaskEditModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    listEventHelpers(task.eventId)
-      .then(setHelpers)
-      .catch(() => {})
-  }, [task.eventId])
-
-  async function reloadHelpers() {
-    setHelpers(await listEventHelpers(task.eventId))
-  }
-
+  // Alta rápida (bloque 9 de la tanda): crea el colaborador de verdad en el evento, refresca la lista
+  // compartida del padre (para que aparezca también en "👥 Colaboradores" y en el filtro) y lo deja ya
+  // SELECCIONADO en esta tarea — nunca hace falta salir del formulario y volver a entrar.
   async function addHelper() {
     if (!newHelperName.trim()) return
     setError(null)
     try {
-      const id = await addEventHelper(task.eventId, newHelperName, newHelperLabel || null)
+      const id = await addEventHelper(eventId, newHelperName, newHelperLabel || null)
       setNewHelperName('')
       setNewHelperLabel('')
       setHelperIds((prev) => [...prev, id])
-      await reloadHelpers()
+      await onHelpersChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir la persona externa'))
-    }
-  }
-
-  async function saveEditingHelper() {
-    if (!editingHelper || !editingHelper.name.trim()) return
-    setError(null)
-    try {
-      await updateEventHelper(editingHelper.id, { name: editingHelper.name, label: editingHelper.label || null })
-      setEditingHelper(null)
-      await reloadHelpers()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar la persona externa'))
-    }
-  }
-
-  // Borrar sin asignaciones: confirmación sencilla. Con asignaciones: NUNCA en silencio; elige conservar o quitar.
-  async function askDeleteHelper(h: EventHelper) {
-    setError(null)
-    try {
-      const assignments = await countHelperAssignments(h.id)
-      if (assignments === 0) {
-        if (!window.confirm(`¿Borrar a ${h.name} de este evento?`)) return
-        await deleteEventHelper(h.id, 'keep')
-        setHelperIds((prev) => prev.filter((id) => id !== h.id))
-        await reloadHelpers()
-      } else {
-        setHelperDeleteFor({ helper: h, assignments })
-      }
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo borrar la persona externa'))
-    }
-  }
-
-  async function confirmDeleteHelper(mode: 'keep' | 'remove') {
-    if (!helperDeleteFor) return
-    setError(null)
-    try {
-      await deleteEventHelper(helperDeleteFor.helper.id, mode)
-      setHelperIds((prev) => prev.filter((id) => id !== helperDeleteFor.helper.id))
-      setHelperDeleteFor(null)
-      await reloadHelpers()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo borrar la persona externa'))
     }
   }
 
@@ -2496,28 +2479,46 @@ function TaskEditModal({
     setSaving(true)
     setError(null)
     try {
-      const priorityChanged = (priority || null) !== (task.priority ?? null)
-      await updateEventTask(task.id, {
-        title,
-        dueDate: dueDate || null,
-        // La hora solo existe con fecha (nunca 00:00 inventado).
-        dueTime: dueDate && dueTime ? dueTime : null,
-        notes: notes.trim() ? notes : null,
-        // Solo si la cambias tú: una prioridad elegida manda y PEPA no la sobrescribe.
-        ...(priorityChanged ? { priority: (priority || null) as 'alta' | 'media' | 'baja' | null } : {}),
-      })
-      const sameResponsibles = [...responsibleIds].sort().join('|') === [...originalResponsibleIds].sort().join('|')
-      if (!sameResponsibles) await setEventTaskResponsibles(task.id, responsibleIds)
-      const sameHelpers = [...helperIds].sort().join('|') === [...originalHelperIds].sort().join('|')
-      if (!sameHelpers) await setEventTaskHelpers(task.id, helperIds)
-      const wasLinked = task.calendarEventId != null
-      let linkedId: string | null = task.calendarEventId
-      if (showInCalendar && !wasLinked && dueDate) linkedId = await linkEventTaskToCalendar(task.id)
-      else if (!showInCalendar && wasLinked) {
-        await unlinkEventTaskFromCalendar(task.id)
-        linkedId = null
+      if (isCreating) {
+        // Una única tarea, de principio a fin — nunca dos sistemas de alta distintos. Sin tocar el
+        // selector de prioridad se deja que PEPA proponga (igual que hacía siempre el alta rápida);
+        // tocarlo (aunque vuelva a "Sin prioridad") es una elección real del usuario.
+        const newId = await addEventTask(eventId, title, dueDate || null, null, {
+          ...(priorityTouched ? { priority: (priority || null) as 'alta' | 'media' | 'baja' | null } : {}),
+          notes: notes.trim() ? notes : null,
+          dueTime: dueDate && dueTime ? dueTime : null,
+        })
+        if (responsibleIds.length > 0) await setEventTaskResponsibles(newId, responsibleIds)
+        if (helperIds.length > 0) await setEventTaskHelpers(newId, helperIds)
+        if (showInCalendar && dueDate) {
+          const linkedId = await linkEventTaskToCalendar(newId)
+          const reminders = remindersForForm()
+          if (reminders.length > 0) await replaceReminders(linkedId, reminders)
+        }
+      } else {
+        const priorityChanged = (priority || null) !== (task.priority ?? null)
+        await updateEventTask(task.id, {
+          title,
+          dueDate: dueDate || null,
+          // La hora solo existe con fecha (nunca 00:00 inventado).
+          dueTime: dueDate && dueTime ? dueTime : null,
+          notes: notes.trim() ? notes : null,
+          // Solo si la cambias tú: una prioridad elegida manda y PEPA no la sobrescribe.
+          ...(priorityChanged ? { priority: (priority || null) as 'alta' | 'media' | 'baja' | null } : {}),
+        })
+        const sameResponsibles = [...responsibleIds].sort().join('|') === [...originalResponsibleIds].sort().join('|')
+        if (!sameResponsibles) await setEventTaskResponsibles(task.id, responsibleIds)
+        const sameHelpers = [...helperIds].sort().join('|') === [...originalHelperIds].sort().join('|')
+        if (!sameHelpers) await setEventTaskHelpers(task.id, helperIds)
+        const wasLinked = task.calendarEventId != null
+        let linkedId: string | null = task.calendarEventId
+        if (showInCalendar && !wasLinked && dueDate) linkedId = await linkEventTaskToCalendar(task.id)
+        else if (!showInCalendar && wasLinked) {
+          await unlinkEventTaskFromCalendar(task.id)
+          linkedId = null
+        }
+        if (linkedId) await replaceReminders(linkedId, remindersForForm())
       }
-      if (linkedId) await replaceReminders(linkedId, remindersForForm())
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -2531,7 +2532,7 @@ function TaskEditModal({
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
-            Editar tarea
+            {isCreating ? 'Nueva tarea' : 'Editar tarea'}
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
@@ -2568,7 +2569,13 @@ function TaskEditModal({
           </div>
           <label>
             Prioridad
-            <select value={priority} onChange={(e) => setPriority(e.target.value as '' | 'alta' | 'media' | 'baja')}>
+            <select
+              value={priority}
+              onChange={(e) => {
+                setPriority(e.target.value as '' | 'alta' | 'media' | 'baja')
+                setPriorityTouched(true)
+              }}
+            >
               <option value="">Sin prioridad</option>
               <option value="alta">Alta</option>
               <option value="media">Media</option>
@@ -2594,102 +2601,30 @@ function TaskEditModal({
                 </button>
               ))}
               {helpers.map((h) => (
-                <span key={h.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, maxWidth: '100%' }}>
-                  <button
-                    type="button"
-                    className={'chip chip-external' + (helperIds.includes(h.id) ? ' chip-active' : '')}
-                    onClick={() => setHelperIds((prev) => (prev.includes(h.id) ? prev.filter((id) => id !== h.id) : [...prev, h.id]))}
-                  >
-                    {h.name}
-                    {h.label ? ` · ${h.label}` : ''}
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label={`Más opciones de ${h.name}`}
-                    onClick={() => setHelperMenuFor(helperMenuFor === h.id ? null : h.id)}
-                  >
-                    ⋯
-                  </button>
-                </span>
+                <button
+                  key={h.id}
+                  type="button"
+                  className={'chip chip-external' + (helperIds.includes(h.id) ? ' chip-active' : '')}
+                  onClick={() => setHelperIds((prev) => (prev.includes(h.id) ? prev.filter((id) => id !== h.id) : [...prev, h.id]))}
+                >
+                  {h.name}
+                  {h.label ? ` · ${h.label}` : ''}
+                </button>
               ))}
               <button type="button" className="chip" onClick={() => setAddingHelper((v) => !v)}>
                 + Añadir persona externa
               </button>
             </div>
-            {(task.helpers ?? []).filter((h) => h.helperId === null).length > 0 && (
+            {/* Seleccionar/deseleccionar aquí; editar o borrar un colaborador existente vive exclusivamente
+                en "👥 Colaboradores" (bloque 8 de la tanda) — nunca un menú ⋯ ni un alta dentro de la tarea. */}
+            {(task?.helpers ?? []).filter((h) => h.helperId === null).length > 0 && (
               <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-                {(task.helpers ?? [])
+                {(task?.helpers ?? [])
                   .filter((h) => h.helperId === null)
                   .map((h) => h.name + (h.label ? ` · ${h.label}` : ''))
                   .join(', ')}{' '}
                 · ya no está en el evento (referencia histórica)
               </p>
-            )}
-            {helperMenuFor &&
-              helpers
-                .filter((h) => h.id === helperMenuFor)
-                .map((h) =>
-                  editingHelper && editingHelper.id === h.id ? (
-                    <div key={h.id} className="card" style={{ padding: 8, marginTop: 4 }}>
-                      <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
-                        <input
-                          type="text"
-                          value={editingHelper.name}
-                          onChange={(e) => setEditingHelper({ ...editingHelper, name: e.target.value })}
-                          aria-label="Nombre de la persona externa"
-                          style={{ minWidth: 0, flex: 1 }}
-                        />
-                        <input
-                          type="text"
-                          value={editingHelper.label}
-                          placeholder="Relación (opcional)"
-                          onChange={(e) => setEditingHelper({ ...editingHelper, label: e.target.value })}
-                          aria-label="Relación de la persona externa"
-                          style={{ minWidth: 0, flex: 1 }}
-                        />
-                      </div>
-                      <div className="filter-row" style={{ marginTop: 4 }}>
-                        <button
-                          type="button"
-                          className="link-button"
-                          onClick={() => void saveEditingHelper().then(() => setHelperMenuFor(null))}
-                        >
-                          Guardar
-                        </button>
-                        <button type="button" className="link-button" onClick={() => setEditingHelper(null)}>
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div key={h.id} className="filter-row" style={{ marginTop: 4 }}>
-                      <button type="button" className="link-button" onClick={() => setEditingHelper({ id: h.id, name: h.name, label: h.label ?? '' })}>
-                        Editar
-                      </button>
-                      <button type="button" className="link-button" onClick={() => void askDeleteHelper(h).then(() => setHelperMenuFor(null))}>
-                        Borrar
-                      </button>
-                    </div>
-                  ),
-                )}
-            {helperDeleteFor && (
-              <div className="card" style={{ padding: 8, marginTop: 4 }}>
-                <p style={{ margin: '0 0 6px' }}>
-                  {helperDeleteFor.helper.name} tiene {helperDeleteFor.assignments} asignación{helperDeleteFor.assignments === 1 ? '' : 'es'} en este evento. ¿Qué quieres hacer con ellas?
-                </p>
-                <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-                  <button type="button" className="link-button" onClick={() => void confirmDeleteHelper('keep')}>
-                    Conservar las asignaciones (quedan como referencia)
-                  </button>
-                  <button type="button" className="link-button" onClick={() => void confirmDeleteHelper('remove')}>
-                    Quitarla también de las tareas
-                  </button>
-                  <button type="button" className="link-button" onClick={() => setHelperDeleteFor(null)}>
-                    Cancelar
-                  </button>
-                </div>
-              </div>
             )}
             {addingHelper && (
               <div className="card" style={{ padding: 8, marginTop: 4 }}>
@@ -2782,6 +2717,185 @@ function TaskEditModal({
             {saving ? 'Guardando…' : 'Guardar'}
           </button>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// "👥 Colaboradores" (bloque 6/7 de la tanda) — gestión de personas externas DEL EVENTO, fuera de
+// cualquier tarea concreta. Reutiliza exactamente el mismo modelo y las mismas funciones de datos que ya
+// existían dentro de "Editar tarea" (addEventHelper/updateEventHelper/countHelperAssignments/
+// deleteEventHelper) — nada nuevo en el esquema, solo se traslada aquí la única gestión (alta/edición/
+// borrado) que antes vivía, de forma menos visible, dentro del formulario de una tarea.
+function EventHelpersModal({
+  eventId,
+  helpers,
+  onHelpersChanged,
+  onClose,
+}: {
+  eventId: string
+  helpers: EventHelper[]
+  onHelpersChanged: () => Promise<void>
+  onClose: () => void
+}) {
+  const [newName, setNewName] = useState('')
+  const [newLabel, setNewLabel] = useState('')
+  const [editing, setEditing] = useState<{ id: string; name: string; label: string } | null>(null)
+  const [deleteFor, setDeleteFor] = useState<{ helper: EventHelper; assignments: number } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function add() {
+    if (!newName.trim()) return
+    setError(null)
+    setSaving(true)
+    try {
+      await addEventHelper(eventId, newName, newLabel || null)
+      setNewName('')
+      setNewLabel('')
+      await onHelpersChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir la persona externa'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveEditing() {
+    if (!editing || !editing.name.trim()) return
+    setError(null)
+    try {
+      await updateEventHelper(editing.id, { name: editing.name, label: editing.label || null })
+      setEditing(null)
+      await onHelpersChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar la persona externa'))
+    }
+  }
+
+  // Sin asignaciones: confirmación sencilla. Con asignaciones: NUNCA en silencio — elige conservar
+  // (referencia histórica, igual que ya hacía "Editar tarea") o quitar de las tareas.
+  async function askDelete(h: EventHelper) {
+    setError(null)
+    try {
+      const assignments = await countHelperAssignments(h.id)
+      if (assignments === 0) {
+        if (!window.confirm(`¿Borrar a ${h.name} de este evento?`)) return
+        await deleteEventHelper(h.id, 'keep')
+        await onHelpersChanged()
+      } else {
+        setDeleteFor({ helper: h, assignments })
+      }
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar la persona externa'))
+    }
+  }
+
+  async function confirmDelete(mode: 'keep' | 'remove') {
+    if (!deleteFor) return
+    setError(null)
+    try {
+      await deleteEventHelper(deleteFor.helper.id, mode)
+      setDeleteFor(null)
+      await onHelpersChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar la persona externa'))
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            👥 Colaboradores
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="card member-form">
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+            Personas que ayudan en este evento, sin cuenta ni acceso a PEPA. Se asignan a tareas desde «+ Nueva tarea» o «Editar tarea».
+          </p>
+          {error && <p className="error">{error}</p>}
+          {helpers.length === 0 && <p className="muted">Todavía no hay ningún colaborador en este evento.</p>}
+          {helpers.map((h) =>
+            editing && editing.id === h.id ? (
+              <div key={h.id} className="card" style={{ padding: 8 }}>
+                <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
+                  <input type="text" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} aria-label="Nombre del colaborador" style={{ minWidth: 0, flex: 1 }} />
+                  <input
+                    type="text"
+                    value={editing.label}
+                    placeholder="Relación (opcional)"
+                    onChange={(e) => setEditing({ ...editing, label: e.target.value })}
+                    aria-label="Relación del colaborador"
+                    style={{ minWidth: 0, flex: 1 }}
+                  />
+                </div>
+                <div className="filter-row" style={{ marginTop: 4 }}>
+                  <button type="button" className="link-button" onClick={() => void saveEditing()}>
+                    Guardar
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setEditing(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={h.id} className="inline-fields" style={{ alignItems: 'center' }}>
+                <span style={{ flex: 1 }}>
+                  {h.name}
+                  {h.label ? ` · ${h.label}` : ''}
+                </span>
+                <button type="button" className="link-button" onClick={() => setEditing({ id: h.id, name: h.name, label: h.label ?? '' })}>
+                  Editar
+                </button>
+                <button type="button" className="link-button" onClick={() => void askDelete(h)}>
+                  Borrar
+                </button>
+              </div>
+            ),
+          )}
+          {deleteFor && (
+            <div className="card" style={{ padding: 8 }}>
+              <p style={{ margin: '0 0 6px' }}>
+                {deleteFor.helper.name} tiene {deleteFor.assignments} asignación{deleteFor.assignments === 1 ? '' : 'es'} en este evento. ¿Qué quieres hacer con ellas?
+              </p>
+              <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+                <button type="button" className="link-button" onClick={() => void confirmDelete('keep')}>
+                  Conservar las asignaciones (quedan como referencia)
+                </button>
+                <button type="button" className="link-button" onClick={() => void confirmDelete('remove')}>
+                  Quitarla también de las tareas
+                </button>
+                <button type="button" className="link-button" onClick={() => setDeleteFor(null)}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="card" style={{ padding: 8 }}>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+              + Añadir colaborador
+            </div>
+            <div className="inline-fields" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+              <input type="text" value={newName} placeholder="Nombre" onChange={(e) => setNewName(e.target.value)} aria-label="Nombre del nuevo colaborador" style={{ minWidth: 0, flex: 1 }} />
+              <input
+                type="text"
+                value={newLabel}
+                placeholder="Relación (opcional)"
+                onChange={(e) => setNewLabel(e.target.value)}
+                aria-label="Relación del nuevo colaborador"
+                style={{ minWidth: 0, flex: 1 }}
+              />
+            </div>
+            <button type="button" onClick={() => void add()} disabled={!newName.trim() || saving} style={{ marginTop: 4 }}>
+              Añadir
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -47,6 +47,17 @@ export function reminderMinutesFrom(amount: number, unit: ReminderUnit): number 
   return Math.max(1, Math.round(amount * info.perMinutes))
 }
 
+// Inverso de reminderMinutesFrom, para volver a mostrar en el editor un recordatorio personalizado ya
+// guardado: la unidad más grande que divide exacto (misma idea que reminderLabel), nunca minutos sueltos
+// si se puede expresar en algo más natural. Solo para minutos > 0 (0 es "El mismo día", un preset, no un
+// personalizado).
+export function unitAndAmountFromMinutes(minutesBefore: number): { amount: number; unit: ReminderUnit } {
+  for (const u of UNITS) {
+    if (minutesBefore % u.perMinutes === 0) return { amount: minutesBefore / u.perMinutes, unit: u.unit }
+  }
+  return { amount: minutesBefore, unit: 'minutos' }
+}
+
 // Un recordatorio lógico es (ancla, minutos). Compara los que ya tiene un evento con los que se quieren
 // guardar y devuelve solo lo que cambia de verdad: lo que ya existe conserva su id (no se borra ni se vuelve a
 // crear), lo repetido en la base se limpia y lo que se pide y no existe se añade.
@@ -81,6 +92,8 @@ export function planReminderChanges(existing: StoredReminder[], wanted: EventRem
 // principio o desde el final — con los dos tipos mezclados en el mismo
 // evento, dejarlo implícito confundiría.
 export function reminderLabel(minutesBefore: number, anchor: ReminderAnchor = 'start'): string {
+  // 0 es "en el momento mismo" — nunca "0 años"/"0 minutos", que no dice nada.
+  if (minutesBefore === 0) return anchor === 'end' ? 'justo cuando termine' : 'el mismo día'
   const suffix = anchor === 'end' ? 'antes de que termine' : 'antes de que empiece'
   for (const u of UNITS) {
     if (minutesBefore % u.perMinutes === 0) {

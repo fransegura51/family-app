@@ -147,7 +147,7 @@ describe('lo que esta fase NO toca', () => {
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
     // 0197 (recordatorios de Calendario: claim_due_reminders y reminder_deliveries) no toca esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(210)
+    expect(Math.max(...numbers)).toBe(211)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

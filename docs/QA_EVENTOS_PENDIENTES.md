@@ -350,3 +350,22 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 310. [ ] RSVP: un token inexistente devuelve "no encontrado", sin filtrar si existe o no otro evento.
 311. [ ] RSVP: las necesidades declaradas por un invitado se guardan solo como pendientes (event_guest_declared_needs), nunca directamente como necesidad confirmada.
 312. [ ] RSVP: superar el límite de peticiones devuelve "demasiadas peticiones" sin guardar nada parcial.
+
+## Nuevas pruebas (a partir de la 313) — bug real «1 día antes» y varios avisos por tarea
+313. [ ] «1 día antes» (regresión del bug encontrado): se guarda sin error, la campana queda en 🔔 y lo conserva al salir y volver a entrar.
+314. [ ] «El mismo día» se guarda sin error (antes violaba la constraint siempre).
+315. [ ] «1 semana antes» se guarda sin error.
+316. [ ] Marcar «1 semana antes» + «1 día antes» a la vez: ambos quedan activos (✓ en los dos en el menú de la campana).
+317. [ ] Marcar «1 semana antes» + «1 día antes» + «El mismo día»: los tres quedan activos.
+318. [ ] Desde los tres anteriores, quitar únicamente «1 día antes»: los otros dos siguen activos.
+319. [ ] «Sin aviso» quita los tres de golpe; la campana pasa a 🔕.
+320. [ ] Personalizado (p. ej. 3 horas antes) coexiste con «1 semana antes» y «1 día antes» ya activos.
+321. [ ] Cambiar el personalizado activo (p. ej. de 3 horas a 5 horas) reemplaza solo ese aviso, sin tocar los presets activos.
+322. [ ] Persistencia: salir del evento y volver a entrar conserva exactamente la misma combinación de avisos (ni de más ni de menos).
+323. [ ] Consistencia entre campana rápida y «Editar tarea»: lo que la campana muestra marcado coincide exactamente con lo que el editor muestra marcado, en todo momento.
+324. [ ] Tarea sin fecha: la campana sigue desactivada con su explicación; no se puede marcar ningún aviso.
+325. [ ] Tocar varias opciones del menú de la campana sin cerrarlo entre toques: las tres se activan correctamente, sin perder ninguna por toques rápidos.
+326. [ ] Mientras se está guardando un toque, un segundo toque inmediato no duplica ni pierde el primero (reintentar tras un segundo si hace falta).
+327. [ ] Si el guardado de un toque falla (p. ej. sin conexión), la campana vuelve a mostrar el estado real tras el error, nunca un aviso fingido.
+328. [ ] Una tarea con tres avisos sigue teniendo una sola entrada en Calendario (no se duplica, no cambia de kind, responsable, fecha, hora ni prioridad).
+329. [ ] «Mostrar en Calendario» sigue siendo el mismo interruptor de siempre; desactivarlo sigue quitando todos los avisos de esa tarea (consecuencia ya documentada, no en silencio).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NO_RESPONSIBLE_KEY, presetRemindersFor, reminderChoiceFrom, taskMatchesResponsibleFilter } from '@/domain/eventTaskFilters'
+import { NO_RESPONSIBLE_KEY, taskMatchesResponsibleFilter } from '@/domain/eventTaskFilters'
 
 const src = (path: string) => (import.meta.glob('/src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[`/${path}`]
 const UI = src('src/ui/EventosScreen.tsx')
@@ -40,26 +40,8 @@ describe('filtro por responsable — la lista, nunca los datos', () => {
   })
 })
 
-describe('campana — refleja los avisos reales y usa solo los cinco tipos', () => {
-  it('sin avisos = sin aviso; cada preset se reconoce al volver a leerlo', () => {
-    expect(reminderChoiceFrom([])).toBe('none')
-    expect(reminderChoiceFrom([{ minutesBefore: 0 }])).toBe('same_day')
-    expect(reminderChoiceFrom([{ minutesBefore: 1440 }])).toBe('1_day')
-    expect(reminderChoiceFrom([{ minutesBefore: 10080 }])).toBe('1_week')
-  })
-  it('un aviso con otra antelación es «personalizado»', () => {
-    expect(reminderChoiceFrom([{ minutesBefore: 2880 }])).toBe('custom')
-  })
-  it('los presets guardan exactamente el aviso de cada opción', () => {
-    expect(presetRemindersFor('none')).toEqual([])
-    expect(presetRemindersFor('same_day')).toEqual([{ minutesBefore: 0, anchor: 'start' }])
-    expect(presetRemindersFor('1_day')).toEqual([{ minutesBefore: 1440, anchor: 'start' }])
-    expect(presetRemindersFor('1_week')).toEqual([{ minutesBefore: 10080, anchor: 'start' }])
-  })
-  it('«Personalizado» no tiene preset rápido (se edita en el editor completo)', () => {
-    expect(UI).toContain("if (choice === 'custom') {\n      setEditingTaskId(t.id)")
-  })
-})
+// La campana y sus varios avisos simultáneos tienen su propio fichero: ver eventTaskReminders.test.ts
+// (domain/eventTaskFilters.ts: taskReminderSelectionFrom/remindersFromSelection/toggledPresetReminders).
 
 describe('estructura de la interfaz y de datos', () => {
   it('la campana sigue separada de «Mostrar en Calendario» y no aparece sin fecha como aviso temporal', () => {

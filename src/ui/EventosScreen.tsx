@@ -138,8 +138,16 @@ import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskRespons
 import { effectivePriority, recommendTasks, type DecisionLookup } from '@/domain/eventTaskPriority'
 import { explainPrioritySuggestion, PRIORITY_ORDER } from '@/domain/eventTaskPrioritySuggestion'
 import type { EventTaskPrioritySuggestion } from '@/domain/types'
-import { NO_RESPONSIBLE_KEY, presetRemindersFor, reminderChoiceFrom, taskMatchesResponsibleFilter, type ReminderChoice } from '@/domain/eventTaskFilters'
-import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, type EventReminder, type ReminderUnit } from '@/domain/reminders'
+import {
+  NO_RESPONSIBLE_KEY,
+  taskMatchesResponsibleFilter,
+  taskReminderSelectionFrom,
+  toggledPresetReminders,
+  remindersFromSelection,
+  hasAnyReminder,
+  type ReminderPresetKey,
+} from '@/domain/eventTaskFilters'
+import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, unitAndAmountFromMinutes, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
 import {
@@ -946,7 +954,9 @@ function EventDetail({
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   // Preparativos: filtro de la LISTA por responsable (solo presentación) y avisos rápidos por tarea.
   const [responsibleFilter, setResponsibleFilter] = useState<string[]>([])
-  const [taskReminderChoice, setTaskReminderChoice] = useState<Record<string, ReminderChoice>>({})
+  // Varios avisos por tarea: se guarda el array real (no una sola "opción elegida"), misma fuente de
+  // verdad para la campana rápida y para «Editar tarea».
+  const [taskReminders, setTaskReminders] = useState<Record<string, EventReminder[]>>({})
   const [eventHelpers, setEventHelpers] = useState<EventHelper[]>([])
   const [newTaskTitle, setNewTaskTitle] = useState('')
   // Fase 1 — reforma de Editar/•••: un único punto de entrada
@@ -1045,9 +1055,9 @@ function EventDetail({
     const linked = tasks.filter((t): t is EventTask & { calendarEventId: string } => t.calendarEventId != null)
     if (linked.length === 0) return
     let cancelled = false
-    Promise.all(linked.map(async (t) => [t.id, reminderChoiceFrom(await listEventReminders(t.calendarEventId))] as const))
+    Promise.all(linked.map(async (t) => [t.id, await listEventReminders(t.calendarEventId)] as const))
       .then((pairs) => {
-        if (!cancelled) setTaskReminderChoice(Object.fromEntries(pairs))
+        if (!cancelled) setTaskReminders(Object.fromEntries(pairs))
       })
       .catch(() => {})
     return () => {
@@ -1067,18 +1077,49 @@ function EventDetail({
     return null
   }
 
-  async function chooseTaskReminder(t: EventTask, choice: ReminderChoice) {
-    // «Personalizado» tiene su propia cantidad y unidad: se edita en el editor completo.
-    if (choice === 'custom') {
-      setEditingTaskId(t.id)
-      return
-    }
-    if (!t.calendarEventId) return
+  // Varios avisos a la vez (Bloque recordatorios): cada toque cambia SOLO el aviso tocado, nunca pierde
+  // los demás. Mientras haya un guardado en curso para esta tarea, se ignoran más toques (en vez de
+  // lanzar dos escrituras en paralelo que podrían pisarse) — se reactivan solos al terminar. Nunca se
+  // actualiza el estado local antes de que la base de datos confirme; si falla, se recarga lo real.
+  const [savingReminderTaskId, setSavingReminderTaskId] = useState<string | null>(null)
+
+  async function refreshTaskReminders(t: EventTask & { calendarEventId: string }) {
     try {
-      await replaceReminders(t.calendarEventId, presetRemindersFor(choice))
-      setTaskReminderChoice((prev) => ({ ...prev, [t.id]: choice }))
+      const fresh = await listEventReminders(t.calendarEventId)
+      setTaskReminders((prev) => ({ ...prev, [t.id]: fresh }))
+    } catch {
+      // Si ni siquiera se puede releer, se deja el estado anterior — nunca se inventa uno.
+    }
+  }
+
+  async function toggleTaskReminderPreset(t: EventTask, key: ReminderPresetKey) {
+    if (!t.calendarEventId || savingReminderTaskId === t.id) return
+    const calendarEventId = t.calendarEventId
+    const next = toggledPresetReminders(taskReminders[t.id] ?? [], key)
+    setSavingReminderTaskId(t.id)
+    try {
+      await replaceReminders(calendarEventId, next)
+      setTaskReminders((prev) => ({ ...prev, [t.id]: next }))
     } catch (err) {
       setError(errorMessage(err, 'No se pudo cambiar el aviso'))
+      await refreshTaskReminders({ ...t, calendarEventId })
+    } finally {
+      setSavingReminderTaskId(null)
+    }
+  }
+
+  async function clearTaskReminders(t: EventTask) {
+    if (!t.calendarEventId || savingReminderTaskId === t.id) return
+    const calendarEventId = t.calendarEventId
+    setSavingReminderTaskId(t.id)
+    try {
+      await replaceReminders(calendarEventId, [])
+      setTaskReminders((prev) => ({ ...prev, [t.id]: [] }))
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo quitar el aviso'))
+      await refreshTaskReminders({ ...t, calendarEventId })
+    } finally {
+      setSavingReminderTaskId(null)
     }
   }
 
@@ -1376,9 +1417,12 @@ function EventDetail({
                   responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
                   responsibleNames={taskResponsibleNames(t, familyMembers)}
                   reminder={{
-                    choice: taskReminderChoice[t.id] ?? 'none',
+                    reminders: taskReminders[t.id] ?? [],
                     hint: reminderHintFor(t),
-                    onChoose: (c) => void chooseTaskReminder(t, c),
+                    saving: savingReminderTaskId === t.id,
+                    onTogglePreset: (key) => void toggleTaskReminderPreset(t, key),
+                    onClear: () => void clearTaskReminders(t),
+                    onOpenCustom: () => setEditingTaskId(t.id),
                   }}
                   highlighted={t.id === deepLinkHighlightTaskId}
                   onToggleDone={() => updateEventTask(t.id, { done: true }).then(reloadTasks)}
@@ -2076,24 +2120,50 @@ function ManageEventModal({
 // siempre visible.
 // Campana rápida: muestra si la tarea tiene aviso y permite cambiarlo sin abrir el editor. No sustituye a
 // «Mostrar en Calendario» ni inventa avisos cuando la tarea no tiene fecha.
-const REMINDER_CHOICE_LABEL: Record<ReminderChoice, string> = {
-  none: '🔕 Sin aviso',
+const REMINDER_PRESET_LABEL: Record<ReminderPresetKey, string> = {
   same_day: '🔔 El mismo día',
   '1_day': '🔔 1 día antes',
   '1_week': '🔔 1 semana antes',
-  custom: '🔔 Personalizado',
 }
+const REMINDER_PRESET_ORDER: ReminderPresetKey[] = ['same_day', '1_day', '1_week']
 
-function ReminderBell({ taskTitle, choice, hint, onChoose }: { taskTitle: string; choice: ReminderChoice; hint: string | null; onChoose: (c: ReminderChoice) => void }) {
+// Varios avisos a la vez (antes uno exclusivo): el menú ahora es multiselección — tocar un preset lo
+// alterna SIN cerrar el menú (para marcar varios sin reabrir tres veces), «Sin aviso» quita todos y
+// cierra, «Personalizado» abre el editor completo (tiene su propia cantidad/unidad) y también cierra.
+// Mientras se guarda un toque (saving), los controles se deshabilitan: dos toques rápidos nunca lanzan
+// dos escrituras en paralelo que puedan pisarse.
+function ReminderBell({
+  taskTitle,
+  reminders,
+  hint,
+  saving,
+  onTogglePreset,
+  onClear,
+  onOpenCustom,
+}: {
+  taskTitle: string
+  reminders: EventReminder[]
+  hint: string | null
+  saving: boolean
+  onTogglePreset: (key: ReminderPresetKey) => void
+  onClear: () => void
+  onOpenCustom: () => void
+}) {
   const [open, setOpen] = useState(false)
-  const active = choice !== 'none'
+  const selection = taskReminderSelectionFrom(reminders)
+  const active = hasAnyReminder(reminders)
+  const summary = active
+    ? [...REMINDER_PRESET_ORDER.filter((k) => selection.presets.has(k)).map((k) => REMINDER_PRESET_LABEL[k]), selection.custom ? '🔔 Personalizado' : null]
+        .filter((x): x is string => x !== null)
+        .join(' · ')
+    : 'Sin aviso'
   return (
     <div style={{ position: 'relative' }}>
       <button
         type="button"
         className="icon-button"
         aria-label={`Aviso de "${taskTitle}"`}
-        title={hint ?? (active ? REMINDER_CHOICE_LABEL[choice] : 'Sin aviso')}
+        title={hint ?? summary}
         disabled={hint !== null}
         onClick={() => setOpen((v) => !v)}
         style={{ color: active ? 'var(--primary, #4f46e5)' : undefined, opacity: hint ? 0.4 : 1 }}
@@ -2104,21 +2174,44 @@ function ReminderBell({ taskTitle, choice, hint, onChoose }: { taskTitle: string
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 1 }} onClick={() => setOpen(false)} />
           <div className="event-task-menu" style={{ zIndex: 2 }}>
-            {(['none', 'same_day', '1_day', '1_week', 'custom'] as ReminderChoice[]).map((c) => (
+            <button
+              type="button"
+              className="link-button"
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              disabled={saving}
+              onClick={() => {
+                setOpen(false)
+                onClear()
+              }}
+            >
+              🔕 Sin aviso
+            </button>
+            {REMINDER_PRESET_ORDER.map((key) => (
               <button
-                key={c}
+                key={key}
                 type="button"
                 className="link-button"
                 style={{ display: 'block', width: '100%', textAlign: 'left' }}
-                onClick={() => {
-                  setOpen(false)
-                  onChoose(c)
-                }}
+                disabled={saving}
+                onClick={() => onTogglePreset(key)}
               >
-                {c === choice ? '✓ ' : ''}
-                {REMINDER_CHOICE_LABEL[c]}
+                {selection.presets.has(key) ? '✓ ' : ''}
+                {REMINDER_PRESET_LABEL[key]}
               </button>
             ))}
+            <button
+              type="button"
+              className="link-button"
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              disabled={saving}
+              onClick={() => {
+                setOpen(false)
+                onOpenCustom()
+              }}
+            >
+              {selection.custom ? '✓ ' : ''}
+              🔔 Personalizado
+            </button>
           </div>
         </>
       )}
@@ -2145,7 +2238,14 @@ function TaskCard({
   // Preparativos: todos los responsables (familiares y externos), ya en texto. Sin él, se muestra el principal.
   responsibleNames?: string[]
   // Campana: aviso actual y cómo cambiarlo; ausente = la tarjeta no ofrece campana (p. ej. completadas).
-  reminder?: { choice: ReminderChoice; hint: string | null; onChoose: (c: ReminderChoice) => void }
+  reminder?: {
+    reminders: EventReminder[]
+    hint: string | null
+    saving: boolean
+    onTogglePreset: (key: ReminderPresetKey) => void
+    onClear: () => void
+    onOpenCustom: () => void
+  }
   // Fase 12 — deep-link a la tarea concreta: destaca la ficha cuando se
   // llegó aquí desde un aviso sobre esta tarea en particular.
   highlighted?: boolean
@@ -2192,7 +2292,15 @@ function TaskCard({
         )}
       </div>
       {reminder && (
-        <ReminderBell taskTitle={task.title} choice={reminder.choice} hint={reminder.hint} onChoose={reminder.onChoose} />
+        <ReminderBell
+          taskTitle={task.title}
+          reminders={reminder.reminders}
+          hint={reminder.hint}
+          saving={reminder.saving}
+          onTogglePreset={reminder.onTogglePreset}
+          onClear={reminder.onClear}
+          onOpenCustom={reminder.onOpenCustom}
+        />
       )}
       <div style={{ position: 'relative' }}>
         <button type="button" className="icon-button" aria-label={`Más opciones de "${task.title}"`} onClick={() => setShowMenu((v) => !v)}>
@@ -2258,12 +2366,14 @@ function TaskEditModal({
   // Fase 9 — la propia presencia de calendarEventId es el estado
   // inicial del interruptor; no hay una columna booleana aparte.
   const [showInCalendar, setShowInCalendar] = useState(task.calendarEventId != null)
-  // Fase 10 — recordatorio de la tarea: como mucho uno (no una lista),
-  // igual que el plazo de RSVP (DEFAULT_DEADLINE_REMINDERS). Solo tiene
-  // sentido si la tarea está enlazada al Calendario.
-  const [reminderChoice, setReminderChoice] = useState<'none' | 'same_day' | '1_day' | '1_week' | 'custom'>('none')
+  // Varios avisos a la vez (antes como mucho uno): el modelo real es el conjunto de presets activos +
+  // como mucho un personalizado editable aquí (más cualquier otro personalizado ya existente que no se
+  // toca ni se pierde — extraCustomReminders). Solo tiene sentido si la tarea está enlazada al Calendario.
+  const [reminderPresets, setReminderPresets] = useState<Set<ReminderPresetKey>>(new Set())
+  const [customReminderOn, setCustomReminderOn] = useState(false)
   const [customAmount, setCustomAmount] = useState('1')
   const [customUnit, setCustomUnit] = useState<ReminderUnit>('dias')
+  const [extraCustomReminders, setExtraCustomReminders] = useState<EventReminder[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -2271,12 +2381,15 @@ function TaskEditModal({
     if (!task.calendarEventId) return
     listEventReminders(task.calendarEventId)
       .then((reminders) => {
-        const r = reminders[0]
-        if (!r) setReminderChoice('none')
-        else if (r.minutesBefore === 0) setReminderChoice('same_day')
-        else if (r.minutesBefore === 1440) setReminderChoice('1_day')
-        else if (r.minutesBefore === 10080) setReminderChoice('1_week')
-        else setReminderChoice('custom')
+        const sel = taskReminderSelectionFrom(reminders)
+        setReminderPresets(sel.presets)
+        setCustomReminderOn(sel.custom !== null)
+        if (sel.custom) {
+          const { amount, unit } = unitAndAmountFromMinutes(sel.custom.minutesBefore)
+          setCustomAmount(String(amount))
+          setCustomUnit(unit)
+        }
+        setExtraCustomReminders(sel.extraCustom.map((c) => ({ minutesBefore: c.minutesBefore, anchor: 'start' })))
       })
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2349,19 +2462,29 @@ function TaskEditModal({
     }
   }
 
-  function remindersForChoice(): EventReminder[] {
-    switch (reminderChoice) {
-      case 'none':
-        return []
-      case 'same_day':
-        return [{ minutesBefore: 0, anchor: 'start' }]
-      case '1_day':
-        return [{ minutesBefore: 1440, anchor: 'start' }]
-      case '1_week':
-        return [{ minutesBefore: 10080, anchor: 'start' }]
-      case 'custom':
-        return [{ minutesBefore: reminderMinutesFrom(Number(customAmount) || 1, customUnit), anchor: 'start' }]
-    }
+  function togglePresetInForm(key: ReminderPresetKey) {
+    setReminderPresets((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // Todos los avisos a guardar: los presets marcados + el personalizado (si está activado) + cualquier
+  // otro personalizado que ya existiera y no se edita aquí (nunca se pierde por guardar los demás).
+  function remindersForForm(): EventReminder[] {
+    return remindersFromSelection({
+      presets: reminderPresets,
+      custom: customReminderOn ? { minutesBefore: reminderMinutesFrom(Number(customAmount) || 1, customUnit) } : null,
+      extraCustom: extraCustomReminders.map((r) => ({ minutesBefore: r.minutesBefore })),
+    })
+  }
+
+  function clearAllReminders() {
+    setReminderPresets(new Set())
+    setCustomReminderOn(false)
+    setExtraCustomReminders([])
   }
 
   async function handleSubmit(ev: FormEvent) {
@@ -2394,7 +2517,7 @@ function TaskEditModal({
         await unlinkEventTaskFromCalendar(task.id)
         linkedId = null
       }
-      if (linkedId) await replaceReminders(linkedId, remindersForChoice())
+      if (linkedId) await replaceReminders(linkedId, remindersForForm())
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -2609,37 +2732,50 @@ function TaskEditModal({
             </p>
           )}
           {showInCalendar && (
-            <label>
-              Recordatorio
-              <select value={reminderChoice} onChange={(e) => setReminderChoice(e.target.value as typeof reminderChoice)}>
-                <option value="none">🔔 Sin aviso</option>
-                <option value="same_day">🔔 El mismo día</option>
-                <option value="1_day">🔔 1 día antes</option>
-                <option value="1_week">🔔 1 semana antes</option>
-                <option value="custom">🔔 Personalizado</option>
-              </select>
-            </label>
-          )}
-          {showInCalendar && reminderChoice === 'custom' && (
-            <div className="inline-fields">
-              <input
-                type="number"
-                min={1}
-                value={customAmount}
-                onChange={(e) => setCustomAmount(e.target.value)}
-                style={{ width: 70 }}
-                aria-label="Cantidad del recordatorio personalizado"
-              />
-              <select value={customUnit} onChange={(e) => setCustomUnit(e.target.value as ReminderUnit)} aria-label="Unidad del recordatorio personalizado">
-                {REMINDER_UNIT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <span className="muted" style={{ fontSize: 12 }}>
-                antes
-              </span>
+            <div>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+                Recordatorio (puede ser más de uno)
+              </div>
+              <button type="button" className="link-button" onClick={clearAllReminders}>
+                🔕 Sin aviso
+              </button>
+              {REMINDER_PRESET_ORDER.map((key) => (
+                <label key={key} className="inline-fields" style={{ alignItems: 'center' }}>
+                  <input type="checkbox" checked={reminderPresets.has(key)} onChange={() => togglePresetInForm(key)} />
+                  <span>{REMINDER_PRESET_LABEL[key]}</span>
+                </label>
+              ))}
+              <label className="inline-fields" style={{ alignItems: 'center' }}>
+                <input type="checkbox" checked={customReminderOn} onChange={(e) => setCustomReminderOn(e.target.checked)} />
+                <span>🔔 Personalizado</span>
+              </label>
+              {customReminderOn && (
+                <div className="inline-fields">
+                  <input
+                    type="number"
+                    min={1}
+                    value={customAmount}
+                    onChange={(e) => setCustomAmount(e.target.value)}
+                    style={{ width: 70 }}
+                    aria-label="Cantidad del recordatorio personalizado"
+                  />
+                  <select value={customUnit} onChange={(e) => setCustomUnit(e.target.value as ReminderUnit)} aria-label="Unidad del recordatorio personalizado">
+                    {REMINDER_UNIT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    antes
+                  </span>
+                </div>
+              )}
+              {extraCustomReminders.length > 0 && (
+                <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                  También tiene: {extraCustomReminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')} (se conserva).
+                </p>
+              )}
             </div>
           )}
           <button type="submit" disabled={saving}>

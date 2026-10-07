@@ -158,8 +158,12 @@ describe('«Pepa te recomienda» — una sola fuente de verdad, con explicación
 })
 
 describe('reglas ya validadas que no deben cambiar', () => {
-  it('los cinco recordatorios siguen existiendo tal cual', () => {
-    for (const option of ['none', 'same_day', '1_day', '1_week', 'custom']) expect(UI).toContain(`value="${option}"`)
+  it('los cinco recordatorios siguen existiendo tal cual (ahora multiselección: checkboxes, no una lista exclusiva)', () => {
+    expect(UI).toContain('🔕 Sin aviso')
+    expect(UI).toContain("'🔔 El mismo día'")
+    expect(UI).toContain("'🔔 1 día antes'")
+    expect(UI).toContain("'🔔 1 semana antes'")
+    expect(UI).toContain('🔔 Personalizado')
   })
 
   it('Calendario y recordatorio siguen siendo controles independientes', () => {

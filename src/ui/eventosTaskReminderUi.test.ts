@@ -30,18 +30,20 @@ describe('Fase 10 — no toca push/cron/service worker/send-due-reminders', () =
   })
 })
 
-describe('Fase 10 — opciones de recordatorio (sin aviso/mismo día/1 día/1 semana/personalizado)', () => {
-  it('mapea a los mismos minutos ya usados por el plazo de RSVP (1 día=1440, 1 semana=10080)', () => {
-    const fnStart = SRC.indexOf('function remindersForChoice')
-    const fnBody = SRC.slice(fnStart, SRC.indexOf('\n  async function handleSubmit', fnStart))
-    expect(fnBody).toContain('minutesBefore: 0')
-    expect(fnBody).toContain('minutesBefore: 1440')
-    expect(fnBody).toContain('minutesBefore: 10080')
+describe('Fase 10 → varios avisos — opciones de recordatorio (sin aviso/mismo día/1 día/1 semana/personalizado)', () => {
+  it('mapea a los mismos minutos ya usados por el plazo de RSVP (1 día=1440, 1 semana=10080); el mismo día=0 ya es válido (migración 0211)', () => {
+    const EVENT_FILTERS = (import.meta.glob('/src/domain/eventTaskFilters.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
+      '/src/domain/eventTaskFilters.ts'
+    ]
+    expect(EVENT_FILTERS).toContain('same_day: 0')
+    expect(EVENT_FILTERS).toContain("'1_day': 1440")
+    expect(EVENT_FILTERS).toContain("'1_week': 10080")
   })
 
-  it('el selector solo se muestra si la tarea está enlazada al Calendario (showInCalendar)', () => {
-    const idx = SRC.indexOf('🔔 Sin aviso')
-    const before = SRC.slice(Math.max(0, idx - 300), idx)
+  it('el bloque de recordatorio del editor solo se muestra si la tarea está enlazada al Calendario (showInCalendar)', () => {
+    const modalStart = SRC.indexOf('function TaskEditModal(')
+    const idx = SRC.indexOf('🔕 Sin aviso', modalStart)
+    const before = SRC.slice(Math.max(modalStart, idx - 300), idx)
     expect(before).toContain('showInCalendar &&')
   })
 })

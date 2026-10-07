@@ -26,28 +26,62 @@ export function taskMatchesResponsibleFilter(task: ResponsibleTaskLike, selected
   })
 }
 
-export type ReminderChoice = 'none' | 'same_day' | '1_day' | '1_week' | 'custom'
+// Varios avisos por tarea (antes "como mucho uno" en Preparativos; el esquema real — calendar_event_reminders,
+// migración 0021 — ya admite varios por evento desde siempre, como ya usan los eventos de Calendario de
+// verdad: aquí solo se generaliza la UI de tareas para usar la misma arquitectura, sin tocar el esquema
+// más allá de la constraint de minutes_before, ver migración 0211).
+//
+// «Sin aviso» no es un estado que se pueda tener activo a la vez que otros — es la ACCIÓN de quitarlos
+// todos (igual que antes), así que no aparece aquí como clave seleccionable.
+export type ReminderPresetKey = 'same_day' | '1_day' | '1_week'
+export const REMINDER_PRESET_MINUTES: Record<ReminderPresetKey, number> = { same_day: 0, '1_day': 1440, '1_week': 10080 }
+const REMINDER_PRESET_KEYS = Object.keys(REMINDER_PRESET_MINUTES) as ReminderPresetKey[]
 
-// Qué opción muestra la campana según los avisos guardados de la tarea (mismo criterio que el editor).
-export function reminderChoiceFrom(reminders: Pick<EventReminder, 'minutesBefore'>[]): ReminderChoice {
-  const r = reminders[0]
-  if (!r) return 'none'
-  if (r.minutesBefore === 0) return 'same_day'
-  if (r.minutesBefore === 1440) return '1_day'
-  if (r.minutesBefore === 10080) return '1_week'
-  return 'custom'
+// Único hueco "Personalizado": como antes, un valor a la vez (el ejemplo pedido — «1 semana + 1 día +
+// Personalizado: 3 horas» — solo necesita uno). Si por lo que sea hay guardados varios avisos que no
+// coinciden con ningún preset (nunca debería pasar hoy, pero por si acaso), se conservan TODOS al
+// escribir de nuevo — remindersFromSelection nunca los pierde, solo el primero se ve/edita como "el" campo
+// personalizado del editor.
+export interface TaskReminderSelection {
+  presets: Set<ReminderPresetKey>
+  custom: { minutesBefore: number } | null
+  extraCustom: { minutesBefore: number }[]
 }
 
-// Avisos que se guardan para cada opción rápida. «Personalizado» no tiene preset: se edita en el editor completo.
-export function presetRemindersFor(choice: Exclude<ReminderChoice, 'custom'>): EventReminder[] {
-  switch (choice) {
-    case 'none':
-      return []
-    case 'same_day':
-      return [{ minutesBefore: 0, anchor: 'start' }]
-    case '1_day':
-      return [{ minutesBefore: 1440, anchor: 'start' }]
-    case '1_week':
-      return [{ minutesBefore: 10080, anchor: 'start' }]
+function presetKeyForMinutes(minutesBefore: number): ReminderPresetKey | null {
+  return REMINDER_PRESET_KEYS.find((k) => REMINDER_PRESET_MINUTES[k] === minutesBefore) ?? null
+}
+
+// Lee los avisos reales guardados (sin importar el orden) y los traduce al estado de la interfaz.
+export function taskReminderSelectionFrom(reminders: Pick<EventReminder, 'minutesBefore'>[]): TaskReminderSelection {
+  const presets = new Set<ReminderPresetKey>()
+  const customs: { minutesBefore: number }[] = []
+  for (const r of reminders) {
+    const key = presetKeyForMinutes(r.minutesBefore)
+    if (key) presets.add(key)
+    else customs.push({ minutesBefore: r.minutesBefore })
   }
+  return { presets, custom: customs[0] ?? null, extraCustom: customs.slice(1) }
+}
+
+// Avisos a guardar para un estado de selección — nunca pierde un "extraCustom" que ya existiera.
+export function remindersFromSelection(sel: TaskReminderSelection): EventReminder[] {
+  const out: EventReminder[] = []
+  for (const key of sel.presets) out.push({ minutesBefore: REMINDER_PRESET_MINUTES[key], anchor: 'start' })
+  if (sel.custom) out.push({ minutesBefore: sel.custom.minutesBefore, anchor: 'start' })
+  for (const c of sel.extraCustom) out.push({ minutesBefore: c.minutesBefore, anchor: 'start' })
+  return out
+}
+
+// Alterna UN preset estándar dentro de los avisos ya guardados — nunca toca el resto (presets ni personalizado).
+export function toggledPresetReminders(reminders: Pick<EventReminder, 'minutesBefore'>[], key: ReminderPresetKey): EventReminder[] {
+  const sel = taskReminderSelectionFrom(reminders)
+  if (sel.presets.has(key)) sel.presets.delete(key)
+  else sel.presets.add(key)
+  return remindersFromSelection(sel)
+}
+
+// true si existe algún aviso activo (uno o varios) — la campana solo distingue 🔔/🔕, nunca cuenta cuántos.
+export function hasAnyReminder(reminders: Pick<EventReminder, 'minutesBefore'>[]): boolean {
+  return reminders.length > 0
 }

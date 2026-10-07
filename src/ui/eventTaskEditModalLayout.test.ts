@@ -68,9 +68,11 @@ describe('sin desbordamiento horizontal: wrap + min-width:0 en todo lo que podr�
 })
 
 describe('reglas ya validadas que no deben cambiar', () => {
-  it('«Mostrar en Calendario» y «Recordatorio» siguen siendo controles separados, con sus cinco opciones', () => {
+  it('«Mostrar en Calendario» y «Recordatorio» siguen siendo controles separados, con sus cinco opciones (ahora multiselección)', () => {
     expect(MODAL).toContain('📅 Mostrar en Calendario')
-    for (const option of ['none', 'same_day', '1_day', '1_week', 'custom']) expect(MODAL).toContain(`value="${option}"`)
+    expect(MODAL).toContain('🔕 Sin aviso')
+    expect(MODAL).toContain('checked={reminderPresets.has(key)}')
+    expect(MODAL).toContain('checked={customReminderOn}')
   })
   it('el editor sigue mostrando los nombres completos de prioridad (a diferencia de la tarjeta compacta)', () => {
     expect(MODAL).toContain('<option value="">Sin prioridad</option>')

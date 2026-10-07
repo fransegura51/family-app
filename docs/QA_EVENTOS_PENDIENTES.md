@@ -332,3 +332,21 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 294. [ ] La ficha de edición completa no tiene scroll horizontal en iPhone (ancho estrecho), en ningún estado (alta de externa abierta, menú ⋯ abierto, recordatorio personalizado abierto).
 295. [ ] Fecha y Hora comparten fila en pantallas anchas y se apilan sin desbordar en pantallas estrechas.
 296. [ ] Todas las funciones de la ficha anterior siguen accesibles (prioridad, nota, Mostrar en Calendario, Recordatorio, Guardar) tras la compactación.
+
+## Nuevas pruebas (a partir de la 297) — importación interrumpida, idempotencia de compra, concurrencia de opciones, RSVP
+297. [ ] Documento subido y app cerrada antes de confirmar los platos: al volver a entrar, el documento aparece como «⏳ Documento sin importar» en Documentos originales.
+298. [ ] Descartar un documento pendiente lo quita (y su archivo), sin tocar ningún otro documento ni plato.
+299. [ ] Completar la importación normal de un documento marca ese documento como importado; deja de verse como pendiente.
+300. [ ] Un documento pendiente nunca cuenta en la numeración «Menú importado N» de los documentos ya importados.
+301. [ ] Si la importación falla por un dato inválido, el documento sigue en pendiente (no queda "completado" sin platos).
+302. [ ] Confirmar la compra del menú y cerrar la app justo después: al volver a abrir «Preparar compra del menú» para el mismo evento, un reintento no duplica las líneas ya añadidas a Compras.
+303. [ ] Doble toque en «Añadir a Compras»: no se duplica nada.
+304. [ ] Tras una compra confirmada con éxito, la siguiente compra del mismo evento usa un identificador distinto (no se bloquea con la anterior).
+305. [ ] Cantidades null/vacías y varias tiendas siguen funcionando igual en la revisión de compra.
+306. [ ] Renombrar una opción de menú que otra sesión acaba de elegir: el aviso muestra el número real (recién llegado), no uno desactualizado.
+307. [ ] Cambiar la audiencia de una opción ya elegida: mismo aviso con recuento real antes de guardar.
+308. [ ] Borrar una opción ya elegida: el aviso muestra cuántas personas la habían elegido en ese momento, con recuento real.
+309. [ ] Ninguna de las tres acciones anteriores reasigna ni borra elecciones de invitados por su cuenta.
+310. [ ] RSVP: un token inexistente devuelve "no encontrado", sin filtrar si existe o no otro evento.
+311. [ ] RSVP: las necesidades declaradas por un invitado se guardan solo como pendientes (event_guest_declared_needs), nunca directamente como necesidad confirmada.
+312. [ ] RSVP: superar el límite de peticiones devuelve "demasiadas peticiones" sin guardar nada parcial.

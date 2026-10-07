@@ -82,9 +82,14 @@ describe('original conservado y accesible desde Menú del evento', () => {
     expect(fn).toContain('createSignedUrl(storagePath, 3600)')
   })
 
-  it('el componente solo lista y abre; no escribe', () => {
+  it('el componente lista y abre; nunca sube ni importa — solo puede descartar un documento pendiente, y solo a petición explícita del usuario (bloque C)', () => {
     expect(ORIGINALS).toContain('listEventFoodDocuments(eventId)')
     expect(ORIGINALS).toContain('getEventFoodDocumentUrl(doc.storagePath)')
-    expect(ORIGINALS).not.toMatch(/saveEventFoodDocument|importEventMenuItems|discardEventFoodDocument/)
+    expect(ORIGINALS).not.toMatch(/saveEventFoodDocument|importEventMenuItems/)
+    // discardEventFoodDocument solo se llama tras window.confirm, nunca automático ni por tiempo.
+    expect(ORIGINALS).toContain('window.confirm(')
+    const discardFn = ORIGINALS.slice(ORIGINALS.indexOf('async function discardPending'), ORIGINALS.indexOf('async function discardPending') + 400)
+    expect(discardFn).toContain('window.confirm(')
+    expect(discardFn).toContain('discardEventFoodDocument(doc)')
   })
 })

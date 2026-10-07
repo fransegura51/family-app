@@ -2570,6 +2570,16 @@ export async function updateEventMenuOption(id: string, patch: Partial<{ name: s
   if (error) throw error
 }
 
+// Recuento REAL en servidor, justo antes de renombrar/cambiar audiencia/borrar una opción — el array de
+// `members` de la pantalla puede llevar abierto un rato y haberse quedado atrás si otra sesión (otro
+// familiar) acaba de guardar una elección. Nunca reasigna ni borra elecciones por su cuenta: solo deja
+// que el aviso de confirmación hable con el número actual, no con uno desactualizado.
+export async function countMenuOptionChoices(optionId: string): Promise<number> {
+  const { count, error } = await supabase.from('event_guest_members').select('id', { count: 'exact', head: true }).eq('menu_option_id', optionId)
+  if (error) throw error
+  return count ?? 0
+}
+
 export async function deleteEventMenuOption(id: string): Promise<void> {
   const { error } = await supabase.from('event_menu_options').delete().eq('id', id)
   if (error) throw error
@@ -2589,7 +2599,7 @@ export async function swapEventMenuOptionOrder(a: Pick<EventMenuOption, 'id' | '
 // Documentos de comida (foto/PDF de un menú). El original se conserva siempre.
 // ---------------------------------------------------------------------
 
-const FOOD_DOCUMENT_SELECT = 'id, event_id, family_id, kind, storage_path, original_name, mime_type, created_at'
+const FOOD_DOCUMENT_SELECT = 'id, event_id, family_id, kind, storage_path, original_name, mime_type, created_at, import_status'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapFoodDocument(r: any): EventFoodDocument {
@@ -2602,6 +2612,7 @@ function mapFoodDocument(r: any): EventFoodDocument {
     originalName: r.original_name,
     mimeType: r.mime_type,
     createdAt: r.created_at,
+    importStatus: r.import_status,
   }
 }
 

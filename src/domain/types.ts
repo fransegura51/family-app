@@ -874,6 +874,9 @@ export interface EventFoodDocument {
   originalName: string | null
   mimeType: string | null
   createdAt: string
+  // Bloque C (importación): 'pending' hasta que import_event_menu marca 'completed' en la MISMA
+  // transacción que crea los platos — nunca huérfano sin que se vea. Migración 0209.
+  importStatus: 'pending' | 'completed' | 'failed'
 }
 
 // Necesidad alimentaria estructurada de UNA persona (migración 0192): lo declarado (originalText, jamás se

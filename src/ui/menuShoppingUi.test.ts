@@ -39,7 +39,9 @@ describe('Preparar compra del menú — revisión antes de guardar', () => {
     const fn = FOOD.slice(FOOD.indexOf('export async function addMenuShoppingLines'))
     expect(fn).toContain("supabase.rpc('add_menu_shopping_lines'")
     expect(fn).toContain('p_request_id: requestId')
-    expect(MODAL).toContain('const [requestId] = useState(() => crypto.randomUUID())')
+    // Bloque D: el id ya no vive solo en memoria — se persiste por evento (ver menuShoppingRequestId.test.ts),
+    // así que un reintento tras cerrar la app reutiliza el mismo id en vez de generar uno nuevo.
+    expect(MODAL).toContain('const [requestId] = useState(() => pendingMenuShoppingRequestId(eventId))')
   })
 })
 

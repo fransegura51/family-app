@@ -5,6 +5,7 @@ import type { ShoppingPlanLine } from '@/domain/menuShoppingPlan'
 import type { ScaleNote } from '@/domain/recipeScaling'
 import type { ShoppingStoreEntry } from '@/domain/types'
 import { showToast } from '@/state/toast'
+import { clearPendingMenuShoppingRequestId, pendingMenuShoppingRequestId } from '@/state/menuShoppingRequestId'
 
 const NOTE_LABEL: Record<ScaleNote, string> = {
   sin_raciones: 'La receta no tiene raciones: cantidad original, sin escalar.',
@@ -43,7 +44,10 @@ export function MenuShoppingModal({
     lines.map((l) => ({ id: l.key, line: l, name: l.name, include: true, quantity: l.quantity ?? '', store: '' })),
   )
   // Identificador de ESTA confirmación: un reintento con el mismo valor no duplica nada en Compras.
-  const [requestId] = useState(() => crypto.randomUUID())
+  // Persistido por evento (no solo en memoria) — si la app se cierra justo después de confirmar, o el
+  // modal se desmonta antes de recibir la respuesta, al volver se reutiliza el MISMO id en vez de uno
+  // nuevo; una vez confirmada con éxito se libera, así que la siguiente compra es una operación nueva.
+  const [requestId] = useState(() => pendingMenuShoppingRequestId(eventId))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const selected = rows.filter((r) => r.include && r.name.trim()).length
@@ -66,6 +70,7 @@ export function MenuShoppingModal({
     setError(null)
     try {
       await addMenuShoppingLines(chosen, eventId, requestId)
+      clearPendingMenuShoppingRequestId(eventId)
       showToast(`Añadidos ${chosen.length} a Compras`)
       onSaved()
     } catch (err) {

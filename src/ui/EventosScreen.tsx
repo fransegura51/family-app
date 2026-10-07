@@ -117,6 +117,7 @@ import {
   ensureTaskPrioritySuggestions,
   listOpenEventTaskPrioritySuggestions,
   respondToEventTaskPrioritySuggestion,
+  countMenuOptionChoices,
 } from '@/data/events'
 import { listExpenses, listBudgetCategories } from '@/data/finance'
 import { listFamilyMembers } from '@/data/family'
@@ -5857,15 +5858,17 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
     }, 'No se pudo añadir la opción')
   }
 
-  // Cambiar el nombre o la audiencia de una opción YA elegida: nunca se reasignan elecciones; solo se avisa.
-  function confirmChangeWithChoices(option: EventMenuOption, change: string): boolean {
-    const chosen = members.filter((m) => m.menuOptionId === option.id).length
+  // Cambiar el nombre o la audiencia de una opción YA elegida: nunca se reasignan elecciones; solo se
+  // avisa — con el recuento REAL en servidor (countMenuOptionChoices), no con `members` tal como estaba
+  // al abrir la pantalla: si otra sesión acaba de guardar una elección, el aviso ya lo refleja.
+  async function confirmChangeWithChoices(option: EventMenuOption, change: string): Promise<boolean> {
+    const chosen = await countMenuOptionChoices(option.id)
     if (chosen === 0) return true
     return window.confirm(`Esta opción ya ha sido elegida por ${chosen} persona${chosen === 1 ? '' : 's'} (${change}). Sus elecciones se mantienen tal cual: no se reasignan a otra opción. ¿Continuar?`)
   }
 
-  function handleDelete(option: EventMenuOption) {
-    const chosen = members.filter((m) => m.menuOptionId === option.id).length
+  async function handleDeleteOption(option: EventMenuOption) {
+    const chosen = await countMenuOptionChoices(option.id)
     const warning = chosen > 0 ? `${chosen} persona${chosen === 1 ? '' : 's'} había${chosen === 1 ? '' : 'n'} elegido «${option.name}»: quedará${chosen === 1 ? '' : 'n'} «sin elegir» (no se borra nada más). ¿Quitar la opción?` : `¿Quitar «${option.name}»?`
     if (!window.confirm(warning)) return
     void run(() => deleteEventMenuOption(option.id), 'No se pudo quitar la opción')
@@ -5898,9 +5901,11 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
                 disabled={!editing.name.trim()}
                 onClick={() => {
                   const value = editing.name
-                  if (!confirmChangeWithChoices(o, 'se verá el nuevo nombre')) return
-                  setEditing(null)
-                  void run(() => updateEventMenuOption(o.id, { name: value }), 'No se pudo renombrar')
+                  void confirmChangeWithChoices(o, 'se verá el nuevo nombre').then((ok) => {
+                    if (!ok) return
+                    setEditing(null)
+                    void run(() => updateEventMenuOption(o.id, { name: value }), 'No se pudo renombrar')
+                  })
                 }}
               >
                 Guardar
@@ -5914,8 +5919,10 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
               <span style={{ flex: 1 }}>{o.name}</span>
               <select value={o.audience} aria-label={`Para quién es ${o.name}`} onChange={(e) => {
                 const audience = e.target.value as EventMenuOptionAudience
-                if (!confirmChangeWithChoices(o, 'cambia a quién va dirigida')) return
-                void run(() => updateEventMenuOption(o.id, { audience }), 'No se pudo cambiar')
+                void confirmChangeWithChoices(o, 'cambia a quién va dirigida').then((ok) => {
+                  if (!ok) return
+                  void run(() => updateEventMenuOption(o.id, { audience }), 'No se pudo cambiar')
+                })
               }}>
                 {MENU_OPTION_AUDIENCES.map((a) => (
                   <option key={a.value} value={a.value}>
@@ -5932,7 +5939,7 @@ function GuestMenuOptionsPanel({ event, guests, members }: { event: FamilyEvent;
               <button type="button" className="link-button" onClick={() => setEditing({ id: o.id, name: o.name })}>
                 Renombrar
               </button>
-              <button type="button" className="icon-button" aria-label={`Quitar ${o.name}`} onClick={() => handleDelete(o)}>
+              <button type="button" className="icon-button" aria-label={`Quitar ${o.name}`} onClick={() => handleDeleteOption(o)}>
                 ✕
               </button>
             </>

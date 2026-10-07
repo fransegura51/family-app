@@ -1,13 +1,26 @@
 import { useEffect, useState } from 'react'
-import { getEventFoodDocumentUrl, listEventFoodDocuments } from '@/data/events'
+import { discardEventFoodDocument, getEventFoodDocumentUrl, listEventFoodDocuments } from '@/data/events'
 import { errorMessage } from '@/domain/errorMessage'
 import { documentAlias } from '@/domain/eventFoodDocumentAlias'
 import type { EventFoodDocument } from '@/domain/types'
 
 // Acceso al documento ORIGINAL (foto/PDF) del que salió el menú importado. Solo lee; abre una URL firmada temporal.
+//
+// Bloque C — un documento puede quedar en import_status='pending' si la app se cerró o falló justo entre
+// subirlo y confirmar sus platos (import_event_menu, migración 0210, lo marca 'completed' en la MISMA
+// transacción que crea los platos — nunca a medias). Al volver a entrar aquí se reconoce y se ve, en vez
+// de desaparecer en silencio: la numeración "Menú importado N" solo cuenta los YA completados (un
+// pendiente no desplaza esa numeración), y la única acción es descartarlo de forma explícita — nunca se
+// borra solo ni por haber pasado un tiempo.
 export function EventMenuOriginals({ eventId }: { eventId: string }) {
   const [docs, setDocs] = useState<EventFoodDocument[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    return listEventFoodDocuments(eventId)
+      .then(setDocs)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los originales')))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -23,7 +36,7 @@ export function EventMenuOriginals({ eventId }: { eventId: string }) {
     }
   }, [eventId])
 
-  if (error) return <p className="error">{error}</p>
+  if (error && !docs) return <p className="error">{error}</p>
   if (!docs || docs.length === 0) return null
 
   async function open(doc: EventFoodDocument) {
@@ -36,6 +49,20 @@ export function EventMenuOriginals({ eventId }: { eventId: string }) {
     }
   }
 
+  async function discardPending(doc: EventFoodDocument) {
+    if (!window.confirm('¿Descartar este documento? No llegó a importarse ningún plato desde él; esto solo quita el original subido.')) return
+    setError(null)
+    try {
+      await discardEventFoodDocument(doc)
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo descartar el documento'))
+    }
+  }
+
+  const completed = docs.filter((d) => d.importStatus === 'completed')
+  const pending = docs.filter((d) => d.importStatus === 'pending')
+
   // Plegado por defecto: una sola línea en la barra. Al desplegar aparecen los alias y se abre el original exacto.
   return (
     <details style={{ width: '100%', margin: '6px 0' }}>
@@ -43,10 +70,20 @@ export function EventMenuOriginals({ eventId }: { eventId: string }) {
         📎 Documentos originales ({docs.length})
       </summary>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginTop: 4 }}>
-        {docs.map((doc, index) => (
+        {completed.map((doc, index) => (
           <button key={doc.id} type="button" className="link-button" onClick={() => void open(doc)} style={{ textAlign: 'left' }}>
             {documentAlias(index)}
           </button>
+        ))}
+        {pending.map((doc) => (
+          <div key={doc.id} className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" className="link-button" onClick={() => void open(doc)} style={{ textAlign: 'left' }}>
+              ⏳ Documento sin importar
+            </button>
+            <button type="button" className="link-button" onClick={() => void discardPending(doc)}>
+              Descartar
+            </button>
+          </div>
         ))}
         {error && <p className="error">{error}</p>}
       </div>

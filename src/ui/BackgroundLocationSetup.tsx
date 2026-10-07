@@ -41,6 +41,25 @@ export function InstallOwnTracksButtons() {
   )
 }
 
+const CONNECT_TIMEOUT_MS = 15_000
+
+// Si el servidor no contesta, que se vea en rojo en vez de quedarse en «Generando…» para siempre.
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('El servidor no contesta (más de 15 s). Revisa la conexión e inténtalo de nuevo.')), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err: unknown) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
 export function BackgroundLocationSetup({ members, consents }: { members: FamilyMember[]; consents: LocationConsent[] }) {
   const [statuses, setStatuses] = useState<LocationTokenStatus[]>([])
   const [setup, setSetup] = useState<Setup | null>(null)
@@ -67,8 +86,11 @@ export function BackgroundLocationSetup({ members, consents }: { members: Family
   async function handleConnect(member: FamilyMember) {
     setBusy(member.id)
     setError(null)
+    // Rastro para diagnosticar desde fuera (client_errors): demuestra que la pulsación llega y con qué versión de la pantalla.
+    void reportClientError(new Error('[owntracks] pulsado Conectar ui=v3'))
     try {
-      const token = await createMemberLocationToken(member.id)
+      const token = await withTimeout(createMemberLocationToken(member.id), CONNECT_TIMEOUT_MS)
+      void reportClientError(new Error('[owntracks] código generado ui=v3'))
       setSetup({ memberId: member.id, memberName: member.name, token })
       reloadStatuses()
       scrollSoon(panelRef)

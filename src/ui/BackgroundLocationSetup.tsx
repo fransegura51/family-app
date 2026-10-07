@@ -21,7 +21,7 @@ interface Setup {
 
 // Una web no puede instalar una app por sí sola: el botón abre la ficha de OwnTracks en la tienda de ESTE móvil, donde
 // solo queda tocar «Obtener» / «Instalar». El botón del sistema que se está usando va primero y destacado.
-function InstallOwnTracksButtons() {
+export function InstallOwnTracksButtons() {
   const ios = isIos()
   const iosButton = (
     <a key="ios" className={ios ? 'chip chip-active' : 'chip'} href={OWNTRACKS_IOS_STORE_URL} target="_blank" rel="noreferrer">

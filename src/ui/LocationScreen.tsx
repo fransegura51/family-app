@@ -62,7 +62,7 @@ import type {
 import ubicacionHeaderImg from '@/assets/ubicacion/ubicacion-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { describePositionAge } from '@/domain/positionFreshness'
-import { BackgroundLocationSetup } from '@/ui/BackgroundLocationSetup'
+import { BackgroundLocationSetup, InstallOwnTracksButtons } from '@/ui/BackgroundLocationSetup'
 import { pastelPalette } from '@/domain/colors'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
@@ -74,6 +74,8 @@ function isUbicacionSubTab(key: UbicacionMenuItemKey): key is SubTab {
 
 export function LocationScreen({ role, profileId }: { role: FamilyRole; profileId: string }) {
   const [tab, setTab] = useState<SubTab>('Inicio')
+  // Qué pestaña de abajo del mapa se abre al entrar en «Ubicación» (el atajo de la primera pantalla abre «Compartir»).
+  const [initialPanel, setInitialPanel] = useState<'lugares' | 'estoy-aqui' | 'compartir'>('lugares')
   // "Ubicación" del breadcrumb siempre vuelve a Inicio, incluso ya estando en /ubicacion.
   useSectionHome(() => setTab('Inicio'))
   // Petición real: "el formato que has hecho ahora para meter todas
@@ -172,14 +174,25 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
         </p>
       )}
 
-      {tab === 'Inicio' && <UbicacionInicioTab onNavigate={setTab} />}
-      {tab === 'Ubicación' && <LocationTab isAdmin={role === 'admin'} profileId={profileId} />}
+      {tab === 'Inicio' && (
+        <UbicacionInicioTab
+          onNavigate={(next) => {
+            setInitialPanel('lugares')
+            setTab(next)
+          }}
+          onConnectBackground={() => {
+            setInitialPanel('compartir')
+            setTab('Ubicación')
+          }}
+        />
+      )}
+      {tab === 'Ubicación' && <LocationTab isAdmin={role === 'admin'} profileId={profileId} initialPanel={initialPanel} />}
       {tab === 'Reglas' && <RulesTab />}
     </div>
   )
 }
 
-function UbicacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void }) {
+function UbicacionInicioTab({ onNavigate, onConnectBackground }: { onNavigate: (tab: SubTab) => void; onConnectBackground: () => void }) {
   const shortcuts: { tab: SubTab; body: string }[] = [
     { tab: 'Ubicación', body: 'Mapa en vivo con dónde está cada uno que lo comparte, y lugares frecuentes guardados.' },
     { tab: 'Reglas', body: 'Avisos automáticos al llegar o salir de un sitio, o todos los días a una hora.' },
@@ -188,6 +201,19 @@ function UbicacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void 
   const cardColors = pastelPalette(shortcuts.length)
   return (
     <div className="event-list">
+      {/* Petición real: "no veo los botones, no sé dónde están" — estaba a tres niveles de profundidad. Ahora es lo primero
+          que se ve al entrar en Ubicación: instalar OwnTracks (ubicación con la app cerrada) y conectarla. */}
+      <div className="card member-form">
+        <strong>📲 Ubicación con la app cerrada</strong>
+        <p className="muted">
+          Esta web solo envía tu posición mientras la tienes abierta. Para que los avisos de llegada y salida funcionen con el móvil bloqueado,
+          instala OwnTracks (gratuita) y conéctala.
+        </p>
+        <InstallOwnTracksButtons />
+        <button type="button" className="task-toggle" onClick={onConnectBackground}>
+          Ya la tengo instalada → Conectar
+        </button>
+      </div>
       {shortcuts.map((s, i) => {
         const meta = UBICACION_MENU_ITEM_META[s.tab]
         return (
@@ -542,7 +568,7 @@ function UbicacionMenuDropdown({
 // Ubicación (Skill 23/28)
 // ---------------------------------------------------------------------
 
-function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: string }) {
+function LocationTab({ isAdmin, profileId, initialPanel = 'lugares' }: { isAdmin: boolean; profileId: string; initialPanel?: 'lugares' | 'estoy-aqui' | 'compartir' }) {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [consents, setConsents] = useState<LocationConsent[]>([])
   const [locations, setLocations] = useState<MemberLocation[]>([])
@@ -567,7 +593,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // "¡Estoy aquí!" / "Compartir ubicación") — debajo del mapa (que se queda fijo, como el chip de
   // cada persona) el contenido se reparte en estas 3 pestañas en vez de ir todo seguido en una sola
   // pantalla larga.
-  const [panelTab, setPanelTab] = useState<'lugares' | 'estoy-aqui' | 'compartir'>('lugares')
+  const [panelTab, setPanelTab] = useState<'lugares' | 'estoy-aqui' | 'compartir'>(initialPanel)
   // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — el trazado de la
   // última ruta calculada, para dibujarla en LocationMap. Llega de dos sitios: tocar "ver tiempo en
   // coche" en un lugar guardado (PlaceRow, aquí abajo, prop onRoute) o pedírselo a Pepa por voz
@@ -850,6 +876,11 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
 
       {panelTab === 'compartir' && (
         <div>
+          <BackgroundLocationSetup
+            members={members.filter((m) => isAdmin || m.linkedProfileId === profileId)}
+            consents={consents}
+          />
+
           <h2 className="section-title">Este dispositivo</h2>
           {sharingAs ? (
             // Petición real: "quiero que me la hagas mucho más pequeña, de una sola línea" — antes
@@ -902,11 +933,6 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
                 )
               })}
           </div>
-
-          <BackgroundLocationSetup
-            members={members.filter((m) => isAdmin || m.linkedProfileId === profileId)}
-            consents={consents}
-          />
         </div>
       )}
     </div>

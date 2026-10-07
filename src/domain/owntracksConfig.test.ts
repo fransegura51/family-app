@@ -140,6 +140,20 @@ describe('pantalla', () => {
     expect(UI).toContain('Instalar en iPhone (App Store)')
     expect(UI).toContain('Instalar en Android (Google Play)')
   })
+  it('los botones de instalar están en la PRIMERA pantalla de Ubicación (antes estaban a tres niveles) y el atajo abre «Compartir»', () => {
+    const screen = FILES['/src/ui/LocationScreen.tsx']
+    const inicio = screen.slice(screen.indexOf('function UbicacionInicioTab'), screen.indexOf('// Copia de EconomiaMenuDropdown'))
+    expect(inicio).toContain('<InstallOwnTracksButtons />')
+    expect(inicio).toContain('Ya la tengo instalada → Conectar')
+    expect(screen).toContain("setInitialPanel('compartir')")
+    expect(screen).toContain('useState<\'lugares\' | \'estoy-aqui\' | \'compartir\'>(initialPanel)')
+  })
+  it('dentro de «Compartir ubicación» la sección sale la primera, sin tener que bajar', () => {
+    const screen = FILES['/src/ui/LocationScreen.tsx']
+    const compartir = screen.slice(screen.indexOf("{panelTab === 'compartir' && ("))
+    expect(compartir.indexOf('<BackgroundLocationSetup')).toBeGreaterThan(-1)
+    expect(compartir.indexOf('<BackgroundLocationSetup')).toBeLessThan(compartir.indexOf('Este dispositivo'))
+  })
   it('desconectar pide confirmación', () => {
     expect(UI).toContain('<ConfirmButton onConfirm={() => handleDisconnect(m)}')
   })

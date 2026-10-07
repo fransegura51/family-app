@@ -1,0 +1,2 @@
+-- Rollback de 0214_remove_owntracks_background_location.sql: para volver a tener el puente con OwnTracks hay que volver a aplicar
+-- 0213_owntracks_background_location.sql (tabla vacía: los códigos antiguos no se recuperan, se generan de nuevo).

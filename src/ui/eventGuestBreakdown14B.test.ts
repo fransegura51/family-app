@@ -257,7 +257,7 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
       .map((f) => Number(f.match(/(\d{4})_/)?.[1]))
       .filter((n) => !Number.isNaN(n))
     // 0197 (recordatorios de Calendario: claim_due_reminders y reminder_deliveries) no toca esta funcionalidad.
-    // 0213 (OwnTracks: código por miembro y recepción de posiciones) no toca esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(213)
+    // 0213 y 0214 (puente con OwnTracks y su retirada) no tocan esta funcionalidad.
+    expect(Math.max(...numbers)).toBe(214)
   })
 })

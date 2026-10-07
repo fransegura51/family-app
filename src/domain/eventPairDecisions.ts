@@ -442,8 +442,11 @@ export function desiredForDetalleEspecialResolucion(tipo: DetalleEspecialTipoAns
 // El título en sí NO forma parte de este chequeo (una tarea con el título exacto pero ya marcada hecha,
 // con fecha, responsable o enlazada al Calendario ya NO es prístina) — ver corrección explícita: "no
 // compruebes únicamente el título".
-export function isTaskUntouched(task: Pick<EventTask, 'source' | 'done' | 'dueDate' | 'assignedMemberId' | 'calendarEventId'>): boolean {
-  return task.source === 'auto' && !task.done && task.dueDate === null && task.assignedMemberId === null && task.calendarEventId === null
+// Bloque H (agrupación): una tarea metida a mano en un encargo/grupo ya no es "prístina" tampoco — nunca
+// debe poder borrarse en silencio por una reconciliación posterior (se desvincula de la decisión, como
+// las demás señales de enriquecimiento manual, pero conserva su grupo).
+export function isTaskUntouched(task: Pick<EventTask, 'source' | 'done' | 'dueDate' | 'assignedMemberId' | 'calendarEventId' | 'groupId'>): boolean {
+  return task.source === 'auto' && !task.done && task.dueDate === null && task.assignedMemberId === null && task.calendarEventId === null && !task.groupId
 }
 
 export function isBudgetItemUntouched(item: Pick<EventBudgetItem, 'plannedAmount'>): boolean {

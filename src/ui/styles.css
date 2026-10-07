@@ -902,6 +902,21 @@ button {
   background: #fffbeb;
 }
 
+/* Bloque B — "✏️ Editar"/"🗑️ Borrar" del menú ⋯ de una tarea: columna de icono de ancho fijo para que
+   el texto empiece siempre en la misma vertical, sin que el ancho distinto de cada emoji lo desplace. */
+.event-task-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.event-task-menu-icon {
+  flex: none;
+  width: 20px;
+  text-align: center;
+}
+
 .event-task-menu {
   position: absolute;
   right: 0;

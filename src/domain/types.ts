@@ -782,6 +782,20 @@ export interface EventTask {
   // esta fase). ON DELETE SET NULL: borrar la decisión nunca borra la
   // tarea — ver migración 0176_event_decisions_and_moments.sql.
   decisionId: string | null
+  // Encargo/grupo organizativo (migración 0212) — UN grupo principal por tarea; ausente/null = sin
+  // agrupar. Opcional por el mismo motivo que priority/notes arriba (fixtures de test anteriores a este
+  // campo). Borrar el grupo nunca borra la tarea (ON DELETE SET NULL): solo la deja sin encargo.
+  groupId?: string | null
+}
+
+// Encargo/grupo organizativo de Preparativos relacionados (migración 0212) — p. ej. "Flores" agrupando
+// ramo/prendidos/decoración/recoger. Puramente organizativo: sin relación con Proveedores/Presupuesto
+// (ver eventTaskGroups.ts). Cada tarea pertenece como mucho a un grupo (event_tasks.groupId).
+export interface EventTaskGroup {
+  id: string
+  eventId: string
+  name: string
+  sortOrder: number
 }
 
 // Preparativos (migración 0208) — propuesta de PEPA de cambiar una prioridad que fijó el usuario, con

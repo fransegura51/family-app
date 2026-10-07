@@ -480,7 +480,8 @@ export async function duplicateEvent(id: string): Promise<string> {
 // Preparativos / tareas
 // ---------------------------------------------------------------------
 
-const TASK_SELECT = 'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id, decision_id, priority, priority_source, priority_reason, notes, due_time, completed_at'
+const TASK_SELECT =
+  'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id, decision_id, priority, priority_source, priority_reason, notes, due_time, completed_at, group_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapTask(r: any): EventTask {
@@ -503,6 +504,7 @@ function mapTask(r: any): EventTask {
     notes: r.notes ?? null,
     dueTime: r.due_time ? String(r.due_time).slice(0, 5) : null,
     completedAt: r.completed_at ?? null,
+    groupId: r.group_id ?? null,
     responsibleMemberIds: [],
     helpers: [],
   }

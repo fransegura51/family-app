@@ -579,6 +579,9 @@ describe('Reconciliación — nunca "borrar siempre" ni "nunca borrar" (acción 
   it('tarea realmente intacta: prístina', () => {
     expect(isTaskUntouched(makeTask())).toBe(true)
   })
+  it('bloque H (agrupación): una tarea metida en un encargo tampoco es prístina — nunca se borra en silencio por una reconciliación posterior, se desvincula conservando el grupo', () => {
+    expect(isTaskUntouched(makeTask({ groupId: 'g1' }))).toBe(false)
+  })
 
   it('presupuesto con importe real: NO prístino, no se actualiza ni se borra', () => {
     expect(isBudgetItemUntouched(makeBudgetItem({ plannedAmount: 450 }))).toBe(false)

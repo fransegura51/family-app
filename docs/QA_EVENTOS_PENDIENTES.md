@@ -405,3 +405,30 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 361. [ ] La tarjeta de tarea sigue mostrando el mismo contenido de siempre (checkbox, título, fecha/hora, Atrasada, prioridad, responsables, nota, campana, menú ⋯ de la tarea) sin cambios.
 362. [ ] El menú ⋯ de la tarjeta (Editar/Borrar la tarea) sigue funcionando igual; no se ha mezclado con nada de colaboradores.
 363. [ ] "Pepa te recomienda" sigue funcionando con tareas nuevas, con varios responsables y con colaboradores externos, sin errores.
+
+## Nuevas pruebas (a partir de la 364) — campana/Calendario, menú ⋯, prioridad, Encargos
+364. [ ] Campana en una tarea SIN fecha: aparece el toast "Añade una fecha a la tarea para poder configurar avisos."; no se abre el selector ni Editar tarea.
+365. [ ] Campana en una tarea CON fecha pero sin Calendario: aparece la confirmación "Para añadir avisos, esta tarea debe estar en el Calendario. ¿Añadirla?".
+366. [ ] Cancelar esa confirmación no cambia nada (la tarea sigue sin estar en Calendario).
+367. [ ] Aceptar la confirmación añade la tarea al Calendario, conserva fecha/hora/responsables, y abre el selector de avisos inmediatamente.
+368. [ ] Tras aceptar, no aparece una segunda entrada duplicada en Calendario.
+369. [ ] Campana en una tarea ya en Calendario: sigue igual que antes (sin regresión).
+370. [ ] "✏️ Editar" y "🗑️ Borrar" del menú ⋯ empiezan ambos exactamente en la misma vertical.
+371. [ ] Los targets táctiles de Editar/Borrar siguen siendo cómodos en iPhone.
+372. [ ] Una tarea en prioridad Alta manual, con otras tareas que dependen de ella (o enlazada a una decisión sin señal especial): PEPA ya NO propone bajarla a Media.
+373. [ ] Ninguna propuesta de PEPA baja nunca una prioridad fijada a mano — solo sube o asigna cuando no había ninguna.
+374. [ ] El texto de una propuesta por "dependencia" ya no dice que otras tareas dependen de esta, sino que esta tarea depende de una decisión del evento.
+375. [ ] Rechazar una propuesta ("Mantenerla como está") no la vuelve a mostrar si nada relevante cambia.
+376. [ ] Si cambia algo material (fecha, decisión de origen, contexto), puede aparecer una propuesta nueva aunque se rechazara una anterior.
+377. [ ] Crear un encargo "Flores" desde "🗂️ Encargos".
+378. [ ] Asociar varias tareas existentes (Ramo, Prendidos, Decoración, Recoger) al encargo "Flores" desde el selector de cada tarea.
+379. [ ] Cada tarea sigue teniendo su propia fecha, responsable, prioridad, nota, Calendario y avisos — el encargo no las sustituye.
+380. [ ] "+ Tarea en este encargo" crea una tarea nueva ya con ese encargo preseleccionado.
+381. [ ] Quitar una tarea de su encargo (seleccionar "Ninguno") no la borra.
+382. [ ] Borrar el encargo "Flores" no borra ninguna de sus tareas; quedan sin encargo.
+383. [ ] Los filtros de responsables (incluido el AND) siguen funcionando exactamente igual con tareas agrupadas.
+384. [ ] Completadas/pendientes siguen funcionando igual con tareas agrupadas.
+385. [ ] La tarjeta muestra el nombre del encargo de forma ligera (una etiqueta más), sin cambiar su composición.
+386. [ ] Una tarea automática (generada por una decisión) que se agrupa manualmente conserva su encargo si luego cambia la decisión que la originó.
+387. [ ] Agrupar tareas no crea ni duplica ningún proveedor ni ningún concepto de presupuesto.
+388. [ ] El formulario de Nueva/Editar tarea no muestra el selector de encargo si todavía no se ha creado ninguno (cero cambio visual).

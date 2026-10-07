@@ -134,6 +134,14 @@ import type { LocationPlace } from '@/domain/types'
 // avisar el pipeline ya existente.
 import { listEventReminders, replaceReminders } from '@/data/calendar'
 import { addEventHelper, countHelperAssignments, deleteEventHelper, listEventHelpers, setEventTaskHelpers, setEventTaskResponsibles, updateEventHelper } from '@/data/eventTaskResponsibles'
+import {
+  addEventTaskGroup,
+  countTasksInGroup,
+  deleteEventTaskGroup,
+  listEventTaskGroups,
+  renameEventTaskGroup,
+  setEventTaskGroup,
+} from '@/data/eventTaskGroups'
 import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskResponsibles'
 import { effectivePriority, recommendTasks, type DecisionLookup } from '@/domain/eventTaskPriority'
 import { explainPrioritySuggestion, PRIORITY_ORDER } from '@/domain/eventTaskPrioritySuggestion'
@@ -393,7 +401,7 @@ import {
   MENU_OPTION_AUDIENCES,
   sectionKeyForCategory,
 } from '@/domain/eventFoodMenu'
-import type { EventDietaryNeed, EventHelper, EventMenuOption, EventMenuOptionAudience } from '@/domain/types'
+import type { EventDietaryNeed, EventHelper, EventMenuOption, EventMenuOptionAudience, EventTaskGroup } from '@/domain/types'
 // Fase 8 — reutiliza el formateador DD/MM/YYYY que ya existe en
 // Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
 // una función pura sin ninguna dependencia de Previsión/Economía.
@@ -963,6 +971,17 @@ function EventDetail({
   // tarea", en modo creación — nunca un segundo sistema de alta simplificado.
   const [creatingTask, setCreatingTask] = useState(false)
   const [managingHelpers, setManagingHelpers] = useState(false)
+  // "🗂️ Encargos" (bloque D/F): agrupación organizativa, puramente ligera — nada se rompe ni cambia de
+  // aspecto para quien no la use (eventTaskGroups vacío = cero diferencia visual).
+  const [eventTaskGroups, setEventTaskGroups] = useState<EventTaskGroup[]>([])
+  const [managingGroups, setManagingGroups] = useState(false)
+  // Al crear una tarea desde dentro de un encargo concreto ("+ Tarea en este encargo"), ese grupo llega
+  // ya preseleccionado al formulario de creación.
+  const [creatingTaskInGroup, setCreatingTaskInGroup] = useState<string | null>(null)
+  function reloadEventTaskGroups() {
+    return listEventTaskGroups(event.id).then(setEventTaskGroups)
+  }
+  useEffect(() => void reloadEventTaskGroups().catch(() => {}), [event.id]) // eslint-disable-line react-hooks/exhaustive-deps
   // Fase 1 — reforma de Editar/•••: un único punto de entrada
   // ("Gestionar evento") en vez de dos controles compitiendo por la
   // misma clase de acción, ver ManageEventModal más abajo.
@@ -1011,11 +1030,11 @@ function EventDetail({
   }, [event.id, event.rsvpDeadline])
 
   function reloadTasks() {
-    listEventTasks(event.id)
+    return listEventTasks(event.id)
       .then(setTasks)
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las tareas')))
   }
-  useEffect(reloadTasks, [event.id])
+  useEffect(() => void reloadTasks(), [event.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Decisiones del evento, solo para que PEPA pueda seguir recalculando la prioridad de las tareas que
   // gestiona (ver effectivePriority) — nunca para escribir nada aquí; cada bloque del configurador sigue
@@ -1081,6 +1100,31 @@ function EventDetail({
     if (!t.dueDate) return 'Pon una fecha para activar un aviso'
     if (!t.calendarEventId) return 'Activa primero «Mostrar en Calendario» en el editor'
     return null
+  }
+
+  // Bloque A — la campana ya no se limita a explicar por qué está desactivada: cuando el único motivo es
+  // que la tarea todavía no está en Calendario (SÍ tiene fecha), ofrece resolverlo ahí mismo. Reutiliza
+  // el mismo linkEventTaskToCalendar de siempre (idempotente: si ya estuviera enlazada, no duplica nada)
+  // — nunca un sistema de avisos paralelo al de Calendario.
+  type ReminderGate = 'ok' | 'no_date' | 'not_in_calendar'
+  function reminderGateFor(t: EventTask): ReminderGate {
+    if (!t.dueDate) return 'no_date'
+    if (!t.calendarEventId) return 'not_in_calendar'
+    return 'ok'
+  }
+
+  // Enlaza la tarea a Calendario (conserva fecha/hora/responsables — linkEventTaskToCalendar ya lo hace)
+  // y refresca la lista antes de devolver el control, para que la campana ya vea calendarEventId al
+  // reabrirse. true = se puede continuar y abrir el selector de avisos; false = algo falló, nada cambió.
+  async function enableCalendarForReminder(t: EventTask): Promise<boolean> {
+    try {
+      await linkEventTaskToCalendar(t.id)
+      await reloadTasks()
+      return true
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir la tarea al Calendario'))
+      return false
+    }
   }
 
   // Varios avisos a la vez (Bloque recordatorios): cada toque cambia SOLO el aviso tocado, nunca pierde
@@ -1406,11 +1450,20 @@ function EventDetail({
                 completo que "Editar tarea", en modo creación. Se queda siempre aquí, debajo de los
                 filtros y antes de la lista, haya o no filtros activos. */}
             <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => setCreatingTask(true)}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatingTaskInGroup(null)
+                  setCreatingTask(true)
+                }}
+              >
                 + Nueva tarea
               </button>
               <button type="button" className="link-button" onClick={() => setManagingHelpers(true)}>
                 👥 Colaboradores
+              </button>
+              <button type="button" className="link-button" onClick={() => setManagingGroups(true)}>
+                🗂️ Encargos
               </button>
             </div>
             {responsibleFilter.length > 0 && filteredTasks.length === 0 && <p className="muted">Ninguna tarea pendiente coincide con este filtro.</p>}
@@ -1422,13 +1475,17 @@ function EventDetail({
                   decisions={taskDecisions}
                   responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
                   responsibleNames={taskResponsibleNames(t, familyMembers)}
+                  groupName={eventTaskGroups.find((g) => g.id === t.groupId)?.name ?? null}
                   reminder={{
                     reminders: taskReminders[t.id] ?? [],
                     hint: reminderHintFor(t),
+                    gate: reminderGateFor(t),
                     saving: savingReminderTaskId === t.id,
                     onTogglePreset: (key) => void toggleTaskReminderPreset(t, key),
                     onClear: () => void clearTaskReminders(t),
                     onOpenCustom: () => setEditingTaskId(t.id),
+                    onNoDateTap: () => showToast('Añade una fecha a la tarea para poder configurar avisos.'),
+                    onEnableCalendar: () => enableCalendarForReminder(t),
                   }}
                   highlighted={t.id === deepLinkHighlightTaskId}
                   onToggleDone={() => updateEventTask(t.id, { done: true }).then(reloadTasks)}
@@ -1456,6 +1513,7 @@ function EventDetail({
                         decisions={taskDecisions}
                         responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
                         responsibleNames={taskResponsibleNames(t, familyMembers)}
+                        groupName={eventTaskGroups.find((g) => g.id === t.groupId)?.name ?? null}
                         onToggleDone={() => updateEventTask(t.id, { done: false }).then(reloadTasks)}
                         onEdit={() => setEditingTaskId(t.id)}
                       />
@@ -1471,6 +1529,7 @@ function EventDetail({
                 familyMembers={familyMembers}
                 helpers={eventHelpers}
                 onHelpersChanged={reloadEventHelpers}
+                groups={eventTaskGroups}
                 onClose={() => setEditingTaskId(null)}
                 onSaved={() => {
                   setEditingTaskId(null)
@@ -1484,6 +1543,8 @@ function EventDetail({
                 familyMembers={familyMembers}
                 helpers={eventHelpers}
                 onHelpersChanged={reloadEventHelpers}
+                groups={eventTaskGroups}
+                initialGroupId={creatingTaskInGroup}
                 onClose={() => setCreatingTask(false)}
                 onSaved={() => {
                   setCreatingTask(false)
@@ -1493,6 +1554,20 @@ function EventDetail({
             )}
             {managingHelpers && (
               <EventHelpersModal eventId={event.id} helpers={eventHelpers} onHelpersChanged={reloadEventHelpers} onClose={() => setManagingHelpers(false)} />
+            )}
+            {managingGroups && (
+              <EventTaskGroupsModal
+                eventId={event.id}
+                groups={eventTaskGroups}
+                tasks={tasks}
+                onGroupsChanged={reloadEventTaskGroups}
+                onClose={() => setManagingGroups(false)}
+                onCreateTaskInGroup={(groupId) => {
+                  setCreatingTaskInGroup(groupId)
+                  setManagingGroups(false)
+                  setCreatingTask(true)
+                }}
+              />
             )}
           </div>
         )
@@ -2157,20 +2232,29 @@ function ReminderBell({
   taskTitle,
   reminders,
   hint,
+  gate,
   saving,
   onTogglePreset,
   onClear,
   onOpenCustom,
+  onNoDateTap,
+  onEnableCalendar,
 }: {
   taskTitle: string
   reminders: EventReminder[]
   hint: string | null
+  gate: 'ok' | 'no_date' | 'not_in_calendar'
   saving: boolean
   onTogglePreset: (key: ReminderPresetKey) => void
   onClear: () => void
   onOpenCustom: () => void
+  onNoDateTap: () => void
+  onEnableCalendar: () => Promise<boolean>
 }) {
   const [open, setOpen] = useState(false)
+  // Añadir al Calendario (cuando el único motivo es que todavía no está) tarda un instante: mientras
+  // tanto, el botón se deshabilita para no lanzar dos enlaces a la vez.
+  const [linking, setLinking] = useState(false)
   const selection = taskReminderSelectionFrom(reminders)
   const active = hasAnyReminder(reminders)
   const summary = active
@@ -2178,6 +2262,25 @@ function ReminderBell({
         .filter((x): x is string => x !== null)
         .join(' · ')
     : 'Sin aviso'
+
+  // Bloque A — la campana ya no se queda simplemente deshabilitada cuando no hay fecha o cuando la tarea
+  // no está en Calendario: explica el motivo y, si solo falta añadirla a Calendario, ofrece hacerlo ahí
+  // mismo (reutilizando linkEventTaskToCalendar, idempotente) y abre el selector al momento.
+  async function handleClick() {
+    if (gate === 'no_date') {
+      onNoDateTap()
+      return
+    }
+    if (gate === 'not_in_calendar') {
+      if (!window.confirm('Para añadir avisos, esta tarea debe estar en el Calendario. ¿Añadirla?')) return
+      setLinking(true)
+      const ok = await onEnableCalendar().finally(() => setLinking(false))
+      if (ok) setOpen(true)
+      return
+    }
+    setOpen((v) => !v)
+  }
+
   return (
     <div style={{ position: 'relative' }}>
       <button
@@ -2185,13 +2288,13 @@ function ReminderBell({
         className="icon-button"
         aria-label={`Aviso de "${taskTitle}"`}
         title={hint ?? summary}
-        disabled={hint !== null}
-        onClick={() => setOpen((v) => !v)}
+        disabled={linking}
+        onClick={() => void handleClick()}
         style={{ color: active ? 'var(--primary, #4f46e5)' : undefined, opacity: hint ? 0.4 : 1 }}
       >
         {active ? '🔔' : '🔕'}
       </button>
-      {open && hint === null && (
+      {open && gate === 'ok' && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 1 }} onClick={() => setOpen(false)} />
           <div className="event-task-menu" style={{ zIndex: 2 }}>
@@ -2245,6 +2348,7 @@ function TaskCard({
   decisions = [],
   responsible,
   responsibleNames,
+  groupName = null,
   reminder,
   highlighted = false,
   onToggleDone,
@@ -2258,14 +2362,20 @@ function TaskCard({
   responsible: FamilyMember | null
   // Preparativos: todos los responsables (familiares y externos), ya en texto. Sin él, se muestra el principal.
   responsibleNames?: string[]
+  // Bloque D — nombre del encargo/grupo, si la tarea pertenece a uno. Solo una etiqueta ligera en la
+  // línea de meta-datos; nunca cambia la composición de la tarjeta ni oculta nada.
+  groupName?: string | null
   // Campana: aviso actual y cómo cambiarlo; ausente = la tarjeta no ofrece campana (p. ej. completadas).
   reminder?: {
     reminders: EventReminder[]
     hint: string | null
+    gate: 'ok' | 'no_date' | 'not_in_calendar'
     saving: boolean
     onTogglePreset: (key: ReminderPresetKey) => void
     onClear: () => void
     onOpenCustom: () => void
+    onNoDateTap: () => void
+    onEnableCalendar: () => Promise<boolean>
   }
   // Fase 12 — deep-link a la tarea concreta: destaca la ficha cuando se
   // llegó aquí desde un aviso sobre esta tarea en particular.
@@ -2284,7 +2394,7 @@ function TaskCard({
       <input type="checkbox" checked={task.done} onChange={onToggleDone} aria-label={`Marcar "${task.title}" como hecha`} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600 }}>{task.title}</div>
-        {(task.dueDate || responsible || (responsibleNames && responsibleNames.length > 0) || shownPriority) && (
+        {(task.dueDate || responsible || (responsibleNames && responsibleNames.length > 0) || shownPriority || groupName) && (
           <div className="muted event-task-card-meta">
             {task.dueDate && (
               <span style={overdue ? { color: '#dc2626', fontWeight: 600 } : undefined}>
@@ -2303,6 +2413,7 @@ function TaskCard({
             ) : (
               responsible && <span>👤 {responsible.name}</span>
             )}
+            {groupName && <span>🗂️ {groupName}</span>}
           </div>
         )}
         {task.notes && (
@@ -2317,10 +2428,13 @@ function TaskCard({
           taskTitle={task.title}
           reminders={reminder.reminders}
           hint={reminder.hint}
+          gate={reminder.gate}
           saving={reminder.saving}
           onTogglePreset={reminder.onTogglePreset}
           onClear={reminder.onClear}
           onOpenCustom={reminder.onOpenCustom}
+          onNoDateTap={reminder.onNoDateTap}
+          onEnableCalendar={reminder.onEnableCalendar}
         />
       )}
       <div style={{ position: 'relative' }}>
@@ -2341,9 +2455,24 @@ function TaskCard({
                   onEdit()
                 }}
               >
-                ✏️ Editar
+                <span className="event-task-menu-row">
+                  <span className="event-task-menu-icon">✏️</span>
+                  <span>Editar</span>
+                </span>
               </button>
-              {onDelete && <ConfirmButton label="🗑️ Borrar" confirmLabel="Borrar" className="link-button" onConfirm={onDelete} />}
+              {onDelete && (
+                <ConfirmButton
+                  label={
+                    <span className="event-task-menu-row">
+                      <span className="event-task-menu-icon">🗑️</span>
+                      <span>Borrar</span>
+                    </span>
+                  }
+                  confirmLabel="Borrar"
+                  className="link-button"
+                  onConfirm={onDelete}
+                />
+              )}
             </div>
           </>
         )}
@@ -2364,6 +2493,8 @@ function TaskEditModal({
   familyMembers,
   helpers,
   onHelpersChanged,
+  groups = [],
+  initialGroupId = null,
   onClose,
   onSaved,
 }: {
@@ -2372,6 +2503,11 @@ function TaskEditModal({
   familyMembers: FamilyMember[]
   helpers: EventHelper[]
   onHelpersChanged: () => Promise<void>
+  // Bloque D/F — encargos disponibles para seleccionar (solo lectura aquí: crear/renombrar/borrar
+  // encargos vive exclusivamente en "🗂️ Encargos", igual que Colaboradores en el bloque 8 de la tanda
+  // anterior). initialGroupId: al crear una tarea desde "+ Tarea en este encargo", llega preseleccionado.
+  groups?: EventTaskGroup[]
+  initialGroupId?: string | null
   onClose: () => void
   onSaved: () => void
 }) {
@@ -2386,6 +2522,7 @@ function TaskEditModal({
   // prioridad (igual que el alta rápida de siempre) en vez de forzar "Sin prioridad" por defecto.
   const [priorityTouched, setPriorityTouched] = useState(false)
   const [notes, setNotes] = useState(task?.notes ?? '')
+  const [groupId, setGroupId] = useState<string>(task?.groupId ?? initialGroupId ?? '')
   const originalResponsibleIds = task?.responsibleMemberIds && task.responsibleMemberIds.length > 0 ? task.responsibleMemberIds : task?.assignedMemberId ? [task.assignedMemberId] : []
   const [responsibleIds, setResponsibleIds] = useState<string[]>(originalResponsibleIds)
   const originalHelperIds = (task?.helpers ?? []).flatMap((h) => (h.helperId ? [h.helperId] : []))
@@ -2490,6 +2627,7 @@ function TaskEditModal({
         })
         if (responsibleIds.length > 0) await setEventTaskResponsibles(newId, responsibleIds)
         if (helperIds.length > 0) await setEventTaskHelpers(newId, helperIds)
+        if (groupId) await setEventTaskGroup(newId, groupId)
         if (showInCalendar && dueDate) {
           const linkedId = await linkEventTaskToCalendar(newId)
           const reminders = remindersForForm()
@@ -2510,6 +2648,7 @@ function TaskEditModal({
         if (!sameResponsibles) await setEventTaskResponsibles(task.id, responsibleIds)
         const sameHelpers = [...helperIds].sort().join('|') === [...originalHelperIds].sort().join('|')
         if (!sameHelpers) await setEventTaskHelpers(task.id, helperIds)
+        if (groupId !== (task.groupId ?? '')) await setEventTaskGroup(task.id, groupId || null)
         const wasLinked = task.calendarEventId != null
         let linkedId: string | null = task.calendarEventId
         if (showInCalendar && !wasLinked && dueDate) linkedId = await linkEventTaskToCalendar(task.id)
@@ -2582,6 +2721,19 @@ function TaskEditModal({
               <option value="baja">Baja</option>
             </select>
           </label>
+          {groups.length > 0 && (
+            <label>
+              Encargo (opcional)
+              <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                <option value="">Ninguno</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div style={{ minWidth: 0 }}>
             <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
               Responsables (puede ser más de uno; ninguno marcado = sin asignar)
@@ -2890,6 +3042,158 @@ function EventHelpersModal({
                 aria-label="Relación del nuevo colaborador"
                 style={{ minWidth: 0, flex: 1 }}
               />
+            </div>
+            <button type="button" onClick={() => void add()} disabled={!newName.trim() || saving} style={{ marginTop: 4 }}>
+              Añadir
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// "🗂️ Encargos" (bloque D/F de la tanda) — agrupación organizativa de Preparativos relacionados (p. ej.
+// "Flores": ramo, prendidos, decoración, recoger). Puramente ligera y deliberadamente SIN ninguna
+// relación con Proveedores/Presupuesto (ver migración 0212 y el informe de esta tanda — unificarlo ahí
+// podría sumar un mismo importe varias veces, y es una decisión de producto aparte).
+//
+// Crear/renombrar/borrar un encargo vive exclusivamente aquí; dentro de Nueva/Editar tarea solo se
+// SELECCIONA (mismo criterio que Colaboradores). Borrar un encargo nunca borra sus tareas — el FK
+// ON DELETE SET NULL las deja sin encargo, no hace falta pedir confirmación "conservar/quitar" como con
+// un colaborador (aquí no hay ninguna referencia histórica que se pueda perder: la tarea sigue intacta).
+function EventTaskGroupsModal({
+  eventId,
+  groups,
+  tasks,
+  onGroupsChanged,
+  onClose,
+  onCreateTaskInGroup,
+}: {
+  eventId: string
+  groups: EventTaskGroup[]
+  tasks: EventTask[]
+  onGroupsChanged: () => Promise<void>
+  onClose: () => void
+  onCreateTaskInGroup: (groupId: string) => void
+}) {
+  const [newName, setNewName] = useState('')
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function add() {
+    if (!newName.trim()) return
+    setError(null)
+    setSaving(true)
+    try {
+      await addEventTaskGroup(eventId, newName)
+      setNewName('')
+      await onGroupsChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo crear el encargo'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveEditing() {
+    if (!editing || !editing.name.trim()) return
+    setError(null)
+    try {
+      await renameEventTaskGroup(editing.id, editing.name)
+      setEditing(null)
+      await onGroupsChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo renombrar el encargo'))
+    }
+  }
+
+  // Nunca destructivo para las tareas (no hay nada que "conservar o quitar": siguen intactas, solo se
+  // desvinculan) — basta un aviso sencillo con el número, sin el flujo de conservar/quitar de Colaboradores.
+  async function askDelete(g: EventTaskGroup) {
+    setError(null)
+    try {
+      const count = await countTasksInGroup(g.id)
+      const message = count > 0 ? `¿Borrar el encargo «${g.name}»? Sus ${count} tarea${count === 1 ? '' : 's'} no se borran: quedan sin encargo.` : `¿Borrar el encargo «${g.name}»?`
+      if (!window.confirm(message)) return
+      await deleteEventTaskGroup(g.id)
+      await onGroupsChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar el encargo'))
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            🗂️ Encargos
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="card member-form">
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+            Agrupa Preparativos relacionados (por ejemplo «Flores»: ramo, prendidos, decoración, recoger). Cada tarea sigue siendo independiente — el encargo es solo para verlas juntas.
+          </p>
+          {error && <p className="error">{error}</p>}
+          {groups.length === 0 && <p className="muted">Todavía no hay ningún encargo en este evento.</p>}
+          {groups.map((g) => {
+            const groupTasks = tasks.filter((t) => t.groupId === g.id)
+            return editing && editing.id === g.id ? (
+              <div key={g.id} className="card" style={{ padding: 8 }}>
+                <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
+                  <input type="text" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} aria-label="Nombre del encargo" style={{ minWidth: 0, flex: 1 }} />
+                </div>
+                <div className="filter-row" style={{ marginTop: 4 }}>
+                  <button type="button" className="link-button" onClick={() => void saveEditing()}>
+                    Guardar
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setEditing(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={g.id} className="card" style={{ padding: 8 }}>
+                <div className="inline-fields" style={{ alignItems: 'center' }}>
+                  <strong style={{ flex: 1 }}>{g.name}</strong>
+                  <button type="button" className="link-button" onClick={() => setEditing({ id: g.id, name: g.name })}>
+                    Editar
+                  </button>
+                  <button type="button" className="link-button" onClick={() => void askDelete(g)}>
+                    Borrar
+                  </button>
+                </div>
+                {groupTasks.length > 0 ? (
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 13 }}>
+                    {groupTasks.map((t) => (
+                      <li key={t.id}>
+                        {t.title}
+                        {t.done ? ' ✔️' : ''}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+                    Todavía no tiene tareas.
+                  </p>
+                )}
+                <button type="button" className="link-button" onClick={() => onCreateTaskInGroup(g.id)} style={{ marginTop: 4 }}>
+                  + Tarea en este encargo
+                </button>
+              </div>
+            )
+          })}
+          <div className="card" style={{ padding: 8 }}>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+              + Nuevo encargo
+            </div>
+            <div className="inline-fields" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+              <input type="text" value={newName} placeholder="Nombre (p. ej. Flores)" onChange={(e) => setNewName(e.target.value)} aria-label="Nombre del nuevo encargo" style={{ minWidth: 0, flex: 1 }} />
             </div>
             <button type="button" onClick={() => void add()} disabled={!newName.trim() || saving} style={{ marginTop: 4 }}>
               Añadir

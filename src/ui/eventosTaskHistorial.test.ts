@@ -57,7 +57,8 @@ describe('TaskCard.onDelete es opcional — el menú "⋯" solo pinta "🗑️ B
   })
 
   it('el botón de borrar se pinta condicionalmente', () => {
-    expect(fn).toContain('{onDelete && <ConfirmButton')
+    expect(fn).toContain('{onDelete && (')
+    expect(fn).toContain('<ConfirmButton')
   })
 
   it('la lista de pendientes (arriba) sigue pasando onDelete tal cual — solo las completadas se quedan sin él', () => {

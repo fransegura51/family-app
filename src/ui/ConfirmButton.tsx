@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 // Confirmación de dos toques antes de borrar cualquier cosa de la
 // aplicación (petición real: "que tenga una mediana seguridad que haya
@@ -19,7 +19,9 @@ export function ConfirmButton({
   ariaLabel,
 }: {
   onConfirm: () => void
-  label?: string
+  // Casi siempre texto; acepta nodo (p. ej. icono + texto en columnas alineadas) cuando el sitio que
+  // llama necesita maquetar el contenido — nunca cambia el comportamiento del propio botón.
+  label?: ReactNode
   confirmLabel?: string
   confirmMessage?: string
   className?: string

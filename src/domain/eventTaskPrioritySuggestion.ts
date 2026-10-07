@@ -30,26 +30,35 @@ function urgencyBucket(daysUntil: number | null): string {
   return 'lejos'
 }
 
-// Solo tiene sentido para una prioridad fijada por el usuario (origen 'usuario'), incluida «Sin
-// prioridad» — una tarea que gestiona PEPA ya se recalcula sola (effectivePriority) y nunca necesita que
-// se le "proponga" nada: null en cualquier otro caso.
+export const PRIORITY_ORDER: Record<TaskPriority, number> = { baja: 1, media: 2, alta: 3 }
+
+// Corrección real (revisión manual): "Buscar/organizar clases de baile" estaba en Alta y PEPA proponía
+// bajarla a Media "porque hay preparativos que dependen de esta tarea" — al revés de lo razonable (que
+// algo dependa de esta tarea es, como mucho, un argumento para no bajarla nunca, no para hacerlo). La
+// causa de fondo no era ese título: NINGUNA señal de este motor (practica/reserva/fecha_proxima/
+// dependencia/general) representa "esto importa menos que antes" — todas son, como mucho, neutras o de
+// subida. Por eso la regla general, no un parche puntual: una propuesta SOLO puede subir prioridad o
+// asignar una cuando no había ninguna ("Sin prioridad" elegido a mano) — nunca bajar una que el usuario
+// ya fijó. Si en el futuro se diseña una señal real de "esto ya no es tan urgente" (p. ej. la tarea de la
+// que dependía se resolvió), esta función es el único sitio que hay que tocar.
 export function computePrioritySuggestion(task: SuggestableTask, decisions: DecisionLookup[], today: Date): PrioritySuggestionContext | null {
   if (task.prioritySource !== 'usuario') return null
   const asIfManaged = effectivePriority({ ...task, prioritySource: 'pepa' }, decisions, today)
   if (!asIfManaged.priority || asIfManaged.priority === task.priority) return null
+  if (task.priority && PRIORITY_ORDER[asIfManaged.priority] < PRIORITY_ORDER[task.priority]) return null
   const decisionQuestionKey = task.decisionId ? (decisions.find((d) => d.id === task.decisionId)?.questionKey ?? '') : ''
   const daysUntil = daysUntilDate(task.dueDate ?? null, today)
   const fingerprint = `${asIfManaged.priority}:${asIfManaged.reason}:${decisionQuestionKey}:${urgencyBucket(daysUntil)}`
   return { proposedPriority: asIfManaged.priority, reason: asIfManaged.reason, fingerprint }
 }
-
-export const PRIORITY_ORDER: Record<TaskPriority, number> = { baja: 1, media: 2, alta: 3 }
 const PRIORITY_LABEL: Record<TaskPriority, string> = { alta: 'Alta', media: 'Media', baja: 'Baja' }
 
+// Corregido: "dependencia" significa que ESTA tarea depende de una decisión ya tomada del evento (nunca
+// al revés — nunca "otras tareas dependen de esta"), así que el texto ya no puede sugerir lo contrario.
 function reasonPhrase(reason: PriorityReason): string {
   if (reason === 'practica') return 'esta tarea requiere varias sesiones de práctica y sigue pendiente'
   if (reason === 'reserva') return 'conviene resolverlo pronto: los proveedores suelen tener fechas limitadas'
-  if (reason === 'dependencia') return 'hay preparativos que dependen de esta tarea'
+  if (reason === 'dependencia') return 'esta tarea depende de una decisión ya tomada del evento'
   if (reason === 'fecha_proxima') return 'se está acercando la fecha que marcasteis y todavía está pendiente'
   return 'ha cambiado el contexto de esta tarea'
 }

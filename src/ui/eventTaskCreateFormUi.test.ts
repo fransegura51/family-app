@@ -42,7 +42,7 @@ describe('bloque 2: "+ Nueva tarea" vive debajo de los filtros y antes de la lis
   })
   it('el botón abre el modal de creación (creatingTask), no está dentro del bloque condicionado a pendingTasks.length > 0 (debe verse también sin tareas)', () => {
     const pendingZeroIdx = TAREAS_MODULE.indexOf('pendingTasks.length === 0')
-    const newTaskIdx = TAREAS_MODULE.indexOf('onClick={() => setCreatingTask(true)}')
+    const newTaskIdx = TAREAS_MODULE.indexOf('setCreatingTaskInGroup(null)')
     expect(newTaskIdx).toBeGreaterThan(-1)
     // El botón está fuera (después) del bloque "pendingTasks.length > 0 && (...)" de los chips, pero no
     // depende de él: comprobamos que no hay ningún `pendingTasks.length > 0 &&` envolviendo directamente

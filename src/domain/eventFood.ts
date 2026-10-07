@@ -35,8 +35,8 @@ export const FOOD_TARTA_KEY = 'comida.tarta'
 export const FOOD_BEBIDAS_KEY = 'comida.bebidas'
 export const FOOD_NECESIDADES_KEY = 'comida.necesidades_revisadas'
 
-const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
-const RESOLVED: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true }
+const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+const RESOLVED: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true, groupKind: null, groupDefaultName: null }
 
 // Categorías internas para relacionar proveedores reales (nunca crean un proveedor ficticio).
 export const FOOD_PROVIDER_CATEGORIES = {
@@ -281,8 +281,8 @@ function customToDesired(custom: CustomResolution | undefined, taskTitle: (label
   if (!custom) return NONE
   if (custom.action === 'resuelto') return RESOLVED
   if (custom.action === 'todavia_no_lo_sabemos') return NONE
-  if (custom.action === 'preparar') return { taskTitle: taskTitle(custom.label), budgetCategory: null, providerCategory: null, resolved: false }
-  return { taskTitle: taskTitle(custom.label), budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null, providerCategory: null, resolved: false }
+  if (custom.action === 'preparar') return { taskTitle: taskTitle(custom.label), budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+  return { taskTitle: taskTitle(custom.label), budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
 }
 
 function contratacionTitles(kinds: ('catering' | 'restaurante')[]): { task: string; budget: string; provider: string } {
@@ -300,14 +300,14 @@ export function desiredForContratacion(ctx: FoodContext): DesiredPairGeneration 
   if (answer.choice === 'si') return RESOLVED
   if (answer.choice !== 'buscando') return NONE
   const t = contratacionTitles(externalFoodKinds(quienAnswer(ctx)))
-  return { taskTitle: t.task, budgetCategory: t.budget, providerCategory: t.provider, resolved: false }
+  return { taskTitle: t.task, budgetCategory: t.budget, providerCategory: t.provider, resolved: false, groupKind: null, groupDefaultName: null }
 }
 
 export function desiredForMenuEstado(ctx: FoodContext): DesiredPairGeneration {
   if (!foodWillExist(ctx)) return NONE
   const answer = menuEstadoAnswer(ctx)
   if (!answer) return NONE
-  if (answer.choice === 'por_decidir') return { taskTitle: 'Decidir el menú', budgetCategory: null, providerCategory: null, resolved: false }
+  if (answer.choice === 'por_decidir') return { taskTitle: 'Decidir el menú', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   if (answer.choice === 'decidido') return RESOLVED
   return NONE
 }
@@ -317,8 +317,8 @@ export function desiredForMenuInfantil(ctx: FoodContext): DesiredPairGeneration 
   const answer = answerOf<MenuInfantilAnswer>(ctx.decisions, FOOD_MENU_INFANTIL_KEY)
   if (!answer) return NONE
   if (answer.choice === 'incluido') return RESOLVED
-  if (answer.choice === 'pedir') return { taskTitle: 'Pedir el menú infantil', budgetCategory: null, providerCategory: null, resolved: false }
-  if (answer.choice === 'nosotros') return { taskTitle: 'Preparar el menú infantil', budgetCategory: null, providerCategory: null, resolved: false }
+  if (answer.choice === 'pedir') return { taskTitle: 'Pedir el menú infantil', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+  if (answer.choice === 'nosotros') return { taskTitle: 'Preparar el menú infantil', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   if (answer.choice === 'otro') return customToDesired(answer.custom, (l) => `Menú infantil: ${l}`, (l) => `Menú infantil: ${l}`)
   return NONE
 }
@@ -328,8 +328,8 @@ export function desiredForTarta(ctx: FoodContext): DesiredPairGeneration {
   if (venueIncludes(ctx, 'tarta')) return NONE
   const answer = answerOf<TartaAnswer>(ctx.decisions, FOOD_TARTA_KEY)
   if (!answer) return NONE
-  if (answer.choice === 'encargar') return { taskTitle: 'Encargar la tarta', budgetCategory: 'Tarta', providerCategory: FOOD_PROVIDER_CATEGORIES.pasteleria, resolved: false }
-  if (answer.choice === 'nosotros') return { taskTitle: 'Preparar la tarta', budgetCategory: null, providerCategory: null, resolved: false }
+  if (answer.choice === 'encargar') return { taskTitle: 'Encargar la tarta', budgetCategory: 'Tarta', providerCategory: FOOD_PROVIDER_CATEGORIES.pasteleria, resolved: false, groupKind: null, groupDefaultName: null }
+  if (answer.choice === 'nosotros') return { taskTitle: 'Preparar la tarta', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   if (answer.choice === 'resuelta') return RESOLVED
   if (answer.choice === 'otro') return customToDesired(answer.custom, (l) => `Tarta: ${l}`, () => 'Tarta')
   // 'no' es una cancelación real; 'todavía no lo sabemos' es pendiente: ninguno genera nada.
@@ -341,8 +341,8 @@ export function desiredForBebidas(ctx: FoodContext): DesiredPairGeneration {
   const answer = answerOf<BebidasAnswer>(ctx.decisions, FOOD_BEBIDAS_KEY)
   if (!answer) return NONE
   if (answer.choice === 'servicio_comida') return RESOLVED
-  if (answer.choice === 'aparte') return { taskTitle: 'Encargar las bebidas', budgetCategory: 'Bebidas', providerCategory: FOOD_PROVIDER_CATEGORIES.bebidas, resolved: false }
-  if (answer.choice === 'nosotros') return { taskTitle: 'Comprar las bebidas', budgetCategory: null, providerCategory: null, resolved: false }
+  if (answer.choice === 'aparte') return { taskTitle: 'Encargar las bebidas', budgetCategory: 'Bebidas', providerCategory: FOOD_PROVIDER_CATEGORIES.bebidas, resolved: false, groupKind: null, groupDefaultName: null }
+  if (answer.choice === 'nosotros') return { taskTitle: 'Comprar las bebidas', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   if (answer.choice === 'otro') return customToDesired(answer.custom, (l) => `Bebidas: ${l}`, () => 'Bebidas')
   return NONE
 }
@@ -353,7 +353,7 @@ export function desiredForNecesidades(ctx: FoodContext): DesiredPairGeneration {
   if (!ctx.needs || !needsReviewApplies(ctx.needs)) return NONE
   const answer = answerOf<NecesidadesAnswer>(ctx.decisions, FOOD_NECESIDADES_KEY)
   if (!answer) return NONE
-  if (answer.choice === 'revisar') return { taskTitle: NECESIDADES_TASK_TITLE, budgetCategory: null, providerCategory: null, resolved: false }
+  if (answer.choice === 'revisar') return { taskTitle: NECESIDADES_TASK_TITLE, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   if (answer.choice === 'si') return RESOLVED
   return NONE
 }

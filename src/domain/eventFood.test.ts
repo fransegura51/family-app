@@ -67,11 +67,11 @@ describe('Comida H. Catering / restaurante externo → estado de contratación',
   })
   it('marcar las vías de «combinar» no crea ningún trabajo por sí solo', () => {
     const ctx = ctxOf([casa, quien('combinar', { combinar: ['catering', 'restaurante', 'nosotros'] })])
-    expect(desiredForContratacion(ctx)).toMatchObject({ taskTitle: null, budgetCategory: null, resolved: false })
+    expect(desiredForContratacion(ctx)).toMatchObject({ taskTitle: null, budgetCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
   it('«Sí, ya está contratado» NO inventa proveedor ni coste: solo cierra lo pendiente', () => {
     const ctx = ctxOf([casa, quien('catering'), makeDecision(FOOD_CONTRATACION_KEY, { choice: 'si' })])
-    expect(desiredForContratacion(ctx)).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true })
+    expect(desiredForContratacion(ctx)).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true, groupKind: null, groupDefaultName: null })
   })
 })
 
@@ -100,7 +100,7 @@ describe('Comida I. «Lo estamos buscando» → tarea + presupuesto sin importe 
   it('«Todavía no lo sabemos» y «Otro» no generan nada', () => {
     for (const choice of ['todavia_no_lo_sabemos', 'otro']) {
       const d = desiredForContratacion(ctxOf([casa, quien('catering'), makeDecision(FOOD_CONTRATACION_KEY, { choice })]))
-      expect(d).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+      expect(d).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
     }
   })
   it('si deja de aplicar (p. ej. el lugar pasa a incluir la comida) se cancela lo pristino', () => {
@@ -312,7 +312,7 @@ describe('Menú P–V — estado del menú', () => {
     expect(reconcilePairGeneration(desiredForMenuEstado(ctx), existing, undefined).actions).toEqual([{ op: 'complete_task', id: 't1' }])
   })
   it('«Todavía no lo sabemos» no genera nada', () => {
-    expect(desiredForMenuEstado(ctxOf([casa, quien('nosotros'), makeDecision(FOOD_MENU_ESTADO_KEY, { choice: 'todavia_no_lo_sabemos' })]))).toMatchObject({ taskTitle: null, resolved: false })
+    expect(desiredForMenuEstado(ctxOf([casa, quien('nosotros'), makeDecision(FOOD_MENU_ESTADO_KEY, { choice: 'todavia_no_lo_sabemos' })]))).toMatchObject({ taskTitle: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
   it('«¿Quieres guardar el menú?» solo aparece con el menú decidido y mientras no haya platos', () => {
     const decidido = makeDecision(FOOD_MENU_ESTADO_KEY, { choice: 'decidido' })
@@ -359,10 +359,10 @@ describe('Tarta AF–AI', () => {
   })
   it('AG. «La encargaremos» → «Encargar la tarta» + presupuesto «Tarta» sin importe + categoría Pastelería', () => {
     const d = desiredForTarta(ctxOf([casa, tarta('encargar')]))
-    expect(d).toEqual({ taskTitle: 'Encargar la tarta', budgetCategory: 'Tarta', providerCategory: 'Pastelería', resolved: false })
+    expect(d).toEqual({ taskTitle: 'Encargar la tarta', budgetCategory: 'Tarta', providerCategory: 'Pastelería', resolved: false, groupKind: null, groupDefaultName: null })
   })
   it('«La prepararemos nosotros» → «Preparar la tarta», sin proveedor ni presupuesto', () => {
-    expect(desiredForTarta(ctxOf([casa, tarta('nosotros')]))).toEqual({ taskTitle: 'Preparar la tarta', budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForTarta(ctxOf([casa, tarta('nosotros')]))).toEqual({ taskTitle: 'Preparar la tarta', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
   it('«Ya la tenemos resuelta» completa lo pendiente y nunca toca el presupuesto', () => {
     const d = desiredForTarta(ctxOf([casa, tarta('resuelta')]))
@@ -404,10 +404,10 @@ describe('Bebidas AJ–AL', () => {
   })
   it('AL. «Las encargaremos aparte» → tarea + concepto sin importe + categoría; «compramos nosotros» → solo tarea; «incluye el servicio» → nada nuevo', () => {
     const base = [casa, quien('nosotros')]
-    expect(desiredForBebidas(ctxOf([...base, bebidas('aparte')]))).toEqual({ taskTitle: 'Encargar las bebidas', budgetCategory: 'Bebidas', providerCategory: 'Bebidas', resolved: false })
+    expect(desiredForBebidas(ctxOf([...base, bebidas('aparte')]))).toEqual({ taskTitle: 'Encargar las bebidas', budgetCategory: 'Bebidas', providerCategory: 'Bebidas', resolved: false, groupKind: null, groupDefaultName: null })
     expect(desiredForBebidas(ctxOf([...base, bebidas('nosotros')]))).toMatchObject({ taskTitle: 'Comprar las bebidas', budgetCategory: null })
-    expect(desiredForBebidas(ctxOf([...base, bebidas('servicio_comida')]))).toMatchObject({ taskTitle: null, resolved: true })
-    expect(desiredForBebidas(ctxOf([...base, bebidas('todavia_no_lo_sabemos')]))).toMatchObject({ taskTitle: null, resolved: false })
+    expect(desiredForBebidas(ctxOf([...base, bebidas('servicio_comida')]))).toMatchObject({ taskTitle: null, resolved: true, groupKind: null, groupDefaultName: null })
+    expect(desiredForBebidas(ctxOf([...base, bebidas('todavia_no_lo_sabemos')]))).toMatchObject({ taskTitle: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 })
 

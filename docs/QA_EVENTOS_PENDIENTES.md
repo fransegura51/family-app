@@ -432,3 +432,31 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 386. [ ] Una tarea automática (generada por una decisión) que se agrupa manualmente conserva su encargo si luego cambia la decisión que la originó.
 387. [ ] Agrupar tareas no crea ni duplica ningún proveedor ni ningún concepto de presupuesto.
 388. [ ] El formulario de Nueva/Editar tarea no muestra el selector de encargo si todavía no se ha creado ninguno (cero cambio visual).
+
+### Tanda Encargos v2 — contenedor, auto-agrupación en origen, resolución y "Siguiente preparativo"
+
+389. [ ] Al responder "Floristería" en Ramo o Prendido (boda, bloque Pareja), la tarea nueva sale YA dentro de un encargo "Flores" sin tocar nada a mano.
+390. [ ] Si además se responde "Lo preparamos nosotros" para el otro ítem floral, esa tarea entra en el MISMO encargo "Flores" (no crea uno aparte).
+391. [ ] En Preparativos, las tareas de "Flores" salen juntas bajo una única cabecera "📦 FLORES" — el nombre no se repite en cada tarjeta individual.
+392. [ ] Cada tarjeta dentro de "📦 FLORES" conserva checkbox, fecha/responsable/prioridad, campana y "⋯" exactamente igual que una tarea suelta.
+393. [ ] Una tarea sin encargo (o cuyo encargo se borró) sigue viéndose como una tarjeta normal, fuera de cualquier bloque "📦".
+394. [ ] Renombrar "Flores" a otro nombre desde "🗂️ Encargos" y luego responder OTRA pregunta floral: la nueva tarea sigue reconociendo y uniéndose al mismo encargo (por su identificador interno, no por el nombre).
+395. [ ] "+ Añadir tarea existente" en "🗂️ Encargos" solo ofrece tareas que todavía no están en ningún encargo.
+396. [ ] Añadir una tarea existente a un encargo la hace aparecer en su bloque "📦" de Preparativos sin duplicarla ni crear una nueva.
+397. [ ] "Resolver encargo" en "📦 FLORES" pide cómo se ha resuelto: Empresa/proveedor, Lo hacemos nosotros, Nos ayuda alguien u Otra opción.
+398. [ ] Elegir "Empresa/proveedor" y seleccionar un proveedor YA existente del evento no crea uno nuevo ni lo duplica.
+399. [ ] Elegir "Empresa/proveedor" y dar de alta uno nuevo lo deja disponible también en "📇 Proveedores" (mismo proveedor, no uno aparte).
+400. [ ] Poner un precio total (p. ej. 650 €) al resolver crea UN único registro en "🧾 Pagos y fianzas" con ese importe — nunca uno por cada tarea del encargo.
+401. [ ] Resolver sin poner precio no crea ningún pago, pero sí guarda el proveedor y el método.
+402. [ ] Resolver "📦 FLORES" completa (✔️) exactamente sus tareas pendientes en ese momento — ninguna otra tarea ni otro encargo cambia.
+403. [ ] Resolver "📦 FLORES" NO completa "Recoger las flores" (una tarea distinta y posterior), aunque exista y esté en el mismo evento.
+404. [ ] Tras resolver, el encargo muestra "✅ Resuelto" con el método elegido, en vez del botón "Resolver encargo".
+405. [ ] Borrar después el proveedor usado (desde "📇 Proveedores") no borra ni vacía el histórico de cómo se resolvió "Flores" (sigue viéndose el método y, por nombre, qué proveedor fue).
+406. [ ] Al resolver "📦 FLORES", PEPA propone como siguiente preparativo "Recoger las flores" con tres botones: "Crear preparativo", "No hace falta" y "+ Crear otro".
+407. [ ] "Crear preparativo" abre el formulario normal de "Nueva tarea" con el título ya puesto, sin fecha/responsable/precio inventados; se revisa y se guarda igual que cualquier tarea.
+408. [ ] Tras crear esa tarea, el botón "Crear preparativo" de esa misma sugerencia queda marcado como ya creada (no se puede duplicar desde el mismo aviso).
+409. [ ] "No hace falta" cierra la sugerencia sin crear nada.
+410. [ ] "+ Crear otro" abre el mismo formulario de "Nueva tarea" en blanco, para una tarea distinta (p. ej. "Sacar dinero para pagar la tarta") — se puede usar varias veces.
+411. [ ] Completar una tarea SUELTA (sin encargo) con el checkbox normal sigue funcionando igual que siempre — hoy no aparece ninguna sugerencia de "siguiente preparativo" porque no hay ninguna relación real conocida a nivel de una sola tarea.
+412. [ ] Los filtros de responsables (incluido el AND) y "Sin asignar" siguen funcionando igual con tareas dentro de un encargo agrupado.
+413. [ ] "Ver todas"/"Ver menos" y "Completadas" siguen funcionando igual con la nueva vista agrupada.

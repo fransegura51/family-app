@@ -14,7 +14,7 @@ import type { CustomAction, CustomHasCost, CustomResolution, DesiredPairGenerati
 import { decisionStatus, type DecisionStatus } from '@/domain/eventPairDecisions'
 import type { EventDecision, EventType } from '@/domain/types'
 
-const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
+const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
 
 export const MOMENTOS_ESPECIALES_QUESTION_KEY = 'momentos_especiales.seleccion'
 
@@ -135,7 +135,7 @@ export interface ClasesBaileAnswer {
 
 export function desiredForClasesBaile(answer: ClasesBaileAnswer | undefined): DesiredPairGeneration {
   if (!answer || answer.choice !== 'si') return NONE
-  return { taskTitle: 'Buscar/organizar clases de baile', budgetCategory: null, providerCategory: null, resolved: false }
+  return { taskTitle: 'Buscar/organizar clases de baile', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
 }
 
 export type { CustomAction, CustomHasCost, CustomResolution, DesiredPairGeneration }

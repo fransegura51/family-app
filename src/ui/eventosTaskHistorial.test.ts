@@ -61,8 +61,10 @@ describe('TaskCard.onDelete es opcional — el menú "⋯" solo pinta "🗑️ B
     expect(fn).toContain('<ConfirmButton')
   })
 
-  it('la lista de pendientes (arriba) sigue pasando onDelete tal cual — solo las completadas se quedan sin él', () => {
-    const pendingBlock = slice(TAREAS_CASE, '{visibleTasks.map((t) => (', '))}')
-    expect(pendingBlock).toContain('onDelete={() => deleteEventTask(t.id).then(reloadTasks)}')
+  it('la lista de pendientes (arriba, agrupada o no — ver eventTaskGroupDisplay.ts) sigue pasando onDelete tal cual — solo las completadas se quedan sin él', () => {
+    const pendingBlock = slice(TAREAS_CASE, '{buildTaskGroupRenderItems(visibleTasks, eventTaskGroups).map((item) =>', 'pendingTasks.length > 5')
+    // Dos TaskCard reciben onDelete en la lista pendiente: la de una tarea suelta y la de una tarea dentro
+    // de un encargo — ninguna de las dos pierde el borrado por estar o no agrupada.
+    expect((pendingBlock.match(/onDelete={\(\) => deleteEventTask\(/g) ?? []).length).toBe(2)
   })
 })

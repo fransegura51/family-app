@@ -24,7 +24,10 @@ describe('bloque 1: el alta rápida inferior desaparece por completo', () => {
   })
   it('tampoco queda con filtros activos: la sección de alta rápida no está condicionada a responsibleFilter', () => {
     // Si ya no existe el texto en absoluto (comprobado arriba), no puede reaparecer bajo ninguna condición.
-    expect(UI).not.toMatch(/responsibleFilter[^]*?\+ Añadir tarea/)
+    // Comilla final exigida a propósito: distingue el viejo placeholder="+ Añadir tarea" (alta rápida
+    // retirada) del nuevo botón "+ Añadir tarea existente" de "🗂️ Encargos" (Tanda Encargos v2), que no
+    // tiene relación alguna con esto.
+    expect(UI).not.toMatch(/responsibleFilter[^]*?\+ Añadir tarea"/)
   })
 })
 
@@ -56,10 +59,11 @@ describe('bloque 3: "+ Nueva tarea" abre el MISMO formulario completo que "Edita
     expect(UI).toContain('task?: EventTask')
     expect(UI).toContain('const isCreating = task === undefined')
   })
-  it('EventosScreen renderiza TaskEditModal dos veces: una para editar (con task) y otra para crear (sin task)', () => {
-    expect((UI.match(/<TaskEditModal/g) ?? []).length).toBe(2)
+  it('EventosScreen renderiza TaskEditModal tres veces: editar (con task), crear (sin task) y "siguiente preparativo" (sin task, con initialTitle)', () => {
+    expect((UI.match(/<TaskEditModal/g) ?? []).length).toBe(3)
     expect(UI).toContain('{creatingTask && (')
     expect(UI).toContain('{editingTask && (')
+    expect(UI).toContain('{followUpCreate && (')
   })
   it('el título del modal cambia según el modo, sin duplicar el formulario', () => {
     expect(MODAL).toContain("{isCreating ? 'Nueva tarea' : 'Editar tarea'}")

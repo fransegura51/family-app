@@ -788,14 +788,29 @@ export interface EventTask {
   groupId?: string | null
 }
 
+// Cómo se resolvió un encargo (migración 0215) — ver EventTaskGroup.resolutionMethod.
+export type EventTaskGroupResolutionMethod = 'empresa' | 'nosotros' | 'ayuda' | 'otro'
+
 // Encargo/grupo organizativo de Preparativos relacionados (migración 0212) — p. ej. "Flores" agrupando
-// ramo/prendidos/decoración/recoger. Puramente organizativo: sin relación con Proveedores/Presupuesto
-// (ver eventTaskGroups.ts). Cada tarea pertenece como mucho a un grupo (event_tasks.groupId).
+// ramo/prendidos/decoración/recoger. Cada tarea pertenece como mucho a un grupo (event_tasks.groupId).
+// Migración 0215 — resolución: provider/payment reutilizan tal cual event_providers/event_payments (nunca
+// un modelo paralelo, nunca event_budget_items — ver cabecera de esa migración); providerName es un
+// snapshot tomado al resolver (igual que event_task_helpers.helperName) para que el histórico de "cómo se
+// resolvió" sobreviva aunque el proveedor se edite o se borre después.
 export interface EventTaskGroup {
   id: string
   eventId: string
   name: string
   sortOrder: number
+  // Identificador interno ESTABLE (p. ej. 'flores'), distinto del name editable — para que la
+  // auto-agrupación en origen reconozca el mismo encargo aunque se haya renombrado. null = creado a mano.
+  kind: string | null
+  resolvedAt: string | null
+  resolutionMethod: EventTaskGroupResolutionMethod | null
+  resolutionNote: string | null
+  providerId: string | null
+  providerName: string | null
+  paymentId: string | null
 }
 
 // Preparativos (migración 0208) — propuesta de PEPA de cambiar una prioridad que fijó el usuario, con

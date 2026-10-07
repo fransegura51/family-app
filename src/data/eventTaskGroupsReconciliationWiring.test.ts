@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 // Bloque H — una tarea automática agrupada nunca debe perder su encargo en una reconciliación posterior.
-// executeReconcileActions (create_task/update_task/complete_task/delete_task/detach_task) nunca
-// referencia group_id: por construcción, ningún camino de reconciliación lo toca ni lo borra.
+// update_task/complete_task/delete_task/detach_task nunca referencian group_id: por construcción, esos
+// caminos de reconciliación no lo tocan ni lo borran. Tanda Encargos v2: create_task es la ÚNICA
+// excepción deliberada — SOLO cuando action.groupKind lo pide (auto-agrupación en origen, ver
+// desiredForFloral) agrupa la tarea RECIÉN creada; nunca reclasifica retroactivamente ninguna existente.
 const EVENTS = (import.meta.glob('/src/data/events.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/data/events.ts']
 
 function window_(src: string, fromMarker: string, toMarker: string): string {
@@ -26,9 +28,11 @@ describe('bloque H: la reconciliación automática nunca toca group_id', () => {
     expect(block).toContain('.update({ decision_id: null })')
     expect(block).not.toContain('group_id')
   })
-  it('create_task (una tarea auto nueva) nunca fija group_id — empieza sin agrupar, nunca se obliga a agrupar', () => {
+  it('create_task solo agrupa la tarea SI action.groupKind lo pide — nunca incondicionalmente, nunca se obliga a agrupar', () => {
     const block = window_(body, "case 'create_task': {", "case 'update_task': {")
-    expect(block).not.toContain('group_id')
+    expect(block).toContain('if (action.groupKind) {')
+    expect(block).toContain('findOrCreateEventTaskGroupByKind(eventId, familyId, action.groupKind, action.groupDefaultName ?? action.groupKind)')
+    expect(block).toContain("from('event_tasks').update({ group_id: groupId })")
   })
   it('complete_task/delete_task tampoco mencionan group_id', () => {
     const completeBlock = window_(body, "case 'complete_task': {", "case 'delete_task': {")

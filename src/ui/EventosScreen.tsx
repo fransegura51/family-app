@@ -140,8 +140,12 @@ import {
   deleteEventTaskGroup,
   listEventTaskGroups,
   renameEventTaskGroup,
+  resolveEventTaskGroup,
   setEventTaskGroup,
 } from '@/data/eventTaskGroups'
+import { buildTaskGroupRenderItems } from '@/domain/eventTaskGroupDisplay'
+import { suggestNextStepsForGroup, suggestNextStepsForTask, type NextStepSuggestion } from '@/domain/eventNextSteps'
+import type { EventTaskGroupResolutionMethod } from '@/domain/types'
 import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskResponsibles'
 import { effectivePriority, recommendTasks, type DecisionLookup } from '@/domain/eventTaskPriority'
 import { explainPrioritySuggestion, PRIORITY_ORDER } from '@/domain/eventTaskPrioritySuggestion'
@@ -982,6 +986,16 @@ function EventDetail({
     return listEventTaskGroups(event.id).then(setEventTaskGroups)
   }
   useEffect(() => void reloadEventTaskGroups().catch(() => {}), [event.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Tanda Encargos v2: qué encargo se está resolviendo ahora mismo ("Marcar encargo como resuelto").
+  const [resolvingGroup, setResolvingGroup] = useState<EventTaskGroup | null>(null)
+  // "Siguiente preparativo" — prompt efímero (solo en memoria, nunca persistido: ver el informe de la
+  // tanda) mostrado una vez justo tras resolver un encargo o completar una tarea suelta. sourceLabel es
+  // el texto de lo que se acaba de resolver/completar; createdKeys evita poder crear la misma sugerencia
+  // dos veces desde el mismo prompt.
+  const [nextStepPrompt, setNextStepPrompt] = useState<{ sourceLabel: string; suggestions: NextStepSuggestion[]; createdKeys: Set<string> } | null>(null)
+  // Formulario de "Nueva tarea" abierto desde el prompt de "Siguiente preparativo" — reutiliza
+  // EXACTAMENTE el mismo TaskEditModal que "+ Nueva tarea", nunca un segundo camino de creación.
+  const [followUpCreate, setFollowUpCreate] = useState<{ initialTitle: string; suggestionKey: string | null } | null>(null)
   // Fase 1 — reforma de Editar/•••: un único punto de entrada
   // ("Gestionar evento") en vez de dos controles compitiendo por la
   // misma clase de acción, ver ManageEventModal más abajo.
@@ -1035,6 +1049,16 @@ function EventDetail({
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las tareas')))
   }
   useEffect(() => void reloadTasks(), [event.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Completar UNA tarea suelta (checkbox normal) pasa por el MISMO motor general de "siguiente
+  // preparativo" que resolver un encargo — hoy siempre sin ninguna sugerencia real (ver
+  // suggestNextStepsForTask), pero el enganche es general y decoupled, no exclusivo de Encargos.
+  async function completeTaskWithNextStep(t: EventTask) {
+    await updateEventTask(t.id, { done: true })
+    await reloadTasks()
+    const suggestions = suggestNextStepsForTask(t)
+    if (suggestions.length > 0) setNextStepPrompt({ sourceLabel: t.title, suggestions, createdKeys: new Set() })
+  }
 
   // Decisiones del evento, solo para que PEPA pueda seguir recalculando la prioridad de las tareas que
   // gestiona (ver effectivePriority) — nunca para escribir nada aquí; cada bloque del configurador sigue
@@ -1468,31 +1492,76 @@ function EventDetail({
             </div>
             {responsibleFilter.length > 0 && filteredTasks.length === 0 && <p className="muted">Ninguna tarea pendiente coincide con este filtro.</p>}
             <div className="event-list" style={{ marginTop: 8 }}>
-              {visibleTasks.map((t) => (
-                <TaskCard
-                  key={t.id}
-                  task={t}
-                  decisions={taskDecisions}
-                  responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
-                  responsibleNames={taskResponsibleNames(t, familyMembers)}
-                  groupName={eventTaskGroups.find((g) => g.id === t.groupId)?.name ?? null}
-                  reminder={{
-                    reminders: taskReminders[t.id] ?? [],
-                    hint: reminderHintFor(t),
-                    gate: reminderGateFor(t),
-                    saving: savingReminderTaskId === t.id,
-                    onTogglePreset: (key) => void toggleTaskReminderPreset(t, key),
-                    onClear: () => void clearTaskReminders(t),
-                    onOpenCustom: () => setEditingTaskId(t.id),
-                    onNoDateTap: () => showToast('Añade una fecha a la tarea para poder configurar avisos.'),
-                    onEnableCalendar: () => enableCalendarForReminder(t),
-                  }}
-                  highlighted={t.id === deepLinkHighlightTaskId}
-                  onToggleDone={() => updateEventTask(t.id, { done: true }).then(reloadTasks)}
-                  onEdit={() => setEditingTaskId(t.id)}
-                  onDelete={() => deleteEventTask(t.id).then(reloadTasks)}
-                />
-              ))}
+              {buildTaskGroupRenderItems(visibleTasks, eventTaskGroups).map((item) =>
+                item.type === 'task' ? (
+                  <TaskCard
+                    key={item.task.id}
+                    task={item.task}
+                    decisions={taskDecisions}
+                    responsible={familyMembers.find((m) => m.id === item.task.assignedMemberId) ?? null}
+                    responsibleNames={taskResponsibleNames(item.task, familyMembers)}
+                    reminder={{
+                      reminders: taskReminders[item.task.id] ?? [],
+                      hint: reminderHintFor(item.task),
+                      gate: reminderGateFor(item.task),
+                      saving: savingReminderTaskId === item.task.id,
+                      onTogglePreset: (key) => void toggleTaskReminderPreset(item.task, key),
+                      onClear: () => void clearTaskReminders(item.task),
+                      onOpenCustom: () => setEditingTaskId(item.task.id),
+                      onNoDateTap: () => showToast('Añade una fecha a la tarea para poder configurar avisos.'),
+                      onEnableCalendar: () => enableCalendarForReminder(item.task),
+                    }}
+                    highlighted={item.task.id === deepLinkHighlightTaskId}
+                    onToggleDone={() => void completeTaskWithNextStep(item.task)}
+                    onEdit={() => setEditingTaskId(item.task.id)}
+                    onDelete={() => deleteEventTask(item.task.id).then(reloadTasks)}
+                  />
+                ) : (
+                  // "📦 NOMBRE" se muestra UNA vez, como cabecera del encargo entero — nunca repetido en
+                  // cada tarjeta (ver TaskCard, que ya no recibe groupName aquí). Cada tarea conserva
+                  // todos sus controles normales (checkbox, campana, ⋯...).
+                  <div key={item.groupId} className="card member-form">
+                    <div className="inline-fields" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                      <strong>📦 {item.groupName.toUpperCase()}</strong>
+                      {item.group.resolvedAt ? (
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          ✅ Resuelto · {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? 'otro']}
+                        </span>
+                      ) : (
+                        <button type="button" className="link-button" onClick={() => setResolvingGroup(item.group)}>
+                          Resolver encargo
+                        </button>
+                      )}
+                    </div>
+                    <div className="event-list" style={{ marginTop: 6 }}>
+                      {item.tasks.map((t) => (
+                        <TaskCard
+                          key={t.id}
+                          task={t}
+                          decisions={taskDecisions}
+                          responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
+                          responsibleNames={taskResponsibleNames(t, familyMembers)}
+                          reminder={{
+                            reminders: taskReminders[t.id] ?? [],
+                            hint: reminderHintFor(t),
+                            gate: reminderGateFor(t),
+                            saving: savingReminderTaskId === t.id,
+                            onTogglePreset: (key) => void toggleTaskReminderPreset(t, key),
+                            onClear: () => void clearTaskReminders(t),
+                            onOpenCustom: () => setEditingTaskId(t.id),
+                            onNoDateTap: () => showToast('Añade una fecha a la tarea para poder configurar avisos.'),
+                            onEnableCalendar: () => enableCalendarForReminder(t),
+                          }}
+                          highlighted={t.id === deepLinkHighlightTaskId}
+                          onToggleDone={() => void completeTaskWithNextStep(t)}
+                          onEdit={() => setEditingTaskId(t.id)}
+                          onDelete={() => deleteEventTask(t.id).then(reloadTasks)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ),
+              )}
             </div>
             {pendingTasks.length > 5 && (
               <button type="button" className="link-button" onClick={() => setShowAllTasks((v) => !v)}>
@@ -1560,12 +1629,59 @@ function EventDetail({
                 eventId={event.id}
                 groups={eventTaskGroups}
                 tasks={tasks}
-                onGroupsChanged={reloadEventTaskGroups}
+                onGroupsChanged={async () => {
+                  await reloadEventTaskGroups()
+                  await reloadTasks()
+                }}
                 onClose={() => setManagingGroups(false)}
                 onCreateTaskInGroup={(groupId) => {
                   setCreatingTaskInGroup(groupId)
                   setManagingGroups(false)
                   setCreatingTask(true)
+                }}
+              />
+            )}
+            {resolvingGroup && (
+              <ResolveGroupModal
+                event={event}
+                group={resolvingGroup}
+                tasks={tasks.filter((t) => t.groupId === resolvingGroup.id && !t.done)}
+                onClose={() => setResolvingGroup(null)}
+                onResolved={async () => {
+                  const group = resolvingGroup
+                  setResolvingGroup(null)
+                  await reloadTasks()
+                  await reloadEventTaskGroups()
+                  const suggestions = suggestNextStepsForGroup(group)
+                  if (suggestions.length > 0) setNextStepPrompt({ sourceLabel: group.name, suggestions, createdKeys: new Set() })
+                }}
+              />
+            )}
+            {nextStepPrompt && (
+              <NextStepPromptModal
+                prompt={nextStepPrompt}
+                onClose={() => setNextStepPrompt(null)}
+                onCreate={(s) => setFollowUpCreate({ initialTitle: s.title, suggestionKey: s.key })}
+                onCreateOther={() => setFollowUpCreate({ initialTitle: '', suggestionKey: null })}
+                onDismiss={(key) =>
+                  setNextStepPrompt((prev) => (prev ? { ...prev, suggestions: prev.suggestions.filter((s) => s.key !== key) } : null))
+                }
+              />
+            )}
+            {followUpCreate && (
+              <TaskEditModal
+                eventId={event.id}
+                familyMembers={familyMembers}
+                helpers={eventHelpers}
+                onHelpersChanged={reloadEventHelpers}
+                groups={eventTaskGroups}
+                initialTitle={followUpCreate.initialTitle}
+                onClose={() => setFollowUpCreate(null)}
+                onSaved={() => {
+                  const key = followUpCreate.suggestionKey
+                  setFollowUpCreate(null)
+                  if (key) setNextStepPrompt((prev) => (prev ? { ...prev, createdKeys: new Set(prev.createdKeys).add(key) } : null))
+                  reloadTasks()
                 }}
               />
             )}
@@ -2343,6 +2459,14 @@ function ReminderBell({
   )
 }
 
+// Tanda Encargos v2 — etiqueta visible para cada EventTaskGroupResolutionMethod real.
+const RESOLUTION_METHOD_LABELS: Record<EventTaskGroupResolutionMethod, string> = {
+  empresa: 'Empresa/proveedor',
+  nosotros: 'Lo hacemos nosotros',
+  ayuda: 'Nos ayuda alguien',
+  otro: 'Otra opción',
+}
+
 function TaskCard({
   task,
   decisions = [],
@@ -2495,6 +2619,7 @@ function TaskEditModal({
   onHelpersChanged,
   groups = [],
   initialGroupId = null,
+  initialTitle = '',
   onClose,
   onSaved,
 }: {
@@ -2508,11 +2633,15 @@ function TaskEditModal({
   // anterior). initialGroupId: al crear una tarea desde "+ Tarea en este encargo", llega preseleccionado.
   groups?: EventTaskGroup[]
   initialGroupId?: string | null
+  // Tanda Encargos v2 — "Siguiente preparativo": al abrir en modo creación desde "Crear preparativo" o
+  // "+ Crear otro", el título puede llegar precargado (solo el título — nunca fecha/responsable/
+  // recordatorio/precio inventados). Ignorado si task ya tiene su propio título.
+  initialTitle?: string
   onClose: () => void
   onSaved: () => void
 }) {
   const isCreating = task === undefined
-  const [title, setTitle] = useState(task?.title ?? '')
+  const [title, setTitle] = useState(task?.title ?? initialTitle)
   const [dueDate, setDueDate] = useState(task?.dueDate ?? '')
   // Preparativos (migración 0206): hora (solo con fecha), prioridad (lo que elija el usuario manda), nota, varios
   // responsables y personas externas del evento.
@@ -3081,6 +3210,25 @@ function EventTaskGroupsModal({
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // "+ Añadir tarea existente" (Tanda Encargos v2) — alternativa a "+ Tarea en este encargo" (que crea una
+  // NUEVA): deja meter en el encargo una tarea que YA existe. Solo ofrece tareas sin encargo todavía — una
+  // tarea pertenece como mucho a uno; mover entre encargos es un paso aparte, no ofrecido aquí.
+  const [addingExistingToGroupId, setAddingExistingToGroupId] = useState<string | null>(null)
+  const [selectedExistingTaskId, setSelectedExistingTaskId] = useState('')
+  const ungroupedTasks = tasks.filter((t) => !t.groupId)
+
+  async function addExistingTask(groupId: string) {
+    if (!selectedExistingTaskId) return
+    setError(null)
+    try {
+      await setEventTaskGroup(selectedExistingTaskId, groupId)
+      setSelectedExistingTaskId('')
+      setAddingExistingToGroupId(null)
+      await onGroupsChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir la tarea al encargo'))
+    }
+  }
 
   async function add() {
     if (!newName.trim()) return
@@ -3182,9 +3330,45 @@ function EventTaskGroupsModal({
                     Todavía no tiene tareas.
                   </p>
                 )}
-                <button type="button" className="link-button" onClick={() => onCreateTaskInGroup(g.id)} style={{ marginTop: 4 }}>
-                  + Tarea en este encargo
-                </button>
+                <div className="inline-fields" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+                  <button type="button" className="link-button" onClick={() => onCreateTaskInGroup(g.id)}>
+                    + Crear nueva tarea
+                  </button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      setSelectedExistingTaskId('')
+                      setAddingExistingToGroupId(addingExistingToGroupId === g.id ? null : g.id)
+                    }}
+                  >
+                    + Añadir tarea existente
+                  </button>
+                </div>
+                {addingExistingToGroupId === g.id && (
+                  <div className="inline-fields" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+                    {ungroupedTasks.length === 0 ? (
+                      <p className="muted" style={{ fontSize: 12 }}>
+                        No hay ninguna tarea sin encargo que añadir aquí.
+                      </p>
+                    ) : (
+                      <>
+                        <select value={selectedExistingTaskId} onChange={(e) => setSelectedExistingTaskId(e.target.value)} aria-label="Tarea existente a añadir">
+                          <option value="">Elige una tarea…</option>
+                          {ungroupedTasks.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.title}
+                              {t.done ? ' ✔️' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <button type="button" className="link-button" disabled={!selectedExistingTaskId} onClick={() => void addExistingTask(g.id)}>
+                          Añadir
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -3199,6 +3383,224 @@ function EventTaskGroupsModal({
               Añadir
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const RESOLUTION_METHOD_OPTIONS: { value: EventTaskGroupResolutionMethod; label: string }[] = [
+  { value: 'empresa', label: 'Empresa/proveedor' },
+  { value: 'nosotros', label: 'Lo hacemos nosotros' },
+  { value: 'ayuda', label: 'Nos ayuda alguien' },
+  { value: 'otro', label: 'Otra opción' },
+]
+
+// "Marcar encargo como resuelto" (Tanda Encargos v2) — completa EXCLUSIVAMENTE las tareas pendientes
+// ACTUALES de este encargo (las que llegan en `tasks`, ya filtradas por el padre) — nunca una tarea
+// posterior y distinta aunque su título se parezca (p. ej. "Recoger las flores" nunca se completa aquí).
+// Si el método es "Empresa/proveedor", el proveedor (ya existente o nuevo, vía el sistema de Proveedores
+// de siempre) y el precio TOTAL opcional (nunca repetido por tarea) se guardan en el propio encargo —
+// nunca en event_budget_items, para no duplicar ninguna partida de Presupuesto ya existente por decisión.
+function ResolveGroupModal({
+  event,
+  group,
+  tasks,
+  onClose,
+  onResolved,
+}: {
+  event: FamilyEvent
+  group: EventTaskGroup
+  tasks: EventTask[]
+  onClose: () => void
+  onResolved: () => Promise<void>
+}) {
+  const [method, setMethod] = useState<EventTaskGroupResolutionMethod | ''>('')
+  const [note, setNote] = useState('')
+  const [providers, setProviders] = useState<EventProvider[]>([])
+  const [providerMode, setProviderMode] = useState<'existing' | 'new'>('existing')
+  const [selectedProviderId, setSelectedProviderId] = useState('')
+  const [newProviderName, setNewProviderName] = useState('')
+  const [price, setPrice] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (method !== 'empresa') return
+    listEventProviders(event.id)
+      .then(setProviders)
+      .catch(() => {})
+  }, [method, event.id])
+
+  async function handleSubmit() {
+    if (!method) {
+      setError('Elige cómo se ha resuelto.')
+      return
+    }
+    if (method === 'empresa' && providerMode === 'existing' && !selectedProviderId) {
+      setError('Elige un proveedor, o da de alta uno nuevo.')
+      return
+    }
+    if (method === 'empresa' && providerMode === 'new' && !newProviderName.trim()) {
+      setError('Ponle un nombre al proveedor nuevo.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      let providerId: string | null = null
+      let providerName: string | null = null
+      if (method === 'empresa') {
+        if (providerMode === 'new') {
+          providerId = await addEventProvider(event.id, { name: newProviderName })
+          providerName = newProviderName.trim()
+        } else {
+          providerId = selectedProviderId
+          providerName = providers.find((p) => p.id === selectedProviderId)?.name ?? null
+        }
+      }
+      let paymentId: string | null = null
+      const amount = Number(price)
+      if (method === 'empresa' && price.trim() !== '' && !Number.isNaN(amount) && amount > 0) {
+        // UN único pago por el TOTAL del encargo — nunca uno por tarea ni por decisión (ver cabecera).
+        paymentId = await addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId })
+      }
+      await resolveEventTaskGroup(group.id, { method, note: note.trim() ? note.trim() : null, providerId, providerName, paymentId })
+      // Completa EXCLUSIVAMENTE las tareas pendientes actuales de este encargo — nunca ninguna otra.
+      for (const t of tasks) await updateEventTask(t.id, { done: true })
+      await onResolved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo resolver el encargo'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Resolver encargo «{group.name}»
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="card member-form">
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+            {tasks.length > 0
+              ? `Se completarán sus ${tasks.length} tarea${tasks.length === 1 ? '' : 's'} pendiente${tasks.length === 1 ? '' : 's'} (las ya hechas no cambian).`
+              : 'Este encargo no tiene ninguna tarea pendiente — se marcará resuelto igualmente.'}
+          </p>
+          {error && <p className="error">{error}</p>}
+          <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>
+            ¿Cómo se ha resuelto?
+          </div>
+          <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+            {RESOLUTION_METHOD_OPTIONS.map((o) => (
+              <button key={o.value} type="button" className={'chip' + (method === o.value ? ' chip-active' : '')} onClick={() => setMethod(o.value)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {method === 'empresa' && (
+            <div className="card" style={{ padding: 8, marginTop: 6 }}>
+              <div className="filter-row">
+                <button type="button" className={'chip' + (providerMode === 'existing' ? ' chip-active' : '')} onClick={() => setProviderMode('existing')}>
+                  Proveedor ya existente
+                </button>
+                <button type="button" className={'chip' + (providerMode === 'new' ? ' chip-active' : '')} onClick={() => setProviderMode('new')}>
+                  Proveedor nuevo
+                </button>
+              </div>
+              {providerMode === 'existing' ? (
+                providers.length > 0 ? (
+                  <select value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)} style={{ marginTop: 6 }}>
+                    <option value="">Elige un proveedor…</option>
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.type ? ` (${p.type})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Todavía no hay proveedores en este evento — da de alta uno nuevo.
+                  </p>
+                )
+              ) : (
+                <label style={{ marginTop: 6 }}>
+                  Nombre del proveedor
+                  <input type="text" value={newProviderName} onChange={(e) => setNewProviderName(e.target.value)} placeholder="Floristería..." />
+                </label>
+              )}
+              <label style={{ marginTop: 6 }}>
+                Precio TOTAL del encargo, opcional (€)
+                <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Sin precio todavía" />
+              </label>
+            </div>
+          )}
+          {(method === 'nosotros' || method === 'ayuda' || method === 'otro') && (
+            <label style={{ marginTop: 6 }}>
+              Nota, opcional
+              <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder={method === 'ayuda' ? 'Quién ayuda...' : 'Detalle...'} />
+            </label>
+          )}
+          <button type="button" onClick={() => void handleSubmit()} disabled={saving} style={{ marginTop: 10 }}>
+            {saving ? 'Resolviendo…' : 'Marcar encargo como resuelto'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// "Siguiente preparativo" (Tanda Encargos v2) — exactamente 3 acciones por sugerencia: Crear preparativo /
+// No hace falta / + Crear otro. Efímero (solo en memoria): nunca vuelve a aparecer solo porque la familia
+// recargue la página o vuelva a entrar — ver el informe de la tanda.
+function NextStepPromptModal({
+  prompt,
+  onClose,
+  onCreate,
+  onCreateOther,
+  onDismiss,
+}: {
+  prompt: { sourceLabel: string; suggestions: NextStepSuggestion[]; createdKeys: Set<string> }
+  onClose: () => void
+  onCreate: (s: NextStepSuggestion) => void
+  onCreateOther: () => void
+  onDismiss: (key: string) => void
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            ✅ {prompt.sourceLabel}
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="card member-form">
+          {prompt.suggestions.map((s) => (
+            <div key={s.key} className="card" style={{ padding: 8 }}>
+              <p style={{ margin: 0 }}>PEPA te propone como siguiente preparativo: «{s.title}»</p>
+              <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+                <button type="button" disabled={prompt.createdKeys.has(s.key)} onClick={() => onCreate(s)}>
+                  {prompt.createdKeys.has(s.key) ? '✓ Creado' : 'Crear preparativo'}
+                </button>
+                <button type="button" className="link-button" onClick={() => onDismiss(s.key)}>
+                  No hace falta
+                </button>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="link-button" onClick={onCreateOther}>
+            + Crear otro
+          </button>
         </div>
       </div>
     </div>
@@ -4959,7 +5361,7 @@ function PairBlock({
       // directamente un Preparativo/Presupuesto antes de existir la resolución — el tipo nunca debe
       // generar nada, así que se reconcilia SIEMPRE a "nada", lo que también limpia cualquier resto
       // heredado de esa época en cuanto se vuelve a guardar el tipo.
-      let { actions } = await applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+      let { actions } = await applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
       let pendingBudgetItem: { id: string; category: string } | null = null
       const resDecision = findDecision(pairQuestionKey(slot, 'vestuario.resolucion'))
       if (resDecision) {
@@ -5057,7 +5459,7 @@ function PairBlock({
       })
       // Mismo autosaneado que Vestuario — esta clave también generaba directamente bajo el modelo de 1
       // solo nivel.
-      let { actions } = await applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+      let { actions } = await applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
       let pendingBudgetItem: { id: string; category: string } | null = null
       const resDecision = findDecision(DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY)
       if (resDecision) {
@@ -5104,7 +5506,7 @@ function PairBlock({
     setSavingKey(questionKey)
     setError(null)
     try {
-      await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+      await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
       await deleteEventDecision(decision.id)
       await reload()
       onDerivedDataChanged()
@@ -5127,7 +5529,7 @@ function PairBlock({
       if (!selected) {
         const decision = findDecision(key)
         if (decision) {
-          await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+          await applyPairDecisionGeneration(event.id, decision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
           await deleteEventDecision(decision.id)
           onDerivedDataChanged()
         }

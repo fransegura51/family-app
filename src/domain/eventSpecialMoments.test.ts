@@ -122,15 +122,15 @@ describe('Derivados — muy conservador: seleccionar un momento NUNCA genera nad
     // applyPairDecisionGeneration — ver EventosScreen.tsx saveSeleccion, que solo llama upsertEventDecision
     // y, como mucho, reconcilia a NONE el sub-item de clases de baile si se deselecciona. No existe ninguna
     // función "desiredForMomentoEspecial" que genere algo a partir de la propia selección.
-    expect(desiredForClasesBaile(undefined)).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForClasesBaile(undefined)).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 
   it('"Primer baile" + clases de baile = "No": no genera nada', () => {
-    expect(desiredForClasesBaile({ choice: 'no' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForClasesBaile({ choice: 'no' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 
   it('"Primer baile" + clases de baile = "Todavía no lo sabemos": no genera nada (pendiente, no cancelado)', () => {
-    expect(desiredForClasesBaile({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForClasesBaile({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 
   it('"Primer baile" + clases de baile = "Sí": genera ÚNICAMENTE el Preparativo "Buscar/organizar clases de baile" — nunca presupuesto ni proveedor', () => {

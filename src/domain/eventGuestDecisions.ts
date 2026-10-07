@@ -10,15 +10,15 @@ import type { CustomAction, CustomHasCost, CustomResolution, DesiredPairGenerati
 import { decisionStatus, type DecisionStatus } from '@/domain/eventPairDecisions'
 import type { EventDecision } from '@/domain/types'
 
-const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
-const RESOLVED: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true }
+const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+const RESOLVED: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true, groupKind: null, groupDefaultName: null }
 
 function fromCustom(custom: CustomResolution | undefined, taskTitle: (label: string) => string, budgetCategory: (label: string) => string): DesiredPairGeneration {
   if (!custom) return NONE
   if (custom.action === 'resuelto') return RESOLVED
   if (custom.action === 'todavia_no_lo_sabemos') return NONE
-  if (custom.action === 'preparar') return { taskTitle: taskTitle(custom.label), budgetCategory: null, providerCategory: null, resolved: false }
-  return { taskTitle: taskTitle(custom.label), budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null, providerCategory: null, resolved: false }
+  if (custom.action === 'preparar') return { taskTitle: taskTitle(custom.label), budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+  return { taskTitle: taskTitle(custom.label), budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
 }
 
 export const GUESTS_LISTA_QUESTION_KEY = 'invitados.lista'
@@ -52,7 +52,7 @@ export interface ListaInvitadosAnswer {
 export function desiredForListaInvitados(answer: ListaInvitadosAnswer): DesiredPairGeneration {
   if (answer.choice === 'todavia_no_lo_sabemos') return NONE
   if (answer.choice === 'ya_la_tenemos') return RESOLVED
-  if (answer.choice === 'tenemos_que_prepararla') return { taskTitle: 'Preparar lista de invitados', budgetCategory: null, providerCategory: null, resolved: false }
+  if (answer.choice === 'tenemos_que_prepararla') return { taskTitle: 'Preparar lista de invitados', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   return fromCustom(answer.custom, (label) => `Lista de invitados: ${label}`, (label) => `Lista de invitados: ${label}`)
 }
 
@@ -139,7 +139,7 @@ export const NINOS_NECESIDAD_ACCIONABLE: Record<NinosNecesidadItemKey, { label: 
 export function desiredForNinosNecesidadItem(selected: boolean, item: NinosNecesidadItemKey): DesiredPairGeneration {
   if (!selected) return NONE
   const meta = NINOS_NECESIDAD_ACCIONABLE[item]
-  return { taskTitle: `Buscar/contratar: ${meta.label.toLowerCase()}`, budgetCategory: meta.label, providerCategory: meta.providerCategory, resolved: false }
+  return { taskTitle: `Buscar/contratar: ${meta.label.toLowerCase()}`, budgetCategory: meta.label, providerCategory: meta.providerCategory, resolved: false, groupKind: null, groupDefaultName: null }
 }
 
 // ---------------------------------------------------------------------
@@ -158,7 +158,7 @@ export interface InvitacionAnswer {
 export function desiredForInvitacion(answer: InvitacionAnswer): DesiredPairGeneration {
   if (answer.choice === 'todavia_no_lo_sabemos') return NONE
   if (answer.choice === 'externa') return NONE
-  if (answer.choice === 'con_pepa') return { taskTitle: 'Preparar invitación', budgetCategory: null, providerCategory: null, resolved: false }
+  if (answer.choice === 'con_pepa') return { taskTitle: 'Preparar invitación', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   return fromCustom(answer.custom, (label) => `Invitación: ${label}`, (label) => `Invitación: ${label}`)
 }
 

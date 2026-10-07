@@ -226,11 +226,11 @@ describe('PairBlock — Vestuario/Detalle especial de 2 niveles: el tipo nunca g
   // heredado del modelo de 1 solo nivel (donde esta misma clave sí generaba directamente).
   it('saveVestuarioTipo SIEMPRE reconcilia su propia fila a "nada" — autosanea residuos del modelo antiguo', () => {
     const fn = slice(pairBlock, 'async function saveVestuarioTipo(', '\n  }')
-    expect(fn).toContain('applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })')
+    expect(fn).toContain('applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })')
   })
   it('saveDetalleTipo hace lo mismo con su propia fila', () => {
     const fn = slice(pairBlock, 'async function saveDetalleTipo(', '\n  }')
-    expect(fn).toContain('applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })')
+    expect(fn).toContain('applyPairDecisionGeneration(event.id, tipoDecision.id, { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })')
   })
 })
 

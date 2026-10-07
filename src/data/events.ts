@@ -10,6 +10,7 @@ import { listExpenses, listBudgetCategories } from '@/data/finance'
 // de miembro que ya usa Calendario (calendar_event_members), nunca uno
 // propio de Eventos.
 import { replaceEventMembers } from '@/data/calendar'
+import { findOrCreateEventTaskGroupByKind } from '@/data/eventTaskGroups'
 import { distinctTagColor } from '@/domain/colors'
 import { proposeTaskPriority, type DecisionLookup, type PriorityReason, type TaskPriority } from '@/domain/eventTaskPriority'
 import { computePrioritySuggestion } from '@/domain/eventTaskPrioritySuggestion'
@@ -1463,18 +1464,23 @@ export async function listEventProviders(eventId: string): Promise<EventProvider
 export async function addEventProvider(
   eventId: string,
   input: { name: string; type?: string | null; contactNote?: string | null; notes?: string | null; decisionId?: string | null },
-): Promise<void> {
+): Promise<string> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase.from('event_providers').insert({
-    event_id: eventId,
-    family_id: familyId,
-    name: input.name.trim(),
-    type: input.type ?? null,
-    contact_note: input.contactNote ?? null,
-    notes: input.notes ?? null,
-    decision_id: input.decisionId ?? null,
-  })
+  const { data, error } = await supabase
+    .from('event_providers')
+    .insert({
+      event_id: eventId,
+      family_id: familyId,
+      name: input.name.trim(),
+      type: input.type ?? null,
+      contact_note: input.contactNote ?? null,
+      notes: input.notes ?? null,
+      decision_id: input.decisionId ?? null,
+    })
+    .select('id')
+    .single()
   if (error) throw error
+  return data.id as string
 }
 
 export async function deleteEventProvider(id: string): Promise<void> {
@@ -1519,21 +1525,26 @@ export async function listEventPayments(eventId: string): Promise<EventPayment[]
 export async function addEventPayment(
   eventId: string,
   input: { concept: string; totalAmount: number; depositPaid: number; dueDate?: string | null; providerId?: string | null; notes?: string | null },
-): Promise<void> {
+): Promise<string> {
   const familyId = await currentFamilyId()
   const status: EventPaymentStatus = input.depositPaid <= 0 ? 'pendiente' : input.depositPaid >= input.totalAmount ? 'pagado' : 'parcial'
-  const { error } = await supabase.from('event_payments').insert({
-    event_id: eventId,
-    family_id: familyId,
-    provider_id: input.providerId ?? null,
-    concept: input.concept.trim(),
-    total_amount: input.totalAmount,
-    deposit_paid: input.depositPaid,
-    due_date: input.dueDate ?? null,
-    status,
-    notes: input.notes ?? null,
-  })
+  const { data, error } = await supabase
+    .from('event_payments')
+    .insert({
+      event_id: eventId,
+      family_id: familyId,
+      provider_id: input.providerId ?? null,
+      concept: input.concept.trim(),
+      total_amount: input.totalAmount,
+      deposit_paid: input.depositPaid,
+      due_date: input.dueDate ?? null,
+      status,
+      notes: input.notes ?? null,
+    })
+    .select('id')
+    .single()
   if (error) throw error
+  return data.id as string
 }
 
 export async function updateEventPayment(id: string, patch: { depositPaid?: number; totalAmount?: number; status?: EventPaymentStatus }): Promise<void> {
@@ -2346,18 +2357,31 @@ async function executeReconcileActions(eventId: string, familyId: string, decisi
     switch (action.op) {
       case 'create_task': {
         const proposal = proposeTaskPriority({ title: action.title, dependsOnDecision: true, decisionQuestionKey: await decisionQuestionKeyOf(decisionId) })
-        const { error } = await supabase.from('event_tasks').insert({
-          event_id: eventId,
-          family_id: familyId,
-          title: action.title,
-          source: 'auto',
-          sort_order: Date.now(),
-          decision_id: decisionId,
-          priority: proposal.priority,
-          priority_source: 'pepa',
-          priority_reason: proposal.reason,
-        })
+        const { data, error } = await supabase
+          .from('event_tasks')
+          .insert({
+            event_id: eventId,
+            family_id: familyId,
+            title: action.title,
+            source: 'auto',
+            sort_order: Date.now(),
+            decision_id: decisionId,
+            priority: proposal.priority,
+            priority_source: 'pepa',
+            priority_reason: proposal.reason,
+          })
+          .select('id')
+          .single()
         if (error) throw error
+        // Auto-agrupación EN ORIGEN (Tanda Encargos v2): solo cuando la propia generación lo pide
+        // (groupKind — ver desiredForFloral, el único caso real hoy). Encuentra o crea el encargo por su
+        // kind interno ESTABLE (nunca por name, que la familia puede renombrar) y agrupa SOLO esta tarea
+        // recién creada — nunca reclasifica retroactivamente ninguna otra.
+        if (action.groupKind) {
+          const groupId = await findOrCreateEventTaskGroupByKind(eventId, familyId, action.groupKind, action.groupDefaultName ?? action.groupKind)
+          const { error: groupError } = await supabase.from('event_tasks').update({ group_id: groupId }).eq('id', data.id)
+          if (groupError) throw groupError
+        }
         break
       }
       case 'update_task': {

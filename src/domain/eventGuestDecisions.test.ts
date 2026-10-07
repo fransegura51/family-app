@@ -88,7 +88,7 @@ describe('Lista de invitados', () => {
 
   it('"todavía no lo sabemos" nunca genera ni toca nada', () => {
     const desired = desiredForListaInvitados({ choice: 'todavia_no_lo_sabemos' })
-    expect(desired).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desired).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
     expect(reconcilePairGeneration(desired, undefined, undefined).actions).toEqual([])
   })
 
@@ -111,15 +111,15 @@ describe('Lista de invitados', () => {
 
 describe('"¿Preguntas para los invitados en la invitación?" — nunca genera Preparativo/Presupuesto/Proveedor, sea cual sea la respuesta', () => {
   it('"sí" no genera ninguna acción', () => {
-    expect(desiredForInvitadosPreguntas({ choice: 'si', wantsMenu: true })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForInvitadosPreguntas({ choice: 'si', wantsMenu: true })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 
   it('"no" no genera ninguna acción', () => {
-    expect(desiredForInvitadosPreguntas({ choice: 'no' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForInvitadosPreguntas({ choice: 'no' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 
   it('"todavía no lo sabemos" no genera ninguna acción (sigue siendo una respuesta válida, no la ausencia de fila)', () => {
-    expect(desiredForInvitadosPreguntas({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForInvitadosPreguntas({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 })
 
@@ -149,7 +149,7 @@ describe('Niños — necesidades accionables (Animación/Monitor)', () => {
     expect(selected.budgetCategory).toBe('Animación / juegos')
     expect(selected.providerCategory).toBe('Animación infantil')
     const unselected = desiredForNinosNecesidadItem(false, 'animacion')
-    expect(unselected).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(unselected).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 
   it('deseleccionar retira una tarea prístina, conserva una ya tocada (mismas reglas de siempre)', () => {
@@ -175,11 +175,11 @@ describe('Invitación — "Preparar invitación" sí, "Enviar invitaciones" NUNC
   })
 
   it('"externa" no genera nada — no obliga a usar el editor de PEPA', () => {
-    expect(desiredForInvitacion({ choice: 'externa' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForInvitacion({ choice: 'externa' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 
   it('"todavía no lo sabemos" no genera nada', () => {
-    expect(desiredForInvitacion({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false })
+    expect(desiredForInvitacion({ choice: 'todavia_no_lo_sabemos' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
   })
 
   it('ninguna función de este módulo genera literalmente el título "Enviar las invitaciones" — evita duplicar el Preparativo automático ya existente (TASK_TEMPLATES)', () => {

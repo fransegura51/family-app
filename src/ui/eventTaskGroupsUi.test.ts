@@ -15,7 +15,9 @@ function window_(src: string, fromMarker: string, toMarker: string): string {
 
 const TAREAS_MODULE = window_(UI, "case 'tareas': {", "case 'invitados':")
 const MODAL = window_(UI, 'function TaskEditModal({', '\nfunction EventHelpersModal(')
-const GROUPS_MODAL = window_(UI, 'function EventTaskGroupsModal(', '\nfunction EventShoppingSection(')
+const GROUPS_MODAL = window_(UI, 'function EventTaskGroupsModal(', '\nfunction ResolveGroupModal(')
+const RESOLVE_MODAL = window_(UI, 'function ResolveGroupModal(', '\nfunction NextStepPromptModal(')
+const NEXT_STEP_MODAL = window_(UI, 'function NextStepPromptModal(', '\nfunction EventShoppingSection(')
 
 describe('bloque G: integración ligera, sin sobrecargar Preparativos', () => {
   it('"🗂️ Encargos" es un botón secundario (link-button) junto a "+ Nueva tarea" y "👥 Colaboradores"', () => {
@@ -66,7 +68,7 @@ describe('bloque F: borrar un encargo nunca borra sus tareas', () => {
 })
 
 describe('bloque F: crear una tarea directamente dentro de un encargo', () => {
-  it('"+ Tarea en este encargo" lleva el id del grupo hasta la creación de la tarea', () => {
+  it('"+ Crear nueva tarea" lleva el id del grupo hasta la creación de la tarea', () => {
     expect(GROUPS_MODAL).toContain('onClick={() => onCreateTaskInGroup(g.id)}')
     expect(UI).toContain('onCreateTaskInGroup={(groupId) => {')
     expect(UI).toContain('setCreatingTaskInGroup(groupId)')
@@ -76,13 +78,60 @@ describe('bloque F: crear una tarea directamente dentro de un encargo', () => {
   })
 })
 
+// Tanda Encargos v2 (bloque 15) — "+ Añadir tarea existente" junto a "+ Crear nueva tarea": mete en el
+// encargo una tarea que YA existe, en vez de obligar a crear una nueva. Solo ofrece tareas sin encargo
+// todavía (una tarea pertenece como mucho a uno; mover entre encargos no se ofrece aquí).
+describe('bloque 15: "+ Añadir tarea existente" — alternativa a crear una nueva', () => {
+  it('existe junto a "+ Crear nueva tarea", y solo lista tareas sin encargo (ungroupedTasks = tasks.filter(!groupId))', () => {
+    expect(GROUPS_MODAL).toContain('+ Añadir tarea existente')
+    expect(GROUPS_MODAL).toContain('const ungroupedTasks = tasks.filter((t) => !t.groupId)')
+  })
+  it('añadir reutiliza setEventTaskGroup tal cual (ningún camino de escritura paralelo)', () => {
+    const addExistingFn = window_(GROUPS_MODAL, 'async function addExistingTask(', '\n  }')
+    expect(addExistingFn).toContain('await setEventTaskGroup(selectedExistingTaskId, groupId)')
+  })
+  it('tras añadir una tarea existente, se recargan tanto los encargos como las tareas (la propia lista de "Encargos" depende de `tasks`)', () => {
+    expect(UI).toContain('onGroupsChanged={async () => {\n                  await reloadEventTaskGroups()\n                  await reloadTasks()\n                }}')
+  })
+})
+
 describe('bloque F: ver las tareas de un encargo juntas, y la tarjeta las marca ligeramente', () => {
   it('"🗂️ Encargos" lista los títulos de las tareas de cada grupo', () => {
     expect(GROUPS_MODAL).toContain('const groupTasks = tasks.filter((t) => t.groupId === g.id)')
     expect(GROUPS_MODAL).toContain('{t.title}')
   })
-  it('la tarjeta muestra el nombre del encargo como una etiqueta ligera más, sin rediseñar la tarjeta', () => {
+  it('en Completadas (fuera del contenedor agrupado) la tarjeta sigue mostrando el nombre del encargo como etiqueta ligera, sin rediseñarla', () => {
     expect(UI).toContain('{groupName && <span>🗂️ {groupName}</span>}')
+  })
+})
+
+// Tanda Encargos v2 (bloque 1) — redefine el Encargo de una simple etiqueta por tarjeta a un CONTENEDOR:
+// un encabezado "📦 NOMBRE" compartido, mostrado UNA vez, con sus tareas debajo — nunca repetido por
+// tarjeta en la vista de Preparativos pendientes.
+describe('contenedor de Encargo en Preparativos (pendientes): un encabezado compartido, nunca repetido por tarjeta', () => {
+  const PENDING_LIST = window_(TAREAS_MODULE, "<div className=\"event-list\" style={{ marginTop: 8 }}>", 'pendingTasks.length > 5')
+
+  it('la lista pendiente se construye agrupando con buildTaskGroupRenderItems, no con un .map plano de visibleTasks', () => {
+    expect(PENDING_LIST).toContain('buildTaskGroupRenderItems(visibleTasks, eventTaskGroups).map((item) =>')
+  })
+  it('un bloque "group" pinta "📦 NOMBRE" UNA vez (fuera de cada TaskCard) y un botón para resolverlo', () => {
+    expect(PENDING_LIST).toContain('📦 {item.groupName.toUpperCase()}')
+    expect(PENDING_LIST).toContain('Resolver encargo')
+  })
+  it('dentro del contenedor, cada TaskCard no recibe groupName (el encabezado ya lo dice una vez) — mantiene sus controles normales', () => {
+    const groupBlock = window_(PENDING_LIST, "<strong>📦 {item.groupName.toUpperCase()}</strong>", '</div>\n                ),\n              )}')
+    expect(groupBlock).not.toContain('groupName=')
+    expect(groupBlock).toContain('onToggleDone={() => void completeTaskWithNextStep(t)}')
+    expect(groupBlock).toContain('reminder={{')
+    expect(groupBlock).toContain('onDelete={() => deleteEventTask(t.id).then(reloadTasks)}')
+  })
+  it('una tarea suelta (sin encargo, o cuyo bloque "task") tampoco recibe groupName — nunca se pinta la etiqueta vieja a la vez que el nuevo contenedor', () => {
+    const looseTaskBlock = window_(PENDING_LIST, 'item.type === \'task\' ? (', ') : (')
+    expect(looseTaskBlock).not.toContain('groupName=')
+  })
+  it('un encargo ya resuelto muestra "✅ Resuelto" con el método, en vez del botón "Resolver encargo"', () => {
+    expect(PENDING_LIST).toContain('item.group.resolvedAt ? (')
+    expect(PENDING_LIST).toContain('✅ Resuelto · {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? \'otro\']}')
   })
 })
 
@@ -91,9 +140,59 @@ describe('bloque G: no romper filtros ni completadas al agrupar', () => {
     expect(UI).toContain('const filteredTasks = pendingTasks.filter((t) => taskMatchesResponsibleFilter(t, responsibleFilter))')
     expect(UI).toContain('const completedTasks = tasks.filter((t) => t.done)')
   })
-  it('no existe ninguna acción de "completar encargo" que marque sus tareas como hechas de golpe', () => {
-    expect(UI).not.toMatch(/completar.{0,20}encargo/i)
+  it('el modal de gestión manual de encargos (crear/renombrar/borrar/asociar) nunca completa tareas por su cuenta — solo "Resolver encargo" lo hace, y de forma explícita', () => {
     const groupsModalDoneCalls = GROUPS_MODAL.match(/updateEventTask/g) ?? []
     expect(groupsModalDoneCalls).toHaveLength(0)
+  })
+})
+
+// Tanda Encargos v2 — "Marcar encargo como resuelto": completa EXCLUSIVAMENTE las tareas PENDIENTES
+// ACTUALES del encargo que se está resolviendo (las que llegan en su propio prop `tasks`, ya filtradas por
+// el padre) — nunca otro encargo, nunca una tarea ya hecha de antes, nunca una tarea posterior aunque el
+// título se parezca (p. ej. "Recoger las flores" nunca se completa al resolver "Flores").
+describe('ResolveGroupModal — resuelve exclusivamente las tareas actuales de ESE encargo', () => {
+  it('EventosScreen le pasa solo las tareas pendientes de ESE grupo concreto (filtradas por group_id y !done)', () => {
+    expect(UI).toContain('tasks={tasks.filter((t) => t.groupId === resolvingGroup.id && !t.done)}')
+  })
+  it('completa cada una de esas tareas con updateEventTask({ done: true }) — nunca con un endpoint "completar encargo" aparte', () => {
+    expect(RESOLVE_MODAL).toContain('for (const t of tasks) await updateEventTask(t.id, { done: true })')
+  })
+  it('el precio TOTAL (si se pone) crea UN único event_payments — nunca uno por tarea, nunca toca event_budget_items', () => {
+    expect(RESOLVE_MODAL).toContain('addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId })')
+    expect((RESOLVE_MODAL.match(/addEventPayment\(/g) ?? []).length).toBe(1)
+    expect(RESOLVE_MODAL).not.toContain('event_budget_items')
+    expect(RESOLVE_MODAL).not.toContain('addEventBudgetItem')
+  })
+  it('un proveedor nuevo se da de alta vía el sistema de Proveedores de siempre (addEventProvider), nunca un modelo paralelo', () => {
+    expect(RESOLVE_MODAL).toContain('addEventProvider(event.id, { name: newProviderName })')
+  })
+  it('resolveEventTaskGroup guarda el método/nota/proveedor/pago en el propio encargo — nunca en las tareas', () => {
+    expect(RESOLVE_MODAL).toContain('resolveEventTaskGroup(group.id, { method, note: note.trim() ? note.trim() : null, providerId, providerName, paymentId })')
+  })
+  it('si el método no es "Empresa/proveedor", nunca se intenta crear ni proveedor ni pago', () => {
+    const submitFn = window_(RESOLVE_MODAL, 'async function handleSubmit(', '\n  return (')
+    const providerBlock = window_(submitFn, 'let providerId: string | null = null', 'let paymentId: string | null = null')
+    expect(providerBlock).toContain("if (method === 'empresa') {")
+    const paymentBlock = submitFn.slice(submitFn.indexOf('let paymentId: string | null = null'))
+    expect(paymentBlock).toContain("method === 'empresa' && price.trim()")
+  })
+})
+
+// "Siguiente preparativo" — motor general (ver eventNextSteps.ts), nunca crea nada por su cuenta: las tres
+// acciones pasan siempre por el formulario normal de "Nueva tarea" (TaskEditModal), nunca un segundo
+// camino de creación.
+describe('NextStepPromptModal — Crear preparativo / No hace falta / + Crear otro', () => {
+  it('"Crear preparativo" abre TaskEditModal con el título de la sugerencia precargado — nunca lo crea directamente', () => {
+    expect(UI).toContain("onCreate={(s) => setFollowUpCreate({ initialTitle: s.title, suggestionKey: s.key })}")
+  })
+  it('"+ Crear otro" abre el MISMO formulario, pero vacío — para una continuación distinta de la que PEPA conocía', () => {
+    expect(UI).toContain("onCreateOther={() => setFollowUpCreate({ initialTitle: '', suggestionKey: null })}")
+  })
+  it('"No hace falta" no crea nada — solo retira esa sugerencia del propio prompt (efímero, nunca persistido)', () => {
+    const dismissBtn = window_(NEXT_STEP_MODAL, 'No hace falta', '</button>')
+    expect(dismissBtn).not.toMatch(/addEventTask|insert\(/)
+  })
+  it('una sugerencia ya creada no puede volver a crearse desde el mismo prompt (createdKeys)', () => {
+    expect(NEXT_STEP_MODAL).toContain('disabled={prompt.createdKeys.has(s.key)}')
   })
 })

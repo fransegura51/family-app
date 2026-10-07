@@ -323,18 +323,33 @@ export interface DesiredPairGeneration {
   // tenemos / CustomResolution.action === 'resuelto'). Nunca junto a taskTitle/budgetCategory — una
   // decisión o pide algo nuevo, o certifica que ya estaba resuelto, nunca las dos cosas a la vez.
   resolved: boolean
+  // Tanda "🗂️ Encargos" v2 — auto-agrupación EN ORIGEN: identificador interno estable del encargo al que
+  // debe unirse la tarea recién creada (null = no agrupar nada; solo lo rellena una función cuyas tareas
+  // forman de verdad un mismo encargo real — ver desiredForFloral, el único caso verificado hoy). Nunca se
+  // usa para RETITULAR una tarea ya existente (reconcilePairGeneration solo lo aplica en create_task).
+  groupKind: string | null
+  // Nombre por defecto si hay que CREAR el encargo la primera vez (ignorado si groupKind es null, o si el
+  // encargo ya existe — entonces se respeta el nombre que la familia le haya puesto, aunque lo haya cambiado).
+  groupDefaultName: string | null
 }
 
-const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false }
-const RESOLVED: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true }
+const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+const RESOLVED: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: true, groupKind: null, groupDefaultName: null }
 
 function fromCustom(custom: CustomResolution | undefined, taskTitle: (label: string) => string, budgetCategory: (label: string) => string): DesiredPairGeneration {
   if (!custom) return NONE
   if (custom.action === 'resuelto') return RESOLVED
   if (custom.action === 'todavia_no_lo_sabemos') return NONE
-  if (custom.action === 'preparar') return { taskTitle: taskTitle(custom.label), budgetCategory: null, providerCategory: null, resolved: false }
+  if (custom.action === 'preparar') return { taskTitle: taskTitle(custom.label), budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   // 'buscar_contratar' | 'otro' — nunca se infiere coste del texto: solo si hasCost === 'si' se genera presupuesto.
-  return { taskTitle: taskTitle(custom.label), budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null, providerCategory: null, resolved: false }
+  return {
+    taskTitle: taskTitle(custom.label),
+    budgetCategory: custom.hasCost === 'si' ? budgetCategory(custom.label) : null,
+    providerCategory: null,
+    resolved: false,
+    groupKind: null,
+    groupDefaultName: null,
+  }
 }
 
 function vestuarioTipoLabel(tipo: VestuarioTipoAnswer): string {
@@ -353,10 +368,17 @@ export function desiredForVestuarioResolucion(tipo: VestuarioTipoAnswer, resoluc
   const label = vestuarioTipoLabel(tipo)
   const capitalized = label.charAt(0).toUpperCase() + label.slice(1)
   if (resolucion.choice === 'elegir_comprar') {
-    return { taskTitle: `Elegir/comprar ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null, resolved: false }
+    return { taskTitle: `Elegir/comprar ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   }
   if (resolucion.choice === 'buscando_proveedor') {
-    return { taskTitle: `Buscar dónde conseguir ${label} de ${name}`, budgetCategory: `${capitalized} de ${name}`, providerCategory: null, resolved: false }
+    return {
+      taskTitle: `Buscar dónde conseguir ${label} de ${name}`,
+      budgetCategory: `${capitalized} de ${name}`,
+      providerCategory: null,
+      resolved: false,
+      groupKind: null,
+      groupDefaultName: null,
+    }
   }
   // 'otro'
   return fromCustom(resolucion.custom, (l) => `Resolver ${l} de ${name}`, (l) => `${l} de ${name}`)
@@ -372,29 +394,52 @@ export function desiredForPeluqueriaResolucion(necesidad: PeluqueriaNecesidadAns
     budgetCategory: `Peluquería/maquillaje de ${name}`,
     providerCategory: DECISION_PROVIDER_CATEGORIES.peluqueria_maquillaje,
     resolved: false,
+    groupKind: null,
+    groupDefaultName: null,
   }
 }
 
 export function desiredForComplementos(answer: ComplementosAnswer, name: string): DesiredPairGeneration {
   if (answer.choice !== 'preparar') return NONE
   if (answer.selected.length === 0 && answer.customItems.length === 0) return NONE
-  return { taskTitle: `Preparar complementos de ${name}`, budgetCategory: null, providerCategory: null, resolved: false }
+  return { taskTitle: `Preparar complementos de ${name}`, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
 }
+
+// Encargo "Flores" (Tanda Encargos v2) — identificador interno estable, DISTINTO del nombre visible y
+// editable por la familia (ver EventTaskGroup.kind). Único caso real verificado hoy con varias tareas que
+// pertenecen al mismo encargo comercial (ramo, prendidos de cada persona...), así que es el único sitio de
+// todo este motor que rellena groupKind/groupDefaultName — nunca se fabrica para Vestuario/Alianzas/Detalle
+// especial, que no tienen esa estructura real.
+const FLORAL_GROUP_KIND = 'flores'
+const FLORAL_GROUP_DEFAULT_NAME = 'Flores'
 
 export function desiredForFloral(answer: FloralAnswer, itemLabel: string, name: string): DesiredPairGeneration {
   if (answer.choice === 'todavia_no_lo_sabemos') return NONE
   if (answer.choice === 'ya_lo_tenemos') return RESOLVED
-  if (answer.choice === 'preparamos') return { taskTitle: `Preparar ${itemLabel.toLowerCase()} de ${name}`, budgetCategory: null, providerCategory: null, resolved: false }
+  if (answer.choice === 'preparamos') {
+    return {
+      taskTitle: `Preparar ${itemLabel.toLowerCase()} de ${name}`,
+      budgetCategory: null,
+      providerCategory: null,
+      resolved: false,
+      groupKind: FLORAL_GROUP_KIND,
+      groupDefaultName: FLORAL_GROUP_DEFAULT_NAME,
+    }
+  }
   if (answer.choice === 'floristeria') {
     return {
       taskTitle: `Encargar ${itemLabel.toLowerCase()} de ${name}`,
       budgetCategory: `${itemLabel} de ${name}`,
       providerCategory: DECISION_PROVIDER_CATEGORIES.floristeria,
       resolved: false,
+      groupKind: FLORAL_GROUP_KIND,
+      groupDefaultName: FLORAL_GROUP_DEFAULT_NAME,
     }
   }
-  // 'otro'
-  return fromCustom(answer.custom, (label) => `Resolver ${label} de ${name}`, (label) => `${label} de ${name}`)
+  // 'otro' — se agrupa igual que las demás resoluciones florales, pero solo si de verdad llega a generar
+  // una tarea (fromCustom puede devolver NONE/RESOLVED, donde groupKind nunca se llega a usar).
+  const custom = fromCustom(answer.custom, (label) => `Resolver ${label} de ${name}`, (label) => `${label} de ${name}`)
+  return custom.taskTitle ? { ...custom, groupKind: FLORAL_GROUP_KIND, groupDefaultName: FLORAL_GROUP_DEFAULT_NAME } : custom
 }
 
 export function desiredForAlianzas(answer: AlianzasAnswer): DesiredPairGeneration {
@@ -404,7 +449,7 @@ export function desiredForAlianzas(answer: AlianzasAnswer): DesiredPairGeneratio
   if (answer.choice === 'no_tendremos') return NONE
   if (answer.choice === 'ya_las_tenemos') return RESOLVED
   if (answer.choice === 'elegir' || answer.choice === 'comprar_encargar') {
-    return { taskTitle: 'Elegir/Encargar las alianzas', budgetCategory: 'Alianzas', providerCategory: null, resolved: false }
+    return { taskTitle: 'Elegir/Encargar las alianzas', budgetCategory: 'Alianzas', providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
   }
   // 'otro'
   return fromCustom(answer.custom, (label) => `Alianzas: ${label}`, (label) => `Alianzas: ${label}`)
@@ -426,8 +471,12 @@ export function desiredForDetalleEspecialResolucion(tipo: DetalleEspecialTipoAns
   if (!resolucion || resolucion.choice === 'todavia_no_lo_sabemos') return NONE
   if (resolucion.choice === 'ya_lo_tenemos') return RESOLVED
   const label = detalleTipoLabel(tipo)
-  if (resolucion.choice === 'tenemos_que_prepararlo') return { taskTitle: `Preparar ${label} para el otro`, budgetCategory: null, providerCategory: null, resolved: false }
-  if (resolucion.choice === 'buscando') return { taskTitle: `Buscar ${label} para el otro`, budgetCategory: null, providerCategory: null, resolved: false }
+  if (resolucion.choice === 'tenemos_que_prepararlo') {
+    return { taskTitle: `Preparar ${label} para el otro`, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+  }
+  if (resolucion.choice === 'buscando') {
+    return { taskTitle: `Buscar ${label} para el otro`, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+  }
   // 'otro'
   return fromCustom(resolucion.custom, (l) => `Preparar: ${l}`, (l) => l)
 }
@@ -454,7 +503,10 @@ export function isBudgetItemUntouched(item: Pick<EventBudgetItem, 'plannedAmount
 }
 
 export type ReconcileAction =
-  | { op: 'create_task'; title: string }
+  // groupKind/groupDefaultName (Tanda Encargos v2): solo presentes cuando desired.groupKind lo pide — ver
+  // desiredForFloral, el único caso real hoy. Nunca en update_task/detach_task: solo una tarea RECIÉN
+  // creada se agrupa en origen; una ya existente nunca se reclasifica retroactivamente.
+  | { op: 'create_task'; title: string; groupKind?: string | null; groupDefaultName?: string | null }
   | { op: 'update_task'; id: string; title: string }
   | { op: 'complete_task'; id: string }
   | { op: 'delete_task'; id: string }
@@ -477,7 +529,11 @@ export function reconcilePairGeneration(desired: DesiredPairGeneration, existing
   const actions: ReconcileAction[] = []
 
   if (desired.taskTitle) {
-    if (!existingTask) actions.push({ op: 'create_task', title: desired.taskTitle })
+    if (!existingTask) {
+      // groupKind solo se incluye cuando de verdad hay uno que aplicar (floral hoy) — el resto de
+      // decisiones sigue generando exactamente la misma acción { op, title } de siempre.
+      actions.push(desired.groupKind ? { op: 'create_task', title: desired.taskTitle, groupKind: desired.groupKind, groupDefaultName: desired.groupDefaultName } : { op: 'create_task', title: desired.taskTitle })
+    }
     else if (existingTask.title !== desired.taskTitle && isTaskUntouched(existingTask)) {
       actions.push({ op: 'update_task', id: existingTask.id, title: desired.taskTitle })
     }

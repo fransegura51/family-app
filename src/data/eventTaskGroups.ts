@@ -1,14 +1,32 @@
-// Preparativos — "🗂️ Encargos" (migración 0212): agrupación organizativa de tareas relacionadas (p. ej.
-// "Flores": ramo, prendidos, decoración, recoger). UN grupo principal por tarea. Deliberadamente SIN
-// ninguna relación con Proveedores/Presupuesto — ver cabecera de la migración y el informe de la tanda.
+// Preparativos — "🗂️ Encargos" (migración 0212, extendida en 0215): agrupación organizativa de tareas
+// relacionadas (p. ej. "Flores": ramo, prendidos, decoración, recoger). UN grupo principal por tarea.
+// Desde 0215, un encargo puede RESOLVERSE (proveedor real + precio total opcional, reutilizando
+// event_providers/event_payments tal cual — nunca event_budget_items, ver cabecera de esa migración).
 import { supabase } from '@/data/supabaseClient'
-import type { EventTaskGroup } from '@/domain/types'
+import type { EventTaskGroup, EventTaskGroupResolutionMethod } from '@/domain/types'
 
-const GROUP_SELECT = 'id, event_id, name, sort_order'
+const GROUP_SELECT = 'id, event_id, name, sort_order, kind, resolved_at, resolution_method, resolution_note, provider_id, provider_name, payment_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapGroup(r: any): EventTaskGroup {
-  return { id: r.id, eventId: r.event_id, name: r.name, sortOrder: r.sort_order }
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    name: r.name,
+    sortOrder: r.sort_order,
+    kind: r.kind,
+    resolvedAt: r.resolved_at,
+    resolutionMethod: r.resolution_method,
+    resolutionNote: r.resolution_note,
+    providerId: r.provider_id,
+    providerName: r.provider_name,
+    paymentId: r.payment_id,
+  }
+}
+
+// Postgres: violación de unicidad — mismo criterio que usa events.ts para create_task concurrentes.
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
 }
 
 export async function listEventTaskGroups(eventId: string): Promise<EventTaskGroup[]> {
@@ -52,5 +70,49 @@ export async function countTasksInGroup(groupId: string): Promise<number> {
 // Calendario ni recordatorios.
 export async function setEventTaskGroup(taskId: string, groupId: string | null): Promise<void> {
   const { error } = await supabase.from('event_tasks').update({ group_id: groupId }).eq('id', taskId)
+  if (error) throw error
+}
+
+// Auto-agrupación EN ORIGEN (Tanda Encargos v2): idempotente por (event_id, kind) — kind es el
+// identificador INTERNO estable (nunca el name, que la familia puede renombrar), así que reconoce el
+// mismo encargo aunque ya lo hayan renombrado. Si dos creaciones concurrentes chocan contra el índice
+// único, se relee la fila ya creada por la otra en vez de fallar.
+export async function findOrCreateEventTaskGroupByKind(eventId: string, familyId: string, kind: string, defaultName: string): Promise<string> {
+  const { data: existing, error: selectError } = await supabase.from('event_task_groups').select('id').eq('event_id', eventId).eq('kind', kind).maybeSingle()
+  if (selectError) throw selectError
+  if (existing) return existing.id as string
+  const { data, error } = await supabase
+    .from('event_task_groups')
+    .insert({ event_id: eventId, family_id: familyId, name: defaultName, kind, sort_order: Date.now() })
+    .select('id')
+    .single()
+  if (error) {
+    if (isUniqueViolation(error)) {
+      const { data: retry, error: retryError } = await supabase.from('event_task_groups').select('id').eq('event_id', eventId).eq('kind', kind).single()
+      if (retryError) throw retryError
+      return retry.id as string
+    }
+    throw error
+  }
+  return data.id as string
+}
+
+// Resolución de un encargo (migración 0215): un único UPDATE — nunca toca las tareas del encargo (eso lo
+// decide y ejecuta quien llama, completando solo sus tareas PENDIENTES actuales) ni ningún otro encargo.
+export async function resolveEventTaskGroup(
+  groupId: string,
+  input: { method: EventTaskGroupResolutionMethod; note?: string | null; providerId?: string | null; providerName?: string | null; paymentId?: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('event_task_groups')
+    .update({
+      resolved_at: new Date().toISOString(),
+      resolution_method: input.method,
+      resolution_note: input.note ?? null,
+      provider_id: input.providerId ?? null,
+      provider_name: input.providerName ?? null,
+      payment_id: input.paymentId ?? null,
+    })
+    .eq('id', groupId)
   if (error) throw error
 }

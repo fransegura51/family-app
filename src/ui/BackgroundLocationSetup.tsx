@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { createMemberLocationToken, listMemberLocationTokenStatus, ownTracksEndpointUrl, revokeMemberLocationToken, type LocationTokenStatus } from '@/data/locationToken'
 import { errorMessage } from '@/domain/errorMessage'
-import { ownTracksConfigLink, OWNTRACKS_SITE } from '@/domain/owntracksConfig'
+import { ownTracksConfigLink, OWNTRACKS_ANDROID_STORE_URL, OWNTRACKS_IOS_STORE_URL } from '@/domain/owntracksConfig'
+import { isIos } from '@/services/notifications'
 import { describePositionAge } from '@/domain/positionFreshness'
 import type { FamilyMember, LocationConsent } from '@/domain/types'
 import { ConfirmButton } from '@/ui/ConfirmButton'
@@ -16,6 +17,27 @@ interface Setup {
   memberId: string
   memberName: string
   token: string
+}
+
+// Una web no puede instalar una app por sí sola: el botón abre la ficha de OwnTracks en la tienda de ESTE móvil, donde
+// solo queda tocar «Obtener» / «Instalar». El botón del sistema que se está usando va primero y destacado.
+function InstallOwnTracksButtons() {
+  const ios = isIos()
+  const iosButton = (
+    <a key="ios" className={ios ? 'chip chip-active' : 'chip'} href={OWNTRACKS_IOS_STORE_URL} target="_blank" rel="noreferrer">
+      📱 Instalar en iPhone (App Store)
+    </a>
+  )
+  const androidButton = (
+    <a key="android" className={ios ? 'chip' : 'chip chip-active'} href={OWNTRACKS_ANDROID_STORE_URL} target="_blank" rel="noreferrer">
+      🤖 Instalar en Android (Google Play)
+    </a>
+  )
+  return (
+    <div className="filter-row" style={{ margin: '12px 0' }}>
+      {ios ? [iosButton, androidButton] : [androidButton, iosButton]}
+    </div>
+  )
 }
 
 export function BackgroundLocationSetup({ members, consents }: { members: FamilyMember[]; consents: LocationConsent[] }) {
@@ -75,6 +97,7 @@ export function BackgroundLocationSetup({ members, consents }: { members: Family
         La web de PEPA solo envía la posición mientras la tienes abierta. Para que se sepa dónde estás (y salgan los avisos de llegada y
         salida) con el móvil bloqueado, instala <strong>OwnTracks</strong> (gratuita, iPhone y Android) y conéctala aquí.
       </p>
+      <InstallOwnTracksButtons />
       {error && <p className="error">{error}</p>}
 
       <div className="event-list">
@@ -113,11 +136,7 @@ export function BackgroundLocationSetup({ members, consents }: { members: Family
           <strong>Conectar a {setup.memberName}: hazlo desde SU móvil</strong>
           <ol className="muted" style={{ paddingLeft: 20 }}>
             <li>
-              Instala <strong>OwnTracks</strong> desde la tienda de aplicaciones (busca «OwnTracks», o entra en{' '}
-              <a href={OWNTRACKS_SITE} target="_blank" rel="noreferrer">
-                owntracks.org
-              </a>
-              ).
+              Instala <strong>OwnTracks</strong> con los botones de arriba (te llevan a la tienda de tu móvil: toca «Obtener» o «Instalar»).
             </li>
             <li>
               Pulsa{' '}

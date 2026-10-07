@@ -1,6 +1,13 @@
 // OwnTracks: configuración que se importa con un enlace + candados de la migración 0213, la función del servidor y la pantalla.
 import { describe, expect, it } from 'vitest'
-import { buildOwnTracksConfig, MAX_ACCURACY_M, ownTracksConfigLink, trackerId } from '@/domain/owntracksConfig'
+import {
+  buildOwnTracksConfig,
+  MAX_ACCURACY_M,
+  ownTracksConfigLink,
+  OWNTRACKS_ANDROID_STORE_URL,
+  OWNTRACKS_IOS_STORE_URL,
+  trackerId,
+} from '@/domain/owntracksConfig'
 
 const FILES = import.meta.glob(
   ['/supabase/functions/owntracks-ingest/index.ts', '/src/ui/BackgroundLocationSetup.tsx', '/src/ui/LocationScreen.tsx', '/src/data/locationToken.ts'],
@@ -123,6 +130,15 @@ describe('pantalla', () => {
     expect(UI).toContain('el código solo se muestra ahora')
     expect(UI).toContain('{setup && (')
     expect(UI).toContain('{enabled && (')
+  })
+  it('la instalación se hace desde PEPA: botones directos a la App Store y a Google Play (enlaces oficiales de owntracks.org)', () => {
+    expect(OWNTRACKS_IOS_STORE_URL).toBe('https://itunes.apple.com/us/app/mqttitude/id692424691?mt=8')
+    expect(OWNTRACKS_ANDROID_STORE_URL).toBe('https://play.google.com/store/apps/details?id=org.owntracks.android')
+    expect(UI).toContain('<InstallOwnTracksButtons />')
+    expect(UI).toContain('href={OWNTRACKS_IOS_STORE_URL}')
+    expect(UI).toContain('href={OWNTRACKS_ANDROID_STORE_URL}')
+    expect(UI).toContain('Instalar en iPhone (App Store)')
+    expect(UI).toContain('Instalar en Android (Google Play)')
   })
   it('desconectar pide confirmación', () => {
     expect(UI).toContain('<ConfirmButton onConfirm={() => handleDisconnect(m)}')

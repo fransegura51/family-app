@@ -3,6 +3,9 @@
 // único enlace `owntracks:///config?inline=<base64 del JSON>`, así que quien lo conecta no teclea nada.
 
 export const OWNTRACKS_SITE = 'https://owntracks.org/'
+// Enlaces oficiales de descarga (los que publica owntracks.org). En la App Store el nombre antiguo de la ficha es «mqttitude».
+export const OWNTRACKS_IOS_STORE_URL = 'https://itunes.apple.com/us/app/mqttitude/id692424691?mt=8'
+export const OWNTRACKS_ANDROID_STORE_URL = 'https://play.google.com/store/apps/details?id=org.owntracks.android'
 
 // Mismo umbral que aplica el servidor (ingest_member_location): una posición peor que esto no se guarda.
 export const MAX_ACCURACY_M = 150

@@ -7,6 +7,36 @@ import { useSectionHome, useLocationFlag } from '@/ui/useSectionHome'
 import { questionIsVisible, useConfiguratorQuestionFocus, type ConfiguratorFocusRequest } from '@/ui/useConfiguratorQuestionFocus'
 import { computeConfiguratorSummary, type ConfiguratorQuestionRef, type ConfiguratorSummary } from '@/domain/eventConfiguratorSummary'
 import {
+  desiredForEspecialComplementos,
+  desiredForEspecialRegalos,
+  ESPECIAL_COMPLEMENTOS_CATALOG,
+  ESPECIAL_COMPLEMENTOS_QUESTION_KEY,
+  ESPECIAL_HAY_QUESTION_KEY,
+  ESPECIAL_REGALOS_QUESTION_KEY,
+  ESPECIAL_ROLE_SUGGESTIONS,
+  ESPECIAL_VESTIMENTA_QUESTION_KEY,
+  FAMILIARES_NECESIDAD_OPTIONS,
+  FAMILIARES_NECESIDADES_QUESTION_KEY,
+  FAMILIARES_PARENTESCO_OPTIONS,
+  listEspecialBlockQuestions,
+  listFamiliaresBlockQuestions,
+  suggestGuestMatches,
+  summarizeEspecialBlock,
+  summarizeFamiliaresBlock,
+  type ComplementosEspecialesAnswer,
+  type FamiliaresNecesidadesAnswer,
+  type GrupoAlcanceChoice,
+  type GuestMatchCandidate,
+  type HayPersonasAnswer,
+  type HayPersonasChoice,
+  type RegalosEspecialesAnswer,
+  type VestimentaCoordinadaAnswer,
+} from '@/domain/eventSpecialPeople'
+import { addEventRolePerson, deleteEventRolePerson, listEventRolePeople, updateEventRolePerson } from '@/data/eventSpecialPeople'
+import type { EventRolePerson } from '@/domain/types'
+
+const NONE_ESPECIAL: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+import {
   addEventActivity,
   addEventBudgetItem,
   addEventDecorationItem,
@@ -382,6 +412,8 @@ import {
   buildPairDecisionSummary,
   buildGuestsDecisionSummary,
   buildMomentosEspecialesDecisionSummary,
+  buildEspecialDecisionSummary,
+  buildFamiliaresDecisionSummary,
   mergeTipoResolucionPairs,
   type DecisionSummary,
   type DecisionSummaryItem,
@@ -3841,6 +3873,10 @@ function EventPlanningConfigurator({
   // "🍽️ Comida y bebida" — sexto bloque; aplica a cualquier tipo de evento (qué preguntas ve depende de lo que
   // ya se sabe del lugar, los invitados y los momentos, no del tipo).
   const [comidaOpen, setComidaOpen] = useState(() => loadConfiguratorOpen(event.id, 'comida'))
+  // "🎭 Personas especiales" (Fase 2, plan de pendientes) — boda/bautizo/comunión. "👪 Familiares" — solo
+  // bautizo/comunión (nunca boda, ver el porqué en eventSpecialPeople.ts). Mismo patrón de acordeón.
+  const [personasEspecialesOpen, setPersonasEspecialesOpen] = useState(() => loadConfiguratorOpen(event.id, 'personas_especiales'))
+  const [familiaresOpen, setFamiliaresOpen] = useState(() => loadConfiguratorOpen(event.id, 'familiares'))
 
   function toggleOpen() {
     const next = !open
@@ -3872,6 +3908,16 @@ function EventPlanningConfigurator({
     setComidaOpen(next)
     saveConfiguratorOpen(event.id, 'comida', next)
   }
+  function togglePersonasEspecialesBlock() {
+    const next = !personasEspecialesOpen
+    setPersonasEspecialesOpen(next)
+    saveConfiguratorOpen(event.id, 'personas_especiales', next)
+  }
+  function toggleFamiliaresBlock() {
+    const next = !familiaresOpen
+    setFamiliaresOpen(next)
+    saveConfiguratorOpen(event.id, 'familiares', next)
+  }
 
   // Fase 1.1 (plan de pendientes) — resumen general: suma de TODOS los bloques, visible aunque el
   // configurador esté plegado. Carga su PROPIA copia de decisiones/momentos (nunca comparte estado con
@@ -3879,10 +3925,17 @@ function EventPlanningConfigurator({
   // validado) y se refresca cada vez que CUALQUIER bloque guarda algo (bumpRefresh, ver más abajo).
   const [summaryQuestions, setSummaryQuestions] = useState<ConfiguratorQuestionRef[] | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
+  const showPersonasEspeciales = event.type === 'boda' || event.type === 'bautizo' || event.type === 'comunion'
+  const showFamiliares = event.type === 'bautizo' || event.type === 'comunion'
   useEffect(() => {
     let cancelled = false
-    Promise.all([listEventDecisions(event.id), structuredByMoments ? listEventMoments(event.id) : Promise.resolve([] as EventMoment[])])
-      .then(([decisions, momentsRaw]) => {
+    Promise.all([
+      listEventDecisions(event.id),
+      structuredByMoments ? listEventMoments(event.id) : Promise.resolve([] as EventMoment[]),
+      showPersonasEspeciales ? listEventRolePeople(event.id, 'especial') : Promise.resolve([] as EventRolePerson[]),
+      showFamiliares ? listEventRolePeople(event.id, 'familiar') : Promise.resolve([] as EventRolePerson[]),
+    ])
+      .then(([decisions, momentsRaw, especialPeople, familiarPeople]) => {
         if (cancelled) return
         const realMoments = momentsRaw.filter((m) => !m.isLegacy)
         const hasMomentLocation = momentsRaw.some((m) => Boolean(m.locationLabel?.trim()))
@@ -3902,6 +3955,12 @@ function EventPlanningConfigurator({
           ...listGuestsBlockQuestions(decisions, momentsCount).map((q) => ({ sectionKey: 'invitados', sectionLabel: 'Invitados e invitaciones', key: q.questionKey, label: q.label, status: q.status })),
           ...listMomentosEspecialesBlockQuestions(decisions).map((q) => ({ sectionKey: 'momentos_especiales', sectionLabel: 'Momentos especiales', key: q.questionKey, label: q.label, status: q.status })),
           ...listFoodBlockQuestions(foodCtx).map((q) => ({ sectionKey: 'comida', sectionLabel: 'Comida y bebida', key: q.questionKey, label: q.label, status: q.status })),
+          ...(showPersonasEspeciales
+            ? listEspecialBlockQuestions(decisions, especialPeople.length).map((q) => ({ sectionKey: 'personas_especiales', sectionLabel: 'Personas especiales', key: q.questionKey, label: q.label, status: q.status }))
+            : []),
+          ...(showFamiliares
+            ? listFamiliaresBlockQuestions(decisions, familiarPeople.length).map((q) => ({ sectionKey: 'familiares', sectionLabel: 'Familiares', key: q.questionKey, label: q.label, status: q.status }))
+            : []),
         ]
         setSummaryQuestions(refs)
       })
@@ -3931,6 +3990,8 @@ function EventPlanningConfigurator({
     invitados: { open: guestsBlockOpen, setOpen: setGuestsBlockOpen, storageKey: 'invitados' },
     momentos_especiales: { open: momentosEspecialesOpen, setOpen: setMomentosEspecialesOpen, storageKey: 'momentos_especiales' },
     comida: { open: comidaOpen, setOpen: setComidaOpen, storageKey: 'comida' },
+    personas_especiales: { open: personasEspecialesOpen, setOpen: setPersonasEspecialesOpen, storageKey: 'personas_especiales' },
+    familiares: { open: familiaresOpen, setOpen: setFamiliaresOpen, storageKey: 'familiares' },
   }
   const [focusToken, setFocusToken] = useState(0)
   const [pendingFocus, setPendingFocus] = useState<{ sectionKey: string; questionKey: string; token: number } | null>(null)
@@ -4061,6 +4122,44 @@ function EventPlanningConfigurator({
               </div>
             )}
           </div>
+          {showPersonasEspeciales && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="link-button"
+                onClick={togglePersonasEspecialesBlock}
+                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+                aria-expanded={personasEspecialesOpen}
+              >
+                🎭 Personas especiales
+                <span aria-hidden="true">{personasEspecialesOpen ? '▾' : '▸'}</span>
+              </button>
+              {personasEspecialesOpen && (
+                <div style={{ marginTop: 4 }}>
+                  <PersonasEspecialesBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('personas_especiales')} />
+                </div>
+              )}
+            </div>
+          )}
+          {showFamiliares && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="link-button"
+                onClick={toggleFamiliaresBlock}
+                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+                aria-expanded={familiaresOpen}
+              >
+                👪 Familiares
+                <span aria-hidden="true">{familiaresOpen ? '▾' : '▸'}</span>
+              </button>
+              {familiaresOpen && (
+                <div style={{ marginTop: 4 }}>
+                  <FamiliaresBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('familiares')} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -7190,6 +7289,610 @@ function FoodNeedsPointer({ needsCount, reviewPending, onOpenMenu, menuModuleEna
   )
 }
 
+// ---------------------------------------------------------------------
+// "🎭 Personas especiales" (boda/bautizo/comunión) y "👪 Familiares" (bautizo/comunión) — Fase 2 del plan
+// de pendientes. Mismo motor de decisiones que el resto del configurador; el roster (quién es quién) vive
+// en event_role_people (migración 0216), reutilizado tal cual por las dos categorías.
+// ---------------------------------------------------------------------
+
+const GRUPO_ALCANCE_OPTIONS: { value: GrupoAlcanceChoice; label: string }[] = [
+  { value: 'todos', label: 'Todos' },
+  { value: 'algunos', label: 'Solo algunos' },
+  { value: 'ninguno', label: 'Ninguno' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+const HAY_PERSONAS_OPTIONS: { value: HayPersonasChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+// Selector de "a quién" (cuando choice === 'algunos'): checkboxes simples sobre el roster ya creado.
+function PersonSubsetPicker({ people, selectedIds, onChange }: { people: EventRolePerson[]; selectedIds: string[]; onChange: (ids: string[]) => void }) {
+  return (
+    <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+      {people.map((p) => {
+        const checked = selectedIds.includes(p.id)
+        return (
+          <button
+            key={p.id}
+            type="button"
+            className={'chip' + (checked ? ' chip-active' : '')}
+            onClick={() => onChange(checked ? selectedIds.filter((id) => id !== p.id) : [...selectedIds, p.id])}
+          >
+            {p.name || p.roles[0] || 'Sin nombre'}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Alta/edición de una persona del roster: nombre (opcional solo en Familiares), papeles (chips sugeridos +
+// "+Otro papel" libre) y, mientras escribe el nombre, sugerencia de coincidencia con Invitados — nunca un
+// vínculo automático, solo una pregunta que hay que confirmar.
+function RolePersonForm({
+  category,
+  roleSuggestions,
+  roleFieldLabel,
+  nameRequired,
+  existing,
+  guestCandidates,
+  onSave,
+  onCancel,
+}: {
+  category: 'especial' | 'familiar'
+  roleSuggestions: string[]
+  roleFieldLabel: string
+  nameRequired: boolean
+  existing?: EventRolePerson
+  guestCandidates: GuestMatchCandidate[]
+  onSave: (input: { name: string | null; roles: string[]; guestMemberId: string | null }) => Promise<void>
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(existing?.name ?? '')
+  const [roles, setRoles] = useState<string[]>(existing?.roles ?? [])
+  const [customRole, setCustomRole] = useState('')
+  const [guestMemberId, setGuestMemberId] = useState<string | null>(existing?.guestMemberId ?? null)
+  const [dismissedMatches, setDismissedMatches] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const matches = guestMemberId || dismissedMatches ? [] : suggestGuestMatches(name, guestCandidates)
+
+  function toggleRole(role: string) {
+    setRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]))
+  }
+  function addCustomRole() {
+    if (!customRole.trim()) return
+    setRoles((prev) => [...prev, customRole.trim()])
+    setCustomRole('')
+  }
+
+  async function handleSave() {
+    if (nameRequired && !name.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave({ name: name.trim() ? name.trim() : null, roles, guestMemberId })
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 6 }}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Nombre{nameRequired ? '' : ' (opcional)'}
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value)
+            setDismissedMatches(false)
+          }}
+        />
+      </label>
+      {matches.length > 0 && (
+        <div className="card member-form" style={{ marginTop: 4 }}>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+            ¿Es la misma persona que ya tenéis en Invitados?
+          </p>
+          <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+            {matches.map((m) => (
+              <button key={m.id} type="button" className="chip" onClick={() => setGuestMemberId(m.id)}>
+                Sí, es {m.name}
+              </button>
+            ))}
+            <button type="button" className="link-button" onClick={() => setDismissedMatches(true)}>
+              No, es otra persona
+            </button>
+          </div>
+        </div>
+      )}
+      {guestMemberId && (
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+          🔗 Vinculada con Invitados.{' '}
+          <button type="button" className="link-button" onClick={() => setGuestMemberId(null)}>
+            Quitar vínculo
+          </button>
+        </p>
+      )}
+      <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>
+        {roleFieldLabel}
+      </div>
+      {roleSuggestions.length > 0 && (
+        <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+          {roleSuggestions.map((r) => (
+            <button key={r} type="button" className={'chip' + (roles.includes(r) ? ' chip-active' : '')} onClick={() => toggleRole(r)}>
+              {r}
+            </button>
+          ))}
+        </div>
+      )}
+      {roles.filter((r) => !roleSuggestions.includes(r)).length > 0 && (
+        <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+          {roles
+            .filter((r) => !roleSuggestions.includes(r))
+            .map((r) => (
+              <button key={r} type="button" className="chip chip-active" onClick={() => toggleRole(r)}>
+                {r} ✕
+              </button>
+            ))}
+        </div>
+      )}
+      <div className="inline-fields" style={{ marginTop: 4 }}>
+        <input type="text" value={customRole} onChange={(e) => setCustomRole(e.target.value)} placeholder={category === 'especial' ? 'Otro papel…' : 'Otro parentesco…'} />
+        <button type="button" className="link-button" onClick={addCustomRole} disabled={!customRole.trim()}>
+          + Añadir
+        </button>
+      </div>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function RolePeopleList({
+  people,
+  onEdit,
+  onDelete,
+}: {
+  people: EventRolePerson[]
+  onEdit: (p: EventRolePerson) => void
+  onDelete: (p: EventRolePerson) => void
+}) {
+  if (people.length === 0) return null
+  return (
+    <div className="event-list" style={{ marginTop: 6 }}>
+      {people.map((p) => (
+        <div key={p.id} className="inline-fields" style={{ alignItems: 'center' }}>
+          <span style={{ flex: 1 }}>
+            {p.name || <span className="muted">Sin nombre</span>}
+            {p.roles.length > 0 && <span className="muted"> · {p.roles.join(', ')}</span>}
+            {p.guestMemberId && <span title="Vinculada con Invitados"> 🔗</span>}
+          </span>
+          <button type="button" className="link-button" onClick={() => onEdit(p)}>
+            Editar
+          </button>
+          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel={`Quitar a ${p.name ?? 'esta persona'}`} onConfirm={() => onDelete(p)} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function PersonasEspecialesBlock({
+  event,
+  onDerivedDataChanged,
+  focusRequest,
+}: {
+  event: FamilyEvent
+  onDerivedDataChanged: () => void
+  focusRequest?: ConfiguratorFocusRequest | null
+}) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [people, setPeople] = useState<EventRolePerson[]>([])
+  const [guestMembers, setGuestMembers] = useState<EventGuestMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [addingPerson, setAddingPerson] = useState(false)
+  const [editingPerson, setEditingPerson] = useState<EventRolePerson | null>(null)
+
+  function reload(): Promise<void> {
+    return Promise.all([listEventDecisions(event.id), listEventRolePeople(event.id, 'especial'), listEventGuestMembersForEvent(event.id)])
+      .then(([d, p, gm]) => {
+        setDecisions(d.filter((x) => x.blockKey === 'personas_especiales'))
+        setPeople(p)
+        setGuestMembers(gm)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  function findDecision(questionKey: string): EventDecision | undefined {
+    return decisions.find((d) => d.questionKey === questionKey)
+  }
+
+  async function saveHay(answer: HayPersonasAnswer) {
+    setSavingKey(ESPECIAL_HAY_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, { blockKey: 'personas_especiales', questionKey: ESPECIAL_HAY_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveGrouped(questionKey: string, answer: Record<string, unknown>, desired: DesiredPairGeneration) {
+    setSavingKey(questionKey)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: 'personas_especiales', questionKey, answer, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desired)
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function savePerson(input: { name: string | null; roles: string[]; guestMemberId: string | null }) {
+    if (editingPerson) await updateEventRolePerson(editingPerson.id, input)
+    else await addEventRolePerson(event.id, 'especial', input)
+    setAddingPerson(false)
+    setEditingPerson(null)
+    await reload()
+  }
+
+  async function deletePerson(p: EventRolePerson) {
+    await deleteEventRolePerson(p.id)
+    await reload()
+  }
+
+  if (loading) return null
+  const hayDecision = findDecision(ESPECIAL_HAY_QUESTION_KEY)
+  const hay = hayDecision?.answer as unknown as HayPersonasAnswer | undefined
+  const vestimenta = findDecision(ESPECIAL_VESTIMENTA_QUESTION_KEY)?.answer as unknown as VestimentaCoordinadaAnswer | undefined
+  const complementos = findDecision(ESPECIAL_COMPLEMENTOS_QUESTION_KEY)?.answer as unknown as ComplementosEspecialesAnswer | undefined
+  const regalos = findDecision(ESPECIAL_REGALOS_QUESTION_KEY)?.answer as unknown as RegalosEspecialesAnswer | undefined
+  const summary = summarizeEspecialBlock(decisions, people.length)
+  const decisionSummary = buildEspecialDecisionSummary(decisions, people.length)
+  const roleSuggestions = ESPECIAL_ROLE_SUGGESTIONS[event.type]
+  const guestCandidates: GuestMatchCandidate[] = guestMembers.filter((m) => !people.some((p) => p.guestMemberId === m.id) || m.id === editingPerson?.guestMemberId).map((m) => ({ id: m.id, name: m.name }))
+
+  return (
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      {error && <p className="error">{error}</p>}
+      {questionIsVisible(localFocus, ESPECIAL_HAY_QUESTION_KEY) && (
+        <div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Habrá personas con un papel especial?
+          </div>
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+            Por ejemplo: padrino, madrina, testigos, damas de honor…
+          </p>
+          <ChoiceRow options={HAY_PERSONAS_OPTIONS} value={hay?.choice} disabled={savingKey === ESPECIAL_HAY_QUESTION_KEY} onSelect={(choice) => saveHay({ choice })} />
+        </div>
+      )}
+      {hay?.choice === 'si' && questionIsVisible(localFocus, ESPECIAL_HAY_QUESTION_KEY) && (
+        <div style={{ marginTop: 8 }}>
+          <RolePeopleList people={people} onEdit={setEditingPerson} onDelete={(p) => void deletePerson(p)} />
+          {(addingPerson || editingPerson) && (
+            <RolePersonForm
+              category="especial"
+              roleSuggestions={roleSuggestions}
+              roleFieldLabel="Papel o papeles"
+              nameRequired
+              existing={editingPerson ?? undefined}
+              guestCandidates={guestCandidates}
+              onSave={savePerson}
+              onCancel={() => {
+                setAddingPerson(false)
+                setEditingPerson(null)
+              }}
+            />
+          )}
+          {!addingPerson && !editingPerson && (
+            <button type="button" className="link-button" onClick={() => setAddingPerson(true)} style={{ marginTop: 4 }}>
+              + Añadir persona
+            </button>
+          )}
+        </div>
+      )}
+      {hay?.choice === 'si' && people.length > 0 && questionIsVisible(localFocus, ESPECIAL_VESTIMENTA_QUESTION_KEY) && (
+        <div style={{ marginTop: 8 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Vestimenta coordinada
+          </div>
+          <ChoiceRow
+            options={GRUPO_ALCANCE_OPTIONS}
+            value={vestimenta?.choice}
+            disabled={savingKey === ESPECIAL_VESTIMENTA_QUESTION_KEY}
+            onSelect={(choice) =>
+              saveGrouped(
+                ESPECIAL_VESTIMENTA_QUESTION_KEY,
+                { choice, selectedPersonIds: choice === 'algunos' ? (vestimenta?.selectedPersonIds ?? []) : [], note: vestimenta?.note ?? null },
+                NONE_ESPECIAL,
+              )
+            }
+          />
+          {vestimenta?.choice === 'algunos' && (
+            <PersonSubsetPicker
+              people={people}
+              selectedIds={vestimenta.selectedPersonIds}
+              onChange={(ids) => saveGrouped(ESPECIAL_VESTIMENTA_QUESTION_KEY, { choice: 'algunos', selectedPersonIds: ids, note: vestimenta.note }, NONE_ESPECIAL)}
+            />
+          )}
+          {(vestimenta?.choice === 'todos' || vestimenta?.choice === 'algunos') && (
+            <input
+              type="text"
+              placeholder="Nota (opcional): p. ej. testigos en azul marino…"
+              defaultValue={vestimenta.note ?? ''}
+              onBlur={(e) => saveGrouped(ESPECIAL_VESTIMENTA_QUESTION_KEY, { choice: vestimenta.choice, selectedPersonIds: vestimenta.selectedPersonIds, note: e.target.value || null }, NONE_ESPECIAL)}
+              style={{ marginTop: 4 }}
+            />
+          )}
+        </div>
+      )}
+      {hay?.choice === 'si' && people.length > 0 && questionIsVisible(localFocus, ESPECIAL_COMPLEMENTOS_QUESTION_KEY) && (
+        <div style={{ marginTop: 8 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Complementos especiales
+          </div>
+          <ChoiceRow
+            options={GRUPO_ALCANCE_OPTIONS}
+            value={complementos?.choice}
+            disabled={savingKey === ESPECIAL_COMPLEMENTOS_QUESTION_KEY}
+            onSelect={(choice) => {
+              const next: ComplementosEspecialesAnswer = { choice, selectedPersonIds: choice === 'algunos' ? (complementos?.selectedPersonIds ?? []) : [], selected: complementos?.selected ?? [], customItems: complementos?.customItems ?? [], note: complementos?.note ?? null }
+              saveGrouped(ESPECIAL_COMPLEMENTOS_QUESTION_KEY, next as unknown as Record<string, unknown>, desiredForEspecialComplementos(next))
+            }}
+          />
+          {(complementos?.choice === 'todos' || complementos?.choice === 'algunos') && (
+            <>
+              {complementos.choice === 'algunos' && (
+                <PersonSubsetPicker
+                  people={people}
+                  selectedIds={complementos.selectedPersonIds}
+                  onChange={(ids) => {
+                    const next = { ...complementos, selectedPersonIds: ids }
+                    saveGrouped(ESPECIAL_COMPLEMENTOS_QUESTION_KEY, next as unknown as Record<string, unknown>, desiredForEspecialComplementos(next))
+                  }}
+                />
+              )}
+              <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+                {ESPECIAL_COMPLEMENTOS_CATALOG.map((item) => {
+                  const checked = complementos.selected.includes(item)
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      className={'chip' + (checked ? ' chip-active' : '')}
+                      onClick={() => {
+                        const nextSelected = checked ? complementos.selected.filter((s) => s !== item) : [...complementos.selected, item]
+                        const next = { ...complementos, selected: nextSelected }
+                        saveGrouped(ESPECIAL_COMPLEMENTOS_QUESTION_KEY, next as unknown as Record<string, unknown>, desiredForEspecialComplementos(next))
+                      }}
+                    >
+                      {item}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {hay?.choice === 'si' && people.length > 0 && questionIsVisible(localFocus, ESPECIAL_REGALOS_QUESTION_KEY) && (
+        <div style={{ marginTop: 8 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Regalos o detalles
+          </div>
+          <ChoiceRow
+            options={GRUPO_ALCANCE_OPTIONS}
+            value={regalos?.choice}
+            disabled={savingKey === ESPECIAL_REGALOS_QUESTION_KEY}
+            onSelect={(choice) => {
+              const next: RegalosEspecialesAnswer = { choice, selectedPersonIds: choice === 'algunos' ? (regalos?.selectedPersonIds ?? []) : [] }
+              saveGrouped(ESPECIAL_REGALOS_QUESTION_KEY, next as unknown as Record<string, unknown>, desiredForEspecialRegalos(next))
+            }}
+          />
+          {regalos?.choice === 'algunos' && (
+            <PersonSubsetPicker
+              people={people}
+              selectedIds={regalos.selectedPersonIds}
+              onChange={(ids) => {
+                const next = { ...regalos, selectedPersonIds: ids }
+                saveGrouped(ESPECIAL_REGALOS_QUESTION_KEY, next as unknown as Record<string, unknown>, desiredForEspecialRegalos(next))
+              }}
+            />
+          )}
+          {(regalos?.choice === 'todos' || regalos?.choice === 'algunos') && (
+            <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+              Se apunta un preparativo general ("Decidir regalos para personas especiales"). Qué regalar y a quién se gestiona en 🎁 Detalles/🎀 Regalos.
+            </p>
+          )}
+        </div>
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
+      )}
+    </div>
+  )
+}
+
+function FamiliaresBlock({ event, onDerivedDataChanged, focusRequest }: { event: FamilyEvent; onDerivedDataChanged: () => void; focusRequest?: ConfiguratorFocusRequest | null }) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [people, setPeople] = useState<EventRolePerson[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [addingPerson, setAddingPerson] = useState(false)
+  const [editingPerson, setEditingPerson] = useState<EventRolePerson | null>(null)
+
+  function reload(): Promise<void> {
+    return Promise.all([listEventDecisions(event.id), listEventRolePeople(event.id, 'familiar')])
+      .then(([d, p]) => {
+        setDecisions(d.filter((x) => x.blockKey === 'familiares'))
+        setPeople(p)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  async function savePerson(input: { name: string | null; roles: string[]; guestMemberId: string | null }) {
+    if (editingPerson) await updateEventRolePerson(editingPerson.id, input)
+    else await addEventRolePerson(event.id, 'familiar', input)
+    setAddingPerson(false)
+    setEditingPerson(null)
+    await reload()
+  }
+  async function deletePerson(p: EventRolePerson) {
+    await deleteEventRolePerson(p.id)
+    await reload()
+  }
+  async function saveNecesidades(answer: FamiliaresNecesidadesAnswer) {
+    setSavingKey(FAMILIARES_NECESIDADES_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, { blockKey: 'familiares', questionKey: FAMILIARES_NECESIDADES_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      await reload()
+      onDerivedDataChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  if (loading) return null
+  const necesidades = decisions.find((d) => d.questionKey === FAMILIARES_NECESIDADES_QUESTION_KEY)?.answer as unknown as FamiliaresNecesidadesAnswer | undefined
+  const summary = summarizeFamiliaresBlock(decisions, people.length)
+  const decisionSummary = buildFamiliaresDecisionSummary(decisions, people.length)
+
+  return (
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      {error && <p className="error">{error}</p>}
+      <RolePeopleList people={people} onEdit={setEditingPerson} onDelete={(p) => void deletePerson(p)} />
+      {(addingPerson || editingPerson) && (
+        <RolePersonForm
+          category="familiar"
+          roleSuggestions={[...FAMILIARES_PARENTESCO_OPTIONS]}
+          roleFieldLabel="Parentesco"
+          nameRequired={false}
+          existing={editingPerson ?? undefined}
+          guestCandidates={[]}
+          onSave={savePerson}
+          onCancel={() => {
+            setAddingPerson(false)
+            setEditingPerson(null)
+          }}
+        />
+      )}
+      {!addingPerson && !editingPerson && (
+        <button type="button" className="link-button" onClick={() => setAddingPerson(true)} style={{ marginTop: 4 }}>
+          + Añadir otra persona
+        </button>
+      )}
+      {people.length > 0 && questionIsVisible(localFocus, FAMILIARES_NECESIDADES_QUESTION_KEY) && (
+        <div style={{ marginTop: 8 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Qué necesitan los familiares?
+          </div>
+          <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+            {FAMILIARES_NECESIDAD_OPTIONS.map((o) => {
+              const checked = necesidades?.selected.includes(o.value) ?? false
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={'chip' + (checked ? ' chip-active' : '')}
+                  disabled={savingKey === FAMILIARES_NECESIDADES_QUESTION_KEY}
+                  onClick={() => {
+                    const selected = checked ? (necesidades?.selected ?? []).filter((s) => s !== o.value) : [...(necesidades?.selected ?? []), o.value]
+                    void saveNecesidades({ selected, alcance: necesidades?.alcance ?? 'todos', selectedPersonIds: necesidades?.selectedPersonIds ?? [] })
+                  }}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+          {(necesidades?.selected.length ?? 0) > 0 && (
+            <>
+              <ChoiceRow
+                options={[
+                  { value: 'todos', label: 'Todos los familiares' },
+                  { value: 'algunos', label: 'Solo algunos' },
+                ]}
+                value={necesidades?.alcance}
+                disabled={savingKey === FAMILIARES_NECESIDADES_QUESTION_KEY}
+                onSelect={(alcance) => void saveNecesidades({ selected: necesidades?.selected ?? [], alcance, selectedPersonIds: alcance === 'algunos' ? (necesidades?.selectedPersonIds ?? []) : [] })}
+              />
+              {necesidades?.alcance === 'algunos' && (
+                <PersonSubsetPicker
+                  people={people}
+                  selectedIds={necesidades.selectedPersonIds}
+                  onChange={(ids) => void saveNecesidades({ selected: necesidades.selected, alcance: 'algunos', selectedPersonIds: ids })}
+                />
+              )}
+            </>
+          )}
+        </div>
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
+      )}
+    </div>
+  )
+}
+
 function ComidaBebidaBlock({
   event,
   onDerivedDataChanged,
@@ -10036,6 +10739,9 @@ function DetailsSection({ eventId }: { eventId: string }) {
   const [favors, setFavors] = useState<EventFavorItem[]>([])
   const [specials, setSpecials] = useState<EventSpecialDetail[]>([])
   const [members, setMembers] = useState<EventGuestMember[]>([])
+  // Fase 2 (plan de pendientes) — "alimentar el módulo de Detalles/Regalos": el roster de "🎭 Personas
+  // especiales" se ofrece como alta rápida en AddSpecialDetailModal, nunca se crea nada aquí por su cuenta.
+  const [rolePeople, setRolePeople] = useState<EventRolePerson[]>([])
   const [showAddFavor, setShowAddFavor] = useState(false)
   const [showAddSpecial, setShowAddSpecial] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -10052,6 +10758,9 @@ function DetailsSection({ eventId }: { eventId: string }) {
     // es solo un enlace informativo adicional.
     listEventGuestMembersForEvent(eventId)
       .then(setMembers)
+      .catch(() => {})
+    listEventRolePeople(eventId, 'especial')
+      .then(setRolePeople)
       .catch(() => {})
   }
   useEffect(reload, [eventId])
@@ -10136,6 +10845,7 @@ function DetailsSection({ eventId }: { eventId: string }) {
         <AddSpecialDetailModal
           eventId={eventId}
           members={members}
+          rolePeople={rolePeople}
           onClose={() => setShowAddSpecial(false)}
           onAdded={() => {
             setShowAddSpecial(false)
@@ -10209,11 +10919,15 @@ function AddFavorModal({ eventId, onClose, onAdded }: { eventId: string; onClose
 function AddSpecialDetailModal({
   eventId,
   members,
+  rolePeople = [],
   onClose,
   onAdded,
 }: {
   eventId: string
   members: EventGuestMember[]
+  // Fase 2 (plan de pendientes) — roster de "🎭 Personas especiales": elegir uno rellena nombre y papel(es)
+  // de un tirón, pero el nombre sigue siendo editable — nunca sustituye la alta manual de siempre.
+  rolePeople?: EventRolePerson[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -10223,6 +10937,14 @@ function AddSpecialDetailModal({
   const [memberId, setMemberId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function fillFromRolePerson(personId: string) {
+    const person = rolePeople.find((p) => p.id === personId)
+    if (!person) return
+    if (person.name) setRecipientName(person.name)
+    if (person.roles.length > 0) setRelationship(person.roles.join(', '))
+    if (person.guestMemberId) setMemberId(person.guestMemberId)
+  }
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -10255,6 +10977,20 @@ function AddSpecialDetailModal({
         </div>
         <form className="card member-form" onSubmit={handleSubmit}>
           {error && <p className="error">{error}</p>}
+          {rolePeople.length > 0 && (
+            <label>
+              Elegir de "🎭 Personas especiales" (opcional)
+              <select value="" onChange={(e) => fillFromRolePerson(e.target.value)}>
+                <option value="">Escribir a mano…</option>
+                {rolePeople.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name || 'Sin nombre'}
+                    {p.roles.length > 0 ? ` · ${p.roles.join(', ')}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             Nombre
             <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Abuela Pepa" autoFocus />
@@ -10296,6 +11032,8 @@ function AddSpecialDetailModal({
 function GiftsSection({ eventId }: { eventId: string }) {
   const [gifts, setGifts] = useState<EventGiftReceived[]>([])
   const [members, setMembers] = useState<EventGuestMember[]>([])
+  // Fase 2 (plan de pendientes) — mismo roster de "🎭 Personas especiales" que Detalles, como alta rápida.
+  const [rolePeople, setRolePeople] = useState<EventRolePerson[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -10308,6 +11046,9 @@ function GiftsSection({ eventId }: { eventId: string }) {
     // también para regalos de varias personas a la vez, sin N:M).
     listEventGuestMembersForEvent(eventId)
       .then(setMembers)
+      .catch(() => {})
+    listEventRolePeople(eventId, 'especial')
+      .then(setRolePeople)
       .catch(() => {})
   }
   useEffect(reload, [eventId])
@@ -10348,6 +11089,7 @@ function GiftsSection({ eventId }: { eventId: string }) {
         <AddGiftModal
           eventId={eventId}
           members={members}
+          rolePeople={rolePeople}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
@@ -10362,11 +11104,13 @@ function GiftsSection({ eventId }: { eventId: string }) {
 function AddGiftModal({
   eventId,
   members,
+  rolePeople = [],
   onClose,
   onAdded,
 }: {
   eventId: string
   members: EventGuestMember[]
+  rolePeople?: EventRolePerson[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -10376,6 +11120,13 @@ function AddGiftModal({
   const [memberId, setMemberId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function fillFromRolePerson(personId: string) {
+    const person = rolePeople.find((p) => p.id === personId)
+    if (!person) return
+    if (person.name) setGuestName(person.name)
+    if (person.guestMemberId) setMemberId(person.guestMemberId)
+  }
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -10413,6 +11164,20 @@ function AddGiftModal({
         </div>
         <form className="card member-form" onSubmit={handleSubmit}>
           {error && <p className="error">{error}</p>}
+          {rolePeople.length > 0 && (
+            <label>
+              Elegir de "🎭 Personas especiales" (opcional)
+              <select value="" onChange={(e) => fillFromRolePerson(e.target.value)}>
+                <option value="">Escribir a mano…</option>
+                {rolePeople.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name || 'Sin nombre'}
+                    {p.roles.length > 0 ? ` · ${p.roles.join(', ')}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             De quién
             <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} autoFocus />

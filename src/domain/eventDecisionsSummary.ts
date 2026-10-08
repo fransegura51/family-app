@@ -11,6 +11,7 @@ import { listCelebrationQuestions, ageTurning, longSpanishDate, type Celebration
 import { listPairBlockQuestions, type PairQuestionInfo } from '@/domain/eventPairDecisions'
 import { listGuestsBlockQuestions } from '@/domain/eventGuestDecisions'
 import { listMomentosEspecialesBlockQuestions, CLASES_BAILE_QUESTION_KEY, MOMENTOS_ESPECIALES_QUESTION_KEY } from '@/domain/eventSpecialMoments'
+import { ESPECIAL_HAY_QUESTION_KEY, ESPECIAL_REGALOS_QUESTION_KEY, listEspecialBlockQuestions, listFamiliaresBlockQuestions } from '@/domain/eventSpecialPeople'
 import type { EventDecision, FamilyEvent } from '@/domain/types'
 
 export interface DecisionSummaryItem {
@@ -208,6 +209,43 @@ export function buildMomentosEspecialesDecisionSummary(decisions: EventDecision[
     }
     const mapped = choice !== null ? MOMENTOS_ESPECIALES_TAKEN_TEXT[q.questionKey]?.[choice] : undefined
     taken.push({ key: q.questionKey, text: mapped ?? q.label.replace(/^¿|\?$/g, '') })
+  }
+  return { taken, pending }
+}
+
+// ---------------------------------------------------------------------
+// "🎭 Personas especiales" / "👪 Familiares" (Fase 2, plan de pendientes)
+// ---------------------------------------------------------------------
+const ESPECIAL_TAKEN_TEXT: Record<string, Record<string, string>> = {
+  [ESPECIAL_HAY_QUESTION_KEY]: { si: 'Habrá personas con un papel especial', no: 'No habrá personas con un papel especial' },
+  [ESPECIAL_REGALOS_QUESTION_KEY]: { ninguno: 'No habrá regalos para personas especiales' },
+}
+
+export function buildEspecialDecisionSummary(decisions: EventDecision[], peopleCount: number): DecisionSummary {
+  const taken: DecisionSummaryItem[] = []
+  const pending: DecisionSummaryItem[] = []
+  for (const q of listEspecialBlockQuestions(decisions, peopleCount)) {
+    const choice = choiceOf(decisions, q.questionKey)
+    if (q.status !== 'decidida' || (choice !== null && PENDING_CHOICES.has(choice))) {
+      pending.push({ key: q.questionKey, text: pendingText(q.label) })
+      continue
+    }
+    const mapped = choice !== null ? ESPECIAL_TAKEN_TEXT[q.questionKey]?.[choice] : undefined
+    taken.push({ key: q.questionKey, text: mapped ?? q.label.replace(/^¿|\?$/g, '') })
+  }
+  return { taken, pending }
+}
+
+export function buildFamiliaresDecisionSummary(decisions: EventDecision[], peopleCount: number): DecisionSummary {
+  const taken: DecisionSummaryItem[] = []
+  const pending: DecisionSummaryItem[] = []
+  for (const q of listFamiliaresBlockQuestions(decisions, peopleCount)) {
+    const choice = choiceOf(decisions, q.questionKey)
+    if (q.status !== 'decidida' || (choice !== null && PENDING_CHOICES.has(choice))) {
+      pending.push({ key: q.questionKey, text: pendingText(q.label) })
+      continue
+    }
+    taken.push({ key: q.questionKey, text: q.label.replace(/^¿|\?$/g, '') })
   }
   return { taken, pending }
 }

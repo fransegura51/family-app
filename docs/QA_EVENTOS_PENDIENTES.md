@@ -478,3 +478,30 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 426. [ ] En "La pareja" → "Estamos buscando" (o "floristería"/"buscando catering"), el selector "Relacionar proveedor ya existente…" no desborda la tarjeta en iPhone — cabe entero, sin scroll horizontal.
 427. [ ] Lo mismo en "Comida y bebida" (contratación externa, tarta por encargar) con su propio ProviderLinker.
 428. [ ] Ningún dato ni relación de proveedores existente cambió al corregir el desbordamiento (es un cambio puramente visual).
+
+### Plan general de pendientes — Fase 2: Personas especiales y Familiares
+
+429. [ ] En una boda, "🎭 Personas especiales" aparece como nuevo bloque del configurador, con "¿Habrá personas con un papel especial?".
+430. [ ] "Sí" revela "+ Añadir persona"; "No"/"Todavía no lo sabemos" no muestran el roster ni las preguntas conjuntas.
+431. [ ] Añadir una persona permite nombre + varios papeles (Padrino, Madrina, Testigo, Dama de honor, Caballero de honor) y "+ Añadir" para un papel escrito a mano.
+432. [ ] Una misma persona puede tener varios papeles a la vez; varias personas pueden compartir el mismo papel.
+433. [ ] Al escribir un nombre que coincide con alguien de Invitados, aparece "¿Es la misma persona?" — nunca se vincula sola.
+434. [ ] Confirmar la coincidencia vincula la persona; "No, es otra persona" la deja sin vincular, sin perder lo escrito.
+435. [ ] Se puede añadir una persona especial que NO esté en Invitados, sin ningún aviso ni bloqueo.
+436. [ ] Editar una persona ya creada conserva su nombre/papeles/vínculo y permite cambiarlos.
+437. [ ] Borrar una persona no afecta a Invitados ni dentro de Invitados se ve o se borra nada.
+438. [ ] Con al menos una persona añadida aparecen Vestimenta coordinada, Complementos especiales y Regalos o detalles — nunca antes.
+439. [ ] Las tres preguntas ofrecen Todos/Solo algunos/Ninguno/Todavía no lo sabemos; "Solo algunos" deja elegir a quién.
+440. [ ] Complementos especiales con al menos un ítem marcado crea UN preparativo "Preparar complementos de personas especiales" — nunca uno por persona.
+441. [ ] Regalos o detalles en "Todos"/"Solo algunos" crea UN preparativo "Decidir regalos para personas especiales" — nunca uno por persona.
+442. [ ] "Todavía no lo sabemos" en Regalos nunca da por hecho que habrá regalos (no crea nada, queda pendiente).
+443. [ ] En 🎁 Detalles → "+ Añadir persona especial", el desplegable "Elegir de Personas especiales" rellena nombre y papel, pero sigue siendo editable antes de guardar.
+444. [ ] Lo mismo en 🎀 Regalos recibidos → "+ Añadir regalo".
+445. [ ] Momentos especiales (alianzas, arras, primer baile) sigue exactamente igual — Personas especiales no duplica ni reemplaza nada ahí.
+446. [ ] En un bautizo, "🎭 Personas especiales" sugiere solo Padrino/Madrina (sin Testigo/Damas/Caballeros).
+447. [ ] En una comunión, "🎭 Personas especiales" no sugiere ningún papel fijo — solo "+ Añadir" papel a mano.
+448. [ ] En bautizo y comunión aparece además "👪 Familiares" (nunca en boda), con parentesco (Madre, Padre, Hermano/a, Abuelo/a, Tutor/a u otro) y nombre opcional.
+449. [ ] "+ Añadir otra persona" en Familiares permite varias con el mismo parentesco.
+450. [ ] Con al menos un familiar añadido aparece "¿Qué necesitan los familiares?" con las 4 opciones marcables a la vez (Vestimenta/Complementos/Peluquería/Maquillaje) y Todos/Solo algunos.
+451. [ ] El resumen general del configurador (Fase 1) incluye Personas especiales y Familiares igual que los demás bloques: contador, línea de pendientes y navegación directa a la pregunta.
+452. [ ] Cada entrada del "Resumen de decisiones" propio de estos dos bloques navega a su pregunta, igual que en el resto del configurador.

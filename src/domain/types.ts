@@ -996,6 +996,24 @@ export interface EventGuestQuestionAnswer {
   updatedAt: string
 }
 
+// Fase 2 (plan de pendientes) — roster genérico compartido por "🎭 Personas especiales" (boda/bautizo/
+// comunión: padrino, madrina, testigos...) y "👪 Familiares" (bautizo/comunión: madre, padre, hermano/a...)
+// — misma forma, category los distingue (migración 0216). roles es texto libre (sugerencias + "+Otro"
+// mezclados, mismo patrón que ComplementosAnswer.selected), nunca un catálogo cerrado en BD. guestMemberId
+// es un vínculo OPCIONAL y nunca automático a un invitado ya desglosado — nunca se asume por el nombre.
+export type EventRolePersonCategory = 'especial' | 'familiar'
+export interface EventRolePerson {
+  id: string
+  eventId: string
+  familyId: string
+  category: EventRolePersonCategory
+  name: string | null
+  roles: string[]
+  guestMemberId: string | null
+  sortOrder: number
+  createdAt: string
+}
+
 export interface EventProvider {
   id: string
   eventId: string

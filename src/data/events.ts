@@ -1493,7 +1493,7 @@ export async function deleteEventProvider(id: string): Promise<void> {
 // Pagos / fianzas.
 // ---------------------------------------------------------------------
 
-const PAYMENT_SELECT = 'id, event_id, family_id, provider_id, concept, total_amount, deposit_paid, due_date, status, notes, reminder_calendar_event_id, created_at'
+const PAYMENT_SELECT = 'id, event_id, family_id, provider_id, provider_name, concept, total_amount, deposit_paid, due_date, status, notes, reminder_calendar_event_id, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapPayment(r: any): EventPayment {
@@ -1502,6 +1502,7 @@ function mapPayment(r: any): EventPayment {
     eventId: r.event_id,
     familyId: r.family_id,
     providerId: r.provider_id,
+    providerName: r.provider_name,
     concept: r.concept,
     totalAmount: Number(r.total_amount),
     depositPaid: Number(r.deposit_paid),
@@ -1525,7 +1526,7 @@ export async function listEventPayments(eventId: string): Promise<EventPayment[]
 
 export async function addEventPayment(
   eventId: string,
-  input: { concept: string; totalAmount: number; depositPaid: number; dueDate?: string | null; providerId?: string | null; notes?: string | null },
+  input: { concept: string; totalAmount: number; depositPaid: number; dueDate?: string | null; providerId?: string | null; providerName?: string | null; notes?: string | null },
 ): Promise<string> {
   const familyId = await currentFamilyId()
   const status: EventPaymentStatus = input.depositPaid <= 0 ? 'pendiente' : input.depositPaid >= input.totalAmount ? 'pagado' : 'parcial'
@@ -1535,6 +1536,7 @@ export async function addEventPayment(
       event_id: eventId,
       family_id: familyId,
       provider_id: input.providerId ?? null,
+      provider_name: input.providerName ?? null,
       concept: input.concept.trim(),
       total_amount: input.totalAmount,
       deposit_paid: input.depositPaid,

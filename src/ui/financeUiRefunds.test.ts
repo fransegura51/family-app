@@ -230,8 +230,11 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
       .filter((n) => !Number.isNaN(n))
     // 0197 (recordatorios de Calendario: claim_due_reminders y reminder_deliveries) no toca esta funcionalidad.
     // 0213/0214 (puente con OwnTracks y su retirada), 0215 (Encargos: resolución con proveedor/precio) y
-    // 0216 (Personas especiales/Familiares) no tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(220)
+    // 0216 (Personas especiales/Familiares) no tocan esta funcionalidad. 0217 (pista de familia duplicada
+    // al unirse con código), 0218/0219 (vínculo rol↔persona en detalles especiales/tareas de Eventos), 0220
+    // (historial de resolución de encargos) y 0221 (provider_name en event_payments, snapshot del nombre
+    // del proveedor en el pago) tampoco tocan esta funcionalidad.
+    expect(Math.max(...numbers)).toBe(221)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

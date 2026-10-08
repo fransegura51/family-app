@@ -1054,6 +1054,9 @@ export interface EventPayment {
   eventId: string
   familyId: string
   providerId: string | null
+  // Snapshot del nombre del proveedor en el momento del pago (migración 0221):
+  // sobrevive a que el proveedor se edite, archive o borre más adelante.
+  providerName: string | null
   concept: string
   totalAmount: number
   depositPaid: number

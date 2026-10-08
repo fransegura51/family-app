@@ -172,7 +172,7 @@ describe('ResolveGroupModal — resuelve exclusivamente las tareas actuales de E
     expect(RESOLVE_MODAL).toContain('for (const t of tasks) await updateEventTask(t.id, { done: true })')
   })
   it('el precio TOTAL (si se pone) crea UN único event_payments — nunca uno por tarea, nunca toca event_budget_items', () => {
-    expect(RESOLVE_MODAL).toContain('addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId })')
+    expect(RESOLVE_MODAL).toContain('addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName })')
     expect((RESOLVE_MODAL.match(/addEventPayment\(/g) ?? []).length).toBe(1)
     expect(RESOLVE_MODAL).not.toContain('event_budget_items')
     expect(RESOLVE_MODAL).not.toContain('addEventBudgetItem')

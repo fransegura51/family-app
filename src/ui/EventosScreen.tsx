@@ -3581,7 +3581,7 @@ function ResolveGroupModal({
       const amount = Number(price)
       if (method === 'empresa' && price.trim() !== '' && !Number.isNaN(amount) && amount > 0) {
         // UN único pago por el TOTAL del encargo — nunca uno por tarea ni por decisión (ver cabecera).
-        paymentId = await addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId })
+        paymentId = await addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName })
       }
       await resolveEventTaskGroup(group.id, { method, note: note.trim() ? note.trim() : null, providerId, providerName, paymentId })
       // Completa EXCLUSIVAMENTE las tareas pendientes actuales de este encargo — nunca ninguna otra.
@@ -11151,7 +11151,10 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
             <div key={p.id} className="card task-card">
               <div className="task-card-main" style={{ width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <strong>{p.concept}</strong>
+                  <div>
+                    <strong>{p.concept}</strong>
+                    {p.providerName && <div className="muted" style={{ fontSize: 12 }}>{p.providerName}</div>}
+                  </div>
                   <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pago" onConfirm={() => deleteEventPayment(p.id).then(reload)} />
                 </div>
                 <p className="muted" style={{ margin: '2px 0' }}>
@@ -11201,8 +11204,14 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
   const [totalAmount, setTotalAmount] = useState('')
   const [depositPaid, setDepositPaid] = useState('0')
   const [dueDate, setDueDate] = useState('')
+  const [providerId, setProviderId] = useState('')
+  const [providers, setProviders] = useState<EventProvider[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    listEventProviders(eventId).then(setProviders).catch(() => {})
+  }, [eventId])
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -11213,11 +11222,14 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
     setSaving(true)
     setError(null)
     try {
+      const provider = providerId ? providers.find((p) => p.id === providerId) : undefined
       await addEventPayment(eventId, {
         concept,
         totalAmount: Number(totalAmount) || 0,
         depositPaid: Number(depositPaid) || 0,
         dueDate: dueDate || null,
+        providerId: provider?.id ?? null,
+        providerName: provider?.name ?? null,
       })
       onAdded()
     } catch (err) {
@@ -11258,6 +11270,19 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
             Vence (opcional)
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
           </label>
+          {providers.length > 0 && (
+            <label>
+              Proveedor (opcional)
+              <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+                <option value="">Sin proveedor</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando…' : 'Añadir'}
           </button>

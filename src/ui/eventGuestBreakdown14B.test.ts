@@ -259,6 +259,6 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // 0197 (recordatorios de Calendario: claim_due_reminders y reminder_deliveries) no toca esta funcionalidad.
     // 0213/0214 (puente con OwnTracks y su retirada), 0215 (Encargos: resolución con proveedor/precio) y
     // 0216 (Personas especiales/Familiares) no tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(216)
+    expect(Math.max(...numbers)).toBe(217)
   })
 })

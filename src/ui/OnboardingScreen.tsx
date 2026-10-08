@@ -21,10 +21,19 @@ export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void>
           <button type="button" onClick={() => setMode('create')}>
             Crear una familia nueva
           </button>
+          {/* Confusión real (2026-10-08): quien ya tenía CUALQUIER código a mano tocaba este botón
+              directamente, sin fijarse en que es un código DISTINTO del de "Crear una familia nueva"
+              (que también pide uno, en su propio formulario) — ahora el texto lo deja claro antes de
+              elegir, en vez de solo dentro de cada formulario. */}
           <button type="button" className="link-button" onClick={() => setMode('join')}>
-            Ya tengo un código de invitación
+            Ya tengo un código para unirme a una familia que ya existe
           </button>
         </div>
+        <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
+          ¿Tu código es para dar de alta una familia nueva (te lo dio quien gestiona la app)? Usa "Crear
+          una familia nueva" y pégalo ahí — el botón de abajo es solo para unirte a una familia que ya
+          está usando la app.
+        </p>
       </div>
     )
   }

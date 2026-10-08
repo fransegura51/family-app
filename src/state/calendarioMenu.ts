@@ -7,7 +7,7 @@
 // en Economía se etiqueta "Inicio" en el desplegable sin dejar de ser
 // una pestaña real.
 
-export type FixedCalendarioMenuItemKey = 'Vista general' | 'Mes' | 'Semana' | '3 días' | 'Día' | 'Familiar' | 'Agenda' | 'Personal' | 'Externos'
+export type FixedCalendarioMenuItemKey = 'Vista general' | 'Mes' | 'Semana' | '3 días' | 'Día' | 'Familiar' | 'Agenda' | 'Personal'
 export type CalendarioMenuItemKey = FixedCalendarioMenuItemKey | `custom:${string}`
 
 export function isCustomCalendarioMenuKey(key: CalendarioMenuItemKey): boolean {
@@ -35,7 +35,6 @@ export const CALENDARIO_MENU_ITEM_META: Record<FixedCalendarioMenuItemKey, { ico
   Familiar: { icon: '👨‍👩‍👧‍👦', label: 'Familiar' },
   Agenda: { icon: '📝', label: 'Agenda' },
   Personal: { icon: '🔒', label: 'Personal' },
-  Externos: { icon: '🔗', label: 'Externos' },
 }
 
 export function calendarioMenuEntryMeta(entry: CalendarioMenuEntry): { icon: string; label: string } {
@@ -43,7 +42,7 @@ export function calendarioMenuEntryMeta(entry: CalendarioMenuEntry): { icon: str
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
-const DEFAULT_KEYS: FixedCalendarioMenuItemKey[] = ['Vista general', 'Mes', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal', 'Externos']
+const DEFAULT_KEYS: FixedCalendarioMenuItemKey[] = ['Vista general', 'Mes', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal']
 
 // Petición real: "que en su menú se pueda establecer cuál de las vistas
 // se quiere ver nada más abrir Calendario... como se pueden reordenar,
@@ -71,10 +70,17 @@ export function loadCalendarioMenuLayout(): CalendarioMenuGroup[] {
     if (!raw) return defaultLayout()
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed) || parsed.length === 0) return defaultLayout()
+    // Revisión Calendario — "Externos" deja de ser una vista real (sus funciones se trasladan a
+    // Configuración → Calendario): una familia que ya tenía su menú reordenado puede seguir guardando
+    // esa clave en localStorage. Se descarta aquí cualquier clave fija ya no válida (nunca una clave
+    // "custom:", esas siempre se conservan) para que no intente pintarse un icono/etiqueta que ya no
+    // existe en CALENDARIO_MENU_ITEM_META.
     const groups: CalendarioMenuGroup[] = (parsed as { id: string; name: string | null; items: unknown[] }[]).map((g) => ({
       id: g.id,
       name: g.name,
-      items: g.items.map((item) => (typeof item === 'string' ? { key: item as CalendarioMenuItemKey } : (item as CalendarioMenuEntry))),
+      items: g.items
+        .map((item) => (typeof item === 'string' ? { key: item as CalendarioMenuItemKey } : (item as CalendarioMenuEntry)))
+        .filter((it) => isCustomCalendarioMenuKey(it.key) || (DEFAULT_KEYS as readonly string[]).includes(it.key)),
     }))
     const known = new Set(groups.flatMap((g) => g.items.map((it) => it.key)))
     const missing = DEFAULT_KEYS.filter((k) => !known.has(k))

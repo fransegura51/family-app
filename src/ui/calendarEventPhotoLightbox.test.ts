@@ -67,7 +67,7 @@ describe('3. cerrar el visor devuelve al calendario', () => {
   it('onClose desmonta el visor: AgendaRow y EventCard condicionan su render a showingPhoto', () => {
     const rowBlock = body(SRC, 'function AgendaRow({ entry }', 'function AgendaRowThumb(')
     expect(rowBlock).toMatch(/\{showingPhoto && entry\.attachmentStoragePath && \(/)
-    const cardBlock = body(SRC, 'function EventCard({', '\n  return (\n    <div className="card event-card"')
+    const cardBlock = body(SRC, 'function EventCard({', '\n  return (\n    <div className="card event-card family-event-card"')
     expect(cardBlock).toContain('const [showingPhoto, setShowingPhoto] = useState(false)')
   })
 })

@@ -1,5 +1,6 @@
 import { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import { findMemberInText } from '@/domain/voiceQuery'
 import {
   CALENDARIO_MENU_ITEM_META,
@@ -40,11 +41,9 @@ import {
 import { listFamilyMembers } from '@/data/family'
 import { listContacts } from '@/data/contacts'
 import { addPersonalNote, deletePersonalNote, listPersonalNotes, type PersonalNote } from '@/data/personalNotes'
-import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import {
-  addFeed,
   completeExternalEventOccurrence,
-  deleteFeed,
   dismissExternalEventOccurrence,
   dismissExternalEventSeries,
   listExternalEventCompletions,
@@ -52,20 +51,12 @@ import {
   listExternalEvents,
   listFeeds,
   listHolidayDates,
-  syncFeed,
   uncompleteExternalEventOccurrence,
   type ExternalCalendarEvent,
   type ExternalCalendarFeed,
   type ExternalEventCompletion,
   type ExternalEventDismissal,
 } from '@/data/externalCalendarFeeds'
-import { getCalendarExportUrl } from '@/data/calendarExport'
-import {
-  disconnectGoogleCalendar,
-  getGoogleCalendarStatus,
-  startGoogleConnect,
-  type GoogleCalendarStatus,
-} from '@/data/googleCalendarSync'
 import {
   entryTimeLabel,
   eventDotColors,
@@ -114,8 +105,11 @@ import { errorMessage } from '@/domain/errorMessage'
 
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
-// Mes y Externos que ya había.
-const VIEWS = ['Mes', 'Vista general', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal', 'Externos'] as const
+// Mes que ya había. "Externos" ya NO es una vista (Revisión Calendario):
+// sus funciones viven en Configuración → Calendario (ver
+// CalendarExternalLinksSection en MenuSettingsScreen.tsx); el menú de
+// vistas solo ofrece el acceso secundario "⚙️ Gestionar calendarios".
+const VIEWS = ['Mes', 'Vista general', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal'] as const
 type ViewMode = (typeof VIEWS)[number]
 
 function isCalendarioSubTab(key: CalendarioMenuItemKey): key is ViewMode {
@@ -424,7 +418,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   // pongan en nuestros colores y tengamos la opción de eliminarlas o
   // marcarlas como hecho, igual que las otras notas" (antes era de
   // solo lectura). El color ya sale bien en cuanto el calendario
-  // enlazado tiene un miembro asignado (Externos); borrar/hecho se
+  // enlazado tiene un miembro asignado (Configuración → Calendario); borrar/hecho se
   // guardan aparte (ver arriba) porque cada sincronización reemplaza
   // estas filas enteras.
   const externalEventsByDate = useMemo(() => {
@@ -853,7 +847,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         </p>
       )}
 
-      {view !== 'Externos' && view !== 'Personal' && (
+      {view !== 'Personal' && (
         <MemberFilterDropdown
           members={members}
           selected={filterMemberIds}
@@ -862,9 +856,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         />
       )}
 
-      {view === 'Externos' ? (
-        <ExternalCalendarTab members={members} />
-      ) : view === 'Mes' ? (
+      {view === 'Mes' ? (
         <>
           <div className="month-nav">
             <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
@@ -917,8 +909,8 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
                         className="month-grid-event-bar"
                         style={{ background: entry.color, color: readableTextColor(entry.color) }}
                       >
-                        <EventColorDots colors={entry.colors} style={{ marginLeft: 0, marginRight: 3 }} />
-                        {entry.title}
+                        <ColorSegments colors={entry.colors} direction="row" />
+                        <span className="month-grid-event-bar-title">{entry.title}</span>
                       </span>
                     ))}
                     {hiddenCount > 0 && <span className="month-grid-event-more">+{hiddenCount} más</span>}
@@ -946,6 +938,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               reload()
             }}
             onNavigateDay={changeSelectedDate}
+            onJumpToDate={setSelectedDate}
             swipeHandlers={daySwipe}
             onManageCategories={() => setManagingCategories(true)}
           />
@@ -1027,6 +1020,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               reload()
             }}
             onNavigateDay={changeSelectedDate}
+            onJumpToDate={setSelectedDate}
             swipeHandlers={daySwipe}
             onManageCategories={() => setManagingCategories(true)}
           />
@@ -1070,6 +1064,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             reload()
           }}
           onNavigateDay={changeSelectedDate}
+          onJumpToDate={setSelectedDate}
           onQuickAdd={(memberId) => {
             setAddingEventMemberId(memberId)
             setAddingEvent(true)
@@ -1096,6 +1091,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           }}
           notes={personalNotes}
           onNavigateDay={changeSelectedDate}
+          onJumpToDate={setSelectedDate}
           swipeHandlers={daySwipe}
           onAdd={async (text) => {
             await addPersonalNote(selectedDate, text)
@@ -1108,6 +1104,26 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           onShare={handleShareNote}
           sharingNoteId={sharingNoteId}
           onManageCategories={() => setManagingCategories(true)}
+        />
+      ) : view === 'Semana' ? (
+        <WeekListView
+          days={gridDays}
+          today={today}
+          selectedDate={selectedDate}
+          buildEntriesForDate={buildEntriesForDate}
+          events={events}
+          members={members}
+          categories={categories}
+          taskOrder={calendarPrefs.taskOrder}
+          editingId={editingId}
+          onCancelEdit={() => setEditingId(null)}
+          onEventChanged={() => {
+            setEditingId(null)
+            reload()
+          }}
+          onManageCategories={() => setManagingCategories(true)}
+          onNavigateWeek={(deltaWeeks) => changeSelectedDate(deltaWeeks * 7)}
+          swipeHandlers={weekSwipe}
         />
       ) : (
         <>
@@ -1127,11 +1143,33 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             onSelectDate={setSelectedDate}
             onComplete={handleCompleteEvent}
             onUncomplete={handleUncompleteEvent}
-            swipeHandlers={view === 'Semana' ? weekSwipe : view === '3 días' ? threeDaySwipe : daySwipe}
+            onEditEvent={view === 'Día' ? setEditingId : undefined}
+            swipeHandlers={view === '3 días' ? threeDaySwipe : daySwipe}
           />
+          {/* Vista Día — el bloque/tarea de la propia cuadrícula ya permite completar y editar (ver
+              TimeGridView, onEditEvent), así que el listado inferior deja de repetirlos: solo conserva
+              los eventos de TODO EL DÍA (su franja arriba es informativa a propósito, nunca abre nada al
+              tocarla — sección 6 del encargo), que de otro modo no tendrían ningún otro camino para
+              editarse. Si se editó algo CON HORA desde la cuadrícula, su formulario aparece aquí aparte
+              (no cabe dentro del listado filtrado, que ya no incluye esa entrada). */}
+          {view === 'Día' && editingId && events.find((e) => e.id === editingId && !e.allDay) && (
+            <div className="card" style={{ marginTop: 8 }}>
+              <EditEventForm
+                event={events.find((e) => e.id === editingId)!}
+                members={members}
+                categories={categories}
+                onDone={() => {
+                  setEditingId(null)
+                  reload()
+                }}
+                onCancel={() => setEditingId(null)}
+                onManageCategories={() => setManagingCategories(true)}
+              />
+            </div>
+          )}
           <DayModal
             selectedDate={selectedDate}
-            entries={buildEntriesForDate(selectedDate)}
+            entries={view === 'Día' ? buildEntriesForDate(selectedDate).filter((e) => e.allDay) : buildEntriesForDate(selectedDate)}
             events={events}
             members={members}
             categories={categories}
@@ -1143,6 +1181,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               reload()
             }}
             onNavigateDay={changeSelectedDate}
+            onJumpToDate={setSelectedDate}
             swipeHandlers={daySwipe}
             onManageCategories={() => setManagingCategories(true)}
           />
@@ -1346,6 +1385,24 @@ function EventColorDots({ colors, style }: { colors: string[]; style?: CSSProper
   )
 }
 
+// Revisión Calendario — sustituye a EventColorDots en las franjas/barras/bloques que ya tienen su propio
+// acento de color (franja de AgendaRow, barritas de Mes, bloques de Semana/3 días/Día): en vez de un punto
+// aparte junto al título, cada participante ocupa su proporción de la propia franja/barra ("no mostrar
+// puntos de colores redundantes cuando ya se representan en la franja"). Con un solo color no renderiza
+// nada — quien llama ya pintó su fondo/borde de acento de siempre, sin ningún cambio visual. direction
+// 'column' = segmentos horizontales apilados (franja vertical estrecha, AgendaRow); 'row' = segmentos
+// verticales en fila (barra/bloque ancho y bajo, Mes/TimeGridView).
+function ColorSegments({ colors, direction }: { colors: string[]; direction: 'row' | 'column' }) {
+  if (colors.length <= 1) return null
+  return (
+    <div className="color-segments" style={{ flexDirection: direction }}>
+      {colors.map((c, i) => (
+        <div key={i} className="color-segment" style={{ background: c }} />
+      ))}
+    </div>
+  )
+}
+
 function hhmm(iso: string): string {
   const d = new Date(iso)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -1403,6 +1460,41 @@ interface AgendaEntry {
   note?: string | null
 }
 
+// Revisión Calendario — "ir directamente a cualquier fecha sin pulsar N veces las flechas": la fecha del
+// encabezado se vuelve pulsable y abre un selector nativo en una ventana flotante, sin tocar las flechas
+// anterior/siguiente de siempre. Reutilizado TAL CUAL por los dos encabezados de día equivalentes (Personal
+// y DayModal — Mes/3 días/Día) en vez de reimplementarlo dos veces; cada llamador sigue poniendo su propio
+// elemento de título (h2/strong, con su clase de siempre) como children, así que ningún diseño existente
+// se toca más allá de hacerlo pulsable.
+function DateJumpControl({ dateStr, onJump, children }: { dateStr: string; onJump: (dateStr: string) => void; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="date-jump">
+      <button type="button" className="date-jump-trigger" onClick={() => setOpen((v) => !v)} aria-label="Ir a una fecha concreta">
+        {children}
+      </button>
+      {open && (
+        <span className="date-jump-popover">
+          <input
+            type="date"
+            autoFocus
+            defaultValue={dateStr}
+            onChange={(e) => {
+              if (e.target.value) {
+                onJump(e.target.value)
+                setOpen(false)
+              }
+            }}
+          />
+          <button type="button" className="link-button" onClick={() => setOpen(false)}>
+            Cancelar
+          </button>
+        </span>
+      )}
+    </span>
+  )
+}
+
 // Ventana emergente al pinchar un día — agenda cronológica de arriba
 // abajo (todo el día primero, luego por hora), al estilo de otras apps
 // de calendario familiar, en vez de agrupar por persona: cada apunte ya
@@ -1419,6 +1511,7 @@ function DayModal({
   onCancelEdit,
   onEventChanged,
   onNavigateDay,
+  onJumpToDate,
   swipeHandlers,
   onManageCategories,
 }: {
@@ -1432,6 +1525,7 @@ function DayModal({
   onCancelEdit: () => void
   onEventChanged: () => void
   onNavigateDay: (deltaDays: number) => void
+  onJumpToDate: (dateStr: string) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
   onManageCategories: () => void
 }) {
@@ -1450,13 +1544,15 @@ function DayModal({
           <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
             ‹
           </button>
-          <h2 className="section-title" style={{ margin: 0 }}>
-            {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-            })}
-          </h2>
+          <DateJumpControl dateStr={selectedDate} onJump={onJumpToDate}>
+            <h2 className="section-title" style={{ margin: 0 }}>
+              {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+            </h2>
+          </DateJumpControl>
           <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
             ›
           </button>
@@ -1576,6 +1672,7 @@ function FamilyDayView({
   onDeleteOccurrence,
   onEventChanged,
   onNavigateDay,
+  onJumpToDate,
   onQuickAdd,
   onShareEvent,
   onComplete,
@@ -1600,6 +1697,7 @@ function FamilyDayView({
   onDeleteOccurrence: (id: string, dateStr: string) => void
   onEventChanged: () => void
   onNavigateDay: (deltaDays: number) => void
+  onJumpToDate: (dateStr: string) => void
   onQuickAdd: (memberId: string | null) => void
   onShareEvent: (event: CalendarEvent, dateStr: string) => void
   // BUG CALENDARIO-15 (auditoría): Familiar no ofrecía completar ni Evento ni Tarea — reutiliza
@@ -1661,9 +1759,9 @@ function FamilyDayView({
         <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
           ‹
         </button>
-        <strong>
-          {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </strong>
+        <DateJumpControl dateStr={selectedDate} onJump={onJumpToDate}>
+          <strong>{new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>
+        </DateJumpControl>
         <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
           ›
         </button>
@@ -1739,6 +1837,7 @@ function PersonalView({
   onEventChanged,
   notes,
   onNavigateDay,
+  onJumpToDate,
   swipeHandlers,
   onAdd,
   onDelete,
@@ -1758,6 +1857,7 @@ function PersonalView({
   onEventChanged: () => void
   notes: PersonalNote[]
   onNavigateDay: (deltaDays: number) => void
+  onJumpToDate: (dateStr: string) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
   onAdd: (text: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
@@ -1796,9 +1896,9 @@ function PersonalView({
         <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
           ‹
         </button>
-        <strong>
-          {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </strong>
+        <DateJumpControl dateStr={selectedDate} onJump={onJumpToDate}>
+          <strong>{new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>
+        </DateJumpControl>
         <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
           ›
         </button>
@@ -1867,6 +1967,11 @@ interface TimeGridBlock {
   startMin: number
   endMin: number
   dateStr: string
+  // Revisión Calendario — Vista Día: id/estado real para poder marcar completado y editar DESDE la
+  // propia cuadrícula (antes solo existía en el listado inferior, que por eso no se podía quitar sin
+  // perder esas dos acciones). null en eventos externos — fuera de alcance, igual que en tasksForDate.
+  eventId: string | null
+  done: boolean
 }
 
 // Reparte bloques que se solapan en el mismo día en "carriles" en
@@ -1890,11 +1995,16 @@ function layoutLanes(blocks: TimeGridBlock[]): (TimeGridBlock & { lane: number; 
   return placed.map((p) => ({ ...p, laneCount }))
 }
 
-// Vistas "Día" / "3 días" / "Semana" (foto de referencia): cuadrícula
-// horaria con los bloques posicionados por su hora real — solo de
-// vistazo (tocar un bloque o la cabecera de un día selecciona ese día,
-// cuya agenda completa con editar/borrar se ve debajo en DayModal, que
-// ya tenía toda esa lógica hecha para la vista Mes).
+// Vistas "Día" / "3 días" (foto de referencia): cuadrícula horaria con
+// los bloques posicionados por su hora real. Tocar la cabecera de un
+// día lo selecciona; la agenda completa con editar/borrar se ve debajo
+// en DayModal. Revisión Calendario — en Vista Día (days.length === 1,
+// onEditEvent presente) los propios bloques/tareas YA llevan su
+// círculo de completar y tocar el título edita directamente, para que
+// el listado inferior deje de ser necesario para esos dos casos (ver
+// el "else" de más abajo que arma Día) — en 3 días, sin onEditEvent,
+// el comportamiento de tocar sigue siendo el de siempre (seleccionar
+// el día, consultar/editar en el detalle inferior).
 function TimeGridView({
   days,
   eventsByDate,
@@ -1911,6 +2021,7 @@ function TimeGridView({
   onSelectDate,
   onComplete,
   onUncomplete,
+  onEditEvent,
   swipeHandlers,
 }: {
   days: { dateStr: string; date: Date }[]
@@ -1928,8 +2039,10 @@ function TimeGridView({
   onSelectDate: (dateStr: string) => void
   onComplete: (eventId: string, dateStr: string) => void
   onUncomplete: (eventId: string, dateStr: string) => void
+  onEditEvent?: (id: string) => void
   swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
 }) {
+  const canEditInGrid = days.length === 1 && !!onEditEvent
   const HOUR_HEIGHT = 52
 
   // El emoji de categoría nunca depende del modo de color (Parte 6) — por eso usa categoryById (siempre
@@ -1949,6 +2062,7 @@ function TimeGridView({
       const endMin = end ? Math.max(end.getHours() * 60 + end.getMinutes(), startMin + 20) : startMin + 60
       const title = titleWithCategoryEmoji(ev)
       const colors = eventColors(ev, memberById, colorMode, categoryColorById)
+      const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === dateStr)
       blocks.push({
         key: `ev-${ev.id}`,
         title: ev.visibility === 'private' ? `🔒 ${title}` : title,
@@ -1957,6 +2071,8 @@ function TimeGridView({
         startMin,
         endMin,
         dateStr,
+        eventId: ev.id,
+        done,
       })
     }
     for (const ev of externalEventsByDate.get(dateStr) ?? []) {
@@ -1968,7 +2084,7 @@ function TimeGridView({
       const feed = feedById.get(ev.feedId)
       const member = feed?.memberId ? memberById.get(feed.memberId) : null
       const color = member?.color ?? '#6b7280'
-      blocks.push({ key: `ext-${ev.id}`, title: ev.title, color, colors: [color], startMin, endMin, dateStr })
+      blocks.push({ key: `ext-${ev.id}`, title: ev.title, color, colors: [color], startMin, endMin, dateStr, eventId: null, done: false })
     }
     return blocks
   }
@@ -2068,8 +2184,8 @@ function TimeGridView({
           <div key={d.dateStr} className="time-grid-allday-cell">
             {allDayChipsForDate(d.dateStr).map((c) => (
               <span key={c.key} className="time-grid-allday-chip" style={{ background: c.color, color: readableTextColor(c.color) }}>
-                {c.title}
-                <EventColorDots colors={c.colors} />
+                <ColorSegments colors={c.colors} direction="row" />
+                <span className="time-grid-chip-title">{c.title}</span>
               </span>
             ))}
           </div>
@@ -2091,7 +2207,8 @@ function TimeGridView({
                 <div key={t.key}>
                   {i === firstDoneIndex && <div className="time-grid-tasks-subheader">Completadas</div>}
                   <div className="time-grid-task-row">
-                    <span className="completion-circle-chip" style={{ background: t.color }}>
+                    <span className="completion-circle-chip" style={t.colors.length <= 1 ? { background: t.color } : undefined}>
+                      <ColorSegments colors={t.colors} direction="column" />
                       <CompletionCircle
                         done={t.done}
                         color={t.color}
@@ -2101,10 +2218,9 @@ function TimeGridView({
                     </span>
                     <span
                       className={'time-grid-task-title' + (t.strikethrough ? ' time-grid-task-title-struck' : '')}
-                      onClick={() => onSelectDate(d.dateStr)}
+                      onClick={() => (canEditInGrid ? onEditEvent!(t.eventId) : onSelectDate(d.dateStr))}
                     >
                       {t.title}
-                      <EventColorDots colors={t.colors} />
                     </span>
                   </div>
                 </div>
@@ -2143,8 +2259,7 @@ function TimeGridView({
                   <div key={i} className="time-grid-hour-line" style={{ top: i * HOUR_HEIGHT }} />
                 ))}
                 {blocks.map((b) => (
-                  <button
-                    type="button"
+                  <div
                     key={b.key}
                     className="time-grid-block"
                     style={{
@@ -2157,12 +2272,32 @@ function TimeGridView({
                     }}
                     onClick={(e) => {
                       e.stopPropagation()
-                      onSelectDate(b.dateStr)
+                      // Vista Día — tocar el bloque edita directamente (ya no hace falta el listado
+                      // inferior para esto); 3 días conserva el comportamiento de siempre: solo
+                      // selecciona el día, se consulta/edita en el detalle inferior.
+                      if (canEditInGrid && b.eventId) onEditEvent!(b.eventId)
+                      else onSelectDate(b.dateStr)
                     }}
                   >
-                    {b.title}
-                    <EventColorDots colors={b.colors} />
-                  </button>
+                    <ColorSegments colors={b.colors} direction="row" />
+                    <div className="time-grid-block-row">
+                      {b.eventId && (
+                        <span
+                          className="completion-circle-chip time-grid-block-circle-chip"
+                          style={{ background: b.colors.length <= 1 ? b.color : undefined }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <CompletionCircle
+                            done={b.done}
+                            color={b.color}
+                            onComplete={() => onComplete(b.eventId!, b.dateStr)}
+                            onUncomplete={() => onUncomplete(b.eventId!, b.dateStr)}
+                          />
+                        </span>
+                      )}
+                      <span className="time-grid-block-title">{b.title}</span>
+                    </div>
+                  </div>
                 ))}
               </div>
             )
@@ -2170,6 +2305,141 @@ function TimeGridView({
         </div>
       </div>
     </div>
+  )
+}
+
+// Vista "Semana" — REDISEÑO (plan de pendientes, instrucción explícita de la usuaria): la cuadrícula
+// horaria de 7 columnas no funciona en móvil (citas demasiado estrechas, texto roto) — sustituida por una
+// lista vertical de 7 días plegables/desplegables, cada uno con cabecera (día + fecha), resumen del
+// número de citas/tareas y un grupo de colores por cita (participantes compartidos juntos, cada cita
+// separada de las demás con "/" — ver WeekDayColorGroups). Al desplegar, EXACTAMENTE el mismo formato de
+// tarjeta que el detalle inferior de Mes (DayEntriesBody/AgendaRow) — nunca una copia de "3 días", que
+// conserva su propia cuadrícula horaria sin tocar.
+function WeekListView({
+  days,
+  today,
+  selectedDate,
+  buildEntriesForDate,
+  events,
+  members,
+  categories,
+  taskOrder,
+  editingId,
+  onCancelEdit,
+  onEventChanged,
+  onManageCategories,
+  onNavigateWeek,
+  swipeHandlers,
+}: {
+  days: { dateStr: string; date: Date }[]
+  today: Date
+  selectedDate: string
+  buildEntriesForDate: (dateStr: string) => AgendaEntry[]
+  events: CalendarEvent[]
+  members: FamilyMember[]
+  categories: CalendarCategory[]
+  taskOrder: CalendarTaskOrder
+  editingId: string | null
+  onCancelEdit: () => void
+  onEventChanged: () => void
+  onManageCategories: () => void
+  onNavigateWeek: (deltaWeeks: number) => void
+  swipeHandlers: { onTouchStart: (e: TouchEvent) => void; onTouchEnd: (e: TouchEvent) => void }
+}) {
+  // Qué días están plegados/desplegados a mano — solo los que el usuario ha tocado; el resto sigue el
+  // criterio por defecto (ver defaultOpenDate), que se recalcula solo al cambiar de semana sin que haga
+  // falta ningún efecto: toggled nunca tiene entradas para una semana que todavía no se ha tocado.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({})
+  const todayStr = toDateStr(today)
+  // Prioridad al día seleccionado si cae en esta semana; si no, a hoy si cae en esta semana; si ninguno
+  // de los dos, no se fuerza ningún día abierto (nunca los 7 a la vez, petición real).
+  const defaultOpenDate = days.some((d) => d.dateStr === selectedDate) ? selectedDate : days.some((d) => d.dateStr === todayStr) ? todayStr : null
+
+  function isOpen(dateStr: string): boolean {
+    return toggled[dateStr] ?? dateStr === defaultOpenDate
+  }
+
+  const weekLabel = `${days[0].date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} – ${days[6].date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}`
+
+  return (
+    <div className="week-list" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+      <div className="month-nav">
+        <button type="button" className="link-button" onClick={() => onNavigateWeek(-1)} aria-label="Semana anterior">
+          ‹
+        </button>
+        <h2 className="section-title" style={{ margin: 0, fontSize: 15 }}>
+          {weekLabel}
+        </h2>
+        <button type="button" className="link-button" onClick={() => onNavigateWeek(1)} aria-label="Semana siguiente">
+          ›
+        </button>
+      </div>
+      {days.map((d) => {
+        const entries = buildEntriesForDate(d.dateStr)
+        const open = isOpen(d.dateStr)
+        const weekdayDate = d.date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+        const label = weekdayDate.charAt(0).toUpperCase() + weekdayDate.slice(1)
+        return (
+          <div key={d.dateStr} className={'card week-day-block' + (d.dateStr === todayStr ? ' week-day-block-today' : '')}>
+            <button
+              type="button"
+              className="week-day-header"
+              onClick={() => setToggled((prev) => ({ ...prev, [d.dateStr]: !open }))}
+              aria-expanded={open}
+            >
+              <span className="week-day-header-main">
+                <strong>{label}</strong>
+                <span className="muted week-day-count">
+                  {entries.length === 0 ? 'Nada' : `${entries.length} ${entries.length === 1 ? 'cita' : 'citas'}`}
+                </span>
+              </span>
+              <WeekDayColorGroups entries={entries} />
+              <span className="week-day-chevron">{open ? '▾' : '▸'}</span>
+            </button>
+            {open && (
+              <div className="week-day-entries">
+                <DayEntriesBody
+                  entries={entries}
+                  editingId={editingId}
+                  events={events}
+                  members={members}
+                  categories={categories}
+                  taskOrder={taskOrder}
+                  onEventChanged={onEventChanged}
+                  onCancelEdit={onCancelEdit}
+                  emptyLabel="Nada este día."
+                  onManageCategories={onManageCategories}
+                />
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Indicadores de color del resumen de un día (Vista Semana) — informativos, NUNCA botones de completar
+// (petición real: "los indicadores del resumen no deben confundirse con botones de completar" — por eso
+// son <span> simples, nunca la clase .completion-circle ni un SVG de check). Cada cita es su propio grupo
+// de puntos, sus participantes juntos sin hueco entre ellos; entre citas distintas, un separador visible
+// ("/") para no sugerir que todas comparten los mismos participantes.
+function WeekDayColorGroups({ entries }: { entries: AgendaEntry[] }) {
+  if (entries.length === 0) return null
+  const visible = entries.slice(0, 5)
+  const hiddenCount = entries.length - visible.length
+  return (
+    <span className="week-day-color-groups">
+      {visible.map((e, i) => (
+        <span key={e.key} className="week-day-color-group">
+          {i > 0 && <span className="week-day-color-sep">/</span>}
+          {e.colors.slice(0, 4).map((c, j) => (
+            <span key={j} className="week-day-color-dot" style={{ background: c }} />
+          ))}
+        </span>
+      ))}
+      {hiddenCount > 0 && <span className="week-day-color-sep">+{hiddenCount}</span>}
+    </span>
   )
 }
 
@@ -2421,7 +2691,8 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
         onTouchStart={canDelete ? stopTouchPropagation : undefined}
         onTouchEnd={canDelete ? stopTouchPropagation : undefined}
       >
-        <div className="agenda-stripe" style={{ background: entry.color }}>
+        <div className="agenda-stripe" style={entry.colors.length <= 1 ? { background: entry.color } : undefined}>
+          <ColorSegments colors={entry.colors} direction="column" />
           <CompletionCircle done={entry.done} color={entry.color} onComplete={entry.onComplete} onUncomplete={entry.onUncomplete} />
         </div>
         <button
@@ -2446,7 +2717,6 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
             {entry.attachmentKind === 'foto' && ' 📷'}
             {entry.attachmentKind === 'archivo' && ' 📎'}
             {entry.note && ' 📝'}
-            <EventColorDots colors={entry.colors} />
           </span>
           <span className="agenda-row-meta">
             <span className="agenda-row-sub">{entry.locationLabel ? `📍 ${entry.locationLabel}` : entry.subtitle}</span>
@@ -2632,19 +2902,30 @@ function EventCard({
       ? `https://www.google.com/maps?q=${ev.locationLatitude},${ev.locationLongitude}`
       : null
   return (
-    <div className="card event-card" style={{ borderColor: color }}>
+    <div className="card event-card family-event-card" style={{ borderColor: color }}>
       {ev.attachmentKind === 'foto' && ev.attachmentStoragePath && (
         <EventAttachmentPhoto storagePath={ev.attachmentStoragePath} onClick={() => setShowingPhoto(true)} />
       )}
       {showingPhoto && ev.attachmentStoragePath && (
         <PhotoLightbox storagePath={ev.attachmentStoragePath} onClose={() => setShowingPhoto(false)} />
       )}
-      <strong style={strikethrough ?? done ? { textDecoration: 'line-through', color: 'var(--muted)' } : undefined}>
-        {ev.visibility === 'private' && '🔒 '}
-        {ev.categoryId && categoryById?.get(ev.categoryId) ? `${categoryById.get(ev.categoryId)!.emoji} ` : ''}
-        {ev.title}
-        <EventColorDots colors={colors} />
-      </strong>
+      {/* Revisión Calendario — "mantener el control de completado al INICIO de la fila/tarjeta": antes
+          vivía al final, junto a Editar/Compartir/Borrar (ver member-card-actions más abajo, que ya NO
+          lo incluye). Ahora abre la tarjeta, en la misma línea que el título, nunca sustituido por un
+          punto decorativo — sigue siendo el mismo CompletionCircle de siempre. */}
+      <div className="family-event-card-header">
+        {(onComplete || onUncomplete) && (
+          <span className="completion-circle-chip" style={{ background: color }}>
+            <CompletionCircle done={done} color={color} onComplete={onComplete} onUncomplete={onUncomplete} />
+          </span>
+        )}
+        <strong style={strikethrough ?? done ? { textDecoration: 'line-through', color: 'var(--muted)' } : undefined}>
+          {ev.visibility === 'private' && '🔒 '}
+          {ev.categoryId && categoryById?.get(ev.categoryId) ? `${categoryById.get(ev.categoryId)!.emoji} ` : ''}
+          {ev.title}
+          <EventColorDots colors={colors} />
+        </strong>
+      </div>
       {/* RETOQUE (Parte 4.1/4.3) — compactación de Familiar: la fecha ya aparece arriba del todo
           ("lunes, 5 de octubre"), repetirla aquí dentro de cada tarjeta era la info redundante más
           grande de la tarjeta — ahora solo la hora/"Todo el día"/"Tarea" (entryTimeLabel, misma
@@ -2680,29 +2961,22 @@ function EventCard({
           (family-view-column-header); repetirlo en cada tarjeta era redundante, se quita de aquí sin
           tocar el avatar de la cabecera. */}
       <div className="member-card-actions">
-        {/* AgendaRow apoya este mismo círculo sobre su propia franja de color (.agenda-stripe) para que
-            el aro blanco/check de color contrasten — aquí, sin franja, se envuelve en un fondo del
-            mismo color en miniatura para el mismo contraste, sin tocar nada de AgendaRow. */}
-        {(onComplete || onUncomplete) && (
-          <span className="completion-circle-chip" style={{ background: color }}>
-            <CompletionCircle done={done} color={color} onComplete={onComplete} onUncomplete={onUncomplete} />
-          </span>
-        )}
         {/* RETOQUE (Parte 5) — "Editar"/"Borrar" en palabras pasan a icono (✏️/✕), igual formato
             compacto que 📤 (el mismo icono de compartir que PEPA ya usa aquí, sin inventar uno
-            nuevo) — reutiliza la MISMA clase .icon-button-share (mismo tamaño/borde/grosor), con su
-            aria-label/title propios. El sub-flujo de confirmación de borrado (¿Seguro?/Solo un
-            día/Toda la serie/Cancelar) no se toca, solo su disparador inicial. */}
-        <button type="button" className="icon-button-share" onClick={onEdit} aria-label="Editar" title="Editar">
+            nuevo) — reutiliza la MISMA clase .icon-button-share, con el modificador -sm (Revisión
+            Calendario: "mandos de edición, archivo y eliminación de forma ordenada y compacta") y su
+            aria-label/title propios. El sub-flujo de confirmación de borrado (¿Seguro?/Solo un día/Toda
+            la serie/Cancelar) no se toca, solo su disparador inicial. */}
+        <button type="button" className="icon-button-share icon-button-share-sm" onClick={onEdit} aria-label="Editar" title="Editar">
           ✏️
         </button>
         {onShare && (
-          <button type="button" className="icon-button-share" onClick={onShare} aria-label="Compartir" title="Compartir">
+          <button type="button" className="icon-button-share icon-button-share-sm" onClick={onShare} aria-label="Compartir" title="Compartir">
             📤
           </button>
         )}
         {!confirming ? (
-          <button type="button" className="icon-button-share" onClick={() => setConfirming(true)} aria-label="Borrar" title="Borrar">
+          <button type="button" className="icon-button-share icon-button-share-sm" onClick={() => setConfirming(true)} aria-label="Borrar" title="Borrar">
             ✕
           </button>
         ) : pickingDay ? (
@@ -3250,7 +3524,7 @@ function RecurrenceControl({ value, onChange }: { value: RecurrenceValue; onChan
               checked={value.skipHolidays}
               onChange={(e) => onChange({ ...value, skipHolidays: e.target.checked })}
             />
-            Excluir festivos (según el calendario de festivos enlazado en Externos)
+            Excluir festivos (según el calendario de festivos enlazado en Configuración → Calendario)
           </label>
         </>
       )}
@@ -4033,467 +4307,6 @@ function AddTaskForm({
   )
 }
 
-// "Enlazar calendario del móvil": importa citas de Google Calendar,
-// Outlook, Apple/iPhone o cualquier otro proveedor vía su URL .ics
-// (misma pestaña que pidió la usuaria — mes propio, separado de los
-// eventos nativos para no mezclarlos). Los eventos recurrentes del
-// .ics se expanden con el mismo RRULE-lite que los eventos nativos
-// (ver icsParser.ts) — solo se descarta la recurrencia si el .ics usa
-// un FREQ que no se sabe expandir, y entonces el evento se trata como
-// uno suelto en su primera fecha, no se pierde entero.
-function ExternalCalendarTab({ members }: { members: FamilyMember[] }) {
-  const [feeds, setFeeds] = useState<ExternalCalendarFeed[]>([])
-  const [extEvents, setExtEvents] = useState<ExternalCalendarEvent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [syncingId, setSyncingId] = useState<string | null>(null)
-  const today = useMemo(() => new Date(), [])
-  const [visibleYear, setVisibleYear] = useState(today.getFullYear())
-  const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
-
-  function reload() {
-    setLoading(true)
-    Promise.all([listFeeds(), listExternalEvents()])
-      .then(([f, e]) => {
-        setFeeds(f)
-        setExtEvents(e)
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(reload, [])
-
-  async function handleSync(feedId: string) {
-    setSyncingId(feedId)
-    setError(null)
-    try {
-      await syncFeed(feedId)
-      reload()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo sincronizar'))
-    } finally {
-      setSyncingId(null)
-    }
-  }
-
-  async function handleDeleteFeed(id: string) {
-    try {
-      await deleteFeed(id)
-      reload()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo borrar el calendario'))
-    }
-  }
-
-  const feedById = useMemo(() => new Map(feeds.map((f) => [f.id, f])), [feeds])
-  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
-
-  const monthDays = useMemo(() => getMonthGridDays(visibleYear, visibleMonth), [visibleYear, visibleMonth])
-
-  // Un evento recurrente del calendario externo (p. ej. una reunión
-  // semanal real de Google Calendar) se expande igual que los eventos
-  // nativos — antes solo se guardaba su primera fecha, así que la
-  // mayoría de semanas del mes se veían vacías aunque el evento sí
-  // existiera, dando la sensación de que el calendario no se había
-  // enlazado bien.
-  const eventsByDate = useMemo(() => {
-    const map = new Map<string, ExternalCalendarEvent[]>()
-    if (monthDays.length === 0) return map
-    const rangeStart = monthDays[0].dateStr
-    const rangeEnd = monthDays[monthDays.length - 1].dateStr
-    for (const ev of extEvents) {
-      for (const dateStr of expandOccurrences(ev, rangeStart, rangeEnd)) {
-        const list = map.get(dateStr) ?? []
-        list.push(ev)
-        map.set(dateStr, list)
-      }
-    }
-    return map
-  }, [extEvents, monthDays])
-
-  function dotColorForFeed(feedId: string): string {
-    const feed = feedById.get(feedId)
-    const member = feed?.memberId ? memberById.get(feed.memberId) : null
-    return member?.color ?? '#6b7280'
-  }
-
-  function goToMonth(delta: number) {
-    const d = new Date(visibleYear, visibleMonth + delta, 1)
-    setVisibleYear(d.getFullYear())
-    setVisibleMonth(d.getMonth())
-  }
-
-  const selectedDayEvents = selectedDate ? (eventsByDate.get(selectedDate) ?? []) : []
-
-  return (
-    <div>
-      {error && <p className="error">{error}</p>}
-
-      <GoogleCalendarSyncCard />
-
-      <CalendarExportCard />
-
-      <div className="card member-form">
-        <h2>Calendarios enlazados</h2>
-        <p className="muted">
-          Copia la "dirección secreta en formato iCal" de tu calendario (Google, Outlook, Apple/iPhone o Android) y
-          pégala aquí. Solo se importan las citas — no se puede escribir en tu calendario original.
-        </p>
-        {feeds.length === 0 && !loading && <p className="muted">Todavía no has enlazado ningún calendario.</p>}
-        {feeds.map((f) => (
-          <div key={f.id} className="card event-card" style={{ background: toPastel(dotColorForFeed(f.id)) }}>
-            <strong>{f.name}</strong>
-            {f.isHolidayCalendar && <span className="muted"> · 🎌 festivos</span>}
-            {f.memberId && memberById.get(f.memberId) && <MemberAvatar member={memberById.get(f.memberId)!} size={24} />}
-            <p className="muted">
-              {f.lastSyncedAt
-                ? `Última sincronización: ${new Date(f.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`
-                : 'Todavía no sincronizado'}
-            </p>
-            {f.lastSyncError && <p className="error">{f.lastSyncError}</p>}
-            <div className="member-card-actions">
-              <button type="button" className="link-button" disabled={syncingId === f.id} onClick={() => handleSync(f.id)}>
-                {syncingId === f.id ? 'Sincronizando…' : 'Sincronizar ahora'}
-              </button>
-              <ConfirmButton label="Quitar" onConfirm={() => handleDeleteFeed(f.id)} />
-            </div>
-          </div>
-        ))}
-
-        <AddFeedForm members={members} onAdded={reload} />
-      </div>
-
-      <div className="month-nav">
-        <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
-          ‹
-        </button>
-        <strong>
-          {MONTH_LABELS[visibleMonth]} {visibleYear}
-        </strong>
-        <button type="button" className="link-button" onClick={() => goToMonth(1)}>
-          ›
-        </button>
-      </div>
-
-      <div className="month-grid">
-        {WEEKDAY_LABELS.map((w) => (
-          <div key={w} className="month-grid-weekday">
-            {w}
-          </div>
-        ))}
-        {monthDays.map((day) => {
-          const dayEvents = eventsByDate.get(day.dateStr) ?? []
-          const dots = [...new Set(dayEvents.map((e) => dotColorForFeed(e.feedId)))]
-          const isSelected = selectedDate === day.dateStr
-          // A diferencia del calendario nativo (puntitos pequeños), aquí
-          // se pinta el recuadro entero del color — a petición de la
-          // usuaria, para que se note de un vistazo qué días tienen algo
-          // sin tener que fijarse en un puntito diminuto.
-          const fillColor = dots[0]
-          return (
-            <button
-              type="button"
-              key={day.dateStr}
-              className={
-                'month-grid-day' +
-                (day.inMonth ? '' : ' month-grid-day-out') +
-                (day.isToday ? ' month-grid-day-today' : '') +
-                (isSelected ? ' month-grid-day-selected' : '') +
-                (fillColor && !isSelected ? ' month-grid-day-filled' : '') +
-                (isWeekend(day.dateStr) ? ' month-grid-day-weekend' : '')
-              }
-              style={
-                fillColor && !isSelected
-                  ? { background: fillColor, borderColor: fillColor, color: readableTextColor(fillColor) }
-                  : undefined
-              }
-              onClick={() => setSelectedDate(day.dateStr)}
-            >
-              <span>{day.day}</span>
-              {dots.length > 1 && (
-                <span className="month-grid-dots">
-                  {dots.slice(1, 4).map((_, i) => (
-                    <span key={i} className="month-grid-dot month-grid-dot-on-fill" />
-                  ))}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {selectedDate && (
-        <div className="modal-overlay" onClick={() => setSelectedDate(null)}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="section-title" style={{ margin: 0 }}>
-                {new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', {
-                  weekday: 'long',
-                  day: 'numeric',
-                  month: 'long',
-                })}
-              </h2>
-              <button type="button" className="modal-close" onClick={() => setSelectedDate(null)} aria-label="Cerrar">
-                ✕
-              </button>
-            </div>
-            {selectedDayEvents.length === 0 && <p className="muted">Nada este día.</p>}
-            <div className="event-list">
-              {selectedDayEvents.map((ev) => (
-                <div key={ev.id} className="card event-card">
-                  <strong>{ev.title}</strong>
-                  <p className="muted">
-                    {feedById.get(ev.feedId)?.name}
-                    {' · '}
-                    {ev.allDay
-                      ? 'Todo el día'
-                      : new Date(ev.startAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                    {!ev.allDay &&
-                      ev.endAt &&
-                      ` – ${new Date(ev.endAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Conexión de verdad, cada hora, vía la API de Google Calendar — a
-// diferencia de CalendarExportCard (más abajo), que depende de que
-// Google decida cuándo mirar la URL. Se recomienda esta primero porque
-// SÍ puede cumplir "cada hora" (petición real); la de abajo queda como
-// alternativa para quien no quiera dar permiso de escritura o use
-// Apple Calendar sin cuenta de Google.
-function GoogleCalendarSyncCard() {
-  const [status, setStatus] = useState<GoogleCalendarStatus | null>(null)
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState('')
-
-  function load() {
-    getGoogleCalendarStatus()
-      .then(setStatus)
-      .catch((err) => setError(errorMessage(err, String(err))))
-  }
-
-  useEffect(() => {
-    // Google trae de vuelta aquí con ?google=connected|error tras el
-    // consentimiento (ver google-calendar-oauth-callback) — se lee una
-    // vez y se limpia de la URL para que un refresco de página no lo
-    // vuelva a mostrar.
-    const params = new URLSearchParams(window.location.search)
-    const result = params.get('google')
-    if (result === 'connected') setNotice('✓ Conectado con Google Calendar.')
-    else if (result === 'error') setNotice(`No se pudo conectar (${params.get('detail') ?? 'error'}).`)
-    if (result) {
-      params.delete('google')
-      params.delete('detail')
-      const qs = params.toString()
-      window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''))
-    }
-    load()
-  }, [])
-
-  async function connect() {
-    setBusy(true)
-    setError('')
-    try {
-      await startGoogleConnect()
-    } catch (err) {
-      setError(errorMessage(err, String(err)))
-      setBusy(false)
-    }
-  }
-
-  async function disconnect() {
-    setBusy(true)
-    setError('')
-    try {
-      await disconnectGoogleCalendar()
-      load()
-    } catch (err) {
-      setError(errorMessage(err, String(err)))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="card member-form">
-      <h2>Conectar con Google Calendar (recomendado)</h2>
-      <p className="muted">
-        Un solo permiso y la app mantiene un calendario "Family App" dentro de tu Google Calendar siempre al día,
-        cada hora — se ve igual en Android y en iPhone si usas la app de Google Calendar en los dos.
-      </p>
-      {notice && <p className="muted">{notice}</p>}
-      {error && <p className="error">{error}</p>}
-      {status?.connected ? (
-        <>
-          <p className="muted">
-            {status.lastSyncedAt
-              ? `Última sincronización: ${new Date(status.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`
-              : 'Conectado — la primera sincronización llega en la próxima hora en punto.'}
-          </p>
-          {status.lastSyncError && <p className="error">{status.lastSyncError}</p>}
-          <ConfirmButton label="Desconectar" onConfirm={disconnect} />
-        </>
-      ) : (
-        <button type="button" onClick={connect} disabled={busy}>
-          {busy ? 'Abriendo Google…' : 'Conectar con Google'}
-        </button>
-      )}
-    </div>
-  )
-}
-
-// Sentido contrario a "Calendarios enlazados": aquí es el calendario
-// de la app el que se ofrece para que Google Calendar (Android/iPhone)
-// o Apple Calendar se suscriban — petición real: "quiero que todos los
-// datos que hayan en el calendario de la app se pasen al calendario
-// del móvil". OJO con lo que se promete: Google/Apple deciden ELLOS
-// cada cuánto vuelven a mirar una suscripción por URL (normalmente una
-// vez al día), así que "cada hora" no se puede garantizar desde aquí —
-// se dice claramente en vez de callarlo.
-function CalendarExportCard() {
-  const [url, setUrl] = useState<string | null>(null)
-  const [error, setError] = useState('')
-  const [copied, setCopied] = useState(false)
-
-  async function load() {
-    setError('')
-    try {
-      setUrl(await getCalendarExportUrl())
-    } catch (err) {
-      setError(errorMessage(err, String(err)))
-    }
-  }
-
-  async function copy() {
-    if (!url) return
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Sin permiso de portapapeles (poco común) — la URL ya está
-      // visible en pantalla para copiarla a mano.
-    }
-  }
-
-  return (
-    <div className="card member-form">
-      <h2>Exportar tu calendario al móvil</h2>
-      <p className="muted">
-        Añade esta dirección como "calendario por URL" en Google Calendar (Android o iPhone) o en Apple Calendar
-        (iPhone) para ver aquí todo lo que apuntes en la app. Google/Apple deciden cada cuánto la vuelven a mirar
-        (normalmente una vez al día) — no se puede forzar a que sea siempre al momento.
-      </p>
-      {error && <p className="error">{error}</p>}
-      {!url && (
-        <button type="button" onClick={load}>
-          Generar mi enlace
-        </button>
-      )}
-      {url && (
-        <>
-          <div className="voice-text-form">
-            <input type="text" value={url} readOnly onFocus={(e) => e.target.select()} />
-            <button type="button" onClick={copy}>
-              {copied ? '✓ Copiado' : 'Copiar'}
-            </button>
-          </div>
-          <p className="muted" style={{ fontSize: 13 }}>
-            Android: Google Calendar → Ajustes → Añadir calendario → Desde URL. iPhone: Ajustes → Calendario →
-            Cuentas → Añadir cuenta → Otra → Añadir calendario suscrito.
-          </p>
-        </>
-      )}
-    </div>
-  )
-}
-
-function AddFeedForm({ members, onAdded }: { members: FamilyMember[]; onAdded: () => void }) {
-  const [name, setName] = useState('')
-  const [icsUrl, setIcsUrl] = useState('')
-  const [memberId, setMemberId] = useState<string>('')
-  const [isHolidayCalendar, setIsHolidayCalendar] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      const id = await addFeed({ name, icsUrl, memberId: memberId || null, isHolidayCalendar })
-      setName('')
-      setIcsUrl('')
-      setMemberId('')
-      setIsHolidayCalendar(false)
-      onAdded()
-      // Sincroniza en cuanto se añade, para que "vamos a probarlo" se
-      // vea de inmediato sin tener que pulsar "Sincronizar ahora" aparte.
-      await syncFeed(id).catch(() => {})
-      onAdded()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo enlazar el calendario'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h3>Enlazar calendario</h3>
-      <label>
-        Nombre
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Google Calendar de Jennifer"
-          required
-        />
-      </label>
-      <label>
-        URL .ics
-        <input
-          type="url"
-          value={icsUrl}
-          onChange={(e) => setIcsUrl(e.target.value)}
-          placeholder="https://calendar.google.com/calendar/ical/..."
-          required
-        />
-      </label>
-      <label>
-        ¿De quién es? (opcional)
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-          <option value="">Toda la familia</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="checkbox-label">
-        <input type="checkbox" checked={isHolidayCalendar} onChange={(e) => setIsHolidayCalendar(e.target.checked)} />
-        Es un calendario de festivos (para poder excluirlos de las repeticiones)
-      </label>
-      {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Enlazando…' : 'Enlazar calendario'}
-      </button>
-    </form>
-  )
-}
-
 // Copia de EconomiaMenuDropdown adaptada a las claves de Calendario —
 // mismas clases CSS .economia-menu-* (genéricas).
 function OpensFirstBadge() {
@@ -4769,6 +4582,16 @@ function CalendarioMenuDropdown({
           })}
         </div>
       ))}
+
+      {/* Revisión Calendario — "Externos" desaparece como vista (sus funciones viven ahora en
+          Configuración → Calendario); este es el acceso SECUNDARIO que pide el encargo: nunca una
+          vista más del menú reordenable (no es un ViewMode, no se puede sacar como atajo ni se guarda
+          en el layout), solo un enlace fijo a la pantalla de ajustes real, con el grupo "Calendario" ya
+          abierto (mismo patrón que ya usa Economía: state={{ group: 'calendario' }}). */}
+      <Link to="/menu-organizar" state={{ group: 'calendario' }} className="economia-menu-item" onClick={onClose}>
+        <span aria-hidden="true">⚙️</span>
+        Gestionar calendarios
+      </Link>
 
       {placeholderNotice && (
         <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>

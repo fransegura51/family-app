@@ -6,11 +6,11 @@ import { errorMessage } from '@/domain/errorMessage'
 // en este móvil, por perfil) — petición real, pensando en cuando se
 // venda la app a otras familias: "cuando la persona abra la aplicación
 // nueva, que sepa cómo enlazar sus calendarios si quiere". Conectar con
-// Google es un solo botón (ver GoogleCalendarSyncCard, en Calendario >
-// Externos); enlazar un calendario que NO sea de Google (Outlook,
-// Apple/iCloud) sigue necesitando estos pasos a mano, porque esos no
-// tienen ninguna API abierta y gratuita como la de Google para hacerlo
-// con un solo clic.
+// Google es un solo botón (ver GoogleCalendarSettingsCard, en
+// Configuración → Calendario); enlazar un calendario que NO sea de
+// Google (Outlook, Apple/iCloud) sigue necesitando estos pasos a mano,
+// porque esos no tienen ninguna API abierta y gratuita como la de
+// Google para hacerlo con un solo clic.
 function storageKey(profileId: string): string {
   return `familyapp:calendar-onboarding-seen:${profileId}`
 }
@@ -75,7 +75,7 @@ export function CalendarOnboardingModal({ profileId }: { profileId: string }) {
 
         <p className="muted">
           Para que el calendario de la app y el de tu móvil se vean igual en los dos sitios, hace falta enlazarlos
-          una vez. Es opcional — puedes hacerlo ahora o más tarde desde Calendario → Externos.
+          una vez. Es opcional — puedes hacerlo ahora o más tarde desde Configuración → Calendario.
         </p>
 
         {error && <p className="error">{error}</p>}
@@ -108,14 +108,14 @@ export function CalendarOnboardingModal({ profileId }: { profileId: string }) {
               </li>
               <li>Copia esa dirección.</li>
               <li>
-                En la app: Calendario → pestaña Externos → pégala en "Calendarios enlazados" y ponle un nombre.
+                En la app: Configuración → Calendario → pégala en "Calendarios enlazados" y ponle un nombre.
               </li>
             </ol>
             <p>
               <strong>Llevar el calendario de la APP a tu móvil (sin conectar con Google):</strong>
             </p>
             <ol style={{ paddingLeft: 18, margin: '4px 0 0' }}>
-              <li>En la app: Calendario → pestaña Externos → copia el enlace de "Exportar tu calendario al móvil".</li>
+              <li>En la app: Configuración → Calendario → copia el enlace de "Exportar tu calendario al móvil".</li>
               <li>
                 Android (Google Calendar): abre la app → Ajustes → "Añadir calendario" → "Desde URL" → pega el
                 enlace.

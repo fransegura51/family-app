@@ -57,7 +57,7 @@ describe('data/calendar.ts — kind y categoría viajan en create/update, nunca 
 })
 
 describe('AddTaskForm — formulario reducido (Parte 2/3): nunca hora/fin/recurrencia/recordatorios, nunca una hora inventada', () => {
-  const FORM = slice(CALENDAR_SRC, 'function AddTaskForm({', 'function ExternalCalendarTab(')
+  const FORM = slice(CALENDAR_SRC, 'function AddTaskForm({', 'function OpensFirstBadge(')
 
   it('solo Título y Fecha son obligatorios — ningún input de hora/fin', () => {
     expect(FORM).toContain('Título')
@@ -141,7 +141,7 @@ describe('Emoji de categoría — nunca depende del modo de color (Parte 6), vis
     expect(fn).toContain("const titleWithCategory = category ? `${category.emoji} ${ev.title}` : ev.title")
   })
 
-  it('TimeGridView (Semana/3 días/Día) también antepone el emoji, independiente de categoryColorById (modo de color)', () => {
+  it('TimeGridView (3 días/Día — Semana ya no la usa, ver calendarWeekListUi.test.ts) también antepone el emoji, independiente de categoryColorById (modo de color)', () => {
     const fn = slice(CALENDAR_SRC, 'function TimeGridView({', 'function AgendaListView(')
     expect(fn).toContain('function titleWithCategoryEmoji(ev: CalendarEvent): string {')
     expect(fn).toContain('categoryById.get(ev.categoryId)')
@@ -254,7 +254,7 @@ describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, sal
     expect(BUILD_ENTRIES).not.toMatch(/ev\.kind\s*===/)
   })
 
-  it('TimeGridView (Semana/3 días/Día) separa a propósito las Tareas de "Todo el día" (RETOQUE: una Tarea sin hora nunca es un evento de todo el día) en su propia franja "Tareas", sin inventar una hora', () => {
+  it('TimeGridView (3 días/Día — Semana ya no la usa, ver calendarWeekListUi.test.ts) separa a propósito las Tareas de "Todo el día" (RETOQUE: una Tarea sin hora nunca es un evento de todo el día) en su propia franja "Tareas", sin inventar una hora', () => {
     expect(TIME_GRID).toContain("if (!ev.allDay || ev.kind === 'task') continue")
     expect(TIME_GRID).toContain("if (ev.kind !== 'task') continue")
     expect(TIME_GRID).toContain('function tasksForDate(')
@@ -271,10 +271,10 @@ describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, sal
     expect(personal).not.toMatch(/ev\.kind\s*===/)
   })
 
-  it('Externos (calendarios externos) sigue siendo una fuente de datos totalmente distinta — nunca mezcla calendar_events ni kind', () => {
-    const externos = slice(CALENDAR_SRC, 'function ExternalCalendarTab({', 'function GoogleCalendarSyncCard(')
-    expect(externos).not.toContain('calendar_categories')
-    expect(externos).not.toMatch(/\bkind\b/)
+  it('Externos (calendarios externos, ahora gestionados desde Configuración → Calendario) sigue siendo una fuente de datos totalmente distinta — nunca mezcla calendar_events ni kind', () => {
+    const section = slice(MENU_SETTINGS_SRC, 'function CalendarExternalLinksSection() {', 'type SettingsGroupId')
+    expect(section).not.toContain('calendar_categories')
+    expect(section).not.toMatch(/\bkind\b/)
   })
 })
 
@@ -432,8 +432,8 @@ describe('CALENDARIO — SIGUIENTE FASE: compactación de Familiar (EventCard), 
     expect(CARD).toContain('📤')
   })
 
-  it('los tres botones de acción reutilizan la MISMA clase .icon-button-share (mismo tamaño/borde/grosor), ninguno inventa una clase nueva', () => {
-    const iconButtonCount = (CARD.match(/className="icon-button-share"/g) ?? []).length
+  it('los tres botones de acción reutilizan la MISMA clase .icon-button-share, con el modificador -sm (Revisión Calendario: "mandos... de forma ordenada y compacta") — ninguno inventa una clase nueva', () => {
+    const iconButtonCount = (CARD.match(/className="icon-button-share icon-button-share-sm"/g) ?? []).length
     expect(iconButtonCount).toBeGreaterThanOrEqual(3) // Editar + Borrar (disparador inicial) + Compartir
   })
 
@@ -459,9 +459,9 @@ describe('CALENDARIO — SIGUIENTE FASE: bloques "Eventos"/"Tareas" en todas las
     expect(body).toContain('<div className="calendar-section-header">{group.label}</div>')
   })
 
-  it('las 3 llamadas a DayModal (Mes/Vista general/Semana-3días-Día) y AgendaListView/PersonalView/FamilyDayView pasan taskOrder — ninguna preferencia nueva, reutilizan calendarPrefs.taskOrder', () => {
+  it('las 3 llamadas a DayModal (Mes/Vista general/3días-Día) y AgendaListView/PersonalView/FamilyDayView/WeekListView pasan taskOrder — ninguna preferencia nueva, reutilizan calendarPrefs.taskOrder', () => {
     const count = (CALENDAR_SRC.match(/taskOrder=\{calendarPrefs\.taskOrder\}/g) ?? []).length
-    expect(count).toBe(6) // 3x DayModal + AgendaListView + PersonalView + FamilyDayView
+    expect(count).toBe(7) // 3x DayModal + AgendaListView + PersonalView + FamilyDayView + WeekListView (Semana, rediseño)
   })
 })
 
@@ -503,5 +503,28 @@ describe('CALENDARIO — ÚLTIMO RETOQUE: Familiar compacta de verdad (altura au
   it('sin locationLabel ni mapsUrl, el párrafo de ubicación no se renderiza en absoluto (nunca un wrapper vacío)', () => {
     const CARD = slice(CALENDAR_SRC, 'function EventCard({', 'function MemberFilterDropdown(')
     expect(CARD).toContain('{(ev.locationLabel || mapsUrl) && (')
+  })
+})
+
+describe('Revisión Calendario — Vista Familiar: el control de completado va al INICIO de la tarjeta, nunca al final junto a Editar/Compartir/Borrar', () => {
+  const CARD = slice(CALENDAR_SRC, 'function EventCard({', 'function MemberFilterDropdown(')
+
+  it('el círculo de completar vive en family-event-card-header, junto al título — antes de él en el marcado', () => {
+    const headerIdx = CARD.indexOf('className="family-event-card-header"')
+    const circleIdx = CARD.indexOf('<CompletionCircle done={done} color={color} onComplete={onComplete} onUncomplete={onUncomplete} />')
+    const actionsIdx = CARD.indexOf('className="member-card-actions"')
+    expect(headerIdx).toBeGreaterThan(-1)
+    expect(circleIdx).toBeGreaterThan(headerIdx)
+    expect(circleIdx).toBeLessThan(actionsIdx)
+  })
+
+  it('member-card-actions ya NO incluye el círculo de completar — solo Editar/Compartir/Borrar', () => {
+    const actions = CARD.slice(CARD.indexOf('className="member-card-actions"'))
+    expect(actions).not.toContain('CompletionCircle')
+    expect(actions).not.toContain('completion-circle-chip')
+  })
+
+  it('la tarjeta usa una clase propia (family-event-card) para compactar sin tocar .event-card/.card genéricos, reutilizados también en los calendarios enlazados (Configuración → Calendario)', () => {
+    expect(CARD).toContain('className="card event-card family-event-card"')
   })
 })

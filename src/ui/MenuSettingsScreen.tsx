@@ -13,7 +13,7 @@ import {
   type ChartColorTheme,
   type ColorTheme,
 } from '@/state/colorTheme'
-import { pastelPalette, solidPalette } from '@/domain/colors'
+import { pastelPalette, solidPalette, toPastel } from '@/domain/colors'
 import {
   createCalendarCategory,
   deleteCalendarCategory,
@@ -28,8 +28,12 @@ import {
   type CalendarColorMode,
   type CalendarTaskOrder,
 } from '@/data/calendar'
-import type { CalendarCategory } from '@/domain/types'
-import { ConfirmIconButton } from '@/ui/ConfirmButton'
+import type { CalendarCategory, FamilyMember } from '@/domain/types'
+import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { MemberAvatar } from '@/ui/MemberAvatar'
+import { getGoogleCalendarStatus, disconnectGoogleCalendar, startGoogleConnect, type GoogleCalendarStatus } from '@/data/googleCalendarSync'
+import { getCalendarExportUrl } from '@/data/calendarExport'
+import { listFeeds, addFeed, deleteFeed, syncFeed, type ExternalCalendarFeed } from '@/data/externalCalendarFeeds'
 import {
   DEFAULT_BABY_UNTIL_MONTHS,
   getBabyUntilMonths,
@@ -38,6 +42,7 @@ import {
   getDateFilterPreferences,
   getFamilyName,
   getFinanceMonthStartDay,
+  listFamilyMembers,
   updateAccountsMode,
   updateDateFilterDisabled,
   updateDateFilterFavorite,
@@ -1551,6 +1556,335 @@ export function CalendarCategoriesSection() {
   )
 }
 
+// Revisión Calendario (instrucción explícita de la usuaria) — "Externos" desaparece del menú de vistas
+// de Calendario; sus funciones se integran aquí, en Configuración → Calendario, junto a lo que ya
+// existía (colores, categorías). Traslado de INTERFAZ y navegación solamente: reutiliza TAL CUAL los
+// mismos mecanismos de sincronización/OAuth/iCal (googleCalendarSync.ts/externalCalendarFeeds.ts/
+// calendarExport.ts) que ya tenía CalendarScreen.tsx — nada de eso se toca. El mini-calendario propio de
+// "Externos" (solo para hojear eventos externos aislados) no se traslada: esos mismos eventos ya se ven
+// integrados en Mes/Semana/3 días/Día/Agenda/Personal desde hace tiempo, así que era una segunda forma
+// redundante de ver lo mismo — no se pierde ningún dato real al quitarlo, solo esa vista duplicada.
+function GoogleCalendarSettingsCard() {
+  const [status, setStatus] = useState<GoogleCalendarStatus | null>(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  function load() {
+    getGoogleCalendarStatus()
+      .then(setStatus)
+      .catch((err) => setError(errorMessage(err, String(err))))
+  }
+
+  useEffect(() => {
+    // Google trae de vuelta aquí con ?google=connected|error tras el consentimiento (ver
+    // google-calendar-oauth-callback) — se lee una vez y se limpia de la URL para que un refresco de
+    // página no lo vuelva a mostrar. Mismo mecanismo de siempre, solo que ahora aterriza en
+    // /menu-organizar en vez de en Calendario → Externos.
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('google')
+    if (result === 'connected') setNotice('✓ Conectado con Google Calendar.')
+    else if (result === 'error') setNotice(`No se pudo conectar (${params.get('detail') ?? 'error'}).`)
+    if (result) {
+      params.delete('google')
+      params.delete('detail')
+      const qs = params.toString()
+      window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''))
+    }
+    load()
+  }, [])
+
+  async function connect() {
+    setBusy(true)
+    setError('')
+    try {
+      await startGoogleConnect()
+    } catch (err) {
+      setError(errorMessage(err, String(err)))
+      setBusy(false)
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true)
+    setError('')
+    try {
+      await disconnectGoogleCalendar()
+      load()
+    } catch (err) {
+      setError(errorMessage(err, String(err)))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Bug real corregido (petición explícita: "evitar un título que siga diciendo 'Conectar' cuando ya
+  // está conectado") — antes el título era fijo ("Conectar con Google Calendar (recomendado)")
+  // independientemente del estado; ahora depende de status.connected, igual que el resto de la tarjeta.
+  return (
+    <div className="card member-form calendar-external-card">
+      <h3>{status?.connected ? 'Google Calendar conectado' : 'Conectar con Google Calendar (recomendado)'}</h3>
+      {!status?.connected && (
+        <p className="muted">
+          Un solo permiso y la app mantiene un calendario "Family App" dentro de tu Google Calendar siempre al día,
+          cada hora.
+        </p>
+      )}
+      {notice && <p className="muted">{notice}</p>}
+      {error && <p className="error">{error}</p>}
+      {status?.connected ? (
+        <>
+          <p className="muted">
+            {status.lastSyncedAt
+              ? `Última sincronización: ${new Date(status.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`
+              : 'Conectado — la primera sincronización llega en la próxima hora en punto.'}
+          </p>
+          {status.lastSyncError && <p className="error">{status.lastSyncError}</p>}
+          <ConfirmButton label="Desconectar" onConfirm={disconnect} />
+        </>
+      ) : (
+        <button type="button" onClick={connect} disabled={busy}>
+          {busy ? 'Abriendo Google…' : 'Conectar con Google'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function CalendarExportSettingsCard() {
+  const [url, setUrl] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  async function load() {
+    setError('')
+    try {
+      setUrl(await getCalendarExportUrl())
+    } catch (err) {
+      setError(errorMessage(err, String(err)))
+    }
+  }
+
+  async function copy() {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Sin permiso de portapapeles (poco común) — la URL ya está visible en pantalla para copiarla a mano.
+    }
+  }
+
+  return (
+    <div className="card member-form calendar-external-card">
+      <h3>Exportar tu calendario al móvil</h3>
+      <p className="muted">
+        Añade esta dirección como "calendario por URL" en Google Calendar o en Apple Calendar para ver aquí todo lo
+        que apuntes en la app (Google/Apple deciden cada cuánto la vuelven a mirar, normalmente una vez al día).
+      </p>
+      {error && <p className="error">{error}</p>}
+      {!url && (
+        <button type="button" onClick={load}>
+          Generar mi enlace
+        </button>
+      )}
+      {url && (
+        <>
+          <div className="voice-text-form">
+            <input type="text" value={url} readOnly onFocus={(e) => e.target.select()} />
+            <button type="button" onClick={copy}>
+              {copied ? '✓ Copiado' : 'Copiar'}
+            </button>
+          </div>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Android: Google Calendar → Ajustes → Añadir calendario → Desde URL. iPhone: Ajustes → Calendario →
+            Cuentas → Añadir cuenta → Otra → Añadir calendario suscrito.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+// "Sustituir el formulario de enlace siempre abierto por un botón '+ Enlazar calendario', antes de la
+// lista. Al pulsarlo, desplegar el formulario; tras guardar, plegarlo." — mismos campos/validaciones de
+// siempre (ver handleSubmit), solo cambia cuándo se ve el formulario.
+function AddLinkedCalendarForm({ members, onAdded }: { members: FamilyMember[]; onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [icsUrl, setIcsUrl] = useState('')
+  const [memberId, setMemberId] = useState<string>('')
+  const [isHolidayCalendar, setIsHolidayCalendar] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      const id = await addFeed({ name, icsUrl, memberId: memberId || null, isHolidayCalendar })
+      setName('')
+      setIcsUrl('')
+      setMemberId('')
+      setIsHolidayCalendar(false)
+      onAdded()
+      // Sincroniza en cuanto se añade, para que "vamos a probarlo" se vea de inmediato sin tener que
+      // pulsar "Sincronizar ahora" aparte.
+      await syncFeed(id).catch(() => {})
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo enlazar el calendario'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <h3>Enlazar calendario</h3>
+      <label>
+        Nombre
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Google Calendar de Jennifer" required />
+      </label>
+      <label>
+        URL .ics
+        <input
+          type="url"
+          value={icsUrl}
+          onChange={(e) => setIcsUrl(e.target.value)}
+          placeholder="https://calendar.google.com/calendar/ical/..."
+          required
+        />
+      </label>
+      <label>
+        ¿De quién es? (opcional)
+        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+          <option value="">Toda la familia</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="checkbox-label">
+        <input type="checkbox" checked={isHolidayCalendar} onChange={(e) => setIsHolidayCalendar(e.target.checked)} />
+        Es un calendario de festivos (para poder excluirlos de las repeticiones)
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={saving}>
+        {saving ? 'Enlazando…' : 'Enlazar calendario'}
+      </button>
+    </form>
+  )
+}
+
+function CalendarExternalLinksSection() {
+  const [members, setMembers] = useState<FamilyMember[]>([])
+  const [feeds, setFeeds] = useState<ExternalCalendarFeed[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const [showAddForm, setShowAddForm] = useState(false)
+
+  function reload() {
+    setLoading(true)
+    Promise.all([listFamilyMembers(), listFeeds()])
+      .then(([m, f]) => {
+        setMembers(m)
+        setFeeds(f)
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(reload, [])
+
+  async function handleSync(feedId: string) {
+    setSyncingId(feedId)
+    setError(null)
+    try {
+      await syncFeed(feedId)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo sincronizar'))
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  async function handleDeleteFeed(id: string) {
+    try {
+      await deleteFeed(id)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar el calendario'))
+    }
+  }
+
+  const memberById = new Map(members.map((m) => [m.id, m]))
+
+  return (
+    <>
+      <GoogleCalendarSettingsCard />
+      <CalendarExportSettingsCard />
+      <div className="card member-form">
+        <h2>Calendarios enlazados</h2>
+        <p className="muted">
+          Copia la "dirección secreta en formato iCal" de tu calendario (Google, Outlook, Apple/iPhone o Android) y
+          pégala aquí. Solo se importan las citas — no se puede escribir en tu calendario original.
+        </p>
+        {error && <p className="error">{error}</p>}
+        {!showAddForm ? (
+          <button type="button" className="link-button" onClick={() => setShowAddForm(true)}>
+            + Enlazar calendario
+          </button>
+        ) : (
+          <AddLinkedCalendarForm
+            members={members}
+            onAdded={() => {
+              reload()
+              setShowAddForm(false)
+            }}
+          />
+        )}
+        {feeds.length === 0 && !loading && <p className="muted">Todavía no has enlazado ningún calendario.</p>}
+        {feeds.map((f) => {
+          const owner = f.memberId ? memberById.get(f.memberId) : null
+          return (
+            <div key={f.id} className="card event-card calendar-linked-feed-card" style={{ background: owner ? toPastel(owner.color) : undefined }}>
+              <div className="calendar-linked-feed-main">
+                <strong>
+                  {f.name}
+                  {f.isHolidayCalendar ? ' · 🎌' : ''}
+                </strong>
+                {owner && <MemberAvatar member={owner} size={20} />}
+              </div>
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                {f.lastSyncedAt
+                  ? `Sincronizado: ${new Date(f.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`
+                  : 'Todavía sin sincronizar'}
+              </p>
+              {f.lastSyncError && (
+                <p className="error" style={{ fontSize: 12, margin: 0 }}>
+                  {f.lastSyncError}
+                </p>
+              )}
+              <div className="member-card-actions">
+                <button type="button" className="link-button" disabled={syncingId === f.id} onClick={() => handleSync(f.id)}>
+                  {syncingId === f.id ? 'Sincronizando…' : 'Sincronizar ahora'}
+                </button>
+                <ConfirmButton label="Quitar" onConfirm={() => handleDeleteFeed(f.id)} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
 type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
 
 export function MenuSettingsScreen() {
@@ -1648,12 +1982,13 @@ export function MenuSettingsScreen() {
         color={groupColors[7]}
         icon="🗓️"
         title="Calendario"
-        summary="Colores, orden de Eventos/Tareas y categorías"
+        summary="Colores, categorías y calendarios externos (Google, enlazados)"
         open={openGroup === 'calendario'}
         onToggle={() => toggle('calendario')}
       >
         <CalendarPreferencesSection />
         <CalendarCategoriesSection />
+        <CalendarExternalLinksSection />
       </SettingsGroup>
 
       <AdminUsageLink />

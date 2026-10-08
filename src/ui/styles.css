@@ -1136,6 +1136,32 @@ button {
   margin-top: 16px;
 }
 
+/* Revisión Calendario — traslado de Externos a Configuración → Calendario: tarjetas más compactas
+   (petición real: "reducir espacios vacíos y explicaciones excesivamente largas"), con menos padding y
+   menos aire entre líneas que el .member-form/.card genéricos. */
+.calendar-external-card {
+  padding: 12px;
+  gap: 8px;
+}
+
+.calendar-external-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.calendar-linked-feed-card {
+  padding: 10px 12px;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.calendar-linked-feed-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
 select {
   padding: 12px;
   border-radius: 10px;
@@ -1794,6 +1820,26 @@ select {
    contenido real (título largo, varias líneas de ubicación...), nunca al revés. */
 .event-card p {
   margin: 0;
+}
+
+/* Revisión Calendario — Vista Familiar más compacta, sin perjudicar el uso táctil: menos padding y
+   menos separación entre líneas que el .event-card genérico (reutilizado también en Externos — ver
+   ExternalCalendarTab —, por eso esto va en una clase propia y NUNCA toca .event-card/.card directamente).
+   family-event-card-header pone el círculo de completar al INICIO de la tarjeta, en la misma línea que
+   el título (antes vivía al final, junto a Editar/Compartir/Borrar). */
+.family-event-card {
+  padding: 10px 12px;
+  gap: 4px;
+}
+
+.family-event-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.family-event-card-header strong {
+  min-width: 0;
 }
 
 /* Rediseño del dashboard de un evento (petición real: "reorganizar
@@ -2875,6 +2921,46 @@ textarea {
   text-transform: capitalize;
 }
 
+/* Revisión Calendario — "ir directamente a cualquier fecha": envuelve el título de fecha de siempre
+   (Personal, Vista familiar, DayModal) en un botón, sin tocar su tipografía/clase propia. El popover
+   flota justo debajo, centrado, para no desplazar nada del resto de la cabecera. */
+.date-jump {
+  position: relative;
+  display: inline-flex;
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+}
+
+.date-jump-trigger {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-transform: capitalize;
+  min-width: 0;
+}
+
+.date-jump-popover {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 6px;
+  background: var(--card-bg, white);
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  z-index: 5;
+  white-space: nowrap;
+}
+
 .month-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -3022,6 +3108,15 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
+  position: relative;
+}
+
+/* El título debe quedar POR ENCIMA de .color-segments (fondo multicolor absoluto) — un texto suelto,
+   sin position propia, siempre se pinta por debajo de un descendiente position:absolute aunque vaya
+   antes en el DOM; position:relative lo convierte también en un elemento posicionado y, al ir después
+   en el marcado, gana el empate de orden. */
+.month-grid-event-bar-title {
+  position: relative;
 }
 
 .month-grid-event-more {
@@ -3206,6 +3301,23 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Revisión Calendario — varios participantes: cada uno ocupa su proporción de la propia franja/barra de
+   acento, en vez de un punto aparte junto al título (ver ColorSegments en CalendarScreen.tsx). Rellena el
+   hueco de quien llama (franja/barra), por detrás del círculo de completar u otro contenido en primer
+   plano. Con un solo color no se renderiza (ColorSegments devuelve null), cero cambio frente a lo de
+   siempre. */
+.color-segments {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.color-segment {
+  flex: 1 1 0;
 }
 
 /* RETOQUE — círculo de pendiente/completado ÚNICO en todo Calendario (antes AgendaRow tenía el suyo,
@@ -3223,6 +3335,9 @@ textarea {
   padding: 0;
   cursor: pointer;
   flex-shrink: 0;
+  /* Debe quedar por encima de .color-segments (fondo multicolor absoluto de la franja) — ver nota en
+     .month-grid-event-bar-title. */
+  position: relative;
 }
 
 .completion-circle svg {
@@ -3242,6 +3357,8 @@ textarea {
   padding: 2px;
   border-radius: 50%;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
 }
 
 .agenda-row-body {
@@ -5041,15 +5158,15 @@ textarea {
 }
 
 .family-view-column {
-  flex: 0 0 220px;
+  flex: 0 0 200px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   /* Petición real: "las tarjetas de cada miembro la versión pastel de
      su color de usuario" — el color llega por style (toPastel(m.color)
      en CalendarScreen.tsx), aquí solo el hueco visual para que se note. */
   border-radius: 14px;
-  padding: 10px;
+  padding: 8px;
 }
 
 .family-view-column-header {
@@ -5119,6 +5236,17 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  position: relative;
+}
+
+/* Ver nota en .month-grid-event-bar-title: por encima de .color-segments. */
+.time-grid-chip-title,
+.time-grid-block-title {
+  position: relative;
+}
+
+.time-grid-block-title {
+  min-width: 0;
 }
 
 /* Bloque "Tareas" propio (RETOQUE, Parte 7-8): una Tarea sin hora nunca es un evento de "Todo el
@@ -5242,6 +5370,113 @@ textarea {
   padding: 3px 5px;
   overflow: hidden;
   cursor: pointer;
+}
+
+/* Revisión Calendario — Vista Día: fila compacta circulito+título DENTRO del bloque (mismo criterio que
+   .time-grid-task-row), para poder marcar completado y editar sin el listado inferior. */
+.time-grid-block-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  min-width: 0;
+}
+
+.time-grid-block-circle-chip {
+  padding: 1px;
+}
+
+.time-grid-block-circle-chip .completion-circle {
+  width: 14px;
+  height: 14px;
+  border-width: 1.5px;
+}
+
+.time-grid-block-circle-chip .completion-circle svg {
+  width: 8px;
+  height: 8px;
+}
+
+/* Revisión Calendario — Vista Semana: lista vertical de 7 días plegables/desplegables, sustituye a la
+   cuadrícula horaria de 7 columnas (demasiado estrecha en móvil). Cada día es una tarjeta (.card) propia;
+   su cabecera es un único botón a todo lo ancho (plegar/desplegar), con el resumen y los grupos de color
+   dentro; al desplegar, las tarjetas de siempre (DayEntriesBody/AgendaRow) debajo, sin su propio padding
+   duplicado con el de la tarjeta del día. */
+.week-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.week-day-block {
+  padding: 10px 12px;
+}
+
+.week-day-block-today {
+  border: 1.5px solid var(--primary);
+}
+
+.week-day-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.week-day-header-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.week-day-count {
+  font-size: 12px;
+}
+
+.week-day-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.week-day-entries {
+  margin-top: 10px;
+}
+
+/* Indicadores informativos del resumen — NUNCA botones de completar (ver WeekDayColorGroups): sin fondo,
+   sin check, solo puntos de color y un separador "/" entre citas distintas. */
+.week-day-color-groups {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.week-day-color-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.week-day-color-sep {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0 1px;
+}
+
+.week-day-color-dot {
+  width: 7px;
+  height: 7px;
+  min-width: 7px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
 /* Formulario de receta (nueva/editar): secciones con etiqueta pequeña,

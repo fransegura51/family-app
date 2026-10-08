@@ -138,10 +138,8 @@ describe('K — el modo activo se aplica de forma consistente en TODAS las vista
     expect(familyView).toContain('colors={colors}')
   })
 
-  it('Externos sigue siendo una fuente de datos aparte (dotColorForFeed, nunca categoryColorById/colorMode) — no se ha tocado', () => {
-    const fn = slice(CALENDAR_SCREEN_SRC, 'function dotColorForFeed(feedId: string): string {', '}')
-    expect(fn).not.toContain('colorMode')
-    expect(fn).not.toContain('categoryColorById')
+  it('un evento externo sigue siendo una fuente de color aparte (el color del miembro propietario del calendario enlazado, nunca colorMode/categoryColorById) — no se ha tocado al trasladar "Externos" a Configuración', () => {
+    expect([...CALENDAR_SCREEN_SRC.matchAll(/member\?\.color \?\? '#6b7280'/g)].length).toBeGreaterThanOrEqual(4)
   })
 
   it('ninguna vista sigue con el gating antiguo ("solo se pasa categoryColorById si colorMode === categorias") — la decisión vive SOLO dentro de eventColor/eventDotColors', () => {
@@ -163,8 +161,10 @@ describe('L — engranaje ⚙️ presente en los 4 formularios (alta y edición 
     expect([...CALENDAR_SCREEN_SRC.matchAll(/onManageCategories=\{onManageCategories\}/g)].length).toBeGreaterThanOrEqual(3)
   })
 
-  it('los 8 sitios donde se abre un formulario de Evento/Tarea (nuevo o editar, en cualquier vista) pasan onManageCategories hacia abajo', () => {
-    expect([...CALENDAR_SCREEN_SRC.matchAll(/onManageCategories=\{\(\) => setManagingCategories\(true\)\}/g)]).toHaveLength(8)
+  it('los 10 sitios donde se abre un formulario de Evento/Tarea (nuevo o editar, en cualquier vista) pasan onManageCategories hacia abajo', () => {
+    // 8 de siempre + 2 de la Revisión Calendario: WeekListView (Semana, rediseño) y el EditEventForm
+    // independiente de Vista Día (edición disparada desde la propia cuadrícula, ver TimeGridView.onEditEvent).
+    expect([...CALENDAR_SCREEN_SRC.matchAll(/onManageCategories=\{\(\) => setManagingCategories\(true\)\}/g)]).toHaveLength(10)
   })
 })
 

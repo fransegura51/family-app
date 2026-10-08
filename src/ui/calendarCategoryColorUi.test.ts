@@ -33,7 +33,7 @@ const PICKER = slice(MENU_SETTINGS_SRC, 'function CalendarCategoryColorPicker(',
 
 describe('Paleta reutilizada del estilo global — nunca una paleta propia de Calendario', () => {
   it('las muestras salen de domain/colors.ts#solidPalette, con el estilo global activo (getColorTheme), no de una lista fija', () => {
-    expect(MENU_SETTINGS_SRC).toContain("import { pastelPalette, solidPalette } from '@/domain/colors'")
+    expect(MENU_SETTINGS_SRC).toContain("import { pastelPalette, solidPalette, toPastel } from '@/domain/colors'")
     expect(PICKER).toContain('const theme = getColorTheme()')
     expect(PICKER).toContain('const swatches = solidPalette(CALENDAR_CATEGORY_COLOR_COUNT, theme)')
   })

@@ -8138,7 +8138,12 @@ function ComidaBebidaBlock({
               menuModuleEnabled={menuModuleEnabled}
             />
           )}
-          {infantil?.choice === 'nosotros' && <FoodMenuLink hasItems={menuItems.some((i) => sectionKeyForCategory(i.category) === 'menu_infantil')} onOpenMenu={onOpenMenu} menuModuleEnabled={menuModuleEnabled} />}
+          {/* 'menu_infantil' y 'alternativa' llevan sus platos a la MISMA sección «Menú infantil» que la
+              opción heredada 'nosotros' (sus platos ya viven ahí, ver eventFood.ts) — mismo enlace, sin
+              inventar una sección nueva para una sola variante. */}
+          {(infantil?.choice === 'nosotros' || infantil?.choice === 'menu_infantil' || infantil?.choice === 'alternativa') && (
+            <FoodMenuLink hasItems={menuItems.some((i) => sectionKeyForCategory(i.category) === 'menu_infantil')} onOpenMenu={onOpenMenu} menuModuleEnabled={menuModuleEnabled} />
+          )}
         </div>
       )}
 

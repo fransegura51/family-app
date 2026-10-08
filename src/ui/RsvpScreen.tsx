@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
 import { PEPA_PUBLIC_WEBSITE_URL } from '@/domain/brand'
 import { optionsForPerson } from '@/domain/eventFoodMenu'
+import { DIETARY_CATEGORIES, DIETARY_CATEGORY_KEYS, DIETARY_KIND_LABELS } from '@/domain/eventDietaryNeeds'
 
 // Página pública de RSVP (Módulo Eventos, Fase 2) — el invitado no
 // necesita cuenta ni la app instalada. Ruta pública de la propia SPA
@@ -95,6 +96,19 @@ interface PublicGuest {
 // Clave interna para "la respuesta de la invitación entera" (scope "invitacion") dentro del estado local
 // de respuestas — nunca un memberId real, así que no puede colisionar con un uuid.
 const INVITACION_ANSWER_KEY = 'invitacion'
+
+// Necesidades alimentarias declaradas por el invitado (migración 0205) — llegan como PENDIENTES, nunca
+// confirmadas; quien organiza las revisa en Comida y bebida (EventMenuDeclaredNeeds.tsx) antes de que
+// cuenten para el menú. Mismo límite que valida la función edge (MAX_DECLARED_PER_SUBMIT en
+// supabase/functions/event-rsvp/index.ts) — si se cambia uno, cambiar el otro.
+const MAX_DECLARED_NEEDS_PER_SUBMIT = 5
+
+interface DraftDeclaredNeed {
+  memberId: string
+  category: string
+  kind: string
+  text: string
+}
 
 type LoadState =
   | { state: 'loading' }
@@ -296,6 +310,7 @@ function RsvpForm({
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [needs, setNeeds] = useState<DraftDeclaredNeed[]>([])
   const hasMembers = guest.members.length > 0
 
   function updateMember(id: string, patch: Partial<{ attending: boolean | null; menuOptionId: string | null }>) {
@@ -303,6 +318,15 @@ function RsvpForm({
   }
   function setQuestionAnswer(questionId: string, memberKey: string, optionId: string) {
     setQuestionAnswers((prev) => ({ ...prev, [questionId]: { ...(prev[questionId] ?? {}), [memberKey]: optionId } }))
+  }
+  function addNeed() {
+    setNeeds((prev) => (prev.length >= MAX_DECLARED_NEEDS_PER_SUBMIT ? prev : [...prev, { memberId: '', category: '', kind: '', text: '' }]))
+  }
+  function updateNeed(index: number, patch: Partial<DraftDeclaredNeed>) {
+    setNeeds((prev) => prev.map((n, i) => (i === index ? { ...n, ...patch } : n)))
+  }
+  function removeNeed(index: number) {
+    setNeeds((prev) => prev.filter((_, i) => i !== index))
   }
 
   // Obligatoriedad (validación en el propio formulario, antes de enviar — nunca bloquea nada que no se
@@ -322,10 +346,20 @@ function RsvpForm({
     return false
   }
 
+  // Una fila a medias (texto sin categoría) nunca se envía en silencio incompleta — se avisa y se bloquea,
+  // igual que una pregunta obligatoria sin responder. Una fila totalmente vacía simplemente se ignora.
+  function hasIncompleteNeed(): boolean {
+    return needs.some((n) => n.text.trim() !== '' && n.category === '')
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (missingRequiredQuestion()) {
       setError('Falta responder alguna pregunta obligatoria.')
+      return
+    }
+    if (hasIncompleteNeed()) {
+      setError('Falta elegir el tipo de alguna necesidad alimentaria que has empezado a describir.')
       return
     }
     setSaving(true)
@@ -348,6 +382,11 @@ function RsvpForm({
           }
         }
         if (questionAnswersBody.length > 0) body.questionAnswers = questionAnswersBody
+
+        const declaredNeedsBody = needs
+          .filter((n) => n.text.trim() !== '' && n.category !== '')
+          .map((n) => ({ text: n.text.trim(), category: n.category, kind: n.kind || undefined, memberId: n.memberId || undefined }))
+        if (declaredNeedsBody.length > 0) body.declaredNeeds = declaredNeedsBody
       }
       const res = await fetch(`${functionsUrl()}?token=${encodeURIComponent(token)}`, {
         method: 'POST',
@@ -460,6 +499,65 @@ function RsvpForm({
               </select>
             </label>
           ))}
+      {status === 'confirmado' && (
+        <fieldset style={{ border: 'none', padding: 0, margin: '14px 0 0' }}>
+          <legend style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>¿Alguna necesidad alimentaria? — opcional</legend>
+          <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+            Lo revisará quien organiza antes de tenerlo en cuenta en el menú.
+          </p>
+          {needs.map((n, i) => (
+            <div key={i} className="card" style={{ padding: 10, marginBottom: 8 }}>
+              {hasMembers && (
+                <label style={{ display: 'block', marginBottom: 6 }}>
+                  ¿De quién?
+                  <select value={n.memberId} onChange={(e) => updateNeed(i, { memberId: e.target.value })}>
+                    <option value="">Para toda la invitación</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label style={{ display: 'block', marginBottom: 6 }}>
+                ¿Qué tipo?
+                <select value={n.category} onChange={(e) => updateNeed(i, { category: e.target.value })}>
+                  <option value="">Elige una opción</option>
+                  {DIETARY_CATEGORY_KEYS.map((k) => (
+                    <option key={k} value={k}>
+                      {DIETARY_CATEGORIES[k].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'block', marginBottom: 6 }}>
+                ¿Cómo lo describirías? — opcional
+                <select value={n.kind} onChange={(e) => updateNeed(i, { kind: e.target.value })}>
+                  <option value="">Sin especificar</option>
+                  {Object.entries(DIETARY_KIND_LABELS).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'block' }}>
+                Cuéntanos más
+                <textarea value={n.text} onChange={(e) => updateNeed(i, { text: e.target.value })} maxLength={300} rows={2} />
+              </label>
+              <button type="button" className="link-button" onClick={() => removeNeed(i)} style={{ marginTop: 6 }}>
+                Quitar
+              </button>
+            </div>
+          ))}
+          {needs.length < MAX_DECLARED_NEEDS_PER_SUBMIT && (
+            <button type="button" className="chip" onClick={addNeed}>
+              + Añadir necesidad alimentaria
+            </button>
+          )}
+        </fieldset>
+      )}
       <label style={{ display: 'block', marginTop: 14 }}>
         Nota (alergia, algún comentario...) — opcional
         <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} rows={3} />

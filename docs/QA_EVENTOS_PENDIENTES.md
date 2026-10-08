@@ -505,3 +505,15 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 450. [ ] Con al menos un familiar añadido aparece "¿Qué necesitan los familiares?" con las 4 opciones marcables a la vez (Vestimenta/Complementos/Peluquería/Maquillaje) y Todos/Solo algunos.
 451. [ ] El resumen general del configurador (Fase 1) incluye Personas especiales y Familiares igual que los demás bloques: contador, línea de pendientes y navegación directa a la pregunta.
 452. [ ] Cada entrada del "Resumen de decisiones" propio de estos dos bloques navega a su pregunta, igual que en el resto del configurador.
+
+### Plan general de pendientes — Fase 3: Eventos, pendientes seguros (auditoría previa descartó tocar nada ya terminado: avisos de menú, atomicidad de importación/compra, "No hay que comprarlo", alias de documentos, raciones y encabezados ya estaban completos y probados)
+
+453. [ ] En el enlace de confirmación (RSVP) de un invitado, al marcar "✅ Confirmo" aparece "¿Alguna necesidad alimentaria? — opcional" con "+ Añadir necesidad alimentaria" (hasta 5).
+454. [ ] Cada necesidad pide tipo (mismo catálogo que usa la familia al revisarlas: sin gluten, vegetariano, alergia...) y una descripción; "¿Cómo lo describirías?" (alergia/intolerancia/celiaquía/preferencia/dieta/otro) es opcional.
+455. [ ] Con personas desglosadas, cada necesidad puede asignarse a una persona concreta o dejarse "Para toda la invitación".
+456. [ ] Empezar a describir una necesidad sin elegir su tipo bloquea el envío con un aviso — nunca se manda a medias ni en silencio.
+457. [ ] Una fila añadida y dejada completamente vacía (sin texto) no bloquea nada ni se envía.
+458. [ ] Lo declarado en el RSVP aparece en Comida y bebida → Comensales como "Declarado por un invitado (sin confirmar)" con el texto original, nunca ya como necesidad confirmada.
+459. [ ] El enlace abierto ("¿Quién viene?" sin invitado previo) no ofrece este formulario — solo existe en el enlace personal de un invitado ya dado de alta.
+460. [ ] En "¿Cómo vais a resolver el menú infantil?", elegir "Menú infantil (sus platos van en Menú del evento)" o "Alternativa concreta" muestra ahora el acceso directo a Menú del evento (antes solo lo mostraba la respuesta antigua "Lo prepararemos nosotros").
+461. [ ] Ese acceso lleva a la sección "Menú infantil" de Menú del evento, igual que con la respuesta antigua — no crea una sección nueva.
